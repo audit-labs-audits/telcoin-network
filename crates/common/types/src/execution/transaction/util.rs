@@ -1,8 +1,8 @@
-use crate::execution ::{keccak256, Address};
+use crate::execution::{keccak256, Address};
 
 pub(crate) mod secp256k1 {
     use super::*;
-    use crate::execution ::Signature;
+    use crate::execution::Signature;
     pub(crate) use ::secp256k1::Error;
     use ::secp256k1::{
         ecdsa::{RecoverableSignature, RecoveryId},
@@ -44,7 +44,7 @@ pub(crate) mod secp256k1 {
 mod tests {
 
     use super::secp256k1;
-    use crate::execution ::{hex_literal::hex, Address};
+    use crate::execution::{hex_literal::hex, Address};
 
     #[test]
     fn sanity_ecrecover_call() {

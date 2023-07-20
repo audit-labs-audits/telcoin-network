@@ -1,8 +1,8 @@
 use crate::{ExecInput, ExecOutput, Stage, StageError, UnwindInput, UnwindOutput};
 use execution_db::database::Database;
-use execution_primitives::stage::StageId;
 use execution_provider::DatabaseProviderRW;
 use std::collections::VecDeque;
+use tn_types::execution::stage::StageId;
 
 #[derive(Debug)]
 pub struct TestStage {

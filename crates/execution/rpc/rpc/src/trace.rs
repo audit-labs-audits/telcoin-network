@@ -10,9 +10,7 @@ use crate::{
     TracingCallGuard,
 };
 use async_trait::async_trait;
-use jsonrpsee::core::RpcResult as Result;
 use execution_consensus_common::calc::{base_block_reward, block_reward};
-use execution_primitives::{BlockId, BlockNumberOrTag, Bytes, SealedHeader, H256, U256};
 use execution_provider::{
     BlockReader, ChainSpecProvider, EvmEnvProvider, StateProviderBox, StateProviderFactory,
 };
@@ -30,9 +28,11 @@ use execution_rpc_types::{
     BlockError, BlockOverrides, CallRequest, Index, TransactionInfo,
 };
 use execution_tasks::TaskSpawner;
+use jsonrpsee::core::RpcResult as Result;
 use revm::{db::CacheDB, primitives::Env};
 use revm_primitives::{db::DatabaseCommit, ExecutionResult, ResultAndState};
 use std::{collections::HashSet, future::Future, sync::Arc};
+use tn_types::execution::{BlockId, BlockNumberOrTag, Bytes, SealedHeader, H256, U256};
 use tokio::sync::{oneshot, AcquireError, OwnedSemaphorePermit};
 
 /// `trace` API implementation.

@@ -1,30 +1,33 @@
 // Copyright (c) Telcoin, LLC
 // Copyright (c) Mysten Labs, Inc.
 // SPDX-License-Identifier: Apache-2.0
-use crate::metrics::new_registry;
-use crate::{try_join_all, FuturesUnordered, NodeError};
+use crate::{metrics::new_registry, try_join_all, FuturesUnordered, NodeError};
 use anemo::PeerId;
-use tn_types::consensus::config::{AuthorityIdentifier, Committee, Parameters, WorkerCache};
-use lattice_consensus::bullshark::Bullshark;
-use lattice_consensus::consensus::ConsensusRound;
-use lattice_consensus::dag::Dag;
-use lattice_consensus::metrics::{ChannelMetrics, ConsensusMetrics};
-use lattice_consensus::Consensus;
-use tn_types::consensus::crypto::{KeyPair, NetworkKeyPair, PublicKey};
-use lattice_executor::{get_restored_consensus_output, ExecutionState, Executor, SubscriberResult};
+use consensus_metrics::{metered_channel, RegistryID, RegistryService};
 use fastcrypto::traits::{KeyPair as _, VerifyingKey};
-use consensus_metrics::metered_channel;
-use consensus_metrics::{RegistryID, RegistryService};
+use lattice_consensus::{
+    bullshark::Bullshark,
+    consensus::ConsensusRound,
+    dag::Dag,
+    metrics::{ChannelMetrics, ConsensusMetrics},
+    Consensus,
+};
+use lattice_executor::{get_restored_consensus_output, ExecutionState, Executor, SubscriberResult};
 use lattice_network::client::NetworkClient;
 use lattice_primary::{Primary, PrimaryChannelMetrics, NUM_SHUTDOWN_RECEIVERS};
-use prometheus::{IntGauge, Registry};
-use std::sync::Arc;
-use std::time::Instant;
 use lattice_storage::NodeStorage;
-use tokio::sync::{watch, RwLock};
-use tokio::task::JoinHandle;
+use prometheus::{IntGauge, Registry};
+use std::{sync::Arc, time::Instant};
+use tn_types::consensus::{
+    config::{AuthorityIdentifier, Committee, Parameters, WorkerCache},
+    crypto::{KeyPair, NetworkKeyPair, PublicKey},
+    Certificate, ConditionalBroadcastReceiver, PreSubscribedBroadcastSender, Round,
+};
+use tokio::{
+    sync::{watch, RwLock},
+    task::JoinHandle,
+};
 use tracing::{debug, info, instrument};
-use tn_types::consensus::{Certificate, ConditionalBroadcastReceiver, PreSubscribedBroadcastSender, Round};
 
 struct PrimaryNodeInner {
     // The configuration parameters.
@@ -81,7 +84,7 @@ impl PrimaryNodeInner {
         State: ExecutionState + Send + Sync + 'static,
     {
         if self.is_running().await {
-            return Err(NodeError::NodeAlreadyRunning);
+            return Err(NodeError::NodeAlreadyRunning)
         }
 
         self.own_peer_id = Some(PeerId(network_keypair.public().0.to_bytes()));
@@ -125,7 +128,7 @@ impl PrimaryNodeInner {
     #[instrument(level = "info", skip_all)]
     async fn shutdown(&mut self) {
         if !self.is_running().await {
-            return;
+            return
         }
 
         // send the shutdown signal to the node
@@ -137,9 +140,7 @@ impl PrimaryNodeInner {
         }
 
         if let Some(tx_shutdown) = self.tx_shutdown.as_ref() {
-            tx_shutdown
-                .send()
-                .expect("Couldn't send the shutdown signal to downstream components");
+            tx_shutdown.send().expect("Couldn't send the shutdown signal to downstream components");
             self.tx_shutdown = None
         }
 
@@ -181,7 +182,8 @@ impl PrimaryNodeInner {
         }
     }
 
-    /// Spawn a new primary. Optionally also spawn the consensus and a client executing transactions.
+    /// Spawn a new primary. Optionally also spawn the consensus and a client executing
+    /// transactions.
     pub async fn spawn_primary<State>(
         // The private-public key pair of this authority.
         keypair: KeyPair,
@@ -213,7 +215,8 @@ impl PrimaryNodeInner {
     where
         State: ExecutionState + Send + Sync + 'static,
     {
-        // These gauge is porcelain: do not modify it without also modifying `primary::metrics::PrimaryChannelMetrics::replace_registered_new_certificates_metric`
+        // These gauge is porcelain: do not modify it without also modifying
+        // `primary::metrics::PrimaryChannelMetrics::replace_registered_new_certificates_metric`
         // This hack avoids a cyclic dependency in the initialization of consensus and primary
         let new_certificates_counter = IntGauge::new(
             PrimaryChannelMetrics::NAME_NEW_CERTS,
@@ -332,7 +335,8 @@ impl PrimaryNodeInner {
         let (tx_sequence, rx_sequence) =
             metered_channel::channel(Self::CHANNEL_CAPACITY, &channel_metrics.tx_sequence);
 
-        // Check for any sub-dags that have been sent by consensus but were not processed by the executor.
+        // Check for any sub-dags that have been sent by consensus but were not processed by the
+        // executor.
         let restored_consensus_output = get_restored_consensus_output(
             store.consensus_store.clone(),
             store.certificate_store.clone(),
@@ -346,9 +350,7 @@ impl PrimaryNodeInner {
                 "Consensus output on its way to the executor was restored for {num_sub_dags} sub-dags",
             );
         }
-        consensus_metrics
-            .recovered_consensus_output
-            .inc_by(num_sub_dags);
+        consensus_metrics.recovered_consensus_output.inc_by(num_sub_dags);
 
         // Spawn the consensus core who only sequences transactions.
         let ordering_engine = Bullshark::new(
@@ -385,10 +387,7 @@ impl PrimaryNodeInner {
             restored_consensus_output,
         )?;
 
-        Ok(executor_handles
-            .into_iter()
-            .chain(std::iter::once(consensus_handles))
-            .collect())
+        Ok(executor_handles.into_iter().chain(std::iter::once(consensus_handles)).collect())
     }
 }
 
@@ -414,9 +413,7 @@ impl PrimaryNode {
             own_peer_id: None,
         };
 
-        Self {
-            internal: Arc::new(RwLock::new(inner)),
-        }
+        Self { internal: Arc::new(RwLock::new(inner)) }
     }
 
     pub async fn start<State>(

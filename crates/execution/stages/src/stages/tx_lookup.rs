@@ -1,6 +1,4 @@
 use crate::{ExecInput, ExecOutput, Stage, StageError, UnwindInput, UnwindOutput};
-use itertools::Itertools;
-use rayon::prelude::*;
 use execution_db::{
     cursor::{DbCursorRO, DbCursorRW},
     database::Database,
@@ -8,12 +6,14 @@ use execution_db::{
     transaction::{DbTx, DbTxMut},
     DatabaseError,
 };
-use execution_primitives::{
+use execution_provider::DatabaseProviderRW;
+use itertools::Itertools;
+use rayon::prelude::*;
+use tn_types::execution::{
     keccak256,
     stage::{EntitiesCheckpoint, StageCheckpoint, StageId},
     TransactionSignedNoHash, TxNumber, H256,
 };
-use execution_provider::DatabaseProviderRW;
 use tokio::sync::mpsc;
 use tracing::*;
 
@@ -202,8 +202,8 @@ mod tests {
         generators,
         generators::{random_block, random_block_range},
     };
-    use execution_primitives::{stage::StageUnitCheckpoint, BlockNumber, SealedBlock, H256};
     use execution_provider::{BlockReader, ProviderError, TransactionsProvider};
+    use tn_types::execution::{stage::StageUnitCheckpoint, BlockNumber, SealedBlock, H256};
 
     // Implement stage test suite.
     stage_test_suite_ext!(TransactionLookupTestRunner, transaction_lookup);

@@ -89,14 +89,9 @@ where
     /// *[See `Bft` for more information.][`Bft`]*
     ///
     /// [`Bft`]: struct.Bft.html
-    ///
     #[inline]
     pub fn new(root: T, iter_children: F) -> Self {
-        Self {
-            queue: VecDeque::from(vec![root]),
-            visited: BTreeSet::new(),
-            iter_children,
-        }
+        Self { queue: VecDeque::from(vec![root]), visited: BTreeSet::new(), iter_children }
     }
 }
 

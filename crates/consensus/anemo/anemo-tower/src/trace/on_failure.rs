@@ -48,10 +48,7 @@ pub struct DefaultOnFailure {
 
 impl Default for DefaultOnFailure {
     fn default() -> Self {
-        Self {
-            level: DEFAULT_ERROR_LEVEL,
-            latency_unit: LatencyUnit::Millis,
-        }
+        Self { level: DEFAULT_ERROR_LEVEL, latency_unit: LatencyUnit::Millis }
     }
 }
 

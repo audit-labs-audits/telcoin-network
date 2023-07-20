@@ -1,6 +1,6 @@
 [package]
 name = "examples"
-version = "0.1.0"
+version.workspace = true
 license = "Apache-2.0 OR MIT"
 authors = [ "Brandon Williams <bwilliamseng@gmail.com>", "Grant Kee <grant.kee@telco.in>" ]
 description = "a peer-to-peer networking library"

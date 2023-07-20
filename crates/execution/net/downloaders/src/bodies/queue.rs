@@ -1,7 +1,5 @@
 use super::request::BodiesRequestFuture;
 use crate::metrics::BodyDownloaderMetrics;
-use futures::{stream::FuturesUnordered, Stream};
-use futures_util::StreamExt;
 use execution_interfaces::{
     consensus::Consensus,
     p2p::{
@@ -9,12 +7,14 @@ use execution_interfaces::{
         error::DownloadResult,
     },
 };
-use execution_primitives::{BlockNumber, SealedHeader};
+use futures::{stream::FuturesUnordered, Stream};
+use futures_util::StreamExt;
 use std::{
     pin::Pin,
     sync::Arc,
     task::{Context, Poll},
 };
+use tn_types::execution::{BlockNumber, SealedHeader};
 
 /// The wrapper around [FuturesUnordered] that keeps information
 /// about the blocks currently being requested.

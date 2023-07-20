@@ -4,8 +4,7 @@
 use crate::TypedStoreError;
 use async_trait::async_trait;
 use serde::{de::DeserializeOwned, Serialize};
-use std::ops::RangeBounds;
-use std::{borrow::Borrow, collections::BTreeMap, error::Error};
+use std::{borrow::Borrow, collections::BTreeMap, error::Error, ops::RangeBounds};
 
 pub trait Map<'a, K, V>
 where
@@ -29,9 +28,7 @@ where
     where
         J: Borrow<K>,
     {
-        keys.into_iter()
-            .map(|key| self.contains_key(key.borrow()))
-            .collect()
+        keys.into_iter().map(|key| self.contains_key(key.borrow())).collect()
     }
 
     /// Returns the value for the given key from the map, if it exists.
@@ -77,8 +74,8 @@ where
     fn iter_with_bounds(&'a self, lower_bound: Option<K>, upper_bound: Option<K>)
         -> Self::Iterator;
 
-    /// Similar to `iter_with_bounds` but allows specifying inclusivity/exclusivity of ranges explicitly.
-    /// TODO: find better name
+    /// Similar to `iter_with_bounds` but allows specifying inclusivity/exclusivity of ranges
+    /// explicitly. TODO: find better name
     fn range_iter(&'a self, range: impl RangeBounds<K>) -> Self::Iterator;
 
     /// Same as `iter` but performs status check
@@ -106,9 +103,7 @@ where
     where
         J: Borrow<K>,
     {
-        keys.into_iter()
-            .map(|key| self.get_raw_bytes(key.borrow()))
-            .collect()
+        keys.into_iter().map(|key| self.get_raw_bytes(key.borrow())).collect()
     }
 
     /// Returns a vector of values corresponding to the keys provided, non-atomically.
@@ -142,8 +137,7 @@ where
     where
         J: Borrow<K>,
     {
-        keys.into_iter()
-            .try_for_each(|key| self.remove(key.borrow()))
+        keys.into_iter().try_for_each(|key| self.remove(key.borrow()))
     }
 
     /// Try to catch up with primary when running as secondary

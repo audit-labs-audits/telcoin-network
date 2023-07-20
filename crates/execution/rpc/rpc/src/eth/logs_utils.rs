@@ -1,5 +1,5 @@
-use execution_primitives::{BlockNumHash, ChainInfo, Receipt, TxHash, U256};
 use execution_rpc_types::{FilteredParams, Log};
+use tn_types::execution::{BlockNumHash, ChainInfo, Receipt, TxHash, U256};
 
 /// Returns all matching logs of a block's receipts grouped with the hash of their transaction.
 pub(crate) fn matching_block_logs<I>(
@@ -54,7 +54,7 @@ pub(crate) fn append_matching_block_logs<I>(
 /// Returns true if the log matches the filter and should be included
 pub(crate) fn log_matches_filter(
     block: BlockNumHash,
-    log: &execution_primitives::Log,
+    log: &tn_types::execution::Log,
     params: &FilteredParams,
 ) -> bool {
     if params.filter.is_some() &&
@@ -97,8 +97,8 @@ pub(crate) fn get_filter_block_range(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use execution_primitives::BlockNumberOrTag;
     use execution_rpc_types::Filter;
+    use tn_types::execution::BlockNumberOrTag;
 
     #[test]
     fn test_log_range_from_and_to() {

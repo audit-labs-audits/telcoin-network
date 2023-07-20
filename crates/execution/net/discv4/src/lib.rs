@@ -36,12 +36,8 @@ use discv5::{
     ConnectionDirection, ConnectionState,
 };
 use enr::{Enr, EnrBuilder};
-use proto::{EnrRequest, EnrResponse, EnrWrapper};
-use execution_primitives::{
-    bytes::{Bytes, BytesMut},
-    ForkId, PeerId, H256,
-};
 use execution_rlp::{RlpDecodable, RlpEncodable};
+use proto::{EnrRequest, EnrResponse, EnrWrapper};
 use secp256k1::SecretKey;
 use std::{
     cell::RefCell,
@@ -53,6 +49,10 @@ use std::{
     sync::Arc,
     task::{ready, Context, Poll},
     time::{Duration, Instant, SystemTime, UNIX_EPOCH},
+};
+use tn_types::execution::{
+    bytes::{Bytes, BytesMut},
+    ForkId, PeerId, H256,
 };
 use tokio::{
     net::UdpSocket,
@@ -73,7 +73,7 @@ mod node;
 use node::{kad_key, NodeKey};
 
 // reexport NodeRecord primitive
-pub use execution_primitives::NodeRecord;
+pub use tn_types::execution::NodeRecord;
 
 #[cfg(any(test, feature = "test-utils"))]
 pub mod test_utils;
@@ -166,7 +166,7 @@ impl Discv4 {
     /// use std::str::FromStr;
     /// use rand::thread_rng;
     /// use secp256k1::SECP256K1;
-    /// use execution_primitives::{NodeRecord, PeerId};
+    /// use tn_types::execution::{NodeRecord, PeerId};
     /// use execution_discv4::{Discv4, Discv4Config};
     /// # async fn t() -> io::Result<()> {
     /// // generate a (random) keypair
@@ -1998,10 +1998,10 @@ impl From<ForkId> for EnrForkIdEntry {
 mod tests {
     use super::*;
     use crate::test_utils::{create_discv4, create_discv4_with_config, rng_endpoint, rng_record};
-    use rand::{thread_rng, Rng};
-    use execution_primitives::{hex_literal::hex, mainnet_nodes, ForkHash};
     use execution_rlp::{Decodable, Encodable};
+    use rand::{thread_rng, Rng};
     use std::{future::poll_fn, net::Ipv4Addr};
+    use tn_types::execution::{hex_literal::hex, mainnet_nodes, ForkHash};
 
     #[tokio::test]
     async fn test_configured_enr_forkid_entry() {

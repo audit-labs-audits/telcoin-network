@@ -11,11 +11,11 @@ use execution_interfaces::p2p::{
     priority::Priority,
 };
 use execution_network_api::ReputationChangeKind;
-use execution_primitives::{Header, PeerId, H256};
 use std::sync::{
     atomic::{AtomicUsize, Ordering},
     Arc,
 };
+use tn_types::execution::{Header, PeerId, H256};
 use tokio::sync::{
     mpsc::UnboundedSender,
     oneshot::{self},

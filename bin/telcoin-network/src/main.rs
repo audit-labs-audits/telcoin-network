@@ -1,5 +1,5 @@
 fn main() {
-    if let Err(err) = lattice::cli::run() {
+    if let Err(err) = telcoin_network::cli::run() {
         eprintln!("Error: {err:?}");
         std::process::exit(1);
     }

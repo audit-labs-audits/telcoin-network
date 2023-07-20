@@ -1,12 +1,12 @@
 use std::fmt::Debug;
 
-use execution_primitives::{bytes::Bytes, Address, TxHash, H256};
 use revm::{
     inspectors::CustomPrintTracer,
     interpreter::{CallInputs, CreateInputs, Gas, InstructionResult, Interpreter},
     primitives::Env,
     Database, EVMData, Inspector,
 };
+use tn_types::execution::{bytes::Bytes, Address, TxHash, H256};
 
 /// A wrapped [Inspector](revm::Inspector) that can be reused in the stack
 mod maybe_owned;

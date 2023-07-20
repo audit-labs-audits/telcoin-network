@@ -1,11 +1,10 @@
 //! Consensus for ethereum network
 use execution_consensus_common::validation;
 use execution_interfaces::consensus::{Consensus, ConsensusError};
-use execution_primitives::{
-    constants::MAXIMUM_EXTRA_DATA_SIZE, ChainSpec, Header, SealedBlock,
-    SealedHeader, U256,
-};
 use std::sync::Arc;
+use tn_types::execution::{
+    constants::MAXIMUM_EXTRA_DATA_SIZE, ChainSpec, Header, SealedBlock, SealedHeader, U256,
+};
 
 /// Ethereum lattice consensus
 ///

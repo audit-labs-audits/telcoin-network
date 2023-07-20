@@ -1,5 +1,4 @@
 //! Common types for execution layer
-//! 
 pub mod abi;
 mod account;
 pub mod basefee;
@@ -41,11 +40,12 @@ pub use block::{
 pub use bloom::Bloom;
 pub use chain::{
     AllGenesisFormats, Chain, ChainInfo, ChainSpec, ChainSpecBuilder, DisplayHardforks,
-    ForkCondition, ForkTimestamps, GOERLI, MAINNET, SEPOLIA, LATTICE
+    ForkCondition, ForkTimestamps, GOERLI, LATTICE, MAINNET, SEPOLIA,
 };
 pub use compression::*;
 pub use constants::{
-    EMPTY_OMMER_ROOT, GOERLI_GENESIS, KECCAK_EMPTY, MAINNET_GENESIS, SEPOLIA_GENESIS, LATTICE_GENESIS,
+    EMPTY_OMMER_ROOT, GOERLI_GENESIS, KECCAK_EMPTY, LATTICE_GENESIS, MAINNET_GENESIS,
+    SEPOLIA_GENESIS,
 };
 pub use forkid::{ForkFilter, ForkHash, ForkId, ForkTransition, ValidationError};
 pub use genesis::{Genesis, GenesisAccount};
@@ -139,4 +139,3 @@ pub fn keccak256(data: impl AsRef<[u8]>) -> H256 {
 
 #[cfg(any(test, feature = "arbitrary"))]
 pub use arbitrary;
-

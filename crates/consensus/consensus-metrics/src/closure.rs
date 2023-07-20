@@ -11,10 +11,8 @@
 // TODO: add example usage once constructor macros are implemented.
 // (For now, look at tests for an example.)
 
-use anyhow::anyhow;
-use anyhow::Result;
-use prometheus::core;
-use prometheus::proto;
+use anyhow::{anyhow, Result};
+use prometheus::{core, proto};
 
 /// A Prometheus metric whose value is computed at collection time by the provided closure.
 ///
@@ -42,12 +40,7 @@ where
         let desc = describer.describe()?;
         let label_pairs = make_label_pairs(&desc, label_values)?;
 
-        Ok(Self {
-            desc,
-            f,
-            value_type,
-            label_pairs,
-        })
+        Ok(Self { desc, f, value_type, label_pairs })
     }
 
     pub fn metric(&self) -> proto::Metric {
@@ -61,11 +54,11 @@ where
                 counter.set_value(val);
                 m.set_counter(counter);
             }
-            ValueType::Gauge => {
-                let mut gauge = proto::Gauge::default();
-                gauge.set_value(val);
-                m.set_gauge(gauge);
-            }
+            // ValueType::Gauge => {
+            //     let mut gauge = proto::Gauge::default();
+            //     gauge.set_value(val);
+            //     m.set_gauge(gauge);
+            // }
         }
 
         m
@@ -94,7 +87,7 @@ where
 #[derive(Debug, Clone, Copy)]
 pub enum ValueType {
     Counter,
-    Gauge,
+    // Gauge,
 }
 
 impl ValueType {
@@ -102,23 +95,23 @@ impl ValueType {
     pub fn metric_type(self) -> proto::MetricType {
         match self {
             ValueType::Counter => proto::MetricType::COUNTER,
-            ValueType::Gauge => proto::MetricType::GAUGE,
+            // ValueType::Gauge => proto::MetricType::GAUGE,
         }
     }
 }
 
 pub fn make_label_pairs(desc: &core::Desc, label_values: &[&str]) -> Result<Vec<proto::LabelPair>> {
     if desc.variable_labels.len() != label_values.len() {
-        return Err(anyhow!("inconsistent cardinality"));
+        return Err(anyhow!("inconsistent cardinality"))
     }
 
     let total_len = desc.variable_labels.len() + desc.const_label_pairs.len();
     if total_len == 0 {
-        return Ok(vec![]);
+        return Ok(vec![])
     }
 
     if desc.variable_labels.is_empty() {
-        return Ok(desc.const_label_pairs.clone());
+        return Ok(desc.const_label_pairs.clone())
     }
 
     let mut label_pairs = Vec::with_capacity(total_len);
@@ -144,17 +137,10 @@ fn closure_metric_basic() {
         prometheus::opts!("my_closure_metric", "A test closure metric",).variable_label("my_label");
 
     let fn_42 = || 42_u64;
-    let metric0 = ClosureMetric::new(
-        opts,
-        crate::closure::ValueType::Gauge,
-        fn_42,
-        &["forty_two"],
-    )
-    .unwrap();
+    let metric0 =
+        ClosureMetric::new(opts, crate::closure::ValueType::Counter, fn_42, &["forty_two"]).unwrap();
 
-    assert!(prometheus::default_registry()
-        .register(Box::new(metric0))
-        .is_ok());
+    assert!(prometheus::default_registry().register(Box::new(metric0)).is_ok());
 
     // Gather the metrics.
     let metric_families = prometheus::default_registry().gather();

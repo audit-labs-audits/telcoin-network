@@ -3,17 +3,17 @@
 //! Adapted from <https://github.com/paritytech/parity-common/blob/2fb72eea96b6de4a085144ce239feb49da0cd39e/ethbloom/src/lib.rs>
 #![allow(missing_docs)]
 use crate::{
-    impl_fixed_hash_type,
     execution::{keccak256, Log},
+    impl_fixed_hash_type,
 };
 use bytes::Buf;
 use core::{mem, ops};
 use crunchy::unroll;
 use derive_more::{AsRef, Deref};
-use fixed_hash::*;
-use impl_serde::impl_fixed_hash_serde;
 use execution_codecs::{impl_hash_compact, Compact};
 use execution_rlp::{RlpDecodableWrapper, RlpEncodableWrapper, RlpMaxEncodedLen};
+use fixed_hash::*;
+use impl_serde::impl_fixed_hash_serde;
 
 /// Length of bloom filter used for Ethereum.
 pub const BLOOM_BITS: u32 = 3;
@@ -221,7 +221,7 @@ where
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::execution ::hex_literal::hex;
+    use crate::execution::hex_literal::hex;
 
     #[test]
     fn hardcoded_bloom() {

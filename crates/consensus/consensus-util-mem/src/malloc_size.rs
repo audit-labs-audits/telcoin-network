@@ -16,39 +16,37 @@
 //! integrates with Firefox's memory reporting, particularly the use of
 //! mozjemalloc and DMD. In particular, it has the following features.
 //! - It isn't bound to a particular heap allocator.
-//! - It provides traits for both "shallow" and "deep" measurement, which gives
-//!   flexibility in the cases where the traits can't be used.
-//! - It allows for measuring blocks even when only an interior pointer can be
-//!   obtained for heap allocations, e.g. `HashSet` and `HashMap`. (This relies
-//!   on the heap allocator having suitable support, which mozjemalloc has.)
-//! - It allows handling of types like `Rc` and `Arc` by providing traits that
-//!   are different to the ones for non-graph structures.
+//! - It provides traits for both "shallow" and "deep" measurement, which gives flexibility in the
+//!   cases where the traits can't be used.
+//! - It allows for measuring blocks even when only an interior pointer can be obtained for heap
+//!   allocations, e.g. `HashSet` and `HashMap`. (This relies on the heap allocator having suitable
+//!   support, which mozjemalloc has.)
+//! - It allows handling of types like `Rc` and `Arc` by providing traits that are different to the
+//!   ones for non-graph structures.
 //!
 //! Suggested uses are as follows.
-//! - When possible, use the `MallocSizeOf` trait. (Deriving support is
-//!   provided by the `malloc_size_of_derive` crate.)
-//! - If you need an additional synchronization argument, provide a function
-//!   that is like the standard trait method, but with the extra argument.
-//! - If you need multiple measurements for a type, provide a function named
-//!   `add_size_of` that takes a mutable reference to a struct that contains
-//!   the multiple measurement fields.
-//! - When deep measurement (via `MallocSizeOf`) cannot be implemented for a
-//!   type, shallow measurement (via `MallocShallowSizeOf`) in combination with
-//!   iteration can be a useful substitute.
-//! - `Rc` and `Arc` are always tricky, which is why `MallocSizeOf` is not (and
-//!   should not be) implemented for them.
-//! - If an `Rc` or `Arc` is known to be a "primary" reference and can always
-//!   be measured, it should be measured via the `MallocUnconditionalSizeOf`
-//!   trait.
-//! - If an `Rc` or `Arc` should be measured only if it hasn't been seen
-//!   before, it should be measured via the `MallocConditionalSizeOf` trait.
-//! - Using universal function call syntax is a good idea when measuring boxed
-//!   fields in structs, because it makes it clear that the Box is being
-//!   measured as well as the thing it points to. E.g.
-//!   `<Box<_> as MallocSizeOf>::size_of(field, ops)`.
+//! - When possible, use the `MallocSizeOf` trait. (Deriving support is provided by the
+//!   `malloc_size_of_derive` crate.)
+//! - If you need an additional synchronization argument, provide a function that is like the
+//!   standard trait method, but with the extra argument.
+//! - If you need multiple measurements for a type, provide a function named `add_size_of` that
+//!   takes a mutable reference to a struct that contains the multiple measurement fields.
+//! - When deep measurement (via `MallocSizeOf`) cannot be implemented for a type, shallow
+//!   measurement (via `MallocShallowSizeOf`) in combination with iteration can be a useful
+//!   substitute.
+//! - `Rc` and `Arc` are always tricky, which is why `MallocSizeOf` is not (and should not be)
+//!   implemented for them.
+//! - If an `Rc` or `Arc` is known to be a "primary" reference and can always be measured, it should
+//!   be measured via the `MallocUnconditionalSizeOf` trait.
+//! - If an `Rc` or `Arc` should be measured only if it hasn't been seen before, it should be
+//!   measured via the `MallocConditionalSizeOf` trait.
+//! - Using universal function call syntax is a good idea when measuring boxed fields in structs,
+//!   because it makes it clear that the Box is being measured as well as the thing it points to.
+//!   E.g. `<Box<_> as MallocSizeOf>::size_of(field, ops)`.
 
 //! This is an extended version of the Servo internal malloc_size crate.
-//! We should occasionally track the upstream changes/fixes and reintroduce them here, whenever applicable.
+//! We should occasionally track the upstream changes/fixes and reintroduce them here, whenever
+//! applicable.
 
 #[cfg(not(feature = "std"))]
 use alloc::vec::Vec;
@@ -130,7 +128,7 @@ impl MallocSizeOfOps {
         // larger than the required alignment, but small enough that it is
         // always in the first page of memory and therefore not a legitimate
         // address.
-        return ptr as *const usize as usize <= 256;
+        return ptr as *const usize as usize <= 256
     }
 
     /// Call `size_of_op` on `ptr`, first checking that the allocation isn't
@@ -157,10 +155,7 @@ impl MallocSizeOfOps {
 
     /// Call `have_seen_ptr_op` on `ptr`.
     pub fn have_seen_ptr<T>(&mut self, ptr: *const T) -> bool {
-        let have_seen_ptr_op = self
-            .have_seen_ptr_op
-            .as_mut()
-            .expect("missing have_seen_ptr_op");
+        let have_seen_ptr_op = self.have_seen_ptr_op.as_mut().expect("missing have_seen_ptr_op");
         have_seen_ptr_op(ptr as *const c_void)
     }
 }
@@ -376,9 +371,7 @@ where
             // `ops.malloc_enclosing_size_of()` then gives us the storage size.
             // This assumes that the `HashSet`'s contents (values and hashes)
             // are all stored in a single contiguous heap allocation.
-            self.iter()
-                .next()
-                .map_or(0, |t| unsafe { ops.malloc_enclosing_size_of(t) })
+            self.iter().next().map_or(0, |t| unsafe { ops.malloc_enclosing_size_of(t) })
         } else {
             // An estimate.
             self.capacity() * (size_of::<T>() + size_of::<usize>())
@@ -417,9 +410,7 @@ impl<K, V, S> MallocShallowSizeOf for std::collections::HashMap<K, V, S> {
     fn shallow_size_of(&self, ops: &mut MallocSizeOfOps) -> usize {
         // See the implementation for std::collections::HashSet for details.
         if ops.has_malloc_enclosing_size_of() {
-            self.values()
-                .next()
-                .map_or(0, |v| unsafe { ops.malloc_enclosing_size_of(v) })
+            self.values().next().map_or(0, |v| unsafe { ops.malloc_enclosing_size_of(v) })
         } else {
             self.capacity() * (size_of::<V>() + size_of::<K>() + size_of::<usize>())
         }
@@ -437,9 +428,7 @@ where
         if let (Some(k), Some(v)) = (K::constant_size(), V::constant_size()) {
             n += self.len() * (k + v)
         } else {
-            n = self
-                .iter()
-                .fold(n, |acc, (k, v)| acc + k.size_of(ops) + v.size_of(ops))
+            n = self.iter().fold(n, |acc, (k, v)| acc + k.size_of(ops) + v.size_of(ops))
         }
         n
     }
@@ -448,9 +437,7 @@ where
 impl<K, V> MallocShallowSizeOf for rstd::collections::BTreeMap<K, V> {
     fn shallow_size_of(&self, ops: &mut MallocSizeOfOps) -> usize {
         if ops.has_malloc_enclosing_size_of() {
-            self.values()
-                .next()
-                .map_or(0, |v| unsafe { ops.malloc_enclosing_size_of(v) })
+            self.values().next().map_or(0, |v| unsafe { ops.malloc_enclosing_size_of(v) })
         } else {
             self.len() * (size_of::<V>() + size_of::<K>() + size_of::<usize>())
         }
@@ -467,9 +454,7 @@ where
         if let (Some(k), Some(v)) = (K::constant_size(), V::constant_size()) {
             n += self.len() * (k + v)
         } else {
-            n = self
-                .iter()
-                .fold(n, |acc, (k, v)| acc + k.size_of(ops) + v.size_of(ops))
+            n = self.iter().fold(n, |acc, (k, v)| acc + k.size_of(ops) + v.size_of(ops))
         }
         n
     }
@@ -479,9 +464,7 @@ impl<T> MallocShallowSizeOf for rstd::collections::BTreeSet<T> {
     fn shallow_size_of(&self, ops: &mut MallocSizeOfOps) -> usize {
         if ops.has_malloc_enclosing_size_of() {
             // See implementation for HashSet how this works.
-            self.iter()
-                .next()
-                .map_or(0, |t| unsafe { ops.malloc_enclosing_size_of(t) })
+            self.iter().next().map_or(0, |t| unsafe { ops.malloc_enclosing_size_of(t) })
         } else {
             // An estimate.
             self.len() * (size_of::<T>() + size_of::<usize>())
@@ -697,9 +680,7 @@ impl<K, V, S> MallocShallowSizeOf for hashbrown::HashMap<K, V, S> {
     fn shallow_size_of(&self, ops: &mut MallocSizeOfOps) -> usize {
         // See the implementation for std::collections::HashSet for details.
         if ops.has_malloc_enclosing_size_of() {
-            self.values()
-                .next()
-                .map_or(0, |v| unsafe { ops.malloc_enclosing_size_of(v) })
+            self.values().next().map_or(0, |v| unsafe { ops.malloc_enclosing_size_of(v) })
         } else {
             self.capacity() * (size_of::<V>() + size_of::<K>() + size_of::<usize>())
         }
@@ -717,9 +698,7 @@ where
         if let (Some(k), Some(v)) = (K::constant_size(), V::constant_size()) {
             n += self.len() * (k + v)
         } else {
-            n = self
-                .iter()
-                .fold(n, |acc, (k, v)| acc + k.size_of(ops) + v.size_of(ops))
+            n = self.iter().fold(n, |acc, (k, v)| acc + k.size_of(ops) + v.size_of(ops))
         }
         n
     }
@@ -737,9 +716,7 @@ where
         if let (Some(k), Some(v)) = (K::constant_size(), V::constant_size()) {
             n += self.len() * (k + v)
         } else {
-            n = self
-                .iter()
-                .fold(n, |acc, (k, v)| acc + k.size_of(ops) + v.size_of(ops))
+            n = self.iter().fold(n, |acc, (k, v)| acc + k.size_of(ops) + v.size_of(ops))
         }
         n
     }
@@ -760,11 +737,8 @@ macro_rules! impl_smallvec {
             T: MallocSizeOf,
         {
             fn size_of(&self, ops: &mut MallocSizeOfOps) -> usize {
-                let mut n = if self.spilled() {
-                    self.capacity() * core::mem::size_of::<T>()
-                } else {
-                    0
-                };
+                let mut n =
+                    if self.spilled() { self.capacity() * core::mem::size_of::<T>() } else { 0 };
                 if let Some(t) = T::constant_size() {
                     n += self.len() * t;
                 } else {
@@ -875,12 +849,7 @@ mod tests {
         malloc_size_of_is_0!(any: Data<P>);
 
         // MallocSizeOf is not implemented for [u8; 333]
-        assert_eq!(
-            crate::malloc_size(&Data::<[u8; 333]> {
-                phantom: std::marker::PhantomData
-            }),
-            0
-        );
+        assert_eq!(crate::malloc_size(&Data::<[u8; 333]> { phantom: std::marker::PhantomData }), 0);
     }
 
     #[test]
@@ -901,10 +870,7 @@ mod tests {
         assert_eq!(std::cell::RefCell::<u8>::constant_size(), Some(0));
         assert_eq!(std::cell::Cell::<u8>::constant_size(), Some(0));
         assert_eq!(Result::<(), ()>::constant_size(), Some(0));
-        assert_eq!(
-            <(AlwaysTwo, (), [u8; 32], AlwaysTwo)>::constant_size(),
-            Some(2 + 2)
-        );
+        assert_eq!(<(AlwaysTwo, (), [u8; 32], AlwaysTwo)>::constant_size(), Some(2 + 2));
         assert_eq!(Option::<u8>::constant_size(), Some(0));
         assert_eq!(<&String>::constant_size(), Some(0));
 

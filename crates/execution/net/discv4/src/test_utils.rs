@@ -8,7 +8,6 @@ use crate::{
     IngressReceiver, PeerId, SAFE_MAX_DATAGRAM_NEIGHBOUR_RECORDS,
 };
 use rand::{thread_rng, Rng, RngCore};
-use execution_primitives::{hex_literal::hex, ForkHash, ForkId, NodeRecord, H256};
 use secp256k1::{SecretKey, SECP256K1};
 use std::{
     collections::{HashMap, HashSet},
@@ -20,6 +19,7 @@ use std::{
     task::{Context, Poll},
     time::{Duration, SystemTime, UNIX_EPOCH},
 };
+use tn_types::execution::{hex_literal::hex, ForkHash, ForkId, NodeRecord, H256};
 use tokio::{
     net::UdpSocket,
     sync::mpsc,
@@ -280,8 +280,8 @@ pub fn rng_message(rng: &mut impl RngCore) -> Message {
 mod tests {
     use super::*;
     use crate::{Discv4Event, PingReason};
-    use execution_primitives::{hex_literal::hex, ForkHash, ForkId};
     use std::net::{IpAddr, Ipv4Addr};
+    use tn_types::execution::{hex_literal::hex, ForkHash, ForkId};
 
     /// This test creates two local UDP sockets. The mocked discovery service responds to specific
     /// messages and we check the actual service receives answers

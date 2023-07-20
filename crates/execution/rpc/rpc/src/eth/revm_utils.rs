@@ -1,10 +1,6 @@
 //! utilities for working with revm
 
 use crate::eth::error::{EthApiError, EthResult, RpcInvalidTransactionError};
-use execution_primitives::{
-    constants::ETHEREUM_BLOCK_GAS_LIMIT, AccessList, Address, TransactionSigned,
-    TransactionSignedEcRecovered, TxHash, H256, U256,
-};
 use execution_revm::env::{fill_tx_env, fill_tx_env_with_recovered};
 use execution_rpc_types::{
     state::{AccountOverride, StateOverride},
@@ -19,6 +15,10 @@ use revm::{
 use revm_primitives::{
     db::{DatabaseCommit, DatabaseRef},
     Bytecode, ExecutionResult,
+};
+use tn_types::execution::{
+    constants::ETHEREUM_BLOCK_GAS_LIMIT, AccessList, Address, TransactionSigned,
+    TransactionSignedEcRecovered, TxHash, H256, U256,
 };
 use tracing::trace;
 
@@ -93,7 +93,7 @@ impl FillableTransaction for TransactionSigned {
 }
 
 /// Returns the addresses of the precompiles corresponding to the SpecId.
-pub(crate) fn get_precompiles(spec_id: &SpecId) -> Vec<execution_primitives::H160> {
+pub(crate) fn get_precompiles(spec_id: &SpecId) -> Vec<tn_types::execution::H160> {
     let spec = match spec_id {
         SpecId::FRONTIER | SpecId::FRONTIER_THAWING => return vec![],
         SpecId::HOMESTEAD | SpecId::DAO_FORK | SpecId::TANGERINE | SpecId::SPURIOUS_DRAGON => {

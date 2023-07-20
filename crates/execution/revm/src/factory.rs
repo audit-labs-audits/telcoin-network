@@ -2,8 +2,8 @@ use crate::{
     database::{State, SubState},
     stack::{InspectorStack, InspectorStackConfig},
 };
-use execution_primitives::ChainSpec;
 use execution_provider::{ExecutorFactory, StateProvider};
+use tn_types::execution::ChainSpec;
 
 use crate::executor::Executor;
 use std::sync::Arc;

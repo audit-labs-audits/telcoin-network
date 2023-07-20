@@ -1,8 +1,7 @@
 // Copyright (c) Telcoin, LLC
 // Copyright (c) Mysten Labs, Inc.
 // SPDX-License-Identifier: Apache-2.0
-use anemo::rpc::Status;
-use anemo::{Request, Response};
+use anemo::{rpc::Status, Request, Response};
 use anemo_tower::auth::AuthorizeRequest;
 use bytes::Bytes;
 
@@ -16,9 +15,7 @@ pub struct AllowedEpoch {
 
 impl AllowedEpoch {
     pub fn new(epoch: String) -> Self {
-        Self {
-            allowed_epoch: epoch,
-        }
+        Self { allowed_epoch: epoch }
     }
 }
 
@@ -61,13 +58,8 @@ mod tests {
         let mut svc = ServiceBuilder::new().layer(auth_layer).service_fn(echo);
 
         // Unable to query requesters PeerId
-        let response = svc
-            .ready()
-            .await
-            .unwrap()
-            .call(Request::new(Bytes::from("foobar")))
-            .await
-            .unwrap();
+        let response =
+            svc.ready().await.unwrap().call(Request::new(Bytes::from("foobar"))).await.unwrap();
         assert_eq!(response.status(), StatusCode::BadRequest);
 
         // Previous Epoch Request

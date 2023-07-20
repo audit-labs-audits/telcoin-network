@@ -1,5 +1,5 @@
-use execution_primitives::{AccessList, Address, Bytes, U256, U64, U8};
 use serde::{Deserialize, Serialize};
+use tn_types::execution::{AccessList, Address, Bytes, U256, U64, U8};
 
 /// Call request
 #[derive(Debug, Clone, Default, Eq, PartialEq, Serialize, Deserialize)]

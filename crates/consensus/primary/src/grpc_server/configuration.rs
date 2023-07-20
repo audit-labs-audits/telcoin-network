@@ -2,17 +2,16 @@
 // Copyright (c) Mysten Labs, Inc.
 // SPDX-License-Identifier: Apache-2.0
 use arc_swap::ArcSwap;
-use tn_types::consensus::config::{Committee, Stake};
-use tn_types::consensus::crypto::PublicKey;
-use fastcrypto::traits::ToFromBytes;
 use consensus_network::Multiaddr;
-use std::collections::BTreeMap;
-use std::sync::Arc;
-use tonic::{Request, Response, Status};
+use fastcrypto::traits::ToFromBytes;
+use std::{collections::BTreeMap, sync::Arc};
 use tn_types::consensus::{
+    config::{Committee, Stake},
+    crypto::PublicKey,
     Configuration, Empty, GetPrimaryAddressResponse, MultiAddrProto, NewEpochRequest,
     NewNetworkInfoRequest, PublicKeyProto,
 };
+use tonic::{Request, Response, Status};
 
 pub struct NarwhalConfiguration {
     primary_address: Multiaddr,
@@ -22,10 +21,7 @@ pub struct NarwhalConfiguration {
 
 impl NarwhalConfiguration {
     pub fn new(primary_address: Multiaddr, committee: Committee) -> Self {
-        Self {
-            primary_address,
-            committee: Arc::new(ArcSwap::from_pointee(committee)),
-        }
+        Self { primary_address, committee: Arc::new(ArcSwap::from_pointee(committee)) }
     }
 
     /// Extracts and verifies the public key provided from the RoundsRequest.
@@ -40,9 +36,7 @@ impl NarwhalConfiguration {
 
         // ensure provided key is part of the committee
         if self.committee.load().primary(&key).is_err() {
-            return Err(Status::invalid_argument(
-                "Invalid public key: unknown authority",
-            ));
+            return Err(Status::invalid_argument("Invalid public key: unknown authority"))
         }
 
         Ok(key)
@@ -94,7 +88,7 @@ impl Configuration for NarwhalConfiguration {
             return Err(Status::invalid_argument(format!(
                 "Passed in epoch {epoch_number} does not match current epoch {}",
                 self.committee.load().epoch()
-            )));
+            )))
         }
         let validators = new_network_info_request.validators;
         let mut new_network_info = BTreeMap::new();
@@ -131,9 +125,7 @@ impl Configuration for NarwhalConfiguration {
         _request: Request<Empty>,
     ) -> Result<Response<GetPrimaryAddressResponse>, Status> {
         Ok(Response::new(GetPrimaryAddressResponse {
-            primary_address: Some(MultiAddrProto {
-                address: self.primary_address.to_string(),
-            }),
+            primary_address: Some(MultiAddrProto { address: self.primary_address.to_string() }),
         }))
     }
 }

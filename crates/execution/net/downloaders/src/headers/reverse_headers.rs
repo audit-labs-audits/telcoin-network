@@ -2,9 +2,6 @@
 
 use super::task::TaskDownloader;
 use crate::metrics::HeaderDownloaderMetrics;
-use futures::{stream::Stream, FutureExt};
-use futures_util::{stream::FuturesUnordered, StreamExt};
-use rayon::prelude::*;
 use execution_interfaces::{
     consensus::Consensus,
     p2p::{
@@ -17,10 +14,10 @@ use execution_interfaces::{
         priority::Priority,
     },
 };
-use execution_primitives::{
-    BlockHashOrNumber, BlockNumber, Header, HeadersDirection, PeerId, SealedHeader, H256,
-};
 use execution_tasks::{TaskSpawner, TokioTaskExecutor};
+use futures::{stream::Stream, FutureExt};
+use futures_util::{stream::FuturesUnordered, StreamExt};
+use rayon::prelude::*;
 use std::{
     cmp::{Ordering, Reverse},
     collections::{binary_heap::PeekMut, BinaryHeap},
@@ -30,6 +27,9 @@ use std::{
     task::{ready, Context, Poll},
 };
 use thiserror::Error;
+use tn_types::execution::{
+    BlockHashOrNumber, BlockNumber, Header, HeadersDirection, PeerId, SealedHeader, H256,
+};
 use tracing::{error, trace};
 
 /// A heuristic that is used to determine the number of requests that should be prepared for a peer.
@@ -1213,7 +1213,7 @@ mod tests {
     use crate::headers::test_utils::child_header;
     use assert_matches::assert_matches;
     use execution_interfaces::test_utils::{TestConsensus, TestHeadersClient};
-    use execution_primitives::SealedHeader;
+    use tn_types::execution::SealedHeader;
 
     /// Tests that `replace_number` works the same way as Option::replace
     #[test]

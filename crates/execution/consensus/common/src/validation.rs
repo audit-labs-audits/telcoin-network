@@ -1,13 +1,13 @@
 //! Collection of methods for block validation.
 use execution_interfaces::{consensus::ConsensusError, Result as RethResult};
-use execution_primitives::{
-    constants, BlockNumber, ChainSpec, Hardfork, Header, InvalidTransactionError, SealedBlock,
-    SealedHeader, Transaction, TransactionSignedEcRecovered, TxEip1559, TxEip2930, TxLegacy,
-};
 use execution_provider::{AccountReader, HeaderProvider, WithdrawalsProvider};
 use std::{
     collections::{hash_map::Entry, HashMap},
     time::SystemTime,
+};
+use tn_types::execution::{
+    constants, BlockNumber, ChainSpec, Hardfork, Header, InvalidTransactionError, SealedBlock,
+    SealedHeader, Transaction, TransactionSignedEcRecovered, TxEip1559, TxEip2930, TxLegacy,
 };
 
 /// Validate header standalone
@@ -182,7 +182,7 @@ pub fn validate_block_standalone(
 ) -> Result<(), ConsensusError> {
     // Check ommers hash
     // TODO(onbjerg): This should probably be accessible directly on [Block]
-    let ommers_hash = execution_primitives::proofs::calculate_ommers_root(&block.ommers);
+    let ommers_hash = tn_types::execution::proofs::calculate_ommers_root(&block.ommers);
     if block.header.ommers_hash != ommers_hash {
         return Err(ConsensusError::BodyOmmersHashDiff {
             got: ommers_hash,
@@ -192,7 +192,7 @@ pub fn validate_block_standalone(
 
     // Check transaction root
     // TODO(onbjerg): This should probably be accessible directly on [Block]
-    let transaction_root = execution_primitives::proofs::calculate_transaction_root(&block.body);
+    let transaction_root = tn_types::execution::proofs::calculate_transaction_root(&block.body);
     if block.header.transactions_root != transaction_root {
         return Err(ConsensusError::BodyTransactionRootDiff {
             got: transaction_root,
@@ -204,7 +204,7 @@ pub fn validate_block_standalone(
     if chain_spec.fork(Hardfork::Shanghai).active_at_timestamp(block.timestamp) {
         let withdrawals =
             block.withdrawals.as_ref().ok_or(ConsensusError::BodyWithdrawalsMissing)?;
-        let withdrawals_root = execution_primitives::proofs::calculate_withdrawals_root(withdrawals);
+        let withdrawals_root = tn_types::execution::proofs::calculate_withdrawals_root(withdrawals);
         let header_withdrawals_root =
             block.withdrawals_root.as_ref().ok_or(ConsensusError::WithdrawalsRootMissing)?;
         if withdrawals_root != *header_withdrawals_root {
@@ -393,14 +393,14 @@ pub fn full_validation<Provider: HeaderProvider + AccountReader + WithdrawalsPro
 mod tests {
     use super::*;
     use assert_matches::assert_matches;
-    use mockall::mock;
     use execution_interfaces::{Error::Consensus, Result};
-    use execution_primitives::{
+    use mockall::mock;
+    use std::ops::RangeBounds;
+    use tn_types::execution::{
         hex_literal::hex, proofs, Account, Address, BlockHash, BlockHashOrNumber, Bytes,
         ChainSpecBuilder, Header, Signature, TransactionKind, TransactionSigned, Withdrawal,
         MAINNET, U256,
     };
-    use std::ops::RangeBounds;
 
     mock! {
         WithdrawalsProvider {}

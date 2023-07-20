@@ -1,14 +1,14 @@
 use crate::error::StageError;
 use async_trait::async_trait;
 use execution_db::{cursor::DbCursorRO, database::Database, tables, transaction::DbTx};
-use execution_primitives::{
-    stage::{StageCheckpoint, StageId},
-    BlockNumber, PruneMode, TxNumber,
-};
 use execution_provider::{BlockReader, DatabaseProviderRW, ProviderError};
 use std::{
     cmp::{max, min},
     ops::RangeInclusive,
+};
+use tn_types::execution::{
+    stage::{StageCheckpoint, StageId},
+    BlockNumber, PruneMode, TxNumber,
 };
 
 /// Stage execution input, see [Stage::execute].

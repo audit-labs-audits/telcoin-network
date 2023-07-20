@@ -1,14 +1,14 @@
 use criterion::{
     black_box, criterion_group, criterion_main, measurement::WallTime, BenchmarkGroup, Criterion,
 };
+use execution_trie::prefix_set::PrefixSetMut;
 use proptest::{
     prelude::*,
     strategy::{Strategy, ValueTree},
     test_runner::{basic_result_cache, TestRunner},
 };
-use execution_primitives::trie::Nibbles;
-use execution_trie::prefix_set::PrefixSetMut;
 use std::collections::BTreeSet;
+use tn_types::execution::trie::Nibbles;
 
 /// Abstractions used for benching
 pub trait PrefixSetAbstraction: Default {

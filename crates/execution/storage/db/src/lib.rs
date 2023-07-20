@@ -94,8 +94,8 @@ pub type DatabaseEnv = Env<WriteMap>;
 /// Alias type for the database engine in use. Read only mode.
 pub type DatabaseEnvRO = Env<NoWriteMap>;
 
-use eyre::WrapErr;
 use execution_interfaces::db::LogLevel;
+use eyre::WrapErr;
 use std::path::Path;
 
 /// Opens up an existing database or creates a new one at the specified path. Creates tables if

@@ -1,6 +1,6 @@
 #![allow(unused)]
 //! Test helper impls for generating bodies
-use execution_primitives::SealedHeader;
+use tn_types::execution::SealedHeader;
 
 /// Returns a new [SealedHeader] that's the child header of the given `parent`.
 pub(crate) fn child_header(parent: &SealedHeader) -> SealedHeader {

@@ -65,10 +65,7 @@ fn derive_morecomplex() {
         cache: lru::LruCache<u128, Vec<u8>>,
     }
 
-    let mut t = Trivia {
-        hm: hashbrown::HashMap::new(),
-        cache: lru::LruCache::unbounded(),
-    };
+    let mut t = Trivia { hm: hashbrown::HashMap::new(), cache: lru::LruCache::unbounded() };
 
     t.hm.insert(1, vec![0u8; 2048]);
     t.cache.put(1, vec![0u8; 2048]);
@@ -85,10 +82,7 @@ fn derive_tuple() {
         tp2: (Vec<u8>, Vec<u8>),
     }
 
-    let t = Trivia {
-        tp1: (),
-        tp2: (vec![7u8; 1024], vec![9u8; 1024]),
-    };
+    let t = Trivia { tp1: (), tp2: (vec![7u8; 1024], vec![9u8; 1024]) };
 
     assert!(t.malloc_size_of() > 2000);
     assert!(t.malloc_size_of() < 3000);

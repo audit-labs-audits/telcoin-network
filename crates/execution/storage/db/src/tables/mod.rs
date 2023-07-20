@@ -34,7 +34,7 @@ use crate::{
         },
     },
 };
-use execution_primitives::{
+use tn_types::execution::{
     stage::StageCheckpoint,
     trie::{BranchNodeCompact, StorageTrieEntry, StoredNibbles, StoredNibblesSubKey},
     Account, Address, BlockHash, BlockNumber, Bytecode, Header, IntegerList, Receipt, StorageEntry,

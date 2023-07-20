@@ -1,4 +1,4 @@
-use crate::execution ::H256;
+use crate::execution::H256;
 use execution_codecs::{derive_arbitrary, Compact};
 use serde::{Deserialize, Serialize};
 

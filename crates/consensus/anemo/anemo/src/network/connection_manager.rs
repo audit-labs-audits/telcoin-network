@@ -185,9 +185,7 @@ impl ConnectionManager {
         );
 
         // wait for the endpoint to be idle
-        self.endpoint
-            .wait_idle(self.config.shutdown_idle_timeout())
-            .await;
+        self.endpoint.wait_idle(self.config.shutdown_idle_timeout()).await;
 
         // This is a small hack in order to ensure that the underlying socket we're bound to is
         // dropped and immediately available to be rebound to once this function exits.
@@ -201,9 +199,8 @@ impl ConnectionManager {
     /// This method adds an established connection with a peer to the map of active peers.
     /// It is also starting a new task to handle the incoming messages for this connection.
     fn add_peer(&mut self, new_connection: Connection) {
-        if let Some(new_connection) = self
-            .active_peers
-            .add(&self.endpoint.peer_id(), new_connection)
+        if let Some(new_connection) =
+            self.active_peers.add(&self.endpoint.peer_id(), new_connection)
         {
             let request_handler = InboundRequestHandler::new(
                 self.config.clone(),
@@ -257,20 +254,21 @@ impl ConnectionManager {
                     return Err(anyhow::anyhow!(
                         "rejecting connection from peer {} due to having PeerAffinity::Never",
                         connection.peer_id()
-                    ));
+                    ))
                 }
                 // Check connection Limits
                 _ => {
                     if let Some(limit) = config.max_concurrent_connections() {
                         // We've hit the limit
-                        // TODO maybe have a way to temporarily hold on to a "slot" so that we can ensure
-                        // we don't go over this limit if multiple connections come in simultaneously.
+                        // TODO maybe have a way to temporarily hold on to a "slot" so that we can
+                        // ensure we don't go over this limit if multiple
+                        // connections come in simultaneously.
                         if active_peers.len() >= limit {
                             // Connection doesn't meet the requirements to bypass the limit so bail
                             return Err(anyhow::anyhow!(
                                 "dropping connection from peer {} due to connection limits",
                                 connection.peer_id()
-                            ));
+                            ))
                         }
                     }
                 }
@@ -327,45 +325,44 @@ impl ConnectionManager {
     // mismatching cryptographic identity
     fn handle_connectivity_check(&mut self, now: std::time::Instant) {
         // Drain any completed dials by checking if the oneshot channel has been filled or not
-        self.pending_dials
-            .retain(|peer_id, oneshot| match oneshot.try_recv() {
-                // We were able to successfully dial the Peer
-                Ok(Ok(returned_peer_id)) => {
-                    debug_assert_eq!(peer_id, &returned_peer_id);
+        self.pending_dials.retain(|peer_id, oneshot| match oneshot.try_recv() {
+            // We were able to successfully dial the Peer
+            Ok(Ok(returned_peer_id)) => {
+                debug_assert_eq!(peer_id, &returned_peer_id);
 
-                    self.dial_backoff_states.remove(peer_id);
-                    false
-                }
+                self.dial_backoff_states.remove(peer_id);
+                false
+            }
 
-                // Dialing failed for some reason
-                Ok(Err(_)) => {
-                    match self.dial_backoff_states.entry(*peer_id) {
-                        Entry::Occupied(mut entry) => {
-                            entry.get_mut().update(
-                                now,
-                                self.config.connection_backoff(),
-                                self.config.max_connection_backoff(),
-                            );
-                        }
-                        Entry::Vacant(entry) => {
-                            entry.insert(DialBackoffState::new(
-                                now,
-                                self.config.connection_backoff(),
-                                self.config.max_connection_backoff(),
-                            ));
-                        }
+            // Dialing failed for some reason
+            Ok(Err(_)) => {
+                match self.dial_backoff_states.entry(*peer_id) {
+                    Entry::Occupied(mut entry) => {
+                        entry.get_mut().update(
+                            now,
+                            self.config.connection_backoff(),
+                            self.config.max_connection_backoff(),
+                        );
                     }
-
-                    false
+                    Entry::Vacant(entry) => {
+                        entry.insert(DialBackoffState::new(
+                            now,
+                            self.config.connection_backoff(),
+                            self.config.max_connection_backoff(),
+                        ));
+                    }
                 }
 
-                Err(oneshot::error::TryRecvError::Closed) => {
-                    panic!("BUG: connection-manager never finished dialing a peer")
-                }
+                false
+            }
 
-                // Dialing is in progress
-                Err(oneshot::error::TryRecvError::Empty) => true,
-            });
+            Err(oneshot::error::TryRecvError::Closed) => {
+                panic!("BUG: connection-manager never finished dialing a peer")
+            }
+
+            // Dialing is in progress
+            Err(oneshot::error::TryRecvError::Empty) => true,
+        });
 
         let eligible: Vec<_> = {
             let active_peers = self.active_peers.inner();
@@ -405,8 +402,8 @@ impl ConnectionManager {
                 .dial_backoff_states
                 .get(&peer.peer_id)
                 .map(|state| state.attempts)
-                .unwrap_or(0)
-                % peer.address.len();
+                .unwrap_or(0) %
+                peer.address.len();
 
             let address = peer.address.remove(idx);
             self.dial_peer(address, Some(peer.peer_id), sender);
@@ -423,8 +420,7 @@ impl ConnectionManager {
     ) {
         let target_address = address.clone();
         let maybe_connecting = if let Some(peer_id) = peer_id {
-            self.endpoint
-                .connect_with_expected_peer_id(address, peer_id)
+            self.endpoint.connect_with_expected_peer_id(address, peer_id)
         } else {
             self.endpoint.connect(address)
         };
@@ -482,10 +478,7 @@ impl DialBackoffState {
         backoff_step: std::time::Duration,
         max_backoff: std::time::Duration,
     ) -> Self {
-        let mut state = Self {
-            backoff: now,
-            attempts: 0,
-        };
+        let mut state = Self { backoff: now, attempts: 0 };
 
         state.update(now, backoff_step, max_backoff);
         state
@@ -541,8 +534,7 @@ impl ActivePeers {
         stable_id: usize,
         reason: DisconnectReason,
     ) {
-        self.inner_mut()
-            .remove_with_stable_id(peer_id, stable_id, reason)
+        self.inner_mut().remove_with_stable_id(peer_id, stable_id, reason)
     }
 
     #[must_use]
@@ -585,10 +577,7 @@ struct ActivePeersInner {
 impl ActivePeersInner {
     fn new(channel_size: usize) -> Self {
         let (sender, _receiver) = broadcast::channel(channel_size);
-        Self {
-            connections: Default::default(),
-            peer_event_sender: sender,
-        }
+        Self { connections: Default::default(), peer_event_sender: sender }
     }
 
     fn subscribe(&self) -> (broadcast::Receiver<PeerEvent>, Vec<PeerId>) {
@@ -669,7 +658,7 @@ impl ActivePeersInner {
                     debug!("closing new connection with {peer_id:?} to mitigate simultaneous dial");
                     new_connection.close();
                     // Early return to avoid standing up Incoming Request handlers
-                    return None;
+                    return None
                 }
             }
             Entry::Vacant(entry) => {
@@ -771,10 +760,7 @@ mod tests {
 
             // THEN
             assert_eq!(state.attempts, attempt);
-            assert_eq!(
-                state.backoff - now,
-                back_off_step.saturating_mul(attempt as u32)
-            );
+            assert_eq!(state.backoff - now, back_off_step.saturating_mul(attempt as u32));
         }
 
         for attempt in 13..=15 {

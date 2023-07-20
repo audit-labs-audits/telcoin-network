@@ -13,9 +13,10 @@ mod narwhal {
 
 use std::{array::TryFromSliceError, ops::Deref};
 
-use crate::consensus::{BlockError, BlockErrorKind, CertificateDigest, Transaction};
+use crate::consensus::{
+    crypto::PublicKey, BlockError, BlockErrorKind, CertificateDigest, Transaction,
+};
 use bytes::Bytes;
-use crate::consensus::crypto::PublicKey;
 
 pub use narwhal::{
     collection_error::CollectionErrorType,
@@ -46,17 +47,13 @@ pub use narwhal::{
 
 impl From<PublicKey> for PublicKeyProto {
     fn from(pub_key: PublicKey) -> Self {
-        PublicKeyProto {
-            bytes: Bytes::from(pub_key.as_ref().to_vec()),
-        }
+        PublicKeyProto { bytes: Bytes::from(pub_key.as_ref().to_vec()) }
     }
 }
 
 impl From<Transaction> for TransactionProto {
     fn from(transaction: Transaction) -> Self {
-        TransactionProto {
-            transaction: Bytes::from(transaction),
-        }
+        TransactionProto { transaction: Bytes::from(transaction) }
     }
 }
 

@@ -1,8 +1,8 @@
-use execution_primitives::{Account, Log as RethLog, H160, H256, KECCAK_EMPTY};
 use revm::primitives::{AccountInfo, Log};
+use tn_types::execution::{Account, Log as RethLog, H160, H256, KECCAK_EMPTY};
 
-/// Check equality between [`execution_primitives::Log`] and [`revm::primitives::Log`]
-pub fn is_log_equal(revm_log: &Log, execution_log: &execution_primitives::Log) -> bool {
+/// Check equality between [`tn_types::execution::Log`] and [`revm::primitives::Log`]
+pub fn is_log_equal(revm_log: &Log, execution_log: &tn_types::execution::Log) -> bool {
     revm_log.topics.len() == execution_log.topics.len() &&
         revm_log.address.0 == execution_log.address.0 &&
         revm_log.data == execution_log.data.0 &&

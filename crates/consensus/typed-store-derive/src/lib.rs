@@ -1,14 +1,14 @@
 // Copyright (c) Telcoin, LLC
 // Copyright (c) Mysten Labs, Inc.
 // SPDX-License-Identifier: Apache-2.0
-use std::collections::{BTreeMap, HashSet};
 use proc_macro::TokenStream;
 use proc_macro2::Ident;
 use quote::quote;
-use syn::Type::{self};
+use std::collections::{BTreeMap, HashSet};
 use syn::{
     parse_macro_input, AngleBracketedGenericArguments, Attribute, Generics, ItemStruct, Lit, Meta,
     PathArguments,
+    Type::{self},
 };
 
 // This is used as default when none is specified
@@ -27,29 +27,20 @@ impl Default for GeneralTableOptions {
     }
 }
 
-// Extracts the field names, field types, inner types (K,V in {map_type_name}<K, V>), and the options attrs
+// Extracts the field names, field types, inner types (K,V in {map_type_name}<K, V>), and the
+// options attrs
 fn extract_struct_info(
     input: ItemStruct,
     allowed_map_type_names: HashSet<String>,
-) -> (
-    Vec<Ident>,
-    Vec<AngleBracketedGenericArguments>,
-    Vec<GeneralTableOptions>,
-    String,
-) {
+) -> (Vec<Ident>, Vec<AngleBracketedGenericArguments>, Vec<GeneralTableOptions>, String) {
     // There must only be one map type used for all entries
-    let allowed_strs: Vec<_> = allowed_map_type_names
-        .iter()
-        .map(|s| format!("{s}<K, V>"))
-        .collect();
+    let allowed_strs: Vec<_> =
+        allowed_map_type_names.iter().map(|s| format!("{s}<K, V>")).collect();
     let allowed_strs = allowed_strs.join(" or ");
 
     let info = input.fields.iter().map(|f| {
-        let attrs: Vec<_> = f
-            .attrs
-            .iter()
-            .filter(|a| a.path.is_ident(DB_OPTIONS_CUSTOM_FUNCTION))
-            .collect();
+        let attrs: Vec<_> =
+            f.attrs.iter().filter(|a| a.path.is_ident(DB_OPTIONS_CUSTOM_FUNCTION)).collect();
         let options = if attrs.is_empty() {
             GeneralTableOptions::default()
         } else {
@@ -71,10 +62,7 @@ fn extract_struct_info(
             let type_str = format!("{}", &type_info.ident);
             // Rough way to check that this is map_type_name
             if allowed_map_type_names.contains(&type_str) {
-                return (
-                    (f.ident.as_ref().unwrap().clone(), type_str),
-                    (inner_type, options),
-                );
+                return ((f.ident.as_ref().unwrap().clone(), type_str), (inner_type, options))
             } else {
                 panic!("All struct members must be of type {allowed_strs}");
             }
@@ -98,12 +86,7 @@ fn extract_struct_info(
 
     let (inner_types, options): (Vec<_>, Vec<_>) = inner_types_with_opts.into_iter().unzip();
 
-    (
-        field_names,
-        inner_types,
-        options,
-        simple_field_type_names.get(0).unwrap().clone(),
-    )
+    (field_names, inner_types, options, simple_field_type_names.get(0).unwrap().clone())
 }
 
 /// Extracts the table options override function
@@ -149,9 +132,9 @@ fn extract_generics_names(generics: &Generics) -> Vec<Ident> {
         .collect()
 }
 
-/// A helper macro to simplify common operations for opening and debugging TypedStore (currently internally structs of DBMaps)
-/// It operates on a struct where all the members are of Store<K, V> or DBMap<K, V>
-/// `TypedStoreDebug` traits are then derived
+/// A helper macro to simplify common operations for opening and debugging TypedStore (currently
+/// internally structs of DBMaps) It operates on a struct where all the members are of Store<K, V>
+/// or DBMap<K, V> `TypedStoreDebug` traits are then derived
 /// The main features are:
 /// 1. Flexible configuration of each table (column family) via defaults and overrides
 /// 2. Auto-generated `open` routine
@@ -164,8 +147,8 @@ fn extract_generics_names(generics: &Generics) -> Vec<Ident> {
 /// The definer of the struct can specify the default options for each table using annotations
 /// We can also supply column family options on the default ones
 /// A user defined function of signature () -> Options can be provided for each table
-/// If a an override function is not specified, the default in `lattice_typed_store::rocks::default_db_options` is used
-/// ```
+/// If a an override function is not specified, the default in
+/// `lattice_typed_store::rocks::default_db_options` is used ```
 /// use lattice_typed_store::rocks::DBOptions;
 /// use lattice_typed_store::rocks::DBMap;
 /// use lattice_typed_store::rocks::MetricConf;
@@ -213,17 +196,18 @@ fn extract_generics_names(generics: &Generics) -> Vec<Ident> {
 /// let _ = Tables::open_tables_read_write(primary_path, MetricConf::default(), None, Some(config.build()));
 /// Ok(())
 /// }
-///
-///```
+/// ```
 ///
 /// 2. Auto-generated `open` routine
-/// The function `open_tables_read_write` is generated which allows for specifying DB wide options and custom table configs as mentioned above
+/// The function `open_tables_read_write` is generated which allows for specifying DB wide options
+/// and custom table configs as mentioned above
 ///
 /// 3. Auto-generated `read_only_mode` handle
-/// This mode provides handle struct which opens the DB in read only mode and has certain features like dumping and counting the keys in the tables
+/// This mode provides handle struct which opens the DB in read only mode and has certain features
+/// like dumping and counting the keys in the tables
 ///
-/// Use the function `Tables::get_read_only_handle` which returns a handle that only allows read only features
-///```
+/// Use the function `Tables::get_read_only_handle` which returns a handle that only allows read
+/// only features ```
 /// use lattice_typed_store::rocks::DBOptions;
 /// use lattice_typed_store::rocks::DBMap;
 /// use lattice_typed_store_derive::DBMapUtils;
@@ -268,12 +252,13 @@ fn extract_generics_names(generics: &Generics) -> Vec<Ident> {
 /// `self.get_memory_usage` is derived to provide memory and cache usage
 ///
 /// 5. Other convenience features
-/// `Tables::describe_tables` is used to get a list of the table names and key-value types as string in a BTreeMap
+/// `Tables::describe_tables` is used to get a list of the table names and key-value types as string
+/// in a BTreeMap
 ///
 /// // Bad usage example
 /// // Structs fields most only be of type Store<K, V> or DMBap<K, V>
-/// // This will fail to compile with error `All struct members must be of type Store<K, V> or DMBap<K, V>`
-/// // #[derive(DBMapUtils)]
+/// // This will fail to compile with error `All struct members must be of type Store<K, V> or
+/// DMBap<K, V>` // #[derive(DBMapUtils)]
 /// // struct BadTables {
 /// //     table1: Store<String, String>,
 /// //     bad_field: u32,
@@ -288,24 +273,18 @@ pub fn derive_dbmap_utils_general(input: TokenStream) -> TokenStream {
 
     let allowed_types_with_post_process_fn: BTreeMap<_, _> =
         [("SallyColumn", ""), ("DBMap", "")].into_iter().collect();
-    let allowed_strs = allowed_types_with_post_process_fn
-        .keys()
-        .map(|s| s.to_string())
-        .collect();
+    let allowed_strs = allowed_types_with_post_process_fn.keys().map(|s| s.to_string()).collect();
 
     // TODO: use `parse_quote` over `parse()`
     let (field_names, inner_types, derived_table_options, simple_field_type_name_str) =
         extract_struct_info(input.clone(), allowed_strs);
 
-    let (key_names, value_names): (Vec<_>, Vec<_>) = inner_types
-        .iter()
-        .map(|q| (q.args.first().unwrap(), q.args.last().unwrap()))
-        .unzip();
+    let (key_names, value_names): (Vec<_>, Vec<_>) =
+        inner_types.iter().map(|q| (q.args.first().unwrap(), q.args.last().unwrap())).unzip();
 
     // This is the actual name of the type which was found
-    let post_process_fn_str = allowed_types_with_post_process_fn
-        .get(&simple_field_type_name_str.as_str())
-        .unwrap();
+    let post_process_fn_str =
+        allowed_types_with_post_process_fn.get(&simple_field_type_name_str.as_str()).unwrap();
     let post_process_fn: proc_macro2::TokenStream = post_process_fn_str.parse().unwrap();
 
     let default_options_override_fn_names: Vec<proc_macro2::TokenStream> = derived_table_options
@@ -647,25 +626,20 @@ pub fn derive_sallydb_general(input: TokenStream) -> TokenStream {
 
     let allowed_types_with_post_process_fn: BTreeMap<_, _> =
         [("SallyColumn", "")].into_iter().collect();
-    let allowed_strs = allowed_types_with_post_process_fn
-        .keys()
-        .map(|s| s.to_string())
-        .collect();
+    let allowed_strs = allowed_types_with_post_process_fn.keys().map(|s| s.to_string()).collect();
 
     // TODO: use `parse_quote` over `parse()`
-    // TODO: Eventually this should return a Vec<Vec<GeneralTableOptions>> to capture default table options for each column type i.e. RockDB, TestDB, etc
+    // TODO: Eventually this should return a Vec<Vec<GeneralTableOptions>> to capture default table
+    // options for each column type i.e. RockDB, TestDB, etc
     let (field_names, inner_types, derived_table_options, simple_field_type_name_str) =
         extract_struct_info(input.clone(), allowed_strs);
 
-    let (key_names, value_names): (Vec<_>, Vec<_>) = inner_types
-        .iter()
-        .map(|q| (q.args.first().unwrap(), q.args.last().unwrap()))
-        .unzip();
+    let (key_names, value_names): (Vec<_>, Vec<_>) =
+        inner_types.iter().map(|q| (q.args.first().unwrap(), q.args.last().unwrap())).unzip();
 
     // This is the actual name of the type which was found
-    let post_process_fn_str = allowed_types_with_post_process_fn
-        .get(&simple_field_type_name_str.as_str())
-        .unwrap();
+    let post_process_fn_str =
+        allowed_types_with_post_process_fn.get(&simple_field_type_name_str.as_str()).unwrap();
     let post_process_fn: proc_macro2::TokenStream = post_process_fn_str.parse().unwrap();
 
     let default_options_override_fn_names: Vec<proc_macro2::TokenStream> = derived_table_options

@@ -1,6 +1,6 @@
 //! Numeric helpers
 
-use crate::execution ::{U256, U64};
+use crate::execution::{U256, U64};
 use serde::{de, Deserialize, Deserializer, Serialize};
 use std::str::FromStr;
 
@@ -71,7 +71,7 @@ impl<'de> Deserialize<'de> for U64HexOrNumber {
 
 /// serde functions for handling primitive `u64` as [U64](crate::U64)
 pub mod u64_hex_or_decimal {
-    use crate::execution ::serde_helper::num::U64HexOrNumber;
+    use crate::execution::serde_helper::num::U64HexOrNumber;
     use serde::{Deserialize, Deserializer, Serialize, Serializer};
 
     /// Deserializes an `u64` accepting a hex quantity string with optional 0x prefix or

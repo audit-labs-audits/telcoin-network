@@ -1,18 +1,21 @@
 use crate::consensus::{
-    Header, HeaderDigest, Round, HeaderAPI,
-    crypto::{self, intent::IntentMessage, Signature, PublicKey, NarwhalAuthoritySignature, to_intent_message},
+    config::{AuthorityIdentifier, Epoch},
+    crypto::{
+        self, intent::IntentMessage, to_intent_message, NarwhalAuthoritySignature, PublicKey,
+        Signature,
+    },
+    Header, HeaderAPI, HeaderDigest, Round,
 };
-use crate::consensus::config::{AuthorityIdentifier, Epoch};
 use enum_dispatch::enum_dispatch;
 use fastcrypto::{
     hash::{Digest, Hash},
     signature_service::SignatureService,
     traits::{Signer, VerifyingKey},
 };
-use serde::{Deserialize, Serialize};
-use std::fmt;
 #[cfg(any(test, feature = "arbitrary"))]
 use proptest_derive::Arbitrary;
+use serde::{Deserialize, Serialize};
+use std::fmt;
 
 /// A Vote on a Header is a claim by the voting authority that all payloads and the full history
 /// of Certificates included in the Header are available.
@@ -108,9 +111,7 @@ impl VoteV1 {
             author: *author,
             signature: Signature::default(),
         };
-        let signature = signature_service
-            .request_signature(vote.digest().into())
-            .await;
+        let signature = signature_service.request_signature(vote.digest().into()).await;
         Self { signature, ..vote }
     }
 
@@ -135,9 +136,7 @@ impl VoteV1 {
 }
 
 #[cfg_attr(any(test, feature = "arbitrary"), derive(Arbitrary))]
-#[derive(
-    Clone, Serialize, Deserialize, Default, PartialEq, Eq, Hash, PartialOrd, Ord, Copy,
-)]
+#[derive(Clone, Serialize, Deserialize, Default, PartialEq, Eq, Hash, PartialOrd, Ord, Copy)]
 pub struct VoteDigest([u8; crypto::DIGEST_LENGTH]);
 
 impl VoteDigest {
@@ -179,11 +178,7 @@ impl fmt::Debug for VoteDigest {
 
 impl fmt::Display for VoteDigest {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> Result<(), fmt::Error> {
-        write!(
-            f,
-            "{}",
-            base64::encode(self.0).get(0..16).ok_or(fmt::Error)?
-        )
+        write!(f, "{}", base64::encode(self.0).get(0..16).ok_or(fmt::Error)?)
     }
 }
 
@@ -255,11 +250,7 @@ impl VoteInfoAPI for VoteInfoV1 {
 
 impl From<&VoteV1> for VoteInfoV1 {
     fn from(vote: &VoteV1) -> Self {
-        VoteInfoV1 {
-            epoch: vote.epoch(),
-            round: vote.round(),
-            vote_digest: vote.digest(),
-        }
+        VoteInfoV1 { epoch: vote.epoch(), round: vote.round(), vote_digest: vote.digest() }
     }
 }
 

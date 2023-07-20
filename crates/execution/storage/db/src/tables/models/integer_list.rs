@@ -4,7 +4,7 @@ use crate::{
     table::{Compress, Decompress},
     DatabaseError,
 };
-use execution_primitives::IntegerList;
+use tn_types::execution::IntegerList;
 
 impl Compress for IntegerList {
     type Compressed = Vec<u8>;

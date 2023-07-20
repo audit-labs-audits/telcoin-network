@@ -1,5 +1,5 @@
 use generic_array::GenericArray;
-use execution_primitives::{keccak256, NodeRecord, PeerId};
+use tn_types::execution::{keccak256, NodeRecord, PeerId};
 
 /// The key type for the table.
 #[derive(Debug, Copy, Clone, Eq, PartialEq)]

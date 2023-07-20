@@ -10,36 +10,38 @@ use crate::{
     quorum_waiter::QuorumWaiter,
     TransactionValidator, NUM_SHUTDOWN_RECEIVERS,
 };
-use anemo::{codegen::InboundRequestLayer, types::Address};
-use anemo::{types::PeerInfo, Network, PeerId};
+use anemo::{
+    codegen::InboundRequestLayer,
+    types::{Address, PeerInfo},
+    Network, PeerId,
+};
 use anemo_tower::{
     auth::{AllowedPeers, RequireAuthorizationLayer},
     callback::CallbackLayer,
-    set_header::SetRequestHeaderLayer,
+    rate_limit,
+    set_header::{SetRequestHeaderLayer, SetResponseHeaderLayer},
     trace::{DefaultMakeSpan, DefaultOnFailure, TraceLayer},
 };
-use anemo_tower::{rate_limit, set_header::SetResponseHeaderLayer};
-use tn_types::consensus::config::{Authority, AuthorityIdentifier, Committee, Parameters, WorkerCache, WorkerId};
-use consensus_metrics::metered_channel::channel_with_total;
-use consensus_metrics::spawn_logged_monitored_task;
+use consensus_metrics::{metered_channel::channel_with_total, spawn_logged_monitored_task};
 use consensus_network::{multiaddr::Protocol, Multiaddr};
-use lattice_network::client::NetworkClient;
-use lattice_network::epoch_filter::{AllowedEpoch, EPOCH_HEADER_KEY};
-use lattice_network::failpoints::FailpointsMakeCallbackHandler;
-use lattice_network::metrics::MetricsMakeCallbackHandler;
-use std::collections::HashMap;
-use std::time::Duration;
-use std::{net::Ipv4Addr, sync::Arc, thread::sleep};
+use lattice_network::{
+    client::NetworkClient,
+    epoch_filter::{AllowedEpoch, EPOCH_HEADER_KEY},
+    failpoints::FailpointsMakeCallbackHandler,
+    metrics::MetricsMakeCallbackHandler,
+};
 use lattice_typed_store::rocks::DBMap;
+use std::{collections::HashMap, net::Ipv4Addr, sync::Arc, thread::sleep, time::Duration};
 use tap::TapFallible;
+use tn_types::consensus::{
+    config::{Authority, AuthorityIdentifier, Committee, Parameters, WorkerCache, WorkerId},
+    crypto::{traits::KeyPair as _, NetworkKeyPair, NetworkPublicKey},
+    Batch, BatchDigest, ConditionalBroadcastReceiver, PreSubscribedBroadcastSender,
+    PrimaryToWorkerServer, WorkerToWorkerServer,
+};
 use tokio::task::JoinHandle;
 use tower::ServiceBuilder;
 use tracing::{error, info};
-use tn_types::consensus::{
-    Batch, BatchDigest, ConditionalBroadcastReceiver, PreSubscribedBroadcastSender,
-    PrimaryToWorkerServer, WorkerToWorkerServer,
-    crypto::{traits::KeyPair as _, NetworkKeyPair, NetworkPublicKey},
-};
 
 #[cfg(test)]
 #[path = "tests/worker_tests.rs"]
@@ -48,8 +50,10 @@ pub mod worker_tests;
 /// The default channel capacity for each channel of the worker.
 pub const CHANNEL_CAPACITY: usize = 1_000;
 
-use crate::metrics::{Metrics, WorkerEndpointMetrics, WorkerMetrics};
-use crate::transactions_server::TxServer;
+use crate::{
+    metrics::{Metrics, WorkerEndpointMetrics, WorkerMetrics},
+    transactions_server::TxServer,
+};
 
 pub struct Worker {
     /// This authority.
@@ -150,9 +154,8 @@ impl Worker {
             .worker(authority.protocol_key(), &id)
             .expect("Our public key or worker id is not in the worker cache")
             .worker_address;
-        let address = address
-            .replace(0, |_protocol| Some(Protocol::Ip4(Ipv4Addr::UNSPECIFIED)))
-            .unwrap();
+        let address =
+            address.replace(0, |_protocol| Some(Protocol::Ip4(Ipv4Addr::UNSPECIFIED))).unwrap();
         let addr = address.to_anemo_address().unwrap();
 
         let epoch_string: String = committee.epoch().to_string();
@@ -162,18 +165,12 @@ impl Worker {
         let primary_to_worker_router = anemo::Router::new()
             .add_rpc_service(primary_service)
             // Add an Authorization Layer to ensure that we only service requests from our primary
-            .route_layer(RequireAuthorizationLayer::new(AllowedPeers::new([
-                our_primary_peer_id,
-            ])))
-            .route_layer(RequireAuthorizationLayer::new(AllowedEpoch::new(
-                epoch_string.clone(),
-            )));
+            .route_layer(RequireAuthorizationLayer::new(AllowedPeers::new([our_primary_peer_id])))
+            .route_layer(RequireAuthorizationLayer::new(AllowedEpoch::new(epoch_string.clone())));
 
         let routes = anemo::Router::new()
             .add_rpc_service(worker_service)
-            .route_layer(RequireAuthorizationLayer::new(AllowedEpoch::new(
-                epoch_string.clone(),
-            )))
+            .route_layer(RequireAuthorizationLayer::new(AllowedEpoch::new(epoch_string.clone())))
             .merge(primary_to_worker_router);
 
         let service = ServiceBuilder::new()
@@ -255,7 +252,7 @@ impl Worker {
             match network_result {
                 Ok(n) => {
                     network = n;
-                    break;
+                    break
                 }
                 Err(_) => {
                     retries_left -= 1;
@@ -308,10 +305,7 @@ impl Worker {
         for (public_key, address) in other_workers {
             let (peer_id, address) = Self::add_peer_in_network(&network, public_key, &address);
             peer_types.insert(peer_id, "other_worker".to_string());
-            info!(
-                "Adding others workers with peer id {} and address {}",
-                peer_id, address
-            );
+            info!("Adding others workers with peer id {} and address {}", peer_id, address);
         }
 
         // Connect worker to its corresponding primary.
@@ -321,28 +315,23 @@ impl Worker {
             &authority.primary_address(),
         );
         peer_types.insert(peer_id, "our_primary".to_string());
-        info!(
-            "Adding our primary with peer id {} and address {}",
-            peer_id, address
-        );
+        info!("Adding our primary with peer id {} and address {}", peer_id, address);
 
         // update the peer_types with the "other_primary". We do not add them in the Network
         // struct, otherwise the networking library will try to connect to it
         let other_primaries: Vec<(AuthorityIdentifier, Multiaddr, NetworkPublicKey)> =
             committee.others_primaries_by_id(authority.id());
         for (_, _, network_key) in other_primaries {
-            peer_types.insert(
-                PeerId(network_key.0.to_bytes()),
-                "other_primary".to_string(),
-            );
+            peer_types.insert(PeerId(network_key.0.to_bytes()), "other_primary".to_string());
         }
 
-        let (connection_monitor_handle, _) = lattice_network::connectivity::ConnectionMonitor::spawn(
-            network.downgrade(),
-            network_connection_metrics,
-            peer_types,
-            Some(shutdown_receivers.pop().unwrap()),
-        );
+        let (connection_monitor_handle, _) =
+            lattice_network::connectivity::ConnectionMonitor::spawn(
+                network.downgrade(),
+                network_connection_metrics,
+                peer_types,
+                Some(shutdown_receivers.pop().unwrap()),
+            );
 
         let network_admin_server_base_port = parameters
             .network_admin_server
@@ -463,9 +452,8 @@ impl Worker {
             .worker(self.authority.protocol_key(), &self.id)
             .expect("Our public key or worker id is not in the worker cache")
             .transactions;
-        let address = address
-            .replace(0, |_protocol| Some(Protocol::Ip4(Ipv4Addr::UNSPECIFIED)))
-            .unwrap();
+        let address =
+            address.replace(0, |_protocol| Some(Protocol::Ip4(Ipv4Addr::UNSPECIFIED))).unwrap();
 
         let tx_server_handle = TxServer::spawn(
             address.clone(),
@@ -475,9 +463,10 @@ impl Worker {
             validator,
         );
 
-        // The transactions are sent to the `BatchMaker` that assembles them into batches. It then broadcasts
-        // (in a reliable manner) the batches to all other workers that share the same `id` as us. Finally, it
-        // gathers the 'cancel handlers' of the messages and send them to the `QuorumWaiter`.
+        // The transactions are sent to the `BatchMaker` that assembles them into batches. It then
+        // broadcasts (in a reliable manner) the batches to all other workers that share the
+        // same `id` as us. Finally, it gathers the 'cancel handlers' of the messages and
+        // send them to the `QuorumWaiter`.
         let batch_maker_handle = BatchMaker::spawn(
             self.id,
             self.parameters.batch_size,
@@ -490,8 +479,8 @@ impl Worker {
             self.store.clone(),
         );
 
-        // The `QuorumWaiter` waits for 2f authorities to acknowledge reception of the batch. It then forwards
-        // the batch to the `Processor`.
+        // The `QuorumWaiter` waits for 2f authorities to acknowledge reception of the batch. It
+        // then forwards the batch to the `Processor`.
         let quorum_waiter_handle = QuorumWaiter::spawn(
             self.authority.clone(),
             self.id,
@@ -503,10 +492,7 @@ impl Worker {
             node_metrics,
         );
 
-        info!(
-            "Worker {} listening to client transactions on {}",
-            self.id, address
-        );
+        info!("Worker {} listening to client transactions on {}", self.id, address);
 
         vec![batch_maker_handle, quorum_waiter_handle, tx_server_handle]
     }

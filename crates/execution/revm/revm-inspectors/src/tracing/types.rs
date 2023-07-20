@@ -1,7 +1,6 @@
 //! Types for representing call trace items.
 
 use crate::tracing::utils::convert_memory;
-use execution_primitives::{abi::decode_revert_reason, bytes::Bytes, Address, H256, U256};
 use execution_rpc_types::trace::{
     geth::{CallFrame, CallLogFrame, GethDefaultTracingOptions, StructLog},
     parity::{
@@ -14,6 +13,7 @@ use revm::interpreter::{
 };
 use serde::{Deserialize, Serialize};
 use std::collections::{btree_map::Entry, VecDeque};
+use tn_types::execution::{abi::decode_revert_reason, bytes::Bytes, Address, H256, U256};
 
 /// A unified representation of a call
 #[derive(Clone, Copy, Debug, Default, Eq, PartialEq, Serialize, Deserialize)]

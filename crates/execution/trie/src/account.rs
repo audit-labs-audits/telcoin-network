@@ -1,5 +1,5 @@
-use execution_primitives::{proofs::EMPTY_ROOT, Account, H256, KECCAK_EMPTY, U256};
 use execution_rlp::{RlpDecodable, RlpEncodable};
+use tn_types::execution::{proofs::EMPTY_ROOT, Account, H256, KECCAK_EMPTY, U256};
 
 /// An Ethereum account as represented in the trie.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Default, RlpEncodable, RlpDecodable)]

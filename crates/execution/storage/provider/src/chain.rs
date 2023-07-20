@@ -2,11 +2,11 @@
 
 use crate::PostState;
 use execution_interfaces::{executor::BlockExecutionError, Error};
-use execution_primitives::{
+use std::{borrow::Cow, collections::BTreeMap, fmt};
+use tn_types::execution::{
     BlockHash, BlockNumHash, BlockNumber, ForkBlock, Receipt, SealedBlock, SealedBlockWithSenders,
     TransactionSigned, TxHash,
 };
-use std::{borrow::Cow, collections::BTreeMap, fmt};
 
 /// A chain of blocks and their final state.
 ///
@@ -350,7 +350,7 @@ pub enum ChainSplit {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use execution_primitives::{Account, H160, H256};
+    use tn_types::execution::{Account, H160, H256};
 
     #[test]
     fn chain_append() {

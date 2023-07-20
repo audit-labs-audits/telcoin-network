@@ -1,8 +1,8 @@
 use crate::eth::EthApiSpec;
-use jsonrpsee::core::RpcResult as Result;
 use execution_network_api::PeersInfo;
 use execution_rpc_api::NetApiServer;
 use execution_rpc_types::PeerCount;
+use jsonrpsee::core::RpcResult as Result;
 
 /// `Net` API implementation.
 ///

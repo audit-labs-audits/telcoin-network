@@ -1,7 +1,7 @@
 //! RPC types for Lattice Consensus
 
-use execution_primitives::{H256, U64, Address, Bytes};
-use serde::{Serialize, Deserialize};
+use serde::{Deserialize, Serialize};
+use tn_types::execution::{Address, Bytes, H256, U64};
 
 // TODO: is payload id useful here for syncing with all other CL nodes?
 /// This struct is used for executing batches from the consensus layer (CL).
@@ -18,13 +18,12 @@ pub struct LatticePayload {
 
     /// The timestamp the batch was created by a peer.
     pub timestamp: U64,
-    
+
     /// The peer's primary.
     pub fee_recipient: Address,
 
     /// The list of transactions.
     pub transactions: Vec<Bytes>,
-
     // TODO: include these?
     // - gas_limit
     // - gas_used

@@ -4,15 +4,15 @@ use crate::{
     eth::error::{EthApiError, EthResult, RpcInvalidTransactionError},
     EthApi,
 };
-use execution_primitives::{
-    serde_helper::JsonStorageKey, Address, BlockId, BlockNumberOrTag, Bytes, H256, KECCAK_EMPTY,
-    U256,
-};
 use execution_provider::{
     AccountReader, BlockReaderIdExt, EvmEnvProvider, StateProvider, StateProviderFactory,
 };
 use execution_rpc_types::{EIP1186AccountProofResponse, StorageProof};
 use execution_transaction_pool::{PoolTransaction, TransactionPool};
+use tn_types::execution::{
+    serde_helper::JsonStorageKey, Address, BlockId, BlockNumberOrTag, Bytes, H256, KECCAK_EMPTY,
+    U256,
+};
 
 impl<Provider, Pool, Network> EthApi<Provider, Pool, Network>
 where
@@ -147,10 +147,10 @@ where
 mod tests {
     use super::*;
     use crate::eth::{cache::EthStateCache, gas_oracle::GasPriceOracle};
-    use execution_primitives::{StorageKey, StorageValue};
     use execution_provider::test_utils::{ExtendedAccount, MockEthProvider, NoopProvider};
     use execution_transaction_pool::test_utils::testing_pool;
     use std::collections::HashMap;
+    use tn_types::execution::{StorageKey, StorageValue};
 
     #[tokio::test]
     async fn test_storage() {

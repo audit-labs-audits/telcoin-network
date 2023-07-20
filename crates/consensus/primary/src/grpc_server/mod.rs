@@ -7,15 +7,16 @@ use crate::{
     grpc_server::{metrics::EndpointMetrics, proposer::NarwhalProposer},
     BlockRemover, BlockWaiter,
 };
-use tn_types::consensus::config::{AuthorityIdentifier, Committee};
-use lattice_consensus::dag::Dag;
 use consensus_metrics::spawn_logged_monitored_task;
 use consensus_network::Multiaddr;
+use lattice_consensus::dag::Dag;
 use std::{sync::Arc, time::Duration};
-use tokio::task::JoinHandle;
-use tokio::time::timeout;
+use tn_types::consensus::{
+    config::{AuthorityIdentifier, Committee},
+    ConditionalBroadcastReceiver, ConfigurationServer, ProposerServer, ValidatorServer,
+};
+use tokio::{task::JoinHandle, time::timeout};
 use tracing::{error, info, warn};
-use tn_types::consensus::{ConditionalBroadcastReceiver, ConfigurationServer, ProposerServer, ValidatorServer};
 
 mod configuration;
 pub mod metrics;
@@ -122,10 +123,7 @@ impl<SynchronizerHandler: Handler + Send + Sync + 'static> ConsensusAPIGrpc<Sync
                 info!("Successfully shutting down gracefully grpc server");
             }
             Err(err) => {
-                warn!(
-                    "Time out while waiting to gracefully shutdown grpc server: {}",
-                    err
-                )
+                warn!("Time out while waiting to gracefully shutdown grpc server: {}", err)
             }
         }
 

@@ -190,7 +190,7 @@ where
                         return Err(anemo::rpc::Status::new(
                             anemo::types::response::StatusCode::TooManyRequests,
                         )
-                        .with_header(WAIT_NANOS_HEADER, format!("{}", wait_time.as_nanos())));
+                        .with_header(WAIT_NANOS_HEADER, format!("{}", wait_time.as_nanos())))
                     }
                 }
             };
@@ -220,15 +220,11 @@ mod tests {
 
         let layer = RateLimitLayer::new(governor::Quota::per_hour(nonzero!(1u32)), WaitMode::Block);
 
-        let svc = ServiceBuilder::new()
-            .layer(layer.clone())
-            .service(service_fn);
+        let svc = ServiceBuilder::new().layer(layer.clone()).service(service_fn);
         let request = Request::new(Bytes::new()).with_extension(peer);
         svc.oneshot(request).await.unwrap();
 
-        let svc = ServiceBuilder::new()
-            .layer(layer.clone())
-            .service(service_fn);
+        let svc = ServiceBuilder::new().layer(layer.clone()).service(service_fn);
         let request = Request::new(Bytes::new()).with_extension(peer);
         let timeout_resp = tokio::time::timeout(Duration::from_secs(1), svc.oneshot(request)).await;
         assert!(timeout_resp.is_err()); // second request should be blocked on rate limit
@@ -242,28 +238,18 @@ mod tests {
 
         let peer = anemo::PeerId([0; 32]);
 
-        let layer = RateLimitLayer::new(
-            governor::Quota::per_hour(nonzero!(1u32)),
-            WaitMode::ReturnError,
-        );
+        let layer =
+            RateLimitLayer::new(governor::Quota::per_hour(nonzero!(1u32)), WaitMode::ReturnError);
 
-        let svc = ServiceBuilder::new()
-            .layer(layer.clone())
-            .service(service_fn);
+        let svc = ServiceBuilder::new().layer(layer.clone()).service(service_fn);
         let request = Request::new(Bytes::new()).with_extension(peer);
         svc.oneshot(request).await.unwrap();
 
-        let svc = ServiceBuilder::new()
-            .layer(layer.clone())
-            .service(service_fn);
+        let svc = ServiceBuilder::new().layer(layer.clone()).service(service_fn);
         let request = Request::new(Bytes::new()).with_extension(peer);
         let err_response = svc.oneshot(request).await.unwrap_err();
-        let wait_nanos = err_response
-            .headers()
-            .get(super::WAIT_NANOS_HEADER)
-            .unwrap()
-            .parse::<u128>()
-            .unwrap();
+        let wait_nanos =
+            err_response.headers().get(super::WAIT_NANOS_HEADER).unwrap().parse::<u128>().unwrap();
         assert!(wait_nanos > 3_540_000_000_000); // 59 minutes
     }
 }

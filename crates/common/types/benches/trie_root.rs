@@ -54,12 +54,12 @@ criterion_main!(benches);
 mod implementations {
     use super::*;
     use bytes::BytesMut;
+    use execution_rlp::Encodable;
+    use std::vec::IntoIter;
     use tn_types::execution::{
         proofs::adjust_index_for_rlp,
         trie::{HashBuilder, Nibbles},
     };
-    use execution_rlp::Encodable;
-    use std::vec::IntoIter;
 
     pub fn trie_hash_ordered_trie_root(receipts: IntoIter<ReceiptWithBloom>) -> H256 {
         triehash::ordered_trie_root::<KeccakHasher, _>(receipts.map(|receipt| {

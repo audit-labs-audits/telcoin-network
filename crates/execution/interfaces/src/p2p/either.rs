@@ -5,7 +5,7 @@ use crate::p2p::{
     priority::Priority,
 };
 use futures::future::Either;
-use execution_primitives::H256;
+use tn_types::execution::H256;
 
 /// A downloader that combines two different downloaders/client implementations that have the same
 /// associated types.
@@ -22,7 +22,7 @@ where
     A: DownloadClient,
     B: DownloadClient,
 {
-    fn report_bad_message(&self, peer_id: execution_primitives::PeerId) {
+    fn report_bad_message(&self, peer_id: tn_types::execution::PeerId) {
         match self {
             EitherDownloader::Left(a) => a.report_bad_message(peer_id),
             EitherDownloader::Right(b) => b.report_bad_message(peer_id),

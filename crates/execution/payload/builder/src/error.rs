@@ -1,7 +1,7 @@
 //! Error types emitted by types or implementations of this crate.
 
-use execution_primitives::H256;
 use revm_primitives::EVMError;
+use tn_types::execution::H256;
 use tokio::sync::oneshot;
 
 /// Possible error variants during payload building.

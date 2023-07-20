@@ -1,8 +1,8 @@
+use execution_metrics_derive::Metrics;
 use metrics::{
     set_recorder, Counter, Gauge, Histogram, Key, KeyName, Label, Recorder, SharedString, Unit,
 };
 use once_cell::sync::Lazy;
-use execution_metrics_derive::Metrics;
 use serial_test::serial;
 use std::{collections::HashMap, sync::Mutex};
 

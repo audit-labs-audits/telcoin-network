@@ -23,12 +23,7 @@ pub(crate) struct Connection {
 impl Connection {
     pub fn new(inner: quinn::Connection, origin: ConnectionOrigin) -> Result<Self> {
         let peer_id = Self::try_peer_id(&inner)?;
-        Ok(Self {
-            inner,
-            peer_id,
-            origin,
-            time_established: std::time::Instant::now(),
-        })
+        Ok(Self { inner, peer_id, origin, time_established: std::time::Instant::now() })
     }
 
     /// Try to query Cryptographic identity of the peer
@@ -36,11 +31,8 @@ impl Connection {
         // Query the certificate chain provided by a [TLS
         // Connection](https://docs.rs/rustls/0.20.4/rustls/enum.Connection.html#method.peer_certificates).
         // The first cert in the chain is guaranteed to be the peer
-        let peer_cert = &connection
-            .peer_identity()
-            .unwrap()
-            .downcast::<Vec<rustls::Certificate>>()
-            .unwrap()[0];
+        let peer_cert =
+            &connection.peer_identity().unwrap().downcast::<Vec<rustls::Certificate>>().unwrap()[0];
 
         let peer_id = crate::crypto::peer_id_from_certificate(peer_cert)?;
 
@@ -105,10 +97,7 @@ impl Connection {
     ///
     /// Messages sent over the stream will arrive at the peer in the order they were sent.
     pub async fn open_bi(&self) -> Result<(SendStream, RecvStream), ConnectionError> {
-        self.inner
-            .open_bi()
-            .await
-            .map(|(send, recv)| (SendStream(send), recv))
+        self.inner.open_bi().await.map(|(send, recv)| (SendStream(send), recv))
     }
 
     /// Close the connection immediately.
@@ -127,10 +116,7 @@ impl Connection {
 
     /// Accept the next incoming bidirectional stream
     pub async fn accept_bi(&self) -> Result<(SendStream, RecvStream), ConnectionError> {
-        self.inner
-            .accept_bi()
-            .await
-            .map(|(send, recv)| (SendStream(send), recv))
+        self.inner.accept_bi().await.map(|(send, recv)| (SendStream(send), recv))
     }
 
     /// Receive an application datagram

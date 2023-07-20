@@ -7,8 +7,8 @@ use crate::{
     error::PayloadBuilderError, metrics::PayloadBuilderServiceMetrics, traits::PayloadJobGenerator,
     BuiltPayload, KeepPayloadJobAlive, PayloadBuilderAttributes, PayloadJob,
 };
-use futures_util::{future::FutureExt, StreamExt};
 use execution_rpc_types::engine::PayloadId;
+use futures_util::{future::FutureExt, StreamExt};
 use std::{
     future::Future,
     pin::Pin,
@@ -68,7 +68,7 @@ pub struct PayloadBuilderHandle {
 // === impl PayloadBuilderHandle ===
 
 impl PayloadBuilderHandle {
-    // TODO: is it better to return a future here instead of passing a PayloadStore 
+    // TODO: is it better to return a future here instead of passing a PayloadStore
     // directly to the LatticeConsensusHandle?
     //
     // /// Resolves the payload job and returns the receiver half that is used to retrieve

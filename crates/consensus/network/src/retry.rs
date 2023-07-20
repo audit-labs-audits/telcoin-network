@@ -34,7 +34,8 @@ pub struct RetryConfig {
     /// The maximum elapsed time after instantiating
     ///
     /// Retrying continues until this time has elapsed.
-    /// The number of retries before that happens, will be decided by the other retry config options.
+    /// The number of retries before that happens, will be decided by the other retry config
+    /// options.
     pub retrying_max_elapsed_time: Option<Duration>,
 }
 

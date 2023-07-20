@@ -14,10 +14,7 @@ pub trait TransactionValidator: Clone + Send + Sync + 'static {
     /// Determines if a transaction valid for the worker to consider putting in a batch
     fn validate(&self, t: &[u8]) -> Result<(), Self::Error>;
     /// Determines if this batch can be voted on
-    async fn validate_batch(
-        &self,
-        b: &Batch,
-    ) -> Result<(), Self::Error>;
+    async fn validate_batch(&self, b: &Batch) -> Result<(), Self::Error>;
 }
 
 /// Simple validator that accepts all transactions and batches.
@@ -31,10 +28,7 @@ impl TransactionValidator for TrivialTransactionValidator {
         Ok(())
     }
 
-    async fn validate_batch(
-        &self,
-        _b: &Batch,
-    ) -> Result<(), Self::Error> {
+    async fn validate_batch(&self, _b: &Batch) -> Result<(), Self::Error> {
         Ok(())
     }
 }
@@ -51,10 +45,7 @@ impl TransactionValidator for LatticeTransactionValidator {
         todo!()
     }
 
-    async fn validate_batch(
-        &self,
-        batch: &Batch,
-    ) -> Result<(), Self::Error> {
+    async fn validate_batch(&self, batch: &Batch) -> Result<(), Self::Error> {
         // send to EL for validation
         todo!()
     }

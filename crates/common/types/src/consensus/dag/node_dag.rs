@@ -2,6 +2,7 @@
 // Copyright (c) Mysten Labs, Inc.
 // SPDX-License-Identifier: Apache-2.0
 
+use crate::consensus::crypto;
 use arc_swap::ArcSwap;
 use dashmap::DashMap;
 use either::Either;
@@ -9,7 +10,6 @@ use fastcrypto::hash::Digest;
 use once_cell::sync::OnceCell;
 use std::sync::Arc;
 use thiserror::Error;
-use crate::consensus::crypto;
 
 use super::{Node, NodeRef, WeakNodeRef};
 
@@ -32,25 +32,27 @@ pub trait Affiliated: fastcrypto::hash::Hash<{ crypto::DIGEST_LENGTH }> {
 }
 /// The Dag data structure
 /// This consists morally of two tables folded in one:
-/// - the node table, which contains mappings from node hashes to weak references,
-///   maintaining which nodes were historically processed by the graph,
-/// - the heads of the graph (aka the roots): those nodes which do not have antecedents in the graph,
-///   and are holding transitive references to all the other nodes.
+/// - the node table, which contains mappings from node hashes to weak references, maintaining which
+///   nodes were historically processed by the graph,
+/// - the heads of the graph (aka the roots): those nodes which do not have antecedents in the
+///   graph, and are holding transitive references to all the other nodes.
 ///
-/// Those two tables are coalesced into one, which value type is either a weak reference (regular node) or a strong one (heads).
-/// During the normal processing of the graph, heads which gain antecedents lost their head status and become regular nodes.
-/// Moreover, the transitive references to nodes in the graph may disappear because of its changing topology (see above: path compression).
-/// In this case, the weak references may be invalidate. We do not remove them from the graph, and their presence serves as a "tombstone".
+/// Those two tables are coalesced into one, which value type is either a weak reference (regular
+/// node) or a strong one (heads). During the normal processing of the graph, heads which gain
+/// antecedents lost their head status and become regular nodes. Moreover, the transitive references
+/// to nodes in the graph may disappear because of its changing topology (see above: path
+/// compression). In this case, the weak references may be invalidate. We do not remove them from
+/// the graph, and their presence serves as a "tombstone".
 ///
 /// /!\ Warning /!\: do not drop the heads of the graph without having given them new antecedents,
 /// as this will transitively drop all the nodes they point to and may cause loss of data.
-///
 #[derive(Debug)]
 #[doc(hidden)]
 pub struct NodeDag<T: Affiliated> {
-    // Not that we should need to ever serialize this (we'd rather rebuild the Dag from a persistent store)
-    // but the way to serialize this in key order is using serde_with and an annotation of:
-    // as = "FromInto<std::collections::BTreeMap<T::TypedDigest, Either<WeakNodeRef<T>, NodeRef<T>>>"
+    // Not that we should need to ever serialize this (we'd rather rebuild the Dag from a
+    // persistent store) but the way to serialize this in key order is using serde_with and an
+    // annotation of: as = "FromInto<std::collections::BTreeMap<T::TypedDigest,
+    // Either<WeakNodeRef<T>, NodeRef<T>>>"
     node_table: DashMap<
         <T as fastcrypto::hash::Hash<{ crypto::DIGEST_LENGTH }>>::TypedDigest,
         Either<WeakNodeRef<T>, NodeRef<T>>,
@@ -68,9 +70,7 @@ pub enum NodeDagError {
 impl<T: Affiliated> NodeDag<T> {
     /// Creates a new Node dag
     pub fn new() -> NodeDag<T> {
-        NodeDag {
-            node_table: DashMap::new(),
-        }
+        NodeDag { node_table: DashMap::new() }
     }
 
     /// Returns a weak reference to the requested vertex.
@@ -87,19 +87,18 @@ impl<T: Affiliated> NodeDag<T> {
     }
 
     // Returns a strong (`Arc`) reference to the graph node.
-    // This bumps the reference count to the vertex and may prevent it from being GC-ed off the graph.
-    // This is not publicly accessible, so as to not let wandering references to DAG nodes prevent GC logic
+    // This bumps the reference count to the vertex and may prevent it from being GC-ed off the
+    // graph. This is not publicly accessible, so as to not let wandering references to DAG
+    // nodes prevent GC logic
     pub fn get(&self, digest: T::TypedDigest) -> Result<NodeRef<T>, NodeDagError> {
         let node_ref = self
             .node_table
             .get(&digest)
             .ok_or_else(|| NodeDagError::UnknownDigests(vec![digest.into()]))?;
         match *node_ref {
-            Either::Left(ref node) => {
-                Ok(NodeRef(node.upgrade().ok_or_else(|| {
-                    NodeDagError::DroppedDigest(digest.into())
-                })?))
-            }
+            Either::Left(ref node) => Ok(NodeRef(
+                node.upgrade().ok_or_else(|| NodeDagError::DroppedDigest(digest.into()))?,
+            )),
             // the node is a head of the graph, just return
             Either::Right(ref node) => Ok(node.clone()),
         }
@@ -117,7 +116,8 @@ impl<T: Affiliated> NodeDag<T> {
         self.get(digest).is_ok()
     }
 
-    /// Returns an iterator over the digests of the heads of the graph, i.e. the nodes which do not have a child.
+    /// Returns an iterator over the digests of the heads of the graph, i.e. the nodes which do not
+    /// have a child.
     pub fn head_digests(&self) -> impl Iterator<Item = T::TypedDigest> + '_ {
         self.node_table
             .iter()
@@ -140,8 +140,8 @@ impl<T: Affiliated> NodeDag<T> {
         }
     }
 
-    /// Marks the node passed as argument as compressible, leaving it to be reaped by path compression.
-    /// Returns true if the node was made compressible, and false if it already was
+    /// Marks the node passed as argument as compressible, leaving it to be reaped by path
+    /// compression. Returns true if the node was made compressible, and false if it already was
     ///
     /// This return an error if the queried node is unknown or dropped from the graph
     pub fn make_compressible(&self, hash: T::TypedDigest) -> Result<bool, NodeDagError> {
@@ -151,33 +151,35 @@ impl<T: Affiliated> NodeDag<T> {
 
     /// Inserts a node in the Dag from the provided value
     ///
-    /// When the value is inserted, its parent references are interpreted as hash pointers (see [`Affiliated`])`.
-    /// Those hash pointers are converted to [`NodeRef`] based on the pointed nodes that are already in the DAG.
+    /// When the value is inserted, its parent references are interpreted as hash pointers (see
+    /// [`Affiliated`])`. Those hash pointers are converted to [`NodeRef`] based on the pointed
+    /// nodes that are already in the DAG.
     ///
-    /// Note: the dag currently does not do any causal completion. It is an error to insert a node which parents
-    /// are unknown by the DAG it's inserted into.
+    /// Note: the dag currently does not do any causal completion. It is an error to insert a node
+    /// which parents are unknown by the DAG it's inserted into.
     ///
     /// This insertion procedure only maintains the invariant that
     /// - insertion should be idempotent
     /// - an unseen node is a head (not pointed) to by any other node.
-    ///
     pub fn try_insert(&mut self, value: T) -> Result<(), NodeDagError> {
         let digest = value.digest();
         // Do we have this node already?
         if self.contains(digest) {
             // idempotence (beware: re-adding removed nodes under the same hash won't bump the Rc)
-            return Ok(());
+            return Ok(())
         }
         let parent_digests = value.parents();
         let parents = parent_digests
             .iter()
             .map(|hash| self.get(*hash))
-            // We use Either::Left to collect parent refs, Either::Right to collect missing parents in case we encounter a failure
+            // We use Either::Left to collect parent refs, Either::Right to collect missing parents
+            // in case we encounter a failure
             .fold(Either::Left(Vec::new()), |acc, res| {
                 match (acc, res) {
                     // This node was previously dropped, continue
                     (acc, Err(NodeDagError::DroppedDigest(_))) => {
-                        // TODO : log this properly! The parent is known, but was pruned in the past.
+                        // TODO : log this properly! The parent is known, but was pruned in the
+                        // past.
                         acc
                     }
                     // Found a parent with no errors met, collect
@@ -213,19 +215,14 @@ impl<T: Affiliated> NodeDag<T> {
             cell
         };
 
-        let node = Node {
-            parents: ArcSwap::from_pointee(parents),
-            value,
-            compressible,
-        };
+        let node = Node { parents: ArcSwap::from_pointee(parents), value, compressible };
         let strong_node_ref = NodeRef::from_pointee(node);
         // important: do this first, before downgrading the head references
-        self.node_table
-            .insert(digest, Either::Right(strong_node_ref));
-        // maintain the head invariant: the node table should no longer have a strong reference to the head
-        for mut parent in parent_digests
-            .into_iter()
-            .flat_map(|digest| self.node_table.get_mut(&digest))
+        self.node_table.insert(digest, Either::Right(strong_node_ref));
+        // maintain the head invariant: the node table should no longer have a strong reference to
+        // the head
+        for mut parent in
+            parent_digests.into_iter().flat_map(|digest| self.node_table.get_mut(&digest))
         {
             if let Either::Right(strong_noderef) = &*parent {
                 *parent = Either::Left(Arc::downgrade(strong_noderef));

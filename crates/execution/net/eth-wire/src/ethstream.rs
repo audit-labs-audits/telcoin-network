@@ -4,16 +4,16 @@ use crate::{
     types::{EthMessage, ProtocolMessage, Status},
     CanDisconnect, DisconnectReason, EthVersion,
 };
+use execution_rlp::Encodable;
 use futures::{ready, Sink, SinkExt, StreamExt};
 use pin_project::pin_project;
-use execution_primitives::{
-    bytes::{Bytes, BytesMut},
-    ForkFilter,
-};
-use execution_rlp::Encodable;
 use std::{
     pin::Pin,
     task::{Context, Poll},
+};
+use tn_types::execution::{
+    bytes::{Bytes, BytesMut},
+    ForkFilter,
 };
 use tokio_stream::Stream;
 
@@ -322,10 +322,10 @@ mod tests {
         EthStream, PassthroughCodec,
     };
     use ethers_core::types::Chain;
-    use futures::{SinkExt, StreamExt};
     use execution_ecies::{stream::ECIESStream, util::pk2id};
-    use execution_primitives::{ForkFilter, Head, H256, U256};
+    use futures::{SinkExt, StreamExt};
     use secp256k1::{SecretKey, SECP256K1};
+    use tn_types::execution::{ForkFilter, Head, H256, U256};
     use tokio::net::{TcpListener, TcpStream};
     use tokio_util::codec::Decoder;
 

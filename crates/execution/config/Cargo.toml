@@ -9,12 +9,12 @@ repository.workspace = true
 
 [dependencies]
 # execution
-execution-network = { path = "../net/network" }
-execution-net-nat = { path = "../net/nat" }
-execution-discv4 = { path = "../net/discv4" }
-execution-downloaders = { path = "../net/downloaders" }
-execution-stages = { path = "../../crates/stages" }
-tn-types = { path = "../primitives" }
+execution-network.workspace = true
+execution-net-nat.workspace = true
+execution-discv4.workspace = true
+execution-downloaders.workspace = true
+execution-stages.workspace = true
+tn-types.workspace = true
 
 # io
 serde = { workspace = true }

@@ -1,5 +1,5 @@
-use execution_primitives::PeerId;
 use std::fmt::Debug;
+use tn_types::execution::PeerId;
 
 /// Generic download client for peer penalization
 #[auto_impl::auto_impl(&, Arc, Box)]

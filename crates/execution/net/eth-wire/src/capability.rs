@@ -2,9 +2,9 @@
 
 use crate::{version::ParseVersionError, EthMessage, EthVersion};
 use execution_codecs::add_arbitrary_tests;
-use execution_primitives::bytes::{BufMut, Bytes};
 use execution_rlp::{Decodable, DecodeError, Encodable, RlpDecodable, RlpEncodable};
 use smol_str::SmolStr;
+use tn_types::execution::bytes::{BufMut, Bytes};
 
 #[cfg(feature = "serde")]
 use serde::{Deserialize, Serialize};

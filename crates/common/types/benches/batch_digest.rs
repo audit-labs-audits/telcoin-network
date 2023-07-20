@@ -15,14 +15,8 @@ pub fn batch_digest(c: &mut Criterion) {
     static BATCH_SIZES: [usize; 4] = [100, 500, 1000, 5000];
 
     for size in BATCH_SIZES {
-        let tx_gen = || {
-            (0..512)
-                .map(|_| rand::thread_rng().gen())
-                .collect::<Vec<u8>>()
-        };
-        let batch = Batch::new(
-            (0..size).map(|_| tx_gen()).collect::<Vec<_>>(),
-        );
+        let tx_gen = || (0..512).map(|_| rand::thread_rng().gen()).collect::<Vec<u8>>();
+        let batch = Batch::new((0..size).map(|_| tx_gen()).collect::<Vec<_>>());
         digest_group.throughput(Throughput::Bytes(512 * size as u64));
         digest_group.bench_with_input(BenchmarkId::new("batch digest", size), &batch, |b, i| {
             b.iter(|| i.digest())

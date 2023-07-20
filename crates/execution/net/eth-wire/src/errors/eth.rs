@@ -2,8 +2,8 @@
 use crate::{
     errors::P2PStreamError, version::ParseVersionError, DisconnectReason, EthMessageID, EthVersion,
 };
-use execution_primitives::{Chain, ValidationError, H256};
 use std::io;
+use tn_types::execution::{Chain, ValidationError, H256};
 
 /// Errors when sending/receiving messages
 #[derive(thiserror::Error, Debug)]

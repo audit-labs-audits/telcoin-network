@@ -9,20 +9,20 @@ use crate::{
     BlockHeader,
 };
 use async_trait::async_trait;
+use consensus_metrics::metered_channel;
 use fastcrypto::hash::Hash;
 use futures::future::join_all;
+use lattice_storage::CertificateStore;
 #[cfg(test)]
 use mockall::*;
-use consensus_metrics::metered_channel;
 use std::time::Duration;
-use lattice_storage::CertificateStore;
 use thiserror::Error;
+use tn_types::consensus::{Certificate, CertificateDigest};
 use tokio::{
     sync::mpsc::{self, channel},
     time::timeout,
 };
 use tracing::{debug, error, instrument, trace};
-use tn_types::consensus::{Certificate, CertificateDigest};
 
 #[cfg(test)]
 #[path = "tests/handler_tests.rs"]
@@ -44,19 +44,16 @@ pub enum Error {
     BlockDeliveryTimeout { digest: CertificateDigest },
 
     #[error("Payload for certificate with {digest} couldn't be synchronized: {error}")]
-    PayloadSyncError {
-        digest: CertificateDigest,
-        error: SyncError,
-    },
+    PayloadSyncError { digest: CertificateDigest, error: SyncError },
 }
 
 impl Error {
     pub fn digest(&self) -> CertificateDigest {
         match *self {
-            BlockNotFound { digest }
-            | Internal { digest }
-            | BlockDeliveryTimeout { digest }
-            | PayloadSyncError { digest, .. } => digest,
+            BlockNotFound { digest } |
+            Internal { digest } |
+            BlockDeliveryTimeout { digest } |
+            PayloadSyncError { digest, .. } => digest,
         }
     }
 }
@@ -132,20 +129,15 @@ impl BlockSynchronizerHandler {
     }
 
     async fn wait_all(&self, certificates: Vec<Certificate>) -> Vec<Result<Certificate, Error>> {
-        let futures: Vec<_> = certificates
-            .into_iter()
-            .map(|c| self.wait(c.digest()))
-            .collect();
+        let futures: Vec<_> = certificates.into_iter().map(|c| self.wait(c.digest())).collect();
 
         join_all(futures).await
     }
 
     async fn wait(&self, digest: CertificateDigest) -> Result<Certificate, Error> {
-        if let Ok(result) = timeout(
-            self.certificate_deliver_timeout,
-            self.certificate_store.notify_read(digest),
-        )
-        .await
+        if let Ok(result) =
+            timeout(self.certificate_deliver_timeout, self.certificate_store.notify_read(digest))
+                .await
         {
             result.map_err(|_| Internal { digest })
         } else {
@@ -172,7 +164,7 @@ impl Handler for BlockSynchronizerHandler {
     ) -> Vec<Result<Certificate, Error>> {
         if digests.is_empty() {
             trace!("No blocks were provided, will now return an empty list");
-            return vec![];
+            return vec![]
         }
 
         let sync_results = self.get_block_headers(digests).await;
@@ -193,10 +185,7 @@ impl Handler for BlockSynchronizerHandler {
                             .await
                             .expect("Couldn't send certificate to CertificateFetcher");
                         wait_for.push(block_header.certificate.clone());
-                        debug!(
-                            "Need to causally complete {}",
-                            block_header.certificate.digest()
-                        );
+                        debug!("Need to causally complete {}", block_header.certificate.digest());
                     } else {
                         // Otherwise, if certificate fetched from storage, just
                         // add directly the certificate to the results - no need
@@ -206,13 +195,8 @@ impl Handler for BlockSynchronizerHandler {
                     }
                 }
                 Err(err) => {
-                    error!(
-                        "Error occurred while synchronizing requested certificate {:?}",
-                        err
-                    );
-                    results.push(Err(BlockNotFound {
-                        digest: err.digest(),
-                    }));
+                    error!("Error occurred while synchronizing requested certificate {:?}", err);
+                    results.push(Err(BlockNotFound { digest: err.digest() }));
                 }
             }
         }
@@ -234,16 +218,13 @@ impl Handler for BlockSynchronizerHandler {
     ) -> Vec<BlockSynchronizeResult<BlockHeader>> {
         if digests.is_empty() {
             trace!("No blocks were provided, will now return an empty list");
-            return vec![];
+            return vec![]
         }
 
         let (tx, mut rx) = channel(digests.len());
 
         self.tx_block_synchronizer
-            .send(Command::SynchronizeBlockHeaders {
-                digests,
-                respond_to: tx,
-            })
+            .send(Command::SynchronizeBlockHeaders { digests, respond_to: tx })
             .await
             .expect("Couldn't send message to block synchronizer");
 
@@ -264,16 +245,13 @@ impl Handler for BlockSynchronizerHandler {
     ) -> Vec<Result<Certificate, Error>> {
         if certificates.is_empty() {
             trace!("No certificates were provided, will now return an empty list");
-            return vec![];
+            return vec![]
         }
 
         let (tx, mut rx) = channel(certificates.len());
 
         self.tx_block_synchronizer
-            .send(Command::SynchronizeBlockPayload {
-                certificates,
-                respond_to: tx,
-            })
+            .send(Command::SynchronizeBlockPayload { certificates, respond_to: tx })
             .await
             .expect("Couldn't send message to block synchronizer");
 
@@ -282,10 +260,9 @@ impl Handler for BlockSynchronizerHandler {
 
         // We want to block and wait until we get all the results back.
         while let Some(result) = rx.recv().await {
-            let r = result.map(|h| h.certificate).map_err(|e| PayloadSyncError {
-                digest: e.digest(),
-                error: e,
-            });
+            let r = result
+                .map(|h| h.certificate)
+                .map_err(|e| PayloadSyncError { digest: e.digest(), error: e });
 
             if let Err(err) = r {
                 error!(

@@ -1,8 +1,8 @@
 //! bindings for state overrides in eth_call
 
-use execution_primitives::{Address, Bytes, H256, U256, U64};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
+use tn_types::execution::{Address, Bytes, H256, U256, U64};
 
 /// A set of account overrides
 pub type StateOverride = HashMap<Address, AccountOverride>;

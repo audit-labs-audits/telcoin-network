@@ -1,5 +1,5 @@
-use execution_primitives::{H256, U256, U64};
 use serde::{Deserialize, Serialize};
+use tn_types::execution::{H256, U256, U64};
 
 /// This structure contains configurable settings of the transition process.
 #[derive(Default, Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]

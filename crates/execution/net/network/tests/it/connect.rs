@@ -2,7 +2,6 @@
 
 use ethers_core::utils::Geth;
 use ethers_providers::{Http, Middleware, Provider};
-use futures::StreamExt;
 use execution_discv4::Discv4Config;
 use execution_eth_wire::DisconnectReason;
 use execution_interfaces::{
@@ -17,11 +16,12 @@ use execution_network::{
     NetworkConfigBuilder, NetworkEvent, NetworkManager, PeersConfig,
 };
 use execution_network_api::{NetworkInfo, Peers, PeersInfo};
-use execution_primitives::{mainnet_nodes, HeadersDirection, NodeRecord, PeerId};
 use execution_provider::test_utils::NoopProvider;
 use execution_transaction_pool::test_utils::testing_pool;
+use futures::StreamExt;
 use secp256k1::SecretKey;
 use std::{collections::HashSet, net::SocketAddr, time::Duration};
+use tn_types::execution::{mainnet_nodes, HeadersDirection, NodeRecord, PeerId};
 use tokio::task;
 
 #[tokio::test(flavor = "multi_thread")]

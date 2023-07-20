@@ -1,5 +1,4 @@
 use crate::{ExecInput, ExecOutput, Stage, StageError, UnwindInput, UnwindOutput};
-use num_traits::Zero;
 use execution_db::{
     cursor::DbDupCursorRO,
     database::Database,
@@ -8,7 +7,10 @@ use execution_db::{
     transaction::{DbTx, DbTxMut},
 };
 use execution_interfaces::db::DatabaseError;
-use execution_primitives::{
+use execution_provider::{DatabaseProviderRW, HashingWriter, StorageReader};
+use num_traits::Zero;
+use std::{collections::BTreeMap, fmt::Debug};
+use tn_types::execution::{
     keccak256,
     stage::{
         CheckpointBlockRange, EntitiesCheckpoint, StageCheckpoint, StageId,
@@ -16,8 +18,6 @@ use execution_primitives::{
     },
     StorageEntry,
 };
-use execution_provider::{DatabaseProviderRW, HashingWriter, StorageReader};
-use std::{collections::BTreeMap, fmt::Debug};
 use tracing::*;
 
 /// Storage hashing stage hashes plain storage.
@@ -230,7 +230,6 @@ mod tests {
         TestTransaction, UnwindStageTestRunner,
     };
     use assert_matches::assert_matches;
-    use rand::Rng;
     use execution_db::{
         cursor::{DbCursorRO, DbCursorRW},
         models::{BlockNumberAddress, StoredBlockBodyIndices},
@@ -239,7 +238,8 @@ mod tests {
         generators,
         generators::{random_block_range, random_contract_account_range},
     };
-    use execution_primitives::{
+    use rand::Rng;
+    use tn_types::execution::{
         stage::StageUnitCheckpoint, Address, SealedBlock, StorageEntry, H256, U256,
     };
 

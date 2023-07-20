@@ -2,15 +2,15 @@ use crate::{
     error::*, ExecInput, ExecOutput, MetricEvent, MetricEventsSender, Stage, StageError,
     UnwindInput,
 };
-use futures_util::Future;
 use execution_db::database::Database;
 use execution_interfaces::executor::BlockExecutionError;
-use execution_primitives::{
+use execution_provider::{ProviderFactory, StageCheckpointReader, StageCheckpointWriter};
+use futures_util::Future;
+use std::{pin::Pin, sync::Arc};
+use tn_types::execution::{
     constants::BEACON_CONSENSUS_REORG_UNWIND_DEPTH, listener::EventListeners, stage::StageId,
     BlockNumber, ChainSpec, H256,
 };
-use execution_provider::{ProviderFactory, StageCheckpointReader, StageCheckpointWriter};
-use std::{pin::Pin, sync::Arc};
 use tokio::sync::watch;
 use tokio_stream::wrappers::UnboundedReceiverStream;
 use tracing::*;
@@ -497,7 +497,7 @@ mod tests {
         provider::ProviderError,
         test_utils::{generators, generators::random_header},
     };
-    use execution_primitives::{stage::StageCheckpoint, MAINNET};
+    use tn_types::execution::{stage::StageCheckpoint, MAINNET};
     use tokio_stream::StreamExt;
 
     #[test]

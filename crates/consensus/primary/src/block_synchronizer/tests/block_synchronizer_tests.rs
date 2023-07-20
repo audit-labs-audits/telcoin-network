@@ -7,21 +7,21 @@ use crate::{
     NUM_SHUTDOWN_RECEIVERS,
 };
 use anemo::PeerId;
-use tn_types::consensus::config::{BlockSynchronizerParameters, Parameters};
 use fastcrypto::hash::Hash;
 use futures::future::try_join_all;
+use lattice_test_utils::{fixture_batch_with_transactions, CommitteeFixture};
 use std::{
     collections::{HashMap, HashSet},
     time::Duration,
 };
-use lattice_test_utils::{fixture_batch_with_transactions, CommitteeFixture};
+use tn_types::consensus::{
+    config::{BlockSynchronizerParameters, Parameters},
+    CertificateAPI, GetCertificatesResponse, Header, HeaderAPI, MockPrimaryToPrimary,
+    PayloadAvailabilityResponse, PreSubscribedBroadcastSender, PrimaryToPrimaryServer,
+};
 use tokio::{
     sync::mpsc,
     time::{sleep, timeout},
-};
-use tn_types::consensus::{
-    CertificateAPI, GetCertificatesResponse, Header, HeaderAPI, MockPrimaryToPrimary,
-    PayloadAvailabilityResponse, PreSubscribedBroadcastSender, PrimaryToPrimaryServer,
 };
 
 use fastcrypto::traits::KeyPair as _;
@@ -72,11 +72,7 @@ async fn test_successful_headers_synchronization() {
         certificates.insert(certificate.clone().digest(), certificate.clone());
     }
 
-    let own_address = committee
-        .primary_by_id(&id)
-        .unwrap()
-        .to_anemo_address()
-        .unwrap();
+    let own_address = committee.primary_by_id(&id).unwrap().to_anemo_address().unwrap();
     println!("New primary added: {:?}", own_address);
     let network = anemo::Network::bind(own_address)
         .server_name("narwhal")
@@ -107,29 +103,24 @@ async fn test_successful_headers_synchronization() {
         let address = committee.primary(&primary.public_key()).unwrap();
         let certificates = certificates.clone();
         let mut mock_server = MockPrimaryToPrimary::new();
-        mock_server
-            .expect_get_certificates()
-            .returning(move |request| {
-                Ok(anemo::Response::new(GetCertificatesResponse {
-                    certificates: request
-                        .body()
-                        .digests
-                        .iter()
-                        .filter_map(|digest| certificates.get(digest))
-                        .cloned()
-                        .collect(),
-                }))
-            });
+        mock_server.expect_get_certificates().returning(move |request| {
+            Ok(anemo::Response::new(GetCertificatesResponse {
+                certificates: request
+                    .body()
+                    .digests
+                    .iter()
+                    .filter_map(|digest| certificates.get(digest))
+                    .cloned()
+                    .collect(),
+            }))
+        });
         let routes = anemo::Router::new().add_rpc_service(PrimaryToPrimaryServer::new(mock_server));
         primary_networks.push(primary.new_network(routes));
         println!("New primary added: {:?}", address);
 
         let address = address.to_anemo_address().unwrap();
         let peer_id = PeerId(primary.network_keypair().public().0.to_bytes());
-        network
-            .connect_with_peer_id(address, peer_id)
-            .await
-            .unwrap();
+        network.connect_with_peer_id(address, peer_id).await.unwrap();
     }
 
     // WHEN
@@ -219,11 +210,7 @@ async fn test_successful_payload_synchronization() {
         certificates.insert(certificate.clone().digest(), certificate.clone());
     }
 
-    let own_address = committee
-        .primary_by_id(&id)
-        .unwrap()
-        .to_anemo_address()
-        .unwrap();
+    let own_address = committee.primary_by_id(&id).unwrap().to_anemo_address().unwrap();
     println!("New primary added: {:?}", own_address);
     let network = anemo::Network::bind(own_address)
         .server_name("narwhal")
@@ -254,28 +241,23 @@ async fn test_successful_payload_synchronization() {
         let address = committee.primary(&primary.public_key()).unwrap();
         let certificates = certificates.clone();
         let mut mock_server = MockPrimaryToPrimary::new();
-        mock_server
-            .expect_get_payload_availability()
-            .returning(move |request| {
-                Ok(anemo::Response::new(PayloadAvailabilityResponse {
-                    payload_availability: request
-                        .body()
-                        .certificate_digests
-                        .iter()
-                        .map(|digest| (*digest, certificates.contains_key(digest)))
-                        .collect(),
-                }))
-            });
+        mock_server.expect_get_payload_availability().returning(move |request| {
+            Ok(anemo::Response::new(PayloadAvailabilityResponse {
+                payload_availability: request
+                    .body()
+                    .certificate_digests
+                    .iter()
+                    .map(|digest| (*digest, certificates.contains_key(digest)))
+                    .collect(),
+            }))
+        });
         let routes = anemo::Router::new().add_rpc_service(PrimaryToPrimaryServer::new(mock_server));
         primary_networks.push(primary.new_network(routes));
         println!("New primary added: {:?}", address);
 
         let address = address.to_anemo_address().unwrap();
         let peer_id = PeerId(primary.network_keypair().public().0.to_bytes());
-        network
-            .connect_with_peer_id(address, peer_id)
-            .await
-            .unwrap();
+        network.connect_with_peer_id(address, peer_id).await.unwrap();
     }
 
     // AND spin up the corresponding worker nodes
@@ -294,10 +276,7 @@ async fn test_successful_payload_synchronization() {
 
         let address = worker_address.to_anemo_address().unwrap();
         let peer_id = PeerId(worker_name.0.to_bytes());
-        network
-            .connect_with_peer_id(address, peer_id)
-            .await
-            .unwrap();
+        network.connect_with_peer_id(address, peer_id).await.unwrap();
     }
 
     // WHEN
@@ -384,11 +363,7 @@ async fn test_timeout_while_waiting_for_certificates() {
             let header = Header::V1(
                 author
                     .header_builder(&committee)
-                    .with_payload_batch(
-                        fixture_batch_with_transactions(10),
-                        0,
-                        0,
-                    )
+                    .with_payload_batch(fixture_batch_with_transactions(10), 0, 0)
                     .build()
                     .unwrap(),
             );
@@ -397,11 +372,7 @@ async fn test_timeout_while_waiting_for_certificates() {
         })
         .collect();
 
-    let own_address = committee
-        .primary_by_id(&id)
-        .unwrap()
-        .to_anemo_address()
-        .unwrap();
+    let own_address = committee.primary_by_id(&id).unwrap().to_anemo_address().unwrap();
     println!("New primary added: {:?}", own_address);
     let network = anemo::Network::bind(own_address)
         .server_name("narwhal")
@@ -495,11 +466,7 @@ async fn test_reply_with_certificates_already_in_storage() {
     let mut tx_shutdown = PreSubscribedBroadcastSender::new(NUM_SHUTDOWN_RECEIVERS);
     let (_, rx_block_synchronizer_commands) = lattice_test_utils::test_channel!(10);
 
-    let own_address = committee
-        .primary_by_id(&authority_id)
-        .unwrap()
-        .to_anemo_address()
-        .unwrap();
+    let own_address = committee.primary_by_id(&authority_id).unwrap().to_anemo_address().unwrap();
     let network = anemo::Network::bind(own_address)
         .server_name("narwhal")
         .private_key(network_key)
@@ -551,9 +518,8 @@ async fn test_reply_with_certificates_already_in_storage() {
     let (tx, mut rx) = mpsc::channel(10);
 
     // WHEN
-    let missing_certificates = synchronizer
-        .reply_with_certificates_already_in_storage(digests, tx)
-        .await;
+    let missing_certificates =
+        synchronizer.reply_with_certificates_already_in_storage(digests, tx).await;
 
     // THEN some missing certificates exist
     assert_eq!(
@@ -565,17 +531,11 @@ async fn test_reply_with_certificates_already_in_storage() {
     // TODO: duplicated in this file.
     // AND should have received all the block headers
     for _ in 0..8 - NUM_OF_MISSING_CERTIFICATES {
-        let result = timeout(Duration::from_secs(1), rx.recv())
-            .await
-            .unwrap()
-            .unwrap();
+        let result = timeout(Duration::from_secs(1), rx.recv()).await.unwrap().unwrap();
 
         let block_header = result.unwrap();
 
-        assert!(
-            block_header.fetched_from_storage,
-            "Should have been fetched from storage"
-        );
+        assert!(block_header.fetched_from_storage, "Should have been fetched from storage");
         assert!(
             certificates.contains_key(&block_header.certificate.digest()),
             "Not found expected certificate"
@@ -600,11 +560,7 @@ async fn test_reply_with_payload_already_in_storage() {
     let mut tx_shutdown = PreSubscribedBroadcastSender::new(NUM_SHUTDOWN_RECEIVERS);
     let (_, rx_block_synchronizer_commands) = lattice_test_utils::test_channel!(10);
 
-    let own_address = committee
-        .primary_by_id(&id)
-        .unwrap()
-        .to_anemo_address()
-        .unwrap();
+    let own_address = committee.primary_by_id(&id).unwrap().to_anemo_address().unwrap();
     let network = anemo::Network::bind(own_address)
         .server_name("narwhal")
         .private_key(network_key)
@@ -659,9 +615,8 @@ async fn test_reply_with_payload_already_in_storage() {
     let (tx, mut rx) = mpsc::channel(10);
 
     // WHEN
-    let missing_certificates = synchronizer
-        .reply_with_payload_already_in_storage(certificates, tx)
-        .await;
+    let missing_certificates =
+        synchronizer.reply_with_payload_already_in_storage(certificates, tx).await;
 
     // THEN some certificates with missing payload exist
     assert_eq!(
@@ -672,17 +627,11 @@ async fn test_reply_with_payload_already_in_storage() {
 
     // AND should have received all the block headers
     for _ in 0..8 - NUM_OF_CERTIFICATES_WITH_MISSING_PAYLOAD {
-        let result = timeout(Duration::from_secs(1), rx.recv())
-            .await
-            .unwrap()
-            .unwrap();
+        let result = timeout(Duration::from_secs(1), rx.recv()).await.unwrap().unwrap();
 
         let block_header = result.unwrap();
 
-        assert!(
-            block_header.fetched_from_storage,
-            "Should have been fetched from storage"
-        );
+        assert!(block_header.fetched_from_storage, "Should have been fetched from storage");
         assert!(
             certificates_map.contains_key(&block_header.certificate.digest()),
             "Not found expected certificate"
@@ -709,11 +658,7 @@ async fn test_reply_with_payload_already_in_storage_for_own_certificates() {
     let mut tx_shutdown = PreSubscribedBroadcastSender::new(NUM_SHUTDOWN_RECEIVERS);
     let (_, rx_block_synchronizer_commands) = lattice_test_utils::test_channel!(10);
 
-    let own_address = committee
-        .primary_by_id(&authority_id)
-        .unwrap()
-        .to_anemo_address()
-        .unwrap();
+    let own_address = committee.primary_by_id(&authority_id).unwrap().to_anemo_address().unwrap();
     let network = anemo::Network::bind(own_address)
         .server_name("narwhal")
         .private_key(network_key)
@@ -759,30 +704,19 @@ async fn test_reply_with_payload_already_in_storage_for_own_certificates() {
     let (tx, mut rx) = mpsc::channel(10);
 
     // WHEN
-    let missing_certificates = synchronizer
-        .reply_with_payload_already_in_storage(certificates, tx)
-        .await;
+    let missing_certificates =
+        synchronizer.reply_with_payload_already_in_storage(certificates, tx).await;
 
     // THEN no certificates with missing payload should exist
-    assert_eq!(
-        missing_certificates.len() as u32,
-        0,
-        "Didn't expect missing certificates"
-    );
+    assert_eq!(missing_certificates.len() as u32, 0, "Didn't expect missing certificates");
 
     // AND should have received all the block headers
     for _ in 0..5 {
-        let result = timeout(Duration::from_secs(1), rx.recv())
-            .await
-            .unwrap()
-            .unwrap();
+        let result = timeout(Duration::from_secs(1), rx.recv()).await.unwrap().unwrap();
 
         let block_header = result.unwrap();
 
-        assert!(
-            block_header.fetched_from_storage,
-            "Should have been fetched from storage"
-        );
+        assert!(block_header.fetched_from_storage, "Should have been fetched from storage");
         assert!(
             certificates_map.contains_key(&block_header.certificate.digest()),
             "Not found expected certificate"

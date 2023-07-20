@@ -1,11 +1,11 @@
+use crate::consensus::{crypto, VersionedMetadata};
+use consensus_util_mem::MallocSizeOf;
 use enum_dispatch::enum_dispatch;
 use fastcrypto::hash::{Digest, Hash, HashFunction};
-use consensus_util_mem::MallocSizeOf;
-use serde::{Deserialize, Serialize};
-use std::fmt;
-use crate::consensus::{crypto, VersionedMetadata};
 #[cfg(any(test, feature = "arbitrary"))]
 use proptest_derive::Arbitrary;
+use serde::{Deserialize, Serialize};
+use std::fmt;
 
 /// Type that batches contain.
 pub type Transaction = Vec<u8>;
@@ -20,7 +20,7 @@ pub enum Batch {
 
 impl Batch {
     /// Create a new batch for testing only!
-    /// 
+    ///
     /// This is not a valid batch for consensus. Metadata uses defaults.
     pub fn new(transactions: Vec<Transaction>) -> Self {
         Self::V1(BatchV1::new(transactions))
@@ -54,7 +54,7 @@ pub trait BatchAPI {
 }
 
 /// The batch version.
-/// 
+///
 /// akin to BatchV2 in sui
 #[cfg_attr(any(test, feature = "arbitrary"), derive(Arbitrary))]
 #[derive(Clone, Serialize, Deserialize, Debug, PartialEq, Eq)]
@@ -63,7 +63,7 @@ pub struct BatchV1 {
     pub transactions: Vec<Transaction>,
 
     /// Metadata for batch.
-    /// 
+    ///
     /// This field is not included as part of the batch digest
     pub versioned_metadata: VersionedMetadata,
 }
@@ -110,17 +110,7 @@ impl BatchV1 {
 
 #[cfg_attr(any(test, feature = "arbitrary"), derive(Arbitrary))]
 #[derive(
-    Clone,
-    Copy,
-    Serialize,
-    Deserialize,
-    Default,
-    PartialEq,
-    Eq,
-    Hash,
-    PartialOrd,
-    Ord,
-    MallocSizeOf,
+    Clone, Copy, Serialize, Deserialize, Default, PartialEq, Eq, Hash, PartialOrd, Ord, MallocSizeOf,
 )]
 pub struct BatchDigest(pub [u8; crypto::DIGEST_LENGTH]);
 
@@ -132,11 +122,7 @@ impl fmt::Debug for BatchDigest {
 
 impl fmt::Display for BatchDigest {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> Result<(), fmt::Error> {
-        write!(
-            f,
-            "{}",
-            base64::encode(self.0).get(0..16).ok_or(fmt::Error)?
-        )
+        write!(f, "{}", base64::encode(self.0).get(0..16).ok_or(fmt::Error)?)
     }
 }
 

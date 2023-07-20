@@ -1,39 +1,36 @@
 // Copyright (c) Telcoin, LLC
 // Copyright (c) Mysten Labs, Inc.
 // SPDX-License-Identifier: Apache-2.0
-use crate::primary::NUM_SHUTDOWN_RECEIVERS;
 use crate::{
-    certificate_fetcher::CertificateFetcher, metrics::PrimaryMetrics, synchronizer::Synchronizer,
-    PrimaryChannelMetrics,
+    certificate_fetcher::CertificateFetcher, metrics::PrimaryMetrics,
+    primary::NUM_SHUTDOWN_RECEIVERS, synchronizer::Synchronizer, PrimaryChannelMetrics,
 };
 use anemo::async_trait;
 use anyhow::Result;
-use tn_types::consensus::config::{AuthorityIdentifier, Epoch, WorkerId};
 use fastcrypto::{hash::Hash, traits::KeyPair};
 use indexmap::IndexMap;
 use itertools::Itertools;
+use lattice_consensus::consensus::ConsensusRound;
 use lattice_network::client::NetworkClient;
+use lattice_storage::{CertificateStore, NodeStorage};
+use lattice_test_utils::{temp_dir, CommitteeFixture};
 use once_cell::sync::OnceCell;
 use prometheus::Registry;
 use std::{collections::BTreeSet, sync::Arc, time::Duration};
-use lattice_storage::CertificateStore;
-use lattice_storage::NodeStorage;
-use tokio::sync::oneshot;
-use lattice_consensus::consensus::ConsensusRound;
-use lattice_test_utils::{temp_dir, CommitteeFixture};
-use tokio::{
-    sync::{
-        mpsc::{self, error::TryRecvError, Receiver, Sender},
-        watch, Mutex,
-    },
-    time::sleep,
-};
 use tn_types::consensus::{
+    config::{AuthorityIdentifier, Epoch, WorkerId},
     BatchDigest, Certificate, CertificateAPI, CertificateDigest, FetchCertificatesRequest,
     FetchCertificatesResponse, GetCertificatesRequest, GetCertificatesResponse, Header, HeaderAPI,
     HeaderDigest, PayloadAvailabilityRequest, PayloadAvailabilityResponse,
     PreSubscribedBroadcastSender, PrimaryToPrimary, PrimaryToPrimaryServer, RequestVoteRequest,
     RequestVoteResponse, Round, SendCertificateRequest, SendCertificateResponse,
+};
+use tokio::{
+    sync::{
+        mpsc::{self, error::TryRecvError, Receiver, Sender},
+        oneshot, watch, Mutex,
+    },
+    time::sleep,
 };
 
 pub struct NetworkProxy {
@@ -72,9 +69,7 @@ impl PrimaryToPrimary for NetworkProxy {
             .send(request.into_body())
             .await
             .map_err(|e| anemo::rpc::Status::from_error(Box::new(e)))?;
-        Ok(anemo::Response::new(
-            self.response.lock().await.recv().await.unwrap(),
-        ))
+        Ok(anemo::Response::new(self.response.lock().await.recv().await.unwrap()))
     }
 
     async fn get_payload_availability(
@@ -94,13 +89,13 @@ async fn verify_certificates_in_store(
         missing = None;
         for (i, _) in certificates.iter().enumerate() {
             if let Ok(Some(_)) = certificate_store.read(certificates[i].digest()) {
-                continue;
+                continue
             }
             missing = Some(i);
-            break;
+            break
         }
         if missing.is_none() {
-            break;
+            break
         }
         sleep(Duration::from_secs(1)).await;
     }
@@ -126,7 +121,8 @@ fn verify_certificates_not_in_store(
 }
 
 // Used below to construct malformed Headers
-// Note: this should always mimic the Header struct, only changing the visibility of the id field to public
+// Note: this should always mimic the Header struct, only changing the visibility of the id field to
+// public
 #[allow(dead_code)]
 struct BadHeader {
     pub author: AuthorityIdentifier,
@@ -201,7 +197,8 @@ async fn fetch_certificates_basic() {
         .private_key(fake_primary.network_keypair().copy().private().0.to_bytes())
         .start(fake_route)
         .unwrap();
-    let client_network = lattice_test_utils::test_network(primary.network_keypair(), primary.address());
+    let client_network =
+        lattice_test_utils::test_network(primary.network_keypair(), primary.address());
     client_network
         .connect_with_peer_id(fake_primary_addr, fake_server_network.peer_id())
         .await
@@ -223,22 +220,16 @@ async fn fetch_certificates_basic() {
     // Generate headers and certificates in successive rounds
     let genesis_certs: Vec<_> = Certificate::genesis(&fixture.committee());
     for cert in genesis_certs.iter() {
-        certificate_store
-            .write(cert.clone())
-            .expect("Writing certificate to store failed");
+        certificate_store.write(cert.clone()).expect("Writing certificate to store failed");
     }
 
-    let mut current_round: Vec<_> = genesis_certs
-        .into_iter()
-        .map(|cert| cert.header().clone())
-        .collect();
+    let mut current_round: Vec<_> =
+        genesis_certs.into_iter().map(|cert| cert.header().clone()).collect();
     let mut headers = vec![];
     let rounds = 60;
     for i in 0..rounds {
-        let parents: BTreeSet<_> = current_round
-            .into_iter()
-            .map(|header| fixture.certificate(&header).digest())
-            .collect();
+        let parents: BTreeSet<_> =
+            current_round.into_iter().map(|header| fixture.certificate(&header).digest()).collect();
         (_, current_round) = fixture.headers_round(i, &parents);
         headers.extend(current_round.clone());
     }
@@ -258,13 +249,12 @@ async fn fetch_certificates_basic() {
     assert_eq!(240, total_certificates);
 
     for cert in certificates.iter().take(4) {
-        certificate_store
-            .write(cert.clone())
-            .expect("Writing certificate to store failed");
+        certificate_store.write(cert.clone()).expect("Writing certificate to store failed");
     }
     let mut num_written = 4;
 
-    // Send a primary message for a certificate with parents that do not exist locally, to trigger fetching.
+    // Send a primary message for a certificate with parents that do not exist locally, to trigger
+    // fetching.
     let target_index = 123;
     assert!(!synchronizer
         .get_missing_parents(&certificates[target_index].clone())
@@ -301,18 +291,20 @@ async fn fetch_certificates_basic() {
     .await;
     num_written += first_batch_len;
 
-    // The certificate fetcher should send out another fetch request, because it has not received certificate 123.
+    // The certificate fetcher should send out another fetch request, because it has not received
+    // certificate 123.
     loop {
         match rx_fetch_req.recv().await {
             Some(r) => {
                 let (_, skip_rounds) = r.get_bounds();
                 if skip_rounds.values().next().unwrap().len() == 1 {
-                    // Drain the fetch requests sent out before the last reply, when only 1 round in skip_rounds.
+                    // Drain the fetch requests sent out before the last reply, when only 1 round in
+                    // skip_rounds.
                     tx_fetch_resp.try_send(first_batch_resp.clone()).unwrap();
-                    continue;
+                    continue
                 }
                 req = r;
-                break;
+                break
             }
             None => panic!("Unexpected channel closing!"),
         }
@@ -354,7 +346,7 @@ async fn fetch_certificates_basic() {
                 if first_num_skip_rounds == 16 || first_num_skip_rounds == 17 {
                     // Drain the fetch requests sent out before the last reply.
                     tx_fetch_resp.try_send(second_batch_resp.clone()).unwrap();
-                    continue;
+                    continue
                 }
                 panic!("No more fetch request is expected! {:#?}", r);
             }
@@ -379,11 +371,7 @@ async fn fetch_certificates_basic() {
     certs.push(cert);
     // Add cert without all parents in storage.
     certs.push(certificates[num_written + 1].clone());
-    tx_fetch_resp
-        .try_send(FetchCertificatesResponse {
-            certificates: certs,
-        })
-        .unwrap();
+    tx_fetch_resp.try_send(FetchCertificatesResponse { certificates: certs }).unwrap();
 
     // Verify no certificate is written to store.
     sleep(Duration::from_secs(5)).await;

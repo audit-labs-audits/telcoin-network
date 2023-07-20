@@ -31,19 +31,19 @@ macro_rules! delegate_provider_impls {
         $crate::providers::state::macros::delegate_impls_to_as_ref!(
             for $target =>
             StateRootProvider $(where [$($generics)*])? {
-                fn state_root(&self, state: crate::PostState) -> execution_interfaces::Result<execution_primitives::H256>;
+                fn state_root(&self, state: crate::PostState) -> execution_interfaces::Result<tn_types::execution::H256>;
             }
             AccountReader $(where [$($generics)*])? {
-                fn basic_account(&self, address: execution_primitives::Address) -> execution_interfaces::Result<Option<execution_primitives::Account>>;
+                fn basic_account(&self, address: tn_types::execution::Address) -> execution_interfaces::Result<Option<tn_types::execution::Account>>;
             }
             BlockHashReader $(where [$($generics)*])? {
-                fn block_hash(&self, number: u64) -> execution_interfaces::Result<Option<execution_primitives::H256>>;
-                fn canonical_hashes_range(&self, start: execution_primitives::BlockNumber, end: execution_primitives::BlockNumber) -> execution_interfaces::Result<Vec<execution_primitives::H256>>;
+                fn block_hash(&self, number: u64) -> execution_interfaces::Result<Option<tn_types::execution::H256>>;
+                fn canonical_hashes_range(&self, start: tn_types::execution::BlockNumber, end: tn_types::execution::BlockNumber) -> execution_interfaces::Result<Vec<tn_types::execution::H256>>;
             }
             StateProvider $(where [$($generics)*])?{
-                fn storage(&self, account: execution_primitives::Address, storage_key: execution_primitives::StorageKey) -> execution_interfaces::Result<Option<execution_primitives::StorageValue>>;
-                fn proof(&self, address: execution_primitives::Address, keys: &[execution_primitives::H256]) -> execution_interfaces::Result<(Vec<execution_primitives::Bytes>, execution_primitives::H256, Vec<Vec<execution_primitives::Bytes>>)>;
-                fn bytecode_by_hash(&self, code_hash: execution_primitives::H256) -> execution_interfaces::Result<Option<execution_primitives::Bytecode>>;
+                fn storage(&self, account: tn_types::execution::Address, storage_key: tn_types::execution::StorageKey) -> execution_interfaces::Result<Option<tn_types::execution::StorageValue>>;
+                fn proof(&self, address: tn_types::execution::Address, keys: &[tn_types::execution::H256]) -> execution_interfaces::Result<(Vec<tn_types::execution::Bytes>, tn_types::execution::H256, Vec<Vec<tn_types::execution::Bytes>>)>;
+                fn bytecode_by_hash(&self, code_hash: tn_types::execution::H256) -> execution_interfaces::Result<Option<tn_types::execution::Bytecode>>;
             }
         );
     }

@@ -4,10 +4,10 @@ use crate::{
     engine::message::OnForkChoiceUpdated, BeaconConsensusEngineEvent, BeaconEngineMessage,
     BeaconForkChoiceUpdateError, BeaconOnNewPayloadError,
 };
-use futures::TryFutureExt;
 use execution_rpc_types::engine::{
     ExecutionPayload, ForkchoiceState, ForkchoiceUpdated, PayloadAttributes, PayloadStatus,
 };
+use futures::TryFutureExt;
 use tokio::sync::{mpsc, mpsc::UnboundedSender, oneshot};
 use tokio_stream::wrappers::UnboundedReceiverStream;
 

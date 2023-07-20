@@ -1,4 +1,4 @@
-use crate::execution ::{constants::GWEI_TO_WEI, serde_helper::u64_hex, Address, U256};
+use crate::execution::{constants::GWEI_TO_WEI, serde_helper::u64_hex, Address, U256};
 use execution_codecs::{main_codec, Compact};
 use execution_rlp::{RlpDecodable, RlpEncodable};
 

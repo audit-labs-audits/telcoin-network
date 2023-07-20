@@ -4,7 +4,7 @@ use execution_db::{
     cursor::{DbCursorRO, DbDupCursorRO},
     tables, DatabaseError,
 };
-use execution_primitives::{
+use tn_types::execution::{
     trie::{BranchNodeCompact, StoredNibblesSubKey},
     H256,
 };
@@ -60,11 +60,11 @@ mod tests {
     use execution_db::{
         cursor::DbCursorRW, tables, test_utils::create_test_rw_db, transaction::DbTxMut,
     };
-    use execution_primitives::{
+    use execution_provider::ProviderFactory;
+    use tn_types::execution::{
         trie::{BranchNodeCompact, StorageTrieEntry},
         MAINNET,
     };
-    use execution_provider::ProviderFactory;
 
     // tests that upsert and seek match on the storagetrie cursor
     #[test]

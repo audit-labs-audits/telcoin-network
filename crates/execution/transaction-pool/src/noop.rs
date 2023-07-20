@@ -9,8 +9,8 @@ use crate::{
     PropagatedTransactions, TransactionEvents, TransactionOrigin, TransactionPool,
     TransactionValidationOutcome, TransactionValidator, ValidPoolTransaction,
 };
-use execution_primitives::{Address, TxHash};
 use std::{marker::PhantomData, sync::Arc};
+use tn_types::execution::{Address, TxHash};
 use tokio::sync::{mpsc, mpsc::Receiver};
 
 /// A [`TransactionPool`] implementation that does nothing.

@@ -12,7 +12,7 @@ pub async fn run(
         Ok((network, peer)) => (network, peer),
         Err(e) => {
             println!("connection error: {e:?}");
-            return;
+            return
         }
     };
     let peer_id = peer.peer_id();

@@ -1,8 +1,8 @@
 use crate::{post_state::PostState, BlockExecutor, ExecutorFactory, StateProvider};
-use parking_lot::Mutex;
 use execution_interfaces::executor::BlockExecutionError;
-use execution_primitives::{Address, Block, ChainSpec, U256};
+use parking_lot::Mutex;
 use std::sync::Arc;
+use tn_types::execution::{Address, Block, ChainSpec, U256};
 /// Test executor with mocked result.
 pub struct TestExecutor(pub Option<PostState>);
 

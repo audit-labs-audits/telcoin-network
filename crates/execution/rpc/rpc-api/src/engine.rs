@@ -1,5 +1,3 @@
-use jsonrpsee::{core::RpcResult, proc_macros::rpc};
-use execution_primitives::{Address, BlockHash, BlockId, BlockNumberOrTag, Bytes, H256, U256, U64};
 use execution_rpc_types::{
     engine::{
         ExecutionPayload, ExecutionPayloadBodies, ExecutionPayloadEnvelope, ForkchoiceState,
@@ -8,6 +6,8 @@ use execution_rpc_types::{
     state::StateOverride,
     BlockOverrides, CallRequest, Filter, Log, RichBlock, SyncStatus,
 };
+use jsonrpsee::{core::RpcResult, proc_macros::rpc};
+use tn_types::execution::{Address, BlockHash, BlockId, BlockNumberOrTag, Bytes, H256, U256, U64};
 
 #[cfg_attr(not(feature = "client"), rpc(server, namespace = "engine"))]
 #[cfg_attr(feature = "client", rpc(server, client, namespace = "engine"))]

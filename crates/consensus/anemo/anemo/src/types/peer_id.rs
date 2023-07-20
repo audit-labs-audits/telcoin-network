@@ -44,9 +44,7 @@ impl<'de> serde::Deserialize<'de> for PeerId {
         if deserializer.is_human_readable() {
             let s = <String>::deserialize(deserializer)?;
 
-            hex::FromHex::from_hex(s)
-                .map_err(D::Error::custom)
-                .map(Self)
+            hex::FromHex::from_hex(s).map_err(D::Error::custom).map(Self)
         } else {
             <[u8; PEER_ID_LENGTH]>::deserialize(deserializer).map(Self)
         }

@@ -1,13 +1,13 @@
 use async_trait::async_trait;
-use jsonrpsee::core::RpcResult as Result;
-use execution_primitives::{Address, U256, U64};
 use execution_rpc_api::TxPoolApiServer;
 use execution_rpc_types::{
     txpool::{TxpoolContent, TxpoolContentFrom, TxpoolInspect, TxpoolInspectSummary, TxpoolStatus},
     Transaction,
 };
 use execution_transaction_pool::{AllPoolTransactions, PoolTransaction, TransactionPool};
+use jsonrpsee::core::RpcResult as Result;
 use std::collections::BTreeMap;
+use tn_types::execution::{Address, U256, U64};
 use tracing::trace;
 
 /// `txpool` API implementation.

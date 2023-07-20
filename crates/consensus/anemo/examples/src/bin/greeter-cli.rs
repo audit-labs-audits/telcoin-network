@@ -8,10 +8,8 @@ mod greeter {
 async fn main() {
     let config = anemo_cli::Config::new().add_service(
         "Greeter",
-        anemo_cli::ServiceInfo::new().add_method(
-            "SayHello",
-            anemo_cli::ron_method!(GreeterClient, say_hello, HelloRequest),
-        ),
+        anemo_cli::ServiceInfo::new()
+            .add_method("SayHello", anemo_cli::ron_method!(GreeterClient, say_hello, HelloRequest)),
     );
 
     anemo_cli::main(config).await;

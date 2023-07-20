@@ -1,23 +1,24 @@
 // Copyright (c) Telcoin, LLC
 // Copyright (c) Mysten Labs, Inc.
 // SPDX-License-Identifier: Apache-2.0
-use crate::traits::{PrimaryToPrimaryRpc, PrimaryToWorkerRpc, WorkerRpc};
 use crate::{
-    traits::{ReliableNetwork, UnreliableNetwork},
+    traits::{
+        PrimaryToPrimaryRpc, PrimaryToWorkerRpc, ReliableNetwork, UnreliableNetwork, WorkerRpc,
+    },
     CancelOnDropHandler, RetryConfig,
 };
 use anemo::PeerId;
-use anyhow::format_err;
-use anyhow::Result;
+use anyhow::{format_err, Result};
 use async_trait::async_trait;
 use std::time::Duration;
-use tokio::task::JoinHandle;
 use tn_types::consensus::{
-    Batch, BatchDigest, FetchCertificatesRequest, FetchCertificatesResponse,
-    GetCertificatesRequest, GetCertificatesResponse, PrimaryToPrimaryClient, PrimaryToWorkerClient,
-    RequestBatchRequest, RequestBatchesRequest, RequestBatchesResponse, WorkerBatchMessage,
-    WorkerDeleteBatchesMessage, WorkerSynchronizeMessage, WorkerToWorkerClient, crypto::NetworkPublicKey,
+    crypto::NetworkPublicKey, Batch, BatchDigest, FetchCertificatesRequest,
+    FetchCertificatesResponse, GetCertificatesRequest, GetCertificatesResponse,
+    PrimaryToPrimaryClient, PrimaryToWorkerClient, RequestBatchRequest, RequestBatchesRequest,
+    RequestBatchesResponse, WorkerBatchMessage, WorkerDeleteBatchesMessage,
+    WorkerSynchronizeMessage, WorkerToWorkerClient,
 };
+use tokio::task::JoinHandle;
 
 fn unreliable_send<F, R, Fut>(
     network: &anemo::Network,
@@ -34,11 +35,7 @@ where
         anemo::Error::msg(format!("Network has no connection with peer {peer_id}"))
     })?;
 
-    Ok(tokio::spawn(async move {
-        f(peer)
-            .await
-            .map_err(|e| anyhow::anyhow!("RPC error: {e:?}"))
-    }))
+    Ok(tokio::spawn(async move { f(peer).await.map_err(|e| anyhow::anyhow!("RPC error: {e:?}")) }))
 }
 
 fn send<F, R, Fut>(
@@ -67,9 +64,7 @@ where
                     backoff::Error::transient(anyhow::anyhow!("RPC error: {e:?}"))
                 })
             } else {
-                Err(backoff::Error::transient(anyhow::anyhow!(
-                    "not connected to peer {peer_id}"
-                )))
+                Err(backoff::Error::transient(anyhow::anyhow!("not connected to peer {peer_id}")))
             }
         }
     };

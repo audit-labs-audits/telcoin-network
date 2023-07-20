@@ -1,6 +1,6 @@
 use crate::{traits::PropagateKind, PoolTransaction, ValidPoolTransaction};
-use execution_primitives::{TxHash, H256};
 use std::sync::Arc;
+use tn_types::execution::{TxHash, H256};
 
 #[cfg(feature = "serde")]
 use serde::{Deserialize, Serialize};

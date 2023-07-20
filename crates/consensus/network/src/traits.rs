@@ -4,14 +4,13 @@
 use crate::CancelOnDropHandler;
 use anyhow::Result;
 use async_trait::async_trait;
-use tokio::task::JoinHandle;
 use tn_types::consensus::{
-    error::LocalClientError, Batch, BatchDigest, FetchBatchesRequest, FetchBatchesResponse,
-    FetchCertificatesRequest, FetchCertificatesResponse, GetCertificatesRequest,
-    GetCertificatesResponse, RequestBatchesRequest, RequestBatchesResponse,
-    WorkerOthersBatchMessage, WorkerOwnBatchMessage,
-    WorkerSynchronizeMessage, crypto::NetworkPublicKey,
+    crypto::NetworkPublicKey, error::LocalClientError, Batch, BatchDigest, FetchBatchesRequest,
+    FetchBatchesResponse, FetchCertificatesRequest, FetchCertificatesResponse,
+    GetCertificatesRequest, GetCertificatesResponse, RequestBatchesRequest, RequestBatchesResponse,
+    WorkerOthersBatchMessage, WorkerOwnBatchMessage, WorkerSynchronizeMessage,
 };
+use tokio::task::JoinHandle;
 
 pub trait UnreliableNetwork<Request: Clone + Send + Sync> {
     type Response: Clone + Send + Sync;

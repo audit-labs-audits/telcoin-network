@@ -9,8 +9,8 @@ use crate::{
 };
 use bytes::Buf;
 use execution_codecs::{derive_arbitrary, Compact};
-use execution_primitives::{Account, Address, BlockNumber};
 use serde::{Deserialize, Serialize};
+use tn_types::execution::{Account, Address, BlockNumber};
 
 /// Account as it is saved inside [`AccountChangeSet`][crate::tables::AccountChangeSet].
 ///

@@ -5,19 +5,19 @@ use crate::{
     StateProvider, StateProviderBox, StateProviderFactory, StateRootProvider, TransactionsProvider,
     WithdrawalsProvider,
 };
-use parking_lot::Mutex;
 use execution_db::models::StoredBlockBodyIndices;
 use execution_interfaces::{provider::ProviderError, Result};
-use execution_primitives::{
-    keccak256, Account, Address, Block, BlockHash, BlockHashOrNumber, BlockId, BlockNumber,
-    BlockWithSenders, Bytecode, Bytes, ChainInfo, Header, Receipt, SealedBlock, SealedHeader,
-    StorageKey, StorageValue, TransactionMeta, TransactionSigned, TxHash, TxNumber, H256, U256,
-};
 use execution_revm_primitives::primitives::{BlockEnv, CfgEnv};
+use parking_lot::Mutex;
 use std::{
     collections::{BTreeMap, HashMap},
     ops::RangeBounds,
     sync::Arc,
+};
+use tn_types::execution::{
+    keccak256, Account, Address, Block, BlockHash, BlockHashOrNumber, BlockId, BlockNumber,
+    BlockWithSenders, Bytecode, Bytes, ChainInfo, Header, Receipt, SealedBlock, SealedHeader,
+    StorageKey, StorageValue, TransactionMeta, TransactionSigned, TxHash, TxNumber, H256, U256,
 };
 
 /// A mock implementation for Provider interfaces.
@@ -196,7 +196,7 @@ impl TransactionsProvider for MockEthProvider {
 
     fn transactions_by_block_range(
         &self,
-        range: impl RangeBounds<execution_primitives::BlockNumber>,
+        range: impl RangeBounds<tn_types::execution::BlockNumber>,
     ) -> Result<Vec<Vec<TransactionSigned>>> {
         // init btreemap so we can return in order
         let mut map = BTreeMap::new();
@@ -212,7 +212,7 @@ impl TransactionsProvider for MockEthProvider {
     fn transactions_by_tx_range(
         &self,
         _range: impl RangeBounds<TxNumber>,
-    ) -> Result<Vec<execution_primitives::TransactionSignedNoHash>> {
+    ) -> Result<Vec<tn_types::execution::TransactionSignedNoHash>> {
         unimplemented!()
     }
 
@@ -286,7 +286,7 @@ impl BlockNumReader for MockEthProvider {
         self.best_block_number()
     }
 
-    fn block_number(&self, hash: H256) -> Result<Option<execution_primitives::BlockNumber>> {
+    fn block_number(&self, hash: H256) -> Result<Option<tn_types::execution::BlockNumber>> {
         let lock = self.blocks.lock();
         let num = lock.iter().find_map(|(h, b)| (*h == hash).then_some(b.number));
         Ok(num)
@@ -294,15 +294,15 @@ impl BlockNumReader for MockEthProvider {
 }
 
 impl BlockIdReader for MockEthProvider {
-    fn pending_block_num_hash(&self) -> Result<Option<execution_primitives::BlockNumHash>> {
+    fn pending_block_num_hash(&self) -> Result<Option<tn_types::execution::BlockNumHash>> {
         Ok(None)
     }
 
-    fn safe_block_num_hash(&self) -> Result<Option<execution_primitives::BlockNumHash>> {
+    fn safe_block_num_hash(&self) -> Result<Option<tn_types::execution::BlockNumHash>> {
         Ok(None)
     }
 
-    fn finalized_block_num_hash(&self) -> Result<Option<execution_primitives::BlockNumHash>> {
+    fn finalized_block_num_hash(&self) -> Result<Option<tn_types::execution::BlockNumHash>> {
         Ok(None)
     }
 }
@@ -514,14 +514,14 @@ impl StateProviderFactory for Arc<MockEthProvider> {
 }
 
 impl WithdrawalsProvider for MockEthProvider {
-    fn latest_withdrawal(&self) -> Result<Option<execution_primitives::Withdrawal>> {
+    fn latest_withdrawal(&self) -> Result<Option<tn_types::execution::Withdrawal>> {
         unimplemented!()
     }
     fn withdrawals_by_block(
         &self,
         _id: BlockHashOrNumber,
         _timestamp: u64,
-    ) -> Result<Option<Vec<execution_primitives::Withdrawal>>> {
+    ) -> Result<Option<Vec<tn_types::execution::Withdrawal>>> {
         unimplemented!()
     }
 }

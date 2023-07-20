@@ -1,4 +1,4 @@
-use crate::execution ::{
+use crate::execution::{
     keccak256,
     proofs::{KeccakHasher, EMPTY_ROOT},
     serde_helper::{deserialize_json_u256, deserialize_json_u256_opt, deserialize_storage_map},
@@ -506,7 +506,7 @@ mod ethers_compat {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::execution ::{Address, Bytes, U256};
+    use crate::execution::{Address, Bytes, U256};
     use hex_literal::hex;
     use std::{collections::HashMap, str::FromStr};
 

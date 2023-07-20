@@ -1,12 +1,14 @@
-use execution_primitives::{
-    constants::{MAXIMUM_EXTRA_DATA_SIZE, MIN_PROTOCOL_BASE_FEE_U256},
-    proofs::{self, EMPTY_LIST_HASH},
-    Address, Block, Bloom, Bytes, Header, SealedBlock, TransactionSigned, UintTryTo, Withdrawal,
-    H256, H64, U256, U64,
-};
 use execution_rlp::Decodable;
 use serde::{ser::SerializeMap, Deserialize, Serialize, Serializer};
-use tn_types::consensus::{Batch, BatchAPI, MetadataAPI, BatchV1, VersionedMetadata, MetadataV1};
+use tn_types::{
+    consensus::{Batch, BatchAPI, BatchV1, MetadataAPI, MetadataV1, VersionedMetadata},
+    execution::{
+        constants::{MAXIMUM_EXTRA_DATA_SIZE, MIN_PROTOCOL_BASE_FEE_U256},
+        proofs::{self, EMPTY_LIST_HASH},
+        Address, Block, Bloom, Bytes, Header, SealedBlock, TransactionSigned, UintTryTo,
+        Withdrawal, H256, H64, U256, U64,
+    },
+};
 
 /// The execution payload body response that allows for `null` values.
 pub type ExecutionPayloadBodies = Vec<Option<ExecutionPayloadBody>>;
@@ -87,11 +89,7 @@ pub struct ExecutionPayload {
 impl From<Batch> for ExecutionPayload {
     fn from(batch: Batch) -> Self {
         // TODO: use Bytes in CL
-        let transactions = batch
-            .owned_transactions()
-            .into_iter()
-            .map(|tx| tx.into())
-            .collect();
+        let transactions = batch.owned_transactions().into_iter().map(|tx| tx.into()).collect();
 
         let value = batch.versioned_metadata();
 
@@ -118,36 +116,28 @@ impl From<Batch> for ExecutionPayload {
 impl From<ExecutionPayload> for Batch {
     fn from(payload: ExecutionPayload) -> Self {
         // TODO: use Bytes in CL
-        let transactions = payload
-            .transactions
-            .into_iter()
-            .map(|tx| tx.to_vec())
-            .collect();
+        let transactions = payload.transactions.into_iter().map(|tx| tx.to_vec()).collect();
 
-        Batch::V1(
-            BatchV1 {
-                transactions,
-                versioned_metadata: VersionedMetadata::V1(
-                    MetadataV1 {
-                        created_at: payload.timestamp.as_u64(),
-                        received_at: None,
-                        parent_hash: payload.parent_hash,
-                        fee_recipient: payload.fee_recipient,
-                        state_root: payload.state_root,
-                        receipts_root: payload.receipts_root,
-                        logs_bloom: payload.logs_bloom,
-                        prev_randao: payload.prev_randao,
-                        block_number: payload.block_number.as_u64(),
-                        gas_limit: payload.gas_limit.as_u64(),
-                        gas_used: payload.gas_used.as_u64(),
-                        extra_data: payload.extra_data,
-                        base_fee_per_gas: payload.base_fee_per_gas,
-                        block_hash: payload.block_hash,
-                        withdrawals: payload.withdrawals,
-                    }
-                ),
-            }
-        )
+        Batch::V1(BatchV1 {
+            transactions,
+            versioned_metadata: VersionedMetadata::V1(MetadataV1 {
+                created_at: payload.timestamp.as_u64(),
+                received_at: None,
+                parent_hash: payload.parent_hash,
+                fee_recipient: payload.fee_recipient,
+                state_root: payload.state_root,
+                receipts_root: payload.receipts_root,
+                logs_bloom: payload.logs_bloom,
+                prev_randao: payload.prev_randao,
+                block_number: payload.block_number.as_u64(),
+                gas_limit: payload.gas_limit.as_u64(),
+                gas_used: payload.gas_used.as_u64(),
+                extra_data: payload.extra_data,
+                base_fee_per_gas: payload.base_fee_per_gas,
+                block_hash: payload.block_hash,
+                withdrawals: payload.withdrawals,
+            }),
+        })
     }
 }
 
@@ -497,11 +487,11 @@ mod tests {
     use execution_interfaces::test_utils::generators::{
         self, random_block, random_block_range, random_header,
     };
-    use execution_primitives::{
+    use execution_rlp::{Decodable, DecodeError};
+    use tn_types::execution::{
         bytes::{Bytes, BytesMut},
         TransactionSigned, H256,
     };
-    use execution_rlp::{Decodable, DecodeError};
 
     fn transform_block<F: FnOnce(Block) -> Block>(src: SealedBlock, f: F) -> ExecutionPayload {
         let unsealed = src.unseal();

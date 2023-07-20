@@ -11,9 +11,9 @@
 use bytes::BytesMut;
 use criterion::{criterion_group, criterion_main, Criterion};
 use ethnum::*;
+use execution_rlp::*;
 use hex_literal::hex;
 use pprof::criterion::{Output, PProfProfiler};
-use execution_rlp::*;
 
 fn bench_encode(c: &mut Criterion) {
     c.bench_function("encode_u64", |b| {

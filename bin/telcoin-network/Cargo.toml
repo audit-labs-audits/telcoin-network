@@ -1,6 +1,6 @@
 [package]
 name = "telcoin-network"
-version = "0.1.0"
+version.workspace = true
 edition = "2021"
 license = "MIT OR Apache-2.0"
 repository = "https://github.com/telcoin/lattice"
@@ -13,9 +13,9 @@ clap = { version = "4.0", features = ["derive", "cargo"] }
 thiserror = "1.0"
 tokio = { version = "1.26", features = ["sync", "macros", "rt-multi-thread"] }
 hex-literal = "0.3"
-#lattice-tracing = { version = "0.1", path = "../../crates/common/tracing" }
 tracing = { workspace = true }
-#lattice-config = { version = "0.1", path = "../../crates/core/lattice-config" }
+tracing-subscriber = { workspace = true }
+tn-tracing = { workspace = true }
 futures = "0.3"
 tempfile = "3.3.0"
 tokio-util = { workspace = true }
@@ -26,26 +26,28 @@ humantime = "2.1.0"
 jsonrpsee-server = { version = "0.16"}
 
 # execution
-tn-types = { path = "../../crates/execution/primitives", features = ["arbitrary"]}
-execution-provider = { path = "../../crates/execution/storage/provider", features = ["test-utils"] }
-execution-tasks = { path = "../../crates/execution/tasks" }
-execution-rpc = { path = "../../crates/execution/rpc/rpc" }
-execution-rpc-builder = { path = "../../crates/execution/rpc/rpc-builder" }
-execution-rpc-engine-api = { path = "../../crates/execution/rpc/rpc-engine-api" }
-execution-transaction-pool = { path = "../../crates/execution/transaction-pool" }
-execution-network-api = { path = "../../crates/execution/net/network-api" }
-execution-lattice-consensus = { path = "../../crates/execution/consensus/lattice" }
-#execution-beacon-consensus = { path = "../../crates/execution/consensus/beacon" }
-execution-blockchain-tree = { path = "../../crates/execution/blockchain-tree" }
-execution-revm = { path = "../../crates/execution/revm" }
-execution-basic-payload-builder = { path = "../../crates/execution/payload/basic" }
-execution-payload-builder = { path = "../../crates/execution/payload/builder" }
-execution-rlp = { path = "../../crates/execution/rlp" }
-execution-stages = { path = "../../crates/execution/stages" }
-execution-interfaces = { path = "../../crates/execution/interfaces" }
-execution-downloaders = { path = "../../crates/execution/net/downloaders" }
-execution-revm-inspectors = { path = "../../crates/execution/revm/revm-inspectors" }
-execution-network = { path = "../../crates/execution/net/network" }
+tn-types.workspace = true
+execution-provider.workspace = true
+execution-tasks.workspace = true
+execution-rpc.workspace = true
+execution-rpc-builder.workspace = true
+execution-rpc-engine-api.workspace = true
+execution-transaction-pool.workspace = true
+execution-network-api.workspace = true
+execution-lattice-consensus.workspace = true
+#execution-beacon-consensus.workspace = true
+execution-blockchain-tree.workspace = true
+execution-revm.workspace = true
+execution-basic-payload-builder.workspace = true
+execution-payload-builder.workspace = true
+execution-rlp.workspace = true
+execution-stages.workspace = true
+execution-interfaces.workspace = true
+execution-revm-inspectors.workspace = true
+execution-network.workspace = true
+execution-config.workspace = true
+execution-downloaders.workspace = true
+execution-db.workspace = true
 
 # io
 confy = "0.5"

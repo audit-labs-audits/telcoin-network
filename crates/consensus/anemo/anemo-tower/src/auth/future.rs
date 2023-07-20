@@ -19,17 +19,11 @@ pin_project! {
 
 impl<F> ResponseFuture<F> {
     pub(super) fn future(future: F) -> Self {
-        Self {
-            kind: Kind::Future { future },
-        }
+        Self { kind: Kind::Future { future } }
     }
 
     pub(super) fn invalid_auth(response: Response<Bytes>) -> Self {
-        Self {
-            kind: Kind::Error {
-                response: Some(response),
-            },
-        }
+        Self { kind: Kind::Error { response: Some(response) } }
     }
 }
 

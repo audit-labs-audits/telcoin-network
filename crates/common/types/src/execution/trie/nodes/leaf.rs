@@ -54,7 +54,7 @@ impl std::fmt::Debug for LeafNode<'_> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::execution ::hex_literal::hex;
+    use crate::execution::hex_literal::hex;
 
     // From manual regression test
     #[test]

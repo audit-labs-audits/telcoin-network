@@ -2,25 +2,25 @@
 // Copyright (c) Mysten Labs, Inc.
 // SPDX-License-Identifier: Apache-2.0
 use crate::{errors::SubscriberResult, metrics::ExecutorMetrics, ExecutionState};
-use tn_types::consensus::config::{AuthorityIdentifier, Committee, WorkerCache, WorkerId};
-use tn_types::consensus::crypto::NetworkPublicKey;
-use futures::stream::FuturesOrdered;
-use futures::StreamExt;
-use lattice_network::PrimaryToWorkerClient;
-use lattice_network::client::NetworkClient;
-use std::collections::HashMap;
-use std::collections::HashSet;
-use std::{sync::Arc, time::Duration, vec};
-use tn_types::consensus::FetchBatchesRequest;
+use consensus_metrics::{metered_channel, spawn_logged_monitored_task};
 use fastcrypto::hash::Hash;
-use consensus_metrics::metered_channel;
-use consensus_metrics::spawn_logged_monitored_task;
+use futures::{stream::FuturesOrdered, StreamExt};
+use lattice_network::{client::NetworkClient, PrimaryToWorkerClient};
+use std::{
+    collections::{HashMap, HashSet},
+    sync::Arc,
+    time::Duration,
+    vec,
+};
+use tn_types::consensus::{
+    config::{AuthorityIdentifier, Committee, WorkerCache, WorkerId},
+    crypto::NetworkPublicKey,
+    Batch, BatchAPI, BatchDigest, Certificate, CertificateAPI, CommittedSubDag,
+    ConditionalBroadcastReceiver, ConsensusOutput, FetchBatchesRequest, HeaderAPI, MetadataAPI,
+    Timestamp,
+};
 use tokio::task::JoinHandle;
 use tracing::{debug, error, info};
-use tn_types::consensus::{
-    Batch, BatchAPI, BatchDigest, Certificate, CertificateAPI, CommittedSubDag,
-    ConditionalBroadcastReceiver, ConsensusOutput, HeaderAPI, MetadataAPI, Timestamp,
-};
 
 /// The `Subscriber` receives certificates sequenced by the consensus and waits until
 /// all transactions references by the certificates are downloaded; it then
@@ -61,12 +61,10 @@ pub fn spawn_subscriber<State: ExecutionState + Send + Sync + 'static>(
     let (tx_notifier, rx_notifier) =
         metered_channel::channel(lattice_primary::CHANNEL_CAPACITY, &metrics.tx_notifier);
 
-    let rx_shutdown_notify = shutdown_receivers
-        .pop()
-        .unwrap_or_else(|| panic!("Not enough shutdown receivers"));
-    let rx_shutdown_subscriber = shutdown_receivers
-        .pop()
-        .unwrap_or_else(|| panic!("Not enough shutdown receivers"));
+    let rx_shutdown_notify =
+        shutdown_receivers.pop().unwrap_or_else(|| panic!("Not enough shutdown receivers"));
+    let rx_shutdown_subscriber =
+        shutdown_receivers.pop().unwrap_or_else(|| panic!("Not enough shutdown receivers"));
 
     vec![
         spawn_logged_monitored_task!(
@@ -124,18 +122,9 @@ async fn create_and_run_subscriber(
     let subscriber = Subscriber {
         rx_shutdown,
         rx_sequence,
-        inner: Arc::new(Inner {
-            authority_id,
-            committee,
-            worker_cache,
-            client,
-            metrics,
-        }),
+        inner: Arc::new(Inner { authority_id, committee, worker_cache, client, metrics }),
     };
-    subscriber
-        .run(restored_consensus_output, tx_notifier)
-        .await
-        .expect("Failed to run subscriber")
+    subscriber.run(restored_consensus_output, tx_notifier).await.expect("Failed to run subscriber")
 }
 
 impl Subscriber {
@@ -157,15 +146,13 @@ impl Subscriber {
         let mut waiting = FuturesOrdered::new();
 
         // First handle any consensus output messages that were restored due to a restart.
-        // This needs to happen before we start listening on rx_sequence and receive messages sequenced after these.
+        // This needs to happen before we start listening on rx_sequence and receive messages
+        // sequenced after these.
         for message in restored_consensus_output {
             let future = Self::fetch_batches(self.inner.clone(), message);
             waiting.push_back(future);
 
-            self.inner
-                .metrics
-                .subscriber_recovered_certificates_count
-                .inc();
+            self.inner.metrics.subscriber_recovered_certificates_count.inc();
         }
 
         // Listen to sequenced consensus message and process them.
@@ -193,10 +180,7 @@ impl Subscriber {
 
             }
 
-            self.inner
-                .metrics
-                .waiting_elements_subscriber
-                .set(waiting.len() as i64);
+            self.inner.metrics.waiting_elements_subscriber.set(waiting.len() as i64);
         }
     }
 
@@ -208,17 +192,12 @@ impl Subscriber {
         let num_certs = deliver.len();
         if num_batches == 0 {
             debug!("No batches to fetch, payload is empty");
-            return ConsensusOutput {
-                sub_dag: Arc::new(deliver),
-                batches: vec![],
-            };
+            return ConsensusOutput { sub_dag: Arc::new(deliver), batches: vec![] }
         }
 
         let sub_dag = Arc::new(deliver);
-        let mut subscriber_output = ConsensusOutput {
-            sub_dag: sub_dag.clone(),
-            batches: Vec::with_capacity(num_certs),
-        };
+        let mut subscriber_output =
+            ConsensusOutput { sub_dag: sub_dag.clone(), batches: Vec::with_capacity(num_certs) };
 
         let mut batch_digests_and_workers: HashMap<
             NetworkPublicKey,
@@ -230,32 +209,22 @@ impl Subscriber {
                 let own_worker_name = inner
                     .worker_cache
                     .worker(
-                        inner
-                            .committee
-                            .authority(&inner.authority_id)
-                            .unwrap()
-                            .protocol_key(),
+                        inner.committee.authority(&inner.authority_id).unwrap().protocol_key(),
                         worker_id,
                     )
                     .unwrap_or_else(|_| panic!("worker_id {worker_id} is not in the worker cache"))
                     .name;
                 let workers = Self::workers_for_certificate(&inner, cert, worker_id);
-                let (batch_set, worker_set) = batch_digests_and_workers
-                    .entry(own_worker_name)
-                    .or_default();
+                let (batch_set, worker_set) =
+                    batch_digests_and_workers.entry(own_worker_name).or_default();
                 batch_set.insert(*digest);
                 worker_set.extend(workers);
             }
         }
 
-        let fetched_batches_timer = inner
-            .metrics
-            .batch_fetch_for_committed_subdag_total_latency
-            .start_timer();
-        inner
-            .metrics
-            .committed_subdag_batch_count
-            .observe(num_batches as f64);
+        let fetched_batches_timer =
+            inner.metrics.batch_fetch_for_committed_subdag_total_latency.start_timer();
+        inner.metrics.committed_subdag_batch_count.observe(num_batches as f64);
         let fetched_batches =
             Self::fetch_batches_from_workers(&inner, batch_digests_and_workers).await;
         drop(fetched_batches_timer);
@@ -266,10 +235,7 @@ impl Subscriber {
             let mut output_batches = Vec::with_capacity(cert.header().payload().len());
             let output_cert = cert.clone();
 
-            inner
-                .metrics
-                .subscriber_current_round
-                .set(cert.round() as i64);
+            inner.metrics.subscriber_current_round.set(cert.round() as i64);
 
             inner
                 .metrics
@@ -288,9 +254,7 @@ impl Subscriber {
                 );
                 output_batches.push(batch.clone());
             }
-            subscriber_output
-                .batches
-                .push((output_cert, output_batches));
+            subscriber_output.batches.push((output_cert, output_batches));
         }
         subscriber_output
     }
@@ -340,22 +304,15 @@ impl Subscriber {
             // to NetworkClient.
             // Only have one worker for now so will leave this for a future
             // optimization.
-            let request = FetchBatchesRequest {
-                digests,
-                known_workers,
-            };
+            let request = FetchBatchesRequest { digests, known_workers };
             let batches = loop {
-                match inner
-                    .client
-                    .fetch_batches(worker_name.clone(), request.clone())
-                    .await
-                {
+                match inner.client.fetch_batches(worker_name.clone(), request.clone()).await {
                     Ok(resp) => break resp.batches,
                     Err(e) => {
                         error!("Failed to fetch batches from worker {worker_name}: {e:?}");
                         // Loop forever on failure. During shutdown, this should get cancelled.
                         tokio::time::sleep(Duration::from_secs(1)).await;
-                        continue;
+                        continue
                     }
                 }
             };
@@ -382,11 +339,7 @@ impl Subscriber {
                 .with_label_values(&["other"])
                 .observe(remote_duration);
         } else {
-            let local_duration = batch
-                .versioned_metadata()
-                .created_at()
-                .elapsed()
-                .as_secs_f64();
+            let local_duration = batch.versioned_metadata().created_at().elapsed().as_secs_f64();
             debug!(
                 "Batch was fetched for execution after being created locally {}s ago.",
                 local_duration
@@ -398,15 +351,8 @@ impl Subscriber {
                 .observe(local_duration);
         };
 
-        let batch_fetch_duration = batch
-            .versioned_metadata()
-            .created_at()
-            .elapsed()
-            .as_secs_f64();
-        inner
-            .metrics
-            .batch_execution_latency
-            .observe(batch_fetch_duration);
+        let batch_fetch_duration = batch.versioned_metadata().created_at().elapsed().as_secs_f64();
+        inner.metrics.batch_execution_latency.observe(batch_fetch_duration);
         debug!(
             "Batch {:?} took {} seconds since it has been created to when it has been fetched for execution",
             digest,

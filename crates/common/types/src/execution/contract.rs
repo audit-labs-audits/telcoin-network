@@ -1,7 +1,7 @@
 //! Helpers for deriving contract addresses
 
 // re-export from revm
-use crate::execution ::{keccak256, Address, U256};
+use crate::execution::{keccak256, Address, U256};
 pub use revm_primitives::utilities::{create2_address, create_address};
 
 /// Returns the CREATE2 address of a smart contract as specified in

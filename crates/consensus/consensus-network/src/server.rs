@@ -1,25 +1,27 @@
 // Copyright (c) Telcoin, LLC
 // Copyright (c) Mysten Labs, Inc.
 // SPDX-License-Identifier: Apache-2.0
-use crate::metrics::{
-    DefaultMetricsCallbackProvider, MetricsCallbackProvider, MetricsHandler,
-    GRPC_ENDPOINT_PATH_HEADER,
-};
 use crate::{
     config::Config,
+    metrics::{
+        DefaultMetricsCallbackProvider, MetricsCallbackProvider, MetricsHandler,
+        GRPC_ENDPOINT_PATH_HEADER,
+    },
     multiaddr::{parse_dns, parse_ip4, parse_ip6, Multiaddr, Protocol},
 };
 use eyre::{eyre, Result};
 use futures::FutureExt;
-use std::task::{Context, Poll};
-use std::{convert::Infallible, net::SocketAddr};
+use std::{
+    convert::Infallible,
+    net::SocketAddr,
+    task::{Context, Poll},
+};
 use tokio::net::{TcpListener, ToSocketAddrs};
 use tokio_stream::wrappers::TcpListenerStream;
-use tonic::codegen::http::HeaderValue;
 use tonic::{
     body::BoxBody,
     codegen::{
-        http::{Request, Response},
+        http::{HeaderValue, Request, Response},
         BoxFuture,
     },
     transport::{server::Router, Body, NamedService},
@@ -31,10 +33,12 @@ use tower::{
     util::Either,
     Layer, Service, ServiceBuilder,
 };
-use tower_http::classify::{GrpcErrorsAsFailures, SharedClassifier};
-use tower_http::propagate_header::PropagateHeaderLayer;
-use tower_http::set_header::SetRequestHeaderLayer;
-use tower_http::trace::{DefaultMakeSpan, DefaultOnBodyChunk, DefaultOnEos, TraceLayer};
+use tower_http::{
+    classify::{GrpcErrorsAsFailures, SharedClassifier},
+    propagate_header::PropagateHeaderLayer,
+    set_header::SetRequestHeaderLayer,
+    trace::{DefaultMakeSpan, DefaultOnBodyChunk, DefaultOnEos, TraceLayer},
+};
 
 pub struct ServerBuilder<M: MetricsCallbackProvider = DefaultMetricsCallbackProvider> {
     router: Router<WrapperService<M>>,
@@ -87,10 +91,8 @@ impl<M: MetricsCallbackProvider> ServerBuilder<M> {
             builder = builder.tcp_nodelay(tcp_nodelay);
         }
 
-        let load_shed = config
-            .load_shed
-            .unwrap_or_default()
-            .then_some(tower::load_shed::LoadShedLayer::new());
+        let load_shed =
+            config.load_shed.unwrap_or_default().then_some(tower::load_shed::LoadShedLayer::new());
 
         let metrics = MetricsHandler::new(metrics_provider.clone());
 
@@ -99,9 +101,8 @@ impl<M: MetricsCallbackProvider> ServerBuilder<M> {
             .on_response(metrics.clone())
             .on_failure(metrics);
 
-        let global_concurrency_limit = config
-            .global_concurrency_limit
-            .map(tower::limit::GlobalConcurrencyLimitLayer::new);
+        let global_concurrency_limit =
+            config.global_concurrency_limit.map(tower::limit::GlobalConcurrencyLimitLayer::new);
 
         fn add_path_to_request_header(request: &Request<Body>) -> Option<HeaderValue> {
             let path = request.uri().path();
@@ -131,10 +132,7 @@ impl<M: MetricsCallbackProvider> ServerBuilder<M> {
             .layer(layer)
             .add_service(health_service);
 
-        Self {
-            router,
-            health_reporter,
-        }
+        Self { router, health_reporter }
     }
 
     pub fn health_reporter(&self) -> tonic_health::server::HealthReporter {
@@ -160,54 +158,47 @@ impl<M: MetricsCallbackProvider> ServerBuilder<M> {
 
         let (tx_cancellation, rx_cancellation) = tokio::sync::oneshot::channel();
         let rx_cancellation = rx_cancellation.map(|_| ());
-        let (local_addr, server): (Multiaddr, BoxFuture<(), tonic::transport::Error>) =
-            match iter.next().ok_or_else(|| eyre!("malformed addr"))? {
-                Protocol::Dns(_) => {
-                    let (dns_name, tcp_port, _http_or_https) = parse_dns(addr)?;
-                    let (local_addr, incoming) =
-                        tcp_listener_and_update_multiaddr(addr, (dns_name.as_ref(), tcp_port))
-                            .await?;
-                    let server = Box::pin(
-                        self.router
-                            .serve_with_incoming_shutdown(incoming, rx_cancellation),
-                    );
-                    (local_addr, server)
-                }
-                Protocol::Ip4(_) => {
-                    let (socket_addr, _http_or_https) = parse_ip4(addr)?;
-                    let (local_addr, incoming) =
-                        tcp_listener_and_update_multiaddr(addr, socket_addr).await?;
-                    let server = Box::pin(
-                        self.router
-                            .serve_with_incoming_shutdown(incoming, rx_cancellation),
-                    );
-                    (local_addr, server)
-                }
-                Protocol::Ip6(_) => {
-                    let (socket_addr, _http_or_https) = parse_ip6(addr)?;
-                    let (local_addr, incoming) =
-                        tcp_listener_and_update_multiaddr(addr, socket_addr).await?;
-                    let server = Box::pin(
-                        self.router
-                            .serve_with_incoming_shutdown(incoming, rx_cancellation),
-                    );
-                    (local_addr, server)
-                }
-                // Protocol::Memory(_) => todo!(),
-                #[cfg(unix)]
-                Protocol::Unix(_) => {
-                    let (path, _http_or_https) = crate::multiaddr::parse_unix(addr)?;
-                    let uds = tokio::net::UnixListener::bind(path.as_ref())?;
-                    let uds_stream = tokio_stream::wrappers::UnixListenerStream::new(uds);
-                    let local_addr = addr.to_owned();
-                    let server = Box::pin(
-                        self.router
-                            .serve_with_incoming_shutdown(uds_stream, rx_cancellation),
-                    );
-                    (local_addr, server)
-                }
-                unsupported => return Err(eyre!("unsupported protocol {unsupported}")),
-            };
+        let (local_addr, server): (Multiaddr, BoxFuture<(), tonic::transport::Error>) = match iter
+            .next()
+            .ok_or_else(|| eyre!("malformed addr"))?
+        {
+            Protocol::Dns(_) => {
+                let (dns_name, tcp_port, _http_or_https) = parse_dns(addr)?;
+                let (local_addr, incoming) =
+                    tcp_listener_and_update_multiaddr(addr, (dns_name.as_ref(), tcp_port)).await?;
+                let server =
+                    Box::pin(self.router.serve_with_incoming_shutdown(incoming, rx_cancellation));
+                (local_addr, server)
+            }
+            Protocol::Ip4(_) => {
+                let (socket_addr, _http_or_https) = parse_ip4(addr)?;
+                let (local_addr, incoming) =
+                    tcp_listener_and_update_multiaddr(addr, socket_addr).await?;
+                let server =
+                    Box::pin(self.router.serve_with_incoming_shutdown(incoming, rx_cancellation));
+                (local_addr, server)
+            }
+            Protocol::Ip6(_) => {
+                let (socket_addr, _http_or_https) = parse_ip6(addr)?;
+                let (local_addr, incoming) =
+                    tcp_listener_and_update_multiaddr(addr, socket_addr).await?;
+                let server =
+                    Box::pin(self.router.serve_with_incoming_shutdown(incoming, rx_cancellation));
+                (local_addr, server)
+            }
+            // Protocol::Memory(_) => todo!(),
+            #[cfg(unix)]
+            Protocol::Unix(_) => {
+                let (path, _http_or_https) = crate::multiaddr::parse_unix(addr)?;
+                let uds = tokio::net::UnixListener::bind(path.as_ref())?;
+                let uds_stream = tokio_stream::wrappers::UnixListenerStream::new(uds);
+                let local_addr = addr.to_owned();
+                let server =
+                    Box::pin(self.router.serve_with_incoming_shutdown(uds_stream, rx_cancellation));
+                (local_addr, server)
+            }
+            unsupported => return Err(eyre!("unsupported protocol {unsupported}")),
+        };
 
         Ok(Server {
             server,
@@ -272,15 +263,14 @@ fn update_tcp_port_in_multiaddr(addr: &Multiaddr, port: u16) -> Multiaddr {
 
 #[cfg(test)]
 mod test {
-    use crate::config::Config;
-    use crate::metrics::MetricsCallbackProvider;
-    use crate::Multiaddr;
-    use std::ops::Deref;
-    use std::sync::{Arc, Mutex};
-    use std::time::Duration;
+    use crate::{config::Config, metrics::MetricsCallbackProvider, Multiaddr};
+    use std::{
+        ops::Deref,
+        sync::{Arc, Mutex},
+        time::Duration,
+    };
     use tonic::Code;
-    use tonic_health::proto::health_client::HealthClient;
-    use tonic_health::proto::HealthCheckRequest;
+    use tonic_health::proto::{health_client::HealthClient, HealthCheckRequest};
 
     #[test]
     fn document_multiaddr_limitation_for_unix_protocol() {
@@ -322,18 +312,13 @@ mod test {
             }
         }
 
-        let metrics = Metrics {
-            metrics_called: Arc::new(Mutex::new(false)),
-        };
+        let metrics = Metrics { metrics_called: Arc::new(Mutex::new(false)) };
 
         let address: Multiaddr = "/ip4/127.0.0.1/tcp/0/http".parse().unwrap();
         let config = Config::new();
 
-        let mut server = config
-            .server_builder_with_metrics(metrics.clone())
-            .bind(&address)
-            .await
-            .unwrap();
+        let mut server =
+            config.server_builder_with_metrics(metrics.clone()).bind(&address).await.unwrap();
 
         let address = server.local_addr().to_owned();
         let cancel_handle = server.take_cancel_handle().unwrap();
@@ -341,12 +326,7 @@ mod test {
         let channel = config.connect(&address).await.unwrap();
         let mut client = HealthClient::new(channel);
 
-        client
-            .check(HealthCheckRequest {
-                service: "".to_owned(),
-            })
-            .await
-            .unwrap();
+        client.check(HealthCheckRequest { service: "".to_owned() }).await.unwrap();
 
         cancel_handle.send(()).unwrap();
         server_handle.await.unwrap().unwrap();
@@ -385,18 +365,13 @@ mod test {
             }
         }
 
-        let metrics = Metrics {
-            metrics_called: Arc::new(Mutex::new(false)),
-        };
+        let metrics = Metrics { metrics_called: Arc::new(Mutex::new(false)) };
 
         let address: Multiaddr = "/ip4/127.0.0.1/tcp/0/http".parse().unwrap();
         let config = Config::new();
 
-        let mut server = config
-            .server_builder_with_metrics(metrics.clone())
-            .bind(&address)
-            .await
-            .unwrap();
+        let mut server =
+            config.server_builder_with_metrics(metrics.clone()).bind(&address).await.unwrap();
 
         let address = server.local_addr().to_owned();
         let cancel_handle = server.take_cancel_handle().unwrap();
@@ -407,11 +382,8 @@ mod test {
         // Call the healthcheck for a service that doesn't exist
         // that should give us back an error with code 5 (not_found)
         // https://github.com/grpc/grpc/blob/master/doc/statuscodes.md#status-codes-and-their-use-in-grpc
-        let _ = client
-            .check(HealthCheckRequest {
-                service: "non-existing-service".to_owned(),
-            })
-            .await;
+        let _ =
+            client.check(HealthCheckRequest { service: "non-existing-service".to_owned() }).await;
 
         cancel_handle.send(()).unwrap();
         server_handle.await.unwrap().unwrap();
@@ -428,12 +400,7 @@ mod test {
         let channel = config.connect(&address).await.unwrap();
         let mut client = HealthClient::new(channel);
 
-        client
-            .check(HealthCheckRequest {
-                service: "".to_owned(),
-            })
-            .await
-            .unwrap();
+        client.check(HealthCheckRequest { service: "".to_owned() }).await.unwrap();
 
         cancel_handle.send(()).unwrap();
         server_handle.await.unwrap().unwrap();
@@ -485,11 +452,7 @@ impl<M: MetricsCallbackProvider, S> Layer<S> for RequestLifetimeLayer<M> {
     type Service = RequestLifetime<M, S>;
 
     fn layer(&self, inner: S) -> Self::Service {
-        RequestLifetime {
-            inner,
-            metrics_provider: self.metrics_provider.clone(),
-            path: None,
-        }
+        RequestLifetime { inner, metrics_provider: self.metrics_provider.clone(), path: None }
     }
 }
 

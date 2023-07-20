@@ -101,10 +101,6 @@
 use crate::{auth::AuthRpcModule, error::WsHttpSamePortError};
 use constants::*;
 use error::{RpcError, ServerKind};
-use jsonrpsee::{
-    server::{IdProvider, Server, ServerHandle},
-    Methods, RpcModule,
-};
 use execution_ipc::server::IpcServer;
 use execution_network_api::{NetworkInfo, Peers};
 use execution_provider::{
@@ -122,6 +118,10 @@ use execution_rpc::{
 use execution_rpc_api::{servers::*, EngineApiServer};
 use execution_tasks::{TaskSpawner, TokioTaskExecutor};
 use execution_transaction_pool::TransactionPool;
+use jsonrpsee::{
+    server::{IdProvider, Server, ServerHandle},
+    Methods, RpcModule,
+};
 use serde::{Deserialize, Serialize, Serializer};
 use std::{
     collections::{HashMap, HashSet},
@@ -151,10 +151,10 @@ pub mod constants;
 
 // re-export for convenience
 pub use crate::eth::{EthConfig, EthHandlers};
-pub use jsonrpsee::server::ServerBuilder;
 pub use execution_ipc::server::{Builder as IpcServerBuilder, Endpoint};
 use execution_network_api::noop::NoopNetwork;
 use execution_transaction_pool::noop::NoopTransactionPool;
+pub use jsonrpsee::server::ServerBuilder;
 
 /// Convenience function for starting a server in one step.
 pub async fn launch<Provider, Pool, Network, Tasks, Events>(

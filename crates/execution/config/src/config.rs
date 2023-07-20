@@ -5,10 +5,10 @@ use execution_downloaders::{
     headers::reverse_headers::ReverseHeadersDownloaderBuilder,
 };
 use execution_network::{NetworkConfigBuilder, PeersConfig, SessionsConfig};
-use execution_primitives::PruneMode;
 use secp256k1::SecretKey;
 use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
+use tn_types::execution::PruneMode;
 
 /// Configuration for the tn node.
 #[derive(Debug, Clone, Default, Deserialize, PartialEq, Serialize)]

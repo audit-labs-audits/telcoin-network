@@ -187,9 +187,8 @@ pub struct NetworkMetrics {
     errors: IntCounterVec,
 }
 
-const LATENCY_SEC_BUCKETS: &[f64] = &[
-    0.001, 0.005, 0.01, 0.05, 0.1, 0.25, 0.5, 1., 2.5, 5., 10., 20., 30., 60., 90.,
-];
+const LATENCY_SEC_BUCKETS: &[f64] =
+    &[0.001, 0.005, 0.01, 0.05, 0.1, 0.25, 0.5, 1., 2.5, 5., 10., 20., 30., 60., 90.];
 
 // Arbitrarily chosen buckets for message size, with gradually-lowering exponent to give us
 // better resolution at high sizes.
@@ -292,10 +291,7 @@ pub struct MetricsMakeCallbackHandler {
 
 impl MetricsMakeCallbackHandler {
     pub fn new(metrics: Arc<NetworkMetrics>, excessive_message_size: usize) -> Self {
-        Self {
-            metrics,
-            excessive_message_size,
-        }
+        Self { metrics, excessive_message_size }
     }
 }
 
@@ -306,31 +302,18 @@ impl MakeCallbackHandler for MetricsMakeCallbackHandler {
         let route = request.route().to_owned();
 
         self.metrics.requests.with_label_values(&[&route]).inc();
-        self.metrics
-            .inflight_requests
-            .with_label_values(&[&route])
-            .inc();
+        self.metrics.inflight_requests.with_label_values(&[&route]).inc();
         let body_len = request.body().len();
-        self.metrics
-            .request_size
-            .with_label_values(&[&route])
-            .observe(body_len as f64);
+        self.metrics.request_size.with_label_values(&[&route]).observe(body_len as f64);
         if body_len > self.excessive_message_size {
             warn!(
                 "Saw excessively large request with size {body_len} for {route} with peer {:?}",
                 request.peer_id()
             );
-            self.metrics
-                .excessive_size_requests
-                .with_label_values(&[&route])
-                .inc();
+            self.metrics.excessive_size_requests.with_label_values(&[&route]).inc();
         }
 
-        let timer = self
-            .metrics
-            .request_latency
-            .with_label_values(&[&route])
-            .start_timer();
+        let timer = self.metrics.request_latency.with_label_values(&[&route]).start_timer();
 
         MetricsResponseHandler {
             metrics: self.metrics.clone(),
@@ -353,44 +336,29 @@ pub struct MetricsResponseHandler {
 impl ResponseHandler for MetricsResponseHandler {
     fn on_response(self, response: &anemo::Response<bytes::Bytes>) {
         let body_len = response.body().len();
-        self.metrics
-            .response_size
-            .with_label_values(&[&self.route])
-            .observe(body_len as f64);
+        self.metrics.response_size.with_label_values(&[&self.route]).observe(body_len as f64);
         if body_len > self.excessive_message_size {
             warn!(
                 "Saw excessively large response with size {body_len} for {} with peer {:?}",
                 self.route,
                 response.peer_id()
             );
-            self.metrics
-                .excessive_size_responses
-                .with_label_values(&[&self.route])
-                .inc();
+            self.metrics.excessive_size_responses.with_label_values(&[&self.route]).inc();
         }
 
         if !response.status().is_success() {
             let status = response.status().to_u16().to_string();
-            self.metrics
-                .errors
-                .with_label_values(&[&self.route, &status])
-                .inc();
+            self.metrics.errors.with_label_values(&[&self.route, &status]).inc();
         }
     }
 
     fn on_error<E>(self, _error: &E) {
-        self.metrics
-            .errors
-            .with_label_values(&[&self.route, "unknown"])
-            .inc();
+        self.metrics.errors.with_label_values(&[&self.route, "unknown"]).inc();
     }
 }
 
 impl Drop for MetricsResponseHandler {
     fn drop(&mut self) {
-        self.metrics
-            .inflight_requests
-            .with_label_values(&[&self.route])
-            .dec();
+        self.metrics.inflight_requests.with_label_values(&[&self.route]).dec();
     }
 }

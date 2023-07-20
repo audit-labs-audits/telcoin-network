@@ -82,13 +82,13 @@ use crate::{
 };
 use best::BestTransactions;
 use parking_lot::{Mutex, RwLock};
-use execution_primitives::{Address, TxHash, H256};
 use std::{
     collections::{HashMap, HashSet},
     fmt,
     sync::Arc,
     time::Instant,
 };
+use tn_types::execution::{Address, TxHash, H256};
 use tokio::sync::mpsc;
 use tracing::debug;
 

@@ -9,8 +9,6 @@ use crate::{
     },
 };
 use core::sync::atomic::Ordering;
-use fnv::FnvHashMap;
-use futures::{stream::Fuse, SinkExt, StreamExt};
 use execution_ecies::stream::ECIESStream;
 use execution_eth_wire::{
     capability::Capabilities,
@@ -21,7 +19,8 @@ use execution_eth_wire::{
 use execution_interfaces::p2p::error::RequestError;
 use execution_metrics::common::mpsc::MeteredSender;
 use execution_net_common::bandwidth_meter::MeteredStream;
-use execution_primitives::PeerId;
+use fnv::FnvHashMap;
+use futures::{stream::Fuse, SinkExt, StreamExt};
 use std::{
     collections::VecDeque,
     future::Future,
@@ -31,6 +30,7 @@ use std::{
     task::{ready, Context, Poll},
     time::{Duration, Instant},
 };
+use tn_types::execution::PeerId;
 use tokio::{
     net::TcpStream,
     sync::{mpsc::error::TrySendError, oneshot},
@@ -745,9 +745,9 @@ mod tests {
         GetBlockBodies, HelloMessage, Status, StatusBuilder, UnauthedEthStream, UnauthedP2PStream,
     };
     use execution_net_common::bandwidth_meter::BandwidthMeter;
-    use execution_primitives::{ForkFilter, Hardfork, MAINNET};
     use secp256k1::{SecretKey, SECP256K1};
     use std::time::Duration;
+    use tn_types::execution::{ForkFilter, Hardfork, MAINNET};
     use tokio::{net::TcpListener, sync::mpsc};
 
     /// Returns a testing `HelloMessage` and new secretkey

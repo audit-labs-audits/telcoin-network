@@ -12,13 +12,9 @@ use crate::{
 };
 use async_trait::async_trait;
 use execution_network_api::NetworkInfo;
-use execution_primitives::{
-    Address, BlockId, BlockNumberOrTag, Bytes, FromRecoveredTransaction, Header,
-    IntoRecoveredTransaction, Receipt, SealedBlock,
-    TransactionKind::{Call, Create},
-    TransactionMeta, TransactionSigned, TransactionSignedEcRecovered, H256, U128, U256, U64,
+use execution_provider::{
+    BlockReaderIdExt, EvmEnvProvider, StateProviderBox, StateProviderFactory,
 };
-use execution_provider::{BlockReaderIdExt, EvmEnvProvider, StateProviderBox, StateProviderFactory};
 use execution_revm::{
     database::{State, SubState},
     env::{fill_block_env_with_coinbase, tx_env_with_recovered},
@@ -35,6 +31,12 @@ use revm::{
     Inspector,
 };
 use revm_primitives::{utilities::create_address, Env, ResultAndState, SpecId};
+use tn_types::execution::{
+    Address, BlockId, BlockNumberOrTag, Bytes, FromRecoveredTransaction, Header,
+    IntoRecoveredTransaction, Receipt, SealedBlock,
+    TransactionKind::{Call, Create},
+    TransactionMeta, TransactionSigned, TransactionSignedEcRecovered, H256, U128, U256, U64,
+};
 
 /// Helper alias type for the state's [CacheDB]
 pub(crate) type StateCacheDB<'r> = CacheDB<State<StateProviderBox<'r>>>;
@@ -893,9 +895,9 @@ mod tests {
         EthApi,
     };
     use execution_network_api::noop::NoopNetwork;
-    use execution_primitives::{hex_literal::hex, Bytes};
     use execution_provider::test_utils::NoopProvider;
     use execution_transaction_pool::{test_utils::testing_pool, TransactionPool};
+    use tn_types::execution::{hex_literal::hex, Bytes};
 
     #[tokio::test]
     async fn send_raw_transaction() {

@@ -98,11 +98,7 @@ impl Router {
     where
         R: Into<Router>,
     {
-        let Router {
-            routes,
-            matcher,
-            fallback,
-        } = other.into();
+        let Router { routes, matcher, fallback } = other.into();
 
         for (id, route) in routes {
             let path = matcher
@@ -130,11 +126,7 @@ impl Router {
             + 'static,
         <L::Service as Service<Request<Bytes>>>::Future: Send + 'static,
     {
-        let Router {
-            routes,
-            matcher,
-            fallback,
-        } = self;
+        let Router { routes, matcher, fallback } = self;
 
         let routes = routes
             .into_iter()
@@ -144,11 +136,7 @@ impl Router {
             })
             .collect();
 
-        Router {
-            routes,
-            matcher,
-            fallback,
-        }
+        Router { routes, matcher, fallback }
     }
 }
 
@@ -174,15 +162,12 @@ impl Service<Request<Bytes>> for Router {
 
         match self.matcher.at(path) {
             Ok(match_) => {
-                let route = self
-                    .routes
-                    .get(match_.value)
-                    .expect("no route for id; this is a bug");
+                let route = self.routes.get(match_.value).expect("no route for id; this is a bug");
                 route.oneshot_inner(req)
             }
-            Err(MatchError::MissingTrailingSlash)
-            | Err(MatchError::ExtraTrailingSlash)
-            | Err(MatchError::NotFound) => self.fallback.oneshot_inner(req),
+            Err(MatchError::MissingTrailingSlash) |
+            Err(MatchError::ExtraTrailingSlash) |
+            Err(MatchError::NotFound) => self.fallback.oneshot_inner(req),
         }
     }
 }
@@ -222,9 +207,7 @@ impl RouteMatcher {
 
 impl fmt::Debug for RouteMatcher {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.debug_struct("RouteMatcher")
-            .field("paths", &self.route_id_to_path)
-            .finish()
+        f.debug_struct("RouteMatcher").field("paths", &self.route_id_to_path).finish()
     }
 }
 
@@ -398,9 +381,7 @@ mod test {
         expected = "Invalid route: insertion failed due to conflict with previously registered route"
     )]
     fn add_two_conflicting_routes() {
-        Router::new()
-            .route("/echo", echo_service())
-            .route("/echo", echo_service());
+        Router::new().route("/echo", echo_service()).route("/echo", echo_service());
     }
 
     #[test]
@@ -419,9 +400,9 @@ mod test {
         });
         let router = Router::new()
             .route("/one", pending)
-            .route_layer(crate::middleware::timeout::inbound::TimeoutLayer::new(
-                Some(std::time::Duration::new(0, 0)),
-            ))
+            .route_layer(crate::middleware::timeout::inbound::TimeoutLayer::new(Some(
+                std::time::Duration::new(0, 0),
+            )))
             .route("/two", ready);
 
         let request = Request::new(Bytes::new()).with_route("/one");

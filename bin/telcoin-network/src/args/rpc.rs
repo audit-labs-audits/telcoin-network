@@ -5,18 +5,15 @@ use clap::{
     builder::{PossibleValue, TypedValueParser},
     Arg, Args, Command,
 };
-use futures::{FutureExt, TryFutureExt};
 use execution_network_api::{NetworkInfo, Peers};
 use execution_provider::{
-    BlockReaderIdExt, CanonStateSubscriptions, EvmEnvProvider, HeaderProvider, StateProviderFactory, ChainSpecProvider,
+    BlockReaderIdExt, CanonStateSubscriptions, ChainSpecProvider, EvmEnvProvider, HeaderProvider,
+    StateProviderFactory,
 };
 use execution_rpc::{
-    eth::{
-        cache::{
-            DEFAULT_BLOCK_CACHE_SIZE_BYTES_MB, DEFAULT_ENV_CACHE_SIZE_BYTES_MB,
-            DEFAULT_RECEIPT_CACHE_SIZE_BYTES_MB,
-        },
-        // gas_oracle::GasPriceOracleConfig,
+    eth::cache::{
+        DEFAULT_BLOCK_CACHE_SIZE_BYTES_MB, DEFAULT_ENV_CACHE_SIZE_BYTES_MB,
+        DEFAULT_RECEIPT_CACHE_SIZE_BYTES_MB,
     },
     JwtError, JwtSecret,
 };
@@ -30,12 +27,13 @@ use execution_rpc_builder::{
 use execution_rpc_engine_api::{EngineApi, EngineApiServer};
 use execution_tasks::TaskSpawner;
 use execution_transaction_pool::TransactionPool;
+use futures::{FutureExt, TryFutureExt};
 use std::{
     ffi::OsStr,
     net::{IpAddr, Ipv4Addr, SocketAddr},
     path::PathBuf,
 };
-use lattice_tracing::tracing::{debug, info};
+use tracing::{debug, info};
 
 /// Default max number of subscriptions per connection.
 pub(crate) const RPC_DEFAULT_MAX_SUBS_PER_CONN: u32 = 1024;
@@ -135,7 +133,6 @@ pub struct RpcServerArgs {
     // /// Gas price oracle configuration.
     // #[clap(flatten)]
     // pub gas_price_oracle: GasPriceOracleArgs,
-
     /// Max size for cached block data in megabytes.
     #[arg(long, default_value_t = DEFAULT_BLOCK_CACHE_SIZE_BYTES_MB)]
     pub block_cache_size: usize,
@@ -187,9 +184,8 @@ impl RpcServerArgs {
 
     /// Extracts the [EthConfig] from the args.
     pub fn eth_config(&self) -> EthConfig {
-        EthConfig::default()
-            .max_tracing_requests(self.rpc_max_tracing_requests)
-            // .gpo_config(self.gas_price_oracle_config())
+        EthConfig::default().max_tracing_requests(self.rpc_max_tracing_requests)
+        // .gpo_config(self.gas_price_oracle_config())
     }
 
     /// Convenience function that returns whether ipc is enabled

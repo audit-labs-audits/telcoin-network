@@ -1,8 +1,8 @@
 //! Substate for blockchain trees
 
-use execution_primitives::{BlockHash, BlockNumber, ForkBlock};
 use execution_provider::{post_state::PostState, PostStateDataProvider};
 use std::collections::BTreeMap;
+use tn_types::execution::{BlockHash, BlockNumber, ForkBlock};
 
 /// Structure that bundles references of data needs to implement [`PostStateDataProvider`]
 #[derive(Clone, Debug)]

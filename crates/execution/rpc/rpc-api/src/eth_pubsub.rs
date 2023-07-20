@@ -1,5 +1,5 @@
-use jsonrpsee::proc_macros::rpc;
 use execution_rpc_types::pubsub::{Params, SubscriptionKind};
+use jsonrpsee::proc_macros::rpc;
 
 /// Ethereum pub-sub rpc interface.
 #[rpc(server, namespace = "eth")]

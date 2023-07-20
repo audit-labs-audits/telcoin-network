@@ -1,7 +1,7 @@
 //! Implements the `GetReceipts` and `Receipts` message types.
 use execution_codecs::derive_arbitrary;
-use execution_primitives::{ReceiptWithBloom, H256};
 use execution_rlp::{RlpDecodableWrapper, RlpEncodableWrapper};
+use tn_types::execution::{ReceiptWithBloom, H256};
 
 #[cfg(feature = "serde")]
 use serde::{Deserialize, Serialize};
@@ -37,9 +37,9 @@ mod test {
         types::{message::RequestPair, GetReceipts},
         Receipts,
     };
-    use hex_literal::hex;
-    use execution_primitives::{Log, Receipt, ReceiptWithBloom, TxType};
     use execution_rlp::{Decodable, Encodable};
+    use hex_literal::hex;
+    use tn_types::execution::{Log, Receipt, ReceiptWithBloom, TxType};
 
     #[test]
     fn roundtrip_eip1559() {

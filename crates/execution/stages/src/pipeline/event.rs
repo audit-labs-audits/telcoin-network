@@ -1,5 +1,5 @@
 use crate::stage::{ExecOutput, UnwindInput, UnwindOutput};
-use execution_primitives::stage::{StageCheckpoint, StageId};
+use tn_types::execution::stage::{StageCheckpoint, StageId};
 
 /// An event emitted by a [Pipeline][crate::Pipeline].
 ///

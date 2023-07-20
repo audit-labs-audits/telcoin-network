@@ -1,5 +1,5 @@
 use crate::{trie_cursor::CursorSubNode, updates::TrieUpdates};
-use execution_primitives::{
+use tn_types::execution::{
     stage::MerkleCheckpoint,
     trie::{hash_builder::HashBuilder, Nibbles},
     H256,

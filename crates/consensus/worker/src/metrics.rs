@@ -166,7 +166,8 @@ pub struct WorkerChannelMetrics {
     pub tx_batch_maker: IntGauge,
     /// occupancy of the channel from the `worker::BatchMaker` to the `worker::QuorumWaiter`
     pub tx_quorum_waiter: IntGauge,
-    /// total received from the channel from the `worker::TxReceiverhandler` to the `worker::BatchMaker`
+    /// total received from the channel from the `worker::TxReceiverhandler` to the
+    /// `worker::BatchMaker`
     pub tx_batch_maker_total: IntCounter,
     /// total received from the channel from the `worker::BatchMaker` to the `worker::QuorumWaiter`
     pub tx_quorum_waiter_total: IntCounter,
@@ -242,9 +243,7 @@ impl MetricsCallbackProvider for WorkerEndpointMetrics {
         self.requests_by_route.with_label_values(&labels).inc();
 
         let req_latency_secs = latency.as_secs_f64();
-        self.req_latency_by_route
-            .with_label_values(&labels)
-            .observe(req_latency_secs);
+        self.req_latency_by_route.with_label_values(&labels).observe(req_latency_secs);
     }
 }
 

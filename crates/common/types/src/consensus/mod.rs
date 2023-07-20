@@ -1,4 +1,3 @@
-
 #[macro_use]
 pub mod error;
 
@@ -19,6 +18,6 @@ mod serde;
 mod pre_subscribed_broadcast;
 pub use pre_subscribed_broadcast::*;
 
-pub mod crypto;
 pub mod config;
+pub mod crypto;
 pub mod dag;

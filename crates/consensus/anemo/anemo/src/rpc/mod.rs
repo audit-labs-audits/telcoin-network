@@ -23,13 +23,7 @@ pub struct Status {
 impl Status {
     /// Create a new `Status` with the associated code and message.
     pub fn new(status: StatusCode) -> Self {
-        Self {
-            status,
-            message: None,
-            peer_id: None,
-            headers: HeaderMap::default(),
-            source: None,
-        }
+        Self { status, message: None, peer_id: None, headers: HeaderMap::default(), source: None }
     }
 
     pub fn new_with_message<M: Into<String>>(status: StatusCode, message: M) -> Self {
@@ -78,17 +72,8 @@ impl Status {
         let peer_id = response.peer_id().copied();
         let (parts, _body) = response.into_parts();
 
-        let message = parts
-            .headers
-            .get(crate::types::header::STATUS_MESSAGE)
-            .cloned();
-        Self {
-            status: parts.status,
-            message,
-            peer_id,
-            headers: parts.headers,
-            source: None,
-        }
+        let message = parts.headers.get(crate::types::header::STATUS_MESSAGE).cloned();
+        Self { status: parts.status, message, peer_id, headers: parts.headers, source: None }
     }
 }
 
@@ -99,9 +84,7 @@ impl IntoResponse for Status {
         response.headers_mut().extend(self.headers);
 
         if let Some(message) = self.message {
-            response
-                .headers_mut()
-                .insert(crate::types::header::STATUS_MESSAGE.to_owned(), message);
+            response.headers_mut().insert(crate::types::header::STATUS_MESSAGE.to_owned(), message);
         }
 
         response
@@ -172,35 +155,26 @@ pub mod client {
                 );
 
                 let mut encoder = codec.encoder();
-                let bytes = encoder
-                    .encode(body)
-                    .map_err(Into::into)
-                    .map_err(Status::from_error)?;
+                let bytes = encoder.encode(body).map_err(Into::into).map_err(Status::from_error)?;
 
                 Request::from_parts(parts, bytes)
             };
 
-            let response = self
-                .inner
-                .call(request)
-                .await
-                .map_err(Into::into)
-                .map_err(Status::from_error)?;
+            let response =
+                self.inner.call(request).await.map_err(Into::into).map_err(Status::from_error)?;
 
             let status_code = response.status();
 
             if !status_code.is_success() {
-                return Err(Status::from_response(response));
+                return Err(Status::from_response(response))
             }
 
             let response = {
                 let (parts, body) = response.into_parts();
 
                 let mut decoder = codec.decoder();
-                let message = decoder
-                    .decode(body)
-                    .map_err(Into::into)
-                    .map_err(Status::from_error)?;
+                let message =
+                    decoder.decode(body).map_err(Into::into).map_err(Status::from_error)?;
 
                 Response::from_parts(parts, message)
             };
@@ -233,10 +207,7 @@ pub mod server {
         T2: Codec,
     {
         pub fn new(request_codec: T1, response_codec: T2) -> Self {
-            Self {
-                request_codec,
-                response_codec,
-            }
+            Self { request_codec, response_codec }
         }
 
         /// Handle a single unary RPC request.
@@ -247,7 +218,7 @@ pub mod server {
             let request = match self.map_request(request).await {
                 Ok(r) => r,
                 Err(status) => {
-                    return self.map_response(Err(status));
+                    return self.map_response(Err(status))
                 }
             };
 
@@ -263,10 +234,7 @@ pub mod server {
             let (parts, body) = request.into_parts();
 
             let mut decoder = self.request_codec.decoder();
-            let message = decoder
-                .decode(body)
-                .map_err(Into::into)
-                .map_err(Status::from_error)?;
+            let message = decoder.decode(body).map_err(Into::into).map_err(Status::from_error)?;
 
             let req = Request::from_parts(parts, message);
 

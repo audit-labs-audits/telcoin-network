@@ -1,9 +1,9 @@
-use execution_primitives::{NodeRecord, PeerId, H256, U256};
 use serde::{Deserialize, Serialize};
 use std::{
     collections::BTreeMap,
     net::{IpAddr, SocketAddr},
 };
+use tn_types::execution::{NodeRecord, PeerId, H256, U256};
 
 /// Represents the `admin_nodeInfo` response, which can be queried for all the information
 /// known about the running node at the networking granularity.
@@ -78,7 +78,7 @@ pub struct NetworkStatus {
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct EthProtocolInfo {
     /// The current difficulty at the head of the chain.
-    #[serde(deserialize_with = "execution_primitives::serde_helper::deserialize_json_u256")]
+    #[serde(deserialize_with = "tn_types::execution::serde_helper::deserialize_json_u256")]
     pub difficulty: U256,
     /// The block hash of the head of the chain.
     pub head: H256,

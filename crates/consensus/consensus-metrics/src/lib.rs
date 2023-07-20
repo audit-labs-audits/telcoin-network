@@ -3,16 +3,17 @@
 // SPDX-License-Identifier: Apache-2.0
 
 use dashmap::DashMap;
-use std::future::Future;
-use std::pin::Pin;
-use std::sync::Arc;
-use std::task::{Context, Poll};
-use std::time::Instant;
-
 use once_cell::sync::OnceCell;
 use prometheus::{register_int_gauge_vec_with_registry, IntGaugeVec, Registry};
+use std::{
+    future::Future,
+    pin::Pin,
+    sync::Arc,
+    task::{Context, Poll},
+    time::Instant,
+};
 use tap::TapFallible;
-use tn_tracing::tracing::{self, warn};
+use tracing::warn;
 
 pub use scopeguard;
 use uuid::Uuid;
@@ -135,11 +136,7 @@ macro_rules! monitored_future {
             };
 
             if $logging_enabled {
-                tracing::event!(
-                    tracing::Level::$logging_level,
-                    "Spawning future {}",
-                    location
-                );
+                tracing::event!(tracing::Level::$logging_level, "Spawning future {}", location);
             }
 
             $fut.await
@@ -150,24 +147,18 @@ macro_rules! monitored_future {
 #[macro_export]
 macro_rules! spawn_monitored_task {
     ($fut: expr) => {
-        tokio::task::spawn(consensus_metrics::monitored_future!(
-            tasks, $fut, "", INFO, false
-        ))
+        tokio::task::spawn(consensus_metrics::monitored_future!(tasks, $fut, "", INFO, false))
     };
 }
 
 #[macro_export]
 macro_rules! spawn_logged_monitored_task {
     ($fut: expr) => {
-        tokio::task::spawn(consensus_metrics::monitored_future!(
-            tasks, $fut, "", INFO, true
-        ))
+        tokio::task::spawn(consensus_metrics::monitored_future!(tasks, $fut, "", INFO, true))
     };
 
     ($fut: expr, $name: expr) => {
-        tokio::task::spawn(consensus_metrics::monitored_future!(
-            tasks, $fut, $name, INFO, true
-        ))
+        tokio::task::spawn(consensus_metrics::monitored_future!(tasks, $fut, $name, INFO, true))
     };
 
     ($fut: expr, $name: expr, $logging_level: ident) => {
@@ -193,10 +184,7 @@ impl Drop for MonitoredScopeGuard {
             .scope_duration_ns
             .with_label_values(&[self.name])
             .add(self.timer.elapsed().as_nanos() as i64);
-        self.metrics
-            .scope_entrance
-            .with_label_values(&[self.name])
-            .dec();
+        self.metrics.scope_entrance.with_label_values(&[self.name]).dec();
     }
 }
 
@@ -213,11 +201,7 @@ pub fn monitored_scope(name: &'static str) -> Option<MonitoredScopeGuard> {
     if let Some(m) = metrics {
         m.scope_iterations.with_label_values(&[name]).inc();
         m.scope_entrance.with_label_values(&[name]).inc();
-        Some(MonitoredScopeGuard {
-            metrics: m,
-            name,
-            timer: Instant::now(),
-        })
+        Some(MonitoredScopeGuard { metrics: m, name, timer: Instant::now() })
     } else {
         None
     }
@@ -229,10 +213,7 @@ pub trait MonitoredFutureExt: Future + Sized {
 
 impl<F: Future> MonitoredFutureExt for F {
     fn in_monitored_scope(self, name: &'static str) -> MonitoredScopeFuture<Self> {
-        MonitoredScopeFuture {
-            f: Box::pin(self),
-            _scope: monitored_scope(name),
-        }
+        MonitoredScopeFuture { f: Box::pin(self), _scope: monitored_scope(name) }
     }
 }
 
@@ -265,10 +246,7 @@ impl RegistryService {
     // Creates a new registry service and also adds the main/default registry that is supposed to
     // be preserved and never get removed
     pub fn new(default_registry: Registry) -> Self {
-        Self {
-            default_registry,
-            registries_by_id: Arc::new(DashMap::new()),
-        }
+        Self { default_registry, registries_by_id: Arc::new(DashMap::new()) }
     }
 
     // Returns the default registry for the service that someone can use
@@ -278,16 +256,12 @@ impl RegistryService {
     }
 
     // Adds a new registry to the service. The corresponding RegistryID is returned so can later be
-    // used for removing the Registry. Method panics if we try to insert a registry with the same id.
-    // As this can be quite serious for the operation of the node we don't want to accidentally
-    // swap an existing registry - we expected a removal to happen explicitly.
+    // used for removing the Registry. Method panics if we try to insert a registry with the same
+    // id. As this can be quite serious for the operation of the node we don't want to
+    // accidentally swap an existing registry - we expected a removal to happen explicitly.
     pub fn add(&self, registry: Registry) -> RegistryID {
         let registry_id = Uuid::new_v4();
-        if self
-            .registries_by_id
-            .insert(registry_id, registry)
-            .is_some()
-        {
+        if self.registries_by_id.insert(registry_id, registry).is_some() {
             panic!("Other Registry already detected for the same id {registry_id}");
         }
 
@@ -302,11 +276,8 @@ impl RegistryService {
 
     // Returns all the registries of the service
     pub fn get_all(&self) -> Vec<Registry> {
-        let mut registries: Vec<Registry> = self
-            .registries_by_id
-            .iter()
-            .map(|r| r.value().clone())
-            .collect();
+        let mut registries: Vec<Registry> =
+            self.registries_by_id.iter().map(|r| r.value().clone()).collect();
         registries.push(self.default_registry.clone());
 
         registries
@@ -345,8 +316,7 @@ pub fn uptime_metric(
 #[cfg(test)]
 mod tests {
     use crate::RegistryService;
-    use prometheus::IntCounter;
-    use prometheus::Registry;
+    use prometheus::{IntCounter, Registry};
 
     #[test]
     fn registry_service() {
@@ -356,18 +326,14 @@ mod tests {
         let registry_service = RegistryService::new(default_registry.clone());
         let default_counter = IntCounter::new("counter", "counter_desc").unwrap();
         default_counter.inc();
-        default_registry
-            .register(Box::new(default_counter))
-            .unwrap();
+        default_registry.register(Box::new(default_counter)).unwrap();
 
         // AND add a metric to the default registry
 
         // AND a registry with one metric
         let registry_1 = Registry::new_custom(Some("narwhal".to_string()), None).unwrap();
         registry_1
-            .register(Box::new(
-                IntCounter::new("counter_1", "counter_1_desc").unwrap(),
-            ))
+            .register(Box::new(IntCounter::new("counter_1", "counter_1_desc").unwrap()))
             .unwrap();
 
         // WHEN
@@ -390,9 +356,7 @@ mod tests {
         // AND add a second registry with a metric
         let registry_2 = Registry::new_custom(Some("sumthin".to_string()), None).unwrap();
         registry_2
-            .register(Box::new(
-                IntCounter::new("counter_2", "counter_2_desc").unwrap(),
-            ))
+            .register(Box::new(IntCounter::new("counter_2", "counter_2_desc").unwrap()))
             .unwrap();
         let _registry_2_id = registry_service.add(registry_2);
 

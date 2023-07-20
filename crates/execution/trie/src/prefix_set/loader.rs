@@ -7,8 +7,8 @@ use execution_db::{
     transaction::DbTx,
     DatabaseError,
 };
-use execution_primitives::{keccak256, trie::Nibbles, BlockNumber, StorageEntry, H256};
 use std::{collections::HashMap, ops::RangeInclusive};
+use tn_types::execution::{keccak256, trie::Nibbles, BlockNumber, StorageEntry, H256};
 
 /// A wrapper around a database transaction that loads prefix sets within a given block range.
 #[derive(Deref)]

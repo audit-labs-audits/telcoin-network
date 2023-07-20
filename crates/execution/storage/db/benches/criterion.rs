@@ -3,11 +3,11 @@
 use criterion::{
     black_box, criterion_group, criterion_main, measurement::WallTime, BenchmarkGroup, Criterion,
 };
-use pprof::criterion::{Output, PProfProfiler};
 use execution_db::{
     cursor::{DbCursorRO, DbCursorRW, DbDupCursorRO, DbDupCursorRW},
     tables::*,
 };
+use pprof::criterion::{Output, PProfProfiler};
 use std::time::Instant;
 
 criterion_group! {

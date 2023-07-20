@@ -2,12 +2,12 @@
 
 use crate::{post_state::PostState, DatabaseProviderRW};
 use execution_db::{database::Database, models::StoredBlockBodyIndices, tables};
-use execution_primitives::{
+use execution_rlp::Decodable;
+use std::collections::BTreeMap;
+use tn_types::execution::{
     hex_literal::hex, Account, BlockNumber, Bytes, Header, Log, Receipt, SealedBlock,
     SealedBlockWithSenders, TxType, Withdrawal, H160, H256, U256,
 };
-use execution_rlp::Decodable;
-use std::collections::BTreeMap;
 
 /// Assert genesis block
 pub fn assert_genesis_block<DB: Database>(provider: &DatabaseProviderRW<'_, DB>, g: SealedBlock) {

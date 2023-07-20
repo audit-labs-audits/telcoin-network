@@ -2,14 +2,13 @@ use crate::{
     config::EndpointConfig, connection::Connection, types::Address, ConnectionOrigin, PeerId,
     Result,
 };
-use std::sync::Arc;
-use std::time::Duration;
 use std::{
     future::Future,
     net::SocketAddr,
     pin::Pin,
-    sync::RwLock,
+    sync::{Arc, RwLock},
     task::{Context, Poll},
+    time::Duration,
 };
 use tap::Pipe;
 use tokio::time::timeout;
@@ -37,11 +36,7 @@ impl Endpoint {
             Arc::new(quinn::TokioRuntime),
         )?;
 
-        let endpoint = Self {
-            inner: endpoint,
-            local_addr,
-            config,
-        };
+        let endpoint = Self { inner: endpoint, local_addr, config };
 
         Ok(endpoint)
     }
@@ -61,9 +56,7 @@ impl Endpoint {
         address: Address,
         peer_id: PeerId,
     ) -> Result<Connecting> {
-        let config = self
-            .config
-            .client_config_with_expected_server_identity(peer_id);
+        let config = self.config.client_config_with_expected_server_identity(peer_id);
         self.connect_with_client_config(config, address)
     }
 
@@ -140,9 +133,7 @@ impl Endpoint {
     /// Yields [`Connecting`] futures that must be `await`ed to obtain the final `Connection`, or
     /// `None` if the endpoint is [`close`](Self::close)d.
     pub(crate) fn accept(&self) -> Accept<'_> {
-        Accept {
-            inner: self.inner.accept(),
-        }
+        Accept { inner: self.inner.accept() }
     }
 }
 
@@ -242,9 +233,7 @@ mod test {
 
             let mut recv = connection.accept_uni().await.unwrap();
             let mut buf = Vec::new();
-            AsyncReadExt::read_to_end(&mut recv, &mut buf)
-                .await
-                .unwrap();
+            AsyncReadExt::read_to_end(&mut recv, &mut buf).await.unwrap();
             println!("from remote: {}", buf.escape_ascii());
             assert_eq!(buf, msg);
             endpoint_2.close();
@@ -310,18 +299,14 @@ mod test {
             let req_1 = async move {
                 let mut recv = connection_1.accept_uni().await.unwrap();
                 let mut buf = Vec::new();
-                AsyncReadExt::read_to_end(&mut recv, &mut buf)
-                    .await
-                    .unwrap();
+                AsyncReadExt::read_to_end(&mut recv, &mut buf).await.unwrap();
                 println!("from remote: {}", buf.escape_ascii());
                 assert_eq!(buf, msg);
             };
             let req_2 = async move {
                 let mut recv = connection_2.accept_uni().await.unwrap();
                 let mut buf = Vec::new();
-                AsyncReadExt::read_to_end(&mut recv, &mut buf)
-                    .await
-                    .unwrap();
+                AsyncReadExt::read_to_end(&mut recv, &mut buf).await.unwrap();
                 println!("from remote: {}", buf.escape_ascii());
                 assert_eq!(buf, msg);
             };
@@ -366,9 +351,7 @@ mod test {
         {
             let mut recv = connection_2_to_1.accept_uni().await.unwrap();
             let mut buf = Vec::new();
-            AsyncReadExt::read_to_end(&mut recv, &mut buf)
-                .await
-                .unwrap();
+            AsyncReadExt::read_to_end(&mut recv, &mut buf).await.unwrap();
             assert_eq!(buf, msg);
         }
 

@@ -1,7 +1,7 @@
 use crate::{algorithm::ECIES, ECIESError, EgressECIESValue, IngressECIESValue};
-use execution_primitives::{bytes::BytesMut, H512 as PeerId};
 use secp256k1::SecretKey;
 use std::{fmt::Debug, io};
+use tn_types::execution::{bytes::BytesMut, H512 as PeerId};
 use tokio_util::codec::{Decoder, Encoder};
 use tracing::{instrument, trace};
 

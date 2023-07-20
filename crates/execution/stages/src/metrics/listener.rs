@@ -1,13 +1,13 @@
 use crate::metrics::SyncMetrics;
-use execution_primitives::{
-    constants::MGAS_TO_GAS,
-    stage::{StageCheckpoint, StageId},
-    BlockNumber,
-};
 use std::{
     future::Future,
     pin::Pin,
     task::{ready, Context, Poll},
+};
+use tn_types::execution::{
+    constants::MGAS_TO_GAS,
+    stage::{StageCheckpoint, StageId},
+    BlockNumber,
 };
 use tokio::sync::mpsc::{UnboundedReceiver, UnboundedSender};
 use tracing::trace;

@@ -1,10 +1,10 @@
 use auto_impl::auto_impl;
 use execution_interfaces::Result;
-use execution_primitives::{Account, Address, BlockNumber};
 use std::{
     collections::{BTreeMap, BTreeSet},
     ops::{RangeBounds, RangeInclusive},
 };
+use tn_types::execution::{Account, Address, BlockNumber};
 
 /// Account reader
 #[auto_impl(&, Arc, Box)]

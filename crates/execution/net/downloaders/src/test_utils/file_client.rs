@@ -1,5 +1,4 @@
 use super::file_codec::BlockFileCodec;
-use itertools::Either;
 use execution_interfaces::{
     p2p::{
         bodies::client::{BodiesClient, BodiesFut},
@@ -10,11 +9,8 @@ use execution_interfaces::{
     },
     sync::{NetworkSyncUpdater, SyncState, SyncStateProvider},
 };
-use execution_primitives::{
-    Block, BlockBody, BlockHash, BlockHashOrNumber, BlockNumber, Header, HeadersDirection, PeerId,
-    H256,
-};
 use execution_rlp::{Decodable, Header as RlpHeader};
+use itertools::Either;
 use std::{
     collections::HashMap,
     iter::zip,
@@ -25,6 +21,10 @@ use std::{
     },
 };
 use thiserror::Error;
+use tn_types::execution::{
+    Block, BlockBody, BlockHash, BlockHashOrNumber, BlockNumber, Header, HeadersDirection, PeerId,
+    H256,
+};
 use tokio::{
     fs::File,
     io::{AsyncReadExt, BufReader},
@@ -256,8 +256,6 @@ mod tests {
         test_utils::{generate_bodies, generate_bodies_file},
     };
     use assert_matches::assert_matches;
-    use futures::SinkExt;
-    use futures_util::stream::StreamExt;
     use execution_db::test_utils::create_test_rw_db;
     use execution_interfaces::{
         p2p::{
@@ -266,12 +264,14 @@ mod tests {
         },
         test_utils::TestConsensus,
     };
-    use execution_primitives::SealedHeader;
     use execution_rlp::Encodable;
+    use futures::SinkExt;
+    use futures_util::stream::StreamExt;
     use std::{
         io::{Read, Seek, SeekFrom, Write},
         sync::Arc,
     };
+    use tn_types::execution::SealedHeader;
     use tokio::io::{AsyncSeekExt, AsyncWriteExt, BufWriter};
     use tokio_util::codec::FramedWrite;
 

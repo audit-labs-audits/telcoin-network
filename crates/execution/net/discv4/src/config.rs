@@ -5,14 +5,14 @@
 
 use execution_net_common::ban_list::BanList;
 use execution_net_nat::{NatResolver, ResolveNatInterval};
-use execution_primitives::{
-    bytes::{Bytes, BytesMut},
-    NodeRecord,
-};
 use execution_rlp::Encodable;
 use std::{
     collections::{HashMap, HashSet},
     time::Duration,
+};
+use tn_types::execution::{
+    bytes::{Bytes, BytesMut},
+    NodeRecord,
 };
 
 #[cfg(feature = "serde")]

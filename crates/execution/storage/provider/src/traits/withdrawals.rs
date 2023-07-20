@@ -1,5 +1,5 @@
 use execution_interfaces::Result;
-use execution_primitives::{BlockHashOrNumber, Withdrawal};
+use tn_types::execution::{BlockHashOrNumber, Withdrawal};
 
 ///  Client trait for fetching [Withdrawal] related data.
 #[auto_impl::auto_impl(&, Arc)]

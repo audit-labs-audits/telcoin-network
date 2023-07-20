@@ -2,17 +2,17 @@ pub use rand::Rng;
 use rand::{
     distributions::uniform::SampleRange, rngs::StdRng, seq::SliceRandom, thread_rng, SeedableRng,
 };
-use execution_primitives::{
-    proofs, sign_message, Account, Address, BlockNumber, Bytes, Header, Log, Receipt, SealedBlock,
-    SealedHeader, Signature, StorageEntry, Transaction, TransactionKind, TransactionSigned,
-    TxLegacy, H160, H256, U256,
-};
 use secp256k1::{KeyPair, Message as SecpMessage, Secp256k1, SecretKey, SECP256K1};
 use std::{
     cmp::{max, min},
     collections::{hash_map::DefaultHasher, BTreeMap},
     hash::Hasher,
     ops::{Range, RangeInclusive, Sub},
+};
+use tn_types::execution::{
+    proofs, sign_message, Account, Address, BlockNumber, Bytes, Header, Log, Receipt, SealedBlock,
+    SealedHeader, Signature, StorageEntry, Transaction, TransactionKind, TransactionSigned,
+    TxLegacy, H160, H256, U256,
 };
 
 // TODO(onbjerg): Maybe we should split this off to its own crate, or move the helpers to the
@@ -57,7 +57,7 @@ pub fn random_header_range<R: Rng>(
 ///
 /// The header is assumed to not be correct if validated.
 pub fn random_header<R: Rng>(rng: &mut R, number: u64, parent: Option<H256>) -> SealedHeader {
-    let header = execution_primitives::Header {
+    let header = tn_types::execution::Header {
         number,
         nonce: rng.gen(),
         difficulty: U256::from(rng.gen::<u32>()),
@@ -363,8 +363,8 @@ mod test {
 
     use super::*;
     use hex_literal::hex;
-    use execution_primitives::{keccak256, AccessList, Address, TransactionKind, TxEip1559};
     use secp256k1::KeyPair;
+    use tn_types::execution::{keccak256, AccessList, Address, TransactionKind, TxEip1559};
 
     #[test]
     fn test_sign_message() {

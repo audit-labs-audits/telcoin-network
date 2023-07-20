@@ -1,5 +1,5 @@
-use execution_primitives::ChainSpec;
 use std::sync::Arc;
+use tn_types::execution::ChainSpec;
 
 /// A trait for reading the current chainspec.
 pub trait ChainSpecProvider: Send + Sync {

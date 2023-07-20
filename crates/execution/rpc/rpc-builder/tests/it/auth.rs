@@ -1,11 +1,11 @@
 //! Auth server tests
 
 use crate::utils::launch_auth;
-use jsonrpsee::core::client::{ClientT, SubscriptionClientT};
-use execution_primitives::Block;
 use execution_rpc::JwtSecret;
 use execution_rpc_api::clients::EngineApiClient;
 use execution_rpc_types::engine::{ForkchoiceState, PayloadId, TransitionConfiguration};
+use jsonrpsee::core::client::{ClientT, SubscriptionClientT};
+use tn_types::execution::Block;
 
 #[allow(unused_must_use)]
 async fn test_basic_engine_calls<C>(client: &C)

@@ -6,21 +6,21 @@ use crate::{
     pinger::{Pinger, PingerEvent},
     DisconnectReason, HelloMessage,
 };
-use futures::{Sink, SinkExt, StreamExt};
-use pin_project::pin_project;
 use execution_codecs::derive_arbitrary;
 use execution_metrics::metrics::{self, counter};
-use execution_primitives::{
-    bytes::{Buf, BufMut, Bytes, BytesMut},
-    hex,
-};
 use execution_rlp::{Decodable, DecodeError, Encodable, EMPTY_LIST_CODE};
+use futures::{Sink, SinkExt, StreamExt};
+use pin_project::pin_project;
 use std::{
     collections::{BTreeSet, HashMap, HashSet, VecDeque},
     io,
     pin::Pin,
     task::{ready, Context, Poll},
     time::Duration,
+};
+use tn_types::execution::{
+    bytes::{Buf, BufMut, Bytes, BytesMut},
+    hex,
 };
 use tokio_stream::Stream;
 
@@ -711,9 +711,9 @@ impl Encodable for P2PMessage {
     }
 }
 
-/// The [`Decodable`](execution_rlp::Decodable) implementation for [`P2PMessage`] assumes that each of
-/// the message variants are snappy compressed, except for the [`P2PMessage::Hello`] variant since
-/// the hello message is never compressed in the `p2p` subprotocol.
+/// The [`Decodable`](execution_rlp::Decodable) implementation for [`P2PMessage`] assumes that each
+/// of the message variants are snappy compressed, except for the [`P2PMessage::Hello`] variant
+/// since the hello message is never compressed in the `p2p` subprotocol.
 /// The [`Decodable`] implementation for [`P2PMessage::Ping`] and
 /// [`P2PMessage::Pong`] expects a snappy encoded payload, see [`Encodable`] implementation.
 impl Decodable for P2PMessage {

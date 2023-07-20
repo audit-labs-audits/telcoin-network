@@ -4,19 +4,19 @@ use crate::{
     engine::message::OnForkChoiceUpdated, LatticeConsensusEngineEvent, LatticeEngineMessage,
     LatticeForkChoiceUpdateError, LatticeOnNewPayloadError,
 };
-use futures::TryFutureExt;
-use tn_types::consensus::Batch;
 use execution_payload_builder::{PayloadId, PayloadStore};
 use execution_rpc_types::engine::{
     ExecutionPayload, ForkchoiceState, ForkchoiceUpdated, PayloadAttributes, PayloadStatus,
 };
+use futures::TryFutureExt;
+use tn_types::consensus::Batch;
 use tokio::sync::{mpsc, mpsc::UnboundedSender, oneshot};
 use tokio_stream::wrappers::UnboundedReceiverStream;
 
 use super::error::LatticeNextBatchError;
 
-/// A _shareable_ lattice consensus frontend type. Used to interact with the spawned lattice consensus
-/// engine task.
+/// A _shareable_ lattice consensus frontend type. Used to interact with the spawned lattice
+/// consensus engine task.
 ///
 /// See also [`LatticeConsensusEngine`](crate::engine::LatticeConsensusEngine).
 #[derive(Clone, Debug)]
@@ -48,12 +48,11 @@ impl LatticeConsensusEngineHandle {
         rx.await.map_err(|_| LatticeOnNewPayloadError::EngineUnavailable)?
     }
 
-
     /// Processes a new payload request from workers.
-    /// 
-    /// The engine should return the most recent version of the payload 
+    ///
+    /// The engine should return the most recent version of the payload
     /// that is available in the corresponding payload build process.
-    /// 
+    ///
     /// Akin to `get_payload_v2` in beacon engine api.
     async fn get_batch(
         &mut self,
@@ -67,18 +66,6 @@ impl LatticeConsensusEngineHandle {
             .map(|payload| (*payload).clone())?
             .into())
     }
-
-
-
-
-
-
-
-
-
-
-
-
 
     /// Sends a forkchoice update message to the lattice consensus engine and waits for a response.
     ///
@@ -95,8 +82,8 @@ impl LatticeConsensusEngineHandle {
             .await?)
     }
 
-    /// Sends a forkchoice update message to the lattice consensus engine and returns the receiver to
-    /// wait for a response.
+    /// Sends a forkchoice update message to the lattice consensus engine and returns the receiver
+    /// to wait for a response.
     fn send_fork_choice_updated(
         &self,
         state: ForkchoiceState,

@@ -40,7 +40,7 @@
 //! use std::task::{Context, Poll};
 //! use execution_payload_builder::{BuiltPayload, KeepPayloadJobAlive, PayloadBuilderAttributes, PayloadJob, PayloadJobGenerator};
 //! use execution_payload_builder::error::PayloadBuilderError;
-//! use execution_primitives::{Block, Header, U256};
+//! use tn_types::execution::{Block, Header, U256};
 //!
 //! /// The generator type that creates new jobs that builds empty blocks.
 //! pub struct EmptyBlockPayloadJobGenerator;
@@ -108,7 +108,7 @@ mod traits;
 #[cfg(any(test, feature = "test-utils"))]
 pub mod test_utils;
 
-pub use payload::{BuiltPayload, PayloadBuilderAttributes};
 pub use execution_rpc_types::engine::PayloadId;
+pub use payload::{BuiltPayload, PayloadBuilderAttributes};
 pub use service::{PayloadBuilderHandle, PayloadBuilderService, PayloadStore};
 pub use traits::{KeepPayloadJobAlive, PayloadJob, PayloadJobGenerator};

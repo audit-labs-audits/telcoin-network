@@ -9,20 +9,9 @@
 //! reth basic payload job generator
 
 use crate::metrics::PayloadBuilderMetrics;
-use futures_core::ready;
-use futures_util::FutureExt;
 use execution_payload_builder::{
     database::CachedReads, error::PayloadBuilderError, BuiltPayload, KeepPayloadJobAlive,
     PayloadBuilderAttributes, PayloadJob, PayloadJobGenerator,
-};
-use execution_primitives::{
-    bytes::{Bytes, BytesMut},
-    constants::{
-        BEACON_NONCE, EMPTY_RECEIPTS, EMPTY_TRANSACTIONS, EMPTY_WITHDRAWALS,
-        ETHEREUM_BLOCK_GAS_LIMIT, execution_CLIENT_VERSION, SLOT_DURATION,
-    },
-    proofs, Block, BlockNumberOrTag, ChainSpec, Header, IntoRecoveredTransaction, Receipt,
-    SealedBlock, Withdrawal, EMPTY_OMMER_ROOT, H256, U256,
 };
 use execution_provider::{BlockReaderIdExt, BlockSource, PostState, StateProviderFactory};
 use execution_revm::{
@@ -36,6 +25,8 @@ use execution_revm::{
 use execution_rlp::Encodable;
 use execution_tasks::TaskSpawner;
 use execution_transaction_pool::TransactionPool;
+use futures_core::ready;
+use futures_util::FutureExt;
 use revm::{
     db::{CacheDB, DatabaseRef},
     primitives::{BlockEnv, CfgEnv, EVMError, Env, InvalidTransaction, ResultAndState},
@@ -46,6 +37,15 @@ use std::{
     sync::{atomic::AtomicBool, Arc},
     task::{Context, Poll},
     time::Duration,
+};
+use tn_types::execution::{
+    bytes::{Bytes, BytesMut},
+    constants::{
+        execution_CLIENT_VERSION, BEACON_NONCE, EMPTY_RECEIPTS, EMPTY_TRANSACTIONS,
+        EMPTY_WITHDRAWALS, ETHEREUM_BLOCK_GAS_LIMIT, SLOT_DURATION,
+    },
+    proofs, Block, BlockNumberOrTag, ChainSpec, Header, IntoRecoveredTransaction, Receipt,
+    SealedBlock, Withdrawal, EMPTY_OMMER_ROOT, H256, U256,
 };
 use tokio::{
     sync::{oneshot, Semaphore},

@@ -5,7 +5,7 @@ use std::{
 
 use crate::p2p::{download::DownloadClient, error::PeerRequestResult, priority::Priority};
 use futures::{Future, FutureExt};
-use execution_primitives::{BlockBody, H256};
+use tn_types::execution::{BlockBody, H256};
 
 /// The bodies future type
 pub type BodiesFut = Pin<Box<dyn Future<Output = PeerRequestResult<Vec<BlockBody>>> + Send + Sync>>;

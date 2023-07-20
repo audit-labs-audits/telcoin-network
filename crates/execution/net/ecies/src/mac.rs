@@ -4,8 +4,8 @@ use block_padding::NoPadding;
 use cipher::BlockEncrypt;
 use digest::KeyInit;
 use generic_array::GenericArray;
-use execution_primitives::{H128, H256};
 use sha3::{Digest, Keccak256};
+use tn_types::execution::{H128, H256};
 use typenum::U16;
 
 pub type HeaderBytes = GenericArray<u8, U16>;

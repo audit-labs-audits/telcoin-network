@@ -2,8 +2,8 @@
 use std::path::PathBuf;
 
 use clap::Parser;
+use execution_config::Config;
 use eyre::{bail, WrapErr};
-use lattice_config::execution::Config;
 
 /// `tn config` command
 #[derive(Debug, Parser)]

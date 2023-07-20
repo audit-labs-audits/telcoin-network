@@ -1,6 +1,6 @@
 use derive_more::Deref;
-use execution_primitives::{Address, BlockNumber, U256};
 use std::collections::{btree_map::Entry, BTreeMap};
+use tn_types::execution::{Address, BlockNumber, U256};
 
 /// Storage for an account with the old and new values for each slot: (slot -> (old, new)).
 pub type StorageChangeset = BTreeMap<U256, (U256, U256)>;

@@ -1,5 +1,4 @@
 use crate::metrics::BodyDownloaderMetrics;
-use futures::{Future, FutureExt};
 use execution_interfaces::{
     consensus::{Consensus as ConsensusTrait, Consensus},
     p2p::{
@@ -8,13 +7,14 @@ use execution_interfaces::{
         priority::Priority,
     },
 };
-use execution_primitives::{BlockBody, PeerId, SealedBlock, SealedHeader, WithPeerId, H256};
+use futures::{Future, FutureExt};
 use std::{
     collections::VecDeque,
     pin::Pin,
     sync::Arc,
     task::{ready, Context, Poll},
 };
+use tn_types::execution::{BlockBody, PeerId, SealedBlock, SealedHeader, WithPeerId, H256};
 
 /// Body request implemented as a [Future].
 ///
@@ -25,8 +25,8 @@ use std::{
 /// It then proceeds to verify the downloaded bodies. In case of an validation error,
 /// the future will start over.
 ///
-/// The future will filter out any empty headers (see [execution_primitives::Header::is_empty]) from the
-/// request. If [BodiesRequestFuture] was initialized with all empty headers, no request will be
+/// The future will filter out any empty headers (see [tn_types::execution::Header::is_empty]) from
+/// the request. If [BodiesRequestFuture] was initialized with all empty headers, no request will be
 /// dispatched and they will be immediately returned upon polling.
 ///
 /// NB: This assumes that peers respond with bodies in the order that they were requested.
@@ -241,8 +241,8 @@ mod tests {
         p2p::bodies::response::BlockResponse,
         test_utils::{generators, generators::random_header_range, TestConsensus},
     };
-    use execution_primitives::H256;
     use std::sync::Arc;
+    use tn_types::execution::H256;
 
     /// Check if future returns empty bodies without dispathing any requests.
     #[tokio::test]

@@ -1,6 +1,6 @@
 [package]
 name = "anemo-cli"
-version = "0.1.0"
+version.workspace = true
 license = "Apache-2.0 OR MIT"
 authors = [ "Andrew Schran <aschran@mystenlabs.com>", "Grant Kee <grant.kee@telco.in>" ]
 edition = "2021"

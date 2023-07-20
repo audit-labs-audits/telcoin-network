@@ -4,14 +4,16 @@ use crate::{
     traits::{CanonicalStateUpdate, ChangedAccount, TransactionPoolExt},
     BlockInfo, TransactionPool,
 };
+use execution_provider::{
+    BlockReaderIdExt, CanonStateNotification, PostState, StateProviderFactory,
+};
 use futures_util::{future::BoxFuture, FutureExt, Stream, StreamExt};
-use execution_primitives::{Address, BlockHash, BlockNumberOrTag, FromRecoveredTransaction};
-use execution_provider::{BlockReaderIdExt, CanonStateNotification, PostState, StateProviderFactory};
 use std::{
     borrow::Borrow,
     collections::HashSet,
     hash::{Hash, Hasher},
 };
+use tn_types::execution::{Address, BlockHash, BlockNumberOrTag, FromRecoveredTransaction};
 use tracing::debug;
 
 /// Maximum (reorg) depth we handle when updating the transaction pool: `new.number -

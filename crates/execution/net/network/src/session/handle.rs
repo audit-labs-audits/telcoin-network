@@ -10,8 +10,8 @@ use execution_eth_wire::{
     DisconnectReason, EthStream, EthVersion, P2PStream, Status,
 };
 use execution_net_common::bandwidth_meter::MeteredStream;
-use execution_primitives::PeerId;
 use std::{io, net::SocketAddr, sync::Arc, time::Instant};
+use tn_types::execution::PeerId;
 use tokio::{
     net::TcpStream,
     sync::{mpsc, oneshot},

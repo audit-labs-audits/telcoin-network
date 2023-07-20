@@ -60,12 +60,14 @@ pub struct Config {
     /// Maximum number of concurrent connections to have established at a given point in time.
     ///
     /// This limit is applied in the following ways:
-    ///  - Inbound connections from [`KnownPeers`] with [`PeerAffinity::High`] bypass this limit. All
+    ///  - Inbound connections from [`KnownPeers`] with [`PeerAffinity::High`] bypass this limit.
+    ///    All
     ///  other inbound connections are only accepted if the total number of inbound and outbound
     ///  connections, irrespective of affinity, is less than this limit.
     ///  - Outbound connections explicitly made by the application via [`Network::connect`] or
     ///  [`Network::connect_with_peer_id`] bypass this limit.
-    ///  - Outbound connections made in the background, due to configured [`KnownPeers`], to peers with
+    ///  - Outbound connections made in the background, due to configured [`KnownPeers`], to peers
+    ///    with
     ///  [`PeerAffinity::High`] bypass this limit and are always attempted, while peers with lower
     ///  affinity respect this limit.
     ///
@@ -207,35 +209,27 @@ pub struct QuicConfig {
 
 impl Config {
     pub(crate) fn transport_config(&self) -> quinn::TransportConfig {
-        self.quic
-            .as_ref()
-            .map(QuicConfig::transport_config)
-            .unwrap_or_default()
+        self.quic.as_ref().map(QuicConfig::transport_config).unwrap_or_default()
     }
 
     pub(crate) fn connection_manager_channel_capacity(&self) -> usize {
         const CONNECTION_MANAGER_CHANNEL_CAPACITY: usize = 128;
 
-        self.connection_manager_channel_capacity
-            .unwrap_or(CONNECTION_MANAGER_CHANNEL_CAPACITY)
+        self.connection_manager_channel_capacity.unwrap_or(CONNECTION_MANAGER_CHANNEL_CAPACITY)
     }
 
     pub(crate) fn connectivity_check_interval(&self) -> Duration {
         const CONNECTIVITY_CHECK_INTERVAL_MS: u64 = 5_000; // 5 seconds
 
         Duration::from_millis(
-            self.connectivity_check_interval_ms
-                .unwrap_or(CONNECTIVITY_CHECK_INTERVAL_MS),
+            self.connectivity_check_interval_ms.unwrap_or(CONNECTIVITY_CHECK_INTERVAL_MS),
         )
     }
 
     pub(crate) fn max_connection_backoff(&self) -> Duration {
         const MAX_CONNECTION_BACKOFF_MS: u64 = 60_000; // 1 minute
 
-        Duration::from_millis(
-            self.max_connection_backoff_ms
-                .unwrap_or(MAX_CONNECTION_BACKOFF_MS),
-        )
+        Duration::from_millis(self.max_connection_backoff_ms.unwrap_or(MAX_CONNECTION_BACKOFF_MS))
     }
 
     pub(crate) fn connection_backoff(&self) -> Duration {
@@ -264,8 +258,7 @@ impl Config {
     pub(crate) fn peer_event_broadcast_channel_capacity(&self) -> usize {
         const PEER_EVENT_BROADCAST_CHANNEL_CAPACITY: usize = 128;
 
-        self.peer_event_broadcast_channel_capacity
-            .unwrap_or(PEER_EVENT_BROADCAST_CHANNEL_CAPACITY)
+        self.peer_event_broadcast_channel_capacity.unwrap_or(PEER_EVENT_BROADCAST_CHANNEL_CAPACITY)
     }
 
     pub(crate) fn max_frame_size(&self) -> Option<usize> {
@@ -293,31 +286,25 @@ impl QuicConfig {
     pub(crate) fn transport_config(&self) -> quinn::TransportConfig {
         let mut config = quinn::TransportConfig::default();
 
-        if let Some(max) = self
-            .max_concurrent_bidi_streams
-            .map(|n| VarInt::try_from(n).unwrap_or(VarInt::MAX))
+        if let Some(max) =
+            self.max_concurrent_bidi_streams.map(|n| VarInt::try_from(n).unwrap_or(VarInt::MAX))
         {
             config.max_concurrent_bidi_streams(max);
         }
 
-        if let Some(max) = self
-            .max_concurrent_uni_streams
-            .map(|n| VarInt::try_from(n).unwrap_or(VarInt::MAX))
+        if let Some(max) =
+            self.max_concurrent_uni_streams.map(|n| VarInt::try_from(n).unwrap_or(VarInt::MAX))
         {
             config.max_concurrent_uni_streams(max);
         }
 
-        if let Some(max) = self
-            .stream_receive_window
-            .map(|n| VarInt::try_from(n).unwrap_or(VarInt::MAX))
+        if let Some(max) =
+            self.stream_receive_window.map(|n| VarInt::try_from(n).unwrap_or(VarInt::MAX))
         {
             config.stream_receive_window(max);
         }
 
-        if let Some(max) = self
-            .receive_window
-            .map(|n| VarInt::try_from(n).unwrap_or(VarInt::MAX))
-        {
+        if let Some(max) = self.receive_window.map(|n| VarInt::try_from(n).unwrap_or(VarInt::MAX)) {
             config.receive_window(max);
         }
 
@@ -412,9 +399,8 @@ impl EndpointConfigBuilder {
         let primary_server_name = self.server_name.unwrap();
         let transport_config = Arc::new(self.transport_config.unwrap_or_default());
 
-        let cert_verifier = Arc::new(CertVerifier {
-            server_names: vec![primary_server_name.clone()],
-        });
+        let cert_verifier =
+            Arc::new(CertVerifier { server_names: vec![primary_server_name.clone()] });
         let (primary_certificate, pkcs8_der) = Self::generate_cert(&keypair, &primary_server_name);
 
         // Client only uses the primary `server_name` when initiating outbound connections
@@ -510,7 +496,7 @@ impl EndpointConfigBuilder {
         let client_crypto = rustls::ClientConfig::builder()
             .with_safe_defaults()
             .with_custom_certificate_verifier(cert_verifier)
-            .with_single_cert(vec![cert], pkcs8_der)?;
+            .with_client_auth_cert(vec![cert], pkcs8_der)?;
 
         let mut client = quinn::ClientConfig::new(Arc::new(client_crypto));
         client.transport_config(transport_config);
@@ -566,18 +552,13 @@ impl EndpointConfig {
         peer_id: PeerId,
     ) -> quinn::ClientConfig {
         let server_cert_verifier = ExpectedCertVerifier(
-            CertVerifier {
-                server_names: vec![self.server_name().into()],
-            },
+            CertVerifier { server_names: vec![self.server_name().into()] },
             peer_id,
         );
         let client_crypto = rustls::ClientConfig::builder()
             .with_safe_defaults()
             .with_custom_certificate_verifier(Arc::new(server_cert_verifier))
-            .with_single_cert(
-                vec![self.client_certificate.clone()],
-                self.pkcs8_der.clone(),
-            )
+            .with_client_auth_cert(vec![self.client_certificate.clone()], self.pkcs8_der.clone())
             .unwrap();
 
         let mut client = quinn::ClientConfig::new(Arc::new(client_crypto));
@@ -587,11 +568,7 @@ impl EndpointConfig {
 
     #[cfg(test)]
     pub(crate) fn random(server_name: &str) -> Self {
-        Self::builder()
-            .random_private_key()
-            .server_name(server_name)
-            .build()
-            .unwrap()
+        Self::builder().random_private_key().server_name(server_name).build().unwrap()
     }
 }
 

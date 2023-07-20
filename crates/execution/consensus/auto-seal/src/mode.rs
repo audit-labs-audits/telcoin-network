@@ -1,7 +1,7 @@
 //! The mode the auto seal miner is operating in.
 
 use futures_util::{stream::Fuse, StreamExt};
-use execution_primitives::TxHash;
+use tn_types::execution::TxHash;
 use execution_transaction_pool::{TransactionPool, ValidPoolTransaction};
 use std::{
     fmt,

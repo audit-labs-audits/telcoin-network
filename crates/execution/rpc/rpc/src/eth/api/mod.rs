@@ -12,12 +12,14 @@ use crate::eth::{
 use async_trait::async_trait;
 use execution_interfaces::Result;
 use execution_network_api::NetworkInfo;
-use execution_primitives::{Address, BlockId, BlockNumberOrTag, ChainInfo, H256, U256, U64};
-use execution_provider::{BlockReaderIdExt, EvmEnvProvider, StateProviderBox, StateProviderFactory};
+use execution_provider::{
+    BlockReaderIdExt, EvmEnvProvider, StateProviderBox, StateProviderFactory,
+};
 use execution_rpc_types::{SyncInfo, SyncStatus};
 use execution_tasks::{TaskSpawner, TokioTaskExecutor};
 use execution_transaction_pool::TransactionPool;
 use std::{future::Future, sync::Arc};
+use tn_types::execution::{Address, BlockId, BlockNumberOrTag, ChainInfo, H256, U256, U64};
 use tokio::sync::oneshot;
 
 mod block;
@@ -58,10 +60,10 @@ pub trait EthApiSpec: EthTransactions + Send + Sync {
 ///
 /// This type provides the functionality for handling `eth_` related requests.
 /// These are implemented two-fold: Core functionality is implemented as [EthApiSpec]
-/// trait. Additionally, the required server implementations (e.g. [`execution_rpc_api::EthApiServer`])
-/// are implemented separately in submodules. The rpc handler implementation can then delegate to
-/// the main impls. This way [`EthApi`] is not limited to [`jsonrpsee`] and can be used standalone
-/// or in other network handlers (for example ipc).
+/// trait. Additionally, the required server implementations (e.g.
+/// [`execution_rpc_api::EthApiServer`]) are implemented separately in submodules. The rpc handler
+/// implementation can then delegate to the main impls. This way [`EthApi`] is not limited to
+/// [`jsonrpsee`] and can be used standalone or in other network handlers (for example ipc).
 pub struct EthApi<Provider, Pool, Network> {
     /// All nested fields bundled together.
     inner: Arc<EthApiInner<Provider, Pool, Network>>,

@@ -1,6 +1,6 @@
-use jsonrpsee::{core::RpcResult, proc_macros::rpc};
-use execution_primitives::NodeRecord;
 use execution_rpc_types::NodeInfo;
+use jsonrpsee::{core::RpcResult, proc_macros::rpc};
+use tn_types::execution::NodeRecord;
 
 /// Admin namespace rpc interface that gives access to several non-standard RPC methods.
 #[cfg_attr(not(feature = "client"), rpc(server, namespace = "admin"))]

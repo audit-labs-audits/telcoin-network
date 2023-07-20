@@ -1,5 +1,7 @@
 use execution_interfaces::Result;
-use execution_primitives::{BlockHashOrNumber, BlockId, BlockNumberOrTag, Receipt, TxHash, TxNumber};
+use tn_types::execution::{
+    BlockHashOrNumber, BlockId, BlockNumberOrTag, Receipt, TxHash, TxNumber,
+};
 
 use crate::BlockIdReader;
 

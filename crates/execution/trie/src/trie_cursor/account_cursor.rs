@@ -1,7 +1,7 @@
 use super::TrieCursor;
 use crate::updates::TrieKey;
 use execution_db::{cursor::DbCursorRO, tables, DatabaseError};
-use execution_primitives::trie::{BranchNodeCompact, StoredNibbles};
+use tn_types::execution::trie::{BranchNodeCompact, StoredNibbles};
 
 /// A cursor over the account trie.
 pub struct AccountTrieCursor<C>(C);
@@ -46,8 +46,8 @@ mod tests {
         test_utils::create_test_rw_db,
         transaction::DbTxMut,
     };
-    use execution_primitives::{hex_literal::hex, MAINNET};
     use execution_provider::ProviderFactory;
+    use tn_types::execution::{hex_literal::hex, MAINNET};
 
     #[test]
     fn test_account_trie_order() {

@@ -2,22 +2,19 @@
 // Copyright (c) Mysten Labs, Inc.
 // SPDX-License-Identifier: Apache-2.0
 use bytes::Bytes;
-use lattice_consensus::bullshark::Bullshark;
-use lattice_consensus::consensus::ConsensusRound;
-use lattice_consensus::metrics::ConsensusMetrics;
-use lattice_consensus::Consensus;
 use fastcrypto::hash::Hash;
-use lattice_executor::get_restored_consensus_output;
-use lattice_executor::MockExecutionState;
+use lattice_consensus::{
+    bullshark::Bullshark, consensus::ConsensusRound, metrics::ConsensusMetrics, Consensus,
+};
+use lattice_executor::{get_restored_consensus_output, MockExecutionState};
 use lattice_primary::NUM_SHUTDOWN_RECEIVERS;
-use prometheus::Registry;
-use std::collections::BTreeSet;
-use std::sync::Arc;
 use lattice_storage::NodeStorage;
-use telemetry_subscribers::TelemetryGuards;
 use lattice_test_utils::{cluster::Cluster, temp_dir, CommitteeFixture};
-use tokio::sync::watch;
+use prometheus::Registry;
+use std::{collections::BTreeSet, sync::Arc};
+use telemetry_subscribers::TelemetryGuards;
 use tn_types::consensus::{Certificate, PreSubscribedBroadcastSender, Round, TransactionProto};
+use tokio::sync::watch;
 
 #[tokio::test]
 async fn test_recovery() {
@@ -33,31 +30,17 @@ async fn test_recovery() {
 
     // Make certificates for rounds 1 and 2.
     let ids: Vec<_> = fixture.authorities().map(|a| a.id()).collect();
-    let genesis = Certificate::genesis(&committee)
-        .iter()
-        .map(|x| x.digest())
-        .collect::<BTreeSet<_>>();
-    let (mut certificates, next_parents) = lattice_test_utils::make_optimal_certificates(
-        &committee,
-        1..=2,
-        &genesis,
-        &ids,
-    );
+    let genesis =
+        Certificate::genesis(&committee).iter().map(|x| x.digest()).collect::<BTreeSet<_>>();
+    let (mut certificates, next_parents) =
+        lattice_test_utils::make_optimal_certificates(&committee, 1..=2, &genesis, &ids);
 
     // Make two certificate (f+1) with round 3 to trigger the commits.
-    let (_, certificate) = lattice_test_utils::mock_certificate(
-        &committee,
-        ids[0],
-        3,
-        next_parents.clone(),
-    );
+    let (_, certificate) =
+        lattice_test_utils::mock_certificate(&committee, ids[0], 3, next_parents.clone());
     certificates.push_back(certificate);
-    let (_, certificate) = lattice_test_utils::mock_certificate(
-        &committee,
-        ids[1],
-        3,
-        next_parents,
-    );
+    let (_, certificate) =
+        lattice_test_utils::mock_certificate(&committee, ids[1], 3, next_parents);
     certificates.push_back(certificate);
 
     // Spawn the consensus engine and sink the primary channel.
@@ -103,8 +86,8 @@ async fn test_recovery() {
         tx_waiter.send(certificate).await.unwrap();
     }
 
-    // Ensure the first 4 ordered certificates are from round 1 (they are the parents of the committed
-    // leader); then the leader's certificate should be committed.
+    // Ensure the first 4 ordered certificates are from round 1 (they are the parents of the
+    // committed leader); then the leader's certificate should be committed.
     let consensus_index_counter = 4;
     let num_of_committed_certificates = 5;
 
@@ -125,10 +108,7 @@ async fn test_recovery() {
     // have executed the last committed certificate
     for last_executed_certificate_index in 0..consensus_index_counter {
         let mut execution_state = MockExecutionState::new();
-        execution_state
-            .expect_last_executed_sub_dag_index()
-            .times(1)
-            .returning(|| 1);
+        execution_state.expect_last_executed_sub_dag_index().times(1).returning(|| 1);
 
         let consensus_output = get_restored_consensus_output(
             consensus_store.clone(),
@@ -138,12 +118,12 @@ async fn test_recovery() {
         .await
         .unwrap();
 
-        // we expect to have recovered all the certificates from the last commit. The executor engine
-        // will not execute the same certificate twice.
+        // we expect to have recovered all the certificates from the last commit. The executor
+        // engine will not execute the same certificate twice.
         assert_eq!(consensus_output.len(), 1);
         assert!(
-            consensus_output[0].len()
-                >= (num_of_committed_certificates - last_executed_certificate_index) as usize
+            consensus_output[0].len() >=
+                (num_of_committed_certificates - last_executed_certificate_index) as usize
         );
     }
 }
@@ -166,11 +146,7 @@ async fn test_internal_consensus_output() {
     let mut client = authority.new_transactions_client(&worker_id).await;
 
     // Subscribe to the transaction confirmation channel
-    let mut receiver = authority
-        .primary()
-        .await
-        .tx_transaction_confirmation
-        .subscribe();
+    let mut receiver = authority.primary().await.tx_transaction_confirmation.subscribe();
 
     // Create arbitrary transactions
     let mut transactions = Vec::new();
@@ -181,9 +157,7 @@ async fn test_internal_consensus_output() {
 
         // serialise and send
         let tr = bcs::to_bytes(&tx).unwrap();
-        let txn = TransactionProto {
-            transaction: Bytes::from(tr),
-        };
+        let txn = TransactionProto { transaction: Bytes::from(tr) };
         client.submit_transaction(txn).await.unwrap();
 
         transactions.push(tx);
@@ -207,7 +181,7 @@ async fn test_internal_consensus_output() {
         );
 
         if transactions.is_empty() {
-            break;
+            break
         }
     }
 }

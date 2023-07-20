@@ -1,6 +1,6 @@
-use jsonrpsee::core::RpcResult;
 use execution_rpc_api::RpcApiServer;
 use execution_rpc_types::RpcModules;
+use jsonrpsee::core::RpcResult;
 use std::{collections::HashMap, sync::Arc};
 
 /// `rpc` API implementation.

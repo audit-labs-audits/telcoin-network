@@ -3,32 +3,29 @@
 // Copyright (c) Mysten Labs, Inc.
 // SPDX-License-Identifier: Apache-2.0
 use crate::{aggregators::VotesAggregator, metrics::PrimaryMetrics, synchronizer::Synchronizer};
-use tn_types::consensus::config::{AuthorityIdentifier, Committee};
-use tn_types::consensus::crypto::{NetworkPublicKey, Signature};
+use consensus_metrics::{metered_channel::Receiver, monitored_future, spawn_logged_monitored_task};
 use fastcrypto::signature_service::SignatureService;
-use futures::stream::FuturesUnordered;
-use futures::StreamExt;
-use consensus_metrics::metered_channel::Receiver;
-use consensus_metrics::{monitored_future, spawn_logged_monitored_task};
+use futures::{stream::FuturesUnordered, StreamExt};
 use lattice_network::anemo_ext::NetworkExt;
-use std::sync::Arc;
-use std::time::Duration;
 use lattice_storage::{CertificateStore, HeaderStore};
+use std::{sync::Arc, time::Duration};
 use tn_macros::fail_point_async;
+use tn_types::{
+    consensus::{
+        config::{AuthorityIdentifier, Committee},
+        crypto,
+        crypto::{NetworkPublicKey, Signature},
+        error::{DagError, DagResult},
+        Certificate, CertificateDigest, ConditionalBroadcastReceiver, Header, HeaderAPI,
+        PrimaryToPrimaryClient, RequestVoteRequest, Vote, VoteAPI,
+    },
+    ensure,
+};
 use tokio::{
     sync::oneshot,
     task::{JoinHandle, JoinSet},
 };
 use tracing::{debug, enabled, error, info, instrument, warn};
-use tn_types::{
-    ensure,
-    consensus::{
-        crypto,
-        error::{DagError, DagResult},
-        Certificate, CertificateDigest, ConditionalBroadcastReceiver, Header, HeaderAPI,
-        PrimaryToPrimaryClient, RequestVoteRequest, Vote, VoteAPI,
-    }
-};
 
 #[cfg(test)]
 #[path = "tests/certifier_tests.rs"]
@@ -156,21 +153,19 @@ impl Certifier {
                     .collect();
                 if parents.len() != expected_count {
                     warn!("tried to read {expected_count} missing certificates requested by remote primary for vote request, but only found {}", parents.len());
-                    return Err(DagError::ProposedHeaderMissingCertificates);
+                    return Err(DagError::ProposedHeaderMissingCertificates)
                 }
                 parents
             };
 
-            let request = anemo::Request::new(RequestVoteRequest {
-                header: header.clone(),
-                parents,
-            })
-            .with_timeout(Duration::from_secs(30));
+            let request =
+                anemo::Request::new(RequestVoteRequest { header: header.clone(), parents })
+                    .with_timeout(Duration::from_secs(30));
             match client.request_vote(request).await {
                 Ok(response) => {
                     let response = response.into_body();
                     if response.vote.is_some() {
-                        break response.vote.unwrap();
+                        break response.vote.unwrap()
                     }
                     missing_parents = response.missing;
                 }
@@ -178,7 +173,7 @@ impl Certifier {
                     if status.status() == anemo::types::response::StatusCode::BadRequest {
                         return Err(DagError::NetworkError(format!(
                             "unrecoverable error requesting vote for {header}: {status:?}"
-                        )));
+                        )))
                     }
                     missing_parents = Vec::new();
                 }
@@ -201,34 +196,25 @@ impl Certifier {
 
         // Verify the vote. Note that only the header digest is signed by the vote.
         ensure!(
-            vote.header_digest() == header.digest()
-                && vote.origin() == header.author()
-                && vote.author() == authority,
+            vote.header_digest() == header.digest() &&
+                vote.origin() == header.author() &&
+                vote.author() == authority,
             DagError::UnexpectedVote(vote.header_digest())
         );
         // Possible equivocations.
         ensure!(
             header.epoch() == vote.epoch(),
-            DagError::InvalidEpoch {
-                expected: header.epoch(),
-                received: vote.epoch()
-            }
+            DagError::InvalidEpoch { expected: header.epoch(), received: vote.epoch() }
         );
         ensure!(
             header.round() == vote.round(),
-            DagError::InvalidRound {
-                expected: header.round(),
-                received: vote.round()
-            }
+            DagError::InvalidRound { expected: header.round(), received: vote.round() }
         );
 
         // Ensure the header is from the correct epoch.
         ensure!(
             vote.epoch() == committee.epoch(),
-            DagError::InvalidEpoch {
-                expected: committee.epoch(),
-                received: vote.epoch()
-            }
+            DagError::InvalidEpoch { expected: committee.epoch(), received: vote.epoch() }
         );
 
         // Ensure the authority has voting rights.
@@ -261,7 +247,7 @@ impl Certifier {
             return Err(DagError::InvalidEpoch {
                 expected: committee.epoch(),
                 received: header.epoch(),
-            });
+            })
         }
 
         // Process the header.
@@ -293,7 +279,7 @@ impl Certifier {
             .collect();
         loop {
             if certificate.is_some() {
-                break;
+                break
             }
             tokio::select! {
                 result = &mut requests.next() => {
@@ -352,9 +338,9 @@ impl Certifier {
                 panic!("Storage failure: killing node.");
             }
             Err(
-                e @ DagError::TooOld(..)
-                | e @ DagError::VoteTooOld(..)
-                | e @ DagError::InvalidEpoch { .. },
+                e @ DagError::TooOld(..) |
+                e @ DagError::VoteTooOld(..) |
+                e @ DagError::InvalidEpoch { .. },
             ) => debug!("{e}"),
             Err(e) => warn!("{e}"),
         }
@@ -362,10 +348,7 @@ impl Certifier {
 
     // Main loop listening to incoming messages.
     pub async fn run(mut self) -> DagResult<Self> {
-        info!(
-            "Core on node {} has started successfully.",
-            self.authority_id
-        );
+        info!("Core on node {} has started successfully.", self.authority_id);
         loop {
             let result = tokio::select! {
                 // We also receive here our new headers created by the `Proposer`.

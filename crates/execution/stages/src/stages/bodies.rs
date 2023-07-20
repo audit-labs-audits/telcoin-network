@@ -1,5 +1,4 @@
 use crate::{ExecInput, ExecOutput, Stage, StageError, UnwindInput, UnwindOutput};
-use futures_util::TryStreamExt;
 use execution_db::{
     cursor::{DbCursorRO, DbCursorRW},
     database::Database,
@@ -12,9 +11,10 @@ use execution_interfaces::{
     consensus::Consensus,
     p2p::bodies::{downloader::BodyDownloader, response::BlockResponse},
 };
-use execution_primitives::stage::{EntitiesCheckpoint, StageCheckpoint, StageId};
 use execution_provider::DatabaseProviderRW;
+use futures_util::TryStreamExt;
 use std::sync::Arc;
+use tn_types::execution::stage::{EntitiesCheckpoint, StageCheckpoint, StageId};
 use tracing::*;
 
 // TODO(onbjerg): Metrics and events (gradual status for e.g. CLI)
@@ -236,8 +236,8 @@ mod tests {
         stage_test_suite_ext, ExecuteStageTestRunner, StageTestRunner, UnwindStageTestRunner,
     };
     use assert_matches::assert_matches;
-    use execution_primitives::stage::StageUnitCheckpoint;
     use test_utils::*;
+    use tn_types::execution::stage::StageUnitCheckpoint;
 
     stage_test_suite_ext!(BodyTestRunner, body);
 
@@ -452,7 +452,6 @@ mod tests {
             },
             ExecInput, ExecOutput, UnwindInput,
         };
-        use futures_util::Stream;
         use execution_db::{
             cursor::DbCursorRO,
             database::Database,
@@ -478,13 +477,16 @@ mod tests {
                 TestConsensus,
             },
         };
-        use execution_primitives::{BlockBody, BlockNumber, SealedBlock, SealedHeader, TxNumber, H256};
+        use futures_util::Stream;
         use std::{
             collections::{HashMap, VecDeque},
             ops::RangeInclusive,
             pin::Pin,
             sync::Arc,
             task::{Context, Poll},
+        };
+        use tn_types::execution::{
+            BlockBody, BlockNumber, SealedBlock, SealedHeader, TxNumber, H256,
         };
 
         /// The block hash of the genesis block.
@@ -716,7 +718,7 @@ mod tests {
         pub(crate) struct NoopClient;
 
         impl DownloadClient for NoopClient {
-            fn report_bad_message(&self, _: execution_primitives::PeerId) {
+            fn report_bad_message(&self, _: tn_types::execution::PeerId) {
                 panic!("Noop client should not be called")
             }
 

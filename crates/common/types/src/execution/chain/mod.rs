@@ -1,4 +1,4 @@
-use crate::execution ::{
+use crate::execution::{
     net::{goerli_nodes, mainnet_nodes, sepolia_nodes},
     NodeRecord, U256, U64,
 };
@@ -11,7 +11,7 @@ use std::{fmt, str::FromStr};
 mod spec;
 pub use spec::{
     AllGenesisFormats, ChainSpec, ChainSpecBuilder, DisplayHardforks, ForkCondition,
-    ForkTimestamps, GOERLI, MAINNET, SEPOLIA, LATTICE,
+    ForkTimestamps, GOERLI, LATTICE, MAINNET, SEPOLIA,
 };
 
 // The chain info module.

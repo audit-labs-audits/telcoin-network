@@ -1,4 +1,4 @@
-use execution_primitives::{BlockNumber, SealedBlock, SealedHeader, U256};
+use tn_types::execution::{BlockNumber, SealedBlock, SealedHeader, U256};
 
 /// The block response
 #[derive(PartialEq, Eq, Debug, Clone)]

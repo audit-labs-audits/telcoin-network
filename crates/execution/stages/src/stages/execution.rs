@@ -10,17 +10,17 @@ use execution_db::{
     transaction::{DbTx, DbTxMut},
 };
 use execution_interfaces::db::DatabaseError;
-use execution_primitives::{
-    stage::{
-        CheckpointBlockRange, EntitiesCheckpoint, ExecutionCheckpoint, StageCheckpoint, StageId,
-    },
-    BlockNumber, Header, U256,
-};
 use execution_provider::{
     post_state::PostState, BlockExecutor, BlockReader, DatabaseProviderRW, ExecutorFactory,
     HeaderProvider, LatestStateProviderRef, ProviderError,
 };
 use std::{ops::RangeInclusive, time::Instant};
+use tn_types::execution::{
+    stage::{
+        CheckpointBlockRange, EntitiesCheckpoint, ExecutionCheckpoint, StageCheckpoint, StageId,
+    },
+    BlockNumber, Header, U256,
+};
 use tracing::*;
 
 /// The execution stage executes all transactions and
@@ -415,14 +415,14 @@ mod tests {
     use crate::test_utils::TestTransaction;
     use assert_matches::assert_matches;
     use execution_db::{models::AccountBeforeTx, test_utils::create_test_rw_db};
-    use execution_primitives::{
-        hex_literal::hex, keccak256, stage::StageUnitCheckpoint, Account, Bytecode,
-        ChainSpecBuilder, SealedBlock, StorageEntry, H160, H256, MAINNET, U256,
-    };
     use execution_provider::{AccountReader, BlockWriter, ProviderFactory, ReceiptProvider};
     use execution_revm::Factory;
     use execution_rlp::Decodable;
     use std::sync::Arc;
+    use tn_types::execution::{
+        hex_literal::hex, keccak256, stage::StageUnitCheckpoint, Account, Bytecode,
+        ChainSpecBuilder, SealedBlock, StorageEntry, H160, H256, MAINNET, U256,
+    };
 
     fn stage() -> ExecutionStage<Factory> {
         let factory =

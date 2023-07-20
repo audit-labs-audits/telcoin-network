@@ -78,10 +78,7 @@ where
     type Service = AddExtension<S, T>;
 
     fn layer(&self, inner: S) -> Self::Service {
-        AddExtension {
-            inner,
-            value: self.value.clone(),
-        }
+        AddExtension { inner, value: self.value.clone() }
     }
 }
 
@@ -159,18 +156,14 @@ mod tests {
     async fn basic() {
         let state = Arc::new(State(1));
 
-        let svc = ServiceBuilder::new()
-            .layer(AddExtensionLayer::new(state))
-            .service(service_fn(|req: Request<Bytes>| async move {
+        let svc = ServiceBuilder::new().layer(AddExtensionLayer::new(state)).service(service_fn(
+            |req: Request<Bytes>| async move {
                 let state = req.extensions().get::<Arc<State>>().unwrap();
                 Ok::<_, Infallible>(Response::new(state.0))
-            }));
+            },
+        ));
 
-        let res = svc
-            .oneshot(Request::new(Bytes::new()))
-            .await
-            .unwrap()
-            .into_body();
+        let res = svc.oneshot(Request::new(Bytes::new())).await.unwrap().into_body();
 
         assert_eq!(1, res);
     }

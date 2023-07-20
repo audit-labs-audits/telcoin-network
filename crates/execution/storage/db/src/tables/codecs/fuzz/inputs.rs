@@ -1,7 +1,7 @@
 //! Curates the input coming from the fuzzer for certain types.
 
-use execution_primitives::IntegerList;
 use serde::{Deserialize, Serialize};
+use tn_types::execution::IntegerList;
 
 /// Makes sure that the list provided by the fuzzer is not empty and pre-sorted
 #[derive(Debug, Clone, Deserialize, Serialize, Default)]

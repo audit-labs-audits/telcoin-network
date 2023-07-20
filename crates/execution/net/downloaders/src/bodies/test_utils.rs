@@ -2,8 +2,8 @@
 //! Test helper impls for generating bodies
 use execution_db::{database::Database, tables, transaction::DbTxMut, DatabaseEnv};
 use execution_interfaces::{db, p2p::bodies::response::BlockResponse};
-use execution_primitives::{Block, BlockBody, SealedBlock, SealedHeader, H256};
 use std::collections::HashMap;
+use tn_types::execution::{Block, BlockBody, SealedBlock, SealedHeader, H256};
 
 pub(crate) fn zip_blocks<'a>(
     headers: impl Iterator<Item = &'a SealedHeader>,

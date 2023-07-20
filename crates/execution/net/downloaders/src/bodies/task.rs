@@ -1,18 +1,18 @@
-use futures::Stream;
-use futures_util::{FutureExt, StreamExt};
-use pin_project::pin_project;
 use execution_interfaces::p2p::{
     bodies::downloader::{BodyDownloader, BodyDownloaderResult},
     error::DownloadResult,
 };
-use execution_primitives::BlockNumber;
 use execution_tasks::{TaskSpawner, TokioTaskExecutor};
+use futures::Stream;
+use futures_util::{FutureExt, StreamExt};
+use pin_project::pin_project;
 use std::{
     future::Future,
     ops::RangeInclusive,
     pin::Pin,
     task::{ready, Context, Poll},
 };
+use tn_types::execution::BlockNumber;
 use tokio::sync::{mpsc, mpsc::UnboundedSender};
 use tokio_stream::wrappers::{ReceiverStream, UnboundedReceiverStream};
 use tokio_util::sync::PollSender;

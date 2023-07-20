@@ -1,30 +1,27 @@
 //! CLI definition and entrypoint for executable
 
 use crate::{
-    dirs::{LogsDir, PlatformPath},
     config,
-    runner::CliRunner,
+    dirs::{LogsDir, PlatformPath},
     execution,
+    runner::CliRunner,
 };
 use clap::{ArgAction, Args, Parser, Subcommand};
-use lattice_tracing::{
-    self,
-    tracing::{metadata::LevelFilter, Level, Subscriber},
-    tracing_subscriber::{filter::Directive, registry::LookupSpan},
-    BoxedLayer, FileWorkerGuard,
-};
-use std::str::FromStr;
+use tn_tracing::{BoxedLayer, FileWorkerGuard};
+use tracing::{metadata::LevelFilter, Level, Subscriber};
+use tracing_subscriber::{filter::Directive, registry::LookupSpan, EnvFilter};
 
 /// Parse CLI options, create logging, and run the node
 pub fn run() -> eyre::Result<()> {
     let opt = Cli::parse();
 
-    // TODO: set tracing - default is "trace" for all
-    let (layer, _guard) = opt.logs.layer();
-    lattice_tracing::init(vec![
-        layer,
-        lattice_tracing::stdout(opt.verbosity.directive()),
-    ]);
+    let mut layers = vec![tn_tracing::stdout(opt.verbosity.directive())];
+    let _guard = opt.logs.layer()?.map(|(layer, guard)| {
+        layers.push(layer);
+        guard
+    });
+
+    tn_tracing::init(layers);
 
     let runner = CliRunner::default();
 
@@ -47,8 +44,6 @@ enum Commands {
     /// Write config to stdout
     #[command(name = "config")]
     Config(config::Command),
-
-
     // /// Start a gateway with zmq sockets for:
     // /// - PULL from EthRPC
     // /// - PUSH to Worker
@@ -89,6 +84,10 @@ struct Cli {
 #[derive(Debug, Args)]
 #[command(next_help_heading = "Logging")]
 pub struct Logs {
+    /// The flag to enable persistent logs.
+    #[arg(long = "log.persistent", global = true, conflicts_with = "journald")]
+    persistent: bool,
+
     /// The path to put log files in.
     #[arg(
         long = "log.directory",
@@ -104,34 +103,27 @@ pub struct Logs {
     journald: bool,
 
     /// The filter to use for logs written to the log file.
-    #[arg(
-        long = "log.filter",
-        value_name = "FILTER",
-        global = true,
-        default_value = "debug"
-    )]
+    #[arg(long = "log.filter", value_name = "FILTER", global = true, default_value = "debug")]
     filter: String,
 }
 
 impl Logs {
     /// Builds a tracing layer from the current log options.
-    pub fn layer<S>(&self) -> (BoxedLayer<S>, Option<FileWorkerGuard>)
+    pub fn layer<S>(&self) -> eyre::Result<Option<(BoxedLayer<S>, Option<FileWorkerGuard>)>>
     where
         S: Subscriber,
         for<'a> S: LookupSpan<'a>,
     {
-        let directive = Directive::from_str(self.filter.as_str())
-            .unwrap_or_else(|_| Directive::from_str("debug").unwrap());
+        let filter = EnvFilter::builder().parse(&self.filter)?;
 
         if self.journald {
-            (
-                lattice_tracing::journald(directive).expect("Could not connect to journald"),
-                None,
-            )
-        } else {
+            Ok(Some((tn_tracing::journald(filter).expect("Could not connect to journald"), None)))
+        } else if self.persistent {
             let (layer, guard) =
-                lattice_tracing::file(directive, &self.log_directory, "lattice.log");
-            (layer, Some(guard))
+                tn_tracing::file(filter, &self.log_directory, "telcoin-network.log");
+            Ok(Some((layer, Some(guard))))
+        } else {
+            Ok(None)
         }
     }
 }
@@ -151,13 +143,7 @@ pub struct Verbosity {
     verbosity: u8,
 
     /// Silence all log output.
-    #[clap(
-        long,
-        alias = "silent",
-        short = 'q',
-        global = true,
-        help_heading = "Display"
-    )]
+    #[clap(long, alias = "silent", short = 'q', global = true, help_heading = "Display")]
     quiet: bool,
 }
 

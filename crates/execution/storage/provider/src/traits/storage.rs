@@ -5,7 +5,7 @@ use std::{
 
 use auto_impl::auto_impl;
 use execution_interfaces::Result;
-use execution_primitives::{Address, BlockNumber, StorageEntry, H256};
+use tn_types::execution::{Address, BlockNumber, StorageEntry, H256};
 
 /// Storage reader
 #[auto_impl(&, Arc, Box)]

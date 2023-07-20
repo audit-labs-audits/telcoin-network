@@ -13,8 +13,6 @@ pub use lattice_consensus::LatticeConsensus;
 mod engine;
 pub use engine::*;
 
-
-
 // TODO: need to update sync state based on NW Consensus layer's status
 //
 // for now, do nothing
@@ -33,5 +31,5 @@ impl execution_interfaces::sync::NetworkSyncUpdater for LatticeNetworkAdapter {
     fn update_sync_state(&self, _state: execution_interfaces::sync::SyncState) {}
 
     // do nothing
-    fn update_status(&self, _head: execution_primitives::Head) {}
+    fn update_status(&self, _head: tn_types::execution::Head) {}
 }

@@ -2,8 +2,8 @@ mod utils;
 
 use ::ffi::*;
 use criterion::{black_box, criterion_group, criterion_main, Criterion};
-use pprof::criterion::{Output, PProfProfiler};
 use execution_libmdbx::*;
+use pprof::criterion::{Output, PProfProfiler};
 use std::ptr;
 use utils::*;
 

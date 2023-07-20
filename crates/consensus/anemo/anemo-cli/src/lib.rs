@@ -12,16 +12,11 @@ pub struct Config {
 
 impl Config {
     pub fn new() -> Self {
-        Self {
-            service_map: HashMap::new(),
-        }
+        Self { service_map: HashMap::new() }
     }
 
     pub fn add_service(mut self, name: &str, info: ServiceInfo) -> Self {
-        assert!(
-            self.service_map.insert(name.to_string(), info).is_none(),
-            "no duplicate services"
-        );
+        assert!(self.service_map.insert(name.to_string(), info).is_none(), "no duplicate services");
         self
     }
 }
@@ -39,16 +34,12 @@ pub struct ServiceInfo {
 
 impl ServiceInfo {
     pub fn new() -> Self {
-        Self {
-            method_map: HashMap::new(),
-        }
+        Self { method_map: HashMap::new() }
     }
 
     pub fn add_method(mut self, name: &str, method_fn: MethodFn) -> Self {
         assert!(
-            self.method_map
-                .insert(name.to_string(), method_fn)
-                .is_none(),
+            self.method_map.insert(name.to_string(), method_fn).is_none(),
             "no duplicate methods"
         );
         self
@@ -152,19 +143,10 @@ pub async fn main(config: Config) {
 /// clap binary.
 pub async fn run(config: Config, args: Args) {
     match args.command {
-        Commands::Ping {
-            address,
-            server_name,
-        } => {
+        Commands::Ping { address, server_name } => {
             ping::run(address.as_str(), server_name.as_str()).await;
         }
-        Commands::Call {
-            address,
-            server_name,
-            service_name,
-            method_name,
-            request,
-        } => {
+        Commands::Call { address, server_name, service_name, method_name, request } => {
             call::run(
                 config,
                 address.as_str(),

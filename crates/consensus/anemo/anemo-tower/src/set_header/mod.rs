@@ -2,8 +2,7 @@
 //!
 //! See [request] and [response] for more details.
 
-use anemo::types::HeaderMap;
-use anemo::{Request, Response};
+use anemo::{types::HeaderMap, Request, Response};
 
 type HeaderValue = String;
 type HeaderName = String;

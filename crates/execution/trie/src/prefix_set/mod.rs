@@ -1,5 +1,5 @@
-use execution_primitives::trie::Nibbles;
 use std::rc::Rc;
+use tn_types::execution::trie::Nibbles;
 
 mod loader;
 pub use loader::PrefixSetLoader;

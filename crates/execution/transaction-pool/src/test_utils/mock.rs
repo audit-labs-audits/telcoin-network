@@ -11,12 +11,12 @@ use rand::{
     distributions::{Uniform, WeightedIndex},
     prelude::Distribution,
 };
-use execution_primitives::{
+use std::{ops::Range, sync::Arc, time::Instant};
+use tn_types::execution::{
     constants::MIN_PROTOCOL_BASE_FEE, hex, Address, FromRecoveredTransaction,
     IntoRecoveredTransaction, Signature, Transaction, TransactionKind, TransactionSigned,
     TransactionSignedEcRecovered, TxEip1559, TxHash, TxLegacy, TxType, H256, U128, U256,
 };
-use std::{ops::Range, sync::Arc, time::Instant};
 
 pub(crate) type MockTxPool = TxPool<MockOrdering>;
 

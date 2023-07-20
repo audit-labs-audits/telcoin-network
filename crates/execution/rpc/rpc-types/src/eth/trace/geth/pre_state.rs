@@ -1,6 +1,6 @@
-use execution_primitives::{serde_helper::num::from_int_or_hex_opt, Address, H256, U256};
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
+use tn_types::execution::{serde_helper::num::from_int_or_hex_opt, Address, H256, U256};
 
 /// <https://github.com/ethereum/go-ethereum/blob/91cb6f863a965481e51d5d9c0e5ccd54796fd967/eth/tracers/native/prestate.go#L38>
 #[derive(Debug, PartialEq, Eq, Clone, Deserialize, Serialize)]

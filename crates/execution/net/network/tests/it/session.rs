@@ -1,6 +1,5 @@
 //! Session tests
 
-use futures::StreamExt;
 use execution_eth_wire::{capability::Capability, EthVersion};
 use execution_network::{
     test_utils::{PeerConfig, Testnet},
@@ -8,6 +7,7 @@ use execution_network::{
 };
 use execution_network_api::{NetworkInfo, Peers};
 use execution_provider::test_utils::NoopProvider;
+use futures::StreamExt;
 
 #[tokio::test(flavor = "multi_thread")]
 async fn test_session_established_with_highest_version() {

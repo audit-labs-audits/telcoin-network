@@ -3,9 +3,9 @@ use clap::{
     builder::{RangedU64ValueParser, TypedValueParser},
     Arg, Args, Command,
 };
-use execution_primitives::{bytes::BytesMut, constants::MAXIMUM_EXTRA_DATA_SIZE};
 use execution_rlp::Encodable;
 use std::{ffi::OsStr, time::Duration};
+use tn_types::execution::{bytes::BytesMut, constants::MAXIMUM_EXTRA_DATA_SIZE};
 
 /// Parameters for configuring the Payload Builder
 #[derive(Debug, Args, PartialEq, Default)]
@@ -38,7 +38,7 @@ pub struct PayloadBuilderArgs {
 
 impl PayloadBuilderArgs {
     /// Returns the rlp-encoded extradata bytes.
-    pub fn extradata_bytes(&self) -> execution_primitives::bytes::Bytes {
+    pub fn extradata_bytes(&self) -> tn_types::execution::bytes::Bytes {
         let mut extradata = BytesMut::new();
         self.extradata.as_bytes().encode(&mut extradata);
         extradata.freeze()

@@ -1,6 +1,6 @@
 use crate::traits::PoolTransaction;
-use execution_primitives::U256;
 use std::{fmt, marker::PhantomData};
+use tn_types::execution::U256;
 
 /// Transaction ordering trait to determine the order of transactions.
 ///

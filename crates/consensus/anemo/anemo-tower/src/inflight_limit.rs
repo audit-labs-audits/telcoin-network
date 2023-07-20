@@ -64,11 +64,7 @@ pub struct InflightLimitLayer {
 impl InflightLimitLayer {
     /// Create a new [`InflightLimitLayer`].
     pub fn new(max_inflight: usize, wait_mode: WaitMode) -> Self {
-        InflightLimitLayer {
-            inflight: Arc::new(DashMap::new()),
-            max_inflight,
-            wait_mode,
-        }
+        InflightLimitLayer { inflight: Arc::new(DashMap::new()), max_inflight, wait_mode }
     }
 }
 
@@ -100,12 +96,7 @@ pub struct InflightLimit<S> {
 impl<S> InflightLimit<S> {
     /// Create a new [`InflightLimit`].
     pub fn new(inner: S, max_inflight: usize, wait_mode: WaitMode) -> Self {
-        Self {
-            inner,
-            inflight: Arc::new(DashMap::new()),
-            max_inflight,
-            wait_mode,
-        }
+        Self { inner, inflight: Arc::new(DashMap::new()), max_inflight, wait_mode }
     }
 
     /// Gets a reference to the underlying service.
@@ -127,11 +118,7 @@ impl<S> InflightLimit<S> {
     ///
     /// [`Layer`]: tower::layer::Layer
     pub fn layer(max_inflight: usize, wait_mode: WaitMode) -> InflightLimitLayer {
-        InflightLimitLayer {
-            inflight: Arc::new(DashMap::new()),
-            max_inflight,
-            wait_mode,
-        }
+        InflightLimitLayer { inflight: Arc::new(DashMap::new()), max_inflight, wait_mode }
     }
 }
 
@@ -220,12 +207,8 @@ mod tests {
 
         // Verify waiting service blocks.
         let layer = InflightLimitLayer::new(1, WaitMode::Block);
-        let working_svc = ServiceBuilder::new()
-            .layer(layer.clone())
-            .service(working_service);
-        let waiting_svc = ServiceBuilder::new()
-            .layer(layer.clone())
-            .service(waiting_service);
+        let working_svc = ServiceBuilder::new().layer(layer.clone()).service(working_service);
+        let waiting_svc = ServiceBuilder::new().layer(layer.clone()).service(waiting_service);
 
         let request = Request::new(Bytes::new()).with_extension(peer);
         tokio::task::spawn(waiting_svc.oneshot(request));
@@ -250,12 +233,8 @@ mod tests {
 
         // Verify waiting service returns error.
         let layer = InflightLimitLayer::new(1, WaitMode::ReturnError);
-        let working_svc = ServiceBuilder::new()
-            .layer(layer.clone())
-            .service(working_service);
-        let waiting_svc = ServiceBuilder::new()
-            .layer(layer.clone())
-            .service(waiting_service);
+        let working_svc = ServiceBuilder::new().layer(layer.clone()).service(working_service);
+        let waiting_svc = ServiceBuilder::new().layer(layer.clone()).service(waiting_service);
 
         let request = Request::new(Bytes::new()).with_extension(peer);
         tokio::task::spawn(waiting_svc.oneshot(request));

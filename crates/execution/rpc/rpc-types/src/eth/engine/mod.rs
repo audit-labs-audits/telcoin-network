@@ -4,11 +4,11 @@
 
 mod error;
 mod forkchoice;
+mod lattice;
 mod payload;
 mod transition;
-mod lattice;
 
-pub use self::{error::*, forkchoice::*, payload::*, transition::*, lattice::*};
+pub use self::{error::*, forkchoice::*, lattice::*, payload::*, transition::*};
 
 /// The list of supported Engine capabilities
 pub const CAPABILITIES: [&str; 9] = [

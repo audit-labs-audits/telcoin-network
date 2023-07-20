@@ -1,6 +1,6 @@
 [package]
 name = "consensus-util-mem"
-version = "0.11.0"
+version.workspace = true
 authors = ["Parity Technologies <admin@parity.io>", "Andrew Schran <aschran@mystenlabs.com>", "Grant Kee <grant.kee@telco.in>"]
 description = "Collection of memory related utilities"
 license = "MIT OR Apache-2.0"

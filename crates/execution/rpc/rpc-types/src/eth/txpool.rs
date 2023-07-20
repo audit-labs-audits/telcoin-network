@@ -1,12 +1,12 @@
 //! Types for the `txpool` namespace: <https://geth.ethereum.org/docs/interacting-with-geth/rpc/ns-txpool>
 
 use crate::Transaction;
-use execution_primitives::{Address, U256, U64};
 use serde::{
     de::{self, Deserializer, Visitor},
     Deserialize, Serialize,
 };
 use std::{collections::BTreeMap, fmt, str::FromStr};
+use tn_types::execution::{Address, U256, U64};
 
 /// Transaction summary as found in the Txpool Inspection property.
 #[derive(Debug, Clone, PartialEq, Eq)]

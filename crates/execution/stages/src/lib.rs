@@ -27,7 +27,7 @@
 //! # use execution_interfaces::consensus::Consensus;
 //! # use execution_interfaces::test_utils::{TestBodiesClient, TestConsensus, TestHeadersClient};
 //! # use execution_revm::Factory;
-//! # use execution_primitives::{PeerId, MAINNET, H256};
+//! # use tn_types::execution::{PeerId, MAINNET, H256};
 //! # use execution_stages::Pipeline;
 //! # use execution_stages::sets::DefaultStages;
 //! # use execution_stages::stages::HeaderSyncMode;

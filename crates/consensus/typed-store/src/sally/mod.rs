@@ -58,21 +58,24 @@ use crate::{
     traits::{AsyncMap, Map},
 };
 
-use crate::rocks::safe_iter::{SafeIter as RocksDBIter, SafeRevIter};
-use crate::rocks::{DBMapTableConfigMap, MetricConf};
-use crate::test_db::{TestDBIter, TestDBRevIter};
+use crate::{
+    rocks::{
+        safe_iter::{SafeIter as RocksDBIter, SafeRevIter},
+        DBMapTableConfigMap, MetricConf,
+    },
+    test_db::{TestDBIter, TestDBRevIter},
+};
 use async_trait::async_trait;
 use collectable::TryExtend;
 use rocksdb::Options;
 use serde::{de::DeserializeOwned, Serialize};
-use std::borrow::Borrow;
-use std::{collections::BTreeMap, path::PathBuf};
+use std::{borrow::Borrow, collections::BTreeMap, path::PathBuf};
 
 pub enum SallyRunMode {
     // Whether Sally should use its own memtable and wal for read/write or just fallback to
-    // reading/writing directly from the backend db. When columns in the db are backed by different
-    // backend stores, we should never use `FallbackToDB` as that would lose atomicity,
-    // transactions and db recovery
+    // reading/writing directly from the backend db. When columns in the db are backed by
+    // different backend stores, we should never use `FallbackToDB` as that would lose
+    // atomicity, transactions and db recovery
     FallbackToDB,
 }
 
@@ -82,15 +85,14 @@ pub struct SallyConfig {
 
 impl Default for SallyConfig {
     fn default() -> Self {
-        Self {
-            mode: SallyRunMode::FallbackToDB,
-        }
+        Self { mode: SallyRunMode::FallbackToDB }
     }
 }
 
 /// A Sally column could be anything that implements key value interface. We will eventually have
-/// Sally serve read/writes using its own memtable and wal when columns in the db are backend by more then
-/// one backend store (e.g different rocksdb instances and/or distributed key value stores)
+/// Sally serve read/writes using its own memtable and wal when columns in the db are backend by
+/// more then one backend store (e.g different rocksdb instances and/or distributed key value
+/// stores)
 pub enum SallyColumn<K, V> {
     RocksDB((DBMap<K, V>, SallyConfig)),
     TestDB((TestDB<K, V>, SallyConfig)),
@@ -107,18 +109,12 @@ impl<K, V> SallyColumn<K, V> {
     }
     pub fn batch(&self) -> SallyWriteBatch {
         match self {
-            SallyColumn::RocksDB((
-                db_map,
-                SallyConfig {
-                    mode: SallyRunMode::FallbackToDB,
-                },
-            )) => SallyWriteBatch::RocksDB(db_map.batch()),
-            SallyColumn::TestDB((
-                test_db,
-                SallyConfig {
-                    mode: SallyRunMode::FallbackToDB,
-                },
-            )) => SallyWriteBatch::TestDB(test_db.batch()),
+            SallyColumn::RocksDB((db_map, SallyConfig { mode: SallyRunMode::FallbackToDB })) => {
+                SallyWriteBatch::RocksDB(db_map.batch())
+            }
+            SallyColumn::TestDB((test_db, SallyConfig { mode: SallyRunMode::FallbackToDB })) => {
+                SallyWriteBatch::TestDB(test_db.batch())
+            }
         }
     }
 }
@@ -136,114 +132,72 @@ where
 
     async fn contains_key(&self, key: &K) -> Result<bool, TypedStoreError> {
         match self {
-            SallyColumn::RocksDB((
-                db_map,
-                SallyConfig {
-                    mode: SallyRunMode::FallbackToDB,
-                },
-            )) => db_map.contains_key(key),
-            SallyColumn::TestDB((
-                test_db,
-                SallyConfig {
-                    mode: SallyRunMode::FallbackToDB,
-                },
-            )) => test_db.contains_key(key),
+            SallyColumn::RocksDB((db_map, SallyConfig { mode: SallyRunMode::FallbackToDB })) => {
+                db_map.contains_key(key)
+            }
+            SallyColumn::TestDB((test_db, SallyConfig { mode: SallyRunMode::FallbackToDB })) => {
+                test_db.contains_key(key)
+            }
         }
     }
     async fn get(&self, key: &K) -> Result<Option<V>, TypedStoreError> {
         match self {
-            SallyColumn::RocksDB((
-                db_map,
-                SallyConfig {
-                    mode: SallyRunMode::FallbackToDB,
-                },
-            )) => db_map.get(key),
-            SallyColumn::TestDB((
-                test_db,
-                SallyConfig {
-                    mode: SallyRunMode::FallbackToDB,
-                },
-            )) => test_db.get(key),
+            SallyColumn::RocksDB((db_map, SallyConfig { mode: SallyRunMode::FallbackToDB })) => {
+                db_map.get(key)
+            }
+            SallyColumn::TestDB((test_db, SallyConfig { mode: SallyRunMode::FallbackToDB })) => {
+                test_db.get(key)
+            }
         }
     }
     async fn get_raw_bytes(&self, key: &K) -> Result<Option<Vec<u8>>, TypedStoreError> {
         match self {
-            SallyColumn::RocksDB((
-                db_map,
-                SallyConfig {
-                    mode: SallyRunMode::FallbackToDB,
-                },
-            )) => db_map.get_raw_bytes(key),
-            SallyColumn::TestDB((
-                test_db,
-                SallyConfig {
-                    mode: SallyRunMode::FallbackToDB,
-                },
-            )) => test_db.get_raw_bytes(key),
+            SallyColumn::RocksDB((db_map, SallyConfig { mode: SallyRunMode::FallbackToDB })) => {
+                db_map.get_raw_bytes(key)
+            }
+            SallyColumn::TestDB((test_db, SallyConfig { mode: SallyRunMode::FallbackToDB })) => {
+                test_db.get_raw_bytes(key)
+            }
         }
     }
     async fn is_empty(&self) -> bool {
         match self {
-            SallyColumn::RocksDB((
-                db_map,
-                SallyConfig {
-                    mode: SallyRunMode::FallbackToDB,
-                },
-            )) => db_map.is_empty(),
-            SallyColumn::TestDB((
-                test_db,
-                SallyConfig {
-                    mode: SallyRunMode::FallbackToDB,
-                },
-            )) => test_db.is_empty(),
+            SallyColumn::RocksDB((db_map, SallyConfig { mode: SallyRunMode::FallbackToDB })) => {
+                db_map.is_empty()
+            }
+            SallyColumn::TestDB((test_db, SallyConfig { mode: SallyRunMode::FallbackToDB })) => {
+                test_db.is_empty()
+            }
         }
     }
     async fn iter(&'a self) -> Self::Iterator {
         match self {
-            SallyColumn::RocksDB((
-                db_map,
-                SallyConfig {
-                    mode: SallyRunMode::FallbackToDB,
-                },
-            )) => SallyIter::RocksDB(db_map.safe_iter()),
-            SallyColumn::TestDB((
-                test_db,
-                SallyConfig {
-                    mode: SallyRunMode::FallbackToDB,
-                },
-            )) => SallyIter::TestDB(test_db.safe_iter()),
+            SallyColumn::RocksDB((db_map, SallyConfig { mode: SallyRunMode::FallbackToDB })) => {
+                SallyIter::RocksDB(db_map.safe_iter())
+            }
+            SallyColumn::TestDB((test_db, SallyConfig { mode: SallyRunMode::FallbackToDB })) => {
+                SallyIter::TestDB(test_db.safe_iter())
+            }
         }
     }
     async fn keys(&'a self) -> Self::Keys {
         match self {
-            SallyColumn::RocksDB((
-                db_map,
-                SallyConfig {
-                    mode: SallyRunMode::FallbackToDB,
-                },
-            )) => SallyKeys::RocksDB(db_map.keys()),
-            SallyColumn::TestDB((
-                test_db,
-                SallyConfig {
-                    mode: SallyRunMode::FallbackToDB,
-                },
-            )) => SallyKeys::TestDB(test_db.keys()),
+            SallyColumn::RocksDB((db_map, SallyConfig { mode: SallyRunMode::FallbackToDB })) => {
+                SallyKeys::RocksDB(db_map.keys())
+            }
+            SallyColumn::TestDB((test_db, SallyConfig { mode: SallyRunMode::FallbackToDB })) => {
+                SallyKeys::TestDB(test_db.keys())
+            }
         }
     }
     async fn values(&'a self) -> Self::Values {
         match self {
-            SallyColumn::RocksDB((
-                db_map,
-                SallyConfig {
-                    mode: SallyRunMode::FallbackToDB,
-                },
-            )) => SallyValues::RocksDB(db_map.values()),
-            SallyColumn::TestDB((
-                test_db,
-                SallyConfig {
-                    mode: SallyRunMode::FallbackToDB,
-                },
-            )) => SallyValues::TestDB(test_db.values()),
+            SallyColumn::RocksDB((db_map, SallyConfig { mode: SallyRunMode::FallbackToDB })) => {
+                SallyValues::RocksDB(db_map.values())
+            }
+            SallyColumn::TestDB((test_db, SallyConfig { mode: SallyRunMode::FallbackToDB })) => {
+                SallyValues::TestDB(test_db.values())
+            }
         }
     }
     async fn multi_get<J>(
@@ -254,34 +208,22 @@ where
         J: Borrow<K>,
     {
         match self {
-            SallyColumn::RocksDB((
-                db_map,
-                SallyConfig {
-                    mode: SallyRunMode::FallbackToDB,
-                },
-            )) => db_map.multi_get(keys),
-            SallyColumn::TestDB((
-                test_db,
-                SallyConfig {
-                    mode: SallyRunMode::FallbackToDB,
-                },
-            )) => test_db.multi_get(keys),
+            SallyColumn::RocksDB((db_map, SallyConfig { mode: SallyRunMode::FallbackToDB })) => {
+                db_map.multi_get(keys)
+            }
+            SallyColumn::TestDB((test_db, SallyConfig { mode: SallyRunMode::FallbackToDB })) => {
+                test_db.multi_get(keys)
+            }
         }
     }
     async fn try_catch_up_with_primary(&self) -> Result<(), Self::Error> {
         match self {
-            SallyColumn::RocksDB((
-                db_map,
-                SallyConfig {
-                    mode: SallyRunMode::FallbackToDB,
-                },
-            )) => Ok(db_map.try_catch_up_with_primary()?),
-            SallyColumn::TestDB((
-                test_db,
-                SallyConfig {
-                    mode: SallyRunMode::FallbackToDB,
-                },
-            )) => Ok(test_db.try_catch_up_with_primary()?),
+            SallyColumn::RocksDB((db_map, SallyConfig { mode: SallyRunMode::FallbackToDB })) => {
+                Ok(db_map.try_catch_up_with_primary()?)
+            }
+            SallyColumn::TestDB((test_db, SallyConfig { mode: SallyRunMode::FallbackToDB })) => {
+                Ok(test_db.try_catch_up_with_primary()?)
+            }
         }
     }
 }
@@ -300,41 +242,30 @@ where
         T: Iterator<Item = (J, U)>,
     {
         match self {
-            SallyColumn::RocksDB((
-                db_map,
-                SallyConfig {
-                    mode: SallyRunMode::FallbackToDB,
-                },
-            )) => db_map.try_extend(iter),
-            SallyColumn::TestDB((
-                test_db,
-                SallyConfig {
-                    mode: SallyRunMode::FallbackToDB,
-                },
-            )) => test_db.try_extend(iter),
+            SallyColumn::RocksDB((db_map, SallyConfig { mode: SallyRunMode::FallbackToDB })) => {
+                db_map.try_extend(iter)
+            }
+            SallyColumn::TestDB((test_db, SallyConfig { mode: SallyRunMode::FallbackToDB })) => {
+                test_db.try_extend(iter)
+            }
         }
     }
     fn try_extend_from_slice(&mut self, slice: &[(J, U)]) -> Result<(), Self::Error> {
         match self {
-            SallyColumn::RocksDB((
-                db_map,
-                SallyConfig {
-                    mode: SallyRunMode::FallbackToDB,
-                },
-            )) => db_map.try_extend_from_slice(slice),
-            SallyColumn::TestDB((
-                test_db,
-                SallyConfig {
-                    mode: SallyRunMode::FallbackToDB,
-                },
-            )) => test_db.try_extend_from_slice(slice),
+            SallyColumn::RocksDB((db_map, SallyConfig { mode: SallyRunMode::FallbackToDB })) => {
+                db_map.try_extend_from_slice(slice)
+            }
+            SallyColumn::TestDB((test_db, SallyConfig { mode: SallyRunMode::FallbackToDB })) => {
+                test_db.try_extend_from_slice(slice)
+            }
         }
     }
 }
 
-/// A Sally write batch provides a mutable struct which holds a collection of db mutation operations and
-/// applies them atomically to the db.
-/// Once sally has its own memtable and wal, atomic commits across multiple db instances will be possible.
+/// A Sally write batch provides a mutable struct which holds a collection of db mutation operations
+/// and applies them atomically to the db.
+/// Once sally has its own memtable and wal, atomic commits across multiple db instances will be
+/// possible.
 pub enum SallyWriteBatch {
     // Write batch for RocksDB backend when `fallback_to_db` is set as true
     RocksDB(DBBatch),
@@ -518,15 +449,7 @@ impl<'a, V: DeserializeOwned> Iterator for SallyValues<'a, V> {
 /// Options to configure a sally db instance at the global level
 pub enum SallyDBOptions {
     // Options when sally db instance is backed by a single rocksdb instance
-    RocksDB(
-        (
-            PathBuf,
-            MetricConf,
-            RocksDBAccessType,
-            Option<Options>,
-            Option<DBMapTableConfigMap>,
-        ),
-    ),
+    RocksDB((PathBuf, MetricConf, RocksDBAccessType, Option<Options>, Option<DBMapTableConfigMap>)),
     TestDB,
 }
 

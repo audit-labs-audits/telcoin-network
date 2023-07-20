@@ -2,26 +2,22 @@
 // Copyright (c) Mysten Labs, Inc.
 // SPDX-License-Identifier: Apache-2.0
 
-use crate::client::LocalNarwhalClient;
-use crate::metrics::WorkerEndpointMetrics;
-use crate::TransactionValidator;
+use crate::{client::LocalNarwhalClient, metrics::WorkerEndpointMetrics, TransactionValidator};
 use async_trait::async_trait;
-use futures::stream::FuturesUnordered;
-use futures::StreamExt;
-use consensus_metrics::metered_channel::Sender;
-use consensus_metrics::spawn_logged_monitored_task;
-use consensus_network::server::Server;
-use consensus_network::Multiaddr;
-use std::sync::Arc;
-use std::time::Duration;
-use tokio::task::JoinHandle;
-use tokio::time::{sleep, timeout};
-use tonic::{Request, Response, Status};
-use tracing::{error, info, warn};
+use consensus_metrics::{metered_channel::Sender, spawn_logged_monitored_task};
+use consensus_network::{server::Server, Multiaddr};
+use futures::{stream::FuturesUnordered, StreamExt};
+use std::{sync::Arc, time::Duration};
 use tn_types::consensus::{
     ConditionalBroadcastReceiver, Empty, Transaction, TransactionProto, Transactions,
     TransactionsServer, TxResponse,
 };
+use tokio::{
+    task::JoinHandle,
+    time::{sleep, timeout},
+};
+use tonic::{Request, Response, Status};
+use tracing::{error, info, warn};
 
 pub struct TxServer<V: TransactionValidator> {
     address: Multiaddr,
@@ -41,14 +37,7 @@ impl<V: TransactionValidator> TxServer<V> {
         validator: V,
     ) -> JoinHandle<()> {
         spawn_logged_monitored_task!(
-            Self {
-                address,
-                tx_batch_maker,
-                endpoint_metrics,
-                validator,
-                rx_shutdown
-            }
-            .run(),
+            Self { address, tx_batch_maker, endpoint_metrics, validator, rx_shutdown }.run(),
             "TxServer"
         )
     }
@@ -63,10 +52,7 @@ impl<V: TransactionValidator> TxServer<V> {
         LocalNarwhalClient::set_global(self.address.clone(), local_client.clone());
 
         // create the handler
-        let tx_handler = TxReceiverHandler {
-            local_client,
-            validator: self.validator,
-        };
+        let tx_handler = TxReceiverHandler { local_client, validator: self.validator };
 
         // now create the server
         let mut retries = MAX_RETRIES;
@@ -81,15 +67,12 @@ impl<V: TransactionValidator> TxServer<V> {
             {
                 Ok(s) => {
                     server = s;
-                    break;
+                    break
                 }
                 Err(err) => {
                     retries -= 1;
                     if retries == 0 {
-                        panic!(
-                            "Couldn't boot transactions server, permanently failed: {}",
-                            err
-                        );
+                        panic!("Couldn't boot transactions server, permanently failed: {}", err);
                     }
 
                     error!(
@@ -120,10 +103,7 @@ impl<V: TransactionValidator> TxServer<V> {
                 info!("Successfully shutting down gracefully transactions server");
             }
             Err(err) => {
-                warn!(
-                    "Time out while waiting to gracefully shutdown transactions server: {}",
-                    err
-                )
+                warn!("Time out while waiting to gracefully shutdown transactions server: {}", err)
             }
         }
     }
@@ -144,7 +124,7 @@ impl<V: TransactionValidator> Transactions for TxReceiverHandler<V> {
     ) -> Result<Response<Empty>, Status> {
         let transaction = request.into_inner().transaction;
         if self.validator.validate(transaction.as_ref()).is_err() {
-            return Err(Status::invalid_argument("Invalid transaction"));
+            return Err(Status::invalid_argument("Invalid transaction"))
         }
         // Send the transaction to Narwhal via the local client.
         self.local_client
@@ -163,24 +143,22 @@ impl<V: TransactionValidator> Transactions for TxReceiverHandler<V> {
 
         while let Some(Ok(txn)) = transactions.next().await {
             if let Err(err) = self.validator.validate(txn.transaction.as_ref()) {
-                // If the transaction is invalid (often cryptographically), better to drop the client
+                // If the transaction is invalid (often cryptographically), better to drop the
+                // client
                 return Err(Status::invalid_argument(format!(
                     "Stream contains an invalid transaction {err}"
-                )));
+                )))
             }
             // Send the transaction to Narwhal via the local client.
             // Note that here we do not wait for a response because this would
             // mean that we process only a single message from this stream at a
             // time. Instead we gather them and resolve them once the stream is over.
-            reqeusts.push(
-                self.local_client
-                    .submit_transaction(txn.transaction.to_vec()),
-            );
+            reqeusts.push(self.local_client.submit_transaction(txn.transaction.to_vec()));
         }
 
         while let Some(result) = reqeusts.next().await {
             if let Err(e) = result {
-                return Err(Status::internal(e.to_string()));
+                return Err(Status::internal(e.to_string()))
             }
         }
 

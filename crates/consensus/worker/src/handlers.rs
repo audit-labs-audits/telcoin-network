@@ -6,19 +6,19 @@
 use anemo::{types::response::StatusCode, Network};
 use anyhow::Result;
 use async_trait::async_trait;
-use tn_types::consensus::config::{AuthorityIdentifier, Committee, WorkerCache, WorkerId};
 use fastcrypto::hash::Hash;
 use itertools::Itertools;
 use lattice_network::{client::NetworkClient, WorkerToPrimaryClient};
-use std::{collections::HashSet, time::Duration};
 use lattice_typed_store::{rocks::DBMap, Map};
-use tracing::{debug, trace};
+use std::{collections::HashSet, time::Duration};
 use tn_types::consensus::{
-    now, Batch, BatchAPI, BatchDigest, FetchBatchesRequest,
-    FetchBatchesResponse, MetadataAPI, PrimaryToWorker, RequestBatchRequest, RequestBatchResponse,
-    RequestBatchesRequest, RequestBatchesResponse, WorkerBatchMessage, WorkerDeleteBatchesMessage,
+    config::{AuthorityIdentifier, Committee, WorkerCache, WorkerId},
+    now, Batch, BatchAPI, BatchDigest, FetchBatchesRequest, FetchBatchesResponse, MetadataAPI,
+    PrimaryToWorker, RequestBatchRequest, RequestBatchResponse, RequestBatchesRequest,
+    RequestBatchesResponse, WorkerBatchMessage, WorkerDeleteBatchesMessage,
     WorkerOthersBatchMessage, WorkerSynchronizeMessage, WorkerToWorker, WorkerToWorkerClient,
 };
+use tracing::{debug, trace};
 
 use crate::{batch_fetcher::BatchFetcher, TransactionValidator};
 
@@ -42,15 +42,11 @@ impl<V: TransactionValidator> WorkerToWorker for WorkerReceiverHandler<V> {
         request: anemo::Request<WorkerBatchMessage>,
     ) -> Result<anemo::Response<()>, anemo::rpc::Status> {
         let message = request.into_body();
-        if let Err(err) = self
-            .validator
-            .validate_batch(&message.batch)
-            .await
-        {
+        if let Err(err) = self.validator.validate_batch(&message.batch).await {
             return Err(anemo::rpc::Status::new_with_message(
                 StatusCode::BadRequest,
                 format!("Invalid batch: {err}"),
-            ));
+            ))
         }
         let digest = message.batch.digest();
 
@@ -63,10 +59,7 @@ impl<V: TransactionValidator> WorkerToWorker for WorkerReceiverHandler<V> {
             anemo::rpc::Status::internal(format!("failed to write to batch store: {e:?}"))
         })?;
         self.client
-            .report_others_batch(WorkerOthersBatchMessage {
-                digest,
-                worker_id: self.id,
-            })
+            .report_others_batch(WorkerOthersBatchMessage { digest, worker_id: self.id })
             .await
             .map_err(|e| anemo::rpc::Status::internal(e.to_string()))?;
         Ok(anemo::Response::new(()))
@@ -113,15 +106,12 @@ impl<V: TransactionValidator> WorkerToWorker for WorkerReceiverHandler<V> {
                     total_size += batch_size;
                 } else {
                     is_size_limit_reached = true;
-                    break;
+                    break
                 }
             }
         }
 
-        Ok(anemo::Response::new(RequestBatchesResponse {
-            batches,
-            is_size_limit_reached,
-        }))
+        Ok(anemo::Response::new(RequestBatchesResponse { batches, is_size_limit_reached }))
     }
 }
 
@@ -176,26 +166,23 @@ impl<V: TransactionValidator> PrimaryToWorker for PrimaryReceiverHandler<V> {
                 Err(e) => {
                     return Err(anemo::rpc::Status::internal(format!(
                         "failed to read from batch store: {e:?}"
-                    )));
+                    )))
                 }
             };
         }
         if missing.is_empty() {
-            return Ok(anemo::Response::new(()));
+            return Ok(anemo::Response::new(()))
         }
 
-        let worker_name = match self.worker_cache.worker(
-            self.committee
-                .authority(&message.target)
-                .unwrap()
-                .protocol_key(),
-            &self.id,
-        ) {
+        let worker_name = match self
+            .worker_cache
+            .worker(self.committee.authority(&message.target).unwrap().protocol_key(), &self.id)
+        {
             Ok(worker_info) => worker_info.name,
             Err(e) => {
                 return Err(anemo::rpc::Status::internal(format!(
                     "The primary asked worker to sync with an unknown node: {e}"
-                )));
+                )))
             }
         };
         let Some(peer) = network.peer(anemo::PeerId(worker_name.0.to_bytes())) else {
@@ -207,9 +194,7 @@ impl<V: TransactionValidator> PrimaryToWorker for PrimaryReceiverHandler<V> {
 
         // Attempt to retrieve missing batches.
         // Retried at a higher level in Synchronizer::sync_batches_internal().
-        let request = RequestBatchesRequest {
-            batch_digests: missing.iter().cloned().collect(),
-        };
+        let request = RequestBatchesRequest { batch_digests: missing.iter().cloned().collect() };
         debug!("Sending RequestBatchesRequest to {worker_name}: {request:?}");
 
         let mut response = client
@@ -219,15 +204,11 @@ impl<V: TransactionValidator> PrimaryToWorker for PrimaryReceiverHandler<V> {
         for batch in response.batches.iter_mut() {
             if !message.is_certified {
                 // This batch is not part of a certificate, so we need to validate it.
-                if let Err(err) = self
-                    .validator
-                    .validate_batch(batch)
-                    .await
-                {
+                if let Err(err) = self.validator.validate_batch(batch).await {
                     return Err(anemo::rpc::Status::new_with_message(
                         StatusCode::BadRequest,
                         format!("Invalid batch: {err}"),
-                    ));
+                    ))
                 }
             }
 
@@ -243,11 +224,9 @@ impl<V: TransactionValidator> PrimaryToWorker for PrimaryReceiverHandler<V> {
         }
 
         if missing.is_empty() {
-            return Ok(anemo::Response::new(()));
+            return Ok(anemo::Response::new(()))
         }
-        Err(anemo::rpc::Status::internal(
-            "failed to synchronize batches!",
-        ))
+        Err(anemo::rpc::Status::internal("failed to synchronize batches!"))
     }
 
     async fn fetch_batches(
@@ -261,9 +240,7 @@ impl<V: TransactionValidator> PrimaryToWorker for PrimaryReceiverHandler<V> {
             ));
         };
         let request = request.into_body();
-        let batches = batch_fetcher
-            .fetch(request.digests, request.known_workers)
-            .await;
+        let batches = batch_fetcher.fetch(request.digests, request.known_workers).await;
         Ok(anemo::Response::new(FetchBatchesResponse { batches }))
     }
 

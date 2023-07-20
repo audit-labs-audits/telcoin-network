@@ -1,24 +1,26 @@
 // Copyright (c) Telcoin, LLC
 // Copyright (c) Mysten Labs, Inc.
 // SPDX-License-Identifier: Apache-2.0
-use fastcrypto::hash::Hash;
-use lru::LruCache;
-use parking_lot::Mutex;
-use prometheus::{register_int_counter_with_registry, IntCounter, Registry};
-use std::collections::HashMap;
-use std::num::NonZeroUsize;
-use std::sync::Arc;
-use std::{cmp::Ordering, collections::BTreeMap, iter};
-use tn_macros::fail_point;
-use tap::Tap;
 use crate::StoreResult;
-use tn_types::consensus::config::AuthorityIdentifier;
+use fastcrypto::hash::Hash;
 use lattice_common::sync::notify_read::NotifyRead;
 use lattice_typed_store::{
     rocks::{DBMap, TypedStoreError::RocksDBError},
     Map,
 };
-use tn_types::consensus::{Certificate, CertificateDigest, Round};
+use lru::LruCache;
+use parking_lot::Mutex;
+use prometheus::{register_int_counter_with_registry, IntCounter, Registry};
+use std::{
+    cmp::Ordering,
+    collections::{BTreeMap, HashMap},
+    iter,
+    num::NonZeroUsize,
+    sync::Arc,
+};
+use tap::Tap;
+use tn_macros::fail_point;
+use tn_types::consensus::{config::AuthorityIdentifier, Certificate, CertificateDigest, Round};
 
 #[derive(Clone)]
 pub struct CertificateStoreCacheMetrics {
@@ -75,10 +77,7 @@ pub struct CertificateStoreCache {
 
 impl CertificateStoreCache {
     pub fn new(size: NonZeroUsize, metrics: Option<CertificateStoreCacheMetrics>) -> Self {
-        Self {
-            cache: Arc::new(Mutex::new(LruCache::new(size))),
-            metrics,
-        }
+        Self { cache: Arc::new(Mutex::new(LruCache::new(size))), metrics }
     }
 
     fn report_result(&self, is_hit: bool) {
@@ -109,10 +108,7 @@ impl Cache for CertificateStoreCache {
     /// and mark it as "last accessed".
     fn read(&self, digest: &CertificateDigest) -> Option<Certificate> {
         let mut guard = self.cache.lock();
-        guard
-            .get(digest)
-            .cloned()
-            .tap(|v| self.report_result(v.is_some()))
+        guard.get(digest).cloned().tap(|v| self.report_result(v.is_some()))
     }
 
     /// Fetches the certificates for the provided digests. This method will update the LRU records
@@ -124,25 +120,15 @@ impl Cache for CertificateStoreCache {
         let mut guard = self.cache.lock();
         digests
             .into_iter()
-            .map(move |id| {
-                (
-                    id,
-                    guard
-                        .get(&id)
-                        .cloned()
-                        .tap(|v| self.report_result(v.is_some())),
-                )
-            })
+            .map(move |id| (id, guard.get(&id).cloned().tap(|v| self.report_result(v.is_some()))))
             .collect()
     }
 
-    /// Checks whether the value exists in the LRU cache. The method does not update the LRU record, thus
-    /// it will not count as a "last access" for the provided digest.
+    /// Checks whether the value exists in the LRU cache. The method does not update the LRU record,
+    /// thus it will not count as a "last access" for the provided digest.
     fn contains(&self, digest: &CertificateDigest) -> bool {
         let guard = self.cache.lock();
-        guard
-            .contains(digest)
-            .tap(|result| self.report_result(*result))
+        guard.contains(digest).tap(|result| self.report_result(*result))
     }
 
     fn remove(&self, digest: &CertificateDigest) {
@@ -158,7 +144,8 @@ impl Cache for CertificateStoreCache {
     }
 }
 
-/// An implementation that basically disables the caching functionality when used for CertificateStore.
+/// An implementation that basically disables the caching functionality when used for
+/// CertificateStore.
 #[derive(Clone)]
 struct NoCache {}
 
@@ -247,10 +234,7 @@ impl<T: Cache> CertificateStore<T> {
         let id = certificate.digest();
 
         // write the certificate by its id
-        batch.insert_batch(
-            &self.certificates_by_id,
-            iter::once((id, certificate.clone())),
-        )?;
+        batch.insert_batch(&self.certificates_by_id, iter::once((id, certificate.clone())))?;
 
         // Index the certificate id by its round and origin.
         batch.insert_batch(
@@ -316,17 +300,12 @@ impl<T: Cache> CertificateStore<T> {
 
         if result.is_ok() {
             for (_id, certificate) in &certificates {
-                self.notify_subscribers
-                    .notify(&certificate.digest(), certificate);
+                self.notify_subscribers.notify(&certificate.digest(), certificate);
             }
         }
 
-        self.cache.write_all(
-            certificates
-                .into_iter()
-                .map(|(_, certificate)| certificate)
-                .collect(),
-        );
+        self.cache
+            .write_all(certificates.into_iter().map(|(_, certificate)| certificate).collect());
 
         fail_point!("narwhal-store-after-write");
         result
@@ -336,7 +315,7 @@ impl<T: Cache> CertificateStore<T> {
     /// then None is returned as result.
     pub fn read(&self, id: CertificateDigest) -> StoreResult<Option<Certificate>> {
         if let Some(certificate) = self.cache.read(&id) {
-            return Ok(Some(certificate));
+            return Ok(Some(certificate))
         }
 
         self.certificates_by_id.get(&id)
@@ -359,7 +338,7 @@ impl<T: Cache> CertificateStore<T> {
     /// then None is returned as result.
     pub fn contains(&self, id: &CertificateDigest) -> StoreResult<bool> {
         if self.cache.contains(id) {
-            return Ok(true);
+            return Ok(true)
         }
 
         self.certificates_by_id.contains_key(id)
@@ -386,14 +365,11 @@ impl<T: Cache> CertificateStore<T> {
 
         // then fallback for all the misses on the storage
         let from_store = self.certificates_by_id.multi_get(&missing)?;
-        from_store
-            .iter()
-            .zip(missing)
-            .for_each(|(certificate, id)| {
-                if let Some(certificate) = certificate {
-                    found.insert(id, certificate.clone());
-                }
-            });
+        from_store.iter().zip(missing).for_each(|(certificate, id)| {
+            if let Some(certificate) = certificate {
+                found.insert(id, certificate.clone());
+            }
+        });
 
         Ok(ids.into_iter().map(|id| found.get(&id).cloned()).collect())
     }
@@ -410,7 +386,7 @@ impl<T: Cache> CertificateStore<T> {
             self.notify_subscribers.notify(&id, &cert);
 
             // reply directly
-            return Ok(cert);
+            return Ok(cert)
         }
 
         // now wait to hear back the result
@@ -462,7 +438,7 @@ impl<T: Cache> CertificateStore<T> {
             .filter_map(|c| c.map(|cert| (cert.round(), cert.origin())))
             .collect::<Vec<_>>();
         if keys_by_round.is_empty() {
-            return Ok(());
+            return Ok(())
         }
 
         let mut batch = self.certificates_by_id.batch();
@@ -501,7 +477,7 @@ impl<T: Cache> CertificateStore<T> {
                     digests.push(d);
                 }
                 Ordering::Less => {
-                    continue;
+                    continue
                 }
             }
         }
@@ -536,7 +512,7 @@ impl<T: Cache> CertificateStore<T> {
         let mut result = BTreeMap::<Round, Vec<AuthorityIdentifier>>::new();
         for ((r, origin), _) in iter {
             if r < round {
-                continue;
+                continue
             }
             result.entry(r).or_default().push(origin);
         }
@@ -547,11 +523,8 @@ impl<T: Cache> CertificateStore<T> {
     pub fn last_two_rounds_certs(&self) -> StoreResult<Vec<Certificate>> {
         // starting from the last element - hence the last round - move backwards until
         // we find certificates of different round.
-        let certificates_reverse = self
-            .certificate_id_by_round
-            .unbounded_iter()
-            .skip_to_last()
-            .reverse();
+        let certificates_reverse =
+            self.certificate_id_by_round.unbounded_iter().skip_to_last().reverse();
 
         let mut round = 0;
         let mut certificates = Vec::new();
@@ -566,7 +539,7 @@ impl<T: Cache> CertificateStore<T> {
             if round == 0 {
                 round = certificate_round;
             } else if certificate_round < round - 1 {
-                break;
+                break
             }
 
             let certificate = self.certificates_by_id.get(&digest)?.ok_or_else(|| {
@@ -586,14 +559,11 @@ impl<T: Cache> CertificateStore<T> {
     /// Returns None if there is no certificate for the origin.
     pub fn last_round(&self, origin: AuthorityIdentifier) -> StoreResult<Option<Certificate>> {
         let key = (origin, Round::MAX);
-        if let Some(((name, _round), digest)) = self
-            .certificate_id_by_origin
-            .unbounded_iter()
-            .skip_prior_to(&key)?
-            .next()
+        if let Some(((name, _round), digest)) =
+            self.certificate_id_by_origin.unbounded_iter().skip_prior_to(&key)?.next()
         {
             if name == origin {
-                return self.read(digest);
+                return self.read(digest)
             }
         }
         Ok(None)
@@ -602,12 +572,8 @@ impl<T: Cache> CertificateStore<T> {
     /// Retrieves the highest round number in the store.
     /// Returns 0 if there is no certificate in the store.
     pub fn highest_round_number(&self) -> Round {
-        if let Some(((round, _), _)) = self
-            .certificate_id_by_round
-            .unbounded_iter()
-            .skip_to_last()
-            .reverse()
-            .next()
+        if let Some(((round, _), _)) =
+            self.certificate_id_by_round.unbounded_iter().skip_to_last().reverse().next()
         {
             round
         } else {
@@ -619,14 +585,11 @@ impl<T: Cache> CertificateStore<T> {
     /// Returns None if there is no certificate for the origin.
     pub fn last_round_number(&self, origin: AuthorityIdentifier) -> StoreResult<Option<Round>> {
         let key = (origin, Round::MAX);
-        if let Some(((name, round), _)) = self
-            .certificate_id_by_origin
-            .unbounded_iter()
-            .skip_prior_to(&key)?
-            .next()
+        if let Some(((name, round), _)) =
+            self.certificate_id_by_origin.unbounded_iter().skip_prior_to(&key)?.next()
         {
             if name == origin {
-                return Ok(Some(round));
+                return Ok(Some(round))
             }
         }
         Ok(None)
@@ -640,14 +603,11 @@ impl<T: Cache> CertificateStore<T> {
         round: Round,
     ) -> StoreResult<Option<Round>> {
         let key = (origin, round + 1);
-        if let Some(((name, round), _)) = self
-            .certificate_id_by_origin
-            .unbounded_iter()
-            .skip_to(&key)?
-            .next()
+        if let Some(((name, round), _)) =
+            self.certificate_id_by_origin.unbounded_iter().skip_to(&key)?.next()
         {
             if name == origin {
-                return Ok(Some(round));
+                return Ok(Some(round))
             }
         }
         Ok(None)
@@ -674,23 +634,26 @@ impl<T: Cache> CertificateStore<T> {
 
 #[cfg(test)]
 mod test {
-    use crate::certificate_store::{CertificateStore, NoCache};
-    use crate::{Cache, CertificateStoreCache};
-    use tn_types::consensus::config::AuthorityIdentifier;
+    use crate::{
+        certificate_store::{CertificateStore, NoCache},
+        Cache, CertificateStoreCache,
+    };
     use fastcrypto::hash::Hash;
     use futures::future::join_all;
-    use std::num::NonZeroUsize;
-    use std::{
-        collections::{BTreeSet, HashSet},
-        time::Instant,
-    };
-    use lattice_typed_store::rocks::MetricConf;
+    use lattice_test_utils::{temp_dir, CommitteeFixture};
     use lattice_typed_store::{
         reopen,
-        rocks::{open_cf, DBMap, ReadWriteOptions},
+        rocks::{open_cf, DBMap, MetricConf, ReadWriteOptions},
     };
-    use lattice_test_utils::{temp_dir, CommitteeFixture};
-    use tn_types::consensus::{Certificate, CertificateAPI, CertificateDigest, HeaderAPI, Round};
+    use std::{
+        collections::{BTreeSet, HashSet},
+        num::NonZeroUsize,
+        time::Instant,
+    };
+    use tn_types::consensus::{
+        config::AuthorityIdentifier, Certificate, CertificateAPI, CertificateDigest, HeaderAPI,
+        Round,
+    };
 
     fn new_store(path: std::path::PathBuf) -> CertificateStore {
         let (certificate_map, certificate_id_by_round_map, certificate_id_by_origin_map) =
@@ -733,11 +696,7 @@ mod test {
             path,
             None,
             MetricConf::default(),
-            &[
-                CERTIFICATES_CF,
-                CERTIFICATE_ID_BY_ROUND_CF,
-                CERTIFICATE_ID_BY_ORIGIN_CF,
-            ],
+            &[CERTIFICATES_CF, CERTIFICATE_ID_BY_ROUND_CF, CERTIFICATE_ID_BY_ORIGIN_CF],
         )
         .expect("Cannot open database");
 
@@ -760,17 +719,12 @@ mod test {
 
         let mut result: Vec<Certificate> = Vec::new();
         for i in 0..rounds {
-            let parents: BTreeSet<_> = current_round
-                .iter()
-                .map(|header| fixture.certificate(header).digest())
-                .collect();
+            let parents: BTreeSet<_> =
+                current_round.iter().map(|header| fixture.certificate(header).digest()).collect();
             (_, current_round) = fixture.headers_round(i, &parents);
 
             result.extend(
-                current_round
-                    .iter()
-                    .map(|h| fixture.certificate(h))
-                    .collect::<Vec<Certificate>>(),
+                current_round.iter().map(|h| fixture.certificate(h)).collect::<Vec<Certificate>>(),
             );
         }
 
@@ -810,10 +764,7 @@ mod test {
         // GIVEN
         // create certificates for 10 rounds
         let certs = certificates(10);
-        let ids = certs
-            .iter()
-            .map(|c| c.digest())
-            .collect::<Vec<CertificateDigest>>();
+        let ids = certs.iter().map(|c| c.digest()).collect::<Vec<CertificateDigest>>();
 
         // store them in both main and secondary index
         store.write_all(certs.clone()).unwrap();
@@ -892,8 +843,8 @@ mod test {
         assert_eq!(highest_round_number, 50);
         for certificate in result {
             assert!(
-                (certificate.round() == last_round_number)
-                    || (certificate.round() == last_round_number - 1)
+                (certificate.round() == last_round_number) ||
+                    (certificate.round() == last_round_number - 1)
             );
         }
         assert!(last_round_number_not_exist.is_none());
@@ -907,9 +858,7 @@ mod test {
         // WHEN
         let result = store.last_two_rounds_certs().unwrap();
         let last_round_cert = store.last_round(AuthorityIdentifier::default()).unwrap();
-        let last_round_number = store
-            .last_round_number(AuthorityIdentifier::default())
-            .unwrap();
+        let last_round_number = store.last_round_number(AuthorityIdentifier::default()).unwrap();
         let highest_round_number = store.highest_round_number();
 
         // THEN
@@ -931,10 +880,7 @@ mod test {
         println!("Generating certificates");
 
         let certs = certificates(total_rounds);
-        println!(
-            "Created certificates: {} seconds",
-            now.elapsed().as_secs_f32()
-        );
+        println!("Created certificates: {} seconds", now.elapsed().as_secs_f32());
 
         let now = Instant::now();
         println!("Storing certificates");
@@ -942,40 +888,27 @@ mod test {
         // store them in both main and secondary index
         store.write_all(certs.clone()).unwrap();
 
-        println!(
-            "Stored certificates: {} seconds",
-            now.elapsed().as_secs_f32()
-        );
+        println!("Stored certificates: {} seconds", now.elapsed().as_secs_f32());
 
         let round_cutoff = 21;
 
         // now filter the certificates over round 21
         let mut certs_ids_over_cutoff_round = certs
             .into_iter()
-            .filter_map(|c| {
-                if c.round() >= round_cutoff {
-                    Some(c.digest())
-                } else {
-                    None
-                }
-            })
+            .filter_map(|c| if c.round() >= round_cutoff { Some(c.digest()) } else { None })
             .collect::<HashSet<_>>();
 
         // WHEN
         println!("Access after round {round_cutoff}, before {total_rounds}");
         let now = Instant::now();
-        let result = store
-            .after_round(round_cutoff)
-            .expect("Error returned while reading after_round");
+        let result =
+            store.after_round(round_cutoff).expect("Error returned while reading after_round");
 
         println!("Total time: {} seconds", now.elapsed().as_secs_f32());
 
         // THEN
         let certs_per_round = 4;
-        assert_eq!(
-            result.len() as u64,
-            (total_rounds - round_cutoff + 1) * certs_per_round
-        );
+        assert_eq!(result.len() as u64, (total_rounds - round_cutoff + 1) * certs_per_round);
 
         // AND result certificates should be returned in increasing order
         let mut last_round = 0;
@@ -1007,10 +940,7 @@ mod test {
         // run the tests a few times
         for _ in 0..10 {
             let mut certs = certificates(3);
-            let mut ids = certs
-                .iter()
-                .map(|c| c.digest())
-                .collect::<Vec<CertificateDigest>>();
+            let mut ids = certs.iter().map(|c| c.digest()).collect::<Vec<CertificateDigest>>();
 
             let cloned_store = store.clone();
 
@@ -1040,10 +970,8 @@ mod test {
             store.write_all(certs).unwrap();
 
             // now wait on handle an assert result for a single certificate
-            let received_certificate = handle_1
-                .await
-                .expect("error")
-                .expect("shouldn't receive store error");
+            let received_certificate =
+                handle_1.await.expect("error").expect("shouldn't receive store error");
 
             assert_eq!(received_certificate, c1);
 

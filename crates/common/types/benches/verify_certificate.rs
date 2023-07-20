@@ -6,14 +6,14 @@ use criterion::{
 };
 use fastcrypto::hash::Hash;
 // use tn_types::consensus::Certificate;
-use std::collections::BTreeSet;
 use lattice_test_utils::{make_optimal_certificates, CommitteeFixture};
+use std::collections::BTreeSet;
 
 pub fn verify_certificates(c: &mut Criterion) {
-//     let mut bench_group = c.benchmark_group("verify_certificate");
-//     bench_group.sampling_mode(SamplingMode::Flat);
+    //     let mut bench_group = c.benchmark_group("verify_certificate");
+    //     bench_group.sampling_mode(SamplingMode::Flat);
 
-//     static COMMITTEE_SIZES: [usize; 4] = [4, 10, 40, 100];
+    //     static COMMITTEE_SIZES: [usize; 4] = [4, 10, 40, 100];
     // for committee_size in COMMITTEE_SIZES {
     //     let fixture = CommitteeFixture::builder()
     //         .committee_size(committee_size.try_into().unwrap())
@@ -21,20 +21,20 @@ pub fn verify_certificates(c: &mut Criterion) {
     //     let committee = fixture.committee();
     //     let ids: Vec<_> = fixture.authorities().map(|a| a.id()).collect();
 
-        // TODO: impl Certificate
+    // TODO: impl Certificate
 
-        // process certificates for rounds, check we don't grow the dag too much
-        // let genesis = Certificate::genesis(&committee)
-        //     .iter()
-        //     .map(|x| x.digest())
-        //     .collect::<BTreeSet<_>>();
-        // let (certificates, _next_parents) = make_optimal_certificates(
-        //     &committee,
-        //     &latest_protocol_version(),
-        //     1..=1,
-        //     &genesis,
-        //     &ids,
-        // );
+    // process certificates for rounds, check we don't grow the dag too much
+    // let genesis = Certificate::genesis(&committee)
+    //     .iter()
+    //     .map(|x| x.digest())
+    //     .collect::<BTreeSet<_>>();
+    // let (certificates, _next_parents) = make_optimal_certificates(
+    //     &committee,
+    //     &latest_protocol_version(),
+    //     1..=1,
+    //     &genesis,
+    //     &ids,
+    // );
     //     let certificate = certificates.front().unwrap().clone();
 
     //     let data_size: usize = bcs::to_bytes(&certificate).unwrap().len();
@@ -50,7 +50,7 @@ pub fn verify_certificates(c: &mut Criterion) {
     //             })
     //         },
     //     );
-//     }
+    //     }
 }
 
 criterion_group! {

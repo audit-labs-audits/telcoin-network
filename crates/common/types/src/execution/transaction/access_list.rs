@@ -1,4 +1,4 @@
-use crate::execution ::{Address, H256};
+use crate::execution::{Address, H256};
 use execution_codecs::{main_codec, Compact};
 use execution_rlp::{RlpDecodable, RlpDecodableWrapper, RlpEncodable, RlpEncodableWrapper};
 use revm_primitives::U256;

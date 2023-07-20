@@ -2,18 +2,14 @@
 // Copyright (c) Mysten Labs, Inc.
 // SPDX-License-Identifier: Apache-2.0
 use crate::metrics::NetworkConnectionMetrics;
-use anemo::types::PeerEvent;
-use anemo::PeerId;
+use anemo::{types::PeerEvent, PeerId};
+use consensus_metrics::spawn_logged_monitored_task;
 use dashmap::DashMap;
 use futures::future;
-use consensus_metrics::spawn_logged_monitored_task;
 use quinn_proto::ConnectionStats;
-use std::collections::HashMap;
-use std::sync::Arc;
-use std::time::Duration;
-use tokio::task::JoinHandle;
-use tokio::time;
+use std::{collections::HashMap, sync::Arc, time::Duration};
 use tn_types::consensus::ConditionalBroadcastReceiver;
+use tokio::{task::JoinHandle, time};
 
 const CONNECTION_STAT_COLLECTION_INTERVAL: Duration = Duration::from_secs(60);
 
@@ -65,7 +61,7 @@ impl ConnectionMonitor {
                 };
                 (subscriber, active_peers)
             } else {
-                return;
+                return
             }
         };
 
@@ -128,11 +124,9 @@ impl ConnectionMonitor {
 
     async fn handle_peer_event(&self, peer_event: PeerEvent) {
         if let Some(network) = self.network.upgrade() {
-            self.connection_metrics
-                .network_peers
-                .set(network.peers().len() as i64);
+            self.connection_metrics.network_peers.set(network.peers().len() as i64);
         } else {
-            return;
+            return
         }
 
         let (peer_id, status, int_status) = match peer_event {
@@ -247,14 +241,14 @@ impl ConnectionMonitor {
 
 #[cfg(test)]
 mod tests {
-    use crate::connectivity::{ConnectionMonitor, ConnectionStatus};
-    use crate::metrics::NetworkConnectionMetrics;
+    use crate::{
+        connectivity::{ConnectionMonitor, ConnectionStatus},
+        metrics::NetworkConnectionMetrics,
+    };
     use anemo::{Network, Request, Response};
     use bytes::Bytes;
     use prometheus::Registry;
-    use std::collections::HashMap;
-    use std::convert::Infallible;
-    use std::time::Duration;
+    use std::{collections::HashMap, convert::Infallible, time::Duration};
     use tokio::time::{sleep, timeout};
     use tower::util::BoxCloneService;
 
@@ -286,48 +280,29 @@ mod tests {
         let mut labels = HashMap::new();
         let peer_2_str = format!("{peer_2}");
         labels.insert("peer_id", peer_2_str.as_str());
-        assert_ne!(
-            metrics
-                .network_peer_rtt
-                .get_metric_with(&labels)
-                .unwrap()
-                .get(),
-            0
-        );
-        assert_eq!(
-            *statuses.get(&peer_2).unwrap().value(),
-            ConnectionStatus::Connected
-        );
+        assert_ne!(metrics.network_peer_rtt.get_metric_with(&labels).unwrap().get(), 0);
+        assert_eq!(*statuses.get(&peer_2).unwrap().value(), ConnectionStatus::Connected);
 
         // WHEN connect to peer 3
         let peer_3 = network_1.connect(network_3.local_addr()).await.unwrap();
 
         // THEN
         assert_network_peers(metrics.clone(), 2).await;
-        assert_eq!(
-            *statuses.get(&peer_3).unwrap().value(),
-            ConnectionStatus::Connected
-        );
+        assert_eq!(*statuses.get(&peer_3).unwrap().value(), ConnectionStatus::Connected);
 
         // AND disconnect peer 2
         network_1.disconnect(peer_2).unwrap();
 
         // THEN
         assert_network_peers(metrics.clone(), 1).await;
-        assert_eq!(
-            *statuses.get(&peer_2).unwrap().value(),
-            ConnectionStatus::Disconnected
-        );
+        assert_eq!(*statuses.get(&peer_2).unwrap().value(), ConnectionStatus::Disconnected);
 
         // AND disconnect peer 3
         network_1.disconnect(peer_3).unwrap();
 
         // THEN
         assert_network_peers(metrics.clone(), 0).await;
-        assert_eq!(
-            *statuses.get(&peer_3).unwrap().value(),
-            ConnectionStatus::Disconnected
-        );
+        assert_eq!(*statuses.get(&peer_3).unwrap().value(), ConnectionStatus::Disconnected);
     }
 
     async fn assert_network_peers(metrics: NetworkConnectionMetrics, value: i64) {
@@ -339,10 +314,7 @@ mod tests {
         })
         .await
         .unwrap_or_else(|_| {
-            panic!(
-                "Timeout while waiting for connectivity results for value {}",
-                value
-            )
+            panic!("Timeout while waiting for connectivity results for value {}", value)
         });
 
         assert_eq!(metrics.network_peers.get(), value);

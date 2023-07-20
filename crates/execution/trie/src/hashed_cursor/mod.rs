@@ -1,4 +1,4 @@
-use execution_primitives::{Account, StorageEntry, H256};
+use tn_types::execution::{Account, StorageEntry, H256};
 
 /// Default implementation of the hashed state cursor traits.
 mod default;

@@ -1,4 +1,4 @@
-use crate::execution ::H256;
+use crate::execution::H256;
 
 /// Additional fields in the context of a block that contains this transaction.
 #[derive(Debug, Clone, Copy, Default, Eq, PartialEq)]

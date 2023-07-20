@@ -1,5 +1,5 @@
-use execution_primitives::U256;
 use serde::{Deserialize, Serialize};
+use tn_types::execution::U256;
 
 /// Internal struct to calculate reward percentiles
 #[derive(Clone, Debug, PartialEq, Eq)]

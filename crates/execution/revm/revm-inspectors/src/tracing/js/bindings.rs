@@ -16,7 +16,6 @@ use boa_engine::{
     Context, JsArgs, JsError, JsNativeError, JsObject, JsResult, JsValue,
 };
 use boa_gc::{empty_trace, Finalize, Gc, Trace};
-use execution_primitives::{bytes::Bytes, Account, Address, H256, KECCAK_EMPTY, U256};
 use revm::{
     interpreter::{
         opcode::{PUSH0, PUSH32},
@@ -25,6 +24,7 @@ use revm::{
     primitives::State,
 };
 use std::{borrow::Borrow, sync::mpsc::channel};
+use tn_types::execution::{bytes::Bytes, Account, Address, H256, KECCAK_EMPTY, U256};
 use tokio::sync::mpsc;
 
 /// A macro that creates a native function that returns via [JsValue::from]

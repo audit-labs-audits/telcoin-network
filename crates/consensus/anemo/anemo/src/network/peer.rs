@@ -24,11 +24,7 @@ impl Peer {
         outbound_request_layer: OutboundRequestLayer,
         config: Arc<Config>,
     ) -> Self {
-        Self {
-            connection,
-            outbound_request_layer,
-            config,
-        }
+        Self { connection, outbound_request_layer, config }
     }
 
     pub fn peer_id(&self) -> PeerId {

@@ -9,10 +9,10 @@ use execution_network::{
     NetworkConfig, NetworkManager,
 };
 use execution_network_api::Peers;
-use execution_primitives::{ChainSpec, Genesis, PeerId, SealedHeader};
 use execution_provider::test_utils::NoopProvider;
 use secp256k1::SecretKey;
 use std::{net::SocketAddr, sync::Arc};
+use tn_types::execution::{ChainSpec, Genesis, PeerId, SealedHeader};
 
 #[tokio::test(flavor = "multi_thread")]
 #[cfg_attr(not(feature = "geth-tests"), ignore)]

@@ -13,7 +13,7 @@
 //! # use execution_stages::Pipeline;
 //! # use execution_stages::sets::{OfflineStages};
 //! # use execution_revm::Factory;
-//! # use execution_primitives::MAINNET;
+//! # use tn_types::execution::MAINNET;
 //! use execution_db::test_utils::create_test_rw_db;
 //!
 //! # let factory = Factory::new(MAINNET.clone());
@@ -27,7 +27,7 @@
 //! # use execution_stages::Pipeline;
 //! # use execution_stages::{StageSet, sets::OfflineStages};
 //! # use execution_revm::Factory;
-//! # use execution_primitives::MAINNET;
+//! # use tn_types::execution::MAINNET;
 //! // Build a pipeline with all offline stages and a custom stage at the end.
 //! # let factory = Factory::new(MAINNET.clone());
 //! Pipeline::builder()

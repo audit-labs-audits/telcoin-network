@@ -1,9 +1,9 @@
 //! Utility functions for hashing and encoding.
 
 use hmac::{Hmac, Mac};
-use execution_primitives::{H256, H512 as PeerId};
 use secp256k1::PublicKey;
 use sha2::{Digest, Sha256};
+use tn_types::execution::{H256, H512 as PeerId};
 
 /// Hashes the input data with SHA256.
 pub(crate) fn sha256(data: &[u8]) -> H256 {

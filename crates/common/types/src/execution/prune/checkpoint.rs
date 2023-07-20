@@ -1,4 +1,4 @@
-use crate::execution ::{prune::PruneMode, BlockNumber};
+use crate::execution::{prune::PruneMode, BlockNumber};
 use execution_codecs::{main_codec, Compact};
 
 /// Saves the pruning progress of a stage.

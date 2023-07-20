@@ -8,10 +8,10 @@ use execution_db::{
     transaction::DbTx,
 };
 use execution_interfaces::{provider::ProviderError, Result};
-use execution_primitives::{
+use std::marker::PhantomData;
+use tn_types::execution::{
     keccak256, Account, Address, BlockNumber, Bytecode, Bytes, StorageKey, StorageValue, H256,
 };
-use std::marker::PhantomData;
 
 /// State provider over latest state that takes tx reference.
 pub struct LatestStateProviderRef<'a, 'b, TX: DbTx<'a>> {

@@ -3,9 +3,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 use futures::future::BoxFuture;
-use std::collections::HashMap;
-use std::future::Future;
-use std::sync::Arc;
+use std::{collections::HashMap, future::Future, sync::Arc};
 
 // pub use sui_proc_macros::*;
 
@@ -57,10 +55,7 @@ fn get_callback(identifier: &'static str) -> Option<Arc<FpCallback>> {
 pub fn handle_fail_point(identifier: &'static str) {
     if let Some(callback) = get_callback(identifier) {
         tracing::error!("hit failpoint {}", identifier);
-        assert!(
-            callback().is_none(),
-            "sync failpoint must not return future"
-        );
+        assert!(callback().is_none(), "sync failpoint must not return future");
     }
 }
 
@@ -77,10 +72,7 @@ fn register_fail_point_impl(
     callback: Arc<dyn Fn() -> Option<BoxFuture<'static, ()>> + Sync + Send + 'static>,
 ) {
     with_fp_map(move |map| {
-        assert!(
-            map.insert(identifier, callback).is_none(),
-            "duplicate fail point registration"
-        );
+        assert!(map.insert(identifier, callback).is_none(), "duplicate fail point registration");
     })
 }
 

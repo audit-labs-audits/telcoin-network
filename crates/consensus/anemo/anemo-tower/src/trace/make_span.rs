@@ -42,10 +42,7 @@ pub struct DefaultMakeSpan {
 impl DefaultMakeSpan {
     /// Create a new `DefaultMakeSpan`.
     pub fn new() -> Self {
-        Self {
-            level: DEFAULT_MESSAGE_LEVEL,
-            include_headers: false,
-        }
+        Self { level: DEFAULT_MESSAGE_LEVEL, include_headers: false }
     }
 
     /// Set the [`Level`] used for the [tracing span].
@@ -77,16 +74,10 @@ impl Default for DefaultMakeSpan {
 
 impl MakeSpan for DefaultMakeSpan {
     fn make_span(&mut self, request: &Request<Bytes>) -> Span {
-        let headers = self
-            .include_headers
-            .then(|| tracing::field::debug(request.headers()));
-        let peer_id = request
-            .peer_id()
-            .map(|peer_id| tracing::field::display(peer_id.short_display(4)));
-        let direction = request
-            .extensions()
-            .get::<anemo::Direction>()
-            .map(tracing::field::display);
+        let headers = self.include_headers.then(|| tracing::field::debug(request.headers()));
+        let peer_id =
+            request.peer_id().map(|peer_id| tracing::field::display(peer_id.short_display(4)));
+        let direction = request.extensions().get::<anemo::Direction>().map(tracing::field::display);
 
         // This macro is needed, unfortunately, because `tracing::span!` requires the level
         // argument to be static. Meaning we can't just pass `self.level`.

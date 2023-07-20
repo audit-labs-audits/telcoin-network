@@ -1,12 +1,12 @@
-//! Contains types that represent ethereum types in [execution_primitives] when used in RPC
+//! Contains types that represent ethereum types in [tn_types::execution] when used in RPC
 use crate::Transaction;
-use execution_primitives::{
-    Address, Block as PrimitiveBlock, Bloom, Bytes, Header as PrimitiveHeader, SealedHeader,
-    Withdrawal, H256, H64, U256, U64,
-};
 use execution_rlp::Encodable;
 use serde::{ser::Error, Deserialize, Serialize, Serializer};
 use std::{collections::BTreeMap, ops::Deref};
+use tn_types::execution::{
+    Address, Block as PrimitiveBlock, Bloom, Bytes, Header as PrimitiveHeader, SealedHeader,
+    Withdrawal, H256, H64, U256, U64,
+};
 
 /// Block Transactions depending on the boolean attribute of `eth_getBlockBy*`,
 /// or if used by `eth_getUncle*`
@@ -104,8 +104,8 @@ impl Block {
         }
     }
 
-    /// Create a new [Block] response from a [primitive block](execution_primitives::Block), using the
-    /// total difficulty to populate its field in the rpc response.
+    /// Create a new [Block] response from a [primitive block](tn_types::execution::Block), using
+    /// the total difficulty to populate its field in the rpc response.
     ///
     /// This will populate the `transactions` field with only the hashes of the transactions in the
     /// block: [BlockTransactions::Hashes]
@@ -125,8 +125,8 @@ impl Block {
         )
     }
 
-    /// Create a new [Block] response from a [primitive block](execution_primitives::Block), using the
-    /// total difficulty to populate its field in the rpc response.
+    /// Create a new [Block] response from a [primitive block](tn_types::execution::Block), using
+    /// the total difficulty to populate its field in the rpc response.
     ///
     /// This will populate the `transactions` field with the _full_ [Transaction] objects:
     /// [BlockTransactions::Full]

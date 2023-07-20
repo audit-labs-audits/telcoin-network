@@ -36,9 +36,7 @@ impl AllowedPeers {
     where
         P: IntoIterator<Item = anemo::PeerId>,
     {
-        Self {
-            allowed_peers: peers.into_iter().collect(),
-        }
+        Self { allowed_peers: peers.into_iter().collect() }
     }
 }
 
@@ -46,9 +44,8 @@ impl AuthorizeRequest for AllowedPeers {
     fn authorize(&self, request: &mut Request<Bytes>) -> Result<(), Response<Bytes>> {
         use anemo::types::response::{IntoResponse, StatusCode};
 
-        let peer_id = request
-            .peer_id()
-            .ok_or_else(|| StatusCode::InternalServerError.into_response())?;
+        let peer_id =
+            request.peer_id().ok_or_else(|| StatusCode::InternalServerError.into_response())?;
 
         if self.allowed_peers.contains(peer_id) {
             Ok(())
@@ -84,13 +81,8 @@ mod tests {
         let mut svc = ServiceBuilder::new().layer(auth_layer).service_fn(echo);
 
         // Unauthorized Request
-        let response = svc
-            .ready()
-            .await
-            .unwrap()
-            .call(Request::new(Bytes::from("foobar")))
-            .await
-            .unwrap();
+        let response =
+            svc.ready().await.unwrap().call(Request::new(Bytes::from("foobar"))).await.unwrap();
         assert_eq!(response.status(), StatusCode::NotFound);
 
         // Authorized Request
@@ -118,13 +110,8 @@ mod tests {
         let mut svc = ServiceBuilder::new().layer(auth_layer).service_fn(echo);
 
         // Unable to query requester's PeerId
-        let response = svc
-            .ready()
-            .await
-            .unwrap()
-            .call(Request::new(Bytes::from("foobar")))
-            .await
-            .unwrap();
+        let response =
+            svc.ready().await.unwrap().call(Request::new(Bytes::from("foobar"))).await.unwrap();
         assert_eq!(response.status(), StatusCode::InternalServerError);
 
         // Unauthorized Request

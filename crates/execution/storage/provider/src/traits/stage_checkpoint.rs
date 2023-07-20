@@ -1,5 +1,5 @@
 use execution_interfaces::Result;
-use execution_primitives::{
+use tn_types::execution::{
     stage::{StageCheckpoint, StageId},
     BlockNumber,
 };

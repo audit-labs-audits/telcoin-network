@@ -8,8 +8,7 @@ use crate::{
 };
 use bytes::Bytes;
 use quinn::RecvStream;
-use std::convert::Infallible;
-use std::sync::Arc;
+use std::{convert::Infallible, sync::Arc};
 use tokio_util::codec::{FramedRead, FramedWrite, LengthDelimitedCodec};
 use tower::{util::BoxCloneService, ServiceExt};
 use tracing::{debug, trace};
@@ -33,12 +32,7 @@ impl InboundRequestHandler {
         service: BoxCloneService<Request<Bytes>, Response<Bytes>, Infallible>,
         active_peers: ActivePeers,
     ) -> Self {
-        Self {
-            config,
-            connection,
-            service,
-            active_peers,
-        }
+        Self { config, connection, service, active_peers }
     }
 
     pub async fn start(self) {
@@ -163,9 +157,7 @@ impl BiStreamRequestHandler {
         // * Direction of the Request
         request.extensions_mut().insert(self.connection.peer_id());
         request.extensions_mut().insert(self.connection.origin());
-        request
-            .extensions_mut()
-            .insert(self.connection.remote_address());
+        request.extensions_mut().insert(self.connection.remote_address());
         request.extensions_mut().insert(crate::Direction::Inbound);
 
         // Issue request to configured Service

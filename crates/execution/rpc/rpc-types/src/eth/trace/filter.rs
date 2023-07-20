@@ -1,6 +1,6 @@
 //! `trace_filter` types and support
-use execution_primitives::{Address, BlockNumber};
 use serde::{Deserialize, Serialize};
+use tn_types::execution::{Address, BlockNumber};
 
 /// Trace filter.
 #[derive(Debug, PartialEq, Eq, Serialize, Deserialize)]

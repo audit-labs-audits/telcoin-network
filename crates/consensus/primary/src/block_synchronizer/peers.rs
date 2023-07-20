@@ -2,11 +2,10 @@
 // Copyright (c) Mysten Labs, Inc.
 // SPDX-License-Identifier: Apache-2.0
 
-use tn_types::consensus::crypto::NetworkPublicKey;
 use fastcrypto::hash::Hash;
 use rand::{prelude::SliceRandom as _, rngs::SmallRng};
 use std::collections::HashMap;
-use tn_types::consensus::crypto;
+use tn_types::consensus::{crypto, crypto::NetworkPublicKey};
 
 #[derive(Clone)]
 pub struct Peer<Value: Hash<{ crypto::DIGEST_LENGTH }> + Clone> {
@@ -24,21 +23,13 @@ pub struct Peer<Value: Hash<{ crypto::DIGEST_LENGTH }> + Clone> {
 impl<Value: Hash<{ crypto::DIGEST_LENGTH }> + Clone> Peer<Value> {
     pub fn new(name: NetworkPublicKey, values_able_to_serve: Vec<Value>) -> Self {
         let certs: HashMap<<Value as Hash<{ crypto::DIGEST_LENGTH }>>::TypedDigest, Value> =
-            values_able_to_serve
-                .into_iter()
-                .map(|c| (c.digest(), c))
-                .collect();
+            values_able_to_serve.into_iter().map(|c| (c.digest(), c)).collect();
 
-        Peer {
-            name,
-            values_able_to_serve: certs,
-            assigned_values: HashMap::new(),
-        }
+        Peer { name, values_able_to_serve: certs, assigned_values: HashMap::new() }
     }
 
     pub fn assign_values(&mut self, certificate: Value) {
-        self.assigned_values
-            .insert(certificate.digest(), certificate);
+        self.assigned_values.insert(certificate.digest(), certificate);
     }
 
     pub fn assigned_values(&self) -> Vec<Value> {
@@ -71,12 +62,7 @@ pub struct Peers<Value: Hash<{ crypto::DIGEST_LENGTH }> + Clone> {
 
 impl<Value: Hash<{ crypto::DIGEST_LENGTH }> + Clone> Peers<Value> {
     pub fn new(rng: SmallRng) -> Self {
-        Self {
-            peers: HashMap::new(),
-            unique_values: HashMap::new(),
-            rebalanced: false,
-            rng,
-        }
+        Self { peers: HashMap::new(), unique_values: HashMap::new(), rebalanced: false, rng }
     }
 
     #[allow(clippy::mutable_key_type)]
@@ -104,8 +90,7 @@ impl<Value: Hash<{ crypto::DIGEST_LENGTH }> + Clone> Peers<Value> {
             self.unique_values.insert(value.digest(), value.to_owned());
         }
 
-        self.peers
-            .insert(name.clone(), Peer::new(name, available_values));
+        self.peers.insert(name.clone(), Peer::new(name, available_values));
     }
 
     /// Re-distributes the values to the peers in a load balanced manner.
@@ -177,17 +162,13 @@ impl<Value: Hash<{ crypto::DIGEST_LENGTH }> + Clone> Peers<Value> {
     }
 
     fn ensure_not_rebalanced(&mut self) {
-        debug_assert!(
-            !self.rebalanced,
-            "rebalance has been called, this operation is not allowed"
-        );
+        debug_assert!(!self.rebalanced, "rebalance has been called, this operation is not allowed");
     }
 }
 
 #[cfg(test)]
 mod tests {
     use crate::block_synchronizer::peers::Peers;
-    use tn_types::consensus::crypto::{self, NetworkKeyPair};
     use fastcrypto::{
         hash::{Digest, Hash, HashFunction},
         traits::KeyPair as _,
@@ -201,6 +182,7 @@ mod tests {
         collections::{HashMap, HashSet},
         fmt,
     };
+    use tn_types::consensus::crypto::{self, NetworkKeyPair};
 
     #[test]
     fn test_assign_certificates_to_peers_when_all_respond() {
@@ -210,26 +192,11 @@ mod tests {
         }
 
         let test_cases: Vec<TestCase> = vec![
-            TestCase {
-                num_of_certificates: 5,
-                num_of_peers: 4,
-            },
-            TestCase {
-                num_of_certificates: 8,
-                num_of_peers: 2,
-            },
-            TestCase {
-                num_of_certificates: 3,
-                num_of_peers: 2,
-            },
-            TestCase {
-                num_of_certificates: 20,
-                num_of_peers: 5,
-            },
-            TestCase {
-                num_of_certificates: 10,
-                num_of_peers: 1,
-            },
+            TestCase { num_of_certificates: 5, num_of_peers: 4 },
+            TestCase { num_of_certificates: 8, num_of_peers: 2 },
+            TestCase { num_of_certificates: 3, num_of_peers: 2 },
+            TestCase { num_of_certificates: 20, num_of_peers: 5 },
+            TestCase { num_of_certificates: 10, num_of_peers: 1 },
         ];
 
         for test in test_cases {
@@ -295,30 +262,12 @@ mod tests {
         }
 
         let test_cases: Vec<TestCase> = vec![
-            TestCase {
-                num_of_certificates_each_peer: 5,
-                num_of_peers: 4,
-            },
-            TestCase {
-                num_of_certificates_each_peer: 8,
-                num_of_peers: 2,
-            },
-            TestCase {
-                num_of_certificates_each_peer: 3,
-                num_of_peers: 2,
-            },
-            TestCase {
-                num_of_certificates_each_peer: 20,
-                num_of_peers: 5,
-            },
-            TestCase {
-                num_of_certificates_each_peer: 10,
-                num_of_peers: 1,
-            },
-            TestCase {
-                num_of_certificates_each_peer: 0,
-                num_of_peers: 4,
-            },
+            TestCase { num_of_certificates_each_peer: 5, num_of_peers: 4 },
+            TestCase { num_of_certificates_each_peer: 8, num_of_peers: 2 },
+            TestCase { num_of_certificates_each_peer: 3, num_of_peers: 2 },
+            TestCase { num_of_certificates_each_peer: 20, num_of_peers: 5 },
+            TestCase { num_of_certificates_each_peer: 10, num_of_peers: 1 },
+            TestCase { num_of_certificates_each_peer: 0, num_of_peers: 4 },
         ];
 
         for test in test_cases {
@@ -402,11 +351,7 @@ mod tests {
 
     impl fmt::Display for MockDigest {
         fn fmt(&self, f: &mut fmt::Formatter<'_>) -> Result<(), fmt::Error> {
-            write!(
-                f,
-                "{}",
-                base64::encode(self.0).get(0..16).ok_or(fmt::Error)?
-            )
+            write!(f, "{}", base64::encode(self.0).get(0..16).ok_or(fmt::Error)?)
         }
     }
 

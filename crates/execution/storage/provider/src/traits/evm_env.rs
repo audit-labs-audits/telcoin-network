@@ -1,6 +1,6 @@
 use execution_interfaces::Result;
-use execution_primitives::{BlockHashOrNumber, Header};
 use execution_revm_primitives::primitives::{BlockEnv, CfgEnv};
+use tn_types::execution::{BlockHashOrNumber, Header};
 
 /// A provider type that knows chain specific information required to configure an
 /// [Env](execution_revm_primitives::primitives::Env)

@@ -1,13 +1,13 @@
 use hex::encode as hex_encode;
 use jsonwebtoken::{decode, errors::ErrorKind, Algorithm, DecodingKey, Validation};
 use rand::Rng;
-use execution_primitives::{fs, fs::FsPathError};
 use serde::{Deserialize, Serialize};
 use std::{
     path::Path,
     time::{Duration, SystemTime, UNIX_EPOCH},
 };
 use thiserror::Error;
+use tn_types::execution::{fs, fs::FsPathError};
 
 /// Errors returned by the [`JwtSecret`][crate::layers::JwtSecret]
 #[derive(Error, Debug)]
@@ -201,12 +201,12 @@ mod tests {
     use assert_matches::assert_matches;
     use hex::encode as hex_encode;
     use jsonwebtoken::{encode, Algorithm, EncodingKey, Header};
-    use execution_primitives::fs::FsPathError;
     use std::{
         path::Path,
         time::{Duration, SystemTime, UNIX_EPOCH},
     };
     use tempfile::tempdir;
+    use tn_types::execution::fs::FsPathError;
 
     #[test]
     fn from_hex() {

@@ -167,9 +167,11 @@ mod tests {
         AccountChangeSet, DatabaseError,
     };
     use execution_libmdbx::{NoWriteMap, WriteMap};
-    use execution_primitives::{Account, Address, Header, IntegerList, StorageEntry, H160, H256, U256};
     use std::{path::Path, str::FromStr, sync::Arc};
     use tempfile::TempDir;
+    use tn_types::execution::{
+        Account, Address, Header, IntegerList, StorageEntry, H160, H256, U256,
+    };
 
     /// Create database for testing
     fn create_test_db<E: EnvironmentKind>(kind: EnvKind) -> Arc<Env<E>> {

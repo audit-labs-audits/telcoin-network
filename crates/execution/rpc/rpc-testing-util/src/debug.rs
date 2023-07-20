@@ -1,8 +1,8 @@
 //! Helpers for testing debug trace calls.
 
-use execution_primitives::H256;
 use execution_rpc_api::clients::DebugApiClient;
 use execution_rpc_types::trace::geth::{GethDebugTracerType, GethDebugTracingOptions};
+use tn_types::execution::H256;
 
 const NOOP_TRACER: &str = include_str!("../assets/noop-tracer.js");
 const JS_TRACER_TEMPLATE: &str = include_str!("../assets/tracer-template.js");

@@ -1,6 +1,6 @@
 use derive_more::Deref;
-use execution_primitives::{Account, Address, BlockNumber};
 use std::collections::{btree_map::Entry, BTreeMap};
+use tn_types::execution::{Account, Address, BlockNumber};
 
 /// A mapping of `block -> address -> account` that represents what accounts were changed, and what
 /// their state were prior to that change.

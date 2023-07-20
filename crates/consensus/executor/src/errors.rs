@@ -1,11 +1,10 @@
 // Copyright (c) Telcoin, LLC
 // Copyright (c) Mysten Labs, Inc.
 // SPDX-License-Identifier: Apache-2.0
-use tn_types::consensus::config::WorkerId;
-use std::fmt::Debug;
 use lattice_typed_store::StoreError;
+use std::fmt::Debug;
 use thiserror::Error;
-use tn_types::consensus::CertificateDigest;
+use tn_types::consensus::{config::WorkerId, CertificateDigest};
 
 #[macro_export]
 macro_rules! bail {

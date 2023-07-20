@@ -1,9 +1,9 @@
 use lru::LruCache;
-use execution_primitives::{BlockHash, BlockNumHash, BlockNumber, SealedBlockWithSenders};
 use std::{
     collections::{btree_map::Entry, hash_map, BTreeMap, HashMap, HashSet},
     num::NonZeroUsize,
 };
+use tn_types::execution::{BlockHash, BlockNumHash, BlockNumber, SealedBlockWithSenders};
 
 use crate::metrics::BlockBufferMetrics;
 /// Type that contains blocks by number and hash.
@@ -219,7 +219,7 @@ mod tests {
     use std::collections::HashMap;
 
     use execution_interfaces::test_utils::generators::{random_block, Rng};
-    use execution_primitives::{BlockHash, BlockNumHash, SealedBlockWithSenders};
+    use tn_types::execution::{BlockHash, BlockNumHash, SealedBlockWithSenders};
 
     use crate::BlockBuffer;
 

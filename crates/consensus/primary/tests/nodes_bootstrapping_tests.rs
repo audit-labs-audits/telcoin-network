@@ -2,8 +2,8 @@
 // Copyright (c) Mysten Labs, Inc.
 // SPDX-License-Identifier: Apache-2.0
 use bytes::Bytes;
-use std::time::Duration;
 use lattice_test_utils::cluster::{setup_tracing, Cluster};
+use std::time::Duration;
 use tn_types::consensus::{PublicKeyProto, RoundsRequest, TransactionProto};
 
 // Currently Dag and GRPC server for external consensus do not shutdown properly.
@@ -69,20 +69,13 @@ async fn test_response_error_after_shutdown_internal_consensus() {
     // Create a fake transaction
     let tx_str = "test transaction".to_string();
     let tx = bcs::to_bytes(&tx_str).unwrap();
-    let txn = TransactionProto {
-        transaction: Bytes::from(tx),
-    };
+    let txn = TransactionProto { transaction: Bytes::from(tx) };
 
     // Should fail submitting to consensus.
     let Err(e) = client.submit_transaction(txn).await else {
         panic!("Submitting transactions after Narwhal shutdown should fail!");
     };
-    assert!(
-        e.message()
-            .contains("error trying to connect: tcp connect error:"),
-        "Actual: {}",
-        e
-    );
+    assert!(e.message().contains("error trying to connect: tcp connect error:"), "Actual: {}", e);
 }
 
 /// Nodes will be started in a staggered fashion. This is simulating
@@ -123,7 +116,8 @@ async fn test_node_staggered_starts() {
 
     tokio::time::sleep(node_staggered_delay).await;
 
-    // We have only (f) unavailable nodes, so all should have made progress and committed at least after the first round
+    // We have only (f) unavailable nodes, so all should have made progress and committed at least
+    // after the first round
     cluster.assert_progress(3, 2).await;
 
     // ==== Start fourth authority ====
@@ -133,7 +127,8 @@ async fn test_node_staggered_starts() {
 
     tokio::time::sleep(node_staggered_delay).await;
 
-    // All nodes are available so all should have made progress and committed at least after the first round
+    // All nodes are available so all should have made progress and committed at least after the
+    // first round
     cluster.assert_progress(4, 2).await;
 }
 

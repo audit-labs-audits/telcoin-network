@@ -1,9 +1,9 @@
 use crate::result::ToRpcResult;
 use async_trait::async_trait;
-use jsonrpsee::core::RpcResult;
 use execution_network_api::NetworkInfo;
-use execution_primitives::{keccak256, Bytes, H256};
 use execution_rpc_api::Web3ApiServer;
+use jsonrpsee::core::RpcResult;
+use tn_types::execution::{keccak256, Bytes, H256};
 
 /// `web3` API implementation.
 ///

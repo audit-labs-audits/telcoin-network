@@ -1,4 +1,4 @@
-use crate::execution ::{transaction::util::secp256k1, Address, H256, U256};
+use crate::execution::{transaction::util::secp256k1, Address, H256, U256};
 use bytes::Buf;
 use execution_codecs::{derive_arbitrary, Compact};
 use execution_rlp::{Decodable, DecodeError, Encodable};
@@ -140,7 +140,7 @@ impl Signature {
 
 #[cfg(test)]
 mod tests {
-    use crate::execution ::{Address, Signature, H256, U256};
+    use crate::execution::{Address, Signature, H256, U256};
     use bytes::BytesMut;
     use std::str::FromStr;
 

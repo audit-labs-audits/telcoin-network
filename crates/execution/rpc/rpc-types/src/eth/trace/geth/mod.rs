@@ -2,9 +2,9 @@
 #![allow(missing_docs)]
 
 use crate::{state::StateOverride, BlockOverrides};
-use execution_primitives::{Bytes, H256, U256};
 use serde::{de::DeserializeOwned, ser::SerializeMap, Deserialize, Serialize, Serializer};
 use std::collections::BTreeMap;
+use tn_types::execution::{Bytes, H256, U256};
 
 // re-exports
 pub use self::{
@@ -42,7 +42,7 @@ pub struct BlockTraceResult {
 pub struct DefaultFrame {
     pub failed: bool,
     pub gas: u64,
-    #[serde(serialize_with = "execution_primitives::serde_helper::serialize_hex_string_no_prefix")]
+    #[serde(serialize_with = "tn_types::execution::serde_helper::serialize_hex_string_no_prefix")]
     pub return_value: Bytes,
     pub struct_logs: Vec<StructLog>,
 }

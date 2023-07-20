@@ -7,13 +7,13 @@ use crate::{
     block_synchronizer::handler::Handler, block_waiter::GetBlockResponse, BlockRemover, BlockWaiter,
 };
 use lattice_consensus::dag::Dag;
-use tokio::time::timeout;
-use tonic::{Request, Response, Status};
 use tn_types::consensus::{
     BatchAPI, BlockError, CertificateDigest, CertificateDigestProto, Collection,
     CollectionRetrievalResult, Empty, GetCollectionsRequest, GetCollectionsResponse,
     ReadCausalRequest, ReadCausalResponse, RemoveCollectionsRequest, TransactionProto, Validator,
 };
+use tokio::time::timeout;
+use tonic::{Request, Response, Status};
 
 pub struct NarwhalValidator<SynchronizerHandler: Handler + Send + Sync + 'static> {
     block_waiter: BlockWaiter<SynchronizerHandler>,
@@ -58,17 +58,15 @@ impl<SynchronizerHandler: Handler + Send + Sync + 'static> Validator
             .ok_or_else(|| Status::invalid_argument("No collection id has been provided"))?;
         let ids = parse_certificate_digests(vec![collection_id])?;
 
-        let block_header_results = self
-            .block_synchronizer_handler
-            .get_and_synchronize_block_headers(ids.clone())
-            .await;
+        let block_header_results =
+            self.block_synchronizer_handler.get_and_synchronize_block_headers(ids.clone()).await;
 
         for result in block_header_results {
             if let Err(err) = result {
                 return Err(Status::internal(format!(
                     "Error when trying to synchronize block headers: {:?}",
                     err
-                )));
+                )))
             }
         }
 
@@ -79,7 +77,7 @@ impl<SynchronizerHandler: Handler + Send + Sync + 'static> Validator
                 }),
                 Err(err) => Err(Status::internal(format!("Couldn't read causal: {err}"))),
             };
-            return result.map(Response::new);
+            return result.map(Response::new)
         }
         Err(Status::internal("Dag does not exist"))
     }
@@ -91,20 +89,15 @@ impl<SynchronizerHandler: Handler + Send + Sync + 'static> Validator
         let collection_ids = request.into_inner().collection_ids;
         let remove_collections_response = if !collection_ids.is_empty() {
             let ids = parse_certificate_digests(collection_ids)?;
-            match timeout(
-                self.remove_collections_timeout,
-                self.block_remover.remove_blocks(ids),
-            )
-            .await
-            .map_err(|_err| Status::internal("Timeout, no result has been received in time"))?
+            match timeout(self.remove_collections_timeout, self.block_remover.remove_blocks(ids))
+                .await
+                .map_err(|_err| Status::internal("Timeout, no result has been received in time"))?
             {
                 Ok(_) => Ok(Empty {}),
                 Err(e) => Err(Status::internal(format!("Removal Error: {e:?}"))),
             }
         } else {
-            Err(Status::invalid_argument(
-                "Attempted to remove no collections!",
-            ))
+            Err(Status::invalid_argument("Attempted to remove no collections!"))
         };
         remove_collections_response.map(Response::new)
     }
@@ -122,16 +115,11 @@ impl<SynchronizerHandler: Handler + Send + Sync + 'static> Validator
                 .map_err(|err| Status::internal(format!(
                     "Expected to receive a successful get blocks result, instead got error: {err:?}",
                 )))?;
-            let result: Vec<_> = blocks_response
-                .blocks
-                .into_iter()
-                .map(get_collection_retrieval_results)
-                .collect();
+            let result: Vec<_> =
+                blocks_response.blocks.into_iter().map(get_collection_retrieval_results).collect();
             Ok(GetCollectionsResponse { result })
         } else {
-            Err(Status::invalid_argument(
-                "Attempted fetch of no collections!",
-            ))
+            Err(Status::invalid_argument("Attempted fetch of no collections!"))
         };
         get_collections_response.map(Response::new)
     }
@@ -155,10 +143,12 @@ fn get_collection_retrieval_results(
                 )
             }
             CollectionRetrievalResult {
-                retrieval_result: Some(tn_types::consensus::RetrievalResult::Collection(Collection {
-                    id: Some(CertificateDigestProto::from(block_response.digest)),
-                    transactions,
-                })),
+                retrieval_result: Some(tn_types::consensus::RetrievalResult::Collection(
+                    Collection {
+                        id: Some(CertificateDigestProto::from(block_response.digest)),
+                        transactions,
+                    },
+                )),
             }
         }
         Err(block_error) => CollectionRetrievalResult {

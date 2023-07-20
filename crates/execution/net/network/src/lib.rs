@@ -34,8 +34,8 @@
 //!
 //!        * Responds to incoming ETH related requests: `Headers`, `Bodies`
 //!
-//!    - `Discovery Task`: is a spawned [`Discv4`](execution_discv4::Discv4) future that handles peer
-//!      discovery and emits new peers to the `Network`
+//!    - `Discovery Task`: is a spawned [`Discv4`](execution_discv4::Discv4) future that handles
+//!      peer discovery and emits new peers to the `Network`
 //!
 //!    - [`NetworkManager`] task advances the state of the `Network`, which includes:
 //!
@@ -58,7 +58,7 @@
 //! use execution_network::config::rng_secret_key;
 //! use execution_network::{NetworkConfig, NetworkManager};
 //! use execution_provider::test_utils::NoopProvider;
-//! use execution_primitives::mainnet_nodes;
+//! use tn_types::execution::mainnet_nodes;
 //!
 //! // This block provider implementation is used for testing purposes.
 //! let client = NoopProvider::default();
@@ -85,7 +85,7 @@
 //! ```
 //! use execution_provider::test_utils::NoopProvider;
 //! use execution_transaction_pool::TransactionPool;
-//! use execution_primitives::mainnet_nodes;
+//! use tn_types::execution::mainnet_nodes;
 //! use execution_network::config::rng_secret_key;
 //! use execution_network::{NetworkConfig, NetworkManager};
 //! async fn launch<Pool: TransactionPool>(pool: Pool) {

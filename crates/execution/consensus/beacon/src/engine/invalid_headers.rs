@@ -2,9 +2,9 @@ use execution_metrics::{
     metrics::{self, Counter, Gauge},
     Metrics,
 };
-use execution_primitives::{Header, SealedHeader, H256};
 use schnellru::{ByLength, LruMap};
 use std::sync::Arc;
+use tn_types::execution::{Header, SealedHeader, H256};
 use tracing::warn;
 
 /// The max hit counter for invalid headers in the cache before it is forcefully evicted.

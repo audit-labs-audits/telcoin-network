@@ -1,4 +1,4 @@
-use crate::execution ::{
+use crate::execution::{
     compression::{TRANSACTION_COMPRESSOR, TRANSACTION_DECOMPRESSOR},
     keccak256, Address, Bytes, ChainId, TxHash, H256,
 };
@@ -6,11 +6,11 @@ pub use access_list::{AccessList, AccessListItem, AccessListWithGasUsed};
 use bytes::{Buf, BytesMut};
 use derive_more::{AsRef, Deref};
 pub use error::InvalidTransactionError;
-pub use meta::TransactionMeta;
 use execution_codecs::{add_arbitrary_tests, derive_arbitrary, main_codec, Compact};
 use execution_rlp::{
     length_of_length, Decodable, DecodeError, Encodable, Header, EMPTY_LIST_CODE, EMPTY_STRING_CODE,
 };
+pub use meta::TransactionMeta;
 use serde::{Deserialize, Serialize};
 pub use signature::Signature;
 pub use tx_type::{TxType, EIP1559_TX_TYPE_ID, EIP2930_TX_TYPE_ID, LEGACY_TX_TYPE_ID};
@@ -1291,7 +1291,7 @@ impl IntoRecoveredTransaction for TransactionSignedEcRecovered {
 
 #[cfg(test)]
 mod tests {
-    use crate::execution ::{
+    use crate::execution::{
         transaction::{signature::Signature, TransactionKind, TxEip1559, TxEip2930, TxLegacy},
         AccessList, Address, Bytes, Transaction, TransactionSigned, TransactionSignedEcRecovered,
         H256, U256,
@@ -1520,7 +1520,7 @@ mod tests {
 
     #[test]
     fn decode_raw_tx_and_recover_signer() {
-        use crate::execution ::hex_literal::hex;
+        use crate::execution::hex_literal::hex;
         // transaction is from ropsten
 
         let hash: H256 =
@@ -1536,7 +1536,7 @@ mod tests {
 
     #[test]
     fn recover_signer_legacy() {
-        use crate::execution ::hex_literal::hex;
+        use crate::execution::hex_literal::hex;
 
         let signer: Address = hex!("398137383b3d25c92898c656696e41950e47316b").into();
         let hash: H256 =
@@ -1569,7 +1569,7 @@ mod tests {
 
     #[test]
     fn recover_signer_eip1559() {
-        use crate::execution ::hex_literal::hex;
+        use crate::execution::hex_literal::hex;
 
         let signer: Address = hex!("dd6b8b3dc6b7ad97db52f08a275ff4483e024cea").into();
         let hash: H256 =

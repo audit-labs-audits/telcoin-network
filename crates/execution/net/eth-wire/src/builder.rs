@@ -4,14 +4,14 @@
 use crate::{
     capability::Capability, hello::HelloMessage, p2pstream::ProtocolVersion, EthVersion, Status,
 };
-use execution_primitives::{Chain, ForkId, PeerId, H256, U256};
+use tn_types::execution::{Chain, ForkId, PeerId, H256, U256};
 
 /// Builder for [`Status`](crate::types::Status) messages.
 ///
 /// # Example
 /// ```
 /// use execution_eth_wire::EthVersion;
-/// use execution_primitives::{Chain, U256, H256, MAINNET_GENESIS, MAINNET, Hardfork};
+/// use tn_types::execution::{Chain, U256, H256, MAINNET_GENESIS, MAINNET, Hardfork};
 /// use execution_eth_wire::types::Status;
 ///
 /// // this is just an example status message!

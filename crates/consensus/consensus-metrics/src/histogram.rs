@@ -9,16 +9,18 @@ use prometheus::{
     register_int_counter_vec_with_registry, register_int_gauge_vec_with_registry, IntCounterVec,
     IntGaugeVec, Registry,
 };
-use std::collections::hash_map::DefaultHasher;
-use std::collections::{HashMap, HashSet};
-use std::hash::{Hash, Hasher};
-use std::sync::Arc;
-use std::time::Duration;
-use tokio::runtime::Handle;
-use tokio::sync::mpsc;
-use tokio::sync::mpsc::error::TrySendError;
-use tokio::time::Instant;
-use tn_tracing::tracing::{debug, error};
+use std::{
+    collections::{hash_map::DefaultHasher, HashMap, HashSet},
+    hash::{Hash, Hasher},
+    sync::Arc,
+    time::Duration,
+};
+use tokio::{
+    runtime::Handle,
+    sync::{mpsc, mpsc::error::TrySendError},
+    time::Instant,
+};
+use tracing::{debug, error};
 
 type Point = u64;
 type HistogramMessage = (HistogramLabels, Point);
@@ -70,20 +72,24 @@ struct HistogramLabelsInner {
 /// It worth pointing out that due to those more precise calculations, this Histogram usage
 /// is somewhat more limited comparing to original prometheus Histogram.
 ///
-/// On the bright side, this histogram exports less data to Prometheus comparing to prometheus::Histogram,
-/// it exports each requested percentile into separate prometheus gauge, while original implementation creates
-/// gauge per bucket.
+/// On the bright side, this histogram exports less data to Prometheus comparing to
+/// prometheus::Histogram, it exports each requested percentile into separate prometheus gauge,
+/// while original implementation creates gauge per bucket.
 /// It also exports _sum and _count aggregates same as original implementation.
 ///
 /// It is ok to measure timings for things like network latencies and expensive crypto operations.
-/// However as a rule of thumb this histogram should not be used in places that can produce very high data point count.
+/// However as a rule of thumb this histogram should not be used in places that can produce very
+/// high data point count.
 ///
-/// As a last round of defence this histogram emits error log when too much data is flowing in and drops data points.
+/// As a last round of defence this histogram emits error log when too much data is flowing in and
+/// drops data points.
 ///
-/// This implementation puts great deal of effort to make sure the metric does not cause any harm to the code itself:
+/// This implementation puts great deal of effort to make sure the metric does not cause any harm to
+/// the code itself:
 /// * Reporting data point is a non-blocking send to a channel
 /// * Data point collections tries to clear the channel as fast as possible
-/// * Expensive histogram calculations are done in a separate blocking tokio thread pool to avoid effects on main scheduler
+/// * Expensive histogram calculations are done in a separate blocking tokio thread pool to avoid
+///   effects on main scheduler
 /// * If histogram data is produced too fast, the data is dropped and error! log is emitted
 impl HistogramVec {
     pub fn new_in_registry(name: &str, desc: &str, labels: &[&str], registry: &Registry) -> Self {
@@ -115,7 +121,8 @@ impl HistogramVec {
         Self::new(gauge, sum, count, percentiles, name)
     }
 
-    // Do not expose it to public interface because we need labels to have a specific format (e.g. add last label is "pct")
+    // Do not expose it to public interface because we need labels to have a specific format (e.g.
+    // add last label is "pct")
     fn new(
         gauge: IntGaugeVec,
         sum: IntCounterVec,
@@ -124,19 +131,10 @@ impl HistogramVec {
         name: &str,
     ) -> Self {
         let (sender, receiver) = mpsc::channel(1000);
-        let reporter = HistogramReporter {
-            gauge,
-            sum,
-            count,
-            percentiles,
-            known_labels: Default::default(),
-        };
+        let reporter =
+            HistogramReporter { gauge, sum, count, percentiles, known_labels: Default::default() };
         let reporter = Arc::new(Mutex::new(reporter));
-        let collector = HistogramCollector {
-            reporter,
-            channel: receiver,
-            _name: name.to_string(),
-        };
+        let collector = HistogramCollector { reporter, channel: receiver, _name: name.to_string() };
         Handle::current().spawn(collector.run());
         Self { channel: sender }
     }
@@ -144,10 +142,7 @@ impl HistogramVec {
     pub fn with_label_values(&self, labels: &[&str]) -> Histogram {
         let labels = labels.iter().map(ToString::to_string).collect();
         let labels = HistogramLabelsInner::new(labels);
-        Histogram {
-            labels,
-            channel: self.channel.clone(),
-        }
+        Histogram { labels, channel: self.channel.clone() }
     }
 }
 
@@ -195,10 +190,7 @@ impl Histogram {
     }
 
     pub fn start_timer(&self) -> HistogramTimerGuard {
-        HistogramTimerGuard {
-            histogram: self,
-            start: Instant::now(),
-        }
+        HistogramTimerGuard { histogram: self, start: Instant::now() }
     }
 }
 
@@ -206,14 +198,15 @@ impl HistogramCollector {
     pub async fn run(mut self) {
         let mut deadline = Instant::now();
         loop {
-            // We calculate deadline here instead of just using sleep inside cycle to avoid accumulating error
+            // We calculate deadline here instead of just using sleep inside cycle to avoid
+            // accumulating error
             #[cfg(test)]
             const HISTOGRAM_WINDOW_SEC: u64 = 1;
             #[cfg(not(test))]
             const HISTOGRAM_WINDOW_SEC: u64 = 60;
             deadline += Duration::from_secs(HISTOGRAM_WINDOW_SEC);
             if self.cycle(deadline).await.is_err() {
-                return;
+                return
             }
         }
     }
@@ -244,10 +237,7 @@ impl HistogramCollector {
                 }
         }
         if count > MAX_POINTS {
-            error!(
-                "Too many data points for histogram, dropping {} points",
-                count - MAX_POINTS
-            );
+            error!("Too many data points for histogram, dropping {} points", count - MAX_POINTS);
         }
         if Arc::strong_count(&self.reporter) != 1 {
             #[cfg(not(debug_assertions))]
@@ -314,8 +304,7 @@ impl HistogramReporter {
 
 impl<'a> Drop for HistogramTimerGuard<'a> {
     fn drop(&mut self) {
-        self.histogram
-            .report(self.start.elapsed().as_millis() as u64);
+        self.histogram.report(self.start.elapsed().as_millis() as u64);
     }
 }
 
@@ -365,10 +354,8 @@ mod tests {
         b.report(40);
         tokio::time::sleep(Duration::from_millis(1500)).await;
         let gather = registry.gather();
-        let gather: HashMap<_, _> = gather
-            .into_iter()
-            .map(|f| (f.get_name().to_string(), f))
-            .collect();
+        let gather: HashMap<_, _> =
+            gather.into_iter().map(|f| (f.get_name().to_string(), f)).collect();
         let hist = gather.get("test").unwrap();
         let sum = gather.get("test_sum").unwrap();
         let count = gather.get("test_count").unwrap();

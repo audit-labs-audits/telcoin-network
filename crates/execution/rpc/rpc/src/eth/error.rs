@@ -1,12 +1,12 @@
 //! Implementation specific Errors for the `eth_` namespace.
 
 use crate::result::{internal_rpc_err, invalid_params_rpc_err, rpc_err, rpc_error_with_code};
-use jsonrpsee::{core::Error as RpcError, types::ErrorObject};
-use execution_primitives::{abi::decode_revert_reason, Address, Bytes, U256};
 use execution_revm::tracing::js::JsInspectorError;
 use execution_rpc_types::{error::EthRpcErrorCode, BlockError};
 use execution_transaction_pool::error::{InvalidPoolTransactionError, PoolError};
+use jsonrpsee::{core::Error as RpcError, types::ErrorObject};
 use revm::primitives::{EVMError, ExecutionResult, Halt, OutOfGasError};
+use tn_types::execution::{abi::decode_revert_reason, Address, Bytes, U256};
 
 /// Result alias
 pub type EthResult<T> = Result<T, EthApiError>;
@@ -345,9 +345,9 @@ impl From<revm::primitives::InvalidTransaction> for RpcInvalidTransactionError {
     }
 }
 
-impl From<execution_primitives::InvalidTransactionError> for RpcInvalidTransactionError {
-    fn from(err: execution_primitives::InvalidTransactionError) -> Self {
-        use execution_primitives::InvalidTransactionError;
+impl From<tn_types::execution::InvalidTransactionError> for RpcInvalidTransactionError {
+    fn from(err: tn_types::execution::InvalidTransactionError) -> Self {
+        use tn_types::execution::InvalidTransactionError;
         // This conversion is used to convert any transaction errors that could occur inside the
         // txpool (e.g. `eth_sendRawTransaction`) to their corresponding RPC
         match err {

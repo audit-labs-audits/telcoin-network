@@ -1,6 +1,12 @@
 //! Standalone http tests
 
 use crate::utils::{launch_http, launch_http_ws, launch_ws};
+use execution_rpc_api::{
+    clients::{AdminApiClient, EthApiClient},
+    DebugApiClient, NetApiClient, TraceApiClient, Web3ApiClient,
+};
+use execution_rpc_builder::RethRpcModule;
+use execution_rpc_types::{trace::filter::TraceFilter, CallRequest, Index, TransactionRequest};
 use jsonrpsee::{
     core::{
         client::{ClientT, SubscriptionClientT},
@@ -8,17 +14,11 @@ use jsonrpsee::{
     },
     types::error::ErrorCode,
 };
-use execution_primitives::{
+use std::collections::HashSet;
+use tn_types::execution::{
     hex_literal::hex, Address, BlockId, BlockNumberOrTag, Bytes, NodeRecord, TxHash, H256, H64,
     U256,
 };
-use execution_rpc_api::{
-    clients::{AdminApiClient, EthApiClient},
-    DebugApiClient, NetApiClient, TraceApiClient, Web3ApiClient,
-};
-use execution_rpc_builder::RethRpcModule;
-use execution_rpc_types::{trace::filter::TraceFilter, CallRequest, Index, TransactionRequest};
-use std::collections::HashSet;
 
 fn is_unimplemented(err: Error) -> bool {
     match err {

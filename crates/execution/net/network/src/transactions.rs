@@ -7,7 +7,6 @@ use crate::{
     metrics::{TransactionsManagerMetrics, NETWORK_POOL_TRANSACTIONS_SCOPE},
     NetworkHandle,
 };
-use futures::{stream::FuturesUnordered, FutureExt, StreamExt};
 use execution_eth_wire::{
     EthVersion, GetPooledTransactions, NewPooledTransactionHashes, NewPooledTransactionHashes66,
     NewPooledTransactionHashes68, PooledTransactions, Transactions,
@@ -15,14 +14,12 @@ use execution_eth_wire::{
 use execution_interfaces::{p2p::error::RequestResult, sync::SyncStateProvider};
 use execution_metrics::common::mpsc::UnboundedMeteredReceiver;
 use execution_network_api::{Peers, ReputationChangeKind};
-use execution_primitives::{
-    FromRecoveredTransaction, IntoRecoveredTransaction, PeerId, TransactionSigned, TxHash, H256,
-};
 use execution_rlp::Encodable;
 use execution_transaction_pool::{
     error::PoolResult, PoolTransaction, PropagateKind, PropagatedTransactions, TransactionPool,
     ValidPoolTransaction,
 };
+use futures::{stream::FuturesUnordered, FutureExt, StreamExt};
 use std::{
     collections::{hash_map::Entry, HashMap},
     future::Future,
@@ -30,6 +27,9 @@ use std::{
     pin::Pin,
     sync::Arc,
     task::{Context, Poll},
+};
+use tn_types::execution::{
+    FromRecoveredTransaction, IntoRecoveredTransaction, PeerId, TransactionSigned, TxHash, H256,
 };
 use tokio::sync::{mpsc, oneshot};
 use tokio_stream::wrappers::{ReceiverStream, UnboundedReceiverStream};

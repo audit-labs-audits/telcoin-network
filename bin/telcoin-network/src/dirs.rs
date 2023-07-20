@@ -1,12 +1,12 @@
 //! lattice data directories.
 use crate::utils::parse_path;
-use execution_primitives::Chain;
 use std::{
     env::VarError,
     fmt::{Debug, Display, Formatter},
     path::{Path, PathBuf},
     str::FromStr,
 };
+use tn_types::execution::Chain;
 
 // TODO: organize this for lattice
 /// Constructs a string to be used as a path for configuration and db paths.
@@ -198,9 +198,8 @@ impl<D: XdgPath> MaybePlatformPath<D> {
 
         // ChainPath::new(PlatformPath::from_str(temp_path.to_str().unwrap())?, chain.chain.clone())
         ChainPath(
-            PlatformPath::from_str(
-                temp_path.to_str().expect("failed to cast temp_path as str.")
-            ).expect("Failed to cast platformpath from str."),
+            PlatformPath::from_str(temp_path.to_str().expect("failed to cast temp_path as str."))
+                .expect("Failed to cast platformpath from str."),
             chain,
         )
     }

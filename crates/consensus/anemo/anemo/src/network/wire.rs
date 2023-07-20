@@ -134,18 +134,12 @@ pub(crate) async fn read_request<T: AsyncRead + Unpin>(
     let version = read_version_frame(recv_stream.get_mut()).await?;
 
     // Read Request Header
-    let header_buf = recv_stream
-        .next()
-        .await
-        .ok_or_else(|| anyhow!("unexpected EOF"))??;
+    let header_buf = recv_stream.next().await.ok_or_else(|| anyhow!("unexpected EOF"))??;
     let raw_header: RawRequestHeader = bincode::deserialize(&header_buf)?;
     let request_header = RequestHeader::from_raw(raw_header, version);
 
     // Read Body
-    let body = recv_stream
-        .next()
-        .await
-        .ok_or_else(|| anyhow!("unexpected EOF"))??;
+    let body = recv_stream.next().await.ok_or_else(|| anyhow!("unexpected EOF"))??;
 
     let request = Request::from_parts(request_header, body.freeze());
 
@@ -159,18 +153,12 @@ pub(crate) async fn read_response<T: AsyncRead + Unpin>(
     let version = read_version_frame(recv_stream.get_mut()).await?;
 
     // Read Request Header
-    let header_buf = recv_stream
-        .next()
-        .await
-        .ok_or_else(|| anyhow!("unexpected EOF"))??;
+    let header_buf = recv_stream.next().await.ok_or_else(|| anyhow!("unexpected EOF"))??;
     let raw_header: RawResponseHeader = bincode::deserialize(&header_buf)?;
     let response_header = ResponseHeader::from_raw(raw_header, version)?;
 
     // Read Body
-    let body = recv_stream
-        .next()
-        .await
-        .ok_or_else(|| anyhow!("unexpected EOF"))??;
+    let body = recv_stream.next().await.ok_or_else(|| anyhow!("unexpected EOF"))??;
 
     let response = Response::from_parts(response_header, body.freeze());
 

@@ -1,7 +1,7 @@
 use crate::engine::forkchoice::ForkchoiceStatus;
 use execution_interfaces::consensus::ForkchoiceState;
-use execution_primitives::SealedBlock;
 use std::sync::Arc;
+use tn_types::execution::SealedBlock;
 
 /// Events emitted by [crate::BeaconConsensusEngine].
 #[derive(Clone, Debug)]

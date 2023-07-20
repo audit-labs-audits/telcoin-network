@@ -2,8 +2,8 @@ use execution_metrics::{
     metrics::{self, Gauge},
     Metrics,
 };
-use execution_primitives::stage::StageId;
 use std::collections::HashMap;
+use tn_types::execution::stage::StageId;
 
 #[derive(Debug, Default)]
 pub(crate) struct SyncMetrics {

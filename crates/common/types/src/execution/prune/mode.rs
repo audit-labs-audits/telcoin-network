@@ -1,4 +1,4 @@
-use crate::execution ::BlockNumber;
+use crate::execution::BlockNumber;
 use execution_codecs::{main_codec, Compact};
 
 /// Prune mode.
@@ -23,7 +23,7 @@ impl Default for PruneMode {
 
 #[cfg(test)]
 mod tests {
-    use crate::execution ::prune::PruneMode;
+    use crate::execution::prune::PruneMode;
     use assert_matches::assert_matches;
     use serde::Deserialize;
 

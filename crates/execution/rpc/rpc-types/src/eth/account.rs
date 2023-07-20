@@ -1,6 +1,6 @@
 #![allow(missing_docs)]
-use execution_primitives::{serde_helper::JsonStorageKey, Address, Bytes, H256, H512, U256, U64};
 use serde::{Deserialize, Serialize};
+use tn_types::execution::{serde_helper::JsonStorageKey, Address, Bytes, H256, H512, U256, U64};
 
 /// Account information.
 #[derive(Clone, Debug, Default, Eq, PartialEq, Serialize, Deserialize)]

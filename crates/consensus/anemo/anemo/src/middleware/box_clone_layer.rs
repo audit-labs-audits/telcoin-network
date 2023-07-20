@@ -18,9 +18,7 @@ impl<In, T, U, E> BoxCloneLayer<In, T, U, E> {
             BoxCloneService::new(out)
         });
 
-        Self {
-            boxed: Arc::new(layer),
-        }
+        Self { boxed: Arc::new(layer) }
     }
 }
 
@@ -34,9 +32,7 @@ impl<In, T, U, E> Layer<In> for BoxCloneLayer<In, T, U, E> {
 
 impl<In, T, U, E> Clone for BoxCloneLayer<In, T, U, E> {
     fn clone(&self) -> Self {
-        Self {
-            boxed: Arc::clone(&self.boxed),
-        }
+        Self { boxed: Arc::clone(&self.boxed) }
     }
 }
 

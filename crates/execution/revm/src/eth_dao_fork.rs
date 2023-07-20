@@ -1,6 +1,6 @@
 //! DAO FOrk related constants from [EIP-779](https://eips.ethereum.org/EIPS/eip-779).
 //! It happened on Ethereum block 1_920_000
-use execution_primitives::{hex_literal::hex, H160};
+use tn_types::execution::{hex_literal::hex, H160};
 
 /// Dao hardfork beneficiary that received ether from accounts from DAO and DAO creator children.
 pub static DAO_HARDFORK_BENEFICIARY: H160 = H160(hex!("bf4ed7b27f1d666546e30d74d50d173d20bca754"));

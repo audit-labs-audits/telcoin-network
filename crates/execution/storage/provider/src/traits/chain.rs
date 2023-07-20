@@ -1,12 +1,12 @@
 //! Canonical chain state notification trait and types.
 use crate::{chain::BlockReceipts, Chain};
 use auto_impl::auto_impl;
-use execution_primitives::SealedBlockWithSenders;
 use std::{
     pin::Pin,
     sync::Arc,
     task::{ready, Context, Poll},
 };
+use tn_types::execution::SealedBlockWithSenders;
 use tokio::sync::broadcast;
 use tokio_stream::{wrappers::BroadcastStream, Stream};
 use tracing::debug;
@@ -59,8 +59,8 @@ impl Stream for CanonStateNotificationStream {
 }
 
 /// Chain action that is triggered when a new block is imported or old block is reverted.
-/// and will return all [`crate::PostState`] and [`execution_primitives::SealedBlockWithSenders`] of both
-/// reverted and committed blocks.
+/// and will return all [`crate::PostState`] and [`tn_types::execution::SealedBlockWithSenders`] of
+/// both reverted and committed blocks.
 #[derive(Clone, Debug)]
 #[allow(missing_docs)]
 pub enum CanonStateNotification {

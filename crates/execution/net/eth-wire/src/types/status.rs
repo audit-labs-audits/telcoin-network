@@ -1,11 +1,11 @@
 use crate::{EthVersion, StatusBuilder};
 
 use execution_codecs::derive_arbitrary;
-use execution_primitives::{
-    hex, Chain, ChainSpec, ForkId, Genesis, Hardfork, Head, H256, MAINNET, U256,
-};
 use execution_rlp::{RlpDecodable, RlpEncodable};
 use std::fmt::{Debug, Display};
+use tn_types::execution::{
+    hex, Chain, ChainSpec, ForkId, Genesis, Hardfork, Head, H256, MAINNET, U256,
+};
 
 #[cfg(feature = "serde")]
 use serde::{Deserialize, Serialize};
@@ -67,7 +67,7 @@ impl Status {
         Default::default()
     }
 
-    /// Create a [`StatusBuilder`] from the given [`ChainSpec`](execution_primitives::ChainSpec) and
+    /// Create a [`StatusBuilder`] from the given [`ChainSpec`](tn_types::execution::ChainSpec) and
     /// head block.
     ///
     /// Sets the `chain` and `genesis`, `blockhash`, and `forkid` fields based on the [`ChainSpec`]
@@ -150,13 +150,13 @@ impl Default for Status {
 mod tests {
     use crate::types::{EthVersion, Status};
     use ethers_core::types::Chain as NamedChain;
+    use execution_rlp::{Decodable, Encodable};
     use hex_literal::hex;
     use rand::Rng;
-    use execution_primitives::{
+    use std::str::FromStr;
+    use tn_types::execution::{
         Chain, ChainSpec, ForkCondition, ForkHash, ForkId, Genesis, Hardfork, Head, H256, U256,
     };
-    use execution_rlp::{Decodable, Encodable};
-    use std::str::FromStr;
 
     #[test]
     fn encode_eth_status_message() {

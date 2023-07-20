@@ -1,7 +1,7 @@
 use crate::{ExecInput, ExecOutput, Stage, StageError, UnwindInput, UnwindOutput};
 use execution_db::database::Database;
-use execution_primitives::stage::{StageCheckpoint, StageId};
 use execution_provider::DatabaseProviderRW;
+use tn_types::execution::stage::{StageCheckpoint, StageId};
 
 /// The finish stage.
 ///
@@ -44,7 +44,7 @@ mod tests {
         generators,
         generators::{random_header, random_header_range},
     };
-    use execution_primitives::SealedHeader;
+    use tn_types::execution::SealedHeader;
 
     stage_test_suite_ext!(FinishTestRunner, finish);
 

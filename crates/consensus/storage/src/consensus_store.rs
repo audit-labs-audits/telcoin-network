@@ -2,13 +2,15 @@
 // Copyright (c) Mysten Labs, Inc.
 // SPDX-License-Identifier: Apache-2.0
 use crate::{NodeStorage, StoreResult};
-use tn_types::consensus::config::AuthorityIdentifier;
+use lattice_typed_store::{
+    reopen,
+    rocks::{open_cf, DBMap, MetricConf, ReadWriteOptions},
+    Map, TypedStoreError,
+};
 use std::collections::HashMap;
-use lattice_typed_store::rocks::{open_cf, DBMap, MetricConf, ReadWriteOptions};
-use lattice_typed_store::{reopen, Map, TypedStoreError};
 use tn_types::consensus::{
-    CommittedSubDag, CommittedSubDagShell, ConsensusCommit, ConsensusCommitV2, Round,
-    SequenceNumber,
+    config::AuthorityIdentifier, CommittedSubDag, CommittedSubDagShell, ConsensusCommit,
+    ConsensusCommitV2, Round, SequenceNumber,
 };
 
 /// The persistent storage of the sequencer.
@@ -91,7 +93,7 @@ impl ConsensusStore {
             .next()
             .map(|(seq, _)| seq)
         {
-            return s;
+            return s
         }
 
         // TODO: remove once this has been released to the validators
@@ -114,13 +116,13 @@ impl ConsensusStore {
             .next()
             .map(|(_, sub_dag)| sub_dag)
         {
-            return Some(sub_dag);
+            return Some(sub_dag)
         }
 
         // TODO: remove once this has been released to the validators
-        // If nothing has been found to the v2 table, just fallback to the previous one. We expect this
-        // to happen only after validator has upgraded. After that point the v2 table will populated
-        // and an entry should be found there.
+        // If nothing has been found to the v2 table, just fallback to the previous one. We expect
+        // this to happen only after validator has upgraded. After that point the v2 table
+        // will populated and an entry should be found there.
         self.committed_sub_dags_by_index
             .unbounded_iter()
             .skip_to_last()
@@ -158,7 +160,9 @@ impl ConsensusStore {
 mod test {
     use crate::ConsensusStore;
     use lattice_typed_store::Map;
-    use tn_types::consensus::{CommittedSubDagShell, ConsensusCommit, ConsensusCommitV2, TimestampMs};
+    use tn_types::consensus::{
+        CommittedSubDagShell, ConsensusCommit, ConsensusCommitV2, TimestampMs,
+    };
 
     #[tokio::test]
     async fn test_v1_v2_backwards_compatibility() {
@@ -174,10 +178,7 @@ mod test {
                 reputation_score: Default::default(),
             };
 
-            store
-                .committed_sub_dags_by_index
-                .insert(&s.sub_dag_index, &s)
-                .unwrap();
+            store.committed_sub_dags_by_index.insert(&s.sub_dag_index, &s).unwrap();
         }
 
         // Create few sub dags of V2 and write in the committed_sub_dags_by_index_v2 storage

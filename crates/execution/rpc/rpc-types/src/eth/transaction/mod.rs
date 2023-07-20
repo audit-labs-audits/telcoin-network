@@ -10,12 +10,12 @@ pub use request::TransactionRequest;
 pub use signature::Signature;
 pub use typed::*;
 
-use execution_primitives::{
+use serde::{Deserialize, Serialize};
+use tn_types::execution::{
     AccessListItem, Address, BlockNumber, Bytes, Transaction as PrimitiveTransaction,
     TransactionKind as PrimitiveTransactionKind, TransactionSignedEcRecovered, TxType, H256, U128,
     U256, U64,
 };
-use serde::{Deserialize, Serialize};
 
 /// Transaction object used in RPC
 #[derive(Debug, Default, Clone, PartialEq, Eq, Serialize, Deserialize)]

@@ -43,7 +43,7 @@ pub fn is_ref_count_value(value: &[u8]) -> bool {
 
 fn deserialize_ref_count_value(bytes: &[u8]) -> (Option<&[u8]>, i64) {
     if bytes.is_empty() {
-        return (None, 0);
+        return (None, 0)
     }
     assert!(bytes.len() >= 8);
     let (value, rc_bytes) = bytes.split_at(bytes.len() - 8);
@@ -58,18 +58,9 @@ mod tests {
     #[test]
     fn deserialize_ref_count_value_test() {
         assert_eq!(deserialize_ref_count_value(&[]), (None, 0));
-        assert_eq!(
-            deserialize_ref_count_value(b"\x01\0\0\0\0\0\0\0"),
-            (None, 1)
-        );
-        assert_eq!(
-            deserialize_ref_count_value(b"\xff\xff\xff\xff\xff\xff\xff\xff"),
-            (None, -1)
-        );
-        assert_eq!(
-            deserialize_ref_count_value(b"\xfe\xff\xff\xff\xff\xff\xff\xff"),
-            (None, -2)
-        );
+        assert_eq!(deserialize_ref_count_value(b"\x01\0\0\0\0\0\0\0"), (None, 1));
+        assert_eq!(deserialize_ref_count_value(b"\xff\xff\xff\xff\xff\xff\xff\xff"), (None, -1));
+        assert_eq!(deserialize_ref_count_value(b"\xfe\xff\xff\xff\xff\xff\xff\xff"), (None, -2));
         assert_eq!(
             deserialize_ref_count_value(b"test\x04\0\0\0\0\0\0\0"),
             (Some(b"test".as_ref()), 4)

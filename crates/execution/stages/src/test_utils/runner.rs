@@ -1,9 +1,9 @@
 use super::TestTransaction;
 use crate::{ExecInput, ExecOutput, Stage, StageError, UnwindInput, UnwindOutput};
 use execution_db::DatabaseEnv;
-use execution_primitives::MAINNET;
 use execution_provider::ProviderFactory;
 use std::{borrow::Borrow, sync::Arc};
+use tn_types::execution::MAINNET;
 use tokio::sync::oneshot;
 
 #[derive(thiserror::Error, Debug)]

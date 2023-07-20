@@ -1,26 +1,25 @@
 // Copyright (c) Telcoin, LLC
 // Copyright (c) Mysten Labs, Inc.
 // SPDX-License-Identifier: Apache-2.0
-use crate::payload_store::PayloadStore;
-use crate::proposer_store::ProposerKey;
-use crate::vote_digest_store::VoteDigestStore;
 use crate::{
+    payload_store::PayloadStore, proposer_store::ProposerKey, vote_digest_store::VoteDigestStore,
     CertificateStore, CertificateStoreCache, CertificateStoreCacheMetrics, ConsensusStore,
     HeaderStore, ProposerStore,
 };
-use tn_types::consensus::config::{AuthorityIdentifier, WorkerId};
-use std::num::NonZeroUsize;
-use std::sync::Arc;
-use std::time::Duration;
-use lattice_typed_store::metrics::SamplingInterval;
-use lattice_typed_store::reopen;
-use lattice_typed_store::rocks::{default_db_options, open_cf_opts, DBMap, MetricConf, ReadWriteOptions};
+use lattice_typed_store::{
+    metrics::SamplingInterval,
+    reopen,
+    rocks::{default_db_options, open_cf_opts, DBMap, MetricConf, ReadWriteOptions},
+};
+use std::{num::NonZeroUsize, sync::Arc, time::Duration};
 use tn_types::consensus::{
+    config::{AuthorityIdentifier, WorkerId},
     Batch, BatchDigest, Certificate, CertificateDigest, CommittedSubDagShell, ConsensusCommit,
     Header, HeaderDigest, Round, SequenceNumber, VoteInfo,
 };
 
-// A type alias marking the "payload" tokens sent by workers to their primary as batch acknowledgements
+// A type alias marking the "payload" tokens sent by workers to their primary as batch
+// acknowledgements
 pub type PayloadToken = u8;
 
 /// All the data stores of the node.

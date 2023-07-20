@@ -1,35 +1,32 @@
 // Copyright (c) Telcoin, LLC
 // Copyright (c) Mysten Labs, Inc.
 // SPDX-License-Identifier: Apache-2.0
-use tn_types::consensus::config::{AuthorityIdentifier, BlockSynchronizerParameters, Committee, Parameters};
-use lattice_consensus::consensus::ConsensusRound;
-use lattice_consensus::{dag::Dag, metrics::ConsensusMetrics};
 use fastcrypto::{hash::Hash, traits::KeyPair as _};
 use indexmap::IndexMap;
-use lattice_primary::NUM_SHUTDOWN_RECEIVERS;
+use lattice_consensus::{consensus::ConsensusRound, dag::Dag, metrics::ConsensusMetrics};
 use lattice_network::client::NetworkClient;
-use lattice_primary::{Primary, CHANNEL_CAPACITY};
+use lattice_primary::{Primary, CHANNEL_CAPACITY, NUM_SHUTDOWN_RECEIVERS};
+use lattice_storage::{CertificateStore, HeaderStore, NodeStorage, PayloadStore};
+use lattice_test_utils::{
+    fixture_batch_with_transactions, make_optimal_certificates, make_optimal_signed_certificates,
+    temp_dir, AuthorityFixture, CommitteeFixture,
+};
+use lattice_typed_store::{rocks::DBMap, Map};
+use lattice_worker::{metrics::initialise_metrics, TrivialTransactionValidator, Worker};
 use prometheus::Registry;
 use std::{
     collections::{BTreeSet, HashMap},
     sync::Arc,
     time::Duration,
 };
-use lattice_storage::{CertificateStore, HeaderStore};
-use lattice_storage::{NodeStorage, PayloadStore};
-use lattice_typed_store::{rocks::DBMap, Map};
-use lattice_test_utils::{
-    fixture_batch_with_transactions, make_optimal_certificates,
-    make_optimal_signed_certificates, temp_dir, AuthorityFixture, CommitteeFixture,
-};
-use tokio::sync::watch;
-use tonic::transport::Channel;
 use tn_types::consensus::{
+    config::{AuthorityIdentifier, BlockSynchronizerParameters, Committee, Parameters},
     Batch, BatchAPI, BatchDigest, Certificate, CertificateDigest, CertificateDigestProto,
     CollectionRetrievalResult, Empty, GetCollectionsRequest, Header, PreSubscribedBroadcastSender,
     ReadCausalRequest, RemoveCollectionsRequest, RetrievalResult, Transaction, ValidatorClient,
 };
-use lattice_worker::{metrics::initialise_metrics, TrivialTransactionValidator, Worker};
+use tokio::sync::watch;
+use tonic::transport::Channel;
 
 #[tokio::test(flavor = "current_thread", start_paused = true)]
 async fn test_get_collections() {
@@ -121,13 +118,7 @@ async fn test_get_collections() {
         rx_consensus_round_updates,
         /* dag */
         Some(Arc::new(
-            Dag::new(
-                &committee,
-                rx_new_certificates,
-                consensus_metrics,
-                tx_shutdown.subscribe(),
-            )
-            .1,
+            Dag::new(&committee, rx_new_certificates, consensus_metrics, tx_shutdown.subscribe()).1,
         )),
         &mut tx_shutdown,
         tx_feedback,
@@ -160,15 +151,11 @@ async fn test_get_collections() {
     let mut client = connect_to_validator_client(parameters.clone());
 
     // Test get no collections
-    let request = tonic::Request::new(GetCollectionsRequest {
-        collection_ids: vec![],
-    });
+    let request = tonic::Request::new(GetCollectionsRequest { collection_ids: vec![] });
 
     let status = client.get_collections(request).await.unwrap_err();
 
-    assert!(status
-        .message()
-        .contains("Attempted fetch of no collections!"));
+    assert!(status.message().contains("Attempted fetch of no collections!"));
 
     // Test get 1 collection
     let request = tonic::Request::new(GetCollectionsRequest {
@@ -209,7 +196,9 @@ async fn test_get_collections() {
     // And 1 Error is returned
     let errors: Vec<&CollectionRetrievalResult> = actual_result
         .iter()
-        .filter(|&r| matches!(r.retrieval_result, Some(tn_types::consensus::RetrievalResult::Error(_))))
+        .filter(|&r| {
+            matches!(r.retrieval_result, Some(tn_types::consensus::RetrievalResult::Error(_)))
+        })
         .collect::<Vec<_>>();
 
     assert_eq!(1, errors.len());
@@ -259,13 +248,7 @@ async fn test_remove_collections() {
 
     let consensus_metrics = Arc::new(ConsensusMetrics::new(&Registry::new()));
     let dag = Arc::new(
-        Dag::new(
-            &committee,
-            rx_new_certificates,
-            consensus_metrics,
-            tx_shutdown.subscribe(),
-        )
-        .1,
+        Dag::new(&committee, rx_new_certificates, consensus_metrics, tx_shutdown.subscribe()).1,
     );
     // No need to populate genesis in the Dag
 
@@ -348,18 +331,12 @@ async fn test_remove_collections() {
     let status = client.remove_collections(request).await.unwrap_err();
 
     assert!(
-        status
-            .message()
-            .contains("Removal Error: Network has no connection with peer"),
+        status.message().contains("Removal Error: Network has no connection with peer"),
         "Actual: {:?}",
         status
     );
     assert!(
-        store
-            .certificate_store
-            .read(block_to_be_removed)
-            .unwrap()
-            .is_some(),
+        store.certificate_store.read(block_to_be_removed).unwrap().is_some(),
         "Certificate should still exist"
     );
 
@@ -383,16 +360,12 @@ async fn test_remove_collections() {
     );
 
     // Test remove no collections
-    let request = tonic::Request::new(RemoveCollectionsRequest {
-        collection_ids: vec![],
-    });
+    let request = tonic::Request::new(RemoveCollectionsRequest { collection_ids: vec![] });
 
     let status = client.remove_collections(request).await.unwrap_err();
 
     assert!(
-        status
-            .message()
-            .contains("Attempted to remove no collections!"),
+        status.message().contains("Attempted to remove no collections!"),
         "Actual: {:?}",
         status
     );
@@ -406,7 +379,7 @@ async fn test_remove_collections() {
         });
         let status = client.get_collections(request).await;
         if status.is_ok() {
-            break;
+            break
         }
         if iter == 10 {
             panic!("Last failure: {:?}", status);
@@ -424,11 +397,7 @@ async fn test_remove_collections() {
     assert_eq!(Empty {}, actual_result);
 
     assert!(
-        store
-            .certificate_store
-            .read(block_to_be_removed)
-            .unwrap()
-            .is_none(),
+        store.certificate_store.read(block_to_be_removed).unwrap().is_none(),
         "Certificate shouldn't exist"
     );
 
@@ -491,50 +460,24 @@ async fn test_read_causal_signed_certificates() {
     let mut tx_shutdown = PreSubscribedBroadcastSender::new(NUM_SHUTDOWN_RECEIVERS);
 
     let dag = Arc::new(
-        Dag::new(
-            &committee,
-            rx_new_certificates,
-            consensus_metrics,
-            tx_shutdown.subscribe(),
-        )
-        .1,
+        Dag::new(&committee, rx_new_certificates, consensus_metrics, tx_shutdown.subscribe()).1,
     );
 
     // No need to genesis in the Dag
     let genesis_certs = Certificate::genesis(&committee);
 
     // Write genesis certs to primary 1 & 2
-    primary_store_1
-        .certificate_store
-        .write_all(genesis_certs.clone())
-        .unwrap();
-    primary_store_2
-        .certificate_store
-        .write_all(genesis_certs.clone())
-        .unwrap();
+    primary_store_1.certificate_store.write_all(genesis_certs.clone()).unwrap();
+    primary_store_2.certificate_store.write_all(genesis_certs.clone()).unwrap();
 
-    let genesis = genesis_certs
-        .iter()
-        .map(|x| x.digest())
-        .collect::<BTreeSet<_>>();
+    let genesis = genesis_certs.iter().map(|x| x.digest()).collect::<BTreeSet<_>>();
 
-    let keys = fixture
-        .authorities()
-        .map(|a| (a.id(), a.keypair().copy()))
-        .collect::<Vec<_>>();
-    let (certificates, _next_parents) = make_optimal_signed_certificates(
-        1..=4,
-        &genesis,
-        &committee,
-        &keys,
-    );
+    let keys = fixture.authorities().map(|a| (a.id(), a.keypair().copy())).collect::<Vec<_>>();
+    let (certificates, _next_parents) =
+        make_optimal_signed_certificates(1..=4, &genesis, &committee, &keys);
 
-    collection_digests.extend(
-        certificates
-            .iter()
-            .map(|c| c.digest())
-            .collect::<Vec<CertificateDigest>>(),
-    );
+    collection_digests
+        .extend(certificates.iter().map(|c| c.digest()).collect::<Vec<CertificateDigest>>());
 
     // Feed the certificates to the Dag
     for certificate in certificates.clone() {
@@ -542,17 +485,11 @@ async fn test_read_causal_signed_certificates() {
     }
 
     // Write the certificates to Primary 1 but intentionally miss one certificate.
-    primary_store_1
-        .certificate_store
-        .write_all(certificates.clone().into_iter().skip(1))
-        .unwrap();
+    primary_store_1.certificate_store.write_all(certificates.clone().into_iter().skip(1)).unwrap();
 
     // Write all certificates to Primary 2, so Primary 1 has a place to retrieve
     // missing certificate from.
-    primary_store_2
-        .certificate_store
-        .write_all(certificates.clone())
-        .unwrap();
+    primary_store_2.certificate_store.write_all(certificates.clone()).unwrap();
 
     let (tx_feedback, rx_feedback) =
         lattice_test_utils::test_committed_certificates_channel!(CHANNEL_CAPACITY);
@@ -724,32 +661,17 @@ async fn test_read_causal_unsigned_certificates() {
 
     let consensus_metrics = Arc::new(ConsensusMetrics::new(&Registry::new()));
     let dag = Arc::new(
-        Dag::new(
-            &committee,
-            rx_new_certificates,
-            consensus_metrics,
-            tx_shutdown.subscribe(),
-        )
-        .1,
+        Dag::new(&committee, rx_new_certificates, consensus_metrics, tx_shutdown.subscribe()).1,
     );
 
     // No need to genesis in the Dag
     let genesis_certs = Certificate::genesis(&committee);
 
     // Write genesis certs to primary 1 & 2
-    primary_store_1
-        .certificate_store
-        .write_all(genesis_certs.clone())
-        .unwrap();
-    primary_store_2
-        .certificate_store
-        .write_all(genesis_certs.clone())
-        .unwrap();
+    primary_store_1.certificate_store.write_all(genesis_certs.clone()).unwrap();
+    primary_store_2.certificate_store.write_all(genesis_certs.clone()).unwrap();
 
-    let genesis = genesis_certs
-        .iter()
-        .map(|x| x.digest())
-        .collect::<BTreeSet<_>>();
+    let genesis = genesis_certs.iter().map(|x| x.digest()).collect::<BTreeSet<_>>();
 
     let (certificates, _next_parents) = make_optimal_certificates(
         &committee,
@@ -761,12 +683,8 @@ async fn test_read_causal_unsigned_certificates() {
             .collect::<Vec<AuthorityIdentifier>>(),
     );
 
-    collection_digests.extend(
-        certificates
-            .iter()
-            .map(|c| c.digest())
-            .collect::<Vec<CertificateDigest>>(),
-    );
+    collection_digests
+        .extend(certificates.iter().map(|c| c.digest()).collect::<Vec<CertificateDigest>>());
 
     // Feed the certificates to the Dag
     for certificate in certificates.clone() {
@@ -774,17 +692,11 @@ async fn test_read_causal_unsigned_certificates() {
     }
 
     // Write the certificates to Primary 1 but intentionally miss one certificate.
-    primary_store_1
-        .certificate_store
-        .write_all(certificates.clone().into_iter().skip(1))
-        .unwrap();
+    primary_store_1.certificate_store.write_all(certificates.clone().into_iter().skip(1)).unwrap();
 
     // Write all certificates to Primary 2, so Primary 1 has a place to retrieve
     // missing certificate from.
-    primary_store_2
-        .certificate_store
-        .write_all(certificates.clone())
-        .unwrap();
+    primary_store_2.certificate_store.write_all(certificates.clone()).unwrap();
 
     let (tx_feedback, rx_feedback) =
         lattice_test_utils::test_committed_certificates_channel!(CHANNEL_CAPACITY);
@@ -904,9 +816,7 @@ async fn test_read_causal_unsigned_certificates() {
     let status = client.read_causal(request).await.unwrap_err();
 
     assert!(
-        status
-            .message()
-            .contains("Error when trying to synchronize block headers: BlockNotFound"),
+        status.message().contains("Error when trying to synchronize block headers: BlockNotFound"),
         "Saw unexpected status message: {}",
         status.message()
     );
@@ -923,7 +833,6 @@ async fn test_read_causal_unsigned_certificates() {
 /// from primary 2. All in all the end goal is to:
 /// * Primary 1 be able to retrieve both certificates 1 & 2 successfully
 /// * Primary 1 be able to fetch the payload for certificates 1 & 2
-///
 // TODO: deflake and re-enable this test.
 #[tokio::test(flavor = "current_thread", start_paused = true)]
 #[ignore = "flaky"]
@@ -1022,13 +931,8 @@ async fn test_get_collections_with_missing_certificates() {
         rx_consensus_round_updates,
         /* external_consensus */
         Some(Arc::new(
-            Dag::new(
-                &committee,
-                rx_new_certificates_1,
-                consensus_metrics,
-                tx_shutdown.subscribe(),
-            )
-            .1,
+            Dag::new(&committee, rx_new_certificates_1, consensus_metrics, tx_shutdown.subscribe())
+                .1,
         )),
         &mut tx_shutdown,
         tx_feedback_1,
@@ -1055,7 +959,8 @@ async fn test_get_collections_with_missing_certificates() {
     );
 
     // Spawn the primary 2 - a peer to fetch missing certificates from
-    let (tx_new_certificates_2, _) = lattice_test_utils::test_new_certificates_channel!(CHANNEL_CAPACITY);
+    let (tx_new_certificates_2, _) =
+        lattice_test_utils::test_new_certificates_channel!(CHANNEL_CAPACITY);
     let (tx_feedback_2, rx_feedback_2) =
         lattice_test_utils::test_committed_certificates_channel!(CHANNEL_CAPACITY);
     let (_tx_consensus_round_updates, rx_consensus_round_updates) =
@@ -1132,12 +1037,7 @@ async fn test_get_collections_with_missing_certificates() {
     let response = client.get_collections(request).await.unwrap();
     let actual_result = response.into_inner().result;
 
-    assert_eq!(
-        2,
-        actual_result.len(),
-        "Unexpected len: {:?}",
-        actual_result
-    );
+    assert_eq!(2, actual_result.len(), "Unexpected len: {:?}", actual_result);
 
     // We expect to get successfully the batches only for the one collection
     assert_eq!(
@@ -1197,13 +1097,7 @@ async fn fixture_certificate(
     let mut payload = IndexMap::new();
     payload.insert(batch_digest, (worker_id, 0));
 
-    let header = Header::V1(
-        authority
-            .header_builder(committee)
-            .payload(payload)
-            .build()
-            .unwrap(),
-    );
+    let header = Header::V1(authority.header_builder(committee).payload(payload).build().unwrap());
 
     let certificate = fixture.certificate(&header);
 
@@ -1214,9 +1108,7 @@ async fn fixture_certificate(
     header_store.write(&header).unwrap();
 
     // Write the batches to payload store
-    payload_store
-        .write_all(vec![(batch_digest, worker_id)])
-        .expect("couldn't store batches");
+    payload_store.write_all(vec![(batch_digest, worker_id)]).expect("couldn't store batches");
 
     // Add a batch to the workers store
     batch_store.insert(&batch_digest, &batch).unwrap();
@@ -1226,8 +1118,6 @@ async fn fixture_certificate(
 
 fn connect_to_validator_client(parameters: Parameters) -> ValidatorClient<Channel> {
     let config = consensus_network::config::Config::new();
-    let channel = config
-        .connect_lazy(&parameters.consensus_api_grpc.socket_addr)
-        .unwrap();
+    let channel = config.connect_lazy(&parameters.consensus_api_grpc.socket_addr).unwrap();
     ValidatorClient::new(channel)
 }

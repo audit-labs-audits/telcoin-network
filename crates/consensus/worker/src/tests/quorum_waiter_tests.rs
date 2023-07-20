@@ -4,12 +4,9 @@
 // SPDX-License-Identifier: Apache-2.0
 
 use super::*;
-use crate::metrics::WorkerMetrics;
-use crate::NUM_SHUTDOWN_RECEIVERS;
+use crate::{metrics::WorkerMetrics, NUM_SHUTDOWN_RECEIVERS};
+use lattice_test_utils::{batch, test_network, CommitteeFixture, WorkerToWorkerMockServer};
 use prometheus::Registry;
-use lattice_test_utils::{
-    batch, test_network, CommitteeFixture, WorkerToWorkerMockServer,
-};
 use tn_types::consensus::PreSubscribedBroadcastSender;
 
 #[tokio::test]
@@ -40,9 +37,7 @@ async fn wait_for_quorum() {
 
     // Make a batch.
     let batch = batch();
-    let message = WorkerBatchMessage {
-        batch: batch.clone(),
-    };
+    let message = WorkerBatchMessage { batch: batch.clone() };
 
     // Spawn enough listeners to acknowledge our batches.
     let mut listener_handles = Vec::new();
@@ -52,10 +47,7 @@ async fn wait_for_quorum() {
         listener_handles.push(handle);
 
         // ensure that the networks are connected
-        network
-            .connect(worker.info().worker_address.to_anemo_address().unwrap())
-            .await
-            .unwrap();
+        network.connect(worker.info().worker_address.to_anemo_address().unwrap()).await.unwrap();
     }
 
     // Forward the batch along with the handlers to the `QuorumWaiter`.
@@ -99,9 +91,7 @@ async fn pipeline_for_quorum() {
 
     // Make a batch.
     let batch = batch();
-    let message = WorkerBatchMessage {
-        batch: batch.clone(),
-    };
+    let message = WorkerBatchMessage { batch: batch.clone() };
 
     // Spawn enough listeners to acknowledge our batches.
     let mut listener_handles = Vec::new();
@@ -111,10 +101,7 @@ async fn pipeline_for_quorum() {
         listener_handles.push(handle);
 
         // ensure that the networks are connected
-        network
-            .connect(worker.info().worker_address.to_anemo_address().unwrap())
-            .await
-            .unwrap();
+        network.connect(worker.info().worker_address.to_anemo_address().unwrap()).await.unwrap();
     }
 
     // Forward the batch along with the handlers to the `QuorumWaiter`.

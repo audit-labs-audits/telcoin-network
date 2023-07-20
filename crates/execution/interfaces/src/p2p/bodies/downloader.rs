@@ -1,8 +1,8 @@
 use super::response::BlockResponse;
 use crate::p2p::error::DownloadResult;
 use futures::Stream;
-use execution_primitives::BlockNumber;
 use std::ops::RangeInclusive;
+use tn_types::execution::BlockNumber;
 
 /// Body downloader return type.
 pub type BodyDownloaderResult = DownloadResult<Vec<BlockResponse>>;

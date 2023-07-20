@@ -11,8 +11,6 @@ use crate::{
     EthApiSpec, TracingCallGuard,
 };
 use async_trait::async_trait;
-use jsonrpsee::core::RpcResult;
-use execution_primitives::{Account, Block, BlockId, BlockNumberOrTag, Bytes, TransactionSigned, H256};
 use execution_provider::{BlockReaderIdExt, HeaderProvider, StateProviderBox};
 use execution_revm::{
     database::{State, SubState},
@@ -32,6 +30,7 @@ use execution_rpc_types::{
     BlockError, CallRequest, RichBlock,
 };
 use execution_tasks::TaskSpawner;
+use jsonrpsee::core::RpcResult;
 use revm::{
     db::{CacheDB, EmptyDB},
     primitives::Env,
@@ -41,6 +40,9 @@ use revm_primitives::{
     BlockEnv, CfgEnv,
 };
 use std::{future::Future, sync::Arc};
+use tn_types::execution::{
+    Account, Block, BlockId, BlockNumberOrTag, Bytes, TransactionSigned, H256,
+};
 use tokio::sync::{mpsc, oneshot, AcquireError, OwnedSemaphorePermit};
 use tokio_stream::{wrappers::ReceiverStream, StreamExt};
 

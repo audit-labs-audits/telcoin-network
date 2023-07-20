@@ -4,9 +4,9 @@ use crate::tracing::{
     types::{CallTraceNode, CallTraceStepStackItem},
     TracingInspectorConfig,
 };
-use execution_primitives::{Address, Bytes, H256};
 use execution_rpc_types::trace::geth::*;
 use std::collections::{BTreeMap, HashMap, VecDeque};
+use tn_types::execution::{Address, Bytes, H256};
 
 /// A type for creating geth style traces
 #[derive(Clone, Debug)]

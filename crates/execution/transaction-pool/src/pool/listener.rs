@@ -6,13 +6,13 @@ use crate::{
     PoolTransaction, ValidPoolTransaction,
 };
 use futures_util::Stream;
-use execution_primitives::{TxHash, H256};
 use std::{
     collections::{hash_map::Entry, HashMap},
     pin::Pin,
     sync::Arc,
     task::{Context, Poll},
 };
+use tn_types::execution::{TxHash, H256};
 use tokio::sync::mpsc::{
     error::TrySendError, Receiver, Sender, UnboundedReceiver, UnboundedSender,
 };

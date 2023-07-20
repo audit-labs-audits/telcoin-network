@@ -1,10 +1,9 @@
-use fastcrypto::traits::{KeyPair as _, ToFromBytes};
-use crate::{execution::Address, consensus::error::CryptoError};
 use super::{
     intent::{Intent, IntentMessage, IntentScope},
-    KeyPair, Signature, DEFAULT_EPOCH_ID, PublicKey,
-    NarwhalAuthoritySignature,
+    KeyPair, NarwhalAuthoritySignature, PublicKey, Signature, DEFAULT_EPOCH_ID,
 };
+use crate::{consensus::error::CryptoError, execution::Address};
+use fastcrypto::traits::{KeyPair as _, ToFromBytes};
 
 /// Creates a proof of that the authority account address is owned by the
 /// holder of authority protocol key, and also ensures that the authority
@@ -12,10 +11,7 @@ use super::{
 /// signature committed over the intent message `intent || message || epoch` (See
 /// more at [struct IntentMessage] and [struct Intent]) where the message is
 /// constructed as `authority_pubkey_bytes || authority_account_address`.
-pub fn generate_proof_of_possession(
-    keypair: &KeyPair,
-    address: Address,
-) -> Signature {
+pub fn generate_proof_of_possession(keypair: &KeyPair, address: Address) -> Signature {
     let mut msg: Vec<u8> = Vec::new();
     msg.extend_from_slice(keypair.public().as_bytes());
     msg.extend_from_slice(address.as_ref());
@@ -34,9 +30,7 @@ pub fn verify_proof_of_possession(
     protocol_pubkey: &PublicKey,
     address: Address,
 ) -> Result<(), CryptoError> {
-    protocol_pubkey
-        .validate()
-        .map_err(|_| CryptoError::InvalidSignature)?;
+    protocol_pubkey.validate().map_err(|_| CryptoError::InvalidSignature)?;
     let mut msg = protocol_pubkey.as_bytes().to_vec();
     msg.extend_from_slice(address.as_ref());
     // pop.verify_secure(

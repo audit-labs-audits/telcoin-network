@@ -1,5 +1,5 @@
-use execution_primitives::{BlockHash, BlockNumHash, Bloom, H256};
 use thiserror::Error;
+use tn_types::execution::{BlockHash, BlockNumHash, Bloom, H256};
 
 /// Transaction validation errors
 #[allow(missing_docs)]

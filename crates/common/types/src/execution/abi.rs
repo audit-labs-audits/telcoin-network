@@ -1,5 +1,5 @@
 //! Eth ABI helpers.
-use crate::execution ::constants::SELECTOR_LEN;
+use crate::execution::constants::SELECTOR_LEN;
 
 /// Returns the revert reason from the given output data, if it's an abi encoded String. Returns
 /// `None` if the output is not long enough to contain a function selector or the content is not a

@@ -1,10 +1,10 @@
-use crate::execution ::{
+use crate::execution::{
     constants::{EIP1559_INITIAL_BASE_FEE, EMPTY_WITHDRAWALS},
     forkid::ForkFilterKey,
     header::Head,
     proofs::genesis_state_root,
-    BlockNumber, Chain, ForkFilter, ForkHash, ForkId, Genesis, Hardfork, Header, SealedHeader,
-    H256, U256, GenesisAccount, Bytes,
+    BlockNumber, Bytes, Chain, ForkFilter, ForkHash, ForkId, Genesis, GenesisAccount, Hardfork,
+    Header, SealedHeader, H256, U256,
 };
 use hex_literal::hex;
 use once_cell::sync::Lazy;
@@ -923,7 +923,7 @@ where
 
 #[cfg(test)]
 mod tests {
-    use crate::execution ::{
+    use crate::execution::{
         Address, AllGenesisFormats, Chain, ChainSpec, ChainSpecBuilder, DisplayHardforks,
         ForkCondition, ForkHash, ForkId, Genesis, Hardfork, Head, GOERLI, H256, MAINNET, SEPOLIA,
         U256,

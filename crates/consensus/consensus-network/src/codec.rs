@@ -30,7 +30,7 @@ impl<U: serde::de::DeserializeOwned> Decoder for BcsDecoder<U> {
 
     fn decode(&mut self, buf: &mut DecodeBuf<'_>) -> Result<Option<Self::Item>, Self::Error> {
         if !buf.has_remaining() {
-            return Ok(None);
+            return Ok(None)
         }
 
         let chunk = buf.chunk();
@@ -95,7 +95,7 @@ impl<U: serde::de::DeserializeOwned> Decoder for BcsSnappyDecoder<U> {
     fn decode(&mut self, buf: &mut DecodeBuf<'_>) -> Result<Option<Self::Item>, Self::Error> {
         let compressed_size = buf.remaining();
         if compressed_size == 0 {
-            return Ok(None);
+            return Ok(None)
         }
         let mut snappy_decoder = snap::read::FrameDecoder::new(buf.reader());
         let mut bytes = Vec::with_capacity(compressed_size);

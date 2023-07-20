@@ -2,8 +2,8 @@ use crate::eth::transaction::typed::{
     EIP1559TransactionRequest, EIP2930TransactionRequest, LegacyTransactionRequest,
     TransactionKind, TypedTransactionRequest,
 };
-use execution_primitives::{AccessList, Address, Bytes, U128, U256, U8};
 use serde::{Deserialize, Serialize};
+use tn_types::execution::{AccessList, Address, Bytes, U128, U256, U8};
 
 /// Represents _all_ transaction requests received from RPC
 #[derive(Clone, Debug, PartialEq, Eq, Default, Serialize, Deserialize)]

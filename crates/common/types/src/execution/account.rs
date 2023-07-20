@@ -1,7 +1,7 @@
-use crate::execution ::{H256, KECCAK_EMPTY, U256};
+use crate::execution::{H256, KECCAK_EMPTY, U256};
 use bytes::{Buf, Bytes};
-use fixed_hash::byteorder::{BigEndian, ReadBytesExt};
 use execution_codecs::{main_codec, Compact};
+use fixed_hash::byteorder::{BigEndian, ReadBytesExt};
 use revm_primitives::{Bytecode as RevmBytecode, BytecodeState, JumpMap};
 use serde::{Deserialize, Serialize};
 use std::ops::Deref;

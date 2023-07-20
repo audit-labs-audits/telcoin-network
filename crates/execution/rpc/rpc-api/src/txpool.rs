@@ -1,6 +1,6 @@
-use jsonrpsee::{core::RpcResult, proc_macros::rpc};
-use execution_primitives::Address;
 use execution_rpc_types::txpool::{TxpoolContent, TxpoolContentFrom, TxpoolInspect, TxpoolStatus};
+use jsonrpsee::{core::RpcResult, proc_macros::rpc};
+use tn_types::execution::Address;
 
 /// Txpool rpc interface.
 #[cfg_attr(not(feature = "client"), rpc(server, namespace = "txpool"))]

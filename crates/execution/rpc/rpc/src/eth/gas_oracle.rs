@@ -4,9 +4,9 @@ use crate::eth::{
     cache::EthStateCache,
     error::{EthApiError, EthResult, RpcInvalidTransactionError},
 };
-use execution_primitives::{constants::GWEI_TO_WEI, BlockNumberOrTag, H256, U256};
 use execution_provider::BlockReaderIdExt;
 use serde::{Deserialize, Serialize};
+use tn_types::execution::{constants::GWEI_TO_WEI, BlockNumberOrTag, H256, U256};
 use tokio::sync::Mutex;
 use tracing::warn;
 
@@ -266,7 +266,7 @@ impl Default for GasPriceOracleResult {
 
 #[cfg(test)]
 mod tests {
-    use execution_primitives::constants::GWEI_TO_WEI;
+    use tn_types::execution::constants::GWEI_TO_WEI;
 
     use super::*;
 

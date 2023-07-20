@@ -2,18 +2,18 @@
 use crate::{
     codec::ECIESCodec, error::ECIESErrorImpl, ECIESError, EgressECIESValue, IngressECIESValue,
 };
-use futures::{ready, Sink, SinkExt};
 use execution_net_common::stream::HasRemoteAddr;
-use execution_primitives::{
-    bytes::{Bytes, BytesMut},
-    H512 as PeerId,
-};
+use futures::{ready, Sink, SinkExt};
 use secp256k1::SecretKey;
 use std::{
     fmt::Debug,
     io,
     pin::Pin,
     task::{Context, Poll},
+};
+use tn_types::execution::{
+    bytes::{Bytes, BytesMut},
+    H512 as PeerId,
 };
 use tokio::io::{AsyncRead, AsyncWrite};
 use tokio_stream::{Stream, StreamExt};

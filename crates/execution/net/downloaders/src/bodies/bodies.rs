@@ -1,7 +1,5 @@
 use super::queue::BodiesRequestQueue;
 use crate::{bodies::task::TaskDownloader, metrics::BodyDownloaderMetrics};
-use futures::Stream;
-use futures_util::StreamExt;
 use execution_db::{cursor::DbCursorRO, database::Database, tables, transaction::DbTx};
 use execution_interfaces::{
     consensus::Consensus,
@@ -14,8 +12,9 @@ use execution_interfaces::{
         error::{DownloadError, DownloadResult},
     },
 };
-use execution_primitives::{BlockNumber, SealedHeader};
 use execution_tasks::{TaskSpawner, TokioTaskExecutor};
+use futures::Stream;
+use futures_util::StreamExt;
 use std::{
     cmp::Ordering,
     collections::BinaryHeap,
@@ -24,6 +23,7 @@ use std::{
     sync::Arc,
     task::{Context, Poll},
 };
+use tn_types::execution::{BlockNumber, SealedHeader};
 use tracing::info;
 
 /// The scope for headers downloader metrics.
@@ -599,11 +599,13 @@ mod tests {
         test_utils::{generate_bodies, TestBodiesClient},
     };
     use assert_matches::assert_matches;
-    use futures_util::stream::StreamExt;
     use execution_db::test_utils::create_test_rw_db;
-    use execution_interfaces::test_utils::{generators, generators::random_block_range, TestConsensus};
-    use execution_primitives::{BlockBody, H256};
+    use execution_interfaces::test_utils::{
+        generators, generators::random_block_range, TestConsensus,
+    };
+    use futures_util::stream::StreamExt;
     use std::{collections::HashMap, sync::Arc};
+    use tn_types::execution::{BlockBody, H256};
 
     // Check that the blocks are emitted in order of block number, not in order of
     // first-downloaded

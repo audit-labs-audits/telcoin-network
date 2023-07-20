@@ -7,17 +7,15 @@ use crate::{
     BlockWaiter,
 };
 use anemo::PeerId;
-use tn_types::consensus::crypto::traits::KeyPair as _;
 use fastcrypto::hash::Hash;
+use lattice_test_utils::{
+    fixture_batch_with_transactions, fixture_payload, test_network, CommitteeFixture,
+};
 use mockall::*;
 use std::sync::Arc;
-use lattice_test_utils::{
-    fixture_batch_with_transactions, fixture_payload, test_network,
-    CommitteeFixture,
-};
 use tn_types::consensus::{
-    Batch, BatchAPI, BatchMessage, Certificate, CertificateDigest, Header, HeaderAPI,
-    MockWorkerToWorker, RequestBatchResponse, WorkerToWorkerServer,
+    crypto::traits::KeyPair as _, Batch, BatchAPI, BatchMessage, Certificate, CertificateDigest,
+    Header, HeaderAPI, MockWorkerToWorker, RequestBatchResponse, WorkerToWorkerServer,
 };
 
 #[tokio::test]
@@ -31,13 +29,8 @@ async fn test_successfully_retrieve_block() {
     let id = primary.id();
 
     // AND store certificate
-    let header = Header::V1(
-        author
-            .header_builder(&committee)
-            .payload(fixture_payload(2))
-            .build()
-            .unwrap(),
-    );
+    let header =
+        Header::V1(author.header_builder(&committee).payload(fixture_payload(2)).build().unwrap());
     let certificate = fixture.certificate(&header);
     let digest = certificate.digest();
 
@@ -60,9 +53,7 @@ async fn test_successfully_retrieve_block() {
             .withf(move |request| request.body().batch == batch_digest_clone)
             .returning(move |_| {
                 Ok(anemo::Response::new(RequestBatchResponse {
-                    batch: Some(Batch::new(
-                        vec![vec![10u8, 5u8, 2u8], vec![8u8, 2u8, 3u8]],
-                    )),
+                    batch: Some(Batch::new(vec![vec![10u8, 5u8, 2u8], vec![8u8, 2u8, 3u8]])),
                 }))
             });
     }
@@ -71,10 +62,7 @@ async fn test_successfully_retrieve_block() {
 
     let address = worker_address.to_anemo_address().unwrap();
     let peer_id = PeerId(worker_name.0.to_bytes());
-    network
-        .connect_with_peer_id(address, peer_id)
-        .await
-        .unwrap();
+    network.connect_with_peer_id(address, peer_id).await.unwrap();
 
     // AND mock the response from the block synchronizer
     let mut mock_handler = MockHandler::new();
@@ -133,9 +121,11 @@ async fn test_successfully_retrieve_multiple_blocks() {
         let batch_1 = fixture_batch_with_transactions(10);
         let batch_2 = fixture_batch_with_transactions(10);
 
-        builder = builder
-            .with_payload_batch(batch_1.clone(), worker_id, 0)
-            .with_payload_batch(batch_2.clone(), worker_id, 0);
+        builder = builder.with_payload_batch(batch_1.clone(), worker_id, 0).with_payload_batch(
+            batch_2.clone(),
+            worker_id,
+            0,
+        );
 
         for b in [batch_1.clone(), batch_2.clone()] {
             let digest = b.digest();
@@ -143,21 +133,13 @@ async fn test_successfully_retrieve_multiple_blocks() {
                 .expect_request_batch()
                 .withf(move |request| request.body().batch == digest)
                 .returning(move |_| {
-                    Ok(anemo::Response::new(RequestBatchResponse {
-                        batch: Some(b.clone()),
-                    }))
+                    Ok(anemo::Response::new(RequestBatchResponse { batch: Some(b.clone()) }))
                 });
         }
 
         let mut batches = vec![
-            BatchMessage {
-                digest: batch_1.digest(),
-                batch: batch_1.clone(),
-            },
-            BatchMessage {
-                digest: batch_2.digest(),
-                batch: batch_2.clone(),
-            },
+            BatchMessage { digest: batch_1.digest(), batch: batch_1.clone() },
+            BatchMessage { digest: batch_2.digest(), batch: batch_2.clone() },
         ];
 
         // The first 5 headers will have unique payload.
@@ -174,9 +156,7 @@ async fn test_successfully_retrieve_multiple_blocks() {
                     .expect_request_batch()
                     .withf(move |request| request.body().batch == digest)
                     .returning(move |_| {
-                        Ok(anemo::Response::new(RequestBatchResponse {
-                            batch: Some(b.clone()),
-                        }))
+                        Ok(anemo::Response::new(RequestBatchResponse { batch: Some(b.clone()) }))
                     });
             }
 
@@ -200,25 +180,19 @@ async fn test_successfully_retrieve_multiple_blocks() {
 
         digests.push(certificate.digest());
 
-        expected_get_block_responses.push(Ok(GetBlockResponse {
-            digest: certificate.digest(),
-            batches,
-        }));
+        expected_get_block_responses
+            .push(Ok(GetBlockResponse { digest: certificate.digest(), batches }));
     }
 
     // AND add a missing block as well
     let missing_digest = CertificateDigest::default();
-    expected_get_block_responses.push(Err(BlockError {
-        digest: missing_digest,
-        error: BlockErrorKind::BlockNotFound,
-    }));
+    expected_get_block_responses
+        .push(Err(BlockError { digest: missing_digest, error: BlockErrorKind::BlockNotFound }));
 
     digests.push(missing_digest);
 
     // AND the expected get blocks response
-    let expected_get_blocks_response = GetBlocksResponse {
-        blocks: expected_get_block_responses,
-    };
+    let expected_get_blocks_response = GetBlocksResponse { blocks: expected_get_block_responses };
 
     let network = test_network(primary.network_keypair(), primary.address());
 
@@ -232,18 +206,13 @@ async fn test_successfully_retrieve_multiple_blocks() {
 
     let address = worker_address.to_anemo_address().unwrap();
     let peer_id = PeerId(worker_name.0.to_bytes());
-    network
-        .connect_with_peer_id(address, peer_id)
-        .await
-        .unwrap();
+    network.connect_with_peer_id(address, peer_id).await.unwrap();
 
     // AND mock the responses from the BlockSynchronizer
     let mut expected_result: Vec<Result<Certificate, handler::Error>> =
         certificates.clone().into_iter().map(Ok).collect();
 
-    expected_result.push(Err(handler::Error::BlockNotFound {
-        digest: missing_digest,
-    }));
+    expected_result.push(Err(handler::Error::BlockNotFound { digest: missing_digest }));
 
     let mut mock_handler = MockHandler::new();
     mock_handler

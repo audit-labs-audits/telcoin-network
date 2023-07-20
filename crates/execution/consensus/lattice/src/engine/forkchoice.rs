@@ -1,5 +1,5 @@
-use execution_primitives::H256;
 use execution_rpc_types::engine::{ForkchoiceState, PayloadStatusEnum};
+use tn_types::execution::H256;
 
 /// The struct that keeps track of the received forkchoice state and their status.
 #[derive(Debug, Clone, Default)]

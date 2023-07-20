@@ -5,11 +5,11 @@ use crate::{
 use auto_impl::auto_impl;
 use execution_db::models::StoredBlockBodyIndices;
 use execution_interfaces::Result;
-use execution_primitives::{
+use std::ops::RangeInclusive;
+use tn_types::execution::{
     Address, Block, BlockHashOrNumber, BlockId, BlockNumber, BlockNumberOrTag, BlockWithSenders,
     ChainSpec, Header, Receipt, SealedBlock, SealedBlockWithSenders, SealedHeader, H256,
 };
-use std::ops::RangeInclusive;
 
 /// A helper enum that represents the origin of the requested block.
 ///

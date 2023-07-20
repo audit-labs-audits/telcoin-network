@@ -1,6 +1,8 @@
 use super::BlockHashReader;
 use execution_interfaces::Result;
-use execution_primitives::{BlockHashOrNumber, BlockId, BlockNumber, BlockNumberOrTag, ChainInfo, H256};
+use tn_types::execution::{
+    BlockHashOrNumber, BlockId, BlockNumber, BlockNumberOrTag, ChainInfo, H256,
+};
 
 /// Client trait for getting important block numbers (such as the latest block number), converting
 /// block hashes to numbers, and fetching a block hash from its block number.
@@ -99,13 +101,13 @@ pub trait BlockIdReader: BlockNumReader + Send + Sync {
     }
 
     /// Get the current pending block number and hash.
-    fn pending_block_num_hash(&self) -> Result<Option<execution_primitives::BlockNumHash>>;
+    fn pending_block_num_hash(&self) -> Result<Option<tn_types::execution::BlockNumHash>>;
 
     /// Get the current safe block number and hash.
-    fn safe_block_num_hash(&self) -> Result<Option<execution_primitives::BlockNumHash>>;
+    fn safe_block_num_hash(&self) -> Result<Option<tn_types::execution::BlockNumHash>>;
 
     /// Get the current finalized block number and hash.
-    fn finalized_block_num_hash(&self) -> Result<Option<execution_primitives::BlockNumHash>>;
+    fn finalized_block_num_hash(&self) -> Result<Option<tn_types::execution::BlockNumHash>>;
 
     /// Get the safe block number.
     fn safe_block_number(&self) -> Result<Option<BlockNumber>> {

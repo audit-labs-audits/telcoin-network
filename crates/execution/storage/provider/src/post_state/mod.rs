@@ -6,15 +6,15 @@ use execution_db::{
     transaction::{DbTx, DbTxMut},
     DatabaseError as DbError,
 };
-use execution_primitives::{
-    bloom::logs_bloom, keccak256, proofs::calculate_receipt_root_ref, Account, Address,
-    BlockNumber, Bloom, Bytecode, Log, Receipt, StorageEntry, H256, U256,
-};
 use execution_trie::{
     hashed_cursor::{HashedPostState, HashedPostStateCursorFactory, HashedStorage},
     StateRoot, StateRootError,
 };
 use std::collections::{BTreeMap, BTreeSet};
+use tn_types::execution::{
+    bloom::logs_bloom, keccak256, proofs::calculate_receipt_root_ref, Account, Address,
+    BlockNumber, Bloom, Bytecode, Log, Receipt, StorageEntry, H256, U256,
+};
 
 mod account;
 pub use account::AccountChanges;
@@ -225,13 +225,13 @@ impl PostState {
 
     /// Calculate the state root for this [PostState].
     /// Internally, function calls [Self::hash_state_slow] to obtain the [HashedPostState].
-    /// Afterwards, it retrieves the [PrefixSets](execution_trie::prefix_set::PrefixSet) of changed keys
-    /// from the [HashedPostState] and uses them to calculate the incremental state root.
+    /// Afterwards, it retrieves the [PrefixSets](execution_trie::prefix_set::PrefixSet) of changed
+    /// keys from the [HashedPostState] and uses them to calculate the incremental state root.
     ///
     /// # Example
     ///
     /// ```
-    /// use execution_primitives::{Address, Account};
+    /// use tn_types::execution::{Address, Account};
     /// use execution_provider::PostState;
     /// use execution_db::{test_utils::create_test_rw_db, database::Database};
     ///
@@ -654,9 +654,9 @@ mod tests {
     use execution_db::{
         database::Database, test_utils::create_test_rw_db, transaction::DbTx, DatabaseEnv,
     };
-    use execution_primitives::{proofs::EMPTY_ROOT, MAINNET};
     use execution_trie::test_utils::state_root;
     use std::sync::Arc;
+    use tn_types::execution::{proofs::EMPTY_ROOT, MAINNET};
 
     // Ensure that the transition id is not incremented if postate is extended by another empty
     // poststate.

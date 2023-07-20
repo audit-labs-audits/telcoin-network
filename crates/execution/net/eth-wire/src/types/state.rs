@@ -1,7 +1,7 @@
 //! Implements the `GetNodeData` and `NodeData` message types.
 use execution_codecs::derive_arbitrary;
-use execution_primitives::{Bytes, H256};
 use execution_rlp::{RlpDecodableWrapper, RlpEncodableWrapper};
+use tn_types::execution::{Bytes, H256};
 
 #[cfg(feature = "serde")]
 use serde::{Deserialize, Serialize};

@@ -2,14 +2,15 @@
 // Copyright (c) Mysten Labs, Inc.
 // SPDX-License-Identifier: Apache-2.0
 use crate::{NodeStorage, PayloadToken};
-use tn_types::consensus::config::WorkerId;
 use lattice_common::sync::notify_read::NotifyRead;
+use lattice_typed_store::{
+    reopen,
+    rocks::{open_cf, DBMap, MetricConf, ReadWriteOptions},
+    Map, TypedStoreError,
+};
 use std::sync::Arc;
-use lattice_typed_store::reopen;
-use lattice_typed_store::rocks::{open_cf, MetricConf, ReadWriteOptions};
-use lattice_typed_store::{rocks::DBMap, Map, TypedStoreError};
 use tn_macros::fail_point;
-use tn_types::consensus::BatchDigest;
+use tn_types::consensus::{config::WorkerId, BatchDigest};
 
 /// Store of the batch digests for the primary node for the own created batches.
 #[derive(Clone)]
@@ -22,10 +23,7 @@ pub struct PayloadStore {
 
 impl PayloadStore {
     pub fn new(payload_store: DBMap<(BatchDigest, WorkerId), PayloadToken>) -> Self {
-        Self {
-            store: payload_store,
-            notify_subscribers: Arc::new(NotifyRead::new()),
-        }
+        Self { store: payload_store, notify_subscribers: Arc::new(NotifyRead::new()) }
     }
 
     pub fn new_for_tests() -> Self {
@@ -59,8 +57,7 @@ impl PayloadStore {
     ) -> Result<(), TypedStoreError> {
         fail_point!("narwhal-store-before-write");
 
-        self.store
-            .multi_insert(keys.clone().into_iter().map(|e| (e, 0u8)))?;
+        self.store.multi_insert(keys.clone().into_iter().map(|e| (e, 0u8)))?;
 
         keys.into_iter().for_each(|(digest, worker_id)| {
             self.notify_subscribers.notify(&(digest, worker_id), &());
@@ -70,16 +67,14 @@ impl PayloadStore {
         Ok(())
     }
 
-    /// Queries the store whether the batch with provided `digest` and `worker_id` exists. It returns
-    /// `true` if exists, `false` otherwise.
+    /// Queries the store whether the batch with provided `digest` and `worker_id` exists. It
+    /// returns `true` if exists, `false` otherwise.
     pub fn contains(
         &self,
         digest: BatchDigest,
         worker_id: WorkerId,
     ) -> Result<bool, TypedStoreError> {
-        self.store
-            .get(&(digest, worker_id))
-            .map(|result| result.is_some())
+        self.store.get(&(digest, worker_id)).map(|result| result.is_some())
     }
 
     /// When called the method will wait until the entry of batch with `digest` and `worker_id`
@@ -98,7 +93,7 @@ impl PayloadStore {
             self.notify_subscribers.notify(&(digest, worker_id), &());
 
             // reply directly
-            return Ok(());
+            return Ok(())
         }
 
         // now wait to hear back the result
@@ -140,8 +135,7 @@ mod tests {
         let store = PayloadStore::new_for_tests();
 
         // run the tests a few times
-        let batch: Batch =
-            lattice_test_utils::fixture_batch_with_transactions(10);
+        let batch: Batch = lattice_test_utils::fixture_batch_with_transactions(10);
         let id = batch.digest();
         let worker_id = 0;
 

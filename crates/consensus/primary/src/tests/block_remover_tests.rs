@@ -3,26 +3,27 @@
 // SPDX-License-Identifier: Apache-2.0
 use crate::{block_remover::BlockRemover, common::create_db_stores, NUM_SHUTDOWN_RECEIVERS};
 use anemo::PeerId;
-use tn_types::consensus::config::{Committee, WorkerId};
-use lattice_consensus::{dag::Dag, metrics::ConsensusMetrics};
-use tn_types::consensus::crypto::traits::KeyPair;
 use fastcrypto::hash::Hash;
 use futures::future::join_all;
+use lattice_consensus::{dag::Dag, metrics::ConsensusMetrics};
+use lattice_test_utils::CommitteeFixture;
 use prometheus::Registry;
 use std::{borrow::Borrow, collections::HashMap, sync::Arc, time::Duration};
-use lattice_test_utils::CommitteeFixture;
-use tokio::time::timeout;
 use tn_types::consensus::{
+    config::{Committee, WorkerId},
+    crypto::traits::KeyPair,
     BatchDigest, Certificate, Header, MockPrimaryToWorker, PreSubscribedBroadcastSender,
     PrimaryToWorkerServer, WorkerDeleteBatchesMessage,
 };
+use tokio::time::timeout;
 
 #[tokio::test]
 async fn test_successful_blocks_delete() {
     // GIVEN
     let (header_store, certificate_store, payload_store) = create_db_stores();
     let (_tx_consensus, rx_consensus) = lattice_test_utils::test_channel!(1);
-    let (tx_removed_certificates, mut rx_removed_certificates) = lattice_test_utils::test_channel!(10);
+    let (tx_removed_certificates, mut rx_removed_certificates) =
+        lattice_test_utils::test_channel!(10);
 
     // AND the necessary keys
     let fixture = CommitteeFixture::builder().randomize_ports(true).build();
@@ -35,15 +36,8 @@ async fn test_successful_blocks_delete() {
 
     // AND a Dag with genesis populated
     let consensus_metrics = Arc::new(ConsensusMetrics::new(&Registry::new()));
-    let dag = Arc::new(
-        Dag::new(
-            &committee,
-            rx_consensus,
-            consensus_metrics,
-            tx_shutdown.subscribe(),
-        )
-        .1,
-    );
+    let dag =
+        Arc::new(Dag::new(&committee, rx_consensus, consensus_metrics, tx_shutdown.subscribe()).1);
     populate_genesis(&dag, &committee).await;
 
     let network = lattice_test_utils::test_network(primary.network_keypair(), primary.address());
@@ -103,15 +97,9 @@ async fn test_successful_blocks_delete() {
 
         digests.push(digest);
 
-        worker_batches
-            .entry(worker_id_0)
-            .or_insert_with(Vec::new)
-            .push(batch_1.digest());
+        worker_batches.entry(worker_id_0).or_insert_with(Vec::new).push(batch_1.digest());
 
-        worker_batches
-            .entry(worker_id_1)
-            .or_insert_with(Vec::new)
-            .push(batch_2.digest());
+        worker_batches.entry(worker_id_1).or_insert_with(Vec::new).push(batch_2.digest());
     }
 
     // AND bootstrap the workers
@@ -124,10 +112,7 @@ async fn test_successful_blocks_delete() {
         mock_server
             .expect_delete_batches()
             .withf(move |request| {
-                request.body()
-                    == &WorkerDeleteBatchesMessage {
-                        digests: batch_digests.clone(),
-                    }
+                request.body() == &WorkerDeleteBatchesMessage { digests: batch_digests.clone() }
             })
             .returning(|_| Ok(anemo::Response::new(())));
         let routes = anemo::Router::new().add_rpc_service(PrimaryToWorkerServer::new(mock_server));
@@ -135,37 +120,25 @@ async fn test_successful_blocks_delete() {
 
         let address = address.to_anemo_address().unwrap();
         let peer_id = PeerId(worker.keypair().public().0.to_bytes());
-        network
-            .connect_with_peer_id(address, peer_id)
-            .await
-            .unwrap();
+        network.connect_with_peer_id(address, peer_id).await.unwrap();
     }
 
     block_remover.remove_blocks(digests.clone()).await.unwrap();
 
     // ensure that certificates have been deleted from store
     for digest in digests.clone() {
-        assert!(
-            certificate_store.read(digest).unwrap().is_none(),
-            "Certificate shouldn't exist"
-        );
+        assert!(certificate_store.read(digest).unwrap().is_none(), "Certificate shouldn't exist");
     }
 
     // ensure that headers have been deleted from store
     for header_id in header_ids {
-        assert!(
-            header_store.read(&header_id).unwrap().is_none(),
-            "Header shouldn't exist"
-        );
+        assert!(header_store.read(&header_id).unwrap().is_none(), "Header shouldn't exist");
     }
 
     // ensure that batches have been deleted from the payload store
     for (worker_id, batch_digests) in worker_batches {
         for digest in batch_digests {
-            assert!(
-                !payload_store.contains(digest, worker_id).unwrap(),
-                "Payload shouldn't exist"
-            );
+            assert!(!payload_store.contains(digest, worker_id).unwrap(), "Payload shouldn't exist");
         }
     }
 
@@ -176,10 +149,7 @@ async fn test_successful_blocks_delete() {
         timeout(Duration::from_secs(1), rx_removed_certificates.recv()).await
     {
         for ci in certs {
-            assert!(
-                digests.contains(&ci.digest()),
-                "Deleted certificate not found"
-            );
+            assert!(digests.contains(&ci.digest()), "Deleted certificate not found");
             total_deleted += 1;
         }
     }
@@ -192,7 +162,8 @@ async fn test_failed_blocks_delete() {
     // GIVEN
     let (header_store, certificate_store, payload_store) = create_db_stores();
     let (_tx_consensus, rx_consensus) = lattice_test_utils::test_channel!(1);
-    let (tx_removed_certificates, mut rx_removed_certificates) = lattice_test_utils::test_channel!(10);
+    let (tx_removed_certificates, mut rx_removed_certificates) =
+        lattice_test_utils::test_channel!(10);
     let mut tx_shutdown = PreSubscribedBroadcastSender::new(NUM_SHUTDOWN_RECEIVERS);
 
     // AND the necessary keys
@@ -204,15 +175,8 @@ async fn test_failed_blocks_delete() {
     let id = primary.id();
     // AND a Dag with genesis populated
     let consensus_metrics = Arc::new(ConsensusMetrics::new(&Registry::new()));
-    let dag = Arc::new(
-        Dag::new(
-            &committee,
-            rx_consensus,
-            consensus_metrics,
-            tx_shutdown.subscribe(),
-        )
-        .1,
-    );
+    let dag =
+        Arc::new(Dag::new(&committee, rx_consensus, consensus_metrics, tx_shutdown.subscribe()).1);
     populate_genesis(&dag, &committee).await;
 
     let network = lattice_test_utils::test_network(primary.network_keypair(), primary.address());
@@ -272,15 +236,9 @@ async fn test_failed_blocks_delete() {
 
         digests.push(digest);
 
-        worker_batches
-            .entry(worker_id_0)
-            .or_insert_with(Vec::new)
-            .push(batch_1.digest());
+        worker_batches.entry(worker_id_0).or_insert_with(Vec::new).push(batch_1.digest());
 
-        worker_batches
-            .entry(worker_id_1)
-            .or_insert_with(Vec::new)
-            .push(batch_2.digest());
+        worker_batches.entry(worker_id_1).or_insert_with(Vec::new).push(batch_2.digest());
     }
 
     // AND bootstrap the workers
@@ -293,10 +251,7 @@ async fn test_failed_blocks_delete() {
         mock_server
             .expect_delete_batches()
             .withf(move |request| {
-                request.body()
-                    == &WorkerDeleteBatchesMessage {
-                        digests: batch_digests.clone(),
-                    }
+                request.body() == &WorkerDeleteBatchesMessage { digests: batch_digests.clone() }
             })
             .returning(move |_| {
                 if worker_id == 0 {
@@ -310,10 +265,7 @@ async fn test_failed_blocks_delete() {
 
         let address = address.to_anemo_address().unwrap();
         let peer_id = PeerId(worker.keypair().public().0.to_bytes());
-        network
-            .connect_with_peer_id(address, peer_id)
-            .await
-            .unwrap();
+        network.connect_with_peer_id(address, peer_id).await.unwrap();
     }
 
     assert!(block_remover.remove_blocks(digests.clone()).await.is_err());
@@ -339,9 +291,7 @@ async fn test_failed_blocks_delete() {
 
 async fn populate_genesis<K: Borrow<Dag>>(dag: &K, committee: &Committee) {
     assert!(join_all(
-        Certificate::genesis(committee)
-            .iter()
-            .map(|cert| dag.borrow().insert(cert.clone())),
+        Certificate::genesis(committee).iter().map(|cert| dag.borrow().insert(cert.clone())),
     )
     .await
     .iter()

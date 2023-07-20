@@ -3,8 +3,8 @@
 // SPDX-License-Identifier: Apache-2.0
 use async_trait::async_trait;
 use lattice_executor::ExecutionState;
+use tn_types::consensus::{BatchAPI, CertificateAPI, ConsensusOutput, HeaderAPI};
 use tokio::sync::mpsc::Sender;
-use tn_types::consensus::{BatchAPI, ConsensusOutput, CertificateAPI, HeaderAPI};
 
 /// A simple/dumb execution engine.
 pub struct SimpleExecutionState {
@@ -13,9 +13,7 @@ pub struct SimpleExecutionState {
 
 impl SimpleExecutionState {
     pub fn new(tx_transaction_confirmation: Sender<Vec<u8>>) -> Self {
-        Self {
-            tx_transaction_confirmation,
-        }
+        Self { tx_transaction_confirmation }
     }
 }
 
@@ -25,10 +23,8 @@ impl ExecutionState for SimpleExecutionState {
         for (_, batches) in consensus_output.batches {
             for batch in batches {
                 for transaction in batch.transactions().iter() {
-                    if let Err(err) = self
-                        .tx_transaction_confirmation
-                        .send(transaction.clone())
-                        .await
+                    if let Err(err) =
+                        self.tx_transaction_confirmation.send(transaction.clone()).await
                     {
                         eprintln!("Failed to send txn in SimpleExecutionState: {}", err);
                     }
@@ -43,7 +39,7 @@ impl ExecutionState for SimpleExecutionState {
 }
 
 /// Client sender for passing completed certificates to the Execution Engine.
-/// 
+///
 /// This is passed to the Node for Primary.start()
 pub struct LatticeExecutionState {
     /// Sender channel to NarwhalEngine in the EL.
@@ -52,9 +48,7 @@ pub struct LatticeExecutionState {
 
 impl LatticeExecutionState {
     pub fn new(tx_to_execution_engine: Sender<Vec<u8>>) -> Self {
-        Self {
-            tx_to_execution_engine,
-        }
+        Self { tx_to_execution_engine }
     }
 }
 

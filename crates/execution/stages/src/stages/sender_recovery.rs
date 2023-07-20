@@ -1,5 +1,4 @@
 use crate::{ExecInput, ExecOutput, Stage, StageError, UnwindInput, UnwindOutput};
-use itertools::Itertools;
 use execution_db::{
     cursor::{DbCursorRO, DbCursorRW},
     database::Database,
@@ -8,14 +7,15 @@ use execution_db::{
     DatabaseError, RawKey, RawTable, RawValue,
 };
 use execution_interfaces::consensus;
-use execution_primitives::{
+use execution_provider::{BlockReader, DatabaseProviderRW, HeaderProvider, ProviderError};
+use itertools::Itertools;
+use std::fmt::Debug;
+use thiserror::Error;
+use tn_types::execution::{
     keccak256,
     stage::{EntitiesCheckpoint, StageCheckpoint, StageId},
     TransactionSignedNoHash, TxNumber, H160,
 };
-use execution_provider::{BlockReader, DatabaseProviderRW, HeaderProvider, ProviderError};
-use std::fmt::Debug;
-use thiserror::Error;
 use tokio::sync::mpsc;
 use tracing::*;
 
@@ -238,10 +238,10 @@ mod tests {
         generators,
         generators::{random_block, random_block_range},
     };
-    use execution_primitives::{
+    use execution_provider::TransactionsProvider;
+    use tn_types::execution::{
         stage::StageUnitCheckpoint, BlockNumber, SealedBlock, TransactionSigned, H256,
     };
-    use execution_provider::TransactionsProvider;
 
     use super::*;
     use crate::test_utils::{

@@ -6,12 +6,15 @@ use prometheus::{
     register_histogram_vec_with_registry, register_int_counter_vec_with_registry,
     register_int_gauge_vec_with_registry, HistogramVec, IntCounterVec, IntGaugeVec, Registry,
 };
-use rocksdb::perf::set_perf_stats;
-use rocksdb::{PerfContext, PerfMetric, PerfStatsLevel};
-use std::cell::RefCell;
-use std::sync::atomic::{AtomicU64, Ordering};
-use std::sync::Arc;
-use std::time::Duration;
+use rocksdb::{perf::set_perf_stats, PerfContext, PerfMetric, PerfStatsLevel};
+use std::{
+    cell::RefCell,
+    sync::{
+        atomic::{AtomicU64, Ordering},
+        Arc,
+    },
+    time::Duration,
+};
 use tap::TapFallible;
 use tracing::warn;
 
@@ -19,9 +22,8 @@ thread_local! {
     static PER_THREAD_ROCKS_PERF_CONTEXT: std::cell::RefCell<rocksdb::PerfContext>  = RefCell::new(PerfContext::default());
 }
 
-const LATENCY_SEC_BUCKETS: &[f64] = &[
-    0.001, 0.005, 0.01, 0.025, 0.05, 0.1, 0.25, 0.5, 1., 2.5, 5., 10., 20., 30., 60., 90.,
-];
+const LATENCY_SEC_BUCKETS: &[f64] =
+    &[0.001, 0.005, 0.01, 0.025, 0.05, 0.1, 0.25, 0.5, 1., 2.5, 5., 10., 20., 30., 60., 90.];
 
 #[derive(Debug, Clone)]
 // A struct for sampling based on number of operations or duration.
@@ -56,11 +58,7 @@ impl SamplingInterval {
                 }
             });
         }
-        SamplingInterval {
-            once_every_duration,
-            after_num_ops,
-            counter,
-        }
+        SamplingInterval { once_every_duration, after_num_ops, counter }
     }
     pub fn new_from_self(&self) -> SamplingInterval {
         SamplingInterval::new(self.once_every_duration, self.after_num_ops)
@@ -877,7 +875,6 @@ impl DBMetrics {
         ONCE.get().unwrap()
     }
     pub fn get() -> &'static Arc<DBMetrics> {
-        ONCE.get()
-            .unwrap_or_else(|| DBMetrics::init(prometheus::default_registry()))
+        ONCE.get().unwrap_or_else(|| DBMetrics::init(prometheus::default_registry()))
     }
 }

@@ -1,7 +1,7 @@
 //! Events related to Consensus Layer health.
 
-use futures::Stream;
 use execution_provider::CanonChainTracker;
+use futures::Stream;
 use std::{
     pin::Pin,
     task::{ready, Context, Poll},

@@ -2,12 +2,6 @@
 
 use crate::{error::DecodePacketError, EnrForkIdEntry, PeerId, MAX_PACKET_SIZE, MIN_PACKET_SIZE};
 use enr::{Enr, EnrKey};
-use execution_primitives::{
-    bytes::{Buf, BufMut, Bytes, BytesMut},
-    keccak256,
-    rpc_utils::rlp,
-    ForkId, NodeRecord, H256,
-};
 use execution_rlp::{length_of_length, Decodable, DecodeError, Encodable, Header};
 use execution_rlp_derive::{RlpDecodable, RlpEncodable};
 use secp256k1::{
@@ -15,6 +9,12 @@ use secp256k1::{
     SecretKey, SECP256K1,
 };
 use std::net::IpAddr;
+use tn_types::execution::{
+    bytes::{Buf, BufMut, Bytes, BytesMut},
+    keccak256,
+    rpc_utils::rlp,
+    ForkId, NodeRecord, H256,
+};
 
 // Note: this is adapted from https://github.com/vorot93/discv4
 
@@ -500,7 +500,7 @@ mod tests {
     };
     use enr::{EnrBuilder, EnrPublicKey};
     use rand::{thread_rng, Rng, RngCore};
-    use execution_primitives::{hex_literal::hex, ForkHash};
+    use tn_types::execution::{hex_literal::hex, ForkHash};
 
     #[test]
     fn test_endpoint_ipv_v4() {

@@ -3,7 +3,6 @@ use execution_interfaces::p2p::{
     download::DownloadClient,
     priority::Priority,
 };
-use execution_primitives::{BlockBody, PeerId, H256};
 use std::{
     collections::HashMap,
     fmt::Debug,
@@ -13,6 +12,7 @@ use std::{
     },
     time::Duration,
 };
+use tn_types::execution::{BlockBody, PeerId, H256};
 use tokio::sync::Mutex;
 
 /// A [BodiesClient] for testing.

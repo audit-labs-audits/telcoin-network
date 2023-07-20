@@ -26,13 +26,13 @@ where
             .replace('_', "")
             .parse::<u64>()
             .map(Duration::from_millis)
-            .map_err(|e| serde::de::Error::custom(e.to_string()));
+            .map_err(|e| serde::de::Error::custom(e.to_string()))
     } else if let Some(seconds) = s.strip_suffix('s') {
         return seconds
             .replace('_', "")
             .parse::<u64>()
             .map(Duration::from_secs)
-            .map_err(|e| serde::de::Error::custom(e.to_string()));
+            .map_err(|e| serde::de::Error::custom(e.to_string()))
     }
 
     Err(serde::de::Error::custom(format!(
@@ -49,7 +49,7 @@ where
 
 #[cfg(test)]
 mod tests {
-    use crate::config::duration_format;
+    use crate::consensus::config::duration_format;
     use serde::{Deserialize, Serialize};
     use std::time::Duration;
 

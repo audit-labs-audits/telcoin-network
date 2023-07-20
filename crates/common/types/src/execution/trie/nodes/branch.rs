@@ -1,5 +1,5 @@
 use super::{super::TrieMask, rlp_node, CHILD_INDEX_RANGE};
-use crate::execution ::H256;
+use crate::execution::H256;
 use bytes::Buf;
 use execution_codecs::Compact;
 use execution_rlp::{BufMut, EMPTY_STRING_CODE};

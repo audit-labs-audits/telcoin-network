@@ -5,7 +5,7 @@ use crate::{
     DatabaseError,
 };
 use postcard::{from_bytes, to_allocvec, to_vec};
-use execution_primitives::*;
+use tn_types::execution::*;
 
 // Just add `Serialize` and `Deserialize`, and set impl_heapless_postcard!(T, MaxSize(T))
 //

@@ -1,15 +1,14 @@
 use crate::consensus::{
-    Certificate, Header, Vote, CertificateDigest, Round, BatchDigest,
-    Batch, VersionedMetadata, crypto::NetworkPublicKey,
+    config::{AuthorityIdentifier, WorkerId, WorkerInfo},
+    crypto::NetworkPublicKey,
+    Batch, BatchDigest, Certificate, CertificateDigest, Header, Round, VersionedMetadata, Vote,
 };
-use crate::consensus::config::{AuthorityIdentifier, WorkerId, WorkerInfo};
 use roaring::RoaringBitmap;
 use serde::{Deserialize, Serialize};
 use std::{
-    collections::{BTreeMap, BTreeSet},
+    collections::{BTreeMap, BTreeSet, HashMap, HashSet},
     fmt,
 };
-use std::collections::{HashMap, HashSet};
 use tracing::warn;
 
 /// Request for broadcasting certificates to peers.
@@ -58,8 +57,8 @@ pub struct GetCertificatesResponse {
 /// Used by the primary to fetch certificates from other primaries.
 #[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub struct FetchCertificatesRequest {
-    /// The exclusive lower bound is a round number where each primary should return certificates above that.
-    /// This corresponds to the GC round at the requestor.
+    /// The exclusive lower bound is a round number where each primary should return certificates
+    /// above that. This corresponds to the GC round at the requestor.
     pub exclusive_lower_bound: Round,
     /// This contains per authority serialized RoaringBitmap for the round diffs between
     /// - rounds of certificates to be skipped from the response and
@@ -211,11 +210,7 @@ impl<T> From<BlockError> for BlockResult<T> {
 
 impl fmt::Display for BlockError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(
-            f,
-            "block digest: {}, error type: {}",
-            self.digest, self.error
-        )
+        write!(f, "block digest: {}, error type: {}", self.digest, self.error)
     }
 }
 

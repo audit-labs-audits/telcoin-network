@@ -6,8 +6,8 @@ use execution_db::{
     transaction::{DbTx, DbTxMut},
     DatabaseEnv,
 };
-use execution_primitives::fs;
 use std::{path::Path, sync::Arc};
+use tn_types::execution::fs;
 
 /// Path where the DB is initialized for benchmarks.
 #[allow(unused)]
@@ -19,7 +19,8 @@ const RANDOM_INDEXES: [usize; 10] = [23, 2, 42, 5, 3, 99, 54, 0, 33, 64];
 
 /// Returns bench vectors in the format: `Vec<(Key, EncodedKey, Value, CompressedValue)>`.
 #[allow(unused)]
-fn load_vectors<T: execution_db::table::Table>() -> Vec<(T::Key, bytes::Bytes, T::Value, bytes::Bytes)>
+fn load_vectors<T: execution_db::table::Table>(
+) -> Vec<(T::Key, bytes::Bytes, T::Value, bytes::Bytes)>
 where
     T: Default,
     T::Key: Default + Clone + for<'de> serde::Deserialize<'de>,

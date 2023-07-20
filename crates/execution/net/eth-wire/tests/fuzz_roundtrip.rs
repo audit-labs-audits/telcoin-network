@@ -55,10 +55,10 @@ pub mod fuzz_rlp {
         NewPooledTransactionHashes66, NewPooledTransactionHashes68, NodeData, P2PMessage,
         PooledTransactions, Receipts, Status, Transactions,
     };
-    use execution_primitives::{BlockHashOrNumber, TransactionSigned};
     use execution_rlp::{RlpDecodableWrapper, RlpEncodableWrapper};
     use serde::{Deserialize, Serialize};
     use test_fuzz::test_fuzz;
+    use tn_types::execution::{BlockHashOrNumber, TransactionSigned};
 
     // manually test Ping and Pong which are not covered by the above
 

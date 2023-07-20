@@ -9,10 +9,6 @@ use execution_db::{
     transaction::{DbTx, DbTxGAT, DbTxMut, DbTxMutGAT},
     DatabaseEnv, DatabaseError as DbError,
 };
-use execution_primitives::{
-    keccak256, Account, Address, BlockNumber, SealedBlock, SealedHeader, StorageEntry, H256,
-    MAINNET, U256,
-};
 use execution_provider::{DatabaseProviderRO, DatabaseProviderRW, ProviderFactory};
 use std::{
     borrow::Borrow,
@@ -20,6 +16,10 @@ use std::{
     ops::RangeInclusive,
     path::{Path, PathBuf},
     sync::Arc,
+};
+use tn_types::execution::{
+    keccak256, Account, Address, BlockNumber, SealedBlock, SealedHeader, StorageEntry, H256,
+    MAINNET, U256,
 };
 
 /// The [TestTransaction] is used as an internal

@@ -1,6 +1,6 @@
 use super::ctrl::ControlFlow;
 use crate::util::opt;
-use execution_primitives::BlockNumber;
+use tn_types::execution::BlockNumber;
 
 #[derive(Debug, Default)]
 pub(crate) struct PipelineProgress {

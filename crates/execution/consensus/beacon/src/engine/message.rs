@@ -2,13 +2,13 @@ use crate::{
     engine::{error::BeaconOnNewPayloadError, forkchoice::ForkchoiceStatus},
     BeaconConsensusEngineEvent,
 };
-use futures::{future::Either, FutureExt};
 use execution_interfaces::consensus::ForkchoiceState;
 use execution_payload_builder::error::PayloadBuilderError;
 use execution_rpc_types::engine::{
     ExecutionPayload, ForkChoiceUpdateResult, ForkchoiceUpdateError, ForkchoiceUpdated,
     PayloadAttributes, PayloadId, PayloadStatus, PayloadStatusEnum,
 };
+use futures::{future::Either, FutureExt};
 use std::{
     future::Future,
     pin::Pin,

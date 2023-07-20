@@ -1,8 +1,8 @@
 use async_trait::async_trait;
-use execution_primitives::{
+use std::fmt::Debug;
+use tn_types::execution::{
     BlockHash, BlockNumber, Header, InvalidTransactionError, SealedBlock, SealedHeader, H256, U256,
 };
-use std::fmt::Debug;
 
 /// Re-export fork choice state
 pub use execution_rpc_types::engine::ForkchoiceState;

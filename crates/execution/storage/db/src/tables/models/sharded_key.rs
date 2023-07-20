@@ -4,8 +4,8 @@ use crate::{
     table::{Decode, Encode},
     DatabaseError,
 };
-use execution_primitives::BlockNumber;
 use serde::{Deserialize, Serialize};
+use tn_types::execution::BlockNumber;
 
 /// Number of indices in one shard.
 pub const NUM_OF_INDICES_IN_SHARD: usize = 2_000;

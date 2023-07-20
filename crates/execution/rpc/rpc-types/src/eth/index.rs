@@ -1,9 +1,9 @@
-use execution_primitives::U256;
 use serde::{
     de::{Error, Visitor},
     Deserialize, Deserializer, Serialize, Serializer,
 };
 use std::fmt;
+use tn_types::execution::U256;
 
 /// A hex encoded or decimal index that's intended to be used as a rust index, hence it's
 /// deserialized into a `usize`.

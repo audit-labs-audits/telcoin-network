@@ -3,7 +3,6 @@ use crate::tracing::{
     utils::get_create_address,
 };
 pub use arena::CallTraceArena;
-use execution_primitives::{bytes::Bytes, Address, H256, U256};
 use revm::{
     inspectors::GasInspector,
     interpreter::{
@@ -12,6 +11,7 @@ use revm::{
     },
     Database, EVMData, Inspector, JournalEntry,
 };
+use tn_types::execution::{bytes::Bytes, Address, H256, U256};
 use types::{CallTrace, CallTraceStep};
 
 mod arena;

@@ -1,7 +1,7 @@
 use bytes::{Bytes, BytesMut};
 use ethnum::U256;
-use hex_literal::hex;
 use execution_rlp::{DecodeError, *};
+use hex_literal::hex;
 
 #[derive(Debug, PartialEq, RlpEncodable, RlpDecodable)]
 struct Item {

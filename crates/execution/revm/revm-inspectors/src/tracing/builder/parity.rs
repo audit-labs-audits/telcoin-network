@@ -1,11 +1,11 @@
 use crate::tracing::{types::CallTraceNode, TracingInspectorConfig};
-use execution_primitives::{Address, U64};
 use execution_rpc_types::{trace::parity::*, TransactionInfo};
 use revm::{
     db::DatabaseRef,
     primitives::{AccountInfo, ExecutionResult, ResultAndState},
 };
 use std::collections::HashSet;
+use tn_types::execution::{Address, U64};
 
 /// A type for creating parity style traces
 ///

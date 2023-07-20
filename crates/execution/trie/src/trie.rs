@@ -9,14 +9,14 @@ use crate::{
     StateRootError, StorageRootError,
 };
 use execution_db::{tables, transaction::DbTx};
-use execution_primitives::{
+use execution_rlp::Encodable;
+use std::{collections::HashMap, ops::RangeInclusive};
+use tn_types::execution::{
     keccak256,
     proofs::EMPTY_ROOT,
     trie::{HashBuilder, Nibbles},
     Address, BlockNumber, StorageEntry, H256,
 };
-use execution_rlp::Encodable;
-use std::{collections::HashMap, ops::RangeInclusive};
 
 /// StateRoot is used to compute the root node of a state trie.
 pub struct StateRoot<'a, 'b, TX, H> {
@@ -492,8 +492,10 @@ where
                         break
                     }
                 }
-                hash_builder
-                    .add_leaf(storage_key_nibbles, execution_rlp::encode_fixed_size(&value).as_ref());
+                hash_builder.add_leaf(
+                    storage_key_nibbles,
+                    execution_rlp::encode_fixed_size(&value).as_ref(),
+                );
                 storage = hashed_storage_cursor.next()?;
             }
         }
@@ -518,7 +520,6 @@ mod tests {
     use crate::test_utils::{
         state_root, state_root_prehashed, storage_root, storage_root_prehashed,
     };
-    use proptest::{prelude::ProptestConfig, proptest};
     use execution_db::{
         cursor::{DbCursorRO, DbCursorRW, DbDupCursorRO},
         tables,
@@ -526,15 +527,16 @@ mod tests {
         transaction::DbTxMut,
         DatabaseEnv,
     };
-    use execution_primitives::{
+    use execution_provider::{DatabaseProviderRW, ProviderFactory};
+    use proptest::{prelude::ProptestConfig, proptest};
+    use std::{collections::BTreeMap, ops::Mul, str::FromStr};
+    use tn_types::execution::{
         hex_literal::hex,
         keccak256,
         proofs::KeccakHasher,
         trie::{BranchNodeCompact, TrieMask},
         Account, Address, H256, MAINNET, U256,
     };
-    use execution_provider::{DatabaseProviderRW, ProviderFactory};
-    use std::{collections::BTreeMap, ops::Mul, str::FromStr};
 
     fn insert_account<'a, TX: DbTxMut<'a>>(
         tx: &TX,

@@ -4,11 +4,10 @@ use crate::{
     builder::ETH_REQUEST_CHANNEL_CAPACITY, error::NetworkError, eth_requests::EthRequestHandler,
     NetworkConfig, NetworkConfigBuilder, NetworkEvent, NetworkHandle, NetworkManager,
 };
+use execution_eth_wire::{capability::Capability, DisconnectReason, HelloBuilder};
+use execution_provider::{test_utils::NoopProvider, BlockReader, HeaderProvider};
 use futures::{FutureExt, StreamExt};
 use pin_project::pin_project;
-use execution_eth_wire::{capability::Capability, DisconnectReason, HelloBuilder};
-use execution_primitives::PeerId;
-use execution_provider::{test_utils::NoopProvider, BlockReader, HeaderProvider};
 use secp256k1::SecretKey;
 use std::{
     fmt,
@@ -17,6 +16,7 @@ use std::{
     pin::Pin,
     task::{Context, Poll},
 };
+use tn_types::execution::PeerId;
 use tokio::{
     sync::{mpsc::channel, oneshot},
     task::JoinHandle,

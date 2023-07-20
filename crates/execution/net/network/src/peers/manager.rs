@@ -6,11 +6,10 @@ use crate::{
     },
     session::{Direction, PendingSessionHandshakeError},
 };
-use futures::StreamExt;
 use execution_eth_wire::{errors::EthStreamError, DisconnectReason};
 use execution_net_common::ban_list::BanList;
 use execution_network_api::{PeerKind, ReputationChangeKind};
-use execution_primitives::{ForkId, NodeRecord, PeerId};
+use futures::StreamExt;
 use std::{
     collections::{hash_map::Entry, HashMap, HashSet, VecDeque},
     fmt::Display,
@@ -21,6 +20,7 @@ use std::{
     time::Duration,
 };
 use thiserror::Error;
+use tn_types::execution::{ForkId, NodeRecord, PeerId};
 use tokio::{
     sync::{mpsc, oneshot},
     time::{Instant, Interval},
@@ -1240,7 +1240,6 @@ mod test {
     };
     use execution_net_common::ban_list::BanList;
     use execution_network_api::ReputationChangeKind;
-    use execution_primitives::{PeerId, H512};
     use std::{
         collections::HashSet,
         future::{poll_fn, Future},
@@ -1250,6 +1249,7 @@ mod test {
         task::{Context, Poll},
         time::Duration,
     };
+    use tn_types::execution::{PeerId, H512};
 
     struct PeerActionFuture<'a> {
         peers: &'a mut PeersManager,

@@ -1,9 +1,9 @@
 //! Entrypoint for running commands.
 
-use futures::pin_mut;
-use tracing::trace;
 use execution_tasks::{TaskExecutor, TaskManager};
+use futures::pin_mut;
 use std::future::Future;
+use tracing::trace;
 
 /// Used to execute cli commands
 #[derive(Default, Debug)]
@@ -26,11 +26,7 @@ impl CliRunner {
         F: Future<Output = Result<(), E>>,
         E: Send + Sync + From<std::io::Error> + From<execution_tasks::PanickedTaskError> + 'static,
     {
-        let AsyncCliRunner {
-            context,
-            task_manager,
-            tokio_runtime,
-        } = AsyncCliRunner::new()?;
+        let AsyncCliRunner { context, task_manager, tokio_runtime } = AsyncCliRunner::new()?;
 
         // Executes the command until it finished or ctrl-c was fired
         let task_manager = tokio_runtime.block_on(run_to_completion_or_panic(
@@ -85,11 +81,7 @@ impl AsyncCliRunner {
         let tokio_runtime = tokio_runtime()?;
         let task_manager = TaskManager::new(tokio_runtime.handle().clone());
         let task_executor = task_manager.executor();
-        Ok(Self {
-            context: CliContext { task_executor },
-            task_manager,
-            tokio_runtime,
-        })
+        Ok(Self { context: CliContext { task_executor }, task_manager, tokio_runtime })
     }
 }
 
@@ -102,9 +94,7 @@ pub struct CliContext {
 /// Creates a new default tokio multi-thread [Runtime](tokio::runtime::Runtime) with all features
 /// enabled
 pub fn tokio_runtime() -> Result<tokio::runtime::Runtime, std::io::Error> {
-    tokio::runtime::Builder::new_multi_thread()
-        .enable_all()
-        .build()
+    tokio::runtime::Builder::new_multi_thread().enable_all().build()
 }
 
 /// Runs the given future to completion or until a critical task panicked

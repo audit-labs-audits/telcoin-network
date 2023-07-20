@@ -5,8 +5,8 @@ use execution_db::{
     tables,
     transaction::{DbTx, DbTxGAT},
 };
-use execution_primitives::{trie::Nibbles, Account, StorageEntry, H256, U256};
 use std::collections::{HashMap, HashSet};
+use tn_types::execution::{trie::Nibbles, Account, StorageEntry, H256, U256};
 
 /// The post state account storage with hashed slots.
 #[derive(Debug, Clone, Eq, PartialEq)]
@@ -564,8 +564,8 @@ where
 #[cfg(test)]
 mod tests {
     use super::*;
-    use proptest::prelude::*;
     use execution_db::{database::Database, test_utils::create_test_rw_db, transaction::DbTxMut};
+    use proptest::prelude::*;
     use std::collections::BTreeMap;
 
     fn assert_account_cursor_order<'a, 'b>(

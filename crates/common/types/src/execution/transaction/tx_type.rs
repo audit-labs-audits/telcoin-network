@@ -1,4 +1,4 @@
-use crate::execution ::U8;
+use crate::execution::U8;
 use execution_codecs::{derive_arbitrary, Compact};
 use serde::{Deserialize, Serialize};
 

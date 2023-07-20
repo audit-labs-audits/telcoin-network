@@ -1,5 +1,4 @@
-use std::path::PathBuf;
-use std::env::VarError; 
+use std::{env::VarError, path::PathBuf};
 
 /// Parses a user-specified path with support for environment variables and common shorthands (e.g.
 /// ~ for the user's home directory).

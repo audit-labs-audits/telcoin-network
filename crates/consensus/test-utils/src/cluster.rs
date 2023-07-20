@@ -2,29 +2,32 @@
 // Copyright (c) Mysten Labs, Inc.
 // SPDX-License-Identifier: Apache-2.0
 use crate::{temp_dir, CommitteeFixture};
-use tn_types::consensus::config::{AuthorityIdentifier, Committee, Parameters, WorkerCache, WorkerId};
-use tn_types::consensus::crypto::{KeyPair, NetworkKeyPair, PublicKey};
-use lattice_executor::SerializedTransaction;
-use fastcrypto::traits::KeyPair as _;
-use itertools::Itertools;
 use consensus_metrics::RegistryService;
 use consensus_network::multiaddr::Multiaddr;
+use fastcrypto::traits::KeyPair as _;
+use itertools::Itertools;
+use lattice_executor::SerializedTransaction;
 use lattice_network::client::NetworkClient;
-use lattice_node::primary_node::PrimaryNode;
-use lattice_node::worker_node::WorkerNode;
-use lattice_node::{execution_state::SimpleExecutionState, metrics::worker_metrics_registry};
+use lattice_node::{
+    execution_state::SimpleExecutionState, metrics::worker_metrics_registry,
+    primary_node::PrimaryNode, worker_node::WorkerNode,
+};
+use lattice_storage::NodeStorage;
+use lattice_worker::TrivialTransactionValidator;
 use prometheus::{proto::Metric, Registry};
 use std::{cell::RefCell, collections::HashMap, path::PathBuf, rc::Rc, sync::Arc, time::Duration};
-use lattice_storage::NodeStorage;
 use telemetry_subscribers::TelemetryGuards;
+use tn_types::consensus::{
+    config::{AuthorityIdentifier, Committee, Parameters, WorkerCache, WorkerId},
+    crypto::{KeyPair, NetworkKeyPair, PublicKey},
+    ConfigurationClient, ProposerClient, TransactionsClient,
+};
 use tokio::{
     sync::{broadcast::Sender, mpsc::channel, RwLock},
     task::JoinHandle,
 };
 use tonic::transport::Channel;
 use tracing::info;
-use tn_types::consensus::{ConfigurationClient, ProposerClient, TransactionsClient};
-use lattice_worker::TrivialTransactionValidator;
 
 #[cfg(test)]
 #[path = "tests/cluster_tests.rs"]
@@ -79,13 +82,7 @@ impl Cluster {
             nodes.insert(id, authority);
         }
 
-        Self {
-            fixture,
-            authorities: nodes,
-            committee,
-            worker_cache,
-            parameters: params,
-        }
+        Self { fixture, authorities: nodes, committee, worker_cache, parameters: params }
     }
 
     /// Starts a cluster by the defined number of authorities. The authorities
@@ -160,9 +157,7 @@ impl Cluster {
         // start the workers
         if let Some(workers) = workers_per_authority {
             for worker_id in 0..workers {
-                authority
-                    .start_worker(worker_id as WorkerId, preserve_store)
-                    .await;
+                authority.start_worker(worker_id as WorkerId, preserve_store).await;
             }
         } else {
             authority.start_all_workers(preserve_store).await;
@@ -218,10 +213,8 @@ impl Cluster {
         commit_threshold: u64,
     ) -> HashMap<usize, u64> {
         let r = self.authorities_latest_commit_round().await;
-        let rounds: HashMap<usize, u64> = r
-            .into_iter()
-            .map(|(key, value)| (key, value as u64))
-            .collect();
+        let rounds: HashMap<usize, u64> =
+            r.into_iter().map(|(key, value)| (key, value as u64)).collect();
 
         assert_eq!(
             rounds.len(),
@@ -231,14 +224,11 @@ impl Cluster {
         assert!(rounds.values().all(|v| v > &1), "All nodes are available so all should have made progress and committed at least after the first round");
 
         if expected_nodes == 0 {
-            return HashMap::new();
+            return HashMap::new()
         }
 
         let (min, max) = rounds.values().minmax().into_option().unwrap();
-        assert!(
-            max - min <= commit_threshold,
-            "Nodes shouldn't be that behind"
-        );
+        assert!(max - min <= commit_threshold, "Nodes shouldn't be that behind");
 
         rounds
     }
@@ -304,11 +294,8 @@ impl PrimaryNodeDetails {
 
         let registry_service = RegistryService::new(Registry::new());
 
-        let node = PrimaryNode::new(
-            parameters.clone(),
-            internal_consensus_enabled,
-            registry_service,
-        );
+        let node =
+            PrimaryNode::new(parameters.clone(), internal_consensus_enabled, registry_service);
 
         Self {
             id,
@@ -342,17 +329,9 @@ impl PrimaryNodeDetails {
         }
 
         // Make the data store.
-        let store_path = if preserve_store {
-            self.store_path.clone()
-        } else {
-            temp_dir()
-        };
+        let store_path = if preserve_store { self.store_path.clone() } else { temp_dir() };
 
-        info!(
-            "Primary Node {} will use path {:?}",
-            self.id,
-            store_path.clone()
-        );
+        info!("Primary Node {} will use path {:?}", self.id, store_path.clone());
 
         // The channel returning the result for each transaction's execution.
         let (tx_transaction_confirmation, mut rx_transaction_confirmation) = channel(100);
@@ -453,20 +432,13 @@ impl WorkerNodeDetails {
         preserve_store: bool,
     ) {
         if self.is_running().await {
-            panic!(
-                "Worker with id {} is already running, can't start again",
-                self.id
-            );
+            panic!("Worker with id {} is already running, can't start again", self.id);
         }
 
         let registry = worker_metrics_registry(self.id, self.name);
 
         // Make the data store.
-        let store_path = if preserve_store {
-            self.store_path.clone()
-        } else {
-            temp_dir()
-        };
+        let store_path = if preserve_store { self.store_path.clone() } else { temp_dir() };
 
         let worker_store = NodeStorage::reopen(store_path.clone(), None);
 
@@ -570,19 +542,9 @@ impl AuthorityDetails {
             workers.insert(worker_id, worker);
         }
 
-        let internal = AuthorityDetailsInternal {
-            primary,
-            worker_keypairs,
-            workers,
-        };
+        let internal = AuthorityDetailsInternal { primary, worker_keypairs, workers };
 
-        Self {
-            id,
-            public_key,
-            name,
-            client,
-            internal: Arc::new(RwLock::new(internal)),
-        }
+        Self { id, public_key, name, client, internal: Arc::new(RwLock::new(internal)) }
     }
 
     /// Starts the node's primary and workers. If the num_of_workers is provided
@@ -611,10 +573,7 @@ impl AuthorityDetails {
     pub async fn start_primary(&self, preserve_store: bool) {
         let mut internal = self.internal.write().await;
 
-        internal
-            .primary
-            .start(self.client.clone(), preserve_store)
-            .await;
+        internal.primary.start(self.client.clone(), preserve_store).await;
     }
 
     pub async fn stop_primary(&self) {
@@ -625,17 +584,12 @@ impl AuthorityDetails {
 
     pub async fn start_all_workers(&self, preserve_store: bool) {
         let mut internal = self.internal.write().await;
-        let worker_keypairs = internal
-            .worker_keypairs
-            .iter()
-            .map(|kp| kp.copy())
-            .collect::<Vec<NetworkKeyPair>>();
+        let worker_keypairs =
+            internal.worker_keypairs.iter().map(|kp| kp.copy()).collect::<Vec<NetworkKeyPair>>();
 
         for (id, worker) in internal.workers.iter_mut() {
             let keypair = worker_keypairs.get(*id as usize).unwrap().copy();
-            worker
-                .start(keypair, self.client.clone(), preserve_store)
-                .await;
+            worker.start(keypair, self.client.clone(), preserve_store).await;
         }
     }
 
@@ -651,9 +605,7 @@ impl AuthorityDetails {
             .get_mut(&id)
             .unwrap_or_else(|| panic!("Worker with id {} not found ", id));
 
-        worker
-            .start(keypair, self.client.clone(), preserve_store)
-            .await;
+        worker.start(keypair, self.client.clone(), preserve_store).await;
     }
 
     pub async fn stop_worker(&self, id: WorkerId) {
@@ -722,11 +674,7 @@ impl AuthorityDetails {
     /// Important: only the addresses of the running workers will
     /// be returned.
     pub async fn worker_transaction_addresses(&self) -> Vec<Multiaddr> {
-        self.workers()
-            .await
-            .iter()
-            .map(|w| w.transactions_address.clone())
-            .collect()
+        self.workers().await.iter().map(|w| w.transactions_address.clone()).collect()
     }
 
     /// Returns all the running workers
@@ -776,13 +724,7 @@ impl AuthorityDetails {
 
         let config = consensus_network::config::Config::new();
         let channel = config
-            .connect_lazy(
-                &internal
-                    .workers
-                    .get(worker_id)
-                    .unwrap()
-                    .transactions_address,
-            )
+            .connect_lazy(&internal.workers.get(worker_id).unwrap().transactions_address)
             .unwrap();
 
         TransactionsClient::new(channel)
@@ -815,12 +757,12 @@ impl AuthorityDetails {
         let internal = self.internal.read().await;
 
         if internal.primary.is_running().await {
-            return true;
+            return true
         }
 
         for (_, worker) in internal.workers.iter() {
             if worker.is_running().await {
-                return true;
+                return true
             }
         }
         false

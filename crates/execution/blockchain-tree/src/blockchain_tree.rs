@@ -15,10 +15,6 @@ use execution_interfaces::{
     executor::{BlockExecutionError, BlockValidationError},
     Error,
 };
-use execution_primitives::{
-    BlockHash, BlockNumHash, BlockNumber, ForkBlock, Hardfork, Receipt, SealedBlock,
-    SealedBlockWithSenders, SealedHeader, U256,
-};
 use execution_provider::{
     chain::{ChainSplit, SplitAt},
     post_state::PostState,
@@ -30,6 +26,10 @@ use execution_stages::{MetricEvent, MetricEventsSender};
 use std::{
     collections::{BTreeMap, HashMap},
     sync::Arc,
+};
+use tn_types::execution::{
+    BlockHash, BlockNumHash, BlockNumber, ForkBlock, Hardfork, Receipt, SealedBlock,
+    SealedBlockWithSenders, SealedHeader, U256,
 };
 use tracing::{debug, error, info, instrument, trace, warn};
 
@@ -1105,18 +1105,18 @@ mod tests {
     use super::*;
     use crate::block_buffer::BufferedBlocks;
     use assert_matches::assert_matches;
-    use linked_hash_set::LinkedHashSet;
     use execution_db::{test_utils::create_test_rw_db, transaction::DbTxMut, DatabaseEnv};
     use execution_interfaces::test_utils::TestConsensus;
-    use execution_primitives::{
-        proofs::EMPTY_ROOT, stage::StageCheckpoint, ChainSpecBuilder, H256, MAINNET,
-    };
     use execution_provider::{
         post_state::PostState,
         test_utils::{blocks::BlockChainTestData, TestExecutorFactory},
         BlockWriter, ProviderFactory,
     };
+    use linked_hash_set::LinkedHashSet;
     use std::{collections::HashSet, sync::Arc};
+    use tn_types::execution::{
+        proofs::EMPTY_ROOT, stage::StageCheckpoint, ChainSpecBuilder, H256, MAINNET,
+    };
 
     fn setup_externals(
         exec_res: Vec<PostState>,

@@ -1,14 +1,15 @@
 // Copyright (c) Telcoin, LLC
 // Copyright (c) Mysten Labs, Inc.
 // SPDX-License-Identifier: Apache-2.0
-use std::num::NonZeroUsize;
-use tn_types::consensus::config::AuthorityIdentifier;
-use std::sync::Arc;
 use lattice_storage::{CertificateStore, CertificateStoreCache, ConsensusStore};
-use lattice_typed_store::rocks::MetricConf;
-use lattice_typed_store::{reopen, rocks, rocks::DBMap, rocks::ReadWriteOptions};
+use lattice_typed_store::{
+    reopen, rocks,
+    rocks::{DBMap, MetricConf, ReadWriteOptions},
+};
+use std::{num::NonZeroUsize, sync::Arc};
 use tn_types::consensus::{
-    Certificate, CertificateDigest, CommittedSubDagShell, ConsensusCommit, Round, SequenceNumber,
+    config::AuthorityIdentifier, Certificate, CertificateDigest, CommittedSubDagShell,
+    ConsensusCommit, Round, SequenceNumber,
 };
 
 pub(crate) const NUM_SUB_DAGS_PER_SCHEDULE: u64 = 100;
@@ -32,11 +33,7 @@ pub fn make_consensus_store(store_path: &std::path::Path) -> Arc<ConsensusStore>
         COMMITTED_SUB_DAG_CF;<SequenceNumber, ConsensusCommit>
     );
 
-    Arc::new(ConsensusStore::new(
-        last_committed_map,
-        sequence_map,
-        committed_sub_dag_map,
-    ))
+    Arc::new(ConsensusStore::new(last_committed_map, sequence_map, committed_sub_dag_map))
 }
 
 pub fn make_certificate_store(store_path: &std::path::Path) -> CertificateStore {
@@ -48,11 +45,7 @@ pub fn make_certificate_store(store_path: &std::path::Path) -> CertificateStore 
         store_path,
         None,
         MetricConf::default(),
-        &[
-            CERTIFICATES_CF,
-            CERTIFICATE_DIGEST_BY_ROUND_CF,
-            CERTIFICATE_DIGEST_BY_ORIGIN_CF,
-        ],
+        &[CERTIFICATES_CF, CERTIFICATE_DIGEST_BY_ROUND_CF, CERTIFICATE_DIGEST_BY_ORIGIN_CF],
     )
     .expect("Failed creating database");
 

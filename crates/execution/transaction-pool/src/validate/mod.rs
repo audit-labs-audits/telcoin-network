@@ -5,10 +5,10 @@ use crate::{
     identifier::{SenderId, TransactionId},
     traits::{PoolTransaction, TransactionOrigin},
 };
-use execution_primitives::{
+use std::{fmt, time::Instant};
+use tn_types::execution::{
     Address, IntoRecoveredTransaction, TransactionKind, TransactionSignedEcRecovered, TxHash, U256,
 };
-use std::{fmt, time::Instant};
 
 mod eth;
 mod task;
@@ -72,8 +72,8 @@ pub trait TransactionValidator: Send + Sync {
     ///    * nonce >= next nonce of the sender
     ///    * ...
     ///
-    /// See [InvalidTransactionError](execution_primitives::InvalidTransactionError) for common errors
-    /// variants.
+    /// See [InvalidTransactionError](tn_types::execution::InvalidTransactionError) for common
+    /// errors variants.
     ///
     /// The transaction pool makes no additional assumptions about the validity of the transaction
     /// at the time of this call before it inserts it into the pool. However, the validity of

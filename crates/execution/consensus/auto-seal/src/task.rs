@@ -2,7 +2,7 @@ use crate::{mode::MiningMode, Storage};
 use futures_util::{future::BoxFuture, FutureExt, StreamExt};
 use execution_beacon_consensus::BeaconEngineMessage;
 use execution_interfaces::consensus::ForkchoiceState;
-use execution_primitives::{
+use tn_types::execution::{
     constants::{EMPTY_RECEIPTS, EMPTY_TRANSACTIONS, ETHEREUM_BLOCK_GAS_LIMIT},
     proofs,
     stage::StageId,

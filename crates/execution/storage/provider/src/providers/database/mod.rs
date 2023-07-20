@@ -7,19 +7,19 @@ use crate::{
 };
 use execution_db::{database::Database, init_db, models::StoredBlockBodyIndices, DatabaseEnv};
 use execution_interfaces::Result;
-use execution_primitives::{
+use execution_revm_primitives::primitives::{BlockEnv, CfgEnv};
+use std::{ops::RangeBounds, sync::Arc};
+use tn_types::execution::{
     stage::{StageCheckpoint, StageId},
     Address, Block, BlockHash, BlockHashOrNumber, BlockNumber, BlockWithSenders, ChainInfo,
     ChainSpec, Header, Receipt, SealedBlock, SealedHeader, TransactionMeta, TransactionSigned,
     TransactionSignedNoHash, TxHash, TxNumber, Withdrawal, H256, U256,
 };
-use execution_revm_primitives::primitives::{BlockEnv, CfgEnv};
-use std::{ops::RangeBounds, sync::Arc};
 use tracing::trace;
 
 mod provider;
-pub use provider::{DatabaseProvider, DatabaseProviderRO, DatabaseProviderRW};
 use execution_interfaces::db::LogLevel;
+pub use provider::{DatabaseProvider, DatabaseProviderRO, DatabaseProviderRW};
 
 /// A common provider that fetches data from a database.
 ///
@@ -364,8 +364,8 @@ mod tests {
         test_utils::{create_test_rw_db, ERROR_TEMPDIR},
         DatabaseEnv,
     };
-    use execution_primitives::{ChainSpecBuilder, H256};
     use std::sync::Arc;
+    use tn_types::execution::{ChainSpecBuilder, H256};
 
     #[test]
     fn common_history_provider() {

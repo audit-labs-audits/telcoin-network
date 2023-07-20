@@ -83,10 +83,7 @@ impl Classifier for StatusInRangeAsFailures {
 #[derive(Debug)]
 pub enum StatusInRangeFailureClass {
     /// A response was classified as a failure with the corresponding status.
-    StatusCode {
-        code: StatusCode,
-        status_message: Option<String>,
-    },
+    StatusCode { code: StatusCode, status_message: Option<String> },
     /// A response was classified as an error with the corresponding error description.
     Error(String),
 }
@@ -94,10 +91,7 @@ pub enum StatusInRangeFailureClass {
 impl fmt::Display for StatusInRangeFailureClass {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match self {
-            Self::StatusCode {
-                code,
-                status_message,
-            } => {
+            Self::StatusCode { code, status_message } => {
                 write!(f, "Status code: {code}")?;
                 if let Some(status_message) = status_message {
                     write!(f, " {status_message}")?;

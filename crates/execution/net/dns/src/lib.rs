@@ -21,7 +21,6 @@ use crate::{
 pub use config::DnsDiscoveryConfig;
 use enr::Enr;
 use error::ParseDnsEntryError;
-use execution_primitives::{ForkId, NodeRecord, PeerId};
 use schnellru::{ByLength, LruMap};
 use secp256k1::SecretKey;
 use std::{
@@ -33,6 +32,7 @@ use std::{
     time::{Duration, Instant},
 };
 use sync::SyncTree;
+use tn_types::execution::{ForkId, NodeRecord, PeerId};
 use tokio::{
     sync::{
         mpsc,
@@ -407,10 +407,10 @@ mod tests {
     use super::*;
     use crate::tree::TreeRootEntry;
     use enr::{EnrBuilder, EnrKey};
-    use execution_primitives::{Chain, Hardfork, MAINNET};
     use execution_rlp::Encodable;
     use secp256k1::rand::thread_rng;
     use std::{future::poll_fn, net::Ipv4Addr};
+    use tn_types::execution::{Chain, Hardfork, MAINNET};
     use tokio_stream::StreamExt;
 
     #[tokio::test]

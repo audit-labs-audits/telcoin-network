@@ -90,13 +90,8 @@ mod tests {
 
         let mut svc = ServiceBuilder::new().layer(callback_layer).service_fn(echo);
 
-        let _res = svc
-            .ready()
-            .await
-            .unwrap()
-            .call(Request::new(Bytes::from("foobar")))
-            .await
-            .unwrap();
+        let _res =
+            svc.ready().await.unwrap().call(Request::new(Bytes::from("foobar"))).await.unwrap();
 
         assert_eq!(1, request_count.load(Ordering::SeqCst), "request");
         assert_eq!(1, response_count.load(Ordering::SeqCst), "response");

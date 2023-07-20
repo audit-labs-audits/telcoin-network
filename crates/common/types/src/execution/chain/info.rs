@@ -1,4 +1,4 @@
-use crate::execution ::{BlockNumber, H256};
+use crate::execution::{BlockNumber, H256};
 
 /// Current status of the blockchain's head.
 #[derive(Default, Clone, Debug, Eq, PartialEq)]

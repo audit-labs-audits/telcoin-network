@@ -1,9 +1,9 @@
 use crate::{blockchain_tree::error::InsertBlockError, Error};
-use execution_primitives::{
+use std::collections::{BTreeMap, HashSet};
+use tn_types::execution::{
     BlockHash, BlockNumHash, BlockNumber, Receipt, SealedBlock, SealedBlockWithSenders,
     SealedHeader,
 };
-use std::collections::{BTreeMap, HashSet};
 
 pub mod error;
 

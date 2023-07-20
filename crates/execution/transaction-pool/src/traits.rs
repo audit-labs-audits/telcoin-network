@@ -4,18 +4,18 @@ use crate::{
     validate::ValidPoolTransaction,
     AllTransactionsEvents,
 };
-use futures_util::{ready, Stream};
-use execution_primitives::{
-    Address, FromRecoveredTransaction, IntoRecoveredTransaction, PeerId, Transaction,
-    TransactionKind, TransactionSignedEcRecovered, TxHash, EIP1559_TX_TYPE_ID, H256, U256,
-};
 use execution_rlp::Encodable;
+use futures_util::{ready, Stream};
 use std::{
     collections::HashMap,
     fmt,
     pin::Pin,
     sync::Arc,
     task::{Context, Poll},
+};
+use tn_types::execution::{
+    Address, FromRecoveredTransaction, IntoRecoveredTransaction, PeerId, Transaction,
+    TransactionKind, TransactionSignedEcRecovered, TxHash, EIP1559_TX_TYPE_ID, H256, U256,
 };
 use tokio::sync::mpsc::Receiver;
 

@@ -28,9 +28,9 @@ impl rustls::server::ClientCertVerifier for CertVerifier {
     }
 
     // Verifies this is a valid ed25519 self-signed certificate
-    // 1. we prepare arguments for webpki's certificate verification (following the rustls implementation)
-    //    placing the public key at the root of the certificate chain (as it should be for a self-signed certificate)
-    // 2. we call webpki's certificate verification
+    // 1. we prepare arguments for webpki's certificate verification (following the rustls
+    // implementation)    placing the public key at the root of the certificate chain (as it
+    // should be for a self-signed certificate) 2. we call webpki's certificate verification
     fn verify_client_cert(
         &self,
         end_entity: &rustls::Certificate,
@@ -69,9 +69,9 @@ impl rustls::server::ClientCertVerifier for CertVerifier {
 
 impl rustls::client::ServerCertVerifier for CertVerifier {
     // Verifies this is a valid ed25519 self-signed certificate
-    // 1. we prepare arguments for webpki's certificate verification (following the rustls implementation)
-    //    placing the public key at the root of the certificate chain (as it should be for a self-signed certificate)
-    // 2. we call webpki's certificate verification
+    // 1. we prepare arguments for webpki's certificate verification (following the rustls
+    // implementation)    placing the public key at the root of the certificate chain (as it
+    // should be for a self-signed certificate) 2. we call webpki's certificate verification
     fn verify_server_cert(
         &self,
         end_entity: &rustls::Certificate,
@@ -97,15 +97,13 @@ impl rustls::client::ServerCertVerifier for CertVerifier {
         // Client server_name needs to match one of our server_names
         self.server_names
             .iter()
-            .find(
-                |name| match webpki::DnsNameRef::try_from_ascii_str(name.as_ref()) {
-                    Ok(dns_name_ref) => dns_name_ref.as_ref() == dns_nameref.as_ref(),
-                    Err(_) => {
-                        tracing::error!("invalid dns name: {:?}", name);
-                        false
-                    }
-                },
-            )
+            .find(|name| match webpki::DnsNameRef::try_from_ascii_str(name.as_ref()) {
+                Ok(dns_name_ref) => dns_name_ref.as_ref() == dns_nameref.as_ref(),
+                Err(_) => {
+                    tracing::error!("invalid dns name: {:?}", name);
+                    false
+                }
+            })
             .ok_or(rustls::Error::UnsupportedNameType)?;
 
         // Step 2: call verification from webpki
@@ -131,9 +129,9 @@ pub(crate) struct ExpectedCertVerifier(pub(crate) CertVerifier, pub(crate) PeerI
 impl rustls::client::ServerCertVerifier for ExpectedCertVerifier {
     // Verifies this is a valid certificate self-signed by the public key we expect(in PSK)
     // 1. we check the equality of the certificate's public key with the key we expect
-    // 2. we prepare arguments for webpki's certificate verification (following the rustls implementation)
-    //    placing the public key at the root of the certificate chain (as it should be for a self-signed certificate)
-    // 3. we call webpki's certificate verification
+    // 2. we prepare arguments for webpki's certificate verification (following the rustls
+    // implementation)    placing the public key at the root of the certificate chain (as it
+    // should be for a self-signed certificate) 3. we call webpki's certificate verification
     fn verify_server_cert(
         &self,
         end_entity: &rustls::Certificate,
@@ -147,35 +145,25 @@ impl rustls::client::ServerCertVerifier for ExpectedCertVerifier {
         let peer_id = peer_id_from_certificate(end_entity)?;
 
         if peer_id != self.1 {
-            return Err(rustls::Error::InvalidCertificate(
-                rustls::CertificateError::Other(Arc::new(AsStdError::from(anyhow!(
+            return Err(rustls::Error::InvalidCertificate(rustls::CertificateError::Other(
+                Arc::new(AsStdError::from(anyhow!(
                     "invalid peer certificate: received {:?} instead of expected {:?}",
                     peer_id,
                     self.1,
-                )))),
-            ));
+                ))),
+            )))
         }
 
         // Delegate steps 2 and 3 to CertVerifier's impl
-        self.0.verify_server_cert(
-            end_entity,
-            intermediates,
-            server_name,
-            scts,
-            ocsp_response,
-            now,
-        )
+        self.0.verify_server_cert(end_entity, intermediates, server_name, scts, ocsp_response, now)
     }
 }
 
-type CertChainAndRoots<'a> = (
-    webpki::EndEntityCert<'a>,
-    Vec<&'a [u8]>,
-    Vec<webpki::TrustAnchor<'a>>,
-);
+type CertChainAndRoots<'a> =
+    (webpki::EndEntityCert<'a>, Vec<&'a [u8]>, Vec<webpki::TrustAnchor<'a>>);
 
-// This prepares arguments for webpki, including a trust anchor which is the end entity of the certificate
-// (which embodies a self-signed certificate by definition)
+// This prepares arguments for webpki, including a trust anchor which is the end entity of the
+// certificate (which embodies a self-signed certificate by definition)
 fn prepare_for_self_signed<'a>(
     end_entity: &'a rustls::Certificate,
     intermediates: &'a [rustls::Certificate],
@@ -197,9 +185,9 @@ fn pki_error(error: webpki::Error) -> rustls::Error {
         BadDer | BadDerTime => {
             rustls::Error::InvalidCertificate(rustls::CertificateError::BadEncoding)
         }
-        InvalidSignatureForPublicKey
-        | UnsupportedSignatureAlgorithm
-        | UnsupportedSignatureAlgorithmForPublicKey => {
+        InvalidSignatureForPublicKey |
+        UnsupportedSignatureAlgorithm |
+        UnsupportedSignatureAlgorithmForPublicKey => {
             rustls::Error::InvalidCertificate(rustls::CertificateError::BadSignature)
         }
         e => rustls::Error::InvalidCertificate(rustls::CertificateError::Other(Arc::new(

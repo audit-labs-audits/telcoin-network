@@ -51,9 +51,7 @@ impl MetricsCallbackProvider for EndpointMetrics {
         self.requests_by_route.with_label_values(&labels).inc();
 
         let req_latency_secs = latency.as_secs_f64();
-        self.req_latency_by_route
-            .with_label_values(&labels)
-            .observe(req_latency_secs);
+        self.req_latency_by_route.with_label_values(&labels).observe(req_latency_secs);
     }
 }
 

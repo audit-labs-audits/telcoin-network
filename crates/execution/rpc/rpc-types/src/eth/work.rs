@@ -1,9 +1,9 @@
-use execution_primitives::{H256, U256};
 use serde::{
     de::{Error, SeqAccess, Visitor},
     Deserialize, Deserializer, Serialize, Serializer,
 };
 use std::fmt;
+use tn_types::execution::{H256, U256};
 
 /// The result of an `eth_getWork` request
 #[derive(Clone, Debug, PartialEq, Eq, Default)]

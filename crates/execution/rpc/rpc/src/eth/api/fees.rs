@@ -5,12 +5,12 @@ use crate::{
     EthApi,
 };
 use execution_network_api::NetworkInfo;
-use execution_primitives::{
-    basefee::calculate_next_block_base_fee, BlockNumberOrTag, SealedHeader, U256,
-};
 use execution_provider::{BlockReaderIdExt, EvmEnvProvider, StateProviderFactory};
 use execution_rpc_types::{FeeHistory, TxGasAndReward};
 use execution_transaction_pool::TransactionPool;
+use tn_types::execution::{
+    basefee::calculate_next_block_base_fee, BlockNumberOrTag, SealedHeader, U256,
+};
 use tracing::debug;
 
 impl<Provider, Pool, Network> EthApi<Provider, Pool, Network>

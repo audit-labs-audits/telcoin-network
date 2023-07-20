@@ -5,14 +5,13 @@ use crate::{
     session::{Direction, PendingSessionHandshakeError, SessionEvent, SessionId, SessionManager},
     state::{NetworkState, StateAction},
 };
-use futures::Stream;
 use execution_eth_wire::{
     capability::{Capabilities, CapabilityMessage},
     errors::EthStreamError,
     DisconnectReason, EthVersion, Status,
 };
-use execution_primitives::PeerId;
 use execution_provider::BlockReader;
+use futures::Stream;
 use std::{
     io,
     net::SocketAddr,
@@ -20,6 +19,7 @@ use std::{
     sync::Arc,
     task::{Context, Poll},
 };
+use tn_types::execution::PeerId;
 use tracing::{debug, trace};
 
 /// Contains the connectivity related state of the network.

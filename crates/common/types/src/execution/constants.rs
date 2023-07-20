@@ -1,6 +1,6 @@
 //! Ethereum protocol-related constants
 
-use crate::execution ::{H256, U256};
+use crate::execution::{H256, U256};
 use hex_literal::hex;
 use std::time::Duration;
 

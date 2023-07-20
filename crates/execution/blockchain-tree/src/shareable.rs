@@ -1,6 +1,5 @@
 //! Wrapper around BlockchainTree that allows for it to be shared.
 use super::BlockchainTree;
-use parking_lot::RwLock;
 use execution_db::database::Database;
 use execution_interfaces::{
     blockchain_tree::{
@@ -10,17 +9,18 @@ use execution_interfaces::{
     consensus::Consensus,
     Error,
 };
-use execution_primitives::{
-    BlockHash, BlockNumHash, BlockNumber, Receipt, SealedBlock, SealedBlockWithSenders,
-    SealedHeader,
-};
 use execution_provider::{
     BlockchainTreePendingStateProvider, CanonStateSubscriptions, ExecutorFactory,
     PostStateDataProvider,
 };
+use parking_lot::RwLock;
 use std::{
     collections::{BTreeMap, HashSet},
     sync::Arc,
+};
+use tn_types::execution::{
+    BlockHash, BlockNumHash, BlockNumber, Receipt, SealedBlock, SealedBlockWithSenders,
+    SealedHeader,
 };
 use tracing::trace;
 

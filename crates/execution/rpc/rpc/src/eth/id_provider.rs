@@ -41,7 +41,7 @@ fn to_quantity(val: u128) -> SubscriptionId<'static> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use execution_primitives::U128;
+    use tn_types::execution::U128;
 
     #[test]
     fn test_id_provider_quantity() {

@@ -15,9 +15,9 @@
 //! - `serde` (default): Enable serde support
 use async_trait::async_trait;
 use execution_eth_wire::DisconnectReason;
-use execution_primitives::{NodeRecord, PeerId};
 use execution_rpc_types::NetworkStatus;
 use std::net::SocketAddr;
+use tn_types::execution::{NodeRecord, PeerId};
 
 pub use error::NetworkError;
 pub use reputation::{Reputation, ReputationChangeKind};

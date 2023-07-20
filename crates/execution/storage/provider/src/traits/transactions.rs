@@ -1,10 +1,10 @@
 use crate::BlockNumReader;
 use execution_interfaces::Result;
-use execution_primitives::{
+use std::ops::RangeBounds;
+use tn_types::execution::{
     Address, BlockHashOrNumber, BlockNumber, TransactionMeta, TransactionSigned,
     TransactionSignedNoHash, TxHash, TxNumber,
 };
-use std::ops::RangeBounds;
 
 ///  Client trait for fetching [TransactionSigned] related data.
 #[auto_impl::auto_impl(&, Arc)]

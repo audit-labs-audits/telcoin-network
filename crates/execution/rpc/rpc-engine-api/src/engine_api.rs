@@ -1,17 +1,17 @@
 use crate::{EngineApiError, EngineApiMessageVersion, EngineApiResult};
 use async_trait::async_trait;
-use jsonrpsee_core::RpcResult;
 use execution_beacon_consensus::BeaconConsensusEngineHandle;
 use execution_interfaces::consensus::ForkchoiceState;
 use execution_payload_builder::PayloadStore;
-use execution_primitives::{BlockHash, BlockHashOrNumber, BlockNumber, ChainSpec, Hardfork, U64};
 use execution_provider::{BlockReader, EvmEnvProvider, HeaderProvider, StateProviderFactory};
 use execution_rpc_api::EngineApiServer;
 use execution_rpc_types::engine::{
     ExecutionPayload, ExecutionPayloadBodies, ExecutionPayloadEnvelope, ForkchoiceUpdated,
     PayloadAttributes, PayloadId, PayloadStatus, TransitionConfiguration, CAPABILITIES,
 };
+use jsonrpsee_core::RpcResult;
 use std::sync::Arc;
+use tn_types::execution::{BlockHash, BlockHashOrNumber, BlockNumber, ChainSpec, Hardfork, U64};
 use tokio::sync::oneshot;
 use tracing::trace;
 
@@ -437,9 +437,9 @@ mod tests {
     use execution_beacon_consensus::BeaconEngineMessage;
     use execution_interfaces::test_utils::generators::random_block;
     use execution_payload_builder::test_utils::spawn_test_payload_service;
-    use execution_primitives::{SealedBlock, H256, MAINNET};
     use execution_provider::test_utils::MockEthProvider;
     use std::sync::Arc;
+    use tn_types::execution::{SealedBlock, H256, MAINNET};
     use tokio::sync::mpsc::{unbounded_channel, UnboundedReceiver};
 
     fn setup_engine_api() -> (EngineApiTestHandle, EngineApi<Arc<MockEthProvider>>) {
@@ -571,7 +571,7 @@ mod tests {
     mod exchange_transition_configuration {
         use super::*;
         use execution_interfaces::test_utils::generators;
-        use execution_primitives::U256;
+        use tn_types::execution::U256;
 
         #[tokio::test]
         async fn terminal_td_mismatch() {

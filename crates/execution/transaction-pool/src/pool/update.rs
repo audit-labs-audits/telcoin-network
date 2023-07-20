@@ -1,6 +1,6 @@
 //! Support types for updating the pool.
 use crate::{identifier::TransactionId, pool::state::SubPool};
-use execution_primitives::TxHash;
+use tn_types::execution::TxHash;
 
 /// A change of the transaction's location
 ///

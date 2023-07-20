@@ -7,9 +7,9 @@ use crate::{
     },
     EthApi,
 };
-use execution_primitives::{BlockId, BlockNumberOrTag, TransactionMeta};
 use execution_provider::{BlockReaderIdExt, EvmEnvProvider, StateProviderFactory};
 use execution_rpc_types::{Block, Index, RichBlock, TransactionReceipt};
+use tn_types::execution::{BlockId, BlockNumberOrTag, TransactionMeta};
 
 impl<Provider, Pool, Network> EthApi<Provider, Pool, Network>
 where
@@ -21,7 +21,7 @@ where
     pub(crate) fn ommers(
         &self,
         block_id: impl Into<BlockId>,
-    ) -> EthResult<Option<Vec<execution_primitives::Header>>> {
+    ) -> EthResult<Option<Vec<tn_types::execution::Header>>> {
         let block_id = block_id.into();
         Ok(self.provider().ommers_by_id(block_id)?)
     }
@@ -116,7 +116,7 @@ where
     pub(crate) async fn block(
         &self,
         block_id: impl Into<BlockId>,
-    ) -> EthResult<Option<execution_primitives::SealedBlock>> {
+    ) -> EthResult<Option<tn_types::execution::SealedBlock>> {
         let block_id = block_id.into();
 
         if block_id.is_pending() {

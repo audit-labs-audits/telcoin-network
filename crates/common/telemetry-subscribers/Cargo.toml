@@ -1,6 +1,6 @@
 [package]
 name = "telemetry-subscribers"
-version = "0.1.0"
+version.workspace = true
 license = "Apache-2.0"
 authors = ["Evan Chan <echan@mystenlabs.com>", "Grant Kee <grant.kee@telco.in>"]
 description = "Library for common telemetry and observability functionality"

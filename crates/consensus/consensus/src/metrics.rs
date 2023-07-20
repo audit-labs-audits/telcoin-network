@@ -41,7 +41,8 @@ pub struct ConsensusMetrics {
     /// about the previous (even) round leader. We do have three possible cases which
     /// are tagged as values of the label "outcome":
     /// * not_found: the leader certificate has not been found at all
-    /// * not_enough_support: when the leader certificate has been found but there was not enough support
+    /// * not_enough_support: when the leader certificate has been found but there was not enough
+    ///   support
     /// * elected: when the leader certificate has been found and had enough support
     pub leader_election: IntCounterVec,
     /// Count leader certificates committed, and whether the leader has strong support.

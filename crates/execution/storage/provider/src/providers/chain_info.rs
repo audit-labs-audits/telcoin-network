@@ -1,5 +1,4 @@
 use parking_lot::RwLock;
-use execution_primitives::{BlockNumHash, BlockNumber, ChainInfo, SealedHeader};
 use std::{
     sync::{
         atomic::{AtomicU64, Ordering},
@@ -7,6 +6,7 @@ use std::{
     },
     time::Instant,
 };
+use tn_types::execution::{BlockNumHash, BlockNumber, ChainInfo, SealedHeader};
 
 /// Tracks the chain info: canonical head, safe block, finalized block.
 #[derive(Debug, Clone)]

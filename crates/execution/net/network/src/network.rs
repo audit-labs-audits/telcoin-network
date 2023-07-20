@@ -3,15 +3,16 @@ use crate::{
     session::PeerInfo, FetchClient,
 };
 use async_trait::async_trait;
-use parking_lot::Mutex;
-use execution_eth_wire::{DisconnectReason, NewBlock, NewPooledTransactionHashes, SharedTransactions};
+use execution_eth_wire::{
+    DisconnectReason, NewBlock, NewPooledTransactionHashes, SharedTransactions,
+};
 use execution_interfaces::sync::{NetworkSyncUpdater, SyncState, SyncStateProvider};
 use execution_net_common::bandwidth_meter::BandwidthMeter;
 use execution_network_api::{
     NetworkError, NetworkInfo, PeerKind, Peers, PeersInfo, Reputation, ReputationChangeKind,
 };
-use execution_primitives::{Head, NodeRecord, PeerId, TransactionSigned, H256};
 use execution_rpc_types::NetworkStatus;
+use parking_lot::Mutex;
 use std::{
     net::SocketAddr,
     sync::{
@@ -19,6 +20,7 @@ use std::{
         Arc,
     },
 };
+use tn_types::execution::{Head, NodeRecord, PeerId, TransactionSigned, H256};
 use tokio::sync::{mpsc, mpsc::UnboundedSender, oneshot};
 use tokio_stream::wrappers::UnboundedReceiverStream;
 

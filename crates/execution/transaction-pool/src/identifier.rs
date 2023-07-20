@@ -1,6 +1,6 @@
 use fnv::FnvHashMap;
-use execution_primitives::Address;
 use std::collections::HashMap;
+use tn_types::execution::Address;
 
 /// An internal mapping of addresses.
 ///

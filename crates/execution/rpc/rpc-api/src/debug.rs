@@ -1,5 +1,3 @@
-use jsonrpsee::{core::RpcResult, proc_macros::rpc};
-use execution_primitives::{BlockId, BlockNumberOrTag, Bytes, H256};
 use execution_rpc_types::{
     trace::geth::{
         BlockTraceResult, GethDebugTracingCallOptions, GethDebugTracingOptions, GethTrace,
@@ -7,6 +5,8 @@ use execution_rpc_types::{
     },
     CallRequest, RichBlock,
 };
+use jsonrpsee::{core::RpcResult, proc_macros::rpc};
+use tn_types::execution::{BlockId, BlockNumberOrTag, Bytes, H256};
 
 /// Debug rpc interface.
 #[cfg_attr(not(feature = "client"), rpc(server, namespace = "debug"))]

@@ -3,25 +3,29 @@
 // Copyright (c) Mysten Labs, Inc.
 // SPDX-License-Identifier: Apache-2.0
 use crate::metrics::PrimaryMetrics;
-use tn_types::consensus::config::{AuthorityIdentifier, Committee, Epoch, WorkerId};
+use consensus_metrics::{
+    metered_channel::{Receiver, Sender},
+    spawn_logged_monitored_task,
+};
 use fastcrypto::hash::Hash as _;
-use consensus_metrics::metered_channel::{Receiver, Sender};
-use consensus_metrics::spawn_logged_monitored_task;
-use std::collections::{BTreeMap, VecDeque};
-use std::{cmp::Ordering, sync::Arc};
 use lattice_storage::ProposerStore;
-use tokio::time::{sleep_until, Instant};
+use std::{
+    cmp::Ordering,
+    collections::{BTreeMap, VecDeque},
+    sync::Arc,
+};
+use tn_types::consensus::{
+    config::{AuthorityIdentifier, Committee, Epoch, WorkerId},
+    error::{DagError, DagResult},
+    now, BatchDigest, Certificate, CertificateAPI, ConditionalBroadcastReceiver, Header, HeaderAPI,
+    Round, TimestampMs,
+};
 use tokio::{
     sync::{oneshot, watch},
     task::JoinHandle,
-    time::{sleep, Duration},
+    time::{sleep, sleep_until, Duration, Instant},
 };
 use tracing::{debug, enabled, error, info, trace};
-use tn_types::consensus::{
-    error::{DagError, DagResult},
-    BatchDigest, Certificate, CertificateAPI, Header, HeaderAPI, Round, TimestampMs,
-};
-use tn_types::consensus::{now, ConditionalBroadcastReceiver};
 
 /// Messages sent to the proposer about our own batch digests
 #[derive(Debug)]
@@ -39,7 +43,8 @@ pub mod proposer_tests;
 
 const DEFAULT_HEADER_RESEND_TIMEOUT: Duration = Duration::from_secs(60);
 
-/// The proposer creates new headers and send them to the core for broadcasting and further processing.
+/// The proposer creates new headers and send them to the core for broadcasting and further
+/// processing.
 pub struct Proposer {
     /// The id of this primary.
     authority_id: AuthorityIdentifier,
@@ -63,7 +68,8 @@ pub struct Proposer {
 
     /// Receiver for shutdown.
     rx_shutdown: ConditionalBroadcastReceiver,
-    /// Receives the parents to include in the next header (along with their round number) from core.
+    /// Receives the parents to include in the next header (along with their round number) from
+    /// core.
     rx_parents: Receiver<(Vec<Certificate>, Round, Epoch)>,
     /// Receives the batches' digests from our workers.
     rx_our_digests: Receiver<OurDigestMessage>,
@@ -170,10 +176,7 @@ impl Proposer {
         let num_of_included_digests = header.payload().len();
 
         // Send the new header to the `Certifier` that will broadcast and certify it.
-        self.tx_headers
-            .send(header.clone())
-            .await
-            .map_err(|_| DagError::ShuttingDown)?;
+        self.tx_headers.send(header.clone()).await.map_err(|_| DagError::ShuttingDown)?;
 
         Ok((header, num_of_included_digests))
     }
@@ -191,7 +194,7 @@ impl Proposer {
                 // We have already produced a header for the current round, idempotent re-send
                 debug!("Proposer re-using existing header for round {this_round}");
                 self.last_parents.clear(); // Clear parents that are now invalid for next round.
-                return Ok(last_header);
+                return Ok(last_header)
             }
         }
 
@@ -203,11 +206,7 @@ impl Proposer {
         // Here we check that the timestamp we will include in the header is consistent with the
         // parents, ie our current time is *after* the timestamp in all the included headers. If
         // not we log an error and hope a kind operator fixes the clock.
-        let parent_max_time = parents
-            .iter()
-            .map(|c| *c.header().created_at())
-            .max()
-            .unwrap_or(0);
+        let parent_max_time = parents.iter().map(|c| *c.header().created_at()).max().unwrap_or(0);
         let current_time = now();
         if current_time < parent_max_time {
             let drift_ms = parent_max_time - current_time;
@@ -223,10 +222,7 @@ impl Proposer {
             self.authority_id,
             this_round,
             this_epoch,
-            header_digests
-                .iter()
-                .map(|m| (m.digest, (m.worker_id, m.timestamp)))
-                .collect(),
+            header_digests.iter().map(|m| (m.digest, (m.worker_id, m.timestamp))).collect(),
             parents.iter().map(|x| x.digest()).collect(),
         );
 
@@ -245,10 +241,7 @@ impl Proposer {
                 "odd_round_no_support"
             }
         };
-        self.metrics
-            .headers_proposed
-            .with_label_values(&[leader_and_support])
-            .inc();
+        self.metrics.headers_proposed.with_label_values(&[leader_and_support]).inc();
         self.metrics.header_parents.observe(parents.len() as f64);
 
         if enabled!(tracing::Level::TRACE) {
@@ -275,9 +268,7 @@ impl Proposer {
                     digest.worker_id,
                     batch_inclusion_secs
                 );
-            self.metrics
-                .proposer_batch_latency
-                .observe(batch_inclusion_secs);
+            self.metrics.proposer_batch_latency.observe(batch_inclusion_secs);
         }
 
         // NOTE: This log entry is used to compute performance.
@@ -300,8 +291,7 @@ impl Proposer {
 
         // Register the header by the current round, to remember that we need to commit
         // it, or re-include the batch digests that it contains.
-        self.proposed_headers
-            .insert(this_round, (header.clone(), header_digests));
+        self.proposed_headers.insert(this_round, (header.clone(), header_digests));
 
         Ok(header)
     }
@@ -320,8 +310,8 @@ impl Proposer {
         // If this node is going to be the leader of the next round and there are more than
         // 1 primary in the committee, we use a lower min delay value to increase the chance
         // of committing the leader.
-        if self.committee.size() > 1
-            && self.committee.leader(self.round + 1).id() == self.authority_id
+        if self.committee.size() > 1 &&
+            self.committee.leader(self.round + 1).id() == self.authority_id
         {
             Duration::ZERO
         } else {
@@ -353,7 +343,7 @@ impl Proposer {
     /// (iii) there is no leader to vote for.
     fn enough_votes(&self) -> bool {
         if self.committee.leader(self.round + 1).id() == self.authority_id {
-            return true;
+            return true
         }
 
         let leader = match &self.last_leader {
@@ -395,9 +385,8 @@ impl Proposer {
         let max_delay_timer = sleep_until(timer_start + self.max_header_delay);
         let min_delay_timer = sleep_until(timer_start + self.min_header_delay);
 
-        let header_resend_timeout = self
-            .header_resend_timeout
-            .unwrap_or(DEFAULT_HEADER_RESEND_TIMEOUT);
+        let header_resend_timeout =
+            self.header_resend_timeout.unwrap_or(DEFAULT_HEADER_RESEND_TIMEOUT);
         let mut header_repeat_timer = Box::pin(sleep(header_resend_timeout));
         let mut opt_latest_header = None;
 
@@ -409,24 +398,26 @@ impl Proposer {
             self.authority_id, header_resend_timeout
         );
         loop {
-            // Check if we can propose a new header. We propose a new header when we have a quorum of parents
-            // and one of the following conditions is met:
-            // (i) the timer expired (we timed out on the leader or gave up gather votes for the leader),
-            // (ii) we have enough digests (header_num_of_batches_threshold) and we are on the happy path (we can vote for
-            // the leader or the leader has enough votes to enable a commit).
-            // We guarantee that no more than max_header_num_of_batches are included.
+            // Check if we can propose a new header. We propose a new header when we have a quorum
+            // of parents and one of the following conditions is met:
+            // (i) the timer expired (we timed out on the leader or gave up gather votes for the
+            // leader), (ii) we have enough digests (header_num_of_batches_threshold)
+            // and we are on the happy path (we can vote for the leader or the leader
+            // has enough votes to enable a commit). We guarantee that no more than
+            // max_header_num_of_batches are included.
             let enough_parents = !self.last_parents.is_empty();
             let enough_digests = self.digests.len() >= self.header_num_of_batches_threshold;
             let max_delay_timed_out = max_delay_timer.is_elapsed();
             let min_delay_timed_out = min_delay_timer.is_elapsed();
 
-            if (max_delay_timed_out || ((enough_digests || min_delay_timed_out) && advance))
-                && enough_parents
+            if (max_delay_timed_out || ((enough_digests || min_delay_timed_out) && advance)) &&
+                enough_parents
             {
                 if max_delay_timed_out {
-                    // It is expected that this timer expires from time to time. If it expires too often, it
-                    // either means some validators are Byzantine or that the network is experiencing periods
-                    // of asynchrony. In practice, the latter scenario means we misconfigured the parameter
+                    // It is expected that this timer expires from time to time. If it expires too
+                    // often, it either means some validators are Byzantine or
+                    // that the network is experiencing periods of asynchrony.
+                    // In practice, the latter scenario means we misconfigured the parameter
                     // called `max_header_delay`.
                     debug!("Timer expired for round {}", self.round);
                 }
@@ -472,12 +463,8 @@ impl Proposer {
 
                 // Reschedule the timer.
                 let timer_start = Instant::now();
-                max_delay_timer
-                    .as_mut()
-                    .reset(timer_start + self.max_delay());
-                min_delay_timer
-                    .as_mut()
-                    .reset(timer_start + self.min_delay());
+                max_delay_timer.as_mut().reset(timer_start + self.max_delay());
+                min_delay_timer.as_mut().reset(timer_start + self.min_delay());
             }
 
             tokio::select! {
@@ -655,9 +642,7 @@ impl Proposer {
             }
 
             // update metrics
-            self.metrics
-                .num_of_pending_batches_in_proposer
-                .set(self.digests.len() as i64);
+            self.metrics.num_of_pending_batches_in_proposer.set(self.digests.len() as i64);
         }
     }
 }

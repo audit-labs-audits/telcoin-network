@@ -1,12 +1,12 @@
 //! various serde test
 use crate::utils::launch_http;
+use execution_rpc_builder::RethRpcModule;
 use jsonrpsee::{
     core::{client::ClientT, traits::ToRpcParams, Error},
     types::Request,
 };
-use execution_primitives::U256;
-use execution_rpc_builder::RethRpcModule;
 use serde_json::value::RawValue;
+use tn_types::execution::U256;
 
 struct RawRpcParams(Box<RawValue>);
 

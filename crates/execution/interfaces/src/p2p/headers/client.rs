@@ -1,12 +1,12 @@
 use crate::p2p::{download::DownloadClient, error::PeerRequestResult, priority::Priority};
-use futures::{Future, FutureExt};
 pub use execution_eth_wire::BlockHeaders;
-use execution_primitives::{BlockHashOrNumber, Header, HeadersDirection};
+use futures::{Future, FutureExt};
 use std::{
     fmt::Debug,
     pin::Pin,
     task::{ready, Context, Poll},
 };
+use tn_types::execution::{BlockHashOrNumber, Header, HeadersDirection};
 
 /// The header request struct to be sent to connected peers, which
 /// will proceed to ask them to stream the requested headers to us.

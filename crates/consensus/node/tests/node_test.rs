@@ -2,22 +2,19 @@
 // Copyright (c) Mysten Labs, Inc.
 // SPDX-License-Identifier: Apache-2.0
 
-use tn_types::consensus::config::Parameters;
-use fastcrypto::traits::KeyPair;
 use consensus_metrics::RegistryService;
-use lattice_node::execution_state::SimpleExecutionState;
-use lattice_node::primary_node::PrimaryNode;
-use lattice_node::worker_node::WorkerNodes;
+use fastcrypto::traits::KeyPair;
 use lattice_network::client::NetworkClient;
-use prometheus::Registry;
-use std::num::NonZeroUsize;
-use std::sync::Arc;
-use std::time::Duration;
+use lattice_node::{
+    execution_state::SimpleExecutionState, primary_node::PrimaryNode, worker_node::WorkerNodes,
+};
 use lattice_storage::NodeStorage;
 use lattice_test_utils::{temp_dir, CommitteeFixture};
-use tokio::sync::mpsc::channel;
-use tokio::time::sleep;
 use lattice_worker::TrivialTransactionValidator;
+use prometheus::Registry;
+use std::{num::NonZeroUsize, sync::Arc, time::Duration};
+use tn_types::consensus::config::Parameters;
+use tokio::{sync::mpsc::channel, time::sleep};
 
 #[tokio::test]
 async fn simple_primary_worker_node_start_stop() {
@@ -85,9 +82,7 @@ async fn simple_primary_worker_node_start_stop() {
     let response = client
         .get(format!(
             "http://127.0.0.1:{}/known_peers",
-            parameters
-                .network_admin_server
-                .worker_network_admin_server_base_port
+            parameters.network_admin_server.worker_network_admin_server_base_port
         ))
         .send()
         .await
@@ -170,9 +165,7 @@ async fn primary_node_restart() {
     let response = client
         .get(format!(
             "http://127.0.0.1:{}/known_peers",
-            parameters
-                .network_admin_server
-                .primary_network_admin_server_port
+            parameters.network_admin_server.primary_network_admin_server_port
         ))
         .send()
         .await

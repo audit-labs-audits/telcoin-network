@@ -1,6 +1,6 @@
 //! Support for banning peers.
-use execution_primitives::PeerId;
 use std::{collections::HashMap, net::IpAddr, time::Instant};
+use tn_types::execution::PeerId;
 
 /// Determines whether or not the IP is globally routable.
 /// Should be replaced with [`IpAddr::is_global`](std::net::IpAddr::is_global) once it is stable.

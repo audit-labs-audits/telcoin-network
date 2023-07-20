@@ -1,7 +1,6 @@
 use execution_beacon_consensus::BeaconConsensusEngineHandle;
 use execution_network_api::noop::NoopNetwork;
 use execution_payload_builder::test_utils::spawn_test_payload_service;
-use execution_primitives::MAINNET;
 use execution_provider::test_utils::{NoopProvider, TestCanonStateSubscriptions};
 use execution_rpc::JwtSecret;
 use execution_rpc_builder::{
@@ -13,6 +12,7 @@ use execution_rpc_engine_api::EngineApi;
 use execution_tasks::TokioTaskExecutor;
 use execution_transaction_pool::test_utils::{testing_pool, TestPool};
 use std::net::{Ipv4Addr, SocketAddr, SocketAddrV4};
+use tn_types::execution::MAINNET;
 use tokio::sync::mpsc::unbounded_channel;
 
 /// Localhost with port 0 so a free port is used.

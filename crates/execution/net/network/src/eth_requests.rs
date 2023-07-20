@@ -1,14 +1,13 @@
 //! Blocks/Headers management for the p2p network.
 
 use crate::{metrics::EthRequestHandlerMetrics, peers::PeersHandle};
-use futures::StreamExt;
 use execution_eth_wire::{
     BlockBodies, BlockHeaders, GetBlockBodies, GetBlockHeaders, GetNodeData, GetReceipts, NodeData,
     Receipts,
 };
 use execution_interfaces::p2p::error::RequestResult;
-use execution_primitives::{BlockBody, BlockHashOrNumber, Header, HeadersDirection, PeerId};
 use execution_provider::{BlockReader, HeaderProvider};
+use futures::StreamExt;
 use std::{
     borrow::Borrow,
     future::Future,
@@ -16,6 +15,7 @@ use std::{
     pin::Pin,
     task::{Context, Poll},
 };
+use tn_types::execution::{BlockBody, BlockHashOrNumber, Header, HeadersDirection, PeerId};
 use tokio::sync::{mpsc::Receiver, oneshot};
 use tokio_stream::wrappers::ReceiverStream;
 

@@ -8,8 +8,11 @@ use crate::{
 use anyhow::anyhow;
 use bytes::Bytes;
 use socket2::{Domain, Protocol, Socket, Type};
-use std::net::ToSocketAddrs;
-use std::{convert::Infallible, net::SocketAddr, sync::Arc};
+use std::{
+    convert::Infallible,
+    net::{SocketAddr, ToSocketAddrs},
+    sync::Arc,
+};
 use tokio::sync::{broadcast, mpsc, oneshot};
 use tower::{
     util::{BoxLayer, BoxService},
@@ -145,11 +148,9 @@ impl Builder {
             for addr in addrs.iter() {
                 let socket =
                     Socket::new(Domain::for_address(*addr), Type::DGRAM, Some(Protocol::UDP))?;
-                result = socket
-                    .bind(&socket2::SockAddr::from(*addr))
-                    .map_err(|e| e.into());
+                result = socket.bind(&socket2::SockAddr::from(*addr)).map_err(|e| e.into());
                 if let Ok(()) = result {
-                    return Ok(socket);
+                    return Ok(socket)
                 }
             }
             Err(result.unwrap_err())
@@ -162,7 +163,7 @@ impl Builder {
                 if quic_config.allow_failed_socket_buffer_size_setting {
                     warn!("failed to set socket send buffer size to {send_buffer_size}: {e}",);
                 } else {
-                    return Err(e.into());
+                    return Err(e.into())
                 }
             }
             let buf_size = socket.send_buffer_size()?;
@@ -174,7 +175,7 @@ impl Builder {
                 if quic_config.allow_failed_socket_buffer_size_setting {
                     warn!(msg);
                 } else {
-                    return Err(anyhow!(msg));
+                    return Err(anyhow!(msg))
                 }
             }
             buf_size
@@ -189,7 +190,7 @@ impl Builder {
                 if quic_config.allow_failed_socket_buffer_size_setting {
                     warn!("failed to set socket receive buffer size to {receive_buffer_size}: {e}",);
                 } else {
-                    return Err(e.into());
+                    return Err(e.into())
                 }
             }
             let buf_size = socket.recv_buffer_size()?;
@@ -201,7 +202,7 @@ impl Builder {
                 if quic_config.allow_failed_socket_buffer_size_setting {
                     warn!(msg);
                 } else {
-                    return Err(anyhow!(msg));
+                    return Err(anyhow!(msg))
                 }
             }
             buf_size
@@ -221,9 +222,7 @@ impl Builder {
         let outbound_request_layer = {
             let builder = ServiceBuilder::new()
                 // Support timeouts for outbound requests
-                .layer(timeout::outbound::TimeoutLayer::new(
-                    config.outbound_request_timeout(),
-                ));
+                .layer(timeout::outbound::TimeoutLayer::new(config.outbound_request_timeout()));
             if let Some(layer) = self.outbound_request_layer.take() {
                 BoxLayer::new(builder.layer(layer).into_inner())
             } else {
@@ -234,9 +233,7 @@ impl Builder {
         let inner = Arc::new_cyclic(|weak| {
             let service = ServiceBuilder::new()
                 // Support timeouts for inbound requests
-                .layer(timeout::inbound::TimeoutLayer::new(
-                    config.inbound_request_timeout(),
-                ))
+                .layer(timeout::inbound::TimeoutLayer::new(config.inbound_request_timeout()))
                 // Supply a weak reference to the network via an Extension
                 .layer(AddExtensionLayer::new(NetworkRef(weak.clone())))
                 .service(service)
@@ -379,11 +376,7 @@ struct NetworkInner {
 
 impl NetworkInner {
     fn peers(&self) -> Vec<PeerId> {
-        self.active_peers
-            .upgrade()
-            .as_ref()
-            .map(ActivePeers::peers)
-            .unwrap_or_default()
+        self.active_peers.upgrade().as_ref().map(ActivePeers::peers).unwrap_or_default()
     }
 
     fn known_peers(&self) -> &KnownPeers {
@@ -402,19 +395,15 @@ impl NetworkInner {
     async fn connect(&self, addr: Address, peer_id: Option<PeerId>) -> Result<PeerId> {
         let (sender, receiver) = oneshot::channel();
         self.connection_manager_handle
-            .send(ConnectionManagerRequest::ConnectRequest(
-                addr, peer_id, sender,
-            ))
+            .send(ConnectionManagerRequest::ConnectRequest(addr, peer_id, sender))
             .await
             .map_err(|_| anyhow!("network has been shutdown"))?;
         receiver.await?
     }
 
     fn disconnect(&self, peer_id: PeerId) -> Result<()> {
-        let active_peers = self
-            .active_peers
-            .upgrade()
-            .ok_or_else(|| anyhow!("network has been shutdown"))?;
+        let active_peers =
+            self.active_peers.upgrade().ok_or_else(|| anyhow!("network has been shutdown"))?;
         active_peers.remove(&peer_id, DisconnectReason::Requested);
         Ok(())
     }
@@ -422,11 +411,7 @@ impl NetworkInner {
     fn peer(&self, peer_id: PeerId) -> Option<Peer> {
         let active_peers = self.active_peers.upgrade()?;
         let connection = active_peers.get(&peer_id)?;
-        Some(Peer::new(
-            connection,
-            self.outbound_request_layer.clone(),
-            self.config.clone(),
-        ))
+        Some(Peer::new(connection, self.outbound_request_layer.clone(), self.config.clone()))
     }
 
     async fn rpc(&self, peer_id: PeerId, request: Request<Bytes>) -> Result<Response<Bytes>> {

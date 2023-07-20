@@ -87,7 +87,7 @@
 //! Listen for new transactions and print them:
 //!
 //! ```
-//! use execution_primitives::MAINNET;
+//! use tn_types::execution::MAINNET;
 //! use execution_provider::StateProviderFactory;
 //! use execution_tasks::TokioTaskExecutor;
 //! use execution_transaction_pool::{EthTransactionValidator, Pool, TransactionPool};
@@ -112,7 +112,7 @@
 //!
 //! ```
 //! use futures_util::Stream;
-//! use execution_primitives::MAINNET;
+//! use tn_types::execution::MAINNET;
 //! use execution_provider::{BlockReaderIdExt, CanonStateNotification, StateProviderFactory};
 //! use execution_tasks::TokioTaskExecutor;
 //! use execution_transaction_pool::{EthTransactionValidator, Pool};
@@ -138,9 +138,9 @@
 //! - `test-utils`: Export utilities for testing
 use crate::pool::PoolInner;
 use aquamarine as _;
-use execution_primitives::{Address, TxHash, U256};
 use execution_provider::StateProviderFactory;
 use std::{collections::HashMap, sync::Arc};
+use tn_types::execution::{Address, TxHash, U256};
 use tokio::sync::mpsc::Receiver;
 use tracing::{instrument, trace};
 
@@ -284,7 +284,7 @@ where
     ///
     /// ```
     /// use execution_provider::StateProviderFactory;
-    /// use execution_primitives::MAINNET;
+    /// use tn_types::execution::MAINNET;
     /// use execution_tasks::TokioTaskExecutor;
     /// use execution_transaction_pool::{EthTransactionValidator, Pool};
     /// # fn t<C>(client: C)  where C: StateProviderFactory + Clone + 'static{

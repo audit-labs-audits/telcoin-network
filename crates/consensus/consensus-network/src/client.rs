@@ -20,17 +20,12 @@ pub fn connect_lazy(address: &Multiaddr) -> Result<Channel> {
 }
 
 pub(crate) async fn connect_with_config(address: &Multiaddr, config: &Config) -> Result<Channel> {
-    let channel = endpoint_from_multiaddr(address)?
-        .apply_config(config)
-        .connect()
-        .await?;
+    let channel = endpoint_from_multiaddr(address)?.apply_config(config).connect().await?;
     Ok(channel)
 }
 
 pub(crate) fn connect_lazy_with_config(address: &Multiaddr, config: &Config) -> Result<Channel> {
-    let channel = endpoint_from_multiaddr(address)?
-        .apply_config(config)
-        .connect_lazy();
+    let channel = endpoint_from_multiaddr(address)?.apply_config(config).connect_lazy();
     Ok(channel)
 }
 
@@ -82,19 +77,14 @@ impl MyEndpoint {
     }
 
     fn try_from_uri(uri: String) -> Result<Self> {
-        let uri: Uri = uri
-            .parse()
-            .with_context(|| format!("unable to create Uri from '{uri}'"))?;
+        let uri: Uri = uri.parse().with_context(|| format!("unable to create Uri from '{uri}'"))?;
         let endpoint = Endpoint::from(uri);
         Ok(Self::new(endpoint))
     }
 
     #[cfg(unix)]
     fn with_uds_connector(self, path: std::path::PathBuf) -> Self {
-        Self {
-            endpoint: self.endpoint,
-            uds_connector: Some(path),
-        }
+        Self { endpoint: self.endpoint, uds_connector: Some(path) }
     }
 
     fn apply_config(mut self, config: &Config) -> Self {
@@ -105,14 +95,12 @@ impl MyEndpoint {
     fn connect_lazy(self) -> Channel {
         #[cfg(unix)]
         if let Some(path) = self.uds_connector {
-            return self
-                .endpoint
-                .connect_with_connector_lazy(tower::service_fn(move |_: Uri| {
-                    let path = path.clone();
+            return self.endpoint.connect_with_connector_lazy(tower::service_fn(move |_: Uri| {
+                let path = path.clone();
 
-                    // Connect to a Uds socket
-                    tokio::net::UnixStream::connect(path)
-                }));
+                // Connect to a Uds socket
+                tokio::net::UnixStream::connect(path)
+            }))
         }
 
         self.endpoint.connect_lazy()
@@ -130,7 +118,7 @@ impl MyEndpoint {
                     tokio::net::UnixStream::connect(path)
                 }))
                 .await
-                .map_err(Into::into);
+                .map_err(Into::into)
         }
 
         self.endpoint.connect().await.map_err(Into::into)

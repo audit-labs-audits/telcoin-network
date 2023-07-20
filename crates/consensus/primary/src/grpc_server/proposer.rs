@@ -1,16 +1,16 @@
 // Copyright (c) Telcoin, LLC
 // Copyright (c) Mysten Labs, Inc.
 // SPDX-License-Identifier: Apache-2.0
-use tn_types::consensus::config::{AuthorityIdentifier, Committee};
-use lattice_consensus::dag::Dag;
-use tn_types::consensus::crypto::PublicKey;
 use fastcrypto::traits::ToFromBytes;
+use lattice_consensus::dag::Dag;
 use std::sync::Arc;
-use tonic::{Request, Response, Status};
 use tn_types::consensus::{
+    config::{AuthorityIdentifier, Committee},
+    crypto::PublicKey,
     NodeReadCausalRequest, NodeReadCausalResponse, Proposer, PublicKeyProto, RoundsRequest,
     RoundsResponse,
 };
+use tonic::{Request, Response, Status};
 
 pub struct NarwhalProposer {
     /// The dag that holds the available certificates to propose
@@ -42,10 +42,8 @@ impl NarwhalProposer {
         return if let Some(authority) = self.committee.authority_by_key(&key) {
             Ok(authority.id())
         } else {
-            Err(Status::invalid_argument(
-                "Invalid public key: unknown authority",
-            ))
-        };
+            Err(Status::invalid_argument("Invalid public key: unknown authority"))
+        }
     }
 }
 
@@ -63,13 +61,10 @@ impl Proposer for NarwhalProposer {
         // call the dag to retrieve the rounds
         if let Some(dag) = &self.dag {
             let result = match dag.rounds(id).await {
-                Ok(r) => Ok(RoundsResponse {
-                    oldest_round: *r.start(),
-                    newest_round: *r.end(),
-                }),
+                Ok(r) => Ok(RoundsResponse { oldest_round: *r.start(), newest_round: *r.end() }),
                 Err(err) => Err(Status::internal(format!("Couldn't retrieve rounds: {err}"))),
             };
-            return result.map(Response::new);
+            return result.map(Response::new)
         }
 
         Err(Status::internal("Can not serve request"))
@@ -93,7 +88,7 @@ impl Proposer for NarwhalProposer {
                     "Couldn't read causal for provided key & round: {err}"
                 ))),
             };
-            return result.map(Response::new);
+            return result.map(Response::new)
         }
         Err(Status::internal("Dag does not exist"))
     }

@@ -1,6 +1,6 @@
 use crate::message::NewBlockMessage;
-use execution_primitives::PeerId;
 use std::task::{Context, Poll};
+use tn_types::execution::PeerId;
 
 /// Abstraction over block import.
 pub trait BlockImport: Send + Sync {

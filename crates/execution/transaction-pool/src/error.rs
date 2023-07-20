@@ -1,6 +1,6 @@
 //! Transaction pool errors
 
-use execution_primitives::{Address, InvalidTransactionError, TxHash};
+use tn_types::execution::{Address, InvalidTransactionError, TxHash};
 
 /// Transaction pool result type.
 pub type PoolResult<T> = Result<T, PoolError>;
@@ -74,7 +74,7 @@ impl PoolError {
             }
             PoolError::FeeCapBelowMinimumProtocolFeeCap(_, _) => {
                 // fee cap of the tx below the technical minimum determined by the protocol, see
-                // [MINIMUM_PROTOCOL_FEE_CAP](execution_primitives::constants::MIN_PROTOCOL_BASE_FEE)
+                // [MINIMUM_PROTOCOL_FEE_CAP](tn_types::execution::constants::MIN_PROTOCOL_BASE_FEE)
                 // although this transaction will always be invalid, we do not want to penalize the
                 // sender because this check simply could not be implemented by the client
                 false

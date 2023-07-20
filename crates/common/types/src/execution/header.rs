@@ -1,4 +1,4 @@
-use crate::execution ::{
+use crate::execution::{
     basefee::calculate_next_block_base_fee,
     keccak256,
     proofs::{EMPTY_LIST_HASH, EMPTY_ROOT},
@@ -523,7 +523,7 @@ mod ethers_compat {
 #[cfg(test)]
 mod tests {
     use super::{Bytes, Decodable, Encodable, Header, H256};
-    use crate::execution ::{Address, HeadersDirection, U256};
+    use crate::execution::{Address, HeadersDirection, U256};
     use ethers_core::utils::hex::{self, FromHex};
     use std::str::FromStr;
 

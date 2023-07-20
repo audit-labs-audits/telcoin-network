@@ -2,26 +2,26 @@
 // Copyright (c) Mysten Labs, Inc.
 // SPDX-License-Identifier: Apache-2.0
 
-use crate::metrics::new_registry;
-use crate::{try_join_all, FuturesUnordered, NodeError};
+use crate::{metrics::new_registry, try_join_all, FuturesUnordered, NodeError};
 use anemo::PeerId;
 use arc_swap::{ArcSwap, ArcSwapOption};
-use tn_types::consensus::config::{Committee, Parameters, WorkerCache, WorkerId};
-use tn_types::consensus::crypto::{NetworkKeyPair, PublicKey};
-use fastcrypto::traits::KeyPair;
 use consensus_metrics::{RegistryID, RegistryService};
+use fastcrypto::traits::KeyPair;
 use lattice_network::client::NetworkClient;
-use prometheus::Registry;
-use std::collections::HashMap;
-use std::sync::Arc;
-use std::time::Instant;
 use lattice_storage::NodeStorage;
-use tokio::sync::RwLock;
-use tokio::task::JoinHandle;
+use lattice_worker::{
+    metrics::{initialise_metrics, Metrics},
+    TransactionValidator, Worker, NUM_SHUTDOWN_RECEIVERS,
+};
+use prometheus::Registry;
+use std::{collections::HashMap, sync::Arc, time::Instant};
+use tn_types::consensus::{
+    config::{Committee, Parameters, WorkerCache, WorkerId},
+    crypto::{NetworkKeyPair, PublicKey},
+    PreSubscribedBroadcastSender,
+};
+use tokio::{sync::RwLock, task::JoinHandle};
 use tracing::{info, instrument};
-use tn_types::consensus::PreSubscribedBroadcastSender;
-use lattice_worker::metrics::{initialise_metrics, Metrics};
-use lattice_worker::{TransactionValidator, Worker, NUM_SHUTDOWN_RECEIVERS};
 
 pub struct WorkerNodeInner {
     // The worker's id
@@ -66,7 +66,7 @@ impl WorkerNodeInner {
         metrics: Option<Metrics>,
     ) -> Result<(), NodeError> {
         if self.is_running().await {
-            return Err(NodeError::NodeAlreadyRunning);
+            return Err(NodeError::NodeAlreadyRunning)
         }
 
         self.own_peer_id = Some(PeerId(network_keypair.public().0.to_bytes()));
@@ -82,14 +82,9 @@ impl WorkerNodeInner {
 
         let mut tx_shutdown = PreSubscribedBroadcastSender::new(NUM_SHUTDOWN_RECEIVERS);
 
-        let authority = committee
-            .authority_by_key(&primary_name)
-            .unwrap_or_else(|| {
-                panic!(
-                    "Our node with key {:?} should be in committee",
-                    primary_name
-                )
-            });
+        let authority = committee.authority_by_key(&primary_name).unwrap_or_else(|| {
+            panic!("Our node with key {:?} should be in committee", primary_name)
+        });
 
         let handles = Worker::spawn(
             authority.clone(),
@@ -124,14 +119,12 @@ impl WorkerNodeInner {
     #[instrument(level = "info", skip_all)]
     async fn shutdown(&mut self) {
         if !self.is_running().await {
-            return;
+            return
         }
 
         let now = Instant::now();
         if let Some(tx_shutdown) = self.tx_shutdown.as_ref() {
-            tx_shutdown
-                .send()
-                .expect("Couldn't send the shutdown signal to downstream components");
+            tx_shutdown.send().expect("Couldn't send the shutdown signal to downstream components");
             self.tx_shutdown = None;
         }
 
@@ -196,9 +189,7 @@ impl WorkerNode {
             own_peer_id: None,
         };
 
-        Self {
-            internal: Arc::new(RwLock::new(inner)),
-        }
+        Self { internal: Arc::new(RwLock::new(inner)) }
     }
 
     pub async fn start(
@@ -292,7 +283,7 @@ impl WorkerNodes {
     ) -> Result<(), NodeError> {
         let worker_ids_running = self.workers_running().await;
         if !worker_ids_running.is_empty() {
-            return Err(NodeError::WorkerNodesAlreadyRunning(worker_ids_running));
+            return Err(NodeError::WorkerNodesAlreadyRunning(worker_ids_running))
         }
 
         // create the registry first
@@ -309,11 +300,8 @@ impl WorkerNodes {
         let mut workers = HashMap::<WorkerId, WorkerNode>::new();
         // start all the workers one by one
         for (worker_id, key_pair) in ids_and_keypairs {
-            let worker = WorkerNode::new(
-                worker_id,
-                self.parameters.clone(),
-                self.registry_service.clone(),
-            );
+            let worker =
+                WorkerNode::new(worker_id, self.parameters.clone(), self.registry_service.clone());
 
             worker
                 .start(
@@ -338,7 +326,8 @@ impl WorkerNodes {
         let registry_id = self.registry_service.add(registry);
 
         if let Some(old_registry_id) = self.registry_id.swap(Some(Arc::new(registry_id))) {
-            // a little of defensive programming - ensure that we always clean up the previous registry
+            // a little of defensive programming - ensure that we always clean up the previous
+            // registry
             self.registry_service.remove(*old_registry_id.as_ref());
         }
 
@@ -359,7 +348,8 @@ impl WorkerNodes {
 
         // now remove the registry id
         if let Some(old_registry_id) = self.registry_id.swap(None) {
-            // a little of defensive programming - ensure that we always clean up the previous registry
+            // a little of defensive programming - ensure that we always clean up the previous
+            // registry
             self.registry_service.remove(*old_registry_id.as_ref());
         }
 

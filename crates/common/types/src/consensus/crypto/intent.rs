@@ -4,8 +4,7 @@
 use eyre::eyre;
 use fastcrypto::encoding::decode_bytes_hex;
 use serde::{Deserialize, Serialize};
-use serde_repr::Deserialize_repr;
-use serde_repr::Serialize_repr;
+use serde_repr::{Deserialize_repr, Serialize_repr};
 use std::str::FromStr;
 
 pub const INTENT_PREFIX_LENGTH: usize = 3;
@@ -62,8 +61,9 @@ pub enum IntentScope {
     CheckpointSummary = 2,       // Used for an authority signature on a checkpoint summary.
     PersonalMessage = 3,         // Used for a user signature on a personal message.
     SenderSignedTransaction = 4, // Used for an authority signature on a user signed transaction.
-    ProofOfPossession = 5,  // Used as a signature representing an authority's proof of possession of its authority protocol key.
-    HeaderDigest = 6,      // Used for narwhal authority signature on header digest.
+    ProofOfPossession = 5,       /* Used as a signature representing an authority's proof of
+                                  * possession of its authority protocol key. */
+    HeaderDigest = 6, // Used for narwhal authority signature on header digest.
 }
 
 impl TryFrom<u8> for IntentScope {
@@ -73,9 +73,10 @@ impl TryFrom<u8> for IntentScope {
     }
 }
 
-/// An intent is a compact struct serves as the domain separator for a message that a signature commits to.
-/// It consists of three parts: [enum IntentScope] (what the type of the message is), [enum IntentVersion], [enum AppId] (what application that the signature refers to).
-/// It is used to construct [struct IntentMessage] that what a signature commits to.
+/// An intent is a compact struct serves as the domain separator for a message that a signature
+/// commits to. It consists of three parts: [enum IntentScope] (what the type of the message is),
+/// [enum IntentVersion], [enum AppId] (what application that the signature refers to). It is used
+/// to construct [struct IntentMessage] that what a signature commits to.
 ///
 /// The serialization of an Intent is a 3-byte array where each field is represented by a byte.
 #[derive(Debug, PartialEq, Eq, Serialize, Deserialize, Clone, Hash)]
@@ -90,31 +91,19 @@ impl FromStr for Intent {
     fn from_str(s: &str) -> Result<Self, Self::Err> {
         let s: Vec<u8> = decode_bytes_hex(s).map_err(|_| eyre!("Invalid Intent"))?;
         if s.len() != 3 {
-            return Err(eyre!("Invalid Intent"));
+            return Err(eyre!("Invalid Intent"))
         }
-        Ok(Self {
-            scope: s[0].try_into()?,
-            version: s[1].try_into()?,
-            app_id: s[2].try_into()?,
-        })
+        Ok(Self { scope: s[0].try_into()?, version: s[1].try_into()?, app_id: s[2].try_into()? })
     }
 }
 
 impl Intent {
     pub fn sui_app(scope: IntentScope) -> Self {
-        Self {
-            version: IntentVersion::V0,
-            scope,
-            app_id: AppId::Sui,
-        }
+        Self { version: IntentVersion::V0, scope, app_id: AppId::Sui }
     }
 
     pub fn narwhal_app(scope: IntentScope) -> Self {
-        Self {
-            scope,
-            version: IntentVersion::V0,
-            app_id: AppId::Narwhal,
-        }
+        Self { scope, version: IntentVersion::V0, app_id: AppId::Narwhal }
     }
 }
 

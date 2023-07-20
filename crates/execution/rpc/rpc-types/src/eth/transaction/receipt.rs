@@ -1,6 +1,6 @@
 use crate::Log;
-use execution_primitives::{Address, Bloom, H256, U128, U256, U64, U8};
 use serde::{Deserialize, Serialize};
+use tn_types::execution::{Address, Bloom, H256, U128, U256, U64, U8};
 
 /// Transaction receipt
 #[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]

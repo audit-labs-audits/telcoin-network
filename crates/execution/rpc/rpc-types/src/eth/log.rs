@@ -1,5 +1,5 @@
-use execution_primitives::{Address, Bytes, H256, U256};
 use serde::{Deserialize, Serialize};
+use tn_types::execution::{Address, Bytes, H256, U256};
 
 /// Ethereum Log emitted by a transaction
 #[derive(Debug, Clone, Eq, PartialEq, Hash, Serialize, Deserialize)]
@@ -28,7 +28,7 @@ pub struct Log {
 
 impl Log {
     /// Creates a new rpc Log from a primitive log type from DB
-    pub fn from_primitive(log: execution_primitives::Log) -> Self {
+    pub fn from_primitive(log: tn_types::execution::Log) -> Self {
         Self {
             address: log.address,
             topics: log.topics,

@@ -1,4 +1,4 @@
-use crate::execution ::PeerId;
+use crate::execution::PeerId;
 use execution_rlp::RlpDecodable;
 use execution_rlp_derive::RlpEncodable;
 use secp256k1::{SecretKey, SECP256K1};
@@ -222,8 +222,8 @@ impl FromStr for NodeRecord {
 mod tests {
     use super::*;
     use bytes::BytesMut;
-    use rand::{thread_rng, Rng, RngCore};
     use execution_rlp::{Decodable, Encodable};
+    use rand::{thread_rng, Rng, RngCore};
 
     #[test]
     fn test_mapped_ipv6() {

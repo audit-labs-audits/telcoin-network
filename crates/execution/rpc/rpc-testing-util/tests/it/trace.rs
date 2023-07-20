@@ -1,5 +1,5 @@
-use jsonrpsee::http_client::HttpClientBuilder;
 use execution_rpc_api_testing_util::{trace::TraceApiExt, utils::parse_env_url};
+use jsonrpsee::http_client::HttpClientBuilder;
 use std::time::Instant;
 
 /// This is intended to be run locally against a running node.

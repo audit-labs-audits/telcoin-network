@@ -1,10 +1,10 @@
 use crate::result::ToRpcResult;
 use async_trait::async_trait;
-use jsonrpsee::core::RpcResult;
 use execution_network_api::{NetworkInfo, PeerKind, Peers};
-use execution_primitives::NodeRecord;
 use execution_rpc_api::AdminApiServer;
 use execution_rpc_types::NodeInfo;
+use jsonrpsee::core::RpcResult;
+use tn_types::execution::NodeRecord;
 
 /// `admin` API implementation.
 ///

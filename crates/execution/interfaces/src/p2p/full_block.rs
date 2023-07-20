@@ -7,9 +7,6 @@ use crate::{
     },
 };
 use futures::Stream;
-use execution_primitives::{
-    BlockBody, Header, HeadersDirection, SealedBlock, SealedHeader, WithPeerId, H256,
-};
 use std::{
     cmp::Reverse,
     collections::{HashMap, VecDeque},
@@ -17,6 +14,9 @@ use std::{
     future::Future,
     pin::Pin,
     task::{ready, Context, Poll},
+};
+use tn_types::execution::{
+    BlockBody, Header, HeadersDirection, SealedBlock, SealedHeader, WithPeerId, H256,
 };
 use tracing::debug;
 
@@ -316,7 +316,7 @@ fn ensure_valid_body_response(
 
     let withdrawals = block.withdrawals.as_deref().unwrap_or(&[]);
     if let Some(header_withdrawals_root) = header.withdrawals_root {
-        let withdrawals_root = execution_primitives::proofs::calculate_withdrawals_root(withdrawals);
+        let withdrawals_root = tn_types::execution::proofs::calculate_withdrawals_root(withdrawals);
         if withdrawals_root != header_withdrawals_root {
             return Err(ConsensusError::BodyWithdrawalsRootDiff {
                 got: withdrawals_root,

@@ -2,16 +2,16 @@
 // Copyright (c) Mysten Labs, Inc.
 // SPDX-License-Identifier: Apache-2.0
 // This test file tests the validity of the 'certificates' implementation.
-use tn_types::consensus::config::AuthorityIdentifier;
-use tn_types::consensus::crypto::KeyPair;
 use fastcrypto::traits::KeyPair as _;
+use lattice_test_utils::CommitteeFixture;
 use rand::{
     rngs::{OsRng, StdRng},
     SeedableRng,
 };
 use std::num::NonZeroUsize;
-use lattice_test_utils::CommitteeFixture;
-use tn_types::consensus::{Certificate, Vote, VoteAPI};
+use tn_types::consensus::{
+    config::AuthorityIdentifier, crypto::KeyPair, Certificate, Vote, VoteAPI,
+};
 
 #[test]
 fn test_empty_certificate_verification() {
@@ -19,13 +19,12 @@ fn test_empty_certificate_verification() {
 
     let committee = fixture.committee();
     let header = fixture.header();
-    // You should not be allowed to create a certificate that does not satisfying quorum requirements
+    // You should not be allowed to create a certificate that does not satisfying quorum
+    // requirements
     assert!(Certificate::new_unverified(&committee, header.clone(), Vec::new()).is_err());
 
     let certificate = Certificate::new_unsigned(&committee, header, Vec::new()).unwrap();
-    assert!(certificate
-        .verify(&committee, &fixture.worker_cache())
-        .is_err());
+    assert!(certificate.verify(&committee, &fixture.worker_cache()).is_err());
 }
 
 #[test]
@@ -44,9 +43,7 @@ fn test_valid_certificate_verification() {
 
     let certificate = Certificate::new_unverified(&committee, header, signatures).unwrap();
 
-    assert!(certificate
-        .verify(&committee, &fixture.worker_cache())
-        .is_ok());
+    assert!(certificate.verify(&committee, &fixture.worker_cache()).is_ok());
 }
 
 #[test]
@@ -67,9 +64,7 @@ fn test_certificate_insufficient_signatures() {
 
     let certificate = Certificate::new_unsigned(&committee, header, signatures).unwrap();
 
-    assert!(certificate
-        .verify(&committee, &fixture.worker_cache())
-        .is_err());
+    assert!(certificate.verify(&committee, &fixture.worker_cache()).is_err());
 }
 
 #[test]
@@ -83,7 +78,8 @@ fn test_certificate_validly_repeated_public_keys() {
     // 3 Signers satisfies the 2F + 1 signed stake requirement
     for authority in fixture.authorities().take(3) {
         let vote = authority.vote(&header);
-        // We double every (pk, signature) pair - these should be ignored when forming the certificate.
+        // We double every (pk, signature) pair - these should be ignored when forming the
+        // certificate.
         signatures.push((vote.author(), vote.signature().clone()));
         signatures.push((vote.author(), vote.signature().clone()));
     }
@@ -92,9 +88,7 @@ fn test_certificate_validly_repeated_public_keys() {
     assert!(certificate_res.is_ok());
     let certificate = certificate_res.unwrap();
 
-    assert!(certificate
-        .verify(&committee, &fixture.worker_cache())
-        .is_ok());
+    assert!(certificate.verify(&committee, &fixture.worker_cache()).is_ok());
 }
 
 #[test]

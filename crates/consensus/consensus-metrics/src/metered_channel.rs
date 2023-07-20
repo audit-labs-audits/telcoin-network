@@ -5,7 +5,8 @@
 
 use async_trait::async_trait;
 use std::future::Future;
-// TODO: complete tests - This kinda sorta facades the whole tokio::mpsc::{Sender, Receiver}: without tests, this will be fragile to maintain.
+// TODO: complete tests - This kinda sorta facades the whole tokio::mpsc::{Sender, Receiver}:
+// without tests, this will be fragile to maintain.
 use futures::{FutureExt, Stream, TryFutureExt};
 use prometheus::{IntCounter, IntGauge};
 use std::task::{Context, Poll};
@@ -28,10 +29,7 @@ pub struct Sender<T> {
 
 impl<T> Clone for Sender<T> {
     fn clone(&self) -> Self {
-        Self {
-            inner: self.inner.clone(),
-            gauge: self.gauge.clone(),
-        }
+        Self { inner: self.inner.clone(), gauge: self.gauge.clone() }
     }
 }
 
@@ -73,7 +71,8 @@ impl<T> Receiver<T> {
         })
     }
 
-    // TODO: facade [`blocking_recv`](tokio::mpsc::Receiver::blocking_recv) under the tokio feature flag "sync"
+    // TODO: facade [`blocking_recv`](tokio::mpsc::Receiver::blocking_recv) under the tokio feature
+    // flag "sync"
 
     /// Closes the receiving half of a channel without dropping it.
     pub fn close(&mut self) {
@@ -107,10 +106,7 @@ pub struct Permit<'a, T> {
 
 impl<'a, T> Permit<'a, T> {
     pub fn new(permit: mpsc::Permit<'a, T>, gauge_ref: &'a IntGauge) -> Permit<'a, T> {
-        Permit {
-            permit: Some(permit),
-            gauge_ref,
-        }
+        Permit { permit: Some(permit), gauge_ref }
     }
 
     pub fn send(mut self, value: T) {
@@ -123,7 +119,8 @@ impl<'a, T> Permit<'a, T> {
 
 impl<'a, T> Drop for Permit<'a, T> {
     fn drop(&mut self) {
-        // in the case the permit is dropped without sending, we still want to decrease the occupancy of the channel
+        // in the case the permit is dropped without sending, we still want to decrease the
+        // occupancy of the channel
         self.gauge_ref.dec()
     }
 }
@@ -132,10 +129,7 @@ impl<T> Sender<T> {
     /// Sends a value, waiting until there is capacity.
     /// Increments the gauge in case of a successful `send`.
     pub async fn send(&self, value: T) -> Result<(), SendError<T>> {
-        self.inner
-            .send(value)
-            .inspect_ok(|_| self.gauge.inc())
-            .await
+        self.inner.send(value).inspect_ok(|_| self.gauge.inc()).await
     }
 
     /// Completes when the receiver has dropped.
@@ -155,8 +149,9 @@ impl<T> Sender<T> {
             })
     }
 
-    // TODO: facade [`send_timeout`](tokio::mpsc::Sender::send_timeout) under the tokio feature flag "time"
-    // TODO: facade [`blocking_send`](tokio::mpsc::Sender::blocking_send) under the tokio feature flag "sync"
+    // TODO: facade [`send_timeout`](tokio::mpsc::Sender::send_timeout) under the tokio feature flag
+    // "time" TODO: facade [`blocking_send`](tokio::mpsc::Sender::blocking_send) under the tokio
+    // feature flag "sync"
 
     /// Checks if the channel has been closed. This happens when the
     /// [`Receiver`] is dropped, or when the [`Receiver::close`] method is
@@ -215,7 +210,6 @@ impl<T> Sender<T> {
 ////////////////////////////////
 
 /// A wrapper around [`crate::metered_channel::Receiver`] that implements [`Stream`].
-///
 #[derive(Debug)]
 pub struct ReceiverStream<T> {
     inner: Receiver<T>,
@@ -280,15 +274,8 @@ pub fn channel<T>(size: usize, gauge: &IntGauge) -> (Sender<T>, Receiver<T>) {
     gauge.set(0);
     let (sender, receiver) = mpsc::channel(size);
     (
-        Sender {
-            inner: sender,
-            gauge: gauge.clone(),
-        },
-        Receiver {
-            inner: receiver,
-            gauge: gauge.clone(),
-            total: None,
-        },
+        Sender { inner: sender, gauge: gauge.clone() },
+        Receiver { inner: receiver, gauge: gauge.clone(), total: None },
     )
 }
 
@@ -301,15 +288,8 @@ pub fn channel_with_total<T>(
     gauge.set(0);
     let (sender, receiver) = mpsc::channel(size);
     (
-        Sender {
-            inner: sender,
-            gauge: gauge.clone(),
-        },
-        Receiver {
-            inner: receiver,
-            gauge: gauge.clone(),
-            total: Some(total_gauge.clone()),
-        },
+        Sender { inner: sender, gauge: gauge.clone() },
+        Receiver { inner: receiver, gauge: gauge.clone(), total: Some(total_gauge.clone()) },
     )
 }
 

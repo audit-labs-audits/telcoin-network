@@ -1,9 +1,9 @@
-use crate::execution ::{
+use crate::execution::{
     Address, BlockHash, BlockNumber, Header, SealedHeader, TransactionSigned, Withdrawal, H256, U64,
 };
-use fixed_hash::rustc_hex::FromHexError;
 use execution_codecs::derive_arbitrary;
 use execution_rlp::{Decodable, DecodeError, Encodable, RlpDecodable, RlpEncodable};
+use fixed_hash::rustc_hex::FromHexError;
 use serde::{
     de::{MapAccess, Visitor},
     ser::SerializeStruct,

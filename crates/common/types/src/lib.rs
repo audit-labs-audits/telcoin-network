@@ -14,8 +14,8 @@
 //!
 //! - `arbitrary`: Adds `proptest` and `arbitrary` support for primitive types.
 //! - `test-utils`: Export utilities for testing
-pub mod execution;
 pub mod consensus;
+pub mod execution;
 
 // pub use consensus::{
 //     CollectionErrorType,

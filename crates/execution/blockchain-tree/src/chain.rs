@@ -10,9 +10,6 @@ use execution_interfaces::{
     consensus::{Consensus, ConsensusError},
     Error,
 };
-use execution_primitives::{
-    BlockHash, BlockNumber, ForkBlock, SealedBlockWithSenders, SealedHeader, U256,
-};
 use execution_provider::{
     providers::PostStateProvider, BlockExecutor, Chain, ExecutorFactory, PostStateDataProvider,
     StateRootProvider,
@@ -20,6 +17,9 @@ use execution_provider::{
 use std::{
     collections::BTreeMap,
     ops::{Deref, DerefMut},
+};
+use tn_types::execution::{
+    BlockHash, BlockNumber, ForkBlock, SealedBlockWithSenders, SealedHeader, U256,
 };
 
 /// The ID of a sidechain internally in a [`BlockchainTree`][super::BlockchainTree].

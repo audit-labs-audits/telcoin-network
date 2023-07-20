@@ -1,9 +1,9 @@
 // Copyright (c) Telcoin, LLC
 // Copyright (c) Mysten Labs, Inc.
 // SPDX-License-Identifier: Apache-2.0
-use crate::metrics::{DefaultMetricsCallbackProvider, MetricsCallbackProvider};
 use crate::{
     client::{connect_lazy_with_config, connect_with_config},
+    metrics::{DefaultMetricsCallbackProvider, MetricsCallbackProvider},
     server::ServerBuilder,
     Multiaddr,
 };
@@ -59,8 +59,8 @@ pub struct Config {
 
     /// Sets a timeout for receiving an acknowledgement of the keepalive ping.
     ///
-    /// If the ping is not acknowledged within the timeout, the connection will be closed. Does nothing
-    /// if http2_keep_alive_interval is disabled.
+    /// If the ping is not acknowledged within the timeout, the connection will be closed. Does
+    /// nothing if http2_keep_alive_interval is disabled.
     ///
     /// Default is 20 seconds.
     pub http2_keepalive_timeout: Option<Duration>,

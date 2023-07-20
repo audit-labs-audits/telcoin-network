@@ -1,5 +1,4 @@
 use crate::{ExecInput, ExecOutput, Stage, StageError, UnwindInput, UnwindOutput};
-use futures_util::StreamExt;
 use execution_db::{
     cursor::{DbCursorRO, DbCursorRW},
     database::Database,
@@ -13,13 +12,14 @@ use execution_interfaces::{
     },
     provider::ProviderError,
 };
-use execution_primitives::{
+use execution_provider::DatabaseProviderRW;
+use futures_util::StreamExt;
+use tn_types::execution::{
     stage::{
         CheckpointBlockRange, EntitiesCheckpoint, HeadersCheckpoint, StageCheckpoint, StageId,
     },
     BlockHashOrNumber, BlockNumber, SealedHeader, H256,
 };
-use execution_provider::DatabaseProviderRW;
 use tokio::sync::watch;
 use tracing::*;
 
@@ -388,9 +388,9 @@ mod tests {
     };
     use assert_matches::assert_matches;
     use execution_interfaces::test_utils::{generators, generators::random_header};
-    use execution_primitives::{stage::StageUnitCheckpoint, H256, MAINNET};
     use execution_provider::ProviderFactory;
     use test_runner::HeadersTestRunner;
+    use tn_types::execution::{stage::StageUnitCheckpoint, H256, MAINNET};
 
     mod test_runner {
         use super::*;
@@ -402,9 +402,9 @@ mod tests {
             generators, generators::random_header_range, TestConsensus, TestHeaderDownloader,
             TestHeadersClient,
         };
-        use execution_primitives::U256;
         use execution_provider::{BlockHashReader, BlockNumReader, HeaderProvider};
         use std::sync::Arc;
+        use tn_types::execution::U256;
 
         pub(crate) struct HeadersTestRunner<D: HeaderDownloader> {
             pub(crate) client: TestHeadersClient,

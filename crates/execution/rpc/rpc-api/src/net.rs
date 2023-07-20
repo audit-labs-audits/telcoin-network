@@ -1,5 +1,5 @@
-use jsonrpsee::{core::RpcResult, proc_macros::rpc};
 use execution_rpc_types::PeerCount;
+use jsonrpsee::{core::RpcResult, proc_macros::rpc};
 
 /// Net rpc interface.
 #[cfg_attr(not(feature = "client"), rpc(server, namespace = "net"))]

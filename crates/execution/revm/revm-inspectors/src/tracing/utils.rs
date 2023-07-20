@@ -1,12 +1,12 @@
 //! Util functions for revm related ops
 
-use execution_primitives::{
-    contract::{create2_address_from_code, create_address},
-    hex, Address,
-};
 use revm::{
     interpreter::CreateInputs,
     primitives::{CreateScheme, SpecId},
+};
+use tn_types::execution::{
+    contract::{create2_address_from_code, create_address},
+    hex, Address,
 };
 
 /// creates the memory data in 32byte chunks

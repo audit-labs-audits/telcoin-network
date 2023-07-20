@@ -3,12 +3,6 @@ use crate::{
     error::{RpcError, ServerKind},
     eth::DEFAULT_MAX_LOGS_PER_RESPONSE,
 };
-use hyper::header::AUTHORIZATION;
-pub use jsonrpsee::server::ServerBuilder;
-use jsonrpsee::{
-    http_client::HeaderMap,
-    server::{RpcModule, ServerHandle},
-};
 use execution_network_api::{NetworkInfo, Peers};
 use execution_provider::{
     BlockReaderIdExt, EvmEnvProvider, HeaderProvider, ReceiptProviderIdExt, StateProviderFactory,
@@ -21,6 +15,12 @@ use execution_rpc::{
 use execution_rpc_api::{servers::*, EngineApiServer};
 use execution_tasks::TaskSpawner;
 use execution_transaction_pool::TransactionPool;
+use hyper::header::AUTHORIZATION;
+pub use jsonrpsee::server::ServerBuilder;
+use jsonrpsee::{
+    http_client::HeaderMap,
+    server::{RpcModule, ServerHandle},
+};
 use std::{
     net::{IpAddr, Ipv4Addr, SocketAddr},
     time::{Duration, SystemTime, UNIX_EPOCH},

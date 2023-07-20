@@ -120,10 +120,12 @@
 
 use anemo::{Request, Response};
 use pin_project_lite::pin_project;
-use std::task::{Context, Poll};
-use std::{future::Future, pin::Pin};
-use tower::Layer;
-use tower::Service;
+use std::{
+    future::Future,
+    pin::Pin,
+    task::{Context, Poll},
+};
+use tower::{Layer, Service};
 use uuid::Uuid;
 
 pub(crate) const REQUEST_ID: &str = "request-id";
@@ -180,10 +182,7 @@ impl<M> SetRequestIdLayer<M> {
     where
         M: MakeRequestId,
     {
-        SetRequestIdLayer {
-            header_name,
-            make_request_id,
-        }
+        SetRequestIdLayer { header_name, make_request_id }
     }
 
     /// Create a new `SetRequestIdLayer` that uses `request-id` as the header name.
@@ -202,11 +201,7 @@ where
     type Service = SetRequestId<S, M>;
 
     fn layer(&self, inner: S) -> Self::Service {
-        SetRequestId::new(
-            inner,
-            self.header_name.clone(),
-            self.make_request_id.clone(),
-        )
+        SetRequestId::new(inner, self.header_name.clone(), self.make_request_id.clone())
     }
 }
 
@@ -232,11 +227,7 @@ impl<S, M> SetRequestId<S, M> {
     where
         M: MakeRequestId,
     {
-        Self {
-            inner,
-            header_name,
-            make_request_id,
-        }
+        Self { inner, header_name, make_request_id }
     }
 
     /// Create a new `SetRequestId` that uses `request-id` as the header name.
@@ -293,8 +284,7 @@ where
             }
         } else if let Some(request_id) = self.make_request_id.make_request_id(&req) {
             req.extensions_mut().insert(request_id.clone());
-            req.headers_mut()
-                .insert(self.header_name.clone(), request_id.0);
+            req.headers_mut().insert(self.header_name.clone(), request_id.0);
         }
 
         self.inner.call(req)
@@ -388,11 +378,7 @@ where
     }
 
     fn call(&mut self, req: Request<ReqBody>) -> Self::Future {
-        let request_id = req
-            .headers()
-            .get(&self.header_name)
-            .cloned()
-            .map(RequestId::new);
+        let request_id = req.headers().get(&self.header_name).cloned().map(RequestId::new);
 
         PropagateRequestIdResponseFuture {
             inner: self.inner.call(req),
@@ -428,9 +414,7 @@ where
                 response.extensions_mut().insert(RequestId::new(current_id));
             }
         } else if let Some(request_id) = this.request_id.take() {
-            response
-                .headers_mut()
-                .insert(this.header_name.clone(), request_id.0.clone());
+            response.headers_mut().insert(this.header_name.clone(), request_id.0.clone());
             response.extensions_mut().insert(request_id);
         }
 
@@ -451,8 +435,7 @@ impl MakeRequestId for MakeRequestUuid {
 
 #[cfg(test)]
 mod tests {
-    use anemo::Request;
-    use anemo::Response;
+    use anemo::{Request, Response};
     use bytes::Bytes;
     use std::{
         convert::Infallible,

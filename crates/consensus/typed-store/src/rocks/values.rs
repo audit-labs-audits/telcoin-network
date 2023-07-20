@@ -1,10 +1,10 @@
 // Copyright (c) Telcoin, LLC
 // Copyright (c) Mysten Labs, Inc.
 // SPDX-License-Identifier: Apache-2.0
-use std::marker::PhantomData;
+use super::RocksDBRawIter;
 use crate::TypedStoreError;
 use serde::de::DeserializeOwned;
-use super::RocksDBRawIter;
+use std::marker::PhantomData;
 
 /// An iterator over the values of a prefix.
 pub struct Values<'a, V> {
@@ -14,10 +14,7 @@ pub struct Values<'a, V> {
 
 impl<'a, V: DeserializeOwned> Values<'a, V> {
     pub(crate) fn new(db_iter: RocksDBRawIter<'a>) -> Self {
-        Self {
-            db_iter,
-            _phantom: PhantomData,
-        }
+        Self { db_iter, _phantom: PhantomData }
     }
 }
 

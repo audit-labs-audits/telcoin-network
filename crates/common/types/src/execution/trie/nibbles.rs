@@ -1,4 +1,4 @@
-use crate::execution ::Bytes;
+use crate::execution::Bytes;
 use derive_more::{Deref, DerefMut, From, Index};
 use execution_codecs::{main_codec, Compact};
 use execution_rlp::RlpEncodableWrapper;

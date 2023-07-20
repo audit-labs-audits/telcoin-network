@@ -12,13 +12,9 @@ use crate::{
         priority::Priority,
     },
 };
-use futures::{future, Future, FutureExt, Stream, StreamExt};
 use execution_eth_wire::BlockHeaders;
-use execution_primitives::{
-    BlockHash, BlockNumber, Head, Header, HeadersDirection, PeerId, SealedBlock, SealedHeader,
-    WithPeerId, H256, U256,
-};
 use execution_rpc_types::engine::ForkchoiceState;
+use futures::{future, Future, FutureExt, Stream, StreamExt};
 use std::{
     fmt,
     pin::Pin,
@@ -27,6 +23,10 @@ use std::{
         Arc,
     },
     task::{ready, Context, Poll},
+};
+use tn_types::execution::{
+    BlockHash, BlockNumber, Head, Header, HeadersDirection, PeerId, SealedBlock, SealedHeader,
+    WithPeerId, H256, U256,
 };
 use tokio::sync::{
     oneshot::{error::RecvError, Receiver},
@@ -122,7 +122,7 @@ impl TestDownload {
             let request = HeadersRequest {
                 limit: self.limit,
                 direction: HeadersDirection::Rising,
-                start: execution_primitives::BlockHashOrNumber::Number(0), // ignored
+                start: tn_types::execution::BlockHashOrNumber::Number(0), // ignored
             };
             let client = self.client.clone();
             self.fut = Some(Box::pin(client.get_headers(request)));

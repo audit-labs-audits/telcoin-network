@@ -4,11 +4,11 @@ use execution_db::{
     tables,
     transaction::{DbTx, DbTxMut},
 };
-use execution_primitives::{
+use std::collections::{hash_map::IntoIter, HashMap};
+use tn_types::execution::{
     trie::{BranchNodeCompact, Nibbles, StorageTrieEntry, StoredNibbles, StoredNibblesSubKey},
     H256,
 };
-use std::collections::{hash_map::IntoIter, HashMap};
 
 /// The key of a trie node.
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]

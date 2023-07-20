@@ -2,13 +2,13 @@ use super::{constants, StageRange};
 use execution_db::{
     cursor::DbCursorRO, database::Database, tables, transaction::DbTx, DatabaseError as DbError,
 };
-use execution_primitives::stage::StageCheckpoint;
 use execution_stages::{
     stages::{AccountHashingStage, SeedOpts},
     test_utils::TestTransaction,
     ExecInput, UnwindInput,
 };
 use std::path::{Path, PathBuf};
+use tn_types::execution::stage::StageCheckpoint;
 
 /// Prepares a database for [`AccountHashingStage`]
 /// If the environment variable [`constants::ACCOUNT_HASHING_DB`] is set, it will use that one and

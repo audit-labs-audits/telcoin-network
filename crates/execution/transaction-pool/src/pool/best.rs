@@ -3,11 +3,11 @@ use crate::{
     pool::pending::{PendingTransaction, PendingTransactionRef},
     TransactionOrdering, ValidPoolTransaction,
 };
-use execution_primitives::H256 as TxHash;
 use std::{
     collections::{BTreeMap, BTreeSet, HashSet},
     sync::Arc,
 };
+use tn_types::execution::H256 as TxHash;
 use tracing::debug;
 
 /// An iterator that returns transactions that can be executed on the current state (*best*

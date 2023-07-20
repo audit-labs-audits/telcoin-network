@@ -3,13 +3,14 @@
 // SPDX-License-Identifier: Apache-2.0
 #![allow(clippy::mutable_key_type)]
 
-use crate::consensus::{Batch, Certificate, CertificateAPI, CertificateDigest, HeaderAPI, Round, TimestampMs};
-use crate::consensus::config::{AuthorityIdentifier, Committee};
+use crate::consensus::{
+    config::{AuthorityIdentifier, Committee},
+    Batch, Certificate, CertificateAPI, CertificateDigest, HeaderAPI, Round, TimestampMs,
+};
 use enum_dispatch::enum_dispatch;
 use fastcrypto::hash::Hash;
 use serde::{Deserialize, Serialize};
-use std::collections::HashMap;
-use std::sync::Arc;
+use std::{collections::HashMap, sync::Arc};
 use tokio::sync::mpsc;
 use tracing::warn;
 
@@ -35,10 +36,10 @@ pub struct CommittedSubDag {
     /// The so far calculated reputation score for nodes
     pub reputation_score: ReputationScores,
     /// The timestamp that should identify this commit. This is guaranteed to be monotonically
-    /// incremented. This is not necessarily the leader's timestamp. We compare the leader's timestamp
-    /// with the previously committed sud dag timestamp and we always keep the max.
-    /// Property is explicitly private so the method commit_timestamp() should be used instead which
-    /// bears additional resolution logic.
+    /// incremented. This is not necessarily the leader's timestamp. We compare the leader's
+    /// timestamp with the previously committed sud dag timestamp and we always keep the max.
+    /// Property is explicitly private so the method commit_timestamp() should be used instead
+    /// which bears additional resolution logic.
     commit_timestamp: TimestampMs,
 }
 
@@ -50,10 +51,9 @@ impl CommittedSubDag {
         reputation_score: ReputationScores,
         previous_sub_dag: Option<&CommittedSubDag>,
     ) -> Self {
-        // Narwhal enforces some invariants on the header.created_at, so we can use it as a timestamp.
-        let previous_sub_dag_ts = previous_sub_dag
-            .map(|s| s.commit_timestamp)
-            .unwrap_or_default();
+        // Narwhal enforces some invariants on the header.created_at, so we can use it as a
+        // timestamp.
+        let previous_sub_dag_ts = previous_sub_dag.map(|s| s.commit_timestamp).unwrap_or_default();
         let commit_timestamp = previous_sub_dag_ts.max(*leader.header().created_at());
 
         if previous_sub_dag_ts > *leader.header().created_at() {
@@ -61,13 +61,7 @@ impl CommittedSubDag {
             leader.header().created_at(), previous_sub_dag_ts, commit_timestamp);
         }
 
-        Self {
-            certificates,
-            leader,
-            sub_dag_index,
-            reputation_score,
-            commit_timestamp,
-        }
+        Self { certificates, leader, sub_dag_index, reputation_score, commit_timestamp }
     }
 
     pub fn from_commit(
@@ -93,17 +87,11 @@ impl CommittedSubDag {
     }
 
     pub fn num_batches(&self) -> usize {
-        self.certificates
-            .iter()
-            .map(|x| x.header().payload().len())
-            .sum()
+        self.certificates.iter().map(|x| x.header().payload().len()).sum()
     }
 
     pub fn is_last(&self, output: &Certificate) -> bool {
-        self.certificates
-            .iter()
-            .last()
-            .map_or_else(|| false, |x| x == output)
+        self.certificates.iter().last().map_or_else(|| false, |x| x == output)
     }
 
     pub fn leader_round(&self) -> Round {
@@ -115,7 +103,7 @@ impl CommittedSubDag {
         // replaying this commit and field is never initialised. It's safe to fallback on leader's
         // timestamp.
         if self.commit_timestamp == 0 {
-            return *self.leader.header().created_at();
+            return *self.leader.header().created_at()
         }
         self.commit_timestamp
     }
@@ -139,10 +127,7 @@ impl ReputationScores {
     pub fn new(committee: &Committee) -> Self {
         let scores_per_authority = committee.authorities().map(|a| (a.id(), 0_u64)).collect();
 
-        Self {
-            scores_per_authority,
-            ..Default::default()
-        }
+        Self { scores_per_authority, ..Default::default() }
     }
     /// Adds the provided `score` to the existing score for the provided `authority`
     pub fn add_score(&mut self, authority: AuthorityIdentifier, score: u64) {
@@ -339,12 +324,13 @@ pub type ShutdownToken = mpsc::Sender<()>;
 
 #[cfg(test)]
 mod tests {
-    use crate::consensus::{Certificate, Header, HeaderV1Builder};
-    use crate::consensus::{CommittedSubDag, ReputationScores};
-    use crate::consensus::config::AuthorityIdentifier;
+    use crate::consensus::{
+        config::AuthorityIdentifier, Certificate, CommittedSubDag, Header, HeaderV1Builder,
+        ReputationScores,
+    };
     use indexmap::IndexMap;
-    use std::collections::BTreeSet;
     use lattice_test_utils::CommitteeFixture;
+    use std::collections::BTreeSet;
 
     #[test]
     fn test_zero_timestamp_in_sub_dag() {
@@ -439,9 +425,6 @@ mod tests {
 
         // THEN the latest sub dag should have the highest committed timestamp - basically the
         // same as the previous commit round
-        assert_eq!(
-            sub_dag_round_4.commit_timestamp,
-            sub_dag_round_2.commit_timestamp
-        );
+        assert_eq!(sub_dag_round_4.commit_timestamp, sub_dag_round_2.commit_timestamp);
     }
 }

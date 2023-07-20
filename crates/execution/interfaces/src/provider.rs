@@ -1,4 +1,4 @@
-use execution_primitives::{Address, BlockHash, BlockHashOrNumber, BlockNumber, TxNumber, H256};
+use tn_types::execution::{Address, BlockHash, BlockHashOrNumber, BlockNumber, TxNumber, H256};
 
 /// Bundled errors variants thrown by various providers.
 #[allow(missing_docs)]

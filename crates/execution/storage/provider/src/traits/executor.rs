@@ -2,7 +2,7 @@
 
 use crate::{post_state::PostState, StateProvider};
 use execution_interfaces::executor::BlockExecutionError;
-use execution_primitives::{Address, Block, ChainSpec, U256};
+use tn_types::execution::{Address, Block, ChainSpec, U256};
 
 /// Executor factory that would create the EVM with particular state provider.
 ///

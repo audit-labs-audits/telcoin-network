@@ -5,20 +5,17 @@
 #![allow(clippy::mutable_key_type)]
 
 use fastcrypto::hash::Hash;
-use prometheus::Registry;
-use std::collections::BTreeSet;
-use std::sync::Arc;
 use lattice_storage::NodeStorage;
-use telemetry_subscribers::TelemetryGuards;
 use lattice_test_utils::{temp_dir, CommitteeFixture};
+use prometheus::Registry;
+use std::{collections::BTreeSet, sync::Arc};
+use telemetry_subscribers::TelemetryGuards;
 use tokio::sync::watch;
 
-use crate::bullshark::Bullshark;
-use crate::consensus::ConsensusRound;
-use crate::consensus_utils::NUM_SUB_DAGS_PER_SCHEDULE;
-use crate::metrics::ConsensusMetrics;
-use crate::Consensus;
-use crate::NUM_SHUTDOWN_RECEIVERS;
+use crate::{
+    bullshark::Bullshark, consensus::ConsensusRound, consensus_utils::NUM_SUB_DAGS_PER_SCHEDULE,
+    metrics::ConsensusMetrics, Consensus, NUM_SHUTDOWN_RECEIVERS,
+};
 use tn_types::consensus::{
     Certificate, CertificateAPI, HeaderAPI, PreSubscribedBroadcastSender, ReputationScores,
 };
@@ -49,16 +46,10 @@ async fn test_consensus_recovery_with_bullshark() {
 
     // AND make certificates for rounds 1 to 7 (inclusive)
     let ids: Vec<_> = fixture.authorities().map(|a| a.id()).collect();
-    let genesis = Certificate::genesis(&committee)
-        .iter()
-        .map(|x| x.digest())
-        .collect::<BTreeSet<_>>();
-    let (certificates, _next_parents) = lattice_test_utils::make_optimal_certificates(
-        &committee,
-        1..=7,
-        &genesis,
-        &ids,
-    );
+    let genesis =
+        Certificate::genesis(&committee).iter().map(|x| x.digest()).collect::<BTreeSet<_>>();
+    let (certificates, _next_parents) =
+        lattice_test_utils::make_optimal_certificates(&committee, 1..=7, &genesis, &ids);
 
     // AND Spawn the consensus engine.
     let (tx_waiter, rx_waiter) = lattice_test_utils::test_channel!(100);
@@ -128,7 +119,7 @@ async fn test_consensus_recovery_with_bullshark() {
             // we received the leader of round 6, now stop as we don't expect to see any other
             // certificate from that or higher round.
             if output.round() == 6 {
-                break 'main;
+                break 'main
             }
         }
         consensus_index_counter += 1;
@@ -218,7 +209,7 @@ async fn test_consensus_recovery_with_bullshark() {
             // we received the leader of round 2, now stop as we don't expect to see any other
             // certificate from that or higher round.
             if output.round() == 2 {
-                break 'main;
+                break 'main
             }
         }
         consensus_index_counter += 1;
@@ -280,7 +271,7 @@ async fn test_consensus_recovery_with_bullshark() {
             // we received the leader of round 6, now stop as we don't expect to see any other
             // certificate from that or higher round.
             if output.round() == 6 {
-                break 'main;
+                break 'main
             }
         }
     }
@@ -300,11 +291,7 @@ async fn test_consensus_recovery_with_bullshark() {
     assert_eq!(score_with_crash.scores_per_authority.len(), 4);
     assert_eq!(score_with_crash, score_no_crash);
     assert_eq!(
-        score_with_crash
-            .scores_per_authority
-            .into_iter()
-            .filter(|(_, score)| *score == 2)
-            .count(),
+        score_with_crash.scores_per_authority.into_iter().filter(|(_, score)| *score == 2).count(),
         4
     );
 }

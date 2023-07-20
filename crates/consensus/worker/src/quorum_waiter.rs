@@ -3,19 +3,18 @@
 // Copyright (c) Mysten Labs, Inc.
 // SPDX-License-Identifier: Apache-2.0
 
-use crate::batch_maker::MAX_PARALLEL_BATCH;
-use crate::metrics::WorkerMetrics;
-use tn_types::consensus::config::{Authority, Committee, Stake, WorkerCache, WorkerId};
+use crate::{batch_maker::MAX_PARALLEL_BATCH, metrics::WorkerMetrics};
+use consensus_metrics::{metered_channel::Receiver, monitored_future, spawn_logged_monitored_task};
 use fastcrypto::hash::Hash;
 use futures::stream::{futures_unordered::FuturesUnordered, StreamExt as _};
-use consensus_metrics::metered_channel::Receiver;
-use consensus_metrics::{monitored_future, spawn_logged_monitored_task};
 use lattice_network::{CancelOnDropHandler, ReliableNetwork};
-use std::sync::Arc;
-use std::time::Duration;
+use std::{sync::Arc, time::Duration};
+use tn_types::consensus::{
+    config::{Authority, Committee, Stake, WorkerCache, WorkerId},
+    Batch, ConditionalBroadcastReceiver, WorkerBatchMessage,
+};
 use tokio::{task::JoinHandle, time::timeout};
 use tracing::{trace, warn};
-use tn_types::consensus::{Batch, ConditionalBroadcastReceiver, WorkerBatchMessage};
 
 #[cfg(test)]
 #[path = "tests/quorum_waiter_tests.rs"]

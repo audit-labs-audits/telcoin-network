@@ -1,4 +1,4 @@
-use execution_primitives::{BlockNumber, SealedHeader};
+use tn_types::execution::{BlockNumber, SealedHeader};
 
 /// Determines the control flow during pipeline execution.
 #[derive(Debug, Eq, PartialEq)]

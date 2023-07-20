@@ -1,4 +1,4 @@
-use execution_primitives::{constants::ETH_TO_WEI, BlockNumber, Chain, ChainSpec, Hardfork, U256};
+use tn_types::execution::{constants::ETH_TO_WEI, BlockNumber, Chain, ChainSpec, Hardfork, U256};
 
 /// Calculates the base block reward.
 ///
@@ -47,8 +47,8 @@ pub fn base_block_reward(
 ///
 /// ```
 /// # use execution_consensus_common::calc::{base_block_reward, block_reward};
-/// # use execution_primitives::constants::ETH_TO_WEI;
-/// # use execution_primitives::{MAINNET, U256};
+/// # use tn_types::execution::constants::ETH_TO_WEI;
+/// # use tn_types::execution::{MAINNET, U256};
 /// #
 /// // This is block 126 on mainnet.
 /// let block_number = 126;
@@ -105,7 +105,7 @@ pub fn ommer_reward(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use execution_primitives::{MAINNET, U256};
+    use tn_types::execution::{MAINNET, U256};
 
     #[test]
     fn calc_base_block_reward() {

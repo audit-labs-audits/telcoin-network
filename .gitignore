@@ -1,5 +1,15 @@
-/target
+# cargo
+debug/
+target/
 
+# MacOS
 .DS_Store
 
+# vscode
 .vscode
+
+# prometheus
+data/
+
+# intellij-based IDEs
+.idea

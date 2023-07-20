@@ -1,10 +1,10 @@
 use crate::Stage;
 use execution_db::database::Database;
-use execution_primitives::stage::StageId;
 use std::{
     collections::HashMap,
     fmt::{Debug, Formatter},
 };
+use tn_types::execution::stage::StageId;
 
 /// Combines multiple [`Stage`]s into a single unit.
 ///

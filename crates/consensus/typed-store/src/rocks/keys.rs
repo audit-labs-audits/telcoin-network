@@ -1,10 +1,10 @@
 // Copyright (c) Telcoin, LLC
 // Copyright (c) Mysten Labs, Inc.
 // SPDX-License-Identifier: Apache-2.0
+use super::{be_fix_int_ser, RocksDBRawIter, TypedStoreError};
 use bincode::Options;
 use serde::{de::DeserializeOwned, Serialize};
 use std::marker::PhantomData;
-use super::{be_fix_int_ser, RocksDBRawIter, TypedStoreError};
 
 /// An iterator over the keys of a prefix.
 pub struct Keys<'a, K> {
@@ -14,10 +14,7 @@ pub struct Keys<'a, K> {
 
 impl<'a, K: DeserializeOwned> Keys<'a, K> {
     pub(crate) fn new(db_iter: RocksDBRawIter<'a>) -> Self {
-        Self {
-            db_iter,
-            _phantom: PhantomData,
-        }
+        Self { db_iter, _phantom: PhantomData }
     }
 }
 
@@ -26,9 +23,7 @@ impl<'a, K: DeserializeOwned> Iterator for Keys<'a, K> {
 
     fn next(&mut self) -> Option<Self::Item> {
         if self.db_iter.valid() {
-            let config = bincode::DefaultOptions::new()
-                .with_big_endian()
-                .with_fixint_encoding();
+            let config = bincode::DefaultOptions::new().with_big_endian().with_fixint_encoding();
             let key = self.db_iter.key().and_then(|k| config.deserialize(k).ok());
             self.db_iter.next();
             key.map(Ok)
@@ -59,7 +54,6 @@ impl<'a, K: Serialize> Keys<'a, K> {
     }
 
     /// Seeks to the last key in the database (at this column family).
-    ///
     pub fn skip_to_last(mut self) -> Self {
         self.db_iter.seek_to_last();
         self

@@ -1,7 +1,7 @@
 use auto_impl::auto_impl;
 use execution_interfaces::Result;
-use execution_primitives::{BlockHash, BlockHashOrNumber, BlockNumber, Header, SealedHeader, U256};
 use std::ops::RangeBounds;
+use tn_types::execution::{BlockHash, BlockHashOrNumber, BlockNumber, Header, SealedHeader, U256};
 
 /// Client trait for fetching `Header` related data.
 #[auto_impl(&, Arc)]

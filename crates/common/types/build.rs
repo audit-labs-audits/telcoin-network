@@ -25,9 +25,7 @@ fn main() -> Result<()> {
     let mut config = prost_build::Config::new();
     config.bytes(["."]);
 
-    tonic_build::configure()
-        .out_dir(&out_dir)
-        .compile_with_config(config, proto_files, dirs)?;
+    tonic_build::configure().out_dir(&out_dir).compile_with_config(config, proto_files, dirs)?;
 
     build_anemo_services(&out_dir);
 
@@ -189,14 +187,12 @@ fn build_anemo_services(out_dir: &Path) {
         )
         .build();
 
-    anemo_build::manual::Builder::new()
-        .out_dir(out_dir)
-        .compile(&[
-            primary_to_primary,
-            primary_to_worker,
-            worker_to_primary,
-            worker_to_worker,
-        ]);
+    anemo_build::manual::Builder::new().out_dir(out_dir).compile(&[
+        primary_to_primary,
+        primary_to_worker,
+        worker_to_primary,
+        worker_to_worker,
+    ]);
 }
 
 #[rustversion::nightly]

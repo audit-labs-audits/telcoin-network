@@ -1,9 +1,9 @@
 //! Blockchain tree externals.
 
 use execution_db::database::Database;
-use execution_primitives::ChainSpec;
 use execution_provider::ProviderFactory;
 use std::sync::Arc;
+use tn_types::execution::ChainSpec;
 
 /// A container for external components.
 ///

@@ -2,7 +2,7 @@ use super::AccountReader;
 use crate::{post_state::PostState, BlockHashReader, BlockIdReader};
 use auto_impl::auto_impl;
 use execution_interfaces::{provider::ProviderError, Result};
-use execution_primitives::{
+use tn_types::execution::{
     Address, BlockHash, BlockId, BlockNumHash, BlockNumber, BlockNumberOrTag, Bytecode, Bytes,
     StorageKey, StorageValue, H256, KECCAK_EMPTY, U256,
 };

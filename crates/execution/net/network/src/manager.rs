@@ -32,8 +32,6 @@ use crate::{
     transactions::NetworkTransactionEvent,
     FetchClient, NetworkBuilder,
 };
-use futures::{Future, StreamExt};
-use parking_lot::Mutex;
 use execution_eth_wire::{
     capability::{Capabilities, CapabilityMessage},
     DisconnectReason, EthVersion, Status,
@@ -41,9 +39,10 @@ use execution_eth_wire::{
 use execution_metrics::common::mpsc::UnboundedMeteredSender;
 use execution_net_common::bandwidth_meter::BandwidthMeter;
 use execution_network_api::ReputationChangeKind;
-use execution_primitives::{listener::EventListeners, NodeRecord, PeerId, H256};
 use execution_provider::BlockReader;
 use execution_rpc_types::{EthProtocolInfo, NetworkStatus};
+use futures::{Future, StreamExt};
+use parking_lot::Mutex;
 use std::{
     net::SocketAddr,
     pin::Pin,
@@ -53,6 +52,7 @@ use std::{
     },
     task::{Context, Poll},
 };
+use tn_types::execution::{listener::EventListeners, NodeRecord, PeerId, H256};
 use tokio::sync::mpsc::{self, error::TrySendError};
 use tokio_stream::wrappers::UnboundedReceiverStream;
 use tracing::{debug, error, info, trace, warn};
@@ -260,7 +260,7 @@ where
     /// ```
     /// use execution_provider::test_utils::NoopProvider;
     /// use execution_transaction_pool::TransactionPool;
-    /// use execution_primitives::mainnet_nodes;
+    /// use tn_types::execution::mainnet_nodes;
     /// use execution_network::config::rng_secret_key;
     /// use execution_network::{NetworkConfig, NetworkManager};
     /// async fn launch<Pool: TransactionPool>(pool: Pool) {

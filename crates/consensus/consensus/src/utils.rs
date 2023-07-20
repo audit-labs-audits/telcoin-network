@@ -3,10 +3,11 @@
 // Copyright (c) Mysten Labs, Inc.
 // SPDX-License-Identifier: Apache-2.0
 use crate::consensus::{ConsensusState, Dag};
-use tn_types::consensus::config::Committee;
 use std::collections::HashSet;
+use tn_types::consensus::{
+    config::Committee, Certificate, CertificateAPI, CertificateDigest, HeaderAPI, Round,
+};
 use tracing::debug;
-use tn_types::consensus::{Certificate, CertificateAPI, CertificateDigest, HeaderAPI, Round};
 
 /// Order the past leaders that we didn't already commit.
 pub fn order_leaders<'a, LeaderElector>(
@@ -21,10 +22,7 @@ where
     let mut to_commit = vec![leader.clone()];
     let mut leader = leader;
     assert_eq!(leader.round() % 2, 0);
-    for r in (state.last_round.committed_round + 2..=leader.round() - 2)
-        .rev()
-        .step_by(2)
-    {
+    for r in (state.last_round.committed_round + 2..=leader.round() - 2).rev().step_by(2) {
         // Get the certificate proposed by the previous leader.
         let (_, prev_leader) = match get_leader(committee, r, &state.dag) {
             Some(x) => x,
@@ -48,19 +46,15 @@ fn linked(leader: &Certificate, prev_leader: &Certificate, dag: &Dag) -> bool {
             .get(&r)
             .expect("We should have the whole history by now")
             .values()
-            .filter(|(digest, _)| {
-                parents
-                    .iter()
-                    .any(|x| x.header().parents().contains(digest))
-            })
+            .filter(|(digest, _)| parents.iter().any(|x| x.header().parents().contains(digest)))
             .map(|(_, certificate)| certificate)
             .collect();
     }
     parents.contains(&prev_leader)
 }
 
-/// Flatten the dag referenced by the input certificate. This is a classic depth-first search (pre-order):
-/// <https://en.wikipedia.org/wiki/Tree_traversal#Pre-order>
+/// Flatten the dag referenced by the input certificate. This is a classic depth-first search
+/// (pre-order): <https://en.wikipedia.org/wiki/Tree_traversal#Pre-order>
 pub fn order_dag(leader: &Certificate, state: &ConsensusState) -> Vec<Certificate> {
     debug!("Processing sub-dag of {:?}", leader);
     assert!(leader.round() > 0);
@@ -75,7 +69,7 @@ pub fn order_dag(leader: &Certificate, state: &ConsensusState) -> Vec<Certificat
         ordered.push(x.clone());
         if x.round() == gc_round + 1 {
             // Do not try to order parents of the certificate, since they have been GC'ed.
-            continue;
+            continue
         }
         for parent in x.header().parents() {
             let (digest, certificate) = match state
@@ -87,8 +81,8 @@ pub fn order_dag(leader: &Certificate, state: &ConsensusState) -> Vec<Certificat
                 None => panic!("Parent digest {parent:?} not found for {x:?}!"),
             };
 
-            // We skip the certificate if we (1) already processed it or (2) we reached a round that we already
-            // committed or will never commit for this authority.
+            // We skip the certificate if we (1) already processed it or (2) we reached a round that
+            // we already committed or will never commit for this authority.
             let mut skip = already_ordered.contains(&digest);
             skip |= state
                 .last_committed
@@ -101,7 +95,8 @@ pub fn order_dag(leader: &Certificate, state: &ConsensusState) -> Vec<Certificat
         }
     }
 
-    // Ordering the output by round is not really necessary but it makes the commit sequence prettier.
+    // Ordering the output by round is not really necessary but it makes the commit sequence
+    // prettier.
     ordered.sort_by_key(|x| x.round());
     ordered
 }

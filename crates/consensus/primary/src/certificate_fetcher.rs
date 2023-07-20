@@ -4,33 +4,33 @@
 // SPDX-License-Identifier: Apache-2.0
 use crate::{metrics::PrimaryMetrics, synchronizer::Synchronizer};
 use anemo::Request;
-use tn_types::consensus::config::{AuthorityIdentifier, Committee};
-use lattice_consensus::consensus::ConsensusRound;
-use tn_types::consensus::crypto::NetworkPublicKey;
+use consensus_metrics::{
+    metered_channel::Receiver, monitored_future, monitored_scope, spawn_logged_monitored_task,
+};
 use futures::{stream::FuturesUnordered, StreamExt};
 use itertools::Itertools;
-use consensus_metrics::metered_channel::Receiver;
-use consensus_metrics::{monitored_future, monitored_scope, spawn_logged_monitored_task};
+use lattice_consensus::consensus::ConsensusRound;
 use lattice_network::PrimaryToPrimaryRpc;
+use lattice_storage::CertificateStore;
 use rand::{rngs::ThreadRng, seq::SliceRandom};
 use std::{
     collections::{BTreeMap, BTreeSet},
     sync::Arc,
     time::Duration,
 };
-use lattice_storage::CertificateStore;
-use tokio::task::{spawn_blocking, JoinSet};
-use tokio::{
-    sync::watch,
-    task::JoinHandle,
-    time::{sleep, timeout, Instant},
-};
-use tracing::{debug, error, instrument, trace, warn};
 use tn_types::consensus::{
+    config::{AuthorityIdentifier, Committee},
+    crypto::NetworkPublicKey,
     error::{DagError, DagResult},
     Certificate, CertificateAPI, ConditionalBroadcastReceiver, FetchCertificatesRequest,
     FetchCertificatesResponse, HeaderAPI, Round,
 };
+use tokio::{
+    sync::watch,
+    task::{spawn_blocking, JoinHandle, JoinSet},
+    time::{sleep, timeout, Instant},
+};
+use tracing::{debug, error, instrument, trace, warn};
 
 #[cfg(test)]
 #[path = "tests/certificate_fetcher_tests.rs"]
@@ -113,12 +113,8 @@ impl CertificateFetcher {
         synchronizer: Arc<Synchronizer>,
         metrics: Arc<PrimaryMetrics>,
     ) -> JoinHandle<()> {
-        let state = Arc::new(CertificateFetcherState {
-            authority_id,
-            network,
-            synchronizer,
-            metrics,
-        });
+        let state =
+            Arc::new(CertificateFetcherState { authority_id, network, synchronizer, metrics });
 
         spawn_logged_monitored_task!(
             async move {
@@ -254,14 +250,14 @@ impl CertificateFetcher {
             }
             Err(e) => {
                 warn!("Failed to read from certificate store: {e}");
-                return;
+                return
             }
         };
 
         self.targets.retain(|origin, target_round| {
-            let last_written_round = written_rounds.get(origin).map_or(gc_round, |rounds| {
-                rounds.last().unwrap_or(&gc_round).to_owned()
-            });
+            let last_written_round = written_rounds
+                .get(origin)
+                .map_or(gc_round, |rounds| rounds.last().unwrap_or(&gc_round).to_owned());
             // Drop sync target when cert store already has an equal or higher round for the origin.
             // This applies GC to targets as well.
             //
@@ -273,7 +269,7 @@ impl CertificateFetcher {
         });
         if self.targets.is_empty() {
             debug!("Certificates have caught up. Skip fetching.");
-            return;
+            return
         }
 
         let state = self.state.clone();
@@ -284,26 +280,25 @@ impl CertificateFetcher {
             self.targets.values().max().unwrap_or(&0),
             gc_round
         );
-        self.fetch_certificates_task
-            .spawn(monitored_future!(async move {
-                let _scope = monitored_scope("CertificatesFetching");
-                state.metrics.certificate_fetcher_inflight_fetch.inc();
+        self.fetch_certificates_task.spawn(monitored_future!(async move {
+            let _scope = monitored_scope("CertificatesFetching");
+            state.metrics.certificate_fetcher_inflight_fetch.inc();
 
-                let now = Instant::now();
-                match run_fetch_task(state.clone(), committee, gc_round, written_rounds).await {
-                    Ok(_) => {
-                        debug!(
-                            "Finished task to fetch certificates successfully, elapsed = {}s",
-                            now.elapsed().as_secs_f64()
-                        );
-                    }
-                    Err(e) => {
-                        warn!("Error from task to fetch certificates: {e}");
-                    }
-                };
+            let now = Instant::now();
+            match run_fetch_task(state.clone(), committee, gc_round, written_rounds).await {
+                Ok(_) => {
+                    debug!(
+                        "Finished task to fetch certificates successfully, elapsed = {}s",
+                        now.elapsed().as_secs_f64()
+                    );
+                }
+                Err(e) => {
+                    warn!("Error from task to fetch certificates: {e}");
+                }
+            };
 
-                state.metrics.certificate_fetcher_inflight_fetch.dec();
-            }));
+            state.metrics.certificate_fetcher_inflight_fetch.dec();
+        }));
     }
 
     fn gc_round(&self) -> Round {
@@ -331,17 +326,14 @@ async fn run_fetch_task(
     // Process and store fetched certificates.
     let num_certs_fetched = response.certificates.len();
     process_certificates_helper(response, &state.synchronizer, state.metrics.clone()).await?;
-    state
-        .metrics
-        .certificate_fetcher_num_certificates_processed
-        .inc_by(num_certs_fetched as u64);
+    state.metrics.certificate_fetcher_num_certificates_processed.inc_by(num_certs_fetched as u64);
 
     debug!("Successfully fetched and processed {num_certs_fetched} certificates");
     Ok(())
 }
 
-/// Fetches certificates from other primaries concurrently, with ~5 sec interval between each request.
-/// Terminates after the 1st successful response is received.
+/// Fetches certificates from other primaries concurrently, with ~5 sec interval between each
+/// request. Terminates after the 1st successful response is received.
 #[instrument(level = "debug", skip_all)]
 async fn fetch_certificates_helper(
     name: AuthorityIdentifier,
@@ -359,8 +351,8 @@ async fn fetch_certificates_helper(
         .map(|(_, _, network_key)| network_key)
         .collect();
     peers.shuffle(&mut ThreadRng::default());
-    let fetch_timeout = PARALLEL_FETCH_REQUEST_INTERVAL_SECS * peers.len().try_into().unwrap()
-        + PARALLEL_FETCH_REQUEST_ADDITIONAL_TIMEOUT;
+    let fetch_timeout = PARALLEL_FETCH_REQUEST_INTERVAL_SECS * peers.len().try_into().unwrap() +
+        PARALLEL_FETCH_REQUEST_ADDITIONAL_TIMEOUT;
     let fetch_callback = async move {
         debug!("Starting to fetch certificates");
         let mut fut = FuturesUnordered::new();
@@ -373,10 +365,7 @@ async fn fetch_certificates_helper(
                     debug!("Sending out fetch request in parallel to {peer}");
                     let result = network.fetch_certificates(&peer, request).await;
                     if let Ok(resp) = &result {
-                        debug!(
-                            "Fetched {} certificates from peer {peer}",
-                            resp.certificates.len()
-                        );
+                        debug!("Fetched {} certificates from peer {peer}", resp.certificates.len());
                     }
                     result
                 }));
@@ -431,7 +420,7 @@ async fn process_certificates_helper(
         return Err(DagError::TooManyFetchedCertificatesReturned(
             response.certificates.len(),
             MAX_CERTIFICATES_TO_FETCH,
-        ));
+        ))
     }
     // Verify certificates in parallel.
     // In PrimaryReceiverHandler, certificates already in storage are ignored.
@@ -469,9 +458,7 @@ async fn process_certificates_helper(
                 warn!("Failed to accept fetched certificate: {e}");
             }
         }
-        metrics
-            .certificate_fetcher_total_accept_us
-            .inc_by(now.elapsed().as_micros() as u64);
+        metrics.certificate_fetcher_total_accept_us.inc_by(now.elapsed().as_micros() as u64);
     }
 
     trace!("Fetched certificates have been processed");

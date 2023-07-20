@@ -26,10 +26,7 @@ use memory_stats_noop as memory_stats;
 
 pub mod allocators;
 
-#[cfg(any(
-    any(target_os = "macos", target_os = "ios"),
-    feature = "estimate-heapsize"
-))]
+#[cfg(any(any(target_os = "macos", target_os = "ios"), feature = "estimate-heapsize"))]
 pub mod sizeof;
 
 /// This is a copy of patched crate `malloc_size_of` as a module.

@@ -1,11 +1,11 @@
 mod utils;
 
 use criterion::{black_box, criterion_group, criterion_main, Criterion};
+use execution_libmdbx::{ObjectLength, WriteFlags};
 use ffi::*;
 use libc::size_t;
 use rand::{prelude::SliceRandom, SeedableRng};
 use rand_xorshift::XorShiftRng;
-use execution_libmdbx::{ObjectLength, WriteFlags};
 use std::ptr;
 use utils::*;
 

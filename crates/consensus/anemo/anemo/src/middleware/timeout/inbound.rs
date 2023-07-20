@@ -37,10 +37,7 @@ pub(crate) struct Timeout<S> {
 
 impl<S> Timeout<S> {
     pub(crate) fn new(inner: S, default_timeout: Option<Duration>) -> Self {
-        Self {
-            inner,
-            default_timeout,
-        }
+        Self { inner, default_timeout }
     }
 }
 
@@ -99,13 +96,13 @@ where
         let this = self.project();
 
         if let Poll::Ready(result) = this.inner.poll(cx) {
-            return Poll::Ready(result.map_err(Into::into));
+            return Poll::Ready(result.map_err(Into::into))
         }
 
         if let Some(sleep) = this.sleep.as_pin_mut() {
             futures::ready!(sleep.poll(cx));
             let response = Response::new(Bytes::new()).with_status(StatusCode::RequestTimeout);
-            return Poll::Ready(Ok(response));
+            return Poll::Ready(Ok(response))
         }
 
         Poll::Pending
@@ -131,12 +128,12 @@ mod tests {
         request_timeout: Option<Duration>,
         expected_result: ExpectedResult,
     ) {
-        let service = ServiceBuilder::new()
-            .layer_fn(move |s| Timeout::new(s, timeout))
-            .service(service_fn(move |_req: Request<Bytes>| async move {
+        let service = ServiceBuilder::new().layer_fn(move |s| Timeout::new(s, timeout)).service(
+            service_fn(move |_req: Request<Bytes>| async move {
                 tokio::time::sleep(sleep_duration).await;
                 Ok::<_, Infallible>(Response::new(Bytes::new()))
-            }));
+            }),
+        );
 
         let mut request = Request::new(Bytes::new());
         if let Some(request_timeout) = request_timeout {
@@ -160,13 +157,8 @@ mod tests {
         let timeout = None;
         let sleep_duration = Duration::from_secs(1);
         let request_timeout = None;
-        timeout_service_test(
-            timeout,
-            sleep_duration,
-            request_timeout,
-            ExpectedResult::Success,
-        )
-        .await;
+        timeout_service_test(timeout, sleep_duration, request_timeout, ExpectedResult::Success)
+            .await;
     }
 
     #[tokio::test(flavor = "current_thread", start_paused = true)]
@@ -174,24 +166,14 @@ mod tests {
         let timeout = Some(Duration::from_secs(2));
         let sleep_duration = Duration::from_secs(1);
         let request_timeout = None;
-        timeout_service_test(
-            timeout,
-            sleep_duration,
-            request_timeout,
-            ExpectedResult::Success,
-        )
-        .await;
+        timeout_service_test(timeout, sleep_duration, request_timeout, ExpectedResult::Success)
+            .await;
 
         let timeout = Some(Duration::from_secs(2));
         let sleep_duration = Duration::from_secs(4);
         let request_timeout = None;
-        timeout_service_test(
-            timeout,
-            sleep_duration,
-            request_timeout,
-            ExpectedResult::Failure,
-        )
-        .await;
+        timeout_service_test(timeout, sleep_duration, request_timeout, ExpectedResult::Failure)
+            .await;
     }
 
     #[tokio::test(flavor = "current_thread", start_paused = true)]
@@ -199,24 +181,14 @@ mod tests {
         let timeout = None;
         let sleep_duration = Duration::from_secs(1);
         let request_timeout = Some(Duration::from_secs(2));
-        timeout_service_test(
-            timeout,
-            sleep_duration,
-            request_timeout,
-            ExpectedResult::Success,
-        )
-        .await;
+        timeout_service_test(timeout, sleep_duration, request_timeout, ExpectedResult::Success)
+            .await;
 
         let timeout = None;
         let sleep_duration = Duration::from_secs(4);
         let request_timeout = Some(Duration::from_secs(2));
-        timeout_service_test(
-            timeout,
-            sleep_duration,
-            request_timeout,
-            ExpectedResult::Failure,
-        )
-        .await;
+        timeout_service_test(timeout, sleep_duration, request_timeout, ExpectedResult::Failure)
+            .await;
     }
 
     #[tokio::test(flavor = "current_thread", start_paused = true)]
@@ -224,47 +196,27 @@ mod tests {
         let timeout = Some(Duration::from_secs(2));
         let sleep_duration = Duration::from_secs(1);
         let request_timeout = Some(Duration::from_secs(2));
-        timeout_service_test(
-            timeout,
-            sleep_duration,
-            request_timeout,
-            ExpectedResult::Success,
-        )
-        .await;
+        timeout_service_test(timeout, sleep_duration, request_timeout, ExpectedResult::Success)
+            .await;
 
         let timeout = Some(Duration::from_secs(4));
         let sleep_duration = Duration::from_secs(1);
         let request_timeout = Some(Duration::from_secs(2));
-        timeout_service_test(
-            timeout,
-            sleep_duration,
-            request_timeout,
-            ExpectedResult::Success,
-        )
-        .await;
+        timeout_service_test(timeout, sleep_duration, request_timeout, ExpectedResult::Success)
+            .await;
 
         // Lesser timeout is respected
         let timeout = Some(Duration::from_secs(10));
         let sleep_duration = Duration::from_secs(5);
         let request_timeout = Some(Duration::from_secs(1));
-        timeout_service_test(
-            timeout,
-            sleep_duration,
-            request_timeout,
-            ExpectedResult::Failure,
-        )
-        .await;
+        timeout_service_test(timeout, sleep_duration, request_timeout, ExpectedResult::Failure)
+            .await;
 
         // Lesser timeout is respected
         let timeout = Some(Duration::from_secs(1));
         let sleep_duration = Duration::from_secs(5);
         let request_timeout = Some(Duration::from_secs(10));
-        timeout_service_test(
-            timeout,
-            sleep_duration,
-            request_timeout,
-            ExpectedResult::Failure,
-        )
-        .await;
+        timeout_service_test(timeout, sleep_duration, request_timeout, ExpectedResult::Failure)
+            .await;
     }
 }

@@ -50,10 +50,7 @@ pub(crate) struct RawRequestHeader {
 
 impl RawRequestHeader {
     pub fn from_header(header: RequestHeader) -> Self {
-        Self {
-            route: header.route,
-            headers: header.headers,
-        }
+        Self { route: header.route, headers: header.headers }
     }
 }
 
@@ -152,10 +149,7 @@ impl<T> Request<T> {
     where
         F: FnOnce(T) -> U,
     {
-        Request {
-            body: f(self.body),
-            head: self.head,
-        }
+        Request { body: f(self.body), head: self.head }
     }
 
     /// Set the max duration the request is allowed to take.
@@ -182,8 +176,7 @@ impl<T> Request<T> {
     /// ```
     pub fn set_timeout(&mut self, timeout: std::time::Duration) {
         let timeout = crate::middleware::timeout::duration_to_timeout(timeout);
-        self.headers_mut()
-            .insert(super::header::TIMEOUT.into(), timeout);
+        self.headers_mut().insert(super::header::TIMEOUT.into(), timeout);
     }
 
     /// Set the max duration the request is allowed to take.
@@ -229,9 +222,7 @@ impl<T> Request<T> {
     /// );
     /// ```
     pub fn timeout(&self) -> Option<std::time::Duration> {
-        crate::middleware::timeout::try_parse_timeout(self.headers())
-            .ok()
-            .flatten()
+        crate::middleware::timeout::try_parse_timeout(self.headers()).ok().flatten()
     }
 }
 

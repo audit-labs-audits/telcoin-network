@@ -11,7 +11,7 @@ pub fn get_available_port(host: &str) -> u16 {
 
     for _ in 0..MAX_PORT_RETRIES {
         if let Ok(port) = get_ephemeral_port(host) {
-            return port;
+            return port
         }
     }
 

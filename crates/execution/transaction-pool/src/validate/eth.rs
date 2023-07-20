@@ -6,13 +6,13 @@ use crate::{
     validate::{task::ValidationJobSender, TransactionValidatorError, ValidationTask},
     TransactionValidationOutcome, TransactionValidator, MAX_INIT_CODE_SIZE, TX_MAX_SIZE,
 };
-use execution_primitives::{
-    constants::ETHEREUM_BLOCK_GAS_LIMIT, ChainSpec, InvalidTransactionError, EIP1559_TX_TYPE_ID,
-    EIP2930_TX_TYPE_ID, LEGACY_TX_TYPE_ID,
-};
 use execution_provider::{AccountReader, StateProviderFactory};
 use execution_tasks::TaskSpawner;
 use std::{marker::PhantomData, sync::Arc};
+use tn_types::execution::{
+    constants::ETHEREUM_BLOCK_GAS_LIMIT, ChainSpec, InvalidTransactionError, EIP1559_TX_TYPE_ID,
+    EIP2930_TX_TYPE_ID, LEGACY_TX_TYPE_ID,
+};
 use tokio::sync::{oneshot, Mutex};
 
 /// A [TransactionValidator] implementation that validates ethereum transaction.

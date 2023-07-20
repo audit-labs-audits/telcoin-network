@@ -20,11 +20,8 @@ pub fn generate(service: &Service) -> TokenStream {
         .iter()
         .map(|method| quote::format_ident!("{}_layer", method.name()))
         .collect();
-    let method_request_types: Vec<_> = service
-        .methods()
-        .iter()
-        .map(|method| method.request_type())
-        .collect();
+    let method_request_types: Vec<_> =
+        service.methods().iter().map(|method| method.request_type()).collect();
     let method_response_types: Vec<_> = service
         .methods()
         .iter()
@@ -48,12 +45,8 @@ pub fn generate(service: &Service) -> TokenStream {
     let generated_trait = generate_trait(service, server_trait.clone());
     let service_doc = generate_doc_comments(service.comment());
     let package = service.package();
-    let path = format!(
-        "{}{}{}",
-        package,
-        if package.is_empty() { "" } else { "." },
-        service.identifier()
-    );
+    let path =
+        format!("{}{}{}", package, if package.is_empty() { "" } else { "." }, service.identifier());
     let transport = generate_transport(&server_service, &server_trait, &path);
 
     quote! {
@@ -280,11 +273,7 @@ fn generate_method_routes(service: &Service) -> TokenStream {
         let path = format!(
             "/{}{}{}/{}",
             service.package(),
-            if service.package().is_empty() {
-                ""
-            } else {
-                "."
-            },
+            if service.package().is_empty() { "" } else { "." },
             service.identifier(),
             method.identifier()
         );

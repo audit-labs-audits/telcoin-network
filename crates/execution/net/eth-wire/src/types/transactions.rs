@@ -1,7 +1,7 @@
 //! Implements the `GetPooledTransactions` and `PooledTransactions` message types.
 use execution_codecs::derive_arbitrary;
-use execution_primitives::{TransactionSigned, H256};
 use execution_rlp::{RlpDecodableWrapper, RlpEncodableWrapper};
+use tn_types::execution::{TransactionSigned, H256};
 
 #[cfg(feature = "serde")]
 use serde::{Deserialize, Serialize};
@@ -54,12 +54,12 @@ impl From<PooledTransactions> for Vec<TransactionSigned> {
 #[cfg(test)]
 mod test {
     use crate::{message::RequestPair, GetPooledTransactions, PooledTransactions};
+    use execution_rlp::{Decodable, Encodable};
     use hex_literal::hex;
-    use execution_primitives::{
+    use std::str::FromStr;
+    use tn_types::execution::{
         hex, Signature, Transaction, TransactionKind, TransactionSigned, TxEip1559, TxLegacy, U256,
     };
-    use execution_rlp::{Decodable, Encodable};
-    use std::str::FromStr;
 
     #[test]
     // Test vector from: https://eips.ethereum.org/EIPS/eip-2481

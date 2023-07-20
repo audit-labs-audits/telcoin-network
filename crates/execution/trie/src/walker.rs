@@ -4,11 +4,11 @@ use crate::{
     updates::TrieUpdates,
 };
 use execution_db::{table::Key, DatabaseError};
-use execution_primitives::{
+use std::marker::PhantomData;
+use tn_types::execution::{
     trie::{BranchNodeCompact, Nibbles},
     H256,
 };
-use std::marker::PhantomData;
 
 /// `TrieWalker` is a structure that enables traversal of a Merkle trie.
 /// It allows moving through the trie in a depth-first manner, skipping certain branches if the .
@@ -263,8 +263,8 @@ mod tests {
     use execution_db::{
         cursor::DbCursorRW, tables, test_utils::create_test_rw_db, transaction::DbTxMut,
     };
-    use execution_primitives::{trie::StorageTrieEntry, MAINNET};
     use execution_provider::ProviderFactory;
+    use tn_types::execution::{trie::StorageTrieEntry, MAINNET};
 
     #[test]
     fn walk_nodes_with_common_prefix() {

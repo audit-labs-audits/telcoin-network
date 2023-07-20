@@ -3,23 +3,20 @@
 // Copyright (c) Mysten Labs, Inc.
 // SPDX-License-Identifier: Apache-2.0
 use super::*;
-use crate::common::create_db_stores;
-use crate::{primary, PrimaryChannelMetrics};
-use lattice_consensus::consensus::ConsensusRound;
-use tn_types::consensus::crypto::KeyPair as DefinedKeyPair;
+use crate::{common::create_db_stores, primary, PrimaryChannelMetrics};
 use fastcrypto::traits::KeyPair;
+use lattice_consensus::consensus::ConsensusRound;
 use lattice_network::client::NetworkClient;
+use lattice_test_utils::CommitteeFixture;
 use primary::NUM_SHUTDOWN_RECEIVERS;
 use prometheus::Registry;
 use rand::{rngs::StdRng, SeedableRng};
 use std::num::NonZeroUsize;
-use lattice_test_utils::CommitteeFixture;
-use tokio::sync::watch;
-use tokio::time::Duration;
 use tn_types::consensus::{
-    CertificateAPI, MockPrimaryToPrimary, PreSubscribedBroadcastSender, PrimaryToPrimaryServer,
-    RequestVoteResponse,
+    crypto::KeyPair as DefinedKeyPair, CertificateAPI, MockPrimaryToPrimary,
+    PreSubscribedBroadcastSender, PrimaryToPrimaryServer, RequestVoteResponse,
 };
+use tokio::{sync::watch, time::Duration};
 
 #[tokio::test(flavor = "current_thread", start_paused = true)]
 async fn propose_header() {
@@ -48,11 +45,7 @@ async fn propose_header() {
     let proposed_header = primary.header(&committee);
 
     // Set up network.
-    let own_address = committee
-        .primary_by_id(&id)
-        .unwrap()
-        .to_anemo_address()
-        .unwrap();
+    let own_address = committee.primary_by_id(&id).unwrap().to_anemo_address().unwrap();
     let network = anemo::Network::bind(own_address)
         .server_name("narwhal")
         .private_key(network_key)
@@ -69,35 +62,26 @@ async fn propose_header() {
         let mut mock_server = MockPrimaryToPrimary::new();
         let mut mock_seq = mockall::Sequence::new();
         // Verify errors are retried.
-        mock_server
-            .expect_request_vote()
-            .times(3)
-            .in_sequence(&mut mock_seq)
-            .returning(move |_request| {
-                Err(anemo::rpc::Status::new(
-                    anemo::types::response::StatusCode::Unknown,
-                ))
-            });
-        mock_server
-            .expect_request_vote()
-            .times(1)
-            .in_sequence(&mut mock_seq)
-            .return_once(move |_request| {
+        mock_server.expect_request_vote().times(3).in_sequence(&mut mock_seq).returning(
+            move |_request| {
+                Err(anemo::rpc::Status::new(anemo::types::response::StatusCode::Unknown))
+            },
+        );
+        mock_server.expect_request_vote().times(1).in_sequence(&mut mock_seq).return_once(
+            move |_request| {
                 Ok(anemo::Response::new(RequestVoteResponse {
                     vote: Some(vote),
                     missing: Vec::new(),
                 }))
-            });
+            },
+        );
         let routes = anemo::Router::new().add_rpc_service(PrimaryToPrimaryServer::new(mock_server));
         primary_networks.push(primary.new_network(routes));
         println!("New primary added: {:?}", address);
 
         let address = address.to_anemo_address().unwrap();
         let peer_id = anemo::PeerId(primary.network_keypair().public().0.to_bytes());
-        network
-            .connect_with_peer_id(address, peer_id)
-            .await
-            .unwrap();
+        network.connect_with_peer_id(address, peer_id).await.unwrap();
     }
 
     // Spawn the core.
@@ -167,11 +151,7 @@ async fn propose_header_failure() {
     let proposed_header = primary.header(&committee);
 
     // Set up network.
-    let own_address = committee
-        .primary_by_id(&authority_id)
-        .unwrap()
-        .to_anemo_address()
-        .unwrap();
+    let own_address = committee.primary_by_id(&authority_id).unwrap().to_anemo_address().unwrap();
     let network = anemo::Network::bind(own_address)
         .server_name("narwhal")
         .private_key(network_key)
@@ -183,23 +163,18 @@ async fn propose_header_failure() {
     for primary in fixture.authorities().filter(|a| a.id() != authority_id) {
         let address = committee.primary(&primary.public_key()).unwrap();
         let mut mock_server = MockPrimaryToPrimary::new();
-        mock_server
-            .expect_request_vote()
-            .returning(move |_request| {
-                Err(anemo::rpc::Status::new(
-                    anemo::types::response::StatusCode::BadRequest, // unretriable
-                ))
-            });
+        mock_server.expect_request_vote().returning(move |_request| {
+            Err(anemo::rpc::Status::new(
+                anemo::types::response::StatusCode::BadRequest, // unretriable
+            ))
+        });
         let routes = anemo::Router::new().add_rpc_service(PrimaryToPrimaryServer::new(mock_server));
         primary_networks.push(primary.new_network(routes));
         println!("New primary added: {:?}", address);
 
         let address = address.to_anemo_address().unwrap();
         let peer_id = anemo::PeerId(primary.network_keypair().public().0.to_bytes());
-        network
-            .connect_with_peer_id(address, peer_id)
-            .await
-            .unwrap();
+        network.connect_with_peer_id(address, peer_id).await.unwrap();
     }
 
     // Spawn the core.
@@ -290,11 +265,7 @@ async fn run_vote_aggregator_with_param(
     let proposed_header = primary.header(&committee);
 
     // Set up network.
-    let own_address = committee
-        .primary_by_id(&id)
-        .unwrap()
-        .to_anemo_address()
-        .unwrap();
+    let own_address = committee.primary_by_id(&id).unwrap().to_anemo_address().unwrap();
     let network = anemo::Network::bind(own_address)
         .server_name("narwhal")
         .private_key(network_key)
@@ -315,26 +286,21 @@ async fn run_vote_aggregator_with_param(
         };
         let mut mock_server = MockPrimaryToPrimary::new();
         let mut mock_seq = mockall::Sequence::new();
-        mock_server
-            .expect_request_vote()
-            .times(1)
-            .in_sequence(&mut mock_seq)
-            .return_once(move |_request| {
+        mock_server.expect_request_vote().times(1).in_sequence(&mut mock_seq).return_once(
+            move |_request| {
                 Ok(anemo::Response::new(RequestVoteResponse {
                     vote: Some(vote),
                     missing: Vec::new(),
                 }))
-            });
+            },
+        );
         let routes = anemo::Router::new().add_rpc_service(PrimaryToPrimaryServer::new(mock_server));
         primary_networks.push(primary.new_network(routes));
         println!("New primary added: {:?}", address);
 
         let address = address.to_anemo_address().unwrap();
         let peer_id = anemo::PeerId(primary.network_keypair().public().0.to_bytes());
-        network
-            .connect_with_peer_id(address, peer_id)
-            .await
-            .unwrap();
+        network.connect_with_peer_id(address, peer_id).await.unwrap();
     }
 
     // Spawn the core.
@@ -378,11 +344,9 @@ async fn run_vote_aggregator_with_param(
         assert_eq!(certificate.header().digest(), proposed_digest);
     } else {
         // A cert is not expected, checks that it times out without forming the cert.
-        assert!(
-            tokio::time::timeout(Duration::from_secs(5), rx_new_certificates.recv())
-                .await
-                .is_err()
-        );
+        assert!(tokio::time::timeout(Duration::from_secs(5), rx_new_certificates.recv())
+            .await
+            .is_err());
     }
 }
 #[tokio::test]
@@ -431,11 +395,7 @@ async fn shutdown_core() {
 
     let metrics = Arc::new(PrimaryMetrics::new(&Registry::new()));
 
-    let own_address = committee
-        .primary_by_id(&id)
-        .unwrap()
-        .to_anemo_address()
-        .unwrap();
+    let own_address = committee.primary_by_id(&id).unwrap().to_anemo_address().unwrap();
     let network = anemo::Network::bind(own_address)
         .server_name("narwhal")
         .private_key(network_key)

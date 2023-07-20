@@ -6,11 +6,11 @@ use crate::p2p::{
 };
 use async_trait::async_trait;
 use futures::{future, Future, FutureExt};
-use execution_primitives::{BlockBody, WithPeerId, H256};
 use std::{
     fmt::{Debug, Formatter},
     pin::Pin,
 };
+use tn_types::execution::{BlockBody, WithPeerId, H256};
 use tokio::sync::oneshot::{self, Receiver};
 
 /// A test client for fetching bodies
@@ -26,7 +26,7 @@ impl<F> Debug for TestBodiesClient<F> {
 }
 
 impl<F: Sync + Send> DownloadClient for TestBodiesClient<F> {
-    fn report_bad_message(&self, _peer_id: execution_primitives::PeerId) {
+    fn report_bad_message(&self, _peer_id: tn_types::execution::PeerId) {
         // noop
     }
 

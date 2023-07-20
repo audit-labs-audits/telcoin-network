@@ -1,8 +1,8 @@
-use jsonrpsee_types::error::{INTERNAL_ERROR_CODE, INVALID_PARAMS_CODE};
 use execution_beacon_consensus::{BeaconForkChoiceUpdateError, BeaconOnNewPayloadError};
 use execution_payload_builder::error::PayloadBuilderError;
-use execution_primitives::{H256, U256};
+use jsonrpsee_types::error::{INTERNAL_ERROR_CODE, INVALID_PARAMS_CODE};
 use thiserror::Error;
+use tn_types::execution::{H256, U256};
 
 /// The Engine API result type
 pub type EngineApiResult<Ok> = Result<Ok, EngineApiError>;

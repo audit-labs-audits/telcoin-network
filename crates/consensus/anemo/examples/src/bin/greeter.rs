@@ -45,13 +45,7 @@ async fn main() {
         for i in 0..2 {
             let mut client = client.clone();
             handles.push(async move {
-                client
-                    .say_hello(HelloRequest {
-                        name: i.to_string(),
-                    })
-                    .await
-                    .unwrap()
-                    .into_inner()
+                client.say_hello(HelloRequest { name: i.to_string() }).await.unwrap().into_inner()
             });
         }
 
@@ -62,12 +56,7 @@ async fn main() {
 
     let peer = network_1.peer(peer).unwrap();
     let mut client = GreeterClient::new(peer);
-    let response = client
-        .say_hello(HelloRequest {
-            name: "Brandon".into(),
-        })
-        .await
-        .unwrap();
+    let response = client.say_hello(HelloRequest { name: "Brandon".into() }).await.unwrap();
 
     info!("{:#?}", response);
 

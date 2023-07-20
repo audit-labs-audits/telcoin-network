@@ -5,8 +5,8 @@ use ethers_core::{
     types::transaction::eip712::{Eip712, TypedData},
     utils::hash_message,
 };
-use execution_primitives::{sign_message, Address, Signature, TransactionSigned, H256};
 use execution_rpc_types::TypedTransactionRequest;
+use tn_types::execution::{sign_message, Address, Signature, TransactionSigned, H256};
 
 use secp256k1::SecretKey;
 use std::collections::HashMap;
@@ -92,8 +92,8 @@ impl EthSigner for DevSigner {
 #[cfg(test)]
 mod test {
     use super::*;
-    use execution_primitives::U256;
     use std::str::FromStr;
+    use tn_types::execution::U256;
     fn build_signer() -> DevSigner {
         let addresses = vec![];
         let secret =

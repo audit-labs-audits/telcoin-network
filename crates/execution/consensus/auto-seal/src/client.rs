@@ -6,7 +6,7 @@ use execution_interfaces::p2p::{
     headers::client::{HeadersClient, HeadersFut, HeadersRequest},
     priority::Priority,
 };
-use execution_primitives::{
+use tn_types::execution::{
     BlockBody, BlockHashOrNumber, Header, HeadersDirection, PeerId, WithPeerId, H256,
 };
 use std::fmt::Debug;

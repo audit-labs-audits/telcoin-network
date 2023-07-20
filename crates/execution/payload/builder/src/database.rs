@@ -1,6 +1,5 @@
 //! Database adapters for payload building.
 
-use execution_primitives::U256;
 use revm_primitives::{
     db::{Database, DatabaseRef},
     AccountInfo, Address, Bytecode, B256,
@@ -9,11 +8,13 @@ use std::{
     cell::RefCell,
     collections::{hash_map::Entry, HashMap},
 };
+use tn_types::execution::U256;
 
 /// A container type that caches all [DatabaseRef] reads from an underlying [DatabaseRef].
 ///
-/// This is intended to be used in conjunction with [CacheDB](execution_revm_primitives::db::CacheDB)
-/// during payload building which repeatedly accesses the same data.
+/// This is intended to be used in conjunction with
+/// [CacheDB](execution_revm_primitives::db::CacheDB) during payload building which repeatedly
+/// accesses the same data.
 ///
 /// # Example
 ///

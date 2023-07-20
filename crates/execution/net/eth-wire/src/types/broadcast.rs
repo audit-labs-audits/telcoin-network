@@ -2,11 +2,11 @@
 use crate::{EthMessage, EthVersion};
 use bytes::Bytes;
 use execution_codecs::derive_arbitrary;
-use execution_primitives::{Block, TransactionSigned, H256, U128};
 use execution_rlp::{
     Decodable, Encodable, RlpDecodable, RlpDecodableWrapper, RlpEncodable, RlpEncodableWrapper,
 };
 use std::sync::Arc;
+use tn_types::execution::{Block, TransactionSigned, H256, U128};
 
 #[cfg(feature = "serde")]
 use serde::{Deserialize, Serialize};
@@ -248,9 +248,9 @@ pub struct NewPooledTransactionHashes68 {
     /// **not** a RLP list.
     ///
     /// Because of this, we do not directly use the `Vec<u8>` when encoding and decoding, and
-    /// instead use the [`Encodable`](execution_rlp::Encodable) and [`Decodable`](execution_rlp::Decodable)
-    /// implementations for `&[u8]` instead, which encodes into a RLP string, and expects an RLP
-    /// string when decoding.
+    /// instead use the [`Encodable`](execution_rlp::Encodable) and
+    /// [`Decodable`](execution_rlp::Decodable) implementations for `&[u8]` instead, which
+    /// encodes into a RLP string, and expects an RLP string when decoding.
     pub types: Vec<u8>,
     /// Transaction sizes for new transactions that have appeared on the network.
     pub sizes: Vec<usize>,
@@ -312,8 +312,8 @@ mod tests {
     use std::str::FromStr;
 
     use bytes::BytesMut;
-    use hex_literal::hex;
     use execution_rlp::{Decodable, Encodable};
+    use hex_literal::hex;
 
     use super::*;
 

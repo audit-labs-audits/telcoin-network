@@ -2,7 +2,7 @@ use crate::{
     table::{Compress, Decompress},
     DatabaseError,
 };
-use execution_primitives::*;
+use tn_types::execution::*;
 
 mod sealed {
     pub trait Sealed {}

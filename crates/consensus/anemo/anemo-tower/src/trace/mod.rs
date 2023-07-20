@@ -35,7 +35,8 @@
 //! # }
 //! ```
 //!
-//! If you run this application with `RUST_LOG=anemo_tower=trace cargo run` you should see logs like:
+//! If you run this application with `RUST_LOG=anemo_tower=trace cargo run` you should see logs
+//! like:
 //!
 //! ```text
 //! 2022-09-28T17:47:57.262533Z DEBUG request{route=/ version=V1}: anemo_tower::trace::on_request: started processing request
@@ -316,21 +317,14 @@ mod tests {
             .on_response(|_res: &Response<Bytes>, _latency: Duration, _span: &Span| {
                 ON_RESPONSE_COUNT.fetch_add(1, Ordering::SeqCst);
             })
-            .on_failure(
-                |_class: StatusInRangeFailureClass, _latency: Duration, _span: &Span| {
-                    ON_FAILURE.fetch_add(1, Ordering::SeqCst);
-                },
-            );
+            .on_failure(|_class: StatusInRangeFailureClass, _latency: Duration, _span: &Span| {
+                ON_FAILURE.fetch_add(1, Ordering::SeqCst);
+            });
 
         let mut svc = ServiceBuilder::new().layer(trace_layer).service_fn(echo);
 
-        let _res = svc
-            .ready()
-            .await
-            .unwrap()
-            .call(Request::new(Bytes::from("foobar")))
-            .await
-            .unwrap();
+        let _res =
+            svc.ready().await.unwrap().call(Request::new(Bytes::from("foobar"))).await.unwrap();
 
         assert_eq!(1, ON_REQUEST_COUNT.load(Ordering::SeqCst), "request");
         assert_eq!(1, ON_RESPONSE_COUNT.load(Ordering::SeqCst), "response");

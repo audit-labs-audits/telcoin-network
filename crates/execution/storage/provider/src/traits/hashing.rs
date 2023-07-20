@@ -1,8 +1,8 @@
 use auto_impl::auto_impl;
 use execution_db::models::BlockNumberAddress;
 use execution_interfaces::Result;
-use execution_primitives::{Account, Address, BlockNumber, StorageEntry, H256};
 use std::ops::{Range, RangeInclusive};
+use tn_types::execution::{Account, Address, BlockNumber, StorageEntry, H256};
 
 /// Hashing Writer
 #[auto_impl(&, Arc, Box)]

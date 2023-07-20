@@ -13,7 +13,6 @@ use crate::{
 };
 use ethers_core::utils::get_contract_address;
 use execution_network_api::NetworkInfo;
-use execution_primitives::{AccessList, BlockId, BlockNumberOrTag, Bytes, U256};
 use execution_provider::{BlockReaderIdExt, EvmEnvProvider, StateProvider, StateProviderFactory};
 use execution_revm::{
     access_list::AccessListInspector,
@@ -25,6 +24,7 @@ use revm::{
     db::{CacheDB, DatabaseRef},
     primitives::{BlockEnv, CfgEnv, Env, ExecutionResult, Halt, TransactTo},
 };
+use tn_types::execution::{AccessList, BlockId, BlockNumberOrTag, Bytes, U256};
 use tracing::trace;
 
 // Gas per transaction not creating a contract.

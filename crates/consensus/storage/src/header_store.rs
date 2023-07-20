@@ -2,9 +2,11 @@
 // Copyright (c) Mysten Labs, Inc.
 // SPDX-License-Identifier: Apache-2.0
 use crate::NodeStorage;
-use lattice_typed_store::rocks::ReadWriteOptions;
-use lattice_typed_store::rocks::{open_cf, DBMap, MetricConf};
-use lattice_typed_store::{reopen, Map, TypedStoreError};
+use lattice_typed_store::{
+    reopen,
+    rocks::{open_cf, DBMap, MetricConf, ReadWriteOptions},
+    Map, TypedStoreError,
+};
 use tn_macros::fail_point;
 use tn_types::consensus::{Header, HeaderDigest};
 
@@ -15,9 +17,7 @@ pub struct HeaderStore {
 
 impl HeaderStore {
     pub fn new(header_store: DBMap<HeaderDigest, Header>) -> Self {
-        Self {
-            store: header_store,
-        }
+        Self { store: header_store }
     }
 
     pub fn new_for_tests() -> Self {

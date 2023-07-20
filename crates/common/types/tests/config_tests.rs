@@ -19,13 +19,9 @@
 // 1. Run `cargo insta test --review` under `./config`.
 // 2. Review, accept or reject changes.
 
-use tn_types::consensus::config::{
-    ConsensusAPIGrpcParameters, Import, NetworkAdminServerParameters, Parameters,
-    PrometheusMetricsParameters, Stake, CommitteeUpdateError,
-};
-use tn_types::consensus::crypto::PublicKey;
-use insta::assert_json_snapshot;
 use consensus_network::Multiaddr;
+use insta::assert_json_snapshot;
+use lattice_test_utils::CommitteeFixture;
 use rand::{rngs::StdRng, seq::SliceRandom, SeedableRng};
 use std::{
     collections::{BTreeMap, HashMap},
@@ -33,7 +29,13 @@ use std::{
     io::Write,
 };
 use tempfile::tempdir;
-use lattice_test_utils::CommitteeFixture;
+use tn_types::consensus::{
+    config::{
+        CommitteeUpdateError, ConsensusAPIGrpcParameters, Import, NetworkAdminServerParameters,
+        Parameters, PrometheusMetricsParameters, Stake,
+    },
+    crypto::PublicKey,
+};
 
 #[test]
 fn leader_election_rotates_through_all() {
@@ -52,9 +54,7 @@ fn leader_election_rotates_through_all() {
         let leader_steeping_by_2_id = leader_stepping_by_2.id();
 
         *leader_counts.entry(leader_id).or_insert(0) += 1;
-        *leader_counts_stepping_by_2
-            .entry(leader_steeping_by_2_id)
-            .or_insert(0) += 1;
+        *leader_counts_stepping_by_2.entry(leader_steeping_by_2_id).or_insert(0) += 1;
     }
     assert!(leader_counts.values().all(|v| *v >= 20));
     assert!(leader_counts_stepping_by_2.values().all(|v| *v >= 20));
@@ -64,15 +64,9 @@ fn leader_election_rotates_through_all() {
 fn update_primary_network_info_test() {
     let fixture = CommitteeFixture::builder().build();
     let committee = fixture.committee();
-    let res = committee
-        .clone()
-        .update_primary_network_info(BTreeMap::new())
-        .unwrap_err();
+    let res = committee.clone().update_primary_network_info(BTreeMap::new()).unwrap_err();
     for err in res {
-        assert!(matches!(
-            err,
-            CommitteeUpdateError::MissingFromUpdate(_)
-        ))
+        assert!(matches!(err, CommitteeUpdateError::MissingFromUpdate(_)))
     }
 
     let fixture = CommitteeFixture::builder().build();
@@ -80,22 +74,15 @@ fn update_primary_network_info_test() {
     let invalid_new_info = committee2
         .authorities()
         .map(|authority| {
-            (
-                authority.protocol_key().clone(),
-                (authority.stake(), authority.primary_address()),
-            )
+            (authority.protocol_key().clone(), (authority.stake(), authority.primary_address()))
         })
         .collect::<BTreeMap<_, (Stake, Multiaddr)>>();
-    let res2 = committee
-        .clone()
-        .update_primary_network_info(invalid_new_info)
-        .unwrap_err();
+    let res2 = committee.clone().update_primary_network_info(invalid_new_info).unwrap_err();
     for err in res2 {
         // we'll get the two collections reporting missing from each other
         assert!(matches!(
             err,
-            CommitteeUpdateError::NotInCommittee(_)
-                | CommitteeUpdateError::MissingFromUpdate(_)
+            CommitteeUpdateError::NotInCommittee(_) | CommitteeUpdateError::MissingFromUpdate(_)
         ))
     }
 
@@ -103,21 +90,12 @@ fn update_primary_network_info_test() {
         .authorities()
         // change the stake
         .map(|authority| {
-            (
-                authority.protocol_key().clone(),
-                (authority.stake() + 1, authority.primary_address()),
-            )
+            (authority.protocol_key().clone(), (authority.stake() + 1, authority.primary_address()))
         })
         .collect::<BTreeMap<_, (Stake, Multiaddr)>>();
-    let res2 = committee
-        .clone()
-        .update_primary_network_info(invalid_new_info)
-        .unwrap_err();
+    let res2 = committee.clone().update_primary_network_info(invalid_new_info).unwrap_err();
     for err in res2 {
-        assert!(matches!(
-            err,
-            CommitteeUpdateError::DifferentStake(_)
-        ))
+        assert!(matches!(err, CommitteeUpdateError::DifferentStake(_)))
     }
 
     let committee4 = committee.clone();
@@ -149,8 +127,8 @@ fn update_primary_network_info_test() {
     }
 }
 
-// If one or both of the parameters_xx_matches() tests are broken by a change, the following additional places are
-// highly likely needed to be updated as well:
+// If one or both of the parameters_xx_matches() tests are broken by a change, the following
+// additional places are highly likely needed to be updated as well:
 // 1. Docker/validators/parameters.json for starting Narwhal cluster with Docker Compose.
 // 2. benchmark/fabfile.py for benchmarking a Narwhal cluster locally.
 // 3. Sui configurations & snapshot tests when upgrading Narwhal in Sui to include the change.

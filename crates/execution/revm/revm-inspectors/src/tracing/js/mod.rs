@@ -11,7 +11,6 @@ use crate::tracing::{
     utils::get_create_address,
 };
 use boa_engine::{Context, JsError, JsObject, JsResult, JsValue, Source};
-use execution_primitives::{bytes::Bytes, Account, Address, H256, U256};
 use revm::{
     interpreter::{
         return_revert, CallInputs, CallScheme, CreateInputs, Gas, InstructionResult, Interpreter,
@@ -19,6 +18,7 @@ use revm::{
     primitives::{Env, ExecutionResult, Output, ResultAndState, TransactTo, B160, B256},
     Database, EVMData, Inspector,
 };
+use tn_types::execution::{bytes::Bytes, Account, Address, H256, U256};
 use tokio::sync::mpsc;
 
 pub(crate) mod bindings;

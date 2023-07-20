@@ -1,4 +1,4 @@
-use crate::execution ::{
+use crate::execution::{
     trie::{hash_builder::HashBuilderState, StoredSubNode},
     Address, BlockNumber, H256,
 };

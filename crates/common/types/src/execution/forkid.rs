@@ -4,7 +4,7 @@
 
 #![deny(missing_docs)]
 
-use crate::execution ::{BlockNumber, Head, H256};
+use crate::execution::{BlockNumber, Head, H256};
 use crc::*;
 use execution_codecs::derive_arbitrary;
 use execution_rlp::*;

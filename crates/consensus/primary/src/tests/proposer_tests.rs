@@ -5,8 +5,8 @@
 use super::*;
 use crate::NUM_SHUTDOWN_RECEIVERS;
 use indexmap::IndexMap;
-use prometheus::Registry;
 use lattice_test_utils::{fixture_payload, CommitteeFixture};
+use prometheus::Registry;
 use tn_types::consensus::PreSubscribedBroadcastSender;
 
 #[tokio::test]
@@ -19,7 +19,8 @@ async fn propose_empty() {
 
     let mut tx_shutdown = PreSubscribedBroadcastSender::new(NUM_SHUTDOWN_RECEIVERS);
     let (_tx_parents, rx_parents) = lattice_test_utils::test_channel!(1);
-    let (_tx_committed_own_headers, rx_committed_own_headers) = lattice_test_utils::test_channel!(1);
+    let (_tx_committed_own_headers, rx_committed_own_headers) =
+        lattice_test_utils::test_channel!(1);
     let (_tx_our_digests, rx_our_digests) = lattice_test_utils::test_channel!(1);
     let (tx_headers, mut rx_headers) = lattice_test_utils::test_channel!(1);
     let (tx_narwhal_round_updates, _rx_narwhal_round_updates) = watch::channel(0u64);
@@ -64,7 +65,8 @@ async fn propose_payload_and_repropose_after_n_seconds() {
     let mut tx_shutdown = PreSubscribedBroadcastSender::new(NUM_SHUTDOWN_RECEIVERS);
     let (tx_parents, rx_parents) = lattice_test_utils::test_channel!(1);
     let (tx_our_digests, rx_our_digests) = lattice_test_utils::test_channel!(1);
-    let (_tx_committed_own_headers, rx_committed_own_headers) = lattice_test_utils::test_channel!(1);
+    let (_tx_committed_own_headers, rx_committed_own_headers) =
+        lattice_test_utils::test_channel!(1);
     let (tx_headers, mut rx_headers) = lattice_test_utils::test_channel!(1);
     let (tx_narwhal_round_updates, _rx_narwhal_round_updates) = watch::channel(0u64);
 
@@ -115,10 +117,7 @@ async fn propose_payload_and_repropose_after_n_seconds() {
     // Ensure the proposer makes a correct header from the provided payload.
     let header = rx_headers.recv().await.unwrap();
     assert_eq!(header.round(), 1);
-    assert_eq!(
-        header.payload().get(&digest),
-        Some(&(worker_id, created_at_ts))
-    );
+    assert_eq!(header.payload().get(&digest), Some(&(worker_id, created_at_ts)));
     assert!(header.validate(&committee, &worker_cache).is_ok());
 
     // WHEN available batches are more than the maximum ones
@@ -144,12 +143,8 @@ async fn propose_payload_and_repropose_after_n_seconds() {
     }
 
     // AND send some parents to advance the round
-    let parents: Vec<_> = fixture
-        .headers()
-        .iter()
-        .take(4)
-        .map(|h| fixture.certificate(h))
-        .collect();
+    let parents: Vec<_> =
+        fixture.headers().iter().take(4).map(|h| fixture.certificate(h)).collect();
 
     let result = tx_parents.send((parents, 1, 0)).await;
     assert!(result.is_ok());
@@ -190,7 +185,8 @@ async fn equivocation_protection() {
     let (tx_our_digests, rx_our_digests) = lattice_test_utils::test_channel!(1);
     let (tx_headers, mut rx_headers) = lattice_test_utils::test_channel!(1);
     let (tx_narwhal_round_updates, _rx_narwhal_round_updates) = watch::channel(0u64);
-    let (_tx_committed_own_headers, rx_committed_own_headers) = lattice_test_utils::test_channel!(1);
+    let (_tx_committed_own_headers, rx_committed_own_headers) =
+        lattice_test_utils::test_channel!(1);
     let metrics = Arc::new(PrimaryMetrics::new(&Registry::new()));
 
     // Spawn the proposer.
@@ -234,12 +230,8 @@ async fn equivocation_protection() {
         .unwrap();
 
     // Create and send parents
-    let parents: Vec<_> = fixture
-        .headers()
-        .iter()
-        .take(3)
-        .map(|h| fixture.certificate(h))
-        .collect();
+    let parents: Vec<_> =
+        fixture.headers().iter().take(3).map(|h| fixture.certificate(h)).collect();
 
     let result = tx_parents.send((parents, 1, 0)).await;
     assert!(result.is_ok());
@@ -247,10 +239,7 @@ async fn equivocation_protection() {
 
     // Ensure the proposer makes a correct header from the provided payload.
     let header = rx_headers.recv().await.unwrap();
-    assert_eq!(
-        header.payload().get(&digest),
-        Some(&(worker_id, created_at_ts))
-    );
+    assert_eq!(header.payload().get(&digest), Some(&(worker_id, created_at_ts)));
     assert!(header.validate(&committee, &worker_cache).is_ok());
 
     // restart the proposer.
@@ -262,7 +251,8 @@ async fn equivocation_protection() {
     let (tx_our_digests, rx_our_digests) = lattice_test_utils::test_channel!(1);
     let (tx_headers, mut rx_headers) = lattice_test_utils::test_channel!(1);
     let (tx_narwhal_round_updates, _rx_narwhal_round_updates) = watch::channel(0u64);
-    let (_tx_committed_own_headers, rx_committed_own_headers) = lattice_test_utils::test_channel!(1);
+    let (_tx_committed_own_headers, rx_committed_own_headers) =
+        lattice_test_utils::test_channel!(1);
     let metrics = Arc::new(PrimaryMetrics::new(&Registry::new()));
 
     let _proposer_handle = Proposer::spawn(
@@ -294,22 +284,13 @@ async fn equivocation_protection() {
     let worker_id = 0;
     let (tx_ack, rx_ack) = tokio::sync::oneshot::channel();
     tx_our_digests
-        .send(OurDigestMessage {
-            digest,
-            worker_id,
-            timestamp: 0,
-            ack_channel: Some(tx_ack),
-        })
+        .send(OurDigestMessage { digest, worker_id, timestamp: 0, ack_channel: Some(tx_ack) })
         .await
         .unwrap();
 
     // Create and send a superset parents, same round but different set from before
-    let parents: Vec<_> = fixture
-        .headers()
-        .iter()
-        .take(4)
-        .map(|h| fixture.certificate(h))
-        .collect();
+    let parents: Vec<_> =
+        fixture.headers().iter().take(4).map(|h| fixture.certificate(h)).collect();
 
     let result = tx_parents.send((parents, 1, 0)).await;
     assert!(result.is_ok());

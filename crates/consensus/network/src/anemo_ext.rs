@@ -1,17 +1,13 @@
 // Copyright (c) Telcoin, LLC
 // Copyright (c) Mysten Labs, Inc.
 // SPDX-License-Identifier: Apache-2.0
-use anemo::codegen::BoxError;
-use anemo::codegen::BoxFuture;
-use anemo::codegen::Service;
-use anemo::types::PeerEvent;
-use anemo::Network;
-use anemo::PeerId;
-use anemo::Request;
-use anemo::Response;
+use anemo::{
+    codegen::{BoxError, BoxFuture, Service},
+    types::PeerEvent,
+    Network, PeerId, Request, Response,
+};
 use bytes::Bytes;
-use futures::future::OptionFuture;
-use futures::FutureExt;
+use futures::{future::OptionFuture, FutureExt};
 use std::time::Instant;
 
 pub trait NetworkExt {
@@ -43,7 +39,7 @@ impl WaitingPeer {
 
         // If we're connected with the peer immediately make the request
         if let Some(mut peer) = self.network.peer(self.peer_id) {
-            return peer.rpc(request).await.map_err(Into::into);
+            return peer.rpc(request).await.map_err(Into::into)
         }
 
         // If we're not connected we'll need to check to see if the Peer is a KnownPeer
@@ -52,7 +48,7 @@ impl WaitingPeer {
         tokio::pin!(sleep);
         loop {
             if self.network.known_peers().get(&self.peer_id).is_none() {
-                return Err(format!("peer {} is not a known peer", self.peer_id).into());
+                return Err(format!("peer {} is not a known peer", self.peer_id).into())
             }
 
             tokio::select! {

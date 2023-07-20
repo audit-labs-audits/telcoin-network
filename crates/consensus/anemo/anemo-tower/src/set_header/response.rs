@@ -91,8 +91,7 @@ use std::{
     pin::Pin,
     task::{Context, Poll},
 };
-use tower::Layer;
-use tower::Service;
+use tower::{Layer, Service};
 
 /// Layer that applies [`SetResponseHeader`] which adds a response header.
 ///
@@ -130,11 +129,7 @@ impl<M> SetResponseHeaderLayer<M> {
     }
 
     fn new(header_name: HeaderName, make: M, mode: InsertHeaderMode) -> Self {
-        Self {
-            make,
-            header_name,
-            mode,
-        }
+        Self { make, header_name, mode }
     }
 }
 
@@ -159,11 +154,7 @@ where
     M: Clone,
 {
     fn clone(&self) -> Self {
-        Self {
-            make: self.make.clone(),
-            header_name: self.header_name.clone(),
-            mode: self.mode,
-        }
+        Self { make: self.make.clone(), header_name: self.header_name.clone(), mode: self.mode }
     }
 }
 
@@ -193,12 +184,7 @@ impl<S, M> SetResponseHeader<S, M> {
     }
 
     fn new(inner: S, header_name: HeaderName, make: M, mode: InsertHeaderMode) -> Self {
-        Self {
-            inner,
-            header_name,
-            make,
-            mode,
-        }
+        Self { inner, header_name, make, mode }
     }
 
     /// Gets a reference to the underlying service.

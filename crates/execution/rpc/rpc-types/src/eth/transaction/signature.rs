@@ -1,6 +1,6 @@
 //! Signature related RPC values
-use execution_primitives::{Signature as PrimitiveSignature, TxType, U256};
 use serde::{Deserialize, Serialize};
+use tn_types::execution::{Signature as PrimitiveSignature, TxType, U256};
 
 /// Container type for all signature fields in RPC
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Default, Serialize, Deserialize)]
@@ -20,8 +20,8 @@ pub struct Signature {
 
 impl Signature {
     /// Creates a new rpc signature from a legacy [primitive
-    /// signature](execution_primitives::Signature), using the give chain id to compute the signature's
-    /// recovery id.
+    /// signature](tn_types::execution::Signature), using the give chain id to compute the
+    /// signature's recovery id.
     ///
     /// If the chain id is `Some`, the recovery id is computed according to [EIP-155](https://eips.ethereum.org/EIPS/eip-155).
     pub(crate) fn from_legacy_primitive_signature(
@@ -32,14 +32,14 @@ impl Signature {
     }
 
     /// Creates a new rpc signature from a non-legacy [primitive
-    /// signature](execution_primitives::Signature). This sets the `v` value to `0` or `1` depending on
-    /// the signature's `odd_y_parity`.
+    /// signature](tn_types::execution::Signature). This sets the `v` value to `0` or `1` depending
+    /// on the signature's `odd_y_parity`.
     pub(crate) fn from_typed_primitive_signature(signature: PrimitiveSignature) -> Self {
         Self { r: signature.r, s: signature.s, v: U256::from(signature.odd_y_parity as u8) }
     }
 
     /// Creates a new rpc signature from a legacy [primitive
-    /// signature](execution_primitives::Signature).
+    /// signature](tn_types::execution::Signature).
     ///
     /// The tx type is used to determine whether or not to use the `chain_id` to compute the
     /// signature's recovery id.

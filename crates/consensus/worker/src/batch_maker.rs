@@ -4,25 +4,24 @@
 // SPDX-License-Identifier: Apache-2.0
 
 use crate::metrics::WorkerMetrics;
-use tn_types::consensus::config::WorkerId;
+use consensus_metrics::{
+    metered_channel::{Receiver, Sender},
+    monitored_scope, spawn_logged_monitored_task,
+};
 use fastcrypto::hash::Hash;
-use futures::future::BoxFuture;
-use futures::stream::FuturesUnordered;
-use futures::StreamExt;
-use consensus_metrics::metered_channel::{Receiver, Sender};
-use consensus_metrics::{monitored_scope, spawn_logged_monitored_task};
+use futures::{future::BoxFuture, stream::FuturesUnordered, StreamExt};
 use lattice_network::{client::NetworkClient, WorkerToPrimaryClient};
-use std::sync::Arc;
 use lattice_typed_store::{rocks::DBMap, Map};
+use std::sync::Arc;
+use tn_types::consensus::{
+    config::WorkerId, error::DagError, now, Batch, BatchAPI, BatchDigest,
+    ConditionalBroadcastReceiver, MetadataAPI, Transaction, TxResponse, WorkerOwnBatchMessage,
+};
 use tokio::{
     task::JoinHandle,
     time::{sleep, Duration, Instant},
 };
 use tracing::{error, warn};
-use tn_types::consensus::{
-    error::DagError, now, Batch, BatchAPI, BatchDigest, ConditionalBroadcastReceiver, MetadataAPI,
-    Transaction, TxResponse, WorkerOwnBatchMessage,
-};
 
 #[cfg(feature = "trace_transaction")]
 use byteorder::{BigEndian, ReadBytesExt};
@@ -43,8 +42,6 @@ pub struct BatchMaker {
 
     //
     // TODO: set max batch gas limit
-    //
-
     /// The preferred batch size (in bytes).
     batch_size_limit: usize,
     /// The maximum delay after which to seal the batch.
@@ -184,7 +181,8 @@ impl BatchMaker {
         {
             let digest = batch.digest();
 
-            // Look for sample txs (they all start with 0) and gather their txs id (the next 8 bytes).
+            // Look for sample txs (they all start with 0) and gather their txs id (the next 8
+            // bytes).
             let tx_ids: Vec<_> = batch
                 .transactions()
                 .iter()
@@ -194,11 +192,7 @@ impl BatchMaker {
 
             for id in tx_ids {
                 // NOTE: This log entry is used to compute performance.
-                tracing::info!(
-                    "Batch {:?} contains sample tx {}",
-                    digest,
-                    u64::from_be_bytes(id)
-                );
+                tracing::info!("Batch {:?} contains sample tx {}", digest, u64::from_be_bytes(id));
             }
 
             #[cfg(feature = "trace_transaction")]
@@ -231,21 +225,13 @@ impl BatchMaker {
 
         let reason = if timeout { "timeout" } else { "size_reached" };
 
-        self.node_metrics
-            .created_batch_size
-            .with_label_values(&[reason])
-            .observe(size as f64);
+        self.node_metrics.created_batch_size.with_label_values(&[reason]).observe(size as f64);
 
         // Send the batch through the deliver channel for further processing.
         let (notify_done, done_sending) = tokio::sync::oneshot::channel();
-        if self
-            .tx_quorum_waiter
-            .send((batch.clone(), notify_done))
-            .await
-            .is_err()
-        {
+        if self.tx_quorum_waiter.send((batch.clone(), notify_done)).await.is_err() {
             tracing::debug!("{}", DagError::ShuttingDown);
-            return None;
+            return None
         }
 
         let batch_creation_duration = self.batch_start_timestamp.elapsed().as_secs_f64();
@@ -281,7 +267,7 @@ impl BatchMaker {
 
             if let Err(e) = store.insert(&digest, &batch) {
                 error!("Store failed with error: {:?}", e);
-                return;
+                return
             }
 
             // Also wait for sending to be done here
@@ -293,18 +279,14 @@ impl BatchMaker {
             let _ = done_sending.await;
 
             // Send the batch to the primary.
-            let message = WorkerOwnBatchMessage {
-                digest,
-                worker_id,
-                metadata,
-            };
+            let message = WorkerOwnBatchMessage { digest, worker_id, metadata };
             if let Err(e) = client.report_own_batch(message).await {
                 warn!("Failed to report our batch: {}", e);
                 // Drop all response handers to signal error, since we
                 // cannot ensure the primary has actually signaled the
                 // batch will eventually be sent.
                 // The transaction submitter will see the error and retry.
-                return;
+                return
             }
 
             // We now signal back to the transaction sender that the transaction is in a

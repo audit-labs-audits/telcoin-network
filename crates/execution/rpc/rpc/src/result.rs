@@ -1,10 +1,10 @@
 //! Additional helpers for converting errors.
 
 use crate::eth::error::EthApiError;
-use jsonrpsee::core::RpcResult;
 use execution_interfaces::Result as RethResult;
-use execution_primitives::Block;
+use jsonrpsee::core::RpcResult;
 use std::fmt::Display;
+use tn_types::execution::Block;
 
 /// Helper trait to easily convert various `Result` types into [`RpcResult`]
 pub(crate) trait ToRpcResult<Ok, Err> {

@@ -1,4 +1,4 @@
-use crate::execution ::serde_helper::hex_bytes;
+use crate::execution::serde_helper::hex_bytes;
 use bytes::Buf;
 use execution_codecs::Compact;
 use execution_rlp::{Decodable, DecodeError, Encodable};

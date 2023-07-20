@@ -2,8 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 use camino::Utf8PathBuf;
-use std::env;
-use std::fs;
+use std::{env, fs};
 use telemetry_subscribers::TelemetryConfig;
 use tracing::{debug, info};
 
@@ -38,7 +37,7 @@ fn reload() {
             assert!(logs.contains("Now you can see this!"));
 
             fs::remove_file(entry.path()).unwrap();
-            return;
+            return
         }
     }
 

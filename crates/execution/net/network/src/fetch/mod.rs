@@ -1,7 +1,6 @@
 //! Fetch data from the network.
 
 use crate::{message::BlockRequest, peers::PeersHandle};
-use futures::StreamExt;
 use execution_eth_wire::{GetBlockBodies, GetBlockHeaders};
 use execution_interfaces::p2p::{
     error::{EthResponseValidator, PeerRequestResult, RequestError, RequestResult},
@@ -9,7 +8,7 @@ use execution_interfaces::p2p::{
     priority::Priority,
 };
 use execution_network_api::ReputationChangeKind;
-use execution_primitives::{BlockBody, Header, PeerId, H256};
+use futures::StreamExt;
 use std::{
     collections::{HashMap, VecDeque},
     sync::{
@@ -18,6 +17,7 @@ use std::{
     },
     task::{Context, Poll},
 };
+use tn_types::execution::{BlockBody, Header, PeerId, H256};
 use tokio::sync::{mpsc, mpsc::UnboundedSender, oneshot};
 use tokio_stream::wrappers::UnboundedReceiverStream;
 
@@ -424,8 +424,8 @@ pub(crate) enum BlockResponseOutcome {
 mod tests {
     use super::*;
     use crate::{peers::PeersManager, PeersConfig};
-    use execution_primitives::{SealedHeader, H256, H512};
     use std::future::poll_fn;
+    use tn_types::execution::{SealedHeader, H256, H512};
 
     #[tokio::test(flavor = "multi_thread")]
     async fn test_poll_fetcher() {

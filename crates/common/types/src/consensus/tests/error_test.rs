@@ -1,10 +1,10 @@
 // Copyright (c) Telcoin, LLC
 // Copyright (c) Mysten Labs, Inc.
 // SPDX-License-Identifier: Apache-2.0
-use futures::{stream::FuturesUnordered, StreamExt};
-use prometheus::IntGauge;
 use super::DagError;
 use consensus_metrics::metered_channel::{channel, Receiver, Sender, WithPermit};
+use futures::{stream::FuturesUnordered, StreamExt};
+use prometheus::IntGauge;
 use std::{future, time::Duration};
 
 pub struct Processor {
@@ -55,9 +55,7 @@ async fn with_permit_unhappy_case() {
     Processor::spawn(rx_inbound, tx_outbound);
     // we fill the inbound channel with stuff
     (0..100).for_each(|i| {
-        tx_inbound
-            .try_send(i)
-            .expect("failed to send to inbound channel");
+        tx_inbound.try_send(i).expect("failed to send to inbound channel");
     });
 
     tokio::time::sleep(Duration::from_secs(1)).await;

@@ -12,8 +12,8 @@ use arc_swap::ArcSwap;
 use consensus_metrics::metered_channel::Sender;
 use consensus_network::{multiaddr::Protocol, Multiaddr};
 use thiserror::Error;
-use tracing::info;
 use tn_types::consensus::{Transaction, TxResponse};
+use tracing::info;
 
 /// Uses a map to allow running multiple Narwhal instances in the same process.
 static LOCAL_NARWHAL_CLIENTS: Mutex<BTreeMap<Multiaddr, Arc<ArcSwap<LocalNarwhalClient>>>> =
@@ -21,7 +21,7 @@ static LOCAL_NARWHAL_CLIENTS: Mutex<BTreeMap<Multiaddr, Arc<ArcSwap<LocalNarwhal
 
 /// The maximum allowed size of transactions into Narwhal.
 /// TODO: maybe move to TxValidator?
-/// 
+///
 /// TODO: do we need gas limit here?
 pub const MAX_ALLOWED_TRANSACTION_SIZE: usize = 6 * 1024 * 1024;
 
@@ -82,7 +82,7 @@ impl LocalNarwhalClient {
             return Err(NarwhalError::TransactionTooLarge(
                 transaction.len(),
                 MAX_ALLOWED_TRANSACTION_SIZE,
-            ));
+            ))
         }
         // Send the transaction to the batch maker.
         let (notifier, when_done) = tokio::sync::oneshot::channel();
@@ -91,9 +91,7 @@ impl LocalNarwhalClient {
             .await
             .map_err(|_| NarwhalError::ShuttingDown)?;
 
-        let _digest = when_done
-            .await
-            .map_err(|_| NarwhalError::TransactionNotIncludedInHeader)?;
+        let _digest = when_done.await.map_err(|_| NarwhalError::TransactionNotIncludedInHeader)?;
 
         Ok(())
     }
@@ -101,8 +99,6 @@ impl LocalNarwhalClient {
     /// Ensures getter and setter use the same key for the same network address.
     /// This is needed because TxServer serves from 0.0.0.0.
     fn canonicalize_address_key(address: Multiaddr) -> Multiaddr {
-        address
-            .replace(0, |_protocol| Some(Protocol::Ip4(Ipv4Addr::UNSPECIFIED)))
-            .unwrap()
+        address.replace(0, |_protocol| Some(Protocol::Ip4(Ipv4Addr::UNSPECIFIED))).unwrap()
     }
 }

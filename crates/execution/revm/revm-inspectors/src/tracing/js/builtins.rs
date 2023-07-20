@@ -6,11 +6,11 @@ use boa_engine::{
     Context, JsArgs, JsError, JsNativeError, JsResult, JsString, JsValue, NativeFunction, Source,
 };
 use boa_gc::{empty_trace, Finalize, Trace};
-use execution_primitives::{
+use std::collections::HashSet;
+use tn_types::execution::{
     contract::{create2_address_from_code, create_address},
     hex, keccak256, Address, H256, U256,
 };
-use std::collections::HashSet;
 
 /// bigIntegerJS is the minified version of <https://github.com/peterolson/BigInteger.js>.
 pub(crate) const BIG_INT_JS: &str = include_str!("bigint.js");

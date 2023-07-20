@@ -5,8 +5,8 @@ use crate::{
     DatabaseError,
 };
 use derive_more::AsRef;
-use execution_primitives::{BlockNumber, H160, H256};
 use serde::{Deserialize, Serialize};
+use tn_types::execution::{BlockNumber, H160, H256};
 
 use super::ShardedKey;
 

@@ -29,9 +29,6 @@ where
     type Service = RequireAuthorization<S, A>;
 
     fn layer(&self, inner: S) -> Self::Service {
-        RequireAuthorization {
-            inner,
-            auth: self.auth.clone(),
-        }
+        RequireAuthorization { inner, auth: self.auth.clone() }
     }
 }

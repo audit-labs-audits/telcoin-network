@@ -1,12 +1,12 @@
 //! Contains types required for building a payload.
 
-use execution_primitives::{Address, ChainSpec, Header, SealedBlock, Withdrawal, H256, U256};
 use execution_revm_primitives::config::revm_spec_by_timestamp_after_merge;
 use execution_rlp::Encodable;
 use execution_rpc_types::engine::{
     ExecutionPayload, ExecutionPayloadEnvelope, PayloadAttributes, PayloadId,
 };
 use revm_primitives::{BlockEnv, CfgEnv};
+use tn_types::execution::{Address, ChainSpec, Header, SealedBlock, Withdrawal, H256, U256};
 
 /// Contains the built payload.
 ///

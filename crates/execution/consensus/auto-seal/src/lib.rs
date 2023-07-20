@@ -17,7 +17,7 @@
 
 use execution_beacon_consensus::BeaconEngineMessage;
 use execution_interfaces::consensus::{Consensus, ConsensusError};
-use execution_primitives::{
+use tn_types::execution::{
     BlockBody, BlockHash, BlockHashOrNumber, BlockNumber, ChainSpec, Header, SealedBlock,
     SealedHeader, H256, U256,
 };

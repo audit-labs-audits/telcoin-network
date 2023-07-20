@@ -25,13 +25,13 @@ use crate::error::{
 };
 use data_encoding::{BASE32_NOPAD, BASE64URL_NOPAD};
 use enr::{Enr, EnrError, EnrKey, EnrKeyUnambiguous, EnrPublicKey};
-use execution_primitives::{bytes::Bytes, hex};
 use secp256k1::SecretKey;
 use std::{
     fmt,
     hash::{Hash, Hasher},
     str::FromStr,
 };
+use tn_types::execution::{bytes::Bytes, hex};
 
 #[cfg(feature = "serde")]
 use serde_with::{DeserializeFromStr, SerializeDisplay};

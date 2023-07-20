@@ -2,13 +2,17 @@
 // Copyright (c) 2021, Facebook, Inc. and its affiliates
 // Copyright (c) Mysten Labs, Inc.
 // SPDX-License-Identifier: Apache-2.0
-use tn_types::consensus::config::AuthorityIdentifier;
-use consensus_metrics::metered_channel::{Receiver, Sender};
-use consensus_metrics::spawn_logged_monitored_task;
+use consensus_metrics::{
+    metered_channel::{Receiver, Sender},
+    spawn_logged_monitored_task,
+};
 use tap::TapFallible;
+use tn_types::consensus::{
+    config::AuthorityIdentifier, Certificate, CertificateAPI, ConditionalBroadcastReceiver,
+    HeaderAPI, Round,
+};
 use tokio::task::JoinHandle;
 use tracing::{debug, error, info, warn};
-use tn_types::consensus::{Certificate, CertificateAPI, ConditionalBroadcastReceiver, HeaderAPI, Round};
 
 /// Receives the highest round reached by consensus and update it for all tasks.
 pub struct StateHandler {
@@ -61,10 +65,7 @@ impl StateHandler {
                 }
             })
             .collect();
-        debug!(
-            "Own committed rounds {:?} at round {:?}",
-            own_rounds_committed, commit_round
-        );
+        debug!("Own committed rounds {:?} at round {:?}", own_rounds_committed, commit_round);
 
         // If a reporting channel is available send the committed own
         // headers to it.
@@ -74,10 +75,7 @@ impl StateHandler {
     }
 
     async fn run(mut self) {
-        info!(
-            "StateHandler on node {} has started successfully.",
-            self.authority_id
-        );
+        info!("StateHandler on node {} has started successfully.", self.authority_id);
         loop {
             tokio::select! {
                 Some((commit_round, certificates)) = self.rx_committed_certificates.recv() => {

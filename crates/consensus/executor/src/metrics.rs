@@ -13,9 +13,8 @@ const LATENCY_SEC_BUCKETS: &[f64] = &[
     100.0, 200.0,
 ];
 
-const POSITIVE_INT_BUCKETS: &[f64] = &[
-    1., 2., 5., 10., 20., 50., 100., 200., 500., 1000., 2000., 5000., 10000., 20000., 50000.,
-];
+const POSITIVE_INT_BUCKETS: &[f64] =
+    &[1., 2., 5., 10., 20., 50., 100., 200., 500., 1000., 2000., 5000., 10000., 20000., 50000.];
 
 #[derive(Clone, Debug)]
 pub struct ExecutorMetrics {

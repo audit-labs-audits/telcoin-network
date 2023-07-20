@@ -1,4 +1,4 @@
-use execution_primitives::{
+use tn_types::execution::{
     trie::{nodes::CHILD_INDEX_RANGE, BranchNodeCompact, Nibbles, StoredSubNode},
     H256,
 };

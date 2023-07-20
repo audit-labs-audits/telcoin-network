@@ -14,16 +14,12 @@ async fn basic_network() -> Result<()> {
     let network_2 = build_network()?;
 
     let peer = network_1.connect(network_2.local_addr()).await?;
-    let response = network_1
-        .rpc(peer, Request::new(msg.as_ref().into()))
-        .await?;
+    let response = network_1.rpc(peer, Request::new(msg.as_ref().into())).await?;
     assert_eq!(response.into_body(), msg.as_ref());
 
     let msg = b"Words of Radiance";
     let peer_id_1 = network_1.peer_id();
-    let response = network_2
-        .rpc(peer_id_1, Request::new(msg.as_ref().into()))
-        .await?;
+    let response = network_2.rpc(peer_id_1, Request::new(msg.as_ref().into())).await?;
     assert_eq!(response.into_body(), msg.as_ref());
     Ok(())
 }
@@ -48,9 +44,7 @@ async fn connect_with_peer_id() -> Result<()> {
     let network_1 = build_network()?;
     let network_2 = build_network()?;
 
-    let peer = network_1
-        .connect_with_peer_id(network_2.local_addr(), network_2.peer_id())
-        .await?;
+    let peer = network_1.connect_with_peer_id(network_2.local_addr(), network_2.peer_id()).await?;
     assert_eq!(peer, network_2.peer_id());
 
     Ok(())
@@ -65,10 +59,7 @@ async fn connect_with_invalid_peer_id() -> Result<()> {
     let network_3 = build_network()?;
 
     // Try to dial network 2, but with network 3's peer id
-    network_1
-        .connect_with_peer_id(network_2.local_addr(), network_3.peer_id())
-        .await
-        .unwrap_err();
+    network_1.connect_with_peer_id(network_2.local_addr(), network_3.peer_id()).await.unwrap_err();
 
     Ok(())
 }
@@ -84,37 +75,22 @@ async fn connect_with_invalid_peer_id_ensure_server_doesnt_succeed() -> Result<(
     let (mut subscriber_2, _) = network_2.subscribe().unwrap();
 
     // Try to dial network 2, but with network 3's peer id
-    network_1
-        .connect_with_peer_id(network_2.local_addr(), network_3.peer_id())
-        .await
-        .unwrap_err();
+    network_1.connect_with_peer_id(network_2.local_addr(), network_3.peer_id()).await.unwrap_err();
 
     tokio::task::yield_now().await;
 
     // network 2 dialing 3 should succeed
-    network_2
-        .connect_with_peer_id(network_3.local_addr(), network_3.peer_id())
-        .await
-        .unwrap();
+    network_2.connect_with_peer_id(network_3.local_addr(), network_3.peer_id()).await.unwrap();
 
-    assert_eq!(
-        subscriber_2.try_recv(),
-        Ok(PeerEvent::NewPeer(network_3.peer_id()))
-    );
+    assert_eq!(subscriber_2.try_recv(), Ok(PeerEvent::NewPeer(network_3.peer_id())));
 
     drop(network_2);
 
     assert_eq!(
         subscriber_2.recv().await,
-        Ok(PeerEvent::LostPeer(
-            network_3.peer_id(),
-            crate::types::DisconnectReason::LocallyClosed
-        )),
+        Ok(PeerEvent::LostPeer(network_3.peer_id(), crate::types::DisconnectReason::LocallyClosed)),
     );
-    assert_eq!(
-        subscriber_2.recv().await,
-        Err(tokio::sync::broadcast::error::RecvError::Closed),
-    );
+    assert_eq!(subscriber_2.recv().await, Err(tokio::sync::broadcast::error::RecvError::Closed),);
 
     Ok(())
 }
@@ -128,10 +104,7 @@ async fn connect_with_hostname() -> Result<()> {
     let network_3 = build_network()?;
 
     let peer = network_1
-        .connect_with_peer_id(
-            ("localhost", network_2.local_addr().port()),
-            network_2.peer_id(),
-        )
+        .connect_with_peer_id(("localhost", network_2.local_addr().port()), network_2.peer_id())
         .await?;
     assert_eq!(peer, network_2.peer_id());
 
@@ -151,10 +124,7 @@ async fn max_concurrent_connections_0() -> Result<()> {
     let _guard = crate::init_tracing_for_testing();
 
     // Setup a network which disallows all incoming connections
-    let config = crate::Config {
-        max_concurrent_connections: Some(0),
-        ..Default::default()
-    };
+    let config = crate::Config { max_concurrent_connections: Some(0), ..Default::default() };
     let network_1 = Network::bind("localhost:0")
         .random_private_key()
         .server_name("test")
@@ -163,10 +133,7 @@ async fn max_concurrent_connections_0() -> Result<()> {
 
     let network_2 = build_network()?;
 
-    network_2
-        .connect_with_peer_id(network_1.local_addr(), network_1.peer_id())
-        .await
-        .unwrap_err();
+    network_2.connect_with_peer_id(network_1.local_addr(), network_1.peer_id()).await.unwrap_err();
 
     Ok(())
 }
@@ -176,10 +143,7 @@ async fn max_concurrent_connections_1() -> Result<()> {
     let _guard = crate::init_tracing_for_testing();
 
     // Setup a network which disallows all incoming connections
-    let config = crate::Config {
-        max_concurrent_connections: Some(1),
-        ..Default::default()
-    };
+    let config = crate::Config { max_concurrent_connections: Some(1), ..Default::default() };
     let network_1 = Network::bind("localhost:0")
         .random_private_key()
         .server_name("test")
@@ -190,22 +154,13 @@ async fn max_concurrent_connections_1() -> Result<()> {
     let network_3 = build_network()?;
 
     // first connection succeeds
-    network_2
-        .connect_with_peer_id(network_1.local_addr(), network_1.peer_id())
-        .await
-        .unwrap();
+    network_2.connect_with_peer_id(network_1.local_addr(), network_1.peer_id()).await.unwrap();
 
     // second connection fails
-    network_3
-        .connect_with_peer_id(network_1.local_addr(), network_1.peer_id())
-        .await
-        .unwrap_err();
+    network_3.connect_with_peer_id(network_1.local_addr(), network_1.peer_id()).await.unwrap_err();
 
     // explicitly making an outbound connection bypasses this limit
-    network_1
-        .connect_with_peer_id(network_3.local_addr(), network_3.peer_id())
-        .await
-        .unwrap();
+    network_1.connect_with_peer_id(network_3.local_addr(), network_3.peer_id()).await.unwrap();
 
     Ok(())
 }
@@ -226,10 +181,7 @@ async fn reject_peer_with_affinity_never() -> Result<()> {
     network_1.known_peers().insert(peer_info_2);
 
     // When peer 2 tries to connect peer 1 will reject it
-    network_2
-        .connect_with_peer_id(network_1.local_addr(), network_1.peer_id())
-        .await
-        .unwrap_err();
+    network_2.connect_with_peer_id(network_1.local_addr(), network_1.peer_id()).await.unwrap_err();
 
     Ok(())
 }
@@ -260,10 +212,7 @@ async fn peers_with_affinity_never_are_not_dialed_in_the_background() -> Result<
     network_1.known_peers().insert(peer_info_3);
 
     // When peer 2 tries to connect peer 1 will reject it
-    network_2
-        .connect_with_peer_id(network_1.local_addr(), network_1.peer_id())
-        .await
-        .unwrap_err();
+    network_2.connect_with_peer_id(network_1.local_addr(), network_1.peer_id()).await.unwrap_err();
 
     // We only ever see connections being made/lost with peer 3 and not peer 2
     let peer_id_3 = network_3.peer_id();
@@ -284,10 +233,8 @@ fn build_network() -> Result<Network> {
 }
 
 fn build_network_with_addr(addr: &str) -> Result<Network> {
-    let network = Network::bind(addr)
-        .random_private_key()
-        .server_name("test")
-        .start(echo_service())?;
+    let network =
+        Network::bind(addr).random_private_key().server_name("test").start(echo_service())?;
 
     trace!(
         address =% network.local_addr(),
@@ -317,9 +264,7 @@ async fn ip6_calling_ip4() -> Result<()> {
 
     let msg = b"The Way of Kings";
     let peer = network_1.connect(network_2.local_addr()).await?;
-    let response = network_1
-        .rpc(peer, Request::new(msg.as_ref().into()))
-        .await?;
+    let response = network_1.rpc(peer, Request::new(msg.as_ref().into())).await?;
 
     println!("{}", response.body().escape_ascii());
 
@@ -334,19 +279,14 @@ async fn localhost_calling_anyaddr() -> Result<()> {
     let network_2 = build_network_with_addr("127.0.0.1:0")?;
 
     let msg = b"The Way of Kings";
-    let peer = network_2
-        .connect((std::net::Ipv4Addr::LOCALHOST, network_1.local_addr().port()))
-        .await?;
+    let peer =
+        network_2.connect((std::net::Ipv4Addr::LOCALHOST, network_1.local_addr().port())).await?;
 
-    let response = network_2
-        .rpc(peer, Request::new(msg.as_ref().into()))
-        .await?;
+    let response = network_2.rpc(peer, Request::new(msg.as_ref().into())).await?;
 
     println!("{}", response.body().escape_ascii());
 
-    let response = network_1
-        .rpc(network_2.peer_id(), Request::new(msg.as_ref().into()))
-        .await?;
+    let response = network_1.rpc(network_2.peer_id(), Request::new(msg.as_ref().into())).await?;
 
     println!("{}", response.body().escape_ascii());
 
@@ -362,9 +302,7 @@ async fn dropped_connection() -> Result<()> {
 
     let msg = b"The Way of Kings";
     let peer = network_1.connect(network_2.local_addr()).await?;
-    let response = network_1
-        .rpc(peer, Request::new(msg.as_ref().into()))
-        .await?;
+    let response = network_1.rpc(peer, Request::new(msg.as_ref().into())).await?;
 
     println!("{}", response.body().escape_ascii());
 
@@ -372,9 +310,7 @@ async fn dropped_connection() -> Result<()> {
 
     drop(network_2);
 
-    peer.rpc(Request::new(msg.as_ref().into()))
-        .await
-        .unwrap_err();
+    peer.rpc(Request::new(msg.as_ref().into())).await.unwrap_err();
 
     Ok(())
 }
@@ -407,10 +343,7 @@ async fn basic_connectivity_check() -> Result<()> {
     network_1.known_peers().remove(&peer_id_2).unwrap();
     network_1.disconnect(peer_id_2)?;
 
-    assert_eq!(
-        LostPeer(peer_id_2, DisconnectReason::Requested),
-        subscriber_1.recv().await?
-    );
+    assert_eq!(LostPeer(peer_id_2, DisconnectReason::Requested), subscriber_1.recv().await?);
     assert_eq!(
         LostPeer(peer_id_1, DisconnectReason::ApplicationClosed),
         subscriber_2.recv().await?
@@ -492,10 +425,8 @@ async fn drop_shutdown() -> Result<()> {
         tower::service_fn(handle)
     };
 
-    let network = Network::bind("localhost:0")
-        .random_private_key()
-        .server_name("test")
-        .start(service)?;
+    let network =
+        Network::bind("localhost:0").random_private_key().server_name("test").start(service)?;
 
     let network_2 = build_network()?;
 
@@ -518,10 +449,7 @@ async fn drop_shutdown() -> Result<()> {
     assert_eq!(None, receiver.recv().await);
     assert_eq!(Err(TryRecvError::Disconnected), receiver.try_recv());
 
-    let err = network_2
-        .rpc(peer, Request::new(Bytes::new()))
-        .await
-        .unwrap_err();
+    let err = network_2.rpc(peer, Request::new(Bytes::new())).await.unwrap_err();
 
     tracing::info!("err: {err}");
 
@@ -549,10 +477,8 @@ async fn explicit_shutdown() -> Result<()> {
         tower::service_fn(handle)
     };
 
-    let network = Network::bind("localhost:0")
-        .random_private_key()
-        .server_name("test")
-        .start(service)?;
+    let network =
+        Network::bind("localhost:0").random_private_key().server_name("test").start(service)?;
 
     let network_2 = build_network()?;
 
@@ -575,10 +501,7 @@ async fn explicit_shutdown() -> Result<()> {
     // And all clones of the service should have been dropped by now
     assert_eq!(Err(TryRecvError::Disconnected), receiver.try_recv());
 
-    let err = network_2
-        .rpc(peer, Request::new(Bytes::new()))
-        .await
-        .unwrap_err();
+    let err = network_2.rpc(peer, Request::new(Bytes::new())).await.unwrap_err();
 
     tracing::info!("err: {err}");
 
@@ -593,10 +516,7 @@ async fn subscribe_channel_closes_on_shutdown() -> Result<()> {
 
     drop(network);
 
-    assert_eq!(
-        Err(tokio::sync::broadcast::error::RecvError::Closed),
-        subscriber.recv().await
-    );
+    assert_eq!(Err(tokio::sync::broadcast::error::RecvError::Closed), subscriber.recv().await);
 
     Ok(())
 }
@@ -609,10 +529,7 @@ async fn subscribe_channel_closes_on_explicit_shutdown() -> Result<()> {
 
     network.shutdown().await?;
 
-    assert_eq!(
-        Err(tokio::sync::broadcast::error::TryRecvError::Closed),
-        subscriber.try_recv(),
-    );
+    assert_eq!(Err(tokio::sync::broadcast::error::TryRecvError::Closed), subscriber.try_recv(),);
 
     assert!(network.subscribe().is_err());
 
@@ -661,12 +578,9 @@ async fn early_termination_of_request_handlers() {
     let peer = network_2.connect(network.local_addr()).await.unwrap();
 
     let client_fut = async {
-        timeout(
-            Duration::from_secs(1),
-            network_2.rpc(peer, Request::new(Bytes::new())),
-        )
-        .await
-        .unwrap_err();
+        timeout(Duration::from_secs(1), network_2.rpc(peer, Request::new(Bytes::new())))
+            .await
+            .unwrap_err();
     };
 
     let server_fut = async {
@@ -716,8 +630,7 @@ async fn user_provided_client_service_layer() {
 
         fn call(&mut self, request: Request) -> Self::Future {
             // Increment the count
-            self.counter
-                .fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+            self.counter.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
 
             self.service.call(request)
         }
@@ -757,12 +670,7 @@ async fn user_provided_client_service_layer() {
     let peer_id = network_1.connect(network_2.local_addr()).await.unwrap();
 
     let request = Request::new(Bytes::from_static(b"hello"));
-    let _ = network_1
-        .peer(peer_id)
-        .unwrap()
-        .oneshot(request)
-        .await
-        .unwrap();
+    let _ = network_1.peer(peer_id).unwrap().oneshot(request).await.unwrap();
 
     assert_eq!(0, server_counter_1.load(Ordering::SeqCst));
     assert_eq!(1, client_counter_1.load(Ordering::SeqCst));
@@ -770,12 +678,7 @@ async fn user_provided_client_service_layer() {
     assert_eq!(0, client_counter_2.load(Ordering::SeqCst));
 
     let request = Request::new(Bytes::from_static(b"hello"));
-    let _ = network_2
-        .peer(network_1.peer_id())
-        .unwrap()
-        .oneshot(request)
-        .await
-        .unwrap();
+    let _ = network_2.peer(network_1.peer_id()).unwrap().oneshot(request).await.unwrap();
 
     assert_eq!(1, server_counter_1.load(Ordering::SeqCst));
     assert_eq!(1, client_counter_1.load(Ordering::SeqCst));
@@ -794,17 +697,12 @@ async fn network_ref_via_extension() -> Result<()> {
         Ok::<_, Infallible>(Response::new(buf.freeze()))
     });
 
-    let network_1 = Network::bind("localhost:0")
-        .server_name("test")
-        .random_private_key()
-        .start(svc)?;
+    let network_1 =
+        Network::bind("localhost:0").server_name("test").random_private_key().start(svc)?;
     let network_2 = build_network()?;
 
     let peer = network_2.connect(network_1.local_addr()).await?;
-    let mut response = network_2
-        .rpc(peer, Request::new(Bytes::new()))
-        .await?
-        .into_inner();
+    let mut response = network_2.rpc(peer, Request::new(Bytes::new())).await?.into_inner();
 
     assert_eq!(1, response.get_u8());
 

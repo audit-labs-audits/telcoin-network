@@ -7,14 +7,14 @@ use crate::{
 };
 use execution_db::models::StoredBlockBodyIndices;
 use execution_interfaces::Result;
-use execution_primitives::{
+use execution_revm_primitives::primitives::{BlockEnv, CfgEnv};
+use std::{ops::RangeBounds, sync::Arc};
+use tn_types::execution::{
     stage::{StageCheckpoint, StageId},
     Account, Address, Block, BlockHash, BlockHashOrNumber, BlockId, BlockNumber, Bytecode, Bytes,
     ChainInfo, ChainSpec, Header, Receipt, SealedBlock, SealedHeader, StorageKey, StorageValue,
     TransactionMeta, TransactionSigned, TxHash, TxNumber, H256, KECCAK_EMPTY, MAINNET, U256,
 };
-use execution_revm_primitives::primitives::{BlockEnv, CfgEnv};
-use std::{ops::RangeBounds, sync::Arc};
 
 /// Supports various api interfaces for testing purposes.
 #[derive(Debug, Clone, Default, Copy)]
@@ -84,7 +84,7 @@ impl BlockReader for NoopProvider {
     fn block_with_senders(
         &self,
         _number: BlockNumber,
-    ) -> Result<Option<execution_primitives::BlockWithSenders>> {
+    ) -> Result<Option<tn_types::execution::BlockWithSenders>> {
         Ok(None)
     }
 }
@@ -108,15 +108,15 @@ impl BlockReaderIdExt for NoopProvider {
 }
 
 impl BlockIdReader for NoopProvider {
-    fn pending_block_num_hash(&self) -> Result<Option<execution_primitives::BlockNumHash>> {
+    fn pending_block_num_hash(&self) -> Result<Option<tn_types::execution::BlockNumHash>> {
         Ok(None)
     }
 
-    fn safe_block_num_hash(&self) -> Result<Option<execution_primitives::BlockNumHash>> {
+    fn safe_block_num_hash(&self) -> Result<Option<tn_types::execution::BlockNumHash>> {
         Ok(None)
     }
 
-    fn finalized_block_num_hash(&self) -> Result<Option<execution_primitives::BlockNumHash>> {
+    fn finalized_block_num_hash(&self) -> Result<Option<tn_types::execution::BlockNumHash>> {
         Ok(None)
     }
 }
@@ -166,7 +166,7 @@ impl TransactionsProvider for NoopProvider {
     fn transactions_by_tx_range(
         &self,
         _range: impl RangeBounds<TxNumber>,
-    ) -> Result<Vec<execution_primitives::TransactionSignedNoHash>> {
+    ) -> Result<Vec<tn_types::execution::TransactionSignedNoHash>> {
         Ok(Vec::default())
     }
 
@@ -338,14 +338,14 @@ impl StageCheckpointReader for NoopProvider {
 }
 
 impl WithdrawalsProvider for NoopProvider {
-    fn latest_withdrawal(&self) -> Result<Option<execution_primitives::Withdrawal>> {
+    fn latest_withdrawal(&self) -> Result<Option<tn_types::execution::Withdrawal>> {
         Ok(None)
     }
     fn withdrawals_by_block(
         &self,
         _id: BlockHashOrNumber,
         _timestamp: u64,
-    ) -> Result<Option<Vec<execution_primitives::Withdrawal>>> {
+    ) -> Result<Option<Vec<tn_types::execution::Withdrawal>>> {
         Ok(None)
     }
 }

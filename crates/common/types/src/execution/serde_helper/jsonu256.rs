@@ -1,4 +1,4 @@
-use crate::execution ::U256;
+use crate::execution::U256;
 use serde::{
     de::{Error, Visitor},
     Deserialize, Deserializer, Serialize, Serializer,
@@ -102,7 +102,7 @@ where
 #[cfg(test)]
 mod test {
     use super::JsonU256;
-    use crate::execution ::U256;
+    use crate::execution::U256;
 
     #[test]
     fn jsonu256_deserialize() {

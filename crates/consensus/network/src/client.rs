@@ -1,18 +1,19 @@
 // Copyright (c) Telcoin, LLC
 // Copyright (c) Mysten Labs, Inc.
 // SPDX-License-Identifier: Apache-2.0
-use std::{collections::BTreeMap, sync::Arc, time::Duration};
+use crate::traits::{PrimaryToWorkerClient, WorkerToPrimaryClient};
 use anemo::{PeerId, Request};
 use async_trait::async_trait;
 use lattice_common::sync::notify_once::NotifyOnce;
 use parking_lot::RwLock;
-use tokio::{select, time::sleep};
+use std::{collections::BTreeMap, sync::Arc, time::Duration};
 use tn_types::consensus::{
-    error::LocalClientError, FetchBatchesRequest, FetchBatchesResponse, PrimaryToWorker,
-    WorkerOthersBatchMessage, WorkerOwnBatchMessage,
-    WorkerSynchronizeMessage, WorkerToPrimary, crypto::{traits::KeyPair, NetworkKeyPair, NetworkPublicKey},
+    crypto::{traits::KeyPair, NetworkKeyPair, NetworkPublicKey},
+    error::LocalClientError,
+    FetchBatchesRequest, FetchBatchesResponse, PrimaryToWorker, WorkerOthersBatchMessage,
+    WorkerOwnBatchMessage, WorkerSynchronizeMessage, WorkerToPrimary,
 };
-use crate::traits::{PrimaryToWorkerClient, WorkerToPrimaryClient};
+use tokio::{select, time::sleep};
 
 /// NetworkClient provides the interface to send requests to other nodes, and call other components
 /// directly if they live in the same process. It is used by both primary and worker(s).
@@ -77,7 +78,7 @@ impl NetworkClient {
     pub fn shutdown(&self) {
         let mut inner = self.inner.write();
         if inner.shutdown {
-            return;
+            return
         }
         inner.worker_to_primary_handler = None;
         inner.primary_to_worker_handler = BTreeMap::new();
@@ -93,10 +94,10 @@ impl NetworkClient {
             {
                 let inner = self.inner.read();
                 if inner.shutdown {
-                    return Err(LocalClientError::ShuttingDown);
+                    return Err(LocalClientError::ShuttingDown)
                 }
                 if let Some(handler) = inner.primary_to_worker_handler.get(&peer_id) {
-                    return Ok(handler.clone());
+                    return Ok(handler.clone())
                 }
             }
             sleep(Self::GET_CLIENT_INTERVAL).await;
@@ -111,17 +112,15 @@ impl NetworkClient {
             {
                 let inner = self.inner.read();
                 if inner.shutdown {
-                    return Err(LocalClientError::ShuttingDown);
+                    return Err(LocalClientError::ShuttingDown)
                 }
                 if let Some(handler) = &inner.worker_to_primary_handler {
-                    return Ok(handler.clone());
+                    return Ok(handler.clone())
                 }
             }
             sleep(Self::GET_CLIENT_INTERVAL).await;
         }
-        Err(LocalClientError::PrimaryNotStarted(
-            self.inner.read().primary_peer_id,
-        ))
+        Err(LocalClientError::PrimaryNotStarted(self.inner.read().primary_peer_id))
     }
 }
 
@@ -134,9 +133,7 @@ impl PrimaryToWorkerClient for NetworkClient {
         worker_name: NetworkPublicKey,
         request: WorkerSynchronizeMessage,
     ) -> Result<(), LocalClientError> {
-        let c = self
-            .get_primary_to_worker_handler(PeerId(worker_name.0.into()))
-            .await?;
+        let c = self.get_primary_to_worker_handler(PeerId(worker_name.0.into())).await?;
         select! {
             resp = c.synchronize(Request::new(request)) => {
                 resp.map_err(|e| LocalClientError::Internal(format!("{e:?}")))?;
@@ -153,9 +150,7 @@ impl PrimaryToWorkerClient for NetworkClient {
         worker_name: NetworkPublicKey,
         request: FetchBatchesRequest,
     ) -> Result<FetchBatchesResponse, LocalClientError> {
-        let c = self
-            .get_primary_to_worker_handler(PeerId(worker_name.0.into()))
-            .await?;
+        let c = self.get_primary_to_worker_handler(PeerId(worker_name.0.into())).await?;
         select! {
             resp = c.fetch_batches(Request::new(request)) => {
                 Ok(resp.map_err(|e| LocalClientError::Internal(format!("{e:?}")))?.into_inner())

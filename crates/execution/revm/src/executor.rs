@@ -8,10 +8,6 @@ use crate::{
 };
 use execution_consensus_common::calc;
 use execution_interfaces::executor::{BlockExecutionError, BlockValidationError};
-use execution_primitives::{
-    Account, Address, Block, BlockNumber, Bloom, Bytecode, ChainSpec, Hardfork, Header, Receipt,
-    ReceiptWithBloom, TransactionSigned, Withdrawal, H256, U256,
-};
 use execution_provider::{BlockExecutor, PostState, StateProvider};
 use revm::{
     db::{AccountState, CacheDB, DatabaseRef},
@@ -24,6 +20,10 @@ use revm::{
 use std::{
     collections::{BTreeMap, HashMap},
     sync::Arc,
+};
+use tn_types::execution::{
+    Account, Address, Block, BlockNumber, Bloom, Bytecode, ChainSpec, Hardfork, Header, Receipt,
+    ReceiptWithBloom, TransactionSigned, Withdrawal, H256, U256,
 };
 
 /// Main block executor
@@ -419,7 +419,11 @@ pub fn commit_state_changes<DB>(
             if account_exists {
                 // Insert into `change` a old account and None for new account
                 // and mark storage to be wiped
-                post_state.destroy_account(block_number, address, to_execution_acc(&db_account.info));
+                post_state.destroy_account(
+                    block_number,
+                    address,
+                    to_execution_acc(&db_account.info),
+                );
             }
 
             // clear cached DB and mark account as not existing
@@ -538,7 +542,7 @@ pub fn verify_receipt<'a>(
 ) -> Result<(), BlockExecutionError> {
     // Check receipts root.
     let receipts_with_bloom = receipts.map(|r| r.clone().into()).collect::<Vec<ReceiptWithBloom>>();
-    let receipts_root = execution_primitives::proofs::calculate_receipt_root(&receipts_with_bloom);
+    let receipts_root = tn_types::execution::proofs::calculate_receipt_root(&receipts_with_bloom);
     if receipts_root != expected_receipts_root {
         return Err(BlockValidationError::ReceiptRootDiff {
             got: receipts_root,
@@ -646,18 +650,18 @@ pub fn insert_post_block_withdrawals_balance_increments(
 mod tests {
     use super::*;
     use crate::database::State;
-    use once_cell::sync::Lazy;
     use execution_consensus_common::calc;
-    use execution_primitives::{
-        constants::ETH_TO_WEI, hex_literal::hex, keccak256, Account, Address, BlockNumber,
-        Bytecode, Bytes, ChainSpecBuilder, ForkCondition, StorageKey, H256, MAINNET, U256,
-    };
     use execution_provider::{
         post_state::{AccountChanges, Storage, StorageTransition, StorageWipe},
         AccountReader, BlockHashReader, StateProvider, StateRootProvider,
     };
     use execution_rlp::Decodable;
+    use once_cell::sync::Lazy;
     use std::{collections::HashMap, str::FromStr};
+    use tn_types::execution::{
+        constants::ETH_TO_WEI, hex_literal::hex, keccak256, Account, Address, BlockNumber,
+        Bytecode, Bytes, ChainSpecBuilder, ForkCondition, StorageKey, H256, MAINNET, U256,
+    };
 
     static DEFAULT_REVM_ACCOUNT: Lazy<RevmAccount> = Lazy::new(|| RevmAccount {
         info: AccountInfo::default(),
@@ -729,15 +733,18 @@ mod tests {
         fn storage(
             &self,
             account: Address,
-            storage_key: execution_primitives::StorageKey,
-        ) -> execution_interfaces::Result<Option<execution_primitives::StorageValue>> {
+            storage_key: tn_types::execution::StorageKey,
+        ) -> execution_interfaces::Result<Option<tn_types::execution::StorageValue>> {
             Ok(self
                 .accounts
                 .get(&account)
                 .and_then(|(storage, _)| storage.get(&storage_key).cloned()))
         }
 
-        fn bytecode_by_hash(&self, code_hash: H256) -> execution_interfaces::Result<Option<Bytecode>> {
+        fn bytecode_by_hash(
+            &self,
+            code_hash: H256,
+        ) -> execution_interfaces::Result<Option<Bytecode>> {
             Ok(self.contracts.get(&code_hash).cloned())
         }
 

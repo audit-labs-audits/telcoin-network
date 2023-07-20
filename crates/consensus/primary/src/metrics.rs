@@ -61,17 +61,21 @@ pub(crate) fn initialise_metrics(metrics_registry: &Registry) -> Metrics {
 
 #[derive(Clone)]
 pub struct PrimaryChannelMetrics {
-    /// occupancy of the channel from the `primary::WorkerReceiverHandler` to the `primary::PayloadReceiver`
+    /// occupancy of the channel from the `primary::WorkerReceiverHandler` to the
+    /// `primary::PayloadReceiver`
     pub tx_others_digests: IntGauge,
-    /// occupancy of the channel from the `primary::WorkerReceiverHandler` to the `primary::Proposer`
+    /// occupancy of the channel from the `primary::WorkerReceiverHandler` to the
+    /// `primary::Proposer`
     pub tx_our_digests: IntGauge,
     /// occupancy of the channel from the `primary::Synchronizer` to the `primary::Proposer`
     pub tx_parents: IntGauge,
     /// occupancy of the channel from the `primary::Proposer` to the `primary::Certifier`
     pub tx_headers: IntGauge,
-    /// occupancy of the channel from the `primary::Synchronizer` to the `primary::CertificaterWaiter`
+    /// occupancy of the channel from the `primary::Synchronizer` to the
+    /// `primary::CertificaterWaiter`
     pub tx_certificate_fetcher: IntGauge,
-    /// occupancy of the channel from the `primary::BlockSynchronizerHandler` to the `primary::BlockSynchronizer`
+    /// occupancy of the channel from the `primary::BlockSynchronizerHandler` to the
+    /// `primary::BlockSynchronizer`
     pub tx_block_synchronizer_commands: IntGauge,
     /// occupancy of the channel from the `Consensus` to the `primary::StateHandler`
     pub tx_committed_certificates: IntGauge,
@@ -79,26 +83,31 @@ pub struct PrimaryChannelMetrics {
     pub tx_new_certificates: IntGauge,
     /// occupancy of the channel signaling own committed headers
     pub tx_committed_own_headers: IntGauge,
-    /// An internal synchronizer channel. Occupancy of the channel sending certificates to the internal
-    /// task that accepts certificates.
+    /// An internal synchronizer channel. Occupancy of the channel sending certificates to the
+    /// internal task that accepts certificates.
     pub tx_certificate_acceptor: IntGauge,
     /// Occupancy of the channel synchronizing batches for provided headers & certificates.
     pub tx_batch_tasks: IntGauge,
 
     // totals
-    /// total received on channel from the `primary::WorkerReceiverHandler` to the `primary::PayloadReceiver`
+    /// total received on channel from the `primary::WorkerReceiverHandler` to the
+    /// `primary::PayloadReceiver`
     pub tx_others_digests_total: IntCounter,
-    /// total received on channel from the `primary::WorkerReceiverHandler` to the `primary::Proposer`
+    /// total received on channel from the `primary::WorkerReceiverHandler` to the
+    /// `primary::Proposer`
     pub tx_our_digests_total: IntCounter,
     /// total received on channel from the `primary::Synchronizer` to the `primary::Proposer`
     pub tx_parents_total: IntCounter,
     /// total received on channel from the `primary::Proposer` to the `primary::Certifier`
     pub tx_headers_total: IntCounter,
-    /// total received on channel from the `primary::Synchronizer` to the `primary::CertificaterWaiter`
+    /// total received on channel from the `primary::Synchronizer` to the
+    /// `primary::CertificaterWaiter`
     pub tx_certificate_fetcher_total: IntCounter,
-    /// total received on channel from the `primary::BlockSynchronizerHandler` to the `primary::BlockSynchronizer`
+    /// total received on channel from the `primary::BlockSynchronizerHandler` to the
+    /// `primary::BlockSynchronizer`
     pub tx_block_synchronizer_commands_total: IntCounter,
-    /// total received on channel from the `primary::WorkerReceiverHandler` to the `primary::StateHandler`
+    /// total received on channel from the `primary::WorkerReceiverHandler` to the
+    /// `primary::StateHandler`
     pub tx_state_handler_total: IntCounter,
     /// total received on channel from the `Consensus` to the `primary::StateHandler`
     pub tx_committed_certificates_total: IntCounter,
@@ -106,7 +115,8 @@ pub struct PrimaryChannelMetrics {
     pub tx_new_certificates_total: IntCounter,
     /// total received on the channel signaling own committed headers
     pub tx_committed_own_headers_total: IntCounter,
-    /// Total received by the channel sending certificates to the internal task that accepts certificates.
+    /// Total received by the channel sending certificates to the internal task that accepts
+    /// certificates.
     pub tx_certificate_acceptor_total: IntCounter,
     /// Total received the channel to synchronize missing batches
     pub tx_batch_tasks_total: IntCounter,
@@ -265,9 +275,7 @@ impl PrimaryChannelMetrics {
         let new_certificates_counter =
             IntGauge::new(Self::NAME_NEW_CERTS, Self::DESC_NEW_CERTS).unwrap();
         // TODO: Sanity-check by hashing the descs against one another
-        registry
-            .unregister(Box::new(new_certificates_counter.clone()))
-            .unwrap();
+        registry.unregister(Box::new(new_certificates_counter.clone())).unwrap();
         registry.register(collector).unwrap();
         self.tx_new_certificates = new_certificates_counter;
     }
@@ -280,9 +288,7 @@ impl PrimaryChannelMetrics {
         let committed_certificates_counter =
             IntGauge::new(Self::NAME_COMMITTED_CERTS, Self::DESC_COMMITTED_CERTS).unwrap();
         // TODO: Sanity-check by hashing the descs against one another
-        registry
-            .unregister(Box::new(committed_certificates_counter.clone()))
-            .unwrap();
+        registry.unregister(Box::new(committed_certificates_counter.clone())).unwrap();
         registry.register(collector).unwrap();
         self.tx_committed_certificates = committed_certificates_counter;
     }
@@ -588,9 +594,7 @@ impl MetricsCallbackProvider for PrimaryEndpointMetrics {
         self.requests_by_route.with_label_values(&labels).inc();
 
         let req_latency_secs = latency.as_secs_f64();
-        self.req_latency_by_route
-            .with_label_values(&labels)
-            .observe(req_latency_secs);
+        self.req_latency_by_route.with_label_values(&labels).observe(req_latency_secs);
     }
 }
 

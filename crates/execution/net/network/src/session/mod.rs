@@ -11,8 +11,6 @@ use crate::{
     },
 };
 pub use crate::{message::PeerRequestSender, session::handle::PeerInfo};
-use fnv::FnvHashMap;
-use futures::{future::Either, io, FutureExt, StreamExt};
 use execution_ecies::{stream::ECIESStream, ECIESError};
 use execution_eth_wire::{
     capability::{Capabilities, CapabilityMessage},
@@ -24,8 +22,9 @@ use execution_net_common::{
     bandwidth_meter::{BandwidthMeter, MeteredStream},
     stream::HasRemoteAddr,
 };
-use execution_primitives::{ForkFilter, ForkId, ForkTransition, Head, PeerId};
 use execution_tasks::TaskSpawner;
+use fnv::FnvHashMap;
+use futures::{future::Either, io, FutureExt, StreamExt};
 use secp256k1::SecretKey;
 use std::{
     collections::HashMap,
@@ -35,6 +34,7 @@ use std::{
     task::{Context, Poll},
     time::{Duration, Instant},
 };
+use tn_types::execution::{ForkFilter, ForkId, ForkTransition, Head, PeerId};
 use tokio::{
     io::{AsyncRead, AsyncWrite},
     net::TcpStream,

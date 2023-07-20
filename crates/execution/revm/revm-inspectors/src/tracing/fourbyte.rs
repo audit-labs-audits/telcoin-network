@@ -21,13 +21,13 @@
 //!
 //! See also <https://geth.ethereum.org/docs/developers/evm-tracing/built-in-tracers>
 
-use execution_primitives::{bytes::Bytes, hex, Selector};
 use execution_rpc_types::trace::geth::FourByteFrame;
 use revm::{
     interpreter::{CallInputs, Gas, InstructionResult},
     Database, EVMData, Inspector,
 };
 use std::collections::HashMap;
+use tn_types::execution::{bytes::Bytes, hex, Selector};
 
 /// Fourbyte tracing inspector that records all function selectors and their calldata sizes.
 #[derive(Debug, Clone, Default)]

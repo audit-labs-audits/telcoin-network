@@ -8,8 +8,7 @@ use std::{
     net::{IpAddr, SocketAddr},
 };
 
-pub use ::multiaddr::Error;
-pub use ::multiaddr::Protocol;
+pub use ::multiaddr::{Error, Protocol};
 
 #[derive(Clone, Debug, Hash, PartialEq, Eq, PartialOrd, Ord)]
 pub struct Multiaddr(::multiaddr::Multiaddr);
@@ -107,9 +106,9 @@ impl Multiaddr {
         let mut new_address = ::multiaddr::Multiaddr::empty();
         for component in &self.0 {
             match component {
-                multiaddr::Protocol::Ip4(_) => new_address.push(multiaddr::Protocol::Ip4(
-                    std::net::Ipv4Addr::new(0, 0, 0, 0),
-                )),
+                multiaddr::Protocol::Ip4(_) => {
+                    new_address.push(multiaddr::Protocol::Ip4(std::net::Ipv4Addr::new(0, 0, 0, 0)))
+                }
                 c => new_address.push(c),
             }
         }
@@ -162,16 +161,13 @@ impl<'de> serde::Deserialize<'de> for Multiaddr {
         D: serde::Deserializer<'de>,
     {
         let s = String::deserialize(deserializer)?;
-        s.parse()
-            .map(Self)
-            .map_err(|e| serde::de::Error::custom(e.to_string()))
+        s.parse().map(Self).map_err(|e| serde::de::Error::custom(e.to_string()))
     }
 }
 
 pub(crate) fn parse_tcp<'a, T: Iterator<Item = Protocol<'a>>>(protocols: &mut T) -> Result<u16> {
-    if let Protocol::Tcp(port) = protocols
-        .next()
-        .ok_or_else(|| eyre!("unexpected end of multiaddr"))?
+    if let Protocol::Tcp(port) =
+        protocols.next().ok_or_else(|| eyre!("unexpected end of multiaddr"))?
     {
         Ok(port)
     } else {
@@ -182,10 +178,7 @@ pub(crate) fn parse_tcp<'a, T: Iterator<Item = Protocol<'a>>>(protocols: &mut T)
 pub(crate) fn parse_http_https<'a, T: Iterator<Item = Protocol<'a>>>(
     protocols: &mut T,
 ) -> Result<&'static str> {
-    match protocols
-        .next()
-        .ok_or_else(|| eyre!("unexpected end of multiaddr"))?
-    {
+    match protocols.next().ok_or_else(|| eyre!("unexpected end of multiaddr"))? {
         Protocol::Http => Ok("http"),
         Protocol::Https => Ok("https"),
         _ => Err(eyre!("expected http/https protocol")),
@@ -204,10 +197,7 @@ pub(crate) fn parse_end<'a, T: Iterator<Item = Protocol<'a>>>(protocols: &mut T)
 pub(crate) fn parse_dns(address: &Multiaddr) -> Result<(Cow<'_, str>, u16, &'static str)> {
     let mut iter = address.iter();
 
-    let dns_name = match iter
-        .next()
-        .ok_or_else(|| eyre!("unexpected end of multiaddr"))?
-    {
+    let dns_name = match iter.next().ok_or_else(|| eyre!("unexpected end of multiaddr"))? {
         Protocol::Dns(dns_name) => dns_name,
         other => return Err(eyre!("expected dns found {other}")),
     };
@@ -221,10 +211,7 @@ pub(crate) fn parse_dns(address: &Multiaddr) -> Result<(Cow<'_, str>, u16, &'sta
 pub(crate) fn parse_ip4(address: &Multiaddr) -> Result<(SocketAddr, &'static str)> {
     let mut iter = address.iter();
 
-    let ip_addr = match iter
-        .next()
-        .ok_or_else(|| eyre!("unexpected end of multiaddr"))?
-    {
+    let ip_addr = match iter.next().ok_or_else(|| eyre!("unexpected end of multiaddr"))? {
         Protocol::Ip4(ip4_addr) => IpAddr::V4(ip4_addr),
         other => return Err(eyre!("expected ip4 found {other}")),
     };
@@ -240,10 +227,7 @@ pub(crate) fn parse_ip4(address: &Multiaddr) -> Result<(SocketAddr, &'static str
 pub(crate) fn parse_ip6(address: &Multiaddr) -> Result<(SocketAddr, &'static str)> {
     let mut iter = address.iter();
 
-    let ip_addr = match iter
-        .next()
-        .ok_or_else(|| eyre!("unexpected end of multiaddr"))?
-    {
+    let ip_addr = match iter.next().ok_or_else(|| eyre!("unexpected end of multiaddr"))? {
         Protocol::Ip6(ip6_addr) => IpAddr::V6(ip6_addr),
         other => return Err(eyre!("expected ip6 found {other}")),
     };
@@ -260,10 +244,7 @@ pub(crate) fn parse_ip6(address: &Multiaddr) -> Result<(SocketAddr, &'static str
 pub(crate) fn parse_unix(address: &Multiaddr) -> Result<(Cow<'_, str>, &'static str)> {
     let mut iter = address.iter();
 
-    let path = match iter
-        .next()
-        .ok_or_else(|| eyre!("unexpected end of multiaddr"))?
-    {
+    let path = match iter.next().ok_or_else(|| eyre!("unexpected end of multiaddr"))? {
         Protocol::Unix(path) => path,
         other => return Err(eyre!("expected unix found {other}")),
     };
@@ -281,23 +262,19 @@ mod test {
     #[test]
     fn test_to_socket_addr_basic() {
         let multi_addr_ipv4 = Multiaddr(multiaddr!(Ip4([127, 0, 0, 1]), Tcp(10500u16)));
-        let socket_addr_ipv4 = multi_addr_ipv4
-            .to_socket_addr()
-            .expect("Couldn't convert to socket addr");
+        let socket_addr_ipv4 =
+            multi_addr_ipv4.to_socket_addr().expect("Couldn't convert to socket addr");
         assert_eq!(socket_addr_ipv4.to_string(), "127.0.0.1:10500");
 
         let multi_addr_ipv6 = Multiaddr(multiaddr!(Ip6([172, 0, 0, 1, 1, 1, 1, 1]), Tcp(10500u16)));
-        let socket_addr_ipv6 = multi_addr_ipv6
-            .to_socket_addr()
-            .expect("Couldn't convert to socket addr");
+        let socket_addr_ipv6 =
+            multi_addr_ipv6.to_socket_addr().expect("Couldn't convert to socket addr");
         assert_eq!(socket_addr_ipv6.to_string(), "[ac::1:1:1:1:1]:10500");
     }
 
     #[test]
     fn test_to_socket_addr_unsupported_protocol() {
         let multi_addr_dns = Multiaddr(multiaddr!(Dnsaddr("telcoin.network"), Tcp(10500u16)));
-        let _ = multi_addr_dns
-            .to_socket_addr()
-            .expect_err("DNS is unsupported");
+        let _ = multi_addr_dns.to_socket_addr().expect_err("DNS is unsupported");
     }
 }

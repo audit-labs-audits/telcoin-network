@@ -1,13 +1,13 @@
 // Copyright (c) Telcoin, LLC
 // Copyright (c) Mysten Labs, Inc.
 // SPDX-License-Identifier: Apache-2.0
-use std::{marker::PhantomData, sync::Arc};
+use super::{be_fix_int_ser, errors::TypedStoreError, RocksDBRawIter};
+use crate::metrics::{DBMetrics, RocksDBPerfContext};
 use bincode::Options;
 use prometheus::{Histogram, HistogramTimer};
 use rocksdb::Direction;
 use serde::{de::DeserializeOwned, Serialize};
-use crate::metrics::{DBMetrics, RocksDBPerfContext};
-use super::{be_fix_int_ser, errors::TypedStoreError, RocksDBRawIter};
+use std::{marker::PhantomData, sync::Arc};
 
 /// An iterator over all key-value pairs in a data map.
 pub struct SafeIter<'a, K, V> {
@@ -55,17 +55,9 @@ impl<'a, K: DeserializeOwned, V: DeserializeOwned> Iterator for SafeIter<'a, K, 
 
     fn next(&mut self) -> Option<Self::Item> {
         if self.db_iter.valid() {
-            let config = bincode::DefaultOptions::new()
-                .with_big_endian()
-                .with_fixint_encoding();
-            let raw_key = self
-                .db_iter
-                .key()
-                .expect("Valid iterator failed to get key");
-            let raw_value = self
-                .db_iter
-                .value()
-                .expect("Valid iterator failed to get value");
+            let config = bincode::DefaultOptions::new().with_big_endian().with_fixint_encoding();
+            let raw_key = self.db_iter.key().expect("Valid iterator failed to get key");
+            let raw_value = self.db_iter.value().expect("Valid iterator failed to get value");
             self.bytes_scanned_counter += raw_key.len() + raw_value.len();
             self.keys_returned_counter += 1;
             let key = config.deserialize(raw_key).ok();
@@ -93,9 +85,7 @@ impl<'a, K, V> Drop for SafeIter<'a, K, V> {
             keys_scanned.observe(self.keys_returned_counter as f64);
         }
         if let Some(db_metrics) = self.db_metrics.take() {
-            db_metrics
-                .read_perf_ctx_metrics
-                .report_metrics(&self.cf_name);
+            db_metrics.read_perf_ctx_metrics.report_metrics(&self.cf_name);
         }
     }
 }

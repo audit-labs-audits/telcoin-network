@@ -2,34 +2,32 @@
 // Copyright (c) 2021, Facebook, Inc. and its affiliates
 // Copyright (c) Mysten Labs, Inc.
 // SPDX-License-Identifier: Apache-2.0
-#![warn(
-    future_incompatible,
-    nonstandard_style,
-    rust_2018_idioms,
-    rust_2021_compatibility
-)]
+#![warn(future_incompatible, nonstandard_style, rust_2018_idioms, rust_2021_compatibility)]
 
 use clap::{crate_name, crate_version, App, AppSettings, ArgMatches, SubCommand};
-use tn_types::consensus::config::{Committee, Import, Parameters, WorkerCache, WorkerId};
-use tn_types::consensus::crypto::{KeyPair, NetworkKeyPair};
+use consensus_metrics::RegistryService;
 use eyre::Context;
 use fastcrypto::traits::KeyPair as _;
-use consensus_metrics::RegistryService;
-use lattice_node::primary_node::PrimaryNode;
-use lattice_node::worker_node::WorkerNode;
 use lattice_network::client::NetworkClient;
 use lattice_node::{
     execution_state::SimpleExecutionState,
     metrics::{primary_metrics_registry, start_prometheus_server, worker_metrics_registry},
+    primary_node::PrimaryNode,
+    worker_node::WorkerNode,
 };
+use lattice_storage::{CertificateStoreCacheMetrics, NodeStorage};
 use prometheus::Registry;
 use std::sync::Arc;
-use lattice_storage::{CertificateStoreCacheMetrics, NodeStorage};
+use tn_types::consensus::{
+    config::{Committee, Import, Parameters, WorkerCache, WorkerId},
+    crypto::{KeyPair, NetworkKeyPair},
+};
 // use sui_keys::keypair_file::{
 //     read_authority_keypair_from_file, read_network_keypair_from_file,
 //     write_authority_keypair_to_file, write_keypair_to_file,
 // };
 // use sui_types::crypto::{get_key_pair_from_rng, AuthorityKeyPair, SuiKeyPair};
+use lattice_worker::TrivialTransactionValidator;
 use telemetry_subscribers::TelemetryGuards;
 use tokio::sync::mpsc::channel;
 #[cfg(feature = "benchmark")]
@@ -37,7 +35,6 @@ use tracing::subscriber::set_global_default;
 use tracing::{info, warn};
 #[cfg(feature = "benchmark")]
 use tracing_subscriber::filter::{EnvFilter, LevelFilter};
-use lattice_worker::TrivialTransactionValidator;
 
 #[tokio::main]
 async fn main() -> Result<(), eyre::Report> {
@@ -111,8 +108,9 @@ async fn main() -> Result<(), eyre::Report> {
         ("generate_network_keys", Some(sub_matches)) => {
             let _guard = setup_telemetry(tracing_level, network_tracing_level, None);
             let network_key_file = sub_matches.value_of("filename").unwrap();
-            // let network_keypair: NetworkKeyPair = get_key_pair_from_rng(&mut rand::rngs::OsRng).1;
-            // write_keypair_to_file(&SuiKeyPair::Ed25519(network_keypair), network_key_file).unwrap();
+            // let network_keypair: NetworkKeyPair = get_key_pair_from_rng(&mut
+            // rand::rngs::OsRng).1; write_keypair_to_file(&
+            // SuiKeyPair::Ed25519(network_keypair), network_key_file).unwrap();
         }
         ("get_pub_key", Some(sub_matches)) => {
             let _guard = setup_telemetry(tracing_level, network_tracing_level, None);
@@ -139,11 +137,12 @@ async fn main() -> Result<(), eyre::Report> {
             // let primary_keypair = read_authority_keypair_from_file(primary_key_file)
             //     .expect("Failed to load the node's primary keypair");
             // let primary_network_key_file = sub_matches.value_of("primary-network-keys").unwrap();
-            // let primary_network_keypair = read_network_keypair_from_file(primary_network_key_file)
-            //     .expect("Failed to load the node's primary network keypair");
-            // let worker_key_file = sub_matches.value_of("worker-keys").unwrap();
-            // let worker_keypair = read_network_keypair_from_file(worker_key_file)
-            //     .expect("Failed to load the node's worker keypair");
+            // let primary_network_keypair =
+            // read_network_keypair_from_file(primary_network_key_file)     .expect("
+            // Failed to load the node's primary network keypair"); let worker_key_file
+            // = sub_matches.value_of("worker-keys").unwrap(); let worker_keypair =
+            // read_network_keypair_from_file(worker_key_file)     .expect("Failed to
+            // load the node's worker keypair");
 
             // let committee_file = sub_matches.value_of("committee").unwrap();
             // let mut committee = Committee::import(committee_file)
@@ -169,14 +168,14 @@ async fn main() -> Result<(), eyre::Report> {
             //     _ => unreachable!(),
             // };
 
-            // // In benchmarks, transactions are not deserializable => many errors at the debug level
-            // // Moreover, we need RFC 3339 timestamps to parse properly => we use a custom subscriber.
-            // cfg_if::cfg_if! {
+            // // In benchmarks, transactions are not deserializable => many errors at the debug
+            // level // Moreover, we need RFC 3339 timestamps to parse properly => we
+            // use a custom subscriber. cfg_if::cfg_if! {
             //     if #[cfg(feature = "benchmark")] {
             //         setup_benchmark_telemetry(tracing_level, network_tracing_level)?;
             //     } else {
-            //         let _guard = setup_telemetry(tracing_level, network_tracing_level, Some(&registry));
-            //     }
+            //         let _guard = setup_telemetry(tracing_level, network_tracing_level,
+            // Some(&registry));     }
             // }
             // run(
             //     sub_matches,
@@ -206,11 +205,8 @@ fn setup_telemetry(
         // load special log filter
         .with_log_level(&log_filter);
 
-    let config = if let Some(reg) = prom_registry {
-        config.with_prom_registry(reg)
-    } else {
-        config
-    };
+    let config =
+        if let Some(reg) = prom_registry { config.with_prom_registry(reg) } else { config };
 
     let (guard, _handle) = config.init();
     guard
@@ -310,11 +306,7 @@ async fn run(
                 .parse::<WorkerId>()
                 .context("The worker id must be a positive integer")?;
 
-            let worker = WorkerNode::new(
-                id,
-                parameters.clone(),
-                registry_service,
-            );
+            let worker = WorkerNode::new(id, parameters.clone(), registry_service);
 
             worker
                 .start(
@@ -336,10 +328,7 @@ async fn run(
 
     // spin up prometheus server exporter
     let prom_address = parameters.prometheus_metrics.socket_addr;
-    info!(
-        "Starting Prometheus HTTP metrics endpoint at {}",
-        prom_address
-    );
+    info!("Starting Prometheus HTTP metrics endpoint at {}", prom_address);
     let _metrics_server_handle = start_prometheus_server(prom_address, &registry);
 
     if let Some(primary) = primary {

@@ -29,14 +29,9 @@ impl Greeter for MyGreeter {
         &self,
         request: Request<HelloRequest>,
     ) -> Result<Response<HelloResponse>, Status> {
-        info!(
-            "Got a request from {}",
-            request.peer_id().unwrap().short_display(4)
-        );
+        info!("Got a request from {}", request.peer_id().unwrap().short_display(4));
 
-        let reply = HelloResponse {
-            message: format!("Hello {}!", request.into_body().name),
-        };
+        let reply = HelloResponse { message: format!("Hello {}!", request.into_body().name) };
 
         Ok(Response::new(reply))
 

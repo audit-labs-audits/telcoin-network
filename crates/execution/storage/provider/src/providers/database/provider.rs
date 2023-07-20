@@ -5,7 +5,6 @@ use crate::{
     EvmEnvProvider, HashingWriter, HeaderProvider, HistoryWriter, PostState, ProviderError,
     StageCheckpointReader, StorageReader, TransactionsProvider, WithdrawalsProvider,
 };
-use itertools::{izip, Itertools};
 use execution_db::{
     common::KeyValue,
     cursor::{DbCursorRO, DbCursorRW, DbDupCursorRO},
@@ -20,25 +19,26 @@ use execution_db::{
     BlockNumberList, DatabaseError,
 };
 use execution_interfaces::Result;
-use execution_primitives::{
-    keccak256,
-    stage::{StageCheckpoint, StageId},
-    Account, Address, Block, BlockHash, BlockHashOrNumber, BlockNumber, BlockWithSenders,
-    ChainInfo, ChainSpec, Hardfork, Head, Header, Receipt, SealedBlock, SealedBlockWithSenders,
-    SealedHeader, StorageEntry, TransactionMeta, TransactionSigned, TransactionSignedEcRecovered,
-    TransactionSignedNoHash, TxHash, TxNumber, Withdrawal, H256, U256,
-};
 use execution_revm_primitives::{
     config::revm_spec,
     env::{fill_block_env, fill_cfg_and_block_env, fill_cfg_env},
     primitives::{BlockEnv, CfgEnv, SpecId},
 };
 use execution_trie::StateRoot;
+use itertools::{izip, Itertools};
 use std::{
     collections::{btree_map::Entry, BTreeMap, BTreeSet},
     fmt::Debug,
     ops::{Deref, DerefMut, Range, RangeBounds, RangeInclusive},
     sync::Arc,
+};
+use tn_types::execution::{
+    keccak256,
+    stage::{StageCheckpoint, StageId},
+    Account, Address, Block, BlockHash, BlockHashOrNumber, BlockNumber, BlockWithSenders,
+    ChainInfo, ChainSpec, Hardfork, Head, Header, Receipt, SealedBlock, SealedBlockWithSenders,
+    SealedHeader, StorageEntry, TransactionMeta, TransactionSigned, TransactionSignedEcRecovered,
+    TransactionSignedNoHash, TxHash, TxNumber, Withdrawal, H256, U256,
 };
 
 /// A [`DatabaseProvider`] that holds a read-only database transaction.
@@ -598,7 +598,8 @@ impl<'this, TX: DbTxMut<'this> + DbTx<'this>> DatabaseProvider<'this, TX> {
         Ok(deleted)
     }
 
-    /// Unwind a table forward by a [Walker][execution_db::abstraction::cursor::Walker] on another table
+    /// Unwind a table forward by a [Walker][execution_db::abstraction::cursor::Walker] on another
+    /// table
     pub fn unwind_table_by_walker<T1, T2>(
         &self,
         start_at: T1::Key,

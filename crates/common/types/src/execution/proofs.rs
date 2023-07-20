@@ -1,14 +1,14 @@
-use crate::execution ::{
+use crate::execution::{
     keccak256,
     trie::{HashBuilder, Nibbles},
     Address, Bytes, GenesisAccount, Header, Log, ReceiptWithBloom, ReceiptWithBloomRef,
     TransactionSigned, Withdrawal, H256,
 };
 use bytes::{BufMut, BytesMut};
+use execution_rlp::Encodable;
 use hash_db::Hasher;
 use hex_literal::hex;
 use plain_hasher::PlainHasher;
-use execution_rlp::Encodable;
 use std::collections::HashMap;
 use triehash::sec_trie_root;
 
@@ -141,7 +141,7 @@ mod tests {
 
     use std::{collections::HashMap, str::FromStr};
 
-    use crate::execution ::{
+    use crate::execution::{
         hex_literal::hex,
         proofs::{calculate_receipt_root, calculate_transaction_root, genesis_state_root},
         Address, Block, Bloom, GenesisAccount, Log, Receipt, ReceiptWithBloom, TxType, H160, H256,

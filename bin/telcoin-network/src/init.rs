@@ -5,9 +5,11 @@ use execution_db::{
     tables,
     transaction::{DbTx, DbTxMut},
 };
-use execution_primitives::{stage::StageId, Account, Bytecode, ChainSpec, StorageEntry, H256, U256};
-use execution_provider::{DatabaseProviderRW, HashingWriter, HistoryWriter, PostState, ProviderFactory};
+use execution_provider::{
+    DatabaseProviderRW, HashingWriter, HistoryWriter, PostState, ProviderFactory,
+};
 use std::{collections::BTreeMap, sync::Arc};
+use tn_types::execution::{stage::StageId, Account, Bytecode, ChainSpec, StorageEntry, H256, U256};
 use tracing::debug;
 
 /// Database initialization error type.
@@ -83,7 +85,7 @@ pub fn init_genesis<DB: Database>(
 /// Inserts the genesis state into the database.
 pub fn insert_genesis_state<DB: Database>(
     tx: &<DB as DatabaseGAT<'_>>::TXMut,
-    genesis: &execution_primitives::Genesis,
+    genesis: &tn_types::execution::Genesis,
 ) -> Result<(), InitDatabaseError> {
     let mut state = PostState::default();
 
@@ -117,7 +119,7 @@ pub fn insert_genesis_state<DB: Database>(
 /// Inserts hashes for the genesis state.
 pub fn insert_genesis_hashes<DB: Database>(
     provider: &DatabaseProviderRW<'_, &DB>,
-    genesis: &execution_primitives::Genesis,
+    genesis: &tn_types::execution::Genesis,
 ) -> Result<(), InitDatabaseError> {
     // insert and hash accounts to hashing table
     let alloc_accounts =
@@ -141,7 +143,7 @@ pub fn insert_genesis_hashes<DB: Database>(
 /// Inserts history indices for genesis accounts and storage.
 pub fn insert_genesis_history<DB: Database>(
     provider: &DatabaseProviderRW<'_, &DB>,
-    genesis: &execution_primitives::Genesis,
+    genesis: &tn_types::execution::Genesis,
 ) -> Result<(), InitDatabaseError> {
     let account_transitions =
         genesis.alloc.keys().map(|addr| (*addr, vec![0])).collect::<BTreeMap<_, _>>();
@@ -184,11 +186,11 @@ mod tests {
         test_utils::create_test_rw_db,
         DatabaseEnv,
     };
-    use execution_primitives::{
+    use std::collections::HashMap;
+    use tn_types::execution::{
         Address, Chain, ForkTimestamps, Genesis, GenesisAccount, IntegerList, GOERLI,
         GOERLI_GENESIS, MAINNET, MAINNET_GENESIS, SEPOLIA, SEPOLIA_GENESIS,
     };
-    use std::collections::HashMap;
 
     fn collect_table_entries<DB, T>(
         tx: &<DB as DatabaseGAT<'_>>::TX,

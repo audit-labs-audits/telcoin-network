@@ -1,18 +1,18 @@
 //! Tests for eth related requests
 
-use rand::Rng;
 use execution_interfaces::p2p::{
     bodies::client::BodiesClient,
     headers::client::{HeadersClient, HeadersRequest},
 };
 use execution_network::test_utils::{NetworkEventStream, Testnet};
 use execution_network_api::{NetworkInfo, Peers};
-use execution_primitives::{
+use execution_provider::test_utils::MockEthProvider;
+use rand::Rng;
+use std::sync::Arc;
+use tn_types::execution::{
     Block, BlockBody, Bytes, Header, HeadersDirection, Signature, Transaction, TransactionKind,
     TransactionSigned, TxEip2930, H256, U256,
 };
-use execution_provider::test_utils::MockEthProvider;
-use std::sync::Arc;
 
 /// Returns a new [`TransactionSigned`] with some random parameters
 pub fn rng_transaction(rng: &mut impl rand::RngCore) -> TransactionSigned {

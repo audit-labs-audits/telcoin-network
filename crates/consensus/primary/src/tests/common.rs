@@ -1,17 +1,19 @@
 // Copyright (c) Telcoin, LLC
 // Copyright (c) Mysten Labs, Inc.
 // SPDX-License-Identifier: Apache-2.0
-use std::num::NonZeroUsize;
-use tn_types::consensus::config::{AuthorityIdentifier, WorkerId};
-use tn_types::consensus::crypto::NetworkKeyPair;
-use std::time::Duration;
 use lattice_storage::{CertificateStore, CertificateStoreCache, HeaderStore, PayloadStore};
-use lattice_typed_store::{reopen, rocks, rocks::DBMap, rocks::ReadWriteOptions};
 use lattice_test_utils::{
     temp_dir, PrimaryToWorkerMockServer, CERTIFICATES_CF, CERTIFICATE_DIGEST_BY_ORIGIN_CF,
     CERTIFICATE_DIGEST_BY_ROUND_CF, HEADERS_CF, PAYLOAD_CF,
 };
+use lattice_typed_store::{
+    reopen, rocks,
+    rocks::{DBMap, ReadWriteOptions},
+};
+use std::{num::NonZeroUsize, time::Duration};
 use tn_types::consensus::{
+    config::{AuthorityIdentifier, WorkerId},
+    crypto::NetworkKeyPair,
     BatchDigest, Certificate, CertificateDigest, Header, HeaderDigest, Round,
     WorkerSynchronizeMessage,
 };

@@ -1,6 +1,6 @@
 use crate::consensus::ConsensusError;
-use execution_primitives::SealedHeader;
 use thiserror::Error;
+use tn_types::execution::SealedHeader;
 
 /// Header downloader result
 pub type HeadersDownloaderResult<T> = Result<T, HeadersDownloaderError>;

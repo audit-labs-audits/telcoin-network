@@ -1,8 +1,8 @@
 //! Implements the `GetBlockHeaders`, `GetBlockBodies`, `BlockHeaders`, and `BlockBodies` message
 //! types.
 use execution_codecs::derive_arbitrary;
-use execution_primitives::{BlockBody, BlockHashOrNumber, Header, HeadersDirection, H256};
 use execution_rlp::{RlpDecodable, RlpDecodableWrapper, RlpEncodable, RlpEncodableWrapper};
+use tn_types::execution::{BlockBody, BlockHashOrNumber, Header, HeadersDirection, H256};
 
 #[cfg(feature = "serde")]
 use serde::{Deserialize, Serialize};
@@ -93,13 +93,13 @@ mod test {
     use crate::types::{
         message::RequestPair, BlockBodies, BlockHeaders, GetBlockBodies, GetBlockHeaders,
     };
+    use execution_rlp::{Decodable, Encodable};
     use hex_literal::hex;
-    use execution_primitives::{
+    use std::str::FromStr;
+    use tn_types::execution::{
         BlockHashOrNumber, Header, HeadersDirection, Signature, Transaction, TransactionKind,
         TransactionSigned, TxLegacy, U256,
     };
-    use execution_rlp::{Decodable, Encodable};
-    use std::str::FromStr;
 
     use super::BlockBody;
 

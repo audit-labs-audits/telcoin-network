@@ -7,13 +7,13 @@ use clap::{crate_name, crate_version, App, AppSettings};
 use eyre::Context;
 use futures::{future::join_all, StreamExt};
 use rand::Rng;
+use tn_types::consensus::{TransactionProto, TransactionsClient};
 use tokio::{
     net::TcpStream,
     time::{interval, sleep, Duration, Instant},
 };
 use tracing::{info, subscriber::set_global_default, warn};
 use tracing_subscriber::filter::EnvFilter;
-use tn_types::consensus::{TransactionProto, TransactionsClient};
 use url::Url;
 
 #[tokio::main]
@@ -83,12 +83,7 @@ async fn main() -> Result<(), eyre::Report> {
     // NOTE: This log entry is used to compute performance.
     info!("Transactions rate: {rate} tx/s");
 
-    let client = Client {
-        target,
-        size,
-        rate,
-        nodes,
-    };
+    let client = Client { target, size, rate, nodes };
 
     // Wait for all nodes to be online and synchronized.
     client.wait().await;
@@ -122,14 +117,12 @@ impl Client {
             return Err(eyre::Report::msg(format!(
                 "Transaction rate is too low, should be at least {} tx/s and multiples of {}",
                 PRECISION, PRECISION
-            )));
+            )))
         }
 
         // The transaction size must be at least 9 bytes to ensure all txs are different.
         if self.size < 9 {
-            return Err(eyre::Report::msg(
-                "Transaction size must be at least 9 bytes",
-            ));
+            return Err(eyre::Report::msg("Transaction size must be at least 9 bytes"))
         }
 
         // Connect to the mempool.
@@ -172,7 +165,7 @@ impl Client {
 
             if let Err(e) = client.submit_transaction_stream(stream).await {
                 warn!("Failed to send transaction: {e}");
-                break 'main;
+                break 'main
             }
 
             if now.elapsed().as_millis() > BURST_DURATION as u128 {
@@ -189,10 +182,7 @@ impl Client {
         info!("Waiting for all nodes to be online...");
         join_all(self.nodes.iter().cloned().map(|address| {
             tokio::spawn(async move {
-                while TcpStream::connect(&*address.socket_addrs(|| None).unwrap())
-                    .await
-                    .is_err()
-                {
+                while TcpStream::connect(&*address.socket_addrs(|| None).unwrap()).await.is_err() {
                     sleep(Duration::from_millis(10)).await;
                 }
             })

@@ -2,25 +2,24 @@
 // Copyright (c) 2021, Facebook, Inc. and its affiliates
 // Copyright (c) Mysten Labs, Inc.
 // SPDX-License-Identifier: Apache-2.0
-pub mod intent;
 pub mod helpers;
+pub mod intent;
 
 use fastcrypto::{
+    bls12381::min_sig::{
+        BLS12381AggregateSignature, BLS12381AggregateSignatureAsBytes, BLS12381KeyPair,
+        BLS12381PrivateKey, BLS12381PublicKey, BLS12381PublicKeyAsBytes, BLS12381Signature,
+    },
+    ed25519::{Ed25519KeyPair, Ed25519PublicKey},
     error::FastCryptoError,
     hash::{Blake2b256, HashFunction},
     traits::{AggregateAuthenticator, Signer, VerifyingKey},
-    bls12381::min_sig::{
-        BLS12381PublicKey, BLS12381PublicKeyAsBytes, BLS12381Signature,
-        BLS12381AggregateSignature, BLS12381AggregateSignatureAsBytes,
-        BLS12381PrivateKey, BLS12381KeyPair
-    },
-    ed25519::{Ed25519PublicKey, Ed25519KeyPair},
 };
 
 // This re-export allows using the trait-defined APIs
+use self::intent::{Intent, IntentMessage, IntentScope, INTENT_PREFIX_LENGTH};
 pub use fastcrypto::traits;
 use serde::Serialize;
-use self::intent::{Intent, IntentMessage, IntentScope, INTENT_PREFIX_LENGTH};
 
 ////////////////////////////////////////////////////////////////////////
 /// Type aliases selecting the signature algorithm for the code base.
@@ -45,7 +44,6 @@ pub type KeyPair = BLS12381KeyPair;
 pub type NetworkPublicKey = Ed25519PublicKey;
 pub type NetworkKeyPair = Ed25519KeyPair;
 
-
 ////////////////////////////////////////////////////////////////////////
 
 // Type alias selecting the default hash function for the code base.
@@ -57,7 +55,8 @@ pub const INTENT_MESSAGE_LENGTH: usize = INTENT_PREFIX_LENGTH + DIGEST_LENGTH;
 // pub const DEFAULT_EPOCH_ID: EpochId = 0;
 pub const DEFAULT_EPOCH_ID: u64 = 0;
 
-/// A trait for sign and verify over an intent message, instead of the message itself. See more at [struct IntentMessage].
+/// A trait for sign and verify over an intent message, instead of the message itself. See more at
+/// [struct IntentMessage].
 pub trait NarwhalAuthoritySignature {
     /// Create a new signature over an intent message.
     fn new_secure<T>(value: &IntentMessage<T>, secret: &dyn Signer<Self>) -> Self
@@ -120,7 +119,8 @@ impl NarwhalAuthorityAggregateSignature for AggregateSignature {
     }
 }
 
-/// Wrap a message in an intent message. Currently in Narwhal, the scope is always IntentScope::HeaderDigest and the app id is AppId::Narwhal.
+/// Wrap a message in an intent message. Currently in Narwhal, the scope is always
+/// IntentScope::HeaderDigest and the app id is AppId::Narwhal.
 pub fn to_intent_message<T>(value: T) -> IntentMessage<T> {
     IntentMessage::new(Intent::narwhal_app(IntentScope::HeaderDigest), value)
 }

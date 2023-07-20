@@ -4,7 +4,7 @@ use crate::{
     DatabaseError,
 };
 use execution_codecs::Compact;
-use execution_primitives::{
+use tn_types::execution::{
     trie::{StoredNibbles, StoredNibblesSubKey},
     Address, H256,
 };

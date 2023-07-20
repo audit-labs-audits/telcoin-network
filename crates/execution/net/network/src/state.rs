@@ -15,7 +15,6 @@ use execution_eth_wire::{
     capability::Capabilities, BlockHashNumber, DisconnectReason, NewBlockHashes, Status,
 };
 use execution_network_api::PeerKind;
-use execution_primitives::{ForkId, PeerId, H256};
 use execution_provider::BlockReader;
 use std::{
     collections::{HashMap, VecDeque},
@@ -27,6 +26,7 @@ use std::{
     },
     task::{Context, Poll},
 };
+use tn_types::execution::{ForkId, PeerId, H256};
 use tokio::sync::oneshot;
 use tracing::debug;
 
@@ -514,12 +514,12 @@ mod tests {
         BlockBodies, EthVersion, Status,
     };
     use execution_interfaces::p2p::{bodies::client::BodiesClient, error::RequestError};
-    use execution_primitives::{BlockBody, Header, PeerId, H256};
     use execution_provider::test_utils::NoopProvider;
     use std::{
         future::poll_fn,
         sync::{atomic::AtomicU64, Arc},
     };
+    use tn_types::execution::{BlockBody, Header, PeerId, H256};
     use tokio::sync::mpsc;
     use tokio_stream::{wrappers::ReceiverStream, StreamExt};
 

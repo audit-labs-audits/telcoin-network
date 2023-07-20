@@ -1,6 +1,6 @@
 use crate::account::EthAccount;
-use execution_primitives::{proofs::KeccakHasher, Account, Address, H256, U256};
 use execution_rlp::{encode_fixed_size, Encodable};
+use tn_types::execution::{proofs::KeccakHasher, Account, Address, H256, U256};
 
 /// Re-export of [triehash].
 pub use triehash;

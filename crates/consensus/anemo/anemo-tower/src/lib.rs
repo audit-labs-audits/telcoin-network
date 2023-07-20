@@ -23,10 +23,7 @@ pub enum LatencyUnit {
 
 impl LatencyUnit {
     pub fn display(self, latency: std::time::Duration) -> impl std::fmt::Display {
-        LatencyDisplay {
-            unit: self,
-            latency,
-        }
+        LatencyDisplay { unit: self, latency }
     }
 }
 

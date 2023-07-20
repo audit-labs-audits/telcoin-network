@@ -1,10 +1,10 @@
 #![allow(unused)]
 //! Test helper impls
 use crate::bodies::test_utils::create_raw_bodies;
-use futures::SinkExt;
 use execution_interfaces::test_utils::generators::random_block_range;
-use execution_primitives::{BlockBody, SealedHeader, H256};
+use futures::SinkExt;
 use std::{collections::HashMap, io::SeekFrom, ops::RangeInclusive};
+use tn_types::execution::{BlockBody, SealedHeader, H256};
 use tokio::{
     fs::File,
     io::{AsyncSeekExt, AsyncWriteExt, BufWriter},
@@ -16,9 +16,9 @@ mod file_client;
 mod file_codec;
 
 pub use bodies_client::TestBodiesClient;
+use execution_interfaces::test_utils::generators;
 pub use file_client::{FileClient, FileClientError};
 pub(crate) use file_codec::BlockFileCodec;
-use execution_interfaces::test_utils::generators;
 
 /// Metrics scope used for testing.
 pub(crate) const TEST_SCOPE: &str = "downloaders.test";

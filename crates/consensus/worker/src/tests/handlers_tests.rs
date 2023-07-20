@@ -4,8 +4,8 @@
 // SPDX-License-Identifier: Apache-2.0
 
 use fastcrypto::hash::Hash;
-use std::vec;
 use lattice_test_utils::CommitteeFixture;
+use std::vec;
 use tn_types::consensus::{MockWorkerToWorker, WorkerToWorkerServer};
 
 use super::*;
@@ -51,11 +51,7 @@ async fn synchronize() {
     let send_network = lattice_test_utils::random_network();
     send_network
         .connect_with_peer_id(
-            target_worker
-                .info()
-                .worker_address
-                .to_anemo_address()
-                .unwrap(),
+            target_worker.info().worker_address.to_anemo_address().unwrap(),
             anemo::PeerId(target_worker.info().name.0.to_bytes()),
         )
         .await
@@ -128,10 +124,7 @@ async fn synchronize_when_batch_exists() {
         is_certified: false,
     };
     // The sync request should succeed.
-    handler
-        .synchronize(anemo::Request::new(message))
-        .await
-        .unwrap();
+    handler.synchronize(anemo::Request::new(message)).await.unwrap();
 }
 
 #[tokio::test]
@@ -163,13 +156,8 @@ async fn delete_batches() {
         batch_fetcher: None,
         validator: TrivialTransactionValidator,
     };
-    let message = WorkerDeleteBatchesMessage {
-        digests: vec![digest],
-    };
-    handler
-        .delete_batches(anemo::Request::new(message))
-        .await
-        .unwrap();
+    let message = WorkerDeleteBatchesMessage { digests: vec![digest] };
+    handler.delete_batches(anemo::Request::new(message)).await.unwrap();
 
     assert!(store.get(&digest).unwrap().is_none());
 }

@@ -2,27 +2,27 @@ use crate::{
     engine::{error::LatticeOnNewPayloadError, forkchoice::ForkchoiceStatus},
     LatticeConsensusEngineEvent,
 };
-use futures::{future::Either, FutureExt};
-use tn_types::consensus::Batch;
 use execution_interfaces::consensus::ForkchoiceState;
 use execution_payload_builder::error::PayloadBuilderError;
 use execution_rpc_types::engine::{
-    ExecutionPayload, ForkChoiceUpdateResult, ForkchoiceUpdateError, ForkchoiceUpdated,
-    PayloadAttributes, PayloadId, PayloadStatus, PayloadStatusEnum, ExecutionPayloadEnvelope,
+    ExecutionPayload, ExecutionPayloadEnvelope, ForkChoiceUpdateResult, ForkchoiceUpdateError,
+    ForkchoiceUpdated, PayloadAttributes, PayloadId, PayloadStatus, PayloadStatusEnum,
 };
+use futures::{future::Either, FutureExt};
 use std::{
     future::Future,
     pin::Pin,
     task::{ready, Context, Poll},
 };
+use tn_types::consensus::Batch;
 use tokio::sync::{mpsc::UnboundedSender, oneshot};
 
-/// A message for the lattice engine from other components of the node (engine RPC API invoked by the
-/// consensus layer).
+/// A message for the lattice engine from other components of the node (engine RPC API invoked by
+/// the consensus layer).
 #[derive(Debug)]
 pub enum LatticeEngineMessage {
     /// Message with new batch from peer.
-    /// 
+    ///
     /// Akin to `NewPayload`
     NewBatch {
         /// The execution payload received by Engine API.

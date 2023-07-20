@@ -2,7 +2,7 @@ use std::sync::Arc;
 
 use crate::{pipeline::BoxedStage, MetricEventsSender, Pipeline, Stage, StageSet};
 use execution_db::database::Database;
-use execution_primitives::{stage::StageId, BlockNumber, ChainSpec, H256};
+use tn_types::execution::{stage::StageId, BlockNumber, ChainSpec, H256};
 use tokio::sync::watch;
 
 /// Builds a [`Pipeline`].

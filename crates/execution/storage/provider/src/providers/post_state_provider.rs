@@ -3,7 +3,7 @@ use crate::{
     StateRootProvider,
 };
 use execution_interfaces::{provider::ProviderError, Result};
-use execution_primitives::{Account, Address, BlockNumber, Bytecode, Bytes, H256, U256};
+use tn_types::execution::{Account, Address, BlockNumber, Bytecode, Bytes, H256, U256};
 
 /// A state provider that either resolves to data in a wrapped [`crate::PostState`], or an
 /// underlying state provider.
@@ -63,8 +63,8 @@ impl<SP: StateProvider, PSDP: PostStateDataProvider> StateProvider for PostState
     fn storage(
         &self,
         account: Address,
-        storage_key: execution_primitives::StorageKey,
-    ) -> Result<Option<execution_primitives::StorageValue>> {
+        storage_key: tn_types::execution::StorageKey,
+    ) -> Result<Option<tn_types::execution::StorageValue>> {
         if let Some(storage) = self.post_state_data_provider.state().account_storage(&account) {
             if let Some(value) =
                 storage.storage.get(&U256::from_be_bytes(storage_key.to_fixed_bytes()))

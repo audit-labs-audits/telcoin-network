@@ -9,13 +9,13 @@ use crate::{
     TransactionOrdering,
 };
 use rand::Rng;
-use execution_primitives::{Address, U128, U256};
 use serde::{Deserialize, Serialize};
 use std::{
     collections::HashMap,
     ops::{Deref, DerefMut},
     sync::Arc,
 };
+use tn_types::execution::{Address, U128, U256};
 
 /// A wrapped `TxPool` with additional helpers for testing
 pub struct MockPool<T: TransactionOrdering = MockOrdering> {

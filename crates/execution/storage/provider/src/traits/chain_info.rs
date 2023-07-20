@@ -1,6 +1,6 @@
 use execution_interfaces::consensus::ForkchoiceState;
-use execution_primitives::SealedHeader;
 use std::time::Instant;
+use tn_types::execution::SealedHeader;
 
 /// A type that can track updates related to fork choice updates.
 pub trait CanonChainTracker: Send + Sync {

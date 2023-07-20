@@ -18,10 +18,7 @@ pub struct Callback<S, M> {
 impl<S, M> Callback<S, M> {
     /// Create a new [`Callback`].
     pub fn new(inner: S, make_callback_handler: M) -> Self {
-        Self {
-            inner,
-            make_callback_handler,
-        }
+        Self { inner, make_callback_handler }
     }
 
     /// Returns a new [`Layer`] that wraps services with a [`CallbackLayer`] middleware.
@@ -68,9 +65,6 @@ where
     fn call(&mut self, request: Request<Bytes>) -> Self::Future {
         let handler = self.make_callback_handler.make_handler(&request);
 
-        ResponseFuture {
-            inner: self.inner.call(request),
-            handler: Some(handler),
-        }
+        ResponseFuture { inner: self.inner.call(request), handler: Some(handler) }
     }
 }

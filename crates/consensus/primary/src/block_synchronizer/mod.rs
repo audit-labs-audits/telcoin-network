@@ -10,33 +10,30 @@ use crate::{
 };
 use anemo::PeerId;
 use anyhow::anyhow;
-use tn_types::consensus::config::{AuthorityIdentifier, Committee, Parameters, WorkerCache, WorkerId};
-use tn_types::consensus::crypto::traits::ToFromBytes;
-use tn_types::consensus::crypto::NetworkPublicKey;
+use consensus_metrics::{metered_channel, monitored_future, spawn_logged_monitored_task};
 use fastcrypto::hash::Hash;
 use futures::{
     future::{join_all, BoxFuture},
     stream::FuturesUnordered,
     FutureExt, StreamExt,
 };
-use consensus_metrics::metered_channel;
-use consensus_metrics::{monitored_future, spawn_logged_monitored_task};
-use lattice_network::anemo_ext::NetworkExt;
-use lattice_network::UnreliableNetwork;
+use lattice_network::{anemo_ext::NetworkExt, UnreliableNetwork};
+use lattice_storage::{CertificateStore, PayloadStore};
 use rand::{rngs::SmallRng, SeedableRng};
 use std::{
     collections::{HashMap, HashSet},
     time::Duration,
 };
-use lattice_storage::{CertificateStore, PayloadStore};
 use thiserror::Error;
-use tokio::{sync::mpsc::Sender, task::JoinHandle, time::timeout};
-use tracing::{debug, error, info, instrument, trace, warn};
 use tn_types::consensus::{
+    config::{AuthorityIdentifier, Committee, Parameters, WorkerCache, WorkerId},
+    crypto::{traits::ToFromBytes, NetworkPublicKey},
     BatchDigest, Certificate, CertificateAPI, CertificateDigest, ConditionalBroadcastReceiver,
     GetCertificatesRequest, HeaderAPI, PayloadAvailabilityRequest, PrimaryToPrimaryClient,
     WorkerSynchronizeMessage,
 };
+use tokio::{sync::mpsc::Sender, task::JoinHandle, time::timeout};
+use tracing::{debug, error, info, instrument, trace, warn};
 
 #[cfg(test)]
 #[path = "tests/block_synchronizer_tests.rs"]
@@ -72,10 +69,7 @@ pub enum Command {
     /// batches. This component does NOT check whether the
     /// requested digests are already synchronized. This is the
     /// consumer's responsibility.
-    SynchronizeBlockHeaders {
-        digests: Vec<CertificateDigest>,
-        respond_to: ResultSender,
-    },
+    SynchronizeBlockHeaders { digests: Vec<CertificateDigest>, respond_to: ResultSender },
     /// A request to synchronize the payload (batches) of the
     /// provided certificates. The certificates are needed in
     /// order to know which batches to ask from the peers
@@ -88,10 +82,7 @@ pub enum Command {
     /// This component does NOT check whether the
     //  requested digests are already synchronized. This is the
     //  consumer's responsibility.
-    SynchronizeBlockPayload {
-        certificates: Vec<Certificate>,
-        respond_to: ResultSender,
-    },
+    SynchronizeBlockPayload { certificates: Vec<Certificate>, respond_to: ResultSender },
 }
 
 // Those states are used for internal purposes only for the component.
@@ -237,10 +228,7 @@ impl BlockSynchronizer {
         // processing.
         let mut waiting = FuturesUnordered::new();
 
-        info!(
-            "BlockSynchronizer on node {} has started successfully.",
-            self.authority_id
-        );
+        info!("BlockSynchronizer on node {} has started successfully.", self.authority_id);
         loop {
             tokio::select! {
                 Some(command) = self.rx_block_synchronizer_commands.recv() => {
@@ -370,7 +358,7 @@ impl BlockSynchronizer {
         // nothing new to sync! just return
         if certificates_to_sync.is_empty() {
             trace!("No certificates to sync, will now exit");
-            return None;
+            return None
         } else {
             trace!("Certificate payloads need sync");
         }
@@ -378,9 +366,7 @@ impl BlockSynchronizer {
         // TODO: add metric here to track the number of certificates
         // requested that are missing a payload
 
-        let request = PayloadAvailabilityRequest {
-            certificate_digests: digests_to_sync,
-        };
+        let request = PayloadAvailabilityRequest { certificate_digests: digests_to_sync };
         let primaries: Vec<_> = self
             .committee
             .others_primaries_by_id(self.authority_id)
@@ -437,7 +423,7 @@ impl BlockSynchronizer {
 
         // nothing new to sync! just return
         if to_sync.is_empty() {
-            return None;
+            return None
         }
 
         // Create a future to broadcast certificate requests.
@@ -479,20 +465,15 @@ impl BlockSynchronizer {
                 let (found, missing): (
                     Vec<(CertificateDigest, Option<Certificate>)>,
                     Vec<(CertificateDigest, Option<Certificate>)>,
-                ) = block_ids
-                    .into_iter()
-                    .zip(certificates)
-                    .partition(|f| f.1.is_some());
+                ) = block_ids.into_iter().zip(certificates).partition(|f| f.1.is_some());
 
                 // Reply back directly with the found from storage certificates
                 let futures: Vec<_> = found
                     .into_iter()
                     .flat_map(|(_, c)| c)
                     .map(|c| {
-                        respond_to.send(Ok(BlockHeader {
-                            certificate: c,
-                            fetched_from_storage: true,
-                        }))
+                        respond_to
+                            .send(Ok(BlockHeader { certificate: c, fetched_from_storage: true }))
                     })
                     .collect();
 
@@ -561,17 +542,13 @@ impl BlockSynchronizer {
             };
 
             if !payload_available {
-                trace!(
-                    "Payload not available for certificate with id {}",
-                    certificate.digest()
-                );
+                trace!("Payload not available for certificate with id {}", certificate.digest());
                 missing_payload_certs.push(certificate);
             } else {
                 trace!("Payload is available on storage for certificate with id {}, now replying back immediately", certificate.digest());
-                futures.push(respond_to.send(Ok(BlockHeader {
-                    certificate,
-                    fetched_from_storage: true,
-                })));
+                futures.push(
+                    respond_to.send(Ok(BlockHeader { certificate, fetched_from_storage: true })),
+                );
             }
         }
 
@@ -597,15 +574,11 @@ impl BlockSynchronizer {
             let target = match self.committee.authority_by_network_key(&peer.name) {
                 Some(authority) => authority.id(),
                 None => {
-                    error!(
-                        "could not look up authority for network key {:?}",
-                        peer.name
-                    );
-                    continue;
+                    error!("could not look up authority for network key {:?}", peer.name);
+                    continue
                 }
             };
-            self.send_synchronize_payload_requests(target, peer.assigned_values())
-                .await
+            self.send_synchronize_payload_requests(target, peer.assigned_values()).await
         }
 
         peers
@@ -614,11 +587,9 @@ impl BlockSynchronizer {
             .map(|certificate| {
                 let timeout = self.payload_synchronize_timeout;
                 let payload_store = self.payload_store.clone();
-                monitored_future!(Self::wait_for_block_payload(
-                    timeout,
-                    payload_store,
-                    certificate,
-                ))
+                monitored_future!(
+                    Self::wait_for_block_payload(timeout, payload_store, certificate,)
+                )
                 .boxed()
             })
             .collect()
@@ -644,10 +615,7 @@ impl BlockSynchronizer {
             let worker_name = self
                 .worker_cache
                 .worker(
-                    self.committee
-                        .authority(&self.authority_id)
-                        .unwrap()
-                        .protocol_key(),
+                    self.committee.authority(&self.authority_id).unwrap().protocol_key(),
                     &worker_id,
                 )
                 .expect("Worker id not found")
@@ -660,10 +628,7 @@ impl BlockSynchronizer {
             };
             let _ = self.network.unreliable_send(worker_name, &message);
 
-            debug!(
-                "Sent request for batch ids {:?} to worker id {}",
-                message.digests, worker_id
-            );
+            debug!("Sent request for batch ids {:?} to worker id {}", message.digests, worker_id);
         }
     }
 
@@ -686,17 +651,12 @@ impl BlockSynchronizer {
         let result = timeout(payload_synchronize_timeout, join_all(futures)).await;
         if result.is_err() {
             return State::PayloadSynchronized {
-                result: Err(SyncError::Timeout {
-                    digest: certificate.digest(),
-                }),
-            };
+                result: Err(SyncError::Timeout { digest: certificate.digest() }),
+            }
         }
 
         State::PayloadSynchronized {
-            result: Ok(BlockHeader {
-                certificate,
-                fetched_from_storage: false,
-            }),
+            result: Ok(BlockHeader { certificate, fetched_from_storage: false }),
         }
     }
 
@@ -708,9 +668,7 @@ impl BlockSynchronizer {
         worker_cache: WorkerCache,
         digests: Vec<CertificateDigest>,
     ) -> State {
-        let request = GetCertificatesRequest {
-            digests: digests.clone(),
-        };
+        let request = GetCertificatesRequest { digests: digests.clone() };
         let mut requests: FuturesUnordered<_> = targets
             .iter()
             .map(|target| {
@@ -723,9 +681,7 @@ impl BlockSynchronizer {
                             "Network has no connection with peer {peer_id}"
                         ))
                     })?;
-                    PrimaryToPrimaryClient::new(peer)
-                        .get_certificates(request)
-                        .await
+                    PrimaryToPrimaryClient::new(peer).get_certificates(request).await
                 })
             })
             .collect();
@@ -742,11 +698,8 @@ impl BlockSynchronizer {
             let response = match result {
                 Ok(response) => response,
                 Err(e) => {
-                    info!(
-                        "GetCertificates request to peer {:?} failed: {e:?}",
-                        e.peer_id()
-                    );
-                    continue;
+                    info!("GetCertificates request to peer {:?} failed: {e:?}", e.peer_id());
+                    continue
                 }
             };
 
@@ -758,13 +711,13 @@ impl BlockSynchronizer {
                 Ok(peer) => peer,
                 Err(e) => {
                     error!("Could not extract peer from GetCertificates response: {e:?}");
-                    continue;
+                    continue
                 }
             };
 
             if peers.contains_peer(&response_peer) {
                 // skip , we already got an answer from this peer
-                continue;
+                continue
             }
 
             let certificates = &response.body().certificates;
@@ -779,7 +732,7 @@ impl BlockSynchronizer {
                 }
             }
             if found_invalid_certificate {
-                continue;
+                continue
             }
 
             // Ensure we got responses for the certificates we asked for.
@@ -787,20 +740,20 @@ impl BlockSynchronizer {
             // we reject the payload - it shouldn't happen.
             if certificates.iter().any(|c| !digests.contains(&c.digest())) {
                 warn!("Ignoring certificates form peer {response_peer:?}: found at least one that we haven't asked for");
-                continue;
+                continue
             }
 
             // Add them as a new peer.
             peers.add_peer(response_peer.clone(), response.into_body().certificates);
 
-            if (peers.unique_value_count() == total_expected_certificates
-                && Self::reached_response_ratio(num_of_responses, num_of_requests_sent))
-                || num_of_responses == num_of_requests_sent
+            if (peers.unique_value_count() == total_expected_certificates &&
+                Self::reached_response_ratio(num_of_responses, num_of_requests_sent)) ||
+                num_of_responses == num_of_requests_sent
             {
                 // We have received enough responses.
                 return State::HeadersSynchronized {
                     certificates: Self::resolve_block_synchronize_result(&peers, digests, false),
-                };
+                }
             }
         }
 
@@ -820,15 +773,14 @@ impl BlockSynchronizer {
         let total_expected_block_ids = certificates.len();
         let mut num_of_responses: u32 = 0;
         let num_of_requests_sent: u32 = primaries.len() as u32;
-        let certificates_by_id: HashMap<CertificateDigest, Certificate> = certificates
-            .iter()
-            .map(|c| (c.digest(), c.clone()))
-            .collect();
+        let certificates_by_id: HashMap<CertificateDigest, Certificate> =
+            certificates.iter().map(|c| (c.digest(), c.clone())).collect();
         let block_ids: Vec<CertificateDigest> =
             certificates_by_id.keys().map(|id| id.to_owned()).collect();
 
         let get_payload_availability_fn =
-            move |mut client: PrimaryToPrimaryClient<lattice_network::anemo_ext::WaitingPeer>, request| {
+            move |mut client: PrimaryToPrimaryClient<lattice_network::anemo_ext::WaitingPeer>,
+                  request| {
                 // Wrapper function enables us to move `client` into the future.
                 async move { client.get_payload_availability(request).await }
             };
@@ -853,11 +805,8 @@ impl BlockSynchronizer {
             let response = match result {
                 Ok(response) => response,
                 Err(e) => {
-                    info!(
-                        "GetPayloadAvailability request to peer {:?} failed: {e:?}",
-                        e.peer_id()
-                    );
-                    continue;
+                    info!("GetPayloadAvailability request to peer {:?} failed: {e:?}", e.peer_id());
+                    continue
                 }
             };
 
@@ -869,13 +818,13 @@ impl BlockSynchronizer {
                 Ok(peer) => peer,
                 Err(e) => {
                     info!("Could not extract peer from GetPayloadAvailability response: {e:?}");
-                    continue;
+                    continue
                 }
             };
 
             if peers.contains_peer(&response_peer) {
                 // skip , we already got an answer from this peer
-                continue;
+                continue
             }
 
             // Ensure we got responses for the certificates we asked for.
@@ -889,7 +838,7 @@ impl BlockSynchronizer {
                 } else {
                     // We should expect to have found every
                     // responded id to our list of certificates.
-                    continue;
+                    continue
                 }
             }
 
@@ -897,24 +846,18 @@ impl BlockSynchronizer {
             peers.add_peer(response_peer.clone(), available_certs_for_peer);
 
             // We have received all possible responses
-            if (peers.unique_value_count() == total_expected_block_ids
-                && Self::reached_response_ratio(num_of_responses, num_of_requests_sent))
-                || num_of_responses == num_of_requests_sent
+            if (peers.unique_value_count() == total_expected_block_ids &&
+                Self::reached_response_ratio(num_of_responses, num_of_requests_sent)) ||
+                num_of_responses == num_of_requests_sent
             {
                 let result = Self::resolve_block_synchronize_result(&peers, block_ids, false);
 
-                return State::PayloadAvailabilityReceived {
-                    certificates: result,
-                    peers,
-                };
+                return State::PayloadAvailabilityReceived { certificates: result, peers }
             }
         }
         let result = Self::resolve_block_synchronize_result(&peers, block_ids, true);
 
-        State::PayloadAvailabilityReceived {
-            certificates: result,
-            peers,
-        }
+        State::PayloadAvailabilityReceived { certificates: result, peers }
     }
 
     // It creates a map which holds for every expected block_id the corresponding
@@ -934,11 +877,8 @@ impl BlockSynchronizer {
         block_ids: Vec<CertificateDigest>,
         timeout: bool,
     ) -> HashMap<CertificateDigest, BlockSynchronizeResult<BlockHeader>> {
-        let mut certificates_by_id: HashMap<CertificateDigest, Certificate> = peers
-            .unique_values()
-            .into_iter()
-            .map(|c| (c.digest(), c))
-            .collect();
+        let mut certificates_by_id: HashMap<CertificateDigest, Certificate> =
+            peers.unique_values().into_iter().map(|c| (c.digest(), c)).collect();
 
         let mut result: HashMap<CertificateDigest, BlockSynchronizeResult<BlockHeader>> =
             HashMap::new();
@@ -947,13 +887,8 @@ impl BlockSynchronizer {
             // if not found, then this is an Error - couldn't be retrieved
             // by any peer - suspicious!
             if let Some(certificate) = certificates_by_id.remove(&block_id) {
-                result.insert(
-                    block_id,
-                    Ok(BlockHeader {
-                        certificate,
-                        fetched_from_storage: false,
-                    }),
-                );
+                result
+                    .insert(block_id, Ok(BlockHeader { certificate, fetched_from_storage: false }));
             } else if timeout {
                 result.insert(block_id, Err(SyncError::Timeout { digest: block_id }));
             } else {

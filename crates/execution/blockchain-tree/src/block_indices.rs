@@ -2,10 +2,10 @@
 
 use super::chain::BlockChainId;
 use crate::canonical_chain::CanonicalChain;
-use linked_hash_set::LinkedHashSet;
-use execution_primitives::{BlockHash, BlockNumHash, BlockNumber, SealedBlockWithSenders};
 use execution_provider::Chain;
+use linked_hash_set::LinkedHashSet;
 use std::collections::{btree_map, hash_map, BTreeMap, BTreeSet, HashMap, HashSet};
+use tn_types::execution::{BlockHash, BlockNumHash, BlockNumber, SealedBlockWithSenders};
 
 /// Internal indices of the blocks and chains.
 ///

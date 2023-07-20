@@ -1,6 +1,6 @@
 use enr::{k256::ecdsa::SigningKey, Enr, EnrPublicKey};
-use execution_primitives::PeerId;
 use std::{net::SocketAddr, time::Duration};
+use tn_types::execution::PeerId;
 
 /// The timeout for tests that create a GethInstance
 pub const GETH_TIMEOUT: Duration = Duration::from_secs(60);

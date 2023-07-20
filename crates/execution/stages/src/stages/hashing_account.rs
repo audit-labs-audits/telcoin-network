@@ -1,6 +1,4 @@
 use crate::{ExecInput, ExecOutput, Stage, StageError, UnwindInput, UnwindOutput};
-use itertools::Itertools;
-use rayon::slice::ParallelSliceMut;
 use execution_db::{
     cursor::{DbCursorRO, DbCursorRW},
     database::Database,
@@ -9,18 +7,20 @@ use execution_db::{
     RawKey, RawTable,
 };
 use execution_interfaces::db::DatabaseError;
-use execution_primitives::{
+use execution_provider::{AccountExtReader, DatabaseProviderRW, HashingWriter};
+use itertools::Itertools;
+use rayon::slice::ParallelSliceMut;
+use std::{
+    cmp::max,
+    fmt::Debug,
+    ops::{Range, RangeInclusive},
+};
+use tn_types::execution::{
     keccak256,
     stage::{
         AccountHashingCheckpoint, CheckpointBlockRange, EntitiesCheckpoint, StageCheckpoint,
         StageId,
     },
-};
-use execution_provider::{AccountExtReader, DatabaseProviderRW, HashingWriter};
-use std::{
-    cmp::max,
-    fmt::Debug,
-    ops::{Range, RangeInclusive},
 };
 use tokio::sync::mpsc;
 use tracing::*;
@@ -81,14 +81,14 @@ impl AccountHashingStage {
     pub fn seed<DB: Database>(
         provider: &DatabaseProviderRW<'_, DB>,
         opts: SeedOpts,
-    ) -> Result<Vec<(execution_primitives::Address, execution_primitives::Account)>, StageError> {
+    ) -> Result<Vec<(tn_types::execution::Address, tn_types::execution::Account)>, StageError> {
         use execution_db::models::AccountBeforeTx;
         use execution_interfaces::test_utils::{
             generators,
             generators::{random_block_range, random_eoa_account_range},
         };
-        use execution_primitives::{Account, H256, U256};
         use execution_provider::BlockWriter;
+        use tn_types::execution::{Account, H256, U256};
 
         let mut rng = generators::rng();
 
@@ -304,8 +304,8 @@ mod tests {
         stage_test_suite_ext, ExecuteStageTestRunner, TestRunnerError, UnwindStageTestRunner,
     };
     use assert_matches::assert_matches;
-    use execution_primitives::{stage::StageUnitCheckpoint, Account, U256};
     use test_utils::*;
+    use tn_types::execution::{stage::StageUnitCheckpoint, Account, U256};
 
     stage_test_suite_ext!(AccountHashingTestRunner, account_hashing);
 
@@ -442,7 +442,7 @@ mod tests {
             ExecInput, ExecOutput, UnwindInput,
         };
         use execution_db::{cursor::DbCursorRO, tables, transaction::DbTx};
-        use execution_primitives::Address;
+        use tn_types::execution::Address;
 
         pub(crate) struct AccountHashingTestRunner {
             pub(crate) tx: TestTransaction,

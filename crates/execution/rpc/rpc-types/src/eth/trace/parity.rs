@@ -3,12 +3,12 @@
 //!
 //! See <https://openethereum.github.io/JSONRPC-trace-module>
 
-use execution_primitives::{Address, Bytes, H256, U256, U64};
 use serde::{Deserialize, Serialize};
 use std::{
     collections::BTreeMap,
     ops::{Deref, DerefMut},
 };
+use tn_types::execution::{Address, Bytes, H256, U256, U64};
 
 /// Different Trace diagnostic targets.
 #[derive(Clone, Debug, Eq, PartialEq, Hash, Serialize, Deserialize)]

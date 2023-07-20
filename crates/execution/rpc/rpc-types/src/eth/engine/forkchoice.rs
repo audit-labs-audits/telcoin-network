@@ -1,7 +1,7 @@
 use super::{PayloadStatus, PayloadStatusEnum};
 use crate::engine::PayloadId;
-use execution_primitives::H256;
 use serde::{Deserialize, Serialize};
+use tn_types::execution::H256;
 
 /// invalid forkchoice state error code.
 pub const INVALID_FORK_CHOICE_STATE_ERROR: i32 = -38002;

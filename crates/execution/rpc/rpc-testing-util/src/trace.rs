@@ -1,15 +1,15 @@
 //! Helpers for testing trace calls.
 
-use futures::{Stream, StreamExt};
-use execution_primitives::BlockId;
 use execution_rpc_api::clients::TraceApiClient;
+use futures::{Stream, StreamExt};
 use std::{
     pin::Pin,
     task::{Context, Poll},
 };
+use tn_types::execution::BlockId;
 
-use jsonrpsee::core::Error as RpcError;
 use execution_rpc_types::trace::parity::LocalizedTransactionTrace;
+use jsonrpsee::core::Error as RpcError;
 
 /// A result type for the `trace_block` method that also
 pub type TraceBlockResult = Result<(Vec<LocalizedTransactionTrace>, BlockId), (RpcError, BlockId)>;
@@ -110,7 +110,7 @@ impl<'a> std::fmt::Debug for TraceBlockStream<'a> {
 mod tests {
     use super::*;
     use jsonrpsee::http_client::HttpClientBuilder;
-    use execution_primitives::BlockNumberOrTag;
+    use tn_types::execution::BlockNumberOrTag;
 
     fn assert_is_stream<St: Stream>(_: &St) {}
 

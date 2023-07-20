@@ -2,17 +2,17 @@ use criterion::{
     async_executor::FuturesExecutor, criterion_group, criterion_main, measurement::WallTime,
     BenchmarkGroup, Criterion,
 };
-use pprof::criterion::{Output, PProfProfiler};
 use execution_db::DatabaseEnv;
 use execution_interfaces::test_utils::TestConsensus;
-use execution_primitives::{stage::StageCheckpoint, MAINNET};
 use execution_provider::ProviderFactory;
 use execution_stages::{
     stages::{MerkleStage, SenderRecoveryStage, TotalDifficultyStage, TransactionLookupStage},
     test_utils::TestTransaction,
     ExecInput, Stage, UnwindInput,
 };
+use pprof::criterion::{Output, PProfProfiler};
 use std::{path::PathBuf, sync::Arc};
+use tn_types::execution::{stage::StageCheckpoint, MAINNET};
 
 mod setup;
 use setup::StageRange;

@@ -20,10 +20,6 @@ use tracing_subscriber::{
     filter::Directive, prelude::*, registry::LookupSpan, EnvFilter, Layer, Registry,
 };
 
-// Re-export tracing crates
-pub use tracing;
-pub use tracing_subscriber;
-
 /// A boxed tracing [Layer].
 pub type BoxedLayer<S> = Box<dyn Layer<S> + Send + Sync>;
 

@@ -1,21 +1,19 @@
 use crate::consensus::{
+    config::{AuthorityIdentifier, Committee, Epoch, WorkerCache, WorkerId},
+    crypto,
     error::{DagError, DagResult},
-    crypto, Round, BatchDigest, TimestampMs, CertificateDigest, now, Batch, VoteDigest,
+    now, Batch, BatchDigest, CertificateDigest, Round, TimestampMs, VoteDigest,
 };
-use crate::consensus::config::{AuthorityIdentifier, Committee, Epoch, WorkerCache, WorkerId};
+use consensus_util_mem::MallocSizeOf;
 use derive_builder::Builder;
 use enum_dispatch::enum_dispatch;
 use fastcrypto::hash::{Digest, Hash, HashFunction};
 use indexmap::IndexMap;
-use consensus_util_mem::MallocSizeOf;
 use once_cell::sync::OnceCell;
-use serde::{Deserialize, Serialize};
-use std::{
-    collections::BTreeSet,
-    fmt,
-};
 #[cfg(any(test, feature = "arbitrary"))]
 use proptest_derive::Arbitrary;
+use serde::{Deserialize, Serialize};
+use std::{collections::BTreeSet, fmt};
 
 #[derive(Clone, Deserialize, MallocSizeOf, Serialize)]
 #[enum_dispatch(HeaderAPI)]
@@ -199,32 +197,20 @@ impl HeaderV1 {
         // Ensure the header is from the correct epoch.
         ensure!(
             self.epoch == committee.epoch(),
-            DagError::InvalidEpoch {
-                expected: committee.epoch(),
-                received: self.epoch
-            }
+            DagError::InvalidEpoch { expected: committee.epoch(), received: self.epoch }
         );
 
         // Ensure the header digest is well formed.
-        ensure!(
-            Hash::digest(self) == self.digest(),
-            DagError::InvalidHeaderDigest
-        );
+        ensure!(Hash::digest(self) == self.digest(), DagError::InvalidHeaderDigest);
 
         // Ensure the authority has voting rights.
         let voting_rights = committee.stake_by_id(self.author);
-        ensure!(
-            voting_rights > 0,
-            DagError::UnknownAuthority(self.author.to_string())
-        );
+        ensure!(voting_rights > 0, DagError::UnknownAuthority(self.author.to_string()));
 
         // Ensure all worker ids are correct.
         for (worker_id, _) in self.payload.values() {
             worker_cache
-                .worker(
-                    committee.authority(&self.author).unwrap().protocol_key(),
-                    worker_id,
-                )
+                .worker(committee.authority(&self.author).unwrap().protocol_key(), worker_id)
                 .map_err(|_| DagError::HeaderHasBadWorkerIds(self.digest()))?;
         }
 
@@ -234,17 +220,7 @@ impl HeaderV1 {
 
 #[cfg_attr(any(test, feature = "arbitrary"), derive(Arbitrary))]
 #[derive(
-    Clone,
-    Copy,
-    Serialize,
-    Deserialize,
-    Default,
-    PartialEq,
-    Eq,
-    Hash,
-    PartialOrd,
-    Ord,
-    MallocSizeOf,
+    Clone, Copy, Serialize, Deserialize, Default, PartialEq, Eq, Hash, PartialOrd, Ord, MallocSizeOf,
 )]
 pub struct HeaderDigest([u8; crypto::DIGEST_LENGTH]);
 
@@ -274,11 +250,7 @@ impl fmt::Debug for HeaderDigest {
 
 impl fmt::Display for HeaderDigest {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> Result<(), fmt::Error> {
-        write!(
-            f,
-            "{}",
-            base64::encode(self.0).get(0..16).ok_or(fmt::Error)?
-        )
+        write!(f, "{}", base64::encode(self.0).get(0..16).ok_or(fmt::Error)?)
     }
 }
 
@@ -303,10 +275,7 @@ impl fmt::Debug for Header {
                     data.round,
                     data.author,
                     data.epoch,
-                    data.payload
-                        .keys()
-                        .map(|x| Digest::from(*x).size())
-                        .sum::<usize>(),
+                    data.payload.keys().map(|x| Digest::from(*x).size()).sum::<usize>(),
                 )
             }
         }
@@ -330,4 +299,3 @@ impl PartialEq for Header {
         }
     }
 }
-

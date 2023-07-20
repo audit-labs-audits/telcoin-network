@@ -5,25 +5,25 @@
 
 #![allow(clippy::mutable_key_type)]
 
-use crate::bullshark::Bullshark;
-use crate::utils::gc_round;
-use crate::{metrics::ConsensusMetrics, ConsensusError, SequenceNumber};
-use tn_types::consensus::config::{AuthorityIdentifier, Committee};
+use crate::{
+    bullshark::Bullshark, metrics::ConsensusMetrics, utils::gc_round, ConsensusError,
+    SequenceNumber,
+};
+use consensus_metrics::{metered_channel, spawn_logged_monitored_task};
 use fastcrypto::hash::Hash;
-use consensus_metrics::metered_channel;
-use consensus_metrics::spawn_logged_monitored_task;
+use lattice_storage::{CertificateStore, ConsensusStore};
 use std::{
     cmp::{max, Ordering},
     collections::{BTreeMap, BTreeSet, HashMap},
     sync::Arc,
 };
-use lattice_storage::{CertificateStore, ConsensusStore};
-use tokio::{sync::watch, task::JoinHandle};
-use tracing::{debug, info, instrument};
 use tn_types::consensus::{
+    config::{AuthorityIdentifier, Committee},
     Certificate, CertificateAPI, CertificateDigest, CommittedSubDag, ConditionalBroadcastReceiver,
     ConsensusCommit, HeaderAPI, Round, Timestamp,
 };
+use tokio::{sync::watch, task::JoinHandle};
+use tracing::{debug, info, instrument};
 
 #[cfg(test)]
 #[path = "tests/consensus_tests.rs"]
@@ -41,10 +41,11 @@ pub struct ConsensusState {
     /// Keeps the last committed round for each authority. This map is used to clean up the dag and
     /// ensure we don't commit twice the same certificate.
     pub last_committed: HashMap<AuthorityIdentifier, Round>,
-    /// The last committed sub dag. If value is None, it means that we haven't committed any sub dag yet.
+    /// The last committed sub dag. If value is None, it means that we haven't committed any sub
+    /// dag yet.
     pub last_committed_sub_dag: Option<CommittedSubDag>,
-    /// Keeps the latest committed certificate (and its parents) for every authority. Anything older
-    /// must be regularly cleaned up through the function `update`.
+    /// Keeps the latest committed certificate (and its parents) for every authority. Anything
+    /// older must be regularly cleaned up through the function `update`.
     pub dag: Dag,
     /// Metrics handler
     pub metrics: Arc<ConsensusMetrics>,
@@ -85,10 +86,7 @@ impl ConsensusState {
                 .certificates()
                 .iter()
                 .map(|s| {
-                    cert_store
-                        .read(*s)
-                        .unwrap()
-                        .expect("Certificate should be found in database")
+                    cert_store.read(*s).unwrap().expect("Certificate should be found in database")
                 })
                 .collect();
 
@@ -97,11 +95,7 @@ impl ConsensusState {
                 .unwrap()
                 .expect("Certificate should be found in database");
 
-            Some(CommittedSubDag::from_commit(
-                latest_sub_dag.clone(),
-                certificates,
-                leader,
-            ))
+            Some(CommittedSubDag::from_commit(latest_sub_dag.clone(), certificates, leader))
         } else {
             None
         };
@@ -136,11 +130,7 @@ impl ConsensusState {
                 num_certs += 1;
             }
         }
-        info!(
-            "Dag is restored and contains {} certs for {} rounds",
-            num_certs,
-            dag.len()
-        );
+        info!("Dag is restored and contains {} certs for {} rounds", num_certs, dag.len());
 
         Ok(dag)
     }
@@ -167,30 +157,28 @@ impl ConsensusState {
                 "Ignoring certificate {:?} as it is at or before gc round {}",
                 certificate, gc_round
             );
-            return Ok(false);
+            return Ok(false)
         }
         Self::check_parents(certificate, dag, gc_round);
 
         // Always insert the certificate even if it is below last committed round of its origin,
         // to allow verifying parent existence.
-        if let Some((_, existing_certificate)) = dag.entry(certificate.round()).or_default().insert(
-            certificate.origin(),
-            (certificate.digest(), certificate.clone()),
-        ) {
+        if let Some((_, existing_certificate)) = dag
+            .entry(certificate.round())
+            .or_default()
+            .insert(certificate.origin(), (certificate.digest(), certificate.clone()))
+        {
             // we want to error only if we try to insert a different certificate in the dag
             if existing_certificate.digest() != certificate.digest() {
                 return Err(ConsensusError::CertificateEquivocation(
                     certificate.clone(),
                     existing_certificate,
-                ));
+                ))
             }
         }
 
-        Ok(certificate.round()
-            > last_committed
-                .get(&certificate.origin())
-                .cloned()
-                .unwrap_or_default())
+        Ok(certificate.round() >
+            last_committed.get(&certificate.origin()).cloned().unwrap_or_default())
     }
 
     /// Update and clean up internal state after committing a certificate.
@@ -228,7 +216,7 @@ impl ConsensusState {
         // Skip checking parents if they are GC'ed.
         // Also not checking genesis parents for simplicity.
         if round <= gc_round + 1 {
-            return;
+            return
         }
         if let Some(round_table) = dag.get(&(round - 1)) {
             let store_parents: BTreeSet<&CertificateDigest> =
@@ -245,11 +233,7 @@ impl ConsensusState {
 
     /// Provides the next index to be used for the next produced sub dag
     pub fn next_sub_dag_index(&self) -> SequenceNumber {
-        self.last_committed_sub_dag
-            .as_ref()
-            .map(|s| s.sub_dag_index)
-            .unwrap_or_default()
-            + 1
+        self.last_committed_sub_dag.as_ref().map(|s| s.sub_dag_index).unwrap_or_default() + 1
     }
 }
 
@@ -264,19 +248,13 @@ pub struct ConsensusRound {
 
 impl ConsensusRound {
     pub fn new(committed_round: Round, gc_round: Round) -> Self {
-        Self {
-            committed_round,
-            gc_round,
-        }
+        Self { committed_round, gc_round }
     }
 
     pub fn new_with_gc_depth(committed_round: Round, gc_depth: Round) -> Self {
         let gc_round = gc_round(committed_round, gc_depth);
 
-        Self {
-            committed_round,
-            gc_round,
-        }
+        Self { committed_round, gc_round }
     }
 
     /// Calculates the latest CommittedRound by providing a new committed round and the gc_depth.
@@ -286,10 +264,7 @@ impl ConsensusRound {
         let last_committed_round = max(self.committed_round, new_committed_round);
         let last_gc_round = gc_round(last_committed_round, gc_depth);
 
-        ConsensusRound {
-            committed_round: last_committed_round,
-            gc_round: last_gc_round,
-        }
+        ConsensusRound { committed_round: last_committed_round, gc_round: last_gc_round }
     }
 }
 
@@ -299,8 +274,8 @@ pub struct Consensus {
 
     /// Receiver for shutdown.
     rx_shutdown: ConditionalBroadcastReceiver,
-    /// Receives new certificates from the primary. The primary should send us new certificates only
-    /// if it already sent us its whole history.
+    /// Receives new certificates from the primary. The primary should send us new certificates
+    /// only if it already sent us its whole history.
     rx_new_certificates: metered_channel::Receiver<Certificate>,
     /// Outputs the sequence of ordered certificates to the primary (for cleanup and feedback).
     tx_committed_certificates: metered_channel::Sender<(Round, Vec<Certificate>)>,

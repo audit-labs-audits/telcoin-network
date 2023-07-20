@@ -1,5 +1,5 @@
-use execution_primitives::{BlockHash, BlockNumHash, BlockNumber};
 use std::collections::BTreeMap;
+use tn_types::execution::{BlockHash, BlockNumHash, BlockNumber};
 
 /// This keeps track of all blocks of the canonical chain.
 ///

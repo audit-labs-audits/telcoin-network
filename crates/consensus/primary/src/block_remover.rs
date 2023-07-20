@@ -3,21 +3,21 @@
 // SPDX-License-Identifier: Apache-2.0
 use crate::utils;
 use anyhow::Result;
-use tn_types::consensus::config::{AuthorityIdentifier, Committee, WorkerCache, WorkerId};
-use lattice_consensus::dag::{Dag, ValidatorDagError};
 use fastcrypto::hash::Hash;
 use futures::future::try_join_all;
 use itertools::Either;
+use lattice_consensus::dag::{Dag, ValidatorDagError};
 use lattice_network::PrimaryToWorkerRpc;
-use std::{collections::HashMap, sync::Arc};
 use lattice_storage::{CertificateStore, HeaderStore, PayloadStore};
 use lattice_typed_store::rocks::TypedStoreError;
+use std::{collections::HashMap, sync::Arc};
+use tn_types::consensus::config::{AuthorityIdentifier, Committee, WorkerCache, WorkerId};
 
 use consensus_metrics::metered_channel::Sender;
-use tracing::{debug, instrument, warn};
 use tn_types::consensus::{
     BatchDigest, Certificate, CertificateAPI, CertificateDigest, HeaderAPI, HeaderDigest, Round,
 };
+use tracing::{debug, instrument, warn};
 
 #[cfg(test)]
 #[path = "tests/block_remover_tests.rs"]
@@ -106,10 +106,7 @@ impl BlockRemover {
             let worker_name = self
                 .worker_cache
                 .worker(
-                    self.committee
-                        .authority(&self.authority_id)
-                        .unwrap()
-                        .protocol_key(),
+                    self.committee.authority(&self.authority_id).unwrap().protocol_key(),
                     worker_id,
                 )
                 .expect("Worker id not found")
@@ -118,16 +115,13 @@ impl BlockRemover {
             debug!(
                 "Sending DeleteBatches request for batch digests {batch_digests:?} to worker {worker_name}"
             );
-            worker_requests.push(
-                self.worker_network
-                    .delete_batches(worker_name, batch_digests.clone()),
-            );
+            worker_requests
+                .push(self.worker_network.delete_batches(worker_name, batch_digests.clone()));
         }
         try_join_all(worker_requests).await?;
 
         // If batch deletion on workers succeeded, clean up related state.
-        self.cleanup_internal_state(found_certificates, batches_by_worker)
-            .await?;
+        self.cleanup_internal_state(found_certificates, batches_by_worker).await?;
 
         Ok(())
     }
@@ -141,9 +135,7 @@ impl BlockRemover {
         let header_digests: Vec<HeaderDigest> =
             certificates.iter().map(|c| c.header().digest()).collect();
 
-        self.header_store
-            .remove_all(header_digests)
-            .map_err(Either::Left)?;
+        self.header_store.remove_all(header_digests).map_err(Either::Left)?;
 
         // delete batch from the payload store as well
         let mut batches_to_cleanup: Vec<(BatchDigest, WorkerId)> = Vec::new();
@@ -152,33 +144,23 @@ impl BlockRemover {
                 batches_to_cleanup.push((d, worker_id));
             })
         }
-        self.payload_store
-            .remove_all(batches_to_cleanup)
-            .map_err(Either::Left)?;
+        self.payload_store.remove_all(batches_to_cleanup).map_err(Either::Left)?;
 
         // NOTE: delete certificates in the end since if we need to repeat the request
         // we want to be able to find them in storage.
         let certificate_digests: Vec<CertificateDigest> =
             certificates.as_slice().iter().map(|c| c.digest()).collect();
         if let Some(dag) = &self.dag {
-            dag.remove(&certificate_digests)
-                .await
-                .map_err(Either::Right)?
+            dag.remove(&certificate_digests).await.map_err(Either::Right)?
         }
 
-        self.certificate_store
-            .delete_all(certificate_digests)
-            .map_err(Either::Left)?;
+        self.certificate_store.delete_all(certificate_digests).map_err(Either::Left)?;
 
         // Now output all the removed certificates
         if !certificates.is_empty() {
             let all_certs = certificates.clone();
             // Unwrap safe since list is not empty.
-            let highest_round = certificates
-                .iter()
-                .map(|c| c.header().round())
-                .max()
-                .unwrap();
+            let highest_round = certificates.iter().map(|c| c.header().round()).max().unwrap();
 
             // We signal that these certificates must have been committed by the external consensus
             self.tx_committed_certificates

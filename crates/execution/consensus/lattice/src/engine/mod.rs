@@ -6,7 +6,6 @@ use crate::{
     },
     sync::{EngineSyncController, EngineSyncEvent},
 };
-use futures::{Future, StreamExt};
 use execution_db::database::Database;
 use execution_interfaces::{
     blockchain_tree::{
@@ -20,10 +19,6 @@ use execution_interfaces::{
     Error,
 };
 use execution_payload_builder::{PayloadBuilderAttributes, PayloadBuilderHandle, PayloadId};
-use execution_primitives::{
-    constants::EPOCH_SLOTS, listener::EventListeners, stage::StageId, BlockNumHash, BlockNumber,
-    Head, Header, SealedBlock, SealedHeader, H256, U256,
-};
 use execution_provider::{
     BlockReader, BlockSource, CanonChainTracker, ProviderError, StageCheckpointReader,
 };
@@ -32,10 +27,15 @@ use execution_rpc_types::engine::{
 };
 use execution_stages::{ControlFlow, Pipeline, PipelineError};
 use execution_tasks::TaskSpawner;
+use futures::{Future, StreamExt};
 use std::{
     pin::Pin,
     sync::Arc,
     task::{Context, Poll},
+};
+use tn_types::execution::{
+    constants::EPOCH_SLOTS, listener::EventListeners, stage::StageId, BlockNumHash, BlockNumber,
+    Head, Header, SealedBlock, SealedHeader, H256, U256,
 };
 use tokio::sync::{
     mpsc,
@@ -384,8 +384,8 @@ where
         if let (Some(downloaded_block), Some(ref state)) = (downloaded_block, sync_target_state) {
             if downloaded_block.hash == state.finalized_block_hash {
                 // we downloaded the finalized block
-                exceeds_pipeline_run_threshold =
-                    self._exceeds_pipeline_run_threshold(canonical_tip_num, downloaded_block.number);
+                exceeds_pipeline_run_threshold = self
+                    ._exceeds_pipeline_run_threshold(canonical_tip_num, downloaded_block.number);
             }
         }
 
@@ -837,17 +837,14 @@ where
         )
     }
 
-
-
-
-
     /// When the Consensus layer receives a new batch from a worker's peer,
     /// the transactions in the batch are sent to the execution layer for verification.
-    /// 
+    ///
     /// The Execution layer executes the transactions and validates they are valid
     /// based on the latest finalized block. If the transactions are valid, they are
-    /// added to the "seen" tx pool? (is this necessary - could prevent tx in pending with nonce issue - could not)
-    /// 
+    /// added to the "seen" tx pool? (is this necessary - could prevent tx in pending with nonce
+    /// issue - could not)
+    ///
     /// The validation status is passed back to the Consensus layer,
     /// which votes for the batch and includes it in the next block.
     ///
@@ -1111,7 +1108,7 @@ where
                         // block is not connected to the canonical head, we need to download its
                         // missing branch first
                         //
-                        // TODO: this should never happen 
+                        // TODO: this should never happen
                         self._on_disconnected_block(downloaded_num_hash, missing_parent);
                     }
                     _ => (),
@@ -1129,7 +1126,7 @@ where
     // TODO: disconnected blocks should never happen
     //
     // what is the best way to handle this if it does happen?
-    // 
+    //
     // conditions:
     // this can happen if the block is not connected to the canonical chain
     //
@@ -1477,7 +1474,6 @@ mod tests {
         test_utils::{NoopFullBlockClient, TestConsensus},
     };
     use execution_payload_builder::test_utils::spawn_test_payload_service;
-    use execution_primitives::{stage::StageCheckpoint, ChainSpec, ChainSpecBuilder, H256, MAINNET};
     use execution_provider::{
         providers::BlockchainProvider, test_utils::TestExecutorFactory, BlockWriter,
         ProviderFactory,
@@ -1488,6 +1484,7 @@ mod tests {
     use execution_stages::{test_utils::TestStages, ExecOutput, PipelineError, StageError};
     use execution_tasks::TokioTaskExecutor;
     use std::{collections::VecDeque, sync::Arc, time::Duration};
+    use tn_types::execution::{stage::StageCheckpoint, ChainSpec, ChainSpecBuilder, H256, MAINNET};
     use tokio::sync::{
         oneshot::{self, error::TryRecvError},
         watch,
@@ -2103,8 +2100,8 @@ mod tests {
     mod new_payload {
         use super::*;
         use execution_interfaces::test_utils::{generators, generators::random_block};
-        use execution_primitives::{Hardfork, U256};
         use execution_provider::test_utils::blocks::BlockChainTestData;
+        use tn_types::execution::{Hardfork, U256};
 
         #[tokio::test]
         async fn new_payload_before_forkchoice() {

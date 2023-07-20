@@ -17,7 +17,7 @@ macro_rules! impl_fuzzer_with_input {
                 use crate::table;
 
                 #[allow(unused_imports)]
-                use execution_primitives::*;
+                use tn_types::execution::*;
 
                 #[allow(unused_imports)]
                 use super::inputs::*;

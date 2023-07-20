@@ -1,10 +1,10 @@
 use execution_interfaces::Error;
-use execution_primitives::{H160, H256, KECCAK_EMPTY, U256};
 use execution_provider::StateProvider;
 use revm::{
     db::{CacheDB, DatabaseRef},
     primitives::{AccountInfo, Bytecode},
 };
+use tn_types::execution::{H160, H256, KECCAK_EMPTY, U256};
 
 /// SubState of database. Uses revm internal cache with binding to reth StateProvider trait.
 pub type SubState<DB> = CacheDB<State<DB>>;

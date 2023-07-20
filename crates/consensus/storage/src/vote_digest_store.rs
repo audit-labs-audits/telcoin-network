@@ -2,12 +2,13 @@
 // Copyright (c) Mysten Labs, Inc.
 // SPDX-License-Identifier: Apache-2.0
 use crate::NodeStorage;
-use tn_types::consensus::config::AuthorityIdentifier;
-use lattice_typed_store::reopen;
-use lattice_typed_store::rocks::{open_cf, MetricConf, ReadWriteOptions};
-use lattice_typed_store::{rocks::DBMap, Map, TypedStoreError};
+use lattice_typed_store::{
+    reopen,
+    rocks::{open_cf, DBMap, MetricConf, ReadWriteOptions},
+    Map, TypedStoreError,
+};
 use tn_macros::fail_point;
-use tn_types::consensus::{Vote, VoteAPI, VoteInfo};
+use tn_types::consensus::{config::AuthorityIdentifier, Vote, VoteAPI, VoteInfo};
 
 /// The storage for the last votes digests per authority
 #[derive(Clone)]
@@ -17,9 +18,7 @@ pub struct VoteDigestStore {
 
 impl VoteDigestStore {
     pub fn new(vote_digest_store: DBMap<AuthorityIdentifier, VoteInfo>) -> VoteDigestStore {
-        Self {
-            store: vote_digest_store,
-        }
+        Self { store: vote_digest_store }
     }
 
     pub fn new_for_tests() -> VoteDigestStore {

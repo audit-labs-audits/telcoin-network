@@ -1,11 +1,11 @@
-use jsonrpsee::{core::RpcResult, proc_macros::rpc};
-use execution_primitives::{BlockId, Bytes, H256};
 use execution_rpc_types::{
     state::StateOverride,
     trace::{filter::TraceFilter, parity::*},
     BlockOverrides, CallRequest, Index,
 };
+use jsonrpsee::{core::RpcResult, proc_macros::rpc};
 use std::collections::HashSet;
+use tn_types::execution::{BlockId, Bytes, H256};
 
 /// Ethereum trace API
 #[cfg_attr(not(feature = "client"), rpc(server, namespace = "trace"))]

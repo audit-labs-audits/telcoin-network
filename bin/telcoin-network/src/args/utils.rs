@@ -1,6 +1,5 @@
 //! Clap parser utilities
 
-use execution_primitives::{BlockHashOrNumber, LATTICE, ChainSpec, AllGenesisFormats};
 use execution_revm::primitives::B256 as H256;
 use std::{
     net::{IpAddr, Ipv4Addr, SocketAddr, ToSocketAddrs},
@@ -9,6 +8,7 @@ use std::{
     sync::Arc,
     time::Duration,
 };
+use tn_types::execution::{AllGenesisFormats, BlockHashOrNumber, ChainSpec, LATTICE};
 
 /// Helper to parse a [Duration] from seconds
 pub fn parse_duration_from_secs(arg: &str) -> eyre::Result<Duration, std::num::ParseIntError> {

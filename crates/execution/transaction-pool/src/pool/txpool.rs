@@ -17,16 +17,16 @@ use crate::{
     U256,
 };
 use fnv::FnvHashMap;
-use execution_primitives::{
-    constants::{ETHEREUM_BLOCK_GAS_LIMIT, MIN_PROTOCOL_BASE_FEE},
-    TxHash, H256,
-};
 use std::{
     cmp::Ordering,
     collections::{btree_map::Entry, hash_map, BTreeMap, HashMap},
     fmt,
     ops::Bound::{Excluded, Unbounded},
     sync::Arc,
+};
+use tn_types::execution::{
+    constants::{ETHEREUM_BLOCK_GAS_LIMIT, MIN_PROTOCOL_BASE_FEE},
+    TxHash, H256,
 };
 
 /// A pool that manages transactions.

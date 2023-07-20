@@ -2,21 +2,21 @@
 // Copyright (c) 2021, Facebook, Inc. and its affiliates
 // Copyright (c) Mysten Labs, Inc.
 // SPDX-License-Identifier: Apache-2.0
-use crate::metrics::ConsensusMetrics;
 use crate::{
     consensus::{ConsensusState, Dag},
+    metrics::ConsensusMetrics,
     utils, ConsensusError, Outcome,
 };
-use tn_types::consensus::config::{AuthorityIdentifier, Committee, Stake};
 use fastcrypto::hash::Hash;
-use std::sync::Arc;
 use lattice_storage::ConsensusStore;
-use tokio::time::Instant;
-use tracing::{debug, error_span};
+use std::sync::Arc;
 use tn_types::consensus::{
+    config::{AuthorityIdentifier, Committee, Stake},
     Certificate, CertificateAPI, CertificateDigest, CommittedSubDag, HeaderAPI, ReputationScores,
     Round,
 };
+use tokio::time::Instant;
+use tracing::{debug, error_span};
 
 #[cfg(test)]
 #[path = "tests/bullshark_tests.rs"]
@@ -82,11 +82,7 @@ impl Bullshark {
     // Pay attention that this method will return always the first authority as the leader
     // when used under a test environment.
     pub fn leader_authority(committee: &Committee, round: Round) -> AuthorityIdentifier {
-        assert_eq!(
-            round % 2,
-            0,
-            "We should never attempt to do a leader election for odd rounds"
-        );
+        assert_eq!(round % 2, 0, "We should never attempt to do a leader election for odd rounds");
 
         cfg_if::cfg_if! {
             if #[cfg(test)] {
@@ -113,8 +109,9 @@ impl Bullshark {
         round: Round,
         dag: &'a Dag,
     ) -> Option<&'a (CertificateDigest, Certificate)> {
-        // Note: this function is often called with even rounds only. While we do not aim at random selection
-        // yet (see issue #10), repeated calls to this function should still pick from the whole roster of leaders.
+        // Note: this function is often called with even rounds only. While we do not aim at random
+        // selection yet (see issue #10), repeated calls to this function should still pick
+        // from the whole roster of leaders.
         let leader = Self::leader_authority(committee, round);
 
         // Return its certificate and the certificate's digest.
@@ -122,7 +119,8 @@ impl Bullshark {
     }
 
     /// Calculates the reputation score for the current commit by taking into account the reputation
-    /// scores from the previous commit (assuming that exists). It returns the updated reputation score.
+    /// scores from the previous commit (assuming that exists). It returns the updated reputation
+    /// score.
     fn resolve_reputation_score(
         &self,
         state: &mut ConsensusState,
@@ -149,7 +147,8 @@ impl Bullshark {
         // then this is the first time we commit a leader, so no score update takes place
         if let Some(last_committed_sub_dag) = state.last_committed_sub_dag.as_ref() {
             for certificate in committed_sequence {
-                // TODO: we could iterate only the certificates of the round above the previous leader's round
+                // TODO: we could iterate only the certificates of the round above the previous
+                // leader's round
                 if certificate
                     .header()
                     .parents()
@@ -169,10 +168,7 @@ impl Bullshark {
 
         // Always ensure that all the authorities are present in the reputation scores - even
         // when score is zero.
-        assert_eq!(
-            reputation_score.total_authorities() as usize,
-            self.committee.size()
-        );
+        assert_eq!(reputation_score.total_authorities() as usize, self.committee.size());
 
         reputation_score
     }
@@ -188,7 +184,7 @@ impl Bullshark {
         // Add the new certificate to the local storage.
         if !state.try_insert(&certificate)? {
             // Certificate has not been added to the dag since it's below commit round
-            return Ok((Outcome::CertificateBelowCommitRound, vec![]));
+            return Ok((Outcome::CertificateBelowCommitRound, vec![]))
         }
 
         // Report last leader election if was unsuccessful
@@ -196,15 +192,9 @@ impl Bullshark {
             let last_election_round = &self.last_leader_election;
 
             if !last_election_round.leader_found {
-                self.metrics
-                    .leader_election
-                    .with_label_values(&["not_found"])
-                    .inc();
+                self.metrics.leader_election.with_label_values(&["not_found"]).inc();
             } else if !last_election_round.leader_has_support {
-                self.metrics
-                    .leader_election
-                    .with_label_values(&["not_enough_support"])
-                    .inc();
+                self.metrics.leader_election.with_label_values(&["not_enough_support"]).inc();
             }
         }
 
@@ -217,25 +207,23 @@ impl Bullshark {
 
         // We only elect leaders for even round numbers.
         if r % 2 != 0 || r < 2 {
-            return Ok((Outcome::NoLeaderElectedForOddRound, Vec::new()));
+            return Ok((Outcome::NoLeaderElectedForOddRound, Vec::new()))
         }
 
         // Get the certificate's digest of the leader. If we already ordered this leader,
         // there is nothing to do.
         let leader_round = r;
         if leader_round <= state.last_round.committed_round {
-            return Ok((Outcome::LeaderBelowCommitRound, Vec::new()));
+            return Ok((Outcome::LeaderBelowCommitRound, Vec::new()))
         }
         let (leader_digest, leader) = match Self::leader(&self.committee, leader_round, &state.dag)
         {
             Some(x) => x,
             None => {
-                self.last_leader_election = LastRound {
-                    leader_found: false,
-                    leader_has_support: false,
-                };
+                self.last_leader_election =
+                    LastRound { leader_found: false, leader_has_support: false };
                 // leader has not been found - we don't have any certificate
-                return Ok((Outcome::LeaderNotFound, Vec::new()));
+                return Ok((Outcome::LeaderNotFound, Vec::new()))
             }
         };
 
@@ -249,17 +237,14 @@ impl Bullshark {
             .map(|(_, x)| self.committee.stake_by_id(x.origin()))
             .sum();
 
-        self.last_leader_election = LastRound {
-            leader_found: true,
-            leader_has_support: false,
-        };
+        self.last_leader_election = LastRound { leader_found: true, leader_has_support: false };
 
         // If it is the case, we can commit the leader. But first, we need to recursively go back to
-        // the last committed leader, and commit all preceding leaders in the right order. Committing
-        // a leader block means committing all its dependencies.
+        // the last committed leader, and commit all preceding leaders in the right order.
+        // Committing a leader block means committing all its dependencies.
         if stake < self.committee.validity_threshold() {
             debug!("Leader {:?} does not have enough support", leader);
-            return Ok((Outcome::NotEnoughSupportForLeader, Vec::new()));
+            return Ok((Outcome::NotEnoughSupportForLeader, Vec::new()))
         }
 
         self.last_leader_election.leader_has_support = true;
@@ -269,9 +254,8 @@ impl Bullshark {
         let mut committed_sub_dags = Vec::new();
         let mut total_committed_certificates = 0;
 
-        for leader in utils::order_leaders(&self.committee, leader, state, Self::leader)
-            .iter()
-            .rev()
+        for leader in
+            utils::order_leaders(&self.committee, leader, state, Self::leader).iter().rev()
         {
             let sub_dag_index = state.next_sub_dag_index();
             let _span = error_span!("bullshark_process_sub_dag", sub_dag_index);
@@ -308,8 +292,7 @@ impl Bullshark {
             );
 
             // Persist the update.
-            self.store
-                .write_consensus_state(&state.last_committed, &sub_dag)?;
+            self.store.write_consensus_state(&state.last_committed, &sub_dag)?;
 
             // Update the last sub dag
             state.last_committed_sub_dag = Some(sub_dag.clone());
@@ -320,23 +303,15 @@ impl Bullshark {
         // record the last time we got a successful leader election
         let elapsed = self.last_successful_leader_election_timestamp.elapsed();
 
-        self.metrics
-            .commit_rounds_latency
-            .observe(elapsed.as_secs_f64());
+        self.metrics.commit_rounds_latency.observe(elapsed.as_secs_f64());
 
         self.last_successful_leader_election_timestamp = Instant::now();
 
-        self.metrics
-            .leader_election
-            .with_label_values(&["elected"])
-            .inc();
+        self.metrics.leader_election.with_label_values(&["elected"]).inc();
 
         // The total leader_commits are expected to grow the same amount on validators,
         // but strong vs weak counts are not expected to be the same across validators.
-        self.metrics
-            .leader_commits
-            .with_label_values(&["strong"])
-            .inc();
+        self.metrics.leader_commits.with_label_values(&["strong"]).inc();
         self.metrics
             .leader_commits
             .with_label_values(&["weak"])
@@ -349,9 +324,7 @@ impl Bullshark {
             debug!("Latest commit of {}: Round {}", name, round);
         }
 
-        self.metrics
-            .committed_certificates
-            .report(total_committed_certificates as u64);
+        self.metrics.committed_certificates.report(total_committed_certificates as u64);
 
         Ok((Outcome::Commit, committed_sub_dags))
     }

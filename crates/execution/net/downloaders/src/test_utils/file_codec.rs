@@ -1,10 +1,10 @@
 //! Codec for reading raw block bodies from a file.
 use super::FileClientError;
-use execution_primitives::{
+use execution_rlp::{Decodable, Encodable};
+use tn_types::execution::{
     bytes::{Buf, BytesMut},
     Block,
 };
-use execution_rlp::{Decodable, Encodable};
 use tokio_util::codec::{Decoder, Encoder};
 
 /// Codec for reading raw block bodies from a file.

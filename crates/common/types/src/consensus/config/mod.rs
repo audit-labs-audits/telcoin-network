@@ -2,17 +2,12 @@
 // Copyright (c) 2021, Facebook, Inc. and its affiliates
 // Copyright (c) Mysten Labs, Inc.
 // SPDX-License-Identifier: Apache-2.0
-#![warn(
-    future_incompatible,
-    nonstandard_style,
-    rust_2018_idioms,
-    rust_2021_compatibility
-)]
+#![warn(future_incompatible, nonstandard_style, rust_2018_idioms, rust_2021_compatibility)]
 #![allow(clippy::mutable_key_type)]
 
 use crate::consensus::crypto::{NetworkPublicKey, PublicKey};
-use fastcrypto::traits::EncodeDecodeBase64;
 use consensus_network::Multiaddr;
+use fastcrypto::traits::EncodeDecodeBase64;
 use serde::{de::DeserializeOwned, Deserialize, Serialize};
 use std::{
     collections::{BTreeMap, HashSet},
@@ -121,42 +116,30 @@ pub struct Parameters {
 
     /// The maximum delay that the primary should wait between generating two headers, even if
     /// other conditions are not satisfied besides having enough parent stakes.
-    #[serde(
-        with = "duration_format",
-        default = "Parameters::default_max_header_delay"
-    )]
+    #[serde(with = "duration_format", default = "Parameters::default_max_header_delay")]
     pub max_header_delay: Duration,
     /// When the delay from last header reaches `min_header_delay`, a new header can be proposed
     /// even if batches have not reached `header_num_of_batches_threshold`.
-    #[serde(
-        with = "duration_format",
-        default = "Parameters::default_min_header_delay"
-    )]
+    #[serde(with = "duration_format", default = "Parameters::default_min_header_delay")]
     pub min_header_delay: Duration,
 
     /// The depth of the garbage collection (Denominated in number of rounds).
     #[serde(default = "Parameters::default_gc_depth")]
     pub gc_depth: u64,
     /// The delay after which the synchronizer retries to send sync requests. Denominated in ms.
-    #[serde(
-        with = "duration_format",
-        default = "Parameters::default_sync_retry_delay"
-    )]
+    #[serde(with = "duration_format", default = "Parameters::default_sync_retry_delay")]
     pub sync_retry_delay: Duration,
     /// Determine with how many nodes to sync when re-trying to send sync-request. These nodes
     /// are picked at random from the committee.
     #[serde(default = "Parameters::default_sync_retry_nodes")]
     pub sync_retry_nodes: usize,
-    /// The preferred batch size. The workers seal a batch of transactions when it reaches this size.
-    /// Denominated in bytes.
+    /// The preferred batch size. The workers seal a batch of transactions when it reaches this
+    /// size. Denominated in bytes.
     #[serde(default = "Parameters::default_batch_size")]
     pub batch_size: usize,
     /// The delay after which the workers seal a batch of transactions, even if `max_batch_size`
     /// is not reached.
-    #[serde(
-        with = "duration_format",
-        default = "Parameters::default_max_batch_delay"
-    )]
+    #[serde(with = "duration_format", default = "Parameters::default_max_batch_delay")]
     pub max_batch_delay: Duration,
     /// The parameters for the block synchronizer
     #[serde(default = "BlockSynchronizerParameters::default")]
@@ -272,8 +255,7 @@ impl AnemoParameters {
     pub fn excessive_message_size(&self) -> usize {
         const EXCESSIVE_MESSAGE_SIZE: usize = 8 << 20;
 
-        self.excessive_message_size
-            .unwrap_or(EXCESSIVE_MESSAGE_SIZE)
+        self.excessive_message_size.unwrap_or(EXCESSIVE_MESSAGE_SIZE)
     }
 }
 
@@ -446,54 +428,30 @@ impl Parameters {
     }
 
     pub fn tracing(&self) {
-        info!(
-            "Header number of batches threshold set to {}",
-            self.header_num_of_batches_threshold
-        );
-        info!(
-            "Header max number of batches set to {}",
-            self.max_header_num_of_batches
-        );
-        info!(
-            "Max header delay set to {} ms",
-            self.max_header_delay.as_millis()
-        );
-        info!(
-            "Min header delay set to {} ms",
-            self.min_header_delay.as_millis()
-        );
+        info!("Header number of batches threshold set to {}", self.header_num_of_batches_threshold);
+        info!("Header max number of batches set to {}", self.max_header_num_of_batches);
+        info!("Max header delay set to {} ms", self.max_header_delay.as_millis());
+        info!("Min header delay set to {} ms", self.min_header_delay.as_millis());
         info!("Garbage collection depth set to {} rounds", self.gc_depth);
-        info!(
-            "Sync retry delay set to {} ms",
-            self.sync_retry_delay.as_millis()
-        );
+        info!("Sync retry delay set to {} ms", self.sync_retry_delay.as_millis());
         info!("Sync retry nodes set to {} nodes", self.sync_retry_nodes);
         info!("Batch size set to {} B", self.batch_size);
-        info!(
-            "Max batch delay set to {} ms",
-            self.max_batch_delay.as_millis()
-        );
+        info!("Max batch delay set to {} ms", self.max_batch_delay.as_millis());
         info!(
             "Synchronize range timeout set to {} s",
             self.block_synchronizer.range_synchronize_timeout.as_secs()
         );
         info!(
             "Synchronize certificates timeout set to {} s",
-            self.block_synchronizer
-                .certificates_synchronize_timeout
-                .as_secs()
+            self.block_synchronizer.certificates_synchronize_timeout.as_secs()
         );
         info!(
             "Payload (batches) availability timeout set to {} s",
-            self.block_synchronizer
-                .payload_availability_timeout
-                .as_secs()
+            self.block_synchronizer.payload_availability_timeout.as_secs()
         );
         info!(
             "Synchronize payload (batches) timeout set to {} s",
-            self.block_synchronizer
-                .payload_synchronize_timeout
-                .as_secs()
+            self.block_synchronizer.payload_synchronize_timeout.as_secs()
         );
         info!(
             "Consensus API gRPC Server set to listen on on {}",
@@ -505,32 +463,21 @@ impl Parameters {
         );
         info!(
             "Remove collections timeout set to {} ms",
-            self.consensus_api_grpc
-                .remove_collections_timeout
-                .as_millis()
+            self.consensus_api_grpc.remove_collections_timeout.as_millis()
         );
         info!(
             "Handler certificate deliver timeout set to {} s",
-            self.block_synchronizer
-                .handler_certificate_deliver_timeout
-                .as_secs()
+            self.block_synchronizer.handler_certificate_deliver_timeout.as_secs()
         );
-        info!(
-            "Max concurrent requests set to {}",
-            self.max_concurrent_requests
-        );
-        info!(
-            "Prometheus metrics server will run on {}",
-            self.prometheus_metrics.socket_addr
-        );
+        info!("Max concurrent requests set to {}", self.max_concurrent_requests);
+        info!("Prometheus metrics server will run on {}", self.prometheus_metrics.socket_addr);
         info!(
             "Primary network admin server will run on 127.0.0.1:{}",
             self.network_admin_server.primary_network_admin_server_port
         );
         info!(
             "Worker network admin server will run starting on base port 127.0.0.1:{}",
-            self.network_admin_server
-                .worker_network_admin_server_base_port
+            self.network_admin_server.worker_network_admin_server_base_port
         );
     }
 }
@@ -630,10 +577,7 @@ impl WorkerCache {
     pub fn all_workers(&self) -> Vec<(NetworkPublicKey, Multiaddr)> {
         self.workers
             .iter()
-            .flat_map(|(_, w)| {
-                w.0.values()
-                    .map(|w| (w.name.clone(), w.worker_address.clone()))
-            })
+            .flat_map(|(_, w)| w.0.values().map(|w| (w.name.clone(), w.worker_address.clone())))
             .collect()
     }
 

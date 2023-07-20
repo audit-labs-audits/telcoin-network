@@ -15,9 +15,6 @@ execution RPC types
 tn-types = { workspace = true }
 execution-rlp = { workspace = true }
 
-# lattice
-tn-types = { workspace = true }
-
 # errors
 thiserror = { workspace = true }
 

@@ -4,7 +4,7 @@
 // SPDX-License-Identifier: Apache-2.0
 use thiserror::Error;
 mod dag;
-pub use dag::{DagError, DagResult, AcceptNotification};
+pub use dag::{AcceptNotification, DagError, DagResult};
 mod crypto;
 pub use crypto::CryptoError;
 mod client;
@@ -17,7 +17,7 @@ mod error_test;
 #[macro_export]
 macro_rules! bail {
     ($e:expr) => {
-        return Err($e);
+        return Err($e)
     };
 }
 

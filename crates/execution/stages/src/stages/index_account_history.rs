@@ -1,8 +1,8 @@
 use crate::{ExecInput, ExecOutput, Stage, StageError, UnwindInput, UnwindOutput};
 use execution_db::database::Database;
-use execution_primitives::stage::{StageCheckpoint, StageId};
 use execution_provider::{AccountExtReader, DatabaseProviderRW, HistoryWriter};
 use std::fmt::Debug;
+use tn_types::execution::stage::{StageCheckpoint, StageId};
 
 /// Stage is indexing history the account changesets generated in
 /// [`ExecutionStage`][crate::stages::ExecutionStage]. For more information
@@ -85,7 +85,7 @@ mod tests {
         transaction::DbTxMut,
         BlockNumberList,
     };
-    use execution_primitives::{hex_literal::hex, H160, MAINNET};
+    use tn_types::execution::{hex_literal::hex, H160, MAINNET};
 
     const ADDRESS: H160 = H160(hex!("0000000000000000000000000000000000000001"));
 

@@ -1,5 +1,5 @@
 use jsonrpsee::{core::RpcResult, proc_macros::rpc};
-use execution_primitives::{Bytes, H256};
+use tn_types::execution::{Bytes, H256};
 
 /// Web3 rpc interface.
 #[cfg_attr(not(feature = "client"), rpc(server, namespace = "web3"))]

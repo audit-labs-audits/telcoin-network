@@ -6,17 +6,17 @@ use execution_db::{
     transaction::{DbTx, DbTxMut},
 };
 use execution_interfaces::consensus;
-use execution_primitives::{
-    hex,
-    stage::{EntitiesCheckpoint, MerkleCheckpoint, StageCheckpoint, StageId},
-    trie::StoredSubNode,
-    BlockNumber, SealedHeader, H256,
-};
 use execution_provider::{
     DatabaseProviderRW, HeaderProvider, ProviderError, StageCheckpointReader, StageCheckpointWriter,
 };
 use execution_trie::{IntermediateStateRootState, StateRoot, StateRootProgress};
 use std::fmt::Debug;
+use tn_types::execution::{
+    hex,
+    stage::{EntitiesCheckpoint, MerkleCheckpoint, StageCheckpoint, StageId},
+    trie::StoredSubNode,
+    BlockNumber, SealedHeader, H256,
+};
 use tracing::*;
 
 /// The merkle hashing stage uses input from
@@ -353,11 +353,11 @@ mod tests {
             random_transition_range,
         },
     };
-    use execution_primitives::{
-        keccak256, stage::StageUnitCheckpoint, SealedBlock, StorageEntry, H256, U256,
-    };
     use execution_trie::test_utils::{state_root, state_root_prehashed};
     use std::collections::BTreeMap;
+    use tn_types::execution::{
+        keccak256, stage::StageUnitCheckpoint, SealedBlock, StorageEntry, H256, U256,
+    };
 
     stage_test_suite_ext!(MerkleTestRunner, merkle);
 

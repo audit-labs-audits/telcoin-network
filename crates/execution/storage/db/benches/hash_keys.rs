@@ -3,16 +3,16 @@
 use criterion::{
     black_box, criterion_group, criterion_main, measurement::WallTime, BenchmarkGroup, Criterion,
 };
+use execution_db::{
+    cursor::{DbCursorRW, DbDupCursorRO, DbDupCursorRW},
+    TxHashNumber,
+};
 use pprof::criterion::{Output, PProfProfiler};
 use proptest::{
     arbitrary::Arbitrary,
     prelude::{any_with, ProptestConfig},
     strategy::{Strategy, ValueTree},
     test_runner::TestRunner,
-};
-use execution_db::{
-    cursor::{DbCursorRW, DbDupCursorRO, DbDupCursorRW},
-    TxHashNumber,
 };
 use std::{collections::HashSet, time::Instant};
 use test_fuzz::runtime::num_traits::Zero;

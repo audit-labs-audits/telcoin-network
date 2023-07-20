@@ -1,7 +1,7 @@
 //! Commonly used code snippets
 
 use crate::eth::error::{EthApiError, EthResult};
-use execution_primitives::{Bytes, TransactionSigned, TransactionSignedEcRecovered};
+use tn_types::execution::{Bytes, TransactionSigned, TransactionSignedEcRecovered};
 
 /// Recovers a [TransactionSignedEcRecovered] from an enveloped encoded byte stream.
 ///

@@ -5,13 +5,13 @@ use crate::{
     PayloadBuilderAttributes, PayloadBuilderHandle, PayloadBuilderService, PayloadJob,
     PayloadJobGenerator,
 };
-use execution_primitives::{Block, U256};
 use std::{
     future::Future,
     pin::Pin,
     sync::Arc,
     task::{Context, Poll},
 };
+use tn_types::execution::{Block, U256};
 
 /// Creates a new [PayloadBuilderService] for testing purposes.
 pub fn test_payload_service(

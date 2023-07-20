@@ -7,9 +7,9 @@ use crate::{
     EthApi,
 };
 use ethers_core::types::transaction::eip712::TypedData;
-use execution_primitives::{Address, Bytes};
 use serde_json::Value;
 use std::ops::Deref;
+use tn_types::execution::{Address, Bytes};
 
 impl<Provider, Pool, Network> EthApi<Provider, Pool, Network> {
     pub(crate) async fn sign(&self, account: Address, message: Bytes) -> EthResult<Bytes> {

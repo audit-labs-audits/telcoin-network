@@ -89,8 +89,9 @@ pub type WeakNodeRef<T> = Weak<Node<T>>;
 pub struct Node<T> {
     /// The antecedents of the Node, aka the edges of the DAG in association list form.
     parents: ArcSwap<Vec<NodeRef<T>>>,
-    /// Whether the node is "empty" in some sense: the nodes have a value payload on top of the connections they form.
-    /// An "empty" node can be reclaimed in ways that preserve the connectedness of the graph.
+    /// Whether the node is "empty" in some sense: the nodes have a value payload on top of the
+    /// connections they form. An "empty" node can be reclaimed in ways that preserve the
+    /// connectedness of the graph.
     compressible: OnceCell<()>,
     /// The value payload of the node
     value: T,
@@ -98,9 +99,9 @@ pub struct Node<T> {
 
 impl<T: PartialEq> PartialEq for Node<T> {
     fn eq(&self, other: &Self) -> bool {
-        *self.parents.load() == *other.parents.load()
-            && self.is_compressible() == other.is_compressible()
-            && self.value.eq(&other.value)
+        *self.parents.load() == *other.parents.load() &&
+            self.is_compressible() == other.is_compressible() &&
+            self.value.eq(&other.value)
     }
 }
 
@@ -129,11 +130,7 @@ impl<T> Node<T> {
             }
             cell
         };
-        Self {
-            parents: ArcSwap::from_pointee(parents),
-            compressible: once_cell,
-            value,
-        }
+        Self { parents: ArcSwap::from_pointee(parents), compressible: once_cell, value }
     }
 
     /// Return the value payload of the node
@@ -203,18 +200,13 @@ impl<T> Node<T> {
         if self.is_leaf() {
             1
         } else {
-            let max_p_heights = self
-                .parents
-                .load()
-                .iter()
-                .map(|p| p.height())
-                .max()
-                .unwrap_or(1);
+            let max_p_heights = self.parents.load().iter().map(|p| p.height()).max().unwrap_or(1);
             max_p_heights + 1
         }
     }
 
-    /// Get the parent nodes in a [`Vec`]. Note the "parents" are in the reverse of the usual tree structure.
+    /// Get the parent nodes in a [`Vec`]. Note the "parents" are in the reverse of the usual tree
+    /// structure.
     ///
     /// If this node is a leaf node, this function returns [`Vec::empty()`].
     fn raw_parents_snapshot(&self) -> Vec<NodeRef<T>> {
@@ -234,7 +226,8 @@ impl<T: Sync + Send + std::fmt::Debug> Node<T> {
     /// After path compression, one of these three conditions holds:
     /// * This node is a leaf node;
     /// * This node has only incompressible parents, and keeps them;
-    /// * This node has compressible parents, and after path compression, they are replaced by their closest incompressible ancestors.
+    /// * This node has compressible parents, and after path compression, they are replaced by their
+    ///   closest incompressible ancestors.
     pub fn parents(&self) -> Vec<NodeRef<T>> {
         // Quick check to bail the trivial situations out in which:
         // * `self` is itself a leaf node;
@@ -242,19 +235,17 @@ impl<T: Sync + Send + std::fmt::Debug> Node<T> {
         //
         // In any of the two cases above, we don't have to do anything.
         if self.is_trivial() {
-            return self.raw_parents_snapshot();
+            return self.raw_parents_snapshot()
         }
 
         let mut res: Vec<NodeRef<T>> = Vec::new();
         // Do the path compression.
-        let (compressibles, incompressibles): (Vec<NodeRef<T>>, Vec<NodeRef<T>>) = self
-            .raw_parents_snapshot()
-            .into_iter()
-            .partition(|p| p.is_compressible());
+        let (compressibles, incompressibles): (Vec<NodeRef<T>>, Vec<NodeRef<T>>) =
+            self.raw_parents_snapshot().into_iter().partition(|p| p.is_compressible());
 
         res.extend(incompressibles);
-        // First, compress the path from the parent to some incompressible nodes. After this step, the parents of the
-        // parent node should be incompressible.
+        // First, compress the path from the parent to some incompressible nodes. After this step,
+        // the parents of the parent node should be incompressible.
         let new_parents: Vec<_> = compressibles
             .par_iter()
             .flat_map_iter(|parent| {
@@ -277,8 +268,8 @@ impl<T: Sync + Send + std::fmt::Debug> Node<T> {
 }
 
 /// Returns a Breadth-first search of the DAG, as an iterator of [`NodeRef`]
-/// This is expected to be used in conjunction with a [`node_dag::NodeDag<T>`], walking the graph from one of its heads.
-///
+/// This is expected to be used in conjunction with a [`node_dag::NodeDag<T>`], walking the graph
+/// from one of its heads.
 pub fn bfs<T: Sync + Send + std::fmt::Debug>(
     initial: NodeRef<T>,
 ) -> impl Iterator<Item = NodeRef<T>> {

@@ -18,7 +18,7 @@ pub use error::ECIESError;
 
 mod codec;
 
-use execution_primitives::{
+use tn_types::execution::{
     bytes::{Bytes, BytesMut},
     H512 as PeerId,
 };

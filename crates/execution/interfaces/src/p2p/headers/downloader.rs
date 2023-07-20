@@ -4,7 +4,7 @@ use crate::{
     p2p::error::{DownloadError, DownloadResult},
 };
 use futures::Stream;
-use execution_primitives::{BlockHashOrNumber, SealedHeader, H256};
+use tn_types::execution::{BlockHashOrNumber, SealedHeader, H256};
 
 /// A downloader capable of fetching and yielding block headers.
 ///

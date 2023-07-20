@@ -1,4 +1,4 @@
-use crate::execution ::U256;
+use crate::execution::U256;
 
 /// Represents error variants that can happen when trying to validate a
 /// [Transaction](crate::Transaction)

@@ -1,5 +1,5 @@
-use thiserror::Error;
 use anemo::PeerId;
+use thiserror::Error;
 
 #[derive(Clone, Debug, Error)]
 pub enum LocalClientError {

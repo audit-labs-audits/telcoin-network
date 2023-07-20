@@ -2,9 +2,9 @@
 // Copyright (c) Mysten Labs, Inc.
 // SPDX-License-Identifier: Apache-2.0
 
-use tn_types::consensus::config::Export;
-use std::time::{Duration, Instant};
 use lattice_test_utils::{temp_dir, CommitteeFixture};
+use std::time::{Duration, Instant};
+use tn_types::consensus::config::Export;
 
 const TEST_DURATION: Duration = Duration::from_secs(3);
 
@@ -19,13 +19,7 @@ fn test_primary_no_consensus() {
     let committee = fixture.committee();
     let worker_cache = fixture.worker_cache();
     let primary_keys_file_path = format!("{config_path}/smoke_test_primary_keys.json");
-    fixture
-        .authorities()
-        .next()
-        .unwrap()
-        .keypair()
-        .export(&primary_keys_file_path)
-        .unwrap();
+    fixture.authorities().next().unwrap().keypair().export(&primary_keys_file_path).unwrap();
     let primary_network_keys_file_path =
         format!("{config_path}/smoke_test_network_primary_keys.json");
     fixture
@@ -81,7 +75,7 @@ fn test_primary_no_consensus() {
                     panic!("node panicked with: {:?}", child.stderr.take().unwrap());
                 }
                 assert!(status.success());
-                break;
+                break
             }
             Ok(None) => continue,
             Err(e) => {
@@ -103,13 +97,7 @@ fn test_primary_with_consensus() {
     let committee = fixture.committee();
     let worker_cache = fixture.worker_cache();
     let primary_keys_file_path = format!("{config_path}/smoke_test_primary_keys.json");
-    fixture
-        .authorities()
-        .next()
-        .unwrap()
-        .keypair()
-        .export(&primary_keys_file_path)
-        .unwrap();
+    fixture.authorities().next().unwrap().keypair().export(&primary_keys_file_path).unwrap();
     let primary_network_keys_file_path =
         format!("{config_path}/smoke_test_network_primary_keys.json");
     fixture
@@ -165,7 +153,7 @@ fn test_primary_with_consensus() {
                     panic!("node panicked with: {:?}", child.stderr.take().unwrap());
                 }
                 assert!(status.success());
-                break;
+                break
             }
             // This is expected to run indefinitely => will hit the timeout
             Ok(None) => continue,

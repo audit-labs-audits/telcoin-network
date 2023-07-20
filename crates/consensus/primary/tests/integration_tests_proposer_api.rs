@@ -2,31 +2,28 @@
 // Copyright (c) Mysten Labs, Inc.
 // SPDX-License-Identifier: Apache-2.0
 use bytes::Bytes;
-use tn_types::consensus::config::{AuthorityIdentifier, CommitteeBuilder, Epoch, Parameters};
-use lattice_consensus::consensus::ConsensusRound;
-use lattice_consensus::{dag::Dag, metrics::ConsensusMetrics};
-use tn_types::consensus::crypto::KeyPair;
 use fastcrypto::{
     hash::Hash,
     traits::{KeyPair as _, ToFromBytes},
 };
-use lattice_primary::NUM_SHUTDOWN_RECEIVERS;
+use lattice_consensus::{consensus::ConsensusRound, dag::Dag, metrics::ConsensusMetrics};
 use lattice_network::client::NetworkClient;
-use lattice_primary::{Primary, CHANNEL_CAPACITY};
+use lattice_primary::{Primary, CHANNEL_CAPACITY, NUM_SHUTDOWN_RECEIVERS};
+use lattice_storage::NodeStorage;
+use lattice_test_utils::{
+    make_optimal_certificates, make_optimal_signed_certificates, temp_dir, CommitteeFixture,
+};
 use prometheus::Registry;
 use rand::thread_rng;
 use std::{collections::BTreeSet, sync::Arc, time::Duration};
-use lattice_storage::NodeStorage;
-use lattice_test_utils::{
-    make_optimal_certificates, make_optimal_signed_certificates, temp_dir,
-    CommitteeFixture,
-};
-use tokio::sync::watch;
-use tonic::transport::Channel;
 use tn_types::consensus::{
+    config::{AuthorityIdentifier, CommitteeBuilder, Epoch, Parameters},
+    crypto::KeyPair,
     Certificate, CertificateDigest, NodeReadCausalRequest, PreSubscribedBroadcastSender,
     ProposerClient, PublicKeyProto, RoundsRequest,
 };
+use tokio::sync::watch;
+use tonic::transport::Channel;
 
 #[tokio::test]
 async fn test_rounds_errors() {
@@ -88,8 +85,9 @@ async fn test_rounds_errors() {
 
     let mut tx_shutdown = PreSubscribedBroadcastSender::new(NUM_SHUTDOWN_RECEIVERS);
 
-    // AND create a committee passed exclusively to the DAG that does not include the name public key
-    // In this way, the genesis certificate is not run for that authority and is absent when we try to fetch it
+    // AND create a committee passed exclusively to the DAG that does not include the name public
+    // key In this way, the genesis certificate is not run for that authority and is absent when
+    // we try to fetch it
     let mut builder = CommitteeBuilder::new(Epoch::default());
 
     for authority in fixture.authorities().map(|a| a.authority()) {
@@ -150,9 +148,7 @@ async fn test_rounds_errors() {
 
         // WHEN we retrieve the rounds
         let request = tonic::Request::new(RoundsRequest {
-            public_key: Some(PublicKeyProto {
-                bytes: test.public_key,
-            }),
+            public_key: Some(PublicKeyProto { bytes: test.public_key }),
         });
         let response = client.rounds(request).await;
 
@@ -200,13 +196,7 @@ async fn test_rounds_return_successful_response() {
     // AND setup the DAG
     let consensus_metrics = Arc::new(ConsensusMetrics::new(&Registry::new()));
     let dag = Arc::new(
-        Dag::new(
-            &committee,
-            rx_new_certificates,
-            consensus_metrics,
-            tx_shutdown.subscribe(),
-        )
-        .1,
+        Dag::new(&committee, rx_new_certificates, consensus_metrics, tx_shutdown.subscribe()).1,
     );
 
     Primary::spawn(
@@ -237,10 +227,7 @@ async fn test_rounds_return_successful_response() {
     // AND create some certificates and insert to DAG
     // Make certificates for rounds 1 to 4.
     let mut genesis_certs = Certificate::genesis(&committee);
-    let genesis = genesis_certs
-        .iter()
-        .map(|x| x.digest())
-        .collect::<BTreeSet<_>>();
+    let genesis = genesis_certs.iter().map(|x| x.digest()).collect::<BTreeSet<_>>();
     let (mut certificates, _next_parents) = make_optimal_certificates(
         &committee,
         1..=4,
@@ -263,9 +250,8 @@ async fn test_rounds_return_successful_response() {
     let mut client = connect_to_proposer_client(parameters.clone());
 
     // WHEN we retrieve the rounds
-    let request = tonic::Request::new(RoundsRequest {
-        public_key: Some(PublicKeyProto::from(public_key)),
-    });
+    let request =
+        tonic::Request::new(RoundsRequest { public_key: Some(PublicKeyProto::from(public_key)) });
     let response = client.rounds(request).await;
 
     // THEN
@@ -300,50 +286,24 @@ async fn test_node_read_causal_signed_certificates() {
     let mut tx_shutdown = PreSubscribedBroadcastSender::new(NUM_SHUTDOWN_RECEIVERS);
 
     let dag = Arc::new(
-        Dag::new(
-            &committee,
-            rx_new_certificates,
-            consensus_metrics,
-            tx_shutdown.subscribe(),
-        )
-        .1,
+        Dag::new(&committee, rx_new_certificates, consensus_metrics, tx_shutdown.subscribe()).1,
     );
 
     // No need to populate genesis in the Dag
     let genesis_certs = Certificate::genesis(&committee);
 
     // Write genesis certs to primary 1 & 2
-    primary_store_1
-        .certificate_store
-        .write_all(genesis_certs.clone())
-        .unwrap();
-    primary_store_2
-        .certificate_store
-        .write_all(genesis_certs.clone())
-        .unwrap();
+    primary_store_1.certificate_store.write_all(genesis_certs.clone()).unwrap();
+    primary_store_2.certificate_store.write_all(genesis_certs.clone()).unwrap();
 
-    let genesis = genesis_certs
-        .iter()
-        .map(|x| x.digest())
-        .collect::<BTreeSet<_>>();
+    let genesis = genesis_certs.iter().map(|x| x.digest()).collect::<BTreeSet<_>>();
 
-    let keys = fixture
-        .authorities()
-        .map(|a| (a.id(), a.keypair().copy()))
-        .collect::<Vec<_>>();
-    let (certificates, _next_parents) = make_optimal_signed_certificates(
-        1..=4,
-        &genesis,
-        &committee,
-        &keys,
-    );
+    let keys = fixture.authorities().map(|a| (a.id(), a.keypair().copy())).collect::<Vec<_>>();
+    let (certificates, _next_parents) =
+        make_optimal_signed_certificates(1..=4, &genesis, &committee, &keys);
 
-    collection_ids.extend(
-        certificates
-            .iter()
-            .map(|c| c.digest())
-            .collect::<Vec<CertificateDigest>>(),
-    );
+    collection_ids
+        .extend(certificates.iter().map(|c| c.digest()).collect::<Vec<CertificateDigest>>());
 
     // Feed the certificates to the Dag
     for certificate in certificates.clone() {
@@ -351,17 +311,11 @@ async fn test_node_read_causal_signed_certificates() {
     }
 
     // Write the certificates to Primary 1 but intentionally miss one certificate.
-    primary_store_1
-        .certificate_store
-        .write_all(certificates.clone().into_iter().skip(1))
-        .unwrap();
+    primary_store_1.certificate_store.write_all(certificates.clone().into_iter().skip(1)).unwrap();
 
     // Write all certificates to Primary 2, so Primary 1 has a place to retrieve
     // missing certificate from.
-    primary_store_2
-        .certificate_store
-        .write_all(certificates.clone())
-        .unwrap();
+    primary_store_2.certificate_store.write_all(certificates.clone()).unwrap();
 
     let (tx_feedback, rx_feedback) =
         lattice_test_utils::test_committed_certificates_channel!(CHANNEL_CAPACITY);
@@ -523,15 +477,11 @@ async fn test_node_read_causal_signed_certificates() {
     });
 
     let status = client.node_read_causal(request).await.unwrap_err();
-    assert!(status
-        .message()
-        .contains("Invalid public key: unknown authority"));
+    assert!(status.message().contains("Invalid public key: unknown authority"));
 }
 
 fn connect_to_proposer_client(parameters: Parameters) -> ProposerClient<Channel> {
     let config = consensus_network::config::Config::new();
-    let channel = config
-        .connect_lazy(&parameters.consensus_api_grpc.socket_addr)
-        .unwrap();
+    let channel = config.connect_lazy(&parameters.consensus_api_grpc.socket_addr).unwrap();
     ProposerClient::new(channel)
 }

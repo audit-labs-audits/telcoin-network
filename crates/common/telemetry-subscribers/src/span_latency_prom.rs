@@ -6,15 +6,17 @@
 //! The name of the Prometheus histogram is "tracing_span_latencies[_sum/count/bucket]"
 //!
 //! There is also the tracing-timing crate, from which this differs significantly:
-//! - tracing-timing records latencies between events (logs).  We just want to record the latencies of spans.
-//! - tracing-timing does not output to Prometheus, and extracting data from its histograms takes extra CPU
-//! - tracing-timing records latencies using HDRHistogram, which is great, but uses extra memory when one
-//!   is already using Prometheus
+//! - tracing-timing records latencies between events (logs).  We just want to record the latencies
+//!   of spans.
+//! - tracing-timing does not output to Prometheus, and extracting data from its histograms takes
+//!   extra CPU
+//! - tracing-timing records latencies using HDRHistogram, which is great, but uses extra memory
+//!   when one is already using Prometheus
 //! Thus this is a much smaller and more focused module.
 //!
 //! ## Making spans visible
-//! This module can only record latencies for spans that get created.  By default, this is controlled by
-//! env_filter and logging levels.
+//! This module can only record latencies for spans that get created.  By default, this is
+//! controlled by env_filter and logging levels.
 
 use std::time::Instant;
 
@@ -48,7 +50,7 @@ impl PrometheusSpanLatencyLayer {
     /// uses up in Prometheus (and in the application).  10 is probably a minimum.
     pub fn try_new(registry: &Registry, num_buckets: usize) -> Result<Self, PrometheusSpanError> {
         if num_buckets < 1 {
-            return Err(PrometheusSpanError::ZeroOrNegativeNumBuckets);
+            return Err(PrometheusSpanError::ZeroOrNegativeNumBuckets)
         }
 
         // Histogram for span latencies must accommodate a wide range of possible latencies, so
@@ -81,10 +83,9 @@ where
     ) {
         let span = ctx.span(id).unwrap();
         // NOTE: there are other extensions that insert timings.  For example,
-        // tracing_subscriber's with_span_events() inserts events at open and close that contain timings.
-        // However, we cannot be guaranteed that those events would be turned on.
-        span.extensions_mut()
-            .insert(PromSpanTimestamp(Instant::now()));
+        // tracing_subscriber's with_span_events() inserts events at open and close that contain
+        // timings. However, we cannot be guaranteed that those events would be turned on.
+        span.extensions_mut().insert(PromSpanTimestamp(Instant::now()));
     }
 
     fn on_close(&self, id: span::Id, ctx: tracing_subscriber::layer::Context<'_, S>) {
@@ -95,9 +96,7 @@ where
             .expect("Could not find saved timestamp on span")
             .0;
         let elapsed_ns = start_time.elapsed().as_nanos() as u64;
-        self.span_latencies
-            .with_label_values(&[span.name()])
-            .observe(elapsed_ns as f64);
+        self.span_latencies.with_label_values(&[span.name()]).observe(elapsed_ns as f64);
     }
 }
 
@@ -110,9 +109,6 @@ mod tests {
         let registry = prometheus::Registry::new();
 
         let res = PrometheusSpanLatencyLayer::try_new(&registry, 0);
-        assert!(matches!(
-            res,
-            Err(PrometheusSpanError::ZeroOrNegativeNumBuckets)
-        ));
+        assert!(matches!(res, Err(PrometheusSpanError::ZeroOrNegativeNumBuckets)));
     }
 }

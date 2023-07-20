@@ -1,8 +1,8 @@
 // Copyright (c) Telcoin, LLC
 // Copyright (c) Mysten Labs, Inc.
 // SPDX-License-Identifier: Apache-2.0
-use std::time::Duration;
 use lattice_test_utils::cluster::Cluster;
+use std::time::Duration;
 use tn_types::consensus::{
     Empty, MultiAddrProto, NewEpochRequest, NewNetworkInfoRequest, PublicKeyProto, ValidatorData,
 };
@@ -24,9 +24,7 @@ async fn test_new_epoch() {
 
     let public_key = PublicKeyProto::from(public_key);
     let stake_weight = 1;
-    let primary_address = Some(MultiAddrProto {
-        address: "/ip4/127.0.0.1".to_string(),
-    });
+    let primary_address = Some(MultiAddrProto { address: "/ip4/127.0.0.1".to_string() });
 
     let request = tonic::Request::new(NewEpochRequest {
         epoch_number: 0,
@@ -67,9 +65,7 @@ async fn test_new_network_info() {
     for public_key in public_keys.iter() {
         let public_key_proto = PublicKeyProto::from(public_key.clone());
         let stake_weight = 1;
-        let primary_address = Some(MultiAddrProto {
-            address: "/ip4/127.0.0.1".to_string(),
-        });
+        let primary_address = Some(MultiAddrProto { address: "/ip4/127.0.0.1".to_string() });
 
         validators.push(ValidatorData {
             public_key: Some(public_key_proto),
@@ -85,14 +81,9 @@ async fn test_new_network_info() {
 
     let status = client.new_network_info(request).await.unwrap_err();
 
-    assert!(status
-        .message()
-        .contains("Passed in epoch 1 does not match current epoch 0"));
+    assert!(status.message().contains("Passed in epoch 1 does not match current epoch 0"));
 
-    let request = tonic::Request::new(NewNetworkInfoRequest {
-        epoch_number: 0,
-        validators,
-    });
+    let request = tonic::Request::new(NewNetworkInfoRequest { epoch_number: 0, validators });
 
     let response = client.new_network_info(request).await.unwrap();
     let actual_result = response.into_inner();

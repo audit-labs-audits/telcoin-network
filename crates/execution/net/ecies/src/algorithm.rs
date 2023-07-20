@@ -10,12 +10,8 @@ use byteorder::{BigEndian, ByteOrder, ReadBytesExt};
 use ctr::Ctr64BE;
 use digest::{crypto_common::KeyIvInit, Digest};
 use educe::Educe;
-use rand::{thread_rng, Rng};
-use execution_primitives::{
-    bytes::{BufMut, Bytes, BytesMut},
-    H128, H256, H512 as PeerId,
-};
 use execution_rlp::{Encodable, Rlp, RlpEncodable, RlpMaxEncodedLen};
+use rand::{thread_rng, Rng};
 use secp256k1::{
     ecdsa::{RecoverableSignature, RecoveryId},
     PublicKey, SecretKey, SECP256K1,
@@ -23,6 +19,10 @@ use secp256k1::{
 use sha2::Sha256;
 use sha3::Keccak256;
 use std::convert::TryFrom;
+use tn_types::execution::{
+    bytes::{BufMut, Bytes, BytesMut},
+    H128, H256, H512 as PeerId,
+};
 
 const PROTOCOL_VERSION: usize = 4;
 

@@ -1,13 +1,13 @@
 //! `eth_` PubSub RPC handler implementation
 use crate::eth::logs_utils;
-use futures::StreamExt;
-use jsonrpsee::{server::SubscriptionMessage, PendingSubscriptionSink, SubscriptionSink};
 use execution_network_api::NetworkInfo;
-use execution_primitives::TxHash;
 use execution_provider::{BlockReader, CanonStateSubscriptions, EvmEnvProvider};
 use execution_rpc_api::EthPubSubApiServer;
 use execution_rpc_types::FilteredParams;
+use futures::StreamExt;
+use jsonrpsee::{server::SubscriptionMessage, PendingSubscriptionSink, SubscriptionSink};
 use std::sync::Arc;
+use tn_types::execution::TxHash;
 
 use execution_rpc_types::{
     pubsub::{

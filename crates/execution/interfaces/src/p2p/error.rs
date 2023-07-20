@@ -1,15 +1,15 @@
 use super::headers::client::HeadersRequest;
 use crate::{consensus, db};
 use execution_network_api::ReputationChangeKind;
-use execution_primitives::{BlockHashOrNumber, BlockNumber, Header, WithPeerId, H256};
 use std::ops::RangeInclusive;
 use thiserror::Error;
+use tn_types::execution::{BlockHashOrNumber, BlockNumber, Header, WithPeerId, H256};
 use tokio::sync::{mpsc, oneshot};
 
 /// Result alias for result of a request.
 pub type RequestResult<T> = Result<T, RequestError>;
 
-/// Result with [PeerId][execution_primitives::PeerId]
+/// Result with [PeerId][tn_types::execution::PeerId]
 pub type PeerRequestResult<T> = RequestResult<WithPeerId<T>>;
 
 /// Helper trait used to validate responses.

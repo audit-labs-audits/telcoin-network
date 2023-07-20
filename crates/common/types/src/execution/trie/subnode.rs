@@ -73,7 +73,7 @@ impl Compact for StoredSubNode {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::execution ::{trie::TrieMask, H256};
+    use crate::execution::{trie::TrieMask, H256};
 
     #[test]
     fn subnode_roundtrip() {

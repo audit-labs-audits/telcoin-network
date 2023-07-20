@@ -12,13 +12,6 @@ use execution_interfaces::{
     consensus::ForkchoiceState,
     Error, Result,
 };
-use execution_primitives::{
-    stage::{StageCheckpoint, StageId},
-    Address, Block, BlockHash, BlockHashOrNumber, BlockId, BlockNumHash, BlockNumber,
-    BlockNumberOrTag, BlockWithSenders, ChainInfo, ChainSpec, Header, Receipt, SealedBlock,
-    SealedBlockWithSenders, SealedHeader, TransactionMeta, TransactionSigned,
-    TransactionSignedNoHash, TxHash, TxNumber, Withdrawal, H256, U256,
-};
 use execution_revm_primitives::primitives::{BlockEnv, CfgEnv};
 pub use state::{
     historical::{HistoricalStateProvider, HistoricalStateProviderRef},
@@ -30,6 +23,13 @@ use std::{
     sync::Arc,
     time::Instant,
 };
+use tn_types::execution::{
+    stage::{StageCheckpoint, StageId},
+    Address, Block, BlockHash, BlockHashOrNumber, BlockId, BlockNumHash, BlockNumber,
+    BlockNumberOrTag, BlockWithSenders, ChainInfo, ChainSpec, Header, Receipt, SealedBlock,
+    SealedBlockWithSenders, SealedHeader, TransactionMeta, TransactionSigned,
+    TransactionSignedNoHash, TxHash, TxNumber, Withdrawal, H256, U256,
+};
 use tracing::trace;
 
 mod chain_info;
@@ -38,10 +38,10 @@ mod post_state_provider;
 mod state;
 use crate::{providers::chain_info::ChainInfoTracker, traits::BlockSource};
 pub use database::*;
-pub use post_state_provider::PostStateProvider;
 use execution_interfaces::blockchain_tree::{
     error::InsertBlockError, CanonicalOutcome, InsertPayloadOk,
 };
+pub use post_state_provider::PostStateProvider;
 
 /// The main type for interacting with the blockchain.
 ///

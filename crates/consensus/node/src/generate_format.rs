@@ -1,18 +1,18 @@
 // Copyright (c) Telcoin, LLC
 // Copyright (c) Mysten Labs, Inc.
 // SPDX-License-Identifier: Apache-2.0
-use tn_types::consensus::config::{CommitteeBuilder, Epoch, WorkerIndex, WorkerInfo};
-use tn_types::consensus::crypto::{KeyPair, NetworkKeyPair};
+use consensus_network::Multiaddr;
 use fastcrypto::{
     hash::Hash,
     traits::{KeyPair as _, Signer},
 };
-use consensus_network::Multiaddr;
 use rand::{prelude::StdRng, SeedableRng};
 use serde_reflection::{Registry, Result, Samples, Tracer, TracerConfig};
 use std::{fs::File, io::Write};
 use structopt::{clap::arg_enum, StructOpt};
 use tn_types::consensus::{
+    config::{CommitteeBuilder, Epoch, WorkerIndex, WorkerInfo},
+    crypto::{KeyPair, NetworkKeyPair},
     Batch, BatchDigest, Certificate, CertificateDigest, Header, HeaderDigest, HeaderV1Builder,
     VersionedMetadata, WorkerOthersBatchMessage, WorkerOwnBatchMessage, WorkerSynchronizeMessage,
 };
@@ -28,14 +28,8 @@ fn get_registry() -> Result<Registry> {
     // or involving generics (see [serde_reflection documentation](https://docs.rs/serde-reflection/latest/serde_reflection/)).
     // Trace the corresponding header
     let mut rng = StdRng::from_seed([0; 32]);
-    let (keys, network_keys): (Vec<_>, Vec<_>) = (0..4)
-        .map(|_| {
-            (
-                KeyPair::generate(&mut rng),
-                NetworkKeyPair::generate(&mut rng),
-            )
-        })
-        .unzip();
+    let (keys, network_keys): (Vec<_>, Vec<_>) =
+        (0..4).map(|_| (KeyPair::generate(&mut rng), NetworkKeyPair::generate(&mut rng))).unzip();
 
     let kp = keys[0].copy();
     let pk = kp.public().clone();
@@ -65,18 +59,15 @@ fn get_registry() -> Result<Registry> {
     // Find the author id inside the committee
     let authority = committee.authority_by_key(kp.public()).unwrap();
 
-    // The values have to be "complete" in a data-centric sense, but not "correct" cryptographically.
+    // The values have to be "complete" in a data-centric sense, but not "correct"
+    // cryptographically.
     let header_builder = HeaderV1Builder::default();
     let header = header_builder
         .author(authority.id())
         .epoch(0)
         .created_at(0)
         .round(1)
-        .payload(
-            (0..4u32)
-                .map(|wid| (BatchDigest([0u8; 32]), (wid, 0u64)))
-                .collect(),
-        )
+        .payload((0..4u32).map(|wid| (BatchDigest([0u8; 32]), (wid, 0u64))).collect())
         .parents(certificates.iter().map(|x| x.digest()).collect())
         .build()
         .unwrap();
@@ -116,10 +107,7 @@ fn get_registry() -> Result<Registry> {
         worker_id: 0,
         metadata: VersionedMetadata::default(),
     };
-    let others_batch = WorkerOthersBatchMessage {
-        digest: BatchDigest([0u8; 32]),
-        worker_id: 0,
-    };
+    let others_batch = WorkerOthersBatchMessage { digest: BatchDigest([0u8; 32]), worker_id: 0 };
     let sync = WorkerSynchronizeMessage {
         digests: vec![BatchDigest([0u8; 32])],
         target: authority.id(),

@@ -1,7 +1,7 @@
 use crate::{capability::Capability, EthVersion, ProtocolVersion};
 use execution_codecs::derive_arbitrary;
-use execution_primitives::{constants::execution_CLIENT_VERSION, PeerId};
 use execution_rlp::{RlpDecodable, RlpEncodable};
+use tn_types::execution::{constants::execution_CLIENT_VERSION, PeerId};
 
 #[cfg(feature = "serde")]
 use serde::{Deserialize, Serialize};

@@ -31,9 +31,7 @@ pub(crate) struct RocksErrorDef {
 
 impl From<RocksError> for RocksErrorDef {
     fn from(err: RocksError) -> Self {
-        RocksErrorDef {
-            message: err.as_ref().to_string(),
-        }
+        RocksErrorDef { message: err.as_ref().to_string() }
     }
 }
 

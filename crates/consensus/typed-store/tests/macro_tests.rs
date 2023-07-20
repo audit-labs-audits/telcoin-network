@@ -3,32 +3,19 @@
 // SPDX-License-Identifier: Apache-2.0
 #![allow(dead_code)]
 
+use lattice_typed_store::{
+    metrics::SamplingInterval,
+    rocks::{be_fix_int_ser, list_tables, DBMap, MetricConf, RocksDBAccessType},
+    sally::{SallyColumn, SallyDBOptions, SallyReadOnlyDBOptions},
+    traits::{Map, TableSummary, TypedStoreDebug},
+};
+use lattice_typed_store_derive::{DBMapUtils, SallyDB};
 use once_cell::sync::Lazy;
-use serde::Deserialize;
-use serde::Serialize;
-use std::borrow::Borrow;
-use std::collections::HashSet;
-use std::fmt::Debug;
-use std::sync::Mutex;
-use std::time::Duration;
-use lattice_typed_store::metrics::SamplingInterval;
-use lattice_typed_store::rocks::list_tables;
-use lattice_typed_store::rocks::DBMap;
-use lattice_typed_store::rocks::RocksDBAccessType;
-use lattice_typed_store::rocks::{be_fix_int_ser, MetricConf};
-use lattice_typed_store::sally::SallyColumn;
-use lattice_typed_store::sally::SallyDBOptions;
-use lattice_typed_store::sally::SallyReadOnlyDBOptions;
-use lattice_typed_store::traits::Map;
-use lattice_typed_store::traits::TableSummary;
-use lattice_typed_store::traits::TypedStoreDebug;
-use lattice_typed_store_derive::DBMapUtils;
-use lattice_typed_store_derive::SallyDB;
+use serde::{Deserialize, Serialize};
+use std::{borrow::Borrow, collections::HashSet, fmt::Debug, sync::Mutex, time::Duration};
 
 fn temp_dir() -> std::path::PathBuf {
-    tempfile::tempdir()
-        .expect("Failed to open temporary directory")
-        .into_path()
+    tempfile::tempdir().expect("Failed to open temporary directory").into_path()
 }
 /// This struct is used to illustrate how the utility works
 #[derive(DBMapUtils)]
@@ -81,10 +68,7 @@ async fn macro_test() {
         raw_value_bytes1 += value_buf.len();
     }
     let keys_vals_1 = kv_range.map(|i| (i.to_string(), i.to_string()));
-    tbls_primary
-        .table1
-        .multi_insert(keys_vals_1.clone())
-        .expect("Failed to multi-insert");
+    tbls_primary.table1.multi_insert(keys_vals_1.clone()).expect("Failed to multi-insert");
 
     let mut raw_key_bytes2 = 0;
     let mut raw_value_bytes2 = 0;
@@ -98,10 +82,7 @@ async fn macro_test() {
         raw_value_bytes2 += value_buf.len();
     }
     let keys_vals_2 = kv_range.map(|i| (i, i.to_string()));
-    tbls_primary
-        .table2
-        .multi_insert(keys_vals_2.clone())
-        .expect("Failed to multi-insert");
+    tbls_primary.table2.multi_insert(keys_vals_2.clone()).expect("Failed to multi-insert");
 
     // Open in secondary mode
     let tbls_secondary =
@@ -109,10 +90,8 @@ async fn macro_test() {
 
     // Check all the tables can be listed
     let actual_table_names: HashSet<_> = list_tables(primary_path).unwrap().into_iter().collect();
-    let observed_table_names: HashSet<_> = Tables::describe_tables()
-        .iter()
-        .map(|q| q.0.clone())
-        .collect();
+    let observed_table_names: HashSet<_> =
+        Tables::describe_tables().iter().map(|q| q.0.clone()).collect();
 
     let exp: HashSet<String> =
         HashSet::from_iter(vec!["table1", "table2"].into_iter().map(|s| s.to_owned()));
@@ -146,10 +125,7 @@ async fn macro_test() {
 
     // Check that catchup logic works
     let keys_vals_1 = (100..110).map(|i| (i.to_string(), i.to_string()));
-    tbls_primary
-        .table1
-        .multi_insert(keys_vals_1)
-        .expect("Failed to multi-insert");
+    tbls_primary.table1.multi_insert(keys_vals_1).expect("Failed to multi-insert");
     // New entries should be present in secondary
     assert_eq!(19, tbls_secondary.count_keys("table1").unwrap());
 
@@ -185,12 +161,10 @@ async fn test_sallydb() {
     // Write to both columns
     let keys_vals_1 = (1..10).map(|i| (i.to_string(), i.to_string()));
     let mut wb = example_db.col1.batch();
-    wb.insert_batch(&example_db.col1, keys_vals_1.clone())
-        .expect("Failed to insert");
+    wb.insert_batch(&example_db.col1, keys_vals_1.clone()).expect("Failed to insert");
 
     let keys_vals_2 = (3..10).map(|i| (i, i.to_string()));
-    wb.insert_batch(&example_db.col2, keys_vals_2.clone())
-        .expect("Failed to insert");
+    wb.insert_batch(&example_db.col2, keys_vals_2.clone()).expect("Failed to insert");
 
     wb.write().await.expect("Failed to commit write batch");
 
@@ -205,10 +179,8 @@ async fn test_sallydb() {
 
     // Check all the tables can be listed
     let actual_table_names: HashSet<_> = list_tables(primary_path).unwrap().into_iter().collect();
-    let observed_table_names: HashSet<_> = SallyDBExample::describe_tables()
-        .iter()
-        .map(|q| q.0.clone())
-        .collect();
+    let observed_table_names: HashSet<_> =
+        SallyDBExample::describe_tables().iter().map(|q| q.0.clone()).collect();
 
     let exp: HashSet<String> =
         HashSet::from_iter(vec!["col1", "col2"].into_iter().map(|s| s.to_owned()));
@@ -233,8 +205,7 @@ async fn test_sallydb() {
     // Check that catchup logic works
     let keys_vals_1 = (100..110).map(|i| (i.to_string(), i.to_string()));
     let mut wb = example_db.col1.batch();
-    wb.insert_batch(&example_db.col1, keys_vals_1.clone())
-        .expect("Failed to insert");
+    wb.insert_batch(&example_db.col1, keys_vals_1.clone()).expect("Failed to insert");
     wb.write().await.expect("Failed to commit write batch");
 
     // New entries should be present in secondary
@@ -257,16 +228,9 @@ async fn macro_transactional_test() {
     let key = "key".to_string();
     let primary_path = temp_dir();
     let tables = Tables::open_tables_transactional(primary_path, MetricConf::default(), None, None);
-    let mut transaction = tables
-        .table1
-        .transaction()
-        .expect("failed to init transaction");
-    transaction
-        .insert_batch(&tables.table1, vec![(key.to_string(), "1".to_string())])
-        .unwrap();
-    transaction
-        .commit()
-        .expect("failed to commit first transaction");
+    let mut transaction = tables.table1.transaction().expect("failed to init transaction");
+    transaction.insert_batch(&tables.table1, vec![(key.to_string(), "1".to_string())]).unwrap();
+    transaction.commit().expect("failed to commit first transaction");
     assert_eq!(tables.table1.get(&key), Ok(Some("1".to_string())));
 }
 

@@ -1,4 +1,4 @@
-use crate::execution ::{keccak256, H256};
+use crate::execution::{keccak256, H256};
 use execution_rlp::EMPTY_STRING_CODE;
 use std::ops::Range;
 

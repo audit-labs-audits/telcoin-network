@@ -1,17 +1,17 @@
-use futures::{FutureExt, Stream};
-use futures_util::StreamExt;
-use pin_project::pin_project;
 use execution_interfaces::p2p::headers::{
     downloader::{HeaderDownloader, SyncTarget},
     error::HeadersDownloaderResult,
 };
-use execution_primitives::SealedHeader;
 use execution_tasks::{TaskSpawner, TokioTaskExecutor};
+use futures::{FutureExt, Stream};
+use futures_util::StreamExt;
+use pin_project::pin_project;
 use std::{
     future::Future,
     pin::Pin,
     task::{ready, Context, Poll},
 };
+use tn_types::execution::SealedHeader;
 use tokio::sync::{mpsc, mpsc::UnboundedSender};
 use tokio_stream::wrappers::{ReceiverStream, UnboundedReceiverStream};
 use tokio_util::sync::PollSender;

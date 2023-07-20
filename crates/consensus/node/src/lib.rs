@@ -1,12 +1,11 @@
 // Copyright (c) Telcoin, LLC
 // Copyright (c) Mysten Labs, Inc.
 // SPDX-License-Identifier: Apache-2.0
-use tn_types::consensus::config::WorkerId;
+use futures::{future::try_join_all, stream::FuturesUnordered};
 use lattice_executor::SubscriberError;
-use futures::future::try_join_all;
-use futures::stream::FuturesUnordered;
 pub use lattice_storage::{CertificateStoreCacheMetrics, NodeStorage};
 use thiserror::Error;
+use tn_types::consensus::config::WorkerId;
 
 pub mod execution_state;
 pub mod metrics;

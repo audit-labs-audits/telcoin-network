@@ -1,6 +1,6 @@
 [package]
 name = "lattice-typed-store"
-version = "0.1.0"
+version.workspace = true
 license = "Apache-2.0"
 authors = ["Grant Kee <grant.kee@telco.in>", "Mysten Labs <build@mystenlabs.com>"]
 description = "a typed database interface"
@@ -24,7 +24,7 @@ serde = { workspace = true, features = ["derive"] }
 thiserror.workspace = true
 tokio = { workspace = true, features = ["full", "test-util"] }
 tracing = "0.1.37"
-lattice-macros.workspace = true
+tn-macros.workspace = true
 ouroboros = "0.15.5"
 rand = "0.8.5"
 async-trait = "0.1.57"

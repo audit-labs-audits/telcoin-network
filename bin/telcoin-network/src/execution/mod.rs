@@ -1,53 +1,84 @@
 //! Run the execution layer
-//!
-mod events;
 pub mod cl_events;
+mod events;
 use crate::{
+    args::{utils::genesis_value_parser, PayloadBuilderArgs},
+    dirs::{ChainPath, DataDirPath, MaybePlatformPath, PlatformPath},
+    execution::cl_events::ConsensusLayerHealthEvents,
     runner::CliContext,
-    RpcServerArgs, args::PayloadBuilderArgs, execution::cl_events::ConsensusLayerHealthEvents, dirs::{DataDirPath, MaybePlatformPath, ChainPath, PlatformPath},
-    args::utils::genesis_value_parser,
+    RpcServerArgs,
 };
 use clap::{crate_version, Parser};
-use eyre::WrapErr;
-use futures::{stream_select, StreamExt, future::Either};
-use hex_literal::hex;
-use tracing::{info, debug};
 use execution_basic_payload_builder::{BasicPayloadJobGenerator, BasicPayloadJobGeneratorConfig};
-use execution_downloaders::{headers::reverse_headers::ReverseHeadersDownloaderBuilder, bodies::bodies::BodiesDownloaderBuilder};
-use execution_interfaces::{consensus::Consensus, p2p::{headers::{client::HeadersClient, downloader::HeaderDownloader}, bodies::{client::BodiesClient, downloader::BodyDownloader}, either::EitherDownloader}, test_utils::NoopFullBlockClient};
-use execution_network_api::noop::NoopNetwork;
-use execution_payload_builder::PayloadBuilderService;
-use execution_blockchain_tree::{TreeExternals, BlockchainTreeConfig, ShareableBlockchainTree, BlockchainTree};
+use execution_blockchain_tree::{
+    BlockchainTree, BlockchainTreeConfig, ShareableBlockchainTree, TreeExternals,
+};
 use execution_db::{
     database::Database,
-    mdbx::{EnvKind, Transaction, Env, WriteMap},
+    init_db,
+    mdbx::{Env, EnvKind, Transaction, WriteMap},
     tables,
     transaction::DbTxMut,
-    init_db,
 };
-use execution_primitives::{
-    proofs::{genesis_state_root, EMPTY_ROOT},
-    Bytes, Chain, ChainSpec, ChainSpecBuilder, Genesis, GenesisAccount, Header, SealedBlock,
-    Withdrawal, H256, U256, Head, stage::StageId,
+use execution_downloaders::{
+    bodies::bodies::BodiesDownloaderBuilder,
+    headers::reverse_headers::ReverseHeadersDownloaderBuilder,
 };
-use execution_provider::{ProviderFactory, providers::BlockchainProvider, CanonStateSubscriptions, StageCheckpointReader, HeaderProvider, BlockHashReader};
-use execution_revm::{Factory, stack::Hook};
+use execution_interfaces::{
+    consensus::Consensus,
+    p2p::{
+        bodies::{client::BodiesClient, downloader::BodyDownloader},
+        either::EitherDownloader,
+        headers::{client::HeadersClient, downloader::HeaderDownloader},
+    },
+    test_utils::NoopFullBlockClient,
+};
+use execution_network_api::noop::NoopNetwork;
+use execution_payload_builder::PayloadBuilderService;
+use execution_provider::{
+    providers::BlockchainProvider, BlockHashReader, CanonStateSubscriptions, HeaderProvider,
+    ProviderFactory, StageCheckpointReader,
+};
+use execution_revm::{stack::Hook, Factory};
 use execution_rpc_engine_api::EngineApi;
+use eyre::WrapErr;
+use futures::{future::Either, stream_select, StreamExt};
+use hex_literal::hex;
+use tn_types::execution::{
+    proofs::{genesis_state_root, EMPTY_ROOT},
+    stage::StageId,
+    Bytes, Chain, ChainSpec, ChainSpecBuilder, Genesis, GenesisAccount, Head, Header, SealedBlock,
+    Withdrawal, H256, U256,
+};
+use tracing::{debug, info};
 // use execution_provider::{insert_canonical_block, ShareableDatabase, Transaction};
 // use execution_staged_sync::utils::init::{init_db, init_genesis};
-use execution_stages::{Pipeline, stages::{HeaderSyncMode, TotalDifficultyStage, SenderRecoveryStage, ExecutionStage, ExecutionStageThresholds, AccountHashingStage, StorageHashingStage, MerkleStage, TransactionLookupStage, IndexAccountHistoryStage, IndexStorageHistoryStage}, sets::DefaultStages, StageSet};
+use crate::init::init_genesis;
+use execution_config::{config::StageConfig, Config};
+use execution_lattice_consensus::{
+    LatticeConsensus, LatticeConsensusEngine, LatticeNetworkAdapter, MIN_BLOCKS_FOR_PIPELINE_RUN,
+};
+use execution_revm_inspectors::stack::InspectorStackConfig;
+use execution_stages::{
+    sets::DefaultStages,
+    stages::{
+        AccountHashingStage, ExecutionStage, ExecutionStageThresholds, HeaderSyncMode,
+        IndexAccountHistoryStage, IndexStorageHistoryStage, MerkleStage, SenderRecoveryStage,
+        StorageHashingStage, TotalDifficultyStage, TransactionLookupStage,
+    },
+    Pipeline, StageSet,
+};
 use execution_tasks::TaskExecutor;
 use execution_transaction_pool::EthTransactionValidator;
-use std::{collections::HashMap, ops::DerefMut, sync::Arc, path::PathBuf, str::FromStr};
+use std::{collections::HashMap, ops::DerefMut, path::PathBuf, str::FromStr, sync::Arc};
 use tokio::{
-    sync::{mpsc::{Receiver, Sender, unbounded_channel}, watch, oneshot},
+    sync::{
+        mpsc::{unbounded_channel, Receiver, Sender},
+        oneshot, watch,
+    },
     task::JoinHandle,
 };
 use tokio_util::sync::CancellationToken;
-use execution_lattice_consensus::{LatticeConsensus, LatticeNetworkAdapter, MIN_BLOCKS_FOR_PIPELINE_RUN, LatticeConsensusEngine};
-use execution_revm_inspectors::stack::InspectorStackConfig;
-use lattice_config::execution::{Config, StageConfig};
-use crate::init::init_genesis;
 
 /// Result type for node command.
 type Result<T> = eyre::Result<T>;
@@ -95,7 +126,6 @@ pub struct Command {
     // /// Gateway configuration
     // #[clap(flatten)]
     // endpoints: EndpointArgs,
-
     /// Dev flag indicates temporary data should be removed after process exits
     #[arg(long)]
     pub dev: bool,
@@ -103,7 +133,6 @@ pub struct Command {
 
 impl Command {
     /// Main execution function for execution layer
-    ///
     pub async fn execute(self, cli_ctx: CliContext) -> Result<()> {
         info!(target: "lattice::cli", "lattice {} starting", crate_version!());
 
@@ -229,7 +258,6 @@ impl Command {
             blockchain_db.clone(),
             transaction_pool.clone(),
             cli_ctx.task_executor.clone(),
-
             // TODO: this is where max gas per block is set
             // also see, PayloadBuilderAttributes.cfg_and_block_env()
             //
@@ -246,13 +274,12 @@ impl Command {
             Arc::clone(&self.chain),
         );
 
-        // payload_builder is the handle for sending PayloadServiceCommands to the spawned payload service task
-        // options: BuildNewPayload, BestPayload, and Resolve
+        // payload_builder is the handle for sending PayloadServiceCommands to the spawned payload
+        // service task options: BuildNewPayload, BestPayload, and Resolve
         let (payload_service, payload_builder) = PayloadBuilderService::new(payload_generator);
 
         debug!(target: "tn::cli", "Spawning payload builder service");
         cli_ctx.task_executor.spawn_critical("payload builder service", payload_service);
-
 
         // see execution/consensus/auto-seal/task.rs:L96 for how to create blocks
         //
@@ -279,7 +306,7 @@ impl Command {
         // .build();
 
         let network_client = NoopFullBlockClient::default();
-        let network = NoopNetwork{};
+        let network = NoopNetwork {};
 
         // Pipeline TODOs
         //  - this is connected with the network and responsible for syncing
@@ -297,7 +324,7 @@ impl Command {
         // passing some to the BeaconConsensusEngine will start the pipeline immediately
         let initial_target = None; // Some(genesis_hash)
         let stubbed_out_network_sync = LatticeNetworkAdapter::default();
-        
+
         // create pipeline_events again before moving pipeline
         let pipeline_events = pipeline.events();
 
@@ -325,13 +352,11 @@ impl Command {
             // network.event_listener().map(Into::into),
             beacon_engine_handle.event_listener().map(Into::into),
             pipeline_events.map(Into::into),
-            ConsensusLayerHealthEvents::new(Box::new(blockchain_db.clone()))
-                .map(Into::into),
+            ConsensusLayerHealthEvents::new(Box::new(blockchain_db.clone())).map(Into::into),
         );
-        cli_ctx.task_executor.spawn_critical(
-            "events task",
-            events::handle_events(None, Some(head.number), events),
-        );
+        cli_ctx
+            .task_executor
+            .spawn_critical("events task", events::handle_events(None, Some(head.number), events));
 
         // //
         // // TODO: engine api may not be necessary when running everything locally
@@ -380,7 +405,8 @@ impl Command {
     }
 
     fn load_config(&self, config_path: &PathBuf) -> Result<Config> {
-        confy::load_path::<Config>(config_path).wrap_err_with(|| format!("Failed to load config: {:?}", config_path))
+        confy::load_path::<Config>(config_path)
+            .wrap_err_with(|| format!("Failed to load config: {:?}", config_path))
     }
 
     // fn build_chain_spec(&self) -> Result<ChainSpec> {
@@ -445,8 +471,8 @@ impl Command {
     //     }
     // }
 
-    // fn initialize_genesis<DB: Database>(&self, db: Arc<DB>, chain: Arc<ChainSpec>) -> Result<()> {
-    //     init_genesis(db.clone(), chain.clone())?;
+    // fn initialize_genesis<DB: Database>(&self, db: Arc<DB>, chain: Arc<ChainSpec>) -> Result<()>
+    // {     init_genesis(db.clone(), chain.clone())?;
     //     let state_root = genesis_state_root(&chain.genesis().alloc);
     //     let block = self.build_genesis_block(state_root);
     //     // let mut tx = Transaction::new(db.as_ref())?;
@@ -516,7 +542,6 @@ impl Command {
         Ok(pipeline)
     }
 
-
     // TODO: remove header/body downloader
     //
     // for now, NarwhalSeal stubbs them out
@@ -551,16 +576,13 @@ impl Command {
         let factory = execution_revm::Factory::new(self.chain.clone());
 
         // TODO: this might be helpful for tracing tx/blocks in revm
-        let stack_config = InspectorStackConfig {
-            use_printer_tracer: false,
-            hook: Hook::None,
-        };
+        let stack_config = InspectorStackConfig { use_printer_tracer: false, hook: Hook::None };
 
         let factory = factory.with_stack_config(stack_config);
 
         // TODO: should this be continuous?
         let header_mode = HeaderSyncMode::Tip(tip_rx);
-            // old: if continuous { HeaderSyncMode::Continuous } else { HeaderSyncMode::Tip(tip_rx) };
+        // old: if continuous { HeaderSyncMode::Continuous } else { HeaderSyncMode::Tip(tip_rx) };
 
         // TODO: clean up pipeline since syncing doesn't need to happen
         //
@@ -647,5 +669,4 @@ impl Command {
             timestamp: header.timestamp,
         })
     }
-
 }

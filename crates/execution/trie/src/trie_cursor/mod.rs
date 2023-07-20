@@ -1,6 +1,6 @@
 use crate::updates::TrieKey;
 use execution_db::{table::Key, DatabaseError};
-use execution_primitives::trie::BranchNodeCompact;
+use tn_types::execution::trie::BranchNodeCompact;
 
 mod account_cursor;
 mod storage_cursor;

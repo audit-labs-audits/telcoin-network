@@ -3,7 +3,6 @@
 // SPDX-License-Identifier: Apache-2.0
 use crate::block_synchronizer::handler::Handler;
 use anyhow::Result;
-use tn_types::consensus::config::{AuthorityIdentifier, Committee, WorkerCache};
 use fastcrypto::hash::Hash;
 use futures::{
     stream::{FuturesOrdered, StreamExt as _},
@@ -11,12 +10,13 @@ use futures::{
 };
 use lattice_network::WorkerRpc;
 use std::{collections::HashSet, sync::Arc};
+use tn_types::consensus::config::{AuthorityIdentifier, Committee, WorkerCache};
 
-use tracing::{debug, instrument};
 use tn_types::consensus::{
     BatchMessage, BlockError, BlockErrorKind, BlockResult, Certificate, CertificateAPI,
     CertificateDigest, HeaderAPI,
 };
+use tracing::{debug, instrument};
 
 #[cfg(test)]
 #[path = "tests/block_waiter_tests.rs"]
@@ -65,13 +65,7 @@ impl<SynchronizerHandler: Handler + Send + Sync + 'static> BlockWaiter<Synchroni
         worker_network: anemo::Network,
         block_synchronizer_handler: Arc<SynchronizerHandler>,
     ) -> BlockWaiter<SynchronizerHandler> {
-        Self {
-            authority_id,
-            committee,
-            worker_cache,
-            worker_network,
-            block_synchronizer_handler,
-        }
+        Self { authority_id, committee, worker_cache, worker_network, block_synchronizer_handler }
     }
 
     /// Retrieves the requested blocks, fetching certificates from other primaries and batches
@@ -83,10 +77,8 @@ impl<SynchronizerHandler: Handler + Send + Sync + 'static> BlockWaiter<Synchroni
 
         let found_certificates: Vec<Certificate> =
             certificates.iter().flat_map(|(_, c)| c).cloned().collect();
-        let sync_result = self
-            .block_synchronizer_handler
-            .synchronize_block_payloads(found_certificates)
-            .await;
+        let sync_result =
+            self.block_synchronizer_handler.synchronize_block_payloads(found_certificates).await;
         let successful_payload_sync_set = sync_result
             .iter()
             .flat_map(|r| r.as_ref().map(|c| c.digest()).ok())
@@ -99,9 +91,7 @@ impl<SynchronizerHandler: Handler + Send + Sync + 'static> BlockWaiter<Synchroni
             })
             .collect();
 
-        Ok(GetBlocksResponse {
-            blocks: block_futures.collect().await,
-        })
+        Ok(GetBlocksResponse { blocks: block_futures.collect().await })
     }
 
     #[instrument(level = "debug", skip_all, fields(certificate_digest = ?certificate_digest), err)]
@@ -117,13 +107,10 @@ impl<SynchronizerHandler: Handler + Send + Sync + 'static> BlockWaiter<Synchroni
             return Err(BlockError {
                 digest: certificate_digest,
                 error: BlockErrorKind::BlockNotFound,
-            });
+            })
         }
         if !synced_payloads {
-            return Err(BlockError {
-                digest: certificate_digest,
-                error: BlockErrorKind::BatchError,
-            });
+            return Err(BlockError { digest: certificate_digest, error: BlockErrorKind::BatchError })
         }
 
         // Send batch requests to workers.
@@ -137,26 +124,20 @@ impl<SynchronizerHandler: Handler + Send + Sync + 'static> BlockWaiter<Synchroni
                 let worker_name = self
                     .worker_cache
                     .worker(
-                        self.committee
-                            .authority(&self.authority_id)
-                            .unwrap()
-                            .protocol_key(),
+                        self.committee.authority(&self.authority_id).unwrap().protocol_key(),
                         worker_id,
                     )
                     .expect("Worker id not found")
                     .name;
-                self.worker_network
-                    .request_batch(worker_name, *batch_digest)
-                    .map(|result| match result {
-                        Ok(Some(batch)) => Ok(BatchMessage {
-                            digest: *batch_digest,
-                            batch,
-                        }),
+                self.worker_network.request_batch(worker_name, *batch_digest).map(|result| {
+                    match result {
+                        Ok(Some(batch)) => Ok(BatchMessage { digest: *batch_digest, batch }),
                         Ok(None) | Err(_) => Err(BlockError {
                             digest: certificate_digest,
                             error: BlockErrorKind::BatchError,
                         }),
-                    })
+                    }
+                })
             })
             .collect();
 
@@ -165,10 +146,7 @@ impl<SynchronizerHandler: Handler + Send + Sync + 'static> BlockWaiter<Synchroni
 
         // Sort batches by digest to make the response deterministic.
         batches.sort_by(|a, b| a.digest.cmp(&b.digest));
-        Ok(GetBlockResponse {
-            digest: certificate_digest,
-            batches,
-        })
+        Ok(GetBlockResponse { digest: certificate_digest, batches })
     }
 
     /// Will fetch the certificates via the block_synchronizer. If the
@@ -183,10 +161,8 @@ impl<SynchronizerHandler: Handler + Send + Sync + 'static> BlockWaiter<Synchroni
     ) -> Vec<(CertificateDigest, Option<Certificate>)> {
         let mut results = Vec::new();
 
-        let block_header_results = self
-            .block_synchronizer_handler
-            .get_and_synchronize_block_headers(digests)
-            .await;
+        let block_header_results =
+            self.block_synchronizer_handler.get_and_synchronize_block_headers(digests).await;
 
         for result in block_header_results {
             if let Ok(certificate) = result {

@@ -1,5 +1,5 @@
 use execution_interfaces::{db::DatabaseError as DbError, provider::ProviderError};
-use execution_primitives::{BlockHash, BlockNumber, H256};
+use tn_types::execution::{BlockHash, BlockNumber, H256};
 use execution_trie::StateRootError;
 use std::fmt::Debug;
 
@@ -11,7 +11,7 @@ mod test {
         tables,
         test_utils::create_test_rw_db,
     };
-    use execution_primitives::{ChainSpecBuilder, IntegerList, H160, MAINNET, U256};
+    use tn_types::execution::{ChainSpecBuilder, IntegerList, H160, MAINNET, U256};
     use std::sync::Arc;
 
     #[test]

@@ -1,9 +1,9 @@
 use crate::config::revm_spec;
-use execution_primitives::{
+use revm::primitives::{AnalysisKind, BlockEnv, CfgEnv, SpecId, TransactTo, TxEnv};
+use tn_types::execution::{
     recover_signer, Address, Bytes, Chain, ChainSpec, Head, Header, Transaction, TransactionKind,
     TransactionSignedEcRecovered, TxEip1559, TxEip2930, TxLegacy, U256,
 };
-use revm::primitives::{AnalysisKind, BlockEnv, CfgEnv, SpecId, TransactTo, TxEnv};
 
 /// Convenience function to call both [fill_cfg_env] and [fill_block_env]
 pub fn fill_cfg_and_block_env(

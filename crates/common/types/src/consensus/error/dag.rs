@@ -1,10 +1,11 @@
+use crate::consensus::{
+    config::Epoch, crypto, CertificateDigest, HeaderDigest, Round, TimestampMs, VoteDigest,
+};
+use fastcrypto::hash::Digest;
+use lattice_common::sync::notify_once::NotifyOnce;
+use lattice_typed_store::StoreError;
 use std::sync::Arc;
 use thiserror::Error;
-use fastcrypto::hash::Digest;
-use lattice_typed_store::StoreError;
-use lattice_common::sync::notify_once::NotifyOnce;
-use crate::consensus::config::Epoch;
-use crate::consensus::{CertificateDigest, HeaderDigest, Round, TimestampMs, VoteDigest, crypto};
 
 /// Return type for dag
 pub type DagResult<T> = Result<T, DagError>;
@@ -87,10 +88,7 @@ pub enum DagError {
     InvalidRound { expected: Round, received: Round },
 
     #[error("Invalid timestamp (created at {created_time}, received at {local_time})")]
-    InvalidTimestamp {
-        created_time: TimestampMs,
-        local_time: TimestampMs,
-    },
+    InvalidTimestamp { created_time: TimestampMs, local_time: TimestampMs },
 
     #[error("Invalid parent {0} (not found in genesis)")]
     InvalidGenesisParent(CertificateDigest),

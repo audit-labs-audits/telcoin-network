@@ -45,8 +45,7 @@ pub fn now() -> TimestampMs {
 #[cfg(test)]
 mod tests {
     use crate::consensus::{
-        Batch, BatchAPI, BatchV1, MetadataAPI, MetadataV1, Timestamp,
-        VersionedMetadata,
+        Batch, BatchAPI, BatchV1, MetadataAPI, MetadataV1, Timestamp, VersionedMetadata,
     };
     use std::time::Duration;
     use tokio::time::sleep;
@@ -62,14 +61,7 @@ mod tests {
 
         sleep(Duration::from_secs(2)).await;
 
-        assert!(
-            batch
-                .versioned_metadata()
-                .created_at()
-                .elapsed()
-                .as_secs_f64()
-                >= 2.0
-        );
+        assert!(batch.versioned_metadata().created_at().elapsed().as_secs_f64() >= 2.0);
     }
 
     #[test]
@@ -84,13 +76,6 @@ mod tests {
             }),
         });
 
-        assert_eq!(
-            batch
-                .versioned_metadata()
-                .created_at()
-                .elapsed()
-                .as_secs_f64(),
-            0.0
-        );
+        assert_eq!(batch.versioned_metadata().created_at().elapsed().as_secs_f64(), 0.0);
     }
 }

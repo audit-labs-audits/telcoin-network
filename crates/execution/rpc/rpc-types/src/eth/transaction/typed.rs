@@ -3,11 +3,11 @@
 //! transaction deserialized from the json input of an RPC call. Depending on what fields are set,
 //! it can be converted into the container type [`TypedTransactionRequest`].
 
-use execution_primitives::{
-    AccessList, Address, Bytes, Transaction, TxEip1559, TxEip2930, TxLegacy, U128, U256,
-};
 use execution_rlp::{BufMut, Decodable, DecodeError, Encodable, RlpDecodable, RlpEncodable};
 use serde::{Deserialize, Serialize};
+use tn_types::execution::{
+    AccessList, Address, Bytes, Transaction, TxEip1559, TxEip2930, TxLegacy, U128, U256,
+};
 
 /// Container type for various Ethereum transaction requests
 ///
@@ -155,11 +155,11 @@ impl Decodable for TransactionKind {
     }
 }
 
-impl From<TransactionKind> for execution_primitives::TransactionKind {
+impl From<TransactionKind> for tn_types::execution::TransactionKind {
     fn from(kind: TransactionKind) -> Self {
         match kind {
-            TransactionKind::Call(to) => execution_primitives::TransactionKind::Call(to),
-            TransactionKind::Create => execution_primitives::TransactionKind::Create,
+            TransactionKind::Call(to) => tn_types::execution::TransactionKind::Call(to),
+            TransactionKind::Create => tn_types::execution::TransactionKind::Create,
         }
     }
 }

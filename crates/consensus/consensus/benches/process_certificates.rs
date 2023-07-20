@@ -6,14 +6,16 @@ use criterion::{
     criterion_group, criterion_main, BenchmarkId, Criterion, SamplingMode, Throughput,
 };
 use fastcrypto::hash::Hash;
+use lattice_test_utils::{
+    latest_protocol_version, make_optimal_certificates, temp_dir, CommitteeFixture,
+};
 use narwhal_consensus as consensus;
 use pprof::criterion::{Output, PProfProfiler};
 use prometheus::Registry;
 use std::{collections::BTreeSet, sync::Arc};
 use storage::NodeStorage;
-use lattice_test_utils::{latest_protocol_version, make_optimal_certificates, temp_dir, CommitteeFixture};
-use tokio::time::Instant;
 use tn_types::consensus::{Certificate, Round};
+use tokio::time::Instant;
 
 pub fn process_certificates(c: &mut Criterion) {
     let mut consensus_group = c.benchmark_group("processing certificates");
@@ -30,10 +32,8 @@ pub fn process_certificates(c: &mut Criterion) {
         let rounds: Round = *size;
 
         // process certificates for rounds, check we don't grow the dag too much
-        let genesis = Certificate::genesis(&committee)
-            .iter()
-            .map(|x| x.digest())
-            .collect::<BTreeSet<_>>();
+        let genesis =
+            Certificate::genesis(&committee).iter().map(|x| x.digest()).collect::<BTreeSet<_>>();
         let (certificates, _next_parents) = make_optimal_certificates(
             &committee,
             &latest_protocol_version(),
@@ -48,10 +48,8 @@ pub fn process_certificates(c: &mut Criterion) {
 
         let mut state = ConsensusState::new(metrics.clone(), gc_depth);
 
-        let data_size: usize = certificates
-            .iter()
-            .map(|cert| bcs::to_bytes(&cert).unwrap().len())
-            .sum();
+        let data_size: usize =
+            certificates.iter().map(|cert| bcs::to_bytes(&cert).unwrap().len()).sum();
         consensus_group.throughput(Throughput::Bytes(data_size as u64));
 
         let mut ordering_engine = Bullshark {

@@ -1,15 +1,15 @@
 use crate::Log as RpcLog;
 use jsonrpsee_types::SubscriptionId;
-use execution_primitives::{
-    bloom::{Bloom, Input},
-    keccak256, Address, BlockNumberOrTag, Log, H160, H256, U256, U64,
-};
 use serde::{
     de::{DeserializeOwned, MapAccess, Visitor},
     ser::SerializeStruct,
     Deserialize, Deserializer, Serialize, Serializer,
 };
 use std::ops::{Range, RangeFrom, RangeTo};
+use tn_types::execution::{
+    bloom::{Bloom, Input},
+    keccak256, Address, BlockNumberOrTag, Log, H160, H256, U256, U64,
+};
 
 /// Helper type to represent a bloom filter used for matching logs.
 pub type BloomFilter = Vec<Option<Bloom>>;
@@ -178,7 +178,7 @@ impl Filter {
     /// Match the latest block only
     ///
     /// ```rust
-    /// # use execution_primitives::BlockNumberOrTag;
+    /// # use tn_types::execution::BlockNumberOrTag;
     /// # use execution_rpc_types::Filter;
     /// # fn main() {
     /// let filter = Filter::new().select(BlockNumberOrTag::Latest);
@@ -188,7 +188,7 @@ impl Filter {
     /// Match a block by its hash
     ///
     /// ```rust
-    /// # use execution_primitives::H256;
+    /// # use tn_types::execution::H256;
     /// # use execution_rpc_types::Filter;
     /// # fn main() {
     /// let filter = Filter::new().select(H256::zero());
@@ -259,7 +259,7 @@ impl Filter {
     /// Match only a specific address `("0xAc4b3DacB91461209Ae9d41EC517c2B9Cb1B7DAF")`
     ///
     /// ```rust
-    /// # use execution_primitives::Address;
+    /// # use tn_types::execution::Address;
     /// # use execution_rpc_types::Filter;
     /// # fn main() {
     /// let filter = Filter::new().address("0xAc4b3DacB91461209Ae9d41EC517c2B9Cb1B7DAF".parse::<Address>().unwrap());
@@ -270,7 +270,7 @@ impl Filter {
     /// "0x8ad599c3A0ff1De082011EFDDc58f1908eb6e6D8"])`
     ///
     /// ```rust
-    /// # use execution_primitives::Address;
+    /// # use tn_types::execution::Address;
     /// # use execution_rpc_types::Filter;
     /// # fn main() {
     /// let addresses = vec!["0xAc4b3DacB91461209Ae9d41EC517c2B9Cb1B7DAF".parse::<Address>().unwrap(),"0x8ad599c3A0ff1De082011EFDDc58f1908eb6e6D8".parse::<Address>().unwrap()];

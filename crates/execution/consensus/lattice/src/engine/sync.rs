@@ -1,21 +1,21 @@
 //! Sync management for the engine implementation.
 
 use crate::engine::metrics::EngineSyncMetrics;
-use futures::FutureExt;
 use execution_db::database::Database;
 use execution_interfaces::p2p::{
     bodies::client::BodiesClient,
     full_block::{FetchFullBlockFuture, FetchFullBlockRangeFuture, FullBlockClient},
     headers::client::HeadersClient,
 };
-use execution_primitives::{BlockNumber, SealedBlock, H256};
 use execution_stages::{ControlFlow, Pipeline, PipelineError, PipelineWithResult};
 use execution_tasks::TaskSpawner;
+use futures::FutureExt;
 use std::{
     cmp::{Ordering, Reverse},
     collections::{binary_heap::PeekMut, BinaryHeap},
     task::{ready, Context, Poll},
 };
+use tn_types::execution::{BlockNumber, SealedBlock, H256};
 use tokio::sync::oneshot;
 use tracing::trace;
 
@@ -387,19 +387,19 @@ impl<DB: Database> PipelineState<DB> {
 mod tests {
     use super::*;
     use assert_matches::assert_matches;
-    use futures::poll;
     use execution_db::{
         mdbx::{Env, WriteMap},
         test_utils::create_test_rw_db,
     };
     use execution_interfaces::{p2p::either::EitherDownloader, test_utils::TestFullBlockClient};
-    use execution_primitives::{
-        stage::StageCheckpoint, BlockBody, ChainSpec, ChainSpecBuilder, SealedHeader, MAINNET,
-    };
     use execution_provider::{test_utils::TestExecutorFactory, PostState};
     use execution_stages::{test_utils::TestStages, ExecOutput, StageError};
     use execution_tasks::TokioTaskExecutor;
+    use futures::poll;
     use std::{collections::VecDeque, future::poll_fn, sync::Arc};
+    use tn_types::execution::{
+        stage::StageCheckpoint, BlockBody, ChainSpec, ChainSpecBuilder, SealedHeader, MAINNET,
+    };
     use tokio::sync::watch;
 
     struct TestPipelineBuilder {

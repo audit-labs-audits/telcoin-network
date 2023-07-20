@@ -6,11 +6,11 @@ use crate::p2p::{
     priority::Priority,
 };
 use parking_lot::Mutex;
-use execution_primitives::{
+use std::{collections::HashMap, sync::Arc};
+use tn_types::execution::{
     BlockBody, BlockHashOrNumber, BlockNumHash, Header, HeadersDirection, PeerId, SealedBlock,
     SealedHeader, WithPeerId, H256,
 };
-use std::{collections::HashMap, sync::Arc};
 
 /// A headers+bodies client implementation that does nothing.
 #[derive(Debug, Default, Clone)]

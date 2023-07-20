@@ -4,7 +4,7 @@ use execution_db::{
     tables,
     transaction::{DbTx, DbTxGAT},
 };
-use execution_primitives::{Account, StorageEntry, H256};
+use tn_types::execution::{Account, StorageEntry, H256};
 
 impl<'a, 'tx, TX: DbTx<'tx>> HashedCursorFactory<'a> for TX {
     type AccountCursor = <TX as DbTxGAT<'a>>::Cursor<tables::HashedAccount> where Self: 'a;

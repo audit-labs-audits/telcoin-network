@@ -11,7 +11,6 @@ use execution_discv4::{Discv4Config, Discv4ConfigBuilder, DEFAULT_DISCOVERY_PORT
 use execution_dns_discovery::DnsDiscoveryConfig;
 use execution_ecies::util::pk2id;
 use execution_eth_wire::{HelloMessage, Status};
-use execution_primitives::{ChainSpec, ForkFilter, Head, NodeRecord, PeerId, MAINNET};
 use execution_provider::{BlockReader, HeaderProvider};
 use execution_tasks::{TaskSpawner, TokioTaskExecutor};
 use secp256k1::SECP256K1;
@@ -20,6 +19,7 @@ use std::{
     net::{Ipv4Addr, SocketAddr, SocketAddrV4},
     sync::Arc,
 };
+use tn_types::execution::{ChainSpec, ForkFilter, Head, NodeRecord, PeerId, MAINNET};
 // re-export for convenience
 pub use secp256k1::SecretKey;
 
@@ -431,11 +431,11 @@ impl NetworkMode {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use rand::thread_rng;
     use execution_dns_discovery::tree::LinkEntry;
-    use execution_primitives::{Chain, ForkHash};
     use execution_provider::test_utils::NoopProvider;
+    use rand::thread_rng;
     use std::collections::BTreeMap;
+    use tn_types::execution::{Chain, ForkHash};
 
     fn builder() -> NetworkConfigBuilder {
         let secret_key = SecretKey::new(&mut thread_rng());

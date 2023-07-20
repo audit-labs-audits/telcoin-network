@@ -77,7 +77,8 @@ impl Attributes {
     }
 }
 
-// Generates attributes given a list of (`pattern`, `attribute`) pairs. If `pattern` matches `name`, `attribute` will be included.
+// Generates attributes given a list of (`pattern`, `attribute`) pairs. If `pattern` matches `name`,
+// `attribute` will be included.
 fn generate_attributes<'a>(
     name: &str,
     attrs: impl IntoIterator<Item = &'a (String, String)>,
@@ -87,9 +88,7 @@ fn generate_attributes<'a>(
         .filter(|(matcher, _)| match_name(matcher, name))
         .flat_map(|(_, attr)| {
             // attributes cannot be parsed directly, so we pretend they're on a struct
-            syn::parse_str::<syn::DeriveInput>(&format!("{attr}\nstruct fake;"))
-                .unwrap()
-                .attrs
+            syn::parse_str::<syn::DeriveInput>(&format!("{attr}\nstruct fake;")).unwrap().attrs
         })
         .collect::<Vec<_>>()
 }

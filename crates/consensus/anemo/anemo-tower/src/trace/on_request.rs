@@ -46,9 +46,7 @@ pub struct DefaultOnRequest {
 
 impl Default for DefaultOnRequest {
     fn default() -> Self {
-        Self {
-            level: DEFAULT_MESSAGE_LEVEL,
-        }
+        Self { level: DEFAULT_MESSAGE_LEVEL }
     }
 }
 

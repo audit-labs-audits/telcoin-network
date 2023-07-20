@@ -3,11 +3,11 @@
 // Copyright (c) Mysten Labs, Inc.
 // SPDX-License-Identifier: Apache-2.0
 use axum::{http::StatusCode, routing::get, Extension, Router};
-use tn_types::consensus::config::{AuthorityIdentifier, WorkerId};
 use consensus_metrics::spawn_logged_monitored_task;
 use consensus_network::multiaddr::Multiaddr;
 use prometheus::{Registry, TextEncoder};
 use std::collections::HashMap;
+use tn_types::consensus::config::{AuthorityIdentifier, WorkerId};
 use tokio::task::JoinHandle;
 
 const METRICS_ROUTE: &str = "/metrics";
@@ -35,20 +35,13 @@ pub fn worker_metrics_registry(worker_id: WorkerId, authority_id: AuthorityIdent
 
 #[must_use]
 pub fn start_prometheus_server(addr: Multiaddr, registry: &Registry) -> JoinHandle<()> {
-    let app = Router::new()
-        .route(METRICS_ROUTE, get(metrics))
-        .layer(Extension(registry.clone()));
+    let app = Router::new().route(METRICS_ROUTE, get(metrics)).layer(Extension(registry.clone()));
 
-    let socket_addr = addr
-        .to_socket_addr()
-        .expect("failed to convert Multiaddr to SocketAddr");
+    let socket_addr = addr.to_socket_addr().expect("failed to convert Multiaddr to SocketAddr");
 
     spawn_logged_monitored_task!(
         async move {
-            axum::Server::bind(&socket_addr)
-                .serve(app.into_make_service())
-                .await
-                .unwrap();
+            axum::Server::bind(&socket_addr).serve(app.into_make_service()).await.unwrap();
         },
         "MetricsServerTask"
     )
@@ -58,9 +51,8 @@ async fn metrics(registry: Extension<Registry>) -> (StatusCode, String) {
     let metrics_families = registry.gather();
     match TextEncoder.encode_to_string(&metrics_families) {
         Ok(metrics) => (StatusCode::OK, metrics),
-        Err(error) => (
-            StatusCode::INTERNAL_SERVER_ERROR,
-            format!("unable to encode metrics: {error}"),
-        ),
+        Err(error) => {
+            (StatusCode::INTERNAL_SERVER_ERROR, format!("unable to encode metrics: {error}"))
+        }
     }
 }

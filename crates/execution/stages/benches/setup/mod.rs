@@ -1,4 +1,3 @@
-use itertools::concat;
 use execution_db::{
     cursor::DbCursorRO,
     tables,
@@ -12,7 +11,6 @@ use execution_interfaces::test_utils::{
         random_transition_range,
     },
 };
-use execution_primitives::{Account, Address, SealedBlock, H256, MAINNET};
 use execution_provider::ProviderFactory;
 use execution_stages::{
     stages::{AccountHashingStage, StorageHashingStage},
@@ -20,10 +18,12 @@ use execution_stages::{
     ExecInput, Stage, UnwindInput,
 };
 use execution_trie::StateRoot;
+use itertools::concat;
 use std::{
     collections::BTreeMap,
     path::{Path, PathBuf},
 };
+use tn_types::execution::{Account, Address, SealedBlock, H256, MAINNET};
 
 mod constants;
 
@@ -173,7 +173,7 @@ pub(crate) fn txs_testdata(num_blocks: u64) -> PathBuf {
         // initialize TD
         tx.commit(|tx| {
             let (head, _) = tx.cursor_read::<tables::Headers>()?.first()?.unwrap_or_default();
-            tx.put::<tables::HeaderTD>(head, execution_primitives::U256::from(0).into())
+            tx.put::<tables::HeaderTD>(head, tn_types::execution::U256::from(0).into())
         })
         .unwrap();
     }

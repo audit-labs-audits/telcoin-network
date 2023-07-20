@@ -1,12 +1,11 @@
 //! Discovery support for the network.
 
 use crate::error::{NetworkError, ServiceKind};
-use futures::StreamExt;
 use execution_discv4::{DiscoveryUpdate, Discv4, Discv4Config, EnrForkIdEntry};
 use execution_dns_discovery::{
     DnsDiscoveryConfig, DnsDiscoveryHandle, DnsDiscoveryService, DnsNodeRecordUpdate, DnsResolver,
 };
-use execution_primitives::{ForkId, NodeRecord, PeerId};
+use futures::StreamExt;
 use secp256k1::SecretKey;
 use std::{
     collections::{hash_map::Entry, HashMap, VecDeque},
@@ -14,6 +13,7 @@ use std::{
     sync::Arc,
     task::{Context, Poll},
 };
+use tn_types::execution::{ForkId, NodeRecord, PeerId};
 use tokio::task::JoinHandle;
 use tokio_stream::wrappers::ReceiverStream;
 
@@ -46,8 +46,8 @@ pub struct Discovery {
 impl Discovery {
     /// Spawns the discovery service.
     ///
-    /// This will spawn the [`execution_discv4::Discv4Service`] onto a new task and establish a listener
-    /// channel to receive all discovered nodes.
+    /// This will spawn the [`execution_discv4::Discv4Service`] onto a new task and establish a
+    /// listener channel to receive all discovered nodes.
     pub async fn new(
         discovery_addr: SocketAddr,
         sk: SecretKey,

@@ -1,8 +1,8 @@
 use criterion::{criterion_group, criterion_main, Criterion};
+use execution_rlp::Decodable;
 use hex_literal::hex;
 use pprof::criterion::{Output, PProfProfiler};
 use tn_types::execution::TransactionSigned;
-use execution_rlp::Decodable;
 
 /// Benchmarks the recovery of the public key from the ECDSA message using criterion.
 pub fn criterion_benchmark(c: &mut Criterion) {

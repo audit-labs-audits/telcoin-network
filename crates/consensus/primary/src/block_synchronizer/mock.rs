@@ -2,12 +2,12 @@
 // Copyright (c) Mysten Labs, Inc.
 // SPDX-License-Identifier: Apache-2.0
 use crate::block_synchronizer::{BlockHeader, BlockSynchronizeResult, Command};
-use fastcrypto::hash::Hash;
 use consensus_metrics::metered_channel;
+use fastcrypto::hash::Hash;
 use prometheus::IntGauge;
 use std::collections::HashMap;
-use tokio::sync::oneshot;
 use tn_types::consensus::CertificateDigest;
+use tokio::sync::oneshot;
 
 #[derive(Debug)]
 enum Core {
@@ -121,29 +121,20 @@ impl MockBlockSynchronizerCore {
 
         for (digests, results) in &self.block_headers_expected_requests {
             result.push_str(
-                format!(
-                    "SynchronizeBlockHeaders, digests={:?}, results={:?}",
-                    digests, results
-                )
-                .as_str(),
+                format!("SynchronizeBlockHeaders, digests={:?}, results={:?}", digests, results)
+                    .as_str(),
             );
         }
 
         for (digests, results) in &self.block_payload_expected_requests {
             result.push_str(
-                format!(
-                    "SynchronizeBlockPayload, digests={:?}, results={:?}",
-                    digests, results
-                )
-                .as_str(),
+                format!("SynchronizeBlockPayload, digests={:?}, results={:?}", digests, results)
+                    .as_str(),
             );
         }
 
         if !result.is_empty() {
-            panic!(
-                "There are expected calls that haven't been fulfilled \n\n {}",
-                result
-            );
+            panic!("There are expected calls that haven't been fulfilled \n\n {}", result);
         }
     }
 }
@@ -187,12 +178,7 @@ impl MockBlockSynchronizer {
     ) {
         let (tx, rx) = oneshot::channel();
         self.tx_core
-            .send(Core::SynchronizeBlockHeaders {
-                digests,
-                times,
-                result,
-                ready: tx,
-            })
+            .send(Core::SynchronizeBlockHeaders { digests, times, result, ready: tx })
             .await
             .expect("Failed to send mock expectation");
 
@@ -214,12 +200,7 @@ impl MockBlockSynchronizer {
     ) {
         let (tx, rx) = oneshot::channel();
         self.tx_core
-            .send(Core::SynchronizeBlockPayload {
-                digests,
-                times,
-                result,
-                ready: tx,
-            })
+            .send(Core::SynchronizeBlockPayload { digests, times, result, ready: tx })
             .await
             .expect("Failed to send mock expectation");
 

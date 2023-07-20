@@ -1,24 +1,24 @@
 //! Support for handling events emitted by node components.
 
 use super::cl_events::ConsensusLayerHealthEvent;
-use futures::Stream;
-use execution_lattice_consensus::LatticeConsensusEngineEvent;
 use execution_interfaces::consensus::ForkchoiceState;
+use execution_lattice_consensus::LatticeConsensusEngineEvent;
 use execution_network::{NetworkEvent, NetworkHandle};
 use execution_network_api::PeersInfo;
-use execution_primitives::{
-    stage::{EntitiesCheckpoint, StageCheckpoint, StageId},
-    BlockNumber,
-};
 use execution_stages::{ExecOutput, PipelineEvent};
+use futures::Stream;
 use std::{
     future::Future,
     pin::Pin,
     task::{Context, Poll},
     time::{Duration, Instant},
 };
+use tn_types::execution::{
+    stage::{EntitiesCheckpoint, StageCheckpoint, StageId},
+    BlockNumber,
+};
 use tokio::time::Interval;
-use lattice_tracing::tracing::{info, warn};
+use tracing::{info, warn};
 
 /// Interval of reporting node state.
 const INFO_MESSAGE_INTERVAL: Duration = Duration::from_secs(30);
@@ -132,10 +132,10 @@ impl NodeState {
             }
             LatticeConsensusEngineEvent::BatchVerified(batch) => {
                 info!(?batch, "Batch verified");
-            },
+            }
             LatticeConsensusEngineEvent::BatchCreated(batch) => {
                 info!(?batch, "Batch created");
-            },
+            }
         }
     }
 
@@ -243,7 +243,10 @@ where
             } else {
                 info!(
                     connected_peers = this.state.num_connected_peers(),
-                    latest_block = this.state.latest_canonical_engine_block.unwrap_or(this.state.current_checkpoint.block_number),
+                    latest_block = this
+                        .state
+                        .latest_canonical_engine_block
+                        .unwrap_or(this.state.current_checkpoint.block_number),
                     "Status"
                 );
             }

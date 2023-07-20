@@ -4,7 +4,7 @@ use crate::{
     consensus::ConsensusError,
     executor::{BlockExecutionError, BlockValidationError},
 };
-use execution_primitives::{BlockHash, BlockNumber, SealedBlock};
+use tn_types::execution::{BlockHash, BlockNumber, SealedBlock};
 
 /// Various error cases that can occur when a block violates tree assumptions.
 #[derive(Debug, Clone, Copy, thiserror::Error, Eq, PartialEq)]

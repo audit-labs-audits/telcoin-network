@@ -1,19 +1,27 @@
 use crate::consensus::{
+    config::{AuthorityIdentifier, Committee, Epoch, Stake, WorkerCache},
+    crypto::{
+        self, to_intent_message, AggregateSignature, AggregateSignatureBytes,
+        NarwhalAuthorityAggregateSignature, PublicKey, Signature,
+    },
+    dag::node_dag::Affiliated,
     error::{DagError, DagResult},
-    serde::NarwhalBitmap, crypto::{self, Signature, PublicKey, AggregateSignatureBytes, AggregateSignature, NarwhalAuthorityAggregateSignature, to_intent_message},
-    CertificateDigestProto, Header, TimestampMs, HeaderV1, Round, now, HeaderAPI,
+    now,
+    serde::NarwhalBitmap,
+    CertificateDigestProto, Header, HeaderAPI, HeaderV1, Round, TimestampMs,
 };
 use bytes::Bytes;
-use crate::consensus::config::{AuthorityIdentifier, Committee, Epoch, Stake, WorkerCache};
-use crate::consensus::dag::node_dag::Affiliated;
-use enum_dispatch::enum_dispatch;
-use fastcrypto::{hash::{Digest, Hash}, traits::AggregateAuthenticator};
 use consensus_util_mem::MallocSizeOf;
+use enum_dispatch::enum_dispatch;
+use fastcrypto::{
+    hash::{Digest, Hash},
+    traits::AggregateAuthenticator,
+};
+#[cfg(any(test, feature = "arbitrary"))]
+use proptest_derive::Arbitrary;
 use serde::{Deserialize, Serialize};
 use serde_with::serde_as;
 use std::{collections::VecDeque, fmt};
-#[cfg(any(test, feature = "arbitrary"))]
-use proptest_derive::Arbitrary;
 
 #[derive(Clone, Serialize, Deserialize, MallocSizeOf)]
 #[enum_dispatch(CertificateAPI)]
@@ -31,10 +39,7 @@ impl Default for Certificate {
 impl Certificate {
     // TODO: Add version number and match on that
     pub fn genesis(committee: &Committee) -> Vec<Self> {
-        CertificateV1::genesis(committee)
-            .into_iter()
-            .map(Self::V1)
-            .collect()
+        CertificateV1::genesis(committee).into_iter().map(Self::V1).collect()
     }
 
     pub fn new_unverified(
@@ -187,14 +192,8 @@ impl CertificateV1 {
     }
 
     pub fn new_test_empty(author: AuthorityIdentifier) -> Certificate {
-        let header = Header::V1(HeaderV1 {
-            author,
-            ..Default::default()
-        });
-        Certificate::V1(CertificateV1 {
-            header,
-            ..Default::default()
-        })
+        let header = Header::V1(HeaderV1 { author, ..Default::default() });
+        Certificate::V1(CertificateV1 { header, ..Default::default() })
     }
 
     fn new_unsafe(
@@ -221,7 +220,7 @@ impl CertificateV1 {
                     while !votes.is_empty() && votes.front().unwrap() == sigs.last().unwrap() {
                         votes.pop_front().unwrap();
                     }
-                    return true;
+                    return true
                 }
                 false
             })
@@ -231,10 +230,7 @@ impl CertificateV1 {
             .map_err(|_| DagError::InvalidBitmap("Failed to convert votes into a bitmap of authority keys. Something is likely very wrong...".to_string()))?;
 
         // Ensure that all authorities in the set of votes are known
-        ensure!(
-            votes.is_empty(),
-            DagError::UnknownAuthority(votes.front().unwrap().0.to_string())
-        );
+        ensure!(votes.is_empty(), DagError::UnknownAuthority(votes.front().unwrap().0.to_string()));
 
         // Ensure that the authorities have enough weight
         ensure!(
@@ -294,15 +290,12 @@ impl CertificateV1 {
         // Ensure the header is from the correct epoch.
         ensure!(
             self.epoch() == committee.epoch(),
-            DagError::InvalidEpoch {
-                expected: committee.epoch(),
-                received: self.epoch()
-            }
+            DagError::InvalidEpoch { expected: committee.epoch(), received: self.epoch() }
         );
 
         // Genesis certificates are always valid.
         if self.round() == 0 && Self::genesis(committee).contains(self) {
-            return Ok(());
+            return Ok(())
         }
 
         // Save signature verifications when the header is invalid.
@@ -310,10 +303,7 @@ impl CertificateV1 {
 
         let (weight, pks) = self.signed_by(committee);
 
-        ensure!(
-            weight >= committee.quorum_threshold(),
-            DagError::CertificateRequiresQuorum
-        );
+        ensure!(weight >= committee.quorum_threshold(), DagError::CertificateRequiresQuorum);
 
         // Verify the signatures
         let certificate_digest: Digest<{ crypto::DIGEST_LENGTH }> = Digest::from(self.digest());
@@ -340,17 +330,7 @@ impl CertificateV1 {
 
 #[cfg_attr(any(test, feature = "arbitrary"), derive(Arbitrary))]
 #[derive(
-    Clone,
-    Copy,
-    Serialize,
-    Deserialize,
-    Default,
-    MallocSizeOf,
-    PartialEq,
-    Eq,
-    Hash,
-    PartialOrd,
-    Ord,
+    Clone, Copy, Serialize, Deserialize, Default, MallocSizeOf, PartialEq, Eq, Hash, PartialOrd, Ord,
 )]
 
 pub struct CertificateDigest([u8; crypto::DIGEST_LENGTH]);
@@ -375,9 +355,7 @@ impl From<CertificateDigest> for Digest<{ crypto::DIGEST_LENGTH }> {
 
 impl From<CertificateDigest> for CertificateDigestProto {
     fn from(hd: CertificateDigest) -> Self {
-        CertificateDigestProto {
-            digest: Bytes::from(hd.0.to_vec()),
-        }
+        CertificateDigestProto { digest: Bytes::from(hd.0.to_vec()) }
     }
 }
 
@@ -389,11 +367,7 @@ impl fmt::Debug for CertificateDigest {
 
 impl fmt::Display for CertificateDigest {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> Result<(), fmt::Error> {
-        write!(
-            f,
-            "{}",
-            base64::encode(self.0).get(0..16).ok_or(fmt::Error)?
-        )
+        write!(f, "{}", base64::encode(self.0).get(0..16).ok_or(fmt::Error)?)
     }
 }
 
@@ -455,4 +429,3 @@ impl Affiliated for Certificate {
         }
     }
 }
-

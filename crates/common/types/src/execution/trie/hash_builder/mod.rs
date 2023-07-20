@@ -2,7 +2,7 @@ use super::{
     nodes::{rlp_hash, BranchNode, ExtensionNode, LeafNode},
     BranchNodeCompact, Nibbles, TrieMask,
 };
-use crate::execution ::{keccak256, proofs::EMPTY_ROOT, H256};
+use crate::execution::{keccak256, proofs::EMPTY_ROOT, H256};
 use std::{collections::HashMap, fmt::Debug};
 
 mod state;
@@ -415,7 +415,7 @@ impl HashBuilder {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::execution ::{hex_literal::hex, proofs::KeccakHasher, H256, U256};
+    use crate::execution::{hex_literal::hex, proofs::KeccakHasher, H256, U256};
     use proptest::prelude::*;
     use std::collections::{BTreeMap, HashMap};
 
@@ -589,7 +589,7 @@ mod tests {
         // Manually create the branch node that should be there after the first 2 leaves are added.
         // Skip the 0th element given in this example they have a common prefix and will
         // collapse to a Branch node.
-        use crate::execution ::bytes::BytesMut;
+        use crate::execution::bytes::BytesMut;
         use execution_rlp::Encodable;
         let leaf1 = LeafNode::new(&Nibbles::unpack(&raw_input[0].0[1..]), input[0].1);
         let leaf2 = LeafNode::new(&Nibbles::unpack(&raw_input[1].0[1..]), input[1].1);

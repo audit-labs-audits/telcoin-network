@@ -203,15 +203,11 @@ impl Method {
     }
 
     pub fn request_type(&self) -> TokenStream {
-        syn::parse_str::<syn::Type>(&self.request_type)
-            .unwrap()
-            .to_token_stream()
+        syn::parse_str::<syn::Type>(&self.request_type).unwrap().to_token_stream()
     }
 
     pub fn response_type(&self) -> TokenStream {
-        syn::parse_str::<syn::Type>(&self.response_type)
-            .unwrap()
-            .to_token_stream()
+        syn::parse_str::<syn::Type>(&self.response_type).unwrap().to_token_stream()
     }
 
     pub fn server_handler_return_raw_bytes(&self) -> bool {
@@ -312,7 +308,8 @@ impl MethodBuilder {
 
     /// Build a Method
     ///
-    /// Panics if `name`, `route_name`, `request_type`, `response_type`, or `codec_path` weren't set.
+    /// Panics if `name`, `route_name`, `request_type`, `response_type`, or `codec_path` weren't
+    /// set.
     pub fn build(self) -> Method {
         Method {
             name: self.name.unwrap(),
@@ -387,11 +384,7 @@ pub struct Builder {
 
 impl Default for Builder {
     fn default() -> Self {
-        Self {
-            build_server: true,
-            build_client: true,
-            out_dir: None,
-        }
+        Self { build_server: true, build_client: true, out_dir: None }
     }
 }
 

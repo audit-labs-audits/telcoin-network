@@ -7,12 +7,12 @@ use execution_db::{
     DatabaseError,
 };
 use execution_interfaces::{consensus::Consensus, provider::ProviderError};
-use execution_primitives::{
+use execution_provider::DatabaseProviderRW;
+use std::sync::Arc;
+use tn_types::execution::{
     stage::{EntitiesCheckpoint, StageCheckpoint, StageId},
     U256,
 };
-use execution_provider::DatabaseProviderRW;
-use std::sync::Arc;
 use tracing::*;
 
 /// The total difficulty stage.
@@ -130,8 +130,8 @@ mod tests {
         generators::{random_header, random_header_range},
         TestConsensus,
     };
-    use execution_primitives::{stage::StageUnitCheckpoint, BlockNumber, SealedHeader};
     use execution_provider::HeaderProvider;
+    use tn_types::execution::{stage::StageUnitCheckpoint, BlockNumber, SealedHeader};
 
     use super::*;
     use crate::test_utils::{

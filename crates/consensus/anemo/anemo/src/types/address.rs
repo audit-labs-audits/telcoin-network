@@ -39,12 +39,12 @@ impl std::net::ToSocketAddrs for Address {
     fn to_socket_addrs(&self) -> std::io::Result<Self::Iter> {
         match self {
             Address::SocketAddr(addr) => Ok(Box::new(std::iter::once(*addr))),
-            Address::HostAndPort { host, port } => (host.as_ref(), *port)
-                .to_socket_addrs()
-                .map(|iter| Box::new(iter) as Self::Iter),
-            Address::AddressString(addr) => addr
-                .to_socket_addrs()
-                .map(|iter| Box::new(iter) as Self::Iter),
+            Address::HostAndPort { host, port } => {
+                (host.as_ref(), *port).to_socket_addrs().map(|iter| Box::new(iter) as Self::Iter)
+            }
+            Address::AddressString(addr) => {
+                addr.to_socket_addrs().map(|iter| Box::new(iter) as Self::Iter)
+            }
         }
     }
 }
@@ -87,28 +87,19 @@ impl From<(std::net::Ipv6Addr, u16)> for Address {
 
 impl<'a> From<(&'a str, u16)> for Address {
     fn from(addr: (&'a str, u16)) -> Self {
-        Self::HostAndPort {
-            host: addr.0.into(),
-            port: addr.1,
-        }
+        Self::HostAndPort { host: addr.0.into(), port: addr.1 }
     }
 }
 
 impl From<(Box<str>, u16)> for Address {
     fn from(addr: (Box<str>, u16)) -> Self {
-        Self::HostAndPort {
-            host: addr.0,
-            port: addr.1,
-        }
+        Self::HostAndPort { host: addr.0, port: addr.1 }
     }
 }
 
 impl From<(String, u16)> for Address {
     fn from(addr: (String, u16)) -> Self {
-        Self::HostAndPort {
-            host: addr.0.into(),
-            port: addr.1,
-        }
+        Self::HostAndPort { host: addr.0.into(), port: addr.1 }
     }
 }
 

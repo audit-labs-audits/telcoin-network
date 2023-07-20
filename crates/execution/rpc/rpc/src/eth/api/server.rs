@@ -9,12 +9,7 @@ use crate::{
     },
     result::{internal_rpc_err, ToRpcResult},
 };
-use jsonrpsee::core::RpcResult as Result;
 use execution_network_api::NetworkInfo;
-use execution_primitives::{
-    serde_helper::{num::U64HexOrNumber, JsonStorageKey},
-    AccessListWithGasUsed, Address, BlockId, BlockNumberOrTag, Bytes, H256, H64, U256, U64,
-};
 use execution_provider::{
     BlockIdReader, BlockReader, BlockReaderIdExt, EvmEnvProvider, HeaderProvider,
     StateProviderFactory,
@@ -25,7 +20,12 @@ use execution_rpc_types::{
     Index, RichBlock, SyncStatus, TransactionReceipt, TransactionRequest, Work,
 };
 use execution_transaction_pool::TransactionPool;
+use jsonrpsee::core::RpcResult as Result;
 use serde_json::Value;
+use tn_types::execution::{
+    serde_helper::{num::U64HexOrNumber, JsonStorageKey},
+    AccessListWithGasUsed, Address, BlockId, BlockNumberOrTag, Bytes, H256, H64, U256, U64,
+};
 use tracing::trace;
 
 #[async_trait::async_trait]
@@ -152,7 +152,10 @@ where
     }
 
     /// Handler for: `eth_getTransactionByHash`
-    async fn transaction_by_hash(&self, hash: H256) -> Result<Option<execution_rpc_types::Transaction>> {
+    async fn transaction_by_hash(
+        &self,
+        hash: H256,
+    ) -> Result<Option<execution_rpc_types::Transaction>> {
         trace!(target: "rpc::eth", ?hash, "Serving eth_getTransactionByHash");
         Ok(EthTransactions::transaction_by_hash(self, hash).await?.map(Into::into))
     }
@@ -394,13 +397,8 @@ mod tests {
         eth::{cache::EthStateCache, gas_oracle::GasPriceOracle},
         EthApi,
     };
-    use jsonrpsee::types::error::INVALID_PARAMS_CODE;
     use execution_interfaces::test_utils::{generators, generators::Rng};
     use execution_network_api::noop::NoopNetwork;
-    use execution_primitives::{
-        basefee::calculate_next_block_base_fee, Block, BlockNumberOrTag, Header, TransactionSigned,
-        H256, U256,
-    };
     use execution_provider::{
         test_utils::{MockEthProvider, NoopProvider},
         BlockReader, BlockReaderIdExt, EvmEnvProvider, StateProviderFactory,
@@ -408,6 +406,11 @@ mod tests {
     use execution_rpc_api::EthApiServer;
     use execution_rpc_types::FeeHistory;
     use execution_transaction_pool::test_utils::{testing_pool, TestPool};
+    use jsonrpsee::types::error::INVALID_PARAMS_CODE;
+    use tn_types::execution::{
+        basefee::calculate_next_block_base_fee, Block, BlockNumberOrTag, Header, TransactionSigned,
+        H256, U256,
+    };
 
     fn build_test_eth_api<
         P: BlockReaderIdExt
@@ -483,8 +486,8 @@ mod tests {
 
                 if let Some(base_fee_per_gas) = header.base_fee_per_gas {
                     let transaction = TransactionSigned {
-                        transaction: execution_primitives::Transaction::Eip1559(
-                            execution_primitives::TxEip1559 {
+                        transaction: tn_types::execution::Transaction::Eip1559(
+                            tn_types::execution::TxEip1559 {
                                 max_priority_fee_per_gas: random_fee,
                                 max_fee_per_gas: random_fee + base_fee_per_gas as u128,
                                 ..Default::default()
@@ -496,8 +499,8 @@ mod tests {
                     transactions.push(transaction);
                 } else {
                     let transaction = TransactionSigned {
-                        transaction: execution_primitives::Transaction::Legacy(
-                            execution_primitives::TxLegacy { ..Default::default() },
+                        transaction: tn_types::execution::Transaction::Legacy(
+                            tn_types::execution::TxLegacy { ..Default::default() },
                         ),
                         ..Default::default()
                     };

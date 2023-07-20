@@ -1,13 +1,13 @@
 //! Disconnect
 
 use bytes::Bytes;
-use futures::{Sink, SinkExt};
 use execution_codecs::derive_arbitrary;
 use execution_ecies::stream::ECIESStream;
-use execution_primitives::bytes::{Buf, BufMut};
 use execution_rlp::{Decodable, DecodeError, Encodable, Header};
+use futures::{Sink, SinkExt};
 use std::fmt::Display;
 use thiserror::Error;
+use tn_types::execution::bytes::{Buf, BufMut};
 use tokio::io::AsyncWrite;
 use tokio_util::codec::{Encoder, Framed};
 
@@ -117,8 +117,8 @@ impl Encodable for DisconnectReason {
     }
 }
 
-/// The [`Decodable`](execution_rlp::Decodable) implementation for [`DisconnectReason`] supports either
-/// a disconnect reason encoded a single byte or a RLP list containing the disconnect reason.
+/// The [`Decodable`](execution_rlp::Decodable) implementation for [`DisconnectReason`] supports
+/// either a disconnect reason encoded a single byte or a RLP list containing the disconnect reason.
 impl Decodable for DisconnectReason {
     fn decode(buf: &mut &[u8]) -> Result<Self, DecodeError> {
         if buf.is_empty() {
@@ -190,8 +190,8 @@ where
 #[cfg(test)]
 mod tests {
     use crate::{p2pstream::P2PMessage, DisconnectReason};
-    use execution_primitives::hex;
     use execution_rlp::{Decodable, Encodable};
+    use tn_types::execution::hex;
 
     fn all_reasons() -> Vec<DisconnectReason> {
         vec![

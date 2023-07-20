@@ -1,5 +1,5 @@
 #![allow(unused)]
-use execution_primitives::stage::StageId;
+use tn_types::execution::stage::StageId;
 
 mod macros;
 pub(crate) use macros::*;

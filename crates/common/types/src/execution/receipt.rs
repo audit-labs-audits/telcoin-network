@@ -1,4 +1,4 @@
-use crate::execution ::{
+use crate::execution::{
     bloom::logs_bloom,
     compression::{RECEIPT_COMPRESSOR, RECEIPT_DECOMPRESSOR},
     Bloom, Log, TxType,
@@ -53,7 +53,6 @@ impl From<Receipt> for ReceiptWithBloom {
 
 /// [`Receipt`] with calculated bloom filter.
 #[main_codec]
-#[cfg_attr(any(test, feature = "arbitrary"), derive(Arbitrary))]
 #[derive(Clone, Debug, PartialEq, Eq, Default)]
 pub struct ReceiptWithBloom {
     /// Bloom filter build from logs.
@@ -91,7 +90,10 @@ impl ReceiptWithBloom {
     }
 
     /// Decodes the receipt payload
-    fn decode_receipt(buf: &mut &[u8], tx_type: TxType) -> Result<Self, execution_rlp::DecodeError> {
+    fn decode_receipt(
+        buf: &mut &[u8],
+        tx_type: TxType,
+    ) -> Result<Self, execution_rlp::DecodeError> {
         let b = &mut &**buf;
         let rlp_head = execution_rlp::Header::decode(b)?;
         if !rlp_head.list {
@@ -131,9 +133,9 @@ impl Decodable for ReceiptWithBloom {
         // a receipt is either encoded as a string (non legacy) or a list (legacy).
         // We should not consume the buffer if we are decoding a legacy receipt, so let's
         // check if the first byte is between 0x80 and 0xbf.
-        let rlp_type = *buf
-            .first()
-            .ok_or(execution_rlp::DecodeError::Custom("cannot decode a receipt from empty bytes"))?;
+        let rlp_type = *buf.first().ok_or(execution_rlp::DecodeError::Custom(
+            "cannot decode a receipt from empty bytes",
+        ))?;
 
         match rlp_type.cmp(&execution_rlp::EMPTY_LIST_CODE) {
             Ordering::Less => {
@@ -152,9 +154,9 @@ impl Decodable for ReceiptWithBloom {
                     Err(execution_rlp::DecodeError::Custom("invalid receipt type"))
                 }
             }
-            Ordering::Equal => {
-                Err(execution_rlp::DecodeError::Custom("an empty list is not a valid receipt encoding"))
-            }
+            Ordering::Equal => Err(execution_rlp::DecodeError::Custom(
+                "an empty list is not a valid receipt encoding",
+            )),
             Ordering::Greater => Self::decode_receipt(buf, TxType::Legacy),
         }
     }
@@ -284,7 +286,7 @@ impl<'a> Encodable for ReceiptWithBloomEncoder<'a> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::execution ::{hex_literal::hex, Address, H256};
+    use crate::execution::{hex_literal::hex, Address, H256};
     use ethers_core::types::Bytes;
     use execution_rlp::{Decodable, Encodable};
     use std::str::FromStr;

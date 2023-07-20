@@ -2,15 +2,16 @@
 // Copyright (c) Mysten Labs, Inc.
 // SPDX-License-Identifier: Apache-2.0
 use super::{Dag, ValidatorDagError};
-use crate::metrics::ConsensusMetrics;
-use crate::NUM_SHUTDOWN_RECEIVERS;
-use tn_types::consensus::dag::node_dag::NodeDagError;
+use crate::{metrics::ConsensusMetrics, NUM_SHUTDOWN_RECEIVERS};
 use fastcrypto::hash::Hash;
 use indexmap::IndexMap;
+use lattice_test_utils::{make_optimal_certificates, CommitteeFixture};
 use prometheus::Registry;
 use std::{collections::BTreeSet, sync::Arc};
-use lattice_test_utils::{make_optimal_certificates, CommitteeFixture};
-use tn_types::consensus::{Certificate, CertificateAPI, HeaderAPI, PreSubscribedBroadcastSender};
+use tn_types::consensus::{
+    dag::node_dag::NodeDagError, Certificate, CertificateAPI, HeaderAPI,
+    PreSubscribedBroadcastSender,
+};
 
 #[tokio::test]
 async fn inner_dag_insert_one() {
@@ -19,16 +20,9 @@ async fn inner_dag_insert_one() {
     let committee = fixture.committee();
     let ids: Vec<_> = fixture.authorities().map(|a| a.id()).collect();
     let genesis_certs = Certificate::genesis(&committee);
-    let genesis = genesis_certs
-        .iter()
-        .map(|x| x.digest())
-        .collect::<BTreeSet<_>>();
-    let (mut certificates, _next_parents) = make_optimal_certificates(
-        &committee,
-        1..=4,
-        &genesis,
-        &ids,
-    );
+    let genesis = genesis_certs.iter().map(|x| x.digest()).collect::<BTreeSet<_>>();
+    let (mut certificates, _next_parents) =
+        make_optimal_certificates(&committee, 1..=4, &genesis, &ids);
     let mut tx_shutdown = PreSubscribedBroadcastSender::new(NUM_SHUTDOWN_RECEIVERS);
 
     // set up a Dag
@@ -48,27 +42,15 @@ async fn test_dag_read_notify() {
     let committee = fixture.committee();
     let ids: Vec<_> = fixture.authorities().map(|a| a.id()).collect();
     let genesis_certs = Certificate::genesis(&committee);
-    let genesis = genesis_certs
-        .iter()
-        .map(|x| x.digest())
-        .collect::<BTreeSet<_>>();
-    let (mut certificates, _next_parents) = make_optimal_certificates(
-        &committee,
-        1..=4,
-        &genesis,
-        &ids,
-    );
+    let genesis = genesis_certs.iter().map(|x| x.digest()).collect::<BTreeSet<_>>();
+    let (mut certificates, _next_parents) =
+        make_optimal_certificates(&committee, 1..=4, &genesis, &ids);
     let certs = certificates.clone().into_iter().map(|c| (c.digest(), c));
     // set up a Dag
     let (_tx_cert, rx_cert) = lattice_test_utils::test_channel!(1);
     let mut tx_shutdown = PreSubscribedBroadcastSender::new(NUM_SHUTDOWN_RECEIVERS);
     let metrics = Arc::new(ConsensusMetrics::new(&Registry::new()));
-    let arc = Arc::new(Dag::new(
-        &committee,
-        rx_cert,
-        metrics,
-        tx_shutdown.subscribe(),
-    ));
+    let arc = Arc::new(Dag::new(&committee, rx_cert, metrics, tx_shutdown.subscribe()));
     let cloned = arc.clone();
     let handle = tokio::spawn(async move {
         let _ = &arc;
@@ -93,10 +75,7 @@ async fn test_dag_new_has_genesis_and_its_not_live() {
     let committee = fixture.committee();
     let ids: Vec<_> = fixture.authorities().map(|a| a.id()).collect();
     let genesis_certs = Certificate::genesis(&committee);
-    let genesis = genesis_certs
-        .iter()
-        .map(|x| x.digest())
-        .collect::<BTreeSet<_>>();
+    let genesis = genesis_certs.iter().map(|x| x.digest()).collect::<BTreeSet<_>>();
 
     // set up a Dag
     let (_tx_cert, rx_cert) = lattice_test_utils::test_channel!(1);
@@ -109,13 +88,10 @@ async fn test_dag_new_has_genesis_and_its_not_live() {
         assert!(dag.contains(certificate).await);
     }
 
-    // But the genesis does not come out in read_causal, as is is compressed the moment we add more nodes
-    let (certificates, _next_parents) = make_optimal_certificates(
-        &committee,
-        1..=1,
-        &genesis,
-        &ids,
-    );
+    // But the genesis does not come out in read_causal, as is is compressed the moment we add more
+    // nodes
+    let (certificates, _next_parents) =
+        make_optimal_certificates(&committee, 1..=1, &genesis, &ids);
     let mut certs_to_insert = certificates.clone();
 
     // Feed the additional certificates to the Dag
@@ -141,18 +117,15 @@ async fn test_dag_new_has_genesis_and_its_not_live() {
     }
 }
 
-// `test_dag_new_has_genesis_and_its_not_live` relies on the fact that genesis produces empty blocks: we re-run it with non-genesis empty blocks to
-// check the invariants are the same
+// `test_dag_new_has_genesis_and_its_not_live` relies on the fact that genesis produces empty
+// blocks: we re-run it with non-genesis empty blocks to check the invariants are the same
 #[tokio::test]
 async fn test_dag_compresses_empty_blocks() {
     let fixture = CommitteeFixture::builder().build();
     let committee = fixture.committee();
     let ids: Vec<_> = fixture.authorities().map(|a| a.id()).collect();
     let genesis_certs = Certificate::genesis(&committee);
-    let genesis = genesis_certs
-        .iter()
-        .map(|x| x.digest())
-        .collect::<BTreeSet<_>>();
+    let genesis = genesis_certs.iter().map(|x| x.digest()).collect::<BTreeSet<_>>();
 
     // set up a Dag
     let (_tx_cert, rx_cert) = lattice_test_utils::test_channel!(1);
@@ -162,12 +135,8 @@ async fn test_dag_compresses_empty_blocks() {
     let (_, dag) = Dag::new(&committee, rx_cert, metrics, tx_shutdown.subscribe());
 
     // insert one round of empty certificates
-    let (mut certificates, next_parents) = make_optimal_certificates(
-        &committee,
-        1..=1,
-        &genesis.clone(),
-        &ids,
-    );
+    let (mut certificates, next_parents) =
+        make_optimal_certificates(&committee, 1..=1, &genesis.clone(), &ids);
     // make those empty
     for cert in certificates.iter_mut() {
         cert.header_mut().update_payload(IndexMap::new());
@@ -185,12 +154,8 @@ async fn test_dag_compresses_empty_blocks() {
     }
 
     // Add one round of non-empty certificates
-    let (additional_certificates, _next_parents) = make_optimal_certificates(
-        &committee,
-        2..=2,
-        &next_parents,
-        &ids,
-    );
+    let (additional_certificates, _next_parents) =
+        make_optimal_certificates(&committee, 2..=2, &next_parents, &ids);
     // Feed the additional certificates to the Dag
     let mut additional_certs_to_insert = additional_certificates.clone();
     while let Some(certificate) = additional_certs_to_insert.pop_front() {
@@ -200,7 +165,8 @@ async fn test_dag_compresses_empty_blocks() {
     // we trigger read_causal on all the newly inserted certs
     for cert in additional_certificates.clone() {
         let res = dag.read_causal(cert.digest()).await.unwrap();
-        // the read_causals do not report genesis or the empty round we inserted: we only walk one node, the start of the walk
+        // the read_causals do not report genesis or the empty round we inserted: we only walk one
+        // node, the start of the walk
         assert_eq!(res, vec![cert.digest()]);
     }
 
@@ -225,10 +191,7 @@ async fn test_dag_rounds_after_compression() {
     let committee = fixture.committee();
     let ids: Vec<_> = fixture.authorities().map(|a| a.id()).collect();
     let genesis_certs = Certificate::genesis(&committee);
-    let genesis = genesis_certs
-        .iter()
-        .map(|x| x.digest())
-        .collect::<BTreeSet<_>>();
+    let genesis = genesis_certs.iter().map(|x| x.digest()).collect::<BTreeSet<_>>();
 
     // set up a Dag
     let (_tx_cert, rx_cert) = lattice_test_utils::test_channel!(1);
@@ -238,12 +201,8 @@ async fn test_dag_rounds_after_compression() {
     let (_, dag) = Dag::new(&committee, rx_cert, metrics, tx_shutdown.subscribe());
 
     // insert one round of empty certificates
-    let (mut certificates, next_parents) = make_optimal_certificates(
-        &committee,
-        1..=1,
-        &genesis.clone(),
-        &ids,
-    );
+    let (mut certificates, next_parents) =
+        make_optimal_certificates(&committee, 1..=1, &genesis.clone(), &ids);
     // make those empty
     for cert in certificates.iter_mut() {
         cert.header_mut().update_payload(IndexMap::new());
@@ -256,12 +215,8 @@ async fn test_dag_rounds_after_compression() {
     }
 
     // Add one round of non-empty certificates
-    let (additional_certificates, _next_parents) = make_optimal_certificates(
-        &committee,
-        2..=2,
-        &next_parents,
-        &ids,
-    );
+    let (additional_certificates, _next_parents) =
+        make_optimal_certificates(&committee, 2..=2, &next_parents, &ids);
     // Feed the additional certificates to the Dag
     let mut additional_certs_to_insert = additional_certificates.clone();
     while let Some(certificate) = additional_certs_to_insert.pop_front() {
@@ -282,16 +237,9 @@ async fn dag_mutation_failures() {
     let committee = fixture.committee();
     let ids: Vec<_> = fixture.authorities().map(|a| a.id()).collect();
     let genesis_certs = Certificate::genesis(&committee);
-    let genesis = genesis_certs
-        .iter()
-        .map(|x| x.digest())
-        .collect::<BTreeSet<_>>();
-    let (certificates, _next_parents) = make_optimal_certificates(
-        &committee,
-        1..=4,
-        &genesis,
-        &ids,
-    );
+    let genesis = genesis_certs.iter().map(|x| x.digest()).collect::<BTreeSet<_>>();
+    let (certificates, _next_parents) =
+        make_optimal_certificates(&committee, 1..=4, &genesis, &ids);
 
     // set up a Dag
     let (_tx_cert, rx_cert) = lattice_test_utils::test_channel!(1);
@@ -307,20 +255,17 @@ async fn dag_mutation_failures() {
     while let Some(certificate) = certs_to_remove_before_insert.pop_back() {
         assert!(matches!(
             dag.remove(vec![certificate.digest()]).await,
-            Err(ValidatorDagError::DagInvariantViolation(
-                NodeDagError::UnknownDigests(_)
-            ))
+            Err(ValidatorDagError::DagInvariantViolation(NodeDagError::UnknownDigests(_)))
         ))
     }
 
-    // Feed the certificates to the Dag in reverse order, triggering missing parent errors for all but the last round
+    // Feed the certificates to the Dag in reverse order, triggering missing parent errors for all
+    // but the last round
     while let Some(certificate) = certs_to_insert_in_reverse.pop_back() {
         if certificate.round() != 1 {
             assert!(matches!(
                 dag.insert(certificate).await,
-                Err(ValidatorDagError::DagInvariantViolation(
-                    NodeDagError::UnknownDigests(_)
-                ))
+                Err(ValidatorDagError::DagInvariantViolation(NodeDagError::UnknownDigests(_)))
             ))
         }
     }
@@ -356,16 +301,9 @@ async fn dag_insert_one_and_rounds_node_read() {
     let committee = fixture.committee();
     let ids: Vec<_> = fixture.authorities().map(|a| a.id()).collect();
     let genesis_certs = Certificate::genesis(&committee);
-    let genesis = genesis_certs
-        .iter()
-        .map(|x| x.digest())
-        .collect::<BTreeSet<_>>();
-    let (certificates, _next_parents) = make_optimal_certificates(
-        &committee,
-        1..=4,
-        &genesis,
-        &ids,
-    );
+    let genesis = genesis_certs.iter().map(|x| x.digest()).collect::<BTreeSet<_>>();
+    let (certificates, _next_parents) =
+        make_optimal_certificates(&committee, 1..=4, &genesis, &ids);
     let mut tx_shutdown = PreSubscribedBroadcastSender::new(NUM_SHUTDOWN_RECEIVERS);
 
     // set up a Dag
@@ -388,10 +326,7 @@ async fn dag_insert_one_and_rounds_node_read() {
     // as genesis is compressible, that initial round is omitted
     for certificate in certificates {
         if certificate.round() == 4 {
-            assert_eq!(
-                13,
-                dag.read_causal(certificate.digest()).await.unwrap().len()
-            );
+            assert_eq!(13, dag.read_causal(certificate.digest()).await.unwrap().len());
         }
     }
 
@@ -408,16 +343,9 @@ async fn dag_insert_and_remove_reads() {
     let committee = fixture.committee();
     let ids: Vec<_> = fixture.authorities().map(|a| a.id()).collect();
     let mut genesis_certs = Certificate::genesis(&committee);
-    let genesis = genesis_certs
-        .iter()
-        .map(|x| x.digest())
-        .collect::<BTreeSet<_>>();
-    let (mut certificates, _next_parents) = make_optimal_certificates(
-        &committee,
-        1..=4,
-        &genesis,
-        &ids,
-    );
+    let genesis = genesis_certs.iter().map(|x| x.digest()).collect::<BTreeSet<_>>();
+    let (mut certificates, _next_parents) =
+        make_optimal_certificates(&committee, 1..=4, &genesis, &ids);
     let mut tx_shutdown = PreSubscribedBroadcastSender::new(NUM_SHUTDOWN_RECEIVERS);
 
     // set up a Dag

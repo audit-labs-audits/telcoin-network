@@ -9,10 +9,10 @@ use execution_db::{
     transaction::DbTx,
 };
 use execution_interfaces::Result;
-use execution_primitives::{
+use std::marker::PhantomData;
+use tn_types::execution::{
     Account, Address, BlockNumber, Bytecode, Bytes, StorageKey, StorageValue, H256,
 };
-use std::marker::PhantomData;
 
 /// State provider for a given transition id which takes a tx reference.
 ///
@@ -229,7 +229,7 @@ mod tests {
         transaction::{DbTx, DbTxMut},
         BlockNumberList,
     };
-    use execution_primitives::{hex_literal::hex, Account, StorageEntry, H160, H256, U256};
+    use tn_types::execution::{hex_literal::hex, Account, StorageEntry, H160, H256, U256};
 
     const ADDRESS: H160 = H160(hex!("0000000000000000000000000000000000000001"));
     const HIGHER_ADDRESS: H160 = H160(hex!("0000000000000000000000000000000000000005"));

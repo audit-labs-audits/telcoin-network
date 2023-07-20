@@ -3,8 +3,8 @@ use execution_interfaces::{
     consensus, db::DatabaseError as DbError, executor, p2p::error::DownloadError,
     provider::ProviderError,
 };
-use execution_primitives::SealedHeader;
 use thiserror::Error;
+use tn_types::execution::SealedHeader;
 use tokio::sync::mpsc::error::SendError;
 
 /// A stage execution error.

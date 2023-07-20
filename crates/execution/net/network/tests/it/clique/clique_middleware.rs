@@ -10,8 +10,8 @@ use ethers_middleware::SignerMiddleware;
 use ethers_providers::Middleware;
 use ethers_signers::Signer;
 use execution_network::test_utils::enr_to_peer_id;
-use execution_primitives::PeerId;
 use thiserror::Error;
+use tn_types::execution::PeerId;
 use tracing::trace;
 
 /// An error that can occur when using the
@@ -108,8 +108,8 @@ pub trait CliqueMiddleware: Send + Sync + Middleware {
         Ok(())
     }
 
-    /// Returns the [`Geth`](ethers_core::utils::Geth) instance [`PeerId`](execution_primitives::PeerId)
-    /// by calling geth's `admin_nodeInfo`.
+    /// Returns the [`Geth`](ethers_core::utils::Geth) instance
+    /// [`PeerId`](tn_types::execution::PeerId) by calling geth's `admin_nodeInfo`.
     async fn peer_id(&self) -> Result<PeerId, CliqueMiddlewareError<Self>> {
         Ok(enr_to_peer_id(self.node_info().await?.enr))
     }

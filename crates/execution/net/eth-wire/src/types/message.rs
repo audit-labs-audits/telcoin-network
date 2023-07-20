@@ -5,9 +5,9 @@ use super::{
     NewPooledTransactionHashes68, NodeData, PooledTransactions, Receipts, Status, Transactions,
 };
 use crate::{errors::EthStreamError, EthVersion, SharedTransactions};
-use execution_primitives::bytes::{Buf, BufMut};
 use execution_rlp::{length_of_length, Decodable, Encodable, Header};
 use std::{fmt::Debug, sync::Arc};
+use tn_types::execution::bytes::{Buf, BufMut};
 
 #[cfg(feature = "serde")]
 use serde::{Deserialize, Serialize};
@@ -428,8 +428,8 @@ mod test {
         errors::EthStreamError, types::message::RequestPair, EthMessage, EthMessageID, GetNodeData,
         NodeData, ProtocolMessage,
     };
-    use hex_literal::hex;
     use execution_rlp::{Decodable, Encodable};
+    use hex_literal::hex;
 
     fn encode<T: Encodable>(value: T) -> Vec<u8> {
         let mut buf = vec![];

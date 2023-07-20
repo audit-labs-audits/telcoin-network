@@ -1,11 +1,11 @@
-use jsonrpsee::{core::RpcResult, proc_macros::rpc};
-use execution_primitives::{
-    serde_helper::{num::U64HexOrNumber, JsonStorageKey},
-    AccessListWithGasUsed, Address, BlockId, BlockNumberOrTag, Bytes, H256, H64, U256, U64,
-};
 use execution_rpc_types::{
     state::StateOverride, BlockOverrides, CallRequest, EIP1186AccountProofResponse, FeeHistory,
     Index, RichBlock, SyncStatus, Transaction, TransactionReceipt, TransactionRequest, Work,
+};
+use jsonrpsee::{core::RpcResult, proc_macros::rpc};
+use tn_types::execution::{
+    serde_helper::{num::U64HexOrNumber, JsonStorageKey},
+    AccessListWithGasUsed, Address, BlockId, BlockNumberOrTag, Bytes, H256, H64, U256, U64,
 };
 
 /// Eth rpc interface: <https://ethereum.github.io/execution-apis/api-documentation/>

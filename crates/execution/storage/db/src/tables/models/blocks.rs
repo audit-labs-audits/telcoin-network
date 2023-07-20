@@ -1,8 +1,8 @@
 //! Block related models and types.
 
 use execution_codecs::{main_codec, Compact};
-use execution_primitives::{Header, TxNumber, Withdrawal, H256};
 use std::ops::Range;
+use tn_types::execution::{Header, TxNumber, Withdrawal, H256};
 
 /// Total number of transactions.
 pub type NumTransactions = u64;

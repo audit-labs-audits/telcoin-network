@@ -2,8 +2,11 @@
 // Copyright (c) Mysten Labs, Inc.
 // SPDX-License-Identifier: Apache-2.0
 use crate::StoreResult;
-use lattice_typed_store::rocks::{open_cf, MetricConf};
-use lattice_typed_store::{reopen, rocks::DBMap, rocks::ReadWriteOptions, Map};
+use lattice_typed_store::{
+    reopen,
+    rocks::{open_cf, DBMap, MetricConf, ReadWriteOptions},
+    Map,
+};
 use tn_macros::fail_point;
 use tn_types::consensus::Header;
 
@@ -25,13 +28,9 @@ impl ProposerStore {
 
     pub fn new_for_tests() -> ProposerStore {
         const LAST_PROPOSED_CF: &str = "last_proposed";
-        let rocksdb = open_cf(
-            tempfile::tempdir().unwrap(),
-            None,
-            MetricConf::default(),
-            &[LAST_PROPOSED_CF],
-        )
-        .expect("Cannot open database");
+        let rocksdb =
+            open_cf(tempfile::tempdir().unwrap(), None, MetricConf::default(), &[LAST_PROPOSED_CF])
+                .expect("Cannot open database");
         let last_proposed_map = reopen!(&rocksdb, LAST_PROPOSED_CF;<ProposerKey, Header>);
         ProposerStore::new(last_proposed_map)
     }
@@ -56,8 +55,8 @@ impl ProposerStore {
 #[cfg(test)]
 mod test {
     use crate::{ProposerStore, LAST_PROPOSAL_KEY};
-    use lattice_typed_store::Map;
     use lattice_test_utils::{fixture_batch_with_transactions, CommitteeFixture};
+    use lattice_typed_store::Map;
     use tn_types::consensus::{CertificateDigest, Header, Round};
 
     pub fn create_header_for_round(round: Round) -> Header {
@@ -70,11 +69,7 @@ mod test {
             .round(round)
             .epoch(fixture.committee().epoch())
             .parents([CertificateDigest::default()].iter().cloned().collect())
-            .with_payload_batch(
-                fixture_batch_with_transactions(10),
-                0,
-                0,
-            )
+            .with_payload_batch(fixture_batch_with_transactions(10), 0, 0)
             .build()
             .unwrap();
         Header::V1(header)
