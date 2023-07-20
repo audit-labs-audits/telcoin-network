@@ -1,0 +1,23 @@
+[package]
+name = "execution-metrics"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+homepage.workspace = true
+repository.workspace = true
+description = "execution metrics utilities"
+
+[dependencies]
+# execution
+execution-metrics-derive = { path = "./metrics-derive" }
+
+# metrics
+metrics = "0.20.1"
+
+# async
+tokio = { workspace = true, features = ["full"], optional = true }
+futures = { workspace = true, optional = true }
+
+[features]
+common = ["tokio", "futures"]

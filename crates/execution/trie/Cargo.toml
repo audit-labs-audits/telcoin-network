@@ -1,0 +1,54 @@
+[package]
+name = "execution-trie"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+homepage.workspace = true
+repository.workspace = true
+description = """
+Merkle trie implementation
+"""
+
+[dependencies]
+# execution
+tn-types = { workspace = true }
+execution-interfaces = { workspace = true }
+execution-rlp = { workspace = true }
+execution-db = { path = "../storage/db" }
+
+# tokio
+tokio = { workspace = true, default-features = false, features = ["sync"] }
+
+# tracing
+tracing = { workspace = true }
+
+# misc 
+hex = "0.4"
+thiserror = { workspace = true }
+derive_more = "0.99"
+
+# test-utils
+triehash = { version = "0.8", optional = true }
+
+[dev-dependencies]
+# execution
+tn-types = { workspace = true, features = ["test-utils", "arbitrary"] }
+execution-db = { path = "../storage/db", features = ["test-utils"] }
+execution-provider = { workspace = true }
+
+# trie
+triehash = "0.8"
+
+# misc
+proptest = "1.0"
+tokio = { workspace = true, default-features = false, features = ["sync", "rt", "macros"] }
+tokio-stream = { workspace = true }
+criterion = "0.4"
+
+[features]
+test-utils = ["triehash"]
+
+[[bench]]
+name = "prefix_set"
+harness = false

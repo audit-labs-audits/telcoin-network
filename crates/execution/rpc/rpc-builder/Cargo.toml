@@ -1,0 +1,48 @@
+[package]
+name = "execution-rpc-builder"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+homepage.workspace = true
+repository.workspace = true
+description = "Helpers for configuring RPC"
+
+[dependencies]
+# execution
+tn-types = { workspace = true }
+execution-ipc = { path = "../ipc" }
+execution-interfaces = { workspace = true }
+execution-network-api = { workspace = true }
+execution-provider = { workspace = true }
+execution-rpc = { path = "../rpc" }
+execution-rpc-api = { path = "../rpc-api" }
+execution-rpc-engine-api = { path = "../rpc-engine-api" }
+execution-rpc-types = { workspace = true }
+execution-tasks = { workspace = true }
+execution-transaction-pool = { workspace = true }
+
+# rpc/net
+jsonrpsee = { version = "0.18", features = ["server"] }
+tower-http = { version = "0.4", features = ["full"] }
+tower = { version = "0.4", features = ["full"] }
+hyper = "0.14"
+
+# misc
+strum = { version = "0.25", features = ["derive"] }
+serde = { workspace = true, features = ["derive"] }
+thiserror = { workspace = true }
+tracing = { workspace = true }
+
+[dev-dependencies]
+tn-tracing.workspace = true
+execution-rpc-api = { path = "../rpc-api", features = ["client"] }
+execution-transaction-pool = { workspace = true, features = ["test-utils"] }
+execution-provider = { workspace = true, features = ["test-utils"] }
+execution-network-api = { workspace = true }
+execution-interfaces = { workspace = true, features = ["test-utils"] }
+execution-beacon-consensus = { path = "../../consensus/beacon" }
+execution-payload-builder = { workspace = true, features = ["test-utils"] }
+
+tokio = { workspace = true, features = ["rt", "rt-multi-thread"] }
+serde_json.workspace = true

@@ -1,0 +1,46 @@
+[package]
+name = "execution-discv4"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+homepage.workspace = true
+repository.workspace = true
+description = """
+Ethereum network discovery
+"""
+
+[dependencies]
+# execution
+tn-types = { workspace = true }
+execution-rlp = { workspace = true }
+execution-rlp-derive = { path = "../../rlp/rlp-derive" }
+execution-net-common = { path = "../common" }
+execution-net-nat = { path = "../nat" }
+
+# ethereum
+discv5 = { git = "https://github.com/sigp/discv5" }
+secp256k1 = { workspace = true, features = ["global-context", "rand-std", "recovery", "serde"] }
+enr = { version = "0.8.1", default-features = false, features = ["rust-secp256k1"] }
+
+# async/futures
+tokio = { workspace = true, features = ["io-util", "net", "time"] }
+tokio-stream = { workspace = true }
+
+# misc
+tracing = { workspace = true }
+thiserror = { workspace = true }
+hex = "0.4"
+rand = { workspace = true, optional = true }
+generic-array = "0.14"
+serde = { workspace = true, optional = true }
+
+[dev-dependencies]
+rand = { workspace = true }
+tokio = { workspace = true, features = ["macros"] }
+tn-tracing.workspace = true
+
+[features]
+default = ["serde"]
+test-utils = ["dep:rand"]
+serde = ["dep:serde"]

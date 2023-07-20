@@ -1,0 +1,38 @@
+[package]
+name = "lattice-test-utils"
+version = "0.1.0"
+edition = "2021"
+license = "Apache-2.0"
+authors = ["Grant Kee <grant.kee@telco.in>", "Mysten Labs <build@mystenlabs.com>"]
+publish = false
+
+[dependencies]
+fdlimit = "0.2"
+indexmap = { version = "1.9.2", features = ["serde"] }
+itertools = "0.10.5"
+prometheus = "0.13.3"
+rand = "0.8.5"
+tempfile = "3.3.0"
+tokio = { workspace = true, features = ["sync", "rt", "macros"] }
+tonic = "0.8.2"
+tracing = "0.1.36"
+once_cell = "1.16"
+
+fastcrypto.workspace = true
+
+lattice-executor.workspace = true
+lattice-network.workspace=true
+lattice-node.workspace = true
+lattice-primary.workspace = true
+tn-types.workspace = true
+lattice-worker.workspace = true
+lattice-storage.workspace = true
+consensus-metrics.workspace = true
+lattice-typed-store.workspace = true
+telemetry-subscribers.workspace = true
+consensus-network.workspace = true
+
+#
+# 
+
+anemo.workspace = true

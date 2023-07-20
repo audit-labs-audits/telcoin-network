@@ -1,0 +1,36 @@
+[package]
+name = "execution-rpc-types"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+homepage.workspace = true
+repository.workspace = true
+description = """
+execution RPC types
+"""
+
+[dependencies]
+# execution
+tn-types = { workspace = true }
+execution-rlp = { workspace = true }
+
+# lattice
+tn-types = { workspace = true }
+
+# errors
+thiserror = { workspace = true }
+
+# misc
+serde = { workspace = true, features = ["derive"] }
+serde_json.workspace = true
+jsonrpsee-types = { version = "0.18" }
+
+[dev-dependencies]
+# execution
+execution-interfaces = { workspace = true, features = ["test-utils"] }
+
+# misc
+rand = { workspace = true }
+assert_matches = "1.5"
+similar-asserts = "1.4"

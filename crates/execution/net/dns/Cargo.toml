@@ -1,0 +1,45 @@
+[package]
+name = "execution-dns-discovery"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+homepage.workspace = true
+repository.workspace = true
+description = "Support for EIP-1459 Node Discovery via DNS"
+
+[dependencies]
+# execution
+tn-types = { workspace = true }
+execution-net-common = { path = "../common" }
+execution-rlp = { workspace = true }
+
+# ethereum
+secp256k1 = { workspace = true, features = ["global-context", "rand-std", "recovery", "serde"] }
+enr = { version = "0.8.1", default-features = false, features = ["rust-secp256k1"] }
+
+# async/futures
+tokio = { workspace = true, features = ["io-util", "net", "time"] }
+tokio-stream = { workspace = true }
+
+# trust-dns
+trust-dns-resolver = "0.22"
+
+# misc
+data-encoding = "2"
+async-trait = { workspace = true }
+linked_hash_set = "0.1"
+schnellru = "0.2"
+thiserror = { workspace = true }
+tracing = { workspace = true }
+parking_lot = "0.12"
+serde = { workspace = true, optional = true }
+serde_with = { workspace = true, optional = true }
+
+[dev-dependencies]
+tokio = { workspace = true, features = ["sync", "rt", "rt-multi-thread"] }
+tn-tracing.workspace = true
+
+[features]
+default = ["serde"]
+serde = ["dep:serde", "dep:serde_with"]

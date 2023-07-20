@@ -1,0 +1,28 @@
+[package]
+name = "execution-config"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+homepage.workspace = true
+repository.workspace = true
+
+[dependencies]
+# execution
+execution-network = { path = "../net/network" }
+execution-net-nat = { path = "../net/nat" }
+execution-discv4 = { path = "../net/discv4" }
+execution-downloaders = { path = "../net/downloaders" }
+execution-stages = { path = "../../crates/stages" }
+tn-types = { path = "../primitives" }
+
+# io
+serde = { workspace = true }
+serde_json.workspace = true
+
+# crypto
+secp256k1 = { workspace = true, features = ["global-context", "rand-std", "recovery"] }
+
+confy = "0.5"
+
+tempfile = "3.4"

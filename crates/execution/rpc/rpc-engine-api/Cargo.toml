@@ -1,0 +1,35 @@
+[package]
+name = "execution-rpc-engine-api"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+homepage.workspace = true
+repository.workspace = true
+description = "Implementation of Engine API"
+
+[dependencies]
+# execution 
+tn-types = { workspace = true }
+execution-interfaces = { workspace = true }
+execution-provider = { workspace = true }
+execution-rpc-types = { workspace = true }
+execution-rpc-api = { path = "../rpc-api" }
+execution-beacon-consensus = { path = "../../consensus/beacon" }
+execution-payload-builder = { workspace = true }
+
+# async
+tokio = { workspace = true, features = ["sync"] }
+
+# misc
+async-trait = { workspace = true }
+thiserror = { workspace = true }
+jsonrpsee-types = "0.18"
+jsonrpsee-core = "0.18"
+tracing = { workspace = true }
+
+[dev-dependencies]
+execution-interfaces = { workspace = true, features = ["test-utils"] }
+execution-provider = { workspace = true, features = ["test-utils"] }
+execution-payload-builder = { workspace = true, features = ["test-utils"] }
+assert_matches = "1.5.0"

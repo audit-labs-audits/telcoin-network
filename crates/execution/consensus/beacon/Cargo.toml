@@ -1,0 +1,43 @@
+[package]
+name = "execution-beacon-consensus"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+homepage.workspace = true
+repository.workspace = true
+
+[dependencies]
+# execution
+execution-consensus-common = { path = "../common" }
+tn-types = { workspace = true }
+execution-interfaces = { workspace = true }
+execution-stages = { path = "../../stages" }
+execution-db = { path = "../../storage/db" }
+execution-provider = { workspace = true }
+execution-rpc-types = { workspace = true }
+execution-tasks = { workspace = true }
+execution-payload-builder = { workspace = true }
+execution-metrics = { workspace = true }
+
+# async
+tokio = { workspace = true, features = ["sync"] }
+tokio-stream = { workspace = true }
+futures = { workspace = true }
+
+# misc
+tracing = { workspace = true }
+thiserror = { workspace = true }
+schnellru = "0.2"
+
+[dev-dependencies]
+# execution
+execution-payload-builder = { workspace = true, features = ["test-utils"] }
+execution-interfaces = { workspace = true, features = ["test-utils"] }
+execution-stages = { path = "../../stages", features = ["test-utils"] }
+execution-blockchain-tree = { path = "../../blockchain-tree", features = ["test-utils"] }
+execution-db = { path = "../../storage/db", features = ["test-utils"] }
+execution-provider = { workspace = true, features = ["test-utils"] }
+tn-tracing.workspace = true
+
+assert_matches = "1.5"

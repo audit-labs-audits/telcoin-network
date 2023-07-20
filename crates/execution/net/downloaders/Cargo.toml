@@ -1,0 +1,50 @@
+[package]
+name = "execution-downloaders"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+homepage.workspace = true
+repository.workspace = true
+description = "Implementations of various block downloaders"
+
+[dependencies]
+# execution
+execution-interfaces = { workspace = true }
+tn-types = { workspace = true }
+execution-db = { path = "../../storage/db" }
+execution-tasks = { workspace = true }
+execution-metrics = { workspace = true }
+
+# async
+futures = { workspace = true }
+futures-util = { workspace = true }
+pin-project = { workspace = true }
+tokio = { workspace = true, features = ["sync"] }
+tokio-stream = { workspace = true }
+tokio-util = { workspace = true, features = ["codec"] }
+
+# misc
+tracing = { workspace = true }
+rayon = "1.6.0"
+thiserror = { workspace = true }
+
+# optional deps for the test-utils feature
+execution-rlp = { workspace = true, optional = true }
+tempfile = { version = "3.3", optional = true }
+itertools = { version = "0.10", optional = true }
+
+[dev-dependencies]
+execution-db = { path = "../../storage/db", features = ["test-utils"] }
+execution-interfaces = { workspace = true, features = ["test-utils"] }
+tn-tracing.workspace = true
+
+assert_matches = "1.5.0"
+tokio = { workspace = true, features = ["macros", "rt-multi-thread"] }
+execution-rlp = { workspace = true }
+itertools = "0.10"
+
+tempfile = "3.3"
+
+[features]
+test-utils = ["dep:execution-rlp", "dep:tempfile", "dep:itertools"]

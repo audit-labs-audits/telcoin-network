@@ -1,0 +1,72 @@
+[package]
+name = "lattice-primary"
+version = "0.1.0"
+license = "Apache-2.0"
+authors = ["Grant Kee <grant.kee@telco.in>", "Mysten Labs <build@mystenlabs.com>"]
+publish = false
+edition = "2021"
+
+[dependencies]
+anyhow.workspace = true
+arc-swap = "1.5.1"
+async-trait = "0.1.61"
+backoff = { version = "0.4", features = ["futures", "futures-core", "pin-project-lite", "tokio", "tokio_1"] }
+base64 = "0.13.0"
+bcs = "0.1.4"
+bincode = "1.3.3"
+bytes = "1.3.0"
+
+futures = "0.3.24"
+governor = "0.5.1"
+itertools = "0.10.5"
+once_cell = "1.16"
+parking_lot = "0.12.1"
+prometheus = "0.13.3"
+rand = { version = "0.8.5", features = ["small_rng"] }
+thiserror.workspace = true
+tokio = { workspace = true, features = ["sync", "rt", "macros", "time", "test-util"] }
+tonic = "0.8.2"
+tower = { version = "0.4.13", features = ["full"] }
+tracing = "0.1.36"
+tap = "1.0.1"
+
+
+lattice-consensus.workspace = true
+fastcrypto = { workspace = true, features = ["copy_key"] }
+
+lattice-network.workspace = true
+tn-types.workspace = true
+lattice-storage.workspace = true
+lattice-typed-store.workspace = true
+tn-macros.workspace = true
+consensus-network.workspace = true
+# 
+#
+
+lattice-common.workspace = true
+consensus-metrics.workspace = true
+
+anemo.workspace = true
+anemo-tower.workspace = true
+
+[dev-dependencies]
+dashmap = "5.4.0"
+arc-swap = { version = "1.5.1", features = ["serde"] }
+async-trait = "0.1.61"
+indexmap = { version = "1.9.2", features = ["serde"] }
+itertools = "0.10.5"
+mockall = "0.11.2"
+lattice-node.workspace = true
+proptest = "1.0.0"
+tempfile = "3.3.0"
+lattice-test-utils.workspace = true
+thiserror.workspace = true
+tracing = "0.1.36"
+lattice-executor.workspace = true
+lattice-worker.workspace = true
+lattice-storage.workspace = true
+reqwest = { version = "0.11.13", default_features= false, features = ["json", "rustls-tls"] }
+telemetry-subscribers.workspace = true
+
+[features]
+benchmark = []

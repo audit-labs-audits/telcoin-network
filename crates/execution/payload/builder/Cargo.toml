@@ -1,0 +1,34 @@
+[package]
+name = "execution-payload-builder"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+homepage.workspace = true
+repository.workspace = true
+description = "execution payload builder"
+
+[dependencies]
+## execution
+tn-types = { workspace = true }
+execution-rpc-types = { workspace = true }
+execution-rlp = { workspace = true }
+execution-interfaces = { workspace = true }
+execution-revm-primitives = { path = "../../revm/revm-primitives" }
+execution-metrics = { workspace = true }
+
+## ethereum
+revm-primitives = { workspace = true }
+
+## async
+tokio = { workspace = true, features = ["sync"] }
+tokio-stream = { workspace = true }
+futures-util = { workspace = true }
+
+## misc
+thiserror = { workspace = true }
+sha2 = { version = "0.10", default-features = false }
+tracing = { workspace = true }
+
+[features]
+test-utils = []

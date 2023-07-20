@@ -1,0 +1,33 @@
+[package]
+name = "execution-net-nat"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+homepage.workspace = true
+repository.workspace = true
+description = """
+Helpers for working around NAT
+"""
+
+[dependencies]
+
+# nat
+public-ip = "0.2"
+## fork of rust-igd with ipv6 support: https://github.com/sbstp/rust-igd/issues/47
+igd = { git = "https://github.com/stevefan1999-personal/rust-igd", features = ["aio", "tokio1"] }
+
+# misc
+tracing = { workspace = true }
+pin-project-lite = "0.2.9"
+tokio = { workspace = true, features = ["time"] }
+thiserror = { workspace = true }
+serde_with = { workspace = true, optional = true }
+
+[dev-dependencies]
+tn-tracing.workspace = true
+tokio = { workspace = true, features = ["macros"] }
+
+[features]
+default = ["serde"]
+serde = ["dep:serde_with"]

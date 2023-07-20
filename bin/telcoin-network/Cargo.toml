@@ -1,0 +1,67 @@
+[package]
+name = "telcoin-network"
+version = "0.1.0"
+edition = "2021"
+license = "MIT OR Apache-2.0"
+repository = "https://github.com/telcoin/lattice"
+readme = "README.md"
+
+[dependencies]
+# cli
+eyre = "0.6.8"
+clap = { version = "4.0", features = ["derive", "cargo"] }
+thiserror = "1.0"
+tokio = { version = "1.26", features = ["sync", "macros", "rt-multi-thread"] }
+hex-literal = "0.3"
+#lattice-tracing = { version = "0.1", path = "../../crates/common/tracing" }
+tracing = { workspace = true }
+#lattice-config = { version = "0.1", path = "../../crates/core/lattice-config" }
+futures = "0.3"
+tempfile = "3.3.0"
+tokio-util = { workspace = true }
+pin-project = { workspace = true }
+humantime = "2.1.0"
+
+# rpc args
+jsonrpsee-server = { version = "0.16"}
+
+# execution
+tn-types = { path = "../../crates/execution/primitives", features = ["arbitrary"]}
+execution-provider = { path = "../../crates/execution/storage/provider", features = ["test-utils"] }
+execution-tasks = { path = "../../crates/execution/tasks" }
+execution-rpc = { path = "../../crates/execution/rpc/rpc" }
+execution-rpc-builder = { path = "../../crates/execution/rpc/rpc-builder" }
+execution-rpc-engine-api = { path = "../../crates/execution/rpc/rpc-engine-api" }
+execution-transaction-pool = { path = "../../crates/execution/transaction-pool" }
+execution-network-api = { path = "../../crates/execution/net/network-api" }
+execution-lattice-consensus = { path = "../../crates/execution/consensus/lattice" }
+#execution-beacon-consensus = { path = "../../crates/execution/consensus/beacon" }
+execution-blockchain-tree = { path = "../../crates/execution/blockchain-tree" }
+execution-revm = { path = "../../crates/execution/revm" }
+execution-basic-payload-builder = { path = "../../crates/execution/payload/basic" }
+execution-payload-builder = { path = "../../crates/execution/payload/builder" }
+execution-rlp = { path = "../../crates/execution/rlp" }
+execution-stages = { path = "../../crates/execution/stages" }
+execution-interfaces = { path = "../../crates/execution/interfaces" }
+execution-downloaders = { path = "../../crates/execution/net/downloaders" }
+execution-revm-inspectors = { path = "../../crates/execution/revm/revm-inspectors" }
+execution-network = { path = "../../crates/execution/net/network" }
+
+# io
+confy = "0.5"
+serde = "1.0"
+shellexpand = "3.0.0"
+dirs-next = "2.0.0"
+serde_json = "1.0"
+toml = { version = "0.7", features = ["display"] }
+
+
+# consensus
+lattice-worker = { workspace = true }
+
+[build-dependencies]
+vergen = { version = "8.0.0", features = ["build", "cargo", "git", "gitcl"] }
+
+[dev-dependencies]
+proptest = "1.2.0"
+secp256k1 = "0.27.0"

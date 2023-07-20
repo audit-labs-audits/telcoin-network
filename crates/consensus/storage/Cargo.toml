@@ -1,0 +1,29 @@
+[package]
+name = "lattice-storage"
+version = "0.1.0"
+edition = "2021"
+license = "Apache-2.0"
+authors = ["Grant Kee <grant.kee@telco.in>", "Mysten Labs <build@mystenlabs.com>"]
+publish = false
+
+[dependencies]
+tempfile = "3.3.0"
+dashmap = "5.4.0"
+fastcrypto.workspace = true
+lattice-common.workspace = true
+futures = "0.3.24"
+tokio = { workspace = true, features = ["sync", "rt", "macros"] }
+tracing = "0.1.36"
+
+tn-types.workspace = true
+lattice-typed-store.workspace = true
+tn-macros.workspace = true
+
+# 
+prometheus = "0.13.3"
+lru = "0.10"
+parking_lot = "0.12.1"
+tap = "1.0.1"
+
+[dev-dependencies]
+lattice-test-utils.workspace = true

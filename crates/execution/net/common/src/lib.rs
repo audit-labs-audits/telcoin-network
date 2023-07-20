@@ -1,0 +1,16 @@
+#![cfg_attr(docsrs, feature(doc_cfg))]
+#![warn(missing_docs, unused_crate_dependencies)]
+#![deny(unused_must_use, rust_2018_idioms)]
+#![doc(test(
+    no_crate_inject,
+    attr(deny(warnings, rust_2018_idioms), allow(dead_code, unused_variables))
+))]
+
+//! Shared types across execution-net
+
+pub mod ban_list;
+pub mod bandwidth_meter;
+/// Traits related to tokio streams
+pub mod stream;
+
+pub mod ratelimit;

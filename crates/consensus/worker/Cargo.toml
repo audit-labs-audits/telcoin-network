@@ -1,0 +1,55 @@
+[package]
+name = "lattice-worker"
+version = "0.1.0"
+license = "Apache-2.0"
+authors = ["Grant Kee <grant.kee@telco.in>", "Mysten Labs <build@mystenlabs.com>"]
+edition = "2021"
+publish = false
+repository = "https://github.com/telcoin/lattice"
+readme = "README.md"
+
+[dependencies]
+arc-swap = "1.5.1"
+async-trait = "0.1.61"
+byteorder = "1.4.3"
+bytes = "1.3.0"
+futures = "0.3.24"
+governor = "0.5.1"
+rand = { version = "0.8.5", features = ["small_rng"] }
+tap = "1.0.1"
+thiserror.workspace = true
+tokio = { workspace = true, features = ["sync", "rt", "macros"] }
+tonic = "0.8.2"
+tower = "0.4.13"
+tracing = "0.1.36"
+itertools = "0.10.5"
+prometheus = "0.13.3"
+
+fastcrypto = { workspace = true, features = ["copy_key"] }
+lattice-network.workspace = true
+tn-types.workspace = true
+lattice-typed-store.workspace = true
+consensus-network.workspace = true
+consensus-metrics.workspace = true
+#
+
+anemo.workspace = true
+anemo-tower.workspace = true
+anyhow.workspace = true
+eyre = "0.6.8"
+
+[dev-dependencies]
+arc-swap = { version = "1.5.1", features = ["serde"] }
+rand = "0.8.5"
+tempfile = "3.3.0"
+lattice-test-utils.workspace = true
+reqwest = { version = "0.11.13", default_features= false, features = ["json", "rustls-tls"] }
+lattice-node.workspace = true
+lattice-consensus.workspace = true
+lattice-primary.workspace = true
+telemetry-subscribers.workspace = true
+lattice-storage.workspace = true
+
+[features]
+benchmark = []
+trace_transaction = []

@@ -1,0 +1,44 @@
+[package]
+name = "execution-libmdbx"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license = "Apache-2.0"
+description = "Idiomatic and safe MDBX wrapper with good licence"
+homepage.workspace = true
+repository.workspace = true
+
+[lib]
+name = "execution_libmdbx"
+
+[dependencies]
+bitflags = "2"
+byteorder = "1"
+derive_more = "0.99"
+indexmap = "1"
+libc = "0.2"
+parking_lot = "0.12"
+thiserror = { workspace = true }
+
+ffi = { package = "execution-mdbx-sys", path = "./mdbx-sys" }
+
+lifetimed-bytes = { version = "0.1", optional = true }
+
+[features]
+default = []
+return-borrowed = []
+
+[dev-dependencies]
+pprof = { version = "0.11", features = ["flamegraph", "frame-pointer", "criterion"] }
+criterion = "0.4"
+rand = { workspace = true }
+rand_xorshift = "0.3"
+tempfile = "3"
+
+[[bench]]
+name = "cursor"
+harness = false
+
+[[bench]]
+name = "transaction"
+harness = false
