@@ -54,9 +54,9 @@ lattice-test-utils.workspace = true
 benchmark = ["lattice-worker/benchmark", "lattice-primary/benchmark", "lattice-consensus/benchmark"]
 trace_transaction = ["lattice-worker/trace_transaction"]
 
-[[bin]]
-name = "lattice-node"
-path = "src/main.rs"
+#[[bin]]
+#name = "lattice-node"
+#path = "src/main.rs"
 
 [[bin]]
 name = "lattice-benchmark-client"

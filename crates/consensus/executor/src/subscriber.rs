@@ -13,7 +13,7 @@ use std::{
     vec,
 };
 use tn_types::consensus::{
-    config::{AuthorityIdentifier, Committee, WorkerCache, WorkerId},
+    AuthorityIdentifier, Committee, WorkerCache, WorkerId,
     crypto::NetworkPublicKey,
     Batch, BatchAPI, BatchDigest, Certificate, CertificateAPI, CommittedSubDag,
     ConditionalBroadcastReceiver, ConsensusOutput, FetchBatchesRequest, HeaderAPI, MetadataAPI,
@@ -51,7 +51,7 @@ pub fn spawn_subscriber<State: ExecutionState + Send + Sync + 'static>(
     rx_sequence: metered_channel::Receiver<CommittedSubDag>,
     metrics: Arc<ExecutorMetrics>,
     restored_consensus_output: Vec<CommittedSubDag>,
-    state: State,
+    execution_state: State,
 ) -> Vec<JoinHandle<()>> {
     // This is ugly but has to be done this way for now
     // Currently network incorporates both server and client side of RPC interface
@@ -68,7 +68,7 @@ pub fn spawn_subscriber<State: ExecutionState + Send + Sync + 'static>(
 
     vec![
         spawn_logged_monitored_task!(
-            run_notify(state, rx_notifier, rx_shutdown_notify),
+            run_notify(execution_state, rx_notifier, rx_shutdown_notify),
             "SubscriberNotifyTask"
         ),
         spawn_logged_monitored_task!(

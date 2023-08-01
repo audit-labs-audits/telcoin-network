@@ -3,8 +3,8 @@ pub mod cl_events;
 mod events;
 use crate::{
     args::{utils::genesis_value_parser, PayloadBuilderArgs},
-    dirs::{ChainPath, DataDirPath, MaybePlatformPath, PlatformPath},
-    execution::cl_events::ConsensusLayerHealthEvents,
+    dirs::{DataDirPath, MaybePlatformPath},
+    node::cl_events::ConsensusLayerHealthEvents,
     runner::CliContext,
     RpcServerArgs,
 };
@@ -14,11 +14,7 @@ use execution_blockchain_tree::{
     BlockchainTree, BlockchainTreeConfig, ShareableBlockchainTree, TreeExternals,
 };
 use execution_db::{
-    database::Database,
-    init_db,
-    mdbx::{Env, EnvKind, Transaction, WriteMap},
-    tables,
-    transaction::DbTxMut,
+    database::Database, init_db, mdbx::{Env, WriteMap},
 };
 use execution_downloaders::{
     bodies::bodies::BodiesDownloaderBuilder,
@@ -28,7 +24,6 @@ use execution_interfaces::{
     consensus::Consensus,
     p2p::{
         bodies::{client::BodiesClient, downloader::BodyDownloader},
-        either::EitherDownloader,
         headers::{client::HeadersClient, downloader::HeaderDownloader},
     },
     test_utils::NoopFullBlockClient,
@@ -42,17 +37,11 @@ use execution_provider::{
 use execution_revm::{stack::Hook, Factory};
 use execution_rpc_engine_api::EngineApi;
 use eyre::WrapErr;
-use futures::{future::Either, stream_select, StreamExt};
-use hex_literal::hex;
+use futures::{stream_select, StreamExt};
 use tn_types::execution::{
-    proofs::{genesis_state_root, EMPTY_ROOT},
-    stage::StageId,
-    Bytes, Chain, ChainSpec, ChainSpecBuilder, Genesis, GenesisAccount, Head, Header, SealedBlock,
-    Withdrawal, H256, U256,
+    stage::StageId, ChainSpec, Head, H256,
 };
 use tracing::{debug, info};
-// use execution_provider::{insert_canonical_block, ShareableDatabase, Transaction};
-// use execution_staged_sync::utils::init::{init_db, init_genesis};
 use crate::init::init_genesis;
 use execution_config::{config::StageConfig, Config};
 use execution_lattice_consensus::{
@@ -70,14 +59,8 @@ use execution_stages::{
 };
 use execution_tasks::TaskExecutor;
 use execution_transaction_pool::EthTransactionValidator;
-use std::{collections::HashMap, ops::DerefMut, path::PathBuf, str::FromStr, sync::Arc};
-use tokio::{
-    sync::{
-        mpsc::{unbounded_channel, Receiver, Sender},
-        oneshot, watch,
-    },
-    task::JoinHandle,
-};
+use std::{path::PathBuf, sync::Arc};
+use tokio::sync::{mpsc::unbounded_channel, oneshot, watch};
 use tokio_util::sync::CancellationToken;
 
 /// Result type for node command.
@@ -150,23 +133,6 @@ impl Command {
         let config_path = self.config.clone().unwrap_or(data_dir.config_path());
         let mut config = self.load_config(&config_path)?;
 
-        // // set db to tempdir if dev flag is passed
-        // let db = if self.dev {
-        //     // Error during tempdir creation
-        //     pub const ERROR_TEMPDIR: &str = "Not able to create a temporary directory.";
-        //     let temp_path = &tempfile::TempDir::new().expect(ERROR_TEMPDIR).into_path();
-        //     info!(
-        //         ?temp_path,
-        //         "--dev arg passed. Creating temporary database at:\n"
-        //     );
-        //     // tempdir
-        //     Arc::new(create_test_db_with_path(EnvKind::RW, temp_path))
-        // } else {
-        //     info!("Creating persistent db at: {:#?}", self.datadir);
-        //     // lattice dir
-        //     let db_path = data_dir.db_path();
-        //     Arc::new(init_db(&db_path)?)
-        // };
         let db_path = data_dir.db_path();
         let db = Arc::new(init_db(&db_path, None)?);
 
@@ -329,7 +295,7 @@ impl Command {
         let pipeline_events = pipeline.events();
 
         // Configure the consensus engine
-        let (beacon_consensus_engine, beacon_engine_handle) = LatticeConsensusEngine::with_channel(
+        let (consensus_engine, engine_handle) = LatticeConsensusEngine::with_channel(
             network_client,
             pipeline,
             blockchain_db.clone(),
@@ -350,10 +316,11 @@ impl Command {
         // log events from the node
         let events = stream_select!(
             // network.event_listener().map(Into::into),
-            beacon_engine_handle.event_listener().map(Into::into),
+            engine_handle.event_listener().map(Into::into),
             pipeline_events.map(Into::into),
             ConsensusLayerHealthEvents::new(Box::new(blockchain_db.clone())).map(Into::into),
         );
+
         cli_ctx
             .task_executor
             .spawn_critical("events task", events::handle_events(None, Some(head.number), events));
@@ -399,7 +366,19 @@ impl Command {
 
         // rx.await??;
 
-        info!(target: "tn::cli", "Consensus engine has exited.");
+        // info!(target: "tn::cli", "Consensus engine has exited.");
+        info!(target: "tn::cli", "Executon layer ready.");
+
+        // build consensus layer:
+        //
+        // create committee fixture
+        //
+        // pass TransactionClient to engine handler
+        //
+        // request next batch => send payload proto to worker
+
+
+
 
         Ok(())
     }

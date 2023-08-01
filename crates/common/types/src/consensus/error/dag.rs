@@ -1,5 +1,5 @@
 use crate::consensus::{
-    config::Epoch, crypto, CertificateDigest, HeaderDigest, Round, TimestampMs, VoteDigest,
+    Epoch, crypto, CertificateDigest, HeaderDigest, Round, TimestampMs, VoteDigest,
 };
 use fastcrypto::hash::Digest;
 use lattice_common::sync::notify_once::NotifyOnce;

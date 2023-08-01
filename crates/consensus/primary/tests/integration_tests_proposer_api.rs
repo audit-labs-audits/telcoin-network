@@ -6,7 +6,7 @@ use fastcrypto::{
     hash::Hash,
     traits::{KeyPair as _, ToFromBytes},
 };
-use lattice_consensus::{consensus::ConsensusRound, dag::Dag, metrics::ConsensusMetrics};
+use lattice_consensus::{ConsensusRound, dag::DagHandle, metrics::ConsensusMetrics};
 use lattice_network::client::NetworkClient;
 use lattice_primary::{Primary, CHANNEL_CAPACITY, NUM_SHUTDOWN_RECEIVERS};
 use lattice_storage::NodeStorage;
@@ -17,8 +17,8 @@ use prometheus::Registry;
 use rand::thread_rng;
 use std::{collections::BTreeSet, sync::Arc, time::Duration};
 use tn_types::consensus::{
-    config::{AuthorityIdentifier, CommitteeBuilder, Epoch, Parameters},
-    crypto::KeyPair,
+    AuthorityIdentifier, CommitteeBuilder, Epoch, Parameters,
+    crypto::AuthorityKeyPair,
     Certificate, CertificateDigest, NodeReadCausalRequest, PreSubscribedBroadcastSender,
     ProposerClient, PublicKeyProto, RoundsRequest,
 };
@@ -39,7 +39,7 @@ async fn test_rounds_errors() {
     let name = keypair.public().clone();
     let client = NetworkClient::new_from_keypair(&author.network_keypair());
 
-    let other_keypair = KeyPair::generate(&mut thread_rng());
+    let other_keypair = AuthorityKeyPair::generate(&mut thread_rng());
 
     struct TestCase {
         public_key: Bytes,
@@ -123,7 +123,7 @@ async fn test_rounds_errors() {
         rx_consensus_round_updates,
         /* external_consensus */
         Some(Arc::new(
-            Dag::new(
+            DagHandle::new(
                 &no_name_committee,
                 rx_new_certificates,
                 consensus_metrics,
@@ -196,7 +196,7 @@ async fn test_rounds_return_successful_response() {
     // AND setup the DAG
     let consensus_metrics = Arc::new(ConsensusMetrics::new(&Registry::new()));
     let dag = Arc::new(
-        Dag::new(&committee, rx_new_certificates, consensus_metrics, tx_shutdown.subscribe()).1,
+        DagHandle::new(&committee, rx_new_certificates, consensus_metrics, tx_shutdown.subscribe()).1,
     );
 
     Primary::spawn(
@@ -286,7 +286,7 @@ async fn test_node_read_causal_signed_certificates() {
     let mut tx_shutdown = PreSubscribedBroadcastSender::new(NUM_SHUTDOWN_RECEIVERS);
 
     let dag = Arc::new(
-        Dag::new(&committee, rx_new_certificates, consensus_metrics, tx_shutdown.subscribe()).1,
+        DagHandle::new(&committee, rx_new_certificates, consensus_metrics, tx_shutdown.subscribe()).1,
     );
 
     // No need to populate genesis in the Dag
@@ -386,7 +386,7 @@ async fn test_node_read_causal_signed_certificates() {
         rx_consensus_round_updates_2,
         /* external_consensus */
         Some(Arc::new(
-            Dag::new(
+            DagHandle::new(
                 &committee,
                 rx_new_certificates_2,
                 consensus_metrics_2,

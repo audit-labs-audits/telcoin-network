@@ -12,7 +12,7 @@ use lattice_typed_store::{
 };
 use std::{num::NonZeroUsize, time::Duration};
 use tn_types::consensus::{
-    config::{AuthorityIdentifier, WorkerId},
+    AuthorityIdentifier, WorkerId,
     crypto::NetworkKeyPair,
     BatchDigest, Certificate, CertificateDigest, Header, HeaderDigest, Round,
     WorkerSynchronizeMessage,

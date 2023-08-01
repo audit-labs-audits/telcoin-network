@@ -14,6 +14,7 @@ const LATENCY_SEC_BUCKETS: &[f64] = &[
     0.05, 0.1, 0.2, 0.5, 1.0, 2.0, 3.0, 4.0, 5.0, 8.0, 10.0, 15.0, 20.0, 30.0, 50.0, 100.0, 200.0,
 ];
 
+/// Metrics for consensus.
 #[derive(Clone)]
 pub struct ConsensusMetrics {
     /// The number of rounds for which the Dag holds certificates
@@ -50,6 +51,7 @@ pub struct ConsensusMetrics {
 }
 
 impl ConsensusMetrics {
+    /// Create a new instance of Self.
     pub fn new(registry: &Registry) -> Self {
         Self {
             consensus_dag_rounds: register_int_gauge_vec_with_registry!(
@@ -126,6 +128,7 @@ impl Default for ConsensusMetrics {
     }
 }
 
+/// Metrics for sending data from [Consensus] to [SubscriberHandler].
 #[derive(Clone, Debug)]
 pub struct ChannelMetrics {
     /// occupancy of the channel from the `Consensus` to `SubscriberHandler`.
@@ -138,6 +141,7 @@ pub struct ChannelMetrics {
 }
 
 impl ChannelMetrics {
+    /// Create a new instance of Self.
     pub fn new(registry: &Registry) -> Self {
         Self {
             tx_sequence: register_int_gauge_with_registry!(

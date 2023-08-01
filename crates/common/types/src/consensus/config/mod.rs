@@ -2,15 +2,11 @@
 // Copyright (c) 2021, Facebook, Inc. and its affiliates
 // Copyright (c) Mysten Labs, Inc.
 // SPDX-License-Identifier: Apache-2.0
-#![warn(future_incompatible, nonstandard_style, rust_2018_idioms, rust_2021_compatibility)]
 #![allow(clippy::mutable_key_type)]
 
-use crate::consensus::crypto::{NetworkPublicKey, PublicKey};
 use consensus_network::Multiaddr;
-use fastcrypto::traits::EncodeDecodeBase64;
 use serde::{de::DeserializeOwned, Deserialize, Serialize};
 use std::{
-    collections::{BTreeMap, HashSet},
     fs::{self, OpenOptions},
     io::{BufWriter, Write as _},
     num::NonZeroU32,
@@ -19,14 +15,12 @@ use std::{
 use thiserror::Error;
 use tracing::info;
 use utils::get_available_port;
+use super::WorkerId;
 
-pub mod committee;
-pub use committee::*;
 mod duration_format;
+pub use duration_format::*;
 pub mod utils;
 
-/// The epoch number.
-pub type Epoch = u64;
 
 #[derive(Error, Debug)]
 pub enum ConfigError {
@@ -95,9 +89,9 @@ impl<S: Serialize> Export for S {}
 // TODO: the stake and voting power of a validator can be different so
 // in some places when we are actually referring to the voting power, we
 // should use a different type alias, field name, etc.
-// Also, consider unify this with `StakeUnit` on Sui side.
+// Also, consider unify this with `StakeUnit` on Execution Layer.
+/// The stake an Authority holds.
 pub type Stake = u64;
-pub type WorkerId = u32;
 
 /// Holds all the node properties. An example is provided to
 /// showcase the usage and deserialization from a json file.
@@ -479,147 +473,5 @@ impl Parameters {
             "Worker network admin server will run starting on base port 127.0.0.1:{}",
             self.network_admin_server.worker_network_admin_server_base_port
         );
-    }
-}
-
-#[derive(Clone, Serialize, Deserialize, Eq, Hash, PartialEq, Debug)]
-pub struct WorkerInfo {
-    /// The public key of this worker.
-    pub name: NetworkPublicKey,
-    /// Address to receive client transactions (WAN).
-    pub transactions: Multiaddr,
-    /// Address to receive messages from other workers (WAN) and our primary.
-    pub worker_address: Multiaddr,
-}
-
-#[derive(Clone, Serialize, Deserialize, Debug)]
-pub struct WorkerIndex(pub BTreeMap<WorkerId, WorkerInfo>);
-
-#[derive(Clone, Serialize, Deserialize, Debug)]
-pub struct WorkerCache {
-    /// The authority to worker index.
-    pub workers: BTreeMap<PublicKey, WorkerIndex>,
-    /// The epoch number for workers
-    pub epoch: Epoch,
-}
-
-impl std::fmt::Display for WorkerIndex {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(
-            f,
-            "WorkerIndex {:?}",
-            self.0
-                .iter()
-                .map(|(key, value)| { format!("{}:{:?}", key, value) })
-                .collect::<Vec<_>>()
-        )
-    }
-}
-
-impl std::fmt::Display for WorkerCache {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(
-            f,
-            "WorkerCache E{}: {:?}",
-            self.epoch(),
-            self.workers
-                .iter()
-                .map(|(k, v)| {
-                    if let Some(x) = k.encode_base64().get(0..16) {
-                        format!("{}: {}", x, v)
-                    } else {
-                        format!("Invalid key: {}", k)
-                    }
-                })
-                .collect::<Vec<_>>()
-        )
-    }
-}
-
-impl WorkerCache {
-    /// Returns the current epoch.
-    pub fn epoch(&self) -> Epoch {
-        self.epoch
-    }
-
-    /// Returns the addresses of a specific worker (`id`) of a specific authority (`to`).
-    pub fn worker(&self, to: &PublicKey, id: &WorkerId) -> Result<WorkerInfo, ConfigError> {
-        self.workers
-            .iter()
-            .find_map(|v| match_opt::match_opt!(v, (name, authority) if name == to => authority))
-            .ok_or_else(|| {
-                ConfigError::NotInWorkerCache(ToString::to_string(&(*to).encode_base64()))
-            })?
-            .0
-            .iter()
-            .find(|(worker_id, _)| worker_id == &id)
-            .map(|(_, worker)| worker.clone())
-            .ok_or_else(|| ConfigError::NotInWorkerCache((*to).encode_base64()))
-    }
-
-    /// Returns the addresses of all our workers.
-    pub fn our_workers(&self, myself: &PublicKey) -> Result<Vec<WorkerInfo>, ConfigError> {
-        let res = self
-            .workers
-            .iter()
-            .find_map(
-                |v| match_opt::match_opt!(v, (name, authority) if name == myself => authority),
-            )
-            .ok_or_else(|| ConfigError::NotInWorkerCache((*myself).encode_base64()))?
-            .0
-            .values()
-            .cloned()
-            .collect();
-        Ok(res)
-    }
-
-    /// Returns the addresses of all known workers.
-    pub fn all_workers(&self) -> Vec<(NetworkPublicKey, Multiaddr)> {
-        self.workers
-            .iter()
-            .flat_map(|(_, w)| w.0.values().map(|w| (w.name.clone(), w.worker_address.clone())))
-            .collect()
-    }
-
-    /// Returns the addresses of all workers with a specific id except the ones of the authority
-    /// specified by `myself`.
-    pub fn others_workers_by_id(
-        &self,
-        myself: &PublicKey,
-        id: &WorkerId,
-    ) -> Vec<(PublicKey, WorkerInfo)> {
-        self.workers
-            .iter()
-            .filter(|(name, _)| *name != myself )
-            .flat_map(
-                |(name, authority)|  authority.0.iter().flat_map(
-                    |v| match_opt::match_opt!(v,(worker_id, addresses) if worker_id == id => (name.clone(), addresses.clone()))))
-            .collect()
-    }
-
-    /// Returns the addresses of all workers that are not of our node.
-    pub fn others_workers(&self, myself: &PublicKey) -> Vec<(PublicKey, WorkerInfo)> {
-        self.workers
-            .iter()
-            .filter(|(name, _)| *name != myself)
-            .flat_map(|(name, authority)| authority.0.iter().map(|v| (name.clone(), v.1.clone())))
-            .collect()
-    }
-
-    /// Return the network addresses that are present in the current worker cache
-    /// that are from a primary key that are no longer in the committee. Current
-    /// committee keys provided as an argument.
-    pub fn network_diff(&self, keys: Vec<&PublicKey>) -> HashSet<&Multiaddr> {
-        self.workers
-            .iter()
-            .filter(|(name, _)| !keys.contains(name))
-            .flat_map(|(_, authority)| {
-                authority
-                    .0
-                    .values()
-                    .map(|address| &address.transactions)
-                    .chain(authority.0.values().map(|address| &address.worker_address))
-            })
-            .collect()
     }
 }

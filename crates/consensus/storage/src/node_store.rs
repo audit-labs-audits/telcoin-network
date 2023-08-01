@@ -13,7 +13,7 @@ use lattice_typed_store::{
 };
 use std::{num::NonZeroUsize, sync::Arc, time::Duration};
 use tn_types::consensus::{
-    config::{AuthorityIdentifier, WorkerId},
+    AuthorityIdentifier, WorkerId,
     Batch, BatchDigest, Certificate, CertificateDigest, CommittedSubDagShell, ConsensusCommit,
     Header, HeaderDigest, Round, SequenceNumber, VoteInfo,
 };
@@ -22,7 +22,7 @@ use tn_types::consensus::{
 // acknowledgements
 pub type PayloadToken = u8;
 
-/// All the data stores of the node.
+/// All the data stores of the node's consensus layer.
 #[derive(Clone)]
 pub struct NodeStorage {
     pub proposer_store: ProposerStore,

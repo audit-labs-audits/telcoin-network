@@ -6,12 +6,12 @@ use anyhow::Result;
 use fastcrypto::hash::Hash;
 use futures::future::try_join_all;
 use itertools::Either;
-use lattice_consensus::dag::{Dag, ValidatorDagError};
+use lattice_consensus::{dag::DagHandle, ValidatorDagError};
 use lattice_network::PrimaryToWorkerRpc;
 use lattice_storage::{CertificateStore, HeaderStore, PayloadStore};
 use lattice_typed_store::rocks::TypedStoreError;
 use std::{collections::HashMap, sync::Arc};
-use tn_types::consensus::config::{AuthorityIdentifier, Committee, WorkerCache, WorkerId};
+use tn_types::consensus::{AuthorityIdentifier, Committee, WorkerCache, WorkerId};
 
 use consensus_metrics::metered_channel::Sender;
 use tn_types::consensus::{
@@ -47,7 +47,7 @@ pub struct BlockRemover {
     payload_store: PayloadStore,
 
     /// The Dag structure for managing the stored certificates
-    dag: Option<Arc<Dag>>,
+    dag: Option<Arc<DagHandle>>,
 
     /// Network driver allowing to send messages.
     worker_network: anemo::Network,
@@ -65,7 +65,7 @@ impl BlockRemover {
         certificate_store: CertificateStore,
         header_store: HeaderStore,
         payload_store: PayloadStore,
-        dag: Option<Arc<Dag>>,
+        dag: Option<Arc<DagHandle>>,
         worker_network: anemo::Network,
         tx_committed_certificates: Sender<(Round, Vec<Certificate>)>,
     ) -> BlockRemover {

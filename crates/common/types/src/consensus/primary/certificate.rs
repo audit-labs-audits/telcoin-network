@@ -1,14 +1,13 @@
 use crate::consensus::{
-    config::{AuthorityIdentifier, Committee, Epoch, Stake, WorkerCache},
     crypto::{
-        self, to_intent_message, AggregateSignature, AggregateSignatureBytes,
-        NarwhalAuthorityAggregateSignature, PublicKey, Signature,
+        self, to_intent_message, AggregateAuthoritySignature, AggregateAuthoritySignatureBytes,
+        NarwhalAuthorityAggregateSignature, AuthorityPublicKey, AuthoritySignature,
     },
     dag::node_dag::Affiliated,
     error::{DagError, DagResult},
     now,
     serde::NarwhalBitmap,
-    CertificateDigestProto, Header, HeaderAPI, HeaderV1, Round, TimestampMs,
+    CertificateDigestProto, Header, HeaderAPI, HeaderV1, Round, TimestampMs, WorkerCache, config::Stake, AuthorityIdentifier, Epoch, Committee,
 };
 use bytes::Bytes;
 use consensus_util_mem::MallocSizeOf;
@@ -17,12 +16,16 @@ use fastcrypto::{
     hash::{Digest, Hash},
     traits::AggregateAuthenticator,
 };
+use indexmap::IndexMap;
 #[cfg(any(test, feature = "arbitrary"))]
 use proptest_derive::Arbitrary;
 use serde::{Deserialize, Serialize};
 use serde_with::serde_as;
 use std::{collections::VecDeque, fmt};
 
+use super::{Batch, BatchAPI, MetadataAPI};
+
+/// Versioned certificate. Certificates are the output of consensus.
 #[derive(Clone, Serialize, Deserialize, MallocSizeOf)]
 #[enum_dispatch(CertificateAPI)]
 pub enum Certificate {
@@ -37,15 +40,23 @@ impl Default for Certificate {
 }
 
 impl Certificate {
-    // TODO: Add version number and match on that
+    /// TODO: Add version number and match on that
     pub fn genesis(committee: &Committee) -> Vec<Self> {
         CertificateV1::genesis(committee).into_iter().map(Self::V1).collect()
+    }
+
+    /// Create genesis with header payload for [CertificateV1]
+    pub fn genesis_with_payload(
+        committee: &Committee,
+        batch: Batch,
+    ) -> Vec<Self> {
+        CertificateV1::genesis_with_payload(committee, batch).into_iter().map(Self::V1).collect()
     }
 
     pub fn new_unverified(
         committee: &Committee,
         header: Header,
-        votes: Vec<(AuthorityIdentifier, Signature)>,
+        votes: Vec<(AuthorityIdentifier, AuthoritySignature)>,
     ) -> DagResult<Certificate> {
         CertificateV1::new_unverified(committee, header, votes)
     }
@@ -53,7 +64,7 @@ impl Certificate {
     pub fn new_unsigned(
         committee: &Committee,
         header: Header,
-        votes: Vec<(AuthorityIdentifier, Signature)>,
+        votes: Vec<(AuthorityIdentifier, AuthoritySignature)>,
     ) -> DagResult<Certificate> {
         CertificateV1::new_unsigned(committee, header, votes)
     }
@@ -63,13 +74,13 @@ impl Certificate {
     }
 
     /// This function requires that certificate was verified against given committee
-    pub fn signed_authorities(&self, committee: &Committee) -> Vec<PublicKey> {
+    pub fn signed_authorities(&self, committee: &Committee) -> Vec<AuthorityPublicKey> {
         match self {
             Certificate::V1(certificate) => certificate.signed_authorities(committee),
         }
     }
 
-    pub fn signed_by(&self, committee: &Committee) -> (Stake, Vec<PublicKey>) {
+    pub fn signed_by(&self, committee: &Committee) -> (Stake, Vec<AuthorityPublicKey>) {
         match self {
             Certificate::V1(certificate) => certificate.signed_by(committee),
         }
@@ -110,25 +121,42 @@ impl Hash<{ crypto::DIGEST_LENGTH }> for Certificate {
     }
 }
 
+/// API for certrificates based on version.
 #[enum_dispatch]
 pub trait CertificateAPI {
+    /// The header for the certificate.
     fn header(&self) -> &Header;
-    fn aggregated_signature(&self) -> &AggregateSignatureBytes;
+
+    /// The aggregate signature for the certriciate.
+    fn aggregated_signature(&self) -> &AggregateAuthoritySignatureBytes;
+
+    /// The bitmap of signed authorities for the certificate.
+    /// 
+    /// This is the aggregate signature of all authrotities for the certificate.
     fn signed_authorities(&self) -> &roaring::RoaringBitmap;
+    /// The time (ms) when the certificate was created.
     fn created_at(&self) -> &TimestampMs;
 
-    // Used for testing.
+    /// Only Used for testing.
+    /// Change the certificate's header.
     fn update_header(&mut self, header: Header);
+
+    /// Return a mutable reference to the header.
     fn header_mut(&mut self) -> &mut Header;
 }
 
+/// The certificate issued after a successful round of consensus.
 #[serde_as]
-#[derive(Clone, Serialize, Deserialize, Default, MallocSizeOf)]
+#[derive(Clone, Serialize, Deserialize, Default, MallocSizeOf, Debug)]
 pub struct CertificateV1 {
+    /// Certificate's header.
     pub header: Header,
-    pub aggregated_signature: AggregateSignatureBytes,
+    /// The aggregate signatures of validating authorities.
+    pub aggregated_signature: AggregateAuthoritySignatureBytes,
+    /// what is this??
     #[serde_as(as = "NarwhalBitmap")]
     signed_authorities: roaring::RoaringBitmap,
+    /// Timestamp for certificate
     pub created_at: TimestampMs,
 }
 
@@ -137,7 +165,7 @@ impl CertificateAPI for CertificateV1 {
         &self.header
     }
 
-    fn aggregated_signature(&self) -> &AggregateSignatureBytes {
+    fn aggregated_signature(&self) -> &AggregateAuthoritySignatureBytes {
         &self.aggregated_signature
     }
 
@@ -160,6 +188,7 @@ impl CertificateAPI for CertificateV1 {
 }
 
 impl CertificateV1 {
+    /// Create a genesis certificate with empty payload.
     pub fn genesis(committee: &Committee) -> Vec<Self> {
         committee
             .authorities()
@@ -175,10 +204,47 @@ impl CertificateV1 {
             .collect()
     }
 
+    /// Create genesis with header payload
+    pub fn genesis_with_payload(
+        committee: &Committee,
+        batch: Batch,
+    ) -> Vec<Self> {
+        let timestamp = batch.versioned_metadata().created_at().clone();
+        let mut payload = IndexMap::default();
+        payload.insert(batch.clone().digest(), (0, timestamp));
+        committee
+            .authorities()
+            .map(|authority| {
+                // let header_builder = HeaderV1Builder::default();
+                // let header = header_builder
+                //     .author(authority.id())
+                //     .epoch(committee.epoch())
+                //     .with_payload_batch(batch.clone(), 0, timestamp)
+                //     .build()
+                //     // TODO: remove this unwrap
+                //     // starting with removing the Result in .build()
+                //     //
+                //     // build() also uses .unwrap()
+                //     .unwrap();
+                Self {
+                    // header: Header::V1(header),
+                    header: Header::V1(HeaderV1 {
+                        author: authority.id(),
+                        epoch: committee.epoch(),
+                        digest: Default::default(),
+                        payload: payload.clone(), // add genesis transactions here?
+                        ..HeaderV1::default()
+                    }),
+                    ..Self::default()
+                }
+            })
+            .collect()
+    }
+
     pub fn new_unverified(
         committee: &Committee,
         header: Header,
-        votes: Vec<(AuthorityIdentifier, Signature)>,
+        votes: Vec<(AuthorityIdentifier, AuthoritySignature)>,
     ) -> DagResult<Certificate> {
         Self::new_unsafe(committee, header, votes, true)
     }
@@ -186,7 +252,7 @@ impl CertificateV1 {
     pub fn new_unsigned(
         committee: &Committee,
         header: Header,
-        votes: Vec<(AuthorityIdentifier, Signature)>,
+        votes: Vec<(AuthorityIdentifier, AuthoritySignature)>,
     ) -> DagResult<Certificate> {
         Self::new_unsafe(committee, header, votes, false)
     }
@@ -199,7 +265,7 @@ impl CertificateV1 {
     fn new_unsafe(
         committee: &Committee,
         header: Header,
-        votes: Vec<(AuthorityIdentifier, Signature)>,
+        votes: Vec<(AuthorityIdentifier, AuthoritySignature)>,
         check_stake: bool,
     ) -> DagResult<Certificate> {
         let mut votes = votes;
@@ -239,9 +305,9 @@ impl CertificateV1 {
         );
 
         let aggregated_signature = if sigs.is_empty() {
-            AggregateSignature::default()
+            AggregateAuthoritySignature::default()
         } else {
-            AggregateSignature::aggregate::<Signature, Vec<&Signature>>(
+            AggregateAuthoritySignature::aggregate::<AuthoritySignature, Vec<&AuthoritySignature>>(
                 sigs.iter().map(|(_, sig)| sig).collect(),
             )
             .map_err(|_| DagError::InvalidSignature)?
@@ -249,20 +315,20 @@ impl CertificateV1 {
 
         Ok(Certificate::V1(CertificateV1 {
             header,
-            aggregated_signature: AggregateSignatureBytes::from(&aggregated_signature),
+            aggregated_signature: AggregateAuthoritySignatureBytes::from(&aggregated_signature),
             signed_authorities,
             created_at: now(),
         }))
     }
 
     /// This function requires that certificate was verified against given committee
-    pub fn signed_authorities(&self, committee: &Committee) -> Vec<PublicKey> {
+    pub fn signed_authorities(&self, committee: &Committee) -> Vec<AuthorityPublicKey> {
         assert_eq!(committee.epoch(), self.epoch());
         let (_stake, pks) = self.signed_by(committee);
         pks
     }
 
-    pub fn signed_by(&self, committee: &Committee) -> (Stake, Vec<PublicKey>) {
+    pub fn signed_by(&self, committee: &Committee) -> (Stake, Vec<AuthorityPublicKey>) {
         // Ensure the certificate has a quorum.
         let mut weight = 0;
 
@@ -307,7 +373,7 @@ impl CertificateV1 {
 
         // Verify the signatures
         let certificate_digest: Digest<{ crypto::DIGEST_LENGTH }> = Digest::from(self.digest());
-        AggregateSignature::try_from(&self.aggregated_signature)
+        AggregateAuthoritySignature::try_from(&self.aggregated_signature)
             .map_err(|_| DagError::InvalidSignature)?
             .verify_secure(&to_intent_message(certificate_digest), &pks[..])
             .map_err(|_| DagError::InvalidSignature)?;

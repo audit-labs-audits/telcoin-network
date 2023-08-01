@@ -8,10 +8,10 @@ use fastcrypto::hash::{Digest, Hash};
 use std::{collections::HashSet, sync::Arc};
 use tn_types::{
     consensus::{
-        config::{AuthorityIdentifier, Committee, Stake},
+        AuthorityIdentifier, Committee, Stake,
         crypto::{
-            self, to_intent_message, AggregateSignature, NarwhalAuthorityAggregateSignature,
-            NarwhalAuthoritySignature, Signature,
+            self, to_intent_message, AggregateAuthoritySignature, NarwhalAuthorityAggregateSignature,
+            NarwhalAuthoritySignature, AuthoritySignature,
         },
         error::{DagError, DagResult},
         Certificate, CertificateAPI, Header, Vote, VoteAPI,
@@ -23,7 +23,7 @@ use tracing::warn;
 /// Aggregates votes for a particular header into a certificate.
 pub struct VotesAggregator {
     weight: Stake,
-    votes: Vec<(AuthorityIdentifier, Signature)>,
+    votes: Vec<(AuthorityIdentifier, AuthoritySignature)>,
     used: HashSet<AuthorityIdentifier>,
     metrics: Arc<PrimaryMetrics>,
 }
@@ -55,7 +55,7 @@ impl VotesAggregator {
             let (_, pks) = cert.signed_by(committee);
 
             let certificate_digest: Digest<{ crypto::DIGEST_LENGTH }> = Digest::from(cert.digest());
-            match AggregateSignature::try_from(cert.aggregated_signature())
+            match AggregateAuthoritySignature::try_from(cert.aggregated_signature())
                 .map_err(|_| DagError::InvalidSignature)?
                 .verify_secure(&to_intent_message(certificate_digest), &pks[..])
             {

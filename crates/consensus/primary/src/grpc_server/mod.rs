@@ -9,10 +9,10 @@ use crate::{
 };
 use consensus_metrics::spawn_logged_monitored_task;
 use consensus_network::Multiaddr;
-use lattice_consensus::dag::Dag;
+use lattice_consensus::dag::DagHandle;
 use std::{sync::Arc, time::Duration};
 use tn_types::consensus::{
-    config::{AuthorityIdentifier, Committee},
+    AuthorityIdentifier, Committee,
     ConditionalBroadcastReceiver, ConfigurationServer, ProposerServer, ValidatorServer,
 };
 use tokio::{task::JoinHandle, time::timeout};
@@ -32,7 +32,7 @@ pub struct ConsensusAPIGrpc<SynchronizerHandler: Handler + Send + Sync + 'static
     get_collections_timeout: Duration,
     remove_collections_timeout: Duration,
     block_synchronizer_handler: Arc<SynchronizerHandler>,
-    dag: Option<Arc<Dag>>,
+    dag: Option<Arc<DagHandle>>,
     committee: Committee,
     endpoints_metrics: EndpointMetrics,
     rx_shutdown: ConditionalBroadcastReceiver,
@@ -48,7 +48,7 @@ impl<SynchronizerHandler: Handler + Send + Sync + 'static> ConsensusAPIGrpc<Sync
         get_collections_timeout: Duration,
         remove_collections_timeout: Duration,
         block_synchronizer_handler: Arc<SynchronizerHandler>,
-        dag: Option<Arc<Dag>>,
+        dag: Option<Arc<DagHandle>>,
         committee: Committee,
         endpoints_metrics: EndpointMetrics,
         rx_shutdown: ConditionalBroadcastReceiver,

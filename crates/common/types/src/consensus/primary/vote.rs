@@ -1,10 +1,9 @@
 use crate::consensus::{
-    config::{AuthorityIdentifier, Epoch},
     crypto::{
-        self, intent::IntentMessage, to_intent_message, NarwhalAuthoritySignature, PublicKey,
-        Signature,
+        self, intent::IntentMessage, to_intent_message, NarwhalAuthoritySignature, AuthorityPublicKey,
+        AuthoritySignature,
     },
-    Header, HeaderAPI, HeaderDigest, Round,
+    Header, HeaderAPI, HeaderDigest, Round, AuthorityIdentifier, Epoch,
 };
 use enum_dispatch::enum_dispatch;
 use fastcrypto::{
@@ -22,22 +21,25 @@ use std::fmt;
 #[derive(Clone, Serialize, Deserialize)]
 #[enum_dispatch(VoteAPI)]
 pub enum Vote {
+    /// Version 1
     V1(VoteV1),
 }
 
 impl Vote {
     // TODO: Add version number and match on that
+    /// Create a new instance of [Vote]
     pub async fn new(
         header: &Header,
         author: &AuthorityIdentifier,
-        signature_service: &SignatureService<Signature, { crypto::INTENT_MESSAGE_LENGTH }>,
+        signature_service: &SignatureService<AuthoritySignature, { crypto::INTENT_MESSAGE_LENGTH }>,
     ) -> Self {
         Vote::V1(VoteV1::new(header, author, signature_service).await)
     }
 
+    /// TODO: docs
     pub fn new_with_signer<S>(header: &Header, author: &AuthorityIdentifier, signer: &S) -> Self
     where
-        S: Signer<Signature>,
+        S: Signer<AuthoritySignature>,
     {
         Vote::V1(VoteV1::new_with_signer(header, author, signer))
     }
@@ -55,25 +57,35 @@ impl Hash<{ crypto::DIGEST_LENGTH }> for Vote {
 
 #[enum_dispatch]
 pub trait VoteAPI {
-    fn header_digest(&self) -> HeaderDigest;
-    fn round(&self) -> Round;
-    fn epoch(&self) -> Epoch;
-    fn origin(&self) -> AuthorityIdentifier;
-    fn author(&self) -> AuthorityIdentifier;
-    fn signature(&self) -> &<PublicKey as VerifyingKey>::Sig;
+    /// TODO
+	fn header_digest(&self) -> HeaderDigest;
+    /// TODO
+	fn round(&self) -> Round;
+    /// TODO
+	fn epoch(&self) -> Epoch;
+    /// TODO
+	fn origin(&self) -> AuthorityIdentifier;
+    /// TODO
+	fn author(&self) -> AuthorityIdentifier;
+    /// TODO
+	fn signature(&self) -> &<AuthorityPublicKey as VerifyingKey>::Sig;
 }
 
-#[derive(Clone, Serialize, Deserialize)]
+/// VoteV1
+#[derive(Clone, Serialize, Deserialize, Debug)]
 pub struct VoteV1 {
-    // HeaderDigest, round, epoch and origin for the header being voted on.
+    /// HeaderDigest, round, epoch and origin for the header being voted on.
     pub header_digest: HeaderDigest,
+    /// Round for this vote.
     pub round: Round,
+    /// Epoch for this vote.
     pub epoch: Epoch,
+    /// TODO - doc
     pub origin: AuthorityIdentifier,
-    // Author of this vote.
+    /// Author of this vote.
     pub author: AuthorityIdentifier,
-    // Signature of the HeaderDigest.
-    pub signature: <PublicKey as VerifyingKey>::Sig,
+    /// Signature of the HeaderDigest.
+    pub signature: <AuthorityPublicKey as VerifyingKey>::Sig,
 }
 
 impl VoteAPI for VoteV1 {
@@ -92,7 +104,7 @@ impl VoteAPI for VoteV1 {
     fn author(&self) -> AuthorityIdentifier {
         self.author
     }
-    fn signature(&self) -> &<PublicKey as VerifyingKey>::Sig {
+    fn signature(&self) -> &<AuthorityPublicKey as VerifyingKey>::Sig {
         &self.signature
     }
 }
@@ -101,7 +113,7 @@ impl VoteV1 {
     pub async fn new(
         header: &Header,
         author: &AuthorityIdentifier,
-        signature_service: &SignatureService<Signature, { crypto::INTENT_MESSAGE_LENGTH }>,
+        signature_service: &SignatureService<AuthoritySignature, { crypto::INTENT_MESSAGE_LENGTH }>,
     ) -> Self {
         let vote = Self {
             header_digest: header.digest(),
@@ -109,7 +121,7 @@ impl VoteV1 {
             epoch: header.epoch(),
             origin: header.author(),
             author: *author,
-            signature: Signature::default(),
+            signature: AuthoritySignature::default(),
         };
         let signature = signature_service.request_signature(vote.digest().into()).await;
         Self { signature, ..vote }
@@ -117,7 +129,7 @@ impl VoteV1 {
 
     pub fn new_with_signer<S>(header: &Header, author: &AuthorityIdentifier, signer: &S) -> Self
     where
-        S: Signer<Signature>,
+        S: Signer<AuthoritySignature>,
     {
         let vote = Self {
             header_digest: header.digest(),
@@ -125,21 +137,23 @@ impl VoteV1 {
             epoch: header.epoch(),
             origin: header.author(),
             author: *author,
-            signature: Signature::default(),
+            signature: AuthoritySignature::default(),
         };
 
         let vote_digest: Digest<{ crypto::DIGEST_LENGTH }> = vote.digest().into();
-        let signature = Signature::new_secure(&to_intent_message(vote_digest), signer);
+        let signature = AuthoritySignature::new_secure(&to_intent_message(vote_digest), signer);
 
         Self { signature, ..vote }
     }
 }
 
+/// Hash a Vote based on the crate's `DIGEST_LENGTH`
 #[cfg_attr(any(test, feature = "arbitrary"), derive(Arbitrary))]
 #[derive(Clone, Serialize, Deserialize, Default, PartialEq, Eq, Hash, PartialOrd, Ord, Copy)]
 pub struct VoteDigest([u8; crypto::DIGEST_LENGTH]);
 
 impl VoteDigest {
+    /// Create a VoteDigest
     pub fn new(digest: [u8; crypto::DIGEST_LENGTH]) -> Self {
         VoteDigest(digest)
     }

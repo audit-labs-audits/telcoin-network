@@ -10,7 +10,7 @@ use anyhow::Result;
 use fastcrypto::{hash::Hash, traits::KeyPair};
 use indexmap::IndexMap;
 use itertools::Itertools;
-use lattice_consensus::consensus::ConsensusRound;
+use lattice_consensus::ConsensusRound;
 use lattice_network::client::NetworkClient;
 use lattice_storage::{CertificateStore, NodeStorage};
 use lattice_test_utils::{temp_dir, CommitteeFixture};
@@ -18,7 +18,7 @@ use once_cell::sync::OnceCell;
 use prometheus::Registry;
 use std::{collections::BTreeSet, sync::Arc, time::Duration};
 use tn_types::consensus::{
-    config::{AuthorityIdentifier, Epoch, WorkerId},
+    AuthorityIdentifier, Epoch, WorkerId,
     BatchDigest, Certificate, CertificateAPI, CertificateDigest, FetchCertificatesRequest,
     FetchCertificatesResponse, GetCertificatesRequest, GetCertificatesResponse, Header, HeaderAPI,
     HeaderDigest, PayloadAvailabilityRequest, PayloadAvailabilityResponse,

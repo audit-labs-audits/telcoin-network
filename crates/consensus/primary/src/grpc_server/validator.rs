@@ -2,11 +2,10 @@
 // Copyright (c) Mysten Labs, Inc.
 // SPDX-License-Identifier: Apache-2.0
 use std::{sync::Arc, time::Duration};
-
 use crate::{
     block_synchronizer::handler::Handler, block_waiter::GetBlockResponse, BlockRemover, BlockWaiter,
 };
-use lattice_consensus::dag::Dag;
+use lattice_consensus::dag::DagHandle;
 use tn_types::consensus::{
     BatchAPI, BlockError, CertificateDigest, CertificateDigestProto, Collection,
     CollectionRetrievalResult, Empty, GetCollectionsRequest, GetCollectionsResponse,
@@ -21,7 +20,7 @@ pub struct NarwhalValidator<SynchronizerHandler: Handler + Send + Sync + 'static
     get_collections_timeout: Duration,
     remove_collections_timeout: Duration,
     block_synchronizer_handler: Arc<SynchronizerHandler>,
-    dag: Option<Arc<Dag>>,
+    dag: Option<Arc<DagHandle>>,
 }
 
 impl<SynchronizerHandler: Handler + Send + Sync + 'static> NarwhalValidator<SynchronizerHandler> {
@@ -31,7 +30,7 @@ impl<SynchronizerHandler: Handler + Send + Sync + 'static> NarwhalValidator<Sync
         get_collections_timeout: Duration,
         remove_collections_timeout: Duration,
         block_synchronizer_handler: Arc<SynchronizerHandler>,
-        dag: Option<Arc<Dag>>,
+        dag: Option<Arc<DagHandle>>,
     ) -> Self {
         Self {
             block_waiter,

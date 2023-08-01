@@ -1,14 +1,17 @@
 // Copyright (c) Telcoin, LLC
 // Copyright (c) Mysten Labs, Inc.
 // SPDX-License-Identifier: Apache-2.0
+
+//! Inner components for primary. These are not threadsafe,
+//! so they are wrapped by an instance of `PrimaryNode`.
 use crate::{metrics::new_registry, try_join_all, FuturesUnordered, NodeError};
 use anemo::PeerId;
 use consensus_metrics::{metered_channel, RegistryID, RegistryService};
 use fastcrypto::traits::{KeyPair as _, VerifyingKey};
 use lattice_consensus::{
     bullshark::Bullshark,
-    consensus::ConsensusRound,
-    dag::Dag,
+    ConsensusRound,
+    dag::DagHandle,
     metrics::{ChannelMetrics, ConsensusMetrics},
     Consensus,
 };
@@ -19,36 +22,36 @@ use lattice_storage::NodeStorage;
 use prometheus::{IntGauge, Registry};
 use std::{sync::Arc, time::Instant};
 use tn_types::consensus::{
-    config::{AuthorityIdentifier, Committee, Parameters, WorkerCache},
-    crypto::{KeyPair, NetworkKeyPair, PublicKey},
+    AuthorityIdentifier, Committee, Parameters, WorkerCache,
+    crypto::{AuthorityKeyPair, NetworkKeyPair, AuthorityPublicKey},
     Certificate, ConditionalBroadcastReceiver, PreSubscribedBroadcastSender, Round,
 };
 use tokio::{
-    sync::{watch, RwLock},
+    sync::watch,
     task::JoinHandle,
 };
 use tracing::{debug, info, instrument};
 
-struct PrimaryNodeInner {
-    // The configuration parameters.
+pub(super) struct PrimaryNodeInner {
+    /// The configuration parameters.
     parameters: Parameters,
-    // Whether to run consensus (and an executor client) or not.
-    // If true, an internal consensus will be used, else an external consensus will be used.
-    // If an external consensus will be used, then this bool will also ensure that the
-    // corresponding gRPC server that is used for communication between narwhal and
-    // external consensus is also spawned.
+    /// Whether to run consensus (and an executor client) or not.
+    /// If true, an internal consensus will be used, else an external consensus will be used.
+    /// If an external consensus will be used, then this bool will also ensure that the
+    /// corresponding gRPC server that is used for communication between narwhal and
+    /// external consensus is also spawned.
     internal_consensus: bool,
-    // A prometheus RegistryService to use for the metrics
+    /// A prometheus RegistryService to use for the metrics
     registry_service: RegistryService,
-    // The latest registry id & registry used for the node
-    registry: Option<(RegistryID, Registry)>,
-    // The task handles created from primary
+    /// The latest registry id & registry used for the node
+    pub(super) registry: Option<(RegistryID, Registry)>,
+    /// The task handles created from primary
     handles: FuturesUnordered<JoinHandle<()>>,
-    // Keeping NetworkClient here for quicker shutdown.
-    client: Option<NetworkClient>,
-    // The shutdown signal channel
+    /// Keeping NetworkClient here for quicker shutdown.
+    pub(super) client: Option<NetworkClient>,
+    /// The shutdown signal channel
     tx_shutdown: Option<PreSubscribedBroadcastSender>,
-    // Peer ID used for local connections.
+    /// Peer ID used for local connections.
     own_peer_id: Option<PeerId>,
 }
 
@@ -60,12 +63,31 @@ impl PrimaryNodeInner {
     /// TODO: move this to node properties
     const CONSENSUS_SCHEDULE_CHANGE_SUB_DAGS: u64 = 300;
 
-    // Starts the primary node with the provided info. If the node is already running then this
-    // method will return an error instead.
+    /// Create a new instance of Self
+    pub(super) fn new(
+        parameters: Parameters,
+        internal_consensus: bool,
+        registry_service: RegistryService,
+    ) -> Self {
+        Self {
+            parameters,
+            internal_consensus,
+            registry_service,
+            registry: None,
+            handles: FuturesUnordered::new(),
+            client: None,
+            tx_shutdown: None,
+            own_peer_id: None,
+        }
+    }
+
+
+    /// Starts the primary node with the provided info. If the node is already running then this
+    /// method will return an error instead.
     #[instrument(level = "info", skip_all)]
-    async fn start<State>(
+    pub(super) async fn start<State>(
         &mut self, // The private-public key pair of this authority.
-        keypair: KeyPair,
+        keypair: AuthorityKeyPair,
         // The private-public network key pair of this authority.
         network_keypair: NetworkKeyPair,
         // The committee information.
@@ -122,11 +144,11 @@ impl PrimaryNodeInner {
         Ok(())
     }
 
-    // Will shutdown the primary node and wait until the node has shutdown by waiting on the
-    // underlying components handles. If the node was not already running then the
-    // method will return immediately.
+    /// Will shutdown the primary node and wait until the node has shutdown by waiting on the
+    /// underlying components handles. If the node was not already running then the
+    /// method will return immediately.
     #[instrument(level = "info", skip_all)]
-    async fn shutdown(&mut self) {
+    pub(super) async fn shutdown(&mut self) {
         if !self.is_running().await {
             return
         }
@@ -155,21 +177,21 @@ impl PrimaryNodeInner {
         );
     }
 
-    // Helper method useful to wait on the execution of the primary node
-    async fn wait(&mut self) {
+    /// Helper method useful to wait on the execution of the primary node
+    pub(super) async fn wait(&mut self) {
         try_join_all(&mut self.handles).await.unwrap();
     }
 
-    // If any of the underlying handles haven't still finished, then this method will return
-    // true, otherwise false will returned instead.
-    async fn is_running(&self) -> bool {
+    /// If any of the underlying handles haven't still finished, then this method will return
+    /// true, otherwise false will return instead.
+    pub(super) async fn is_running(&self) -> bool {
         self.handles.iter().any(|h| !h.is_finished())
     }
 
-    // Accepts an Option registry. If it's Some, then the new registry will be added in the
-    // registry service and the registry_id will be updated. Also, any previous registry will
-    // be removed. If None is passed, then the registry_id is updated to None and any old
-    // registry is removed from the RegistryService.
+    /// Accepts an Option registry. If it's Some, then the new registry will be added in the
+    /// registry service and the registry_id will be updated. Also, any previous registry will
+    /// be removed. If None is passed, then the registry_id is updated to None and any old
+    /// registry is removed from the RegistryService.
     fn swap_registry(&mut self, registry: Option<Registry>) {
         if let Some((registry_id, _registry)) = self.registry.as_ref() {
             self.registry_service.remove(*registry_id);
@@ -186,7 +208,7 @@ impl PrimaryNodeInner {
     /// transactions.
     pub async fn spawn_primary<State>(
         // The private-public key pair of this authority.
-        keypair: KeyPair,
+        keypair: AuthorityKeyPair,
         // The private-public network key pair of this authority.
         network_keypair: NetworkKeyPair,
         // The committee information.
@@ -248,7 +270,7 @@ impl PrimaryNodeInner {
         let dag = if !internal_consensus {
             debug!("Consensus is disabled: the primary will run w/o Bullshark");
             let consensus_metrics = Arc::new(ConsensusMetrics::new(registry));
-            let (handle, dag) = Dag::new(
+            let (handle, dag) = DagHandle::new(
                 &committee,
                 rx_new_certificates,
                 consensus_metrics,
@@ -326,7 +348,7 @@ impl PrimaryNodeInner {
         registry: &Registry,
     ) -> SubscriberResult<Vec<JoinHandle<()>>>
     where
-        PublicKey: VerifyingKey,
+        AuthorityPublicKey: VerifyingKey,
         State: ExecutionState + Send + Sync + 'static,
     {
         let consensus_metrics = Arc::new(ConsensusMetrics::new(registry));
@@ -388,86 +410,5 @@ impl PrimaryNodeInner {
         )?;
 
         Ok(executor_handles.into_iter().chain(std::iter::once(consensus_handles)).collect())
-    }
-}
-
-#[derive(Clone)]
-pub struct PrimaryNode {
-    internal: Arc<RwLock<PrimaryNodeInner>>,
-}
-
-impl PrimaryNode {
-    pub fn new(
-        parameters: Parameters,
-        internal_consensus: bool,
-        registry_service: RegistryService,
-    ) -> PrimaryNode {
-        let inner = PrimaryNodeInner {
-            parameters,
-            internal_consensus,
-            registry_service,
-            registry: None,
-            handles: FuturesUnordered::new(),
-            client: None,
-            tx_shutdown: None,
-            own_peer_id: None,
-        };
-
-        Self { internal: Arc::new(RwLock::new(inner)) }
-    }
-
-    pub async fn start<State>(
-        &self, // The private-public key pair of this authority.
-        keypair: KeyPair,
-        // The private-public network key pair of this authority.
-        network_keypair: NetworkKeyPair,
-        // The committee information.
-        committee: Committee,
-        // The worker information cache.
-        worker_cache: WorkerCache,
-        // Client for communications.
-        client: NetworkClient,
-        // The node's store
-        // TODO: replace this by a path so the method can open and independent storage
-        store: &NodeStorage,
-        // The state used by the client to execute transactions.
-        execution_state: Arc<State>,
-    ) -> Result<(), NodeError>
-    where
-        State: ExecutionState + Send + Sync + 'static,
-    {
-        let mut guard = self.internal.write().await;
-        guard.client = Some(client.clone());
-        guard
-            .start(
-                keypair,
-                network_keypair,
-                committee,
-                worker_cache,
-                client,
-                store,
-                execution_state,
-            )
-            .await
-    }
-
-    pub async fn shutdown(&self) {
-        let mut guard = self.internal.write().await;
-        guard.shutdown().await
-    }
-
-    pub async fn is_running(&self) -> bool {
-        let guard = self.internal.read().await;
-        guard.is_running().await
-    }
-
-    pub async fn wait(&self) {
-        let mut guard = self.internal.write().await;
-        guard.wait().await
-    }
-
-    pub async fn registry(&self) -> Option<(RegistryID, Registry)> {
-        let guard = self.internal.read().await;
-        guard.registry.clone()
     }
 }

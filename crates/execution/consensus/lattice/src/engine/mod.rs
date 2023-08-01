@@ -1431,6 +1431,9 @@ where
                     LatticeEngineMessage::EventListener(tx) => {
                         this.listeners.push_listener(tx);
                     }
+                    LatticeEngineMessage::NewCertificate { certificate, tx } => {
+                        todo!()
+                    }
                 },
                 Poll::Ready(None) => {
                     unreachable!("Engine holds the a sender to the message channel")

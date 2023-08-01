@@ -1,7 +1,6 @@
 use crate::consensus::{
-    config::{AuthorityIdentifier, WorkerId, WorkerInfo},
     crypto::NetworkPublicKey,
-    Batch, BatchDigest, Certificate, CertificateDigest, Header, Round, VersionedMetadata, Vote,
+    Batch, BatchDigest, Certificate, CertificateDigest, Header, Round, VersionedMetadata, Vote, AuthorityIdentifier, WorkerId, WorkerInfo,
 };
 use roaring::RoaringBitmap;
 use serde::{Deserialize, Serialize};

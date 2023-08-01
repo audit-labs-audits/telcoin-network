@@ -12,7 +12,7 @@ use lattice_network::{client::NetworkClient, WorkerToPrimaryClient};
 use lattice_typed_store::{rocks::DBMap, Map};
 use std::{collections::HashSet, time::Duration};
 use tn_types::consensus::{
-    config::{AuthorityIdentifier, Committee, WorkerCache, WorkerId},
+    AuthorityIdentifier, Committee, WorkerCache, WorkerId,
     now, Batch, BatchAPI, BatchDigest, FetchBatchesRequest, FetchBatchesResponse, MetadataAPI,
     PrimaryToWorker, RequestBatchRequest, RequestBatchResponse, RequestBatchesRequest,
     RequestBatchesResponse, WorkerBatchMessage, WorkerDeleteBatchesMessage,

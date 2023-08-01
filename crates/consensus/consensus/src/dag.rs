@@ -9,9 +9,8 @@ use std::{
     ops::RangeInclusive,
     sync::{Arc, RwLock},
 };
-use thiserror::Error;
 use tn_types::consensus::{
-    config::{AuthorityIdentifier, Committee},
+    AuthorityIdentifier, Committee,
     dag::node_dag::{NodeDag, NodeDagError},
     Certificate, CertificateDigest, ConditionalBroadcastReceiver, Round,
 };
@@ -23,12 +22,14 @@ use tokio::{
     task::JoinHandle,
 };
 use tracing::instrument;
-
-use crate::{metrics::ConsensusMetrics, DEFAULT_CHANNEL_SIZE};
+use crate::{metrics::ConsensusMetrics, DEFAULT_CHANNEL_SIZE, error::ValidatorDagError};
 
 #[cfg(any(test))]
 #[path = "tests/dag_tests.rs"]
 pub mod dag_tests;
+
+/// The representation of the DAG in memory.
+pub type Dag = BTreeMap<Round, HashMap<AuthorityIdentifier, (CertificateDigest, Certificate)>>;
 
 /// Dag represents the Direct Acyclic Graph that is constructed by the certificate of each round
 /// without any consensus running on top of it. This is a [`fastcrypto::traits::VerifyingKey`],
@@ -55,42 +56,51 @@ struct InnerDag {
 }
 
 /// The publicly exposed Dag handle, to which one can send commands
-pub struct Dag {
+pub struct DagHandle {
+    /// Channel for sending [DagCommand] to the [InnerDag] process.
     tx_commands: Sender<DagCommand>,
 }
 
-/// Represents the errors that can be encountered in this concrete,
-/// [`fastcrypto::traits::VerifyingKey`], [`Certificate`] and [`Round`]-aware variant of the Dag.
-#[derive(Debug, Error)]
-pub enum ValidatorDagError {
-    #[error("No remaining certificates in Dag for this authority: {0}")]
-    OutOfCertificates(AuthorityIdentifier),
-    #[error("No known certificates for this authority: {0} at round {1}")]
-    NoCertificateForCoordinates(AuthorityIdentifier, Round),
-    // an invariant violation at the level of the generic DAG (unrelated to Certificate specifics)
-    #[error("Dag invariant violation {0}")]
-    DagInvariantViolation(#[from] NodeDagError),
-}
-
+/// Commands for interacting and mutating the Dag.
 #[allow(clippy::large_enum_variant)]
 enum DagCommand {
+    /// Try to insert a certificate into the DAG.
     Insert(Box<Certificate>, oneshot::Sender<Result<(), ValidatorDagError>>),
+
+    /// See if the certificate digest is represented as a node in the DAG and still a live (uncompressed) reference.
     Contains(CertificateDigest, oneshot::Sender<bool>),
+
+    /// Returns whether the vertex pointed to by the hash passed as an argument was
+    /// contained in the DAG at any point in the past.
     HasEverContained(CertificateDigest, oneshot::Sender<bool>),
+
+    /// Returns the oldest and newest rounds for which a validator has (live) certificates in the
+    /// DAG.
     Rounds(AuthorityIdentifier, oneshot::Sender<Result<RangeInclusive<Round>, ValidatorDagError>>),
+
+    /// Returns a breadth first traversal of the Dag, starting with the certified collection
+    /// passed as argument and returns an iterator of certificate digests.
     ReadCausal(
         CertificateDigest,
         oneshot::Sender<Result<Vec<CertificateDigest>, ValidatorDagError>>,
     ),
+
+    /// Returns a breadth first traversal of the Dag, starting with the certified collection
+    /// that matches the AuthorityIdentifier and Round.
     NodeReadCausal(
         (AuthorityIdentifier, Round),
         oneshot::Sender<Result<Vec<CertificateDigest>, ValidatorDagError>>,
     ),
+
+    /// Removes certificates from the Dag, reclaiming memory in the process.
     Remove(Vec<CertificateDigest>, oneshot::Sender<Result<(), ValidatorDagError>>),
+
+    /// Retrieve the digest from the Dag or add it to the map of obligations maintained by `InnerDag::run()`.
     NotifyRead(CertificateDigest, oneshot::Sender<Result<Certificate, ValidatorDagError>>),
 }
 
 impl InnerDag {
+    /// Create a new instance of Self.
     fn new(
         committee: &Committee,
         rx_primary: metered_channel::Receiver<Certificate>,
@@ -109,6 +119,7 @@ impl InnerDag {
         idg
     }
 
+    /// Listen for the next DagCommand.
     async fn run(&mut self) {
         let mut obligations = HashMap::<CertificateDigest, VecDeque<oneshot::Sender<_>>>::new();
         loop {
@@ -169,6 +180,7 @@ impl InnerDag {
         }
     }
 
+    /// Insert a certificate into the Dag.
     #[instrument(level = "trace", skip_all, fields(certificate = ?certificate), err)]
     fn insert(&mut self, certificate: Certificate) -> Result<(), ValidatorDagError> {
         let digest = certificate.digest();
@@ -204,7 +216,7 @@ impl InnerDag {
     }
 
     /// Returns the oldest and newest rounds for which a validator has (live) certificates in the
-    /// DAG
+    /// DAG.
     #[instrument(level = "trace", skip_all, fields(origin = ?origin), err)]
     fn rounds(
         &mut self,
@@ -326,7 +338,8 @@ impl InnerDag {
     }
 }
 
-impl Dag {
+impl DagHandle {
+    /// Createa new instance of Self and start the InnerDag listening for DagCommands.
     pub fn new(
         committee: &Committee,
         rx_primary: metered_channel::Receiver<Certificate>,
@@ -345,7 +358,7 @@ impl Dag {
         );
 
         let handle = spawn_logged_monitored_task!(async move { idg.run().await }, "DAGTask");
-        let dag = Dag { tx_commands };
+        let dag = DagHandle { tx_commands };
         (handle, dag)
     }
 

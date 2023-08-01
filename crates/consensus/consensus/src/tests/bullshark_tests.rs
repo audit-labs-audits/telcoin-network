@@ -6,7 +6,7 @@
 
 use super::*;
 use crate::{
-    consensus::ConsensusRound,
+    ConsensusRound,
     consensus_utils::{NUM_SUB_DAGS_PER_SCHEDULE, *},
     metrics::ConsensusMetrics,
     Consensus, NUM_SHUTDOWN_RECEIVERS,

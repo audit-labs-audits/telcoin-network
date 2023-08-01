@@ -3,7 +3,7 @@
 // Copyright (c) Mysten Labs, Inc.
 // SPDX-License-Identifier: Apache-2.0
 use crate::{
-    consensus::{ConsensusState, Dag},
+    dag::Dag, ConsensusState,
     metrics::ConsensusMetrics,
     utils, ConsensusError, Outcome,
 };
@@ -11,7 +11,7 @@ use fastcrypto::hash::Hash;
 use lattice_storage::ConsensusStore;
 use std::sync::Arc;
 use tn_types::consensus::{
-    config::{AuthorityIdentifier, Committee, Stake},
+    AuthorityIdentifier, Committee, Stake,
     Certificate, CertificateAPI, CertificateDigest, CommittedSubDag, HeaderAPI, ReputationScores,
     Round,
 };
@@ -41,12 +41,13 @@ pub struct LastRound {
     leader_has_support: bool,
 }
 
+/// Information for running Bullshark DAG-based consensus.
 pub struct Bullshark {
     /// The committee information.
     pub committee: Committee,
     /// Persistent storage to safe ensure crash-recovery.
     pub store: Arc<ConsensusStore>,
-
+    /// Metrics.
     pub metrics: Arc<ConsensusMetrics>,
     /// The last time we had a successful leader election
     pub last_successful_leader_election_timestamp: Instant,
@@ -78,9 +79,10 @@ impl Bullshark {
         }
     }
 
-    // Returns the PublicKey of the authority which is the leader for the provided `round`.
-    // Pay attention that this method will return always the first authority as the leader
-    // when used under a test environment.
+    /// Returns the PublicKey of the authority which is the leader for the provided `round`.
+    ///
+    /// Note: this method always returns the first authority as the round's leader within a
+    /// test environment.
     pub fn leader_authority(committee: &Committee, round: Round) -> AuthorityIdentifier {
         assert_eq!(round % 2, 0, "We should never attempt to do a leader election for odd rounds");
 
@@ -129,7 +131,7 @@ impl Bullshark {
     ) -> ReputationScores {
         // we reset the scores for every schedule change window, or initialise when it's the first
         // sub dag we are going to create.
-        // TODO: when schedule change is implemented we should probably change a little bit
+        // TODO: when schedule change is implemented we should probably change a little bit of 
         // this logic here.
         let mut reputation_score =
             if sub_dag_index == 1 || sub_dag_index % self.num_sub_dags_per_schedule == 0 {
@@ -173,6 +175,13 @@ impl Bullshark {
         reputation_score
     }
 
+    /// Process the certificate for consensus.
+    /// 
+    /// 1. Try to add the new certificate to local storage.
+    /// 2. If the round is even, try to elect a leader
+    /// 
+    /// The result is an [Outcome] and a [CommittedSubDag]. If a new leader
+    /// was not selected, then the committed sub dag is empty.
     pub fn process_certificate(
         &mut self,
         state: &mut ConsensusState,

@@ -26,9 +26,9 @@ where
     S::Error::custom(format!("byte serialization failed, cause by: {:?}", e))
 }
 
-// Serializes a bitmap according to the roaring bitmap on-disk standard.
+/// Serializes a bitmap according to the roaring bitmap on-disk standard.
 /// https://github.com/RoaringBitmap/RoaringFormatSpec
-pub struct NarwhalBitmap;
+pub(crate) struct NarwhalBitmap;
 
 impl SerializeAs<roaring::RoaringBitmap> for NarwhalBitmap {
     fn serialize_as<S>(source: &roaring::RoaringBitmap, serializer: S) -> Result<S::Ok, S::Error>

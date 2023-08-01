@@ -36,7 +36,6 @@ pub fn process_certificates(c: &mut Criterion) {
             Certificate::genesis(&committee).iter().map(|x| x.digest()).collect::<BTreeSet<_>>();
         let (certificates, _next_parents) = make_optimal_certificates(
             &committee,
-            &latest_protocol_version(),
             1..=rounds,
             &genesis,
             &keys,

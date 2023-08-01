@@ -20,7 +20,7 @@ use std::{
 };
 use tap::Tap;
 use tn_macros::fail_point;
-use tn_types::consensus::{config::AuthorityIdentifier, Certificate, CertificateDigest, Round};
+use tn_types::consensus::{AuthorityIdentifier, Certificate, CertificateDigest, Round};
 
 #[derive(Clone)]
 pub struct CertificateStoreCacheMetrics {
@@ -182,10 +182,12 @@ impl Cache for NoCache {
     }
 }
 
-/// The main storage when we have to deal with certificates. It maintains
-/// two storages, one main which saves the certificates by their ids, and a
-/// secondary one which acts as an index to allow us fast retrieval based
-/// for queries based in certificate rounds.
+/// The main storage when we have to deal with certificates.
+/// It maintains two storages, one main which saves the certificates
+/// by their ids, and a secondary one which acts as an index
+/// to allow us fast retrieval based for queries based in
+/// certificate rounds.
+/// 
 /// It also offers pub/sub capabilities in write events. By using the
 /// `notify_read` someone can wait to hear until a certificate by a specific
 /// id has been written in storage.
@@ -194,12 +196,18 @@ pub struct CertificateStore<T: Cache = CertificateStoreCache> {
     /// Holds the certificates by their digest id
     certificates_by_id: DBMap<CertificateDigest, Certificate>,
     /// A secondary index that keeps the certificate digest ids
-    /// by the certificate rounds. Certificate origin is used to produce unique keys.
+    /// by the certificate rounds.
+    /// 
+    /// Certificate origin is used to produce unique keys.
+    /// 
     /// This helps us to perform range requests based on rounds. We avoid storing again the
     /// certificate here to not waste space. To dereference we use the certificates_by_id storage.
     certificate_id_by_round: DBMap<(Round, AuthorityIdentifier), CertificateDigest>,
     /// A secondary index that keeps the certificate digest ids
-    /// by the certificate origins. Certificate rounds are used to produce unique keys.
+    /// by the certificate origins.
+    /// 
+    /// Certificate rounds are used to produce unique keys.
+    ///
     /// This helps us to perform range requests based on rounds. We avoid storing again the
     /// certificate here to not waste space. To dereference we use the certificates_by_id storage.
     certificate_id_by_origin: DBMap<(AuthorityIdentifier, Round), CertificateDigest>,
@@ -651,7 +659,7 @@ mod test {
         time::Instant,
     };
     use tn_types::consensus::{
-        config::AuthorityIdentifier, Certificate, CertificateAPI, CertificateDigest, HeaderAPI,
+        AuthorityIdentifier, Certificate, CertificateAPI, CertificateDigest, HeaderAPI,
         Round,
     };
 
@@ -707,8 +715,8 @@ mod test {
         )
     }
 
-    // helper method that creates certificates for the provided
-    // number of rounds.
+    /// helper method that creates certificates for the provided
+    /// number of rounds.
     fn certificates(rounds: u64) -> Vec<Certificate> {
         let fixture = CommitteeFixture::builder().build();
         let committee = fixture.committee();

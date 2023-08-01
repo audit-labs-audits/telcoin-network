@@ -2,10 +2,10 @@
 // Copyright (c) 2021, Facebook, Inc. and its affiliates
 // Copyright (c) Mysten Labs, Inc.
 // SPDX-License-Identifier: Apache-2.0
-use crate::consensus::{ConsensusState, Dag};
+use crate::{ConsensusState, dag::Dag};
 use std::collections::HashSet;
 use tn_types::consensus::{
-    config::Committee, Certificate, CertificateAPI, CertificateDigest, HeaderAPI, Round,
+    Committee, Certificate, CertificateAPI, CertificateDigest, HeaderAPI, Round,
 };
 use tracing::debug;
 

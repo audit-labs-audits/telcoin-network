@@ -3,7 +3,7 @@
 use crate::{
     config,
     dirs::{LogsDir, PlatformPath},
-    execution,
+    node,
     runner::CliRunner,
 };
 use clap::{ArgAction, Args, Parser, Subcommand};
@@ -27,9 +27,8 @@ pub fn run() -> eyre::Result<()> {
 
     match opt.command {
         // Commands::Gateway(c) => runner.run_command_until_exit(|ctx| c.execute(ctx)),
-        // Commands::Node(c) => runner.run_command_until_exit(|ctx| c.execute(ctx)),
         // Commands::Engine(c) => runner.run_command_until_exit(|ctx| c.execute(ctx)),
-        Commands::Execution(c) => runner.run_command_until_exit(|ctx| c.execute(ctx)),
+        Commands::Node(c) => runner.run_command_until_exit(|ctx| c.execute(ctx)),
         Commands::Config(command) => runner.run_until_ctrl_c(command.execute()),
     }
 }
@@ -37,9 +36,9 @@ pub fn run() -> eyre::Result<()> {
 /// Command options
 #[derive(Subcommand, Debug)]
 enum Commands {
-    /// Execution layer: RPC && Engine
+    /// Run a node: execution and consensus
     #[command(name = "execution")]
-    Execution(execution::Command),
+    Node(node::Command),
 
     /// Write config to stdout
     #[command(name = "config")]

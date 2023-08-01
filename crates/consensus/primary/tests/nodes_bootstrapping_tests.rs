@@ -2,7 +2,7 @@
 // Copyright (c) Mysten Labs, Inc.
 // SPDX-License-Identifier: Apache-2.0
 use bytes::Bytes;
-use lattice_test_utils::cluster::{setup_tracing, Cluster};
+use lattice_test_utils::{cluster::Cluster, setup_tracing};
 use std::time::Duration;
 use tn_types::consensus::{PublicKeyProto, RoundsRequest, TransactionProto};
 

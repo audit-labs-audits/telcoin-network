@@ -15,6 +15,7 @@ pub type Transaction = Vec<u8>;
 #[derive(Clone, Serialize, Deserialize, Debug, PartialEq, Eq)]
 #[enum_dispatch(BatchAPI)]
 pub enum Batch {
+    /// Version 1
     V1(BatchV1),
 }
 
@@ -26,6 +27,7 @@ impl Batch {
         Self::V1(BatchV1::new(transactions))
     }
 
+    /// Size of the batch variant's inner data.
     pub fn size(&self) -> usize {
         match self {
             Batch::V1(data) => data.size(),
@@ -43,14 +45,23 @@ impl Hash<{ crypto::DIGEST_LENGTH }> for Batch {
     }
 }
 
+/// API for access data from versioned Batch variants.
+///
+/// TODO: update comments once EL data is finalized between Batch and VersionedMetadata
 #[enum_dispatch]
 pub trait BatchAPI {
-    fn transactions(&self) -> &Vec<Transaction>;
-    fn transactions_mut(&mut self) -> &mut Vec<Transaction>;
-    fn versioned_metadata(&self) -> &VersionedMetadata;
-    fn versioned_metadata_mut(&mut self) -> &mut VersionedMetadata;
-    fn owned_metadata(self) -> VersionedMetadata;
-    fn owned_transactions(&self) -> Vec<Transaction>;
+    /// TODO
+	fn transactions(&self) -> &Vec<Transaction>;
+    /// TODO
+	fn transactions_mut(&mut self) -> &mut Vec<Transaction>;
+    /// TODO
+	fn versioned_metadata(&self) -> &VersionedMetadata;
+    /// TODO
+	fn versioned_metadata_mut(&mut self) -> &mut VersionedMetadata;
+    /// TODO
+	fn owned_metadata(self) -> VersionedMetadata;
+    /// TODO
+	fn owned_transactions(&self) -> Vec<Transaction>;
 }
 
 /// The batch version.
@@ -95,6 +106,7 @@ impl BatchAPI for BatchV1 {
 }
 
 impl BatchV1 {
+    /// Create a new BatchV1
     pub fn new(transactions: Vec<Transaction>) -> Self {
         Self {
             transactions,
@@ -103,11 +115,13 @@ impl BatchV1 {
         }
     }
 
+    /// The size of the BatchV1 inner data
     pub fn size(&self) -> usize {
         self.transactions.iter().map(|t| t.len()).sum()
     }
 }
 
+/// Digest of the batch.
 #[cfg_attr(any(test, feature = "arbitrary"), derive(Arbitrary))]
 #[derive(
     Clone, Copy, Serialize, Deserialize, Default, PartialEq, Eq, Hash, PartialOrd, Ord, MallocSizeOf,
@@ -133,6 +147,7 @@ impl From<BatchDigest> for Digest<{ crypto::DIGEST_LENGTH }> {
 }
 
 impl BatchDigest {
+    /// New BatchDigest
     pub fn new(val: [u8; crypto::DIGEST_LENGTH]) -> BatchDigest {
         BatchDigest(val)
     }

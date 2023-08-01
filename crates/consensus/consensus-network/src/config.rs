@@ -12,6 +12,12 @@ use serde::{Deserialize, Serialize};
 use std::time::Duration;
 use tonic::transport::Channel;
 
+/// Configuration for the consensus layer network.
+/// 
+/// The configuration affects all network communication:
+/// - worker <-> worker
+/// - worker <-> primary
+/// - primary <-> primary
 #[derive(Debug, Default, Deserialize, Serialize)]
 pub struct Config {
     /// Set the concurrency limit applied to on requests inbound per connection.
@@ -65,13 +71,13 @@ pub struct Config {
     /// Default is 20 seconds.
     pub http2_keepalive_timeout: Option<Duration>,
 
-    // Only affects servers
+    /// Only affects servers
     pub load_shed: Option<bool>,
 
     /// Only affects clients
     pub rate_limit: Option<(u64, Duration)>,
 
-    // Only affects servers
+    /// Only affects servers
     pub global_concurrency_limit: Option<usize>,
 }
 

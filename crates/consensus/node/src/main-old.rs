@@ -20,7 +20,7 @@ use prometheus::Registry;
 use std::sync::Arc;
 use tn_types::consensus::{
     config::{Committee, Import, Parameters, WorkerCache, WorkerId},
-    crypto::{KeyPair, NetworkKeyPair},
+    crypto::{AuthorityKeyPair, NetworkKeyPair},
 };
 // use sui_keys::keypair_file::{
 //     read_authority_keypair_from_file, read_network_keypair_from_file,
@@ -240,7 +240,7 @@ fn setup_benchmark_telemetry(
 async fn run(
     matches: &ArgMatches<'_>,
     committee: Committee,
-    primary_keypair: KeyPair,
+    primary_keypair: AuthorityKeyPair,
     primary_network_keypair: NetworkKeyPair,
     worker_keypair: NetworkKeyPair,
     registry: Registry,

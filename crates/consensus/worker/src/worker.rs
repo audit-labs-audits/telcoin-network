@@ -34,7 +34,7 @@ use lattice_typed_store::rocks::DBMap;
 use std::{collections::HashMap, net::Ipv4Addr, sync::Arc, thread::sleep, time::Duration};
 use tap::TapFallible;
 use tn_types::consensus::{
-    config::{Authority, AuthorityIdentifier, Committee, Parameters, WorkerCache, WorkerId},
+    Authority, AuthorityIdentifier, Committee, Parameters, WorkerCache, WorkerId,
     crypto::{traits::KeyPair as _, NetworkKeyPair, NetworkPublicKey},
     Batch, BatchDigest, ConditionalBroadcastReceiver, PreSubscribedBroadcastSender,
     PrimaryToWorkerServer, WorkerToWorkerServer,

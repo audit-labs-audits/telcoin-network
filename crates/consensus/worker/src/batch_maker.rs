@@ -14,7 +14,7 @@ use lattice_network::{client::NetworkClient, WorkerToPrimaryClient};
 use lattice_typed_store::{rocks::DBMap, Map};
 use std::sync::Arc;
 use tn_types::consensus::{
-    config::WorkerId, error::DagError, now, Batch, BatchAPI, BatchDigest,
+    WorkerId, error::DagError, now, Batch, BatchAPI, BatchDigest,
     ConditionalBroadcastReceiver, MetadataAPI, Transaction, TxResponse, WorkerOwnBatchMessage,
 };
 use tokio::{

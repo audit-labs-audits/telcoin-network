@@ -37,8 +37,11 @@ impl LatticeConsensusEngineHandle {
     }
 
     /// Sends a new batch message to the lattice consensus engine and waits for a response.
+    /// Akin to `new_payload_v2` in beacon engine api.
     ///
     /// This handle is called when a worker receives a batch from another peer.
+    /// 
+    /// Engine should try to create the block to verify.
     pub async fn new_batch_from_peer(
         &self,
         batch: Batch,
@@ -66,6 +69,16 @@ impl LatticeConsensusEngineHandle {
             .map(|payload| (*payload).clone())?
             .into())
     }
+
+    // /// Produce the next canonical block based on certificate from the CL.
+    // /// 
+    // /// Akin to `fork_choice_updated` in beacon engine api.
+    // pub async fn certificate_finalized(
+    //     &self,
+    //     // cert
+    // ) -> Result<(), Lattice> {
+    //     todo!()
+    // }
 
     /// Sends a forkchoice update message to the lattice consensus engine and waits for a response.
     ///

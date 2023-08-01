@@ -4,7 +4,7 @@
 use lattice_typed_store::StoreError;
 use std::fmt::Debug;
 use thiserror::Error;
-use tn_types::consensus::{config::WorkerId, CertificateDigest};
+use tn_types::consensus::{WorkerId, CertificateDigest};
 
 #[macro_export]
 macro_rules! bail {

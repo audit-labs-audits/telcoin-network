@@ -10,7 +10,7 @@ use fastcrypto::{hash::Hash, traits::KeyPair};
 use futures::{stream::FuturesUnordered, StreamExt};
 use itertools::Itertools;
 use lattice_consensus::{
-    consensus::ConsensusRound, dag::Dag, metrics::ConsensusMetrics, utils::gc_round,
+    ConsensusRound, dag::DagHandle, metrics::ConsensusMetrics, utils::gc_round,
 };
 use lattice_network::client::NetworkClient;
 use lattice_test_utils::{
@@ -24,7 +24,7 @@ use std::{
     time::Duration,
 };
 use tn_types::consensus::{
-    config::Committee, error::DagError, Certificate, CertificateAPI, Header, HeaderAPI,
+    Committee, error::DagError, Certificate, CertificateAPI, Header, HeaderAPI,
     PreSubscribedBroadcastSender, Round,
 };
 use tokio::sync::{oneshot, watch};
@@ -552,7 +552,7 @@ async fn deliver_certificate_using_dag() {
 
     let consensus_metrics = Arc::new(ConsensusMetrics::new(&Registry::new()));
     let dag =
-        Arc::new(Dag::new(&committee, rx_consensus, consensus_metrics, tx_shutdown.subscribe()).1);
+        Arc::new(DagHandle::new(&committee, rx_consensus, consensus_metrics, tx_shutdown.subscribe()).1);
 
     let synchronizer = Synchronizer::new(
         name,

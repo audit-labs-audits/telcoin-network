@@ -8,7 +8,7 @@ use lattice_typed_store::{
 };
 use std::{num::NonZeroUsize, sync::Arc};
 use tn_types::consensus::{
-    config::AuthorityIdentifier, Certificate, CertificateDigest, CommittedSubDagShell,
+    AuthorityIdentifier, Certificate, CertificateDigest, CommittedSubDagShell,
     ConsensusCommit, Round, SequenceNumber,
 };
 

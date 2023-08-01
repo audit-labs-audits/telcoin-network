@@ -10,8 +10,7 @@ use futures::{
 };
 use lattice_network::WorkerRpc;
 use std::{collections::HashSet, sync::Arc};
-use tn_types::consensus::config::{AuthorityIdentifier, Committee, WorkerCache};
-
+use tn_types::consensus::{AuthorityIdentifier, Committee, WorkerCache};
 use tn_types::consensus::{
     BatchMessage, BlockError, BlockErrorKind, BlockResult, Certificate, CertificateAPI,
     CertificateDigest, HeaderAPI,

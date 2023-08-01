@@ -1,8 +1,11 @@
+// Copyright (c) Telcoin, LLC
+
+//! Common types for Telcoin Network consensus layer
 #[macro_use]
 pub mod error;
 
-mod consensus;
-pub use consensus::*;
+mod output;
+pub use output::*;
 
 mod primary;
 pub use primary::*;
@@ -18,6 +21,12 @@ mod serde;
 mod pre_subscribed_broadcast;
 pub use pre_subscribed_broadcast::*;
 
-pub mod config;
+mod config;
+pub use config::*;
+
 pub mod crypto;
+
 pub mod dag;
+
+mod committee;
+pub use committee::*;

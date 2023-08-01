@@ -9,7 +9,7 @@ use consensus_metrics::{
 };
 use futures::{stream::FuturesUnordered, StreamExt};
 use itertools::Itertools;
-use lattice_consensus::consensus::ConsensusRound;
+use lattice_consensus::ConsensusRound;
 use lattice_network::PrimaryToPrimaryRpc;
 use lattice_storage::CertificateStore;
 use rand::{rngs::ThreadRng, seq::SliceRandom};
@@ -19,7 +19,7 @@ use std::{
     time::Duration,
 };
 use tn_types::consensus::{
-    config::{AuthorityIdentifier, Committee},
+    AuthorityIdentifier, Committee,
     crypto::NetworkPublicKey,
     error::{DagError, DagResult},
     Certificate, CertificateAPI, ConditionalBroadcastReceiver, FetchCertificatesRequest,

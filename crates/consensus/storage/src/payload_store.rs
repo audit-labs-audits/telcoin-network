@@ -10,7 +10,7 @@ use lattice_typed_store::{
 };
 use std::sync::Arc;
 use tn_macros::fail_point;
-use tn_types::consensus::{config::WorkerId, BatchDigest};
+use tn_types::consensus::{WorkerId, BatchDigest};
 
 /// Store of the batch digests for the primary node for the own created batches.
 #[derive(Clone)]

@@ -10,7 +10,7 @@ use futures::stream::{futures_unordered::FuturesUnordered, StreamExt as _};
 use lattice_network::{CancelOnDropHandler, ReliableNetwork};
 use std::{sync::Arc, time::Duration};
 use tn_types::consensus::{
-    config::{Authority, Committee, Stake, WorkerCache, WorkerId},
+    Authority, Committee, Stake, WorkerCache, WorkerId,
     Batch, ConditionalBroadcastReceiver, WorkerBatchMessage,
 };
 use tokio::{task::JoinHandle, time::timeout};

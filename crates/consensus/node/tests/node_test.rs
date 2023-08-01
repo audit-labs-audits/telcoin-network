@@ -13,7 +13,7 @@ use lattice_test_utils::{temp_dir, CommitteeFixture};
 use lattice_worker::TrivialTransactionValidator;
 use prometheus::Registry;
 use std::{num::NonZeroUsize, sync::Arc, time::Duration};
-use tn_types::consensus::config::Parameters;
+use tn_types::consensus::Parameters;
 use tokio::{sync::mpsc::channel, time::sleep};
 
 #[tokio::test]

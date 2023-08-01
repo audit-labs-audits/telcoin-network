@@ -6,30 +6,32 @@ use crate::{
     consensus::{now, TimestampMs},
     execution::{
         constants::EMPTY_RECEIPTS, proofs::EMPTY_ROOT, Address, Bloom, Bytes, Withdrawal, H256,
-        U256, U64,
+        U256,
     },
 };
 #[cfg(any(test, feature = "arbitrary"))]
 use proptest_derive::Arbitrary;
 use serde::{Deserialize, Serialize};
 
-// Additional metadata information for an entity.
-//
-// The structure as a whole is not signed. As a result this data
-// should not be treated as trustworthy data and should be used
-// for NON CRITICAL purposes only. For example should not be used
-// for any processes that are part of our protocol that can affect
-// safety or liveness.
-//
-// This is a versioned `Metadata` type
+/// Additional metadata information for an entity.
+///
+/// The structure as a whole is not signed. As a result this data
+/// should not be treated as trustworthy data and should be used
+/// for NON CRITICAL purposes only. For example should not be used
+/// for any processes that are part of our protocol that can affect
+/// safety or liveness.
+///
+/// This is a versioned `Metadata` type
 #[cfg_attr(any(test, feature = "arbitrary"), derive(Arbitrary))]
 #[derive(Clone, Serialize, Deserialize, Debug, PartialEq, Eq /* , MallocSizeOf */)]
 #[enum_dispatch(MetadataAPI)]
 pub enum VersionedMetadata {
+    /// version 1
     V1(MetadataV1),
 }
 
 impl VersionedMetadata {
+    /// Create a new instance of [VersionedMetadata]
     pub fn new(
         parent_hash: H256,
         fee_recipient: Address,
@@ -65,8 +67,8 @@ impl VersionedMetadata {
     }
 }
 
-// Default implementation for `VersionedMetadata` used for testing only.
 impl Default for VersionedMetadata {
+    /// Default implementation for `VersionedMetadata` used for testing only.
     fn default() -> Self {
         Self::V1(MetadataV1 {
             created_at: now(),
@@ -88,40 +90,62 @@ impl Default for VersionedMetadata {
     }
 }
 
+/// API for accessing fields for [VersionedMetadata] variants
+///
+/// TODO: update comments if leaving these fields in here.
 #[enum_dispatch]
 pub trait MetadataAPI {
-    fn created_at(&self) -> &TimestampMs;
-    fn set_created_at(&mut self, ts: TimestampMs);
-    fn received_at(&self) -> Option<TimestampMs>;
-    fn set_received_at(&mut self, ts: TimestampMs);
+    /// TODO
+	fn created_at(&self) -> &TimestampMs;
+    /// TODO
+	fn set_created_at(&mut self, ts: TimestampMs);
+    /// TODO
+	fn received_at(&self) -> Option<TimestampMs>;
+    /// TODO
+	fn set_received_at(&mut self, ts: TimestampMs);
 
     // test these types - might be better in `BatchV1`
-    fn parent_hash(&self) -> H256;
-    fn fee_recipient(&self) -> Address;
-    fn state_root(&self) -> H256;
-    fn receipts_root(&self) -> H256;
-    fn logs_bloom(&self) -> Bloom;
-    fn prev_randao(&self) -> H256;
-    fn block_number(&self) -> u64;
-    fn gas_limit(&self) -> u64;
-    fn gas_used(&self) -> u64;
+    /// TODO
+	fn parent_hash(&self) -> H256;
+    /// TODO
+	fn fee_recipient(&self) -> Address;
+    /// TODO
+	fn state_root(&self) -> H256;
+    /// TODO
+	fn receipts_root(&self) -> H256;
+    /// TODO
+	fn logs_bloom(&self) -> Bloom;
+    /// TODO
+	fn prev_randao(&self) -> H256;
+    /// TODO
+	fn block_number(&self) -> u64;
+    /// TODO
+	fn gas_limit(&self) -> u64;
+    /// TODO
+	fn gas_used(&self) -> u64;
     // use created_at, but return owned value
-    fn timestamp(&self) -> u64;
-    fn extra_data(&self) -> Bytes;
-    fn base_fee_per_gas(&self) -> U256;
-    fn block_hash(&self) -> H256;
-    fn withdrawals(&self) -> Option<Vec<Withdrawal>>;
+    /// TODO
+	fn timestamp(&self) -> u64;
+    /// TODO
+	fn extra_data(&self) -> Bytes;
+    /// TODO
+	fn base_fee_per_gas(&self) -> U256;
+    /// TODO
+	fn block_hash(&self) -> H256;
+    /// TODO
+	fn withdrawals(&self) -> Option<Vec<Withdrawal>>;
 }
 
+/// Metadata for batches.
 #[cfg_attr(any(test, feature = "arbitrary"), derive(Arbitrary))]
 #[derive(Clone, Serialize, Deserialize, Debug, PartialEq, Default, Eq /* , MallocSizeOf */)]
 pub struct MetadataV1 {
-    // timestamp of when the entity created. This is generated
-    // by the node which creates the entity.
+    /// Timestamp of when the entity created. This is generated
+    /// by the node which creates the entity.
     pub created_at: TimestampMs,
-    // timestamp of when the entity was received by another node. This will help
-    // us calculate latencies that are not affected by clock drift or network
-    // delays. This field is not set for own batches.
+    /// Timestamp of when the entity was received by another node. This will help
+    /// calculate latencies that are not affected by clock drift or network
+    /// delays. This field is not set for own batches.
     pub received_at: Option<TimestampMs>,
 
     // test these types - might be better in `BatchV1`
@@ -241,6 +265,7 @@ impl MetadataAPI for MetadataV1 {
     }
 }
 
+#[cfg(test)]
 mod tests {
     use super::*;
 

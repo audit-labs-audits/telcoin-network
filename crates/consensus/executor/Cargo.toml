@@ -44,4 +44,3 @@ tempfile = "3.3.0"
 lattice-primary.workspace = true
 lattice-node.workspace = true
 lattice-test-utils.workspace = true
-telemetry-subscribers.workspace = true

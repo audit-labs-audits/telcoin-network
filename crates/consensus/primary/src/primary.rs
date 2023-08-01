@@ -37,7 +37,7 @@ use fastcrypto::{
     signature_service::SignatureService,
     traits::{KeyPair as _, ToFromBytes},
 };
-use lattice_consensus::{consensus::ConsensusRound, dag::Dag};
+use lattice_consensus::{ConsensusRound, dag::DagHandle};
 use lattice_network::{
     client::NetworkClient,
     epoch_filter::{AllowedEpoch, EPOCH_HEADER_KEY},
@@ -59,10 +59,10 @@ use std::{
 };
 use tn_types::{
     consensus::{
-        config::{Authority, AuthorityIdentifier, Committee, Parameters, WorkerCache},
+        Authority, AuthorityIdentifier, Committee, Parameters, WorkerCache,
         crypto,
         crypto::{
-            traits::EncodeDecodeBase64, KeyPair, NetworkKeyPair, NetworkPublicKey, Signature,
+            traits::EncodeDecodeBase64, AuthorityKeyPair, NetworkKeyPair, NetworkPublicKey, AuthoritySignature,
         },
         error::{DagError, DagResult},
         now, Certificate, CertificateAPI, CertificateDigest, FetchCertificatesRequest,
@@ -104,7 +104,7 @@ impl Primary {
     #[allow(clippy::too_many_arguments)]
     pub fn spawn(
         authority: Authority,
-        signer: KeyPair,
+        signer: AuthorityKeyPair,
         network_signer: NetworkKeyPair,
         committee: Committee,
         worker_cache: WorkerCache,
@@ -118,7 +118,7 @@ impl Primary {
         tx_new_certificates: Sender<Certificate>,
         rx_committed_certificates: Receiver<(Round, Vec<Certificate>)>,
         rx_consensus_round_updates: watch::Receiver<ConsensusRound>,
-        dag: Option<Arc<Dag>>,
+        dag: Option<Arc<DagHandle>>,
         tx_shutdown: &mut PreSubscribedBroadcastSender,
         tx_committed_certificates: Sender<(Round, Vec<Certificate>)>,
         registry: &Registry,
@@ -620,7 +620,7 @@ struct PrimaryReceiverHandler {
     worker_cache: WorkerCache,
     synchronizer: Arc<Synchronizer>,
     /// Service to sign headers.
-    signature_service: SignatureService<Signature, { crypto::INTENT_MESSAGE_LENGTH }>,
+    signature_service: SignatureService<AuthoritySignature, { crypto::INTENT_MESSAGE_LENGTH }>,
     header_store: HeaderStore,
     certificate_store: CertificateStore,
     payload_store: PayloadStore,

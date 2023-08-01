@@ -3,7 +3,7 @@
 // SPDX-License-Identifier: Apache-2.0
 use crate::{
     bullshark::Bullshark,
-    consensus::ConsensusState,
+    ConsensusState,
     consensus_utils::{make_consensus_store, NUM_SUB_DAGS_PER_SCHEDULE},
     metrics::ConsensusMetrics,
 };
@@ -25,7 +25,7 @@ use std::{
     sync::Arc,
 };
 use tn_types::consensus::{
-    config::{Authority, AuthorityIdentifier, Committee, Stake},
+    Authority, AuthorityIdentifier, Committee, Stake,
     crypto, Certificate, CertificateAPI, CertificateDigest, HeaderAPI, Round,
 };
 #[allow(unused_imports)]

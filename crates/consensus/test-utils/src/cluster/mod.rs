@@ -1,0 +1,331 @@
+// Copyright (c) Telcoin, LLC
+// Copyright (c) Mysten Labs, Inc.
+// SPDX-License-Identifier: Apache-2.0
+
+mod authority;
+pub use authority::*;
+
+mod primary;
+pub use primary::*;
+
+mod worker;
+pub use worker::*;
+
+use crate::CommitteeFixture;
+use fastcrypto::traits::KeyPair as _;
+use itertools::Itertools;
+use std::{collections::HashMap, time::Duration};
+use tn_types::consensus::{
+    Committee, Parameters, WorkerCache, WorkerId,
+};
+use tracing::info;
+
+/// Local fixture for Narwhal-specific testing.
+///
+/// Cluster is used to simulate primary<->primary interactions
+/// across the network. Cluster is useful for testing the entire network
+/// by spawning primaries for every node, not just the keys needed to sign.
+pub struct Cluster {
+    // TODO: remove this after writing tests
+    // #[allow(unused)]
+    fixture: CommitteeFixture,
+    authorities: HashMap<usize, AuthorityDetails>,
+    pub committee: Committee,
+    pub worker_cache: WorkerCache,
+    // TODO: remove this after writing tests
+    // #[allow(dead_code)]
+    parameters: Parameters,
+}
+
+impl Cluster {
+    /// Initialises a new cluster by the provided parameters. The cluster will
+    /// create all the authorities (primaries & workers) that are defined under
+    /// the committee structure, but none of them will be started.
+    ///
+    /// Fields passed in via Parameters will be used, except specified ports which have to be
+    /// different for each instance. If None, the default Parameters will be used.
+    ///
+    /// When the `internal_consensus_enabled` is true then the standard internal
+    /// consensus engine will be enabled. If false, then the internal consensus will
+    /// be disabled and the gRPC server will be enabled to manage the Collections & the
+    /// DAG externally.
+    pub fn new(parameters: Option<Parameters>, internal_consensus_enabled: bool) -> Self {
+        let fixture = CommitteeFixture::builder().randomize_ports(true).build();
+        let committee = fixture.committee();
+        let worker_cache = fixture.worker_cache();
+        let params = parameters.unwrap_or_else(Self::parameters);
+
+        info!("###### Creating new cluster ######");
+        info!("Validator keys:");
+        let mut nodes = HashMap::new();
+
+        for (id, authority_fixture) in fixture.authorities().enumerate() {
+            info!("Key {id} -> {}", authority_fixture.public_key());
+
+            let authority = AuthorityDetails::new(
+                id,
+                authority_fixture.id(),
+                authority_fixture.keypair().copy(),
+                authority_fixture.network_keypair().copy(),
+                authority_fixture.worker_keypairs(),
+                params.with_available_ports(),
+                committee.clone(),
+                worker_cache.clone(),
+                internal_consensus_enabled,
+            );
+            nodes.insert(id, authority);
+        }
+
+        Self { fixture, authorities: nodes, committee, worker_cache, parameters: params }
+    }
+
+    /// Starts a cluster by the defined number of authorities. The authorities
+    /// will be started sequentially started from the one with id zero up to
+    /// the provided number `authorities_number`. If none number is provided, then
+    /// the maximum number of authorities will be started.
+    /// 
+    /// If a number higher than the available ones in the committee is provided then
+    /// the method will panic.
+    /// 
+    /// The workers_per_authority dictates how many workers per authority should
+    /// also be started (the same number will be started for each authority). If none
+    /// is provided then the maximum number of workers will be started.
+    /// 
+    /// If the `boot_wait_time` is provided then between node starts we'll wait for this
+    /// time before the next node is started. This is useful to simulate staggered
+    /// node starts. If none is provided then the nodes will be started immediately
+    /// the one after the other.
+    pub async fn start(
+        &mut self,
+        authorities_number: Option<usize>,
+        workers_per_authority: Option<usize>,
+        boot_wait_time: Option<Duration>,
+    ) {
+        let max_authorities = self.committee.size();
+        let authorities = authorities_number.unwrap_or(max_authorities);
+
+        if authorities > max_authorities {
+            panic!("Provided nodes number is greater than the maximum allowed");
+        }
+
+        for id in 0..authorities {
+            info!("Spinning up node: {id}");
+            self.start_node(id, false, workers_per_authority).await;
+
+            if let Some(d) = boot_wait_time {
+                // we don't want to wait after the last node has been boostraped
+                if id < authorities - 1 {
+                    info!(
+                        "#### Will wait for {} seconds before starting the next node ####",
+                        d.as_secs()
+                    );
+                    tokio::time::sleep(d).await;
+                }
+            }
+        }
+    }
+
+    /// Starts the authority node by the defined id - if not already running - and
+    /// the details are returned. If the node is already running then a panic
+    /// is thrown instead.
+    /// When the preserve_store is true, then the started authority will use the
+    /// same path that has been used the last time when started (both the primary
+    /// and the workers).
+    /// This is basically a way to use the same storage between node restarts.
+    /// When the preserve_store is false, then authority will start with an empty
+    /// storage.
+    /// If the `workers_per_authority` is provided then the corresponding number of
+    /// workers will be started per authority. Otherwise if not provided, then maximum
+    /// number of workers will be started per authority.
+    pub async fn start_node(
+        &mut self,
+        id: usize,
+        preserve_store: bool,
+        workers_per_authority: Option<usize>,
+    ) {
+        let authority = self
+            .authorities
+            .get_mut(&id)
+            .unwrap_or_else(|| panic!("Authority with id {} not found", id));
+
+        // start the primary
+        authority.start_primary(preserve_store).await;
+
+        // start the workers
+        if let Some(workers) = workers_per_authority {
+            for worker_id in 0..workers {
+                authority.start_worker(worker_id as WorkerId, preserve_store).await;
+            }
+        } else {
+            authority.start_all_workers(preserve_store).await;
+        }
+    }
+
+    /// This method stops the authority (both the primary and the worker nodes)
+    /// with the provided id.
+    pub async fn stop_node(&self, id: usize) {
+        if let Some(node) = self.authorities.get(&id) {
+            node.stop_all().await;
+            info!("Aborted node for id {id}");
+        } else {
+            info!("Node with {id} not found - nothing to stop");
+        }
+        // TODO: wait for the node's network port to be released.
+    }
+
+    /// Returns all the running authorities. Any authority that:
+    /// * has been started ever
+    /// * or has been stopped
+    /// will not be returned by this method.
+    pub async fn authorities(&self) -> Vec<AuthorityDetails> {
+        let mut result = Vec::new();
+
+        for authority in self.authorities.values() {
+            if authority.is_running().await {
+                result.push(authority.clone());
+            }
+        }
+
+        result
+    }
+
+    /// Returns the authority identified by the provided id. Will panic if the
+    /// authority with the id is not found. The returned authority can be freely
+    /// cloned and managed without having the need to fetch again.
+    pub fn authority(&self, id: usize) -> AuthorityDetails {
+        self.authorities
+            .get(&id)
+            .unwrap_or_else(|| panic!("Authority with id {} not found", id))
+            .clone()
+    }
+
+    /// This method asserts the progress of the cluster.
+    /// `expected_nodes`: Nodes expected to have made progress. Any number different than that
+    /// will make the assertion fail.
+    /// `commit_threshold`: The acceptable threshold between the minimum and maximum reported
+    /// commit value from the nodes.
+    pub async fn assert_progress(
+        &self,
+        expected_nodes: u64,
+        commit_threshold: u64,
+    ) -> HashMap<usize, u64> {
+        let r = self.authorities_latest_commit_round().await;
+        let rounds: HashMap<usize, u64> =
+            r.into_iter().map(|(key, value)| (key, value as u64)).collect();
+
+        assert_eq!(
+            rounds.len(),
+            expected_nodes as usize,
+            "Expected to have received commit metrics from {expected_nodes} nodes"
+        );
+        assert!(rounds.values().all(|v| v > &1), "All nodes are available so all should have made progress and committed at least after the first round");
+
+        if expected_nodes == 0 {
+            return HashMap::new()
+        }
+
+        let (min, max) = rounds.values().minmax().into_option().unwrap();
+        assert!(max - min <= commit_threshold, "Nodes shouldn't be that behind");
+
+        rounds
+    }
+
+    /// Retrieve the latest round committed by a primary by measuring the gauge-metric "last_committed_round".
+    async fn authorities_latest_commit_round(&self) -> HashMap<usize, f64> {
+        let mut authorities_latest_commit = HashMap::new();
+
+        for authority in self.authorities().await {
+            let primary = authority.primary().await;
+            if let Some(metric) = primary.metric("last_committed_round").await {
+                let value = metric.get_gauge().get_value();
+
+                authorities_latest_commit.insert(primary.id, value);
+
+                info!(
+                    "[Node {}] Metric lattice_primary_last_committed_round -> {value}",
+                    primary.id
+                );
+            }
+        }
+
+        authorities_latest_commit
+    }
+
+    /// Return optimized [Parameters] for running a local cluster.
+    fn parameters() -> Parameters {
+        Parameters {
+            batch_size: 200,
+            max_header_delay: Duration::from_secs(2),
+            ..Parameters::default()
+        }
+    }
+}
+
+#[cfg(test)]
+mod test {
+    use crate::{cluster::Cluster, ensure_test_environment};
+    use std::time::Duration;
+    use tn_types::consensus::{PublicKeyProto, RoundsRequest};
+
+    #[tokio::test]
+    async fn test_basic_cluster_setup() {
+        ensure_test_environment();
+        let mut cluster = Cluster::new(None, true);
+
+        // start the cluster will all the possible nodes
+        cluster.start(Some(4), Some(1), None).await;
+
+        // give some time for nodes to bootstrap
+        tokio::time::sleep(Duration::from_secs(2)).await;
+
+        // fetch all the running authorities
+        let authorities = cluster.authorities().await;
+
+        assert_eq!(authorities.len(), 4);
+
+        // fetch their workers transactions address
+        for authority in cluster.authorities().await {
+            assert_eq!(authority.worker_transaction_addresses().await.len(), 1);
+        }
+
+        // now stop all authorities
+        for id in 0..4 {
+            cluster.stop_node(id).await;
+        }
+
+        tokio::time::sleep(Duration::from_secs(2)).await;
+
+        // No authority should still run
+        assert!(cluster.authorities().await.is_empty());
+    }
+
+    #[tokio::test(flavor = "current_thread", start_paused = true)]
+    async fn test_cluster_setup_with_consensus_disabled() {
+        ensure_test_environment();
+        let mut cluster = Cluster::new(None, false);
+
+        // start the cluster will all the possible nodes
+        cluster.start(Some(2), Some(1), None).await;
+
+        // give some time for nodes to bootstrap
+        tokio::time::sleep(Duration::from_secs(2)).await;
+
+        // connect to the gRPC address and send a simple request
+        let authority = cluster.authority(0);
+
+        let mut client = authority.new_proposer_client().await;
+
+        // send a sample rounds request
+        let request = tonic::Request::new(RoundsRequest {
+            public_key: Some(PublicKeyProto::from(authority.public_key.clone())),
+        });
+        let response = client.rounds(request).await;
+
+        // Should get back a successful response
+        let r = response.ok().unwrap().into_inner();
+
+        assert_eq!(0, r.oldest_round);
+        assert_eq!(0, r.newest_round);
+    }
+
+}

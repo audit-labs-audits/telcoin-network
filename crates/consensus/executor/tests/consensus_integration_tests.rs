@@ -4,15 +4,14 @@
 use bytes::Bytes;
 use fastcrypto::hash::Hash;
 use lattice_consensus::{
-    bullshark::Bullshark, consensus::ConsensusRound, metrics::ConsensusMetrics, Consensus,
+    bullshark::Bullshark, ConsensusRound, metrics::ConsensusMetrics, Consensus,
 };
 use lattice_executor::{get_restored_consensus_output, MockExecutionState};
 use lattice_primary::NUM_SHUTDOWN_RECEIVERS;
 use lattice_storage::NodeStorage;
-use lattice_test_utils::{cluster::Cluster, temp_dir, CommitteeFixture};
+use lattice_test_utils::{cluster::Cluster, temp_dir, CommitteeFixture, setup_tracing};
 use prometheus::Registry;
 use std::{collections::BTreeSet, sync::Arc};
-use telemetry_subscribers::TelemetryGuards;
 use tn_types::consensus::{Certificate, PreSubscribedBroadcastSender, Round, TransactionProto};
 use tokio::sync::watch;
 
@@ -188,20 +187,4 @@ async fn test_internal_consensus_output() {
 
 fn string_transaction(id: u32) -> String {
     format!("test transaction:{id}")
-}
-
-fn setup_tracing() -> TelemetryGuards {
-    // Setup tracing
-    let tracing_level = "debug";
-    let network_tracing_level = "info";
-
-    let log_filter = format!("{tracing_level},h2={network_tracing_level},tower={network_tracing_level},hyper={network_tracing_level},tonic::transport={network_tracing_level}");
-
-    telemetry_subscribers::TelemetryConfig::new()
-        // load env variables
-        .with_env()
-        // load special log filter
-        .with_log_level(&log_filter)
-        .init()
-        .0
 }

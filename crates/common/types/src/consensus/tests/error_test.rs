@@ -7,24 +7,28 @@ use futures::{stream::FuturesUnordered, StreamExt};
 use prometheus::IntGauge;
 use std::{future, time::Duration};
 
-pub struct Processor {
+/// Metrics processor fixture.
+struct Processor {
     input: Receiver<usize>,
     output: Sender<usize>,
 }
 
 impl Processor {
-    pub fn new(input: Receiver<usize>, output: Sender<usize>) -> Self {
+    /// Creat new instance.
+    fn new(input: Receiver<usize>, output: Sender<usize>) -> Self {
         Self { input, output }
     }
 
-    pub fn spawn(input: Receiver<usize>, output: Sender<usize>) {
+    /// Spawn a task for `Processor::run()`
+    fn spawn(input: Receiver<usize>, output: Sender<usize>) {
         tokio::spawn(async move {
             let mut processor = Processor::new(input, output);
             processor.run().await;
         });
     }
 
-    pub async fn run(&mut self) {
+    /// Select input and output.
+    async fn run(&mut self) {
         let mut waiting = FuturesUnordered::new();
 
         loop {

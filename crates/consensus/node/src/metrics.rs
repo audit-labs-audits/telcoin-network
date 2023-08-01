@@ -7,7 +7,7 @@ use consensus_metrics::spawn_logged_monitored_task;
 use consensus_network::multiaddr::Multiaddr;
 use prometheus::{Registry, TextEncoder};
 use std::collections::HashMap;
-use tn_types::consensus::config::{AuthorityIdentifier, WorkerId};
+use tn_types::consensus::{AuthorityIdentifier, WorkerId};
 use tokio::task::JoinHandle;
 
 const METRICS_ROUTE: &str = "/metrics";

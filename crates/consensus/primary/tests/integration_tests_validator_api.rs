@@ -3,7 +3,7 @@
 // SPDX-License-Identifier: Apache-2.0
 use fastcrypto::{hash::Hash, traits::KeyPair as _};
 use indexmap::IndexMap;
-use lattice_consensus::{consensus::ConsensusRound, dag::Dag, metrics::ConsensusMetrics};
+use lattice_consensus::{ConsensusRound, dag::DagHandle, metrics::ConsensusMetrics};
 use lattice_network::client::NetworkClient;
 use lattice_primary::{Primary, CHANNEL_CAPACITY, NUM_SHUTDOWN_RECEIVERS};
 use lattice_storage::{CertificateStore, HeaderStore, NodeStorage, PayloadStore};
@@ -20,7 +20,7 @@ use std::{
     time::Duration,
 };
 use tn_types::consensus::{
-    config::{AuthorityIdentifier, BlockSynchronizerParameters, Committee, Parameters},
+    AuthorityIdentifier, BlockSynchronizerParameters, Committee, Parameters,
     Batch, BatchAPI, BatchDigest, Certificate, CertificateDigest, CertificateDigestProto,
     CollectionRetrievalResult, Empty, GetCollectionsRequest, Header, PreSubscribedBroadcastSender,
     ReadCausalRequest, RemoveCollectionsRequest, RetrievalResult, Transaction, ValidatorClient,
@@ -118,7 +118,7 @@ async fn test_get_collections() {
         rx_consensus_round_updates,
         /* dag */
         Some(Arc::new(
-            Dag::new(&committee, rx_new_certificates, consensus_metrics, tx_shutdown.subscribe()).1,
+            DagHandle::new(&committee, rx_new_certificates, consensus_metrics, tx_shutdown.subscribe()).1,
         )),
         &mut tx_shutdown,
         tx_feedback,
@@ -248,7 +248,7 @@ async fn test_remove_collections() {
 
     let consensus_metrics = Arc::new(ConsensusMetrics::new(&Registry::new()));
     let dag = Arc::new(
-        Dag::new(&committee, rx_new_certificates, consensus_metrics, tx_shutdown.subscribe()).1,
+        DagHandle::new(&committee, rx_new_certificates, consensus_metrics, tx_shutdown.subscribe()).1,
     );
     // No need to populate genesis in the Dag
 
@@ -460,7 +460,7 @@ async fn test_read_causal_signed_certificates() {
     let mut tx_shutdown = PreSubscribedBroadcastSender::new(NUM_SHUTDOWN_RECEIVERS);
 
     let dag = Arc::new(
-        Dag::new(&committee, rx_new_certificates, consensus_metrics, tx_shutdown.subscribe()).1,
+        DagHandle::new(&committee, rx_new_certificates, consensus_metrics, tx_shutdown.subscribe()).1,
     );
 
     // No need to genesis in the Dag
@@ -560,7 +560,7 @@ async fn test_read_causal_signed_certificates() {
         rx_consensus_round_updates_2,
         /* external_consensus */
         Some(Arc::new(
-            Dag::new(
+            DagHandle::new(
                 &committee,
                 rx_new_certificates_2,
                 consensus_metrics_2,
@@ -661,7 +661,7 @@ async fn test_read_causal_unsigned_certificates() {
 
     let consensus_metrics = Arc::new(ConsensusMetrics::new(&Registry::new()));
     let dag = Arc::new(
-        Dag::new(&committee, rx_new_certificates, consensus_metrics, tx_shutdown.subscribe()).1,
+        DagHandle::new(&committee, rx_new_certificates, consensus_metrics, tx_shutdown.subscribe()).1,
     );
 
     // No need to genesis in the Dag
@@ -755,7 +755,7 @@ async fn test_read_causal_unsigned_certificates() {
         rx_consensus_round_updates_2,
         /* external_consensus */
         Some(Arc::new(
-            Dag::new(
+            DagHandle::new(
                 &committee,
                 rx_new_certificates_2,
                 consensus_metrics_2,
@@ -931,7 +931,7 @@ async fn test_get_collections_with_missing_certificates() {
         rx_consensus_round_updates,
         /* external_consensus */
         Some(Arc::new(
-            Dag::new(&committee, rx_new_certificates_1, consensus_metrics, tx_shutdown.subscribe())
+            DagHandle::new(&committee, rx_new_certificates_1, consensus_metrics, tx_shutdown.subscribe())
                 .1,
         )),
         &mut tx_shutdown,

@@ -4,7 +4,7 @@
 
 use lattice_test_utils::{temp_dir, CommitteeFixture};
 use std::time::{Duration, Instant};
-use tn_types::consensus::config::Export;
+use tn_types::consensus::Export;
 
 const TEST_DURATION: Duration = Duration::from_secs(3);
 

@@ -15,7 +15,7 @@ use std::{
     time::Duration,
 };
 use tn_types::consensus::{
-    config::{BlockSynchronizerParameters, Parameters},
+    BlockSynchronizerParameters, Parameters,
     CertificateAPI, GetCertificatesResponse, Header, HeaderAPI, MockPrimaryToPrimary,
     PayloadAvailabilityResponse, PreSubscribedBroadcastSender, PrimaryToPrimaryServer,
 };

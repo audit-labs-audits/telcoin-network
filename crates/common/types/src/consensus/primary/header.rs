@@ -1,8 +1,7 @@
 use crate::consensus::{
-    config::{AuthorityIdentifier, Committee, Epoch, WorkerCache, WorkerId},
     crypto,
     error::{DagError, DagResult},
-    now, Batch, BatchDigest, CertificateDigest, Round, TimestampMs, VoteDigest,
+    now, Batch, BatchDigest, CertificateDigest, Round, TimestampMs, VoteDigest, AuthorityIdentifier, Epoch, WorkerId, Committee, WorkerCache,
 };
 use consensus_util_mem::MallocSizeOf;
 use derive_builder::Builder;
@@ -15,9 +14,11 @@ use proptest_derive::Arbitrary;
 use serde::{Deserialize, Serialize};
 use std::{collections::BTreeSet, fmt};
 
+/// Versioned `Header` type for consensus layer.
 #[derive(Clone, Deserialize, MallocSizeOf, Serialize)]
 #[enum_dispatch(HeaderAPI)]
 pub enum Header {
+    /// Version 1
     V1(HeaderV1),
 }
 
@@ -30,7 +31,8 @@ impl Default for Header {
 }
 
 impl Header {
-    // TODO: Add version number and match on that.
+    /// Initialize a new instance of [Header]
+    /// TODO: Add version number and match on that.
     pub fn new(
         author: AuthorityIdentifier,
         round: Round,
@@ -41,12 +43,14 @@ impl Header {
         Header::V1(HeaderV1::new(author, round, epoch, payload, parents))
     }
 
+    /// Hashed digest for Header
     pub fn digest(&self) -> HeaderDigest {
         match self {
             Header::V1(data) => data.digest(),
         }
     }
 
+    /// Validate the [Header] based on the current [Committee] and [WorkerCache].
     pub fn validate(&self, committee: &Committee, worker_cache: &WorkerCache) -> DagResult<()> {
         match self {
             Header::V1(data) => data.validate(committee, worker_cache),
@@ -70,33 +74,50 @@ impl From<Header> for CertificateDigest {
     }
 }
 
+/// API for accessing fields for [VersionedMetadata] variants
 #[enum_dispatch]
 pub trait HeaderAPI {
-    fn author(&self) -> AuthorityIdentifier;
-    fn round(&self) -> Round;
-    fn epoch(&self) -> Epoch;
-    fn created_at(&self) -> &TimestampMs;
-    fn payload(&self) -> &IndexMap<BatchDigest, (WorkerId, TimestampMs)>;
-    fn parents(&self) -> &BTreeSet<CertificateDigest>;
+    /// TODO
+	fn author(&self) -> AuthorityIdentifier;
+    /// TODO
+	fn round(&self) -> Round;
+    /// TODO
+	fn epoch(&self) -> Epoch;
+    /// TODO
+	fn created_at(&self) -> &TimestampMs;
+    /// TODO
+	fn payload(&self) -> &IndexMap<BatchDigest, (WorkerId, TimestampMs)>;
+    /// TODO
+	fn parents(&self) -> &BTreeSet<CertificateDigest>;
 
-    // Used for testing.
-    fn update_payload(&mut self, new_payload: IndexMap<BatchDigest, (WorkerId, TimestampMs)>);
-    fn update_round(&mut self, new_round: Round);
-    fn clear_parents(&mut self);
+    /// Used only for testing.
+    /// TODO
+	fn update_payload(&mut self, new_payload: IndexMap<BatchDigest, (WorkerId, TimestampMs)>);
+    /// TODO
+	fn update_round(&mut self, new_round: Round);
+    /// TODO
+	fn clear_parents(&mut self);
 }
 
-#[derive(Builder, Clone, Default, Deserialize, MallocSizeOf, Serialize)]
+/// Header version 1
+#[derive(Builder, Clone, Default, Deserialize, MallocSizeOf, Serialize, Debug)]
 #[builder(pattern = "owned", build_fn(skip))]
 pub struct HeaderV1 {
-    // Primary that created the header. Must be the same primary that broadcasted the header.
-    // Validation is at: https://github.com/MystenLabs/sui/blob/f0b80d9eeef44edd9fbe606cee16717622b68651/narwhal/primary/src/primary.rs#L713-L719
+    /// Primary that created the header. Must be the same primary that broadcasted the header.
+    /// Validation is at: https://github.com/MystenLabs/sui/blob/f0b80d9eeef44edd9fbe606cee16717622b68651/narwhal/primary/src/primary.rs#L713-L719
     pub author: AuthorityIdentifier,
+    /// The round for this header
     pub round: Round,
+    /// The epoch this Header was created in.
     pub epoch: Epoch,
+    /// The timestamp for when this header was created.
     pub created_at: TimestampMs,
+    /// IndexMap of the [BatchDigest] to the [WorkerId] and [TimestampMs]
     #[serde(with = "indexmap::serde_seq")]
     pub payload: IndexMap<BatchDigest, (WorkerId, TimestampMs)>,
+    /// Parent certificates for this Header.
     pub parents: BTreeSet<CertificateDigest>,
+    /// The [HeaderDigest].
     #[serde(skip)]
     pub digest: OnceCell<HeaderDigest>,
 }
@@ -134,6 +155,7 @@ impl HeaderAPI for HeaderV1 {
 }
 
 impl HeaderV1Builder {
+    /// "Build" the header by taking all fields and calculating the hash.
     pub fn build(self) -> Result<HeaderV1, fastcrypto::error::FastCryptoError> {
         let h = HeaderV1 {
             author: self.author.unwrap(),
@@ -149,7 +171,7 @@ impl HeaderV1Builder {
         Ok(h)
     }
 
-    // helper method to set directly values to the payload
+    /// Helper method to directly set values of the payload
     pub fn with_payload_batch(
         mut self,
         batch: Batch,
@@ -168,6 +190,7 @@ impl HeaderV1Builder {
 }
 
 impl HeaderV1 {
+    /// Initialize a new instance of [HeaderV1]
     pub fn new(
         author: AuthorityIdentifier,
         round: Round,
@@ -189,10 +212,12 @@ impl HeaderV1 {
         header
     }
 
+    /// Return the digest of this header.
     pub fn digest(&self) -> HeaderDigest {
         *self.digest.get_or_init(|| Hash::digest(self))
     }
 
+    /// Ensure the header is valid based on the current committee and workercache.
     pub fn validate(&self, committee: &Committee, worker_cache: &WorkerCache) -> DagResult<()> {
         // Ensure the header is from the correct epoch.
         ensure!(
@@ -218,6 +243,7 @@ impl HeaderV1 {
     }
 }
 
+/// The slice of bytes for the header's digest.
 #[cfg_attr(any(test, feature = "arbitrary"), derive(Arbitrary))]
 #[derive(
     Clone, Copy, Serialize, Deserialize, Default, PartialEq, Eq, Hash, PartialOrd, Ord, MallocSizeOf,
@@ -225,6 +251,7 @@ impl HeaderV1 {
 pub struct HeaderDigest([u8; crypto::DIGEST_LENGTH]);
 
 impl HeaderDigest {
+    /// Create a new HeaderDigest based on the crate's `DIGEST_LENGTH` constant.
     pub fn new(digest: [u8; crypto::DIGEST_LENGTH]) -> Self {
         HeaderDigest(digest)
     }

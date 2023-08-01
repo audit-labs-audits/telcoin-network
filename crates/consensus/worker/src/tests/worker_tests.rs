@@ -11,7 +11,7 @@ use fastcrypto::{
     hash::Hash,
 };
 use futures::{stream::FuturesOrdered, StreamExt};
-use lattice_consensus::{consensus::ConsensusRound, dag::Dag, metrics::ConsensusMetrics};
+use lattice_consensus::{ConsensusRound, dag::DagHandle, metrics::ConsensusMetrics};
 use lattice_primary::{Primary, CHANNEL_CAPACITY, NUM_SHUTDOWN_RECEIVERS};
 use lattice_storage::NodeStorage;
 use lattice_test_utils::{batch, temp_dir, test_network, transaction, CommitteeFixture};
@@ -385,7 +385,7 @@ async fn get_network_peers_from_admin_server() {
         rx_consensus_round_updates,
         /* dag */
         Some(Arc::new(
-            Dag::new(&committee, rx_new_certificates, consensus_metrics, tx_shutdown.subscribe()).1,
+            DagHandle::new(&committee, rx_new_certificates, consensus_metrics, tx_shutdown.subscribe()).1,
         )),
         &mut tx_shutdown,
         tx_feedback,
@@ -498,7 +498,7 @@ async fn get_network_peers_from_admin_server() {
         rx_consensus_round_updates,
         /* dag */
         Some(Arc::new(
-            Dag::new(&committee, rx_new_certificates_2, consensus_metrics, tx_shutdown.subscribe())
+            DagHandle::new(&committee, rx_new_certificates_2, consensus_metrics, tx_shutdown.subscribe())
                 .1,
         )),
         &mut tx_shutdown_2,

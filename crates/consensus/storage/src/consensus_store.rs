@@ -9,7 +9,7 @@ use lattice_typed_store::{
 };
 use std::collections::HashMap;
 use tn_types::consensus::{
-    config::AuthorityIdentifier, CommittedSubDag, CommittedSubDagShell, ConsensusCommit,
+    AuthorityIdentifier, CommittedSubDag, CommittedSubDagShell, ConsensusCommit,
     ConsensusCommitV2, Round, SequenceNumber,
 };
 

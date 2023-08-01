@@ -6,10 +6,9 @@
 
 use fastcrypto::hash::Hash;
 use lattice_storage::NodeStorage;
-use lattice_test_utils::{temp_dir, CommitteeFixture};
+use lattice_test_utils::{temp_dir, CommitteeFixture, setup_tracing};
 use prometheus::Registry;
 use std::{collections::BTreeSet, sync::Arc};
-use telemetry_subscribers::TelemetryGuards;
 use tokio::sync::watch;
 
 use crate::{
@@ -294,20 +293,4 @@ async fn test_consensus_recovery_with_bullshark() {
         score_with_crash.scores_per_authority.into_iter().filter(|(_, score)| *score == 2).count(),
         4
     );
-}
-
-fn setup_tracing() -> TelemetryGuards {
-    // Setup tracing
-    let tracing_level = "debug";
-    let network_tracing_level = "info";
-
-    let log_filter = format!("{tracing_level},h2={network_tracing_level},tower={network_tracing_level},hyper={network_tracing_level},tonic::transport={network_tracing_level}");
-
-    telemetry_subscribers::TelemetryConfig::new()
-        // load env variables
-        .with_env()
-        // load special log filter
-        .with_log_level(&log_filter)
-        .init()
-        .0
 }

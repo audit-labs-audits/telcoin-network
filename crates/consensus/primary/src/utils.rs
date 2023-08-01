@@ -2,7 +2,7 @@
 // Copyright (c) Mysten Labs, Inc.
 // SPDX-License-Identifier: Apache-2.0
 use std::collections::HashMap;
-use tn_types::consensus::{config::WorkerId, BatchDigest, Certificate, CertificateAPI, HeaderAPI};
+use tn_types::consensus::{WorkerId, BatchDigest, Certificate, CertificateAPI, HeaderAPI};
 
 // A helper method that collects all the batches from each certificate and maps
 // them by the worker id.

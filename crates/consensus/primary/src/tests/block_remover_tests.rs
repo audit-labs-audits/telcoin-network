@@ -5,12 +5,12 @@ use crate::{block_remover::BlockRemover, common::create_db_stores, NUM_SHUTDOWN_
 use anemo::PeerId;
 use fastcrypto::hash::Hash;
 use futures::future::join_all;
-use lattice_consensus::{dag::Dag, metrics::ConsensusMetrics};
+use lattice_consensus::{dag::DagHandle, metrics::ConsensusMetrics};
 use lattice_test_utils::CommitteeFixture;
 use prometheus::Registry;
 use std::{borrow::Borrow, collections::HashMap, sync::Arc, time::Duration};
 use tn_types::consensus::{
-    config::{Committee, WorkerId},
+    Committee, WorkerId,
     crypto::traits::KeyPair,
     BatchDigest, Certificate, Header, MockPrimaryToWorker, PreSubscribedBroadcastSender,
     PrimaryToWorkerServer, WorkerDeleteBatchesMessage,
@@ -37,7 +37,7 @@ async fn test_successful_blocks_delete() {
     // AND a Dag with genesis populated
     let consensus_metrics = Arc::new(ConsensusMetrics::new(&Registry::new()));
     let dag =
-        Arc::new(Dag::new(&committee, rx_consensus, consensus_metrics, tx_shutdown.subscribe()).1);
+        Arc::new(DagHandle::new(&committee, rx_consensus, consensus_metrics, tx_shutdown.subscribe()).1);
     populate_genesis(&dag, &committee).await;
 
     let network = lattice_test_utils::test_network(primary.network_keypair(), primary.address());
@@ -176,7 +176,7 @@ async fn test_failed_blocks_delete() {
     // AND a Dag with genesis populated
     let consensus_metrics = Arc::new(ConsensusMetrics::new(&Registry::new()));
     let dag =
-        Arc::new(Dag::new(&committee, rx_consensus, consensus_metrics, tx_shutdown.subscribe()).1);
+        Arc::new(DagHandle::new(&committee, rx_consensus, consensus_metrics, tx_shutdown.subscribe()).1);
     populate_genesis(&dag, &committee).await;
 
     let network = lattice_test_utils::test_network(primary.network_keypair(), primary.address());
@@ -289,7 +289,8 @@ async fn test_failed_blocks_delete() {
     assert_eq!(total_deleted, 0);
 }
 
-async fn populate_genesis<K: Borrow<Dag>>(dag: &K, committee: &Committee) {
+/// Create certificates for genesis and insert them into the DAG.
+async fn populate_genesis<K: Borrow<DagHandle>>(dag: &K, committee: &Committee) {
     assert!(join_all(
         Certificate::genesis(committee).iter().map(|cert| dag.borrow().insert(cert.clone())),
     )

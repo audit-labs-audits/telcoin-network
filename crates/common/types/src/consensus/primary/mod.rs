@@ -21,9 +21,11 @@ pub type Round = u64;
 /// The epoch UNIX timestamp in milliseconds
 pub type TimestampMs = u64;
 
+/// Timestamp trait for calculating the amount of time that elapsed between
+/// timestamp and "now".
 pub trait Timestamp {
-    // Returns the time elapsed between the timestamp
-    // and "now". The result is a Duration.
+    /// Returns the time elapsed between the timestamp
+    /// and "now". The result is a Duration.
     fn elapsed(&self) -> Duration;
 }
 
@@ -33,8 +35,9 @@ impl Timestamp for TimestampMs {
         Duration::from_millis(diff)
     }
 }
-// Returns the current time expressed as UNIX
-// timestamp in milliseconds
+
+/// Returns the current time expressed as UNIX
+/// timestamp in milliseconds
 pub fn now() -> TimestampMs {
     match SystemTime::now().duration_since(SystemTime::UNIX_EPOCH) {
         Ok(n) => n.as_millis() as TimestampMs,

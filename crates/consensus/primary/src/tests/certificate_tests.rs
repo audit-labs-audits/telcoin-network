@@ -10,7 +10,7 @@ use rand::{
 };
 use std::num::NonZeroUsize;
 use tn_types::consensus::{
-    config::AuthorityIdentifier, crypto::KeyPair, Certificate, Vote, VoteAPI,
+    AuthorityIdentifier, crypto::AuthorityKeyPair, Certificate, Vote, VoteAPI,
 };
 
 #[test]
@@ -105,7 +105,7 @@ fn test_unknown_signature_in_certificate() {
         signatures.push((vote.author(), vote.signature().clone()));
     }
 
-    let malicious_key = KeyPair::generate(&mut StdRng::from_rng(OsRng).unwrap());
+    let malicious_key = AuthorityKeyPair::generate(&mut StdRng::from_rng(OsRng).unwrap());
     let malicious_id: AuthorityIdentifier = AuthorityIdentifier(50u16);
 
     let vote = Vote::new_with_signer(&header, &malicious_id, &malicious_key);

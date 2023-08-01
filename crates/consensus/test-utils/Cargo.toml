@@ -20,11 +20,11 @@ once_cell = "1.16"
 
 fastcrypto.workspace = true
 
+tn-types.workspace = true
 lattice-executor.workspace = true
 lattice-network.workspace=true
 lattice-node.workspace = true
 lattice-primary.workspace = true
-tn-types.workspace = true
 lattice-worker.workspace = true
 lattice-storage.workspace = true
 consensus-metrics.workspace = true

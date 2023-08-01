@@ -11,8 +11,8 @@ use serde_reflection::{Registry, Result, Samples, Tracer, TracerConfig};
 use std::{fs::File, io::Write};
 use structopt::{clap::arg_enum, StructOpt};
 use tn_types::consensus::{
-    config::{CommitteeBuilder, Epoch, WorkerIndex, WorkerInfo},
-    crypto::{KeyPair, NetworkKeyPair},
+    CommitteeBuilder, Epoch, WorkerIndex, WorkerInfo,
+    crypto::{AuthorityKeyPair, NetworkKeyPair},
     Batch, BatchDigest, Certificate, CertificateDigest, Header, HeaderDigest, HeaderV1Builder,
     VersionedMetadata, WorkerOthersBatchMessage, WorkerOwnBatchMessage, WorkerSynchronizeMessage,
 };
@@ -29,7 +29,7 @@ fn get_registry() -> Result<Registry> {
     // Trace the corresponding header
     let mut rng = StdRng::from_seed([0; 32]);
     let (keys, network_keys): (Vec<_>, Vec<_>) =
-        (0..4).map(|_| (KeyPair::generate(&mut rng), NetworkKeyPair::generate(&mut rng))).unzip();
+        (0..4).map(|_| (AuthorityKeyPair::generate(&mut rng), NetworkKeyPair::generate(&mut rng))).unzip();
 
     let kp = keys[0].copy();
     let pk = kp.public().clone();

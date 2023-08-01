@@ -2,104 +2,31 @@
 // Copyright (c) 2021, Facebook, Inc. and its affiliates
 // Copyright (c) Mysten Labs, Inc.
 // SPDX-License-Identifier: Apache-2.0
-use super::{CommitteeUpdateError, ConfigError, Epoch, Stake};
-use crate::consensus::crypto::{NetworkPublicKey, PublicKey, PublicKeyBytes};
+
+//! Committee type and builder.
+mod builder;
+pub use builder::*;
+mod authority;
+pub use authority::*;
+use super::config::{Stake, ConfigError, CommitteeUpdateError};
+use crate::consensus::crypto::{NetworkPublicKey, AuthorityPublicKey};
 use consensus_network::Multiaddr;
-use consensus_util_mem::MallocSizeOf;
 use fastcrypto::traits::EncodeDecodeBase64;
 use rand::{rngs::StdRng, seq::SliceRandom, SeedableRng};
 use serde::{Deserialize, Serialize};
 use std::{
     collections::{BTreeMap, HashSet},
-    fmt::{Display, Formatter},
     num::NonZeroU64,
 };
 
-#[derive(Clone, Serialize, Deserialize, Debug, Eq, PartialEq)]
-pub struct Authority {
-    /// The id under which we identify this authority across Narwhal
-    #[serde(skip)]
-    id: AuthorityIdentifier,
-    /// The authority's main PublicKey which is used to verify the content they sign.
-    protocol_key: PublicKey,
-    /// The authority's main PublicKey expressed as pure bytes
-    protocol_key_bytes: PublicKeyBytes,
-    /// The voting power of this authority.
-    stake: Stake,
-    /// The network address of the primary.
-    primary_address: Multiaddr,
-    /// Network key of the primary.
-    network_key: NetworkPublicKey,
-    /// There are secondary indexes that should be initialised before we are ready to use the
-    /// authority - this bool protect us for premature use.
-    #[serde(skip)]
-    initialised: bool,
-}
+/// The epoch number.
+pub type Epoch = u64;
 
-impl Authority {
-    /// The constructor is not public by design. Everyone who wants to create authorities should do
-    /// it via Committee (more specifically can use CommitteeBuilder). As some internal properties
-    /// of Authority are initialised via the Committee, to ensure that the user will not
-    /// accidentally use stale Authority data, should always derive them via the Commitee.
-    fn new(
-        protocol_key: PublicKey,
-        stake: Stake,
-        primary_address: Multiaddr,
-        network_key: NetworkPublicKey,
-    ) -> Self {
-        let protocol_key_bytes = PublicKeyBytes::from(&protocol_key);
-
-        Self {
-            id: Default::default(),
-            protocol_key,
-            protocol_key_bytes,
-            stake,
-            primary_address,
-            network_key,
-            initialised: false,
-        }
-    }
-
-    fn initialise(&mut self, id: AuthorityIdentifier) {
-        self.id = id;
-        self.initialised = true;
-    }
-
-    pub fn id(&self) -> AuthorityIdentifier {
-        assert!(self.initialised);
-        self.id
-    }
-
-    pub fn protocol_key(&self) -> &PublicKey {
-        assert!(self.initialised);
-        &self.protocol_key
-    }
-
-    pub fn protocol_key_bytes(&self) -> &PublicKeyBytes {
-        assert!(self.initialised);
-        &self.protocol_key_bytes
-    }
-
-    pub fn stake(&self) -> Stake {
-        assert!(self.initialised);
-        self.stake
-    }
-
-    pub fn primary_address(&self) -> Multiaddr {
-        assert!(self.initialised);
-        self.primary_address.clone()
-    }
-
-    pub fn network_key(&self) -> NetworkPublicKey {
-        assert!(self.initialised);
-        self.network_key.clone()
-    }
-}
-
+/// The group of authorities participating in consensus.
 #[derive(Clone, Serialize, Deserialize, Debug, Eq, PartialEq)]
 pub struct Committee {
     /// The authorities of epoch.
-    authorities: BTreeMap<PublicKey, Authority>,
+    authorities: BTreeMap<AuthorityPublicKey, Authority>,
     /// Keeps and index of the Authorities by their respective identifier
     #[serde(skip)]
     authorities_by_id: BTreeMap<AuthorityIdentifier, Authority>,
@@ -113,34 +40,10 @@ pub struct Committee {
     validity_threshold: Stake,
 }
 
-// Every authority gets uniquely identified by the AuthorityIdentifier
-// The type can be easily swapped without needing to change anything else in the implementation.
-#[derive(
-    Eq,
-    PartialEq,
-    Ord,
-    PartialOrd,
-    Clone,
-    Copy,
-    Debug,
-    Default,
-    Hash,
-    Serialize,
-    Deserialize,
-    MallocSizeOf,
-)]
-pub struct AuthorityIdentifier(pub u16);
-
-impl Display for AuthorityIdentifier {
-    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
-        f.write_str(self.0.to_string().as_str())
-    }
-}
-
 impl Committee {
     /// Any committee should be created via the CommitteeBuilder - this is intentionally be marked
     /// as private method.
-    fn new(authorities: BTreeMap<PublicKey, Authority>, epoch: Epoch) -> Self {
+    fn new(authorities: BTreeMap<AuthorityPublicKey, Authority>, epoch: Epoch) -> Self {
         let mut committee = Self {
             authorities,
             epoch,
@@ -213,19 +116,22 @@ impl Committee {
         })
     }
 
-    pub fn authority_by_key(&self, key: &PublicKey) -> Option<&Authority> {
+    /// Find the authority by it's public key, otherwise return `None`.
+    pub fn authority_by_key(&self, key: &AuthorityPublicKey) -> Option<&Authority> {
         self.authorities.get(key)
     }
 
     /// Returns the keys in the committee
-    pub fn keys(&self) -> Vec<PublicKey> {
-        self.authorities.keys().cloned().collect::<Vec<PublicKey>>()
+    pub fn keys(&self) -> Vec<AuthorityPublicKey> {
+        self.authorities.keys().cloned().collect::<Vec<AuthorityPublicKey>>()
     }
 
+    /// Returns all Authority structs in this committee.
     pub fn authorities(&self) -> impl Iterator<Item = &Authority> {
         self.authorities.values()
     }
 
+    /// Return the [Authority] by the authority's [NetworkPublicKey]
     pub fn authority_by_network_key(&self, network_key: &NetworkPublicKey) -> Option<&Authority> {
         self.authorities
             .iter()
@@ -239,10 +145,11 @@ impl Committee {
     }
 
     /// Return the stake of a specific authority.
-    pub fn stake(&self, name: &PublicKey) -> Stake {
+    pub fn stake(&self, name: &AuthorityPublicKey) -> Stake {
         self.authorities.get(&name.clone()).map_or_else(|| 0, |x| x.stake)
     }
 
+    /// Find an authority's stake by it's [AuthorityIdentifier]
     pub fn stake_by_id(&self, id: AuthorityIdentifier) -> Stake {
         self.authorities_by_id.get(&id).map_or_else(|| 0, |authority| authority.stake)
     }
@@ -267,6 +174,7 @@ impl Committee {
         stake >= self.validity_threshold()
     }
 
+    /// Total stake from all authorities
     pub fn total_stake(&self) -> Stake {
         self.authorities.values().map(|x| x.stake).sum()
     }
@@ -289,7 +197,7 @@ impl Committee {
     }
 
     /// Returns the primary address of the target primary.
-    pub fn primary(&self, to: &PublicKey) -> Result<Multiaddr, ConfigError> {
+    pub fn primary(&self, to: &AuthorityPublicKey) -> Result<Multiaddr, ConfigError> {
         self.authorities
             .get(&to.clone())
             .map(|x| x.primary_address.clone())
@@ -304,7 +212,8 @@ impl Committee {
             .ok_or_else(|| ConfigError::NotInCommittee(to.0.to_string()))
     }
 
-    pub fn network_key(&self, pk: &PublicKey) -> Result<NetworkPublicKey, ConfigError> {
+    /// Find an authority's [NetworkPublicKey] by the authority's [AuthorityPublicKey]
+    pub fn network_key(&self, pk: &AuthorityPublicKey) -> Result<NetworkPublicKey, ConfigError> {
         self.authorities
             .get(&pk.clone())
             .map(|x| x.network_key.clone())
@@ -314,8 +223,8 @@ impl Committee {
     /// Return all the network addresses in the committee.
     pub fn others_primaries(
         &self,
-        myself: &PublicKey,
-    ) -> Vec<(PublicKey, Multiaddr, NetworkPublicKey)> {
+        myself: &AuthorityPublicKey,
+    ) -> Vec<(AuthorityPublicKey, Multiaddr, NetworkPublicKey)> {
         self.authorities
             .iter()
             .filter(|(name, _)| *name != myself)
@@ -357,7 +266,7 @@ impl Committee {
     /// Committee. Any discrepancy will generate no update and return a vector of errors.
     pub fn update_primary_network_info(
         &mut self,
-        mut new_info: BTreeMap<PublicKey, (Stake, Multiaddr)>,
+        mut new_info: BTreeMap<AuthorityPublicKey, (Stake, Multiaddr)>,
     ) -> Result<(), Vec<CommitteeUpdateError>> {
         let mut errors = None;
 
@@ -414,34 +323,6 @@ impl Committee {
         Committee::new(self.authorities.clone(), new_epoch)
     }
 }
-
-pub struct CommitteeBuilder {
-    epoch: Epoch,
-    authorities: BTreeMap<PublicKey, Authority>,
-}
-
-impl CommitteeBuilder {
-    pub fn new(epoch: Epoch) -> Self {
-        Self { epoch, authorities: BTreeMap::new() }
-    }
-
-    pub fn add_authority(
-        mut self,
-        protocol_key: PublicKey,
-        stake: Stake,
-        primary_address: Multiaddr,
-        network_key: NetworkPublicKey,
-    ) -> Self {
-        let authority = Authority::new(protocol_key.clone(), stake, primary_address, network_key);
-        self.authorities.insert(protocol_key, authority);
-        self
-    }
-
-    pub fn build(self) -> Committee {
-        Committee::new(self.authorities, self.epoch)
-    }
-}
-
 impl std::fmt::Display for Committee {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(
@@ -465,7 +346,7 @@ impl std::fmt::Display for Committee {
 #[cfg(test)]
 mod tests {
     use super::{Authority, Committee};
-    use crate::consensus::crypto::{KeyPair, NetworkKeyPair, PublicKey};
+    use crate::consensus::crypto::{AuthorityKeyPair, NetworkKeyPair, AuthorityPublicKey};
     use consensus_network::Multiaddr;
     use fastcrypto::traits::KeyPair as _;
     use rand::thread_rng;
@@ -479,7 +360,7 @@ mod tests {
 
         let authorities = (0..num_of_authorities)
             .map(|_i| {
-                let keypair = KeyPair::generate(&mut rng);
+                let keypair = AuthorityKeyPair::generate(&mut rng);
                 let network_keypair = NetworkKeyPair::generate(&mut rng);
 
                 let a = Authority::new(
@@ -491,7 +372,7 @@ mod tests {
 
                 (keypair.public().clone(), a)
             })
-            .collect::<BTreeMap<PublicKey, Authority>>();
+            .collect::<BTreeMap<AuthorityPublicKey, Authority>>();
 
         // WHEN
         let committee = Committee::new(authorities, 10);

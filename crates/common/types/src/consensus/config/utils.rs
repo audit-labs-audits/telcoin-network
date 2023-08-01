@@ -1,6 +1,8 @@
 // Copyright (c) Telcoin, LLC
 // Copyright (c) Mysten Labs, Inc.
 // SPDX-License-Identifier: Apache-2.0
+
+//! Networking utilities for the committe to communicate during consensus.
 use std::net::{TcpListener, TcpStream};
 
 /// Return an ephemeral, available port. On unix systems, the port returned will be in the

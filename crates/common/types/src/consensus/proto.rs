@@ -14,7 +14,7 @@ mod narwhal {
 use std::{array::TryFromSliceError, ops::Deref};
 
 use crate::consensus::{
-    crypto::PublicKey, BlockError, BlockErrorKind, CertificateDigest, Transaction,
+    crypto::AuthorityPublicKey, BlockError, BlockErrorKind, CertificateDigest, Transaction,
 };
 use bytes::Bytes;
 
@@ -45,8 +45,8 @@ pub use narwhal::{
     Transaction as TransactionProto, ValidatorData,
 };
 
-impl From<PublicKey> for PublicKeyProto {
-    fn from(pub_key: PublicKey) -> Self {
+impl From<AuthorityPublicKey> for PublicKeyProto {
+    fn from(pub_key: AuthorityPublicKey) -> Self {
         PublicKeyProto { bytes: Bytes::from(pub_key.as_ref().to_vec()) }
     }
 }

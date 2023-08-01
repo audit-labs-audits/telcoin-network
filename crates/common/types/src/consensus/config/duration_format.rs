@@ -15,6 +15,7 @@
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
 use std::time::Duration;
 
+/// Deserialize impl
 pub fn deserialize<'de, D>(deserializer: D) -> Result<Duration, D::Error>
 where
     D: Deserializer<'de>,
@@ -40,6 +41,7 @@ where
     )))
 }
 
+/// Serialize impl.
 pub fn serialize<S>(duration: &Duration, serializer: S) -> Result<S::Ok, S::Error>
 where
     S: Serializer,

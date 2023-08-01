@@ -8,7 +8,7 @@ use consensus_metrics::{
 };
 use tap::TapFallible;
 use tn_types::consensus::{
-    config::AuthorityIdentifier, Certificate, CertificateAPI, ConditionalBroadcastReceiver,
+    AuthorityIdentifier, Certificate, CertificateAPI, ConditionalBroadcastReceiver,
     HeaderAPI, Round,
 };
 use tokio::task::JoinHandle;

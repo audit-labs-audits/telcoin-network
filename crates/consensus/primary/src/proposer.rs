@@ -15,7 +15,7 @@ use std::{
     sync::Arc,
 };
 use tn_types::consensus::{
-    config::{AuthorityIdentifier, Committee, Epoch, WorkerId},
+    AuthorityIdentifier, Committee, Epoch, WorkerId,
     error::{DagError, DagResult},
     now, BatchDigest, Certificate, CertificateAPI, ConditionalBroadcastReceiver, Header, HeaderAPI,
     Round, TimestampMs,

@@ -8,7 +8,7 @@ use lattice_typed_store::{
     Map, TypedStoreError,
 };
 use tn_macros::fail_point;
-use tn_types::consensus::{config::AuthorityIdentifier, Vote, VoteAPI, VoteInfo};
+use tn_types::consensus::{AuthorityIdentifier, Vote, VoteAPI, VoteInfo};
 
 /// The storage for the last votes digests per authority
 #[derive(Clone)]

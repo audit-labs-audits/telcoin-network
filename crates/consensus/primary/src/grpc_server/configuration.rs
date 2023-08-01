@@ -6,8 +6,8 @@ use consensus_network::Multiaddr;
 use fastcrypto::traits::ToFromBytes;
 use std::{collections::BTreeMap, sync::Arc};
 use tn_types::consensus::{
-    config::{Committee, Stake},
-    crypto::PublicKey,
+    Committee, Stake,
+    crypto::AuthorityPublicKey,
     Configuration, Empty, GetPrimaryAddressResponse, MultiAddrProto, NewEpochRequest,
     NewNetworkInfoRequest, PublicKeyProto,
 };
@@ -28,10 +28,10 @@ impl NarwhalConfiguration {
     /// The method will return a result where the OK() will hold the
     /// parsed public key. The Err() will hold a Status message with the
     /// specific error description.
-    fn get_public_key(&self, request: Option<&PublicKeyProto>) -> Result<PublicKey, Status> {
+    fn get_public_key(&self, request: Option<&PublicKeyProto>) -> Result<AuthorityPublicKey, Status> {
         let proto_key = request
             .ok_or_else(|| Status::invalid_argument("Invalid public key: no key provided"))?;
-        let key = PublicKey::from_bytes(proto_key.bytes.as_ref())
+        let key = AuthorityPublicKey::from_bytes(proto_key.bytes.as_ref())
             .map_err(|_| Status::invalid_argument("Invalid public key: couldn't parse"))?;
 
         // ensure provided key is part of the committee

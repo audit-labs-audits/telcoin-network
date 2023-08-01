@@ -10,7 +10,7 @@ use consensus_metrics::{
 use fastcrypto::hash::Hash as _;
 use futures::{stream::FuturesOrdered, StreamExt};
 use lattice_common::sync::notify_once::NotifyOnce;
-use lattice_consensus::{consensus::ConsensusRound, dag::Dag};
+use lattice_consensus::{ConsensusRound, dag::DagHandle};
 use lattice_network::{
     anemo_ext::{NetworkExt, WaitingPeer},
     client::NetworkClient,
@@ -30,7 +30,7 @@ use std::{
 };
 use tn_types::{
     consensus::{
-        config::{AuthorityIdentifier, Committee, Epoch, WorkerCache},
+        AuthorityIdentifier, Committee, Epoch, WorkerCache,
         crypto::NetworkPublicKey,
         error::{AcceptNotification, DagError, DagResult},
         Certificate, CertificateAPI, CertificateDigest, Header, HeaderAPI, PrimaryToPrimaryClient,
@@ -99,7 +99,7 @@ struct Inner {
     /// Genesis digests and contents.
     genesis: HashMap<CertificateDigest, Certificate>,
     /// The dag used for the external consensus
-    dag: Option<Arc<Dag>>,
+    dag: Option<Arc<DagHandle>>,
     /// Contains Synchronizer specific metrics among other Primary metrics.
     metrics: Arc<PrimaryMetrics>,
     /// Background tasks broadcasting newly formed certificates.
@@ -300,7 +300,7 @@ impl Synchronizer {
         tx_parents: Sender<(Vec<Certificate>, Round, Epoch)>,
         rx_consensus_round_updates: watch::Receiver<ConsensusRound>,
         rx_synchronizer_network: oneshot::Receiver<Network>,
-        dag: Option<Arc<Dag>>,
+        dag: Option<Arc<DagHandle>>,
         metrics: Arc<PrimaryMetrics>,
         primary_channel_metrics: &PrimaryChannelMetrics,
     ) -> Self {

@@ -2,11 +2,11 @@
 // Copyright (c) Mysten Labs, Inc.
 // SPDX-License-Identifier: Apache-2.0
 use fastcrypto::traits::ToFromBytes;
-use lattice_consensus::dag::Dag;
+use lattice_consensus::dag::DagHandle;
 use std::sync::Arc;
 use tn_types::consensus::{
-    config::{AuthorityIdentifier, Committee},
-    crypto::PublicKey,
+    AuthorityIdentifier, Committee,
+    crypto::AuthorityPublicKey,
     NodeReadCausalRequest, NodeReadCausalResponse, Proposer, PublicKeyProto, RoundsRequest,
     RoundsResponse,
 };
@@ -14,14 +14,14 @@ use tonic::{Request, Response, Status};
 
 pub struct NarwhalProposer {
     /// The dag that holds the available certificates to propose
-    dag: Option<Arc<Dag>>,
+    dag: Option<Arc<DagHandle>>,
 
     /// The committee
     committee: Committee,
 }
 
 impl NarwhalProposer {
-    pub fn new(dag: Option<Arc<Dag>>, committee: Committee) -> Self {
+    pub fn new(dag: Option<Arc<DagHandle>>, committee: Committee) -> Self {
         Self { dag, committee }
     }
 
@@ -35,7 +35,7 @@ impl NarwhalProposer {
     ) -> Result<AuthorityIdentifier, Status> {
         let proto_key = request
             .ok_or_else(|| Status::invalid_argument("Invalid public key: no key provided"))?;
-        let key = PublicKey::from_bytes(proto_key.bytes.as_ref())
+        let key = AuthorityPublicKey::from_bytes(proto_key.bytes.as_ref())
             .map_err(|_| Status::invalid_argument("Invalid public key: couldn't parse"))?;
 
         // ensure provided key is part of the committee

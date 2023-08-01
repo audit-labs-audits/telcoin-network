@@ -26,7 +26,7 @@ use std::{
 };
 use thiserror::Error;
 use tn_types::consensus::{
-    config::{AuthorityIdentifier, Committee, Parameters, WorkerCache, WorkerId},
+    AuthorityIdentifier, Committee, Parameters, WorkerCache, WorkerId,
     crypto::{traits::ToFromBytes, NetworkPublicKey},
     BatchDigest, Certificate, CertificateAPI, CertificateDigest, ConditionalBroadcastReceiver,
     GetCertificatesRequest, HeaderAPI, PayloadAvailabilityRequest, PrimaryToPrimaryClient,

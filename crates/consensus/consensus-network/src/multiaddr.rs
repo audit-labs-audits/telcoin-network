@@ -7,9 +7,10 @@ use std::{
     borrow::Cow,
     net::{IpAddr, SocketAddr},
 };
-
 pub use ::multiaddr::{Error, Protocol};
 
+/// Multiaddr is a wrapper for [::multiaddr::Multiaddr]
+/// and provides additional methods.
 #[derive(Clone, Debug, Hash, PartialEq, Eq, PartialOrd, Ord)]
 pub struct Multiaddr(::multiaddr::Multiaddr);
 
@@ -84,9 +85,9 @@ impl Multiaddr {
         }
     }
 
-    // Converts a /ip{4,6}/-/tcp/-[/-] Multiaddr to SocketAddr.
-    // Useful when an external library only accepts SocketAddr, e.g. to start a local server.
-    // See `client::endpoint_from_multiaddr()` for converting to Endpoint for clients.
+    /// Converts a /ip{4,6}/-/tcp/-[/-] Multiaddr to SocketAddr.
+    /// Useful when an external library only accepts SocketAddr, e.g. to start a local server.
+    /// See `client::endpoint_from_multiaddr()` for converting to Endpoint for clients.
     pub fn to_socket_addr(&self) -> Result<SocketAddr> {
         let mut iter = self.iter();
         let ip = match iter.next().ok_or_else(|| {
@@ -193,7 +194,7 @@ pub(crate) fn parse_end<'a, T: Iterator<Item = Protocol<'a>>>(protocols: &mut T)
     }
 }
 
-// Parse a full /dns/-/tcp/-/{http,https} address
+/// Parse a full /dns/-/tcp/-/{http,https} address
 pub(crate) fn parse_dns(address: &Multiaddr) -> Result<(Cow<'_, str>, u16, &'static str)> {
     let mut iter = address.iter();
 
@@ -207,7 +208,7 @@ pub(crate) fn parse_dns(address: &Multiaddr) -> Result<(Cow<'_, str>, u16, &'sta
     Ok((dns_name, tcp_port, http_or_https))
 }
 
-// Parse a full /ip4/-/tcp/-/{http,https} address
+/// Parse a full /ip4/-/tcp/-/{http,https} address
 pub(crate) fn parse_ip4(address: &Multiaddr) -> Result<(SocketAddr, &'static str)> {
     let mut iter = address.iter();
 
@@ -223,7 +224,7 @@ pub(crate) fn parse_ip4(address: &Multiaddr) -> Result<(SocketAddr, &'static str
     Ok((socket_addr, http_or_https))
 }
 
-// Parse a full /ip6/-/tcp/-/{http,https} address
+/// Parse a full /ip6/-/tcp/-/{http,https} address
 pub(crate) fn parse_ip6(address: &Multiaddr) -> Result<(SocketAddr, &'static str)> {
     let mut iter = address.iter();
 
@@ -239,7 +240,7 @@ pub(crate) fn parse_ip6(address: &Multiaddr) -> Result<(SocketAddr, &'static str
     Ok((socket_addr, http_or_https))
 }
 
-// Parse a full /unix/-/{http,https} address
+/// Parse a full /unix/-/{http,https} address
 #[cfg(unix)]
 pub(crate) fn parse_unix(address: &Multiaddr) -> Result<(Cow<'_, str>, &'static str)> {
     let mut iter = address.iter();

@@ -34,25 +34,37 @@ use serde::Serialize;
 // to change all four aliases to point to concrete types that work with each other. Failure to do
 // so will result in a ton of compilation errors, and worse: it will not make sense!
 
-pub type PublicKey = BLS12381PublicKey;
-pub type PublicKeyBytes = BLS12381PublicKeyAsBytes;
-pub type Signature = BLS12381Signature;
-pub type AggregateSignature = BLS12381AggregateSignature;
-pub type AggregateSignatureBytes = BLS12381AggregateSignatureAsBytes;
-pub type PrivateKey = BLS12381PrivateKey;
-pub type KeyPair = BLS12381KeyPair;
+/// Keypair for this authority.
+pub type AuthorityKeyPair = BLS12381KeyPair;
+/// Public key for this authority.
+pub type AuthorityPublicKey = BLS12381PublicKey;
+/// Private key for this authority.
+pub type AuthorityPrivateKey = BLS12381PrivateKey;
+/// Public key for this authority as bytes.
+pub type AuthorityPublicKeyBytes = BLS12381PublicKeyAsBytes;
+/// BLS signature.
+pub type AuthoritySignature = BLS12381Signature;
+/// BLS12381 aggregate signature.
+pub type AggregateAuthoritySignature = BLS12381AggregateSignature;
+/// BLS12381 aggregate signature bytes.
+pub type AggregateAuthoritySignatureBytes = BLS12381AggregateSignatureAsBytes;
+/// Public key for this authority's consensus messages between other nodes.
 pub type NetworkPublicKey = Ed25519PublicKey;
+/// Keypair for this authority's consensus messages between other nodes.
 pub type NetworkKeyPair = Ed25519KeyPair;
 
 ////////////////////////////////////////////////////////////////////////
 
-// Type alias selecting the default hash function for the code base.
+/// Type alias selecting the default hash function for the code base.
 pub type DefaultHashFunction = Blake2b256;
+/// Default hash expected output.
 pub const DIGEST_LENGTH: usize = DefaultHashFunction::OUTPUT_SIZE;
+/// TODO: Intent message length may not be needed.
 pub const INTENT_MESSAGE_LENGTH: usize = INTENT_PREFIX_LENGTH + DIGEST_LENGTH;
 
-// TODO: epoch here
 // pub const DEFAULT_EPOCH_ID: EpochId = 0;
+/// The default epoch id.
+/// TODO: use EpochId type alias here
 pub const DEFAULT_EPOCH_ID: u64 = 0;
 
 /// A trait for sign and verify over an intent message, instead of the message itself. See more at
@@ -67,13 +79,13 @@ pub trait NarwhalAuthoritySignature {
     fn verify_secure<T>(
         &self,
         value: &IntentMessage<T>,
-        author: &PublicKey,
+        author: &AuthorityPublicKey,
     ) -> Result<(), FastCryptoError>
     where
         T: Serialize;
 }
 
-impl NarwhalAuthoritySignature for Signature {
+impl NarwhalAuthoritySignature for AuthoritySignature {
     fn new_secure<T>(value: &IntentMessage<T>, secret: &dyn Signer<Self>) -> Self
     where
         T: Serialize,
@@ -85,7 +97,7 @@ impl NarwhalAuthoritySignature for Signature {
     fn verify_secure<T>(
         &self,
         value: &IntentMessage<T>,
-        public_key: &PublicKey,
+        public_key: &AuthorityPublicKey,
     ) -> Result<(), FastCryptoError>
     where
         T: Serialize,
@@ -95,21 +107,23 @@ impl NarwhalAuthoritySignature for Signature {
     }
 }
 
+/// Trait for verifying authority aggregate signature.
 pub trait NarwhalAuthorityAggregateSignature {
+    /// Verify the aggregate signatures are valid.
     fn verify_secure<T>(
         &self,
         value: &IntentMessage<T>,
-        pks: &[PublicKey],
+        pks: &[AuthorityPublicKey],
     ) -> Result<(), FastCryptoError>
     where
         T: Serialize;
 }
 
-impl NarwhalAuthorityAggregateSignature for AggregateSignature {
+impl NarwhalAuthorityAggregateSignature for AggregateAuthoritySignature {
     fn verify_secure<T>(
         &self,
         value: &IntentMessage<T>,
-        pks: &[PublicKey],
+        pks: &[AuthorityPublicKey],
     ) -> Result<(), FastCryptoError>
     where
         T: Serialize,

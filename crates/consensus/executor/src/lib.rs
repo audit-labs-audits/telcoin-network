@@ -16,7 +16,7 @@ use prometheus::Registry;
 pub use state::ExecutionIndices;
 use std::sync::Arc;
 use tn_types::consensus::{
-    config::{AuthorityIdentifier, Committee, WorkerCache},
+    AuthorityIdentifier, Committee, WorkerCache,
     CertificateDigest, CommittedSubDag, ConditionalBroadcastReceiver, ConsensusOutput,
 };
 use tokio::task::JoinHandle;
@@ -30,8 +30,10 @@ pub type SerializedTransactionDigest = u64;
 
 #[automock]
 #[async_trait]
-// Important - if you add method with the default implementation here make sure to update impl
-// ExecutionState for Arc<T>
+/// Trait for transferring consensus output to the Execution Layer.
+/// 
+/// Important - if you add method with the default implementation here make sure to update impl
+/// ExecutionState for Arc<T>
 pub trait ExecutionState {
     /// Execute the transaction and atomically persist the consensus index.
     async fn handle_consensus_output(&self, consensus_output: ConsensusOutput);
@@ -44,7 +46,7 @@ pub trait ExecutionState {
 pub struct Executor;
 
 impl Executor {
-    /// Spawn a new client subscriber.
+    /// Spawn a new client subscriber for consensus output.
     pub fn spawn<State>(
         authority_id: AuthorityIdentifier,
         worker_cache: WorkerCache,
@@ -84,6 +86,7 @@ impl Executor {
     }
 }
 
+/// Recover the last committed sub-dag to ensure execution of the last consensus output completed.
 pub async fn get_restored_consensus_output<State: ExecutionState>(
     consensus_store: Arc<ConsensusStore>,
     certificate_store: CertificateStore,

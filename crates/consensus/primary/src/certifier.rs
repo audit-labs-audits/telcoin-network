@@ -12,9 +12,9 @@ use std::{sync::Arc, time::Duration};
 use tn_macros::fail_point_async;
 use tn_types::{
     consensus::{
-        config::{AuthorityIdentifier, Committee},
+        AuthorityIdentifier, Committee,
         crypto,
-        crypto::{NetworkPublicKey, Signature},
+        crypto::{NetworkPublicKey, AuthoritySignature},
         error::{DagError, DagResult},
         Certificate, CertificateDigest, ConditionalBroadcastReceiver, Header, HeaderAPI,
         PrimaryToPrimaryClient, RequestVoteRequest, Vote, VoteAPI,
@@ -48,7 +48,7 @@ pub struct Certifier {
     /// Handles synchronization with other nodes and our workers.
     synchronizer: Arc<Synchronizer>,
     /// Service to sign headers.
-    signature_service: SignatureService<Signature, { crypto::INTENT_MESSAGE_LENGTH }>,
+    signature_service: SignatureService<AuthoritySignature, { crypto::INTENT_MESSAGE_LENGTH }>,
     /// Receiver for shutdown.
     rx_shutdown: ConditionalBroadcastReceiver,
     /// Receives our newly created headers from the `Proposer`.
@@ -76,7 +76,7 @@ impl Certifier {
         header_store: HeaderStore,
         certificate_store: CertificateStore,
         synchronizer: Arc<Synchronizer>,
-        signature_service: SignatureService<Signature, { crypto::INTENT_MESSAGE_LENGTH }>,
+        signature_service: SignatureService<AuthoritySignature, { crypto::INTENT_MESSAGE_LENGTH }>,
         rx_shutdown: ConditionalBroadcastReceiver,
         rx_headers: Receiver<Header>,
         metrics: Arc<PrimaryMetrics>,
@@ -232,7 +232,7 @@ impl Certifier {
         committee: Committee,
         header_store: HeaderStore,
         certificate_store: CertificateStore,
-        signature_service: SignatureService<Signature, { crypto::INTENT_MESSAGE_LENGTH }>,
+        signature_service: SignatureService<AuthoritySignature, { crypto::INTENT_MESSAGE_LENGTH }>,
         metrics: Arc<PrimaryMetrics>,
         network: anemo::Network,
         header: Header,

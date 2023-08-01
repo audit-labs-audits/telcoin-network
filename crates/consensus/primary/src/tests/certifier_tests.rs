@@ -5,7 +5,7 @@
 use super::*;
 use crate::{common::create_db_stores, primary, PrimaryChannelMetrics};
 use fastcrypto::traits::KeyPair;
-use lattice_consensus::consensus::ConsensusRound;
+use lattice_consensus::ConsensusRound;
 use lattice_network::client::NetworkClient;
 use lattice_test_utils::CommitteeFixture;
 use primary::NUM_SHUTDOWN_RECEIVERS;
@@ -13,7 +13,7 @@ use prometheus::Registry;
 use rand::{rngs::StdRng, SeedableRng};
 use std::num::NonZeroUsize;
 use tn_types::consensus::{
-    crypto::KeyPair as DefinedKeyPair, CertificateAPI, MockPrimaryToPrimary,
+    crypto::AuthorityKeyPair as DefinedKeyPair, CertificateAPI, MockPrimaryToPrimary,
     PreSubscribedBroadcastSender, PrimaryToPrimaryServer, RequestVoteResponse,
 };
 use tokio::{sync::watch, time::Duration};
