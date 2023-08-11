@@ -14,7 +14,7 @@ use lattice_typed_store::{
 use std::{num::NonZeroUsize, sync::Arc, time::Duration};
 use tn_types::consensus::{
     AuthorityIdentifier, WorkerId,
-    Batch, BatchDigest, Certificate, CertificateDigest, CommittedSubDagShell, ConsensusCommit,
+    Batch, BatchDigest, Certificate, CertificateDigest, ConsensusCommit,
     Header, HeaderDigest, Round, SequenceNumber, VoteInfo,
 };
 
@@ -111,7 +111,6 @@ impl NodeStorage {
             payload_map,
             batch_map,
             last_committed_map,
-            sub_dag_index_map,
             committed_sub_dag_map,
         ) = reopen!(&rocksdb,
             Self::LAST_PROPOSED_CF;<ProposerKey, Header>,
@@ -123,7 +122,6 @@ impl NodeStorage {
             Self::PAYLOAD_CF;<(BatchDigest, WorkerId), PayloadToken>,
             Self::BATCHES_CF;<BatchDigest, Batch>,
             Self::LAST_COMMITTED_CF;<AuthorityIdentifier, Round>,
-            Self::SUB_DAG_INDEX_CF;<SequenceNumber, CommittedSubDagShell>,
             Self::COMMITTED_SUB_DAG_INDEX_CF;<SequenceNumber, ConsensusCommit>
         );
 
@@ -145,7 +143,6 @@ impl NodeStorage {
         let batch_store = batch_map;
         let consensus_store = Arc::new(ConsensusStore::new(
             last_committed_map,
-            sub_dag_index_map,
             committed_sub_dag_map,
         ));
 

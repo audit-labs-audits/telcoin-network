@@ -1,7 +1,7 @@
 use crate::{capability::Capability, EthVersion, ProtocolVersion};
 use execution_codecs::derive_arbitrary;
 use execution_rlp::{RlpDecodable, RlpEncodable};
-use tn_types::execution::{constants::execution_CLIENT_VERSION, PeerId};
+use tn_types::execution::{constants::EXECUTION_CLIENT_VERSION, PeerId};
 
 #[cfg(feature = "serde")]
 use serde::{Deserialize, Serialize};
@@ -95,7 +95,7 @@ impl HelloMessageBuilder {
         let Self { protocol_version, client_version, capabilities, port, id } = self;
         HelloMessage {
             protocol_version: protocol_version.unwrap_or_default(),
-            client_version: client_version.unwrap_or_else(|| execution_CLIENT_VERSION.to_string()),
+            client_version: client_version.unwrap_or_else(|| EXECUTION_CLIENT_VERSION.to_string()),
             capabilities: capabilities.unwrap_or_else(|| {
                 vec![EthVersion::Eth68.into(), EthVersion::Eth67.into(), EthVersion::Eth66.into()]
             }),

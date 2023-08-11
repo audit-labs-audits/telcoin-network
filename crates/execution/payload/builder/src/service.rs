@@ -142,7 +142,7 @@ impl PayloadBuilderHandle {
 /// It tracks active payloads and their build jobs that run in the worker pool.
 ///
 /// By design, this type relies entirely on the [PayloadJobGenerator] to create new payloads and
-/// does know nothing about how to build them, itt just drives the payload jobs.
+/// knows nothing about how to build them, it just drives the payload jobs.
 #[must_use = "futures do nothing unless you `.await` or poll them"]
 pub struct PayloadBuilderService<Gen>
 where

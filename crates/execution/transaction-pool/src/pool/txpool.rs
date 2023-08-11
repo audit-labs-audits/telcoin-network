@@ -29,6 +29,8 @@ use tn_types::execution::{
     TxHash, H256,
 };
 
+use super::{FinalizedPool, best::FinalizedTransactions};
+
 /// A pool that manages transactions.
 ///
 /// This pool maintains the state of all transactions and stores them accordingly.
@@ -88,13 +90,17 @@ pub struct TxPool<T: TransactionOrdering> {
     all_transactions: AllTransactions<T::Transaction>,
     /// Transaction pool metrics
     metrics: TxPoolMetrics,
+    /// finalized subpool
+    /// 
+    /// Holds transactions returned from consensus. These are used to build the next canonical block.
+    finalized_pool: FinalizedPool<T>,
 }
 
 // === impl TxPool ===
 
 impl<T: TransactionOrdering> TxPool<T> {
     /// Create a new graph pool instance.
-    pub(crate) fn new(ordering: T, config: PoolConfig) -> Self {
+    pub(crate) fn new(ordering: T, finalized_ordering: T, config: PoolConfig) -> Self {
         Self {
             sender_info: Default::default(),
             pending_pool: PendingPool::new(ordering),
@@ -103,6 +109,7 @@ impl<T: TransactionOrdering> TxPool<T> {
             all_transactions: AllTransactions::new(config.max_account_slots),
             config,
             metrics: Default::default(),
+            finalized_pool: FinalizedPool::new(finalized_ordering),
         }
     }
 
@@ -184,6 +191,11 @@ impl<T: TransactionOrdering> TxPool<T> {
     /// Returns an iterator that yields transactions that are ready to be included in the block.
     pub(crate) fn best_transactions(&self) -> BestTransactions<T> {
         self.pending_pool.best()
+    }
+
+    /// Returns an iterator that yields transactions that have reached consensus.
+    pub(crate) fn all_finalized_transactions(&self) -> FinalizedTransactions<T> {
+        self.finalized_pool.all()
     }
 
     /// Returns all transactions from the pending sub-pool
@@ -362,6 +374,18 @@ impl<T: TransactionOrdering> TxPool<T> {
             }
         }
     }
+
+    /// Add finalized transactions to the FinalizedPool to build the next canonical block.
+    pub(crate) fn add_finalized_transaction(
+        &mut self,
+        tx: ValidPoolTransaction<T::Transaction>,
+        // on_chain_balance: U256,
+        // on_chain_nonce: u64,
+    // ) -> PoolResult<AddedTransaction<T::Transaction>> {
+    ) -> PoolResult<()> {
+        self.finalized_pool.add_transaction(tx)
+    }
+
 
     /// Maintenance task to apply a series of updates.
     ///
@@ -1409,7 +1433,7 @@ mod tests {
         let on_chain_balance = U256::ZERO;
         let on_chain_nonce = 0;
         let mut f = MockTransactionFactory::default();
-        let mut pool = TxPool::new(MockOrdering::default(), Default::default());
+        let mut pool = TxPool::new(MockOrdering::default(), MockOrdering::default(), Default::default());
         let tx = MockTransaction::eip1559().inc_price().inc_limit();
         let tx = f.validated(tx);
         pool.add_transaction(tx.clone(), on_chain_balance, on_chain_nonce).unwrap();
@@ -1624,7 +1648,7 @@ mod tests {
     #[test]
     fn update_basefee_subpools() {
         let mut f = MockTransactionFactory::default();
-        let mut pool = TxPool::new(MockOrdering::default(), Default::default());
+        let mut pool = TxPool::new(MockOrdering::default(), MockOrdering::default(), Default::default());
 
         let tx = MockTransaction::eip1559().inc_price_by(10);
         let validated = f.validated(tx.clone());

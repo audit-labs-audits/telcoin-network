@@ -9,6 +9,9 @@ use std::{
 };
 use tn_types::execution::H256 as TxHash;
 use tracing::debug;
+use super::finalized::{FinalizedTransactionRef, FinalizedTransaction};
+
+// === Creating Batches from pending transactions
 
 /// An iterator that returns transactions that can be executed on the current state (*best*
 /// transactions).
@@ -44,6 +47,70 @@ impl<T: TransactionOrdering> crate::traits::BestTransactions for BestTransaction
 }
 
 impl<T: TransactionOrdering> Iterator for BestTransactions<T> {
+    type Item = Arc<ValidPoolTransaction<T::Transaction>>;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        loop {
+            // Remove the next independent tx with the highest priority
+            let best = self.independent.pop_last()?;
+            let hash = best.transaction.hash();
+
+            // skip transactions that were marked as invalid
+            if self.invalid.contains(hash) {
+                debug!(
+                    target: "txpool",
+                    "[{:?}] skipping invalid transaction",
+                    hash
+                );
+                continue
+            }
+
+            // Insert transactions that just got unlocked.
+            if let Some(unlocked) = self.all.get(&best.unlocks()) {
+                self.independent.insert(unlocked.transaction.clone());
+            }
+
+            return Some(best.transaction)
+        }
+    }
+}
+
+// === Creating Canonical Blocks from Consensus Output
+
+/// An iterator that returns transactions that will be executed on the current state (*finalized*
+/// transactions).
+///
+/// The [`FinalizedPool`](crate::pool::finalized::FinalizedPool) contains transactions that have
+/// reached consensus, but only yields transactions that are ready to be executed
+/// now. While it contains all gapless transactions of a sender, it _always_ only returns the
+/// transaction with the current on chain nonce.
+pub(crate) struct FinalizedTransactions<T: TransactionOrdering> {
+    /// Contains a copy of _all_ transactions of the finalized pool at the point in time this
+    /// iterator was created.
+    pub(crate) all: BTreeMap<TransactionId, Arc<FinalizedTransaction<T>>>,
+    /// Transactions that can be executed right away: these have the expected nonce.
+    ///
+    /// Once an `independent` transaction with the nonce `N` is returned, it unlocks `N+1`, which
+    /// then can be moved from the `all` set to the `independent` set.
+    pub(crate) independent: BTreeSet<FinalizedTransactionRef<T>>,
+    /// There might be the case where a yielded transactions is invalid, this will track it.
+    pub(crate) invalid: HashSet<TxHash>,
+}
+
+impl<T: TransactionOrdering> FinalizedTransactions<T> {
+    /// Mark the transaction and it's descendants as invalid.
+    pub(crate) fn mark_invalid(&mut self, tx: &Arc<ValidPoolTransaction<T::Transaction>>) {
+        self.invalid.insert(*tx.hash());
+    }
+}
+
+impl<T: TransactionOrdering> crate::traits::BestTransactions for FinalizedTransactions<T> {
+    fn mark_invalid(&mut self, tx: &Self::Item) {
+        FinalizedTransactions::mark_invalid(self, tx)
+    }
+}
+
+impl<T: TransactionOrdering> Iterator for FinalizedTransactions<T> {
     type Item = Arc<ValidPoolTransaction<T::Transaction>>;
 
     fn next(&mut self) -> Option<Self::Item> {

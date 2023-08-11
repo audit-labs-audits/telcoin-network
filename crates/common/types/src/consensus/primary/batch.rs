@@ -70,7 +70,12 @@ pub trait BatchAPI {
 #[cfg_attr(any(test, feature = "arbitrary"), derive(Arbitrary))]
 #[derive(Clone, Serialize, Deserialize, Debug, PartialEq, Eq)]
 pub struct BatchV1 {
-    /// List of transactions
+    /// List of transactions.
+    /// 
+    /// A batch `Transaction` is an encoded `TransactionSigned` from the EL.
+    /// Recovering senders is CPU intensive, but so it network bandwidth. For this
+    /// protocol, network bandwidth is more costly so only the signed version is sent.
+    /// It is the responsibility of peers to recover signers and verify transactions.
     pub transactions: Vec<Transaction>,
 
     /// Metadata for batch.

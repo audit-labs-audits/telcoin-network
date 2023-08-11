@@ -17,5 +17,5 @@ pub type TestPool = Pool<NoopTransactionValidator<MockTransaction>, MockOrdering
 
 /// Returns a new [Pool] used for testing purposes
 pub fn testing_pool() -> TestPool {
-    Pool::new(NoopTransactionValidator::default(), MockOrdering::default(), Default::default())
+    Pool::new(NoopTransactionValidator::default(), MockOrdering::default(), MockOrdering::default(), Default::default())
 }

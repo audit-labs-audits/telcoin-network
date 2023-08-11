@@ -218,8 +218,8 @@ where
     T: TransactionOrdering<Transaction = <V as TransactionValidator>::Transaction>,
 {
     /// Create a new transaction pool instance.
-    pub fn new(validator: V, ordering: T, config: PoolConfig) -> Self {
-        Self { pool: Arc::new(PoolInner::new(validator, ordering, config)) }
+    pub fn new(validator: V, ordering: T, finalized_ordering: T, config: PoolConfig) -> Self {
+        Self { pool: Arc::new(PoolInner::new(validator, ordering, finalized_ordering, config)) }
     }
 
     /// Returns the wrapped pool.
@@ -298,7 +298,7 @@ where
         validator: EthTransactionValidator<Client, PooledTransaction>,
         config: PoolConfig,
     ) -> Self {
-        Self::new(validator, GasCostOrdering::default(), config)
+        Self::new(validator, GasCostOrdering::default(), GasCostOrdering::default(), config)
     }
 }
 
@@ -348,6 +348,18 @@ where
         Ok(transactions)
     }
 
+    async fn add_finalized_transactions(
+        &self,
+        transactions: Vec<Self::Transaction>,
+    ) -> PoolResult<Vec<PoolResult<()>>> {
+        let origin = TransactionOrigin::External;
+        // TODO: all transactions should be validated before consensus, but this method reduces the complexity
+        // of rewriting all the code necessary to build the next block.
+        let validated = self.validate_all(origin, transactions).await?;
+        let transactions = self.pool.add_finalized_transactions(origin, validated.into_values());
+        Ok(transactions)
+    }
+
     fn transaction_event_listener(&self, tx_hash: TxHash) -> Option<TransactionEvents> {
         self.pool.add_transaction_event_listener(tx_hash)
     }
@@ -388,6 +400,13 @@ where
     ) -> Box<dyn BestTransactions<Item = Arc<ValidPoolTransaction<Self::Transaction>>>> {
         Box::new(self.pool.best_transactions())
     }
+
+    fn all_finalized_transactions(
+        &self,
+    ) -> Box<dyn BestTransactions<Item = Arc<ValidPoolTransaction<Self::Transaction>>>> {
+        Box::new(self.pool.all_finalized_transactions())
+    }
+
 
     fn pending_transactions(&self) -> Vec<Arc<ValidPoolTransaction<Self::Transaction>>> {
         self.pool.pending_transactions()

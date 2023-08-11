@@ -227,7 +227,7 @@ impl Bullshark {
         }
         let (leader_digest, leader) = match Self::leader(&self.committee, leader_round, &state.dag)
         {
-            Some(x) => x,
+            Some(res) => res,
             None => {
                 self.last_leader_election =
                     LastRound { leader_found: false, leader_has_support: false };

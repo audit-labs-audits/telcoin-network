@@ -27,3 +27,4 @@ tap = "1.0.1"
 
 [dev-dependencies]
 lattice-test-utils.workspace = true
+tn-types = { workspace = true, features = ["test"] }

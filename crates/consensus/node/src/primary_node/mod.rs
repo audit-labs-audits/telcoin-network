@@ -15,9 +15,9 @@ use prometheus::Registry;
 use std::sync::Arc;
 use tn_types::consensus::{
     Committee, Parameters, WorkerCache,
-    crypto::{AuthorityKeyPair, NetworkKeyPair},
+    crypto::{AuthorityKeyPair, NetworkKeyPair}, Header,
 };
-use tokio::sync::RwLock;
+use tokio::sync::{RwLock, oneshot, mpsc};
 
 /// The main component for managing an instance of [`Primary`].
 /// 
@@ -63,6 +63,8 @@ impl PrimaryNode {
         store: &NodeStorage,
         // The state used by the client to execute transactions.
         execution_state: Arc<State>,
+        // Channel for primary's proposer to request the EL to build a block from the header.
+        tx_execute_header: mpsc::Sender<(Header, oneshot::Sender<()>)>,
     ) -> Result<(), NodeError>
     where
         State: ExecutionState + Send + Sync + 'static,
@@ -78,6 +80,7 @@ impl PrimaryNode {
                 client,
                 store,
                 execution_state,
+                tx_execute_header,
             )
             .await
     }

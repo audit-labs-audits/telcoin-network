@@ -23,7 +23,7 @@ pub enum Header {
 }
 
 // TODO: Revisit if we should not impl Default for Header and just use
-// versioned header in Certificate
+// versioned header in Certificate?
 impl Default for Header {
     fn default() -> Self {
         Self::V1(HeaderV1::default())
@@ -92,10 +92,13 @@ pub trait HeaderAPI {
 
     /// Used only for testing.
     /// TODO
+    #[cfg(any(test, feature="test"))]
 	fn update_payload(&mut self, new_payload: IndexMap<BatchDigest, (WorkerId, TimestampMs)>);
     /// TODO
+    #[cfg(any(test, feature="test"))]
 	fn update_round(&mut self, new_round: Round);
     /// TODO
+    #[cfg(any(test, feature="test"))]
 	fn clear_parents(&mut self);
 }
 
@@ -143,12 +146,17 @@ impl HeaderAPI for HeaderV1 {
     }
 
     // Used for testing.
+    #[cfg(any(test, feature="test"))]
     fn update_payload(&mut self, new_payload: IndexMap<BatchDigest, (WorkerId, TimestampMs)>) {
         self.payload = new_payload;
     }
+
+    #[cfg(any(test, feature="test"))]
     fn update_round(&mut self, new_round: Round) {
         self.round = new_round;
     }
+
+    #[cfg(any(test, feature="test"))]
     fn clear_parents(&mut self) {
         self.parents.clear();
     }

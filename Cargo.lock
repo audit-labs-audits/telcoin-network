@@ -3347,6 +3347,7 @@ dependencies = [
  "execution-stages",
  "execution-tasks",
  "futures",
+ "lattice-payload-builder",
  "schnellru",
  "thiserror",
  "tn-tracing",
@@ -5395,6 +5396,7 @@ dependencies = [
  "clap 2.34.0",
  "consensus-metrics",
  "consensus-network",
+ "execution-lattice-consensus",
  "eyre",
  "fastcrypto",
  "futures",
@@ -5420,6 +5422,25 @@ dependencies = [
  "tracing",
  "tracing-subscriber",
  "url",
+]
+
+[[package]]
+name = "lattice-payload-builder"
+version = "0.1.0"
+dependencies = [
+ "execution-metrics",
+ "execution-payload-builder",
+ "execution-provider",
+ "execution-revm",
+ "execution-rlp",
+ "execution-tasks",
+ "execution-transaction-pool",
+ "futures-core",
+ "futures-util",
+ "revm",
+ "tn-types",
+ "tokio",
+ "tracing",
 ]
 
 [[package]]

@@ -67,6 +67,7 @@ lattice-worker.workspace = true
 lattice-storage.workspace = true
 reqwest = { version = "0.11.13", default_features= false, features = ["json", "rustls-tls"] }
 telemetry-subscribers.workspace = true
+tn-types = { workspace = true, features = ["test"] }
 
 [features]
 benchmark = []

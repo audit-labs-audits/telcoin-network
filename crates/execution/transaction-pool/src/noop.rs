@@ -69,6 +69,19 @@ impl TransactionPool for NoopTransactionPool {
             .collect())
     }
 
+    async fn add_finalized_transactions(
+        &self,
+        transactions: Vec<Self::Transaction>,
+    ) -> PoolResult<Vec<PoolResult<()>>> {
+        Ok(transactions
+            .into_iter()
+            .map(|transaction| {
+                let hash = *transaction.hash();
+                Err(PoolError::Other(hash, Box::new(NoopInsertError::new(transaction))))
+            })
+            .collect())
+    }
+
     fn transaction_event_listener(&self, _tx_hash: TxHash) -> Option<TransactionEvents> {
         None
     }
@@ -105,6 +118,12 @@ impl TransactionPool for NoopTransactionPool {
     }
 
     fn best_transactions(
+        &self,
+    ) -> Box<dyn BestTransactions<Item = Arc<ValidPoolTransaction<Self::Transaction>>>> {
+        Box::new(std::iter::empty())
+    }
+
+    fn all_finalized_transactions(
         &self,
     ) -> Box<dyn BestTransactions<Item = Arc<ValidPoolTransaction<Self::Transaction>>>> {
         Box::new(std::iter::empty())

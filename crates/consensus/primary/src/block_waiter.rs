@@ -39,16 +39,12 @@ pub struct GetBlocksResponse {
 pub struct BlockWaiter<SynchronizerHandler: Handler + Send + Sync + 'static> {
     /// The id of this primary.
     authority_id: AuthorityIdentifier,
-
     /// The network's committee
     committee: Committee,
-
     /// The worker information cache.
     worker_cache: WorkerCache,
-
     /// Network driver allowing to send messages.
     worker_network: anemo::Network,
-
     /// We use the handler of the block synchronizer to interact with the
     /// block synchronizer in a synchronous way. Share a reference of this
     /// between components.

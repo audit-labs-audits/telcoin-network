@@ -4,7 +4,7 @@
 
 //! Primary components for running a [`Cluster`].
 use crate::temp_dir;
-use consensus_metrics::RegistryService;
+use consensus_metrics::{RegistryService, metered_channel::channel_with_total};
 use fastcrypto::traits::KeyPair as _;
 use lattice_executor::SerializedTransaction;
 use lattice_network::client::NetworkClient;
@@ -101,6 +101,8 @@ impl PrimaryNodeDetails {
         // Primary node
         let primary_store: NodeStorage = NodeStorage::reopen(store_path.clone(), None);
 
+        // TODO: use this
+        let (sender, _receiver) = tokio::sync::mpsc::channel(1);
         self.node
             .start(
                 self.key_pair.copy(),
@@ -110,6 +112,7 @@ impl PrimaryNodeDetails {
                 client,
                 &primary_store,
                 Arc::new(SimpleExecutionState::new(tx_transaction_confirmation)),
+                sender,
             )
             .await
             .unwrap();

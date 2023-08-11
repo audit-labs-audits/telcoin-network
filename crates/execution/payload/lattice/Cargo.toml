@@ -1,0 +1,31 @@
+[package]
+name = "lattice-payload-builder"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+homepage.workspace = true
+repository.workspace = true
+description = "A basic payload builder for execution that uses the txpool API to build batches for workers and canonical blocks from consensus output. Based on execution-basic-payload-builder library."
+
+[dependencies]
+## execution
+tn-types = { workspace = true }
+execution-revm = { path = "../../revm" }
+execution-transaction-pool = { workspace = true }
+execution-rlp = { workspace = true }
+execution-provider = { workspace = true }
+execution-payload-builder = { workspace = true }
+execution-tasks = { workspace = true }
+execution-metrics = { workspace = true }
+
+## ethereum
+revm = { workspace = true }
+
+## async
+tokio = { workspace = true, features = ["sync", "time"] }
+futures-core = "0.3"
+futures-util = { workspace = true }
+
+## misc
+tracing = { workspace = true }

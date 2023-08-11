@@ -80,7 +80,7 @@ use crate::{
     validate::{TransactionValidationOutcome, ValidPoolTransaction},
     CanonicalStateUpdate, ChangedAccount, PoolConfig, TransactionOrdering, TransactionValidator,
 };
-use best::BestTransactions;
+use best::{BestTransactions, FinalizedTransactions};
 use parking_lot::{Mutex, RwLock};
 use std::{
     collections::{HashMap, HashSet},
@@ -88,7 +88,7 @@ use std::{
     sync::Arc,
     time::Instant,
 };
-use tn_types::execution::{Address, TxHash, H256};
+use tn_types::{execution::{Address, TxHash, H256}, consensus::BatchDigest};
 use tokio::sync::mpsc;
 use tracing::debug;
 
@@ -105,6 +105,9 @@ pub(crate) mod size;
 pub(crate) mod state;
 pub mod txpool;
 mod update;
+mod finalized; // lattice-specific 
+pub use finalized::FinalizedPool;
+// TODO: some sort of `ProposedPool` implementation?
 
 /// Transaction pool internals.
 pub struct PoolInner<V: TransactionValidator, T: TransactionOrdering> {
@@ -114,6 +117,16 @@ pub struct PoolInner<V: TransactionValidator, T: TransactionOrdering> {
     validator: V,
     /// The internal pool that manages all transactions.
     pool: RwLock<TxPool<T>>,
+    // TODO: store validated batches in memory
+    // to prevent having to recover signatures again.
+    // need to handle crash recovery, missing batch digests,
+    // and failures between EL validation and CL storing batch.
+    //
+    // there needs to be a limit / way to remove old digests
+    //
+    // /// Validated batches for this round.
+    // valid_batches: HashMap<BatchDigest, Vec<PoolTransaction>>,
+
     /// Pool settings.
     config: PoolConfig,
     /// Manages listeners for transaction state change events.
@@ -132,12 +145,12 @@ where
     T: TransactionOrdering<Transaction = <V as TransactionValidator>::Transaction>,
 {
     /// Create a new transaction pool instance.
-    pub(crate) fn new(validator: V, ordering: T, config: PoolConfig) -> Self {
+    pub(crate) fn new(validator: V, ordering: T, finalized_ordering: T, config: PoolConfig) -> Self {
         Self {
             identifiers: Default::default(),
             validator,
             event_listener: Default::default(),
-            pool: RwLock::new(TxPool::new(ordering, config.clone())),
+            pool: RwLock::new(TxPool::new(ordering, finalized_ordering, config.clone())),
             pending_transaction_listener: Default::default(),
             transaction_listener: Default::default(),
             config,
@@ -256,6 +269,7 @@ where
             last_seen_block_number: number,
             pending_basefee: pending_block_base_fee,
         };
+        // TODO: clear out finalized pool after canonical state updated
         let outcome = self.pool.write().on_canonical_state_change(
             block_info,
             mined_transactions,
@@ -365,6 +379,77 @@ where
             .collect()
     }
 
+
+    /// Add a single validated transaction from consensus into the finalized pool.
+    ///
+    /// Note: this is only used internally by [`Self::add_finalized_transactions()`].
+    fn add_finalized_transaction(
+        &self,
+        origin: TransactionOrigin,
+        tx: TransactionValidationOutcome<T::Transaction>,
+    ) -> PoolResult<()> {
+        match tx {
+            TransactionValidationOutcome::Valid {
+                balance,
+                state_nonce,
+                transaction,
+                propagate,
+            } => {
+                let sender_id = self.get_sender_id(transaction.sender());
+                let transaction_id = TransactionId::new(sender_id, transaction.nonce());
+                let encoded_length = transaction.encoded_length();
+
+                let tx = ValidPoolTransaction {
+                    transaction,
+                    transaction_id,
+                    propagate,
+                    timestamp: Instant::now(),
+                    origin,
+                    encoded_length,
+                };
+
+                let added = self.pool.write().add_finalized_transaction(tx)?;
+                // let hash = *added.hash();
+
+                // // Notify about new pending transactions
+                // if let Some(pending_hash) = added.as_pending() {
+                //     self.on_new_pending_transaction(pending_hash);
+                // }
+
+                // // Notify tx event listeners
+                // self.notify_event_listeners(&added);
+
+                // // Notify listeners for _all_ transactions
+                // self.on_new_transaction(added.into_new_transaction_event());
+
+                Ok(())
+            }
+            // TODO: add metrics
+            TransactionValidationOutcome::Invalid(tx, err) => {
+                let mut listener = self.event_listener.write();
+                listener.discarded(tx.hash());
+                Err(PoolError::InvalidTransaction(*tx.hash(), err))
+            }
+            TransactionValidationOutcome::Error(tx_hash, err) => {
+                let mut listener = self.event_listener.write();
+                listener.discarded(&tx_hash);
+                Err(PoolError::Other(tx_hash, err))
+            }
+        }
+    }
+
+    /// Adds all transactions in the iterator to the finalized pool to build the next block.
+    pub fn add_finalized_transactions(
+        &self,// should this be a mut reference to lock struct for consensus?
+        origin: TransactionOrigin,
+        transactions: impl IntoIterator<Item = TransactionValidationOutcome<T::Transaction>>,
+    ) -> Vec<PoolResult<()>> {
+        transactions
+            .into_iter()
+            .map(|tx| self.add_finalized_transaction(origin, tx))
+            .collect::<Vec<_>>()
+    }
+
     /// Notify all listeners about a new pending transaction.
     fn on_new_pending_transaction(&self, ready: &TxHash) {
         let mut transaction_listeners = self.pending_transaction_listener.lock();
@@ -440,6 +525,11 @@ where
     /// Returns an iterator that yields transactions that are ready to be included in the block.
     pub(crate) fn best_transactions(&self) -> BestTransactions<T> {
         self.pool.read().best_transactions()
+    }
+
+    /// Returns an iterator that yields transactions that have reached consensus.
+    pub(crate) fn all_finalized_transactions(&self) -> FinalizedTransactions<T> {
+        self.pool.read().all_finalized_transactions()
     }
 
     /// Returns all transactions from the pending sub-pool

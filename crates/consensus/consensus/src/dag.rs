@@ -39,16 +39,12 @@ struct InnerDag {
     /// Receives new certificates from the primary. The primary should send us new certificates
     /// only if it already sent us its whole history.
     rx_primary: metered_channel::Receiver<Certificate>,
-
     /// Receives new commands for the Dag.
     rx_commands: Receiver<DagCommand>,
-
     /// The Virtual DAG data structure, which lets us track certificates in a memory-conscious way
     dag: NodeDag<Certificate>,
-
     /// Secondary index: An authority-aware map of the DAG's vertex Certificates
     vertices: RwLock<BTreeMap<(AuthorityIdentifier, Round), CertificateDigest>>,
-
     /// Metrics handler
     metrics: Arc<ConsensusMetrics>,
     /// Receiver of shutdown signal

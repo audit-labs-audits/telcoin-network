@@ -33,13 +33,13 @@ fastcrypto.workspace = true
 lattice-network.workspace = true
 tn-types.workspace = true
 lattice-worker.workspace = true
-#tn-keys.workspace = true
-#
+
+# interact with EL
+execution-lattice-consensus.workspace = true
 
 consensus-metrics.workspace = true
 consensus-network.workspace = true
 telemetry-subscribers.workspace = true
-# 
 
 anemo.workspace = true
 

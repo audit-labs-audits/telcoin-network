@@ -12,27 +12,51 @@ use serde::{Deserialize, Serialize};
 use std::{collections::HashMap, sync::Arc};
 use tokio::sync::mpsc;
 use tracing::warn;
+use crate::execution::H256;
 
 /// A global sequence number assigned to every CommittedSubDag.
 pub type SequenceNumber = u64;
 
+/// The output of Consensus, which includes all the batches for each certificate in the sub-dag.
+/// It is sent to the the ExecutionState `handle_consensus_output()` method.
 #[derive(Clone, Debug)]
-/// The output of Consensus, which includes all the batches for each certificate in the sub dag
-/// It is sent to the the ExecutionState handle_consensus_transactions
 pub struct ConsensusOutput {
+    /// The committed sub-dag representing the latest leader for a new round.
     pub sub_dag: Arc<CommittedSubDag>,
+    /// The batches contained within each certificate from the last round of consensus.
     pub batches: Vec<(Certificate, Vec<Batch>)>,
 }
 
+
+
+// TODO: not sure this goes here?
+/// The attributes of [ConsensusOutput] needed for the execution layer.
+///
+/// Container for all components required to build the next canonical block.
+#[derive(Clone, Debug)]
+pub struct OutputAttributes {
+    /// Parent block for the canonical block.
+    pub parent: H256,
+}
+
+/// The result of committing a new leader for a round during consensus.
 #[derive(Serialize, Deserialize, Clone, Debug, Default)]
 pub struct CommittedSubDag {
     /// The sequence of committed certificates.
+    ///
+    /// TODO: how is this used in EL?
     pub certificates: Vec<Certificate>,
     /// The leader certificate responsible of committing this sub-dag.
+    /// 
+    /// The leader earns PoS rewards for the block in EL.
     pub leader: Certificate,
-    /// The index associated with this CommittedSubDag
+    /// The index associated with this CommittedSubDag.
+    /// 
+    /// Akin to the EL's BlockHeight.
     pub sub_dag_index: SequenceNumber,
     /// The so far calculated reputation score for nodes
+    /// 
+    /// TODO: how is this used in the EL?
     pub reputation_score: ReputationScores,
     /// The timestamp that should identify this commit. This is guaranteed to be monotonically
     /// incremented. This is not necessarily the leader's timestamp. We compare the leader's
@@ -43,6 +67,7 @@ pub struct CommittedSubDag {
 }
 
 impl CommittedSubDag {
+    /// Create a new instance of Self.
     pub fn new(
         certificates: Vec<Certificate>,
         leader: Certificate,
@@ -63,6 +88,7 @@ impl CommittedSubDag {
         Self { certificates, leader, sub_dag_index, reputation_score, commit_timestamp }
     }
 
+    /// Create a new instance of `Self` from committed round of consensus.
     pub fn from_commit(
         commit: ConsensusCommit,
         certificates: Vec<Certificate>,
@@ -77,26 +103,32 @@ impl CommittedSubDag {
         }
     }
 
+    /// The number of certificates in the committed sub-dag.
     pub fn len(&self) -> usize {
         self.certificates.len()
     }
 
+    /// Indicates if there are no certificates in the committed sub-dag.
     pub fn is_empty(&self) -> bool {
         self.len() == 0
     }
 
+    /// The total number of batches within all certficates of the committed sub-dag.
     pub fn num_batches(&self) -> usize {
         self.certificates.iter().map(|x| x.header().payload().len()).sum()
     }
 
+    /// Indicates if this passed certificate is the last in the committed sub-dag.
     pub fn is_last(&self, output: &Certificate) -> bool {
         self.certificates.iter().last().map_or_else(|| false, |x| x == output)
     }
 
+    /// The round of the leader certificate responsible for committing this sub-dag.
     pub fn leader_round(&self) -> Round {
         self.leader.round()
     }
 
+    /// The timestamp for when this sub-dag was committed.
     pub fn commit_timestamp(&self) -> TimestampMs {
         // If commit_timestamp is zero, then safely assume that this is an upgraded node that is
         // replaying this commit and field is never initialised. It's safe to fallback on leader's
@@ -108,6 +140,7 @@ impl CommittedSubDag {
     }
 }
 
+/// The relative score of each authority participating in consensus.
 #[derive(Serialize, Deserialize, Clone, Debug, Default, Eq, PartialEq)]
 pub struct ReputationScores {
     /// Holds the score for every authority. If an authority is not amongst
@@ -153,60 +186,23 @@ impl ReputationScores {
 
 #[enum_dispatch(ConsensusCommitAPI)]
 trait ConsensusCommitAPI {
+    /// Retrieve all certificate digests from the sub-dag for the committed round.
     fn certificates(&self) -> Vec<CertificateDigest>;
+    /// The [CertificateDigest] for the certificate that is responsible for committing this round.
     fn leader(&self) -> CertificateDigest;
+    /// The round of the leader certificate responsible for committing this sub-dag.
     fn leader_round(&self) -> Round;
+    /// The sequence number for the committed sub-dag.
     fn sub_dag_index(&self) -> SequenceNumber;
+    /// The relative score of each authority in the committed sub-dag.
     fn reputation_score(&self) -> ReputationScores;
+    /// The time the sub-dag was committed.
     fn commit_timestamp(&self) -> TimestampMs;
 }
 
-// TODO: remove once the upgrade has been rolled out. We want to keep only the
-// CommittedSubDag
+/// Versioned commit from consensus.
 #[derive(Serialize, Deserialize, Clone, Debug)]
-pub struct CommittedSubDagShell {
-    /// The sequence of committed certificates' digests.
-    pub certificates: Vec<CertificateDigest>,
-    /// The leader certificate's digest responsible of committing this sub-dag.
-    pub leader: CertificateDigest,
-    /// The round of the leader
-    pub leader_round: Round,
-    /// Sequence number of the CommittedSubDag
-    pub sub_dag_index: SequenceNumber,
-    /// The so far calculated reputation score for nodes
-    pub reputation_score: ReputationScores,
-}
-
-impl ConsensusCommitAPI for CommittedSubDagShell {
-    fn certificates(&self) -> Vec<CertificateDigest> {
-        self.certificates.clone()
-    }
-
-    fn leader(&self) -> CertificateDigest {
-        self.leader
-    }
-
-    fn leader_round(&self) -> Round {
-        self.leader_round
-    }
-
-    fn sub_dag_index(&self) -> SequenceNumber {
-        self.sub_dag_index
-    }
-
-    fn reputation_score(&self) -> ReputationScores {
-        self.reputation_score.clone()
-    }
-
-    fn commit_timestamp(&self) -> TimestampMs {
-        // We explicitly return 0 as we don't have this information stored already. This will be
-        // handle accordingly to the CommittedSubdag struct.
-        0
-    }
-}
-
-#[derive(Serialize, Deserialize, Clone, Debug)]
-pub struct ConsensusCommitV2 {
+pub struct ConsensusCommitV1 {
     /// The sequence of committed certificates' digests.
     pub certificates: Vec<CertificateDigest>,
     /// The leader certificate's digest responsible of committing this sub-dag.
@@ -222,7 +218,8 @@ pub struct ConsensusCommitV2 {
     pub commit_timestamp: TimestampMs,
 }
 
-impl ConsensusCommitV2 {
+impl ConsensusCommitV1 {
+    /// Create an instance of `Self` from a referance to `CommittedSubDag`.
     pub fn from_sub_dag(sub_dag: &CommittedSubDag) -> Self {
         Self {
             certificates: sub_dag.certificates.iter().map(|x| x.digest()).collect(),
@@ -235,7 +232,7 @@ impl ConsensusCommitV2 {
     }
 }
 
-impl ConsensusCommitAPI for ConsensusCommitV2 {
+impl ConsensusCommitAPI for ConsensusCommitV1 {
     fn certificates(&self) -> Vec<CertificateDigest> {
         self.certificates.clone()
     }
@@ -261,65 +258,55 @@ impl ConsensusCommitAPI for ConsensusCommitV2 {
     }
 }
 
+/// Versioned representation of finalized output from consensus.
 #[derive(Serialize, Deserialize, Clone, Debug)]
 #[enum_dispatch(ConsensusCommitAPI)]
 pub enum ConsensusCommit {
-    V1(CommittedSubDagShell),
-    V2(ConsensusCommitV2),
+    /// Version 1
+    V1(ConsensusCommitV1),
 }
 
 impl ConsensusCommit {
+    /// Retrieve all certificate digests from the sub-dag for the committed round.
     pub fn certificates(&self) -> Vec<CertificateDigest> {
         match self {
             ConsensusCommit::V1(sub_dag) => sub_dag.certificates(),
-            ConsensusCommit::V2(sub_dag) => sub_dag.certificates(),
         }
     }
 
+    /// The CertificateDigest for the certificate that is responsible for committing this round.
     pub fn leader(&self) -> CertificateDigest {
         match self {
             ConsensusCommit::V1(sub_dag) => sub_dag.leader(),
-            ConsensusCommit::V2(sub_dag) => sub_dag.leader(),
         }
     }
 
+    /// The round of the leader certificate responsible for committing this sub-dag.
     pub fn leader_round(&self) -> Round {
         match self {
             ConsensusCommit::V1(sub_dag) => sub_dag.leader_round(),
-            ConsensusCommit::V2(sub_dag) => sub_dag.leader_round(),
         }
     }
 
+    /// The sequence number for the committed sub-dag.
     pub fn sub_dag_index(&self) -> SequenceNumber {
         match self {
             ConsensusCommit::V1(sub_dag) => sub_dag.sub_dag_index(),
-            ConsensusCommit::V2(sub_dag) => sub_dag.sub_dag_index(),
         }
     }
 
+    /// The so far calculated reputation score for nodes.
     pub fn reputation_score(&self) -> ReputationScores {
         match self {
             ConsensusCommit::V1(sub_dag) => sub_dag.reputation_score(),
-            ConsensusCommit::V2(sub_dag) => sub_dag.reputation_score(),
         }
     }
 
+    /// The timestamp that should identify this commit. This is guaranteed to be monotonically
+    /// incremented.
     pub fn commit_timestamp(&self) -> TimestampMs {
         match self {
             ConsensusCommit::V1(sub_dag) => sub_dag.commit_timestamp(),
-            ConsensusCommit::V2(sub_dag) => sub_dag.commit_timestamp(),
-        }
-    }
-}
-
-impl CommittedSubDagShell {
-    pub fn from_sub_dag(sub_dag: &CommittedSubDag) -> Self {
-        Self {
-            certificates: sub_dag.certificates.iter().map(|x| x.digest()).collect(),
-            leader: sub_dag.leader.digest(),
-            leader_round: sub_dag.leader.round(),
-            sub_dag_index: sub_dag.sub_dag_index,
-            reputation_score: sub_dag.reputation_score.clone(),
         }
     }
 }

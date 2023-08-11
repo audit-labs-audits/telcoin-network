@@ -42,13 +42,10 @@ pub struct Consensus {
     tx_consensus_round_updates: watch::Sender<ConsensusRound>,
     /// Outputs the sequence of ordered certificates to the application layer.
     tx_sequence: metered_channel::Sender<CommittedSubDag>,
-
     /// The consensus protocol to run.
     protocol: Bullshark,
-
     /// Metrics handler
     metrics: Arc<ConsensusMetrics>,
-
     /// Inner state
     state: ConsensusState,
 }

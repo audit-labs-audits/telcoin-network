@@ -24,10 +24,10 @@ use std::{sync::Arc, time::Instant};
 use tn_types::consensus::{
     AuthorityIdentifier, Committee, Parameters, WorkerCache,
     crypto::{AuthorityKeyPair, NetworkKeyPair, AuthorityPublicKey},
-    Certificate, ConditionalBroadcastReceiver, PreSubscribedBroadcastSender, Round,
+    Certificate, ConditionalBroadcastReceiver, PreSubscribedBroadcastSender, Round, Header,
 };
 use tokio::{
-    sync::watch,
+    sync::{watch, oneshot, mpsc},
     task::JoinHandle,
 };
 use tracing::{debug, info, instrument};
@@ -81,7 +81,6 @@ impl PrimaryNodeInner {
         }
     }
 
-
     /// Starts the primary node with the provided info. If the node is already running then this
     /// method will return an error instead.
     #[instrument(level = "info", skip_all)]
@@ -101,6 +100,8 @@ impl PrimaryNodeInner {
         store: &NodeStorage,
         // The state used by the client to execute transactions.
         execution_state: Arc<State>,
+        // Channel for primary's proposer to request the EL to build a block from the header.
+        tx_execute_header: mpsc::Sender<(Header, oneshot::Sender<()>)>,
     ) -> Result<(), NodeError>
     where
         State: ExecutionState + Send + Sync + 'static,
@@ -130,6 +131,7 @@ impl PrimaryNodeInner {
             execution_state,
             &registry,
             &mut tx_shutdown,
+            tx_execute_header,
         )
         .await?;
 
@@ -166,6 +168,7 @@ impl PrimaryNodeInner {
             self.tx_shutdown = None
         }
 
+        // TODO: return an error here
         // Now wait until handles have been completed
         try_join_all(&mut self.handles).await.unwrap();
 
@@ -233,6 +236,8 @@ impl PrimaryNodeInner {
         registry: &Registry,
         // The channel to send the shutdown signal
         tx_shutdown: &mut PreSubscribedBroadcastSender,
+        // Channel for primary's proposer to request the EL to build a block from the header.
+        tx_execute_header: mpsc::Sender<(Header, oneshot::Sender<()>)>,
     ) -> SubscriberResult<Vec<JoinHandle<()>>>
     where
         State: ExecutionState + Send + Sync + 'static,
@@ -326,6 +331,7 @@ impl PrimaryNodeInner {
             tx_shutdown,
             tx_committed_certificates,
             registry,
+            tx_execute_header,
         );
         handles.extend(primary_handles);
 

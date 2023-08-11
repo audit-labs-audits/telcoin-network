@@ -1,10 +1,10 @@
 use crate::consensus::{
-    Epoch, crypto, CertificateDigest, HeaderDigest, Round, TimestampMs, VoteDigest,
+    Epoch, crypto, CertificateDigest, HeaderDigest, Round, TimestampMs, VoteDigest, Header,
 };
 use fastcrypto::hash::Digest;
 use lattice_common::sync::notify_once::NotifyOnce;
 use lattice_typed_store::StoreError;
-use std::sync::Arc;
+use std::sync::{Arc, mpsc::Receiver};
 use thiserror::Error;
 
 /// Return type for dag
@@ -113,6 +113,15 @@ pub enum DagError {
 
     #[error("Operation was canceled")]
     Canceled,
+
+    // TODO: move this to different error type
+    //
+    // only used in primary's proposer
+    #[error("Primary's proposer unable to reach execution engine.")]
+    ExecutionEngineUnreachable,
+    
+    #[error("Primary's proposer unable to reach execution engine.")]
+    ExecutionEngineDroppedOneshotSender,
 }
 
 impl<T> From<tokio::sync::mpsc::error::TrySendError<T>> for DagError {

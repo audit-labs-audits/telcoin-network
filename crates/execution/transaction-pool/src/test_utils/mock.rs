@@ -24,7 +24,7 @@ pub type MockValidTx = ValidPoolTransaction<MockTransaction>;
 
 /// Create an empty `TxPool`
 pub(crate) fn mock_tx_pool() -> MockTxPool {
-    MockTxPool::new(Default::default(), Default::default())
+    MockTxPool::new(Default::default(), Default::default(), Default::default())
 }
 
 /// Sets the value for the field

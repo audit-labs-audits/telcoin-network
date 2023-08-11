@@ -42,6 +42,10 @@ async fn simple_primary_worker_node_start_stop() {
 
     // WHEN
     let primary_node = PrimaryNode::new(parameters.clone(), true, registry_service.clone());
+
+    // channel for proposer and EL
+    let (el_sender, mut el_receiver) = tokio::sync::mpsc::channel(1);
+
     primary_node
         .start(
             key_pair.copy(),
@@ -51,9 +55,12 @@ async fn simple_primary_worker_node_start_stop() {
             client.clone(),
             &store,
             execution_state,
+            el_sender,
         )
         .await
         .unwrap();
+
+
 
     // AND
     let workers = WorkerNodes::new(registry_service, parameters.clone());
@@ -91,6 +98,10 @@ async fn simple_primary_worker_node_start_stop() {
 
     assert_ne!(result, "");
 
+    // simulate el - clear channel before shutdown
+    let (_h, reply) = el_receiver.recv().await.expect("channel still open");
+    reply.send(()).expect("channel open");
+
     // AND
     primary_node.shutdown().await;
     workers.shutdown().await;
@@ -122,6 +133,9 @@ async fn primary_node_restart() {
 
     // AND
     let primary_node = PrimaryNode::new(parameters.clone(), true, registry_service.clone());
+    // channel for proposer and EL
+    let (el_sender, mut el_receiver) = tokio::sync::mpsc::channel(1);
+
     primary_node
         .start(
             key_pair.copy(),
@@ -131,6 +145,7 @@ async fn primary_node_restart() {
             client.clone(),
             &store,
             execution_state.clone(),
+            el_sender.clone(),
         )
         .await
         .unwrap();
@@ -138,6 +153,10 @@ async fn primary_node_restart() {
     tokio::task::yield_now().await;
 
     sleep(Duration::from_secs(2)).await;
+
+    // simulate el - clear channel before shutdown
+    let (_h, reply) = el_receiver.recv().await.expect("channel still open");
+    reply.send(()).expect("channel open");
 
     // WHEN
     primary_node.shutdown().await;
@@ -152,6 +171,7 @@ async fn primary_node_restart() {
             client.clone(),
             &store,
             execution_state,
+            el_sender,
         )
         .await
         .unwrap();

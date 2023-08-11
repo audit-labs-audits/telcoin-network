@@ -41,7 +41,7 @@ use std::{
 use tn_types::execution::{
     bytes::{Bytes, BytesMut},
     constants::{
-        execution_CLIENT_VERSION, BEACON_NONCE, EMPTY_RECEIPTS, EMPTY_TRANSACTIONS,
+        EXECUTION_CLIENT_VERSION, BEACON_NONCE, EMPTY_RECEIPTS, EMPTY_TRANSACTIONS,
         EMPTY_WITHDRAWALS, ETHEREUM_BLOCK_GAS_LIMIT, SLOT_DURATION,
     },
     proofs, Block, BlockNumberOrTag, ChainSpec, Header, IntoRecoveredTransaction, Receipt,
@@ -212,7 +212,7 @@ impl BasicPayloadJobGeneratorConfig {
 
     /// Sets the data to include in the block's extra data field.
     ///
-    /// Defaults to the current client version: `rlp(execution_CLIENT_VERSION)`.
+    /// Defaults to the current client version: `rlp(EXECUTION_CLIENT_VERSION)`.
     pub fn extradata(mut self, extradata: Bytes) -> Self {
         self.extradata = extradata;
         self
@@ -230,7 +230,7 @@ impl BasicPayloadJobGeneratorConfig {
 impl Default for BasicPayloadJobGeneratorConfig {
     fn default() -> Self {
         let mut extradata = BytesMut::new();
-        execution_CLIENT_VERSION.as_bytes().encode(&mut extradata);
+        EXECUTION_CLIENT_VERSION.as_bytes().encode(&mut extradata);
         Self {
             extradata: extradata.freeze(),
             max_gas_limit: ETHEREUM_BLOCK_GAS_LIMIT,

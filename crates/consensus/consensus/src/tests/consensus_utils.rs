@@ -8,7 +8,7 @@ use lattice_typed_store::{
 };
 use std::{num::NonZeroUsize, sync::Arc};
 use tn_types::consensus::{
-    AuthorityIdentifier, Certificate, CertificateDigest, CommittedSubDagShell,
+    AuthorityIdentifier, Certificate, CertificateDigest,
     ConsensusCommit, Round, SequenceNumber,
 };
 
@@ -27,13 +27,12 @@ pub fn make_consensus_store(store_path: &std::path::Path) -> Arc<ConsensusStore>
     )
     .expect("Failed to create database");
 
-    let (last_committed_map, sequence_map, committed_sub_dag_map) = reopen!(&rocksdb,
+    let (last_committed_map, committed_sub_dag_map) = reopen!(&rocksdb,
         LAST_COMMITTED_CF;<AuthorityIdentifier, Round>,
-        SEQUENCE_CF;<SequenceNumber, CommittedSubDagShell>,
         COMMITTED_SUB_DAG_CF;<SequenceNumber, ConsensusCommit>
     );
 
-    Arc::new(ConsensusStore::new(last_committed_map, sequence_map, committed_sub_dag_map))
+    Arc::new(ConsensusStore::new(last_committed_map, committed_sub_dag_map))
 }
 
 pub fn make_certificate_store(store_path: &std::path::Path) -> CertificateStore {

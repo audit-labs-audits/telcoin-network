@@ -22,7 +22,7 @@ use tokio::sync::mpsc::Receiver;
 #[cfg(feature = "serde")]
 use serde::{Deserialize, Serialize};
 
-/// General purpose abstraction fo a transaction-pool.
+/// General purpose abstraction for a transaction-pool.
 ///
 /// This is intended to be used by API-consumers such as RPC that need inject new incoming,
 /// unverified transactions. And by block production that needs to get transactions to execute in a
@@ -64,6 +64,15 @@ pub trait TransactionPool: Send + Sync + Clone {
     ) -> PoolResult<Vec<PoolResult<TxHash>>> {
         self.add_transactions(TransactionOrigin::External, transactions).await
     }
+
+    /// Import all _finalized_ transactions from consensus.
+    /// 
+    /// Consumer: Engine (build next canonical block)
+    async fn add_finalized_transactions(
+        &self,
+        transactions: Vec<Self::Transaction>,
+    ) -> PoolResult<Vec<PoolResult<()>>>;
+    
 
     /// Adds an _unvalidated_ transaction into the pool and subscribe to state changes.
     ///
@@ -172,6 +181,13 @@ pub trait TransactionPool: Send + Sync + Clone {
     ///
     /// Consumer: Block production
     fn best_transactions(
+        &self,
+    ) -> Box<dyn BestTransactions<Item = Arc<ValidPoolTransaction<Self::Transaction>>>>;
+
+    /// Returns an iterator that yields transactions that are ready for block production.
+    ///
+    /// Consumer: Canonical Block Builder
+    fn all_finalized_transactions(
         &self,
     ) -> Box<dyn BestTransactions<Item = Arc<ValidPoolTransaction<Self::Transaction>>>>;
 

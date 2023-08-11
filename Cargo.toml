@@ -27,6 +27,7 @@ members = [
     "crates/execution/net/network",
     "crates/execution/net/downloaders",
     "crates/execution/payload/basic",
+    "crates/execution/payload/lattice",
     "crates/execution/payload/builder",
     "crates/execution/revm",
     "crates/execution/revm/revm-inspectors",
@@ -163,6 +164,7 @@ execution-rpc-engine-api = { path = "./crates/execution/rpc/rpc-engine-api" }
 execution-stages = { path = "./crates/execution/stages" }
 execution-revm = { path = "./crates/execution/revm" }
 execution-revm-inspectors = { path = "./crates/execution/revm/revm-inspectors" }
+lattice-payload-builder = { path = "./crates/execution/payload/lattice" }
 
 # consensus
 

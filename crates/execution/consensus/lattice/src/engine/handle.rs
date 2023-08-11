@@ -9,7 +9,7 @@ use execution_rpc_types::engine::{
     ExecutionPayload, ForkchoiceState, ForkchoiceUpdated, PayloadAttributes, PayloadStatus,
 };
 use futures::TryFutureExt;
-use tn_types::consensus::Batch;
+use tn_types::consensus::{Batch, OutputAttributes};
 use tokio::sync::{mpsc, mpsc::UnboundedSender, oneshot};
 use tokio_stream::wrappers::UnboundedReceiverStream;
 
@@ -21,7 +21,9 @@ use super::error::LatticeNextBatchError;
 /// See also [`LatticeConsensusEngine`](crate::engine::LatticeConsensusEngine).
 #[derive(Clone, Debug)]
 pub struct LatticeConsensusEngineHandle {
+    /// Sender channel to Engine.
     pub(crate) to_engine: UnboundedSender<LatticeEngineMessage>,
+    /// Handle for building payloads.
     pub(crate) payload_store: PayloadStore,
 }
 
@@ -70,15 +72,15 @@ impl LatticeConsensusEngineHandle {
             .into())
     }
 
-    // /// Produce the next canonical block based on certificate from the CL.
-    // /// 
-    // /// Akin to `fork_choice_updated` in beacon engine api.
-    // pub async fn certificate_finalized(
-    //     &self,
-    //     // cert
-    // ) -> Result<(), Lattice> {
-    //     todo!()
-    // }
+    /// Produce the next canonical block based on certificate from the CL.
+    /// 
+    /// Akin to `fork_choice_updated` in beacon engine api.
+    pub async fn handle_consensus_output(
+        &self,
+        attributes: OutputAttributes
+    ) -> Result<(), LatticeForkChoiceUpdateError> {
+        todo!()
+    }
 
     /// Sends a forkchoice update message to the lattice consensus engine and waits for a response.
     ///

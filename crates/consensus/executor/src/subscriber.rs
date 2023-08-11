@@ -24,7 +24,7 @@ use tracing::{debug, error, info};
 
 /// The `Subscriber` receives certificates sequenced by the consensus and waits until
 /// all transactions references by the certificates are downloaded; it then
-/// forwards the certificates to the Executor.
+/// forwards the certificates to the Executor as `ConsensusOutput`.
 pub struct Subscriber {
     /// Receiver for shutdown
     rx_shutdown: ConditionalBroadcastReceiver,

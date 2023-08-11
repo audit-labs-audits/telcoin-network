@@ -8,7 +8,7 @@
 
 use fastcrypto::traits::KeyPair;
 use consensus_metrics::RegistryService;
-use tn_types::consensus::{Committee, Epoch, Parameters, WorkerCache, WorkerId};
+use tn_types::consensus::{Committee, Epoch, Parameters, WorkerCache, WorkerId, Header};
 use lattice_executor::ExecutionState;
 use lattice_network::client::NetworkClient;
 use tn_types::consensus::crypto::{AuthorityKeyPair, NetworkKeyPair};
@@ -20,7 +20,7 @@ use prometheus::{register_int_gauge_with_registry, IntGauge, Registry};
 use std::path::PathBuf;
 use std::sync::Arc;
 use std::time::Instant;
-use tokio::sync::Mutex;
+use tokio::sync::{Mutex, oneshot, mpsc};
 
 /// Status of the node.
 #[derive(PartialEq)]
@@ -157,6 +157,7 @@ impl NarwhalManager {
         worker_cache: WorkerCache,
         execution_state: Arc<State>,
         tx_validator: TxValidator,
+        tx_execute_header: mpsc::Sender<(Header, oneshot::Sender<()>)>,
     ) where
         State: ExecutionState + Send + Sync + 'static,
     {
@@ -199,6 +200,7 @@ impl NarwhalManager {
                     network_client.clone(),
                     &store,
                     execution_state.clone(),
+                    tx_execute_header.clone(),
                 )
                 .await
             {
@@ -324,6 +326,7 @@ impl NarwhalManager {
 mod tests {
     use std::time::Duration;
     use bytes::Bytes;
+    use consensus_metrics::metered_channel::channel_with_total;
     use fastcrypto::{bls12381, traits::KeyPair};
     use lattice_test_utils::{CommitteeFixture, temp_dir};
     use lattice_worker::TrivialTransactionValidator;
@@ -432,11 +435,13 @@ mod tests {
 
             // start the manager
             let manager = NarwhalManager::new(config, metrics);
+            let (sender, _receiver) = tokio::sync::mpsc::channel(1);
             manager.start(
                 committee.clone(),
                 fixture.worker_cache().clone(),
                 execution_state.clone(),
                 TrivialTransactionValidator::default(),
+                sender,
             ).await;
             
             let name = authority.keypair().public().clone();
@@ -476,12 +481,14 @@ mod tests {
                 .await
                 .is_empty());
 
+            let (sender, _receiver) = tokio::sync::mpsc::channel(1);
             // start the manager
             manager.start(
                 committee.clone(),
                 fixture.worker_cache().clone(),
                 execution_state.clone(),
                 TrivialTransactionValidator::default(),
+                sender,
             ).await;
 
             // Send some transactions

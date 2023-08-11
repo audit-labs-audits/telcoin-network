@@ -19,6 +19,7 @@ execution-rpc-types = { workspace = true }
 execution-tasks = { workspace = true }
 execution-payload-builder = { workspace = true }
 execution-metrics = { workspace = true }
+lattice-payload-builder.workspace = true
 
 # async
 tokio = { workspace = true, features = ["sync"] }

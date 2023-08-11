@@ -2,8 +2,9 @@
 // Copyright (c) Mysten Labs, Inc.
 // SPDX-License-Identifier: Apache-2.0
 use async_trait::async_trait;
+use execution_lattice_consensus::LatticeConsensusEngineHandle;
 use lattice_executor::ExecutionState;
-use tn_types::consensus::{BatchAPI, CertificateAPI, ConsensusOutput, HeaderAPI};
+use tn_types::consensus::{BatchAPI, ConsensusOutput};
 use tokio::sync::mpsc::Sender;
 
 /// A simple/dumb execution engine.
@@ -42,31 +43,29 @@ impl ExecutionState for SimpleExecutionState {
 ///
 /// This is passed to the Node for Primary.start()
 pub struct LatticeExecutionState {
-    /// Sender channel to NarwhalEngine in the EL.
-    tx_to_execution_engine: Sender<Vec<u8>>,
+    /// Handle for interacting with EL engine.
+    engine_handle: LatticeConsensusEngineHandle,
 }
 
 impl LatticeExecutionState {
-    pub fn new(tx_to_execution_engine: Sender<Vec<u8>>) -> Self {
-        Self { tx_to_execution_engine }
+    pub fn new(engine_handle: LatticeConsensusEngineHandle) -> Self {
+        Self { engine_handle }
     }
 }
 
 #[async_trait]
 impl ExecutionState for LatticeExecutionState {
     async fn handle_consensus_output(&self, consensus_output: ConsensusOutput) {
-        let _batches = consensus_output.batches;
-        let _round = consensus_output.sub_dag.leader_round();
-        let _timestamp = consensus_output.sub_dag.commit_timestamp();
-        let _leader_author = consensus_output.sub_dag.leader.header().author();
+        // let _batches = consensus_output.batches;
+        // let _round = consensus_output.sub_dag.leader_round();
+        // let _timestamp = consensus_output.sub_dag.commit_timestamp();
+        // let _leader_author = consensus_output.sub_dag.leader.header().author();
 
-        // metrics
+        // TODO: metrics
 
-        // TODO: what to send here?
-        // parse data here or in EL?
-        //
-        // prolly here so we don't mix business logic
-        let _res = self.tx_to_execution_engine.send(vec![]);
+        // TODO: error handling?
+        // let _ = self.engine_handle.handle_consensus_output(consensus_output.into()).await;
+        
     }
 
     async fn last_executed_sub_dag_index(&self) -> u64 {

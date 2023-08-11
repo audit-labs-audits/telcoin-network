@@ -9,32 +9,29 @@ use lattice_typed_store::{
 };
 use std::collections::HashMap;
 use tn_types::consensus::{
-    AuthorityIdentifier, CommittedSubDag, CommittedSubDagShell, ConsensusCommit,
-    ConsensusCommitV2, Round, SequenceNumber,
+    AuthorityIdentifier, CommittedSubDag, ConsensusCommit,
+    ConsensusCommitV1, Round, SequenceNumber,
 };
 
 /// The persistent storage of the sequencer.
 pub struct ConsensusStore {
     /// The latest committed round of each validator.
     last_committed: DBMap<AuthorityIdentifier, Round>,
-    /// TODO: remove once released to validators
-    /// The global consensus sequence.
-    committed_sub_dags_by_index: DBMap<SequenceNumber, CommittedSubDagShell>,
+
     /// The global consensus sequence
-    committed_sub_dags_by_index_v2: DBMap<SequenceNumber, ConsensusCommit>,
+    committed_sub_dags_by_index: DBMap<SequenceNumber, ConsensusCommit>,
 }
 
 impl ConsensusStore {
     /// Create a new consensus store structure by using already loaded maps.
     pub fn new(
         last_committed: DBMap<AuthorityIdentifier, Round>,
-        sequence: DBMap<SequenceNumber, CommittedSubDagShell>,
         committed_sub_dags_map: DBMap<SequenceNumber, ConsensusCommit>,
     ) -> Self {
         Self {
             last_committed,
-            committed_sub_dags_by_index: sequence,
-            committed_sub_dags_by_index_v2: committed_sub_dags_map,
+            // committed_sub_dags_by_index: sequence,
+            committed_sub_dags_by_index: committed_sub_dags_map,
         }
     }
 
@@ -50,15 +47,18 @@ impl ConsensusStore {
             ],
         )
         .expect("Cannot open database");
-        let (last_committed_map, sub_dag_index_map, committed_sub_dag_map) = reopen!(&rocksdb, NodeStorage::LAST_COMMITTED_CF;<AuthorityIdentifier, Round>, NodeStorage::SUB_DAG_INDEX_CF;<SequenceNumber, CommittedSubDagShell>, NodeStorage::COMMITTED_SUB_DAG_INDEX_CF;<SequenceNumber, ConsensusCommit>);
-        Self::new(last_committed_map, sub_dag_index_map, committed_sub_dag_map)
+
+        let (last_committed_map, committed_sub_dag_map) = reopen!(&rocksdb,
+            NodeStorage::LAST_COMMITTED_CF;<AuthorityIdentifier, Round>,
+            NodeStorage::SUB_DAG_INDEX_CF;<SequenceNumber, ConsensusCommit>
+        );
+        Self::new(last_committed_map, committed_sub_dag_map)
     }
 
     /// Clear the store.
     pub fn clear(&self) -> StoreResult<()> {
         self.last_committed.clear()?;
         self.committed_sub_dags_by_index.clear()?;
-        self.committed_sub_dags_by_index_v2.clear()?;
         Ok(())
     }
 
@@ -68,12 +68,12 @@ impl ConsensusStore {
         last_committed: &HashMap<AuthorityIdentifier, Round>,
         sub_dag: &CommittedSubDag,
     ) -> Result<(), TypedStoreError> {
-        let commit = ConsensusCommit::V2(ConsensusCommitV2::from_sub_dag(sub_dag));
+        let commit = ConsensusCommit::V1(ConsensusCommitV1::from_sub_dag(sub_dag));
 
         let mut write_batch = self.last_committed.batch();
         write_batch.insert_batch(&self.last_committed, last_committed.iter())?;
         write_batch.insert_batch(
-            &self.committed_sub_dags_by_index_v2,
+            &self.committed_sub_dags_by_index,
             std::iter::once((sub_dag.sub_dag_index, commit)),
         )?;
         write_batch.write()
@@ -86,19 +86,8 @@ impl ConsensusStore {
 
     /// Gets the latest sub dag index from the store
     pub fn get_latest_sub_dag_index(&self) -> SequenceNumber {
-        if let Some(s) = self
-            .committed_sub_dags_by_index_v2
-            .unbounded_iter()
-            .skip_to_last()
-            .next()
-            .map(|(seq, _)| seq)
-        {
-            return s
-        }
-
-        // TODO: remove once this has been released to the validators
-        // If nothing has been found on v2, just fallback on the previous storage
-        self.committed_sub_dags_by_index
+        self
+            .committed_sub_dags_by_index
             .unbounded_iter()
             .skip_to_last()
             .next()
@@ -109,25 +98,12 @@ impl ConsensusStore {
     /// Returns thet latest subdag committed. If none is committed yet, then
     /// None is returned instead.
     pub fn get_latest_sub_dag(&self) -> Option<ConsensusCommit> {
-        if let Some(sub_dag) = self
-            .committed_sub_dags_by_index_v2
+        self
+            .committed_sub_dags_by_index
             .unbounded_iter()
             .skip_to_last()
             .next()
             .map(|(_, sub_dag)| sub_dag)
-        {
-            return Some(sub_dag)
-        }
-
-        // TODO: remove once this has been released to the validators
-        // If nothing has been found to the v2 table, just fallback to the previous one. We expect
-        // this to happen only after validator has upgraded. After that point the v2 table
-        // will populated and an entry should be found there.
-        self.committed_sub_dags_by_index
-            .unbounded_iter()
-            .skip_to_last()
-            .next()
-            .map(|(_, sub_dag)| ConsensusCommit::V1(sub_dag))
     }
 
     /// Load all the sub dags committed with sequence number of at least `from`.
@@ -135,22 +111,11 @@ impl ConsensusStore {
         &self,
         from: &SequenceNumber,
     ) -> StoreResult<Vec<ConsensusCommit>> {
-        // TODO: remove once this has been released to the validators
-        // start from the previous table first to ensure we haven't missed anything.
-        let mut sub_dags = self
-            .committed_sub_dags_by_index
+        let sub_dags = self.committed_sub_dags_by_index
             .unbounded_iter()
             .skip_to(from)?
-            .map(|(_, sub_dag)| ConsensusCommit::V1(sub_dag))
+            .map(|(_, sub_dag)| sub_dag)
             .collect::<Vec<ConsensusCommit>>();
-
-        sub_dags.extend(
-            self.committed_sub_dags_by_index_v2
-                .unbounded_iter()
-                .skip_to(from)?
-                .map(|(_, sub_dag)| sub_dag)
-                .collect::<Vec<ConsensusCommit>>(),
-        );
 
         Ok(sub_dags)
     }
@@ -161,29 +126,16 @@ mod test {
     use crate::ConsensusStore;
     use lattice_typed_store::Map;
     use tn_types::consensus::{
-        CommittedSubDagShell, ConsensusCommit, ConsensusCommitV2, TimestampMs,
+        ConsensusCommit, ConsensusCommitV1, TimestampMs,
     };
 
     #[tokio::test]
-    async fn test_v1_v2_backwards_compatibility() {
+    async fn test_sub_dags() {
         let store = ConsensusStore::new_for_tests();
 
         // Create few sub dags of V1 and write in the committed_sub_dags_by_index storage
-        for i in 0..3 {
-            let s = CommittedSubDagShell {
-                certificates: vec![],
-                leader: Default::default(),
-                leader_round: 2,
-                sub_dag_index: i,
-                reputation_score: Default::default(),
-            };
-
-            store.committed_sub_dags_by_index.insert(&s.sub_dag_index, &s).unwrap();
-        }
-
-        // Create few sub dags of V2 and write in the committed_sub_dags_by_index_v2 storage
-        for i in 3..6 {
-            let s = ConsensusCommitV2 {
+        for i in 0..6 {
+            let s = ConsensusCommitV1 {
                 certificates: vec![],
                 leader: Default::default(),
                 leader_round: 2,
@@ -193,8 +145,8 @@ mod test {
             };
 
             store
-                .committed_sub_dags_by_index_v2
-                .insert(&s.sub_dag_index.clone(), &ConsensusCommit::V2(s))
+                .committed_sub_dags_by_index
+                .insert(&s.sub_dag_index.clone(), &ConsensusCommit::V1(s))
                 .unwrap();
         }
 
@@ -205,11 +157,7 @@ mod test {
 
         for (index, sub_dag) in sub_dags.iter().enumerate() {
             assert_eq!(sub_dag.sub_dag_index(), index as u64);
-            if index < 3 {
-                assert_eq!(sub_dag.commit_timestamp(), 0);
-            } else {
-                assert_eq!(sub_dag.commit_timestamp(), index as TimestampMs);
-            }
+            assert_eq!(sub_dag.commit_timestamp(), index as TimestampMs);
         }
 
         // Read the last sub dag, and the sub dag with index 5 should be returned

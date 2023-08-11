@@ -29,6 +29,7 @@ use super::{Batch, BatchAPI, MetadataAPI};
 #[derive(Clone, Serialize, Deserialize, MallocSizeOf)]
 #[enum_dispatch(CertificateAPI)]
 pub enum Certificate {
+    /// V1
     V1(CertificateV1),
 }
 
@@ -53,6 +54,7 @@ impl Certificate {
         CertificateV1::genesis_with_payload(committee, batch).into_iter().map(Self::V1).collect()
     }
 
+    /// Create a new, unsafe certificate that checks stake, but does not verify authority signatures.
     pub fn new_unverified(
         committee: &Committee,
         header: Header,
@@ -61,6 +63,7 @@ impl Certificate {
         CertificateV1::new_unverified(committee, header, votes)
     }
 
+    /// Create a new, unsafe certificate without verifying authority signatures or stake.
     pub fn new_unsigned(
         committee: &Committee,
         header: Header,
@@ -69,10 +72,8 @@ impl Certificate {
         CertificateV1::new_unsigned(committee, header, votes)
     }
 
-    pub fn new_test_empty(author: AuthorityIdentifier) -> Self {
-        CertificateV1::new_test_empty(author)
-    }
-
+    /// Return the group of authorities that signed this certificate.
+    /// 
     /// This function requires that certificate was verified against given committee
     pub fn signed_authorities(&self, committee: &Committee) -> Vec<AuthorityPublicKey> {
         match self {
@@ -80,30 +81,35 @@ impl Certificate {
         }
     }
 
+    /// Return the total stake and group of authorities that formed the committee for this certificate.
     pub fn signed_by(&self, committee: &Committee) -> (Stake, Vec<AuthorityPublicKey>) {
         match self {
             Certificate::V1(certificate) => certificate.signed_by(committee),
         }
     }
 
+    /// Verify the certificate's authority signatures.
     pub fn verify(&self, committee: &Committee, worker_cache: &WorkerCache) -> DagResult<()> {
         match self {
             Certificate::V1(certificate) => certificate.verify(committee, worker_cache),
         }
     }
 
+    /// The certificate's round.
     pub fn round(&self) -> Round {
         match self {
             Certificate::V1(certificate) => certificate.round(),
         }
     }
 
+    /// The certificate's epoch.
     pub fn epoch(&self) -> Epoch {
         match self {
             Certificate::V1(certificate) => certificate.epoch(),
         }
     }
 
+    /// The author of the certificate.
     pub fn origin(&self) -> AuthorityIdentifier {
         match self {
             Certificate::V1(certificate) => certificate.origin(),
@@ -134,6 +140,7 @@ pub trait CertificateAPI {
     /// 
     /// This is the aggregate signature of all authrotities for the certificate.
     fn signed_authorities(&self) -> &roaring::RoaringBitmap;
+
     /// The time (ms) when the certificate was created.
     fn created_at(&self) -> &TimestampMs;
 
@@ -241,6 +248,7 @@ impl CertificateV1 {
             .collect()
     }
 
+    /// Create a new, unsafe certificate that checks stake.
     pub fn new_unverified(
         committee: &Committee,
         header: Header,
@@ -249,6 +257,7 @@ impl CertificateV1 {
         Self::new_unsafe(committee, header, votes, true)
     }
 
+    /// Create a new, unsafe certificate that does not check stake.
     pub fn new_unsigned(
         committee: &Committee,
         header: Header,
@@ -257,11 +266,7 @@ impl CertificateV1 {
         Self::new_unsafe(committee, header, votes, false)
     }
 
-    pub fn new_test_empty(author: AuthorityIdentifier) -> Certificate {
-        let header = Header::V1(HeaderV1 { author, ..Default::default() });
-        Certificate::V1(CertificateV1 { header, ..Default::default() })
-    }
-
+    /// Create a new certificate without verifying authority signatures.
     fn new_unsafe(
         committee: &Committee,
         header: Header,
@@ -321,6 +326,8 @@ impl CertificateV1 {
         }))
     }
 
+    /// Return the group of authorities that signed this certificate.
+    /// 
     /// This function requires that certificate was verified against given committee
     pub fn signed_authorities(&self, committee: &Committee) -> Vec<AuthorityPublicKey> {
         assert_eq!(committee.epoch(), self.epoch());
@@ -328,6 +335,7 @@ impl CertificateV1 {
         pks
     }
 
+    /// Return the total stake and group of authorities that formed the committee for this certificate.
     pub fn signed_by(&self, committee: &Committee) -> (Stake, Vec<AuthorityPublicKey>) {
         // Ensure the certificate has a quorum.
         let mut weight = 0;
@@ -351,7 +359,7 @@ impl CertificateV1 {
     }
 
     /// Verifies the validity of the certificate.
-    /// TODO: Output a different type, similar to Sui VerifiedCertificate.
+    /// TODO: Output a different type, similar to Sui's VerifiedCertificate?
     pub fn verify(&self, committee: &Committee, worker_cache: &WorkerCache) -> DagResult<()> {
         // Ensure the header is from the correct epoch.
         ensure!(
@@ -381,19 +389,23 @@ impl CertificateV1 {
         Ok(())
     }
 
+    /// The certificate's round.
     pub fn round(&self) -> Round {
         self.header.round()
     }
 
+    /// The certificate's epoch.
     pub fn epoch(&self) -> Epoch {
         self.header.epoch()
     }
 
+    /// The author of the certificate.
     pub fn origin(&self) -> AuthorityIdentifier {
         self.header.author()
     }
 }
 
+/// Certificate digest.
 #[cfg_attr(any(test, feature = "arbitrary"), derive(Arbitrary))]
 #[derive(
     Clone, Copy, Serialize, Deserialize, Default, MallocSizeOf, PartialEq, Eq, Hash, PartialOrd, Ord,
@@ -402,6 +414,7 @@ impl CertificateV1 {
 pub struct CertificateDigest([u8; crypto::DIGEST_LENGTH]);
 
 impl CertificateDigest {
+    /// Create a new instance of CertificateDigest.
     pub fn new(digest: [u8; crypto::DIGEST_LENGTH]) -> Self {
         CertificateDigest(digest)
     }

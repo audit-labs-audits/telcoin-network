@@ -12,8 +12,12 @@ use tn_types::execution::{
 
 mod eth;
 mod task;
+mod batch;
 
-/// A [TransactionValidator] implementation that validates ethereum transaction.
+/// A [TransactionValidator] implementation that validates batch transactions.
+pub use batch::BatchTransactionValidator;
+
+/// A [TransactionValidator] implementation that validates ethereum transactions.
 pub use eth::EthTransactionValidator;
 
 /// A spawnable task that performs transaction validation.
