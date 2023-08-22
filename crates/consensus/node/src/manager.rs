@@ -8,6 +8,7 @@
 
 use fastcrypto::traits::KeyPair;
 use consensus_metrics::RegistryService;
+use lattice_payload_builder::batch::BatchBuilderHandle;
 use tn_types::consensus::{Committee, Epoch, Parameters, WorkerCache, WorkerId, Header};
 use lattice_executor::ExecutionState;
 use lattice_network::client::NetworkClient;
@@ -158,6 +159,7 @@ impl NarwhalManager {
         execution_state: Arc<State>,
         tx_validator: TxValidator,
         tx_execute_header: mpsc::Sender<(Header, oneshot::Sender<()>)>,
+        batch_builder: Option<BatchBuilderHandle>,
     ) where
         State: ExecutionState + Send + Sync + 'static,
     {
@@ -239,6 +241,7 @@ impl NarwhalManager {
                     network_client.clone(),
                     &store,
                     tx_validator.clone(),
+                    batch_builder.clone(),
                 )
                 .await
             {
@@ -442,6 +445,7 @@ mod tests {
                 execution_state.clone(),
                 TrivialTransactionValidator::default(),
                 sender,
+                None,
             ).await;
             
             let name = authority.keypair().public().clone();
@@ -489,6 +493,7 @@ mod tests {
                 execution_state.clone(),
                 TrivialTransactionValidator::default(),
                 sender,
+                None,
             ).await;
 
             // Send some transactions

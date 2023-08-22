@@ -461,7 +461,8 @@ impl StateProviderFactory for MockEthProvider {
     }
 
     fn state_by_block_hash(&self, _block: BlockHash) -> Result<StateProviderBox<'_>> {
-        todo!()
+        // TODO: this doesn't actually search by hash, but works for the one test I need right now
+        Ok(Box::new(self.clone()))
     }
 
     fn pending(&self) -> Result<StateProviderBox<'_>> {
@@ -494,7 +495,8 @@ impl StateProviderFactory for Arc<MockEthProvider> {
     }
 
     fn state_by_block_hash(&self, _block: BlockHash) -> Result<StateProviderBox<'_>> {
-        todo!()
+        // TODO: this doesn't actually search by hash, but works for the one test I need right now
+        Ok(Box::new(self.clone()))
     }
 
     fn pending(&self) -> Result<StateProviderBox<'_>> {

@@ -60,8 +60,6 @@ async fn simple_primary_worker_node_start_stop() {
         .await
         .unwrap();
 
-
-
     // AND
     let workers = WorkerNodes::new(registry_service, parameters.clone());
 
@@ -74,6 +72,7 @@ async fn simple_primary_worker_node_start_stop() {
             client,
             &store,
             TrivialTransactionValidator::default(),
+            None,
         )
         .await
         .unwrap();

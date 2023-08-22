@@ -6,6 +6,7 @@
 //! and a threadsafe wrapper for each inner worker instance.
 mod inner;
 use inner::WorkerNodeInner;
+use lattice_payload_builder::batch::BatchBuilderHandle;
 use crate::{metrics::new_registry, NodeError};
 use tokio::sync::RwLock;
 use arc_swap::{ArcSwap, ArcSwapOption};
@@ -69,6 +70,8 @@ impl WorkerNodes {
         store: &NodeStorage,
         // The transaction validator defining Tx acceptance,
         tx_validator: impl TransactionValidator,
+        // Handle to the EL batch builder service.
+        batch_builder: Option<BatchBuilderHandle>,
     ) -> Result<(), NodeError> {
         let worker_ids_running = self.workers_running().await;
         if !worker_ids_running.is_empty() {
@@ -102,6 +105,7 @@ impl WorkerNodes {
                     store,
                     tx_validator.clone(),
                     Some(metrics.clone()),
+                    batch_builder.clone(),
                 )
                 .await?;
 
@@ -126,9 +130,13 @@ impl WorkerNodes {
     /// Shuts down all the workers
     #[instrument(level = "info", skip_all)]
     pub async fn shutdown(&self) {
+        tracing::debug!("\n\n\n!!!!~~~~~~~~calling shutdown on client..\n\n\n");
         if let Some(client) = self.client.load_full() {
             client.shutdown();
+            tracing::debug!("worker's client shutdown");
         }
+
+        tracing::debug!("loading workers now as_ref()..");
 
         for (key, worker) in self.workers.load_full().as_ref() {
             info!("Shutting down worker {}", key);
@@ -208,6 +216,8 @@ impl WorkerNode {
         tx_validator: impl TransactionValidator,
         // An optional metrics struct
         metrics: Option<Metrics>,
+        // Handle to the EL batch builder service.
+        batch_builder: Option<BatchBuilderHandle>,
     ) -> Result<(), NodeError> {
         let mut guard = self.internal.write().await;
         guard
@@ -220,6 +230,7 @@ impl WorkerNode {
                 store,
                 tx_validator,
                 metrics,
+                batch_builder,
             )
             .await
     }

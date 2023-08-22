@@ -87,6 +87,7 @@ async fn reject_invalid_clients_transactions() {
         batch_store,
         metrics,
         &mut tx_shutdown,
+        None,
     );
 
     // Wait till other services have been able to start up
@@ -167,6 +168,7 @@ async fn handle_remote_clients_transactions() {
         batch_store,
         metrics,
         &mut tx_shutdown,
+        None,
     );
 
     // Spawn a network listener to receive our batch's digest.
@@ -182,7 +184,6 @@ async fn handle_remote_clients_transactions() {
         .expect_report_own_batch()
         .withf(move |request| {
             let message = request.body();
-
             message.digest == batch_digest && message.worker_id == worker_id
         })
         .times(1)
@@ -278,6 +279,7 @@ async fn handle_local_clients_transactions() {
         batch_store,
         metrics,
         &mut tx_shutdown,
+        None,
     );
 
     // Spawn a network listener to receive our batch's digest.
@@ -366,6 +368,9 @@ async fn get_network_peers_from_admin_server() {
     let mut tx_shutdown = PreSubscribedBroadcastSender::new(NUM_SHUTDOWN_RECEIVERS);
     let consensus_metrics = Arc::new(ConsensusMetrics::new(&Registry::new()));
 
+    // channel for proposer and EL
+    let (el_sender, _el_receiver) = tokio::sync::mpsc::channel(1);
+
     // Spawn Primary 1
     Primary::spawn(
         authority_1.authority().clone(),
@@ -390,6 +395,7 @@ async fn get_network_peers_from_admin_server() {
         &mut tx_shutdown,
         tx_feedback,
         &Registry::new(),
+        el_sender,
     );
 
     // Wait for tasks to start
@@ -417,6 +423,7 @@ async fn get_network_peers_from_admin_server() {
         store.batch_store.clone(),
         metrics_1.clone(),
         &mut tx_shutdown,
+        None,
     );
 
     let primary_1_peer_id = Hex::encode(authority_1.network_keypair().copy().public().0.as_bytes());
@@ -479,6 +486,9 @@ async fn get_network_peers_from_admin_server() {
     let mut tx_shutdown_2 = PreSubscribedBroadcastSender::new(NUM_SHUTDOWN_RECEIVERS);
     let consensus_metrics = Arc::new(ConsensusMetrics::new(&Registry::new()));
 
+    // channel for proposer and EL
+    let (el_sender, _el_receiver) = tokio::sync::mpsc::channel(1);
+
     // Spawn Primary 2
     Primary::spawn(
         authority_2.authority().clone(),
@@ -504,6 +514,7 @@ async fn get_network_peers_from_admin_server() {
         &mut tx_shutdown_2,
         tx_feedback_2,
         &Registry::new(),
+        el_sender
     );
 
     // Wait for tasks to start
@@ -532,6 +543,7 @@ async fn get_network_peers_from_admin_server() {
         store.batch_store,
         metrics_2.clone(),
         &mut tx_shutdown_worker,
+        None,
     );
 
     // Wait for tasks to start. Sleeping longer here to ensure all primaries and workers

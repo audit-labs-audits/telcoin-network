@@ -37,7 +37,7 @@ pub fn run() -> eyre::Result<()> {
 #[derive(Subcommand, Debug)]
 enum Commands {
     /// Run a node: execution and consensus
-    #[command(name = "execution")]
+    #[command(name = "node")]
     Node(node::Command),
 
     /// Write config to stdout

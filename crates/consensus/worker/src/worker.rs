@@ -30,6 +30,7 @@ use lattice_network::{
     failpoints::FailpointsMakeCallbackHandler,
     metrics::MetricsMakeCallbackHandler,
 };
+use lattice_payload_builder::batch::BatchBuilderHandle;
 use lattice_typed_store::rocks::DBMap;
 use std::{collections::HashMap, net::Ipv4Addr, sync::Arc, thread::sleep, time::Duration};
 use tap::TapFallible;
@@ -85,6 +86,7 @@ impl Worker {
         store: DBMap<BatchDigest, Batch>,
         metrics: Metrics,
         tx_shutdown: &mut PreSubscribedBroadcastSender,
+        batch_builder: Option<BatchBuilderHandle>,
     ) -> Vec<JoinHandle<()>> {
         let worker_name = keypair.public().clone();
         let worker_peer_id = PeerId(worker_name.0.to_bytes());
@@ -244,7 +246,7 @@ impl Worker {
 
         loop {
             let network_result = anemo::Network::bind(addr.clone())
-                .server_name("narwhal")
+                .server_name("lattice")
                 .private_key(worker.keypair.copy().private().0.to_bytes())
                 .config(anemo_config.clone())
                 .outbound_request_layer(outbound_layer.clone())
@@ -361,6 +363,7 @@ impl Worker {
             validator,
             client,
             network.clone(),
+            batch_builder,
         );
 
         let network_shutdown_handle =
@@ -432,6 +435,7 @@ impl Worker {
         validator: impl TransactionValidator,
         client: NetworkClient,
         network: anemo::Network,
+        batch_builder: Option<BatchBuilderHandle>,
     ) -> Vec<JoinHandle<()>> {
         info!("Starting handler for transactions");
 
@@ -477,6 +481,7 @@ impl Worker {
             node_metrics.clone(),
             client,
             self.store.clone(),
+            batch_builder,
         );
 
         // The `QuorumWaiter` waits for 2f authorities to acknowledge reception of the batch. It

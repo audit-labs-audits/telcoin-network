@@ -1,6 +1,6 @@
 use crate::{traits::PropagateKind, PoolTransaction, ValidPoolTransaction};
 use std::sync::Arc;
-use tn_types::execution::{TxHash, H256};
+use tn_types::{execution::{TxHash, H256}, consensus::BatchDigest};
 
 #[cfg(feature = "serde")]
 use serde::{Deserialize, Serialize};
@@ -34,6 +34,13 @@ pub enum FullTransactionEvent<T: PoolTransaction> {
     Invalid(TxHash),
     /// Transaction was propagated to peers.
     Propagated(Arc<Vec<PropagateKind>>),
+    /// Transaction was sealed in a batch.
+    Sealed {
+        /// The hash of the sealed transaction.
+        tx_hash: TxHash,
+        /// The digest for the batch that sealed the transaction.
+        batch_digest: BatchDigest,
+    }
 }
 
 impl<T: PoolTransaction> Clone for FullTransactionEvent<T> {
@@ -67,6 +74,8 @@ pub enum TransactionEvent {
     Invalid,
     /// Transaction was propagated to peers.
     Propagated(Arc<Vec<PropagateKind>>),
+    /// Transaction was sealed in a batch.
+    Sealed(BatchDigest),
 }
 
 impl TransactionEvent {

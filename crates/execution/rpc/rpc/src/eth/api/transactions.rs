@@ -404,7 +404,6 @@ where
 
     async fn send_raw_transaction(&self, tx: Bytes) -> EthResult<H256> {
         let recovered = recover_raw_transaction(tx)?;
-
         let pool_transaction = <Pool::Transaction>::from_recovered_transaction(recovered);
 
         // submit the transaction to the pool with a `Local` origin

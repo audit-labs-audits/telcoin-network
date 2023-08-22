@@ -6,11 +6,13 @@
 //! Helper methods for test-utils.
 use crate::BATCHES_CF;
 use consensus_network::Multiaddr;
+use execution_transaction_pool::{TransactionId, SenderId};
 use fastcrypto::{
     hash::Hash as _,
     traits::KeyPair as _,
 };
 use indexmap::IndexMap;
+use lattice_payload_builder::batch::{generator::BuiltBatch, BatchBuilderError};
 use lattice_typed_store::rocks::{DBMap, MetricConf, ReadWriteOptions};
 use rand::{
     distributions::{Bernoulli, Distribution},
@@ -20,7 +22,7 @@ use rand::{
 use telemetry_subscribers::TelemetryGuards;
 use std::{
     collections::{BTreeSet, VecDeque},
-    ops::RangeInclusive,
+    ops::RangeInclusive, future::Future, pin::Pin, task::{Poll, Context},
 };
 use tn_types::consensus::{
     crypto::{
@@ -31,6 +33,7 @@ use tn_types::consensus::{
     Batch, BatchDigest, Certificate, CertificateAPI, CertificateDigest,
     Header, HeaderAPI, HeaderV1Builder, Round, TimestampMs, Transaction
 };
+use std::sync::Arc;
 
 pub fn temp_dir() -> std::path::PathBuf {
     tempfile::tempdir().expect("Failed to open temporary directory").into_path()
@@ -148,10 +151,14 @@ pub fn batch_with_rand<R: Rng + ?Sized>(rand: &mut R) -> Batch {
     Batch::new(vec![transaction_with_rand(rand), transaction_with_rand(rand)])
 }
 
-// Fixture
+/// Generate random value transactions, but the length will be always 100 bytes
 pub fn transaction() -> Transaction {
-    // generate random value transactions, but the length will be always 100 bytes
     (0..100).map(|_v| rand::random::<u8>()).collect()
+}
+
+/// Generate a known value for transaction.
+pub fn known_transaction_1() -> Transaction {
+    (0..100).collect()
 }
 
 ////////////////////////////////////////////////////////////////
@@ -161,6 +168,35 @@ pub fn transaction() -> Transaction {
 // Fixture
 pub fn batch() -> Batch {
     Batch::new(vec![transaction(), transaction()])
+}
+
+/// Built payload from the EL
+/// 
+/// Returns a BuiltBatch with known values.
+pub fn build_batch() -> Result<Arc<BuiltBatch>, BatchBuilderError> {
+   Ok(Arc::new(
+        BuiltBatch::new(
+            vec![known_transaction_1()],
+            vec![
+                TransactionId {
+                    sender: SenderId::from(3),
+                    nonce: 0
+                }
+            ],
+            Default::default(),
+        )
+    ))
+}
+
+/// Mock representation of a job that returns a Future built batch payload resutl.
+#[derive(Default, Clone)]
+pub struct MockBatchBuildJob;
+impl Future for MockBatchBuildJob {
+    type Output = Result<Arc<BuiltBatch>, BatchBuilderError>;
+
+    fn poll(self: Pin<&mut Self>, _cx: &mut Context<'_>) -> Poll<Self::Output> {
+        Poll::Ready(build_batch())
+    }
 }
 
 /// generate multiple fixture batches. The number of generated batches

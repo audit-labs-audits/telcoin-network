@@ -28,8 +28,14 @@ pub struct TxPoolMetrics {
 
     /// Number of transactions in the queued sub-pool
     pub(crate) queued_pool_transactions: Gauge,
+
     /// Total amount of memory used by the transactions in the queued sub-pool in bytes
     pub(crate) queued_pool_size_bytes: Gauge,
+
+    /// Number of transactions in the sealed sub-pool
+    pub(crate) sealed_pool_transactions: Gauge,
+    /// Total amount of memory used by the transactions in the sealed sub-pool in bytes
+    pub(crate) sealed_pool_size_bytes: Gauge,
 
     /// Number of all transactions of all sub-pools: pending + basefee + queued
     pub(crate) total_transactions: Gauge,

@@ -383,7 +383,8 @@ impl PoolTransaction for MockTransaction {
     }
 
     fn chain_id(&self) -> Option<u64> {
-        Some(1)
+        // changed this for batch -> worker test
+        Some(2600)
     }
 }
 

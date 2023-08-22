@@ -72,7 +72,7 @@ async fn accept_certificates() {
 
     let own_address = committee.primary_by_id(&authority_id).unwrap().to_anemo_address().unwrap();
     let network = anemo::Network::bind(own_address)
-        .server_name("narwhal")
+        .server_name("lattice")
         .private_key(network_key)
         .start(anemo::Router::new())
         .unwrap();
@@ -256,7 +256,7 @@ async fn synchronizer_recover_basic() {
 
     let own_address = committee.primary_by_id(&name).unwrap().to_anemo_address().unwrap();
     let network = anemo::Network::bind(own_address)
-        .server_name("narwhal")
+        .server_name("lattice")
         .private_key(network_key)
         .start(anemo::Router::new())
         .unwrap();
@@ -363,7 +363,7 @@ async fn synchronizer_recover_partial_certs() {
 
     let own_address = committee.primary_by_id(&name).unwrap().to_anemo_address().unwrap();
     let network = anemo::Network::bind(own_address)
-        .server_name("narwhal")
+        .server_name("lattice")
         .private_key(network_key)
         .start(anemo::Router::new())
         .unwrap();
@@ -468,7 +468,7 @@ async fn synchronizer_recover_previous_round() {
 
     let own_address = committee.primary_by_id(&name).unwrap().to_anemo_address().unwrap();
     let network = anemo::Network::bind(own_address)
-        .server_name("narwhal")
+        .server_name("lattice")
         .private_key(network_key)
         .start(anemo::Router::new())
         .unwrap();

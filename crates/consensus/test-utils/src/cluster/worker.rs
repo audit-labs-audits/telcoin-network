@@ -87,6 +87,7 @@ impl WorkerNodeDetails {
                 &worker_store,
                 TrivialTransactionValidator::default(),
                 None,
+                None,
             )
             .await
             .unwrap();

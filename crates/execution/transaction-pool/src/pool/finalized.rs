@@ -1,10 +1,7 @@
-use execution_rlp::Decodable;
-use tn_types::execution::{Bytes, TransactionSigned};
-
 use super::{size::SizeTracker, best::FinalizedTransactions};
 use crate::{
-    identifier::TransactionId, pool::pending::PendingTransactionRef, TransactionOrdering,
-    ValidPoolTransaction, GasCostOrdering, error::PoolError, PooledTransaction, PoolResult,
+    identifier::TransactionId, TransactionOrdering,
+    ValidPoolTransaction, error::PoolError, PoolResult,
 };
 use std::{
     cmp::Ordering,

@@ -24,8 +24,18 @@ revm = { workspace = true }
 
 ## async
 tokio = { workspace = true, features = ["sync", "time"] }
+tokio-stream = { workspace = true }
 futures-core = "0.3"
 futures-util = { workspace = true }
 
 ## misc
 tracing = { workspace = true }
+thiserror = { workspace = true }
+execution-interfaces = { workspace = true }
+execution-revm-primitives = { workspace = true }
+strum = { version = "0.25", features = ["derive"] }
+
+[dev-dependencies]
+tn-tracing = { workspace = true }
+rand = { workspace = true }
+telcoin-network = { path = "../../../../bin/telcoin-network" }

@@ -158,7 +158,8 @@ pub use crate::{
     traits::{
         AllPoolTransactions, BestTransactions, BlockInfo, CanonicalStateUpdate, ChangedAccount,
         NewTransactionEvent, PoolSize, PoolTransaction, PooledTransaction, PropagateKind,
-        PropagatedTransactions, TransactionOrigin, TransactionPool, TransactionPoolExt,
+        PropagatedTransactions, TransactionOrigin, TransactionPool, TransactionPoolExt, BatchInfo,
+        BatchSealedUpdate,
     },
     validate::{
         EthTransactionValidator, TransactionValidationOutcome, TransactionValidator,
@@ -177,6 +178,8 @@ mod config;
 mod identifier;
 mod ordering;
 mod traits;
+
+pub use identifier::{TransactionId, SenderId};
 
 #[cfg(any(test, feature = "test-utils"))]
 /// Common test helpers for mocking a pool
@@ -205,7 +208,7 @@ pub(crate) const PRICE_BUMP: u128 = 10;
 
 /// A shareable, generic, customizable `TransactionPool` implementation.
 #[derive(Debug)]
-pub struct Pool<V: TransactionValidator, T: TransactionOrdering> {
+pub struct Pool<V: TransactionValidator, T: TransactionOrdering + Clone> {
     /// Arc'ed instance of the pool internals
     pool: Arc<PoolInner<V, T>>,
 }
@@ -215,7 +218,7 @@ pub struct Pool<V: TransactionValidator, T: TransactionOrdering> {
 impl<V, T> Pool<V, T>
 where
     V: TransactionValidator,
-    T: TransactionOrdering<Transaction = <V as TransactionValidator>::Transaction>,
+    T: TransactionOrdering<Transaction = <V as TransactionValidator>::Transaction> + Clone,
 {
     /// Create a new transaction pool instance.
     pub fn new(validator: V, ordering: T, finalized_ordering: T, config: PoolConfig) -> Self {
@@ -307,7 +310,7 @@ where
 impl<V, T> TransactionPool for Pool<V, T>
 where
     V: TransactionValidator,
-    T: TransactionOrdering<Transaction = <V as TransactionValidator>::Transaction>,
+    T: TransactionOrdering<Transaction = <V as TransactionValidator>::Transaction> + Clone,
 {
     type Transaction = T::Transaction;
 
@@ -345,18 +348,6 @@ where
         let validated = self.validate_all(origin, transactions).await?;
 
         let transactions = self.pool.add_transactions(origin, validated.into_values());
-        Ok(transactions)
-    }
-
-    async fn add_finalized_transactions(
-        &self,
-        transactions: Vec<Self::Transaction>,
-    ) -> PoolResult<Vec<PoolResult<()>>> {
-        let origin = TransactionOrigin::External;
-        // TODO: all transactions should be validated before consensus, but this method reduces the complexity
-        // of rewriting all the code necessary to build the next block.
-        let validated = self.validate_all(origin, transactions).await?;
-        let transactions = self.pool.add_finalized_transactions(origin, validated.into_values());
         Ok(transactions)
     }
 
@@ -400,13 +391,6 @@ where
     ) -> Box<dyn BestTransactions<Item = Arc<ValidPoolTransaction<Self::Transaction>>>> {
         Box::new(self.pool.best_transactions())
     }
-
-    fn all_finalized_transactions(
-        &self,
-    ) -> Box<dyn BestTransactions<Item = Arc<ValidPoolTransaction<Self::Transaction>>>> {
-        Box::new(self.pool.all_finalized_transactions())
-    }
-
 
     fn pending_transactions(&self) -> Vec<Arc<ValidPoolTransaction<Self::Transaction>>> {
         self.pool.pending_transactions()
@@ -452,12 +436,40 @@ where
     ) -> Vec<Arc<ValidPoolTransaction<Self::Transaction>>> {
         self.pool.get_transactions_by_sender(sender)
     }
+
+    //=== Added for lattice
+
+    fn all_finalized_transactions(
+        &self,
+    ) -> Box<dyn BestTransactions<Item = Arc<ValidPoolTransaction<Self::Transaction>>>> {
+        Box::new(self.pool.all_finalized_transactions())
+    }
+
+    async fn add_finalized_transactions(
+        &self,
+        transactions: Vec<Self::Transaction>,
+    ) -> PoolResult<Vec<PoolResult<()>>> {
+        let origin = TransactionOrigin::External;
+        // TODO: all transactions should be validated before consensus, but this method reduces the complexity
+        // of rewriting all the code necessary to build the next block.
+        let validated = self.validate_all(origin, transactions).await?;
+        let transactions = self.pool.add_finalized_transactions(origin, validated.into_values());
+        Ok(transactions)
+    }
+
+    fn on_sealed_batch(
+        &self,
+        batch_info: BatchInfo,
+    ) {
+        tracing::debug!("inside on_sealed_batch");
+        self.pool.on_batch_sealed(batch_info);
+    }
 }
 
 impl<V: TransactionValidator, T: TransactionOrdering> TransactionPoolExt for Pool<V, T>
 where
     V: TransactionValidator,
-    T: TransactionOrdering<Transaction = <V as TransactionValidator>::Transaction>,
+    T: TransactionOrdering<Transaction = <V as TransactionValidator>::Transaction> + Clone,
 {
     #[instrument(skip(self), target = "txpool")]
     fn set_block_info(&self, info: BlockInfo) {
@@ -470,7 +482,7 @@ where
     }
 }
 
-impl<V: TransactionValidator, T: TransactionOrdering> Clone for Pool<V, T> {
+impl<V: TransactionValidator, T: TransactionOrdering + Clone> Clone for Pool<V, T> {
     fn clone(&self) -> Self {
         Self { pool: Arc::clone(&self.pool) }
     }

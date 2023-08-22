@@ -1,28 +1,29 @@
-use std::sync::Arc;
-
-use execution_payload_builder::{BuiltPayload, database::CachedReads, error::PayloadBuilderError};
+use std::task::Waker;
+use execution_payload_builder::database::CachedReads;
 use execution_provider::{PostState, StateProviderFactory};
-use execution_revm::{executor::{increment_account_balance, post_block_withdrawals_balance_increments, commit_state_changes}, database::State, into_execution_log, env::tx_env_with_recovered};
+use execution_revm::{executor::commit_state_changes, database::State, into_execution_log, env::tx_env_with_recovered};
 use execution_transaction_pool::TransactionPool;
-use revm::{db::{CacheDB, DatabaseRef}, primitives::{ResultAndState, InvalidTransaction, EVMError, Env}};
+use revm::{db::CacheDB, primitives::{ResultAndState, InvalidTransaction, EVMError, Env}};
 use tn_types::execution::{
-    proofs, ChainSpec, Withdrawal, U256, Receipt, IntoRecoveredTransaction,
+    U256, Receipt, IntoRecoveredTransaction,
 };
 use tokio::sync::oneshot;
-use tracing::{debug, trace};
+use tracing::{debug, warn};
+use crate::batch::{BatchBuilderError, metrics::PayloadSizeMetric};
 
-use super::job::{WithdrawalsOutcome, PayloadConfig, Cancelled, BuildOutcome};
+use super::{job::{BatchPayloadConfig, Cancelled}, generator::BuiltBatch};
 
 /// Builds the next batch by iterating over the best pending transactions.
-pub(super) fn build_payload<Pool, Client>(
+pub(super) fn create_batch<Pool, Client>(
     client: Client,
     pool: Pool,
     cached_reads: CachedReads,
-    config: PayloadConfig,
+    config: BatchPayloadConfig,
     cancel: Cancelled,
-    best_payload: Option<Arc<BuiltPayload>>,
-    to_job: oneshot::Sender<Result<BuildOutcome, PayloadBuilderError>>,
-) where
+    to_job: oneshot::Sender<Result<BuiltBatch, BatchBuilderError>>,
+    waker: Waker,
+) //-> Result<(Vec<TransactionId>, Vec<Vec<u8>>), PayloadBuilderError>
+where
     Client: StateProviderFactory,
     Pool: TransactionPool,
 {
@@ -31,21 +32,18 @@ pub(super) fn build_payload<Pool, Client>(
         client: Client,
         pool: Pool,
         mut cached_reads: CachedReads,
-        config: PayloadConfig,
-        cancel: Cancelled,
-        best_payload: Option<Arc<BuiltPayload>>,
-    ) -> Result<BuildOutcome, PayloadBuilderError>
+        config: BatchPayloadConfig,
+        _cancel: Cancelled, // TODO: can cancel be used to prevent batches while processing consensus output?
+    ) -> Result<BuiltBatch, BatchBuilderError>
     where
         Client: StateProviderFactory,
         Pool: TransactionPool,
     {
-        let PayloadConfig {
+        let BatchPayloadConfig {
             initialized_block_env,
             initialized_cfg,
             parent_block,
-            extra_data,
-            attributes,
-            chain_spec,
+            max_batch_size,
         } = config;
 
         debug!(parent_hash=?parent_block.hash, parent_number=parent_block.number, "building new payload");
@@ -55,30 +53,44 @@ pub(super) fn build_payload<Pool, Client>(
         let mut post_state = PostState::default();
 
         let mut cumulative_gas_used = 0;
+        let mut payload_size = 0;
+        let mut size_metric = PayloadSizeMetric::default();
         let block_gas_limit: u64 = initialized_block_env.gas_limit.try_into().unwrap_or(u64::MAX);
 
         let mut executed_txs = Vec::new();
-        let mut best_txs = pool.best_transactions();
+        let mut batch = Vec::new();
 
+        let mut best_txs = pool.best_transactions();
         let mut total_fees = U256::ZERO;
+
+        // TODO: where should the base fee come from?
         let base_fee = initialized_block_env.basefee.to::<u64>();
 
         let block_number = initialized_block_env.number.to::<u64>();
 
         while let Some(pool_tx) = best_txs.next() {
-            // ensure we still have capacity for this transaction
+            // TODO: is gas or batch size more likely to be reached first?
+            // whichever it tends to be should be the first "size" checked.
+
+            // ensure we still have gas capacity for this transaction
             if cumulative_gas_used + pool_tx.gas_limit() > block_gas_limit {
                 // we can't fit this transaction into the block, so we need to mark it as invalid
                 // which also removes all dependent transaction from the iterator before we can
                 // continue
                 best_txs.mark_invalid(&pool_tx);
+                size_metric = PayloadSizeMetric::GasLimit;
                 continue
             }
 
-            // check if the job was cancelled, if so we can exit early
-            if cancel.is_cancelled() {
-                return Ok(BuildOutcome::Cancelled)
-            }
+            let tx_size = pool_tx.size();
+            // ensure we have memory capacity for the transaction
+            if payload_size + tx_size > max_batch_size {
+                best_txs.mark_invalid(&pool_tx);
+                size_metric = PayloadSizeMetric::MaxBatchSize;
+                continue
+            } 
+
+            let tx_id = pool_tx.transaction_id;
 
             // convert tx to a signed transaction
             let tx = pool_tx.to_recovered_transaction();
@@ -100,11 +112,11 @@ pub(super) fn build_payload<Pool, Client>(
                         EVMError::Transaction(err) => {
                             if matches!(err, InvalidTransaction::NonceTooLow { .. }) {
                                 // if the nonce is too low, we can skip this transaction
-                                trace!(?err, ?tx, "skipping nonce too low transaction");
+                                warn!(?err, ?tx, "skipping nonce too low transaction");
                             } else {
                                 // if the transaction is invalid, we can skip it and all of its
                                 // descendants
-                                trace!(
+                                warn!(
                                     ?err,
                                     ?tx,
                                     "skipping invalid transaction and its descendants"
@@ -115,7 +127,8 @@ pub(super) fn build_payload<Pool, Client>(
                         }
                         err => {
                             // this is an error that we should treat as fatal for this attempt
-                            return Err(PayloadBuilderError::EvmExecutionError(err))
+                            warn!("EVM Fatal error - returning empty batch.");
+                            return Err(BatchBuilderError::EvmExecutionError(err))
                         }
                     }
                 }
@@ -126,9 +139,13 @@ pub(super) fn build_payload<Pool, Client>(
             // commit changes
             commit_state_changes(&mut db, &mut post_state, block_number, state, true);
 
+            // update payload's size
+            payload_size += tx_size;
             // add gas used by the transaction to cumulative gas used, before creating the receipt
             cumulative_gas_used += gas_used;
 
+            // TODO: this may not be needed to verify transaction validity for batches
+            //
             // Push transaction changeset and calculate header bloom filter for receipt.
             post_state.add_receipt(
                 block_number,
@@ -140,126 +157,37 @@ pub(super) fn build_payload<Pool, Client>(
                 },
             );
 
-            // update add to total fees
-            let miner_fee = tx
-                .effective_tip_per_gas(base_fee)
-                .expect("fee is always valid; execution succeeded");
-            total_fees += U256::from(miner_fee) * U256::from(gas_used);
+            // // update add to total fees
+            // let miner_fee = tx
+            //     .effective_tip_per_gas(base_fee)
+            //     .expect("fee is always valid; execution succeeded");
+            // total_fees += U256::from(miner_fee) * U256::from(gas_used);
 
             // append transaction to the list of executed transactions
-            executed_txs.push(tx.into_signed());
+            let tx_bytes: Vec<u8> = tx.into_signed().envelope_encoded().into();
+            executed_txs.push(tx_id);
+            // TODO: does this need to be ordered?
+            batch.push(tx_bytes);
+        }
+        // check withdrawals at block level, not batch
+
+        // return an error if the batch is empty so the worker doesn't seal
+        // an empty batch
+        if batch.is_empty() {
+            return Err(BatchBuilderError::EmptyBatch)
         }
 
-        // check if we have a better block
-        if !is_better_payload(best_payload.as_deref(), total_fees) {
-            // can skip building the block
-            return Ok(BuildOutcome::Aborted { fees: total_fees, cached_reads })
-        }
-
-        let WithdrawalsOutcome { withdrawals_root, withdrawals } = commit_withdrawals(
-            &mut db,
-            &mut post_state,
-            &chain_spec,
-            block_number,
-            attributes.timestamp,
-            attributes.withdrawals,
-        )?;
-
-        let receipts_root = post_state.receipts_root(block_number);
-        let logs_bloom = post_state.logs_bloom(block_number);
-
-        // calculate the state root
-        let state_root = state.state().state_root(post_state)?;
-
-        // create the block header
-        let transactions_root = proofs::calculate_transaction_root(&executed_txs);
-
-        // TODO: don't return a header.
-        // the batch only needs Vec<Bytes>
-        //
-        // let header = Header {
-        //     parent_hash: parent_block.hash,
-        //     ommers_hash: EMPTY_OMMER_ROOT,
-        //     beneficiary: initialized_block_env.coinbase,
-        //     state_root,
-        //     transactions_root,
-        //     receipts_root,
-        //     withdrawals_root,
-        //     logs_bloom,
-        //     timestamp: attributes.timestamp,
-        //     mix_hash: attributes.prev_randao,
-        //     nonce: BEACON_NONCE,
-        //     base_fee_per_gas: Some(base_fee),
-        //     number: parent_block.number + 1,
-        //     gas_limit: block_gas_limit,
-        //     difficulty: U256::ZERO,
-        //     gas_used: cumulative_gas_used,
-        //     extra_data: extra_data.into(),
-        // };
-
-        // seal the block
-        // let block = Block { header, body: executed_txs, ommers: vec![], withdrawals };
-
-        // let sealed_block = block.seal_slow();
-        // Ok(BuildOutcome::Better {
-        //     payload: BuiltPayload::new(attributes.id, sealed_block, total_fees),
-        //     cached_reads,
-        // })
-        todo!()
+        Ok(BuiltBatch::new(batch, executed_txs, size_metric))
     }
 
-    let _ = to_job.send(try_build(client, pool, cached_reads, config, cancel, best_payload));
-}
+    // return the result to the batch building job
+    let _ = to_job.send(try_build(client, pool, cached_reads, config, cancel));
 
-/// Executes the withdrawals and commits them to the _runtime_ Database and PostState.
-///
-/// Returns the withdrawals root.
-///
-/// Returns `None` values pre shanghai
-#[allow(clippy::too_many_arguments)]
-pub(super) fn commit_withdrawals<DB>(
-    db: &mut CacheDB<DB>,
-    post_state: &mut PostState,
-    chain_spec: &ChainSpec,
-    block_number: u64,
-    timestamp: u64,
-    withdrawals: Vec<Withdrawal>,
-) -> Result<WithdrawalsOutcome, <DB as DatabaseRef>::Error>
-where
-    DB: DatabaseRef,
-{
-    if !chain_spec.is_shanghai_activated_at_timestamp(timestamp) {
-        return Ok(WithdrawalsOutcome::pre_shanghai())
-    }
+    // match to_job.send(try_build(client, pool, cached_reads, config, cancel)) {
+    //     Ok(_) => debug!("\n\n~~~~ create_batch() is finished!!\n"),
+    //     Err(_) => debug!("\n\n~~~~ ERROR ~~~~ in create_batch() sending\n"),
+    // }
 
-    if withdrawals.is_empty() {
-        return Ok(WithdrawalsOutcome::empty())
-    }
-
-    let balance_increments =
-        post_block_withdrawals_balance_increments(chain_spec, timestamp, &withdrawals);
-
-    for (address, increment) in balance_increments {
-        increment_account_balance(db, post_state, block_number, address, increment)?;
-    }
-
-    let withdrawals_root = proofs::calculate_withdrawals_root(&withdrawals);
-
-    // calculate withdrawals root
-    Ok(WithdrawalsOutcome {
-        withdrawals: Some(withdrawals),
-        withdrawals_root: Some(withdrawals_root),
-    })
-}
-
-/// Checks if the new payload is better than the current best.
-///
-/// This compares the total fees of the blocks, higher is better.
-#[inline(always)]
-pub(super) fn is_better_payload(best_payload: Option<&BuiltPayload>, new_fees: U256) -> bool {
-    if let Some(best_payload) = best_payload {
-        new_fees > best_payload.fees()
-    } else {
-        true
-    }
+    // call wake() to poll job again
+    waker.wake();
 }

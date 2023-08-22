@@ -71,3 +71,7 @@ Problem: account based ledgers have tx nonce issues
     - store the block in tree?
     - wait for consensus output to create one giant block?
         - EL verified when primary proposes next header because of `parent_block` hash
+
+
+# TEL as Native Currency
+See log usage in crates/execution/storage/provider/src/test_utils/blocks.rs

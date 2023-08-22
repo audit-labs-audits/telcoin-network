@@ -107,7 +107,8 @@ where
 /// The subscriber will silently fail if it could not be installed.
 pub fn init_test_tracing() {
     let _ = tracing_subscriber::fmt()
-        .with_env_filter(EnvFilter::from_default_env())
+        // TODO: remove added directive after debugging test
+        .with_env_filter(EnvFilter::from_default_env().add_directive(tracing::Level::DEBUG.into()))
         .with_writer(std::io::stderr)
         .try_init();
 }

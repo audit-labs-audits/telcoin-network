@@ -75,7 +75,7 @@ use crate::{
     },
     traits::{
         AllPoolTransactions, BlockInfo, NewTransactionEvent, PoolSize, PoolTransaction,
-        PropagatedTransactions, TransactionOrigin,
+        PropagatedTransactions, TransactionOrigin, BatchInfo,
     },
     validate::{TransactionValidationOutcome, ValidPoolTransaction},
     CanonicalStateUpdate, ChangedAccount, PoolConfig, TransactionOrdering, TransactionValidator,
@@ -107,6 +107,7 @@ pub mod txpool;
 mod update;
 mod finalized; // lattice-specific 
 pub use finalized::FinalizedPool;
+pub(crate) mod sealed;
 // TODO: some sort of `ProposedPool` implementation?
 
 /// Transaction pool internals.
@@ -142,7 +143,7 @@ pub struct PoolInner<V: TransactionValidator, T: TransactionOrdering> {
 impl<V, T> PoolInner<V, T>
 where
     V: TransactionValidator,
-    T: TransactionOrdering<Transaction = <V as TransactionValidator>::Transaction>,
+    T: TransactionOrdering<Transaction = <V as TransactionValidator>::Transaction> + Clone,
 {
     /// Create a new transaction pool instance.
     pub(crate) fn new(validator: V, ordering: T, finalized_ordering: T, config: PoolConfig) -> Self {
@@ -159,6 +160,7 @@ where
 
     /// Returns stats about the size of the pool.
     pub(crate) fn size(&self) -> PoolSize {
+        tracing::debug!("attempting to obtain pool.read() lock");
         self.pool.read().size()
     }
 
@@ -269,7 +271,8 @@ where
             last_seen_block_number: number,
             pending_basefee: pending_block_base_fee,
         };
-        // TODO: clear out finalized pool after canonical state updated
+        // TODO: clear out finalized pool / tree forks (peer blocks)
+        // after canonical state updated
         let outcome = self.pool.write().on_canonical_state_change(
             block_info,
             mined_transactions,
@@ -379,77 +382,6 @@ where
             .collect()
     }
 
-
-    /// Add a single validated transaction from consensus into the finalized pool.
-    ///
-    /// Note: this is only used internally by [`Self::add_finalized_transactions()`].
-    fn add_finalized_transaction(
-        &self,
-        origin: TransactionOrigin,
-        tx: TransactionValidationOutcome<T::Transaction>,
-    ) -> PoolResult<()> {
-        match tx {
-            TransactionValidationOutcome::Valid {
-                balance,
-                state_nonce,
-                transaction,
-                propagate,
-            } => {
-                let sender_id = self.get_sender_id(transaction.sender());
-                let transaction_id = TransactionId::new(sender_id, transaction.nonce());
-                let encoded_length = transaction.encoded_length();
-
-                let tx = ValidPoolTransaction {
-                    transaction,
-                    transaction_id,
-                    propagate,
-                    timestamp: Instant::now(),
-                    origin,
-                    encoded_length,
-                };
-
-                let added = self.pool.write().add_finalized_transaction(tx)?;
-                // let hash = *added.hash();
-
-                // // Notify about new pending transactions
-                // if let Some(pending_hash) = added.as_pending() {
-                //     self.on_new_pending_transaction(pending_hash);
-                // }
-
-                // // Notify tx event listeners
-                // self.notify_event_listeners(&added);
-
-                // // Notify listeners for _all_ transactions
-                // self.on_new_transaction(added.into_new_transaction_event());
-
-                Ok(())
-            }
-            // TODO: add metrics
-            TransactionValidationOutcome::Invalid(tx, err) => {
-                let mut listener = self.event_listener.write();
-                listener.discarded(tx.hash());
-                Err(PoolError::InvalidTransaction(*tx.hash(), err))
-            }
-            TransactionValidationOutcome::Error(tx_hash, err) => {
-                let mut listener = self.event_listener.write();
-                listener.discarded(&tx_hash);
-                Err(PoolError::Other(tx_hash, err))
-            }
-        }
-    }
-
-    /// Adds all transactions in the iterator to the finalized pool to build the next block.
-    pub fn add_finalized_transactions(
-        &self,// should this be a mut reference to lock struct for consensus?
-        origin: TransactionOrigin,
-        transactions: impl IntoIterator<Item = TransactionValidationOutcome<T::Transaction>>,
-    ) -> Vec<PoolResult<()>> {
-        transactions
-            .into_iter()
-            .map(|tx| self.add_finalized_transaction(origin, tx))
-            .collect::<Vec<_>>()
-    }
-
     /// Notify all listeners about a new pending transaction.
     fn on_new_pending_transaction(&self, ready: &TxHash) {
         let mut transaction_listeners = self.pending_transaction_listener.lock();
@@ -499,6 +431,7 @@ where
         mined.iter().for_each(|tx| listener.mined(tx, block_hash));
         promoted.iter().for_each(|tx| listener.pending(tx, None));
         discarded.iter().for_each(|tx| listener.discarded(tx));
+        // TODO: update listeners for Sealed
     }
 
     /// Fire events for the newly added transaction.
@@ -525,11 +458,6 @@ where
     /// Returns an iterator that yields transactions that are ready to be included in the block.
     pub(crate) fn best_transactions(&self) -> BestTransactions<T> {
         self.pool.read().best_transactions()
-    }
-
-    /// Returns an iterator that yields transactions that have reached consensus.
-    pub(crate) fn all_finalized_transactions(&self) -> FinalizedTransactions<T> {
-        self.pool.read().all_finalized_transactions()
     }
 
     /// Returns all transactions from the pending sub-pool
@@ -619,6 +547,100 @@ where
     pub(crate) fn discard_worst(&self) -> HashSet<TxHash> {
         self.pool.write().discard_worst().into_iter().map(|tx| *tx.hash()).collect()
     }
+
+    //=== Lattice additions 
+
+    /// Returns an iterator that yields transactions that have reached qurum at the worker level.
+    pub(crate) fn all_finalized_transactions(&self) -> FinalizedTransactions<T> {
+        self.pool.read().all_finalized_transactions()
+    }
+
+    /// Add a single validated transaction from consensus into the finalized pool.
+    ///
+    /// Note: this is only used internally by [`Self::add_finalized_transactions()`].
+    fn add_finalized_transaction(
+        &self,
+        origin: TransactionOrigin,
+        tx: TransactionValidationOutcome<T::Transaction>,
+    ) -> PoolResult<()> {
+        match tx {
+            TransactionValidationOutcome::Valid {
+                balance,
+                state_nonce,
+                transaction,
+                propagate,
+            } => {
+                let sender_id = self.get_sender_id(transaction.sender());
+                let transaction_id = TransactionId::new(sender_id, transaction.nonce());
+                let encoded_length = transaction.encoded_length();
+
+                let tx = ValidPoolTransaction {
+                    transaction,
+                    transaction_id,
+                    propagate,
+                    timestamp: Instant::now(),
+                    origin,
+                    encoded_length,
+                };
+
+                let added = self.pool.write().add_finalized_transaction(tx)?;
+                // let hash = *added.hash();
+
+                // // Notify about new pending transactions
+                // if let Some(pending_hash) = added.as_pending() {
+                //     self.on_new_pending_transaction(pending_hash);
+                // }
+
+                // // Notify tx event listeners
+                // self.notify_event_listeners(&added);
+
+                // // Notify listeners for _all_ transactions
+                // self.on_new_transaction(added.into_new_transaction_event());
+
+                Ok(())
+            }
+            // TODO: add metrics
+            TransactionValidationOutcome::Invalid(tx, err) => {
+                let mut listener = self.event_listener.write();
+                listener.discarded(tx.hash());
+                Err(PoolError::InvalidTransaction(*tx.hash(), err))
+            }
+            TransactionValidationOutcome::Error(tx_hash, err) => {
+                let mut listener = self.event_listener.write();
+                listener.discarded(&tx_hash);
+                Err(PoolError::Other(tx_hash, err))
+            }
+        }
+    }
+
+    /// Adds all transactions in the iterator to the finalized pool to build the next block.
+    pub fn add_finalized_transactions(
+        &self,// should this be a mut reference to lock struct for consensus?
+        origin: TransactionOrigin,
+        transactions: impl IntoIterator<Item = TransactionValidationOutcome<T::Transaction>>,
+    ) -> Vec<PoolResult<()>> {
+        transactions
+            .into_iter()
+            .map(|tx| self.add_finalized_transaction(origin, tx))
+            .collect::<Vec<_>>()
+    }
+
+    /// Updates the entire pool after a new block was executed.
+    pub(crate) fn on_batch_sealed(&self, batch_info: BatchInfo) {
+        tracing::debug!("attempting to obtain pool.write() lock");
+        let outcome = self.pool.write().on_batch_sealed(batch_info);
+        tracing::debug!("\n\noutcome of pool write(): {outcome:?}");
+        self.notify_on_new_sealed_batch(outcome);
+    }
+
+    /// Notifies transaction listeners about changes after a batch was sealed.
+    fn notify_on_new_sealed_batch(&self, outcome: BatchSealedOutcome) {
+        let BatchSealedOutcome { batch_digest, sealed, discarded } = outcome;
+        let mut listener = self.event_listener.write();
+
+        discarded.iter().for_each(|tx| listener.discarded(tx));
+        sealed.iter().for_each(|tx| listener.sealed(tx, &batch_digest));
+    }
 }
 
 impl<V: TransactionValidator, T: TransactionOrdering> fmt::Debug for PoolInner<V, T> {
@@ -697,6 +719,17 @@ pub(crate) struct OnNewCanonicalStateOutcome {
     pub(crate) mined: Vec<TxHash>,
     /// Transactions promoted to the ready queue.
     pub(crate) promoted: Vec<TxHash>,
+    /// transaction that were discarded during the update
+    pub(crate) discarded: Vec<TxHash>,
+}
+
+/// Contains all state changes after a [`BatchSealedUpdate`] was processed
+#[derive(Debug)]
+pub(crate) struct BatchSealedOutcome {
+    /// Hash of the worker's batch.
+    pub(crate) batch_digest: BatchDigest,
+    /// All sealed transactions waiting for quorum.
+    pub(crate) sealed: Vec<TxHash>,
     /// transaction that were discarded during the update
     pub(crate) discarded: Vec<TxHash>,
 }

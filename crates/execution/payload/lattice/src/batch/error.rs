@@ -1,12 +1,14 @@
 //! Error types emitted by types or implementations of this crate.
 
-use revm_primitives::EVMError;
+use revm::primitives::EVMError;
 use tn_types::execution::H256;
 use tokio::sync::oneshot;
 
+use super::BatchBuilderServiceCommand;
+
 /// Possible error variants during payload building.
 #[derive(Debug, thiserror::Error)]
-pub enum PayloadBuilderError {
+pub enum BatchBuilderError {
     /// Thrown whe the parent block is missing.
     #[error("missing parent block {0:?}")]
     MissingParentBlock(H256),
@@ -32,12 +34,18 @@ pub enum PayloadBuilderError {
     #[error("Failed to capture System Time.")]
     LatticeBatchSystemTime(#[from] std::time::SystemTimeError),
     /// Thrown if the receiver for the oneshot channel is dropped by the worker which requested the batch.
-    #[error("Worker's receiver dropped before batch could be sent.")]
-    LatticeBatchOneshotChannel,
+    #[error("Channel closed before batch could be sent: {0:?}")]
+    LatticeBatchChannelClosed(String),
+    /// Thrown if the batch handle can't send to the batch builder service.
+    #[error("Handle can't send to the batch builder service: {0:?}")]
+    BatchBuilderHandleToService(#[from] tokio::sync::mpsc::error::SendError<BatchBuilderServiceCommand>),
+    /// The built batch is empty. This error is required so the worker doesn't seal an empty batch.
+    #[error("Built batch is empty.")]
+    EmptyBatch,
 }
 
-impl From<oneshot::error::RecvError> for PayloadBuilderError {
+impl From<oneshot::error::RecvError> for BatchBuilderError {
     fn from(_: oneshot::error::RecvError) -> Self {
-        PayloadBuilderError::ChannelClosed
+        BatchBuilderError::ChannelClosed
     }
 }

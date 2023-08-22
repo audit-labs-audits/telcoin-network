@@ -48,7 +48,7 @@ fn build_anemo_services(out_dir: &Path) {
 
     let primary_to_primary = anemo_build::manual::Service::builder()
         .name("PrimaryToPrimary")
-        .package("narwhal")
+        .package("lattice")
         .attributes(automock_attribute.clone())
         .method(
             anemo_build::manual::Method::builder()
@@ -99,7 +99,7 @@ fn build_anemo_services(out_dir: &Path) {
 
     let primary_to_worker = anemo_build::manual::Service::builder()
         .name("PrimaryToWorker")
-        .package("narwhal")
+        .package("lattice")
         .attributes(automock_attribute.clone())
         .method(
             anemo_build::manual::Method::builder()
@@ -132,7 +132,7 @@ fn build_anemo_services(out_dir: &Path) {
 
     let worker_to_primary = anemo_build::manual::Service::builder()
         .name("WorkerToPrimary")
-        .package("narwhal")
+        .package("lattice")
         .attributes(automock_attribute.clone())
         .method(
             anemo_build::manual::Method::builder()
@@ -156,7 +156,7 @@ fn build_anemo_services(out_dir: &Path) {
 
     let worker_to_worker = anemo_build::manual::Service::builder()
         .name("WorkerToWorker")
-        .package("narwhal")
+        .package("lattice")
         .attributes(automock_attribute)
         .method(
             anemo_build::manual::Method::builder()

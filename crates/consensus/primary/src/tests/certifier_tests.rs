@@ -47,7 +47,7 @@ async fn propose_header() {
     // Set up network.
     let own_address = committee.primary_by_id(&id).unwrap().to_anemo_address().unwrap();
     let network = anemo::Network::bind(own_address)
-        .server_name("narwhal")
+        .server_name("lattice")
         .private_key(network_key)
         .start(anemo::Router::new())
         .unwrap();
@@ -153,7 +153,7 @@ async fn propose_header_failure() {
     // Set up network.
     let own_address = committee.primary_by_id(&authority_id).unwrap().to_anemo_address().unwrap();
     let network = anemo::Network::bind(own_address)
-        .server_name("narwhal")
+        .server_name("lattice")
         .private_key(network_key)
         .start(anemo::Router::new())
         .unwrap();
@@ -267,7 +267,7 @@ async fn run_vote_aggregator_with_param(
     // Set up network.
     let own_address = committee.primary_by_id(&id).unwrap().to_anemo_address().unwrap();
     let network = anemo::Network::bind(own_address)
-        .server_name("narwhal")
+        .server_name("lattice")
         .private_key(network_key)
         .start(anemo::Router::new())
         .unwrap();
@@ -397,7 +397,7 @@ async fn shutdown_core() {
 
     let own_address = committee.primary_by_id(&id).unwrap().to_anemo_address().unwrap();
     let network = anemo::Network::bind(own_address)
-        .server_name("narwhal")
+        .server_name("lattice")
         .private_key(network_key)
         .start(anemo::Router::new())
         .unwrap();

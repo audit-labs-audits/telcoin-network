@@ -21,6 +21,7 @@ tempfile = "3.3.0"
 tokio-util = { workspace = true }
 pin-project = { workspace = true }
 humantime = "2.1.0"
+prometheus = { workspace = true }
 
 # rpc args
 jsonrpsee-server = { version = "0.16"}
@@ -35,7 +36,8 @@ execution-rpc-engine-api.workspace = true
 execution-transaction-pool.workspace = true
 execution-network-api.workspace = true
 execution-lattice-consensus.workspace = true
-#execution-beacon-consensus.workspace = true
+# todo: remove me once dummy transactions are created
+execution-beacon-consensus = { path = "../../crates/execution/consensus/beacon" }
 execution-blockchain-tree.workspace = true
 execution-revm.workspace = true
 execution-basic-payload-builder.workspace = true
@@ -48,6 +50,7 @@ execution-network.workspace = true
 execution-config.workspace = true
 execution-downloaders.workspace = true
 execution-db.workspace = true
+lattice-payload-builder = { workspace = true }
 
 # io
 confy = "0.5"
@@ -59,6 +62,7 @@ toml = { version = "0.7", features = ["display"] }
 
 # consensus
 lattice-worker = { workspace = true }
+lattice-node = { workspace = true }
 lattice-storage.workspace = true
 
 [build-dependencies]
@@ -69,3 +73,8 @@ lattice-test-utils.workspace = true
 proptest = "1.2.0"
 secp256k1 = "0.27.0"
 execution-rpc-types.workspace = true
+lattice-typed-store = { workspace = true }
+lattice-network = { workspace = true }
+consensus-metrics = { workspace = true }
+fastcrypto = { workspace = true }
+anemo = { workspace = true }

@@ -359,7 +359,7 @@ impl Primary {
 
         loop {
             let network_result = anemo::Network::bind(addr.clone())
-                .server_name("narwhal")
+                .server_name("lattice")
                 .private_key(network_signer.copy().private().0.to_bytes())
                 .config(anemo_config.clone())
                 .outbound_request_layer(outbound_layer.clone())
@@ -1292,6 +1292,7 @@ mod test {
             store.batch_store,
             metrics_1,
             &mut tx_shutdown_worker,
+            None,
         );
 
         // Test getting all known peers for primary 1

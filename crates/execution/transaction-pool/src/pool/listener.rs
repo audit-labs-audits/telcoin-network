@@ -12,7 +12,7 @@ use std::{
     sync::Arc,
     task::{Context, Poll},
 };
-use tn_types::execution::{TxHash, H256};
+use tn_types::{execution::{TxHash, H256}, consensus::BatchDigest};
 use tokio::sync::mpsc::{
     error::TrySendError, Receiver, Sender, UnboundedReceiver, UnboundedSender,
 };
@@ -172,6 +172,15 @@ impl<T: PoolTransaction> PoolEventBroadcast<T> {
             TransactionEvent::Mined(block_hash),
             FullTransactionEvent::Mined { tx_hash: *tx, block_hash },
         );
+    }
+
+    /// Notify listeners that the transaction was sealed in a block.
+    pub(crate) fn sealed(&mut self, tx: &TxHash, batch_digest: &BatchDigest) {
+        self.broadcast_event(
+            tx,
+            TransactionEvent::Sealed(*batch_digest),
+            FullTransactionEvent::Sealed{ tx_hash: *tx, batch_digest: *batch_digest },
+        )
     }
 }
 

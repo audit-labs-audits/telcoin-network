@@ -19,12 +19,16 @@ bitflags::bitflags! {
         ///
         /// Set to 1 if `feeCap` of the transaction meets the requirement of the pending block.
         const ENOUGH_FEE_CAP_BLOCK = 0b000010;
+        /// Set to 1 if this transactions was included in a worker's batch.
+        const SEALED_IN_BATCH = 0b000001;
 
         const PENDING_POOL_BITS = Self::NO_PARKED_ANCESTORS.bits | Self::NO_NONCE_GAPS.bits | Self::ENOUGH_BALANCE.bits | Self::NOT_TOO_MUCH_GAS.bits |  Self::ENOUGH_FEE_CAP_BLOCK.bits;
 
         const BASE_FEE_POOL_BITS = Self::NO_PARKED_ANCESTORS.bits | Self::NO_NONCE_GAPS.bits | Self::ENOUGH_BALANCE.bits | Self::NOT_TOO_MUCH_GAS.bits;
 
         const QUEUED_POOL_BITS  = Self::NO_PARKED_ANCESTORS.bits;
+
+        const SEALED_POOL_BITS = Self::NO_PARKED_ANCESTORS.bits | Self::NO_NONCE_GAPS.bits | Self::ENOUGH_BALANCE.bits | Self::NOT_TOO_MUCH_GAS.bits |  Self::ENOUGH_FEE_CAP_BLOCK.bits | Self::SEALED_IN_BATCH.bits;
 
     }
 }
@@ -38,13 +42,19 @@ impl TxState {
     ///   - enough fee cap
     #[inline]
     pub(crate) fn is_pending(&self) -> bool {
-        *self >= TxState::PENDING_POOL_BITS
+        *self == TxState::PENDING_POOL_BITS
     }
 
     /// Returns `true` if the transaction has a nonce gap.
     #[inline]
     pub(crate) fn has_nonce_gap(&self) -> bool {
         !self.intersects(TxState::NO_NONCE_GAPS)
+    }
+
+    /// Returns true if the transactions is waiting for quorum.
+    #[inline]
+    pub(crate) fn is_sealed(&self) -> bool {
+        *self >= TxState::SEALED_POOL_BITS
     }
 }
 
@@ -60,6 +70,8 @@ pub enum SubPool {
     BaseFee,
     /// The pending sub-pool contains transactions that are ready to be included in the next block.
     Pending,
+    /// The sub-pool for transactions that have been sealed in a worker's batch.
+    Sealed,
 }
 
 // === impl SubPool ===
@@ -88,10 +100,18 @@ impl SubPool {
     pub fn is_promoted(&self, other: SubPool) -> bool {
         self > &other
     }
+
+    /// Whether this transaction is in the quorum waiter pool.
+    pub fn is_sealed(&self) -> bool {
+        matches!(self, SubPool::Sealed)
+    }
 }
 
 impl From<TxState> for SubPool {
     fn from(value: TxState) -> Self {
+        if value.is_sealed() {
+            return SubPool::Sealed
+        }
         if value.is_pending() {
             return SubPool::Pending
         }
@@ -111,6 +131,8 @@ mod tests {
         assert!(SubPool::BaseFee.is_promoted(SubPool::Queued));
         assert!(SubPool::Pending.is_promoted(SubPool::BaseFee));
         assert!(SubPool::Pending.is_promoted(SubPool::Queued));
+        assert!(SubPool::Sealed.is_promoted(SubPool::Pending));
+        assert!(!SubPool::Pending.is_promoted(SubPool::Sealed));
         assert!(!SubPool::BaseFee.is_promoted(SubPool::Pending));
         assert!(!SubPool::Queued.is_promoted(SubPool::BaseFee));
     }
@@ -149,5 +171,39 @@ mod tests {
         let state = TxState::from_bits(bits).unwrap();
         assert_eq!(SubPool::Pending, state.into());
         assert!(state.is_pending());
+        assert!(!state.is_sealed());
+    }
+
+    // TODO: I don't understand `is_promoted()` and why that works.
+    //
+    // Will need to ensure pending -> waiting_for_quorum -> finalized
+    // all show as promotion
+    #[test]
+    fn test_tx_in_sealed_batch() {
+        let state = TxState::SEALED_POOL_BITS;
+        assert_eq!(SubPool::Sealed, state.into());
+        let bits = 0b111111;
+        let state = TxState::from_bits(bits).unwrap();
+        assert_eq!(SubPool::Sealed, state.into());
+        assert!(state.is_sealed());
+        assert!(!state.is_pending());
+    }
+
+    #[test]
+    fn delete_me() {
+        let state = TxState::SEALED_POOL_BITS;
+        println!("{:b}", state);
+
+        let sealed = TxState::SEALED_IN_BATCH;
+        println!("{:b}", sealed);
+
+        let no_ancestors = TxState::NO_PARKED_ANCESTORS;
+        println!("{:b}", no_ancestors);
+
+        let test = sealed | no_ancestors;
+        println!("{:b}", test);
+
+        let test2 = sealed & no_ancestors;
+        println!("{:b}", test2);
     }
 }

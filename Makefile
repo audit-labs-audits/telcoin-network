@@ -47,11 +47,7 @@ lint:
 
 # run an http rpc server on default port
 node:
-	cargo run --bin lattice -- node ;
-
-# run an http rpc server on default port
-execution:
-	cargo run --bin lattice -- execution --dev --http --http.api eth,net,web3 ;
+	cargo run --bin telcoin-network -- node --dev --http --http.api eth,net,web3 ;
 
 # purge the default lattice dir on mac
 purge-mac:

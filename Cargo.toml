@@ -109,6 +109,7 @@ tracing = "0.1.0"
 tracing-subscriber = "0.3.17"
 anyhow = "1.0.72"
 axum = { version = "0.6.6", default-features = false, features = ["headers", "tokio", "http1", "http2", "json", "matched-path", "original-uri", "form", "query"] }
+prometheus = "0.13.3"
 
 ### tokio
 tokio-stream = "0.1.11"
@@ -164,6 +165,7 @@ execution-rpc-engine-api = { path = "./crates/execution/rpc/rpc-engine-api" }
 execution-stages = { path = "./crates/execution/stages" }
 execution-revm = { path = "./crates/execution/revm" }
 execution-revm-inspectors = { path = "./crates/execution/revm/revm-inspectors" }
+execution-revm-primitives = { path = "./crates/execution/revm/revm-primitives" }
 lattice-payload-builder = { path = "./crates/execution/payload/lattice" }
 
 # consensus

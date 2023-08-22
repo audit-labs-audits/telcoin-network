@@ -2,7 +2,7 @@ use crate::{
     error::PoolResult,
     pool::{state::SubPool, TransactionEvents},
     validate::ValidPoolTransaction,
-    AllTransactionsEvents,
+    AllTransactionsEvents, TransactionId,
 };
 use execution_rlp::Encodable;
 use futures_util::{ready, Stream};
@@ -13,10 +13,10 @@ use std::{
     sync::Arc,
     task::{Context, Poll},
 };
-use tn_types::execution::{
+use tn_types::{execution::{
     Address, FromRecoveredTransaction, IntoRecoveredTransaction, PeerId, Transaction,
     TransactionKind, TransactionSignedEcRecovered, TxHash, EIP1559_TX_TYPE_ID, H256, U256,
-};
+}, consensus::BatchDigest};
 use tokio::sync::mpsc::Receiver;
 
 #[cfg(feature = "serde")]
@@ -184,13 +184,6 @@ pub trait TransactionPool: Send + Sync + Clone {
         &self,
     ) -> Box<dyn BestTransactions<Item = Arc<ValidPoolTransaction<Self::Transaction>>>>;
 
-    /// Returns an iterator that yields transactions that are ready for block production.
-    ///
-    /// Consumer: Canonical Block Builder
-    fn all_finalized_transactions(
-        &self,
-    ) -> Box<dyn BestTransactions<Item = Arc<ValidPoolTransaction<Self::Transaction>>>>;
-
     /// Returns all transactions that can be included in the next block.
     ///
     /// This is primarily used for the `txpool_` RPC namespace: <https://geth.ethereum.org/docs/interacting-with-geth/rpc/ns-txpool> which distinguishes between `pending` and `queued` transactions, where `pending` are transactions ready for inclusion in the next block and `queued` are transactions that are ready for inclusion in future blocks.
@@ -258,6 +251,19 @@ pub trait TransactionPool: Send + Sync + Clone {
         &self,
         sender: Address,
     ) -> Vec<Arc<ValidPoolTransaction<Self::Transaction>>>;
+
+    // === added for lattice protocol
+
+    /// Returns an iterator that yields transactions that are ready for block production.
+    ///
+    /// Consumer: Canonical Block Builder
+    fn all_finalized_transactions(
+        &self,
+    ) -> Box<dyn BestTransactions<Item = Arc<ValidPoolTransaction<Self::Transaction>>>>;
+
+    /// Update SubPools when a newly requested batch is sealed by a worker.
+    fn on_sealed_batch(&self, batch_info: BatchInfo);
+
 }
 
 /// Extension for [TransactionPool] trait that allows to set the current block info.
@@ -423,6 +429,20 @@ impl ChangedAccount {
     pub(crate) fn empty(address: Address) -> Self {
         Self { address, nonce: 0, balance: U256::ZERO }
     }
+}
+
+/// Represents changes after a group of transactions were sealed in a worker's batch and are 
+/// waiting for quorum.
+///
+/// This is used to update the pool state accordingly.
+#[derive(Debug, Clone)]
+pub struct BatchSealedUpdate {
+    /// Batch digest.
+    pub digest: H256,
+    /// A set of changed accounts across a range of blocks.
+    pub changed_accounts: Vec<ChangedAccount>,
+    /// All transactions in the sealed batch.
+    pub mined_transactions: Vec<H256>,
 }
 
 /// An `Iterator` that only returns transactions that are ready to be executed.
@@ -652,6 +672,10 @@ pub struct PoolSize {
     pub queued: usize,
     /// Reported size of transactions in the _queued_ sub-pool.
     pub queued_size: usize,
+    /// Number of transactions in the _sealed_ sub-pool.
+    pub sealed: usize,
+    /// Reported size of transactions in the _sealed_ sub-pool.
+    pub sealed_size: usize,
     /// Number of all transactions of all sub-pools
     ///
     /// Note: this is the sum of ```pending + basefee + queued```
@@ -670,6 +694,22 @@ pub struct BlockInfo {
     /// Note: this is the derived base fee of the _next_ block that builds on the clock the pool is
     /// currently tracking.
     pub pending_basefee: u128,
+}
+
+/// Represents the information needed to update pools after a batch is sealed by a worker.
+#[derive(Debug, Clone)]
+pub struct BatchInfo {
+    /// The batch digest
+    pub(crate) digest: BatchDigest,
+    /// The transaction ids of the transactions in the batch.
+    pub(crate) transactions: Vec<TransactionId>,
+}
+
+impl BatchInfo {
+    /// Create a new instance of [Self].
+    pub fn new(digest: BatchDigest, transactions: Vec<TransactionId>) -> Self {
+        Self { digest, transactions }
+    }
 }
 
 /// A Stream that yields full transactions the subpool

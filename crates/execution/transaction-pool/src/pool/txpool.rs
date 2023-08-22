@@ -12,7 +12,7 @@ use crate::{
         update::{Destination, PoolUpdate},
         AddedPendingTransaction, AddedTransaction, OnNewCanonicalStateOutcome,
     },
-    traits::{BlockInfo, PoolSize},
+    traits::{BlockInfo, PoolSize, BatchInfo},
     PoolConfig, PoolResult, PoolTransaction, TransactionOrdering, ValidPoolTransaction, PRICE_BUMP,
     U256,
 };
@@ -24,12 +24,12 @@ use std::{
     ops::Bound::{Excluded, Unbounded},
     sync::Arc,
 };
-use tn_types::execution::{
+use tn_types::{execution::{
     constants::{ETHEREUM_BLOCK_GAS_LIMIT, MIN_PROTOCOL_BASE_FEE},
     TxHash, H256,
-};
+}, consensus::BatchDigest};
 
-use super::{FinalizedPool, best::FinalizedTransactions};
+use super::{FinalizedPool, best::FinalizedTransactions, BatchSealedOutcome, sealed::SealedPool};
 
 /// A pool that manages transactions.
 ///
@@ -86,6 +86,10 @@ pub struct TxPool<T: TransactionOrdering> {
     /// Holds all parked transactions that currently violate the dynamic fee requirement but could
     /// be moved to pending if the base fee changes in their favor (decreases) in future blocks.
     basefee_pool: ParkedPool<BasefeeOrd<T::Transaction>>,
+    /// quorum waiter subpool
+    /// 
+    /// Holds all transactions that are in a worker's sealed batch and waiting for quorum.
+    sealed_pool: SealedPool<T>,
     /// All transactions in the pool.
     all_transactions: AllTransactions<T::Transaction>,
     /// Transaction pool metrics
@@ -98,14 +102,15 @@ pub struct TxPool<T: TransactionOrdering> {
 
 // === impl TxPool ===
 
-impl<T: TransactionOrdering> TxPool<T> {
+impl<T: TransactionOrdering + Clone> TxPool<T> {
     /// Create a new graph pool instance.
     pub(crate) fn new(ordering: T, finalized_ordering: T, config: PoolConfig) -> Self {
         Self {
             sender_info: Default::default(),
-            pending_pool: PendingPool::new(ordering),
+            pending_pool: PendingPool::new(ordering.clone()),
             queued_pool: Default::default(),
             basefee_pool: Default::default(),
+            sealed_pool: SealedPool::new(ordering),
             all_transactions: AllTransactions::new(config.max_account_slots),
             config,
             metrics: Default::default(),
@@ -127,6 +132,8 @@ impl<T: TransactionOrdering> TxPool<T> {
             basefee_size: self.basefee_pool.size(),
             queued: self.queued_pool.len(),
             queued_size: self.queued_pool.size(),
+            sealed: self.sealed_pool.len(),
+            sealed_size: self.sealed_pool.size(),
             total: self.all_transactions.len(),
         }
     }
@@ -159,7 +166,7 @@ impl<T: TransactionOrdering> TxPool<T> {
                         tx.subpool = tx.state.into();
                         tx.subpool
                     };
-                    self.add_transaction_to_subpool(to, tx);
+                    self.add_transaction_to_subpool(to, tx, None);
                 }
             }
             Ordering::Less => {
@@ -172,7 +179,7 @@ impl<T: TransactionOrdering> TxPool<T> {
                         tx.subpool = tx.state.into();
                         tx.subpool
                     };
-                    self.add_transaction_to_subpool(to, tx);
+                    self.add_transaction_to_subpool(to, tx, None);
                 }
             }
         }
@@ -193,10 +200,6 @@ impl<T: TransactionOrdering> TxPool<T> {
         self.pending_pool.best()
     }
 
-    /// Returns an iterator that yields transactions that have reached consensus.
-    pub(crate) fn all_finalized_transactions(&self) -> FinalizedTransactions<T> {
-        self.finalized_pool.all()
-    }
 
     /// Returns all transactions from the pending sub-pool
     pub(crate) fn pending_transactions(&self) -> Vec<Arc<ValidPoolTransaction<T::Transaction>>> {
@@ -284,7 +287,9 @@ impl<T: TransactionOrdering> TxPool<T> {
         self.metrics.basefee_pool_transactions.set(stats.basefee as f64);
         self.metrics.basefee_pool_size_bytes.set(stats.basefee_size as f64);
         self.metrics.queued_pool_transactions.set(stats.queued as f64);
-        self.metrics.queued_pool_size_bytes.set(stats.queued_size as f64);
+        self.metrics.queued_pool_transactions.set(stats.queued as f64);
+        self.metrics.sealed_pool_size_bytes.set(stats.sealed_size as f64);
+        self.metrics.sealed_pool_size_bytes.set(stats.sealed_size as f64);
         self.metrics.total_transactions.set(stats.total as f64);
     }
 
@@ -375,18 +380,6 @@ impl<T: TransactionOrdering> TxPool<T> {
         }
     }
 
-    /// Add finalized transactions to the FinalizedPool to build the next canonical block.
-    pub(crate) fn add_finalized_transaction(
-        &mut self,
-        tx: ValidPoolTransaction<T::Transaction>,
-        // on_chain_balance: U256,
-        // on_chain_nonce: u64,
-    // ) -> PoolResult<AddedTransaction<T::Transaction>> {
-    ) -> PoolResult<()> {
-        self.finalized_pool.add_transaction(tx)
-    }
-
-
     /// Maintenance task to apply a series of updates.
     ///
     /// This will move/discard the given transaction according to the `PoolUpdate`
@@ -400,8 +393,8 @@ impl<T: TransactionOrdering> TxPool<T> {
                 }
                 Destination::Pool(move_to) => {
                     debug_assert!(!move_to.eq(&current), "destination must be different");
-                    self.move_transaction(current, move_to, &id);
-                    if matches!(move_to, SubPool::Pending) {
+                    self.move_transaction(current, move_to, &id, None);
+                    if move_to.is_promoted(SubPool::Pending) {
                         outcome.promoted.push(hash);
                     }
                 }
@@ -414,9 +407,9 @@ impl<T: TransactionOrdering> TxPool<T> {
     ///
     /// This will remove the given transaction from one sub-pool and insert it into the other
     /// sub-pool.
-    fn move_transaction(&mut self, from: SubPool, to: SubPool, id: &TransactionId) {
+    fn move_transaction(&mut self, from: SubPool, to: SubPool, id: &TransactionId, batch_digest: Option<Arc<BatchDigest>>) {
         if let Some(tx) = self.remove_from_subpool(from, id) {
-            self.add_transaction_to_subpool(to, tx);
+            self.add_transaction_to_subpool(to, tx, batch_digest);
         }
     }
 
@@ -478,6 +471,7 @@ impl<T: TransactionOrdering> TxPool<T> {
             SubPool::Queued => self.queued_pool.remove_transaction(tx),
             SubPool::Pending => self.pending_pool.remove_transaction(tx),
             SubPool::BaseFee => self.basefee_pool.remove_transaction(tx),
+            SubPool::Sealed => todo!(),
         }
     }
 
@@ -492,6 +486,7 @@ impl<T: TransactionOrdering> TxPool<T> {
             SubPool::Queued => self.queued_pool.remove_transaction(tx),
             SubPool::Pending => self.pending_pool.prune_transaction(tx),
             SubPool::BaseFee => self.basefee_pool.remove_transaction(tx),
+            SubPool::Sealed => todo!(),
         }
     }
 
@@ -525,6 +520,7 @@ impl<T: TransactionOrdering> TxPool<T> {
         &mut self,
         pool: SubPool,
         tx: Arc<ValidPoolTransaction<T::Transaction>>,
+        batch_digest: Option<Arc<BatchDigest>>,
     ) {
         match pool {
             SubPool::Queued => {
@@ -535,6 +531,11 @@ impl<T: TransactionOrdering> TxPool<T> {
             }
             SubPool::BaseFee => {
                 self.basefee_pool.add_transaction(tx);
+            }
+            SubPool::Sealed => {
+                // Note: this cannot fail
+                let batch = batch_digest.unwrap_or_default();
+                self.sealed_pool.add_transaction(batch, tx);
             }
         }
     }
@@ -552,7 +553,7 @@ impl<T: TransactionOrdering> TxPool<T> {
             self.remove_from_subpool(replaced_pool, replaced.id());
         }
 
-        self.add_transaction_to_subpool(pool, transaction)
+        self.add_transaction_to_subpool(pool, transaction, None)
     }
 
     /// Ensures that the transactions in the sub-pools are within the given bounds.
@@ -601,6 +602,48 @@ impl<T: TransactionOrdering> TxPool<T> {
     /// Whether the pool is empty
     pub(crate) fn is_empty(&self) -> bool {
         self.all_transactions.is_empty()
+    }
+
+
+    //==== Lattice additions
+
+    /// Returns an iterator that yields transactions that have reached quorum at the worker level.
+    pub(crate) fn all_finalized_transactions(&self) -> FinalizedTransactions<T> {
+        self.finalized_pool.all()
+    }
+
+    /// Add finalized transactions to the FinalizedPool to build the next canonical block.
+    pub(crate) fn add_finalized_transaction(
+        &mut self,
+        tx: ValidPoolTransaction<T::Transaction>,
+        // on_chain_balance: U256,
+        // on_chain_nonce: u64,
+    // ) -> PoolResult<AddedTransaction<T::Transaction>> {
+    ) -> PoolResult<()> {
+        self.finalized_pool.add_transaction(tx)
+    }
+
+    /// Updates the entire pool after a batch was sealed by a worker.
+    ///
+    /// This moves all sealed transactions into the `sealed` subpool
+    /// and removes the transaction from the `pending` pool for the next batch.
+    ///
+    /// Transactions are not "unlocked" until canonical state change.
+    ///
+    /// TODO: RPC should check sealed pool for adding new transaction
+    pub(crate) fn on_batch_sealed(
+        &mut self,
+        batch_info: BatchInfo,
+    ) -> BatchSealedOutcome {
+        let updates = self.all_transactions.update_from_sealed_batch(&batch_info);
+
+        // Process the sub-pool updates
+        let UpdateOutcome { promoted, discarded } = self.process_updates(updates);
+
+        // update the metrics after the update
+        self.update_size_metrics();
+
+        BatchSealedOutcome { batch_digest: batch_info.digest, sealed: promoted, discarded }
     }
 }
 
@@ -709,6 +752,22 @@ impl<T: PoolTransaction> AllTransactions<T> {
         self.last_seen_block_number = last_seen_block_number;
         self.last_seen_block_hash = last_seen_block_hash;
         self.pending_basefee = pending_basefee;
+    }
+
+    /// Updates the pool after a batch is sealed by CL worker.
+    pub(crate) fn update_from_sealed_batch(
+        &mut self,
+        batch_info: &BatchInfo,
+    ) -> Vec<PoolUpdate> {
+        let mut updates = Vec::new();
+
+        for id in batch_info.transactions.iter() {
+            let tx = self.txs.get_mut(&id).expect("tx exists in set");
+            tx.state.insert(TxState::SEALED_IN_BATCH);
+            Self::record_subpool_update(&mut updates, tx);
+        }
+
+        updates
     }
 
     /// Rechecks all transactions in the pool against the changes.
@@ -1359,6 +1418,9 @@ impl SenderInfo {
 
 #[cfg(test)]
 mod tests {
+    use fastcrypto::hash::Hash;
+    use tn_types::consensus::Batch;
+
     use super::*;
     use crate::{
         test_utils::{MockOrdering, MockTransaction, MockTransactionFactory},
@@ -1663,5 +1725,33 @@ mod tests {
         assert_eq!(pool.basefee_pool.len(), 1);
 
         assert_eq!(pool.all_transactions.txs.get(&id).unwrap().subpool, SubPool::BaseFee)
+    }
+
+    #[test]
+    fn update_subpools_after_sealed_batch() {
+        let mut f = MockTransactionFactory::default();
+        let mut pool = TxPool::new(MockOrdering::default(), MockOrdering::default(), Default::default());
+
+        let tx = MockTransaction::eip1559().inc_price_by(10);
+        let validated = f.validated(tx.clone());
+        let id = *validated.id();
+        pool.add_transaction(validated.clone(), U256::from(1_000), 0).unwrap();
+
+        assert_eq!(pool.pending_pool.len(), 1);
+        let batch = Batch::new(vec![vec![0]]);
+        let digest = batch.digest();
+
+        let batch_info = BatchInfo {
+            digest,
+            transactions: vec![id.clone()]
+        };
+
+        pool.on_batch_sealed(batch_info);
+
+        assert!(pool.pending_pool.is_empty());
+        assert_eq!(pool.sealed_pool.len(), 1);
+
+        assert_eq!(pool.all_transactions.txs.get(&id).unwrap().subpool, SubPool::Sealed)
+
     }
 }

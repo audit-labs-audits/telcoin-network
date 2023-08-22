@@ -105,6 +105,9 @@ async fn test_rounds_errors() {
 
     let consensus_metrics = Arc::new(ConsensusMetrics::new(&Registry::new()));
 
+    // channel for proposer and EL
+    let (el_sender, _el_receiver) = tokio::sync::mpsc::channel(1);
+
     Primary::spawn(
         author.authority().clone(),
         keypair.copy(),
@@ -134,6 +137,7 @@ async fn test_rounds_errors() {
         &mut tx_shutdown,
         tx_feedback,
         &Registry::new(),
+        el_sender,
     );
 
     // AND Wait for tasks to start
@@ -199,6 +203,9 @@ async fn test_rounds_return_successful_response() {
         DagHandle::new(&committee, rx_new_certificates, consensus_metrics, tx_shutdown.subscribe()).1,
     );
 
+    // channel for proposer and EL
+    let (el_sender, _el_receiver) = tokio::sync::mpsc::channel(1);
+
     Primary::spawn(
         author.authority().clone(),
         keypair.copy(),
@@ -219,6 +226,7 @@ async fn test_rounds_return_successful_response() {
         &mut tx_shutdown,
         tx_feedback,
         &Registry::new(),
+        el_sender,
     );
 
     // AND Wait for tasks to start
@@ -329,6 +337,9 @@ async fn test_node_read_causal_signed_certificates() {
     let keypair_1 = authority_1.keypair().copy();
     let public_key_1 = authority_1.public_key();
 
+    // channel for proposer and EL
+    let (el_sender, _el_receiver) = tokio::sync::mpsc::channel(1);
+
     // Spawn Primary 1 that we will be interacting with.
     Primary::spawn(
         authority_1.authority().clone(),
@@ -350,6 +361,7 @@ async fn test_node_read_causal_signed_certificates() {
         &mut tx_shutdown,
         tx_feedback,
         &Registry::new(),
+        el_sender
     );
 
     let (tx_new_certificates_2, rx_new_certificates_2) =
@@ -366,6 +378,9 @@ async fn test_node_read_causal_signed_certificates() {
     };
     let keypair_2 = authority_2.keypair().copy();
     let consensus_metrics_2 = Arc::new(ConsensusMetrics::new(&Registry::new()));
+
+    // channel for proposer and EL
+    let (el_sender, _el_receiver) = tokio::sync::mpsc::channel(1);
 
     // Spawn Primary 2
     Primary::spawn(
@@ -397,6 +412,7 @@ async fn test_node_read_causal_signed_certificates() {
         &mut tx_shutdown_2,
         tx_feedback_2,
         &Registry::new(),
+        el_sender,
     );
 
     // Wait for tasks to start

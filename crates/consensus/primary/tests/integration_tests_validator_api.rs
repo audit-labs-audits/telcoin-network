@@ -100,6 +100,9 @@ async fn test_get_collections() {
     let mut tx_shutdown = PreSubscribedBroadcastSender::new(NUM_SHUTDOWN_RECEIVERS);
     let consensus_metrics = Arc::new(ConsensusMetrics::new(&Registry::new()));
 
+    // channel for proposer and EL
+    let (el_sender, _el_receiver) = tokio::sync::mpsc::channel(1);
+
     Primary::spawn(
         author.authority().clone(),
         signer.copy(),
@@ -123,6 +126,7 @@ async fn test_get_collections() {
         &mut tx_shutdown,
         tx_feedback,
         &Registry::new(),
+        el_sender,
     );
 
     let registry = Registry::new();
@@ -142,6 +146,7 @@ async fn test_get_collections() {
         store.batch_store.clone(),
         metrics,
         &mut tx_shutdown_worker,
+        None,
     );
 
     // Wait for tasks to start
@@ -293,6 +298,9 @@ async fn test_remove_collections() {
     let (_tx_consensus_round_updates, rx_consensus_round_updates) =
         watch::channel(ConsensusRound::default());
 
+    // channel for proposer and EL
+    let (el_sender, _el_receiver) = tokio::sync::mpsc::channel(1);
+
     Primary::spawn(
         author.authority().clone(),
         signer.copy(),
@@ -313,6 +321,7 @@ async fn test_remove_collections() {
         &mut tx_shutdown,
         tx_feedback,
         &Registry::new(),
+        el_sender,
     );
 
     // Wait for tasks to start
@@ -357,6 +366,7 @@ async fn test_remove_collections() {
         store.batch_store.clone(),
         metrics,
         &mut tx_shutdown_worker,
+        None,
     );
 
     // Test remove no collections
@@ -502,6 +512,9 @@ async fn test_read_causal_signed_certificates() {
     };
     let keypair_1 = authority_1.keypair().copy();
 
+    // channel for proposer and EL
+    let (el_sender, _el_receiver) = tokio::sync::mpsc::channel(1);
+
     // Spawn Primary 1 that we will be interacting with.
     Primary::spawn(
         authority_1.authority().clone(),
@@ -523,6 +536,7 @@ async fn test_read_causal_signed_certificates() {
         &mut tx_shutdown,
         tx_feedback,
         &Registry::new(),
+        el_sender,
     );
 
     let (tx_new_certificates_2, rx_new_certificates_2) =
@@ -540,6 +554,9 @@ async fn test_read_causal_signed_certificates() {
     };
     let keypair_2 = authority_2.keypair().copy();
     let consensus_metrics_2 = Arc::new(ConsensusMetrics::new(&Registry::new()));
+
+    // channel for proposer and EL
+    let (el_sender_2, _el_receiver2) = tokio::sync::mpsc::channel(1);
 
     // Spawn Primary 2
     Primary::spawn(
@@ -571,6 +588,7 @@ async fn test_read_causal_signed_certificates() {
         &mut tx_shutdown_2,
         tx_feedback_2,
         &Registry::new(),
+        el_sender_2,
     );
 
     // Wait for tasks to start
@@ -703,6 +721,9 @@ async fn test_read_causal_unsigned_certificates() {
     let (_tx_consensus_round_updates, rx_consensus_round_updates) =
         watch::channel(ConsensusRound::default());
 
+    // channel for proposer and EL
+    let (el_sender, _el_receiver) = tokio::sync::mpsc::channel(1);
+
     // Spawn Primary 1 that we will be interacting with.
     Primary::spawn(
         authority_1.authority().clone(),
@@ -724,6 +745,7 @@ async fn test_read_causal_unsigned_certificates() {
         &mut tx_shutdown,
         tx_feedback,
         &Registry::new(),
+        el_sender,
     );
 
     let (tx_new_certificates_2, rx_new_certificates_2) =
@@ -735,6 +757,9 @@ async fn test_read_causal_unsigned_certificates() {
 
     let mut tx_shutdown_2 = PreSubscribedBroadcastSender::new(NUM_SHUTDOWN_RECEIVERS);
     let consensus_metrics_2 = Arc::new(ConsensusMetrics::new(&Registry::new()));
+
+    // channel for proposer and EL
+    let (el_sender_2, _el_receiver_2) = tokio::sync::mpsc::channel(1);
 
     // Spawn Primary 2
     Primary::spawn(
@@ -766,6 +791,7 @@ async fn test_read_causal_unsigned_certificates() {
         &mut tx_shutdown_2,
         tx_feedback_2,
         &Registry::new(),
+        el_sender_2,
     );
 
     // Wait for tasks to start
@@ -835,7 +861,7 @@ async fn test_read_causal_unsigned_certificates() {
 /// * Primary 1 be able to fetch the payload for certificates 1 & 2
 // TODO: deflake and re-enable this test.
 #[tokio::test(flavor = "current_thread", start_paused = true)]
-#[ignore = "flaky"]
+// #[ignore = "flaky"]
 async fn test_get_collections_with_missing_certificates() {
     telemetry_subscribers::init_for_testing();
 
@@ -913,6 +939,9 @@ async fn test_get_collections_with_missing_certificates() {
     let mut tx_shutdown = PreSubscribedBroadcastSender::new(NUM_SHUTDOWN_RECEIVERS);
     let consensus_metrics = Arc::new(ConsensusMetrics::new(&Registry::new()));
 
+    // channel for proposer and EL
+    let (el_sender, _el_receiver) = tokio::sync::mpsc::channel(1);
+
     Primary::spawn(
         authority_1.authority().clone(),
         authority_1.keypair().copy(),
@@ -937,6 +966,7 @@ async fn test_get_collections_with_missing_certificates() {
         &mut tx_shutdown,
         tx_feedback_1,
         &Registry::new(),
+        el_sender,
     );
 
     let registry_1 = Registry::new();
@@ -956,6 +986,7 @@ async fn test_get_collections_with_missing_certificates() {
         store_primary_1.batch_store,
         metrics_1,
         &mut tx_shutdown_worker_1,
+        None,
     );
 
     // Spawn the primary 2 - a peer to fetch missing certificates from
@@ -980,6 +1011,9 @@ async fn test_get_collections_with_missing_certificates() {
         ..Parameters::default()
     };
 
+    // channel for proposer and EL
+    let (el_sender_2, _el_receiver_2) = tokio::sync::mpsc::channel(1);
+
     Primary::spawn(
         authority_2.authority().clone(),
         authority_2.keypair().copy(),
@@ -1001,6 +1035,7 @@ async fn test_get_collections_with_missing_certificates() {
         &mut tx_shutdown_2,
         tx_feedback_2,
         &Registry::new(),
+        el_sender_2,
     );
 
     let registry_2 = Registry::new();
@@ -1020,6 +1055,7 @@ async fn test_get_collections_with_missing_certificates() {
         store_primary_2.batch_store,
         metrics_2,
         &mut tx_shutdown_worker_2,
+        None,
     );
 
     // Wait for tasks to start

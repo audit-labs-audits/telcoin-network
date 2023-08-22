@@ -31,7 +31,7 @@ tn-types.workspace = true
 lattice-typed-store.workspace = true
 consensus-network.workspace = true
 consensus-metrics.workspace = true
-#
+lattice-payload-builder.workspace = true
 
 anemo.workspace = true
 anemo-tower.workspace = true

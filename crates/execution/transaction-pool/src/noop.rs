@@ -7,7 +7,7 @@ use crate::{
     error::PoolError, AllPoolTransactions, AllTransactionsEvents, BestTransactions, BlockInfo,
     NewTransactionEvent, PoolResult, PoolSize, PoolTransaction, PooledTransaction,
     PropagatedTransactions, TransactionEvents, TransactionOrigin, TransactionPool,
-    TransactionValidationOutcome, TransactionValidator, ValidPoolTransaction,
+    TransactionValidationOutcome, TransactionValidator, ValidPoolTransaction, BatchInfo,
 };
 use std::{marker::PhantomData, sync::Arc};
 use tn_types::execution::{Address, TxHash};
@@ -168,6 +168,10 @@ impl TransactionPool for NoopTransactionPool {
         _sender: Address,
     ) -> Vec<Arc<ValidPoolTransaction<Self::Transaction>>> {
         vec![]
+    }
+
+    fn on_sealed_batch(&self, _batch_info: BatchInfo) {
+        println!("on_sealed_batch called")
     }
 }
 

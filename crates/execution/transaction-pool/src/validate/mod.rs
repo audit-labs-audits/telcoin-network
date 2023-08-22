@@ -194,7 +194,7 @@ impl<T: PoolTransaction> ValidPoolTransaction<T> {
     }
 
     /// The heap allocated size of this transaction.
-    pub(crate) fn size(&self) -> usize {
+    pub fn size(&self) -> usize {
         self.transaction.size()
     }
 }

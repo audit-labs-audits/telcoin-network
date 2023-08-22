@@ -21,7 +21,8 @@ use tokio::{
     task::JoinHandle,
     time::{sleep, Duration, Instant},
 };
-use tracing::{error, warn};
+use tracing::{error, warn, debug};
+use lattice_payload_builder::batch::{BatchBuilderHandle, generator::BuiltBatch};
 
 #[cfg(feature = "trace_transaction")]
 use byteorder::{BigEndian, ReadBytesExt};
@@ -39,10 +40,8 @@ pub mod batch_maker_tests;
 pub struct BatchMaker {
     // Our worker's id.
     id: WorkerId,
-
-    //
-    // TODO: set max batch gas limit
     /// The preferred batch size (in bytes).
+    /// TODO: this is only used by the EL for building the batch.
     batch_size_limit: usize,
     /// The maximum delay after which to seal the batch.
     max_batch_delay: Duration,
@@ -61,6 +60,8 @@ pub struct BatchMaker {
     client: NetworkClient,
     /// The batch store to store our own batches.
     store: DBMap<BatchDigest, Batch>,
+    /// Handle to send requests to the batch builder service.
+    batch_builder: Option<BatchBuilderHandle>,
 }
 
 impl BatchMaker {
@@ -75,6 +76,7 @@ impl BatchMaker {
         node_metrics: Arc<WorkerMetrics>,
         client: NetworkClient,
         store: DBMap<BatchDigest, Batch>,
+        batch_builder: Option<BatchBuilderHandle>,
     ) -> JoinHandle<()> {
         spawn_logged_monitored_task!(
             async move {
@@ -89,6 +91,7 @@ impl BatchMaker {
                     node_metrics,
                     client,
                     store,
+                    batch_builder
                 }
                 .run()
                 .await;
@@ -98,15 +101,19 @@ impl BatchMaker {
     }
 
     /// Main loop receiving incoming transactions and creating batches.
+    /// 
+    /// TODO: this should be cleaned up
     async fn run(&mut self) {
         let timer = sleep(self.max_batch_delay);
         tokio::pin!(timer);
 
-        let mut current_batch = Batch::new(vec![]);
+        // let mut current_batch = Batch::new(vec![]);
+        // let mut current_batch_size = 0;
+        
         let mut current_responses = Vec::new();
-        let mut current_batch_size = 0;
-
         let mut batch_pipeline = FuturesUnordered::new();
+
+        // send the initial request to the EL for next batch
 
         loop {
             tokio::select! {
@@ -114,42 +121,78 @@ impl BatchMaker {
                 // Note that transactions are only consumed when the number of batches
                 // 'in-flight' are below a certain number (MAX_PARALLEL_BATCH). This
                 // condition will be met eventually if the store and network are functioning.
-                Some((transaction, response_sender)) = self.rx_batch_maker.recv(), if batch_pipeline.len() < MAX_PARALLEL_BATCH => {
-                    let _scope = monitored_scope("BatchMaker::recv");
-                    current_batch_size += transaction.len();
-                    current_batch.transactions_mut().push(transaction);
-                    current_responses.push(response_sender);
-                    if current_batch_size >= self.batch_size_limit {
-                        if let Some(seal) = self.seal(false, current_batch, current_batch_size, current_responses).await{
-                            batch_pipeline.push(seal);
-                        }
-                        self.node_metrics.parallel_worker_batches.set(batch_pipeline.len() as i64);
+                Some((tx, reply)) = self.rx_batch_maker.recv(), if batch_pipeline.len() < MAX_PARALLEL_BATCH => {
+                    // send ack for tests
+                    let _ = reply.send(BatchDigest::default());
+                    warn!("batch maker channel received unexpected transaction: {tx:?}");
+                    return
 
-                        current_batch = Batch::new(vec![]);
-                        current_responses = Vec::new();
-                        current_batch_size = 0;
+                    // let _scope = monitored_scope("BatchMaker::recv");
+                    // current_batch_size += transaction.len();
+                    // current_batch.transactions_mut().push(transaction);
+                    // current_responses.push(response_sender);
+                    // if current_batch_size >= self.batch_size_limit {
+                    //     if let Some(seal) = self.seal(false, current_batch, current_batch_size, current_responses).await{
+                    //         batch_pipeline.push(seal);
+                    //     }
+                    //     self.node_metrics.parallel_worker_batches.set(batch_pipeline.len() as i64);
 
-                        timer.as_mut().reset(Instant::now() + self.max_batch_delay);
-                        self.batch_start_timestamp = Instant::now();
+                    //     current_batch = Batch::new(vec![]);
+                    //     current_responses = Vec::new();
+                    //     current_batch_size = 0;
 
-                        // Yield once per size threshold to allow other tasks to run.
-                        tokio::task::yield_now().await;
-                    }
+                    //     timer.as_mut().reset(Instant::now() + self.max_batch_delay);
+                    //     self.batch_start_timestamp = Instant::now();
+
+                    //     // Yield once per size threshold to allow other tasks to run.
+                    //     tokio::task::yield_now().await;
+                    // }
                 },
 
                 // If the timer triggers, seal the batch even if it contains few transactions.
                 () = &mut timer => {
                     let _scope = monitored_scope("BatchMaker::timer");
-                    if !current_batch.transactions().is_empty() {
-                        if let Some(seal) = self.seal(true, current_batch, current_batch_size, current_responses).await {
-                            batch_pipeline.push(seal);
-                        }
-                        self.node_metrics.parallel_worker_batches.set(batch_pipeline.len() as i64);
+                    // wait until the timer goes off, then request the next batch
+                    //
+                    // clone the handle here so it stays with `self`, even on err ahead
+                    //
+                    // best case: this prevents losing the handle,
+                    // worse case: we clone `None`
+                    if let Some(handle) = self.batch_builder.clone().take() {
+                        // let batch_result = handle.new_batch().await;
 
-                        current_batch = Batch::new(vec![]);
-                        current_responses = Vec::new();
-                        current_batch_size = 0;
+                        // // return early if error
+                        // if batch_result.is_err() {
+                        //     error!("Failed to create batch.");
+                        //     return
+                        // }
+
+                        // let batch = Batch::new(batch_result.expect("batch is not error").get_batch().to_owned());
+
+                        // // seal the batch if transactions present
+                        // if !batch.transactions().is_empty() {
+                        //     if let Some(seal) = self.seal(true, batch, current_batch_size, current_responses).await {
+                        //         batch_pipeline.push(seal);
+                        //     }
+    
+                        //     self.node_metrics.parallel_worker_batches.set(batch_pipeline.len() as i64);
+    
+                        //     // current_batch = Batch::new(vec![]);
+                        //     current_responses = Vec::new();
+                        //     current_batch_size = 0;
+                        // }
+
+                        // Note: the execution layer returns an error if the batch is empty
+                        if let Ok(batch) = handle.new_batch().await {
+                            if let Some(seal) = self.seal(batch, current_responses, handle).await {
+                                batch_pipeline.push(seal);
+                            }
+                            self.node_metrics.parallel_worker_batches.set(batch_pipeline.len() as i64);
+                            current_responses = Vec::new();
+                            // current_batch_size = 0;
+                        }
                     }
+
                     timer.as_mut().reset(Instant::now() + self.max_batch_delay);
                     self.batch_start_timestamp = Instant::now();
                 }
@@ -170,12 +213,13 @@ impl BatchMaker {
     }
 
     /// Seal and broadcast the current batch.
+    /// 
+    /// TODO: should this be a part of the batch builder's job in EL?
     async fn seal<'a>(
         &self,
-        timeout: bool,
-        mut batch: Batch,
-        size: usize,
+        batch_payload: Arc<BuiltBatch>,
         responses: Vec<TxResponse>,
+        handle: BatchBuilderHandle,
     ) -> Option<BoxFuture<'a, ()>> {
         #[cfg(feature = "benchmark")]
         {
@@ -223,9 +267,14 @@ impl BatchMaker {
             tracing::info!("Batch {:?} contains {} B", digest, size);
         }
 
-        let reason = if timeout { "timeout" } else { "size_reached" };
+        let reason = batch_payload.reason().into();
+        tracing::debug!("\n\nBatch Maker Reason: {reason:?}\n\n");
 
-        self.node_metrics.created_batch_size.with_label_values(&[reason]).observe(size as f64);
+        // create the batch for the worker
+        let mut batch = Batch::new(batch_payload.get_batch().clone());
+
+        // TODO: get batch size and gas used metrics from BuiltBatch
+        self.node_metrics.created_batch_size.with_label_values(&[reason]).observe(batch.size() as f64);
 
         // Send the batch through the deliver channel for further processing.
         let (notify_done, done_sending) = tokio::sync::oneshot::channel();
@@ -287,6 +336,12 @@ impl BatchMaker {
                 // batch will eventually be sent.
                 // The transaction submitter will see the error and retry.
                 return
+            }
+
+            // only report to EL once CL guarantees to retry the batch
+            match handle.batch_sealed(batch_payload, digest).await {
+                Ok(_) => (),
+                Err(e) => error!("Batch sealed method failed: {e:?}"),
             }
 
             // We now signal back to the transaction sender that the transaction is in a

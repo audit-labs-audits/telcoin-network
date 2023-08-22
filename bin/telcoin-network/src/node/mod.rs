@@ -295,7 +295,8 @@ impl Command {
         let pipeline_events = pipeline.events();
 
         // Configure the consensus engine
-        let (consensus_engine, engine_handle) = LatticeConsensusEngine::with_channel(
+        // let (consensus_engine, engine_handle) = LatticeConsensusEngine::with_channel(
+        let (consensus_engine, engine_handle) = execution_beacon_consensus::BeaconConsensusEngine::with_channel(
             network_client,
             pipeline,
             blockchain_db.clone(),
@@ -314,47 +315,47 @@ impl Command {
         let head = self.lookup_head(Arc::clone(&db))?;
 
         // log events from the node
-        let events = stream_select!(
-            // network.event_listener().map(Into::into),
-            engine_handle.event_listener().map(Into::into),
-            pipeline_events.map(Into::into),
-            ConsensusLayerHealthEvents::new(Box::new(blockchain_db.clone())).map(Into::into),
-        );
+        // let events = stream_select!(
+        //     // network.event_listener().map(Into::into),
+        //     engine_handle.event_listener().map(Into::into),
+        //     pipeline_events.map(Into::into),
+        //     ConsensusLayerHealthEvents::new(Box::new(blockchain_db.clone())).map(Into::into),
+        // );
 
-        cli_ctx
-            .task_executor
-            .spawn_critical("events task", events::handle_events(None, Some(head.number), events));
+        // cli_ctx
+        //     .task_executor
+        //     .spawn_critical("events task", events::handle_events(None, Some(head.number), events));
 
         // //
         // // TODO: engine api may not be necessary when running everything locally
         // // consensus_engine_tx/consensus_engine_rx for NWBSEngine struct
         // //
         // // but rpc expects this
-        // let engine_api = EngineApi::new(
-        //     blockchain_db.clone(),
-        //     chain.clone(),
-        //     beacon_engine_handle,
-        //     payload_builder.into(),
-        // );
-        // info!(target: "tn::cli", "Engine API handler initialized");
+        let engine_api = EngineApi::new(
+            blockchain_db.clone(),
+            self.chain.clone(),
+            engine_handle,
+            payload_builder.into(),
+        );
+        info!(target: "tn::cli", "Engine API handler initialized");
 
-        // // extract the jwt secret from the args if possible
-        // let default_jwt_path = data_dir.jwt_path();
-        // let jwt_secret = self.rpc.jwt_secret(default_jwt_path)?;
+        // extract the jwt secret from the args if possible
+        let default_jwt_path = data_dir.jwt_path();
+        let jwt_secret = self.rpc.jwt_secret(default_jwt_path)?;
 
-        // // Start RPC servers
-        // let (_rpc_server, _auth_server) = self
-        //     .rpc
-        //     .start_servers(
-        //         blockchain_db.clone(),
-        //         transaction_pool.clone(),
-        //         network,
-        //         cli_ctx.task_executor.clone(),
-        //         blockchain_tree,
-        //         engine_api,
-        //         jwt_secret,
-        //     )
-        //     .await?;
+        // Start RPC servers
+        let (_rpc_server, _auth_server) = self
+            .rpc
+            .start_servers(
+                blockchain_db.clone(),
+                transaction_pool.clone(),
+                network,
+                cli_ctx.task_executor.clone(),
+                blockchain_tree,
+                engine_api,
+                jwt_secret,
+            )
+            .await?;
 
         // // Run consensus engine to completion
         // let (tx, rx) = oneshot::channel();
@@ -380,6 +381,8 @@ impl Command {
 
 
 
+        let forever = futures::future::pending::<()>();
+        let _ = forever.await;
         Ok(())
     }
 

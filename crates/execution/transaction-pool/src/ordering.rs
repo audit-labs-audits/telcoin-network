@@ -24,7 +24,7 @@ pub trait TransactionOrdering: Send + Sync + 'static {
 ///
 /// The transactions are ordered by their gas cost. The higher the gas cost,
 /// the higher the priority of this transaction is.
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 #[non_exhaustive]
 pub struct GasCostOrdering<T>(PhantomData<T>);
 
