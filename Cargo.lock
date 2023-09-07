@@ -5430,6 +5430,7 @@ dependencies = [
 name = "lattice-payload-builder"
 version = "0.1.0"
 dependencies = [
+ "anemo",
  "execution-interfaces",
  "execution-metrics",
  "execution-payload-builder",
@@ -5439,9 +5440,14 @@ dependencies = [
  "execution-rlp",
  "execution-tasks",
  "execution-transaction-pool",
+ "fastcrypto",
  "futures-core",
  "futures-util",
+ "indexmap 1.9.3",
+ "lattice-network",
+ "lattice-test-utils",
  "rand 0.8.5",
+ "rayon",
  "revm",
  "strum",
  "telcoin-network",
@@ -5496,6 +5502,7 @@ dependencies = [
  "tempfile",
  "thiserror",
  "tn-macros",
+ "tn-tracing",
  "tn-types",
  "tokio",
  "tonic 0.8.3",

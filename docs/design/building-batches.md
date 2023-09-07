@@ -80,7 +80,7 @@ The worker's `batch_maker` starts a timer before requesting a new batch. After t
     - sealing the block includes storing it in the database
 - Once the block is sealed, the `batch_maker` sends a new command to the `BatchBuilderHandle`
     - Command to service triggers the generator to update the transaction pool
-        - Pending transactions are "promoted" based on `TransactionId` vector in the `BuiltBatch`
+        - Pending transactions are "promoted" based on `TransactionId` vector in the `BatchPayload`
             - Transactions are moved to the `SealedPool`
     - This can fail, but probably should not
         - worse case scenario is updating the pending pool fails and the next batch includes duplicate transactions from the previous batch

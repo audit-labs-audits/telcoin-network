@@ -11,8 +11,8 @@ use execution_tasks::{TokioTaskExecutor, TaskSpawner};
 use execution_transaction_pool::{EthTransactionValidator, TransactionPool, TransactionOrigin, TransactionEvent};
 use futures::StreamExt;
 use lattice_node::worker_node::WorkerNodes;
-use lattice_payload_builder::batch::{generator::{BatchPayloadJobGenerator, BatchPayloadJobGeneratorConfig}, BatchBuilderService};
-use lattice_test_utils::{CommitteeFixture, temp_dir, WorkerToWorkerMockServer};
+use lattice_payload_builder::{LatticePayloadJobGenerator, LatticePayloadJobGeneratorConfig, LatticePayloadBuilderService};
+use lattice_test_utils::{CommitteeFixture, temp_dir, WorkerToWorkerMockServer, test_network};
 use lattice_worker::TrivialTransactionValidator;
 use telcoin_network::{dirs::{MaybePlatformPath, DataDirPath}, args::utils::genesis_value_parser, init::init_genesis};
 use lattice_storage::NodeStorage;
@@ -28,7 +28,6 @@ use lattice_typed_store::traits::Map;
 use fastcrypto::hash::Hash;
 mod common;
 use crate::common::{tx_signed_from_raw, pool_transaction_from_raw, bob_raw_tx1, bob_raw_tx3, bob_raw_tx2};
-
 
 // TODO: this is a good test for simulating consensus in next PR
 // //=== Consensus Layer
@@ -137,20 +136,6 @@ async fn test_single_worker_requests_next_batch() -> eyre::Result<(), eyre::Erro
     let mut tx3_events = transaction_pool.add_transaction_and_subscribe(TransactionOrigin::Local, tx_3).await?;
     assert_eq!(transaction_pool.pending_transactions().len(), 3);
 
-    let batch_generator = BatchPayloadJobGenerator::new(
-        blockchain_db.clone(),
-        transaction_pool.clone(),
-        task_executor.clone(),
-        BatchPayloadJobGeneratorConfig::default(),
-        Arc::clone(&chain),
-    );
-
-    let (batch_builder_service, batch_builder_handle) = BatchBuilderService::new(batch_generator);
-    // TODO: why do I have to Box::pin() the payload service here,
-    // when the `PayloadBuilderService` in the cli doesn't?
-    task_executor.spawn_critical("batch-builder-service", Box::pin(batch_builder_service));
-
-
     //=== Consensus Layer for requesting the next batch
     // GIVEN
     // - one primary
@@ -163,13 +148,25 @@ async fn test_single_worker_requests_next_batch() -> eyre::Result<(), eyre::Erro
         .build();
     let committee = fixture.committee();
     let worker_cache = fixture.worker_cache();
-
     let authority = fixture.authorities().next().unwrap();
     let key_pair = authority.keypair();
-    let network_key_pair = authority.network_keypair();
-    let client = NetworkClient::new_from_keypair(&network_key_pair);
-
     let store = NodeStorage::reopen(temp_dir(), None);
+    let network_client = NetworkClient::new_from_keypair(&authority.network_keypair(), &authority.engine_network_keypair().public());
+
+    let batch_generator = LatticePayloadJobGenerator::new(
+        blockchain_db.clone(),
+        transaction_pool.clone(),
+        task_executor.clone(),
+        LatticePayloadJobGeneratorConfig::default(),
+        Arc::clone(&chain),
+        network_client.clone(),
+    );
+
+    let (batch_builder_service, batch_builder_handle) = LatticePayloadBuilderService::new(batch_generator);
+    // TODO: why do I have to Box::pin() the payload service here,
+    // when the `PayloadBuilderService` in the cli doesn't?
+    task_executor.spawn_critical("batch-builder-service", Box::pin(batch_builder_service));
+
 
     // let (tx_confirmation, _rx_confirmation) = channel(10);
     // let execution_state = Arc::new(SimpleExecutionState::new(tx_confirmation));
@@ -205,24 +202,6 @@ async fn test_single_worker_requests_next_batch() -> eyre::Result<(), eyre::Erro
     // AND
     let worker_id = 0;
     let workers = WorkerNodes::new(registry_service, parameters.clone());
-
-    // TODO: update this method to take a Vec<Option<BatchBuilderHandle>>
-    // - right now, I think it's passing the same `Sender` to every worker
-    workers
-        .start(
-            key_pair.public().clone(),
-            vec![(worker_id, authority.worker(worker_id).keypair().copy())],
-            committee,
-            worker_cache,
-            client.clone(),
-            &store,
-            TrivialTransactionValidator::default(),
-            Some(batch_builder_handle),
-        )
-        .await
-        .unwrap();
-
-    // doesn't work
     let (tx_await_batch, mut rx_await_batch) = lattice_test_utils::test_channel!(1000);
     let mut mock_primary_server = MockWorkerToPrimary::new();
     mock_primary_server
@@ -237,7 +216,25 @@ async fn test_single_worker_requests_next_batch() -> eyre::Result<(), eyre::Erro
             tx_await_batch.try_send(()).unwrap();
             Ok(anemo::Response::new(()))
         });
-    client.set_worker_to_primary_local_handler(Arc::new(mock_primary_server));
+    network_client.set_worker_to_primary_local_handler(Arc::new(mock_primary_server));
+
+    // TODO: update this method to take a Vec<Option<BatchBuilderHandle>>
+    // - right now, I think it's passing the same `Sender` to every worker
+    workers
+        .start(
+            key_pair.public().clone(),
+            vec![(worker_id, authority.worker(worker_id).keypair().copy())],
+            committee,
+            worker_cache,
+            network_client.clone(),
+            &store,
+            TrivialTransactionValidator::default(),
+            Some(batch_builder_handle),
+        )
+        .await
+        .unwrap();
+
+    // let network = test_network(&authority.keypair(), &authority.info());
 
     // spawn enough receivers to acknowledge the proposed batch
     let mut listener_handles = Vec::new();

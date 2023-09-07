@@ -12,7 +12,7 @@ use fastcrypto::{
     traits::KeyPair as _,
 };
 use indexmap::IndexMap;
-use lattice_payload_builder::batch::{generator::BuiltBatch, BatchBuilderError};
+use lattice_payload_builder::{BatchPayload, LatticePayloadBuilderError, LatticePayloadBuilderHandle, LatticePayloadBuilderServiceCommand};
 use lattice_typed_store::rocks::{DBMap, MetricConf, ReadWriteOptions};
 use rand::{
     distributions::{Bernoulli, Distribution},
@@ -20,6 +20,7 @@ use rand::{
     thread_rng, Rng, RngCore, SeedableRng,
 };
 use telemetry_subscribers::TelemetryGuards;
+use tokio::sync::mpsc::{Receiver, UnboundedReceiver};
 use std::{
     collections::{BTreeSet, VecDeque},
     ops::RangeInclusive, future::Future, pin::Pin, task::{Poll, Context},
@@ -172,10 +173,10 @@ pub fn batch() -> Batch {
 
 /// Built payload from the EL
 /// 
-/// Returns a BuiltBatch with known values.
-pub fn build_batch() -> Result<Arc<BuiltBatch>, BatchBuilderError> {
+/// Returns a BatchPayload with known values.
+pub fn build_batch() -> Result<Arc<BatchPayload>, LatticePayloadBuilderError> {
    Ok(Arc::new(
-        BuiltBatch::new(
+        BatchPayload::new(
             vec![known_transaction_1()],
             vec![
                 TransactionId {
@@ -192,7 +193,7 @@ pub fn build_batch() -> Result<Arc<BuiltBatch>, BatchBuilderError> {
 #[derive(Default, Clone)]
 pub struct MockBatchBuildJob;
 impl Future for MockBatchBuildJob {
-    type Output = Result<Arc<BuiltBatch>, BatchBuilderError>;
+    type Output = Result<Arc<BatchPayload>, LatticePayloadBuilderError>;
 
     fn poll(self: Pin<&mut Self>, _cx: &mut Context<'_>) -> Poll<Self::Output> {
         Poll::Ready(build_batch())
@@ -585,4 +586,11 @@ pub fn setup_tracing() -> TelemetryGuards {
         .with_log_level(&log_filter)
         .init()
         .0
+}
+
+/// Create a handle for a payload builder.
+pub fn payload_builder() -> (UnboundedReceiver<LatticePayloadBuilderServiceCommand>, LatticePayloadBuilderHandle) {
+    let (tx, rx) = tokio::sync::mpsc::unbounded_channel();
+    let handle = LatticePayloadBuilderHandle::new(tx);
+    (rx, handle)
 }

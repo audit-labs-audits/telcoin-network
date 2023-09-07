@@ -8,11 +8,11 @@
 
 use fastcrypto::traits::KeyPair;
 use consensus_metrics::RegistryService;
-use lattice_payload_builder::batch::BatchBuilderHandle;
+use lattice_payload_builder::LatticePayloadBuilderHandle;
 use tn_types::consensus::{Committee, Epoch, Parameters, WorkerCache, WorkerId, Header};
 use lattice_executor::ExecutionState;
 use lattice_network::client::NetworkClient;
-use tn_types::consensus::crypto::{AuthorityKeyPair, NetworkKeyPair};
+use tn_types::consensus::crypto::{AuthorityKeyPair, NetworkKeyPair, NetworkPublicKey};
 use crate::primary_node::PrimaryNode;
 use crate::worker_node::WorkerNodes;
 use crate::{CertificateStoreCacheMetrics, NodeStorage};
@@ -36,6 +36,8 @@ pub struct ManagerConfiguration {
     pub primary_keypair: AuthorityKeyPair,
     /// The network keypair.
     pub network_keypair: NetworkKeyPair,
+    /// The public network key for the execution layer.
+    pub engine_public_key: NetworkPublicKey,
     /// Each worker's id and the worker's network keypair
     pub worker_ids_and_keypairs: Vec<(WorkerId, NetworkKeyPair)>,
     /// The storage base path.
@@ -96,6 +98,8 @@ pub struct NarwhalManager {
     primary_keypair: AuthorityKeyPair,
     /// The node's network keypair.
     network_keypair: NetworkKeyPair,
+    /// The node's execution layer public key.
+    engine_public_key: NetworkPublicKey,
     /// Worker ids and their network keypairs.
     worker_ids_and_keypairs: Vec<(WorkerId, NetworkKeyPair)>,
     /// The instance of this node's Primary.
@@ -118,7 +122,6 @@ impl NarwhalManager {
         // Create the Narwhal Primary with configuration
         let primary_node = PrimaryNode::new(
             config.parameters.clone(),
-            true,
             config.registry_service.clone(),
         );
 
@@ -134,6 +137,7 @@ impl NarwhalManager {
             worker_nodes,
             primary_keypair: config.primary_keypair,
             network_keypair: config.network_keypair,
+            engine_public_key: config.engine_public_key,
             worker_ids_and_keypairs: config.worker_ids_and_keypairs,
             storage_base_path: config.storage_base_path,
             running: Mutex::new(Running::False),
@@ -158,8 +162,8 @@ impl NarwhalManager {
         worker_cache: WorkerCache,
         execution_state: Arc<State>,
         tx_validator: TxValidator,
-        tx_execute_header: mpsc::Sender<(Header, oneshot::Sender<()>)>,
-        batch_builder: Option<BatchBuilderHandle>,
+        engine_handle: Arc<LatticePayloadBuilderHandle>,
+        batch_builder: Option<LatticePayloadBuilderHandle>,
     ) where
         State: ExecutionState + Send + Sync + 'static,
     {
@@ -178,8 +182,11 @@ impl NarwhalManager {
         let store_path = self.get_store_path(committee.epoch());
         let store = NodeStorage::reopen(store_path, Some(self.store_cache_metrics.clone()));
 
+        // TODO: pass this in from method so engine, primary, and workers can have a copy
+        //
         // Create a new client.
-        let network_client = NetworkClient::new_from_keypair(&self.network_keypair);
+        let network_client = NetworkClient::new_from_keypair(&self.network_keypair, &self.engine_public_key);
+        network_client.set_primary_to_engine_local_handler(engine_handle);
 
         let name = self.primary_keypair.public().clone();
 
@@ -202,7 +209,6 @@ impl NarwhalManager {
                     network_client.clone(),
                     &store,
                     execution_state.clone(),
-                    tx_execute_header.clone(),
                 )
                 .await
             {
@@ -419,10 +425,14 @@ mod tests {
             let storage_base_path = temp_dir();
             let metrics = NarwhalManagerMetrics::new(&Registry::new());
 
+            // TODO: what is the best way to pass this?
+            let engine_public_key = authority.engine_network_keypair().public().to_owned();
+
             // create manager config
             let config = ManagerConfiguration {
                 primary_keypair: authority.keypair().copy(),
                 network_keypair: authority.network_keypair(),
+                engine_public_key,
                 worker_ids_and_keypairs: vec![(0, authority.network_keypair())],
                 storage_base_path,
                 parameters: Parameters {

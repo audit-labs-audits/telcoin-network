@@ -1,4 +1,5 @@
 use crate::consensus::{crypto, VersionedMetadata};
+use base64::{engine::general_purpose, Engine};
 use consensus_util_mem::MallocSizeOf;
 use enum_dispatch::enum_dispatch;
 use fastcrypto::hash::{Digest, Hash, HashFunction};
@@ -32,6 +33,12 @@ impl Batch {
         match self {
             Batch::V1(data) => data.size(),
         }
+    }
+}
+
+impl From<Vec<Vec<u8>>> for Batch {
+    fn from(value: Vec<Vec<u8>>) -> Self {
+        Batch::new(value)
     }
 }
 
@@ -135,13 +142,13 @@ pub struct BatchDigest(pub [u8; crypto::DIGEST_LENGTH]);
 
 impl fmt::Debug for BatchDigest {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> Result<(), fmt::Error> {
-        write!(f, "{}", base64::encode(self.0))
+        write!(f, "{}", general_purpose::STANDARD.encode(self.0))
     }
 }
 
 impl fmt::Display for BatchDigest {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> Result<(), fmt::Error> {
-        write!(f, "{}", base64::encode(self.0).get(0..16).ok_or(fmt::Error)?)
+        write!(f, "{}", general_purpose::STANDARD.encode(self.0).get(0..16).ok_or(fmt::Error)?)
     }
 }
 

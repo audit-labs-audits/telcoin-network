@@ -13,7 +13,7 @@ use lattice_test_utils::{temp_dir, CommitteeFixture};
 use lattice_worker::TrivialTransactionValidator;
 use prometheus::Registry;
 use std::{num::NonZeroUsize, sync::Arc, time::Duration};
-use tn_types::consensus::Parameters;
+use tn_types::consensus::{Parameters, MockPrimaryToEngine, HeaderPayloadResponse};
 use tokio::{sync::mpsc::channel, time::sleep};
 
 #[tokio::test]
@@ -33,7 +33,24 @@ async fn simple_primary_worker_node_start_stop() {
     let authority = fixture.authorities().next().unwrap();
     let key_pair = authority.keypair();
     let network_key_pair = authority.network_keypair();
-    let client = NetworkClient::new_from_keypair(&network_key_pair);
+    let client = NetworkClient::new_from_keypair(&network_key_pair, &authority.engine_network_keypair().public());
+
+    // mock engine header provider
+    let mut mock_engine = MockPrimaryToEngine::new();
+    mock_engine.expect_build_header().returning(
+        move |_request| {
+            tracing::debug!("mock engine expect_build_header: {_request:?}");
+            let header = tn_types::execution::Header::default();
+            Ok(
+                anemo::Response::new(
+                    HeaderPayloadResponse {
+                        sealed_header: header.seal_slow(),
+                    }
+                )
+            )
+        }
+    );
+    client.set_primary_to_engine_local_handler(Arc::new(mock_engine));
 
     let store = NodeStorage::reopen(temp_dir(), None);
 
@@ -41,10 +58,7 @@ async fn simple_primary_worker_node_start_stop() {
     let execution_state = Arc::new(SimpleExecutionState::new(tx_confirmation));
 
     // WHEN
-    let primary_node = PrimaryNode::new(parameters.clone(), true, registry_service.clone());
-
-    // channel for proposer and EL
-    let (el_sender, mut el_receiver) = tokio::sync::mpsc::channel(1);
+    let primary_node = PrimaryNode::new(parameters.clone(), registry_service.clone());
 
     primary_node
         .start(
@@ -55,7 +69,6 @@ async fn simple_primary_worker_node_start_stop() {
             client.clone(),
             &store,
             execution_state,
-            el_sender,
         )
         .await
         .unwrap();
@@ -97,10 +110,6 @@ async fn simple_primary_worker_node_start_stop() {
 
     assert_ne!(result, "");
 
-    // simulate el - clear channel before shutdown
-    let (_h, reply) = el_receiver.recv().await.expect("channel still open");
-    reply.send(()).expect("channel open");
-
     // AND
     primary_node.shutdown().await;
     workers.shutdown().await;
@@ -123,7 +132,23 @@ async fn primary_node_restart() {
     let authority = fixture.authorities().next().unwrap();
     let key_pair = authority.keypair();
     let network_key_pair = authority.network_keypair();
-    let client = NetworkClient::new_from_keypair(&network_key_pair);
+    let client = NetworkClient::new_from_keypair(&network_key_pair, &authority.engine_network_keypair().public());
+    // mock engine header provider
+    let mut mock_engine = MockPrimaryToEngine::new();
+    mock_engine.expect_build_header().returning(
+        move |_request| {
+            tracing::debug!("mock engine expect_build_header: {_request:?}");
+            let header = tn_types::execution::Header::default();
+            Ok(
+                anemo::Response::new(
+                    HeaderPayloadResponse {
+                        sealed_header: header.seal_slow(),
+                    }
+                )
+            )
+        }
+    );
+    client.set_primary_to_engine_local_handler(Arc::new(mock_engine));
 
     let store = NodeStorage::reopen(temp_dir(), None);
 
@@ -131,9 +156,7 @@ async fn primary_node_restart() {
     let execution_state = Arc::new(SimpleExecutionState::new(tx_confirmation));
 
     // AND
-    let primary_node = PrimaryNode::new(parameters.clone(), true, registry_service.clone());
-    // channel for proposer and EL
-    let (el_sender, mut el_receiver) = tokio::sync::mpsc::channel(1);
+    let primary_node = PrimaryNode::new(parameters.clone(), registry_service.clone());
 
     primary_node
         .start(
@@ -144,7 +167,6 @@ async fn primary_node_restart() {
             client.clone(),
             &store,
             execution_state.clone(),
-            el_sender.clone(),
         )
         .await
         .unwrap();
@@ -152,10 +174,6 @@ async fn primary_node_restart() {
     tokio::task::yield_now().await;
 
     sleep(Duration::from_secs(2)).await;
-
-    // simulate el - clear channel before shutdown
-    let (_h, reply) = el_receiver.recv().await.expect("channel still open");
-    reply.send(()).expect("channel open");
 
     // WHEN
     primary_node.shutdown().await;
@@ -170,7 +188,6 @@ async fn primary_node_restart() {
             client.clone(),
             &store,
             execution_state,
-            el_sender,
         )
         .await
         .unwrap();

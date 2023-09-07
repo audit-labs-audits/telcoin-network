@@ -1,6 +1,6 @@
 //! Transaction pool errors
 
-use tn_types::execution::{Address, InvalidTransactionError, TxHash};
+use tn_types::{execution::{Address, InvalidTransactionError, TxHash}, consensus::BatchDigest};
 
 /// Transaction pool result type.
 pub type PoolResult<T> = Result<T, PoolError>;
@@ -31,6 +31,10 @@ pub enum PoolError {
     /// error
     #[error("[{0:?}] {1:?}")]
     Other(TxHash, Box<dyn std::error::Error + Send + Sync>),
+
+    /// Batch missing from sealed pool during header builder job
+    #[error("Batch missing {0:?}")]
+    BatchMissing(BatchDigest),
 }
 
 // === impl PoolError ===
@@ -46,6 +50,9 @@ impl PoolError {
             PoolError::DiscardedOnInsert(hash) => hash,
             PoolError::InvalidTransaction(hash, _) => hash,
             PoolError::Other(hash, _) => hash,
+            // TODO: impl From<BatchDigest> for H256
+            // PoolError::BatchMissing(hash) => hash.into(),
+            PoolError::BatchMissing(hash) => todo!(),
         }
     }
 
@@ -98,6 +105,7 @@ impl PoolError {
                 // internal error unrelated to the transaction
                 false
             }
+            _ => false,
         }
     }
 }

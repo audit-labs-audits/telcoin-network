@@ -470,6 +470,8 @@ impl From<PoolError> for RpcPoolError {
             PoolError::InvalidTransaction(_, err) => err.into(),
             PoolError::Other(_, err) => RpcPoolError::Other(err),
             PoolError::AlreadyImported(_) => RpcPoolError::AlreadyKnown,
+            // TODO: handle pool errors
+            _ => RpcPoolError::AlreadyKnown
         }
     }
 }

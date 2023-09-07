@@ -14,18 +14,17 @@ use execution_tasks::{TaskSpawner, TokioTaskExecutor};
 use execution_transaction_pool::noop::NoopTransactionValidator;
 use execution_transaction_pool::{TransactionPool, Pool, TransactionOrigin};
 use execution_transaction_pool::test_utils::{testing_pool, MockTransaction, MockOrdering, TestPool};
+use lattice_network::client::NetworkClient;
+use lattice_payload_builder::{LatticePayloadBuilderService, LatticePayloadJobGenerator, LatticePayloadJobGeneratorConfig, LatticePayloadBuilderHandle};
 use rand::Rng;
 use telcoin_network::args::utils::genesis_value_parser;
+use tn_types::consensus::MockEngineToWorker;
 use tn_types::execution::{Address, U256};
 use tokio::sync::oneshot;
 use tracing::debug;
-use lattice_payload_builder::batch::BatchBuilderService;
-use lattice_payload_builder::batch::generator::BatchPayloadJobGenerator;
-use lattice_payload_builder::batch::generator::BatchPayloadJobGeneratorConfig;
-use lattice_payload_builder::batch::BatchBuilderHandle;
 
 /// Creates a new [BatchBuilderService] and spawns it in the background.
-pub async fn spawn_test_payload_service() -> BatchBuilderHandle {
+pub async fn spawn_test_payload_service() -> LatticePayloadBuilderHandle {
     let (service, handle) = test_batch_builder_service().await;
     tokio::spawn(service);
     handle
@@ -36,29 +35,28 @@ pub async fn spawn_test_payload_service() -> BatchBuilderHandle {
 /// Client: [MockEthProvider]
 /// Pool: type [TestPool](crates/execution/transaction-pool/src/test_utils/mod.rs)
 /// Tasks: [TokioTaskExecutor]
-type TestGenerator = BatchPayloadJobGenerator<MockEthProvider, Pool<NoopTransactionValidator<MockTransaction>, MockOrdering>, TokioTaskExecutor>;
+type TestGenerator = LatticePayloadJobGenerator<MockEthProvider, Pool<NoopTransactionValidator<MockTransaction>, MockOrdering>, TokioTaskExecutor, NetworkClient>;
 
 /// Creates a [BatchBuilderService] and [BatchBuilderHandle]
-pub async fn test_batch_builder_service() -> (BatchBuilderService<TestGenerator>, BatchBuilderHandle)
+pub async fn test_batch_builder_service() -> (LatticePayloadBuilderService<TestGenerator>, LatticePayloadBuilderHandle)
 {
     let senders = vec![Address::from_low_u64_be(3), Address::from_low_u64_be(33), Address::from_low_u64_be(333)];
     // let client = MockEthProvider::default();
     let client = mock_lattice_provider(senders.clone());
     let pool = mock_lattice_pool(senders).await;
     let tasks = TokioTaskExecutor::default();
-    let config = BatchPayloadJobGeneratorConfig::default();
+    let config = LatticePayloadJobGeneratorConfig::default();
     let chain_spec = genesis_value_parser("lattice").unwrap();
-    let generator = BatchPayloadJobGenerator::new(
-        client,
-        pool,
-        tasks,
-        config,
-        chain_spec,
-        // rx_from_worker,
-        // rx_shutdown,
-    );
+    // let generator = LatticePayloadJobGenerator::new(
+    //     client,
+    //     pool,
+    //     tasks,
+    //     config,
+    //     chain_spec,
+    // );
 
-    BatchBuilderService::new(generator)
+    // LatticePayloadBuilderService::new(generator)
+    todo!()
 }
 
 /// Create a client for the test batch builder service that has some blocks.

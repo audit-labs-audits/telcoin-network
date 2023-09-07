@@ -23,7 +23,7 @@ use tn_types::consensus::{
 };
 use tokio::task::JoinHandle;
 use tracing::{info, instrument};
-use lattice_payload_builder::batch::BatchBuilderHandle;
+use lattice_payload_builder::LatticePayloadBuilderHandle;
 
 pub struct WorkerNodeInner {
     /// The worker's id
@@ -84,7 +84,7 @@ impl WorkerNodeInner {
         // own one.
         metrics: Option<Metrics>,
         // Handle to the EL batch builder.
-        batch_builder: Option<BatchBuilderHandle>,
+        batch_builder: Option<LatticePayloadBuilderHandle>,
     ) -> Result<(), NodeError> {
         if self.is_running().await {
             return Err(NodeError::NodeAlreadyRunning)

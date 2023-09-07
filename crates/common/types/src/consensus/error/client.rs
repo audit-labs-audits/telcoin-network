@@ -14,4 +14,7 @@ pub enum LocalClientError {
 
     #[error("Narwhal is shutting down.")]
     ShuttingDown,
+
+    #[error("Engine {0} has not started yet.")]
+    EngineNotStarted(PeerId),
 }

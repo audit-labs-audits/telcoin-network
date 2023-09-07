@@ -1,7 +1,9 @@
 use crate::consensus::{
     crypto::NetworkPublicKey,
-    Batch, BatchDigest, Certificate, CertificateDigest, Header, Round, VersionedMetadata, Vote, AuthorityIdentifier, WorkerId, WorkerInfo,
+    Batch, BatchDigest, Certificate, CertificateDigest, Header, Round, VersionedMetadata, Vote, AuthorityIdentifier, WorkerId, WorkerInfo, Epoch,
 };
+use crate::execution::{H256, SealedHeader};
+use indexmap::IndexMap;
 use roaring::RoaringBitmap;
 use serde::{Deserialize, Serialize};
 use std::{
@@ -9,6 +11,8 @@ use std::{
     fmt,
 };
 use tracing::warn;
+
+use super::{TimestampMs, HeaderAPI};
 
 /// Request for broadcasting certificates to peers.
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -167,6 +171,18 @@ pub struct FetchBatchesRequest {
     pub known_workers: HashSet<NetworkPublicKey>,
 }
 
+/// Used by the Engine to request missing batches from the worker's store
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct MissingBatchesRequest {
+    pub digests: HashSet<BatchDigest>,
+}
+
+impl From<HashSet<BatchDigest>> for MissingBatchesRequest {
+    fn from(digests: HashSet<BatchDigest>) -> Self {
+        Self { digests }
+    }
+}
+
 /// All batches requested by the primary.
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct FetchBatchesResponse {
@@ -222,20 +238,68 @@ impl fmt::Display for BlockErrorKind {
 /// Used by worker to inform primary it sealed a new batch.
 #[derive(Clone, Serialize, Deserialize, Eq, PartialEq, Debug)]
 pub struct WorkerOwnBatchMessage {
+    /// The batch digest.
     pub digest: BatchDigest,
+    /// The worker's id.
     pub worker_id: WorkerId,
+    /// The metadata for the sealed batch.
     pub metadata: VersionedMetadata,
 }
 
 /// Used by worker to inform primary it received a batch from another authority.
 #[derive(Clone, Serialize, Deserialize, Eq, PartialEq, Debug)]
 pub struct WorkerOthersBatchMessage {
+    /// The batch digest.
     pub digest: BatchDigest,
+    /// The worker's id.
     pub worker_id: WorkerId,
 }
 
+/// Information for the workers.
 #[derive(Clone, Serialize, Deserialize, Eq, PartialEq, Debug)]
 pub struct WorkerInfoResponse {
     /// Map of workers' id and their network addresses.
     pub workers: BTreeMap<WorkerId, WorkerInfo>,
+}
+
+/// Message for engine to build the next header using the
+/// batch digests.
+#[derive(Clone, Serialize, Deserialize, PartialEq, Debug)]
+pub struct BuildHeaderMessage {
+    /// The round for this header.
+    pub round: Round,
+    /// The epoch for this header.
+    pub epoch: Epoch,
+    /// The timestamp for this header.
+    pub created_at: TimestampMs,
+    /// The ordered lists of batch digests and the worker responsible
+    /// for pulling from from storage if transactions are missing.
+    pub payload: IndexMap<BatchDigest, (WorkerId, TimestampMs)>,
+    /// The parents for this block.
+    pub parents: BTreeSet<CertificateDigest>,
+}
+
+// TODO: need to refactor the organization of these types to avoid
+// circular dependencies.
+/// The workaround to prevent circular dependencies is to use the same
+/// fields for this message as `HeaderPayload` and cast from one to 
+/// another.
+/// 
+/// The [HeaderPayloadResponse] message needs to be in this crate
+/// so proto can build, but the type also lives in lattice-payload-builder.
+/// The types used in the lattice-payload-builder are in other crates that
+/// also depend on this crate, causing circular dependency issues.
+/// For instance, `TransactionId` for `BatchPayload`.
+/// 
+/// The engine's response with a built header payload.
+#[derive(Clone, Serialize, Deserialize, Eq, PartialEq, Debug)]
+pub struct HeaderPayloadResponse {
+    /// Data from from the EL.
+    /// 
+    /// Contains header and block hash.
+    /// 
+    /// TODO: SealedHeader contains some redundant info for the EL
+    /// header. This should be another type used for just consensus,
+    /// but consolidate things like round/block number.
+    pub sealed_header: SealedHeader,
 }

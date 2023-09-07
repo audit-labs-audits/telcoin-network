@@ -1,17 +1,22 @@
 //! Error types emitted by types or implementations of this crate.
 
+use anemo::types::response::StatusCode;
+use execution_transaction_pool::error::PoolError;
 use revm::primitives::EVMError;
-use tn_types::execution::H256;
+use tn_types::{execution::H256, consensus::BatchDigest};
 use tokio::sync::oneshot;
 
-use super::BatchBuilderServiceCommand;
+use crate::LatticePayloadBuilderServiceCommand;
 
 /// Possible error variants during payload building.
 #[derive(Debug, thiserror::Error)]
-pub enum BatchBuilderError {
+pub enum LatticePayloadBuilderError {
     /// Thrown whe the parent block is missing.
     #[error("missing parent block {0:?}")]
     MissingParentBlock(H256),
+    /// Thrown when there is no finalized block during header building.
+    #[error("missing finalized block for round {0:?}")]
+    MissingFinalizedBlock(u64),
     /// An oneshot channels has been closed.
     #[error("sender has been dropped")]
     ChannelClosed,
@@ -38,14 +43,26 @@ pub enum BatchBuilderError {
     LatticeBatchChannelClosed(String),
     /// Thrown if the batch handle can't send to the batch builder service.
     #[error("Handle can't send to the batch builder service: {0:?}")]
-    BatchBuilderHandleToService(#[from] tokio::sync::mpsc::error::SendError<BatchBuilderServiceCommand>),
+    LatticePayloadBuilderHandleToService(#[from] tokio::sync::mpsc::error::SendError<LatticePayloadBuilderServiceCommand>),
     /// The built batch is empty. This error is required so the worker doesn't seal an empty batch.
     #[error("Built batch is empty.")]
     EmptyBatch,
+    /// Missing batch in SealedPool
+    #[error("Missing batch: {0:?}")]
+    Pool(#[from] PoolError),
 }
 
-impl From<oneshot::error::RecvError> for BatchBuilderError {
+impl From<oneshot::error::RecvError> for LatticePayloadBuilderError {
     fn from(_: oneshot::error::RecvError) -> Self {
-        BatchBuilderError::ChannelClosed
+        LatticePayloadBuilderError::ChannelClosed
+    }
+}
+
+impl From<LatticePayloadBuilderError> for anemo::rpc::Status {
+    fn from(error: LatticePayloadBuilderError) -> anemo::rpc::Status {
+        anemo::rpc::Status::new_with_message(
+            StatusCode::InternalServerError,
+            format!("{error:?}"),
+        )
     }
 }

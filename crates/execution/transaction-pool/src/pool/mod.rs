@@ -88,7 +88,7 @@ use std::{
     sync::Arc,
     time::Instant,
 };
-use tn_types::{execution::{Address, TxHash, H256}, consensus::BatchDigest};
+use tn_types::{execution::{Address, TxHash, H256}, consensus::{BatchDigest, Batch}};
 use tokio::sync::mpsc;
 use tracing::debug;
 
@@ -111,7 +111,7 @@ pub(crate) mod sealed;
 // TODO: some sort of `ProposedPool` implementation?
 
 /// Transaction pool internals.
-pub struct PoolInner<V: TransactionValidator, T: TransactionOrdering> {
+pub struct PoolInner<V: TransactionValidator, T: TransactionOrdering + Clone> {
     /// Internal mapping of addresses to plain ints.
     identifiers: RwLock<SenderIdentifiers>,
     /// Transaction validation.
@@ -625,11 +625,12 @@ where
             .collect::<Vec<_>>()
     }
 
-    /// Updates the entire pool after a new block was executed.
+    /// Updates the entire pool after a new batch is sealed by a worker.
+    /// 
+    /// This method is called when a worker receives the batch of transactions
+    /// from the engine, stored it in it's database, and broadcast for quorum.
     pub(crate) fn on_batch_sealed(&self, batch_info: BatchInfo) {
-        tracing::debug!("attempting to obtain pool.write() lock");
         let outcome = self.pool.write().on_batch_sealed(batch_info);
-        tracing::debug!("\n\noutcome of pool write(): {outcome:?}");
         self.notify_on_new_sealed_batch(outcome);
     }
 
@@ -641,9 +642,36 @@ where
         discarded.iter().for_each(|tx| listener.discarded(tx));
         sealed.iter().for_each(|tx| listener.sealed(tx, &batch_digest));
     }
+
+    /// Retrieve a group of transactions from the [SealedPool].
+    pub(crate) fn get_batch_transactions(
+        &self,
+        digest: &BatchDigest,
+    ) -> PoolResult<BestTransactions<T>> {
+        Ok(self.pool.read().get_batch_transactions(digest)?.best())
+    }
+
+    /// Add missing batches directly to the SealedPool.
+    /// 
+    /// This method is not expected to be used unless a batch
+    /// was already validated by this pool, sent to a worker, and 
+    /// validated by a quorum of other peers.
+    /// 
+    /// If this method fails, then the hashmap is returned?
+    /// So the job can try to recover the transactions?
+    /// 
+    /// This should probably just outright fail at that point.
+    /// So, let's just add info to a metric in case this ever
+    /// happens.
+    pub(crate) fn add_missing_batches(
+        &self,
+        missing_batches: HashMap<BatchDigest, Batch>,
+    ) -> Option<HashMap<BatchDigest, Batch>> { // return the missing info if this fails?
+        self.pool.write().add_missing_batches(missing_batches)
+    }
 }
 
-impl<V: TransactionValidator, T: TransactionOrdering> fmt::Debug for PoolInner<V, T> {
+impl<V: TransactionValidator, T: TransactionOrdering + Clone> fmt::Debug for PoolInner<V, T> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.debug_struct("PoolInner").field("config", &self.config).finish_non_exhaustive()
     }

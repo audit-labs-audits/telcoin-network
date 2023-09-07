@@ -1,7 +1,6 @@
 // Copyright (c) Telcoin, LLC
 // Copyright (c) Mysten Labs, Inc.
 // SPDX-License-Identifier: Apache-2.0
-use crate::EndpointMetrics;
 use consensus_network::metrics::MetricsCallbackProvider;
 use lattice_network::metrics::{NetworkConnectionMetrics, NetworkMetrics};
 use prometheus::{
@@ -23,7 +22,6 @@ const LATENCY_SEC_BUCKETS: &[f64] = &[
 
 #[derive(Clone)]
 pub(crate) struct Metrics {
-    pub(crate) endpoint_metrics: Option<EndpointMetrics>,
     pub(crate) inbound_network_metrics: Option<NetworkMetrics>,
     pub(crate) outbound_network_metrics: Option<NetworkMetrics>,
     pub(crate) primary_channel_metrics: Option<PrimaryChannelMetrics>,
@@ -33,9 +31,6 @@ pub(crate) struct Metrics {
 
 /// Initialises the metrics
 pub(crate) fn initialise_metrics(metrics_registry: &Registry) -> Metrics {
-    // The metrics used for the gRPC primary node endpoints we expose to the external consensus
-    let endpoint_metrics = EndpointMetrics::new(metrics_registry);
-
     // The metrics used for communicating over the network
     let inbound_network_metrics = NetworkMetrics::new("primary", "inbound", metrics_registry);
     let outbound_network_metrics = NetworkMetrics::new("primary", "outbound", metrics_registry);
@@ -51,7 +46,6 @@ pub(crate) fn initialise_metrics(metrics_registry: &Registry) -> Metrics {
 
     Metrics {
         node_metrics: Some(node_metrics),
-        endpoint_metrics: Some(endpoint_metrics),
         primary_channel_metrics: Some(primary_channel_metrics),
         inbound_network_metrics: Some(inbound_network_metrics),
         outbound_network_metrics: Some(outbound_network_metrics),

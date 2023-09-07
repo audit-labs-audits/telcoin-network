@@ -52,7 +52,7 @@ async fn reject_invalid_clients_transactions() {
     let my_primary = fixture.authorities().next().unwrap();
     let myself = my_primary.worker(worker_id);
     let public_key = my_primary.public_key();
-    let client = NetworkClient::new_from_keypair(&my_primary.network_keypair());
+    let client = NetworkClient::new_from_keypair(&my_primary.network_keypair(), &my_primary.engine_network_keypair().public());
 
     let parameters = Parameters {
         batch_size: 200, // Two transactions.
@@ -101,6 +101,7 @@ async fn reject_invalid_clients_transactions() {
     let txn = TransactionProto { transaction: Bytes::from(tx.clone()) };
 
     // Check invalid transactions are rejected
+    // TODO: this fails - something with the proto changing
     let res = client.submit_transaction(txn).await;
     assert!(res.is_err());
 
@@ -128,12 +129,11 @@ async fn handle_remote_clients_transactions() {
     let fixture = CommitteeFixture::builder().randomize_ports(true).build();
     let committee = fixture.committee();
     let worker_cache = fixture.worker_cache();
-
     let worker_id = 0;
     let my_primary = fixture.authorities().next().unwrap();
     let myself = my_primary.worker(worker_id);
     let authority_public_key = my_primary.public_key();
-    let client = NetworkClient::new_from_keypair(&my_primary.network_keypair());
+    let client = NetworkClient::new_from_keypair(&my_primary.network_keypair(), &my_primary.engine_network_keypair().public());
 
     let parameters = Parameters {
         batch_size: 200, // Two transactions.
@@ -218,6 +218,7 @@ async fn handle_remote_clients_transactions() {
             // all at the same time, rather than sequentially.
             let mut inner_client = client.clone();
             fut_list.push_back(async move {
+                // TODO: this fails - something with the proto changing
                 inner_client.submit_transaction(txn).await.unwrap();
             });
         }
@@ -244,7 +245,7 @@ async fn handle_local_clients_transactions() {
     let my_primary = fixture.authorities().next().unwrap();
     let myself = my_primary.worker(worker_id);
     let authority_public_key = my_primary.public_key();
-    let client = NetworkClient::new_from_keypair(&my_primary.network_keypair());
+    let client = NetworkClient::new_from_keypair(&my_primary.network_keypair(), &my_primary.engine_network_keypair().public());
 
     let parameters = Parameters {
         batch_size: 200, // Two transactions.
@@ -352,7 +353,7 @@ async fn get_network_peers_from_admin_server() {
     let worker_cache = fixture.worker_cache();
     let authority_1 = fixture.authorities().next().unwrap();
     let signer_1 = authority_1.keypair().copy();
-    let client_1 = NetworkClient::new_from_keypair(&authority_1.network_keypair());
+    let client_1 = NetworkClient::new_from_keypair(&authority_1.network_keypair(), &authority_1.engine_network_keypair().public());
 
     let worker_id = 0;
     let worker_1_keypair = authority_1.worker(worker_id).keypair().copy();
@@ -360,16 +361,12 @@ async fn get_network_peers_from_admin_server() {
     // Make the data store.
     let store = NodeStorage::reopen(temp_dir(), None);
 
-    let (tx_new_certificates, rx_new_certificates) =
+    let (tx_new_certificates, _rx_new_certificates) =
         lattice_test_utils::test_new_certificates_channel!(CHANNEL_CAPACITY);
     let (tx_feedback, rx_feedback) = lattice_test_utils::test_channel!(CHANNEL_CAPACITY);
     let (_tx_consensus_round_updates, rx_consensus_round_updates) =
         watch::channel(ConsensusRound::default());
     let mut tx_shutdown = PreSubscribedBroadcastSender::new(NUM_SHUTDOWN_RECEIVERS);
-    let consensus_metrics = Arc::new(ConsensusMetrics::new(&Registry::new()));
-
-    // channel for proposer and EL
-    let (el_sender, _el_receiver) = tokio::sync::mpsc::channel(1);
 
     // Spawn Primary 1
     Primary::spawn(
@@ -388,14 +385,9 @@ async fn get_network_peers_from_admin_server() {
         tx_new_certificates,
         rx_feedback,
         rx_consensus_round_updates,
-        /* dag */
-        Some(Arc::new(
-            DagHandle::new(&committee, rx_new_certificates, consensus_metrics, tx_shutdown.subscribe()).1,
-        )),
         &mut tx_shutdown,
         tx_feedback,
         &Registry::new(),
-        el_sender,
     );
 
     // Wait for tasks to start
@@ -468,7 +460,7 @@ async fn get_network_peers_from_admin_server() {
 
     let authority_2 = fixture.authorities().nth(1).unwrap();
     let signer_2 = authority_2.keypair().copy();
-    let client_2 = NetworkClient::new_from_keypair(&authority_2.network_keypair());
+    let client_2 = NetworkClient::new_from_keypair(&authority_2.network_keypair(), &authority_2.engine_network_keypair().public());
 
     let worker_2_keypair = authority_2.worker(worker_id).keypair().copy();
 
@@ -477,17 +469,13 @@ async fn get_network_peers_from_admin_server() {
         ..Parameters::default()
     };
 
-    let (tx_new_certificates_2, rx_new_certificates_2) =
+    let (tx_new_certificates_2, _rx_new_certificates_2) =
         lattice_test_utils::test_new_certificates_channel!(CHANNEL_CAPACITY);
     let (tx_feedback_2, rx_feedback_2) = lattice_test_utils::test_channel!(CHANNEL_CAPACITY);
     let (_tx_consensus_round_updates, rx_consensus_round_updates) =
         watch::channel(ConsensusRound::default());
 
     let mut tx_shutdown_2 = PreSubscribedBroadcastSender::new(NUM_SHUTDOWN_RECEIVERS);
-    let consensus_metrics = Arc::new(ConsensusMetrics::new(&Registry::new()));
-
-    // channel for proposer and EL
-    let (el_sender, _el_receiver) = tokio::sync::mpsc::channel(1);
 
     // Spawn Primary 2
     Primary::spawn(
@@ -506,15 +494,9 @@ async fn get_network_peers_from_admin_server() {
         tx_new_certificates_2,
         rx_feedback_2,
         rx_consensus_round_updates,
-        /* dag */
-        Some(Arc::new(
-            DagHandle::new(&committee, rx_new_certificates_2, consensus_metrics, tx_shutdown.subscribe())
-                .1,
-        )),
         &mut tx_shutdown_2,
         tx_feedback_2,
         &Registry::new(),
-        el_sender
     );
 
     // Wait for tasks to start

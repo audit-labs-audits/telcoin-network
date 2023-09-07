@@ -2,5 +2,7 @@
 
 The logic behind protocol design decisions.
 
-- [flow](./flow)
-- [execution](./execution)
+- [building-batches](./building-batches.md)
+- [execution](./execution.md)
+- [flow](./flow.md)
+- [payloads](./payloads.md)

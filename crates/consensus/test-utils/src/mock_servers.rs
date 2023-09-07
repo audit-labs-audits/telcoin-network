@@ -133,13 +133,14 @@ impl PrimaryToWorker for PrimaryToWorkerMockServer {
         Ok(anemo::Response::new(FetchBatchesResponse { batches: HashMap::new() }))
     }
 
-    async fn delete_batches(
-        &self,
-        _request: anemo::Request<WorkerDeleteBatchesMessage>,
-    ) -> Result<anemo::Response<()>, anemo::rpc::Status> {
-        tracing::error!("Not implemented PrimaryToWorkerMockServer::delete_batches");
-        Err(anemo::rpc::Status::internal("Unimplemented"))
-    }
+    // TODO: delete this - only used by external consensus
+    // async fn delete_batches(
+    //     &self,
+    //     _request: anemo::Request<WorkerDeleteBatchesMessage>,
+    // ) -> Result<anemo::Response<()>, anemo::rpc::Status> {
+    //     tracing::error!("Not implemented PrimaryToWorkerMockServer::delete_batches");
+    //     Err(anemo::rpc::Status::internal("Unimplemented"))
+    // }
 }
 
 pub struct WorkerToWorkerMockServer {

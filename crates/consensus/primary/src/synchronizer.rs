@@ -98,8 +98,6 @@ struct Inner {
     rx_consensus_round_updates: watch::Receiver<ConsensusRound>,
     /// Genesis digests and contents.
     genesis: HashMap<CertificateDigest, Certificate>,
-    /// The dag used for the external consensus
-    dag: Option<Arc<DagHandle>>,
     /// Contains Synchronizer specific metrics among other Primary metrics.
     metrics: Arc<PrimaryMetrics>,
     /// Background tasks broadcasting newly formed certificates.
@@ -267,9 +265,10 @@ impl Inner {
     /// consensus) either the dag will be used to confirm that or the
     /// certificate_store.
     async fn has_processed_certificate(&self, digest: CertificateDigest) -> DagResult<bool> {
-        if let Some(dag) = &self.dag {
-            return Ok(dag.has_ever_contained(digest).await)
-        }
+        // TODO: delete this - only used by external consensus
+        // if let Some(dag) = &self.dag {
+        //     return Ok(dag.has_ever_contained(digest).await)
+        // }
         Ok(self.certificate_store.contains(&digest)?)
     }
 }
@@ -300,7 +299,7 @@ impl Synchronizer {
         tx_parents: Sender<(Vec<Certificate>, Round, Epoch)>,
         rx_consensus_round_updates: watch::Receiver<ConsensusRound>,
         rx_synchronizer_network: oneshot::Receiver<Network>,
-        dag: Option<Arc<DagHandle>>,
+        // dag: Option<Arc<DagHandle>>,
         metrics: Arc<PrimaryMetrics>,
         primary_channel_metrics: &PrimaryChannelMetrics,
     ) -> Self {
@@ -341,7 +340,6 @@ impl Synchronizer {
             tx_own_certificate_broadcast: tx_own_certificate_broadcast.clone(),
             rx_consensus_round_updates: rx_consensus_round_updates.clone(),
             genesis,
-            dag,
             metrics,
             tx_batch_tasks,
             certificate_senders: Mutex::new(JoinSet::new()),
@@ -898,15 +896,18 @@ impl Synchronizer {
             // Check whether we have the batch. If one of our worker has the batch, the primary
             // stores the pair (digest, worker_id) in its own storage. It is important
             // to verify that we received the batch from the correct worker id to
-            // prevent the following attack:      1. A Bad node sends a batch X to 2f
-            // good nodes through their worker #0.      2. The bad node proposes a
-            // malformed block containing the batch X and claiming it comes         from
-            // worker #1.      3. The 2f good nodes do not need to sync and thus don't
-            // notice that the header is malformed.         The bad node together with
+            // prevent the following attack:
+            //      1. A Bad node sends a batch X to 2f
+            // good nodes through their worker #0.
+            //      2. The bad node proposes a
+            // malformed block containing the batch X and claiming it comes from
+            // worker #1.
+            //      3. The 2f good nodes do not need to sync and thus don't
+            // notice that the header is malformed. The bad node together with
             // the 2f good nodes thus certify a block containing the batch X.
             //      4. The last good node will never be able to sync as it will keep sending its
-            // sync requests         to workers #1 (rather than workers #0). Also,
-            // clients will never be able to retrieve batch         X as they will be
+            // sync requests to workers #1 (rather than workers #0). Also,
+            // clients will never be able to retrieve batch X as they will be
             // querying worker #1.
             if !inner.payload_store.contains(*digest, *worker_id)? {
                 missing.entry(*worker_id).or_insert_with(Vec::new).push(*digest);

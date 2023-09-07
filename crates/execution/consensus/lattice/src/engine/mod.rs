@@ -1436,7 +1436,7 @@ where
                     }
                 },
                 Poll::Ready(None) => {
-                    unreachable!("Engine holds the a sender to the message channel")
+                    unreachable!("Engine holds a sender to the message channel")
                 }
                 Poll::Pending => {
                     // no more CL messages to process

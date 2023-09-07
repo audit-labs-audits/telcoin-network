@@ -48,7 +48,7 @@ fn build_anemo_services(out_dir: &Path) {
 
     let primary_to_primary = anemo_build::manual::Service::builder()
         .name("PrimaryToPrimary")
-        .package("lattice")
+        .package("narwhal")
         .attributes(automock_attribute.clone())
         .method(
             anemo_build::manual::Method::builder()
@@ -99,7 +99,7 @@ fn build_anemo_services(out_dir: &Path) {
 
     let primary_to_worker = anemo_build::manual::Service::builder()
         .name("PrimaryToWorker")
-        .package("lattice")
+        .package("narwhal")
         .attributes(automock_attribute.clone())
         .method(
             anemo_build::manual::Method::builder()
@@ -119,12 +119,43 @@ fn build_anemo_services(out_dir: &Path) {
                 .codec_path(codec_path)
                 .build(),
         )
+        // TODO: delete this - only used by external consensus
+        // .method(
+        //     anemo_build::manual::Method::builder()
+        //         .name("delete_batches")
+        //         .route_name("DeleteBatches")
+        //         .request_type("crate::consensus::WorkerDeleteBatchesMessage")
+        //         .response_type("()")
+        //         .codec_path(codec_path)
+        //         .build(),
+        // )
+        .build();
+
+    let primary_to_engine = anemo_build::manual::Service::builder()
+        .name("PrimaryToEngine")
+        .package("narwhal")
+        .attributes(automock_attribute.clone())
         .method(
             anemo_build::manual::Method::builder()
-                .name("delete_batches")
-                .route_name("DeleteBatches")
-                .request_type("crate::consensus::WorkerDeleteBatchesMessage")
-                .response_type("()")
+                .name("build_header")
+                .route_name("BuildHeader")
+                .request_type("crate::consensus::BuildHeaderMessage")
+                .response_type("crate::consensus::HeaderPayloadResponse")
+                .codec_path(codec_path)
+                .build(),
+        )
+        .build();
+
+    let engine_to_worker = anemo_build::manual::Service::builder()
+        .name("EngineToWorker")
+        .package("narwhal")
+        .attributes(automock_attribute.clone())
+        .method(
+            anemo_build::manual::Method::builder()
+                .name("missing_batches")
+                .route_name("MissingBatches")
+                .request_type("crate::consensus::MissingBatchesRequest")
+                .response_type("crate::consensus::FetchBatchesResponse")
                 .codec_path(codec_path)
                 .build(),
         )
@@ -132,7 +163,7 @@ fn build_anemo_services(out_dir: &Path) {
 
     let worker_to_primary = anemo_build::manual::Service::builder()
         .name("WorkerToPrimary")
-        .package("lattice")
+        .package("narwhal")
         .attributes(automock_attribute.clone())
         .method(
             anemo_build::manual::Method::builder()
@@ -156,7 +187,7 @@ fn build_anemo_services(out_dir: &Path) {
 
     let worker_to_worker = anemo_build::manual::Service::builder()
         .name("WorkerToWorker")
-        .package("lattice")
+        .package("narwhal")
         .attributes(automock_attribute)
         .method(
             anemo_build::manual::Method::builder()
@@ -190,8 +221,10 @@ fn build_anemo_services(out_dir: &Path) {
     anemo_build::manual::Builder::new().out_dir(out_dir).compile(&[
         primary_to_primary,
         primary_to_worker,
+        primary_to_engine,
         worker_to_primary,
         worker_to_worker,
+        engine_to_worker,
     ]);
 }
 

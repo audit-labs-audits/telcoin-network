@@ -1,9 +1,13 @@
 // Copyright (c) Telcoin, LLC
 // Copyright (c) Mysten Labs, Inc.
 // SPDX-License-Identifier: Apache-2.0
+//! Implementations for peer-to-peer WAN connections.
+//! 
+//! Workers, Primary, and Engine are currently communicate
+//! through channel implementations of network traits.
 use crate::{
     traits::{
-        PrimaryToPrimaryRpc, PrimaryToWorkerRpc, ReliableNetwork, UnreliableNetwork, WorkerRpc,
+        PrimaryToPrimaryRpc, ReliableNetwork, WorkerRpc,
     },
     CancelOnDropHandler, RetryConfig,
 };
@@ -16,27 +20,10 @@ use tn_types::consensus::{
     FetchCertificatesResponse, GetCertificatesRequest, GetCertificatesResponse,
     PrimaryToPrimaryClient, PrimaryToWorkerClient, RequestBatchRequest, RequestBatchesRequest,
     RequestBatchesResponse, WorkerBatchMessage, WorkerDeleteBatchesMessage,
-    WorkerSynchronizeMessage, WorkerToWorkerClient,
+    WorkerSynchronizeMessage, WorkerToWorkerClient, BuildHeaderMessage, HeaderPayloadResponse,
+    PrimaryToEngineClient,
 };
 use tokio::task::JoinHandle;
-
-fn unreliable_send<F, R, Fut>(
-    network: &anemo::Network,
-    peer: NetworkPublicKey,
-    f: F,
-) -> Result<JoinHandle<Result<anemo::Response<R>>>>
-where
-    F: FnOnce(anemo::Peer) -> Fut + Send + Sync + 'static,
-    R: Send + Sync + 'static + Clone,
-    Fut: std::future::Future<Output = Result<anemo::Response<R>, anemo::rpc::Status>> + Send,
-{
-    let peer_id = PeerId(peer.0.to_bytes());
-    let peer = network.peer(peer_id).ok_or_else(|| {
-        anemo::Error::msg(format!("Network has no connection with peer {peer_id}"))
-    })?;
-
-    Ok(tokio::spawn(async move { f(peer).await.map_err(|e| anyhow::anyhow!("RPC error: {e:?}")) }))
-}
 
 fn send<F, R, Fut>(
     network: anemo::Network,
@@ -81,9 +68,13 @@ where
 //
 // Primary-to-Primary
 //
-
 #[async_trait]
 impl PrimaryToPrimaryRpc for anemo::Network {
+    // this is the same as primary's Certifier::request_vote()
+    // and Synchronizer::push_certificates()
+    //
+    // except, this doesn't use `waiting_peer`
+    // the others do. why?
     async fn get_certificates(
         &self,
         peer: &NetworkPublicKey,
@@ -117,48 +108,11 @@ impl PrimaryToPrimaryRpc for anemo::Network {
     }
 }
 
-//
-// Primary-to-Worker
-//
-impl UnreliableNetwork<WorkerSynchronizeMessage> for anemo::Network {
-    type Response = ();
-    fn unreliable_send(
-        &self,
-        peer: NetworkPublicKey,
-        message: &WorkerSynchronizeMessage,
-    ) -> Result<JoinHandle<Result<anemo::Response<()>>>> {
-        let message = message.to_owned();
-        let f = move |peer| async move {
-            // Set a timeout on unreliable sends of synchronize, so it doesn't run forever.
-            const UNRELIABLE_SYNCHRONIZE_TIMEOUT: Duration = Duration::from_secs(30);
-            PrimaryToWorkerClient::new(peer)
-                .synchronize(
-                    anemo::Request::new(message).with_timeout(UNRELIABLE_SYNCHRONIZE_TIMEOUT),
-                )
-                .await
-        };
-        unreliable_send(self, peer, f)
-    }
-}
-
+// TODO: refactor this with new approach
+// - see primary's certifier `request_vote()`
 //
 // Worker-to-Worker
 //
-
-impl UnreliableNetwork<WorkerBatchMessage> for anemo::Network {
-    type Response = ();
-    fn unreliable_send(
-        &self,
-        peer: NetworkPublicKey,
-        message: &WorkerBatchMessage,
-    ) -> Result<JoinHandle<Result<anemo::Response<()>>>> {
-        let message = message.to_owned();
-        let f =
-            move |peer| async move { WorkerToWorkerClient::new(peer).report_batch(message).await };
-        unreliable_send(self, peer, f)
-    }
-}
-
 impl ReliableNetwork<WorkerBatchMessage> for anemo::Network {
     type Response = ();
     fn send(
@@ -173,29 +127,6 @@ impl ReliableNetwork<WorkerBatchMessage> for anemo::Network {
         };
 
         send(self.clone(), peer, f)
-    }
-}
-
-#[async_trait]
-impl PrimaryToWorkerRpc for anemo::Network {
-    async fn delete_batches(
-        &self,
-        peer: NetworkPublicKey,
-        digests: Vec<BatchDigest>,
-    ) -> Result<()> {
-        const BATCH_DELETE_TIMEOUT: Duration = Duration::from_secs(2);
-
-        let peer_id = PeerId(peer.0.to_bytes());
-        let peer = self
-            .peer(peer_id)
-            .ok_or_else(|| format_err!("Network has no connection with peer {peer_id}"))?;
-        let request = anemo::Request::new(WorkerDeleteBatchesMessage { digests })
-            .with_timeout(BATCH_DELETE_TIMEOUT);
-        PrimaryToWorkerClient::new(peer)
-            .delete_batches(request)
-            .await
-            .map(|_| ())
-            .map_err(|e| format_err!("DeleteBatches error: {e:?}"))
     }
 }
 
@@ -238,3 +169,23 @@ impl WorkerRpc for anemo::Network {
         Ok(response.into_body())
     }
 }
+
+// #[async_trait]
+// impl PrimaryToEngineRpc for anemo::Network {
+//     async fn build_header(
+//         &self,
+//         peer: NetworkPublicKey,
+//         request: BuildHeaderMessage,
+//     ) -> Result<HeaderPayloadResponse> {
+//         let peer_id = PeerId(peer.0.to_bytes());
+//         let peer = self
+//             .peer(peer_id)
+//             .ok_or_else(|| format_err!("Network has no connection with peer {peer_id}"))?;
+//         let request = anemo::Request::new(request);
+//         let response = PrimaryToEngineClient::new(peer)
+//             .build_header(request)
+//             .await
+//             .map_err(|e| format_err!("DeleteBatches error: {e:?}"))?;
+//         Ok(response.into_body())
+//     }
+// }

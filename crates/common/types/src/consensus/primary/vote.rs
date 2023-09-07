@@ -5,6 +5,7 @@ use crate::consensus::{
     },
     Header, HeaderAPI, HeaderDigest, Round, AuthorityIdentifier, Epoch,
 };
+use base64::{engine::general_purpose, Engine};
 use enum_dispatch::enum_dispatch;
 use fastcrypto::{
     hash::{Digest, Hash},
@@ -186,13 +187,13 @@ impl From<VoteDigest> for Digest<{ crypto::INTENT_MESSAGE_LENGTH }> {
 
 impl fmt::Debug for VoteDigest {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> Result<(), fmt::Error> {
-        write!(f, "{}", base64::encode(self.0))
+        write!(f, "{}", general_purpose::STANDARD.encode(self.0))
     }
 }
 
 impl fmt::Display for VoteDigest {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> Result<(), fmt::Error> {
-        write!(f, "{}", base64::encode(self.0).get(0..16).ok_or(fmt::Error)?)
+        write!(f, "{}", general_purpose::STANDARD.encode(self.0).get(0..16).ok_or(fmt::Error)?)
     }
 }
 

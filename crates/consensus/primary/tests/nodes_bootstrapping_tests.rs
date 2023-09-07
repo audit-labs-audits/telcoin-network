@@ -6,78 +6,6 @@ use lattice_test_utils::{cluster::Cluster, setup_tracing};
 use std::time::Duration;
 use tn_types::consensus::{PublicKeyProto, RoundsRequest, TransactionProto};
 
-// Currently Dag and GRPC server for external consensus do not shutdown properly.
-// They need to be fixed before re-enabling this test.
-#[ignore]
-#[tokio::test(flavor = "current_thread", start_paused = true)]
-async fn test_response_error_after_shutdown_external_consensus() {
-    // Enabled debug tracing so we can easily observe the
-    // nodes logs.
-    let _guard = setup_tracing();
-
-    let delay = Duration::from_secs(10); // 10 seconds
-
-    // A cluster of 4 nodes will be created, with external consensus.
-    let cluster = Cluster::new(None, false);
-
-    // ==== Start first authority ====
-    let authority = cluster.authority(0);
-    authority.start(false, Some(1)).await;
-
-    tokio::time::sleep(delay).await;
-
-    authority.stop_all().await;
-
-    tokio::time::sleep(delay).await;
-
-    let mut client = authority.new_proposer_client().await;
-
-    // send a sample rounds request
-    let request = tonic::Request::new(RoundsRequest {
-        public_key: Some(PublicKeyProto::from(authority.public_key.clone())),
-    });
-    let response = client.rounds(request).await;
-
-    // Should get back an error since the authority has shut down.
-    assert!(response.is_err());
-}
-
-#[tokio::test(flavor = "current_thread", start_paused = true)]
-async fn test_response_error_after_shutdown_internal_consensus() {
-    // Enabled debug tracing so we can easily observe the
-    // nodes logs.
-    let _guard = setup_tracing();
-
-    let delay = Duration::from_secs(10); // 10 seconds
-
-    // A cluster of 4 nodes will be created, with internal consensus.
-    let cluster = Cluster::new(None, true);
-
-    // ==== Start first authority ====
-    let authority = cluster.authority(0);
-    authority.start(false, Some(1)).await;
-
-    tokio::time::sleep(delay).await;
-
-    authority.stop_all().await;
-
-    tokio::time::sleep(delay).await;
-
-    let worker_id = 0;
-    let mut client = authority.new_transactions_client(&worker_id).await;
-
-    // Create a fake transaction
-    let tx_str = "test transaction".to_string();
-    let tx = bcs::to_bytes(&tx_str).unwrap();
-    let txn = TransactionProto { transaction: Bytes::from(tx) };
-
-    // Should fail submitting to consensus.
-    let Err(e) = client.submit_transaction(txn).await else {
-        panic!("Submitting transactions after Narwhal shutdown should fail!");
-    };
-    assert!(e.message().contains("error trying to connect: tcp connect error:"), "Actual: {}", e);
-}
-
 /// Nodes will be started in a staggered fashion. This is simulating
 /// a real world scenario where nodes across validators will not start
 /// in the same time.
@@ -91,7 +19,7 @@ async fn test_node_staggered_starts() {
     let node_staggered_delay = Duration::from_secs(60 * 2); // 2 minutes
 
     // A cluster of 4 nodes will be created
-    let cluster = Cluster::new(None, true);
+    let cluster = Cluster::new(None);
 
     // ==== Start first authority ====
     cluster.authority(0).start(false, Some(1)).await;
@@ -140,7 +68,7 @@ async fn test_full_outage_and_recovery() {
     let node_advance_delay = Duration::from_secs(60);
 
     // A cluster of 4 nodes will be created
-    let mut cluster = Cluster::new(None, true);
+    let mut cluster = Cluster::new(None);
 
     // ===== Start the cluster ====
     cluster.start(Some(4), Some(1), None).await;
@@ -191,7 +119,7 @@ async fn test_second_node_restart() {
     let node_advance_delay = Duration::from_secs(60);
 
     // A cluster of 4 nodes will be created
-    let mut cluster = Cluster::new(None, true);
+    let mut cluster = Cluster::new(None);
 
     // ===== Start the cluster ====
     cluster.start(Some(4), Some(1), None).await;
@@ -233,7 +161,7 @@ async fn test_loss_of_liveness_without_recovery() {
     let node_advance_delay = Duration::from_secs(60);
 
     // A cluster of 4 nodes will be created
-    let mut cluster = Cluster::new(None, true);
+    let mut cluster = Cluster::new(None);
 
     // ===== Start the cluster ====
     cluster.start(Some(4), Some(1), None).await;
@@ -287,7 +215,7 @@ async fn test_loss_of_liveness_with_recovery() {
     let node_advance_delay = Duration::from_secs(60);
 
     // A cluster of 4 nodes will be created
-    let mut cluster = Cluster::new(None, true);
+    let mut cluster = Cluster::new(None);
 
     // ===== Start the cluster ====
     cluster.start(Some(4), Some(1), None).await;

@@ -6,6 +6,7 @@
 
 mod inner;
 use inner::PrimaryNodeInner;
+use lattice_payload_builder::LatticePayloadBuilderHandle;
 use crate::NodeError;
 use consensus_metrics::{RegistryID, RegistryService};
 use lattice_executor::ExecutionState;
@@ -31,12 +32,10 @@ impl PrimaryNode {
     /// Create a new instance of Self
     pub fn new(
         parameters: Parameters,
-        internal_consensus: bool,
         registry_service: RegistryService,
     ) -> PrimaryNode {
         let inner = PrimaryNodeInner::new(
             parameters,
-            internal_consensus,
             registry_service,
         );
 
@@ -63,8 +62,6 @@ impl PrimaryNode {
         store: &NodeStorage,
         // The state used by the client to execute transactions.
         execution_state: Arc<State>,
-        // Channel for primary's proposer to request the EL to build a block from the header.
-        tx_execute_header: mpsc::Sender<(Header, oneshot::Sender<()>)>,
     ) -> Result<(), NodeError>
     where
         State: ExecutionState + Send + Sync + 'static,
@@ -80,7 +77,6 @@ impl PrimaryNode {
                 client,
                 store,
                 execution_state,
-                tx_execute_header,
             )
             .await
     }

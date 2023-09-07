@@ -3,7 +3,7 @@
 use execution_payload_builder::database::CachedReads;
 use execution_provider::StateProviderFactory;
 use execution_tasks::TaskSpawner;
-use execution_transaction_pool::TransactionPool;
+use execution_transaction_pool::{TransactionPool, TransactionId};
 use revm::primitives::{CfgEnv, BlockEnv};
 use tokio::sync::oneshot;
 use tracing::{trace, warn};
@@ -11,10 +11,52 @@ use std::{future::Future, sync::{Arc, atomic::AtomicBool}, pin::Pin, task::{Cont
 use tn_types::execution::SealedBlock;
 use futures_core::ready;
 use futures_util::future::FutureExt;
-use crate::metrics::PayloadBuilderMetrics;
-use super::{generator::{BuiltBatch, PayloadTaskGuard}, BatchBuilderError, helpers::create_batch};
 
-pub(crate) type BatchPayloadFuture = Pin<Box<dyn Future<Output = Result<Arc<BuiltBatch>, BatchBuilderError>> + Send>>;
+use crate::{BatchPayloadSizeMetric, PayloadTaskGuard, LatticePayloadBuilderServiceMetrics, LatticePayloadBuilderError, Cancelled, helpers::create_batch};
+
+/// Helper type to represent a CL Batch.
+/// 
+/// TODO: add batch size and gas used as metrics to struct
+/// since they're already calculated in the job.
+#[derive(Debug)]
+pub struct BatchPayload {
+    batch: Vec<Vec<u8>>,
+    executed_txs: Vec<TransactionId>,
+    size_metric: BatchPayloadSizeMetric,
+}
+
+impl BatchPayload {
+    /// Create a new instance of [Self]
+    pub fn new(
+        batch: Vec<Vec<u8>>,
+        executed_txs: Vec<TransactionId>,
+        size_metric: BatchPayloadSizeMetric,
+    ) -> Self {
+        Self { batch, executed_txs, size_metric }
+    }
+
+    /// Reference to the batch of transactions
+    pub fn get_batch(&self) -> &Vec<Vec<u8>> {
+        &self.batch
+    }
+
+    /// Reference to the batch's transaction ids for updating the pool.
+    pub fn get_transaction_ids(&self) -> &Vec<TransactionId> {
+        &self.executed_txs
+    }
+
+    /// Return the size metric for the built batch.
+    /// The size metric is used to indicate why the payload job
+    /// was completed.
+    /// 
+    /// This method is used by the worker's metrics to provide a 
+    /// reason for why the batch was sealed.
+    pub fn reason(&self) -> &BatchPayloadSizeMetric {
+        &self.size_metric
+    }
+}
+/// Future representing a return [BatchPayload].
+pub(crate) type BatchPayloadFuture = Pin<Box<dyn Future<Output = Result<Arc<BatchPayload>, LatticePayloadBuilderError>> + Send>>;
 
 /// The job that starts building a batch on a separate task.
 /// 
@@ -32,6 +74,8 @@ pub struct BatchPayloadJob<Client, Pool, Tasks> {
     /// Receiver for the block that is currently being built.
     pub(crate) pending_batch: Option<PendingBatch>,
     /// Restricts how many generator tasks can be executed at once.
+    /// 
+    /// TODO: can this be used to prevent batches/headers while canonical state is changing?
     pub(crate) payload_task_guard: PayloadTaskGuard,
     /// Caches all disk reads for the state the new payloads builds on
     ///
@@ -39,7 +83,7 @@ pub struct BatchPayloadJob<Client, Pool, Tasks> {
     /// triggerd, because during the building process we'll repeatedly execute the transactions.
     pub(crate) cached_reads: Option<CachedReads>,
     /// metrics for this type
-    pub(crate) metrics: PayloadBuilderMetrics,
+    pub(crate) metrics: LatticePayloadBuilderServiceMetrics,
 }
 
 impl<Client, Pool, Tasks> Future for BatchPayloadJob<Client, Pool, Tasks>
@@ -48,7 +92,7 @@ where
     Pool: TransactionPool + Unpin + 'static,
     Tasks: TaskSpawner + Clone + 'static,
 {
-    type Output = Result<Arc<BuiltBatch>, BatchBuilderError>;
+    type Output = Result<Arc<BatchPayload>, LatticePayloadBuilderError>;
 
     fn poll(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
         let this = self.get_mut();
@@ -61,8 +105,9 @@ where
                     Poll::Ready(Ok(payload))
                 }
                 Poll::Ready(Err(e)) => {
+                    // TODO: if batch is empty, this returns an error
                     trace!(?e, "batch build attempt failed");
-                    this.metrics.inc_failed_payload_builds();
+                    this.metrics.inc_failed_batch_jobs();
                     Poll::Ready(Err(e))
                 }
                 Poll::Pending => {
@@ -84,7 +129,7 @@ where
         let guard = this.payload_task_guard.clone();
         let payload_config = this.config.clone();
 
-        this.metrics.inc_initiated_payload_builds(); // TODO: update metrics
+        this.metrics.inc_initiated_batch_jobs();
 
         let cached_reads = this.cached_reads.take().unwrap_or_default();
 
@@ -117,11 +162,11 @@ pub(crate) struct PendingBatch {
     /// The marker to cancel the job on drop
     _cancel: Cancelled,
     /// The channel to send the result to.
-    payload: oneshot::Receiver<Result<BuiltBatch, BatchBuilderError>>,
+    payload: oneshot::Receiver<Result<BatchPayload, LatticePayloadBuilderError>>,
 }
 
 impl Future for PendingBatch {
-    type Output = Result<BuiltBatch, BatchBuilderError>;
+    type Output = Result<BatchPayload, LatticePayloadBuilderError>;
 
     fn poll(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
         let res = ready!(self.payload.poll_unpin(cx));
@@ -134,34 +179,13 @@ impl Future for PendingBatch {
 #[derive(Clone)]
 pub(crate) struct BatchPayloadConfig {
     /// Pre-configured block environment.
-    pub(super) initialized_block_env: BlockEnv,
+    pub(crate) initialized_block_env: BlockEnv,
     /// Configuration for the environment.
-    pub(super) initialized_cfg: CfgEnv,
+    pub(crate) initialized_cfg: CfgEnv,
     /// The parent block.
-    pub(super) parent_block: Arc<SealedBlock>,
+    pub(crate) parent_block: Arc<SealedBlock>,
     /// The maximum size of the batch (measured in bytes).
-    pub(super) max_batch_size: usize,
-}
-
-/// A marker that can be used to cancel a job.
-///
-/// If dropped, it will set the `cancelled` flag to true.
-#[derive(Default, Clone, Debug)]
-pub(super) struct Cancelled(Arc<AtomicBool>);
-
-// === impl Cancelled ===
-
-impl Cancelled {
-    /// Returns true if the job was cancelled.
-    pub(super) fn _is_cancelled(&self) -> bool {
-        self.0.load(std::sync::atomic::Ordering::Relaxed)
-    }
-}
-
-impl Drop for Cancelled {
-    fn drop(&mut self) {
-        self.0.store(true, std::sync::atomic::Ordering::Relaxed);
-    }
+    pub(crate) max_batch_size: usize,
 }
 
 #[cfg(test)]

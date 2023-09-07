@@ -136,11 +136,12 @@
 //!
 //! - `serde` (default): Enable serde support
 //! - `test-utils`: Export utilities for testing
+use std::{sync::Arc, collections::HashMap};
+
 use crate::pool::PoolInner;
 use aquamarine as _;
 use execution_provider::StateProviderFactory;
-use std::{collections::HashMap, sync::Arc};
-use tn_types::execution::{Address, TxHash, U256};
+use tn_types::{execution::{Address, TxHash, U256}, consensus::BatchDigest};
 use tokio::sync::mpsc::Receiver;
 use tracing::{instrument, trace};
 
@@ -463,6 +464,13 @@ where
     ) {
         tracing::debug!("inside on_sealed_batch");
         self.pool.on_batch_sealed(batch_info);
+    }
+
+    fn get_batch_transactions(
+        &self,
+        digest: &BatchDigest,
+    ) -> PoolResult<Box<dyn BestTransactions<Item = Arc<ValidPoolTransaction<Self::Transaction>>>>> {
+        Ok(Box::new(self.pool.get_batch_transactions(digest)?))
     }
 }
 

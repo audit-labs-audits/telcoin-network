@@ -1,6 +1,13 @@
 // Copyright (c) Telcoin, LLC
 // Copyright (c) Mysten Labs, Inc.
 // SPDX-License-Identifier: Apache-2.0
+//! This is a network optimization for connecting with a known, but
+//! disconnected peer.
+//! 
+//! This implementation allows clients to "reliably" send until explicitly
+//! told to give up.
+//! 
+//! See https://github.com/MystenLabs/anemo/issues/4 for issue.
 use anemo::{
     codegen::{BoxError, BoxFuture, Service},
     types::PeerEvent,
@@ -20,6 +27,14 @@ impl NetworkExt for Network {
     }
 }
 
+/// Peer abstraction for "reliable" send.
+/// 
+/// [WaitingPeer]s try to connect until explicitly told to give up.
+/// Used by the Primary's `Certifier` when requesting votes and `Synchronizer`
+/// when sharing own certificates.
+/// 
+/// TODO: should be used by workers to send batches instead of legacy
+/// `ReliableNetwork` trait.
 #[derive(Clone)]
 pub struct WaitingPeer {
     peer_id: PeerId,

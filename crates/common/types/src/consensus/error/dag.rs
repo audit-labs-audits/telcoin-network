@@ -7,6 +7,8 @@ use lattice_typed_store::StoreError;
 use std::sync::{Arc, mpsc::Receiver};
 use thiserror::Error;
 
+use super::LocalClientError;
+
 /// Return type for dag
 pub type DagResult<T> = Result<T, DagError>;
 
@@ -122,6 +124,10 @@ pub enum DagError {
     
     #[error("Primary's proposer unable to reach execution engine.")]
     ExecutionEngineDroppedOneshotSender,
+    
+    /// Used by the proposer when calling `build_header()` on NetworkClient.
+    #[error("Primary to engine local client error: {0:?}")]
+    LocalClient(#[from] LocalClientError),
 }
 
 impl<T> From<tokio::sync::mpsc::error::TrySendError<T>> for DagError {

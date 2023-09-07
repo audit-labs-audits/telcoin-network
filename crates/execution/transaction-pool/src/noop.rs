@@ -10,7 +10,7 @@ use crate::{
     TransactionValidationOutcome, TransactionValidator, ValidPoolTransaction, BatchInfo,
 };
 use std::{marker::PhantomData, sync::Arc};
-use tn_types::execution::{Address, TxHash};
+use tn_types::{execution::{Address, TxHash}, consensus::BatchDigest};
 use tokio::sync::{mpsc, mpsc::Receiver};
 
 /// A [`TransactionPool`] implementation that does nothing.
@@ -172,6 +172,13 @@ impl TransactionPool for NoopTransactionPool {
 
     fn on_sealed_batch(&self, _batch_info: BatchInfo) {
         println!("on_sealed_batch called")
+    }
+
+    fn get_batch_transactions(
+        &self,
+        _digest: &BatchDigest,
+    ) -> PoolResult<Box<dyn BestTransactions<Item = Arc<ValidPoolTransaction<Self::Transaction>>>>> {
+        Ok(Box::new(std::iter::empty()))
     }
 }
 

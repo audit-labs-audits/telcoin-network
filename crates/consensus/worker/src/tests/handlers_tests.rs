@@ -5,9 +5,9 @@
 
 use fastcrypto::hash::Hash;
 use lattice_test_utils::CommitteeFixture;
-use std::vec;
-use tn_types::consensus::{MockWorkerToWorker, WorkerToWorkerServer};
-
+use std::{vec, time::Duration};
+use tn_types::consensus::{MockWorkerToWorker, WorkerToWorkerServer, WorkerSynchronizeMessage, RequestBatchesResponse, PrimaryToWorker};
+use lattice_typed_store::Map;
 use super::*;
 use crate::TrivialTransactionValidator;
 
@@ -57,7 +57,7 @@ async fn synchronize() {
         .await
         .unwrap();
 
-    let handler = PrimaryReceiverHandler {
+    let handler = PrimaryToWorkerHandler {
         authority_id,
         id,
         committee,
@@ -97,7 +97,7 @@ async fn synchronize_when_batch_exists() {
     // Create network without mock behavior since it will not be needed.
     let send_network = lattice_test_utils::random_network();
 
-    let handler = PrimaryReceiverHandler {
+    let handler = PrimaryToWorkerHandler {
         authority_id,
         id,
         committee: committee.clone(),
@@ -125,39 +125,4 @@ async fn synchronize_when_batch_exists() {
     };
     // The sync request should succeed.
     handler.synchronize(anemo::Request::new(message)).await.unwrap();
-}
-
-#[tokio::test]
-async fn delete_batches() {
-    telemetry_subscribers::init_for_testing();
-
-    let fixture = CommitteeFixture::builder().randomize_ports(true).build();
-    let committee = fixture.committee();
-    let worker_cache = fixture.worker_cache();
-    let authority_id = fixture.authorities().next().unwrap().id();
-    let id = 0;
-
-    // Create a new test store.
-    let store = lattice_test_utils::create_batch_store();
-    let batch = lattice_test_utils::batch();
-    let digest = batch.digest();
-    store.insert(&digest, &batch).unwrap();
-
-    // Send a delete request.
-    let handler = PrimaryReceiverHandler {
-        authority_id,
-        id,
-        committee,
-        worker_cache,
-        store: store.clone(),
-        request_batch_timeout: Duration::from_secs(999),
-        request_batch_retry_nodes: 3, // Not used in this test.
-        network: None,
-        batch_fetcher: None,
-        validator: TrivialTransactionValidator,
-    };
-    let message = WorkerDeleteBatchesMessage { digests: vec![digest] };
-    handler.delete_batches(anemo::Request::new(message)).await.unwrap();
-
-    assert!(store.get(&digest).unwrap().is_none());
 }

@@ -11,6 +11,7 @@ use lattice_network::client::NetworkClient;
 use lattice_node::{
     execution_state::SimpleExecutionState, primary_node::PrimaryNode,
 };
+use lattice_payload_builder::LatticePayloadBuilderHandle;
 use lattice_storage::NodeStorage;
 use prometheus::{proto::Metric, Registry};
 use std::{cell::RefCell,  path::PathBuf, rc::Rc, sync::Arc};
@@ -37,7 +38,6 @@ pub struct PrimaryNodeDetails {
     committee: Committee,
     worker_cache: WorkerCache,
     handlers: Rc<RefCell<Vec<JoinHandle<()>>>>,
-    pub(super) internal_consensus_enabled: bool,
 }
 
 impl PrimaryNodeDetails {
@@ -49,7 +49,6 @@ impl PrimaryNodeDetails {
         parameters: Parameters,
         committee: Committee,
         worker_cache: WorkerCache,
-        internal_consensus_enabled: bool,
     ) -> Self {
         // used just to initialise the struct value
         let (tx, _) = tokio::sync::broadcast::channel(1);
@@ -57,7 +56,7 @@ impl PrimaryNodeDetails {
         let registry_service = RegistryService::new(Registry::new());
 
         let node =
-            PrimaryNode::new(parameters.clone(), internal_consensus_enabled, registry_service);
+            PrimaryNode::new(parameters.clone(), registry_service);
 
         Self {
             id,
@@ -69,7 +68,6 @@ impl PrimaryNodeDetails {
             committee,
             worker_cache,
             handlers: Rc::new(RefCell::new(Vec::new())),
-            internal_consensus_enabled,
             node,
             parameters,
         }
@@ -102,7 +100,9 @@ impl PrimaryNodeDetails {
         let primary_store: NodeStorage = NodeStorage::reopen(store_path.clone(), None);
 
         // TODO: use this
-        let (sender, _receiver) = tokio::sync::mpsc::channel(1);
+        let (sender, _receiver) = tokio::sync::mpsc::unbounded_channel();
+        let engine_handle = Arc::new(LatticePayloadBuilderHandle::new(sender));
+        client.set_primary_to_engine_local_handler(engine_handle);
         self.node
             .start(
                 self.key_pair.copy(),
@@ -112,7 +112,6 @@ impl PrimaryNodeDetails {
                 client,
                 &primary_store,
                 Arc::new(SimpleExecutionState::new(tx_transaction_confirmation)),
-                sender,
             )
             .await
             .unwrap();

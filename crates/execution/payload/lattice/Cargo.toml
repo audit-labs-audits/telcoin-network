@@ -34,8 +34,16 @@ thiserror = { workspace = true }
 execution-interfaces = { workspace = true }
 execution-revm-primitives = { workspace = true }
 strum = { version = "0.25", features = ["derive"] }
+indexmap = "1.9.2"
+fastcrypto = { workspace = true }
+
+# consensus
+anemo = { workspace = true }
+lattice-network = { workspace = true }
 
 [dev-dependencies]
+rayon = "1.6.0"
 tn-tracing = { workspace = true }
 rand = { workspace = true }
 telcoin-network = { path = "../../../../bin/telcoin-network" }
+lattice-test-utils = { workspace = true }

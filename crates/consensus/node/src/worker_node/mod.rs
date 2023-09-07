@@ -6,7 +6,7 @@
 //! and a threadsafe wrapper for each inner worker instance.
 mod inner;
 use inner::WorkerNodeInner;
-use lattice_payload_builder::batch::BatchBuilderHandle;
+use lattice_payload_builder::LatticePayloadBuilderHandle;
 use crate::{metrics::new_registry, NodeError};
 use tokio::sync::RwLock;
 use arc_swap::{ArcSwap, ArcSwapOption};
@@ -71,7 +71,7 @@ impl WorkerNodes {
         // The transaction validator defining Tx acceptance,
         tx_validator: impl TransactionValidator,
         // Handle to the EL batch builder service.
-        batch_builder: Option<BatchBuilderHandle>,
+        batch_builder: Option<LatticePayloadBuilderHandle>,
     ) -> Result<(), NodeError> {
         let worker_ids_running = self.workers_running().await;
         if !worker_ids_running.is_empty() {
@@ -217,7 +217,7 @@ impl WorkerNode {
         // An optional metrics struct
         metrics: Option<Metrics>,
         // Handle to the EL batch builder service.
-        batch_builder: Option<BatchBuilderHandle>,
+        batch_builder: Option<LatticePayloadBuilderHandle>,
     ) -> Result<(), NodeError> {
         let mut guard = self.internal.write().await;
         guard

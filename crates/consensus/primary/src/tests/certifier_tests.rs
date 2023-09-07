@@ -25,7 +25,7 @@ async fn propose_header() {
     let committee = fixture.committee();
     let worker_cache = fixture.worker_cache();
     let primary = fixture.authorities().last().unwrap();
-    let client = NetworkClient::new_from_keypair(&primary.network_keypair());
+    let client = NetworkClient::new_from_keypair(&primary.network_keypair(), &primary.engine_network_keypair().public());
     let network_key = primary.network_keypair().copy().private().0.to_bytes();
     let id = primary.id();
     let signature_service = SignatureService::new(primary.keypair().copy());
@@ -98,7 +98,6 @@ async fn propose_header() {
         tx_parents.clone(),
         rx_consensus_round_updates.clone(),
         rx_synchronizer_network,
-        None,
         metrics.clone(),
         &primary_channel_metrics,
     ));
@@ -131,7 +130,7 @@ async fn propose_header_failure() {
     let committee = fixture.committee();
     let worker_cache = fixture.worker_cache();
     let primary = fixture.authorities().last().unwrap();
-    let client = NetworkClient::new_from_keypair(&primary.network_keypair());
+    let client = NetworkClient::new_from_keypair(&primary.network_keypair(), &primary.engine_network_keypair().public());
     let network_key = primary.network_keypair().copy().private().0.to_bytes();
     let authority_id = primary.id();
     let signature_service = SignatureService::new(primary.keypair().copy());
@@ -191,7 +190,6 @@ async fn propose_header_failure() {
         tx_parents.clone(),
         rx_consensus_round_updates.clone(),
         rx_synchronizer_network,
-        None,
         metrics.clone(),
         &primary_channel_metrics,
     ));
@@ -245,7 +243,7 @@ async fn run_vote_aggregator_with_param(
     let committee = fixture.committee();
     let worker_cache = fixture.worker_cache();
     let primary = fixture.authorities().last().unwrap();
-    let client = NetworkClient::new_from_keypair(&primary.network_keypair());
+    let client = NetworkClient::new_from_keypair(&primary.network_keypair(), &primary.engine_network_keypair().public());
     let network_key = primary.network_keypair().copy().private().0.to_bytes();
     let id: AuthorityIdentifier = primary.id();
     let signature_service = SignatureService::new(primary.keypair().copy());
@@ -317,7 +315,6 @@ async fn run_vote_aggregator_with_param(
         tx_parents.clone(),
         rx_consensus_round_updates.clone(),
         rx_synchronizer_network,
-        None,
         metrics.clone(),
         &primary_channel_metrics,
     ));
@@ -355,7 +352,7 @@ async fn shutdown_core() {
     let committee = fixture.committee();
     let worker_cache = fixture.worker_cache();
     let primary = fixture.authorities().next().unwrap();
-    let client = NetworkClient::new_from_keypair(&primary.network_keypair());
+    let client = NetworkClient::new_from_keypair(&primary.network_keypair(), &primary.engine_network_keypair().public());
     let network_key = primary.network_keypair().copy().private().0.to_bytes();
     let id: AuthorityIdentifier = primary.id();
     let signature_service = SignatureService::new(primary.keypair().copy());
@@ -388,7 +385,6 @@ async fn shutdown_core() {
         tx_parents.clone(),
         rx_consensus_round_updates.clone(),
         rx_synchronizer_network,
-        None,
         metrics.clone(),
         &primary_channel_metrics,
     ));

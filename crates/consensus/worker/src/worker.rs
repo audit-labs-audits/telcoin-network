@@ -5,7 +5,7 @@
 use crate::{
     batch_fetcher::BatchFetcher,
     batch_maker::BatchMaker,
-    handlers::{PrimaryReceiverHandler, WorkerReceiverHandler},
+    handlers::{PrimaryToWorkerHandler, WorkerToWorkerHandler, EngineToWorkerHandler},
     metrics::WorkerChannelMetrics,
     quorum_waiter::QuorumWaiter,
     TransactionValidator, NUM_SHUTDOWN_RECEIVERS,
@@ -30,7 +30,7 @@ use lattice_network::{
     failpoints::FailpointsMakeCallbackHandler,
     metrics::MetricsMakeCallbackHandler,
 };
-use lattice_payload_builder::batch::BatchBuilderHandle;
+use lattice_payload_builder::LatticePayloadBuilderHandle;
 use lattice_typed_store::rocks::DBMap;
 use std::{collections::HashMap, net::Ipv4Addr, sync::Arc, thread::sleep, time::Duration};
 use tap::TapFallible;
@@ -38,7 +38,7 @@ use tn_types::consensus::{
     Authority, AuthorityIdentifier, Committee, Parameters, WorkerCache, WorkerId,
     crypto::{traits::KeyPair as _, NetworkKeyPair, NetworkPublicKey},
     Batch, BatchDigest, ConditionalBroadcastReceiver, PreSubscribedBroadcastSender,
-    PrimaryToWorkerServer, WorkerToWorkerServer,
+    WorkerToWorkerServer,
 };
 use tokio::task::JoinHandle;
 use tower::ServiceBuilder;
@@ -86,7 +86,7 @@ impl Worker {
         store: DBMap<BatchDigest, Batch>,
         metrics: Metrics,
         tx_shutdown: &mut PreSubscribedBroadcastSender,
-        batch_builder: Option<BatchBuilderHandle>,
+        batch_builder: Option<LatticePayloadBuilderHandle>,
     ) -> Vec<JoinHandle<()>> {
         let worker_name = keypair.public().clone();
         let worker_peer_id = PeerId(worker_name.0.to_bytes());
@@ -112,7 +112,7 @@ impl Worker {
 
         let mut shutdown_receivers = tx_shutdown.subscribe_n(NUM_SHUTDOWN_RECEIVERS);
 
-        let mut worker_service = WorkerToWorkerServer::new(WorkerReceiverHandler {
+        let mut worker_service = WorkerToWorkerServer::new(WorkerToWorkerHandler {
             id: worker.id,
             client: client.clone(),
             store: worker.store.clone(),
@@ -136,20 +136,6 @@ impl Worker {
             ));
         }
 
-        // Legacy RPC interface, only used by delete_batches() for external consensus.
-        let primary_service = PrimaryToWorkerServer::new(PrimaryReceiverHandler {
-            authority_id: worker.authority.id(),
-            id: worker.id,
-            committee: worker.committee.clone(),
-            worker_cache: worker.worker_cache.clone(),
-            store: worker.store.clone(),
-            request_batch_timeout: worker.parameters.sync_retry_delay,
-            request_batch_retry_nodes: worker.parameters.sync_retry_nodes,
-            network: None,
-            batch_fetcher: None,
-            validator: validator.clone(),
-        });
-
         // Receive incoming messages from other workers.
         let address = worker
             .worker_cache
@@ -162,18 +148,19 @@ impl Worker {
 
         let epoch_string: String = committee.epoch().to_string();
 
-        // Set up anemo Network.
-        let our_primary_peer_id = PeerId(authority.network_key().0.to_bytes());
-        let primary_to_worker_router = anemo::Router::new()
-            .add_rpc_service(primary_service)
-            // Add an Authorization Layer to ensure that we only service requests from our primary
-            .route_layer(RequireAuthorizationLayer::new(AllowedPeers::new([our_primary_peer_id])))
-            .route_layer(RequireAuthorizationLayer::new(AllowedEpoch::new(epoch_string.clone())));
+        // used for external consensus
+        // // Set up anemo Network.
+        // let our_primary_peer_id = PeerId(authority.network_key().0.to_bytes());
+        // let primary_to_worker_router = anemo::Router::new()
+        //     .add_rpc_service(primary_service)
+        //     // Add an Authorization Layer to ensure that we only service requests from our primary
+        //     .route_layer(RequireAuthorizationLayer::new(AllowedPeers::new([our_primary_peer_id])))
+        //     .route_layer(RequireAuthorizationLayer::new(AllowedEpoch::new(epoch_string.clone())));
 
         let routes = anemo::Router::new()
             .add_rpc_service(worker_service)
-            .route_layer(RequireAuthorizationLayer::new(AllowedEpoch::new(epoch_string.clone())))
-            .merge(primary_to_worker_router);
+            .route_layer(RequireAuthorizationLayer::new(AllowedEpoch::new(epoch_string.clone())));
+            // .merge(primary_to_worker_router);
 
         let service = ServiceBuilder::new()
             .layer(
@@ -281,7 +268,7 @@ impl Worker {
         );
         client.set_primary_to_worker_local_handler(
             worker_peer_id,
-            Arc::new(PrimaryReceiverHandler {
+            Arc::new(PrimaryToWorkerHandler {
                 authority_id: worker.authority.id(),
                 id: worker.id,
                 committee: worker.committee.clone(),
@@ -292,6 +279,19 @@ impl Worker {
                 network: Some(network.clone()),
                 batch_fetcher: Some(batch_fetcher),
                 validator: validator.clone(),
+            }),
+        );
+
+        // set engine to worker listener
+        client.set_engine_to_worker_local_handler(
+            worker_peer_id,
+            Arc::new(EngineToWorkerHandler {
+                authority_id: worker.authority.id(),
+                id: worker.id,
+                committee: worker.committee.clone(),
+                worker_cache: worker.worker_cache.clone(),
+                store: worker.store.clone(),
+                network: Some(network.clone()),
             }),
         );
 
@@ -435,7 +435,7 @@ impl Worker {
         validator: impl TransactionValidator,
         client: NetworkClient,
         network: anemo::Network,
-        batch_builder: Option<BatchBuilderHandle>,
+        batch_builder: Option<LatticePayloadBuilderHandle>,
     ) -> Vec<JoinHandle<()>> {
         info!("Starting handler for transactions");
 

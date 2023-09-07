@@ -49,6 +49,8 @@ consensus-metrics.workspace = true
 anemo.workspace = true
 anemo-tower.workspace = true
 
+#lattice-payload-builder.workspace = true
+
 [dev-dependencies]
 dashmap = "5.4.0"
 arc-swap = { version = "1.5.1", features = ["serde"] }
@@ -68,6 +70,7 @@ lattice-storage.workspace = true
 reqwest = { version = "0.11.13", default_features= false, features = ["json", "rustls-tls"] }
 telemetry-subscribers.workspace = true
 tn-types = { workspace = true, features = ["test"] }
+tn-tracing = { workspace = true }
 
 [features]
 benchmark = []

@@ -1,4 +1,4 @@
-//! Generator for building batch payload jobs.
+//! Implement generator for building batch payload jobs.
 
 use execution_payload_builder::{
     error::PayloadBuilderError, database::CachedReads,
@@ -20,108 +20,19 @@ use tn_types::{execution::{
         ETHEREUM_BLOCK_GAS_LIMIT,
     },
     BlockNumberOrTag, ChainSpec, U256,
-}, consensus::{ConditionalBroadcastReceiver, BatchDigest}};
+}, consensus::{ConditionalBroadcastReceiver, BatchDigest, EngineToWorker}};
 use tokio::sync::{Semaphore, oneshot, mpsc::Receiver};
 
-use crate::batch::{helpers::create_batch, job::{BatchPayloadConfig, Cancelled}};
-
-use super::{job::{BatchPayloadFuture, BatchPayloadJob}, traits::BatchJobGenerator, BatchBuilderError, metrics::PayloadSizeMetric};
-
-/// Helper type to represent a CL Batch.
-/// 
-/// TODO: add batch size and gas used as metrics to struct
-/// since they're already calculated in the job.
-#[derive(Debug)]
-pub struct BuiltBatch {
-    batch: Vec<Vec<u8>>,
-    executed_txs: Vec<TransactionId>,
-    size_metric: PayloadSizeMetric,
-}
-
-impl BuiltBatch {
-    /// Create a new instance of [Self]
-    pub fn new(
-        batch: Vec<Vec<u8>>,
-        executed_txs: Vec<TransactionId>,
-        size_metric: PayloadSizeMetric,
-    ) -> Self {
-        Self { batch, executed_txs, size_metric }
-    }
-
-    /// Reference to the batch of transactions
-    pub fn get_batch(&self) -> &Vec<Vec<u8>> {
-        &self.batch
-    }
-
-    /// Reference to the batch's transaction ids for updating the pool.
-    pub fn get_transaction_ids(&self) -> &Vec<TransactionId> {
-        &self.executed_txs
-    }
-
-    /// Return the size metric for the built batch.
-    /// The size metric is used to indicate why the payload job
-    /// was completed.
-    /// 
-    /// This method is used by the worker's metrics to provide a 
-    /// reason for why the batch was sealed.
-    pub fn reason(&self) -> &PayloadSizeMetric {
-        &self.size_metric
-    }
-}
-
-/// The [PayloadJobGenerator] that creates [BatchPayloadJob]s.
-/// 
-/// Responsible for initializing the block and environment for 
-/// pending transactions to execute against.
-/// 
-/// The generator also
-/// updates the transaction pool once a batch is sealed.
-pub struct BatchPayloadJobGenerator<Client, Pool, Tasks> {
-    /// The client that can interact with the chain.
-    client: Client,
-    /// txpool
-    pool: Pool,
-    /// How to spawn building tasks
-    executor: Tasks,
-    /// The configuration for the job generator.
-    /// 
-    /// TODO: actually use this
-    config: BatchPayloadJobGeneratorConfig,
-    /// Restricts how many generator tasks can be executed at once.
-    payload_task_guard: PayloadTaskGuard,
-    /// The chain spec.
-    chain_spec: Arc<ChainSpec>,
-}
+use crate::{HeaderPayloadJob, BatchPayloadJob, BatchPayloadJobGenerator, LatticePayloadBuilderError, BatchPayload, BatchPayloadConfig, LatticePayloadJobGenerator};
 
 // === impl BatchPayloadJobGenerator ===
 
-impl<Client, Pool, Tasks> BatchPayloadJobGenerator<Client, Pool, Tasks> {
-    /// Creates a new [BatchPayloadJobGenerator] with the given config.
-    pub fn new(
-        client: Client,
-        pool: Pool,
-        executor: Tasks,
-        config: BatchPayloadJobGeneratorConfig,
-        chain_spec: Arc<ChainSpec>,
-    ) -> Self {
-        Self {
-            client,
-            pool,
-            executor,
-            payload_task_guard: PayloadTaskGuard::new(config.max_payload_tasks),
-            config,
-            chain_spec,
-        }
-    }
-}
-
-// === impl BatchPayloadJobGenerator ===
-
-impl<Client, Pool, Tasks> BatchJobGenerator for BatchPayloadJobGenerator<Client, Pool, Tasks>
+impl<Client, Pool, Tasks, Network> BatchPayloadJobGenerator for LatticePayloadJobGenerator<Client, Pool, Tasks, Network>
 where
     Client: StateProviderFactory + BlockReaderIdExt + Clone + Unpin + 'static,
     Pool: TransactionPool + Unpin + 'static,
     Tasks: TaskSpawner + Clone + Unpin + 'static,
+    Network: Clone + Send + Sync,
 {
     type Job = BatchPayloadJob<Client, Pool, Tasks>;
 
@@ -130,15 +41,14 @@ where
     /// TODO: this function uses a lot of defaults for now (zero u256, etc.)
     fn new_batch_job(
         &self,
-        // tx_to_worker: oneshot::Sender<(Batch, oneshot::Sender<BatchDigest>)>,
-    ) -> Result<Self::Job, BatchBuilderError> {
+    ) -> Result<Self::Job, LatticePayloadBuilderError> {
         // TODO: is it better to use "latest" for all blocks or "finalized"
         // between leaders, the canonical chain isn't finalized yet, so 
         // batches are built on a validator's state
         //
         // should batches be built on finalized state or "latest"?
         //
-        // Update: Batches should be built off this primary's "pending" block that's reached quorum?
+        // Update: Latticees should be built off this primary's "pending" block that's reached quorum?
         // - how to account for other certs already received?
         // if a cert is issued, it means quorum for the block.
         // if quorum is reached for the block, is it _impossible_ for the block not to be included?
@@ -150,14 +60,14 @@ where
             // use latest block if parent is zero: genesis block
             self.client
                 .block_by_number_or_tag(BlockNumberOrTag::Latest)?
-                .ok_or_else(|| BatchBuilderError::LatticeBatchFromGenesis)?
+                .ok_or_else(|| LatticePayloadBuilderError::LatticeBatchFromGenesis)?
                 .seal_slow();
         // } else {
         //     self
         //         .client
         //         // build off canonical state
         //         .block_by_number_or_tag(BlockNumberOrTag::Finalized)?
-        //         .ok_or_else(|| PayloadBuilderError::LatticeBatch)?
+        //         .ok_or_else(|| PayloadBuilderError::LatticeLattice)?
         //         .seal_slow()
         // };
 
@@ -210,94 +120,29 @@ where
 
     fn batch_sealed(
         &self,
-        batch: Arc<BuiltBatch>,
+        batch: Arc<BatchPayload>,
         digest: BatchDigest,
-    ) -> Result<(), BatchBuilderError> {
+    ) -> Result<(), LatticePayloadBuilderError> {
         let batch_info = BatchInfo::new(digest, batch.get_transaction_ids().clone());
         self.pool.on_sealed_batch(batch_info);
         Ok(())
     }
 }
 
-/// Restricts how many generator tasks can be executed at once.
-#[derive(Clone)]
-pub(crate) struct PayloadTaskGuard(pub(super) Arc<Semaphore>);
-
-// === impl PayloadTaskGuard ===
-
-impl PayloadTaskGuard {
-    fn new(max_payload_tasks: usize) -> Self {
-        Self(Arc::new(Semaphore::new(max_payload_tasks)))
-    }
-}
-
-/// Settings for the [BatchPayloadJobGenerator].
-#[derive(Debug, Clone)]
-pub struct BatchPayloadJobGeneratorConfig {
-    /// Data to include in the block's extra data field.
-    extradata: Bytes,
-    /// Target gas ceiling for built blocks, defaults to [ETHEREUM_BLOCK_GAS_LIMIT] gas.
-    max_gas_limit: u64,
-    /// The interval at which the job should build a new payload after the last.
-    interval: Duration,
-    /// Maximum number of tasks to spawn for building a payload.
-    max_payload_tasks: usize,
-}
-
-// === impl BatchPayloadJobGeneratorConfig ===
-
-impl BatchPayloadJobGeneratorConfig {
-    /// Sets the interval at which the job should build a new payload after the last.
-    pub fn interval(mut self, interval: Duration) -> Self {
-        self.interval = interval;
-        self
-    }
-
-    /// Sets the maximum number of tasks to spawn for building a batch payload(s).
-    ///
-    /// # Panics
-    ///
-    /// If `max_payload_tasks` is 0.
-    pub fn max_payload_tasks(mut self, max_payload_tasks: usize) -> Self {
-        assert!(max_payload_tasks > 0, "max_payload_tasks must be greater than 0");
-        self.max_payload_tasks = max_payload_tasks;
-        self
-    }
-
-    /// Sets the target gas ceiling for mined blocks.
-    ///
-    /// Defaults to [ETHEREUM_BLOCK_GAS_LIMIT] gas.
-    pub fn max_gas_limit(mut self, max_gas_limit: u64) -> Self {
-        self.max_gas_limit = max_gas_limit;
-        self
-    }
-}
-
-impl Default for BatchPayloadJobGeneratorConfig {
-    fn default() -> Self {
-        let mut extradata = BytesMut::new();
-        EXECUTION_CLIENT_VERSION.as_bytes().encode(&mut extradata);
-        Self {
-            extradata: extradata.freeze(),
-            // TODO: set default size limits
-            max_gas_limit: ETHEREUM_BLOCK_GAS_LIMIT,
-            // TODO: remove?
-            interval: Duration::from_secs(1),
-            // only 1 batch can be built from the pending pool at a time
-            max_payload_tasks: 1,
-        }
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::LatticePayloadJobGeneratorConfig;
+    use std::num::NonZeroUsize;
     use execution_provider::test_utils::{MockEthProvider, blocks::BlockChainTestData};
     use execution_tasks::TokioTaskExecutor;
     use execution_transaction_pool::test_utils::testing_pool;
+    use fastcrypto::traits::KeyPair;
+    use lattice_network::client::NetworkClient;
+    use lattice_test_utils::CommitteeFixture;
     use telcoin_network::args::utils::genesis_value_parser;
 
-    fn create_mock_provider() -> MockEthProvider {
+    fn _create_mock_provider() -> MockEthProvider {
         let provider = MockEthProvider::default();
         let data = BlockChainTestData::default();
         // add a known genesis block
@@ -314,14 +159,23 @@ mod tests {
 
         let pool = testing_pool();
         let tasks = TokioTaskExecutor::default();
-        let config = BatchPayloadJobGeneratorConfig::default();
+        let config = LatticePayloadJobGeneratorConfig::default();
         let chain_spec = genesis_value_parser("lattice").unwrap();
-        let generator = BatchPayloadJobGenerator::new(
+        // TODO: abstract this to test utils
+        let fixture = CommitteeFixture::builder()
+            .number_of_workers(NonZeroUsize::new(1).unwrap())
+            .randomize_ports(true)
+            .build();
+        let authority = fixture.authorities().next().unwrap();
+        let network = NetworkClient::new_from_keypair(&authority.network_keypair(), &authority.engine_network_keypair().public());
+
+        let generator = LatticePayloadJobGenerator::new(
             client,
             pool,
             tasks,
             config,
             chain_spec,
+            network,
         );
 
         let job = generator.new_batch_job().unwrap();
@@ -340,5 +194,4 @@ mod tests {
         assert!(job.pending_batch.is_none());
 
     }
-
 }

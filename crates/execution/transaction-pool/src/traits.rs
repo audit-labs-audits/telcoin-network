@@ -1,13 +1,13 @@
 use crate::{
     error::PoolResult,
-    pool::{state::SubPool, TransactionEvents},
+    pool::{state::SubPool, TransactionEvents, pending::PendingTransactionRef},
     validate::ValidPoolTransaction,
     AllTransactionsEvents, TransactionId,
 };
 use execution_rlp::Encodable;
 use futures_util::{ready, Stream};
 use std::{
-    collections::HashMap,
+    collections::{HashMap, BTreeMap},
     fmt,
     pin::Pin,
     sync::Arc,
@@ -264,6 +264,12 @@ pub trait TransactionPool: Send + Sync + Clone {
     /// Update SubPools when a newly requested batch is sealed by a worker.
     fn on_sealed_batch(&self, batch_info: BatchInfo);
 
+    /// Gather BestTransactions by batch from the SealedPool.
+    fn get_batch_transactions(
+        &self,
+        digest: &BatchDigest,
+    ) -> PoolResult<Box<dyn BestTransactions<Item = Arc<ValidPoolTransaction<Self::Transaction>>>>>;
+
 }
 
 /// Extension for [TransactionPool] trait that allows to set the current block info.
@@ -456,11 +462,15 @@ pub trait BestTransactions: Iterator + Send {
     /// In other words, this must remove the given transaction _and_ drain all transaction that
     /// depend on it.
     fn mark_invalid(&mut self, transaction: &Self::Item);
+
+    /// Return all transactions
+    fn all_transactions(&self) -> Vec<Self::Item>;
 }
 
 /// A no-op implementation that yields no transactions.
 impl<T> BestTransactions for std::iter::Empty<T> {
     fn mark_invalid(&mut self, _tx: &T) {}
+    fn all_transactions(&self) -> Vec<Self::Item> { Vec::new() }
 }
 
 /// Trait for transaction types used inside the pool

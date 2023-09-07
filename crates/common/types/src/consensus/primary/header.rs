@@ -1,9 +1,10 @@
-use crate::consensus::{
+use crate::{consensus::{
     crypto,
     error::{DagError, DagResult},
     now, Batch, BatchDigest, CertificateDigest, Round, TimestampMs, VoteDigest, AuthorityIdentifier, Epoch, WorkerId, Committee, WorkerCache,
-};
-use consensus_util_mem::MallocSizeOf;
+}, execution::SealedHeader};
+use base64::{engine::general_purpose, Engine};
+// use consensus_util_mem::MallocSizeOf;
 use derive_builder::Builder;
 use enum_dispatch::enum_dispatch;
 use fastcrypto::hash::{Digest, Hash, HashFunction};
@@ -14,8 +15,10 @@ use proptest_derive::Arbitrary;
 use serde::{Deserialize, Serialize};
 use std::{collections::BTreeSet, fmt};
 
+use super::{BuildHeaderMessage, HeaderPayloadResponse};
+
 /// Versioned `Header` type for consensus layer.
-#[derive(Clone, Deserialize, MallocSizeOf, Serialize)]
+#[derive(Clone, Deserialize, Serialize)]
 #[enum_dispatch(HeaderAPI)]
 pub enum Header {
     /// Version 1
@@ -37,10 +40,12 @@ impl Header {
         author: AuthorityIdentifier,
         round: Round,
         epoch: Epoch,
+        created_at: TimestampMs,
         payload: IndexMap<BatchDigest, (WorkerId, TimestampMs)>,
         parents: BTreeSet<CertificateDigest>,
+        sealed_header: SealedHeader,
     ) -> Self {
-        Header::V1(HeaderV1::new(author, round, epoch, payload, parents))
+        Header::V1(HeaderV1::new(author, round, epoch, created_at, payload, parents, sealed_header))
     }
 
     /// Hashed digest for Header
@@ -89,7 +94,6 @@ pub trait HeaderAPI {
 	fn payload(&self) -> &IndexMap<BatchDigest, (WorkerId, TimestampMs)>;
     /// TODO
 	fn parents(&self) -> &BTreeSet<CertificateDigest>;
-
     /// Used only for testing.
     /// TODO
     #[cfg(any(test, feature="test"))]
@@ -103,7 +107,7 @@ pub trait HeaderAPI {
 }
 
 /// Header version 1
-#[derive(Builder, Clone, Default, Deserialize, MallocSizeOf, Serialize, Debug)]
+#[derive(Builder, Clone, Default, Deserialize, Serialize, Debug)]
 #[builder(pattern = "owned", build_fn(skip))]
 pub struct HeaderV1 {
     /// Primary that created the header. Must be the same primary that broadcasted the header.
@@ -113,7 +117,7 @@ pub struct HeaderV1 {
     pub round: Round,
     /// The epoch this Header was created in.
     pub epoch: Epoch,
-    /// The timestamp for when this header was created.
+    /// The timestamp for when the header was requested to be created.
     pub created_at: TimestampMs,
     /// IndexMap of the [BatchDigest] to the [WorkerId] and [TimestampMs]
     #[serde(with = "indexmap::serde_seq")]
@@ -123,6 +127,8 @@ pub struct HeaderV1 {
     /// The [HeaderDigest].
     #[serde(skip)]
     pub digest: OnceCell<HeaderDigest>,
+    /// Execution data
+    pub sealed_header: SealedHeader,
 }
 
 impl HeaderAPI for HeaderV1 {
@@ -173,7 +179,10 @@ impl HeaderV1Builder {
             payload: self.payload.unwrap(),
             parents: self.parents.unwrap(),
             digest: OnceCell::default(),
+            sealed_header: SealedHeader::default(),
         };
+
+        // TODO: should the digest include the default SealedHeader?
         h.digest.set(Hash::digest(&h)).unwrap();
 
         Ok(h)
@@ -203,17 +212,20 @@ impl HeaderV1 {
         author: AuthorityIdentifier,
         round: Round,
         epoch: Epoch,
+        created_at: TimestampMs,
         payload: IndexMap<BatchDigest, (WorkerId, TimestampMs)>,
         parents: BTreeSet<CertificateDigest>,
+        sealed_header: SealedHeader,
     ) -> Self {
         let header = Self {
             author,
             round,
             epoch,
-            created_at: now(),
+            created_at,
             payload,
             parents,
             digest: OnceCell::default(),
+            sealed_header,
         };
         let digest = Hash::digest(&header);
         header.digest.set(digest).unwrap();
@@ -226,6 +238,9 @@ impl HeaderV1 {
     }
 
     /// Ensure the header is valid based on the current committee and workercache.
+    /// 
+    /// TODO: what else should the header validate regarding EL data? (sealed_header)
+    /// or should this be exclusively validated in the EL?
     pub fn validate(&self, committee: &Committee, worker_cache: &WorkerCache) -> DagResult<()> {
         // Ensure the header is from the correct epoch.
         ensure!(
@@ -254,7 +269,7 @@ impl HeaderV1 {
 /// The slice of bytes for the header's digest.
 #[cfg_attr(any(test, feature = "arbitrary"), derive(Arbitrary))]
 #[derive(
-    Clone, Copy, Serialize, Deserialize, Default, PartialEq, Eq, Hash, PartialOrd, Ord, MallocSizeOf,
+    Clone, Copy, Serialize, Deserialize, Default, PartialEq, Eq, Hash, PartialOrd, Ord,//MallocSizeOf,
 )]
 pub struct HeaderDigest([u8; crypto::DIGEST_LENGTH]);
 
@@ -279,13 +294,13 @@ impl From<HeaderDigest> for VoteDigest {
 
 impl fmt::Debug for HeaderDigest {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> Result<(), fmt::Error> {
-        write!(f, "{}", base64::encode(self.0))
+        write!(f, "{}", general_purpose::STANDARD.encode(self.0))
     }
 }
 
 impl fmt::Display for HeaderDigest {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> Result<(), fmt::Error> {
-        write!(f, "{}", base64::encode(self.0).get(0..16).ok_or(fmt::Error)?)
+        write!(f, "{}", general_purpose::STANDARD.encode(self.0).get(0..16).ok_or(fmt::Error)?)
     }
 }
 

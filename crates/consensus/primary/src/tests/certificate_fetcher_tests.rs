@@ -17,14 +17,14 @@ use lattice_test_utils::{temp_dir, CommitteeFixture};
 use once_cell::sync::OnceCell;
 use prometheus::Registry;
 use std::{collections::BTreeSet, sync::Arc, time::Duration};
-use tn_types::consensus::{
+use tn_types::{consensus::{
     AuthorityIdentifier, Epoch, WorkerId,
     BatchDigest, Certificate, CertificateAPI, CertificateDigest, FetchCertificatesRequest,
     FetchCertificatesResponse, GetCertificatesRequest, GetCertificatesResponse, Header, HeaderAPI,
     HeaderDigest, PayloadAvailabilityRequest, PayloadAvailabilityResponse,
     PreSubscribedBroadcastSender, PrimaryToPrimary, PrimaryToPrimaryServer, RequestVoteRequest,
     RequestVoteResponse, Round, SendCertificateRequest, SendCertificateResponse,
-};
+}, execution::SealedHeader};
 use tokio::{
     sync::{
         mpsc::{self, error::TryRecvError, Receiver, Sender},
@@ -132,6 +132,7 @@ struct BadHeader {
     pub parents: BTreeSet<CertificateDigest>,
     pub id: OnceCell<HeaderDigest>,
     pub created_at: u64,
+    pub sealed_header: SealedHeader,
 }
 
 #[tokio::test(flavor = "current_thread", start_paused = true)]
@@ -139,7 +140,7 @@ async fn fetch_certificates_basic() {
     let fixture = CommitteeFixture::builder().randomize_ports(true).build();
     let worker_cache = fixture.worker_cache();
     let primary = fixture.authorities().next().unwrap();
-    let client = NetworkClient::new_from_keypair(&primary.network_keypair());
+    let client = NetworkClient::new_from_keypair(&primary.network_keypair(), &primary.engine_network_keypair().public());
     let id = primary.id();
     let fake_primary = fixture.authorities().nth(1).unwrap();
     let metrics = Arc::new(PrimaryMetrics::new(&Registry::new()));
@@ -181,7 +182,6 @@ async fn fetch_certificates_basic() {
         tx_parents.clone(),
         rx_consensus_round_updates.clone(),
         rx_synchronizer_network,
-        None,
         metrics.clone(),
         &primary_channel_metrics,
     ));

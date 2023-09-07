@@ -3,6 +3,7 @@
 // Copyright (c) Mysten Labs, Inc.
 // SPDX-License-Identifier: Apache-2.0
 use crate::metrics::PrimaryMetrics;
+use lattice_network::{PrimaryToEngineClient, client::NetworkClient};
 use consensus_metrics::{
     metered_channel::{Receiver, Sender},
     spawn_logged_monitored_task,
@@ -18,7 +19,7 @@ use tn_types::consensus::{
     AuthorityIdentifier, Committee, Epoch, WorkerId,
     error::{DagError, DagResult},
     now, BatchDigest, Certificate, CertificateAPI, ConditionalBroadcastReceiver, Header, HeaderAPI,
-    Round, TimestampMs,
+    Round, TimestampMs, BuildHeaderMessage, HeaderPayloadResponse,
 };
 use tokio::{
     sync::{oneshot, watch, mpsc},
@@ -61,17 +62,6 @@ pub struct Proposer {
     /// hasn't proposed anything new since then. If None is provided then the
     /// default value will be used instead.
     header_resend_timeout: Option<Duration>,
-
-    /// TODO: this can't be a channel to the handle (single consumer).
-    /// this either needs to go directly to the engine, or be the handle.
-    /// 
-    /// Send header to EL for block execution. The receiver for this channel
-    /// is held by the execution layer's engine handle.
-    /// 
-    /// The data returned is included in the proposed header so 
-    /// peers can validate execution.
-    tx_execute_header: mpsc::Sender<(Header, oneshot::Sender<()>)>,
-
     /// Receiver for shutdown.
     rx_shutdown: ConditionalBroadcastReceiver,
     /// Receives the parents to include in the next header (along with their round number) from
@@ -104,6 +94,8 @@ pub struct Proposer {
     rx_committed_own_headers: Receiver<(Round, Vec<Round>)>,
     /// Metrics handler
     metrics: Arc<PrimaryMetrics>,
+    /// Network for sending rpc call to EL engine.
+    network_client: NetworkClient,
 }
 
 impl Proposer {
@@ -118,7 +110,6 @@ impl Proposer {
         max_header_delay: Duration,
         min_header_delay: Duration,
         header_resend_timeout: Option<Duration>,
-
         rx_shutdown: ConditionalBroadcastReceiver,
         rx_parents: Receiver<(Vec<Certificate>, Round, Epoch)>,
         rx_our_digests: Receiver<OurDigestMessage>,
@@ -126,7 +117,7 @@ impl Proposer {
         tx_narwhal_round_updates: watch::Sender<Round>,
         rx_committed_own_headers: Receiver<(Round, Vec<Round>)>,
         metrics: Arc<PrimaryMetrics>,
-        tx_execute_header: mpsc::Sender<(Header, oneshot::Sender<()>)>,
+        network_client: NetworkClient,
     ) -> JoinHandle<()> {
         let genesis = Certificate::genesis(&committee);
         spawn_logged_monitored_task!(
@@ -139,9 +130,6 @@ impl Proposer {
                     max_header_delay,
                     min_header_delay,
                     header_resend_timeout,
-
-                    tx_execute_header, // send header to EL and build block
-
                     rx_shutdown,
                     rx_parents,
                     rx_our_digests,
@@ -156,6 +144,7 @@ impl Proposer {
                     proposed_headers: BTreeMap::new(),
                     rx_committed_own_headers,
                     metrics,
+                    network_client,
                 }
                 .run()
                 .await;
@@ -170,11 +159,6 @@ impl Proposer {
     async fn make_header(&mut self) -> DagResult<(Header, usize)> {
         // Make a new header.
         let header = self.create_new_header().await?;
-
-        // execute header payload and calculate hashes
-        // TODO: obtain batches by batch digest from workers. for now, rely
-        // on memory.
-        let execution_data = self.execute_header(header.clone()).await?;
 
         // Store the last header.
         self.proposer_store.write_last_proposed(&header)?;
@@ -230,12 +214,27 @@ impl Proposer {
             sleep(Duration::from_millis(drift_ms)).await;
         }
 
+        // TODO: better way to pass worker PeerIds to engine in case of missing batches?
+        let payload = header_digests.iter().map(|m| (m.digest, (m.worker_id, m.timestamp))).collect();
+
+        // EL data
+        let request = BuildHeaderMessage {
+            round: this_round,
+            epoch: this_epoch,
+            created_at: current_time,
+            payload,
+            parents: parents.iter().map(|cert| cert.digest()).collect(),
+        };
+        let HeaderPayloadResponse { sealed_header } = self.network_client.build_header(request).await?;
+
         let header = Header::new(
             self.authority_id,
             this_round,
             this_epoch,
+            current_time,
             header_digests.iter().map(|m| (m.digest, (m.worker_id, m.timestamp))).collect(),
             parents.iter().map(|x| x.digest()).collect(),
+            sealed_header,
         );
 
         let leader_and_support = if this_round % 2 == 0 {
@@ -306,18 +305,6 @@ impl Proposer {
         self.proposed_headers.insert(this_round, (header.clone(), header_digests));
 
         Ok(header)
-    }
-
-    /// Send the proposed header to the EL to build the next block.
-    /// 
-    /// The information is used so peers can validate EL.
-    async fn execute_header(&self, header: Header) -> DagResult<()> {
-        tracing::debug!("\n\n\n\nInside execute_header for proposer\n\n\n");
-        let (sender, receiver) = tokio::sync::oneshot::channel();
-        // TODO: add metrics here for how long it takes to build the block
-        let _res = self.tx_execute_header.send((header, sender)).await.map_err(|_| DagError::ExecutionEngineUnreachable)?;
-        debug!("\n\n\n\nsent to EL. waiting for reply...\n\n\n\n");
-        receiver.await.map_err(|_| DagError::ExecutionEngineDroppedOneshotSender)
     }
 
     fn max_delay(&self) -> Duration {
@@ -675,13 +662,20 @@ impl Proposer {
 mod test {
     use super::*;
     use crate::NUM_SHUTDOWN_RECEIVERS;
+    use fastcrypto::traits::KeyPair;
     use indexmap::IndexMap;
-    use lattice_test_utils::{fixture_payload, CommitteeFixture};
+    use lattice_test_utils::{fixture_payload, CommitteeFixture, payload_builder, setup_tracing};
     use prometheus::Registry;
-    use tn_types::consensus::PreSubscribedBroadcastSender;
+    use tn_tracing::init_test_tracing;
+    use tn_types::consensus::{PreSubscribedBroadcastSender, MockPrimaryToEngine, HeaderPayloadResponse};
+
+    // TODO: test execute_header()
+    // - sealed_header and digest updated
+    // - should header verify checks sealed header field?
 
     #[tokio::test]
     async fn propose_empty() {
+        init_test_tracing();
         let fixture = CommitteeFixture::builder().build();
         let committee = fixture.committee();
         let worker_cache = fixture.worker_cache();
@@ -697,8 +691,24 @@ mod test {
         let (tx_narwhal_round_updates, _rx_narwhal_round_updates) = watch::channel(0u64);
 
         let metrics = Arc::new(PrimaryMetrics::new(&Registry::new()));
-        // channel for proposer and EL
-        let (el_sender, mut el_receiver) = tokio::sync::mpsc::channel(1);
+        let client = NetworkClient::new_from_keypair(&primary.network_keypair(), &primary.engine_network_keypair().public());
+
+        // mock engine header provider
+        let mut mock_engine = MockPrimaryToEngine::new();
+        mock_engine.expect_build_header().return_once(
+            move |_request| {
+                tracing::debug!("mock engine expect_build_header: {_request:?}");
+                let header = tn_types::execution::Header::default();
+                Ok(
+                    anemo::Response::new(
+                        HeaderPayloadResponse {
+                            sealed_header: header.seal_slow(),
+                        }
+                    )
+                )
+            }
+        );
+        client.set_primary_to_engine_local_handler(Arc::new(mock_engine));
 
         // Spawn the proposer.
         let _proposer_handle = Proposer::spawn(
@@ -717,13 +727,8 @@ mod test {
             tx_narwhal_round_updates,
             rx_committed_own_headers,
             metrics,
-            el_sender,
+            client,
         );
-
-        // simulate EL
-        let execution_data = ();
-        let (_header, reply) = el_receiver.recv().await.expect("el receiver failed to receive header from proposer.");
-        reply.send(execution_data).expect("unable to deliver execution data to proposer.");
 
         // Ensure the proposer makes a correct empty header.
         let header = rx_headers.recv().await.unwrap();
@@ -752,8 +757,24 @@ mod test {
         let metrics = Arc::new(PrimaryMetrics::new(&Registry::new()));
 
         let max_num_of_batches = 10;
-        // channel for proposer and EL
-        let (el_sender, mut el_receiver) = tokio::sync::mpsc::channel(1);
+        let client = NetworkClient::new_from_keypair(&primary.network_keypair(), &primary.engine_network_keypair().public());
+
+        // mock engine header provider
+        let mut mock_engine = MockPrimaryToEngine::new();
+        mock_engine.expect_build_header().times(2).returning(
+            move |_request| {
+                tracing::debug!("mock engine expect_build_header: {_request:?}");
+                let header = tn_types::execution::Header::default();
+                Ok(
+                    anemo::Response::new(
+                        HeaderPayloadResponse {
+                            sealed_header: header.seal_slow(),
+                        }
+                    )
+                )
+            }
+        );
+        client.set_primary_to_engine_local_handler(Arc::new(mock_engine));
 
         // Spawn the proposer.
         let _proposer_handle = Proposer::spawn(
@@ -774,7 +795,7 @@ mod test {
             tx_narwhal_round_updates,
             rx_committed_own_headers,
             metrics,
-            el_sender,
+            client,
         );
 
         // Send enough digests for the header payload.
@@ -795,11 +816,6 @@ mod test {
             })
             .await
             .unwrap();
-
-        // simulate EL
-        let execution_data = ();
-        let (_header, reply) = el_receiver.recv().await.expect("el receiver failed to receive header from proposer.");
-        reply.send(execution_data).expect("unable to deliver execution data to proposer.");
 
         // Ensure the proposer makes a correct header from the provided payload.
         let header = rx_headers.recv().await.unwrap();
@@ -835,10 +851,6 @@ mod test {
 
         let result = tx_parents.send((parents, 1, 0)).await;
         assert!(result.is_ok());
-
-        // simulate EL
-        let (_header, reply) = el_receiver.recv().await.expect("el receiver failed to receive header from proposer.");
-        reply.send(execution_data).expect("unable to deliver execution data to proposer.");
 
         // THEN the header should contain max_num_of_batches
         let header = rx_headers.recv().await.unwrap();
@@ -879,8 +891,24 @@ mod test {
         let (_tx_committed_own_headers, rx_committed_own_headers) =
             lattice_test_utils::test_channel!(1);
         let metrics = Arc::new(PrimaryMetrics::new(&Registry::new()));
-        // channel for proposer and EL
-        let (el_sender, mut el_receiver) = tokio::sync::mpsc::channel(1);
+        let client = NetworkClient::new_from_keypair(&primary.network_keypair(), &primary.engine_network_keypair().public());
+
+        // mock engine header provider
+        let mut mock_engine = MockPrimaryToEngine::new();
+        mock_engine.expect_build_header().return_once(
+            move |_request| {
+                tracing::debug!("mock engine expect_build_header: {_request:?}");
+                let header = tn_types::execution::Header::default();
+                Ok(
+                    anemo::Response::new(
+                        HeaderPayloadResponse {
+                            sealed_header: header.seal_slow(),
+                        }
+                    )
+                )
+            }
+        );
+        client.set_primary_to_engine_local_handler(Arc::new(mock_engine));
 
         // Spawn the proposer.
         let proposer_handle = Proposer::spawn(
@@ -901,7 +929,7 @@ mod test {
             tx_narwhal_round_updates,
             rx_committed_own_headers,
             metrics,
-            el_sender,
+            client,
         );
 
         // Send enough digests for the header payload.
@@ -931,10 +959,10 @@ mod test {
         assert!(result.is_ok());
         assert!(rx_ack.await.is_ok());
 
-        // simulate EL
-        let execution_data = ();
-        let (_header, reply) = el_receiver.recv().await.expect("el receiver failed to receive header from proposer.");
-        reply.send(execution_data).expect("unable to deliver execution data to proposer.");
+        // // simulate EL
+        // let execution_data = ();
+        // let (_header, reply) = el_receiver.recv().await.expect("el receiver failed to receive header from proposer.");
+        // reply.send(execution_data).expect("unable to deliver execution data to proposer.");
 
         // Ensure the proposer makes a correct header from the provided payload.
         let header = rx_headers.recv().await.unwrap();
@@ -953,8 +981,24 @@ mod test {
         let (_tx_committed_own_headers, rx_committed_own_headers) =
             lattice_test_utils::test_channel!(1);
         let metrics = Arc::new(PrimaryMetrics::new(&Registry::new()));
-        // channel for proposer and EL
-        let (new_el_sender, mut new_el_receiver) = tokio::sync::mpsc::channel(1);
+        let client = NetworkClient::new_from_keypair(&primary.network_keypair(), &primary.engine_network_keypair().public());
+
+        // mock engine header provider
+        let mut mock_engine = MockPrimaryToEngine::new();
+        mock_engine.expect_build_header().return_once(
+            move |_request| {
+                tracing::debug!("mock engine expect_build_header: {_request:?}");
+                let header = tn_types::execution::Header::default();
+                Ok(
+                    anemo::Response::new(
+                        HeaderPayloadResponse {
+                            sealed_header: header.seal_slow(),
+                        }
+                    )
+                )
+            }
+        );
+        client.set_primary_to_engine_local_handler(Arc::new(mock_engine));
 
         let _proposer_handle = Proposer::spawn(
             authority_id,
@@ -974,7 +1018,7 @@ mod test {
             tx_narwhal_round_updates,
             rx_committed_own_headers,
             metrics,
-            new_el_sender,
+            client,
         );
 
         // Send enough digests for the header payload.
@@ -997,11 +1041,6 @@ mod test {
         let result = tx_parents.send((parents, 1, 0)).await;
         assert!(result.is_ok());
         assert!(rx_ack.await.is_ok());
-
-        // simulate EL
-        let execution_data = ();
-        let (_header, reply) = new_el_receiver.recv().await.expect("el receiver failed to receive header from proposer.");
-        reply.send(execution_data).expect("unable to deliver execution data to proposer.");
 
         // Ensure the proposer makes the same header as before
         let new_header = rx_headers.recv().await.unwrap();

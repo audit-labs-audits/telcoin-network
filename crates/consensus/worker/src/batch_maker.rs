@@ -22,7 +22,7 @@ use tokio::{
     time::{sleep, Duration, Instant},
 };
 use tracing::{error, warn, debug};
-use lattice_payload_builder::batch::{BatchBuilderHandle, generator::BuiltBatch};
+use lattice_payload_builder::{LatticePayloadBuilderHandle, BatchPayload};
 
 #[cfg(feature = "trace_transaction")]
 use byteorder::{BigEndian, ReadBytesExt};
@@ -61,7 +61,7 @@ pub struct BatchMaker {
     /// The batch store to store our own batches.
     store: DBMap<BatchDigest, Batch>,
     /// Handle to send requests to the batch builder service.
-    batch_builder: Option<BatchBuilderHandle>,
+    batch_builder: Option<LatticePayloadBuilderHandle>,
 }
 
 impl BatchMaker {
@@ -76,7 +76,7 @@ impl BatchMaker {
         node_metrics: Arc<WorkerMetrics>,
         client: NetworkClient,
         store: DBMap<BatchDigest, Batch>,
-        batch_builder: Option<BatchBuilderHandle>,
+        batch_builder: Option<LatticePayloadBuilderHandle>,
     ) -> JoinHandle<()> {
         spawn_logged_monitored_task!(
             async move {
@@ -217,9 +217,9 @@ impl BatchMaker {
     /// TODO: should this be a part of the batch builder's job in EL?
     async fn seal<'a>(
         &self,
-        batch_payload: Arc<BuiltBatch>,
+        batch_payload: Arc<BatchPayload>,
         responses: Vec<TxResponse>,
-        handle: BatchBuilderHandle,
+        handle: LatticePayloadBuilderHandle,
     ) -> Option<BoxFuture<'a, ()>> {
         #[cfg(feature = "benchmark")]
         {
@@ -273,7 +273,7 @@ impl BatchMaker {
         // create the batch for the worker
         let mut batch = Batch::new(batch_payload.get_batch().clone());
 
-        // TODO: get batch size and gas used metrics from BuiltBatch
+        // TODO: get batch size and gas used metrics from BatchPayload
         self.node_metrics.created_batch_size.with_label_values(&[reason]).observe(batch.size() as f64);
 
         // Send the batch through the deliver channel for further processing.

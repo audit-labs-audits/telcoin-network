@@ -5,7 +5,7 @@
 use super::*;
 
 use crate::NUM_SHUTDOWN_RECEIVERS;
-use lattice_payload_builder::batch::BatchBuilderServiceCommand;
+use lattice_payload_builder::LatticePayloadBuilderServiceCommand;
 use lattice_test_utils::{create_batch_store, test_channel, transaction, MockBatchBuildJob, known_transaction_1};
 use prometheus::Registry;
 use tn_types::consensus::{MockWorkerToPrimary, PreSubscribedBroadcastSender};
@@ -30,7 +30,7 @@ async fn request_next_batch() {
     client.set_worker_to_primary_local_handler(Arc::new(mock_server));
 
     let (tx, mut rx) = mpsc::unbounded_channel();
-    let batch_builder = BatchBuilderHandle::new(tx);
+    let batch_builder = LatticePayloadBuilderHandle::new(tx);
 
     // Spawn a `BatchMaker` instance.
     let id = 0;
@@ -52,7 +52,7 @@ async fn request_next_batch() {
     let batch_command = rx.recv().await.unwrap();
     let batch_job = MockBatchBuildJob::default();
     match batch_command {
-        BatchBuilderServiceCommand::NewPayload(tx) => {
+        LatticePayloadBuilderServiceCommand::NewBatch(tx) => {
             let fut = Box::pin(batch_job.clone());
             let _ = tx.send(fut);
         }

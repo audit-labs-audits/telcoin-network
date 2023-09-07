@@ -10,8 +10,8 @@ use lattice_network::client::NetworkClient;
 use std::{collections::HashMap, sync::Arc, time::Duration};
 use tn_types::consensus::{
     AuthorityIdentifier, Committee, Parameters, WorkerCache, WorkerId,
-    crypto::{AuthorityKeyPair, NetworkKeyPair, AuthorityPublicKey},
-    ConfigurationClient, ProposerClient, TransactionsClient,
+    crypto::{AuthorityKeyPair, NetworkKeyPair, AuthorityPublicKey, NetworkPublicKey},
+    TransactionsClient,
 };
 use tokio::sync::RwLock;
 use tonic::transport::Channel;
@@ -49,13 +49,13 @@ impl AuthorityDetails {
         key_pair: AuthorityKeyPair,
         network_key_pair: NetworkKeyPair,
         worker_keypairs: Vec<NetworkKeyPair>,
+        engine_network_keypair: NetworkKeyPair,
         parameters: Parameters,
         committee: Committee,
         worker_cache: WorkerCache,
-        internal_consensus_enabled: bool,
     ) -> Self {
         // Create network client.
-        let client = NetworkClient::new_from_keypair(&network_key_pair);
+        let client = NetworkClient::new_from_keypair(&network_key_pair, engine_network_keypair.public());
 
         // Create all the nodes we have in the committee
         let public_key = key_pair.public().clone();
@@ -67,11 +67,10 @@ impl AuthorityDetails {
             parameters.clone(),
             committee.clone(),
             worker_cache.clone(),
-            internal_consensus_enabled,
         );
 
         // Create all the workers - even if we don't intend to start them all. Those
-        // act as place holder setups. That gives us the power in a clear way manage
+        // act as place holder setups. That gives us the power in a clear way to manage
         // the nodes independently.
         let mut workers = HashMap::new();
         for (worker_id, addresses) in worker_cache.workers.get(&public_key).unwrap().0.clone() {
@@ -239,28 +238,6 @@ impl AuthorityDetails {
         workers
     }
 
-    /// Creates a new proposer client that connects to the corresponding client.
-    /// This should be available only if the internal consensus is disabled. If
-    /// the internal consensus is enabled then a panic will be thrown instead.
-    pub async fn new_proposer_client(&self) -> ProposerClient<Channel> {
-        let internal = self.internal.read().await;
-
-        if internal.primary.internal_consensus_enabled {
-            panic!("External consensus is disabled, won't create a proposer client");
-        }
-
-        let config = consensus_network::config::Config {
-            connect_timeout: Some(Duration::from_secs(10)),
-            request_timeout: Some(Duration::from_secs(10)),
-            ..Default::default()
-        };
-        let channel = config
-            .connect_lazy(&internal.primary.parameters.consensus_api_grpc.socket_addr)
-            .unwrap();
-
-        ProposerClient::new(channel)
-    }
-
     /// This method returns a new client to send transactions to the dictated
     /// worker identified by the `worker_id`. If the worker_id is not found then
     /// a panic is raised.
@@ -276,24 +253,6 @@ impl AuthorityDetails {
             .unwrap();
 
         TransactionsClient::new(channel)
-    }
-
-    /// Creates a new configuration client that connects to the corresponding client.
-    /// This should be available only if the internal consensus is disabled. If
-    /// the internal consensus is enabled then a panic will be thrown instead.
-    pub async fn new_configuration_client(&self) -> ConfigurationClient<Channel> {
-        let internal = self.internal.read().await;
-
-        if internal.primary.internal_consensus_enabled {
-            panic!("External consensus is disabled, won't create a configuration client");
-        }
-
-        let config = consensus_network::config::Config::new();
-        let channel = config
-            .connect_lazy(&internal.primary.parameters.consensus_api_grpc.socket_addr)
-            .unwrap();
-
-        ConfigurationClient::new(channel)
     }
 
     /// This method will return true either when the primary or any of

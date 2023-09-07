@@ -9,6 +9,7 @@ use crate::consensus::{
     serde::NarwhalBitmap,
     CertificateDigestProto, Header, HeaderAPI, HeaderV1, Round, TimestampMs, WorkerCache, config::Stake, AuthorityIdentifier, Epoch, Committee,
 };
+use base64::{engine::general_purpose, Engine};
 use bytes::Bytes;
 use consensus_util_mem::MallocSizeOf;
 use enum_dispatch::enum_dispatch;
@@ -26,7 +27,7 @@ use std::{collections::VecDeque, fmt};
 use super::{Batch, BatchAPI, MetadataAPI};
 
 /// Versioned certificate. Certificates are the output of consensus.
-#[derive(Clone, Serialize, Deserialize, MallocSizeOf)]
+#[derive(Clone, Serialize, Deserialize, /*MallocSizeOf */)]
 #[enum_dispatch(CertificateAPI)]
 pub enum Certificate {
     /// V1
@@ -154,7 +155,7 @@ pub trait CertificateAPI {
 
 /// The certificate issued after a successful round of consensus.
 #[serde_as]
-#[derive(Clone, Serialize, Deserialize, Default, MallocSizeOf, Debug)]
+#[derive(Clone, Serialize, Deserialize, Default, Debug, /* MallocSizeOf*/)]
 pub struct CertificateV1 {
     /// Certificate's header.
     pub header: Header,
@@ -440,13 +441,13 @@ impl From<CertificateDigest> for CertificateDigestProto {
 
 impl fmt::Debug for CertificateDigest {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> Result<(), fmt::Error> {
-        write!(f, "{}", base64::encode(self.0))
+        write!(f, "{}", general_purpose::STANDARD.encode(self.0))
     }
 }
 
 impl fmt::Display for CertificateDigest {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> Result<(), fmt::Error> {
-        write!(f, "{}", base64::encode(self.0).get(0..16).ok_or(fmt::Error)?)
+        write!(f, "{}", general_purpose::STANDARD.encode(self.0).get(0..16).ok_or(fmt::Error)?)
     }
 }
 

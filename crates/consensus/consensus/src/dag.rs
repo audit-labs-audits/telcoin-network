@@ -1,6 +1,10 @@
 // Copyright (c) Telcoin, LLC
 // Copyright (c) Mysten Labs, Inc.
 // SPDX-License-Identifier: Apache-2.0
+//! TODO: this module appears to only be usefule when external consensus is enabled.
+//! 
+//! The option for external consensus was removed. However, it seems to be useful for
+//! tests also. Need to figure out a way to manipulate the dag for tests...
 use consensus_metrics::{metered_channel, spawn_logged_monitored_task};
 use fastcrypto::hash::Hash;
 use std::{
@@ -191,7 +195,8 @@ impl InnerDag {
             vertices.insert((origin, round), digest);
         }
 
-        self.update_metrics();
+        // TODO: this only updates external metrics?
+        // self.update_metrics();
 
         Ok(())
     }
@@ -321,17 +326,17 @@ impl InnerDag {
         Ok(())
     }
 
-    /// Updates the dag-related metrics
-    fn update_metrics(&self) {
-        let vertices = self.vertices.read().unwrap();
+    // /// Updates the dag-related metrics
+    // fn update_metrics(&self) {
+    //     let vertices = self.vertices.read().unwrap();
 
-        self.metrics
-            .external_consensus_dag_vertices_elements
-            .with_label_values(&[])
-            .set(vertices.len() as i64);
+    //     self.metrics
+    //         .external_consensus_dag_vertices_elements
+    //         .with_label_values(&[])
+    //         .set(vertices.len() as i64);
 
-        self.metrics.external_consensus_dag_size.with_label_values(&[]).set(self.dag.size() as i64)
-    }
+    //     self.metrics.external_consensus_dag_size.with_label_values(&[]).set(self.dag.size() as i64)
+    // }
 }
 
 impl DagHandle {

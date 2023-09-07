@@ -34,6 +34,10 @@ pub(crate) struct BestTransactions<T: TransactionOrdering> {
 }
 
 impl<T: TransactionOrdering> BestTransactions<T> {
+    /// Return all transactions
+    pub(crate) fn all(&self) -> &BTreeMap<TransactionId, Arc<PendingTransaction<T>>> {
+        &self.all
+    }
     /// Mark the transaction and it's descendants as invalid.
     pub(crate) fn mark_invalid(&mut self, tx: &Arc<ValidPoolTransaction<T::Transaction>>) {
         self.invalid.insert(*tx.hash());
@@ -43,6 +47,14 @@ impl<T: TransactionOrdering> BestTransactions<T> {
 impl<T: TransactionOrdering> crate::traits::BestTransactions for BestTransactions<T> {
     fn mark_invalid(&mut self, tx: &Self::Item) {
         BestTransactions::mark_invalid(self, tx)
+    }
+
+    fn all_transactions(&self) -> Vec<Self::Item> {
+        let all_refs = BestTransactions::all(self);
+        all_refs.iter()
+            .map(|(_id, tx)| tx.transaction.transaction.clone())
+            .collect()
+        // todo!()
     }
 }
 
@@ -107,6 +119,9 @@ impl<T: TransactionOrdering> FinalizedTransactions<T> {
 impl<T: TransactionOrdering> crate::traits::BestTransactions for FinalizedTransactions<T> {
     fn mark_invalid(&mut self, tx: &Self::Item) {
         FinalizedTransactions::mark_invalid(self, tx)
+    }
+    fn all_transactions(&self) -> Vec<Self::Item> {
+        todo!()
     }
 }
 

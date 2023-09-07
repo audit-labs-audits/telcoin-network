@@ -44,12 +44,7 @@ impl Cluster {
     ///
     /// Fields passed in via Parameters will be used, except specified ports which have to be
     /// different for each instance. If None, the default Parameters will be used.
-    ///
-    /// When the `internal_consensus_enabled` is true then the standard internal
-    /// consensus engine will be enabled. If false, then the internal consensus will
-    /// be disabled and the gRPC server will be enabled to manage the Collections & the
-    /// DAG externally.
-    pub fn new(parameters: Option<Parameters>, internal_consensus_enabled: bool) -> Self {
+    pub fn new(parameters: Option<Parameters>) -> Self {
         let fixture = CommitteeFixture::builder().randomize_ports(true).build();
         let committee = fixture.committee();
         let worker_cache = fixture.worker_cache();
@@ -58,6 +53,9 @@ impl Cluster {
         info!("###### Creating new cluster ######");
         info!("Validator keys:");
         let mut nodes = HashMap::new();
+
+        // TODO: should this be part of the fixture?
+        // let empty_public_key = [0; 32];
 
         for (id, authority_fixture) in fixture.authorities().enumerate() {
             info!("Key {id} -> {}", authority_fixture.public_key());
@@ -68,10 +66,10 @@ impl Cluster {
                 authority_fixture.keypair().copy(),
                 authority_fixture.network_keypair().copy(),
                 authority_fixture.worker_keypairs(),
+                authority_fixture.engine_network_keypair(),
                 params.with_available_ports(),
                 committee.clone(),
                 worker_cache.clone(),
-                internal_consensus_enabled,
             );
             nodes.insert(id, authority);
         }
@@ -110,6 +108,7 @@ impl Cluster {
 
         for id in 0..authorities {
             info!("Spinning up node: {id}");
+            // self.start_engine().await;
             self.start_node(id, false, workers_per_authority).await;
 
             if let Some(d) = boot_wait_time {
@@ -270,7 +269,7 @@ mod test {
     #[tokio::test]
     async fn test_basic_cluster_setup() {
         ensure_test_environment();
-        let mut cluster = Cluster::new(None, true);
+        let mut cluster = Cluster::new(None);
 
         // start the cluster will all the possible nodes
         cluster.start(Some(4), Some(1), None).await;
@@ -297,35 +296,6 @@ mod test {
 
         // No authority should still run
         assert!(cluster.authorities().await.is_empty());
-    }
-
-    #[tokio::test(flavor = "current_thread", start_paused = true)]
-    async fn test_cluster_setup_with_consensus_disabled() {
-        ensure_test_environment();
-        let mut cluster = Cluster::new(None, false);
-
-        // start the cluster will all the possible nodes
-        cluster.start(Some(2), Some(1), None).await;
-
-        // give some time for nodes to bootstrap
-        tokio::time::sleep(Duration::from_secs(2)).await;
-
-        // connect to the gRPC address and send a simple request
-        let authority = cluster.authority(0);
-
-        let mut client = authority.new_proposer_client().await;
-
-        // send a sample rounds request
-        let request = tonic::Request::new(RoundsRequest {
-            public_key: Some(PublicKeyProto::from(authority.public_key.clone())),
-        });
-        let response = client.rounds(request).await;
-
-        // Should get back a successful response
-        let r = response.ok().unwrap().into_inner();
-
-        assert_eq!(0, r.oldest_round);
-        assert_eq!(0, r.newest_round);
     }
 
 }

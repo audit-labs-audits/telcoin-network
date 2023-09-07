@@ -42,6 +42,8 @@ pub struct AuthorityFixture {
     pub(super) keypair: AuthorityKeyPair,
     /// This authority's [NetworkKeyPair]
     pub(super) network_keypair: NetworkKeyPair,
+    /// This authority's engine's public key 
+    pub(super) engine_network_keypair: NetworkKeyPair,
     /// This authority's [Stake]
     pub(super) stake: Stake,
     /// This authority's [Multiaddr] for the consensus network.
@@ -70,6 +72,12 @@ impl AuthorityFixture {
     pub fn network_keypair(&self) -> NetworkKeyPair {
         self.network_keypair.copy()
     }
+
+    /// Get an owned copy of this authority's engine's [NetworkKeyPair].
+    pub fn engine_network_keypair(&self) -> NetworkKeyPair {
+        self.engine_network_keypair.copy()
+    }
+
 
     /// Create a new [anemo::Network] for this authority using it's network keypair.
     pub fn new_network(&self, router: anemo::Router) -> anemo::Network {
@@ -155,6 +163,7 @@ impl AuthorityFixture {
     {
         let keypair = AuthorityKeyPair::generate(&mut rng);
         let network_keypair = NetworkKeyPair::generate(&mut rng);
+        let engine_network_keypair = NetworkKeyPair::generate(&mut rng);
         let host = "127.0.0.1";
         let address: Multiaddr = format!("/ip4/{}/udp/{}", host, get_port(host)).parse().unwrap();
 
@@ -166,6 +175,6 @@ impl AuthorityFixture {
             })
             .collect();
 
-        Self { authority: OnceCell::new(), keypair, network_keypair, stake: 1, address, workers }
+        Self { authority: OnceCell::new(), keypair, network_keypair, engine_network_keypair, stake: 1, address, workers }
     }
 }

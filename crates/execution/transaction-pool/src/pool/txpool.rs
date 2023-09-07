@@ -27,7 +27,7 @@ use std::{
 use tn_types::{execution::{
     constants::{ETHEREUM_BLOCK_GAS_LIMIT, MIN_PROTOCOL_BASE_FEE},
     TxHash, H256,
-}, consensus::BatchDigest};
+}, consensus::{BatchDigest, Batch}};
 
 use super::{FinalizedPool, best::FinalizedTransactions, BatchSealedOutcome, sealed::SealedPool};
 
@@ -65,7 +65,7 @@ use super::{FinalizedPool, best::FinalizedTransactions, BatchSealedOutcome, seal
 ///   B3 -->  |promote| B2
 ///   new -->  |apply state changes| pool
 /// ```
-pub struct TxPool<T: TransactionOrdering> {
+pub struct TxPool<T: TransactionOrdering + Clone> {
     /// Contains the currently known information about the senders.
     sender_info: FnvHashMap<SenderId, SenderInfo>,
     /// pending subpool
@@ -645,12 +645,29 @@ impl<T: TransactionOrdering + Clone> TxPool<T> {
 
         BatchSealedOutcome { batch_digest: batch_info.digest, sealed: promoted, discarded }
     }
+
+
+    /// Retrieve the sub-pool of transactions from the sealed pool by batch digest.
+    pub(crate) fn get_batch_transactions(
+        &self,
+        digest: &BatchDigest,
+    ) -> PoolResult<&PendingPool<T>> {
+        self.sealed_pool.get_batch_pool(digest)
+    }
+
+    /// Try to add the missing batches directly to the sealed pool.
+    pub(crate) fn add_missing_batches(
+        &self,
+        missing_batches: HashMap<BatchDigest, Batch>,
+    ) -> Option<HashMap<BatchDigest, Batch>> {
+        self.sealed_pool.add_missing_batches(missing_batches)
+    }
 }
 
 // Additional test impls
 #[cfg(any(test, feature = "test-utils"))]
 #[allow(missing_docs)]
-impl<T: TransactionOrdering> TxPool<T> {
+impl<T: TransactionOrdering + Clone> TxPool<T> {
     pub(crate) fn pending(&self) -> &PendingPool<T> {
         &self.pending_pool
     }
@@ -664,7 +681,7 @@ impl<T: TransactionOrdering> TxPool<T> {
     }
 }
 
-impl<T: TransactionOrdering> fmt::Debug for TxPool<T> {
+impl<T: TransactionOrdering + Clone> fmt::Debug for TxPool<T> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.debug_struct("TxPool").field("config", &self.config).finish_non_exhaustive()
     }
@@ -755,6 +772,8 @@ impl<T: PoolTransaction> AllTransactions<T> {
     }
 
     /// Updates the pool after a batch is sealed by CL worker.
+    /// 
+    /// TODO: use rayon to update in parallel?
     pub(crate) fn update_from_sealed_batch(
         &mut self,
         batch_info: &BatchInfo,

@@ -18,7 +18,7 @@ use std::{
 use tn_types::execution::{Address, U128, U256};
 
 /// A wrapped `TxPool` with additional helpers for testing
-pub struct MockPool<T: TransactionOrdering = MockOrdering> {
+pub struct MockPool<T: Clone + TransactionOrdering = MockOrdering> {
     // The wrapped pool.
     pool: TxPool<T>,
 }
@@ -45,7 +45,7 @@ impl Default for MockPool {
     }
 }
 
-impl<T: TransactionOrdering> Deref for MockPool<T> {
+impl<T: TransactionOrdering + Clone> Deref for MockPool<T> {
     type Target = TxPool<T>;
 
     fn deref(&self) -> &Self::Target {
@@ -53,7 +53,7 @@ impl<T: TransactionOrdering> Deref for MockPool<T> {
     }
 }
 
-impl<T: TransactionOrdering> DerefMut for MockPool<T> {
+impl<T: TransactionOrdering + Clone> DerefMut for MockPool<T> {
     fn deref_mut(&mut self) -> &mut Self::Target {
         &mut self.pool
     }

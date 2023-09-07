@@ -17,6 +17,7 @@ use lattice_consensus::{
 };
 use lattice_executor::{get_restored_consensus_output, ExecutionState, Executor, SubscriberResult};
 use lattice_network::client::NetworkClient;
+use lattice_payload_builder::LatticePayloadBuilderHandle;
 use lattice_primary::{Primary, PrimaryChannelMetrics, NUM_SHUTDOWN_RECEIVERS};
 use lattice_storage::NodeStorage;
 use prometheus::{IntGauge, Registry};
@@ -35,12 +36,6 @@ use tracing::{debug, info, instrument};
 pub(super) struct PrimaryNodeInner {
     /// The configuration parameters.
     parameters: Parameters,
-    /// Whether to run consensus (and an executor client) or not.
-    /// If true, an internal consensus will be used, else an external consensus will be used.
-    /// If an external consensus will be used, then this bool will also ensure that the
-    /// corresponding gRPC server that is used for communication between narwhal and
-    /// external consensus is also spawned.
-    internal_consensus: bool,
     /// A prometheus RegistryService to use for the metrics
     registry_service: RegistryService,
     /// The latest registry id & registry used for the node
@@ -66,12 +61,10 @@ impl PrimaryNodeInner {
     /// Create a new instance of Self
     pub(super) fn new(
         parameters: Parameters,
-        internal_consensus: bool,
         registry_service: RegistryService,
     ) -> Self {
         Self {
             parameters,
-            internal_consensus,
             registry_service,
             registry: None,
             handles: FuturesUnordered::new(),
@@ -100,8 +93,8 @@ impl PrimaryNodeInner {
         store: &NodeStorage,
         // The state used by the client to execute transactions.
         execution_state: Arc<State>,
-        // Channel for primary's proposer to request the EL to build a block from the header.
-        tx_execute_header: mpsc::Sender<(Header, oneshot::Sender<()>)>,
+        // // Channel for primary's proposer to request the EL to build a block from the header.
+        // header_builder_handle: LatticePayloadBuilderHandle,
     ) -> Result<(), NodeError>
     where
         State: ExecutionState + Send + Sync + 'static,
@@ -127,11 +120,10 @@ impl PrimaryNodeInner {
             client,
             store,
             self.parameters.clone(),
-            self.internal_consensus,
             execution_state,
             &registry,
             &mut tx_shutdown,
-            tx_execute_header,
+            // header_builder_handle,
         )
         .await?;
 
@@ -224,20 +216,12 @@ impl PrimaryNodeInner {
         store: &NodeStorage,
         // The configuration parameters.
         parameters: Parameters,
-        // Whether to run consensus (and an executor client) or not.
-        // If true, an internal consensus will be used, else an external consensus will be used.
-        // If an external consensus will be used, then this bool will also ensure that the
-        // corresponding gRPC server that is used for communication between narwhal and
-        // external consensus is also spawned.
-        internal_consensus: bool,
         // The state used by the client to execute transactions.
         execution_state: Arc<State>,
         // A prometheus exporter Registry to use for the metrics
         registry: &Registry,
         // The channel to send the shutdown signal
         tx_shutdown: &mut PreSubscribedBroadcastSender,
-        // Channel for primary's proposer to request the EL to build a block from the header.
-        tx_execute_header: mpsc::Sender<(Header, oneshot::Sender<()>)>,
     ) -> SubscriberResult<Vec<JoinHandle<()>>>
     where
         State: ExecutionState + Send + Sync + 'static,
@@ -272,40 +256,23 @@ impl PrimaryNodeInner {
         let mut handles = Vec::new();
         let (tx_consensus_round_updates, rx_consensus_round_updates) =
             watch::channel(ConsensusRound::new(0, 0));
-        let dag = if !internal_consensus {
-            debug!("Consensus is disabled: the primary will run w/o Bullshark");
-            let consensus_metrics = Arc::new(ConsensusMetrics::new(registry));
-            let (handle, dag) = DagHandle::new(
-                &committee,
-                rx_new_certificates,
-                consensus_metrics,
-                tx_shutdown.subscribe(),
-            );
+        let consensus_handles = Self::spawn_consensus(
+            authority.id(),
+            worker_cache.clone(),
+            committee.clone(),
+            client.clone(),
+            store,
+            parameters.clone(),
+            execution_state,
+            tx_shutdown.subscribe_n(3),
+            rx_new_certificates,
+            tx_committed_certificates.clone(),
+            tx_consensus_round_updates,
+            registry,
+        )
+        .await?;
 
-            handles.push(handle);
-
-            Some(Arc::new(dag))
-        } else {
-            let consensus_handles = Self::spawn_consensus(
-                authority.id(),
-                worker_cache.clone(),
-                committee.clone(),
-                client.clone(),
-                store,
-                parameters.clone(),
-                execution_state,
-                tx_shutdown.subscribe_n(3),
-                rx_new_certificates,
-                tx_committed_certificates.clone(),
-                tx_consensus_round_updates,
-                registry,
-            )
-            .await?;
-
-            handles.extend(consensus_handles);
-
-            None
-        };
+        handles.extend(consensus_handles);
 
         // TODO: the same set of variables are sent to primary, consensus and downstream
         // components. Consider using a holder struct to pass them around.
@@ -327,11 +294,9 @@ impl PrimaryNodeInner {
             tx_new_certificates,
             rx_committed_certificates,
             rx_consensus_round_updates,
-            dag,
             tx_shutdown,
             tx_committed_certificates,
             registry,
-            tx_execute_header,
         );
         handles.extend(primary_handles);
 
