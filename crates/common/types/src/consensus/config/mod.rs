@@ -4,7 +4,7 @@
 // SPDX-License-Identifier: Apache-2.0
 #![allow(clippy::mutable_key_type)]
 
-use consensus_network::Multiaddr;
+use crate::consensus::Multiaddr;
 use serde::{de::DeserializeOwned, Deserialize, Serialize};
 use std::{
     fs::{self, OpenOptions},

@@ -33,10 +33,13 @@ use tn_types::{
         AuthorityIdentifier, Committee, Epoch, WorkerCache,
         crypto::NetworkPublicKey,
         error::{AcceptNotification, DagError, DagResult},
-        Certificate, CertificateAPI, CertificateDigest, Header, HeaderAPI, PrimaryToPrimaryClient,
-        Round, SendCertificateRequest, SendCertificateResponse, WorkerSynchronizeMessage,
+        Certificate, CertificateAPI, CertificateDigest, Header, HeaderAPI,
+        Round, 
     },
     ensure,
+};
+use tn_network_types::{
+    SendCertificateRequest, SendCertificateResponse, WorkerSynchronizeMessage, PrimaryToPrimaryClient,
 };
 use tokio::{
     sync::{broadcast, oneshot, watch, MutexGuard},

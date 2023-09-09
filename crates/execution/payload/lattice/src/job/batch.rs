@@ -11,7 +11,6 @@ use std::{future::Future, sync::{Arc, atomic::AtomicBool}, pin::Pin, task::{Cont
 use tn_types::execution::SealedBlock;
 use futures_core::ready;
 use futures_util::future::FutureExt;
-
 use crate::{BatchPayloadSizeMetric, PayloadTaskGuard, LatticePayloadBuilderServiceMetrics, LatticePayloadBuilderError, Cancelled, helpers::create_batch};
 
 /// Helper type to represent a CL Batch.

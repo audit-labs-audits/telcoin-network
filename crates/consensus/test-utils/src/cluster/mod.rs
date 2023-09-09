@@ -282,11 +282,6 @@ mod test {
 
         assert_eq!(authorities.len(), 4);
 
-        // fetch their workers transactions address
-        for authority in cluster.authorities().await {
-            assert_eq!(authority.worker_transaction_addresses().await.len(), 1);
-        }
-
         // now stop all authorities
         for id in 0..4 {
             cluster.stop_node(id).await;

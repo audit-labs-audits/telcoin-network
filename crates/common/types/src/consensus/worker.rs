@@ -3,8 +3,7 @@ use std::collections::{BTreeMap, HashSet};
 // Copyright (c) Telcoin, LLC
 // Copyright (c) Mysten Labs, Inc.
 // SPDX-License-Identifier: Apache-2.0
-use crate::consensus::{Batch, BatchDigest};
-use consensus_network::Multiaddr;
+use crate::consensus::{Batch, BatchDigest, Multiaddr};
 use fastcrypto::traits::EncodeDecodeBase64;
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
@@ -17,41 +16,6 @@ mod batch_serde;
 
 /// The local id for workers.
 pub type WorkerId = u32;
-
-/// Used by workers to send a new batch.
-#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
-pub struct WorkerBatchMessage {
-    /// Batch
-    pub batch: Batch,
-}
-
-/// Used by primary to ask worker for the request.
-#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
-pub struct RequestBatchRequest {
-    /// Requested batch's digest
-    pub batch: BatchDigest,
-}
-
-#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
-pub struct RequestBatchResponse {
-    /// Batch
-    pub batch: Option<Batch>,
-}
-
-/// Used by primary to bulk request batches from workers local store.
-#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
-pub struct RequestBatchesRequest {
-    /// Vec of requested batches' digests
-    pub batch_digests: Vec<BatchDigest>,
-}
-
-#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
-pub struct RequestBatchesResponse {
-    pub batches: Vec<Batch>,
-    /// If true, the primary should request the batches from the workers again.
-    /// This may not be something that can be trusted from a remote worker.
-    pub is_size_limit_reached: bool,
-}
 
 // TODO: support propagating errors from the worker to the primary.
 /// Oneshot channel for sending the BatchDigest.
@@ -72,9 +36,8 @@ pub enum DigestError {
 pub struct WorkerInfo {
     /// The public key of this worker.
     pub name: NetworkPublicKey,
-    // TODO: this needs to be mpsc::Receiver<Vec<Batch>>
-    /// Address to receive client transactions (WAN).
-    pub transactions: Multiaddr,
+    // /// Address to receive client transactions (WAN).
+    // pub transactions: Multiaddr,
     /// Address to receive messages from other workers (WAN) and our primary.
     pub worker_address: Multiaddr,
 }
@@ -197,20 +160,23 @@ impl WorkerCache {
             .collect()
     }
 
+    /// TODO: this isn't used anywhere. Delete?
+    /// 
     /// Return the network addresses that are present in the current worker cache
     /// that are from a primary key that are no longer in the committee. Current
     /// committee keys provided as an argument.
     pub fn network_diff(&self, keys: Vec<&AuthorityPublicKey>) -> HashSet<&Multiaddr> {
-        self.workers
-            .iter()
-            .filter(|(name, _)| !keys.contains(name))
-            .flat_map(|(_, authority)| {
-                authority
-                    .0
-                    .values()
-                    .map(|address| &address.transactions)
-                    .chain(authority.0.values().map(|address| &address.worker_address))
-            })
-            .collect()
+        todo!()
+        // self.workers
+        //     .iter()
+        //     .filter(|(name, _)| !keys.contains(name))
+        //     .flat_map(|(_, authority)| {
+        //         authority
+        //             .0
+        //             .values()
+        //             .map(|address| &address.transactions)
+        //             .chain(authority.0.values().map(|address| &address.worker_address))
+        //     })
+        //     .collect()
     }
 }

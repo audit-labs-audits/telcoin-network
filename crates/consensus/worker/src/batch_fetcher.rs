@@ -19,6 +19,8 @@ use std::{
 };
 use tn_types::consensus::{
     crypto::NetworkPublicKey, now, Batch, BatchAPI, BatchDigest, MetadataAPI,
+};
+use tn_network_types::{
     RequestBatchesRequest, RequestBatchesResponse,
 };
 use tokio::{

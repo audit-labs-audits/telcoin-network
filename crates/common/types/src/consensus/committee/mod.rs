@@ -10,7 +10,7 @@ mod authority;
 pub use authority::*;
 use super::config::{Stake, ConfigError, CommitteeUpdateError};
 use crate::consensus::crypto::{NetworkPublicKey, AuthorityPublicKey};
-use consensus_network::Multiaddr;
+use crate::consensus::Multiaddr;
 use fastcrypto::traits::EncodeDecodeBase64;
 use rand::{rngs::StdRng, seq::SliceRandom, SeedableRng};
 use serde::{Deserialize, Serialize};
@@ -252,6 +252,8 @@ impl Committee {
         self.authorities.values().map(|authority| &authority.primary_address).collect()
     }
 
+    /// TODO: this isn't used anywhere. Delete?
+    /// 
     /// Return the network addresses that are present in the current committee but that are absent
     /// from the new committee (provided as argument).
     pub fn network_diff<'a>(&'a self, other: &'a Self) -> HashSet<&Multiaddr> {
@@ -347,7 +349,6 @@ impl std::fmt::Display for Committee {
 mod tests {
     use super::{Authority, Committee};
     use crate::consensus::crypto::{AuthorityKeyPair, NetworkKeyPair, AuthorityPublicKey};
-    use consensus_network::Multiaddr;
     use fastcrypto::traits::KeyPair as _;
     use rand::thread_rng;
     use std::collections::BTreeMap;

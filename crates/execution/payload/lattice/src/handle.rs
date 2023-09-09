@@ -1,6 +1,7 @@
 use std::sync::Arc;
 use anemo::async_trait;
-use tn_types::consensus::{BatchDigest, CertificateDigest, PrimaryToEngine, BuildHeaderMessage, HeaderPayloadResponse};
+use tn_types::consensus::{BatchDigest, CertificateDigest,};
+use tn_network_types::{PrimaryToEngine, BuildHeaderRequest, HeaderPayloadResponse};
 use tokio::sync::{mpsc, oneshot};
 use crate::{LatticePayloadBuilderServiceCommand, BatchPayload, LatticePayloadBuilderError, HeaderPayload};
 
@@ -95,7 +96,7 @@ impl LatticePayloadBuilderHandle {
 impl PrimaryToEngine for LatticePayloadBuilderHandle {
     async fn build_header(
         &self,
-        request: anemo::Request<BuildHeaderMessage>,
+        request: anemo::Request<BuildHeaderRequest>,
     ) -> Result<anemo::Response<HeaderPayloadResponse>, anemo::rpc::Status> {
         let attributes = request.into_body();
 

@@ -18,7 +18,13 @@ use revm::primitives::{CfgEnv, BlockEnv};
 use tokio::sync::oneshot;
 use tracing::{trace, warn};
 use std::{future::Future, sync::{Arc, atomic::AtomicBool}, pin::Pin, task::{Context, Poll}, collections::HashMap};
-use tn_types::{execution::{SealedBlock, H256, ChainSpec, Header, SealedHeader}, consensus::{BatchDigest, BuildHeaderMessage, HeaderPayloadResponse, WorkerId, TimestampMs, Batch}};
+use tn_types::{
+    execution::{SealedBlock, H256, ChainSpec, Header, SealedHeader},
+    consensus::{BatchDigest, WorkerId, TimestampMs, Batch}
+};
+use tn_network_types::{
+    BuildHeaderRequest, HeaderPayloadResponse,
+};
 use futures_core::ready;
 use futures_util::future::FutureExt;
 use indexmap::IndexMap;
@@ -199,7 +205,7 @@ impl Future for PendingHeader {
 #[derive(Clone)]
 pub(crate) struct HeaderPayloadConfig {
     /// Attributes of the requested header payload.
-    pub(crate) attributes: BuildHeaderMessage,
+    pub(crate) attributes: BuildHeaderRequest,
     /// Pre-configured block environment.
     pub(crate) initialized_block_env: BlockEnv,
     /// Configuration for the environment.

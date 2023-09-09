@@ -13,10 +13,13 @@ use crate::CancelOnDropHandler;
 use anyhow::Result;
 use async_trait::async_trait;
 use tn_types::consensus::{
-    crypto::NetworkPublicKey, error::LocalClientError, Batch, BatchDigest, FetchBatchesRequest,
+    crypto::NetworkPublicKey, error::LocalClientError, Batch, BatchDigest,
+};
+use tn_network_types::{
+    FetchBatchesRequest,
     FetchBatchesResponse, FetchCertificatesRequest, FetchCertificatesResponse,
     GetCertificatesRequest, GetCertificatesResponse, RequestBatchesRequest, RequestBatchesResponse,
-    WorkerOthersBatchMessage, WorkerOwnBatchMessage, WorkerSynchronizeMessage, BuildHeaderMessage, HeaderPayloadResponse, MissingBatchesRequest,
+    WorkerOthersBatchMessage, WorkerOwnBatchMessage, WorkerSynchronizeMessage, BuildHeaderRequest, HeaderPayloadResponse, MissingBatchesRequest,
 };
 use tokio::task::JoinHandle;
 
@@ -131,7 +134,7 @@ pub trait PrimaryToEngineClient {
     /// Reports a new header for the EL engine to build.
     async fn build_header(
         &self,
-        request: BuildHeaderMessage,
+        request: BuildHeaderRequest,
     ) -> Result<HeaderPayloadResponse, LocalClientError>;
 
     // TODO: validate peer

@@ -15,8 +15,6 @@ use proptest_derive::Arbitrary;
 use serde::{Deserialize, Serialize};
 use std::{collections::BTreeSet, fmt};
 
-use super::{BuildHeaderMessage, HeaderPayloadResponse};
-
 /// Versioned `Header` type for consensus layer.
 #[derive(Clone, Deserialize, Serialize)]
 #[enum_dispatch(HeaderAPI)]

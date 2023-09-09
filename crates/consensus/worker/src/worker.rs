@@ -23,7 +23,7 @@ use anemo_tower::{
     trace::{DefaultMakeSpan, DefaultOnFailure, TraceLayer},
 };
 use consensus_metrics::{metered_channel::channel_with_total, spawn_logged_monitored_task};
-use consensus_network::{multiaddr::Protocol, Multiaddr};
+use tn_types::consensus::{Protocol, Multiaddr};
 use lattice_network::{
     client::NetworkClient,
     epoch_filter::{AllowedEpoch, EPOCH_HEADER_KEY},
@@ -38,8 +38,8 @@ use tn_types::consensus::{
     Authority, AuthorityIdentifier, Committee, Parameters, WorkerCache, WorkerId,
     crypto::{traits::KeyPair as _, NetworkKeyPair, NetworkPublicKey},
     Batch, BatchDigest, ConditionalBroadcastReceiver, PreSubscribedBroadcastSender,
-    WorkerToWorkerServer,
 };
+use tn_network_types::WorkerToWorkerServer;
 use tokio::task::JoinHandle;
 use tower::ServiceBuilder;
 use tracing::{error, info};
@@ -52,8 +52,7 @@ pub mod worker_tests;
 pub const CHANNEL_CAPACITY: usize = 1_000;
 
 use crate::{
-    metrics::{Metrics, WorkerEndpointMetrics, WorkerMetrics},
-    transactions_server::TxServer,
+    metrics::{Metrics, WorkerMetrics},
 };
 
 pub struct Worker {
@@ -104,7 +103,6 @@ impl Worker {
         };
 
         let node_metrics = Arc::new(metrics.worker_metrics.unwrap());
-        let endpoint_metrics = metrics.endpoint_metrics.unwrap();
         let channel_metrics: Arc<WorkerChannelMetrics> = Arc::new(metrics.channel_metrics.unwrap());
         let inbound_network_metrics = Arc::new(metrics.inbound_network_metrics.unwrap());
         let outbound_network_metrics = Arc::new(metrics.outbound_network_metrics.unwrap());
@@ -359,8 +357,6 @@ impl Worker {
             ],
             node_metrics,
             channel_metrics,
-            endpoint_metrics,
-            validator,
             client,
             network.clone(),
             batch_builder,
@@ -368,17 +364,6 @@ impl Worker {
 
         let network_shutdown_handle =
             Self::shutdown_network_listener(shutdown_receivers.pop().unwrap(), network);
-
-        // NOTE: This log entry is used to compute performance.
-        info!(
-            "Worker {} successfully booted on {}",
-            id,
-            worker
-                .worker_cache
-                .worker(authority.protocol_key(), &worker.id)
-                .expect("Our public key or worker id is not in the worker cache")
-                .transactions
-        );
 
         let mut handles = vec![connection_monitor_handle, network_shutdown_handle];
         handles.extend(admin_handles);
@@ -431,8 +416,6 @@ impl Worker {
         mut shutdown_receivers: Vec<ConditionalBroadcastReceiver>,
         node_metrics: Arc<WorkerMetrics>,
         channel_metrics: Arc<WorkerChannelMetrics>,
-        endpoint_metrics: WorkerEndpointMetrics,
-        validator: impl TransactionValidator,
         client: NetworkClient,
         network: anemo::Network,
         batch_builder: Option<LatticePayloadBuilderHandle>,
@@ -450,22 +433,22 @@ impl Worker {
             &channel_metrics.tx_quorum_waiter_total,
         );
 
-        // We first receive clients' transactions from the network.
-        let address = self
-            .worker_cache
-            .worker(self.authority.protocol_key(), &self.id)
-            .expect("Our public key or worker id is not in the worker cache")
-            .transactions;
-        let address =
-            address.replace(0, |_protocol| Some(Protocol::Ip4(Ipv4Addr::UNSPECIFIED))).unwrap();
+        // // We first receive clients' transactions from the network.
+        // let address = self
+        //     .worker_cache
+        //     .worker(self.authority.protocol_key(), &self.id)
+        //     .expect("Our public key or worker id is not in the worker cache")
+        //     .transactions;
+        // let address =
+        //     address.replace(0, |_protocol| Some(Protocol::Ip4(Ipv4Addr::UNSPECIFIED))).unwrap();
 
-        let tx_server_handle = TxServer::spawn(
-            address.clone(),
-            shutdown_receivers.pop().unwrap(),
-            endpoint_metrics,
-            tx_batch_maker,
-            validator,
-        );
+        // let tx_server_handle = TxServer::spawn(
+        //     address.clone(),
+        //     shutdown_receivers.pop().unwrap(),
+        //     endpoint_metrics,
+        //     tx_batch_maker,
+        //     validator,
+        // );
 
         // The transactions are sent to the `BatchMaker` that assembles them into batches. It then
         // broadcasts (in a reliable manner) the batches to all other workers that share the
@@ -497,8 +480,6 @@ impl Worker {
             node_metrics,
         );
 
-        info!("Worker {} listening to client transactions on {}", self.id, address);
-
-        vec![batch_maker_handle, quorum_waiter_handle, tx_server_handle]
+        vec![batch_maker_handle, quorum_waiter_handle]//, tx_server_handle]
     }
 }

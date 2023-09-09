@@ -15,8 +15,9 @@ use lattice_typed_store::{rocks::DBMap, Map};
 use std::sync::Arc;
 use tn_types::consensus::{
     WorkerId, error::DagError, now, Batch, BatchAPI, BatchDigest,
-    ConditionalBroadcastReceiver, MetadataAPI, Transaction, TxResponse, WorkerOwnBatchMessage,
+    ConditionalBroadcastReceiver, MetadataAPI, Transaction, TxResponse,
 };
+use tn_network_types::WorkerOwnBatchMessage;
 use tokio::{
     task::JoinHandle,
     time::{sleep, Duration, Instant},

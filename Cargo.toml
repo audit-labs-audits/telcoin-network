@@ -8,6 +8,7 @@ members = [
     "crates/common/telemetry-subscribers",
     "crates/common/tracing",
     "crates/common/types",
+    "crates/common/tn-network-types",
 
     # execution
     "crates/execution/blockchain-tree",
@@ -56,7 +57,6 @@ members = [
     "crates/consensus/anemo/*",
     "crates/consensus/consensus",
     "crates/consensus/consensus-metrics",
-    "crates/consensus/consensus-network",
     "crates/consensus/consensus-util-mem",
     "crates/consensus/consensus-util-mem-derive",
     "crates/consensus/executor",
@@ -135,6 +135,7 @@ tn-macros = { path = "crates/common/macros" }
 #tn-keys = { path = "crates/common/keys" }
 telemetry-subscribers = { path = "crates/common/telemetry-subscribers" }
 tn-types = { path = "crates/common/types" }
+tn-network-types = { path = "crates/common/tn-network-types" }
 
 # execution
 revm = { version = "3" }
@@ -179,7 +180,6 @@ anemo-tower = { path = "crates/consensus/anemo/anemo-tower" }
 #anemo-cli = { path = "crates/consensus/anemo/anemo-cli" }
 
 consensus-metrics = { path = "crates/consensus/consensus-metrics" }
-consensus-network = { path = "crates/consensus/consensus-network" }
 consensus-util-mem = { path = "crates/consensus/consensus-util-mem" }
 
 lattice-common = { path = "crates/consensus/lattice-common" }
@@ -199,6 +199,5 @@ lattice-test-utils = { path = "crates/consensus/test-utils" }
 # transative patch used by reth
 [patch.crates-io]
 # patched for quantity U256 responses <https://github.com/recmo/uint/issues/224>
-ruint = { git = "https://github.com/paradigmxyz/uint" }
 revm = { git = "https://github.com/bluealloy/revm/", branch = "release/v25" }
 revm-primitives = { git = "https://github.com/bluealloy/revm/", branch = "release/v25" }

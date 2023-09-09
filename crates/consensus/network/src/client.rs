@@ -13,8 +13,10 @@ use std::{collections::BTreeMap, sync::Arc, time::Duration};
 use tn_types::consensus::{
     crypto::{traits::KeyPair, NetworkKeyPair, NetworkPublicKey},
     error::LocalClientError,
+};
+use tn_network_types::{
     FetchBatchesRequest, FetchBatchesResponse, PrimaryToWorker, WorkerOthersBatchMessage,
-    WorkerOwnBatchMessage, WorkerSynchronizeMessage, WorkerToPrimary, BuildHeaderMessage, HeaderPayloadResponse,
+    WorkerOwnBatchMessage, WorkerSynchronizeMessage, WorkerToPrimary, BuildHeaderRequest, HeaderPayloadResponse,
     PrimaryToEngine, EngineToWorker, MissingBatchesRequest,
 };
 use tokio::{select, time::sleep};
@@ -273,7 +275,7 @@ impl WorkerToPrimaryClient for NetworkClient {
 impl PrimaryToEngineClient for NetworkClient {
     async fn build_header(
         &self,
-        request: BuildHeaderMessage,
+        request: BuildHeaderRequest,
     ) -> Result<HeaderPayloadResponse, LocalClientError> {
         // note: this is set by the node manager on .start()
         let c = self.get_primary_to_engine_handler().await?;

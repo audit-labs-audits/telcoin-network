@@ -3,7 +3,8 @@
 //! Mostly used to reduce complexity when using generics in the batch job and generator.
 use std::{future::Future, sync::Arc, collections::HashMap};
 use indexmap::IndexMap;
-use tn_types::consensus::{BatchDigest, CertificateDigest, BuildHeaderMessage, WorkerId, TimestampMs, Batch};
+use tn_types::consensus::{BatchDigest, CertificateDigest, WorkerId, TimestampMs, Batch};
+use tn_network_types::BuildHeaderRequest;
 use tokio::sync::oneshot;
 use crate::HeaderPayload;
 
@@ -52,7 +53,7 @@ pub trait HeaderPayloadJobGenerator: Send + Sync {
     /// This is called when the CL requests a new batch.
     fn new_header_job(
         &self,
-        attr: BuildHeaderMessage,
+        attr: BuildHeaderRequest,
     ) -> Result<Self::Job, LatticePayloadBuilderError>;
 
     /// Update the pool after a header is sealed.

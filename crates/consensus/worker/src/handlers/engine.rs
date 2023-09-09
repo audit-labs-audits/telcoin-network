@@ -14,8 +14,10 @@ use lattice_typed_store::{rocks::DBMap, Map};
 use std::collections::HashMap;
 use tn_types::consensus::{
     AuthorityIdentifier, Committee, WorkerCache, WorkerId,
-    Batch, BatchDigest, FetchBatchesResponse,
-    EngineToWorker, MissingBatchesRequest,
+    Batch, BatchDigest,
+};
+use tn_network_types::{
+    FetchBatchesResponse, EngineToWorker, MissingBatchesRequest,
 };
 
 /// Defines how the worker's network receiver handles incoming primary messages.

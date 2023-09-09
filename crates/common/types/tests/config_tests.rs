@@ -19,7 +19,7 @@
 // 1. Run `cargo insta test --review` under `./config`.
 // 2. Review, accept or reject changes.
 
-use consensus_network::Multiaddr;
+use tn_types::consensus::Multiaddr;
 use insta::assert_json_snapshot;
 use lattice_test_utils::CommitteeFixture;
 use rand::{rngs::StdRng, seq::SliceRandom, SeedableRng};

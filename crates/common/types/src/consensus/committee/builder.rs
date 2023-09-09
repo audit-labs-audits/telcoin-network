@@ -6,7 +6,7 @@
 //! Authority information for validators to participate in a committee to reach consensus.
 use super::{Epoch, Stake, Authority, Committee};
 use crate::consensus::crypto::{NetworkPublicKey, AuthorityPublicKey};
-use consensus_network::Multiaddr;
+use crate::consensus::Multiaddr;
 use std::collections::BTreeMap;
 
 /// Public utility to create a [Committee].

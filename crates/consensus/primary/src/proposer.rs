@@ -19,7 +19,10 @@ use tn_types::consensus::{
     AuthorityIdentifier, Committee, Epoch, WorkerId,
     error::{DagError, DagResult},
     now, BatchDigest, Certificate, CertificateAPI, ConditionalBroadcastReceiver, Header, HeaderAPI,
-    Round, TimestampMs, BuildHeaderMessage, HeaderPayloadResponse,
+    Round, TimestampMs,
+};
+use tn_network_types::{
+    BuildHeaderRequest, HeaderPayloadResponse,
 };
 use tokio::{
     sync::{oneshot, watch, mpsc},
@@ -218,7 +221,7 @@ impl Proposer {
         let payload = header_digests.iter().map(|m| (m.digest, (m.worker_id, m.timestamp))).collect();
 
         // EL data
-        let request = BuildHeaderMessage {
+        let request = BuildHeaderRequest {
             round: this_round,
             epoch: this_epoch,
             created_at: current_time,

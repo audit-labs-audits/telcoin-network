@@ -22,7 +22,8 @@ use tn_types::{execution::{
         ETHEREUM_BLOCK_GAS_LIMIT,
     },
     BlockNumberOrTag, ChainSpec, U256, IntoRecoveredTransaction,
-}, consensus::{ConditionalBroadcastReceiver, BatchDigest, CertificateDigest, BuildHeaderMessage, WorkerId, TimestampMs, Batch}};
+}, consensus::{ConditionalBroadcastReceiver, BatchDigest, CertificateDigest, WorkerId, TimestampMs, Batch}};
+use tn_network_types::BuildHeaderRequest;
 use tokio::sync::{Semaphore, oneshot, mpsc::Receiver};
 use crate::{HeaderPayloadJob, BatchPayloadJob, BatchPayloadJobGenerator, LatticePayloadBuilderError, BatchPayload, BatchPayloadConfig, LatticePayloadJobGenerator, HeaderPayloadJobGenerator, HeaderPayloadConfig, HeaderPayload};
 use lattice_network::EngineToWorkerClient;
@@ -43,7 +44,7 @@ where
     /// TODO: this function uses a lot of defaults for now (zero u256, etc.)
     fn new_header_job(
         &self,
-        attr: BuildHeaderMessage,
+        attr: BuildHeaderRequest,
     ) -> Result<Self::Job, LatticePayloadBuilderError> {
         // TODO: Message contains parents for all CertificateDigests
         // - could these be used to construct the "parent block" between
@@ -309,7 +310,7 @@ mod tests {
             network,
         );
 
-        let request = BuildHeaderMessage {
+        let request = BuildHeaderRequest {
             round: 0,
             epoch: 0,
             created_at: 0,

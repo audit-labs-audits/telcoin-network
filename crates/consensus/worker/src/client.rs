@@ -10,7 +10,7 @@ use std::{
 
 use arc_swap::ArcSwap;
 use consensus_metrics::metered_channel::Sender;
-use consensus_network::{multiaddr::Protocol, Multiaddr};
+use tn_types::consensus::{Protocol, Multiaddr};
 use thiserror::Error;
 use tn_types::consensus::{Transaction, TxResponse};
 use tracing::info;

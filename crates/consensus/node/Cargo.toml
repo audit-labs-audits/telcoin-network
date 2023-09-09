@@ -39,7 +39,6 @@ lattice-payload-builder.workspace = true
 execution-lattice-consensus.workspace = true
 
 consensus-metrics.workspace = true
-consensus-network.workspace = true
 telemetry-subscribers.workspace = true
 
 anemo.workspace = true

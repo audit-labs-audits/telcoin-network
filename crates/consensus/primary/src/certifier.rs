@@ -17,10 +17,11 @@ use tn_types::{
         crypto::{NetworkPublicKey, AuthoritySignature},
         error::{DagError, DagResult},
         Certificate, CertificateDigest, ConditionalBroadcastReceiver, Header, HeaderAPI,
-        PrimaryToPrimaryClient, RequestVoteRequest, Vote, VoteAPI,
+        Vote, VoteAPI,
     },
     ensure,
 };
+use tn_network_types::{PrimaryToPrimaryClient, RequestVoteRequest};
 use tokio::{
     sync::oneshot,
     task::{JoinHandle, JoinSet},

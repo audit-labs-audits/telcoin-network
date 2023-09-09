@@ -4,14 +4,13 @@
 
 //! Authority details 
 use super::{PrimaryNodeDetails, WorkerNodeDetails};
-use consensus_network::multiaddr::Multiaddr;
+use tn_types::consensus::Multiaddr;
 use fastcrypto::traits::KeyPair as _;
 use lattice_network::client::NetworkClient;
 use std::{collections::HashMap, sync::Arc, time::Duration};
 use tn_types::consensus::{
     AuthorityIdentifier, Committee, Parameters, WorkerCache, WorkerId,
     crypto::{AuthorityKeyPair, NetworkKeyPair, AuthorityPublicKey, NetworkPublicKey},
-    TransactionsClient,
 };
 use tokio::sync::RwLock;
 use tonic::transport::Channel;
@@ -79,7 +78,6 @@ impl AuthorityDetails {
                 name,
                 public_key.clone(),
                 parameters.clone(),
-                addresses.transactions.clone(),
                 committee.clone(),
                 worker_cache.clone(),
             );
@@ -216,14 +214,6 @@ impl AuthorityDetails {
             .clone()
     }
 
-    /// Helper method to return transaction addresses of
-    /// all the worker nodes.
-    /// Important: only the addresses of the running workers will
-    /// be returned.
-    pub async fn worker_transaction_addresses(&self) -> Vec<Multiaddr> {
-        self.workers().await.iter().map(|w| w.transactions_address.clone()).collect()
-    }
-
     /// Returns all the running workers
     async fn workers(&self) -> Vec<WorkerNodeDetails> {
         let internal = self.internal.read().await;
@@ -236,23 +226,6 @@ impl AuthorityDetails {
         }
 
         workers
-    }
-
-    /// This method returns a new client to send transactions to the dictated
-    /// worker identified by the `worker_id`. If the worker_id is not found then
-    /// a panic is raised.
-    pub async fn new_transactions_client(
-        &self,
-        worker_id: &WorkerId,
-    ) -> TransactionsClient<Channel> {
-        let internal = self.internal.read().await;
-
-        let config = consensus_network::config::Config::new();
-        let channel = config
-            .connect_lazy(&internal.workers.get(worker_id).unwrap().transactions_address)
-            .unwrap();
-
-        TransactionsClient::new(channel)
     }
 
     /// This method will return true either when the primary or any of

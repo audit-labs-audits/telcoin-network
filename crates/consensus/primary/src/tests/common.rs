@@ -67,7 +67,7 @@ pub fn create_db_stores() -> (HeaderStore, CertificateStore, PayloadStore) {
 pub fn worker_listener(
     // -1 means receive unlimited messages until timeout expires
     num_of_expected_responses: i32,
-    address: consensus_network::Multiaddr,
+    address: tn_types::consensus::Multiaddr,
     keypair: NetworkKeyPair,
 ) -> JoinHandle<Vec<WorkerSynchronizeMessage>> {
     tokio::spawn(async move {

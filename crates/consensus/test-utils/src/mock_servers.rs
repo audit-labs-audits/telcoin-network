@@ -7,18 +7,19 @@
 //! 
 //! Simulate network traffic between nodes and worker/primary.
 use anemo::async_trait;
-use consensus_network::Multiaddr;
+use tn_types::consensus::Multiaddr;
 use fastcrypto::traits::KeyPair as _;
 use std::collections::HashMap;
-use tn_types::consensus::{
-    crypto::NetworkKeyPair, FetchBatchesRequest,
+use tn_types::consensus::crypto::NetworkKeyPair;
+use tn_network_types::{
+    FetchBatchesRequest,
     FetchBatchesResponse, FetchCertificatesRequest, FetchCertificatesResponse,
     GetCertificatesRequest, GetCertificatesResponse,
     PayloadAvailabilityRequest, PayloadAvailabilityResponse, PrimaryToPrimary,
     PrimaryToPrimaryServer, PrimaryToWorker, PrimaryToWorkerServer, RequestBatchRequest,
     RequestBatchResponse, RequestBatchesRequest, RequestBatchesResponse, RequestVoteRequest,
     RequestVoteResponse, SendCertificateRequest, SendCertificateResponse,
-    WorkerBatchMessage, WorkerDeleteBatchesMessage,
+    WorkerBatchMessage,
     WorkerSynchronizeMessage, WorkerToWorker, WorkerToWorkerServer,
 };
 use tokio::sync::mpsc::{channel, Receiver, Sender};

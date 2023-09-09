@@ -24,6 +24,7 @@ tracing = "0.1.36"
 itertools = "0.10.5"
 prometheus = "0.13.3"
 lattice-storage.workspace = true
+tn-network-types = { workspace = true }
 #
 
 tn-types.workspace = true

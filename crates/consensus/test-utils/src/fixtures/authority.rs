@@ -10,7 +10,7 @@
 //! For instance, quickly generating enough signatures for quorum to advance the round.
 //! see crates/consensus/consensus/src/tests/bullshark_tests.rs
 use crate::WorkerFixture;
-use consensus_network::Multiaddr;
+use tn_types::consensus::Multiaddr;
 use fastcrypto::{
     hash::Hash as _,
     traits::{AllowedRng, KeyPair as _},

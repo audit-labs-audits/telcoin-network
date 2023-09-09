@@ -10,8 +10,11 @@ pub use output::*;
 mod primary;
 pub use primary::*;
 
-mod proto;
-pub use proto::*;
+// mod proto;
+// pub use proto::*;
+
+mod multiaddr;
+pub use crate::consensus::multiaddr::{Multiaddr, Protocol};
 
 mod worker;
 pub use worker::*;

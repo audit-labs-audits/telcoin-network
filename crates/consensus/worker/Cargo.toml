@@ -29,7 +29,6 @@ fastcrypto = { workspace = true, features = ["copy_key"] }
 lattice-network.workspace = true
 tn-types.workspace = true
 lattice-typed-store.workspace = true
-consensus-network.workspace = true
 consensus-metrics.workspace = true
 lattice-payload-builder.workspace = true
 
@@ -37,6 +36,7 @@ anemo.workspace = true
 anemo-tower.workspace = true
 anyhow.workspace = true
 eyre = "0.6.8"
+tn-network-types = { workspace = true }
 
 [dev-dependencies]
 arc-swap = { version = "1.5.1", features = ["serde"] }

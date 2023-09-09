@@ -5,7 +5,7 @@
 
 //! Helper methods for test-utils.
 use crate::BATCHES_CF;
-use consensus_network::Multiaddr;
+use tn_types::consensus::Multiaddr;
 use execution_transaction_pool::{TransactionId, SenderId};
 use fastcrypto::{
     hash::Hash as _,

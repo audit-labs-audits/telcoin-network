@@ -4,7 +4,7 @@
 // SPDX-License-Identifier: Apache-2.0
 use axum::{http::StatusCode, routing::get, Extension, Router};
 use consensus_metrics::spawn_logged_monitored_task;
-use consensus_network::multiaddr::Multiaddr;
+use tn_types::consensus::Multiaddr;
 use prometheus::{Registry, TextEncoder};
 use std::collections::HashMap;
 use tn_types::consensus::{AuthorityIdentifier, WorkerId};

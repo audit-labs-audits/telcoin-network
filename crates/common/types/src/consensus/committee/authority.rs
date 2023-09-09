@@ -5,7 +5,7 @@
 
 //! Authority information for validators to participate in a committee to reach consensus.
 use crate::consensus::crypto::{NetworkPublicKey, AuthorityPublicKey, AuthorityPublicKeyBytes};
-use consensus_network::Multiaddr;
+use crate::consensus::Multiaddr;
 use consensus_util_mem::MallocSizeOf;
 use serde::{Deserialize, Serialize};
 use std::fmt::{Display, Formatter};

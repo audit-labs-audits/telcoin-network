@@ -5,7 +5,7 @@
 //! Worker components for cluster.
 use crate::temp_dir;
 use consensus_metrics::RegistryService;
-use consensus_network::multiaddr::Multiaddr;
+use tn_types::consensus::Multiaddr;
 use lattice_network::client::NetworkClient;
 use lattice_node::{
     metrics::worker_metrics_registry, worker_node::WorkerNode,
@@ -23,7 +23,6 @@ use tracing::info;
 #[derive(Clone)]
 pub struct WorkerNodeDetails {
     pub id: WorkerId,
-    pub transactions_address: Multiaddr,
     pub registry: Registry,
     name: AuthorityIdentifier,
     primary_key: AuthorityPublicKey,
@@ -39,7 +38,6 @@ impl WorkerNodeDetails {
         name: AuthorityIdentifier,
         primary_key: AuthorityPublicKey,
         parameters: Parameters,
-        transactions_address: Multiaddr,
         committee: Committee,
         worker_cache: WorkerCache,
     ) -> Self {
@@ -52,7 +50,6 @@ impl WorkerNodeDetails {
             primary_key,
             registry: Registry::new(),
             store_path: temp_dir(),
-            transactions_address,
             committee,
             worker_cache,
             node,

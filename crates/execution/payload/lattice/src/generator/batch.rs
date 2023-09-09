@@ -20,7 +20,8 @@ use tn_types::{execution::{
         ETHEREUM_BLOCK_GAS_LIMIT,
     },
     BlockNumberOrTag, ChainSpec, U256,
-}, consensus::{ConditionalBroadcastReceiver, BatchDigest, EngineToWorker}};
+}, consensus::{ConditionalBroadcastReceiver, BatchDigest,}};
+use tn_network_types::EngineToWorker;
 use tokio::sync::{Semaphore, oneshot, mpsc::Receiver};
 
 use crate::{HeaderPayloadJob, BatchPayloadJob, BatchPayloadJobGenerator, LatticePayloadBuilderError, BatchPayload, BatchPayloadConfig, LatticePayloadJobGenerator};

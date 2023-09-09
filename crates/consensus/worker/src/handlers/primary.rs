@@ -18,7 +18,10 @@ use lattice_typed_store::{rocks::DBMap, Map};
 use std::{collections::HashSet, time::Duration};
 use tn_types::consensus::{
     AuthorityIdentifier, Committee, WorkerCache, WorkerId,
-    now, Batch, BatchAPI, BatchDigest, FetchBatchesRequest, FetchBatchesResponse, MetadataAPI,
+    now, Batch, BatchAPI, BatchDigest, MetadataAPI,
+};
+use tn_network_types::{
+    FetchBatchesRequest, FetchBatchesResponse, 
     PrimaryToWorker, RequestBatchesRequest, WorkerSynchronizeMessage, WorkerToWorkerClient,
 };
 use tracing::{debug, trace};

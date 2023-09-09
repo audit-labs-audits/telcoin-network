@@ -29,6 +29,7 @@ tonic = "0.8.2"
 tower = { version = "0.4.13", features = ["full"] }
 tracing = "0.1.36"
 tap = "1.0.1"
+tn-network-types = { workspace = true }
 
 
 lattice-consensus.workspace = true
@@ -39,7 +40,6 @@ tn-types.workspace = true
 lattice-storage.workspace = true
 lattice-typed-store.workspace = true
 tn-macros.workspace = true
-consensus-network.workspace = true
 # 
 #
 

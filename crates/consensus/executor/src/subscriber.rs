@@ -16,9 +16,10 @@ use tn_types::consensus::{
     AuthorityIdentifier, Committee, WorkerCache, WorkerId,
     crypto::NetworkPublicKey,
     Batch, BatchAPI, BatchDigest, Certificate, CertificateAPI, CommittedSubDag,
-    ConditionalBroadcastReceiver, ConsensusOutput, FetchBatchesRequest, HeaderAPI, MetadataAPI,
+    ConditionalBroadcastReceiver, ConsensusOutput, HeaderAPI, MetadataAPI,
     Timestamp,
 };
+use tn_network_types::FetchBatchesRequest;
 use tokio::task::JoinHandle;
 use tracing::{debug, error, info};
 

@@ -11,6 +11,7 @@ description = "A basic payload builder for execution that uses the txpool API to
 [dependencies]
 ## execution
 tn-types = { workspace = true }
+tn-network-types = { workspace = true }
 execution-revm = { path = "../../revm" }
 execution-transaction-pool = { workspace = true }
 execution-rlp = { workspace = true }

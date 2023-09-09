@@ -22,8 +22,11 @@ use tn_types::consensus::{
     AuthorityIdentifier, Committee,
     crypto::NetworkPublicKey,
     error::{DagError, DagResult},
-    Certificate, CertificateAPI, ConditionalBroadcastReceiver, FetchCertificatesRequest,
-    FetchCertificatesResponse, HeaderAPI, Round,
+    Certificate, CertificateAPI, ConditionalBroadcastReceiver,
+    HeaderAPI, Round,
+};
+use tn_network_types::{
+    FetchCertificatesRequest, FetchCertificatesResponse, 
 };
 use tokio::{
     sync::watch,

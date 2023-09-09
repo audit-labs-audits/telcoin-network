@@ -4,7 +4,8 @@
 use async_trait::async_trait;
 use consensus_metrics::metered_channel::Sender;
 use lattice_storage::PayloadStore;
-use tn_types::consensus::{WorkerToPrimary, WorkerOwnBatchMessage, MetadataAPI, WorkerOthersBatchMessage};
+use tn_types::consensus::MetadataAPI;
+use tn_network_types::{WorkerToPrimary, WorkerOwnBatchMessage, WorkerOthersBatchMessage};
 use tokio::sync::oneshot;
 use crate::proposer::OurDigestMessage;
 /// Defines how the network receiver handles incoming workers messages.

@@ -7,7 +7,8 @@ use crate::consensus::{
     error::{DagError, DagResult},
     now,
     serde::NarwhalBitmap,
-    CertificateDigestProto, Header, HeaderAPI, HeaderV1, Round, TimestampMs, WorkerCache, config::Stake, AuthorityIdentifier, Epoch, Committee,
+    // CertificateDigestProto,
+    Header, HeaderAPI, HeaderV1, Round, TimestampMs, WorkerCache, config::Stake, AuthorityIdentifier, Epoch, Committee,
 };
 use base64::{engine::general_purpose, Engine};
 use bytes::Bytes;
@@ -433,11 +434,11 @@ impl From<CertificateDigest> for Digest<{ crypto::DIGEST_LENGTH }> {
     }
 }
 
-impl From<CertificateDigest> for CertificateDigestProto {
-    fn from(hd: CertificateDigest) -> Self {
-        CertificateDigestProto { digest: Bytes::from(hd.0.to_vec()) }
-    }
-}
+// impl From<CertificateDigest> for CertificateDigestProto {
+//     fn from(hd: CertificateDigest) -> Self {
+//         CertificateDigestProto { digest: Bytes::from(hd.0.to_vec()) }
+//     }
+// }
 
 impl fmt::Debug for CertificateDigest {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> Result<(), fmt::Error> {

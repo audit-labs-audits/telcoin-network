@@ -16,11 +16,14 @@ use anyhow::{format_err, Result};
 use async_trait::async_trait;
 use std::time::Duration;
 use tn_types::consensus::{
-    crypto::NetworkPublicKey, Batch, BatchDigest, FetchCertificatesRequest,
+    crypto::NetworkPublicKey, Batch, BatchDigest,
+};
+use tn_network_types::{
+    FetchCertificatesRequest,
     FetchCertificatesResponse, GetCertificatesRequest, GetCertificatesResponse,
     PrimaryToPrimaryClient, PrimaryToWorkerClient, RequestBatchRequest, RequestBatchesRequest,
-    RequestBatchesResponse, WorkerBatchMessage, WorkerDeleteBatchesMessage,
-    WorkerSynchronizeMessage, WorkerToWorkerClient, BuildHeaderMessage, HeaderPayloadResponse,
+    RequestBatchesResponse, WorkerBatchMessage,
+    WorkerSynchronizeMessage, WorkerToWorkerClient, BuildHeaderRequest, HeaderPayloadResponse,
     PrimaryToEngineClient,
 };
 use tokio::task::JoinHandle;
@@ -175,7 +178,7 @@ impl WorkerRpc for anemo::Network {
 //     async fn build_header(
 //         &self,
 //         peer: NetworkPublicKey,
-//         request: BuildHeaderMessage,
+//         request: BuildHeaderRequest,
 //     ) -> Result<HeaderPayloadResponse> {
 //         let peer_id = PeerId(peer.0.to_bytes());
 //         let peer = self

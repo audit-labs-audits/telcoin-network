@@ -27,7 +27,7 @@ use consensus_metrics::{
     metered_channel::{channel_with_total, Receiver, Sender},
     monitored_scope,
 };
-use consensus_network::{multiaddr::Protocol, Multiaddr};
+use tn_types::consensus::{Protocol, Multiaddr};
 use fastcrypto::{
     hash::Hash,
     signature_service::SignatureService,
@@ -60,15 +60,19 @@ use tn_types::{
         crypto::{
             traits::EncodeDecodeBase64, AuthorityKeyPair, NetworkKeyPair, NetworkPublicKey, AuthoritySignature,
         },
+        Header, HeaderAPI, Round, Vote, VoteInfoAPI, PreSubscribedBroadcastSender,
         error::{DagError, DagResult},
-        now, Certificate, CertificateAPI, CertificateDigest, FetchCertificatesRequest,
-        FetchCertificatesResponse, GetCertificatesRequest, GetCertificatesResponse, Header,
-        HeaderAPI, PayloadAvailabilityRequest, PayloadAvailabilityResponse,
-        PreSubscribedBroadcastSender, PrimaryToPrimary, PrimaryToPrimaryServer, RequestVoteRequest,
-        RequestVoteResponse, Round, SendCertificateRequest, SendCertificateResponse, Vote,
-        VoteInfoAPI, WorkerToPrimaryServer,
+        now, Certificate, CertificateAPI, CertificateDigest,
     },
     ensure,
+};
+use tn_network_types::{
+        FetchCertificatesRequest,
+        FetchCertificatesResponse, GetCertificatesRequest, GetCertificatesResponse,
+        PayloadAvailabilityRequest, PayloadAvailabilityResponse,
+        PrimaryToPrimary, PrimaryToPrimaryServer, RequestVoteRequest,
+        RequestVoteResponse, SendCertificateRequest, SendCertificateResponse,
+        WorkerToPrimaryServer,
 };
 use tokio::{
     sync::{oneshot, watch},

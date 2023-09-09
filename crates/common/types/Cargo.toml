@@ -7,7 +7,7 @@ license.workspace = true
 homepage.workspace = true
 repository.workspace = true
 authors = ["Grant Kee <grant.kee@telco.in>", "reth Core Contributors", "Mysten Labs <build@mystenlabs.com>"]
-description = "Commonly used types in telcoin network."
+description = "Commonly used types in telcoin network protocol."
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
@@ -22,7 +22,7 @@ revm-primitives = { workspace = true, features = ["serde"] }
 ethers-core = { workspace = true, default-features = false }
 tiny-keccak = { version = "2.0", features = ["keccak"] }
 crunchy = { version = "0.2.2", default-features = false, features = ["limit_256"] }
-ruint = { version = "1.7.0", features = ["primitive-types", "rlp"] }
+ruint = { version = "1.9.0", features = ["primitive-types", "rlp"] }
 
 # Bloom
 fixed-hash = { version = "0.8", default-features = false, features = ["rustc-hex"] }
@@ -102,13 +102,13 @@ anyhow.workspace = true
 
 fastcrypto.workspace = true
 anemo.workspace = true
+multiaddr = "0.17.0"
 # 
 #
 
 lattice-typed-store.workspace = true
 consensus-metrics.workspace = true
 lattice-common.workspace = true
-consensus-network.workspace = true
 consensus-util-mem.workspace = true
 
 
@@ -143,16 +143,6 @@ tempfile = "3.3.0"
 
 
 
-
-
-[target.'cfg(not(target_env = "msvc"))'.build-dependencies]
-protobuf-src = "1.1.0"
-
-[build-dependencies]
-prost-build = "0.11.1"
-rustversion = "1.0.9"
-tonic-build = { version = "0.8.2", features = [ "prost", "transport" ] }
-anemo-build.workspace = true
 
 
 

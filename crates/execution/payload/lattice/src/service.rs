@@ -1,5 +1,6 @@
 use futures_util::StreamExt;
-use tn_types::consensus::{BatchDigest, CertificateDigest, BuildHeaderMessage};
+use tn_types::consensus::{BatchDigest, CertificateDigest,};
+use tn_network_types::BuildHeaderRequest;
 use std::{
     future::Future,
     pin::Pin,
@@ -152,7 +153,7 @@ pub enum LatticePayloadBuilderServiceCommand {
         /// Channel to return the job future.
         reply: oneshot::Sender<HeaderPayloadFuture>,
         /// Attributes for the block to build.
-        attributes: BuildHeaderMessage,
+        attributes: BuildHeaderRequest,
     },
     /// Update the transaction pool after a batch is sealed.
     HeaderSealed { // Certificate issued?

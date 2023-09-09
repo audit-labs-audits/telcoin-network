@@ -23,6 +23,7 @@ tn-macros.workspace = true
 
 lattice-common.workspace = true
 consensus-metrics.workspace = true
+tn-network-types = { workspace = true }
 
 # 
 

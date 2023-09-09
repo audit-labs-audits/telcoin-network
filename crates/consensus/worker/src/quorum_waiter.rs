@@ -11,8 +11,9 @@ use lattice_network::{CancelOnDropHandler, ReliableNetwork};
 use std::{sync::Arc, time::Duration};
 use tn_types::consensus::{
     Authority, Committee, Stake, WorkerCache, WorkerId,
-    Batch, ConditionalBroadcastReceiver, WorkerBatchMessage,
+    Batch, ConditionalBroadcastReceiver,
 };
+use tn_network_types::WorkerBatchMessage;
 use tokio::{task::JoinHandle, time::timeout};
 use tracing::{trace, warn};
 

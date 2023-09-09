@@ -41,8 +41,7 @@ impl WorkerFixture {
         let worker_name = keypair.public().clone();
         let host = "127.0.0.1";
         let worker_address = format!("/ip4/{}/udp/{}", host, get_port(host)).parse().unwrap();
-        let transactions = format!("/ip4/{}/tcp/{}/http", host, get_port(host)).parse().unwrap();
 
-        Self { keypair, id, info: WorkerInfo { name: worker_name, worker_address, transactions } }
+        Self { keypair, id, info: WorkerInfo { name: worker_name, worker_address } }
     }
 }

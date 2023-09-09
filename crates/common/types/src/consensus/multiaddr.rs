@@ -7,7 +7,8 @@ use std::{
     borrow::Cow,
     net::{IpAddr, SocketAddr},
 };
-pub use ::multiaddr::{Error, Protocol};
+pub use ::multiaddr::Protocol;
+use ::multiaddr::Error;
 
 /// Multiaddr is a wrapper for [::multiaddr::Multiaddr]
 /// and provides additional methods.

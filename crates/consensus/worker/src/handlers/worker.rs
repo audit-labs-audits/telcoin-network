@@ -16,6 +16,8 @@ use lattice_network::{client::NetworkClient, WorkerToPrimaryClient};
 use lattice_typed_store::{rocks::DBMap, Map};
 use tn_types::consensus::{
     WorkerId, now, Batch, BatchAPI, BatchDigest, MetadataAPI,
+};
+use tn_network_types::{
     RequestBatchRequest, RequestBatchResponse, RequestBatchesRequest,
     RequestBatchesResponse, WorkerBatchMessage,
     WorkerOthersBatchMessage, WorkerToWorker,
