@@ -5475,6 +5475,7 @@ dependencies = [
  "prometheus",
  "quinn-proto",
  "rand 0.8.5",
+ "thiserror",
  "tn-macros",
  "tn-network-types",
  "tn-types",
@@ -5516,6 +5517,7 @@ dependencies = [
  "structopt",
  "telemetry-subscribers",
  "thiserror",
+ "tn-network-types",
  "tn-types",
  "tokio",
  "tokio-stream",
@@ -5729,7 +5731,6 @@ dependencies = [
  "lattice-consensus",
  "lattice-network",
  "lattice-node",
- "lattice-payload-builder",
  "lattice-primary",
  "lattice-storage",
  "lattice-test-utils",
@@ -9088,6 +9089,8 @@ dependencies = [
  "shellexpand",
  "tempfile",
  "thiserror",
+ "tn-adapters",
+ "tn-network-types",
  "tn-tracing",
  "tn-types",
  "tokio",
@@ -9330,6 +9333,17 @@ name = "tinyvec_macros"
 version = "0.1.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "1f3ccbac311fea05f86f61904b462b55fb3df8837a366dfc601a0161d0532f20"
+
+[[package]]
+name = "tn-adapters"
+version = "0.1.0"
+dependencies = [
+ "anemo",
+ "async-trait",
+ "execution-lattice-consensus",
+ "lattice-payload-builder",
+ "tn-network-types",
+]
 
 [[package]]
 name = "tn-macros"

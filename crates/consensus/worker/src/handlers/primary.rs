@@ -29,25 +29,25 @@ use crate::{batch_fetcher::BatchFetcher, TransactionValidator};
 
 /// Defines how the worker's network receiver handles incoming primary messages.
 pub struct PrimaryToWorkerHandler<V> {
-    // The id of this authority.
+    /// The id of this authority.
     pub authority_id: AuthorityIdentifier,
-    // The id of this worker.
+    /// The id of this worker.
     pub id: WorkerId,
-    // The committee information.
+    /// The committee information.
     pub committee: Committee,
-    // The worker information cache.
+    /// The worker information cache.
     pub worker_cache: WorkerCache,
-    // The batch store
+    /// The batch store
     pub store: DBMap<BatchDigest, Batch>,
-    // Timeout on RequestBatch RPC.
+    /// Timeout on RequestBatch RPC.
     pub request_batch_timeout: Duration,
-    // Number of random nodes to query when retrying batch requests.
+    /// Number of random nodes to query when retrying batch requests.
     pub request_batch_retry_nodes: usize,
-    // Synchronize header payloads from other workers.
+    /// Synchronize header payloads from other workers.
     pub network: Option<Network>,
-    // Fetch certificate payloads from other workers.
+    /// Fetch certificate payloads from other workers.
     pub batch_fetcher: Option<BatchFetcher>,
-    // Validate incoming batches
+    /// Validate incoming batches
     pub validator: V,
 }
 

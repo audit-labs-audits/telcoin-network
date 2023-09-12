@@ -264,7 +264,7 @@ impl Cluster {
 mod test {
     use crate::{cluster::Cluster, ensure_test_environment};
     use std::time::Duration;
-    use tn_types::consensus::{PublicKeyProto, RoundsRequest};
+    // use tn_types::consensus::{PublicKeyProto, RoundsRequest};
 
     #[tokio::test]
     async fn test_basic_cluster_setup() {

@@ -4,6 +4,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 //! Worker fixture.
+use anemo::PeerId;
 use fastcrypto::traits::KeyPair as _;
 use rand::{rngs::StdRng, SeedableRng};
 use tn_types::consensus::{crypto::NetworkKeyPair, WorkerId, WorkerInfo};
@@ -22,6 +23,11 @@ impl WorkerFixture {
 
     pub fn info(&self) -> &WorkerInfo {
         &self.info
+    }
+
+    pub fn peer_id(&self) -> PeerId {
+        let id = self.info.name.0.to_bytes();
+        PeerId(id)
     }
 
     pub fn new_network(&self, router: anemo::Router) -> anemo::Network {

@@ -2,7 +2,7 @@
 // Copyright (c) 2021, Facebook, Inc. and its affiliates
 // Copyright (c) Mysten Labs, Inc.
 // SPDX-License-Identifier: Apache-2.0
-use crate::{metrics::PrimaryMetrics, synchronizer::Synchronizer};
+use crate::{metrics::PrimaryMetrics, synchronizer::Synchronizer, error::{PrimaryResult, PrimaryError}};
 use anemo::Request;
 use consensus_metrics::{
     metered_channel::Receiver, monitored_future, monitored_scope, spawn_logged_monitored_task,
@@ -21,7 +21,6 @@ use std::{
 use tn_types::consensus::{
     AuthorityIdentifier, Committee,
     crypto::NetworkPublicKey,
-    error::{DagError, DagResult},
     Certificate, CertificateAPI, ConditionalBroadcastReceiver,
     HeaderAPI, Round,
 };
@@ -316,14 +315,14 @@ async fn run_fetch_task(
     committee: Committee,
     gc_round: Round,
     written_rounds: BTreeMap<AuthorityIdentifier, BTreeSet<Round>>,
-) -> DagResult<()> {
+) -> PrimaryResult<()> {
     // Send request to fetch certificates.
     let request = FetchCertificatesRequest::default()
         .set_bounds(gc_round, written_rounds)
         .set_max_items(MAX_CERTIFICATES_TO_FETCH);
     let Some(response) =
         fetch_certificates_helper(state.authority_id, &state.network, &committee, request).await else {
-            return Err(DagError::NoCertificateFetched);
+            return Err(PrimaryError::NoCertificateFetched);
         };
 
     // Process and store fetched certificates.
@@ -417,10 +416,10 @@ async fn process_certificates_helper(
     response: FetchCertificatesResponse,
     synchronizer: &Synchronizer,
     metrics: Arc<PrimaryMetrics>,
-) -> DagResult<()> {
+) -> PrimaryResult<()> {
     trace!("Start sending fetched certificates to processing");
     if response.certificates.len() > MAX_CERTIFICATES_TO_FETCH {
-        return Err(DagError::TooManyFetchedCertificatesReturned(
+        return Err(PrimaryError::TooManyFetchedCertificatesReturned(
             response.certificates.len(),
             MAX_CERTIFICATES_TO_FETCH,
         ))
@@ -446,13 +445,13 @@ async fn process_certificates_helper(
                 metrics
                     .certificate_fetcher_total_verification_us
                     .inc_by(now.elapsed().as_micros() as u64);
-                Ok::<Vec<Certificate>, DagError>(certs)
+                Ok::<Vec<Certificate>, PrimaryError>(certs)
             })
         })
         .collect_vec();
     // Process verified certificates in the same order as received.
     for task in verify_tasks {
-        let certificates = task.await.map_err(|_| DagError::Canceled)??;
+        let certificates = task.await.map_err(|_| PrimaryError::Canceled)??;
         let now = Instant::now();
         for cert in certificates {
             if let Err(e) = synchronizer.try_accept_fetched_certificate(cert).await {

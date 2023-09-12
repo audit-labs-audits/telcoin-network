@@ -348,7 +348,7 @@ impl std::fmt::Display for Committee {
 #[cfg(test)]
 mod tests {
     use super::{Authority, Committee};
-    use crate::consensus::crypto::{AuthorityKeyPair, NetworkKeyPair, AuthorityPublicKey};
+    use crate::consensus::{crypto::{AuthorityKeyPair, NetworkKeyPair, AuthorityPublicKey}, Multiaddr};
     use fastcrypto::traits::KeyPair as _;
     use rand::thread_rng;
     use std::collections::BTreeMap;

@@ -15,13 +15,15 @@ pub mod metrics;
 mod p2p;
 mod retry;
 mod traits;
+mod error;
+pub use error::LocalClientError;
 
 pub use crate::{
     retry::RetryConfig,
     traits::{
         PrimaryToPrimaryRpc, PrimaryToWorkerClient, ReliableNetwork,
         WorkerRpc, WorkerToPrimaryClient, PrimaryToEngineClient,
-        EngineToWorkerClient,
+        EngineToWorkerClient, WorkerToEngineClient,
     },
 };
 

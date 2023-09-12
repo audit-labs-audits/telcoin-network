@@ -3,7 +3,7 @@
 //! Primary and workers only communicate locally for now.
 use crate::{
     metrics::{PrimaryMetrics},
-    synchronizer::Synchronizer, primary::FETCH_CERTIFICATES_MAX_HANDLER_TIME,
+    synchronizer::Synchronizer, primary::FETCH_CERTIFICATES_MAX_HANDLER_TIME, error::{PrimaryResult, PrimaryError},
 };
 use anemo::{
     codegen::InboundRequestLayer,
@@ -15,7 +15,6 @@ use consensus_metrics::{
     metered_channel::{channel_with_total, Receiver, Sender},
     monitored_scope,
 };
-use tn_types::consensus::{Protocol, Multiaddr};
 use fastcrypto::{
     hash::Hash,
     signature_service::SignatureService,
@@ -48,7 +47,6 @@ use tn_types::{
             self, traits::EncodeDecodeBase64, AuthorityKeyPair, NetworkKeyPair, NetworkPublicKey, AuthoritySignature,
         },
         Header, HeaderAPI, Round, Vote, PreSubscribedBroadcastSender, VoteInfoAPI, 
-        error::{DagError, DagResult},
         now, Certificate, CertificateAPI, CertificateDigest,
     },
     ensure,
@@ -150,7 +148,7 @@ impl PrimaryToPrimaryHandler {
     async fn process_request_vote(
         &self,
         request: anemo::Request<RequestVoteRequest>,
-    ) -> DagResult<RequestVoteResponse> {
+    ) -> PrimaryResult<RequestVoteResponse> {
         let header = &request.body().header;
         let committee = self.committee.clone();
         header.validate(&committee, &self.worker_cache)?;
@@ -158,28 +156,28 @@ impl PrimaryToPrimaryHandler {
         let num_parents = request.body().parents.len();
         ensure!(
             num_parents <= committee.size(),
-            DagError::TooManyParents(num_parents, committee.size())
+            PrimaryError::TooManyParents(num_parents, committee.size())
         );
         self.metrics.certificates_in_votes.inc_by(num_parents as u64);
 
         // Vote request must come from the Header's author.
         let peer_id = request
             .peer_id()
-            .ok_or_else(|| DagError::NetworkError("Unable to access remote peer ID".to_owned()))?;
+            .ok_or_else(|| PrimaryError::NetworkError("Unable to access remote peer ID".to_owned()))?;
         let peer_network_key = NetworkPublicKey::from_bytes(&peer_id.0).map_err(|e| {
-            DagError::NetworkError(format!(
+            PrimaryError::NetworkError(format!(
                 "Unable to interpret remote peer ID {peer_id:?} as a NetworkPublicKey: {e:?}"
             ))
         })?;
         let peer_authority =
             committee.authority_by_network_key(&peer_network_key).ok_or_else(|| {
-                DagError::NetworkError(format!(
+                PrimaryError::NetworkError(format!(
                     "Unable to find authority with network key {peer_network_key:?}"
                 ))
             })?;
         ensure!(
             header.author() == peer_authority.id(),
-            DagError::NetworkError(format!(
+            PrimaryError::NetworkError(format!(
                 "Header author {:?} must match requesting peer {peer_authority:?}",
                 header.author()
             ))
@@ -224,21 +222,21 @@ impl PrimaryToPrimaryHandler {
         for parent in parents.iter() {
             ensure!(
                 parent.round() + 1 == header.round(),
-                DagError::HeaderHasInvalidParentRoundNumbers(header.digest())
+                PrimaryError::HeaderHasInvalidParentRoundNumbers(header.digest())
             );
             ensure!(
                 header.created_at() >= parent.header().created_at(),
-                DagError::HeaderHasInvalidParentTimestamp(header.digest())
+                PrimaryError::HeaderHasInvalidParentTimestamp(header.digest())
             );
             ensure!(
                 parent_authorities.insert(parent.header().author()),
-                DagError::HeaderHasDuplicateParentAuthorities(header.digest())
+                PrimaryError::HeaderHasDuplicateParentAuthorities(header.digest())
             );
             stake += committee.stake_by_id(parent.origin());
         }
         ensure!(
             stake >= committee.quorum_threshold(),
-            DagError::HeaderRequiresQuorum(header.digest())
+            PrimaryError::HeaderRequiresQuorum(header.digest())
         );
 
         // Synchronize all batches referenced in the header.
@@ -260,7 +258,7 @@ impl PrimaryToPrimaryHandler {
                     header,
                     *header.created_at()
                 );
-                return Err(DagError::InvalidTimestamp {
+                return Err(PrimaryError::InvalidTimestamp {
                     created_time: *header.created_at(),
                     local_time: current_time,
                 })
@@ -268,7 +266,7 @@ impl PrimaryToPrimaryHandler {
         }
 
         // Store the header.
-        self.header_store.write(header).map_err(DagError::StoreError)?;
+        self.header_store.write(header).map_err(PrimaryError::StoreError)?;
 
         // Check if we can vote for this header.
         // Send the vote when:
@@ -279,16 +277,16 @@ impl PrimaryToPrimaryHandler {
         // of the vote we create for this header.
         // Also when the header is older than one we've already voted for, it is useless to vote,
         // so we don't.
-        let result = self.vote_digest_store.read(&header.author()).map_err(DagError::StoreError)?;
+        let result = self.vote_digest_store.read(&header.author()).map_err(PrimaryError::StoreError)?;
 
         if let Some(vote_info) = result {
             ensure!(
                 header.epoch() == vote_info.epoch(),
-                DagError::InvalidEpoch { expected: header.epoch(), received: vote_info.epoch() }
+                PrimaryError::InvalidEpoch { expected: header.epoch(), received: vote_info.epoch() }
             );
             ensure!(
                 header.round() >= vote_info.round(),
-                DagError::AlreadyVotedNewerHeader(
+                PrimaryError::AlreadyVotedNewerHeader(
                     header.digest(),
                     header.round(),
                     vote_info.round(),
@@ -304,7 +302,7 @@ impl PrimaryToPrimaryHandler {
                         header,
                     );
                     self.metrics.votes_dropped_equivocation_protection.inc();
-                    return Err(DagError::AlreadyVoted(
+                    return Err(PrimaryError::AlreadyVoted(
                         vote_info.vote_digest(),
                         header.digest(),
                         header.round(),
@@ -333,7 +331,7 @@ impl PrimaryToPrimaryHandler {
         &self,
         header: &Header,
         mut parents: Vec<Certificate>,
-    ) -> DagResult<()> {
+    ) -> PrimaryResult<()> {
         {
             let parent_digests = self.parent_digests.lock();
             parents.retain(|cert| {
@@ -355,7 +353,7 @@ impl PrimaryToPrimaryHandler {
     async fn get_unknown_parent_digests(
         &self,
         header: &Header,
-    ) -> DagResult<Vec<CertificateDigest>> {
+    ) -> PrimaryResult<Vec<CertificateDigest>> {
         // Get digests not known by the synchronizer, in storage or among suspended certificates.
         let mut digests = self.synchronizer.get_unknown_parent_digests(header).await?;
 
@@ -373,7 +371,7 @@ impl PrimaryToPrimaryHandler {
         let limit_round = narwhal_round.saturating_sub(HEADER_AGE_LIMIT);
         ensure!(
             limit_round <= header.round(),
-            DagError::TooOld(header.digest().into(), header.round(), narwhal_round)
+            PrimaryError::TooOld(header.digest().into(), header.round(), narwhal_round)
         );
 
         // Drop old entries from parent_digests.
@@ -409,7 +407,7 @@ impl PrimaryToPrimary for PrimaryToPrimaryHandler {
         let certificate = request.into_body().certificate;
         match self.synchronizer.try_accept_certificate(certificate).await {
             Ok(()) => Ok(anemo::Response::new(SendCertificateResponse { accepted: true })),
-            Err(DagError::Suspended(_)) => {
+            Err(PrimaryError::Suspended(_)) => {
                 Ok(anemo::Response::new(SendCertificateResponse { accepted: false }))
             }
             Err(e) => Err(anemo::rpc::Status::internal(e.to_string())),
@@ -424,16 +422,16 @@ impl PrimaryToPrimary for PrimaryToPrimaryHandler {
             anemo::rpc::Status::new_with_message(
                 match e {
                     // Report unretriable errors as 400 Bad Request.
-                    DagError::InvalidSignature |
-                    DagError::InvalidEpoch { .. } |
-                    DagError::InvalidHeaderDigest |
-                    DagError::HeaderHasBadWorkerIds(_) |
-                    DagError::HeaderHasInvalidParentRoundNumbers(_) |
-                    DagError::HeaderHasDuplicateParentAuthorities(_) |
-                    DagError::AlreadyVoted(_, _, _) |
-                    DagError::AlreadyVotedNewerHeader(_, _, _) |
-                    DagError::HeaderRequiresQuorum(_) |
-                    DagError::TooOld(_, _, _) => anemo::types::response::StatusCode::BadRequest,
+                    PrimaryError::InvalidSignature |
+                    PrimaryError::InvalidEpoch { .. } |
+                    PrimaryError::InvalidHeaderDigest |
+                    PrimaryError::HeaderHasBadWorkerIds(_) |
+                    PrimaryError::HeaderHasInvalidParentRoundNumbers(_) |
+                    PrimaryError::HeaderHasDuplicateParentAuthorities(_) |
+                    PrimaryError::AlreadyVoted(_, _, _) |
+                    PrimaryError::AlreadyVotedNewerHeader(_, _, _) |
+                    PrimaryError::HeaderRequiresQuorum(_) |
+                    PrimaryError::TooOld(_, _, _) => anemo::types::response::StatusCode::BadRequest,
                     // All other errors are retriable.
                     _ => anemo::types::response::StatusCode::Unknown,
                 },

@@ -7,6 +7,7 @@ use execution_provider::{BlockReaderIdExt, StateProviderFactory};
 use execution_rlp::Encodable;
 use execution_tasks::TaskSpawner;
 use execution_transaction_pool::{TransactionPool, TransactionId, BatchInfo};
+use lattice_network::EngineToWorkerClient;
 use revm::primitives::{CfgEnv, BlockEnv, Address};
 use tracing::{warn, debug, info};
 use std::{
@@ -33,9 +34,9 @@ where
     Client: StateProviderFactory + BlockReaderIdExt + Clone + Unpin + 'static,
     Pool: TransactionPool + Unpin + 'static,
     Tasks: TaskSpawner + Clone + Unpin + 'static,
-    Network: Clone + Send + Sync,
+    Network: EngineToWorkerClient + Clone + Unpin + Send + Sync + 'static,
 {
-    type Job = BatchPayloadJob<Client, Pool, Tasks>;
+    type Job = BatchPayloadJob<Client, Pool, Tasks, Network>;
 
     /// Method is called each time a worker requests a new batch.
     /// 
@@ -113,21 +114,15 @@ where
             pool: self.pool.clone(),
             executor: self.executor.clone(),
             pending_batch: None,
+            pending_broadcast: None,
+            payload_transactions: vec![],
             cached_reads: None,
             payload_task_guard: self.payload_task_guard.clone(),
             metrics: Default::default(),
+            network: self.network.clone(),
         })
     }
 
-    fn batch_sealed(
-        &self,
-        batch: Arc<BatchPayload>,
-        digest: BatchDigest,
-    ) -> Result<(), LatticePayloadBuilderError> {
-        let batch_info = BatchInfo::new(digest, batch.get_transaction_ids().clone());
-        self.pool.on_sealed_batch(batch_info);
-        Ok(())
-    }
 }
 
 #[cfg(test)]

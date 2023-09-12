@@ -2,6 +2,7 @@
 
 use anemo::types::response::StatusCode;
 use execution_transaction_pool::error::PoolError;
+use lattice_network::LocalClientError;
 use revm::primitives::EVMError;
 use tn_types::{execution::H256, consensus::BatchDigest};
 use tokio::sync::oneshot;
@@ -50,6 +51,9 @@ pub enum LatticePayloadBuilderError {
     /// Missing batch in SealedPool
     #[error("Missing batch: {0:?}")]
     Pool(#[from] PoolError),
+    /// Local network error when batch or header sent to CL
+    #[error("Local network error: {0:?}")]
+    LocalNetwork(#[from] LocalClientError),
 }
 
 impl From<oneshot::error::RecvError> for LatticePayloadBuilderError {

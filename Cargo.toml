@@ -9,6 +9,7 @@ members = [
     "crates/common/tracing",
     "crates/common/types",
     "crates/common/tn-network-types",
+    "crates/common/adapters",
 
     # execution
     "crates/execution/blockchain-tree",
@@ -136,6 +137,7 @@ tn-macros = { path = "crates/common/macros" }
 telemetry-subscribers = { path = "crates/common/telemetry-subscribers" }
 tn-types = { path = "crates/common/types" }
 tn-network-types = { path = "crates/common/tn-network-types" }
+tn-adapters = { path = "crates/common/adapters" }
 
 # execution
 revm = { version = "3" }
@@ -194,7 +196,6 @@ lattice-consensus = { path = "crates/consensus/consensus" }
 lattice-typed-store = { path = "crates/consensus/typed-store" }
 lattice-typed-store-derive = { path = "crates/consensus/typed-store-derive" }
 lattice-test-utils = { path = "crates/consensus/test-utils" }
-
 
 # transative patch used by reth
 [patch.crates-io]

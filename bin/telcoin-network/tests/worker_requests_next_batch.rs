@@ -16,8 +16,13 @@ use lattice_test_utils::{CommitteeFixture, temp_dir, WorkerToWorkerMockServer, t
 use lattice_worker::TrivialTransactionValidator;
 use telcoin_network::{dirs::{MaybePlatformPath, DataDirPath}, args::utils::genesis_value_parser, init::init_genesis};
 use lattice_storage::NodeStorage;
+use tn_adapters::NetworkAdapter;
+use tn_network_types::{MockWorkerToPrimary, MockEngineToWorker};
 use tn_tracing::init_test_tracing;
-use tn_types::{execution::{LATTICE_GENESIS, TransactionSigned}, consensus::{Batch, Parameters, BatchAPI, crypto::traits::KeyPair, MockWorkerToPrimary}};
+use tn_types::{
+    execution::{LATTICE_GENESIS, TransactionSigned},
+    consensus::{Batch, Parameters, BatchAPI, crypto::traits::KeyPair}
+};
 use execution_rpc_types::engine::ExecutionPayload;
 use lattice_network::client::NetworkClient;
 use consensus_metrics::RegistryService;
@@ -166,6 +171,8 @@ async fn test_single_worker_requests_next_batch() -> eyre::Result<(), eyre::Erro
     // TODO: why do I have to Box::pin() the payload service here,
     // when the `PayloadBuilderService` in the cli doesn't?
     task_executor.spawn_critical("batch-builder-service", Box::pin(batch_builder_service));
+    let worker_to_engine_receiver = Arc::new(NetworkAdapter::new(batch_builder_handle));
+    network_client.set_worker_to_engine_local_handler(worker_to_engine_receiver);
 
 
     // let (tx_confirmation, _rx_confirmation) = channel(10);
@@ -203,11 +210,13 @@ async fn test_single_worker_requests_next_batch() -> eyre::Result<(), eyre::Erro
     let worker_id = 0;
     let workers = WorkerNodes::new(registry_service, parameters.clone());
     let (tx_await_batch, mut rx_await_batch) = lattice_test_utils::test_channel!(1000);
+    // only need primary mock server - worker and engine comms are real
     let mut mock_primary_server = MockWorkerToPrimary::new();
     mock_primary_server
         .expect_report_own_batch()
-        .withf(move |request| {
-            let message = request.body();
+        .withf(move |notice| {
+            // TODO: check notice digest
+            let message = notice.body();
 
             message.worker_id == worker_id
         })
@@ -218,8 +227,7 @@ async fn test_single_worker_requests_next_batch() -> eyre::Result<(), eyre::Erro
         });
     network_client.set_worker_to_primary_local_handler(Arc::new(mock_primary_server));
 
-    // TODO: update this method to take a Vec<Option<BatchBuilderHandle>>
-    // - right now, I think it's passing the same `Sender` to every worker
+    // spawn workers
     workers
         .start(
             key_pair.public().clone(),
@@ -229,16 +237,13 @@ async fn test_single_worker_requests_next_batch() -> eyre::Result<(), eyre::Erro
             network_client.clone(),
             &store,
             TrivialTransactionValidator::default(),
-            Some(batch_builder_handle),
         )
         .await
         .unwrap();
 
-    // let network = test_network(&authority.keypair(), &authority.info());
-
     // spawn enough receivers to acknowledge the proposed batch
     let mut listener_handles = Vec::new();
-    for worker in fixture.authorities().skip(1).map(|a| a.worker(0)) {
+    for worker in fixture.authorities().skip(1).map(|a| a.worker(worker_id)) {
         let handle =
             WorkerToWorkerMockServer::spawn(worker.keypair(), worker.info().worker_address.clone());
         listener_handles.push(handle);
@@ -246,7 +251,7 @@ async fn test_single_worker_requests_next_batch() -> eyre::Result<(), eyre::Erro
 
     tokio::task::yield_now().await;
 
-    sleep(Duration::from_secs(2)).await;
+    sleep(Duration::from_secs(1)).await;
 
     assert!(!store.batch_store.is_empty());
     
@@ -264,7 +269,7 @@ async fn test_single_worker_requests_next_batch() -> eyre::Result<(), eyre::Erro
     assert_eq!(batch_tx2, expected_tx2);
     assert_eq!(batch_tx3, expected_tx3);
 
-    sleep(Duration::from_secs(2)).await;
+    sleep(Duration::from_secs(1)).await;
 
     let batch_digest = batch.digest();
 

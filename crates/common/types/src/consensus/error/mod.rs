@@ -8,8 +8,6 @@ mod dag;
 pub use dag::{AcceptNotification, DagError, DagResult};
 mod crypto;
 pub use crypto::CryptoError;
-mod client;
-pub use client::LocalClientError;
 
 #[cfg(test)]
 #[path = "../tests/error_test.rs"]
@@ -31,20 +29,4 @@ macro_rules! ensure {
             bail!($e);
         }
     };
-}
-
-/// Top-level error type that encapsulates all other possible errors in the Consensus Layer.
-#[derive(Clone, Debug, Error)]
-pub enum ConsensusError {
-    /// Client errors
-    #[error("")]
-    Client(#[from] LocalClientError),
-
-    /// Dag errors
-    #[error("")]
-    Dag(#[from] DagError),
-
-    /// Crypto errors
-    #[error("")]
-    Crypto(#[from] CryptoError),
 }

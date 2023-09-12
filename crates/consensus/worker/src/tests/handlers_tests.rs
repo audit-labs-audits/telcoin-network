@@ -6,10 +6,67 @@
 use fastcrypto::hash::Hash;
 use lattice_test_utils::CommitteeFixture;
 use std::{vec, time::Duration};
-use tn_types::consensus::{MockWorkerToWorker, WorkerToWorkerServer, WorkerSynchronizeMessage, RequestBatchesResponse, PrimaryToWorker};
+use tn_network_types::{MockWorkerToWorker, WorkerToWorkerServer, WorkerSynchronizeMessage, RequestBatchesResponse, PrimaryToWorker, SealBatchRequest, EngineToWorker, SealedBatchResponse};
 use lattice_typed_store::Map;
+use tn_types::consensus::BatchAPI;
 use super::*;
 use crate::TrivialTransactionValidator;
+
+#[tokio::test]
+async fn test_engine_sends_batch() {
+    telemetry_subscribers::init_for_testing();
+
+    let fixture = CommitteeFixture::builder().randomize_ports(true).build();
+    // let committee = fixture.committee();
+    // let worker_cache = fixture.worker_cache();
+    let authority = fixture.authorities().next().unwrap();
+    let authority_id = authority.id();
+    // let authority_key = authority.public_key();
+    let id = 0;
+
+    // Create a new test store.
+    let store = lattice_test_utils::create_batch_store();
+
+    let batch = lattice_test_utils::batch();
+    let payload = batch.owned_transactions();
+    let digest = batch.digest();
+    let message = SealBatchRequest {
+        payload: payload.clone()
+    };
+    let peer_id = authority.worker(id).peer_id();
+
+    let (tx_quorum_waiter, mut rx_quorum_waiter) = lattice_test_utils::test_channel!(1);
+    let handler = EngineToWorkerHandler {
+        authority_id,
+        id,
+        peer_id,
+        store: store.clone(),
+        tx_quorum_waiter
+    };
+
+    // Verify the batch is not in store
+    assert!(store.get(&digest).unwrap().is_none());
+    
+        // send quorum waiter ack
+        tokio::spawn(async move {
+            while let Some((_, _, reply)) = rx_quorum_waiter.recv().await {
+                let _ = reply.send(());
+            }
+        });
+
+    // Send a sync request.
+    let request = anemo::Request::new(message);
+    let expected = SealedBatchResponse {
+        batch,
+        digest,
+        worker_id: id,
+    };
+    let response = handler.seal_batch(request).await.unwrap().into_body();
+
+    // Verify it is now stored
+    assert!(store.get(&digest).unwrap().is_some());
+    assert_eq!(expected, response);
+}
 
 #[tokio::test]
 async fn synchronize() {

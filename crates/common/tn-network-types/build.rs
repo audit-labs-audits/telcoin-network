@@ -19,7 +19,7 @@ fn main() -> Result<()> {
     // };
 
     // let proto_files = &["proto/narwhal.proto"];
-    let dirs = &["proto"];
+    // let dirs = &["proto"];
 
     // // Use `Bytes` instead of `Vec<u8>` for bytes fields
     // let mut config = prost_build::Config::new();
@@ -146,10 +146,34 @@ fn build_anemo_services(out_dir: &Path) {
         )
         .build();
 
+    let worker_to_engine = anemo_build::manual::Service::builder()
+        .name("WorkerToEngine")
+        .package("narwhal")
+        .attributes(automock_attribute.clone())
+        .method(
+            anemo_build::manual::Method::builder()
+                .name("build_batch")
+                .route_name("BuildBatch")
+                .request_type("crate::BuildBatchRequest")
+                .response_type("()")
+                .codec_path(codec_path)
+                .build(),
+        )
+        .build();
+
     let engine_to_worker = anemo_build::manual::Service::builder()
         .name("EngineToWorker")
         .package("narwhal")
         .attributes(automock_attribute.clone())
+        .method(
+            anemo_build::manual::Method::builder()
+                .name("seal_batch")
+                .route_name("SealBatch")
+                .request_type("crate::SealBatchRequest")
+                .response_type("crate::SealedBatchResponse")
+                .codec_path(codec_path)
+                .build(),
+        )
         .method(
             anemo_build::manual::Method::builder()
                 .name("missing_batches")
@@ -225,6 +249,7 @@ fn build_anemo_services(out_dir: &Path) {
         worker_to_primary,
         worker_to_worker,
         engine_to_worker,
+        worker_to_engine,
     ]);
 }
 

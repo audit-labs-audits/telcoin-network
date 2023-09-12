@@ -14,8 +14,9 @@ use tn_types::consensus::{
     CommitteeBuilder, Epoch, WorkerIndex, WorkerInfo,
     crypto::{AuthorityKeyPair, NetworkKeyPair},
     Batch, BatchDigest, Certificate, CertificateDigest, Header, HeaderDigest, HeaderV1Builder,
-    VersionedMetadata, WorkerOthersBatchMessage, WorkerOwnBatchMessage, WorkerSynchronizeMessage,
+    VersionedMetadata,
 };
+use tn_network_types::{WorkerOthersBatchMessage, WorkerOwnBatchMessage, WorkerSynchronizeMessage};
 
 #[allow(clippy::mutable_key_type)]
 fn get_registry() -> Result<Registry> {
@@ -94,7 +95,7 @@ fn get_registry() -> Result<Registry> {
             WorkerInfo {
                 name: worker_pk,
                 worker_address: "/ip4/127.0.0.1/udp/500".to_string().parse().unwrap(),
-                transactions: "/ip4/127.0.0.1/tcp/400/http".to_string().parse().unwrap(),
+                // transactions: "/ip4/127.0.0.1/tcp/400/http".to_string().parse().unwrap(),
             },
         )]
         .into_iter()

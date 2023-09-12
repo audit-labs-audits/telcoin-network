@@ -15,7 +15,7 @@ pub trait BatchPayloadJobGenerator: Send + Sync {
     /// The type that manages the lifecycle of a payload.
     ///
     /// This type is a Stream that yields better payloads.
-    type Job: Future<Output = Result<Arc<BatchPayload>, LatticePayloadBuilderError>>
+    type Job: Future<Output = Result<(), LatticePayloadBuilderError>>
         + Send
         + Sync
         + 'static;
@@ -27,15 +27,6 @@ pub trait BatchPayloadJobGenerator: Send + Sync {
         &self,
         // attr: PayloadBuilderAttributes,
     ) -> Result<Self::Job, LatticePayloadBuilderError>;
-
-    /// Update the pool after a batch is sealed.
-    /// 
-    /// TODO: this should be a part of the job?
-    fn batch_sealed(
-        &self,
-        batch: Arc<BatchPayload>,
-        digest: BatchDigest,
-    ) -> Result<(), LatticePayloadBuilderError>;
 }
 
 /// A type that knows how to create new jobs for creating payloads.

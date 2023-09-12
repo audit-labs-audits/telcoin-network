@@ -1,43 +1,77 @@
 // Copyright (c) Telcoin, LLC
-// Copyright (c) 2021, Facebook, Inc. and its affiliates
-// Copyright (c) Mysten Labs, Inc.
 // SPDX-License-Identifier: Apache-2.0
 //! Handlers for how a worker should handle incoming messages from this node's engine.
 //! 
 //! The engine may be missing batches while trying to execute a block for the primary.
 //! If a batch is missing, the engine requests the batch from the worker. The incoming
 //! request is handled by this handler.
-use anemo::Network;
+use anemo::PeerId;
 use anyhow::Result;
 use async_trait::async_trait;
+use fastcrypto::hash::Hash;
 use lattice_typed_store::{rocks::DBMap, Map};
 use std::collections::HashMap;
 use tn_types::consensus::{
-    AuthorityIdentifier, Committee, WorkerCache, WorkerId,
+    AuthorityIdentifier, WorkerId,
     Batch, BatchDigest,
 };
 use tn_network_types::{
-    FetchBatchesResponse, EngineToWorker, MissingBatchesRequest,
+    FetchBatchesResponse, EngineToWorker,
+    MissingBatchesRequest,
+    SealedBatchResponse, SealBatchRequest,
 };
+use consensus_metrics::metered_channel::Sender;
 
 /// Defines how the worker's network receiver handles incoming primary messages.
 pub struct EngineToWorkerHandler {
-    // The id of this authority.
+    /// The id of this authority.
     pub authority_id: AuthorityIdentifier,
-    // The id of this worker.
+    /// The id of this worker.
     pub id: WorkerId,
-    // The committee information.
-    pub committee: Committee,
-    // The worker information cache.
-    pub worker_cache: WorkerCache,
-    // The batch store
+    /// The peer id of this worker.
+    pub peer_id: PeerId,
+    /// The batch store
     pub store: DBMap<BatchDigest, Batch>,
-    // Synchronize header payloads from other workers.
-    pub network: Option<Network>,
+    /// Output channel to deliver built batches to the `QuorumWaiter`.
+    pub tx_quorum_waiter: Sender<(Batch, BatchDigest, tokio::sync::oneshot::Sender<()>)>,
 }
 
 #[async_trait]
 impl EngineToWorker for EngineToWorkerHandler {
+    async fn seal_batch(
+        &self,
+        request: anemo::Request<SealBatchRequest>,
+    ) -> Result<anemo::Response<SealedBatchResponse>, anemo::rpc::Status> {
+        // TODO: include metadata in the request
+        let batch: Batch = request.into_body().into();
+        let digest = batch.digest();
+
+        // Send the batch through the quorum waiter.
+        let (notify_done, done_sending) = tokio::sync::oneshot::channel();
+        if let Err(e) = self.tx_quorum_waiter.send((batch.clone(), digest.clone(), notify_done)).await {
+            tracing::debug!("Failed to send to quroum waiter...System shutting down");
+            return Err(anemo::rpc::Status::internal(e.to_string()))
+        }
+
+        // store in db
+        if let Err(e) = self.store.insert(&digest, &batch) {
+            tracing::error!("Store failed with error: {:?}", e);
+            return Err(anemo::rpc::Status::internal(e.to_string()))
+        }
+
+        // Also wait for sending to be done here
+        //
+        // TODO: Here if we get back Err it means that potentially this was not send
+        //       to a quorum. However, if that happens we can still proceed on the basis
+        //       that another authority will request the batch from us, and we will deliver
+        //       it since it is now stored. So ignore the error for the moment.
+        let _ = done_sending.await;
+        let worker_id = self.id.clone();
+        Ok(anemo::Response::new(
+            SealedBatchResponse{ batch, digest, worker_id }
+        ))
+    }
+
     async fn missing_batches(
         &self,
         request: anemo::Request<MissingBatchesRequest>,

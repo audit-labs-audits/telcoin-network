@@ -16,6 +16,8 @@ use std::{
 };
 use tracing::warn;
 
+use crate::BatchPayloadResponse;
+
 /// Request for broadcasting certificates to peers.
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct SendCertificateRequest {
@@ -175,4 +177,39 @@ pub struct RequestBatchRequest {
 pub struct RequestBatchesRequest {
     /// Vec of requested batches' digests
     pub batch_digests: Vec<BatchDigest>,
+}
+
+/// Used by primary to ask worker for the request.
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
+pub struct BuildBatchRequest {
+    /// The worker_id for the batch.
+    pub worker_id: WorkerId,
+}
+
+impl From<WorkerId> for BuildBatchRequest {
+    fn from(worker_id: WorkerId) -> Self {
+        Self { worker_id }
+    }
+}
+
+/// Used by primary to ask worker for the request.
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
+pub struct SealBatchRequest {
+    /// Collection of transactions encoded as bytes.
+    pub payload: Vec<Vec<u8>>,
+
+    // TODO: include block for metadata
+}
+
+impl From<SealBatchRequest> for Batch {
+    fn from(value: SealBatchRequest) -> Self {
+        Batch::new(value.payload)
+    }
+}
+
+impl From<BatchPayloadResponse> for SealBatchRequest {
+    fn from(value: BatchPayloadResponse) -> Self {
+        let BatchPayloadResponse { payload } = value;
+        Self { payload }
+    }
 }

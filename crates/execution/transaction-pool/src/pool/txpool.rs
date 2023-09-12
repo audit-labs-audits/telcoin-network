@@ -1760,10 +1760,11 @@ mod tests {
         let batch = Batch::new(vec![vec![0]]);
         let digest = batch.digest();
 
-        let batch_info = BatchInfo {
+        let batch_info = BatchInfo::new(
             digest,
-            transactions: vec![id.clone()]
-        };
+            vec![id.clone()],
+            0,
+        );
 
         pool.on_batch_sealed(batch_info);
 

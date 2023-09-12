@@ -163,7 +163,6 @@ impl NarwhalManager {
         execution_state: Arc<State>,
         tx_validator: TxValidator,
         engine_handle: Arc<LatticePayloadBuilderHandle>,
-        batch_builder: Option<LatticePayloadBuilderHandle>,
     ) where
         State: ExecutionState + Send + Sync + 'static,
     {
@@ -247,7 +246,6 @@ impl NarwhalManager {
                     network_client.clone(),
                     &store,
                     tx_validator.clone(),
-                    batch_builder.clone(),
                 )
                 .await
             {
@@ -455,7 +453,6 @@ mod tests {
                 execution_state.clone(),
                 TrivialTransactionValidator::default(),
                 sender,
-                None,
             ).await;
             
             let name = authority.keypair().public().clone();
@@ -503,7 +500,6 @@ mod tests {
                 execution_state.clone(),
                 TrivialTransactionValidator::default(),
                 sender,
-                None,
             ).await;
 
             // Send some transactions

@@ -51,6 +51,8 @@ execution-config.workspace = true
 execution-downloaders.workspace = true
 execution-db.workspace = true
 lattice-payload-builder = { workspace = true }
+tn-network-types = { workspace = true }
+tn-adapters = { workspace = true }
 
 # io
 confy = "0.5"

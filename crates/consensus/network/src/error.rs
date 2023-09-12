@@ -1,6 +1,8 @@
 use anemo::PeerId;
 use thiserror::Error;
+use tn_types::consensus::WorkerId;
 
+/// Error type for local network calls.
 #[derive(Clone, Debug, Error)]
 pub enum LocalClientError {
     #[error("Primary {0} has not started yet.")]
@@ -8,6 +10,9 @@ pub enum LocalClientError {
 
     #[error("Worker {0} has not started yet.")]
     WorkerNotStarted(PeerId),
+
+    #[error("Worker {0} has not started yet.")]
+    WorkerNotStartedById(WorkerId),
 
     #[error("Handler encountered internal error {0}.")]
     Internal(String),

@@ -9,17 +9,18 @@
 //! I think the goal of this abstraction was to reduce boilerplate
 //! for creating peer ids + clients for WAN calls and allowed
 //! impl for tokio channels between workers and primary.
-use crate::CancelOnDropHandler;
+use crate::{CancelOnDropHandler, LocalClientError};
 use anyhow::Result;
 use async_trait::async_trait;
 use tn_types::consensus::{
-    crypto::NetworkPublicKey, error::LocalClientError, Batch, BatchDigest,
+    crypto::NetworkPublicKey, Batch, BatchDigest, WorkerId,
 };
 use tn_network_types::{
     FetchBatchesRequest,
     FetchBatchesResponse, FetchCertificatesRequest, FetchCertificatesResponse,
     GetCertificatesRequest, GetCertificatesResponse, RequestBatchesRequest, RequestBatchesResponse,
-    WorkerOthersBatchMessage, WorkerOwnBatchMessage, WorkerSynchronizeMessage, BuildHeaderRequest, HeaderPayloadResponse, MissingBatchesRequest,
+    WorkerOthersBatchMessage, WorkerOwnBatchMessage, WorkerSynchronizeMessage, BuildHeaderRequest,
+    HeaderPayloadResponse, MissingBatchesRequest, SealBatchRequest, SealedBatchResponse,
 };
 use tokio::task::JoinHandle;
 
@@ -143,10 +144,28 @@ pub trait PrimaryToEngineClient {
 /// Engine to Worker
 #[async_trait]
 pub trait EngineToWorkerClient {
+    /// Seal the built batch and broadcast it.
+    async fn seal_batch(
+        &self,
+        worker_id: WorkerId,
+        request: SealBatchRequest,
+    ) -> Result<SealedBatchResponse, LocalClientError>;
+
     /// Request missing batches from worker
     async fn missing_batches(
         &self,
-        worker_name: NetworkPublicKey,
+        // worker_name: NetworkPublicKey,
+        worker_id: WorkerId,
         request: MissingBatchesRequest,
     ) -> Result<FetchBatchesResponse, LocalClientError>;
+}
+
+/// Worker to Engine
+#[async_trait]
+pub trait WorkerToEngineClient {
+    /// Request next batch
+    async fn build_batch(
+        &self,
+        worker_id: WorkerId
+    ) -> Result<(), LocalClientError>;
 }

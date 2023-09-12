@@ -92,17 +92,6 @@ pub struct HeaderPayloadResponse {
     pub sealed_header: SealedHeader,
 }
 
-// /// Payload response from PayloadBuilder to Workers.
-// #[derive(Clone, Serialize, Deserialize, Eq, PartialEq, Debug)]
-// pub struct BatchPayloadResponse {
-//     /// Collection of transactions encoded as bytes.
-//     pub payload: Vec<Vec<u8>>,
-//     /// Transaction ids for updating the pool after the batch is sealed.
-//     executed_txs: Vec<TransactionId>,
-//     /// The metric indicating why the batch was sealed.
-//     size_metric: BatchPayloadSizeMetric,
-// }
-
 //=== Worker
 
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
@@ -117,4 +106,20 @@ pub struct RequestBatchesResponse {
     /// If true, the primary should request the batches from the workers again.
     /// This may not be something that can be trusted from a remote worker.
     pub is_size_limit_reached: bool,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
+pub struct BatchPayloadResponse {
+    /// Collection of transactions encoded as bytes.
+    pub payload: Vec<Vec<u8>>,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
+pub struct SealedBatchResponse {
+    /// The batch.
+    pub batch: Batch,
+    /// The digest of the sealed batch.
+    pub digest: BatchDigest,
+    /// Worker id who broadcast the batch
+    pub worker_id: WorkerId,
 }

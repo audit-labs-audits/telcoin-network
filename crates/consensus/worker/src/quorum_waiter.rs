@@ -11,9 +11,10 @@ use lattice_network::{CancelOnDropHandler, ReliableNetwork};
 use std::{sync::Arc, time::Duration};
 use tn_types::consensus::{
     Authority, Committee, Stake, WorkerCache, WorkerId,
-    Batch, ConditionalBroadcastReceiver,
+    Batch, ConditionalBroadcastReceiver, BatchDigest, BatchAPI,
 };
-use tn_network_types::WorkerBatchMessage;
+use tn_network_types::{WorkerBatchMessage, WorkerOwnBatchMessage};
+use lattice_network::{client::NetworkClient, WorkerToPrimaryClient};
 use tokio::{task::JoinHandle, time::timeout};
 use tracing::{trace, warn};
 
@@ -34,9 +35,12 @@ pub struct QuorumWaiter {
     /// Receiver for shutdown.
     rx_shutdown: ConditionalBroadcastReceiver,
     /// Input Channel to receive commands.
-    rx_quorum_waiter: Receiver<(Batch, tokio::sync::oneshot::Sender<()>)>,
+    rx_quorum_waiter: Receiver<(Batch, BatchDigest, tokio::sync::oneshot::Sender<()>)>,
     /// A network sender to broadcast the batches to the other workers.
     network: anemo::Network,
+    /// The network client to receive the next batch from the EL
+    /// and report own batch to the prmary.
+    network_client: NetworkClient,
     /// Record metrics for quorum waiter.
     metrics: Arc<WorkerMetrics>,
 }
@@ -50,8 +54,9 @@ impl QuorumWaiter {
         committee: Committee,
         worker_cache: WorkerCache,
         rx_shutdown: ConditionalBroadcastReceiver,
-        rx_quorum_waiter: Receiver<(Batch, tokio::sync::oneshot::Sender<()>)>,
+        rx_quorum_waiter: Receiver<(Batch, BatchDigest, tokio::sync::oneshot::Sender<()>)>,
         network: anemo::Network,
+        network_client: NetworkClient,
         metrics: Arc<WorkerMetrics>,
     ) -> JoinHandle<()> {
         spawn_logged_monitored_task!(
@@ -64,6 +69,7 @@ impl QuorumWaiter {
                     rx_shutdown,
                     rx_quorum_waiter,
                     network,
+                    network_client,
                     metrics,
                 }
                 .run()
@@ -94,7 +100,7 @@ impl QuorumWaiter {
                 // task to the pipeline to send this batch to workers.
                 //
                 // TODO: make the constant a config parameter.
-                Some((batch, channel)) = self.rx_quorum_waiter.recv(), if pipeline.len() < MAX_PARALLEL_BATCH => {
+                Some((batch, digest, channel)) = self.rx_quorum_waiter.recv(), if pipeline.len() < MAX_PARALLEL_BATCH => {
                     // Broadcast the batch to the other workers.
                     let workers: Vec<_> = self
                         .worker_cache
@@ -122,6 +128,11 @@ impl QuorumWaiter {
                     // the dag). This should reduce the amount of syncing.
                     let threshold = self.committee.quorum_threshold();
                     let mut total_stake = self.authority.stake();
+                    // data for WorkerOwnMessage
+                    let client = self.network_client.clone();
+                    let worker_id = self.id.clone();
+                    let metadata = batch.clone().owned_metadata();
+                    // let digest = batch_digest.clone();
 
                     pipeline.push(async move {
                         // Keep the timer until a quorum is reached.
@@ -129,10 +140,20 @@ impl QuorumWaiter {
                         // A future that sends to 2/3 stake then returns. Also prints a warning
                         // if we terminate before we have managed to get to the full 2/3 stake.
                         let mut opt_channel = Some(channel);
-                        loop{
+                        loop {
                             if let Some(stake) = wait_for_quorum.next().await {
                                 total_stake += stake;
                                 if total_stake >= threshold {
+                                    // report batch to primary
+                                    let message = WorkerOwnBatchMessage { digest, worker_id, metadata };
+                                    if let Err(e) = client.report_own_batch(message).await {
+                                        warn!("Failed to report our batch: {}", e);
+                                        // Drop all response handlers to signal error, since we
+                                        // cannot ensure the primary has actually signaled the
+                                        // batch will eventually be sent.
+                                        // The transaction submitter will see the error and retry.
+                                        break
+                                    }
                                     // Notify anyone waiting for this.
                                     let channel = opt_channel.take().unwrap();
                                     if let Err(e) = channel.send(()) {

@@ -83,8 +83,6 @@ impl WorkerNodeInner {
         // Optionally, if passed, then this metrics struct should be used instead of creating our
         // own one.
         metrics: Option<Metrics>,
-        // Handle to the EL batch builder.
-        batch_builder: Option<LatticePayloadBuilderHandle>,
     ) -> Result<(), NodeError> {
         if self.is_running().await {
             return Err(NodeError::NodeAlreadyRunning)
@@ -119,7 +117,6 @@ impl WorkerNodeInner {
             store.batch_store.clone(),
             metrics,
             &mut tx_shutdown,
-            batch_builder,
         );
 
         // store the registry

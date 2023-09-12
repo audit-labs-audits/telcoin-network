@@ -24,7 +24,7 @@ use std::{
     time::Duration,
 };
 use tn_types::consensus::{
-    Committee, error::DagError, Certificate, CertificateAPI, Header, HeaderAPI,
+    Committee, error::PrimaryError, Certificate, CertificateAPI, Header, HeaderAPI,
     PreSubscribedBroadcastSender, Round,
 };
 use tokio::sync::{oneshot, watch};
@@ -168,7 +168,7 @@ async fn accept_suspended_certificates() {
     for cert in &certificates[NUM_AUTHORITIES..] {
         match synchronizer.try_accept_certificate(cert.clone()).await {
             Ok(()) => panic!("Unexpected acceptance of {cert:?}"),
-            Err(DagError::Suspended(notify)) => {
+            Err(PrimaryError::Suspended(notify)) => {
                 accept.push(async move { notify.wait().await });
                 continue
             }
@@ -206,7 +206,7 @@ async fn accept_suspended_certificates() {
     // The certificate should not be accepted or suspended.
     match synchronizer.try_accept_certificate(cert.clone()).await {
         Ok(()) => panic!("Unexpected success!"),
-        Err(DagError::TooNew(_, _, _)) => {}
+        Err(PrimaryError::TooNew(_, _, _)) => {}
         Err(e) => panic!("Unexpected error {e}!"),
     }
 }
@@ -787,7 +787,7 @@ async fn sync_batches_drops_old() {
         let _ = tx_consensus_round_updates.send(ConsensusRound::new(30, 0));
     });
     match synchronizer.sync_header_batches(&test_header, 10).await {
-        Err(DagError::TooOld(_, _, _)) => (),
+        Err(PrimaryError::TooOld(_, _, _)) => (),
         result => panic!("unexpected result {result:?}"),
     }
 }
@@ -847,7 +847,7 @@ async fn gc_suspended_certificates() {
     for cert in &certificates[NUM_AUTHORITIES..] {
         match synchronizer.try_accept_certificate(cert.clone()).await {
             Ok(()) => panic!("Unexpected acceptance of {cert:?}"),
-            Err(DagError::Suspended(notify)) => {
+            Err(PrimaryError::Suspended(notify)) => {
                 accept.push(async move { notify.wait().await });
                 continue
             }
@@ -859,7 +859,7 @@ async fn gc_suspended_certificates() {
     for cert in &certificates[NUM_AUTHORITIES * 2..NUM_AUTHORITIES * 4] {
         match synchronizer.try_accept_fetched_certificate(cert.clone()).await {
             Ok(()) => panic!("Unexpected acceptance of {cert:?}"),
-            Err(DagError::Suspended(_)) => {
+            Err(PrimaryError::Suspended(_)) => {
                 continue
             }
             Err(e) => panic!("Unexpected error {e}"),

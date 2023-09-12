@@ -1,22 +1,30 @@
-#![allow(missing_docs)]
-use crate::consensus::{
-    Epoch, crypto, CertificateDigest, HeaderDigest, Round, TimestampMs, VoteDigest,
-};
+//! Error for primary
+
 use fastcrypto::hash::Digest;
-use lattice_common::sync::notify_once::NotifyOnce;
+use lattice_network::LocalClientError;
 use lattice_typed_store::StoreError;
-use std::sync::Arc;
 use thiserror::Error;
+use tn_types::consensus::{HeaderDigest, Round, VoteDigest, crypto, Epoch, TimestampMs, CertificateDigest, error::{AcceptNotification, DagError}};
 
-/// Return type for dag
-pub type DagResult<T> = Result<T, DagError>;
+/// Result alias for returning Primary error.
+pub type PrimaryResult<T> = Result<T, PrimaryError>;
 
-/// Notification for certificate accepted.
-pub type AcceptNotification = Arc<NotifyOnce>;
-
-/// Errors that can happen while building the dag.
 #[derive(Clone, Debug, Error)]
-pub enum DagError {
+pub enum PrimaryError {
+    /// Client errors
+    #[error("Local network error: {0}")]
+    Client(#[from] LocalClientError),
+
+    /// Dag error
+    #[error("Dag error: {0}")]
+    DagError(#[from] DagError),
+
+    #[error("Network error: {0}")]
+    NetworkError(String),
+
+    #[error("Too many parents in RequestVoteRequest {0} > {1}")]
+    TooManyParents(usize, usize),
+
     #[error("Channel {0} has closed unexpectedly")]
     ClosedChannel(String),
 
@@ -71,9 +79,6 @@ pub enum DagError {
     #[error("Parents of header {0} are not a quorum")]
     HeaderRequiresQuorum(HeaderDigest),
 
-    #[error("Too many parents in RequestVoteRequest {0} > {1}")]
-    TooManyParents(usize, usize),
-
     #[error("Message {0} (round {1}) too old for GC round {2}")]
     TooOld(Digest<{ crypto::DIGEST_LENGTH }>, Round, Round),
 
@@ -101,9 +106,6 @@ pub enum DagError {
     #[error("Too many certificates in the FetchCertificatesResponse {0} > {1}")]
     TooManyFetchedCertificatesReturned(usize, usize),
 
-    #[error("Network error: {0}")]
-    NetworkError(String),
-
     #[error("Processing was suspended to retrieve parent certificates")]
     Suspended(AcceptNotification),
 
@@ -115,22 +117,13 @@ pub enum DagError {
 
     #[error("Operation was canceled")]
     Canceled,
-
-    // TODO: move this to different error type
-    //
-    // only used in primary's proposer
-    #[error("Primary's proposer unable to reach execution engine.")]
-    ExecutionEngineUnreachable,
-    
-    #[error("Primary's proposer unable to reach execution engine.")]
-    ExecutionEngineDroppedOneshotSender,
 }
 
-impl<T> From<tokio::sync::mpsc::error::TrySendError<T>> for DagError {
+impl<T> From<tokio::sync::mpsc::error::TrySendError<T>> for PrimaryError {
     fn from(err: tokio::sync::mpsc::error::TrySendError<T>) -> Self {
         match err {
-            tokio::sync::mpsc::error::TrySendError::Full(_) => DagError::ChannelFull,
-            tokio::sync::mpsc::error::TrySendError::Closed(_) => DagError::ShuttingDown,
+            tokio::sync::mpsc::error::TrySendError::Full(_) => PrimaryError::ChannelFull,
+            tokio::sync::mpsc::error::TrySendError::Closed(_) => PrimaryError::ShuttingDown,
         }
     }
 }

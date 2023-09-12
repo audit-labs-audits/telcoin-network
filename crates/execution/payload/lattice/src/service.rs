@@ -91,15 +91,6 @@ where
                             },
                         }
                     }
-                    LatticePayloadBuilderServiceCommand::BatchSealed { batch, digest } => {
-                        // TODO: not sure how to handle this failure
-                        // an error here would result in the duplicate transactions in the next batch
-                        if let Err(e) = this.generator.batch_sealed(batch, digest) {
-                            this.metrics.inc_failed_sealed_batches();
-                            error!("{e:?}")
-                        }
-                        this.metrics.inc_sealed_batches();
-                    }
                     LatticePayloadBuilderServiceCommand::NewHeader{ reply, attributes } => {
                         // add another function for generator to verify batches are all present
                         // if not, give the new_header_job(attributes, Some(missing))
@@ -141,13 +132,6 @@ where
 pub enum LatticePayloadBuilderServiceCommand {
     /// Return a future job that builds a batch.
     NewBatch(oneshot::Sender<BatchPayloadFuture>),
-    /// Update the transaction pool after a batch is sealed.
-    BatchSealed{
-        /// The reference to the built batch for updating the tx pool.
-        batch: Arc<BatchPayload>,
-        /// The digest of the sealed batch.
-        digest: BatchDigest
-    },
     /// Return a future job that builds a header.
     NewHeader {
         /// Channel to return the job future.

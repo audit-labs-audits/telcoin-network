@@ -2,7 +2,7 @@
 // Copyright (c) 2021, Facebook, Inc. and its affiliates
 // Copyright (c) Mysten Labs, Inc.
 // SPDX-License-Identifier: Apache-2.0
-use crate::{aggregators::VotesAggregator, metrics::PrimaryMetrics, synchronizer::Synchronizer};
+use crate::{aggregators::VotesAggregator, metrics::PrimaryMetrics, synchronizer::Synchronizer, error::{PrimaryResult, PrimaryError}};
 use consensus_metrics::{metered_channel::Receiver, monitored_future, spawn_logged_monitored_task};
 use fastcrypto::signature_service::SignatureService;
 use futures::{stream::FuturesUnordered, StreamExt};
@@ -15,7 +15,6 @@ use tn_types::{
         AuthorityIdentifier, Committee,
         crypto,
         crypto::{NetworkPublicKey, AuthoritySignature},
-        error::{DagError, DagResult},
         Certificate, CertificateDigest, ConditionalBroadcastReceiver, Header, HeaderAPI,
         Vote, VoteAPI,
     },
@@ -61,7 +60,7 @@ pub struct Certifier {
     /// we cancel the previously running before we spawn the next one. However, we don't wait for
     /// the previous to finish to spawn the new one, so we might temporarily have more that one
     /// parallel running, which should be fine though.
-    propose_header_tasks: JoinSet<DagResult<Certificate>>,
+    propose_header_tasks: JoinSet<PrimaryResult<Certificate>>,
     /// A network sender to send the batches to the other workers.
     network: anemo::Network,
     /// Metrics handler
@@ -111,7 +110,7 @@ impl Certifier {
         let core = async move { self.run().await };
 
         match core.await {
-            Err(err @ DagError::ShuttingDown) => debug!("{:?}", err),
+            Err(err @ PrimaryError::ShuttingDown) => debug!("{:?}", err),
             Err(err) => panic!("{:?}", err),
             Ok(_) => {}
         }
@@ -127,7 +126,7 @@ impl Certifier {
         authority: AuthorityIdentifier,
         target: NetworkPublicKey,
         header: Header,
-    ) -> DagResult<Vote> {
+    ) -> PrimaryResult<Vote> {
         let peer_id = anemo::PeerId(target.0.to_bytes());
         let peer = network.waiting_peer(peer_id);
 
@@ -154,7 +153,7 @@ impl Certifier {
                     .collect();
                 if parents.len() != expected_count {
                     warn!("tried to read {expected_count} missing certificates requested by remote primary for vote request, but only found {}", parents.len());
-                    return Err(DagError::ProposedHeaderMissingCertificates)
+                    return Err(PrimaryError::ProposedHeaderMissingCertificates)
                 }
                 parents
             };
@@ -172,7 +171,7 @@ impl Certifier {
                 }
                 Err(status) => {
                     if status.status() == anemo::types::response::StatusCode::BadRequest {
-                        return Err(DagError::NetworkError(format!(
+                        return Err(PrimaryError::NetworkError(format!(
                             "unrecoverable error requesting vote for {header}: {status:?}"
                         )))
                     }
@@ -200,28 +199,28 @@ impl Certifier {
             vote.header_digest() == header.digest() &&
                 vote.origin() == header.author() &&
                 vote.author() == authority,
-            DagError::UnexpectedVote(vote.header_digest())
+            PrimaryError::UnexpectedVote(vote.header_digest())
         );
         // Possible equivocations.
         ensure!(
             header.epoch() == vote.epoch(),
-            DagError::InvalidEpoch { expected: header.epoch(), received: vote.epoch() }
+            PrimaryError::InvalidEpoch { expected: header.epoch(), received: vote.epoch() }
         );
         ensure!(
             header.round() == vote.round(),
-            DagError::InvalidRound { expected: header.round(), received: vote.round() }
+            PrimaryError::InvalidRound { expected: header.round(), received: vote.round() }
         );
 
         // Ensure the header is from the correct epoch.
         ensure!(
             vote.epoch() == committee.epoch(),
-            DagError::InvalidEpoch { expected: committee.epoch(), received: vote.epoch() }
+            PrimaryError::InvalidEpoch { expected: committee.epoch(), received: vote.epoch() }
         );
 
         // Ensure the authority has voting rights.
         ensure!(
             committee.stake_by_id(vote.author()) > 0,
-            DagError::UnknownAuthority(vote.author().to_string())
+            PrimaryError::UnknownAuthority(vote.author().to_string())
         );
 
         Ok(vote)
@@ -238,14 +237,14 @@ impl Certifier {
         network: anemo::Network,
         header: Header,
         mut cancel: oneshot::Receiver<()>,
-    ) -> DagResult<Certificate> {
+    ) -> PrimaryResult<Certificate> {
         if header.epoch() != committee.epoch() {
             debug!(
                 "Certifier received mismatched header proposal for epoch {}, currently at epoch {}",
                 header.epoch(),
                 committee.epoch()
             );
-            return Err(DagError::InvalidEpoch {
+            return Err(PrimaryError::InvalidEpoch {
                 expected: committee.epoch(),
                 received: header.epoch(),
             })
@@ -298,7 +297,7 @@ impl Certifier {
                 },
                 _ = &mut cancel => {
                     debug!("canceling Header proposal {header} for round {}", header.round());
-                    return Err(DagError::Canceled)
+                    return Err(PrimaryError::Canceled)
                 },
             }
         }
@@ -323,7 +322,7 @@ impl Certifier {
                 }
                 warn!(msg);
             }
-            DagError::CouldNotFormCertificate(header.digest())
+            PrimaryError::CouldNotFormCertificate(header.digest())
         })?;
         debug!("Assembled {certificate:?}");
 
@@ -331,24 +330,24 @@ impl Certifier {
     }
 
     // Logs Certifier errors as appropriate.
-    fn process_result(result: &DagResult<()>) {
+    fn process_result(result: &PrimaryResult<()>) {
         match result {
             Ok(()) => (),
-            Err(DagError::StoreError(e)) => {
+            Err(PrimaryError::StoreError(e)) => {
                 error!("{e}");
                 panic!("Storage failure: killing node.");
             }
             Err(
-                e @ DagError::TooOld(..) |
-                e @ DagError::VoteTooOld(..) |
-                e @ DagError::InvalidEpoch { .. },
+                e @ PrimaryError::TooOld(..) |
+                e @ PrimaryError::VoteTooOld(..) |
+                e @ PrimaryError::InvalidEpoch { .. },
             ) => debug!("{e}"),
             Err(e) => warn!("{e}"),
         }
     }
 
     // Main loop listening to incoming messages.
-    pub async fn run(mut self) -> DagResult<Self> {
+    pub async fn run(mut self) -> PrimaryResult<Self> {
         info!("Core on node {} has started successfully.", self.authority_id);
         loop {
             let result = tokio::select! {
@@ -395,7 +394,7 @@ impl Certifier {
                         Err(e) => {
                             if e.is_cancelled() {
                                 // Ungraceful shutdown.
-                                Err(DagError::ShuttingDown)
+                                Err(PrimaryError::ShuttingDown)
                             } else if e.is_panic() {
                                 // propagate panics.
                                 std::panic::resume_unwind(e.into_panic());

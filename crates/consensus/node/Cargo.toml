@@ -34,6 +34,7 @@ lattice-network.workspace = true
 tn-types.workspace = true
 lattice-worker.workspace = true
 lattice-payload-builder.workspace = true
+tn-network-types = { workspace = true }
 
 # interact with EL
 execution-lattice-consensus.workspace = true

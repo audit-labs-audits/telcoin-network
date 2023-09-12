@@ -32,7 +32,7 @@ use tn_types::{
     consensus::{
         AuthorityIdentifier, Committee, Epoch, WorkerCache,
         crypto::NetworkPublicKey,
-        error::{AcceptNotification, DagError, DagResult},
+        error::AcceptNotification,
         Certificate, CertificateAPI, CertificateDigest, Header, HeaderAPI,
         Round, 
     },
@@ -50,7 +50,7 @@ use tracing::{debug, error, instrument, trace, warn};
 
 use crate::{
     aggregators::CertificatesAggregator, certificate_fetcher::CertificateFetcherCommand,
-    metrics::PrimaryMetrics, PrimaryChannelMetrics, CHANNEL_CAPACITY,
+    metrics::PrimaryMetrics, PrimaryChannelMetrics, CHANNEL_CAPACITY, error::{PrimaryResult, PrimaryError},
 };
 
 #[cfg(test)]
@@ -90,7 +90,7 @@ struct Inner {
     /// Send certificates to be accepted into a separate task that runs
     /// `process_certificate_with_lock()` in a loop.
     /// See comment above `process_certificate_with_lock()` for why this is necessary.
-    tx_certificate_acceptor: Sender<(Certificate, oneshot::Sender<DagResult<()>>, bool)>,
+    tx_certificate_acceptor: Sender<(Certificate, oneshot::Sender<PrimaryResult<()>>, bool)>,
     /// Output all certificates to the consensus layer. Must send certificates in causal order.
     tx_new_certificates: Sender<Certificate>,
     /// Send valid a quorum of certificates' ids to the `Proposer` (along with their round).
@@ -115,7 +115,7 @@ struct Inner {
 }
 
 impl Inner {
-    async fn append_certificate_in_aggregator(&self, certificate: Certificate) -> DagResult<()> {
+    async fn append_certificate_in_aggregator(&self, certificate: Certificate) -> PrimaryResult<()> {
         // Check if we have enough certificates to enter a new dag round and propose a header.
         let Some(parents) = self
             .certificates_aggregators
@@ -129,14 +129,14 @@ impl Inner {
         self.tx_parents
             .send((parents, certificate.round(), certificate.epoch()))
             .await
-            .map_err(|_| DagError::ShuttingDown)
+            .map_err(|_| PrimaryError::ShuttingDown)
     }
 
     async fn accept_suspended_certificate(
         &self,
         lock: &MutexGuard<'_, State>,
         suspended: SuspendedCertificate,
-    ) -> DagResult<()> {
+    ) -> PrimaryResult<()> {
         self.accept_certificate_internal(lock, suspended.certificate.clone()).await?;
         // Notify waiters that the certificate is no longer suspended.
         // Must be after certificate acceptance.
@@ -151,7 +151,7 @@ impl Inner {
         &self,
         _lock: &MutexGuard<'_, State>,
         certificate: Certificate,
-    ) -> DagResult<()> {
+    ) -> PrimaryResult<()> {
         let _scope = monitored_scope("Synchronizer::accept_certificate_internal");
 
         debug!("Accepting certificate {:?}", certificate);
@@ -192,13 +192,13 @@ impl Inner {
         // corresponding round.
         if let Err(e) = self.append_certificate_in_aggregator(certificate.clone()).await {
             warn!("Failed to aggregate certificate {} for header: {}", digest, e);
-            return Err(DagError::ShuttingDown)
+            return Err(PrimaryError::ShuttingDown)
         }
 
         // Send the accepted certificate to the consensus layer.
         if let Err(e) = self.tx_new_certificates.send(certificate).await {
             warn!("Failed to deliver certificate {} to the consensus: {}", digest, e);
-            return Err(DagError::ShuttingDown)
+            return Err(PrimaryError::ShuttingDown)
         }
 
         Ok(())
@@ -208,11 +208,11 @@ impl Inner {
     async fn get_unknown_parent_digests(
         &self,
         header: &Header,
-    ) -> DagResult<Vec<CertificateDigest>> {
+    ) -> PrimaryResult<Vec<CertificateDigest>> {
         if header.round() == 1 {
             for digest in header.parents() {
                 if !self.genesis.contains_key(digest) {
-                    return Err(DagError::InvalidGenesisParent(*digest))
+                    return Err(PrimaryError::InvalidGenesisParent(*digest))
                 }
             }
             return Ok(Vec::new())
@@ -237,12 +237,12 @@ impl Inner {
     async fn get_missing_parents(
         &self,
         certificate: &Certificate,
-    ) -> DagResult<Vec<CertificateDigest>> {
+    ) -> PrimaryResult<Vec<CertificateDigest>> {
         let mut result = Vec::new();
         if certificate.round() == 1 {
             for digest in certificate.header().parents() {
                 if !self.genesis.contains_key(digest) {
-                    return Err(DagError::InvalidGenesisParent(*digest))
+                    return Err(PrimaryError::InvalidGenesisParent(*digest))
                 }
             }
             return Ok(result)
@@ -257,7 +257,7 @@ impl Inner {
             self.tx_certificate_fetcher
                 .send(CertificateFetcherCommand::Ancestors(certificate.clone()))
                 .await
-                .map_err(|_| DagError::ShuttingDown)?;
+                .map_err(|_| PrimaryError::ShuttingDown)?;
         }
         Ok(result)
     }
@@ -267,7 +267,7 @@ impl Inner {
     /// node. Depending on the mode of running the node (internal Vs external
     /// consensus) either the dag will be used to confirm that or the
     /// certificate_store.
-    async fn has_processed_certificate(&self, digest: CertificateDigest) -> DagResult<bool> {
+    async fn has_processed_certificate(&self, digest: CertificateDigest) -> PrimaryResult<bool> {
         // TODO: delete this - only used by external consensus
         // if let Some(dag) = &self.dag {
         //     return Ok(dag.has_ever_contained(digest).await)
@@ -423,7 +423,7 @@ impl Synchronizer {
                         {
                             match inner.accept_suspended_certificate(&state, suspended).await {
                                 Ok(()) => {}
-                                Err(DagError::ShuttingDown) => return,
+                                Err(PrimaryError::ShuttingDown) => return,
                                 Err(e) => {
                                     panic!("Unexpected error accepting certificate during GC! {e}")
                                 }
@@ -494,7 +494,7 @@ impl Synchronizer {
         let weak_inner = Arc::downgrade(&inner);
         spawn_logged_monitored_task!(
             async move {
-                let mut batch_tasks: JoinSet<DagResult<()>> = JoinSet::new();
+                let mut batch_tasks: JoinSet<PrimaryResult<()>> = JoinSet::new();
 
                 loop {
                     tokio::select! {
@@ -534,7 +534,7 @@ impl Synchronizer {
     /// and has all parents in the certificate store. Otherwise an error is returned.
     /// If the certificate has missing parents and cannot be accepted immediately, the error would
     /// contain a value that can be awaited on, for signaling when the certificate is accepted.
-    pub async fn try_accept_certificate(&self, certificate: Certificate) -> DagResult<()> {
+    pub async fn try_accept_certificate(&self, certificate: Certificate) -> PrimaryResult<()> {
         let _scope = monitored_scope("Synchronizer::try_accept_certificate");
         self.process_certificate_internal(certificate, true, true).await
     }
@@ -545,24 +545,24 @@ impl Synchronizer {
     /// validate the suspended certificates state, instead of relying on suspended certificates to
     /// potentially return early. This helps to verify consistency, and has little extra cost
     /// because fetched certificates usually are not suspended.
-    pub async fn try_accept_fetched_certificate(&self, certificate: Certificate) -> DagResult<()> {
+    pub async fn try_accept_fetched_certificate(&self, certificate: Certificate) -> PrimaryResult<()> {
         let _scope = monitored_scope("Synchronizer::try_accept_fetched_certificate");
         self.process_certificate_internal(certificate, false, false).await
     }
 
     /// Accepts a certificate produced by this primary. This is not expected to fail unless
     /// the primary is shutting down.
-    pub async fn accept_own_certificate(&self, certificate: Certificate) -> DagResult<()> {
+    pub async fn accept_own_certificate(&self, certificate: Certificate) -> PrimaryResult<()> {
         // Process the new certificate.
         match self.process_certificate_internal(certificate.clone(), false, false).await {
             Ok(()) => Ok(()),
-            result @ Err(DagError::ShuttingDown) => result,
+            result @ Err(PrimaryError::ShuttingDown) => result,
             Err(e) => panic!("Failed to process locally-created certificate: {e}"),
         }?;
 
         // Broadcast the certificate.
         if self.inner.tx_own_certificate_broadcast.send(certificate.clone()).is_err() {
-            return Err(DagError::ShuttingDown)
+            return Err(PrimaryError::ShuttingDown)
         }
 
         // Update metrics.
@@ -593,10 +593,10 @@ impl Synchronizer {
 
     /// Checks if the certificate is valid and can potentially be accepted into the DAG.
     // TODO: produce a different type after sanitize, e.g. VerifiedCertificate.
-    pub fn sanitize_certificate(&self, certificate: &Certificate) -> DagResult<()> {
+    pub fn sanitize_certificate(&self, certificate: &Certificate) -> PrimaryResult<()> {
         ensure!(
             self.inner.committee.epoch() == certificate.epoch(),
-            DagError::InvalidEpoch {
+            PrimaryError::InvalidEpoch {
                 expected: self.inner.committee.epoch(),
                 received: certificate.epoch()
             }
@@ -605,10 +605,10 @@ impl Synchronizer {
         let gc_round = self.inner.gc_round.load(Ordering::Acquire);
         ensure!(
             gc_round < certificate.round(),
-            DagError::TooOld(certificate.digest().into(), certificate.round(), gc_round)
+            PrimaryError::TooOld(certificate.digest().into(), certificate.round(), gc_round)
         );
         // Verify the certificate (and the embedded header).
-        certificate.verify(&self.inner.committee, &self.inner.worker_cache).map_err(DagError::from)
+        certificate.verify(&self.inner.committee, &self.inner.worker_cache).map_err(PrimaryError::from)
     }
 
     async fn process_certificate_internal(
@@ -616,7 +616,7 @@ impl Synchronizer {
         certificate: Certificate,
         sanitize: bool,
         early_suspend: bool,
-    ) -> DagResult<()> {
+    ) -> PrimaryResult<()> {
         let _scope = monitored_scope("Synchronizer::process_certificate_internal");
 
         let digest = certificate.digest();
@@ -631,7 +631,7 @@ impl Synchronizer {
             if let Some(notify) = self.inner.state.lock().await.check_suspended(&digest) {
                 trace!("Certificate {digest:?} is still suspended. Skip processing.");
                 self.inner.metrics.certificates_suspended.with_label_values(&["dedup"]).inc();
-                return Err(DagError::Suspended(notify))
+                return Err(PrimaryError::Suspended(notify))
             }
         }
         if sanitize {
@@ -667,7 +667,7 @@ impl Synchronizer {
             .tx_parents
             .send((vec![], minimal_round_for_parents, certificate.epoch()))
             .await
-            .map_err(|_| DagError::ShuttingDown)?;
+            .map_err(|_| PrimaryError::ShuttingDown)?;
 
         // Instruct workers to download any missing batches referenced in this certificate.
         // Since this header got certified, we are sure that all the data it refers to (ie. its
@@ -679,7 +679,7 @@ impl Synchronizer {
             .tx_batch_tasks
             .send((header.clone(), max_age))
             .await
-            .map_err(|_| DagError::ShuttingDown)?;
+            .map_err(|_| PrimaryError::ShuttingDown)?;
 
         let highest_processed_round = self.inner.highest_processed_round.load(Ordering::Acquire);
         if highest_processed_round + NEW_CERTIFICATE_ROUND_LIMIT < certificate.round() {
@@ -687,8 +687,8 @@ impl Synchronizer {
                 .tx_certificate_fetcher
                 .send(CertificateFetcherCommand::Ancestors(certificate.clone()))
                 .await
-                .map_err(|_| DagError::ShuttingDown)?;
-            return Err(DagError::TooNew(
+                .map_err(|_| PrimaryError::ShuttingDown)?;
+            return Err(PrimaryError::TooNew(
                 certificate.digest().into(),
                 certificate.round(),
                 highest_processed_round,
@@ -717,7 +717,7 @@ impl Synchronizer {
         inner: &Inner,
         certificate: Certificate,
         early_suspend: bool,
-    ) -> DagResult<()> {
+    ) -> PrimaryResult<()> {
         let _scope = monitored_scope("Synchronizer::process_certificate_with_lock");
         let digest = certificate.digest();
 
@@ -745,7 +745,7 @@ impl Synchronizer {
             if let Some(notify) = state.check_suspended(&digest) {
                 trace!("Certificate {digest:?} is still suspended. Skip processing.");
                 inner.metrics.certificates_suspended.with_label_values(&["dedup_locked"]).inc();
-                return Err(DagError::Suspended(notify))
+                return Err(PrimaryError::Suspended(notify))
             }
         }
 
@@ -761,7 +761,7 @@ impl Synchronizer {
                 // memory usage issue and this will speed up catching up. But we can revisit later.
                 let notify = state.insert(certificate, missing_parents, !early_suspend);
                 inner.metrics.certificates_currently_suspended.set(state.num_suspended() as i64);
-                return Err(DagError::Suspended(notify))
+                return Err(PrimaryError::Suspended(notify))
             }
         }
 
@@ -855,7 +855,7 @@ impl Synchronizer {
     /// Blocks until either synchronization is complete, or the current consensus rounds advances
     /// past the max allowed age. (`max_age == 0` means the header's round must match current
     /// round.)
-    pub async fn sync_header_batches(&self, header: &Header, max_age: Round) -> DagResult<()> {
+    pub async fn sync_header_batches(&self, header: &Header, max_age: Round) -> PrimaryResult<()> {
         Synchronizer::sync_batches_internal(self.inner.clone(), header, max_age, false).await
     }
 
@@ -865,7 +865,7 @@ impl Synchronizer {
     //     header: &Header,
     //     network: anemo::Network,
     //     max_age: Round,
-    // ) -> DagResult<()> {
+    // ) -> PrimaryResult<()> {
     //     Synchronizer::sync_batches_internal(self.inner.clone(), header, max_age, true)
     //         .await
     // }
@@ -875,7 +875,7 @@ impl Synchronizer {
         header: &Header,
         max_age: Round,
         is_certified: bool,
-    ) -> DagResult<()> {
+    ) -> PrimaryResult<()> {
         if header.author() == inner.authority_id {
             debug!("skipping sync_batches for header {header}: no need to sync payload from own workers");
             return Ok(())
@@ -887,7 +887,7 @@ impl Synchronizer {
         let mut consensus_round = rx_consensus_round_updates.borrow().committed_round;
         ensure!(
             header.round() >= consensus_round.saturating_sub(max_age),
-            DagError::TooOld(
+            PrimaryError::TooOld(
                 header.digest().into(),
                 header.round(),
                 consensus_round.saturating_sub(max_age)
@@ -943,14 +943,14 @@ impl Synchronizer {
                 let inner = inner.clone();
                 async move {
                     let result = client.synchronize(worker_name, message).await.map_err(|e| {
-                        backoff::Error::transient(DagError::NetworkError(format!("{e:?}")))
+                        backoff::Error::transient(PrimaryError::NetworkError(format!("{e:?}")))
                     });
                     if result.is_ok() {
                         for digest in &digests {
                             inner
                                 .payload_store
                                 .write(digest, &worker_id)
-                                .map_err(|e| backoff::Error::permanent(DagError::StoreError(e)))?
+                                .map_err(|e| backoff::Error::permanent(PrimaryError::StoreError(e)))?
                         }
                     }
                     result
@@ -966,7 +966,7 @@ impl Synchronizer {
                 results = &mut wait_synchronize => {
                     break results
                         .map(|_| ())
-                        .map_err(|e| DagError::NetworkError(format!("error synchronizing batches: {e:?}")))
+                        .map_err(|e| PrimaryError::NetworkError(format!("error synchronizing batches: {e:?}")))
                 },
                 // This aborts based on consensus round and not narwhal round. When this function
                 // is used as part of handling vote requests, this may cause us to wait a bit
@@ -980,7 +980,7 @@ impl Synchronizer {
                     consensus_round = rx_consensus_round_updates.borrow().committed_round;
                     ensure!(
                         header.round() >= consensus_round.saturating_sub(max_age),
-                        DagError::TooOld(
+                        PrimaryError::TooOld(
                             header.digest().into(),
                             header.round(),
                             consensus_round.saturating_sub(max_age),
@@ -995,13 +995,13 @@ impl Synchronizer {
     pub async fn notify_read_parent_certificates(
         &self,
         header: &Header,
-    ) -> DagResult<Vec<Certificate>> {
+    ) -> PrimaryResult<Vec<Certificate>> {
         let mut parents = Vec::new();
         if header.round() == 1 {
             for digest in header.parents() {
                 match self.inner.genesis.get(digest) {
                     Some(certificate) => parents.push(certificate.clone()),
-                    None => return Err(DagError::InvalidGenesisParent(*digest)),
+                    None => return Err(PrimaryError::InvalidGenesisParent(*digest)),
                 };
             }
         } else {
@@ -1021,7 +1021,7 @@ impl Synchronizer {
     pub async fn get_unknown_parent_digests(
         &self,
         header: &Header,
-    ) -> DagResult<Vec<CertificateDigest>> {
+    ) -> PrimaryResult<Vec<CertificateDigest>> {
         self.inner.get_unknown_parent_digests(header).await
     }
 
@@ -1032,7 +1032,7 @@ impl Synchronizer {
     pub async fn get_missing_parents(
         &self,
         certificate: &Certificate,
-    ) -> DagResult<Vec<CertificateDigest>> {
+    ) -> PrimaryResult<Vec<CertificateDigest>> {
         self.inner.get_missing_parents(certificate).await
     }
 }

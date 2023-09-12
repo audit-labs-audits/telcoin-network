@@ -1,0 +1,20 @@
+[package]
+name = "tn-adapters"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+homepage.workspace = true
+repository.workspace = true
+authors = ["Grant Kee <grant.kee@telco.in>"]
+description = "Adapters for communication across execution and consenus layers."
+
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
+tn-network-types = { workspace = true }
+lattice-payload-builder = { workspace = true }
+execution-lattice-consensus = { workspace = true }
+async-trait = { workspace = true }
+anemo = { workspace = true }

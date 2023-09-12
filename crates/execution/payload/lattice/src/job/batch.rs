@@ -3,15 +3,19 @@
 use execution_payload_builder::database::CachedReads;
 use execution_provider::StateProviderFactory;
 use execution_tasks::TaskSpawner;
-use execution_transaction_pool::{TransactionPool, TransactionId};
+use execution_transaction_pool::{TransactionPool, TransactionId, BatchInfo};
+use lattice_network::EngineToWorkerClient;
 use revm::primitives::{CfgEnv, BlockEnv};
+use tn_network_types::SealedBatchResponse;
 use tokio::sync::oneshot;
 use tracing::{trace, warn};
 use std::{future::Future, sync::{Arc, atomic::AtomicBool}, pin::Pin, task::{Context, Poll}};
 use tn_types::execution::SealedBlock;
 use futures_core::ready;
 use futures_util::future::FutureExt;
-use crate::{BatchPayloadSizeMetric, PayloadTaskGuard, LatticePayloadBuilderServiceMetrics, LatticePayloadBuilderError, Cancelled, helpers::create_batch};
+use crate::{BatchPayloadSizeMetric, PayloadTaskGuard, LatticePayloadBuilderServiceMetrics,
+    LatticePayloadBuilderError, Cancelled, helpers::{create_batch, seal_batch}
+};
 
 /// Helper type to represent a CL Batch.
 /// 
@@ -55,13 +59,13 @@ impl BatchPayload {
     }
 }
 /// Future representing a return [BatchPayload].
-pub(crate) type BatchPayloadFuture = Pin<Box<dyn Future<Output = Result<Arc<BatchPayload>, LatticePayloadBuilderError>> + Send>>;
+pub(crate) type BatchPayloadFuture = Pin<Box<dyn Future<Output = Result<(), LatticePayloadBuilderError>> + Send>>;
 
 /// The job that starts building a batch on a separate task.
 /// 
 /// The struct is also a [Future] and polls `Ready` when the batch is finished building
 /// or an error returns.
-pub struct BatchPayloadJob<Client, Pool, Tasks> {
+pub struct BatchPayloadJob<Client, Pool, Tasks, Network> {
     /// The configuration for how to build the batch.
     pub(crate) config: BatchPayloadConfig,
     /// Client to interact with chain.
@@ -72,6 +76,10 @@ pub struct BatchPayloadJob<Client, Pool, Tasks> {
     pub(crate) executor: Tasks,
     /// Receiver for the block that is currently being built.
     pub(crate) pending_batch: Option<PendingBatch>,
+    /// Receiver for the batch that is currently being broadcast.
+    pub(crate) pending_broadcast: Option<PendingBroadcast>,
+    /// The built payload.
+    pub(crate) payload_transactions: Vec<TransactionId>,
     /// Restricts how many generator tasks can be executed at once.
     /// 
     /// TODO: can this be used to prevent batches/headers while canonical state is changing?
@@ -83,25 +91,81 @@ pub struct BatchPayloadJob<Client, Pool, Tasks> {
     pub(crate) cached_reads: Option<CachedReads>,
     /// metrics for this type
     pub(crate) metrics: LatticePayloadBuilderServiceMetrics,
+    /// Network type for passing payload to quorum waiter for broadcasting the batch.
+    pub(crate) network: Network,
 }
 
-impl<Client, Pool, Tasks> Future for BatchPayloadJob<Client, Pool, Tasks>
+impl<Client, Pool, Tasks, Network> Future for BatchPayloadJob<Client, Pool, Tasks, Network>
 where
     Client: StateProviderFactory + Clone + Unpin + 'static,
     Pool: TransactionPool + Unpin + 'static,
     Tasks: TaskSpawner + Clone + 'static,
+    Network: EngineToWorkerClient + Clone + Unpin + Send + Sync + 'static,
 {
-    type Output = Result<Arc<BatchPayload>, LatticePayloadBuilderError>;
+    type Output = Result<(), LatticePayloadBuilderError>;
 
     fn poll(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
         let this = self.get_mut();
 
-        // poll the pending batch if it exists
+        // poll the network call if it exists
+        if let Some(mut fut) = this.pending_broadcast.take() {
+            let poll_status = match fut.poll_unpin(cx) {
+                Poll::Ready(Ok(sealed_batch)) => {
+                    // update pool
+                    let batch_info = BatchInfo::new(
+                        sealed_batch.digest,
+                        this.payload_transactions.clone(),
+                        sealed_batch.worker_id,
+                    );
+                    // update pool and return Ready
+                    this.pool.on_sealed_batch(batch_info);
+                    Poll::Ready(Ok(()))
+                }
+                Poll::Ready(Err(e)) => {
+                    // TODO: if batch is empty, this returns an error
+                    trace!(?e, "batch build attempt failed");
+                    this.metrics.inc_failed_batch_jobs();
+                    Poll::Ready(Err(e))
+                }
+                Poll::Pending => {
+                    warn!("Pending batch is still pending!!");
+                    this.pending_broadcast = Some(fut);
+                    Poll::Pending
+                }
+            };
+            return poll_status
+        }
+
+        // poll the pending batch if it exists and pass to quorum waiter
         if let Some(mut fut) = this.pending_batch.take() {
             let poll_status = match fut.poll_unpin(cx) {
-                Poll::Ready(Ok(batch)) => {
-                    let payload = Arc::new(batch);
-                    Poll::Ready(Ok(payload))
+                Poll::Ready(Ok(payload)) => {
+                    // use the local network to send the batch to the quorum waiter
+                    let (tx, rx) = oneshot::channel();
+                    let guard = this.payload_task_guard.clone();
+                    let network_client = this.network.clone();
+                    let cancel = Cancelled::default();
+                    let _cancel = cancel.clone();
+                    let waker = cx.waker().clone();
+                    let batch = payload.get_batch().clone();
+                    // need synchronous IO
+                    this.executor.spawn_blocking(Box::pin(async move {
+                        // acquire the permit for executing the task
+                        let _permit = guard.0.acquire().await;
+                        seal_batch(
+                            network_client,
+                            batch,
+                            tx,
+                            cancel,
+                            waker,
+                        ).await
+                    }));
+                    // let payload = Arc::new(payload);
+                    this.payload_transactions = payload.get_transaction_ids().clone();
+                    this.pending_broadcast = Some(PendingBroadcast { _cancel, network_result: rx });
+                    Poll::Pending
+                    // let payload = Arc::new(batch);
+                    // Poll::Ready(Ok(payload))
                 }
                 Poll::Ready(Err(e)) => {
                     // TODO: if batch is empty, this returns an error
@@ -169,6 +233,26 @@ impl Future for PendingBatch {
 
     fn poll(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
         let res = ready!(self.payload.poll_unpin(cx));
+        Poll::Ready(res.map_err(Into::into).and_then(|res| res))
+    }
+}
+
+/// A future that resolves to the result of the batch building job.
+#[derive(Debug)]
+pub(crate) struct PendingBroadcast {
+    // /// The batch payload to broadcast
+    // payload: Arc<BatchPayload>,
+    /// The marker to cancel the job on drop
+    _cancel: Cancelled,
+    /// The channel to send the result to.
+    network_result: oneshot::Receiver<Result<SealedBatchResponse, LatticePayloadBuilderError>>,
+}
+
+impl Future for PendingBroadcast {
+    type Output = Result<SealedBatchResponse, LatticePayloadBuilderError>;
+
+    fn poll(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
+        let res = ready!(self.network_result.poll_unpin(cx));
         Poll::Ready(res.map_err(Into::into).and_then(|res| res))
     }
 }

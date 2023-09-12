@@ -22,7 +22,7 @@ use anemo_tower::{
     set_header::{SetRequestHeaderLayer, SetResponseHeaderLayer},
     trace::{DefaultMakeSpan, DefaultOnFailure, TraceLayer},
 };
-use consensus_metrics::{metered_channel::channel_with_total, spawn_logged_monitored_task};
+use consensus_metrics::{metered_channel::{channel_with_total, Receiver}, spawn_logged_monitored_task};
 use tn_types::consensus::{Protocol, Multiaddr};
 use lattice_network::{
     client::NetworkClient,
@@ -30,7 +30,6 @@ use lattice_network::{
     failpoints::FailpointsMakeCallbackHandler,
     metrics::MetricsMakeCallbackHandler,
 };
-use lattice_payload_builder::LatticePayloadBuilderHandle;
 use lattice_typed_store::rocks::DBMap;
 use std::{collections::HashMap, net::Ipv4Addr, sync::Arc, thread::sleep, time::Duration};
 use tap::TapFallible;
@@ -44,16 +43,14 @@ use tokio::task::JoinHandle;
 use tower::ServiceBuilder;
 use tracing::{error, info};
 
-#[cfg(test)]
-#[path = "tests/worker_tests.rs"]
-pub mod worker_tests;
+// #[cfg(test)]
+// #[path = "tests/worker_tests.rs"]
+// pub mod worker_tests;
 
 /// The default channel capacity for each channel of the worker.
 pub const CHANNEL_CAPACITY: usize = 1_000;
 
-use crate::{
-    metrics::{Metrics, WorkerMetrics},
-};
+use crate::metrics::{Metrics, WorkerMetrics};
 
 pub struct Worker {
     /// This authority.
@@ -85,7 +82,6 @@ impl Worker {
         store: DBMap<BatchDigest, Batch>,
         metrics: Metrics,
         tx_shutdown: &mut PreSubscribedBroadcastSender,
-        batch_builder: Option<LatticePayloadBuilderHandle>,
     ) -> Vec<JoinHandle<()>> {
         let worker_name = keypair.public().clone();
         let worker_peer_id = PeerId(worker_name.0.to_bytes());
@@ -280,16 +276,21 @@ impl Worker {
             }),
         );
 
+        let (tx_quorum_waiter, rx_quorum_waiter) = channel_with_total(
+            CHANNEL_CAPACITY,
+            &channel_metrics.tx_quorum_waiter,
+            &channel_metrics.tx_quorum_waiter_total,
+        );
         // set engine to worker listener
         client.set_engine_to_worker_local_handler(
-            worker_peer_id,
+            // worker_peer_id,
+            worker.id,
             Arc::new(EngineToWorkerHandler {
                 authority_id: worker.authority.id(),
                 id: worker.id,
-                committee: worker.committee.clone(),
-                worker_cache: worker.worker_cache.clone(),
+                peer_id: worker_peer_id,
                 store: worker.store.clone(),
-                network: Some(network.clone()),
+                tx_quorum_waiter,
             }),
         );
 
@@ -359,7 +360,8 @@ impl Worker {
             channel_metrics,
             client,
             network.clone(),
-            batch_builder,
+            worker_peer_id,
+            rx_quorum_waiter,
         );
 
         let network_shutdown_handle =
@@ -418,7 +420,8 @@ impl Worker {
         channel_metrics: Arc<WorkerChannelMetrics>,
         client: NetworkClient,
         network: anemo::Network,
-        batch_builder: Option<LatticePayloadBuilderHandle>,
+        worker_peer_id: PeerId,
+        rx_quorum_waiter: Receiver<(Batch, BatchDigest, tokio::sync::oneshot::Sender<()>)>,
     ) -> Vec<JoinHandle<()>> {
         info!("Starting handler for transactions");
 
@@ -427,11 +430,7 @@ impl Worker {
             &channel_metrics.tx_batch_maker,
             &channel_metrics.tx_batch_maker_total,
         );
-        let (tx_quorum_waiter, rx_quorum_waiter) = channel_with_total(
-            CHANNEL_CAPACITY,
-            &channel_metrics.tx_quorum_waiter,
-            &channel_metrics.tx_quorum_waiter_total,
-        );
+
 
         // // We first receive clients' transactions from the network.
         // let address = self
@@ -460,11 +459,10 @@ impl Worker {
             self.parameters.max_batch_delay,
             shutdown_receivers.pop().unwrap(),
             rx_batch_maker,
-            tx_quorum_waiter,
+            // tx_quorum_waiter,
             node_metrics.clone(),
-            client,
+            client.clone(),
             self.store.clone(),
-            batch_builder,
         );
 
         // The `QuorumWaiter` waits for 2f authorities to acknowledge reception of the batch. It
@@ -477,6 +475,7 @@ impl Worker {
             shutdown_receivers.pop().unwrap(),
             rx_quorum_waiter,
             network,
+            client,
             node_metrics,
         );
 

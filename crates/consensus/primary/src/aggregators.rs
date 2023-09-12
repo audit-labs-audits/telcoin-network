@@ -3,7 +3,7 @@
 // Copyright (c) Mysten Labs, Inc.
 // SPDX-License-Identifier: Apache-2.0
 
-use crate::metrics::PrimaryMetrics;
+use crate::{metrics::PrimaryMetrics, error::{PrimaryResult, PrimaryError}};
 use fastcrypto::hash::{Digest, Hash};
 use std::{collections::HashSet, sync::Arc};
 use tn_types::{
@@ -13,7 +13,6 @@ use tn_types::{
             self, to_intent_message, AggregateAuthoritySignature, NarwhalAuthorityAggregateSignature,
             NarwhalAuthoritySignature, AuthoritySignature,
         },
-        error::{DagError, DagResult},
         Certificate, CertificateAPI, Header, Vote, VoteAPI,
     },
     ensure,
@@ -40,11 +39,11 @@ impl VotesAggregator {
         vote: Vote,
         committee: &Committee,
         header: &Header,
-    ) -> DagResult<Option<Certificate>> {
+    ) -> PrimaryResult<Option<Certificate>> {
         let author = vote.author();
 
         // Ensure it is the first time this authority votes.
-        ensure!(self.used.insert(author), DagError::AuthorityReuse(author.to_string()));
+        ensure!(self.used.insert(author), PrimaryError::AuthorityReuse(author.to_string()));
 
         self.votes.push((author, vote.signature().clone()));
         self.weight += committee.stake_by_id(author);
@@ -56,7 +55,7 @@ impl VotesAggregator {
 
             let certificate_digest: Digest<{ crypto::DIGEST_LENGTH }> = Digest::from(cert.digest());
             match AggregateAuthoritySignature::try_from(cert.aggregated_signature())
-                .map_err(|_| DagError::InvalidSignature)?
+                .map_err(|_| PrimaryError::InvalidSignature)?
                 .verify_secure(&to_intent_message(certificate_digest), &pks[..])
             {
                 Err(err) => {

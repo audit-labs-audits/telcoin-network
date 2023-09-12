@@ -6,7 +6,9 @@ use execution_tasks::TaskSpawner;
 use execution_transaction_pool::{TransactionPool, ValidPoolTransaction};
 use fastcrypto::hash::Hash;
 use indexmap::IndexMap;
+use lattice_network::EngineToWorkerClient;
 use revm::{db::{CacheDB, DatabaseRef}, primitives::{ResultAndState, InvalidTransaction, EVMError, Env}};
+use tn_network_types::{SealBatchRequest, SealedBatchResponse};
 use tn_types::{execution::{
     U256, Receipt, IntoRecoveredTransaction, Withdrawal, H256, constants::{EMPTY_WITHDRAWALS, BEACON_NONCE}, ChainSpec, proofs, EMPTY_OMMER_ROOT, Header, Bytes,
 }, consensus::{WorkerId, TimestampMs, BatchDigest, Batch}};
@@ -14,6 +16,24 @@ use tokio::sync::oneshot;
 use tracing::{debug, warn};
 use execution_transaction_pool::BestTransactions;
 use crate::{BatchPayloadConfig, HeaderPayloadConfig, Cancelled, BatchPayload, LatticePayloadBuilderError, BatchPayloadSizeMetric, HeaderPayload};
+
+/// Share the built batch with the quorum waiter for broadcasting to all peers.
+pub(super) async fn seal_batch<Network>(
+    network: Network,
+    payload: Vec<Vec<u8>>,
+    tx: oneshot::Sender<Result<SealedBatchResponse, LatticePayloadBuilderError>>,
+    _cancel: Cancelled,
+    waker: Waker,
+)
+where
+    Network: EngineToWorkerClient + Clone + Unpin + Send + Sync + 'static,
+{
+    let worker_id = 0;
+    let request = SealBatchRequest { payload };
+    let res = network.seal_batch(worker_id, request).await;
+    let _ = tx.send(res.map_err(Into::into));
+    waker.wake();
+}
 
 /// Builds the next batch by iterating over the best pending transactions.
 pub(super) fn create_batch<Pool, Client>(
@@ -475,7 +495,7 @@ mod test {
         // seal the txs
         // let tx_hashes = tx_hashes.map(|res| res.unwrap()).collect();
         let digest = BatchDigest::new([0_u8; 32]);
-        let batch_info = BatchInfo::new(digest, pool.pending_transactions().iter().map(|tx| tx.transaction_id).collect());
+        let batch_info = BatchInfo::new(digest, pool.pending_transactions().iter().map(|tx| tx.transaction_id).collect(), 0);
         pool.on_sealed_batch(batch_info);
         println!("pool size: {:?}", pool.pool_size());
         assert_eq!(pool.pool_size().sealed, 100);

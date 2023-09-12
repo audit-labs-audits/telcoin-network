@@ -16,7 +16,7 @@ use std::{
 use tn_types::{execution::{
     Address, FromRecoveredTransaction, IntoRecoveredTransaction, PeerId, Transaction,
     TransactionKind, TransactionSignedEcRecovered, TxHash, EIP1559_TX_TYPE_ID, H256, U256,
-}, consensus::BatchDigest};
+}, consensus::{BatchDigest, WorkerId}};
 use tokio::sync::mpsc::Receiver;
 
 #[cfg(feature = "serde")]
@@ -713,12 +713,18 @@ pub struct BatchInfo {
     pub(crate) digest: BatchDigest,
     /// The transaction ids of the transactions in the batch.
     pub(crate) transactions: Vec<TransactionId>,
+    /// The id of the worker responsible for this batch.
+    pub(crate) worker_id: WorkerId,
 }
 
 impl BatchInfo {
     /// Create a new instance of [Self].
-    pub fn new(digest: BatchDigest, transactions: Vec<TransactionId>) -> Self {
-        Self { digest, transactions }
+    pub fn new(
+        digest: BatchDigest,
+        transactions: Vec<TransactionId>,
+        worker_id: WorkerId,
+    ) -> Self {
+        Self { digest, transactions, worker_id }
     }
 }
 

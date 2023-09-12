@@ -13,6 +13,7 @@ mod state_handler;
 mod synchronizer;
 mod utils;
 mod handlers;
+mod error;
 
 #[cfg(test)]
 #[path = "tests/common.rs"]

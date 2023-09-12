@@ -61,7 +61,6 @@ use tn_types::{
             traits::EncodeDecodeBase64, AuthorityKeyPair, NetworkKeyPair, NetworkPublicKey, AuthoritySignature,
         },
         Header, HeaderAPI, Round, Vote, VoteInfoAPI, PreSubscribedBroadcastSender,
-        error::{DagError, DagResult},
         now, Certificate, CertificateAPI, CertificateDigest,
     },
     ensure,

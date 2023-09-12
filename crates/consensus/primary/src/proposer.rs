@@ -2,7 +2,7 @@
 // Copyright (c) Telcoin, LLC
 // Copyright (c) Mysten Labs, Inc.
 // SPDX-License-Identifier: Apache-2.0
-use crate::metrics::PrimaryMetrics;
+use crate::{metrics::PrimaryMetrics, error::{PrimaryResult, PrimaryError}};
 use lattice_network::{PrimaryToEngineClient, client::NetworkClient};
 use consensus_metrics::{
     metered_channel::{Receiver, Sender},
@@ -17,7 +17,6 @@ use std::{
 };
 use tn_types::consensus::{
     AuthorityIdentifier, Committee, Epoch, WorkerId,
-    error::{DagError, DagResult},
     now, BatchDigest, Certificate, CertificateAPI, ConditionalBroadcastReceiver, Header, HeaderAPI,
     Round, TimestampMs,
 };
@@ -159,7 +158,7 @@ impl Proposer {
     /// make_header creates a new Header, persists it to database
     /// and sends it to core for processing. If successful, it returns
     /// the number of batch digests included in header.
-    async fn make_header(&mut self) -> DagResult<(Header, usize)> {
+    async fn make_header(&mut self) -> PrimaryResult<(Header, usize)> {
         // Make a new header.
         let header = self.create_new_header().await?;
 
@@ -175,7 +174,7 @@ impl Proposer {
         let num_of_included_digests = header.payload().len();
 
         // Send the new header to the `Certifier` that will broadcast and certify it.
-        self.tx_headers.send(header.clone()).await.map_err(|_| DagError::ShuttingDown)?;
+        self.tx_headers.send(header.clone()).await.map_err(|_| PrimaryError::ShuttingDown)?;
 
         Ok((header, num_of_included_digests))
     }
@@ -183,7 +182,7 @@ impl Proposer {
     /// Creates a new header. Also the method ensures we are protected against equivocation.
     /// If we detect that a different header has been already produced for the same round, then
     /// this method returns the earlier header. Otherwise the newly created header will be returned.
-    async fn create_new_header(&mut self) -> DagResult<Header> {
+    async fn create_new_header(&mut self) -> PrimaryResult<Header> {
         let this_round = self.round;
         let this_epoch = self.committee.epoch();
 
@@ -461,7 +460,7 @@ impl Proposer {
 
                 // Make a new header.
                 match self.make_header().await {
-                    Err(e @ DagError::ShuttingDown) => debug!("{e}"),
+                    Err(e @ PrimaryError::ShuttingDown) => debug!("{e}"),
                     Err(e) => panic!("Unexpected error: {e}"),
                     Ok((header, digests)) => {
                         // Save the header
@@ -489,7 +488,7 @@ impl Proposer {
                     if let Some(header) = &opt_latest_header {
                         debug!("resend header {:?}", header);
 
-                        if let Err(err) = self.tx_headers.send(header.clone()).await.map_err(|_| DagError::ShuttingDown) {
+                        if let Err(err) = self.tx_headers.send(header.clone()).await.map_err(|_| PrimaryError::ShuttingDown) {
                             error!("failed to resend header {:?} : {:?}", header, err);
                         }
 

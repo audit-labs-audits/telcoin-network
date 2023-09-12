@@ -70,8 +70,6 @@ impl WorkerNodes {
         store: &NodeStorage,
         // The transaction validator defining Tx acceptance,
         tx_validator: impl TransactionValidator,
-        // Handle to the EL batch builder service.
-        batch_builder: Option<LatticePayloadBuilderHandle>,
     ) -> Result<(), NodeError> {
         let worker_ids_running = self.workers_running().await;
         if !worker_ids_running.is_empty() {
@@ -105,7 +103,6 @@ impl WorkerNodes {
                     store,
                     tx_validator.clone(),
                     Some(metrics.clone()),
-                    batch_builder.clone(),
                 )
                 .await?;
 
@@ -216,8 +213,6 @@ impl WorkerNode {
         tx_validator: impl TransactionValidator,
         // An optional metrics struct
         metrics: Option<Metrics>,
-        // Handle to the EL batch builder service.
-        batch_builder: Option<LatticePayloadBuilderHandle>,
     ) -> Result<(), NodeError> {
         let mut guard = self.internal.write().await;
         guard
@@ -230,7 +225,6 @@ impl WorkerNode {
                 store,
                 tx_validator,
                 metrics,
-                batch_builder,
             )
             .await
     }
