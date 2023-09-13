@@ -49,8 +49,6 @@ consensus-metrics.workspace = true
 anemo.workspace = true
 anemo-tower.workspace = true
 
-#lattice-payload-builder.workspace = true
-
 [dev-dependencies]
 dashmap = "5.4.0"
 arc-swap = { version = "1.5.1", features = ["serde"] }

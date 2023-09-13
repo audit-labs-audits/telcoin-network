@@ -23,7 +23,6 @@ use tn_types::consensus::{
 };
 use tokio::task::JoinHandle;
 use tracing::{info, instrument};
-use lattice_payload_builder::LatticePayloadBuilderHandle;
 
 pub struct WorkerNodeInner {
     /// The worker's id

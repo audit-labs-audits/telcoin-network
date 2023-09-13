@@ -24,6 +24,7 @@ use tokio::{
     task::JoinHandle,
 };
 use tracing::info;
+use tn_adapters::NetworkAdapter;
 
 #[derive(Clone)]
 pub struct PrimaryNodeDetails {
@@ -101,7 +102,9 @@ impl PrimaryNodeDetails {
 
         // TODO: use this
         let (sender, _receiver) = tokio::sync::mpsc::unbounded_channel();
-        let engine_handle = Arc::new(LatticePayloadBuilderHandle::new(sender));
+        let engine_handle = Arc::new(NetworkAdapter::new(
+            LatticePayloadBuilderHandle::new(sender)
+        ));
         client.set_primary_to_engine_local_handler(engine_handle);
         self.node
             .start(

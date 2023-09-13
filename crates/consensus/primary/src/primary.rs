@@ -480,7 +480,6 @@ impl Primary {
             tx_narwhal_round_updates,
             rx_committed_own_headers,
             node_metrics,
-            // header_builder_handle,
             client.clone(),
         );
 
@@ -563,12 +562,16 @@ mod test {
     use tn_types::consensus::{
         AuthorityIdentifier, Committee, Parameters, WorkerId,
         now, BatchDigest, Certificate, CertificateAPI, CertificateDigest, FetchCertificatesRequest,
-        Header, HeaderAPI, MockPrimaryToWorker, PayloadAvailabilityRequest,
-        PreSubscribedBroadcastSender, PrimaryToPrimary, RequestVoteRequest, Round,
+        Header, HeaderAPI,
+        Round, PreSubscribedBroadcastSender,
     };
     use tokio::{
         sync::{oneshot, watch},
         time::timeout,
+    };
+    use tn_network_types::{
+        MockPrimaryToWorker, PayloadAvailabilityRequest,
+        PrimaryToPrimary, RequestVoteRequest,
     };
 
     #[tokio::test]
@@ -665,7 +668,6 @@ mod test {
             store.batch_store,
             metrics_1,
             &mut tx_shutdown_worker,
-            None,
         );
 
         // Test getting all known peers for primary 1

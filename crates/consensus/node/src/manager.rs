@@ -8,7 +8,6 @@
 
 use fastcrypto::traits::KeyPair;
 use consensus_metrics::RegistryService;
-use lattice_payload_builder::LatticePayloadBuilderHandle;
 use tn_types::consensus::{Committee, Epoch, Parameters, WorkerCache, WorkerId, Header};
 use lattice_executor::ExecutionState;
 use lattice_network::client::NetworkClient;
@@ -22,6 +21,7 @@ use std::path::PathBuf;
 use std::sync::Arc;
 use std::time::Instant;
 use tokio::sync::{Mutex, oneshot, mpsc};
+use tn_adapters::NetworkAdapter;
 
 /// Status of the node.
 #[derive(PartialEq)]
@@ -162,7 +162,7 @@ impl NarwhalManager {
         worker_cache: WorkerCache,
         execution_state: Arc<State>,
         tx_validator: TxValidator,
-        engine_handle: Arc<LatticePayloadBuilderHandle>,
+        engine_handle: Arc<NetworkAdapter>,
     ) where
         State: ExecutionState + Send + Sync + 'static,
     {

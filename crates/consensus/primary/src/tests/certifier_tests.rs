@@ -13,8 +13,11 @@ use prometheus::Registry;
 use rand::{rngs::StdRng, SeedableRng};
 use std::num::NonZeroUsize;
 use tn_types::consensus::{
-    crypto::AuthorityKeyPair as DefinedKeyPair, CertificateAPI, MockPrimaryToPrimary,
-    PreSubscribedBroadcastSender, PrimaryToPrimaryServer, RequestVoteResponse,
+    crypto::AuthorityKeyPair as DefinedKeyPair, CertificateAPI,
+    PreSubscribedBroadcastSender,
+};
+use tn_network_types::{
+    MockPrimaryToPrimary, PrimaryToPrimaryServer, RequestVoteResponse,
 };
 use tokio::{sync::watch, time::Duration};
 

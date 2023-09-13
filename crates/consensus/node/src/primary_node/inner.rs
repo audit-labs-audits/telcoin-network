@@ -17,7 +17,6 @@ use lattice_consensus::{
 };
 use lattice_executor::{get_restored_consensus_output, ExecutionState, Executor, SubscriberResult};
 use lattice_network::client::NetworkClient;
-use lattice_payload_builder::LatticePayloadBuilderHandle;
 use lattice_primary::{Primary, PrimaryChannelMetrics, NUM_SHUTDOWN_RECEIVERS};
 use lattice_storage::NodeStorage;
 use prometheus::{IntGauge, Registry};
@@ -93,8 +92,6 @@ impl PrimaryNodeInner {
         store: &NodeStorage,
         // The state used by the client to execute transactions.
         execution_state: Arc<State>,
-        // // Channel for primary's proposer to request the EL to build a block from the header.
-        // header_builder_handle: LatticePayloadBuilderHandle,
     ) -> Result<(), NodeError>
     where
         State: ExecutionState + Send + Sync + 'static,
@@ -123,7 +120,6 @@ impl PrimaryNodeInner {
             execution_state,
             &registry,
             &mut tx_shutdown,
-            // header_builder_handle,
         )
         .await?;
 

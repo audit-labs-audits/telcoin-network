@@ -13,7 +13,8 @@ use lattice_test_utils::{temp_dir, CommitteeFixture};
 use lattice_worker::TrivialTransactionValidator;
 use prometheus::Registry;
 use std::{num::NonZeroUsize, sync::Arc, time::Duration};
-use tn_types::consensus::{Parameters, MockPrimaryToEngine, HeaderPayloadResponse};
+use tn_types::consensus::Parameters;
+use tn_network_types::{MockPrimaryToEngine, HeaderPayloadResponse};
 use tokio::{sync::mpsc::channel, time::sleep};
 
 #[tokio::test]
@@ -85,7 +86,6 @@ async fn simple_primary_worker_node_start_stop() {
             client,
             &store,
             TrivialTransactionValidator::default(),
-            None,
         )
         .await
         .unwrap();

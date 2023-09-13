@@ -4,7 +4,7 @@
 use crate::{
     certificate_fetcher::CertificateFetcherCommand, common::create_db_stores,
     metrics::PrimaryMetrics, synchronizer::Synchronizer, PrimaryChannelMetrics,
-    NUM_SHUTDOWN_RECEIVERS,
+    NUM_SHUTDOWN_RECEIVERS, error::PrimaryError,
 };
 use fastcrypto::{hash::Hash, traits::KeyPair};
 use futures::{stream::FuturesUnordered, StreamExt};
@@ -24,7 +24,7 @@ use std::{
     time::Duration,
 };
 use tn_types::consensus::{
-    Committee, error::PrimaryError, Certificate, CertificateAPI, Header, HeaderAPI,
+    Committee, Certificate, CertificateAPI, Header, HeaderAPI,
     PreSubscribedBroadcastSender, Round,
 };
 use tokio::sync::{oneshot, watch};

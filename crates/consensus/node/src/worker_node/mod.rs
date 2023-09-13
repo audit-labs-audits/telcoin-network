@@ -6,7 +6,6 @@
 //! and a threadsafe wrapper for each inner worker instance.
 mod inner;
 use inner::WorkerNodeInner;
-use lattice_payload_builder::LatticePayloadBuilderHandle;
 use crate::{metrics::new_registry, NodeError};
 use tokio::sync::RwLock;
 use arc_swap::{ArcSwap, ArcSwapOption};

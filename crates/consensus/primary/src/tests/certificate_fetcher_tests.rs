@@ -18,13 +18,18 @@ use once_cell::sync::OnceCell;
 use prometheus::Registry;
 use std::{collections::BTreeSet, sync::Arc, time::Duration};
 use tn_types::{consensus::{
-    AuthorityIdentifier, Epoch, WorkerId,
-    BatchDigest, Certificate, CertificateAPI, CertificateDigest, FetchCertificatesRequest,
-    FetchCertificatesResponse, GetCertificatesRequest, GetCertificatesResponse, Header, HeaderAPI,
-    HeaderDigest, PayloadAvailabilityRequest, PayloadAvailabilityResponse,
-    PreSubscribedBroadcastSender, PrimaryToPrimary, PrimaryToPrimaryServer, RequestVoteRequest,
-    RequestVoteResponse, Round, SendCertificateRequest, SendCertificateResponse,
+    AuthorityIdentifier, Epoch, WorkerId, HeaderDigest,
+    BatchDigest, Certificate, CertificateAPI, CertificateDigest,
+    Header, HeaderAPI, Round, PreSubscribedBroadcastSender,
 }, execution::SealedHeader};
+use tn_network_types::{
+    FetchCertificatesRequest,
+    FetchCertificatesResponse, GetCertificatesRequest, GetCertificatesResponse,
+    PayloadAvailabilityRequest, PayloadAvailabilityResponse,
+    PrimaryToPrimary, PrimaryToPrimaryServer, RequestVoteRequest,
+    RequestVoteResponse, SendCertificateRequest, SendCertificateResponse,
+
+};
 use tokio::{
     sync::{
         mpsc::{self, error::TryRecvError, Receiver, Sender},

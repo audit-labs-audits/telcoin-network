@@ -15,9 +15,8 @@ use tn_types::consensus::{
     AuthorityIdentifier, WorkerId,
     crypto::NetworkKeyPair,
     BatchDigest, Certificate, CertificateDigest, Header, HeaderDigest, Round,
-    WorkerSynchronizeMessage,
 };
-
+use tn_network_types::WorkerSynchronizeMessage;
 use lattice_storage::PayloadToken;
 use lattice_typed_store::rocks::MetricConf;
 use tokio::{task::JoinHandle, time::Instant};

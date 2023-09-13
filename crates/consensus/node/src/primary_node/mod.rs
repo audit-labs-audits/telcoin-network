@@ -6,7 +6,6 @@
 
 mod inner;
 use inner::PrimaryNodeInner;
-use lattice_payload_builder::LatticePayloadBuilderHandle;
 use crate::NodeError;
 use consensus_metrics::{RegistryID, RegistryService};
 use lattice_executor::ExecutionState;

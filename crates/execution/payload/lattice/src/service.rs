@@ -91,7 +91,7 @@ where
                             },
                         }
                     }
-                    LatticePayloadBuilderServiceCommand::NewHeader{ reply, attributes } => {
+                    LatticePayloadBuilderServiceCommand::NewHeader{ tx, attributes } => {
                         // add another function for generator to verify batches are all present
                         // if not, give the new_header_job(attributes, Some(missing))
                         // (tx, missing) = oneshot::channel()
@@ -103,7 +103,7 @@ where
                         // for the ones that don't 
                         match this.generator.new_header_job(attributes) {
                             Ok(job) => {
-                                let _ = reply.send(Box::pin(job));
+                                let _ = tx.send(Box::pin(job));
                                 this.metrics.inc_initiated_header_jobs();
                             }
                             Err(e) => {
@@ -135,7 +135,7 @@ pub enum LatticePayloadBuilderServiceCommand {
     /// Return a future job that builds a header.
     NewHeader {
         /// Channel to return the job future.
-        reply: oneshot::Sender<HeaderPayloadFuture>,
+        tx: oneshot::Sender<HeaderPayloadFuture>,
         /// Attributes for the block to build.
         attributes: BuildHeaderRequest,
     },
