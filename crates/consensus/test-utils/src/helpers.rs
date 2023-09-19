@@ -5,7 +5,7 @@
 
 //! Helper methods for test-utils.
 use crate::BATCHES_CF;
-use tn_types::consensus::Multiaddr;
+use tn_types::consensus::{Multiaddr, VersionedMetadata};
 use execution_transaction_pool::{TransactionId, SenderId};
 use fastcrypto::{
     hash::Hash as _,
@@ -120,8 +120,11 @@ pub fn fixture_payload(number_of_batches: u8) -> IndexMap<BatchDigest, (WorkerId
     payload
 }
 
-// will create a batch with randomly formed transactions
-// dictated by the parameter number_of_transactions
+/// Creates an invalid batch with randomly formed transactions
+/// dictated by the parameter number_of_transactions
+/// 
+/// The metadata is invalid.
+/// TODO: consolidate this with execution/interfaces/test-utils/generators
 pub fn fixture_batch_with_transactions(number_of_transactions: u32) -> Batch {
     let transactions = (0..number_of_transactions).map(|_v| transaction()).collect();
 
@@ -178,6 +181,7 @@ pub fn build_batch() -> Result<Arc<BatchPayload>, LatticePayloadBuilderError> {
    Ok(Arc::new(
         BatchPayload::new(
             vec![known_transaction_1()],
+            Default::default(),
             vec![
                 TransactionId {
                     sender: SenderId::from(3),

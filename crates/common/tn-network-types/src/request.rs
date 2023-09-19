@@ -1,4 +1,5 @@
 //! Request message types
+use anemo::types::Version;
 use tn_types::{
     consensus::{
         crypto::NetworkPublicKey,
@@ -15,8 +16,6 @@ use std::{
     fmt,
 };
 use tracing::warn;
-
-use crate::BatchPayloadResponse;
 
 /// Request for broadcasting certificates to peers.
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -192,24 +191,30 @@ impl From<WorkerId> for BuildBatchRequest {
     }
 }
 
-/// Used by primary to ask worker for the request.
+/// Engine to worker after a batch is built.
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
 pub struct SealBatchRequest {
     /// Collection of transactions encoded as bytes.
     pub payload: Vec<Vec<u8>>,
+    /// Execution data for validation.
+    pub metadata: VersionedMetadata,
+}
 
-    // TODO: include block for metadata
+/// Used by workers to validate a peer's batch using EL.
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
+pub struct ValidateBatchRequest {
+    /// The peer's batch to validate.
+    pub batch: Batch,
+    /// The worker's id.
+    /// 
+    /// TODO: this is redundant because
+    /// there is a method on anemo requests, but it returns
+    /// an option which makes me wonder if it's reliably present.
+    pub worker_id: WorkerId,
 }
 
 impl From<SealBatchRequest> for Batch {
     fn from(value: SealBatchRequest) -> Self {
-        Batch::new(value.payload)
-    }
-}
-
-impl From<BatchPayloadResponse> for SealBatchRequest {
-    fn from(value: BatchPayloadResponse) -> Self {
-        let BatchPayloadResponse { payload } = value;
-        Self { payload }
+        Batch::new_with_metadata(value.payload, value.metadata)
     }
 }

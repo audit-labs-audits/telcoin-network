@@ -37,6 +37,9 @@ anyhow.workspace = true
 eyre = "0.6.8"
 tn-network-types = { workspace = true }
 
+# temporary workaround
+execution-lattice-consensus = { workspace = true }
+
 [dev-dependencies]
 arc-swap = { version = "1.5.1", features = ["serde"] }
 rand = "0.8.5"

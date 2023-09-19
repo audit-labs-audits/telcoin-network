@@ -47,7 +47,7 @@ pub struct PrimaryToWorkerHandler<V> {
     pub network: Option<Network>,
     /// Fetch certificate payloads from other workers.
     pub batch_fetcher: Option<BatchFetcher>,
-    /// Validate incoming batches
+    /// Network client to validate incoming batches with the EL.
     pub validator: V,
 }
 
@@ -86,6 +86,14 @@ impl<V: TransactionValidator> PrimaryToWorker for PrimaryToWorkerHandler<V> {
             return Ok(anemo::Response::new(()))
         }
 
+
+
+        // TODO: this is a terrible design
+        //
+        // create another spawned process for validating batches
+
+
+
         let worker_name = match self
             .worker_cache
             .worker(self.committee.authority(&message.target).unwrap().protocol_key(), &self.id)
@@ -115,6 +123,8 @@ impl<V: TransactionValidator> PrimaryToWorker for PrimaryToWorkerHandler<V> {
             .into_inner();
         for batch in response.batches.iter_mut() {
             if !message.is_certified {
+                // TODO: this is currently using a cloned version of the engine handle
+
                 // This batch is not part of a certificate, so we need to validate it.
                 if let Err(err) = self.validator.validate_batch(batch).await {
                     return Err(anemo::rpc::Status::new_with_message(
@@ -134,6 +144,12 @@ impl<V: TransactionValidator> PrimaryToWorker for PrimaryToWorkerHandler<V> {
                 })?;
             }
         }
+
+
+
+        // end of code that needs to be refactored
+
+
 
         if missing.is_empty() {
             return Ok(anemo::Response::new(()))

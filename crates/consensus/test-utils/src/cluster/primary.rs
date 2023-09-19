@@ -25,6 +25,7 @@ use tokio::{
 };
 use tracing::info;
 use tn_adapters::NetworkAdapter;
+use execution_lattice_consensus::LatticeConsensusEngineHandle;
 
 #[derive(Clone)]
 pub struct PrimaryNodeDetails {
@@ -101,9 +102,11 @@ impl PrimaryNodeDetails {
         let primary_store: NodeStorage = NodeStorage::reopen(store_path.clone(), None);
 
         // TODO: use this
-        let (sender, _receiver) = tokio::sync::mpsc::unbounded_channel();
+        let (payload_sender, _pay_receiver) = tokio::sync::mpsc::unbounded_channel();
+        let (engine_sender, _eng_receiver) = tokio::sync::mpsc::unbounded_channel();
         let engine_handle = Arc::new(NetworkAdapter::new(
-            LatticePayloadBuilderHandle::new(sender)
+            LatticePayloadBuilderHandle::new(payload_sender),
+            LatticeConsensusEngineHandle::new(engine_sender),
         ));
         client.set_primary_to_engine_local_handler(engine_handle);
         self.node

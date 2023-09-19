@@ -5638,6 +5638,7 @@ version = "0.1.0"
 dependencies = [
  "anemo",
  "consensus-metrics",
+ "execution-lattice-consensus",
  "execution-transaction-pool",
  "fastcrypto",
  "fdlimit",
@@ -5724,6 +5725,7 @@ dependencies = [
  "byteorder",
  "bytes",
  "consensus-metrics",
+ "execution-lattice-consensus",
  "eyre",
  "fastcrypto",
  "futures",

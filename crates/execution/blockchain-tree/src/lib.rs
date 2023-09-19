@@ -22,6 +22,7 @@ pub use execution_provider::post_state;
 
 pub mod blockchain_tree;
 pub use blockchain_tree::{BlockHashes, BlockchainTree};
+mod batch;
 
 pub mod block_indices;
 pub use block_indices::BlockIndices;

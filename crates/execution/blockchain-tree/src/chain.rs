@@ -314,6 +314,41 @@ impl AppendableChain {
         self.blocks.insert(block.number, block);
         Ok(())
     }
+
+    /// Execute and validate the given batch.
+    /// 
+    /// Batches are expected to extend the canonical chain but are not added to the tree
+    /// until after consensus is reached. State root is not checked.
+    pub(crate) fn execute_and_validate_batch<PSDP, DB, C, EF>(
+        block: SealedBlockWithSenders,
+        parent_block: &SealedHeader,
+        post_state_data_provider: PSDP,
+        externals: &TreeExternals<DB, C, EF>,
+    ) -> Result<(), Error>
+    where
+        PSDP: PostStateDataProvider,
+        DB: Database,
+        C: Consensus,
+        EF: ExecutorFactory,
+    {
+        // some checks are done before batch comes here.
+        externals.consensus.validate_batch_against_parent(&block, parent_block)?;
+
+        let (block, senders) = block.into_components();
+        let block = block.unseal();
+
+        // get the state provider.
+        let db = externals.database();
+        let canonical_fork = post_state_data_provider.canonical_fork();
+        let state_provider = db.history_by_block_number(canonical_fork.number)?;
+
+        let provider = PostStateProvider::new(state_provider, post_state_data_provider);
+
+        let mut executor = externals.executor_factory.with_sp(&provider);
+        let _post_state = executor.execute_and_verify_receipt(&block, U256::MAX, Some(senders))?;
+
+        Ok(())
+    }
 }
 
 /// Represents what kind of block is being executed and validated.

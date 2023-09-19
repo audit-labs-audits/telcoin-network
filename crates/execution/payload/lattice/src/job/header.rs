@@ -217,18 +217,3 @@ pub(crate) struct HeaderPayloadConfig {
     /// The chain spec.
     pub(crate) chain_spec: Arc<ChainSpec>,
 }
-
-
-#[cfg(test)]
-mod test {
-
-    #[tokio::test(flavor = "multi_thread")]
-    async fn test_header_payload_job_genesis() {
-        todo!()
-    }
-
-    #[tokio::test]
-    async fn test_header_payload_job() {
-        todo!()
-    }
-}

@@ -95,7 +95,7 @@ where
             timestamp: U256::from(timestamp),
             difficulty: U256::ZERO,
             prevrandao: Some(U256::ZERO.into()),
-            gas_limit: U256::MAX,
+            gas_limit: U256::from(ETHEREUM_BLOCK_GAS_LIMIT),
             // TODO: calculate basefee based on parent block's gas usage?
             basefee: U256::ZERO,
         };

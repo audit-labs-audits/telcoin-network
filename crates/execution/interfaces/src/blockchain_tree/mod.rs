@@ -79,6 +79,26 @@ pub trait BlockchainTreeEngine: BlockchainTreeViewer + Send + Sync {
 
     /// Unwind tables and put it inside state
     fn unwind(&self, unwind_to: BlockNumber) -> Result<(), Error>;
+
+    /// Recover senders and call [`BlockchainTreeEngine::validate_batch`].
+    ///
+    /// This will recover all senders of the transactions in the block first, and then try to insert
+    /// the block.
+    fn validate_batch_without_senders(
+        &self,
+        block: SealedBlock,
+    ) -> Result<(), InsertBlockError> {
+        match block.try_seal_with_senders() {
+            Ok(block) => self.validate_batch(block),
+            Err(block) => Err(InsertBlockError::sender_recovery_error(block)),
+        }
+    }
+
+    /// Validate batch with senders.
+    fn validate_batch(
+        &self,
+        block: SealedBlockWithSenders,
+    ) -> Result<(), InsertBlockError>;
 }
 
 /// All possible outcomes of a canonicalization attempt of [BlockchainTreeEngine::make_canonical].

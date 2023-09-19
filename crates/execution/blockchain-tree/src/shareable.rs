@@ -89,6 +89,16 @@ impl<DB: Database, C: Consensus, EF: ExecutorFactory> BlockchainTreeEngine
         tree.update_chains_metrics();
         res
     }
+
+    fn validate_batch(
+        &self,
+        block: SealedBlockWithSenders,
+    ) -> Result<(), InsertBlockError> {
+        trace!(target: "blockchain_tree", hash=?block.hash, number=block.number, parent_hash=?block.parent_hash, "Validating batch");
+        let tree = self.tree.read();
+        // TODO: update metrics?
+        tree.validate_batch(block)
+    }
 }
 
 impl<DB: Database, C: Consensus, EF: ExecutorFactory> BlockchainTreeViewer

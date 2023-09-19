@@ -49,6 +49,14 @@ impl Consensus for LatticeConsensus {
     fn validate_block(&self, block: &SealedBlock) -> Result<(), ConsensusError> {
         validation::validate_block_standalone(block, &self.chain_spec)
     }
+
+    fn validate_batch_standalone(&self, batch: &tn_types::execution::SealedBlockWithSenders,) -> Result<(),ConsensusError> {
+        validation::validate_batch_standalone(batch, &self.chain_spec)
+    }
+
+    fn validate_batch_against_parent(&self, batch: &tn_types::execution::SealedBlockWithSenders,parent: &SealedHeader,) -> Result<(),ConsensusError> {
+        validation::validate_batch_regarding_parent(parent, batch)
+    }
 }
 
 /// Validates the header's extradata according to the lattice consensus rules.

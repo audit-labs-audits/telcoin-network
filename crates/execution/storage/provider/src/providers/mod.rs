@@ -601,6 +601,13 @@ where
     fn unwind(&self, unwind_to: BlockNumber) -> Result<()> {
         self.tree.unwind(unwind_to)
     }
+
+    fn validate_batch(
+            &self,
+            block: SealedBlockWithSenders,
+        ) -> std::result::Result<(), InsertBlockError> {
+        self.tree.validate_batch(block)
+    }
 }
 
 impl<DB, Tree> BlockchainTreeViewer for BlockchainProvider<DB, Tree>

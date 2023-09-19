@@ -4,7 +4,7 @@ use anemo::types::response::StatusCode;
 use execution_transaction_pool::error::PoolError;
 use lattice_network::LocalClientError;
 use revm::primitives::EVMError;
-use tn_types::{execution::H256, consensus::BatchDigest};
+use tn_types::execution::H256;
 use tokio::sync::oneshot;
 
 use crate::LatticePayloadBuilderServiceCommand;

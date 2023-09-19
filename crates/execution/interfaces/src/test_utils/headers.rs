@@ -26,7 +26,7 @@ use std::{
 };
 use tn_types::execution::{
     BlockHash, BlockNumber, Head, Header, HeadersDirection, PeerId, SealedBlock, SealedHeader,
-    WithPeerId, H256, U256,
+    WithPeerId, H256, U256, SealedBlockWithSenders,
 };
 use tokio::sync::{
     oneshot::{error::RecvError, Receiver},
@@ -323,4 +323,25 @@ impl Consensus for TestConsensus {
             Ok(())
         }
     }
+
+    fn validate_batch_standalone(&self, _batch: &SealedBlockWithSenders) -> Result<(), consensus::ConsensusError> {
+        if self.fail_validation() {
+            Err(consensus::ConsensusError::BaseFeeMissing)
+        } else {
+            Ok(())
+        }
+    }
+
+    fn validate_batch_against_parent(
+        &self,
+        _batch: &SealedBlockWithSenders,
+        _parent: &SealedHeader,
+    ) -> Result<(), consensus::ConsensusError> {
+        if self.fail_validation() {
+            Err(consensus::ConsensusError::BaseFeeMissing)
+        } else {
+            Ok(())
+        }
+    }
+
 }

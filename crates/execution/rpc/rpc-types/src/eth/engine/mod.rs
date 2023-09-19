@@ -7,8 +7,9 @@ mod forkchoice;
 mod lattice;
 mod payload;
 mod transition;
+mod batch;
 
-pub use self::{error::*, forkchoice::*, lattice::*, payload::*, transition::*};
+pub use self::{error::*, forkchoice::*, lattice::*, payload::*, transition::*, batch::*};
 
 /// The list of supported Engine capabilities
 pub const CAPABILITIES: [&str; 9] = [

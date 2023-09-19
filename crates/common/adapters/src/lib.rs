@@ -3,7 +3,7 @@ use anemo::{Response, Request, rpc::Status};
 use lattice_payload_builder::LatticePayloadBuilderHandle;
 use execution_lattice_consensus::LatticeConsensusEngineHandle;
 use async_trait::async_trait;
-use tn_network_types::{WorkerToEngine, BuildBatchRequest, BatchPayloadResponse, PrimaryToEngine, BuildHeaderRequest, HeaderPayloadResponse};
+use tn_network_types::{WorkerToEngine, BuildBatchRequest, PrimaryToEngine, BuildHeaderRequest, HeaderPayloadResponse, ValidateBatchRequest};
 
 /// Adapter to router local communication requests between consensus
 /// and execution layers.
@@ -13,19 +13,18 @@ use tn_network_types::{WorkerToEngine, BuildBatchRequest, BatchPayloadResponse, 
 pub struct NetworkAdapter {
     /// Handle for building payloads for this node to propose.
     payload_builder: LatticePayloadBuilderHandle,
-    // /// Handle for validating payloads from other peers and 
-    // /// update the blockchain tree.
-    // consensus_engine: LatticeConsensusEngineHandle,
+    /// Handle for validating payloads from other peers and 
+    /// update the blockchain tree.
+    consensus_engine: LatticeConsensusEngineHandle,
 }
 
 impl NetworkAdapter {
     /// Create a new instance of [Self].
     pub fn new(
         payload_builder: LatticePayloadBuilderHandle,
-        // consensus_engine: LatticeConsensusEngineHandle,
+        consensus_engine: LatticeConsensusEngineHandle,
     ) -> Self {
-        Self { payload_builder }
-        // Self { payload_builder, consensus_engine }
+        Self { payload_builder, consensus_engine }
     }
 }
 
@@ -44,6 +43,18 @@ impl WorkerToEngine for NetworkAdapter {
             Ok(()) => Ok(Response::new(())),
             Err(e) => Err(Status::internal(e.to_string())),
         }
+    }
+
+    async fn validate_batch(
+        &self,
+        request: Request<ValidateBatchRequest>,
+    ) -> Result<Response<()>, Status> {
+        let ValidateBatchRequest { batch, worker_id: _ } = request.into_body();
+        // TODO: turn batch into BatchExecutionPayload
+        self.consensus_engine.validate_batch(batch).await.map_err(|e| {
+            Status::internal(e.to_string())
+        })?;
+        Ok(Response::new(()))
     }
 }
 

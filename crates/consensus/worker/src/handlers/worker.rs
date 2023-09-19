@@ -12,7 +12,7 @@ use anyhow::Result;
 use async_trait::async_trait;
 use fastcrypto::hash::Hash;
 use itertools::Itertools;
-use lattice_network::{client::NetworkClient, WorkerToPrimaryClient};
+use lattice_network::{client::NetworkClient, WorkerToPrimaryClient, WorkerToEngineClient};
 use lattice_typed_store::{rocks::DBMap, Map};
 use tn_types::consensus::{
     WorkerId, now, Batch, BatchAPI, BatchDigest, MetadataAPI,
@@ -20,28 +20,27 @@ use tn_types::consensus::{
 use tn_network_types::{
     RequestBatchRequest, RequestBatchResponse, RequestBatchesRequest,
     RequestBatchesResponse, WorkerBatchMessage,
-    WorkerOthersBatchMessage, WorkerToWorker,
+    WorkerOthersBatchMessage, WorkerToWorker, ValidateBatchRequest,
 };
 use crate::TransactionValidator;
 
 /// Defines how the worker's network receiver handles incoming messages from
 /// other workers.
 #[derive(Clone)]
-pub struct WorkerToWorkerHandler<V> {
+pub struct WorkerToWorkerHandler {
     pub id: WorkerId,
-    pub client: NetworkClient,
+    pub network_client: NetworkClient,
     pub store: DBMap<BatchDigest, Batch>,
-    pub validator: V,
 }
 
 #[async_trait]
-impl<V: TransactionValidator> WorkerToWorker for WorkerToWorkerHandler<V> {
+impl WorkerToWorker for WorkerToWorkerHandler {
     async fn report_batch(
         &self,
         request: anemo::Request<WorkerBatchMessage>,
     ) -> Result<anemo::Response<()>, anemo::rpc::Status> {
         let message = request.into_body();
-        if let Err(err) = self.validator.validate_batch(&message.batch).await {
+        if let Err(err) = self.network_client.validate_batch(self.id, message.batch.clone()).await {
             return Err(anemo::rpc::Status::new_with_message(
                 StatusCode::BadRequest,
                 format!("Invalid batch: {err}"),
@@ -49,7 +48,7 @@ impl<V: TransactionValidator> WorkerToWorker for WorkerToWorkerHandler<V> {
         }
         let digest = message.batch.digest();
 
-        let mut batch = message.batch.clone();
+        let mut batch = message.batch;
 
         // Set received_at timestamp for remote batch.
         batch.versioned_metadata_mut().set_received_at(now());
@@ -57,7 +56,7 @@ impl<V: TransactionValidator> WorkerToWorker for WorkerToWorkerHandler<V> {
         self.store.insert(&digest, &batch).map_err(|e| {
             anemo::rpc::Status::internal(format!("failed to write to batch store: {e:?}"))
         })?;
-        self.client
+        self.network_client
             .report_others_batch(WorkerOthersBatchMessage { digest, worker_id: self.id })
             .await
             .map_err(|e| anemo::rpc::Status::internal(e.to_string()))?;

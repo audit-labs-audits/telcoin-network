@@ -6,7 +6,7 @@ use execution_interfaces::consensus::ForkchoiceState;
 use execution_payload_builder::error::PayloadBuilderError;
 use execution_rpc_types::engine::{
     ExecutionPayload, ExecutionPayloadEnvelope, ForkChoiceUpdateResult, ForkchoiceUpdateError,
-    ForkchoiceUpdated, PayloadAttributes, PayloadId, PayloadStatus, PayloadStatusEnum,
+    ForkchoiceUpdated, PayloadAttributes, PayloadId, PayloadStatus, PayloadStatusEnum, BatchExecutionPayload, BatchPayloadStatus,
 };
 use futures::{future::Either, FutureExt};
 use std::{
@@ -24,11 +24,11 @@ pub enum LatticeEngineMessage {
     /// Message with new batch from peer.
     ///
     /// Akin to `NewPayload`
-    NewBatch {
+    ValidateBatch {
         /// The execution payload received by Engine API.
-        batch: Batch,
+        payload: BatchExecutionPayload,
         /// The sender for returning payload status result.
-        tx: oneshot::Sender<Result<PayloadStatus, LatticeOnNewPayloadError>>,
+        tx: oneshot::Sender<Result<BatchPayloadStatus, LatticeOnNewPayloadError>>,
     },
     /// Message with certificate from round.
     /// Akin to `ForkchoiceUpdated`

@@ -76,23 +76,23 @@ use tracing::{debug, error, info, instrument, trace, warn};
 #[derive(Debug)]
 pub struct BlockchainTree<DB: Database, C: Consensus, EF: ExecutorFactory> {
     /// The tracked chains and their current data.
-    chains: HashMap<BlockChainId, AppendableChain>,
+    pub(crate) chains: HashMap<BlockChainId, AppendableChain>,
     /// Unconnected block buffer.
-    buffered_blocks: BlockBuffer,
+    pub(crate) buffered_blocks: BlockBuffer,
     /// Static blockchain ID generator
-    block_chain_id_generator: u64,
+    pub(crate) block_chain_id_generator: u64,
     /// Indices to block and their connection to the canonical chain.
-    block_indices: BlockIndices,
+    pub(crate) block_indices: BlockIndices,
     /// External components (the database, consensus engine etc.)
-    externals: TreeExternals<DB, C, EF>,
+    pub(crate) externals: TreeExternals<DB, C, EF>,
     /// Tree configuration
-    config: BlockchainTreeConfig,
+    pub(crate) config: BlockchainTreeConfig,
     /// Broadcast channel for canon state changes notifications.
-    canon_state_notification_sender: CanonStateNotificationSender,
+    pub(crate) canon_state_notification_sender: CanonStateNotificationSender,
     /// Metrics for the blockchain tree.
-    metrics: TreeMetrics,
+    pub(crate) metrics: TreeMetrics,
     /// Metrics for sync stages.
-    sync_metrics_tx: Option<MetricEventsSender>,
+    pub(crate) sync_metrics_tx: Option<MetricEventsSender>,
 }
 
 /// A container that wraps chains and block indices to allow searching for block hashes across all
@@ -214,7 +214,7 @@ impl<DB: Database, C: Consensus, EF: ExecutorFactory> BlockchainTree<DB, C, EF> 
     }
 
     #[inline]
-    fn canonical_chain(&self) -> &CanonicalChain {
+    pub(crate) fn canonical_chain(&self) -> &CanonicalChain {
         self.block_indices.canonical_chain()
     }
 

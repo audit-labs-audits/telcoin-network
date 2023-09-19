@@ -32,8 +32,9 @@ consensus-metrics.workspace = true
 lattice-typed-store.workspace = true
 telemetry-subscribers.workspace = true
 lattice-payload-builder.workspace = true
-execution-transaction-pool.workspace = true
 tn-adapters = { workspace = true }
+execution-transaction-pool.workspace = true
+execution-lattice-consensus = { workspace = true }
 
 #
 # 

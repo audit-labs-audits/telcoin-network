@@ -9,11 +9,11 @@ use std::{
     hash::Hasher,
     ops::{Range, RangeInclusive, Sub},
 };
-use tn_types::execution::{
+use tn_types::{execution::{
     proofs, sign_message, Account, Address, BlockNumber, Bytes, Header, Log, Receipt, SealedBlock,
     SealedHeader, Signature, StorageEntry, Transaction, TransactionKind, TransactionSigned,
     TxLegacy, H160, H256, U256,
-};
+}, consensus::Batch};
 
 // TODO(onbjerg): Maybe we should split this off to its own crate, or move the helpers to the
 // relevant crates?
@@ -158,6 +158,54 @@ pub fn random_block<R: Rng>(
     }
 }
 
+/// Generate a random batch filled with signed transactions (generated using
+/// [random_signed_tx]). If no transaction count is provided, the number of transactions
+/// will be random, otherwise the provided count will be used.
+///
+/// All fields use the default values (and are assumed to be invalid) except for:
+///
+/// - `parent_hash`
+/// - `transactions_root`
+///
+/// Additionally, `gas_used` and `gas_limit` always exactly match the total `gas_limit` of all
+/// transactions in the block.
+pub fn random_batch<R: Rng>(
+    rng: &mut R,
+    number: u64,
+    parent: Option<H256>,
+    tx_count: Option<u8>,
+    ommers_count: Option<u8>,
+) -> Batch {
+    // Generate transactions
+    let tx_count = tx_count.unwrap_or_else(|| rng.gen::<u8>());
+    let transactions: Vec<TransactionSigned> =
+        (0..tx_count).map(|_| random_signed_tx(rng)).collect();
+    let total_gas = transactions.iter().fold(0, |sum, tx| sum + tx.transaction.gas_limit());
+
+    // Calculate roots
+    let transactions_root = proofs::calculate_transaction_root(&transactions);
+
+    // SealedBlock {
+    //     header: Header {
+    //         parent_hash: parent.unwrap_or_default(),
+    //         number,
+    //         gas_used: total_gas,
+    //         gas_limit: total_gas,
+    //         transactions_root,
+    //         base_fee_per_gas: Some(rng.gen()),
+    //         ..Default::default()
+    //     }
+    //     .seal_slow(),
+    //     body: transactions,
+    //     ommers: vec![],
+    //     withdrawals: None,
+    // }
+
+    // Batch::new(
+
+    // )
+    todo!()
+}
 /// Generate a range of random blocks.
 ///
 /// The parent hash of the first block

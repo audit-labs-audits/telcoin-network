@@ -1,4 +1,5 @@
 use std::{task::Waker, sync::Arc, collections::HashMap};
+use anemo::types::Version;
 use execution_payload_builder::database::CachedReads;
 use execution_provider::{PostState, StateProviderFactory};
 use execution_revm::{executor::{commit_state_changes, post_block_withdrawals_balance_increments, increment_account_balance}, database::State, into_execution_log, env::tx_env_with_recovered};
@@ -10,8 +11,8 @@ use lattice_network::EngineToWorkerClient;
 use revm::{db::{CacheDB, DatabaseRef}, primitives::{ResultAndState, InvalidTransaction, EVMError, Env}};
 use tn_network_types::{SealBatchRequest, SealedBatchResponse};
 use tn_types::{execution::{
-    U256, Receipt, IntoRecoveredTransaction, Withdrawal, H256, constants::{EMPTY_WITHDRAWALS, BEACON_NONCE}, ChainSpec, proofs, EMPTY_OMMER_ROOT, Header, Bytes,
-}, consensus::{WorkerId, TimestampMs, BatchDigest, Batch}};
+    U256, Receipt, IntoRecoveredTransaction, Withdrawal, H256, constants::{EMPTY_WITHDRAWALS, BEACON_NONCE}, ChainSpec, proofs::{self, EMPTY_ROOT}, EMPTY_OMMER_ROOT, Header, Bytes,
+}, consensus::{WorkerId, TimestampMs, BatchDigest, Batch, VersionedMetadata, now}};
 use tokio::sync::oneshot;
 use tracing::{debug, warn};
 use execution_transaction_pool::BestTransactions;
@@ -21,6 +22,7 @@ use crate::{BatchPayloadConfig, HeaderPayloadConfig, Cancelled, BatchPayload, La
 pub(super) async fn seal_batch<Network>(
     network: Network,
     payload: Vec<Vec<u8>>,
+    metadata: VersionedMetadata,
     tx: oneshot::Sender<Result<SealedBatchResponse, LatticePayloadBuilderError>>,
     _cancel: Cancelled,
     waker: Waker,
@@ -29,7 +31,7 @@ where
     Network: EngineToWorkerClient + Clone + Unpin + Send + Sync + 'static,
 {
     let worker_id = 0;
-    let request = SealBatchRequest { payload };
+    let request = SealBatchRequest { payload, metadata };
     let res = network.seal_batch(worker_id, request).await;
     let _ = tx.send(res.map_err(Into::into));
     waker.wake();
@@ -79,6 +81,7 @@ where
         let mut size_metric = BatchPayloadSizeMetric::default();
         let block_gas_limit: u64 = initialized_block_env.gas_limit.try_into().unwrap_or(u64::MAX);
 
+        let mut executed_tx_ids = Vec::new();
         let mut executed_txs = Vec::new();
         let mut batch = Vec::new();
 
@@ -166,7 +169,9 @@ where
             // add gas used by the transaction to cumulative gas used, before creating the receipt
             cumulative_gas_used += gas_used;
 
-            // TODO: this may not be needed to verify transaction validity for batches
+            // TODO:
+            // Peers verify reciepts when executing the batch, however this may not be
+            // strictly necessary.
             //
             // Push transaction changeset and calculate header bloom filter for receipt.
             post_state.add_receipt(
@@ -179,15 +184,16 @@ where
                 },
             );
 
-            // // update add to total fees
-            // let miner_fee = tx
-            //     .effective_tip_per_gas(base_fee)
-            //     .expect("fee is always valid; execution succeeded");
-            // total_fees += U256::from(miner_fee) * U256::from(gas_used);
+            // update add to total fees
+            let miner_fee = tx
+                .effective_tip_per_gas(base_fee)
+                .expect("fee is always valid; execution succeeded");
+            total_fees += U256::from(miner_fee) * U256::from(gas_used);
 
             // append transaction to the list of executed transactions
+            executed_txs.push(tx.clone().into_signed());
             let tx_bytes: Vec<u8> = tx.into_signed().envelope_encoded().into();
-            executed_txs.push(tx_id);
+            executed_tx_ids.push(tx_id);
             // TODO: does this need to be ordered?
             batch.push(tx_bytes);
         }
@@ -201,21 +207,51 @@ where
             return Err(LatticePayloadBuilderError::EmptyBatch)
         }
 
-        Ok(BatchPayload::new(batch, executed_txs, size_metric))
+        // calculate roots for peers to validate
+        //
+        // NOTE: this may not be strictly necessary, but it's a lot
+        // easier to include this verbose data for now than it is to rewrite
+        // a lot of the engine/executor validation code.
+        let receipts_root = post_state.receipts_root(block_number);
+        let logs_bloom = post_state.logs_bloom(block_number);
+
+        // calculate the state root
+        let state_root = state.state().state_root(post_state)?;
+
+        // create the block header
+        let transactions_root = proofs::calculate_transaction_root(&executed_txs);
+
+        let metadata = Header {
+            parent_hash: parent_block.hash,
+            ommers_hash: EMPTY_OMMER_ROOT,
+            beneficiary: initialized_block_env.coinbase,
+            state_root,
+            transactions_root,
+            receipts_root,
+            withdrawals_root: Some(EMPTY_ROOT),
+            logs_bloom,
+            timestamp: now(),
+            mix_hash: H256::zero(),
+            nonce: BEACON_NONCE,
+            base_fee_per_gas: Some(base_fee),
+            number: parent_block.number + 1,
+            gas_limit: block_gas_limit,
+            difficulty: U256::ZERO,
+            gas_used: cumulative_gas_used,
+            extra_data: Bytes::default(),
+        }
+        .seal_slow()
+        .into();
+
+        Ok(BatchPayload::new(batch, metadata, executed_tx_ids, size_metric))
     }
 
     // return the result to the batch building job
     let _ = to_job.send(try_build(client, pool, cached_reads, config, cancel));
 
-    // match to_job.send(try_build(client, pool, cached_reads, config, cancel)) {
-    //     Ok(_) => debug!("\n\n~~~~ create_batch() is finished!!\n"),
-    //     Err(_) => debug!("\n\n~~~~ ERROR ~~~~ in create_batch() sending\n"),
-    // }
-
     // call wake() to poll job again
     waker.wake();
 }
-
 
 /// Builds a header for the round based on the requested `BatchDigest`.
 pub(super) fn create_header<Pool, Client>(

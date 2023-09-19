@@ -159,6 +159,15 @@ fn build_anemo_services(out_dir: &Path) {
                 .codec_path(codec_path)
                 .build(),
         )
+        .method(
+            anemo_build::manual::Method::builder()
+                .name("validate_batch")
+                .route_name("ValidateBatch")
+                .request_type("crate::ValidateBatchRequest")
+                .response_type("()")
+                .codec_path(codec_path)
+                .build(),
+        )
         .build();
 
     let engine_to_worker = anemo_build::manual::Service::builder()

@@ -6,7 +6,7 @@ use crate::{
     consensus::{now, TimestampMs},
     execution::{
         constants::EMPTY_RECEIPTS, proofs::EMPTY_ROOT, Address, Bloom, Bytes, Withdrawal, H256,
-        U256,
+        U256, SealedHeader,
     },
 };
 #[cfg(any(test, feature = "arbitrary"))]
@@ -34,35 +34,51 @@ impl VersionedMetadata {
     /// Create a new instance of [VersionedMetadata]
     pub fn new(
         parent_hash: H256,
-        fee_recipient: Address,
-        state_root: H256,
         receipts_root: H256,
         logs_bloom: Bloom,
-        prev_randao: H256,
         block_number: u64,
         gas_limit: u64,
         gas_used: u64,
-        extra_data: Bytes,
         base_fee_per_gas: U256,
         block_hash: H256,
-        withdrawals: Option<Vec<Withdrawal>>,
     ) -> Self {
         Self::V1(MetadataV1 {
             created_at: now(),
             received_at: None,
             parent_hash,
-            fee_recipient,
-            state_root,
             receipts_root,
             logs_bloom,
-            prev_randao,
             block_number,
             gas_limit,
             gas_used,
-            extra_data,
             base_fee_per_gas,
             block_hash,
-            withdrawals,
+        })
+    }
+
+    /// Create a new instance of [VersionedMetadata] with a timestamp
+    pub fn new_with_timestamp(
+        created_at: TimestampMs,
+        parent_hash: H256,
+        receipts_root: H256,
+        logs_bloom: Bloom,
+        block_number: u64,
+        gas_limit: u64,
+        gas_used: u64,
+        base_fee_per_gas: U256,
+        block_hash: H256,
+    ) -> Self {
+        Self::V1(MetadataV1 {
+            created_at,
+            received_at: None,
+            parent_hash,
+            receipts_root,
+            logs_bloom,
+            block_number,
+            gas_limit,
+            gas_used,
+            base_fee_per_gas,
+            block_hash,
         })
     }
 }
@@ -74,19 +90,46 @@ impl Default for VersionedMetadata {
             created_at: now(),
             received_at: None,
             parent_hash: H256::zero(),
-            fee_recipient: Address::zero(),
-            state_root: EMPTY_ROOT,
             receipts_root: EMPTY_RECEIPTS,
             logs_bloom: Default::default(),
-            prev_randao: Default::default(),
             block_number: Default::default(),
             gas_limit: Default::default(),
             gas_used: Default::default(),
-            extra_data: Default::default(),
             base_fee_per_gas: Default::default(),
             block_hash: H256::zero(),
-            withdrawals: Default::default(),
+            // prev_randao: Default::default(),
+            // extra_data: Default::default(),
+            // fee_recipient: Address::zero(),
+            // state_root: EMPTY_ROOT,
+            // withdrawals: Default::default(),
         })
+    }
+}
+
+impl From<SealedHeader> for VersionedMetadata {
+    fn from(value: SealedHeader) -> Self {
+        let SealedHeader {
+            header,
+            hash,
+        } = value;
+
+        let base_fee = U256::from(
+            header
+                .base_fee_per_gas
+                .unwrap_or_default()
+        );
+
+        VersionedMetadata::new_with_timestamp(
+            header.timestamp,
+            header.parent_hash,
+            header.receipts_root,
+            header.logs_bloom,
+            header.number,
+            header.gas_limit,
+            header.gas_used,
+            base_fee,
+            hash,
+        )
     }
 }
 
@@ -104,19 +147,12 @@ pub trait MetadataAPI {
     /// TODO
 	fn set_received_at(&mut self, ts: TimestampMs);
 
-    // test these types - might be better in `BatchV1`
     /// TODO
 	fn parent_hash(&self) -> H256;
-    /// TODO
-	fn fee_recipient(&self) -> Address;
-    /// TODO
-	fn state_root(&self) -> H256;
     /// TODO
 	fn receipts_root(&self) -> H256;
     /// TODO
 	fn logs_bloom(&self) -> Bloom;
-    /// TODO
-	fn prev_randao(&self) -> H256;
     /// TODO
 	fn block_number(&self) -> u64;
     /// TODO
@@ -127,13 +163,19 @@ pub trait MetadataAPI {
     /// TODO
 	fn timestamp(&self) -> u64;
     /// TODO
-	fn extra_data(&self) -> Bytes;
-    /// TODO
 	fn base_fee_per_gas(&self) -> U256;
     /// TODO
 	fn block_hash(&self) -> H256;
-    /// TODO
-	fn withdrawals(&self) -> Option<Vec<Withdrawal>>;
+    // /// TODO
+	// fn prev_randao(&self) -> H256;
+    // /// TODO
+	// fn extra_data(&self) -> Bytes;
+    // /// TODO
+	// fn fee_recipient(&self) -> Address;
+    // /// TODO
+	// fn state_root(&self) -> H256;
+    // /// TODO
+	// fn withdrawals(&self) -> Option<Vec<Withdrawal>>;
 }
 
 /// Metadata for batches.
@@ -147,43 +189,22 @@ pub struct MetadataV1 {
     /// calculate latencies that are not affected by clock drift or network
     /// delays. This field is not set for own batches.
     pub received_at: Option<TimestampMs>,
-
-    // test these types - might be better in `BatchV1`
-    //
-    // used for casting into ExecutionPayload
     /// Hash of the last finalized block
     pub parent_hash: H256,
-
-    /// This primary's address
-    pub fee_recipient: Address,
-
-    /// Value from EL
-    pub state_root: H256,
     /// Value from EL
     pub receipts_root: H256,
     /// Value from EL
     pub logs_bloom: Bloom,
-    /// Value from EL
-    pub prev_randao: H256,
     /// Value from EL
     pub block_number: u64,
     /// Value from EL
     pub gas_limit: u64,
     /// Value from EL
     pub gas_used: u64,
-
-    // just use created_at for now
-    // pub timestamp: U64,
-    /// Value from EL
-    pub extra_data: Bytes,
     /// Value from EL
     pub base_fee_per_gas: U256,
     /// Value from EL
     pub block_hash: H256,
-
-    // pub transactions: Vec<Bytes>,
-    /// Block withdrawals
-    pub withdrawals: Option<Vec<Withdrawal>>,
 }
 
 impl MetadataAPI for MetadataV1 {
@@ -204,19 +225,9 @@ impl MetadataAPI for MetadataV1 {
     }
 
     // helper methods for validating batch in EL
-    //
-    // TODO: test these types - might be better in `BatchV1`
 
     fn parent_hash(&self) -> H256 {
         self.parent_hash
-    }
-
-    fn fee_recipient(&self) -> Address {
-        self.fee_recipient
-    }
-
-    fn state_root(&self) -> H256 {
-        self.state_root
     }
 
     fn receipts_root(&self) -> H256 {
@@ -225,10 +236,6 @@ impl MetadataAPI for MetadataV1 {
 
     fn logs_bloom(&self) -> Bloom {
         self.logs_bloom
-    }
-
-    fn prev_randao(&self) -> H256 {
-        self.prev_randao
     }
 
     fn block_number(&self) -> u64 {
@@ -247,11 +254,6 @@ impl MetadataAPI for MetadataV1 {
     fn timestamp(&self) -> u64 {
         self.created_at
     }
-
-    fn extra_data(&self) -> Bytes {
-        self.extra_data.clone()
-    }
-
     fn base_fee_per_gas(&self) -> U256 {
         self.base_fee_per_gas
     }
@@ -260,9 +262,27 @@ impl MetadataAPI for MetadataV1 {
         self.block_hash
     }
 
-    fn withdrawals(&self) -> Option<Vec<Withdrawal>> {
-        self.withdrawals.clone()
-    }
+    // TODO: assumed to be unnecessary
+
+    // fn fee_recipient(&self) -> Address {
+    //     self.fee_recipient
+    // }
+
+    // fn prev_randao(&self) -> H256 {
+    //     self.prev_randao
+    // }
+
+    // fn state_root(&self) -> H256 {
+    //     self.state_root
+    // }
+
+    // fn extra_data(&self) -> Bytes {
+    //     self.extra_data.clone()
+    // }
+
+    // fn withdrawals(&self) -> Option<Vec<Withdrawal>> {
+    //     self.withdrawals.clone()
+    // }
 }
 
 #[cfg(test)]
@@ -273,17 +293,17 @@ mod tests {
     fn test_metadata_v1() {
         let metadata = VersionedMetadata::default();
         assert_eq!(metadata.parent_hash(), H256::zero());
-        assert_eq!(metadata.fee_recipient(), Address::zero());
-        assert_eq!(metadata.withdrawals(), None);
-        assert_eq!(metadata.state_root(), EMPTY_ROOT);
         assert_eq!(metadata.receipts_root(), EMPTY_RECEIPTS);
         assert_eq!(metadata.logs_bloom(), Bloom::default());
         assert_eq!(metadata.prev_randao(), Default::default());
         assert_eq!(metadata.block_number(), u64::default());
         assert_eq!(metadata.gas_limit(), u64::default());
         assert_eq!(metadata.gas_used(), u64::default());
-        assert_eq!(metadata.extra_data(), Bytes::default());
-        assert_eq!(metadata.base_fee_per_gas(), Default::default());
         assert_eq!(metadata.block_hash(), H256::zero());
+        // assert_eq!(metadata.fee_recipient(), Address::zero());
+        // assert_eq!(metadata.withdrawals(), None);
+        // assert_eq!(metadata.state_root(), EMPTY_ROOT);
+        // assert_eq!(metadata.extra_data(), Bytes::default());
+        // assert_eq!(metadata.base_fee_per_gas(), Default::default());
     }
 }

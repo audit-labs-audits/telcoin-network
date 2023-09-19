@@ -7,14 +7,15 @@
 use crate::{traits::{PrimaryToWorkerClient, WorkerToPrimaryClient, PrimaryToEngineClient, EngineToWorkerClient, WorkerToEngineClient}, LocalClientError};
 use anemo::{PeerId, Request};
 use async_trait::async_trait;
+use futures::channel::oneshot;
 use lattice_common::sync::notify_once::NotifyOnce;
 use parking_lot::RwLock;
 use std::{collections::BTreeMap, sync::Arc, time::Duration};
-use tn_types::consensus::{crypto::{traits::KeyPair, NetworkKeyPair, NetworkPublicKey}, WorkerId, BatchAPI};
+use tn_types::consensus::{crypto::{traits::KeyPair, NetworkKeyPair, NetworkPublicKey}, WorkerId, BatchAPI, Batch};
 use tn_network_types::{
     FetchBatchesRequest, FetchBatchesResponse, PrimaryToWorker, WorkerOthersBatchMessage,
     WorkerOwnBatchMessage, WorkerSynchronizeMessage, WorkerToPrimary, BuildHeaderRequest, HeaderPayloadResponse,
-    PrimaryToEngine, EngineToWorker, MissingBatchesRequest, WorkerToEngine, SealBatchRequest, SealedBatchResponse, BatchPayloadResponse,
+    PrimaryToEngine, EngineToWorker, MissingBatchesRequest, WorkerToEngine, SealBatchRequest, SealedBatchResponse, ValidateBatchRequest,
 };
 use tokio::{select, time::sleep};
 
@@ -182,7 +183,7 @@ impl NetworkClient {
         inner.engine_to_worker_handler.insert(worker_id, handler);
     }
 
-    pub async fn get_engine_to_worker_handler(
+    async fn get_engine_to_worker_handler(
         &self,
         // peer_id: PeerId,
         worker_id: WorkerId,
@@ -210,7 +211,7 @@ impl NetworkClient {
         inner.worker_to_engine_handler = Some(handler);
     }
 
-    pub async fn get_worker_to_engine_handler(
+    async fn get_worker_to_engine_handler(
         &self,
     ) -> Result<Arc<dyn WorkerToEngine>, LocalClientError> {
         for _ in 0..Self::GET_CLIENT_RETRIES {
@@ -227,7 +228,6 @@ impl NetworkClient {
         }
         Err(LocalClientError::EngineNotStarted(self.inner.read().engine_peer_id))
     }
-
 }
 
 // TODO: extract common logic for cancelling on shutdown.
@@ -368,6 +368,22 @@ impl WorkerToEngineClient for NetworkClient {
         let c = self.get_worker_to_engine_handler().await?;
         select! {
             resp = c.build_batch(Request::new(worker_id.into())) => {
+                Ok(resp.map_err(|e| LocalClientError::Internal(format!("{e:?}")))?.into_inner())
+            },
+            () = self.shutdown_notify.wait() => {
+                Err(LocalClientError::ShuttingDown)
+            },
+        }
+    }
+
+    async fn validate_batch(
+        &self,
+        worker_id: WorkerId,
+        batch: Batch,
+    ) -> Result<(), LocalClientError> {
+        let c = self.get_worker_to_engine_handler().await?;
+        select! {
+            resp = c.validate_batch(Request::new(ValidateBatchRequest{ batch, worker_id })) => {
                 Ok(resp.map_err(|e| LocalClientError::Internal(format!("{e:?}")))?.into_inner())
             },
             () = self.shutdown_notify.wait() => {

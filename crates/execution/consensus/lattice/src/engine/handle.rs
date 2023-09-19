@@ -6,7 +6,7 @@ use crate::{
 };
 use execution_payload_builder::{PayloadId, PayloadStore};
 use execution_rpc_types::engine::{
-    ExecutionPayload, ForkchoiceState, ForkchoiceUpdated, PayloadAttributes, PayloadStatus,
+    ExecutionPayload, ForkchoiceState, ForkchoiceUpdated, PayloadAttributes, PayloadStatus, BatchPayloadStatus,
 };
 use futures::TryFutureExt;
 use tn_types::consensus::{Batch, OutputAttributes};
@@ -23,8 +23,6 @@ use super::error::LatticeNextBatchError;
 pub struct LatticeConsensusEngineHandle {
     /// Sender channel to Engine.
     pub(crate) to_engine: UnboundedSender<LatticeEngineMessage>,
-    /// Handle for building payloads.
-    pub(crate) payload_store: PayloadStore,
 }
 
 // === impl LatticeConsensusEngineHandle ===
@@ -33,43 +31,23 @@ impl LatticeConsensusEngineHandle {
     /// Creates a new lattice consensus engine handle.
     pub fn new(
         to_engine: UnboundedSender<LatticeEngineMessage>,
-        payload_store: PayloadStore,
     ) -> Self {
-        Self { to_engine, payload_store }
+        Self { to_engine }
     }
 
-    /// Sends a new batch message to the lattice consensus engine and waits for a response.
-    /// Akin to `new_payload_v2` in beacon engine api.
-    ///
-    /// This handle is called when a worker receives a batch from another peer.
-    /// 
-    /// Engine should try to create the block to verify.
-    pub async fn new_batch_from_peer(
+    /// Validate a new batch from a worker's peer.
+    pub async fn validate_batch(
         &self,
         batch: Batch,
-    ) -> Result<PayloadStatus, LatticeOnNewPayloadError> {
+    ) -> Result<(), LatticeOnNewPayloadError> {
         let (tx, rx) = oneshot::channel();
-        let _ = self.to_engine.send(LatticeEngineMessage::NewBatch { batch, tx });
-        rx.await.map_err(|_| LatticeOnNewPayloadError::EngineUnavailable)?
-    }
-
-    /// Processes a new payload request from workers.
-    ///
-    /// The engine should return the most recent version of the payload
-    /// that is available in the corresponding payload build process.
-    ///
-    /// Akin to `get_payload_v2` in beacon engine api.
-    async fn get_batch(
-        &mut self,
-        payload_id: PayloadId,
-    ) -> Result<ExecutionPayload, LatticeNextBatchError> {
-        Ok(self
-            .payload_store
-            .resolve(payload_id)
-            .await
-            .ok_or(LatticeNextBatchError::UnknownPayload)?
-            .map(|payload| (*payload).clone())?
-            .into())
+        let _ = self.to_engine.send(LatticeEngineMessage::ValidateBatch { payload: batch.into(), tx });
+        // rx.await.map_err(|_| LatticeOnNewPayloadError::EngineUnavailable)?
+        let status = rx.await.map_err(|_| LatticeOnNewPayloadError::EngineUnavailable)??;
+        match status {
+            BatchPayloadStatus::Valid => Ok(()),
+            BatchPayloadStatus::Invalid { validation_error } => Err(LatticeOnNewPayloadError::InvalidBatch(validation_error))
+        }
     }
 
     /// Produce the next canonical block based on certificate from the CL.

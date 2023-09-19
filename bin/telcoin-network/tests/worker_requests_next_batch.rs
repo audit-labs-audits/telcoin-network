@@ -2,8 +2,8 @@
 use std::{sync::Arc, num::NonZeroUsize, time::Duration};
 use execution_blockchain_tree::{TreeExternals, BlockchainTreeConfig, ShareableBlockchainTree, BlockchainTree};
 use execution_db::init_db;
-use execution_interfaces::{consensus::Consensus, blockchain_tree::BlockchainTreeEngine};
-use execution_lattice_consensus::LatticeConsensus;
+use execution_interfaces::{consensus::Consensus, blockchain_tree::BlockchainTreeEngine, test_utils::NoopFullBlockClient};
+use execution_lattice_consensus::{LatticeConsensus, LatticeConsensusEngine};
 use execution_provider::{ProviderFactory, providers::BlockchainProvider, BlockReaderIdExt};
 use execution_revm::Factory;
 use execution_rlp::Decodable;
@@ -23,12 +23,12 @@ use tn_types::{
     execution::{LATTICE_GENESIS, TransactionSigned},
     consensus::{Batch, Parameters, BatchAPI, crypto::traits::KeyPair}
 };
-use execution_rpc_types::engine::ExecutionPayload;
+use execution_rpc_types::engine::{ExecutionPayload, BatchExecutionPayload};
 use lattice_network::client::NetworkClient;
 use consensus_metrics::RegistryService;
 use prometheus::Registry;
 use tokio::time::sleep;
-use tracing::debug;
+use tracing::{debug, info};
 use lattice_typed_store::traits::Map;
 use fastcrypto::hash::Hash;
 mod common;
@@ -100,6 +100,37 @@ async fn test_single_worker_requests_next_batch() -> eyre::Result<(), eyre::Erro
     let factory = ProviderFactory::new(Arc::clone(&db), Arc::clone(&chain));
     let blockchain_db = BlockchainProvider::new(factory, blockchain_tree.clone())?;
 
+    // TODO: remove unused components
+    // ie) network client, pipeline, etc.
+    //
+    // EL consensus engine
+    //     let network_client = NoopFullBlockClient::default();
+    //     let mut pipeline = self
+    //         .build_networked_pipeline(
+    //             &mut config,
+    //             network_client.clone(),
+    //             Arc::clone(&consensus),
+    //             db.clone(),
+    //             &cli_ctx.task_executor,
+    //         )
+    //         .await?;
+    // let (consensus_engine, engine_handle) = LatticeConsensusEngine::with_channel(
+    //     network_client,
+    //     pipeline,
+    //     blockchain_db.clone(),
+    //     Box::new(cli_ctx.task_executor.clone()),
+    //     Box::new(stubbed_out_network_sync),
+    //     None,
+    //     false, // true for continuous pipeline
+    //     payload_builder.clone(),
+    //     initial_target,
+    //     MIN_BLOCKS_FOR_PIPELINE_RUN,
+    //     consensus_engine_tx,
+    //     consensus_engine_rx,
+    // )?;
+    // info!("consensus engine initialized");
+
+
     debug!("Genesis hash: {:?}", genesis_hash);
     // let genesis_block_by_hash = blockchain_db.block_by_id(BlockId::Hash(genesis_hash.into())).unwrap();
     // let genesis_block_by_num = blockchain_db.block_by_id(BlockId::Number(0.into())).unwrap();
@@ -114,7 +145,7 @@ async fn test_single_worker_requests_next_batch() -> eyre::Result<(), eyre::Erro
     debug!("Genesis block: {:?}", genesis_block_by_earliest_tag);
     let sealed_genesis_block = genesis_block_by_earliest_tag.seal_slow();
     debug!("\nsealed genesis block: {:?}", sealed_genesis_block);
-    let genesis_payload: ExecutionPayload = sealed_genesis_block.into();
+    let genesis_payload: BatchExecutionPayload = sealed_genesis_block.into();
     debug!("\ngenesis payload: {:?}", genesis_payload);
     let genesis_batch: Batch = genesis_payload.into();
     debug!("\ngenesis batch: {:?}", genesis_batch);
@@ -171,6 +202,7 @@ async fn test_single_worker_requests_next_batch() -> eyre::Result<(), eyre::Erro
     // TODO: why do I have to Box::pin() the payload service here,
     // when the `PayloadBuilderService` in the cli doesn't?
     task_executor.spawn_critical("batch-builder-service", Box::pin(batch_builder_service));
+    // TODO: pass engine handle here and also to Worker's Lattice TransactionValidator
     let worker_to_engine_receiver = Arc::new(NetworkAdapter::new(batch_builder_handle));
     network_client.set_worker_to_engine_local_handler(worker_to_engine_receiver);
 

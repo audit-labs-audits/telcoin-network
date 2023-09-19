@@ -29,7 +29,9 @@ Workers create batches from the best group of transactions in the "pending" pool
 The worker then sends the batch to its peers for validation. Once enough peers validate the worker's batch (2f + 1), quorum is reached. The batch digest is shared with the primary to be included in the next proposed block.
 
 ### Worker's Peer Batch
-Workers receive batches from peers and validate the transactions by sending the vector of bytes to the execution layer. The EL recovers each transaction's signer and sends the transaction to the `BatchTransactionValiatorInner`.
+Workers receive batches from peers and validate the transactions by sending the vector of bytes to the execution layer. The EL recovers each transaction's signer and sends the transaction to the `BatchTransactionValiator`.
+
+TODO: the above validator is actually just for adding transactions to the pool, not validating a batch within the greater context of the blockchain.
 
 The batch transaction validator asserts:
 - the transaction's size is below the max size allowed
@@ -46,3 +48,49 @@ difference between "own batch":
 - removed: non-local transactions meet the minimum priority fee asserted by the node
 
 All transactions in the batch must be valid for the batch to be valid. If a peer's batch is considered valid, the worker responds to the proposing peer with a vote of approval. The worker then stores the batch information.
+
+#### Data required
+Validating peer batches also involves executing the batch to ensure values were calculated correctly.
+
+The goal for including EL data with batches is to keep only the amount needed to verify successful execution of the transactions. Other roots and values are checked when the primary proposes it's header.
+
+It's important batches are quickly and efficiently validated because they distribute/share transactions to peers.
+
+##### Parent Hash
+The hash of the block from the last round or consensus output?
+
+The parent hash is used to create the appropriate state to execute the batch against.
+
+##### Gas Used
+The amount of gas the batch is expected to take.
+
+##### Base Fee Per Gas
+The base fee per gas needs to match.
+
+##### Receipts Root
+The receipts generated during contract interaction.
+
+##### Logs Bloom
+The condensed bloom for logs.
+
+##### Transactions Root
+The root for transactions within the batch.
+
+##### Values not need
+Not needed because they're included in the primary's proposed header and don't affect if a group of transactions are necessarily valid:
+- fee recipient
+- state root
+- prev randao
+- gas limit // set by the protocol?
+- block number
+- extra data
+- withdrawals
+
+
+
+Engine steps:
+1. The batch is passed to the engine handle as a `BatchExecutionPayload` with the command `validate_batch`.
+2. Attempt to cast the payload into a `SealedBlock` for executing against the tree.
+    - defaults used for values not needed in the batch
+3. if valid, engine calls `try_insert` on tree if status is not syncing
+    - crates/execution/blockchain-tree/src/blockchain_tree.rs

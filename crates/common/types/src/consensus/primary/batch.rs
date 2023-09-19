@@ -24,8 +24,20 @@ impl Batch {
     /// Create a new batch for testing only!
     ///
     /// This is not a valid batch for consensus. Metadata uses defaults.
-    pub fn new(transactions: Vec<Transaction>) -> Self {
-        Self::V1(BatchV1::new(transactions))
+    pub fn new(
+        transactions: Vec<Transaction>,
+    ) -> Self {
+        Self::V1(BatchV1::new(transactions, VersionedMetadata::default()))
+    }
+
+    /// Create a new batch with versioned metadata.
+    /// 
+    /// This should be used when the batch was fully executed.
+    pub fn new_with_metadata(
+        transactions: Vec<Transaction>,
+        versioned_metadata: VersionedMetadata,
+    ) -> Self {
+        Self::V1(BatchV1::new(transactions, versioned_metadata))
     }
 
     /// Size of the batch variant's inner data.
@@ -119,11 +131,14 @@ impl BatchAPI for BatchV1 {
 
 impl BatchV1 {
     /// Create a new BatchV1
-    pub fn new(transactions: Vec<Transaction>) -> Self {
+    pub fn new(
+        transactions: Vec<Transaction>,
+        versioned_metadata: VersionedMetadata,
+    ) -> Self {
         Self {
             transactions,
             // Default metadata uses defaults for ExecutionPayload
-            versioned_metadata: VersionedMetadata::default(),
+            versioned_metadata,
         }
     }
 

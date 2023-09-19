@@ -1,5 +1,6 @@
 //! Structs for the specific "job" of building a batch payload.
 
+use anemo::types::Version;
 use execution_payload_builder::database::CachedReads;
 use execution_provider::StateProviderFactory;
 use execution_tasks::TaskSpawner;
@@ -10,7 +11,7 @@ use tn_network_types::SealedBatchResponse;
 use tokio::sync::oneshot;
 use tracing::{trace, warn};
 use std::{future::Future, sync::{Arc, atomic::AtomicBool}, pin::Pin, task::{Context, Poll}};
-use tn_types::execution::SealedBlock;
+use tn_types::{execution::SealedBlock, consensus::VersionedMetadata};
 use futures_core::ready;
 use futures_util::future::FutureExt;
 use crate::{BatchPayloadSizeMetric, PayloadTaskGuard, LatticePayloadBuilderServiceMetrics,
@@ -24,7 +25,8 @@ use crate::{BatchPayloadSizeMetric, PayloadTaskGuard, LatticePayloadBuilderServi
 #[derive(Debug)]
 pub struct BatchPayload {
     batch: Vec<Vec<u8>>,
-    executed_txs: Vec<TransactionId>,
+    metadata: VersionedMetadata,
+    executed_tx_ids: Vec<TransactionId>,
     size_metric: BatchPayloadSizeMetric,
 }
 
@@ -32,10 +34,11 @@ impl BatchPayload {
     /// Create a new instance of [Self]
     pub fn new(
         batch: Vec<Vec<u8>>,
-        executed_txs: Vec<TransactionId>,
+        metadata: VersionedMetadata,
+        executed_tx_ids: Vec<TransactionId>,
         size_metric: BatchPayloadSizeMetric,
     ) -> Self {
-        Self { batch, executed_txs, size_metric }
+        Self { batch, metadata, executed_tx_ids, size_metric }
     }
 
     /// Reference to the batch of transactions
@@ -43,9 +46,14 @@ impl BatchPayload {
         &self.batch
     }
 
+    /// Reference to the metadata from the sealed header
+    pub fn get_metadata(&self) -> &VersionedMetadata {
+        &self.metadata
+    }
+
     /// Reference to the batch's transaction ids for updating the pool.
     pub fn get_transaction_ids(&self) -> &Vec<TransactionId> {
-        &self.executed_txs
+        &self.executed_tx_ids
     }
 
     /// Return the size metric for the built batch.
@@ -148,6 +156,7 @@ where
                     let _cancel = cancel.clone();
                     let waker = cx.waker().clone();
                     let batch = payload.get_batch().clone();
+                    let metadata = payload.get_metadata().clone();
                     // need synchronous IO
                     this.executor.spawn_blocking(Box::pin(async move {
                         // acquire the permit for executing the task
@@ -155,20 +164,18 @@ where
                         seal_batch(
                             network_client,
                             batch,
+                            metadata,
                             tx,
                             cancel,
                             waker,
                         ).await
                     }));
-                    // let payload = Arc::new(payload);
                     this.payload_transactions = payload.get_transaction_ids().clone();
                     this.pending_broadcast = Some(PendingBroadcast { _cancel, network_result: rx });
                     Poll::Pending
-                    // let payload = Arc::new(batch);
-                    // Poll::Ready(Ok(payload))
                 }
                 Poll::Ready(Err(e)) => {
-                    // TODO: if batch is empty, this returns an error
+                    // if batch is empty, this returns an error
                     trace!(?e, "batch build attempt failed");
                     this.metrics.inc_failed_batch_jobs();
                     Poll::Ready(Err(e))
@@ -269,18 +276,4 @@ pub(crate) struct BatchPayloadConfig {
     pub(crate) parent_block: Arc<SealedBlock>,
     /// The maximum size of the batch (measured in bytes).
     pub(crate) max_batch_size: usize,
-}
-
-#[cfg(test)]
-mod test {
-
-    #[tokio::test(flavor = "multi_thread")]
-    async fn test_batch_payload_job_genesis() {
-        todo!()
-    }
-
-    #[tokio::test]
-    async fn test_batch_payload_job() {
-        todo!()
-    }
 }

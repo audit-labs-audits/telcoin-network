@@ -108,9 +108,8 @@ impl Worker {
 
         let mut worker_service = WorkerToWorkerServer::new(WorkerToWorkerHandler {
             id: worker.id,
-            client: client.clone(),
+            network_client: client.clone(),
             store: worker.store.clone(),
-            validator: validator.clone(),
         });
         // Apply rate limits from configuration as needed.
         if let Some(limit) = parameters.anemo.report_batch_rate_limit {

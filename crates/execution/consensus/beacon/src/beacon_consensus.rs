@@ -83,6 +83,19 @@ impl Consensus for BeaconConsensus {
     fn validate_block(&self, block: &SealedBlock) -> Result<(), ConsensusError> {
         validation::validate_block_standalone(block, &self.chain_spec)
     }
+
+    // lattic specific 
+    fn validate_batch_standalone(&self, _batch: &tn_types::execution::SealedBlockWithSenders,) -> Result<(),ConsensusError> {
+        Ok(())
+    }
+
+    fn validate_batch_against_parent(
+        &self,
+        _batch: &tn_types::execution::SealedBlockWithSenders,
+        _parent: &SealedHeader,
+    ) -> Result<(),ConsensusError> {
+        Ok(())
+    }
 }
 
 /// Validates the header's extradata according to the beacon consensus rules.

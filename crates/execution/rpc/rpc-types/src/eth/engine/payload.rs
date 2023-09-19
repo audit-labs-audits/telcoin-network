@@ -86,61 +86,6 @@ pub struct ExecutionPayload {
     pub withdrawals: Option<Vec<Withdrawal>>,
 }
 
-impl From<Batch> for ExecutionPayload {
-    fn from(batch: Batch) -> Self {
-        // TODO: use Bytes in CL
-        let transactions = batch.owned_transactions().into_iter().map(|tx| tx.into()).collect();
-
-        let value = batch.versioned_metadata();
-
-        ExecutionPayload {
-            parent_hash: value.parent_hash(),
-            fee_recipient: value.fee_recipient(),
-            state_root: value.state_root(),
-            receipts_root: value.receipts_root(),
-            logs_bloom: value.logs_bloom(),
-            prev_randao: value.prev_randao(),
-            block_number: value.block_number().to_owned().into(),
-            gas_limit: value.gas_limit().into(),
-            gas_used: value.gas_used().into(),
-            timestamp: value.timestamp().into(),
-            extra_data: value.extra_data(),
-            base_fee_per_gas: value.base_fee_per_gas(),
-            block_hash: value.block_hash(),
-            transactions,
-            withdrawals: value.withdrawals(),
-        }
-    }
-}
-
-impl From<ExecutionPayload> for Batch {
-    fn from(payload: ExecutionPayload) -> Self {
-        // TODO: use Bytes in CL
-        let transactions = payload.transactions.into_iter().map(|tx| tx.to_vec()).collect();
-
-        Batch::V1(BatchV1 {
-            transactions,
-            versioned_metadata: VersionedMetadata::V1(MetadataV1 {
-                created_at: payload.timestamp.as_u64(),
-                received_at: None,
-                parent_hash: payload.parent_hash,
-                fee_recipient: payload.fee_recipient,
-                state_root: payload.state_root,
-                receipts_root: payload.receipts_root,
-                logs_bloom: payload.logs_bloom,
-                prev_randao: payload.prev_randao,
-                block_number: payload.block_number.as_u64(),
-                gas_limit: payload.gas_limit.as_u64(),
-                gas_used: payload.gas_used.as_u64(),
-                extra_data: payload.extra_data,
-                base_fee_per_gas: payload.base_fee_per_gas,
-                block_hash: payload.block_hash,
-                withdrawals: payload.withdrawals,
-            }),
-        })
-    }
-}
-
 impl From<SealedBlock> for ExecutionPayload {
     fn from(value: SealedBlock) -> Self {
         let transactions = value

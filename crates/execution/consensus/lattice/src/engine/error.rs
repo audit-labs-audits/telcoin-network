@@ -1,5 +1,5 @@
 use execution_payload_builder::error::PayloadBuilderError;
-use execution_rpc_types::engine::ForkchoiceUpdateError;
+use execution_rpc_types::engine::{ForkchoiceUpdateError, BatchPayloadStatus, BatchPayloadError};
 use execution_stages::PipelineError;
 
 /// Lattice engine result.
@@ -76,7 +76,11 @@ pub enum LatticeOnNewPayloadError {
     /// An internal error occurred, not necessarily related to the payload.
     #[error(transparent)]
     Internal(Box<dyn std::error::Error + Send + Sync>),
+    /// The batch is invalid within the context of this engine.
+    #[error("Batch invalid: {0}")]
+    InvalidBatch(String), // TODO: include reason
 }
+
 
 #[derive(Debug, thiserror::Error)]
 pub enum LatticeNextBatchError {

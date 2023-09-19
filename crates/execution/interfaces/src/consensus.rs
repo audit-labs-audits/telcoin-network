@@ -1,7 +1,7 @@
 use async_trait::async_trait;
 use std::fmt::Debug;
 use tn_types::execution::{
-    BlockHash, BlockNumber, Header, InvalidTransactionError, SealedBlock, SealedHeader, H256, U256,
+    BlockHash, BlockNumber, Header, InvalidTransactionError, SealedBlock, SealedHeader, H256, U256, SealedBlockWithSenders,
 };
 
 /// Re-export fork choice state
@@ -52,7 +52,27 @@ pub trait Consensus: Debug + Send + Sync {
     /// **This should not be called for the genesis block**.
     ///
     /// Note: validating blocks does not include other validations of the Consensus
-    fn validate_block(&self, block: &SealedBlock) -> Result<(), ConsensusError>;
+    fn validate_block(&self,block: &SealedBlock) -> Result<(), ConsensusError>;
+
+
+
+
+    // === Lattice Specific
+
+
+
+    /// Validate a batch standalone.
+    fn validate_batch_standalone(
+        &self,
+        batch: &SealedBlockWithSenders,
+    ) -> Result<(), ConsensusError>;
+
+    /// Validate batch against parent.
+    fn validate_batch_against_parent(
+        &self,
+        batch: &SealedBlockWithSenders,
+        parent: &SealedHeader,
+    ) -> Result<(), ConsensusError>;
 }
 
 /// Consensus Errors

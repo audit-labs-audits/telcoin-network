@@ -109,12 +109,6 @@ pub struct RequestBatchesResponse {
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
-pub struct BatchPayloadResponse {
-    /// Collection of transactions encoded as bytes.
-    pub payload: Vec<Vec<u8>>,
-}
-
-#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
 pub struct SealedBatchResponse {
     /// The batch.
     pub batch: Batch,

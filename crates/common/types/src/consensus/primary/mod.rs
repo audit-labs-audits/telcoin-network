@@ -18,7 +18,7 @@ pub use vote::*;
 /// The round number.
 pub type Round = u64;
 
-/// The epoch UNIX timestamp in milliseconds
+/// The epoch UNIX timestamp in seconds.
 pub type TimestampMs = u64;
 
 /// Timestamp trait for calculating the amount of time that elapsed between
@@ -32,15 +32,15 @@ pub trait Timestamp {
 impl Timestamp for TimestampMs {
     fn elapsed(&self) -> Duration {
         let diff = now().saturating_sub(*self);
-        Duration::from_millis(diff)
+        Duration::from_secs(diff)
     }
 }
 
 /// Returns the current time expressed as UNIX
-/// timestamp in milliseconds
+/// timestamp in seconds
 pub fn now() -> TimestampMs {
     match SystemTime::now().duration_since(SystemTime::UNIX_EPOCH) {
-        Ok(n) => n.as_millis() as TimestampMs,
+        Ok(n) => n.as_secs() as TimestampMs,
         Err(_) => panic!("SystemTime before UNIX EPOCH!"),
     }
 }

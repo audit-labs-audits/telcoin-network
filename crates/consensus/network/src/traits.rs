@@ -168,4 +168,11 @@ pub trait WorkerToEngineClient {
         &self,
         worker_id: WorkerId
     ) -> Result<(), LocalClientError>;
+
+    /// Validate a peer's batch.
+    async fn validate_batch(
+        &self,
+        worker_id: WorkerId,
+        batch: Batch,
+    ) -> Result<(), LocalClientError>;
 }
