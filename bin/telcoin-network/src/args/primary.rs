@@ -36,6 +36,6 @@ impl From<PrimaryArgs> for PrimaryConfig {
 }
 
 fn duration_from_u64(arg: &str) -> Result<Duration, std::num::ParseIntError> {
-    let ms = arg.parse()?;
-    Ok(Duration::from_millis(ms))
+    let sec = arg.parse()?;
+    Ok(Duration::from_sec(sec))
 }

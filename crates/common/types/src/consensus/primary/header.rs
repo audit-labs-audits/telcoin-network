@@ -237,8 +237,7 @@ impl HeaderV1 {
 
     /// Ensure the header is valid based on the current committee and workercache.
     /// 
-    /// TODO: what else should the header validate regarding EL data? (sealed_header)
-    /// or should this be exclusively validated in the EL?
+    /// The digest is calculated with the sealed header, so the EL data is also verified.
     pub fn validate(&self, committee: &Committee, worker_cache: &WorkerCache) -> DagResult<()> {
         // Ensure the header is from the correct epoch.
         ensure!(
