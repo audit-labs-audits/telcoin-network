@@ -20,7 +20,7 @@ use tracing::{trace, warn};
 use std::{future::Future, sync::{Arc, atomic::AtomicBool}, pin::Pin, task::{Context, Poll}, collections::HashMap};
 use tn_types::{
     execution::{SealedBlock, H256, ChainSpec, Header, SealedHeader},
-    consensus::{BatchDigest, WorkerId, TimestampMs, Batch}
+    consensus::{BatchDigest, WorkerId, TimestampSec, Batch}
 };
 use tn_network_types::{
     BuildHeaderRequest, HeaderPayloadResponse,

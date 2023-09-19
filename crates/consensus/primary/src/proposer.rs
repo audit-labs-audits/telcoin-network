@@ -18,7 +18,7 @@ use std::{
 use tn_types::consensus::{
     AuthorityIdentifier, Committee, Epoch, WorkerId,
     now, BatchDigest, Certificate, CertificateAPI, ConditionalBroadcastReceiver, Header, HeaderAPI,
-    Round, TimestampMs,
+    Round, TimestampSec,
 };
 use tn_network_types::{
     BuildHeaderRequest, HeaderPayloadResponse,
@@ -35,7 +35,7 @@ use tracing::{debug, enabled, error, info, trace};
 pub struct OurDigestMessage {
     pub digest: BatchDigest,
     pub worker_id: WorkerId,
-    pub timestamp: TimestampMs,
+    pub timestamp: TimestampSec,
     /// A channel to send an () as an ack after this digest is processed by the primary.
     pub ack_channel: Option<oneshot::Sender<()>>,
 }
@@ -78,7 +78,7 @@ pub struct Proposer {
     /// The current round of the dag.
     round: Round,
     /// Last time the round has been updated
-    last_round_timestamp: Option<TimestampMs>,
+    last_round_timestamp: Option<TimestampSec>,
     /// Signals a new narwhal round
     tx_narwhal_round_updates: watch::Sender<Round>,
     /// Holds the certificates' ids waiting to be included in the next header.
@@ -826,7 +826,7 @@ mod test {
         assert!(header.validate(&committee, &worker_cache).is_ok());
 
         // WHEN available batches are more than the maximum ones
-        let batches: IndexMap<BatchDigest, (WorkerId, TimestampMs)> =
+        let batches: IndexMap<BatchDigest, (WorkerId, TimestampSec)> =
             fixture_payload((max_num_of_batches * 2) as u8);
 
         let mut ack_list = vec![];

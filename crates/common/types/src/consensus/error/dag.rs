@@ -1,6 +1,6 @@
 #![allow(missing_docs)]
 use crate::consensus::{
-    Epoch, crypto, CertificateDigest, HeaderDigest, Round, TimestampMs, VoteDigest,
+    Epoch, crypto, CertificateDigest, HeaderDigest, Round, TimestampSec, VoteDigest,
 };
 use fastcrypto::hash::Digest;
 use lattice_common::sync::notify_once::NotifyOnce;
@@ -90,7 +90,7 @@ pub enum DagError {
     InvalidRound { expected: Round, received: Round },
 
     #[error("Invalid timestamp (created at {created_time}, received at {local_time})")]
-    InvalidTimestamp { created_time: TimestampMs, local_time: TimestampMs },
+    InvalidTimestamp { created_time: TimestampSec, local_time: TimestampSec },
 
     #[error("Invalid parent {0} (not found in genesis)")]
     InvalidGenesisParent(CertificateDigest),

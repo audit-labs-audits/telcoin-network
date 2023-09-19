@@ -6,7 +6,7 @@ use tn_types::{
     consensus::{
         crypto::NetworkPublicKey,
         Batch, BatchDigest, Certificate, CertificateDigest, Header, Round, VersionedMetadata, Vote, AuthorityIdentifier, WorkerId, WorkerInfo, Epoch,
-        TimestampMs, HeaderAPI,
+        TimestampSec, HeaderAPI,
     },
     execution::{H256, SealedHeader},
 };

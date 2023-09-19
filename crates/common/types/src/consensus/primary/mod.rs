@@ -19,7 +19,7 @@ pub use vote::*;
 pub type Round = u64;
 
 /// The epoch UNIX timestamp in seconds.
-pub type TimestampMs = u64;
+pub type TimestampSec = u64;
 
 /// Timestamp trait for calculating the amount of time that elapsed between
 /// timestamp and "now".
@@ -29,7 +29,7 @@ pub trait Timestamp {
     fn elapsed(&self) -> Duration;
 }
 
-impl Timestamp for TimestampMs {
+impl Timestamp for TimestampSec {
     fn elapsed(&self) -> Duration {
         let diff = now().saturating_sub(*self);
         Duration::from_secs(diff)
@@ -38,9 +38,9 @@ impl Timestamp for TimestampMs {
 
 /// Returns the current time expressed as UNIX
 /// timestamp in seconds
-pub fn now() -> TimestampMs {
+pub fn now() -> TimestampSec {
     match SystemTime::now().duration_since(SystemTime::UNIX_EPOCH) {
-        Ok(n) => n.as_secs() as TimestampMs,
+        Ok(n) => n.as_secs() as TimestampSec,
         Err(_) => panic!("SystemTime before UNIX EPOCH!"),
     }
 }

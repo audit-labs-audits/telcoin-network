@@ -32,7 +32,7 @@ use tn_types::consensus::{
     },
     AuthorityIdentifier, Committee, Epoch, Stake, WorkerId,
     Batch, BatchDigest, Certificate, CertificateAPI, CertificateDigest,
-    Header, HeaderAPI, HeaderV1Builder, Round, TimestampMs, Transaction
+    Header, HeaderAPI, HeaderV1Builder, Round, TimestampSec, Transaction
 };
 use std::sync::Arc;
 
@@ -108,8 +108,8 @@ pub fn random_key() -> AuthorityKeyPair {
 ////////////////////////////////////////////////////////////////
 /// Headers, Votes, Certificates
 ////////////////////////////////////////////////////////////////
-pub fn fixture_payload(number_of_batches: u8) -> IndexMap<BatchDigest, (WorkerId, TimestampMs)> {
-    let mut payload: IndexMap<BatchDigest, (WorkerId, TimestampMs)> = IndexMap::new();
+pub fn fixture_payload(number_of_batches: u8) -> IndexMap<BatchDigest, (WorkerId, TimestampSec)> {
+    let mut payload: IndexMap<BatchDigest, (WorkerId, TimestampSec)> = IndexMap::new();
 
     for _ in 0..number_of_batches {
         let batch_digest = batch().digest();
@@ -134,8 +134,8 @@ pub fn fixture_batch_with_transactions(number_of_transactions: u32) -> Batch {
 pub fn fixture_payload_with_rand<R: Rng + ?Sized>(
     number_of_batches: u8,
     rand: &mut R,
-) -> IndexMap<BatchDigest, (WorkerId, TimestampMs)> {
-    let mut payload: IndexMap<BatchDigest, (WorkerId, TimestampMs)> = IndexMap::new();
+) -> IndexMap<BatchDigest, (WorkerId, TimestampSec)> {
+    let mut payload: IndexMap<BatchDigest, (WorkerId, TimestampSec)> = IndexMap::new();
 
     for _ in 0..number_of_batches {
         let batch_digest = batch_with_rand(rand).digest();

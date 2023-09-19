@@ -22,7 +22,7 @@ use tn_types::{execution::{
         ETHEREUM_BLOCK_GAS_LIMIT,
     },
     BlockNumberOrTag, ChainSpec, U256, IntoRecoveredTransaction,
-}, consensus::{ConditionalBroadcastReceiver, BatchDigest, CertificateDigest, WorkerId, TimestampMs, Batch}};
+}, consensus::{ConditionalBroadcastReceiver, BatchDigest, CertificateDigest, WorkerId, TimestampSec, Batch}};
 use tn_network_types::BuildHeaderRequest;
 use tokio::sync::{Semaphore, oneshot, mpsc::Receiver};
 use crate::{HeaderPayloadJob, BatchPayloadJob, BatchPayloadJobGenerator, LatticePayloadBuilderError, BatchPayload, BatchPayloadConfig, LatticePayloadJobGenerator, HeaderPayloadJobGenerator, HeaderPayloadConfig, HeaderPayload};
@@ -136,7 +136,7 @@ where
 
     fn verify_batches_present(
         &self,
-        payload: &IndexMap<BatchDigest, (WorkerId, TimestampMs)>
+        payload: &IndexMap<BatchDigest, (WorkerId, TimestampSec)>
     ) -> Option<oneshot::Receiver<HashMap<BatchDigest, Batch>>> {
     // ) {
         // either return oneshot channel

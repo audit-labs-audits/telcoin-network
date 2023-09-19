@@ -3,7 +3,7 @@ use enum_dispatch::enum_dispatch;
 // use consensus_util_mem::MallocSizeOf;
 // use proptest_derive::Arbitrary;
 use crate::{
-    consensus::{now, TimestampMs},
+    consensus::{now, TimestampSec},
     execution::{
         constants::EMPTY_RECEIPTS, proofs::EMPTY_ROOT, Address, Bloom, Bytes, Withdrawal, H256,
         U256, SealedHeader,
@@ -58,7 +58,7 @@ impl VersionedMetadata {
 
     /// Create a new instance of [VersionedMetadata] with a timestamp
     pub fn new_with_timestamp(
-        created_at: TimestampMs,
+        created_at: TimestampSec,
         parent_hash: H256,
         receipts_root: H256,
         logs_bloom: Bloom,
@@ -139,13 +139,13 @@ impl From<SealedHeader> for VersionedMetadata {
 #[enum_dispatch]
 pub trait MetadataAPI {
     /// TODO
-	fn created_at(&self) -> &TimestampMs;
+	fn created_at(&self) -> &TimestampSec;
     /// TODO
-	fn set_created_at(&mut self, ts: TimestampMs);
+	fn set_created_at(&mut self, ts: TimestampSec);
     /// TODO
-	fn received_at(&self) -> Option<TimestampMs>;
+	fn received_at(&self) -> Option<TimestampSec>;
     /// TODO
-	fn set_received_at(&mut self, ts: TimestampMs);
+	fn set_received_at(&mut self, ts: TimestampSec);
 
     /// TODO
 	fn parent_hash(&self) -> H256;
@@ -184,11 +184,11 @@ pub trait MetadataAPI {
 pub struct MetadataV1 {
     /// Timestamp of when the entity created. This is generated
     /// by the node which creates the entity.
-    pub created_at: TimestampMs,
+    pub created_at: TimestampSec,
     /// Timestamp of when the entity was received by another node. This will help
     /// calculate latencies that are not affected by clock drift or network
     /// delays. This field is not set for own batches.
-    pub received_at: Option<TimestampMs>,
+    pub received_at: Option<TimestampSec>,
     /// Hash of the last finalized block
     pub parent_hash: H256,
     /// Value from EL
@@ -208,19 +208,19 @@ pub struct MetadataV1 {
 }
 
 impl MetadataAPI for MetadataV1 {
-    fn created_at(&self) -> &TimestampMs {
+    fn created_at(&self) -> &TimestampSec {
         &self.created_at
     }
 
-    fn set_created_at(&mut self, ts: TimestampMs) {
+    fn set_created_at(&mut self, ts: TimestampSec) {
         self.created_at = ts;
     }
 
-    fn received_at(&self) -> Option<TimestampMs> {
+    fn received_at(&self) -> Option<TimestampSec> {
         self.received_at
     }
 
-    fn set_received_at(&mut self, ts: TimestampMs) {
+    fn set_received_at(&mut self, ts: TimestampSec) {
         self.received_at = Some(ts);
     }
 

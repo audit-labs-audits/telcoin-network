@@ -4,7 +4,7 @@ use tn_types::{
     consensus::{
         crypto::NetworkPublicKey,
         Batch, BatchDigest, Certificate, CertificateDigest, Header, Round, VersionedMetadata, Vote, AuthorityIdentifier, WorkerId, WorkerInfo, Epoch,
-        TimestampMs, HeaderAPI,
+        TimestampSec, HeaderAPI,
     },
     execution::{H256, SealedHeader},
 };
@@ -154,10 +154,10 @@ pub struct BuildHeaderRequest {
     /// The epoch for this header.
     pub epoch: Epoch,
     /// The timestamp for this header.
-    pub created_at: TimestampMs,
+    pub created_at: TimestampSec,
     /// The ordered lists of batch digests and the worker responsible
     /// for pulling from from storage if transactions are missing.
-    pub payload: IndexMap<BatchDigest, (WorkerId, TimestampMs)>,
+    pub payload: IndexMap<BatchDigest, (WorkerId, TimestampSec)>,
     /// The parents for this block.
     pub parents: BTreeSet<CertificateDigest>,
 }

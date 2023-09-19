@@ -1,7 +1,7 @@
 use crate::{consensus::{
     crypto,
     error::{DagError, DagResult},
-    now, Batch, BatchDigest, CertificateDigest, Round, TimestampMs, VoteDigest, AuthorityIdentifier, Epoch, WorkerId, Committee, WorkerCache,
+    now, Batch, BatchDigest, CertificateDigest, Round, TimestampSec, VoteDigest, AuthorityIdentifier, Epoch, WorkerId, Committee, WorkerCache,
 }, execution::SealedHeader};
 use base64::{engine::general_purpose, Engine};
 // use consensus_util_mem::MallocSizeOf;
@@ -38,8 +38,8 @@ impl Header {
         author: AuthorityIdentifier,
         round: Round,
         epoch: Epoch,
-        created_at: TimestampMs,
-        payload: IndexMap<BatchDigest, (WorkerId, TimestampMs)>,
+        created_at: TimestampSec,
+        payload: IndexMap<BatchDigest, (WorkerId, TimestampSec)>,
         parents: BTreeSet<CertificateDigest>,
         sealed_header: SealedHeader,
     ) -> Self {
@@ -87,15 +87,15 @@ pub trait HeaderAPI {
     /// TODO
 	fn epoch(&self) -> Epoch;
     /// TODO
-	fn created_at(&self) -> &TimestampMs;
+	fn created_at(&self) -> &TimestampSec;
     /// TODO
-	fn payload(&self) -> &IndexMap<BatchDigest, (WorkerId, TimestampMs)>;
+	fn payload(&self) -> &IndexMap<BatchDigest, (WorkerId, TimestampSec)>;
     /// TODO
 	fn parents(&self) -> &BTreeSet<CertificateDigest>;
     /// Used only for testing.
     /// TODO
     #[cfg(any(test, feature="test"))]
-	fn update_payload(&mut self, new_payload: IndexMap<BatchDigest, (WorkerId, TimestampMs)>);
+	fn update_payload(&mut self, new_payload: IndexMap<BatchDigest, (WorkerId, TimestampSec)>);
     /// TODO
     #[cfg(any(test, feature="test"))]
 	fn update_round(&mut self, new_round: Round);
@@ -116,10 +116,10 @@ pub struct HeaderV1 {
     /// The epoch this Header was created in.
     pub epoch: Epoch,
     /// The timestamp for when the header was requested to be created.
-    pub created_at: TimestampMs,
-    /// IndexMap of the [BatchDigest] to the [WorkerId] and [TimestampMs]
+    pub created_at: TimestampSec,
+    /// IndexMap of the [BatchDigest] to the [WorkerId] and [TimestampSec]
     #[serde(with = "indexmap::serde_seq")]
-    pub payload: IndexMap<BatchDigest, (WorkerId, TimestampMs)>,
+    pub payload: IndexMap<BatchDigest, (WorkerId, TimestampSec)>,
     /// Parent certificates for this Header.
     pub parents: BTreeSet<CertificateDigest>,
     /// The [HeaderDigest].
@@ -139,10 +139,10 @@ impl HeaderAPI for HeaderV1 {
     fn epoch(&self) -> Epoch {
         self.epoch
     }
-    fn created_at(&self) -> &TimestampMs {
+    fn created_at(&self) -> &TimestampSec {
         &self.created_at
     }
-    fn payload(&self) -> &IndexMap<BatchDigest, (WorkerId, TimestampMs)> {
+    fn payload(&self) -> &IndexMap<BatchDigest, (WorkerId, TimestampSec)> {
         &self.payload
     }
     fn parents(&self) -> &BTreeSet<CertificateDigest> {
@@ -151,7 +151,7 @@ impl HeaderAPI for HeaderV1 {
 
     // Used for testing.
     #[cfg(any(test, feature="test"))]
-    fn update_payload(&mut self, new_payload: IndexMap<BatchDigest, (WorkerId, TimestampMs)>) {
+    fn update_payload(&mut self, new_payload: IndexMap<BatchDigest, (WorkerId, TimestampSec)>) {
         self.payload = new_payload;
     }
 
@@ -191,7 +191,7 @@ impl HeaderV1Builder {
         mut self,
         batch: Batch,
         worker_id: WorkerId,
-        created_at: TimestampMs,
+        created_at: TimestampSec,
     ) -> Self {
         if self.payload.is_none() {
             self.payload = Some(Default::default());
@@ -210,8 +210,8 @@ impl HeaderV1 {
         author: AuthorityIdentifier,
         round: Round,
         epoch: Epoch,
-        created_at: TimestampMs,
-        payload: IndexMap<BatchDigest, (WorkerId, TimestampMs)>,
+        created_at: TimestampSec,
+        payload: IndexMap<BatchDigest, (WorkerId, TimestampSec)>,
         parents: BTreeSet<CertificateDigest>,
         sealed_header: SealedHeader,
     ) -> Self {

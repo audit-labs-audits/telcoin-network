@@ -4,7 +4,7 @@
 #![allow(clippy::mutable_key_type)]
 
 use crate::consensus::{
-    Batch, Certificate, CertificateAPI, CertificateDigest, HeaderAPI, Round, TimestampMs, Committee, AuthorityIdentifier,
+    Batch, Certificate, CertificateAPI, CertificateDigest, HeaderAPI, Round, TimestampSec, Committee, AuthorityIdentifier,
 };
 use enum_dispatch::enum_dispatch;
 use fastcrypto::hash::Hash;
@@ -63,7 +63,7 @@ pub struct CommittedSubDag {
     /// timestamp with the previously committed sud dag timestamp and we always keep the max.
     /// Property is explicitly private so the method commit_timestamp() should be used instead
     /// which bears additional resolution logic.
-    commit_timestamp: TimestampMs,
+    commit_timestamp: TimestampSec,
 }
 
 impl CommittedSubDag {
@@ -129,7 +129,7 @@ impl CommittedSubDag {
     }
 
     /// The timestamp for when this sub-dag was committed.
-    pub fn commit_timestamp(&self) -> TimestampMs {
+    pub fn commit_timestamp(&self) -> TimestampSec {
         // If commit_timestamp is zero, then safely assume that this is an upgraded node that is
         // replaying this commit and field is never initialised. It's safe to fallback on leader's
         // timestamp.
@@ -197,7 +197,7 @@ trait ConsensusCommitAPI {
     /// The relative score of each authority in the committed sub-dag.
     fn reputation_score(&self) -> ReputationScores;
     /// The time the sub-dag was committed.
-    fn commit_timestamp(&self) -> TimestampMs;
+    fn commit_timestamp(&self) -> TimestampSec;
 }
 
 /// Versioned commit from consensus.
@@ -215,7 +215,7 @@ pub struct ConsensusCommitV1 {
     pub reputation_score: ReputationScores,
     /// The timestamp that should identify this commit. This is guaranteed to be monotonically
     /// incremented
-    pub commit_timestamp: TimestampMs,
+    pub commit_timestamp: TimestampSec,
 }
 
 impl ConsensusCommitV1 {
@@ -253,7 +253,7 @@ impl ConsensusCommitAPI for ConsensusCommitV1 {
         self.reputation_score.clone()
     }
 
-    fn commit_timestamp(&self) -> TimestampMs {
+    fn commit_timestamp(&self) -> TimestampSec {
         self.commit_timestamp
     }
 }
@@ -304,7 +304,7 @@ impl ConsensusCommit {
 
     /// The timestamp that should identify this commit. This is guaranteed to be monotonically
     /// incremented.
-    pub fn commit_timestamp(&self) -> TimestampMs {
+    pub fn commit_timestamp(&self) -> TimestampSec {
         match self {
             ConsensusCommit::V1(sub_dag) => sub_dag.commit_timestamp(),
         }

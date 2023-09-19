@@ -12,7 +12,7 @@ use std::{
 };
 use tracing::warn;
 
-use super::{TimestampMs, HeaderAPI};
+use super::{TimestampSec, HeaderAPI};
 // /// Used by the primary to request that the worker delete the specified batches.
 // #[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
 // pub struct WorkerDeleteBatchesMessage {

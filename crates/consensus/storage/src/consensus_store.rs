@@ -126,7 +126,7 @@ mod test {
     use crate::ConsensusStore;
     use lattice_typed_store::Map;
     use tn_types::consensus::{
-        ConsensusCommit, ConsensusCommitV1, TimestampMs,
+        ConsensusCommit, ConsensusCommitV1, TimestampSec,
     };
 
     #[tokio::test]
@@ -157,7 +157,7 @@ mod test {
 
         for (index, sub_dag) in sub_dags.iter().enumerate() {
             assert_eq!(sub_dag.sub_dag_index(), index as u64);
-            assert_eq!(sub_dag.commit_timestamp(), index as TimestampMs);
+            assert_eq!(sub_dag.commit_timestamp(), index as TimestampSec);
         }
 
         // Read the last sub dag, and the sub dag with index 5 should be returned

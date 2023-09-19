@@ -3,7 +3,7 @@
 //! Mostly used to reduce complexity when using generics in the batch job and generator.
 use std::{future::Future, sync::Arc, collections::HashMap};
 use indexmap::IndexMap;
-use tn_types::consensus::{BatchDigest, CertificateDigest, WorkerId, TimestampMs, Batch};
+use tn_types::consensus::{BatchDigest, CertificateDigest, WorkerId, TimestampSec, Batch};
 use tn_network_types::BuildHeaderRequest;
 use tokio::sync::oneshot;
 use crate::HeaderPayload;
@@ -71,6 +71,6 @@ pub trait HeaderPayloadJobGenerator: Send + Sync {
     /// happen under normal circumstances.
     fn verify_batches_present(
         &self,
-        batch_digests: &IndexMap<BatchDigest, (WorkerId, TimestampMs)>
+        batch_digests: &IndexMap<BatchDigest, (WorkerId, TimestampSec)>
     ) -> Option<oneshot::Receiver<HashMap<BatchDigest, Batch>>>;
 }

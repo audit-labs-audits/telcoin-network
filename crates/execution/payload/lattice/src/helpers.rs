@@ -12,7 +12,7 @@ use revm::{db::{CacheDB, DatabaseRef}, primitives::{ResultAndState, InvalidTrans
 use tn_network_types::{SealBatchRequest, SealedBatchResponse};
 use tn_types::{execution::{
     U256, Receipt, IntoRecoveredTransaction, Withdrawal, H256, constants::{EMPTY_WITHDRAWALS, BEACON_NONCE}, ChainSpec, proofs::{self, EMPTY_ROOT}, EMPTY_OMMER_ROOT, Header, Bytes,
-}, consensus::{WorkerId, TimestampMs, BatchDigest, Batch, VersionedMetadata, now}};
+}, consensus::{WorkerId, TimestampSec, BatchDigest, Batch, VersionedMetadata, now}};
 use tokio::sync::oneshot;
 use tracing::{debug, warn};
 use execution_transaction_pool::BestTransactions;
@@ -262,7 +262,7 @@ pub(super) fn create_header<Pool, Client>(
     cancel: Cancelled,
     to_job: oneshot::Sender<Result<HeaderPayload, LatticePayloadBuilderError>>,
     waker: Waker,
-    digests: IndexMap<BatchDigest, (WorkerId, TimestampMs)>,
+    digests: IndexMap<BatchDigest, (WorkerId, TimestampSec)>,
     missing_batches: Option<HashMap<BatchDigest, Batch>>,
 )
 where
@@ -276,7 +276,7 @@ where
         mut cached_reads: CachedReads,
         config: HeaderPayloadConfig,
         _cancel: Cancelled, // TODO: can cancel be used to prevent batches while processing consensus output?
-        digests: IndexMap<BatchDigest, (WorkerId, TimestampMs)>,
+        digests: IndexMap<BatchDigest, (WorkerId, TimestampSec)>,
         missing_batches: Option<HashMap<BatchDigest, Batch>>,
     ) -> Result<HeaderPayload, LatticePayloadBuilderError>
     where

@@ -8,7 +8,7 @@ use crate::consensus::{
     now,
     serde::NarwhalBitmap,
     // CertificateDigestProto,
-    Header, HeaderAPI, HeaderV1, Round, TimestampMs, WorkerCache, config::Stake, AuthorityIdentifier, Epoch, Committee,
+    Header, HeaderAPI, HeaderV1, Round, TimestampSec, WorkerCache, config::Stake, AuthorityIdentifier, Epoch, Committee,
 };
 use base64::{engine::general_purpose, Engine};
 use bytes::Bytes;
@@ -144,7 +144,7 @@ pub trait CertificateAPI {
     fn signed_authorities(&self) -> &roaring::RoaringBitmap;
 
     /// The time (ms) when the certificate was created.
-    fn created_at(&self) -> &TimestampMs;
+    fn created_at(&self) -> &TimestampSec;
 
     /// Only Used for testing.
     /// Change the certificate's header.
@@ -166,7 +166,7 @@ pub struct CertificateV1 {
     #[serde_as(as = "NarwhalBitmap")]
     signed_authorities: roaring::RoaringBitmap,
     /// Timestamp for certificate
-    pub created_at: TimestampMs,
+    pub created_at: TimestampSec,
 }
 
 impl CertificateAPI for CertificateV1 {
@@ -182,7 +182,7 @@ impl CertificateAPI for CertificateV1 {
         &self.signed_authorities
     }
 
-    fn created_at(&self) -> &TimestampMs {
+    fn created_at(&self) -> &TimestampSec {
         &self.created_at
     }
 

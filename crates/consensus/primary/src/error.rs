@@ -4,7 +4,7 @@ use fastcrypto::hash::Digest;
 use lattice_network::LocalClientError;
 use lattice_typed_store::StoreError;
 use thiserror::Error;
-use tn_types::consensus::{HeaderDigest, Round, VoteDigest, crypto, Epoch, TimestampMs, CertificateDigest, error::{AcceptNotification, DagError}};
+use tn_types::consensus::{HeaderDigest, Round, VoteDigest, crypto, Epoch, TimestampSec, CertificateDigest, error::{AcceptNotification, DagError}};
 
 /// Result alias for returning Primary error.
 pub type PrimaryResult<T> = Result<T, PrimaryError>;
@@ -95,7 +95,7 @@ pub enum PrimaryError {
     InvalidRound { expected: Round, received: Round },
 
     #[error("Invalid timestamp (created at {created_time}, received at {local_time})")]
-    InvalidTimestamp { created_time: TimestampMs, local_time: TimestampMs },
+    InvalidTimestamp { created_time: TimestampSec, local_time: TimestampSec },
 
     #[error("Invalid parent {0} (not found in genesis)")]
     InvalidGenesisParent(CertificateDigest),
