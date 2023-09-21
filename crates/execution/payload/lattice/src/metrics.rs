@@ -37,14 +37,14 @@ pub(crate) struct LatticePayloadBuilderServiceMetrics {
     pub(crate) initiated_batch_jobs: Counter,
     /// Total number of failed batch jobs
     pub(crate) failed_batch_jobs: Counter,
-    /// Total number of sealed batches
-    pub(crate) sealed_batches: Counter,
-    /// Total number of failed sealed batches
-    pub(crate) failed_sealed_batches: Counter,
     /// Total number of initiated header jobs
     pub(crate) initiated_header_jobs: Counter,
     /// Total number of failed header jobs
     pub(crate) failed_header_jobs: Counter,
+    /// Total number of initiated block jobs
+    pub(crate) initiated_block_jobs: Counter,
+    /// Total number of failed block jobs
+    pub(crate) failed_block_jobs: Counter,
 }
 
 impl LatticePayloadBuilderServiceMetrics {
@@ -56,19 +56,19 @@ impl LatticePayloadBuilderServiceMetrics {
         self.failed_batch_jobs.increment(1);
     }
 
-    pub(crate) fn inc_sealed_batches(&self) {
-        self.sealed_batches.increment(1)
-    }
-
-    pub(crate) fn inc_failed_sealed_batches(&self) {
-        self.failed_sealed_batches.increment(1)
-    }
-
     pub(crate) fn inc_initiated_header_jobs(&self) {
         self.initiated_header_jobs.increment(1);
     }
 
     pub(crate) fn inc_failed_header_jobs(&self) {
         self.failed_header_jobs.increment(1);
+    }
+
+    pub(crate) fn inc_initiated_block_jobs(&self) {
+        self.initiated_block_jobs.increment(1);
+    }
+
+    pub(crate) fn inc_failed_block_jobs(&self) {
+        self.failed_block_jobs.increment(1);
     }
 }

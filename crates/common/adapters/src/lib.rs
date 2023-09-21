@@ -4,6 +4,7 @@ use lattice_payload_builder::LatticePayloadBuilderHandle;
 use execution_lattice_consensus::LatticeConsensusEngineHandle;
 use async_trait::async_trait;
 use tn_network_types::{WorkerToEngine, BuildBatchRequest, PrimaryToEngine, BuildHeaderRequest, HeaderPayloadResponse, ValidateBatchRequest};
+use tn_types::consensus::ConsensusOutput;
 
 /// Adapter to router local communication requests between consensus
 /// and execution layers.
@@ -25,6 +26,18 @@ impl NetworkAdapter {
         consensus_engine: LatticeConsensusEngineHandle,
     ) -> Self {
         Self { payload_builder, consensus_engine }
+    }
+
+    /// TODO: make this a network trait for ExecutorToEngine?
+    pub async fn handle_consensus_output(
+        &self,
+        output: ConsensusOutput,
+    ) -> Result<(), Status> {
+        // TODO:
+        // 1. payload builder
+        // 2. update canonical chain
+        self.payload_builder.new_canonical_block(output).await?;
+        todo!()
     }
 }
 

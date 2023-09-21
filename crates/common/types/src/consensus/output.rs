@@ -3,9 +3,10 @@
 // SPDX-License-Identifier: Apache-2.0
 #![allow(clippy::mutable_key_type)]
 
-use crate::consensus::{
-    Batch, Certificate, CertificateAPI, CertificateDigest, HeaderAPI, Round, TimestampSec, Committee, AuthorityIdentifier,
-};
+use crate::{consensus::{
+    Batch, Certificate, CertificateAPI, CertificateDigest, HeaderAPI, Round, TimestampSec,
+    Committee, AuthorityIdentifier,
+}, execution::keccak256};
 use enum_dispatch::enum_dispatch;
 use fastcrypto::hash::Hash;
 use serde::{Deserialize, Serialize};
@@ -27,16 +28,32 @@ pub struct ConsensusOutput {
     pub batches: Vec<(Certificate, Vec<Batch>)>,
 }
 
+impl ConsensusOutput {
+    /// Get the round from the leader of the [CommittedSubDag].
+    pub fn leader_round(&self) -> Round {
+        self.sub_dag.leader_round()
+    }
 
+    /// The leader of the subdag.
+    pub fn leader(&self) -> &Certificate {
+        &self.sub_dag.leader
+    }
 
-// TODO: not sure this goes here?
-/// The attributes of [ConsensusOutput] needed for the execution layer.
-///
-/// Container for all components required to build the next canonical block.
-#[derive(Clone, Debug)]
-pub struct OutputAttributes {
-    /// Parent block for the canonical block.
-    pub parent: H256,
+    /// Parent block hash.
+    pub fn parent_hash(&self) -> &H256 {
+        self.leader().parent_hash()
+    }
+
+    /// Commit timestamp for when the subdag was committed.
+    pub fn committed_at(&self) -> TimestampSec {
+        self.sub_dag.commit_timestamp()
+    }
+
+    /// TODO: keccak hash of the leader's certificate's roaring bitmap
+    pub fn prevrandao(&self) -> H256 {
+        let signature_bytes = self.leader().aggregated_signature();
+        keccak256(signature_bytes.0)
+    }
 }
 
 /// The result of committing a new leader for a round during consensus.

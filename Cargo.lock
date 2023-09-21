@@ -9346,6 +9346,7 @@ dependencies = [
  "execution-lattice-consensus",
  "lattice-payload-builder",
  "tn-network-types",
+ "tn-types",
 ]
 
 [[package]]

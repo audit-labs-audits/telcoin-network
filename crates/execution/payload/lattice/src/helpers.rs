@@ -3,6 +3,7 @@ use anemo::types::Version;
 use execution_payload_builder::database::CachedReads;
 use execution_provider::{PostState, StateProviderFactory};
 use execution_revm::{executor::{commit_state_changes, post_block_withdrawals_balance_increments, increment_account_balance}, database::State, into_execution_log, env::tx_env_with_recovered};
+use execution_rlp::Decodable;
 use execution_tasks::TaskSpawner;
 use execution_transaction_pool::{TransactionPool, ValidPoolTransaction};
 use fastcrypto::hash::Hash;
@@ -11,12 +12,12 @@ use lattice_network::EngineToWorkerClient;
 use revm::{db::{CacheDB, DatabaseRef}, primitives::{ResultAndState, InvalidTransaction, EVMError, Env}};
 use tn_network_types::{SealBatchRequest, SealedBatchResponse};
 use tn_types::{execution::{
-    U256, Receipt, IntoRecoveredTransaction, Withdrawal, H256, constants::{EMPTY_WITHDRAWALS, BEACON_NONCE}, ChainSpec, proofs::{self, EMPTY_ROOT}, EMPTY_OMMER_ROOT, Header, Bytes,
-}, consensus::{WorkerId, TimestampSec, BatchDigest, Batch, VersionedMetadata, now}};
+    U256, Receipt, IntoRecoveredTransaction, Withdrawal, H256, constants::{EMPTY_WITHDRAWALS, BEACON_NONCE}, ChainSpec, proofs::{self, EMPTY_ROOT}, EMPTY_OMMER_ROOT, Header, Bytes, TransactionSigned, Block,
+}, consensus::{WorkerId, TimestampSec, BatchDigest, Batch, VersionedMetadata, now, BatchAPI, ConsensusOutput}};
 use tokio::sync::oneshot;
-use tracing::{debug, warn};
+use tracing::{debug, warn, error};
 use execution_transaction_pool::BestTransactions;
-use crate::{BatchPayloadConfig, HeaderPayloadConfig, Cancelled, BatchPayload, LatticePayloadBuilderError, BatchPayloadSizeMetric, HeaderPayload};
+use crate::{BatchPayloadConfig, HeaderPayloadConfig, Cancelled, BatchPayload, LatticePayloadBuilderError, BatchPayloadSizeMetric, HeaderPayload, BlockPayloadConfig, BlockPayload};
 
 /// Share the built batch with the quorum waiter for broadcasting to all peers.
 pub(super) async fn seal_batch<Network>(
@@ -394,6 +395,7 @@ where
 
         // TODO: support withdrawals.
         let WithdrawalsOutcome { withdrawals_root, withdrawals } = WithdrawalsOutcome::empty();
+
         // commit_withdrawals(
         //     &mut db,
         //     &mut post_state,
@@ -434,7 +436,8 @@ where
 
         Ok(HeaderPayload::new(header))
     }
-    // return the result to the batch building job
+
+    // return the result to the header building job
     let _ = to_job.send(try_build(client, pool, cached_reads, config, cancel, digests, missing_batches));
 
     // call wake() to poll job again
@@ -498,6 +501,208 @@ where
         withdrawals: Some(withdrawals),
         withdrawals_root: Some(withdrawals_root),
     })
+}
+
+pub(crate) fn create_block<Client, Pool>(
+    client: Client,
+    pool: Pool,
+    cached_reads: CachedReads,
+    config: BlockPayloadConfig,
+    cancel: Cancelled,
+    to_job: oneshot::Sender<Result<BlockPayload, LatticePayloadBuilderError>>,
+    waker: Waker,
+)
+where
+    Client: StateProviderFactory,
+    Pool: TransactionPool,
+{
+    #[inline(always)]
+    fn try_build<Pool, Client>(
+        client: Client,
+        pool: Pool,
+        mut cached_reads: CachedReads,
+        config: BlockPayloadConfig,
+        _cancel: Cancelled, // TODO: can cancel be used to prevent batches while processing consensus output?
+    ) -> Result<BlockPayload, LatticePayloadBuilderError>
+    where
+        Client: StateProviderFactory,
+        Pool: TransactionPool,
+    {
+        let BlockPayloadConfig {
+            initialized_cfg,
+            initialized_block_env,
+            parent_block,
+            chain_spec,
+            output,
+        } = config;
+
+        debug!(parent_hash=?parent_block.hash, parent_number=parent_block.number, "building new canonical block");
+
+        let state = State::new(client.state_by_block_hash(parent_block.hash)?);
+        let mut db = CacheDB::new(cached_reads.as_db(&state));
+        let mut post_state = PostState::default();
+
+        let mut cumulative_gas_used = 0;
+        let block_gas_limit: u64 = initialized_block_env.gas_limit.try_into().unwrap_or(u64::MAX);
+
+        let mut executed_txs = Vec::new();
+        let mut total_fees = U256::ZERO;
+        let base_fee = initialized_block_env.basefee.to::<u64>();
+
+        let block_number = initialized_block_env.number.to::<u64>();
+
+        // execute every transaction in the output
+        for (_, batches) in output.batches {
+            for batch in batches {
+                for transaction in batch.transactions().iter() {
+                    let signed_tx = TransactionSigned::decode(&mut transaction.as_slice())?;
+                    // ensure block has gas left
+                    if cumulative_gas_used + signed_tx.gas_limit() > block_gas_limit {
+                        error!("Unexpected overflow of gas used executing consensus output");
+                        // TODO: return metric that gas ran out? 
+                        // this shouldn't happen bc batches are capped at 30mil
+                        // and the gas limit for this block = (num_batches * 30mil)
+                        todo!()
+                    }
+
+                    let tx = signed_tx.clone().into_ecrecovered().ok_or_else(||
+                        LatticePayloadBuilderError::RecoverSignature(signed_tx)
+                    )?;
+                    // Configure the environment for the block.
+                    let env = Env {
+                        cfg: initialized_cfg.clone(),
+                        block: initialized_block_env.clone(),
+                        tx: tx_env_with_recovered(&tx),
+                    };
+
+                    let mut evm = revm::EVM::with_env(env);
+                    evm.database(&mut db);
+
+                    let ResultAndState { result, state } = match evm.transact() {
+                        Ok(res) => res,
+                        Err(err) => {
+                            match err {
+                                EVMError::Transaction(err) => {
+                                    if matches!(err, InvalidTransaction::NonceTooLow { .. }) {
+                                        // if the nonce is too low, we can skip this transaction
+                                        warn!(?err, ?tx, "skipping nonce too low transaction");
+                                    } else {
+                                        // if the transaction is invalid, we can skip it and all of its
+                                        // descendants
+                                        warn!(
+                                            ?err,
+                                            ?tx,
+                                            "skipping invalid transaction"
+                                        );
+                                        // batch_best_txs.mark_invalid(&pool_tx);
+                                        
+                                        // TODO: add metric here
+
+                                        // TODO: does it break consensus/DAG ordering to add consensus output
+                                        // to a pool first, reordered, remove duplicates, and then process?
+
+                                        // worse case without using pool: 
+                                        // duplicate transaction included:
+                                        //      inefficient execution of duplicate transactions that will fail
+                                        // duplicate tx nonce:
+                                        //      the first one processed will be executed
+
+                                        // TODO: need tests for these scenarios
+
+                                        // TODO: should we search the sealed pool for these transactions?
+                                        // TODO: how to cleanup pool after canonical block executed?
+                                    }
+                                    continue
+                                }
+                                err => {
+                                    // this is an error that we should treat as fatal for this attempt
+                                    warn!("EVM Fatal error - returning empty header.");
+                                    return Err(LatticePayloadBuilderError::EvmExecutionError(err))
+                                }
+                            }
+                        }
+                    };
+
+                    let gas_used = result.gas_used();
+
+                    // commit changes
+                    commit_state_changes(&mut db, &mut post_state, block_number, state, true);
+
+                    // add gas used by the transaction to cumulative gas used, before creating the receipt
+                    cumulative_gas_used += gas_used;
+
+                    // Push transaction changeset and calculate header bloom filter for receipt.
+                    post_state.add_receipt(
+                        block_number,
+                        Receipt {
+                            tx_type: tx.tx_type(),
+                            success: result.is_success(),
+                            cumulative_gas_used,
+                            logs: result.logs().into_iter().map(into_execution_log).collect(),
+                        },
+                    );
+
+                    let miner_fee = tx
+                        .effective_tip_per_gas(base_fee)
+                        .expect("fee is always valid; execution succeeded");
+                    total_fees += U256::from(miner_fee) * U256::from(gas_used);
+
+                    // append to executed transactions
+                    executed_txs.push(tx.into_signed());
+                }
+            }
+        }
+
+        // TODO: support withdrawals.
+        let WithdrawalsOutcome { withdrawals_root, withdrawals } = WithdrawalsOutcome::empty();
+        // commit_withdrawals(
+        //     &mut db,
+        //     &mut post_state,
+        //     &chain_spec,
+        //     block_number,
+        //     attributes.timestamp,
+        //     attributes.withdrawals,
+        // )?;
+
+        let receipts_root = post_state.receipts_root(block_number);
+        let logs_bloom = post_state.logs_bloom(block_number);
+
+        // calculate the state root
+        let state_root = state.state().state_root(post_state)?;
+
+        // create the block header
+        let transactions_root = proofs::calculate_transaction_root(&executed_txs);
+
+        let header = Header {
+            parent_hash: parent_block.hash,
+            ommers_hash: EMPTY_OMMER_ROOT,
+            beneficiary: initialized_block_env.coinbase,
+            state_root,
+            transactions_root,
+            receipts_root,
+            withdrawals_root,
+            logs_bloom,
+            timestamp: initialized_block_env.timestamp.to::<u64>(),
+            mix_hash: initialized_block_env.prevrandao.unwrap_or_default(),
+            nonce: BEACON_NONCE,
+            base_fee_per_gas: Some(base_fee),
+            number: parent_block.number + 1,
+            gas_limit: block_gas_limit,
+            difficulty: U256::ZERO,
+            gas_used: cumulative_gas_used,
+            extra_data: Bytes::default(), // TODO: empty bytes
+        };
+
+        let block = Block { header, body: executed_txs, ommers: vec![], withdrawals}.seal_slow();
+
+        Ok(BlockPayload::new(block, total_fees))
+    }
+
+    // return the result to the block building job
+    let _ = to_job.send(try_build(client, pool, cached_reads, config, cancel));
+
+    // call wake() to poll job again
+    waker.wake();
 }
 
 #[cfg(test)]

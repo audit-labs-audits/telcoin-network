@@ -180,7 +180,7 @@ impl Proposer {
     }
 
     /// Creates a new header. Also the method ensures we are protected against equivocation.
-    /// If we detect that a different header has been already produced for the same round, then
+    /// If we detect that a different header has already been produced for the same round, then
     /// this method returns the earlier header. Otherwise the newly created header will be returned.
     async fn create_new_header(&mut self) -> PrimaryResult<Header> {
         let this_round = self.round;

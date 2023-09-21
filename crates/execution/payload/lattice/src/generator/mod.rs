@@ -8,35 +8,23 @@
 //! 
 //! This module could be more DRY, but changes are anticipated in the near future.
 //! So, verbose implementation for now.
-use execution_payload_builder::{
-    error::PayloadBuilderError, database::CachedReads,
-};
-use execution_provider::{BlockReaderIdExt, StateProviderFactory};
 use execution_rlp::Encodable;
-use execution_tasks::TaskSpawner;
-use execution_transaction_pool::{TransactionPool, TransactionId, BatchInfo};
-use revm::primitives::{CfgEnv, BlockEnv, Address};
-use tracing::{warn, debug, info};
 use std::{
-    time::{Duration, UNIX_EPOCH},
+    time::Duration,
     sync::Arc,
 };
-use tn_types::{execution::{
+use tn_types::execution::{
     bytes::{Bytes, BytesMut},
     constants::{
         EXECUTION_CLIENT_VERSION, 
         ETHEREUM_BLOCK_GAS_LIMIT,
     },
-    BlockNumberOrTag, ChainSpec, U256,
-}, consensus::{ConditionalBroadcastReceiver, BatchDigest, WorkerCache}};
-use tokio::sync::{Semaphore, oneshot, mpsc::Receiver};
-use lattice_network::client::NetworkClient;
-
-use crate::{HeaderPayloadJob, BatchPayloadJob, BatchPayloadJobGenerator, LatticePayloadBuilderError, BatchPayload, BatchPayloadConfig};
+    ChainSpec,
+};
+use tokio::sync::Semaphore;
 mod batch;
 mod header;
-pub(crate) use batch::*;
-pub(crate) use header::*;
+mod block;
 
 // pub enum LatticePayloadJob<Client, Pool, Tasks> {
 //     Batch(BatchPayloadJob<Client, Pool, Tasks>),

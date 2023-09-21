@@ -1337,7 +1337,7 @@ where
                     LatticeEngineMessage::EventListener(tx) => {
                         this.listeners.push_listener(tx);
                     }
-                    LatticeEngineMessage::NewCertificate { certificate, tx } => {
+                    LatticeEngineMessage::Consensus { sealed_block, tx } => {
                         todo!()
                     }
                 },

@@ -182,14 +182,14 @@ impl Consensus {
                         let leader_commit_round = committed_certificates.iter().map(|c| c.round()).max().unwrap();
 
                         self.tx_committed_certificates
-                        .send((leader_commit_round, committed_certificates))
-                        .await
-                        .map_err(|_|ConsensusError::ShuttingDown)?;
+                            .send((leader_commit_round, committed_certificates))
+                            .await
+                            .map_err(|_|ConsensusError::ShuttingDown)?;
 
                         assert_eq!(self.state.last_round.committed_round, leader_commit_round);
 
                         self.tx_consensus_round_updates.send(self.state.last_round)
-                        .map_err(|_|ConsensusError::ShuttingDown)?;
+                            .map_err(|_|ConsensusError::ShuttingDown)?;
                     }
 
                     self.metrics

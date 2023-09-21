@@ -591,4 +591,3 @@ impl PrimaryToPrimary for PrimaryToPrimaryHandler {
         Ok(anemo::Response::new(PayloadAvailabilityResponse { payload_availability: result }))
     }
 }
-

@@ -1,31 +1,21 @@
 //! Implement generator for building header payload jobs.
+//! The primary proposes headers to peers before reaching consensus.
 
-use execution_payload_builder::{
-    error::PayloadBuilderError, database::CachedReads,
-};
 use execution_provider::{BlockReaderIdExt, StateProviderFactory};
-use execution_rlp::Encodable;
 use execution_tasks::TaskSpawner;
-use execution_transaction_pool::{TransactionPool, TransactionId, BatchInfo};
+use execution_transaction_pool::TransactionPool;
 use fastcrypto::hash::Hash;
 use indexmap::IndexMap;
 use revm::primitives::{CfgEnv, BlockEnv, Address};
-use tracing::{warn, debug, info};
 use std::{
-    time::{Duration, UNIX_EPOCH},
     sync::Arc, collections::{HashMap, HashSet},
 };
 use tn_types::{execution::{
-    bytes::{Bytes, BytesMut},
-    constants::{
-        EXECUTION_CLIENT_VERSION, 
-        ETHEREUM_BLOCK_GAS_LIMIT,
-    },
-    BlockNumberOrTag, ChainSpec, U256, IntoRecoveredTransaction,
-}, consensus::{ConditionalBroadcastReceiver, BatchDigest, CertificateDigest, WorkerId, TimestampSec, Batch}};
+    BlockNumberOrTag, U256, IntoRecoveredTransaction, constants::ETHEREUM_BLOCK_GAS_LIMIT,
+}, consensus::{BatchDigest, CertificateDigest, WorkerId, TimestampSec, Batch}};
 use tn_network_types::BuildHeaderRequest;
-use tokio::sync::{Semaphore, oneshot, mpsc::Receiver};
-use crate::{HeaderPayloadJob, BatchPayloadJob, BatchPayloadJobGenerator, LatticePayloadBuilderError, BatchPayload, BatchPayloadConfig, LatticePayloadJobGenerator, HeaderPayloadJobGenerator, HeaderPayloadConfig, HeaderPayload};
+use tokio::sync::oneshot;
+use crate::{HeaderPayloadJob, LatticePayloadBuilderError, LatticePayloadJobGenerator, HeaderPayloadJobGenerator, HeaderPayloadConfig, HeaderPayload};
 use lattice_network::EngineToWorkerClient;
 
 // === impl BatchPayloadJobGenerator ===
@@ -55,7 +45,7 @@ where
             // use latest block if parent is zero: genesis block
             self.client
                 .block_by_number_or_tag(BlockNumberOrTag::Latest)?
-                .ok_or_else(|| LatticePayloadBuilderError::LatticeBatchFromGenesis)?
+                .ok_or_else(|| LatticePayloadBuilderError::LatticeBlockFromGenesis)?
                 .seal_slow()
         } else {
             // TODO: better to find by round or finalized?
@@ -76,11 +66,11 @@ where
             ..Default::default()
         };
 
-        // TODO: use better values
-        // - coinbase
-        // - prevrandao
-        // - gas_limit
-        // - basefee
+        // TODO: get BATCH_GAS_LIMIT from config
+        // set gas limit to the number of batches * 30mil
+        let gas_limit = U256::from(ETHEREUM_BLOCK_GAS_LIMIT).saturating_mul(
+            U256::from(attr.payload.len())
+        );
         // create the block environment to execute transactions from parent
         let initialized_block_env = BlockEnv {
             number: U256::from(parent_block.number + 1),
@@ -88,12 +78,13 @@ where
             coinbase: Address::zero(),
             timestamp: U256::from(attr.created_at),
             difficulty: U256::ZERO,
+            // TODO: should this be based on parent certs?
             // bls signatures + epoch
             // https://soliditydeveloper.com/prevrandao
             prevrandao: Some(U256::ZERO.into()),
-            gas_limit: U256::MAX,
-            // TODO: calculate basefee based on parent block's gas usage?
-            basefee: U256::ZERO,
+            gas_limit,
+            // TODO: use default for genesis
+            basefee: U256::from(parent_block.next_block_base_fee().unwrap_or_default()),
         };
 
         // check for batches here

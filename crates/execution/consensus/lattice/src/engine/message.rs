@@ -14,7 +14,7 @@ use std::{
     pin::Pin,
     task::{ready, Context, Poll},
 };
-use tn_types::consensus::{Batch, Certificate, ConsensusOutput};
+use tn_types::{consensus::{Batch, Certificate, ConsensusOutput}, execution::SealedBlock};
 use tokio::sync::{mpsc::UnboundedSender, oneshot};
 
 /// A message for the lattice engine from other components of the node (engine RPC API invoked by
@@ -32,11 +32,11 @@ pub enum LatticeEngineMessage {
     },
     /// Message with certificate from round.
     /// Akin to `ForkchoiceUpdated`
-    NewCertificate {
-        /// The output from consensus.
-        certificate: ConsensusOutput,
+    Consensus {
+        /// The next canonical block.
+        sealed_block: SealedBlock,
         /// the sender for returning the canonical chain updated result.
-        tx: oneshot::Sender<Result<(), LatticeOnNewPayloadError>>,
+        tx: oneshot::Sender<Result<(), execution_interfaces::Error>>,
     },
 
     // /// One-time message for genesis

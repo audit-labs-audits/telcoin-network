@@ -3,12 +3,11 @@
 //! Mostly used to reduce complexity when using generics in the batch job and generator.
 use std::{future::Future, sync::Arc, collections::HashMap};
 use indexmap::IndexMap;
-use tn_types::consensus::{BatchDigest, CertificateDigest, WorkerId, TimestampSec, Batch};
+use tn_types::consensus::{BatchDigest, CertificateDigest, WorkerId, TimestampSec, Batch, ConsensusOutput};
 use tn_network_types::BuildHeaderRequest;
 use tokio::sync::oneshot;
-use crate::HeaderPayload;
-
-use super::{BatchPayload, LatticePayloadBuilderError};
+use crate::{HeaderPayload, BlockPayload};
+use super::LatticePayloadBuilderError;
 
 /// A type that knows how to create new jobs for creating payloads.
 pub trait BatchPayloadJobGenerator: Send + Sync {
@@ -73,4 +72,23 @@ pub trait HeaderPayloadJobGenerator: Send + Sync {
         &self,
         batch_digests: &IndexMap<BatchDigest, (WorkerId, TimestampSec)>
     ) -> Option<oneshot::Receiver<HashMap<BatchDigest, Batch>>>;
+}
+
+/// A type that creates the next canonical block from `ConsensusOutput`.
+pub trait BlockPayloadJobGenerator: Send + Sync {
+    /// The type that manages the lifecycle of a payload.
+    ///
+    /// This type is a Stream that yields better payloads.
+    type Job: Future<Output = Result<Arc<BlockPayload>, LatticePayloadBuilderError>>
+        + Send
+        + Sync
+        + 'static;
+
+    /// Creates the next block for the canonical chain.
+    ///
+    /// This is called when the CL reaches consensus.
+    fn new_canonical_block(
+        &self,
+        output: ConsensusOutput,
+    ) -> Result<Self::Job, LatticePayloadBuilderError>;
 }

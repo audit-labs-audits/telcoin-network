@@ -1,8 +1,13 @@
-use crate::{consensus::{
-    crypto,
-    error::{DagError, DagResult},
-    now, Batch, BatchDigest, CertificateDigest, Round, TimestampSec, VoteDigest, AuthorityIdentifier, Epoch, WorkerId, Committee, WorkerCache,
-}, execution::SealedHeader};
+use crate::{
+    consensus::{
+        crypto,
+        error::{DagError, DagResult},
+        now, Batch, BatchDigest, CertificateDigest, Round,
+        TimestampSec, VoteDigest, AuthorityIdentifier, Epoch,
+        WorkerId, Committee, WorkerCache,
+    },
+    execution::{SealedHeader, H256}
+};
 use base64::{engine::general_purpose, Engine};
 // use consensus_util_mem::MallocSizeOf;
 use derive_builder::Builder;
@@ -92,6 +97,8 @@ pub trait HeaderAPI {
 	fn payload(&self) -> &IndexMap<BatchDigest, (WorkerId, TimestampSec)>;
     /// TODO
 	fn parents(&self) -> &BTreeSet<CertificateDigest>;
+    /// The hash of the SealedHeader's parent.
+    fn parent_hash(&self) -> &H256;
     /// Used only for testing.
     /// TODO
     #[cfg(any(test, feature="test"))]
@@ -147,6 +154,9 @@ impl HeaderAPI for HeaderV1 {
     }
     fn parents(&self) -> &BTreeSet<CertificateDigest> {
         &self.parents
+    }
+    fn parent_hash(&self) -> &H256 {
+        &self.sealed_header.parent_hash
     }
 
     // Used for testing.

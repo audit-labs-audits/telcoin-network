@@ -13,14 +13,14 @@
 use execution_payload_builder::database::CachedReads;
 use execution_provider::StateProviderFactory;
 use execution_tasks::TaskSpawner;
-use execution_transaction_pool::{TransactionPool, TransactionId};
+use execution_transaction_pool::TransactionPool;
 use revm::primitives::{CfgEnv, BlockEnv};
 use tokio::sync::oneshot;
 use tracing::{trace, warn};
-use std::{future::Future, sync::{Arc, atomic::AtomicBool}, pin::Pin, task::{Context, Poll}, collections::HashMap};
+use std::{future::Future, sync::Arc, pin::Pin, task::{Context, Poll}, collections::HashMap};
 use tn_types::{
-    execution::{SealedBlock, H256, ChainSpec, Header, SealedHeader},
-    consensus::{BatchDigest, WorkerId, TimestampSec, Batch}
+    execution::{SealedBlock, ChainSpec, Header, SealedHeader},
+    consensus::{BatchDigest, Batch}
 };
 use tn_network_types::{
     BuildHeaderRequest, HeaderPayloadResponse,
@@ -28,7 +28,7 @@ use tn_network_types::{
 use futures_core::ready;
 use futures_util::future::FutureExt;
 use indexmap::IndexMap;
-use crate::{PayloadTaskGuard, LatticePayloadBuilderServiceMetrics, LatticePayloadBuilderError, helpers::{create_batch, create_header}, Cancelled};
+use crate::{PayloadTaskGuard, LatticePayloadBuilderServiceMetrics, LatticePayloadBuilderError, helpers::create_header, Cancelled};
 
 /// The payload for a proposed header.
 /// 

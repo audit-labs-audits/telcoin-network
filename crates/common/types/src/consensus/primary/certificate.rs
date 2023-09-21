@@ -1,14 +1,17 @@
-use crate::consensus::{
-    crypto::{
-        self, to_intent_message, AggregateAuthoritySignature, AggregateAuthoritySignatureBytes,
-        NarwhalAuthorityAggregateSignature, AuthorityPublicKey, AuthoritySignature,
+use crate::{
+    consensus::{
+        crypto::{
+            self, to_intent_message, AggregateAuthoritySignature, AggregateAuthoritySignatureBytes,
+            NarwhalAuthorityAggregateSignature, AuthorityPublicKey, AuthoritySignature,
+        },
+        dag::node_dag::Affiliated,
+        error::{DagError, DagResult},
+        now,
+        serde::NarwhalBitmap,
+        // CertificateDigestProto,
+        Header, HeaderAPI, HeaderV1, Round, TimestampSec, WorkerCache, config::Stake, AuthorityIdentifier, Epoch, Committee,
     },
-    dag::node_dag::Affiliated,
-    error::{DagError, DagResult},
-    now,
-    serde::NarwhalBitmap,
-    // CertificateDigestProto,
-    Header, HeaderAPI, HeaderV1, Round, TimestampSec, WorkerCache, config::Stake, AuthorityIdentifier, Epoch, Committee,
+    execution::H256,
 };
 use base64::{engine::general_purpose, Engine};
 use bytes::Bytes;
@@ -129,7 +132,7 @@ impl Hash<{ crypto::DIGEST_LENGTH }> for Certificate {
     }
 }
 
-/// API for certrificates based on version.
+/// API for certificates based on version.
 #[enum_dispatch]
 pub trait CertificateAPI {
     /// The header for the certificate.
@@ -140,7 +143,7 @@ pub trait CertificateAPI {
 
     /// The bitmap of signed authorities for the certificate.
     /// 
-    /// This is the aggregate signature of all authrotities for the certificate.
+    /// This is the aggregate signature of all authorities for the certificate.
     fn signed_authorities(&self) -> &roaring::RoaringBitmap;
 
     /// The time (ms) when the certificate was created.
@@ -152,6 +155,10 @@ pub trait CertificateAPI {
 
     /// Return a mutable reference to the header.
     fn header_mut(&mut self) -> &mut Header;
+
+    /// The hash of the parent block for the certificate's header.
+    fn parent_hash(&self) -> &H256;
+
 }
 
 /// The certificate issued after a successful round of consensus.
@@ -193,6 +200,11 @@ impl CertificateAPI for CertificateV1 {
 
     fn header_mut(&mut self) -> &mut Header {
         &mut self.header
+    }
+
+    /// The hash of the parent block for the certificate's header.
+    fn parent_hash(&self) -> &H256 {
+        self.header.parent_hash()
     }
 }
 
@@ -405,6 +417,7 @@ impl CertificateV1 {
     pub fn origin(&self) -> AuthorityIdentifier {
         self.header.author()
     }
+
 }
 
 /// Certificate digest.

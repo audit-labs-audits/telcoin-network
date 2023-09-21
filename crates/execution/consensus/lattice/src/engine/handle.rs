@@ -9,9 +9,10 @@ use execution_rpc_types::engine::{
     ExecutionPayload, ForkchoiceState, ForkchoiceUpdated, PayloadAttributes, PayloadStatus, BatchPayloadStatus,
 };
 use futures::TryFutureExt;
-use tn_types::consensus::{Batch, OutputAttributes};
+use tn_types::{consensus::{Batch, ConsensusOutput}, execution::SealedBlock};
 use tokio::sync::{mpsc, mpsc::UnboundedSender, oneshot};
 use tokio_stream::wrappers::UnboundedReceiverStream;
+use tracing::error;
 
 use super::error::LatticeNextBatchError;
 
@@ -50,14 +51,16 @@ impl LatticeConsensusEngineHandle {
         }
     }
 
-    /// Produce the next canonical block based on certificate from the CL.
+    /// Add the next canonical block based on certificate from the CL.
     /// 
     /// Akin to `fork_choice_updated` in beacon engine api.
     pub async fn handle_consensus_output(
         &self,
-        attributes: OutputAttributes
-    ) -> Result<(), LatticeForkChoiceUpdateError> {
-        todo!()
+        sealed_block: SealedBlock,
+    ) -> Result<(), execution_interfaces::Error> {
+        let (tx, rx) = oneshot::channel();
+        let _ = self.to_engine.send(LatticeEngineMessage::Consensus { sealed_block, tx });
+        rx.await.map_err(|_| execution_interfaces::Error::Custom("Engine unavailable".to_string()))?
     }
 
     /// Sends a forkchoice update message to the lattice consensus engine and waits for a response.
@@ -72,7 +75,8 @@ impl LatticeConsensusEngineHandle {
             .send_fork_choice_updated(state, payload_attrs)
             .map_err(|_| LatticeForkChoiceUpdateError::EngineUnavailable)
             .await??
-            .await?)
+            .await?
+        )
     }
 
     /// Sends a forkchoice update message to the lattice consensus engine and returns the receiver

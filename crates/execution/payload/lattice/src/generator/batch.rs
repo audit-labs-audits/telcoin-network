@@ -1,31 +1,19 @@
 //! Implement generator for building batch payload jobs.
 
-use execution_payload_builder::{
-    error::PayloadBuilderError, database::CachedReads,
-};
 use execution_provider::{BlockReaderIdExt, StateProviderFactory};
-use execution_rlp::Encodable;
 use execution_tasks::TaskSpawner;
-use execution_transaction_pool::{TransactionPool, TransactionId, BatchInfo};
+use execution_transaction_pool::TransactionPool;
 use lattice_network::EngineToWorkerClient;
 use revm::primitives::{CfgEnv, BlockEnv, Address};
-use tracing::{warn, debug, info};
 use std::{
-    time::{Duration, UNIX_EPOCH},
+    time::UNIX_EPOCH,
     sync::Arc,
 };
-use tn_types::{execution::{
-    bytes::{Bytes, BytesMut},
-    constants::{
-        EXECUTION_CLIENT_VERSION, 
-        ETHEREUM_BLOCK_GAS_LIMIT,
-    },
-    BlockNumberOrTag, ChainSpec, U256,
-}, consensus::{ConditionalBroadcastReceiver, BatchDigest,}};
-use tn_network_types::EngineToWorker;
-use tokio::sync::{Semaphore, oneshot, mpsc::Receiver};
-
-use crate::{HeaderPayloadJob, BatchPayloadJob, BatchPayloadJobGenerator, LatticePayloadBuilderError, BatchPayload, BatchPayloadConfig, LatticePayloadJobGenerator};
+use tn_types::execution::{
+    constants::ETHEREUM_BLOCK_GAS_LIMIT,
+    BlockNumberOrTag, U256,
+};
+use crate::{BatchPayloadJob, BatchPayloadJobGenerator, LatticePayloadBuilderError, BatchPayloadConfig, LatticePayloadJobGenerator};
 
 // === impl BatchPayloadJobGenerator ===
 
@@ -62,7 +50,7 @@ where
             // use latest block if parent is zero: genesis block
             self.client
                 .block_by_number_or_tag(BlockNumberOrTag::Latest)?
-                .ok_or_else(|| LatticePayloadBuilderError::LatticeBatchFromGenesis)?
+                .ok_or_else(|| LatticePayloadBuilderError::LatticeBlockFromGenesis)?
                 .seal_slow();
         // } else {
         //     self
@@ -82,12 +70,8 @@ where
             ..Default::default()
         };
 
-        // TODO: use better values
-        // - coinbase
-        // - prevrandao
-        // - gas_limit
-        // - basefee
         let timestamp = std::time::SystemTime::now().duration_since(UNIX_EPOCH)?.as_secs();
+
         // create the block environment to execute transactions from
         let initialized_block_env = BlockEnv {
             number: U256::from(parent_block.number + 1),
@@ -96,8 +80,8 @@ where
             difficulty: U256::ZERO,
             prevrandao: Some(U256::ZERO.into()),
             gas_limit: U256::from(ETHEREUM_BLOCK_GAS_LIMIT),
-            // TODO: calculate basefee based on parent block's gas usage?
-            basefee: U256::ZERO,
+            // TODO: use default for genesis
+            basefee: U256::from(parent_block.next_block_base_fee().unwrap_or_default()),
         };
 
         let config = BatchPayloadConfig {

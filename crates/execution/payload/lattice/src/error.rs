@@ -4,7 +4,7 @@ use anemo::types::response::StatusCode;
 use execution_transaction_pool::error::PoolError;
 use lattice_network::LocalClientError;
 use revm::primitives::EVMError;
-use tn_types::execution::H256;
+use tn_types::execution::{H256, TransactionSigned};
 use tokio::sync::oneshot;
 
 use crate::LatticePayloadBuilderServiceCommand;
@@ -34,8 +34,8 @@ pub enum LatticePayloadBuilderError {
     #[error("missing finalized state to build next batch")]
     LatticeBatch,
     /// Thrown if the batch payload builder can't find the latest state (after genesis)
-    #[error("missing genesis state for next batch")]
-    LatticeBatchFromGenesis,
+    #[error("missing genesis block")]
+    LatticeBlockFromGenesis,
     /// Thrwon if the batch payload can't create a timestamp when initialized the BlockEnv.
     #[error("Failed to capture System Time.")]
     LatticeBatchSystemTime(#[from] std::time::SystemTimeError),
@@ -54,6 +54,12 @@ pub enum LatticePayloadBuilderError {
     /// Local network error when batch or header sent to CL
     #[error("Local network error: {0:?}")]
     LocalNetwork(#[from] LocalClientError),
+    /// Error decoding transaction bytes
+    #[error("Failed to decode transaction: {0}")]
+    Decode(#[from] execution_rlp::DecodeError),
+    /// Error recoving signature for transaction
+    #[error("Failed to recover tx signature: {0:?}")]
+    RecoverSignature(TransactionSigned),
 }
 
 impl From<oneshot::error::RecvError> for LatticePayloadBuilderError {

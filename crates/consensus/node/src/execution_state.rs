@@ -4,6 +4,7 @@
 use async_trait::async_trait;
 use execution_lattice_consensus::LatticeConsensusEngineHandle;
 use lattice_executor::ExecutionState;
+use tn_adapters::NetworkAdapter;
 use tn_types::consensus::{BatchAPI, ConsensusOutput};
 use tokio::sync::mpsc::Sender;
 
@@ -43,29 +44,19 @@ impl ExecutionState for SimpleExecutionState {
 ///
 /// This is passed to the Node for Primary.start()
 pub struct LatticeExecutionState {
-    /// Handle for interacting with EL engine.
-    engine_handle: LatticeConsensusEngineHandle,
+    adapter: NetworkAdapter,
 }
 
 impl LatticeExecutionState {
-    pub fn new(engine_handle: LatticeConsensusEngineHandle) -> Self {
-        Self { engine_handle }
+    pub fn new(adapter: NetworkAdapter) -> Self {
+        Self { adapter }
     }
 }
 
 #[async_trait]
 impl ExecutionState for LatticeExecutionState {
     async fn handle_consensus_output(&self, consensus_output: ConsensusOutput) {
-        // let _batches = consensus_output.batches;
-        // let _round = consensus_output.sub_dag.leader_round();
-        // let _timestamp = consensus_output.sub_dag.commit_timestamp();
-        // let _leader_author = consensus_output.sub_dag.leader.header().author();
-
-        // TODO: metrics
-
-        // TODO: error handling?
-        // let _ = self.engine_handle.handle_consensus_output(consensus_output.into()).await;
-        
+        let _ = self.adapter.handle_consensus_output(consensus_output).await;
     }
 
     async fn last_executed_sub_dag_index(&self) -> u64 {

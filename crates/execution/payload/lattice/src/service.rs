@@ -1,16 +1,19 @@
 use futures_util::StreamExt;
-use tn_types::consensus::{BatchDigest, CertificateDigest,};
+use tn_types::consensus::ConsensusOutput;
 use tn_network_types::BuildHeaderRequest;
 use std::{
     future::Future,
     pin::Pin,
-    task::{Context, Poll}, sync::Arc,
+    task::{Context, Poll},
 };
 use tokio::sync::{mpsc, oneshot};
 use tokio_stream::wrappers::UnboundedReceiverStream;
-use tracing::{error, warn, debug};
-
-use crate::{BatchPayloadFuture, BatchPayload, BatchPayloadJobGenerator, LatticePayloadBuilderServiceMetrics, LatticePayloadBuilderHandle, HeaderPayloadJobGenerator, HeaderPayloadFuture, HeaderPayload};
+use tracing::{error, warn};
+use crate::{BatchPayloadFuture, BatchPayloadJobGenerator,
+    LatticePayloadBuilderServiceMetrics, LatticePayloadBuilderHandle,
+    HeaderPayloadJobGenerator, HeaderPayloadFuture,
+    traits::BlockPayloadJobGenerator, BlockPayloadFuture,
+};
 
 /// A service that manages payload building tasks.
 ///
@@ -57,9 +60,13 @@ where
 
 impl<Gen> Future for LatticePayloadBuilderService<Gen>
 where
-    Gen: BatchPayloadJobGenerator + HeaderPayloadJobGenerator + Unpin + 'static,
+    Gen: Unpin + 'static
+        + BatchPayloadJobGenerator
+        + HeaderPayloadJobGenerator
+        + BlockPayloadJobGenerator,
     <Gen as BatchPayloadJobGenerator>::Job: Unpin + 'static,
     <Gen as HeaderPayloadJobGenerator>::Job: Unpin + 'static,
+    <Gen as BlockPayloadJobGenerator>::Job: Unpin + 'static,
 {
     type Output = ();
 
@@ -112,8 +119,17 @@ where
                             }
                         }
                     }
-                    LatticePayloadBuilderServiceCommand::HeaderSealed { header, digest } => {
-                        todo!()
+                    LatticePayloadBuilderServiceCommand::NewCanonicalBlock { output, tx } => {
+                        match this.generator.new_canonical_block(output) {
+                            Ok(job) => {
+                                let _ = tx.send(Box::pin(job));
+                                this.metrics.inc_initiated_block_jobs();
+                            }
+                            Err(e) => {
+                                this.metrics.inc_failed_block_jobs();
+                                error!("{e:?}");
+                            }
+                        }
                     }
                 };
             }
@@ -139,11 +155,11 @@ pub enum LatticePayloadBuilderServiceCommand {
         /// Attributes for the block to build.
         attributes: BuildHeaderRequest,
     },
-    /// Update the transaction pool after a batch is sealed.
-    HeaderSealed { // Certificate issued?
-        /// The reference to the built batch for updating the tx pool.
-        header: Arc<HeaderPayload>,
-        /// The digest of the sealed batch.
-        digest: CertificateDigest,
+    /// Create the next canonical block.
+    NewCanonicalBlock {
+        /// Output from consensus.
+        output: ConsensusOutput,
+        /// Channel to return the job future.
+        tx: oneshot::Sender<BlockPayloadFuture>,
     },
 }

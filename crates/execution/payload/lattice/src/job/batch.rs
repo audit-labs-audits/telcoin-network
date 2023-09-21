@@ -1,6 +1,5 @@
 //! Structs for the specific "job" of building a batch payload.
 
-use anemo::types::Version;
 use execution_payload_builder::database::CachedReads;
 use execution_provider::StateProviderFactory;
 use execution_tasks::TaskSpawner;
@@ -10,7 +9,7 @@ use revm::primitives::{CfgEnv, BlockEnv};
 use tn_network_types::SealedBatchResponse;
 use tokio::sync::oneshot;
 use tracing::{trace, warn};
-use std::{future::Future, sync::{Arc, atomic::AtomicBool}, pin::Pin, task::{Context, Poll}};
+use std::{future::Future, sync::Arc, pin::Pin, task::{Context, Poll}};
 use tn_types::{execution::SealedBlock, consensus::VersionedMetadata};
 use futures_core::ready;
 use futures_util::future::FutureExt;

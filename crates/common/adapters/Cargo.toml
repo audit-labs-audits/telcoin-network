@@ -13,6 +13,7 @@ description = "Adapters for communication across execution and consenus layers."
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
+tn-types = { workspace = true }
 tn-network-types = { workspace = true }
 lattice-payload-builder = { workspace = true }
 execution-lattice-consensus = { workspace = true }

@@ -1,8 +1,10 @@
+//! Handle for payload builder
+
 use std::sync::Arc;
-use tn_types::consensus::{BatchDigest, CertificateDigest,};
-use tn_network_types::{PrimaryToEngine, BuildHeaderRequest, HeaderPayloadResponse, WorkerToEngine};
+use tn_types::consensus::ConsensusOutput;
+use tn_network_types::BuildHeaderRequest;
 use tokio::sync::{mpsc, oneshot};
-use crate::{LatticePayloadBuilderServiceCommand, BatchPayload, LatticePayloadBuilderError, HeaderPayload};
+use crate::{LatticePayloadBuilderServiceCommand, LatticePayloadBuilderError, HeaderPayload, BlockPayload};
 
 /// Communication handle for the [BatchBuilderService].
 /// 
@@ -47,6 +49,22 @@ impl LatticePayloadBuilderHandle {
         match rx.await {
             Ok(fut) => fut.await,
             Err(e) => Err(e.into()),
+        }
+    }
+
+    /// Handle consensus output. This is called to build the next canonical block.
+    pub async fn new_canonical_block(
+        &self,
+        output: ConsensusOutput,
+    ) -> Result<Arc<BlockPayload>, LatticePayloadBuilderError> {
+        let (tx, rx) = oneshot::channel();
+        self.to_service
+            .send(LatticePayloadBuilderServiceCommand::NewCanonicalBlock{ output, tx })
+            .map_err(LatticePayloadBuilderError::from)?;
+            
+        match rx.await {
+            Ok(fut) => fut.await,
+            Err(e) => Err(e.into())
         }
     }
 
