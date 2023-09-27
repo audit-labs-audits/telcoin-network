@@ -2,7 +2,7 @@
 //! from `ConsensusOutput`.
 
 use execution_payload_builder::database::CachedReads;
-use execution_provider::StateProviderFactory;
+use execution_provider::{StateProviderFactory, PostState};
 use execution_tasks::TaskSpawner;
 use execution_transaction_pool::{TransactionPool, TransactionId, BatchInfo};
 use lattice_network::EngineToWorkerClient;
@@ -11,7 +11,7 @@ use tn_network_types::SealedBatchResponse;
 use tokio::sync::oneshot;
 use tracing::{trace, warn};
 use std::{future::Future, sync::{Arc, atomic::AtomicBool}, pin::Pin, task::{Context, Poll}};
-use tn_types::{execution::{SealedBlock, ChainSpec, U256}, consensus::{VersionedMetadata, ConsensusOutput}};
+use tn_types::{execution::{SealedBlock, ChainSpec, U256, SealedBlockWithSenders}, consensus::{VersionedMetadata, ConsensusOutput}};
 use futures_core::ready;
 use futures_util::future::FutureExt;
 use crate::{PayloadTaskGuard, LatticePayloadBuilderServiceMetrics,
@@ -19,29 +19,42 @@ use crate::{PayloadTaskGuard, LatticePayloadBuilderServiceMetrics,
 };
 
 /// The result of the built block job.
-/// 
-/// TODO: add batch size and gas used as metrics to struct
-/// since they're already calculated in the job.
+///
+/// The payload contains the `SealedBlockWithSenders`
+/// since canonical blocks are built locally.
 #[derive(Debug)]
 pub struct BlockPayload {
     /// The built block
-    block: SealedBlock,
+    block: SealedBlockWithSenders,
+    /// Poststate data for the engine to commit the next canonical block.
+    state: PostState,
     /// The fees for the leader.
     fees: U256,
 }
 
 impl BlockPayload {
     /// Create a new instance of [Self]
-    pub(crate) fn new(
-        block: SealedBlock,
+    pub fn new(
+        block: SealedBlockWithSenders,
+        state: PostState,
         fees: U256,
     ) -> Self {
-        Self { block, fees }
+        Self { block, state, fees }
     }
 
     /// Reference to the sealed block.
-    pub fn get_block(&self) -> &SealedBlock {
+    pub fn get_block(&self) -> &SealedBlockWithSenders {
         &self.block
+    }
+
+    /// Get the new block number.
+    pub fn get_block_num(&self) -> u64 {
+        self.block.number
+    }
+
+    /// Reference to the post state for this block.
+    pub fn get_poststate(&self) -> &PostState {
+        &self.state
     }
 
     /// The fees for the leader of the round.

@@ -20,7 +20,7 @@ use execution_provider::{
     post_state::PostState,
     BlockExecutionWriter, BlockNumReader, BlockWriter, CanonStateNotification,
     CanonStateNotificationSender, CanonStateNotifications, Chain, DatabaseProvider,
-    DisplayBlocksChain, ExecutorFactory, HeaderProvider,
+    DisplayBlocksChain, ExecutorFactory, HeaderProvider, ProviderError,
 };
 use execution_stages::{MetricEvent, MetricEventsSender};
 use std::{
@@ -152,6 +152,92 @@ impl<DB: Database, C: Consensus, EF: ExecutorFactory> BlockchainTree<DB, C, EF> 
     pub fn with_sync_metrics_tx(mut self, metrics_tx: MetricEventsSender) -> Self {
         self.sync_metrics_tx = Some(metrics_tx);
         self
+    }
+
+    /// Update tracked canonical chain after commit.
+    /// 
+    /// The canonical block is built locally and stored by the engine.
+    /// The tree is updated here for validating batches from peers.
+    /// 
+    /// The method appends the next canonical block to the virtual tree,
+    /// then removes the old canonical block. The tree only needs
+    /// to keep track of the latest canonical block to validate batches.
+    pub fn update_canonical_tip_after_commit(
+        &mut self,
+        block: SealedBlockWithSenders,
+        number: u64,
+    ) {
+        let blocks = BTreeMap::from([(number, block)]);
+        self.block_indices.canonicalize_blocks(&blocks);
+        self.finalize_block(number);
+    }
+
+    /// Add the next canonical block after a leader is selected for an even round.
+    /// 
+    /// This method assumes no forks off the canonical chain or side forks.
+    pub fn add_canonical_block(
+        &mut self,
+        block: SealedBlockWithSenders,
+    ) -> Result<(), Error> {
+        // akin to self.try_append_canonical_chain(block)
+        let factory = self.externals.database();
+        let provider = factory
+            .provider()?;
+
+        // skip fork and block validation - this came from local payload builder
+
+        // TODO: is this the best way to handle genesis?
+        // should this be a separate genesis command?
+        let parent_header = provider
+            .header(&block.parent_hash)?
+            .ok_or_else(|| {
+                Error::Provider(
+                    ProviderError::BlockHashNotFound(block.parent_hash)
+                )
+            })?
+            .seal(block.parent_hash);
+
+        // drop provider to regain mutable reference to self
+        drop(provider);
+
+        let canonical_chain = self.canonical_chain();
+
+        if block.parent_hash != canonical_chain.tip().hash {
+            // parent must be the canonical tip
+            return Err(Error::Execution(
+                BlockExecutionError::AppendChainDoesntConnect {
+                    chain_tip: canonical_chain.tip(),
+                    other_chain_fork: block.num_hash(),
+                }
+            ));
+        }
+
+        let parent = block.parent_num_hash();
+        let block_number = block.number;
+
+        let chain = AppendableChain::new_canonical_head_fork(
+            block,
+            &parent_header,
+            canonical_chain.inner(),
+            parent,
+            &self.externals,
+        ).map_err(|e| execution_interfaces::Error::Custom(e.to_string()))?;
+
+        // TODO: is this necessary if there are no forks?
+        self.insert_chain(chain.clone());
+        
+        let new_canonical_chain = chain.into_inner();
+
+        // update canonical index
+        self.block_indices.canonicalize_blocks(new_canonical_chain.blocks());
+        let chain_notification = CanonStateNotification::Commit { new: Arc::new(new_canonical_chain.clone())};
+        self.commit_canonical(new_canonical_chain)?;
+
+        let _ = self.canon_state_notification_sender.send(chain_notification);
+
+        // should remove all blocks until the last canonical
+        self.finalize_block(block_number);
+        Ok(())
     }
 
     /// Check if then block is known to blockchain tree or database and return its status.
@@ -912,7 +998,6 @@ impl<DB: Database, C: Consensus, EF: ExecutorFactory> BlockchainTree<DB, C, EF> 
 
         let Some(chain_id) = self.block_indices.get_blocks_chain_id(block_hash) else {
             warn!(target: "blockchain_tree", ?block_hash,  "Block hash not found in block indices");
-            // TODO: better error
             return Err(
                 BlockExecutionError::BlockHashNotFoundInChain { block_hash: *block_hash }.into()
             )
@@ -1231,6 +1316,55 @@ mod tests {
                 assert_eq!(*tree.buffered_blocks.blocks(), buffered_blocks);
             }
         }
+    }
+
+    #[tokio::test]
+    async fn test_add_canonical_block_for_lattice() {
+        let data = BlockChainTestData::default_with_numbers(11, 12);
+        let (block1, exec1) = data.blocks[0].clone();
+        let (block2, exec2) = data.blocks[1].clone();
+        let genesis = data.genesis;
+
+        // test pops execution results from vector, so order is from last to first.
+        let externals = setup_externals(vec![exec2.clone(), exec1.clone(), exec2, exec1]);
+
+        // last finalized block would be number 9.
+        setup_genesis(externals.db.clone(), genesis);
+
+        // make tree
+        let config = BlockchainTreeConfig::new(1, 2, 3, 2);
+        let (sender, mut canon_notif) = tokio::sync::broadcast::channel(10);
+        let mut tree =
+            BlockchainTree::new(externals, sender, config).expect("failed to create tree");
+
+        // genesis block 10 is already canonical
+        //
+        // make sure is_block_hash_canonical returns true for genesis block
+        assert!(tree.is_block_hash_canonical(&H256::zero()).unwrap());
+        
+        
+        // add new canonical block1
+        assert!(tree.add_canonical_block(block1.clone()).is_ok());
+        assert!(tree.is_block_hash_canonical(&block1.hash).unwrap());
+        assert_matches!(
+            canon_notif.try_recv(),
+            Ok(
+                CanonStateNotification::Commit{ new })
+                if *new.blocks() == BTreeMap::from([(block1.number, block1)]
+            )
+        );
+
+        // add second block
+        assert!(tree.add_canonical_block(block2.clone()).is_ok());
+        assert!(tree.is_block_hash_canonical(&block2.hash).unwrap());
+        assert_matches!(
+            canon_notif.try_recv(),
+            Ok(
+                CanonStateNotification::Commit{ new })
+                if *new.blocks() == BTreeMap::from([(block2.number, block2.clone())]
+            )
+        );
+        assert_eq!(tree.block_indices().canonical_tip(), block2.num_hash())
     }
 
     #[tokio::test]

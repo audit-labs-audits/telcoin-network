@@ -12,7 +12,7 @@ use lattice_network::EngineToWorkerClient;
 use revm::{db::{CacheDB, DatabaseRef}, primitives::{ResultAndState, InvalidTransaction, EVMError, Env}};
 use tn_network_types::{SealBatchRequest, SealedBatchResponse};
 use tn_types::{execution::{
-    U256, Receipt, IntoRecoveredTransaction, Withdrawal, H256, constants::{EMPTY_WITHDRAWALS, BEACON_NONCE}, ChainSpec, proofs::{self, EMPTY_ROOT}, EMPTY_OMMER_ROOT, Header, Bytes, TransactionSigned, Block,
+    U256, Receipt, IntoRecoveredTransaction, Withdrawal, H256, constants::{EMPTY_WITHDRAWALS, BEACON_NONCE}, ChainSpec, proofs::{self, EMPTY_ROOT}, EMPTY_OMMER_ROOT, Header, Bytes, TransactionSigned, Block, SealedBlockWithSenders,
 }, consensus::{WorkerId, TimestampSec, BatchDigest, Batch, VersionedMetadata, now, BatchAPI, ConsensusOutput}};
 use tokio::sync::oneshot;
 use tracing::{debug, warn, error};
@@ -546,6 +546,7 @@ where
         let block_gas_limit: u64 = initialized_block_env.gas_limit.try_into().unwrap_or(u64::MAX);
 
         let mut executed_txs = Vec::new();
+        let mut senders = Vec::new();
         let mut total_fees = U256::ZERO;
         let base_fee = initialized_block_env.basefee.to::<u64>();
 
@@ -647,6 +648,8 @@ where
                         .expect("fee is always valid; execution succeeded");
                     total_fees += U256::from(miner_fee) * U256::from(gas_used);
 
+                    // add sender for SealedBlockWithSenders
+                    senders.push(tx.signer().clone());
                     // append to executed transactions
                     executed_txs.push(tx.into_signed());
                 }
@@ -668,7 +671,7 @@ where
         let logs_bloom = post_state.logs_bloom(block_number);
 
         // calculate the state root
-        let state_root = state.state().state_root(post_state)?;
+        let state_root = state.state().state_root(post_state.clone())?;
 
         // create the block header
         let transactions_root = proofs::calculate_transaction_root(&executed_txs);
@@ -695,7 +698,7 @@ where
 
         let block = Block { header, body: executed_txs, ommers: vec![], withdrawals}.seal_slow();
 
-        Ok(BlockPayload::new(block, total_fees))
+        Ok(BlockPayload::new(SealedBlockWithSenders { block, senders }, post_state, total_fees))
     }
 
     // return the result to the block building job

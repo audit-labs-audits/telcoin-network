@@ -8,7 +8,7 @@ mod block;
 pub use batch::BatchPayload;
 pub(crate) use batch::{BatchPayloadConfig, BatchPayloadJob, BatchPayloadFuture};
 pub(crate) use header::*;
-pub(crate) use block::*;
+pub use block::*;
 
 /// A marker that can be used to cancel a job.
 ///

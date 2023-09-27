@@ -9343,6 +9343,7 @@ version = "0.1.0"
 dependencies = [
  "anemo",
  "async-trait",
+ "execution-interfaces",
  "execution-lattice-consensus",
  "lattice-payload-builder",
  "tn-network-types",

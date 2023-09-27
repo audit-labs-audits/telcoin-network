@@ -602,11 +602,21 @@ where
         self.tree.unwind(unwind_to)
     }
 
+    //=== lattice-specific
+
     fn validate_batch(
-            &self,
-            block: SealedBlockWithSenders,
-        ) -> std::result::Result<(), InsertBlockError> {
+        &self,
+        block: SealedBlockWithSenders,
+    ) -> std::result::Result<(), InsertBlockError> {
         self.tree.validate_batch(block)
+    }
+
+    fn update_canonical_tip_after_commit(
+        &mut self,
+        block: SealedBlockWithSenders,
+        number: u64,
+    ) {
+        self.tree.update_canonical_tip_after_commit(block, number)
     }
 }
 

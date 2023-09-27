@@ -32,12 +32,13 @@ impl NetworkAdapter {
     pub async fn handle_consensus_output(
         &self,
         output: ConsensusOutput,
-    ) -> Result<(), Status> {
-        // TODO:
-        // 1. payload builder
-        // 2. update canonical chain
-        self.payload_builder.new_canonical_block(output).await?;
-        todo!()
+    ) -> Result<(), execution_interfaces::Error> {
+        // TODO: better error here?
+        let block_payload = self.payload_builder
+            .new_canonical_block(output)
+            .await
+            .map_err(|e| execution_interfaces::Error::Custom(e.to_string()))?;
+        self.consensus_engine.new_canonical_block(block_payload).await
     }
 }
 

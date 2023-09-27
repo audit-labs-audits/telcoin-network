@@ -1,7 +1,6 @@
 //! Support for handling events emitted by node components.
 
 use super::cl_events::ConsensusLayerHealthEvent;
-use execution_interfaces::consensus::ForkchoiceState;
 use execution_lattice_consensus::LatticeConsensusEngineEvent;
 use execution_network::{NetworkEvent, NetworkHandle};
 use execution_network_api::PeersInfo;
@@ -111,30 +110,14 @@ impl NodeState {
 
     fn handle_consensus_engine_event(&mut self, event: LatticeConsensusEngineEvent) {
         match event {
-            LatticeConsensusEngineEvent::ForkchoiceUpdated(state, status) => {
-                let ForkchoiceState { head_block_hash, safe_block_hash, finalized_block_hash } =
-                    state;
-                info!(
-                    ?head_block_hash,
-                    ?safe_block_hash,
-                    ?finalized_block_hash,
-                    ?status,
-                    "Forkchoice updated"
-                );
-            }
             LatticeConsensusEngineEvent::CanonicalBlockAdded(block) => {
+                let block = block.get_block();
                 self.latest_canonical_engine_block = Some(block.number);
 
                 info!(number=block.number, hash=?block.hash, "Block added to canonical chain");
             }
-            LatticeConsensusEngineEvent::ForkBlockAdded(block) => {
-                info!(number=block.number, hash=?block.hash, "Block added to fork chain");
-            }
             LatticeConsensusEngineEvent::BatchVerified(batch) => {
                 info!(?batch, "Batch verified");
-            }
-            LatticeConsensusEngineEvent::BatchCreated(batch) => {
-                info!(?batch, "Batch created");
             }
         }
     }

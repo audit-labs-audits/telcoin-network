@@ -1757,8 +1757,8 @@ impl<'this, TX: DbTxMut<'this> + DbTx<'this>> BlockWriter for DatabaseProvider<'
         if blocks.is_empty() {
             return Ok(())
         }
-        let new_tip = blocks.last().unwrap();
-        let new_tip_number = new_tip.number;
+        // let new_tip = blocks.last().unwrap();
+        // let new_tip_number = new_tip.number;
 
         let first_number = blocks.first().unwrap().number;
 
@@ -1782,7 +1782,7 @@ impl<'this, TX: DbTxMut<'this> + DbTx<'this>> BlockWriter for DatabaseProvider<'
         self.calculate_history_indices(first_number..=last_block_number)?;
 
         // Update pipeline progress
-        self.update_pipeline_stages(new_tip_number, false)?;
+        // self.update_pipeline_stages(new_tip_number, false)?;
 
         Ok(())
     }

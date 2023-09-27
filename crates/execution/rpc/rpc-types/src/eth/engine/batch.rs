@@ -80,38 +80,8 @@ impl From<Batch> for BatchExecutionPayload {
     }
 }
 
-impl From<SealedBlock> for BatchExecutionPayload {
-    fn from(value: SealedBlock) -> Self {
-        let transactions = value
-            .body
-            .iter()
-            .map(|tx| {
-                let mut encoded = Vec::new();
-                tx.encode_enveloped(&mut encoded);
-                encoded.into()
-            })
-            .collect();
-        BatchExecutionPayload {
-            parent_hash: value.parent_hash,
-            receipts_root: value.receipts_root,
-            logs_bloom: value.logs_bloom,
-            block_number: value.number.into(),
-            gas_limit: value.gas_limit.into(),
-            gas_used: value.gas_used.into(),
-            timestamp: value.timestamp.into(),
-            base_fee_per_gas: U256::from(value.base_fee_per_gas.unwrap_or_default()),
-            block_hash: value.hash(),
-            transactions,
-            // prev_randao: value.mix_hash,
-            // extra_data: value.extra_data.clone(),
-            // fee_recipient: value.beneficiary,
-            // state_root: value.state_root,
-            // withdrawals: value.withdrawals,
-        }
-    }
-}
-
-/// Try to construct a block from given payload. Perform addition validation of `extra_data` and
+/// Try to construct a block from given payload. 
+/// TODO: Perform addition validation of `extra_data` and
 /// `base_fee_per_gas` fields.
 ///
 /// NOTE: The log bloom is assumed to be validated during serialization.
@@ -132,15 +102,17 @@ impl TryFrom<BatchExecutionPayload> for SealedBlock {
             .iter()
             .map(|tx| TransactionSigned::decode(&mut tx.as_ref()))
             .collect::<Result<Vec<_>, _>>()?;
-        let transactions_root = proofs::calculate_transaction_root(&transactions);
 
-        let withdrawals_root = Some(EMPTY_ROOT);
+        // TODO: should transactions_root be included?
+        //  - CL checks this using batch digest.
+
+        // let transactions_root = proofs::calculate_transaction_root(&transactions);
+
+        // let withdrawals_root = Some(EMPTY_ROOT);
 
         let header = Header {
             parent_hash: payload.parent_hash,
-            transactions_root,
             receipts_root: payload.receipts_root,
-            withdrawals_root,
             logs_bloom: payload.logs_bloom,
             number: payload.block_number.as_u64(),
             gas_limit: payload.gas_limit.as_u64(),
@@ -149,17 +121,21 @@ impl TryFrom<BatchExecutionPayload> for SealedBlock {
             mix_hash: H256::zero(),
             base_fee_per_gas: Some(
                 payload
-                    .base_fee_per_gas
-                    .uint_try_to()
-                    .map_err(|_| BatchPayloadError::BaseFee(payload.base_fee_per_gas))?,
+                .base_fee_per_gas
+                .uint_try_to()
+                .map_err(|_| BatchPayloadError::BaseFee(payload.base_fee_per_gas))?,
             ),
-            // Defaults
-            beneficiary: H160::zero(),
-            state_root: EMPTY_ROOT,
-            extra_data: Bytes::default(),
-            ommers_hash: EMPTY_LIST_HASH,
-            difficulty: Default::default(),
-            nonce: Default::default(),
+            ..Default::default()
+
+            // Defaults:
+            // transactions_root,
+            // withdrawals_root,
+            // beneficiary: H160::zero(),
+            // state_root: EMPTY_ROOT,
+            // extra_data: Bytes::default(),
+            // ommers_hash: EMPTY_LIST_HASH,
+            // difficulty: Default::default(),
+            // nonce: Default::default(),
         }
         .seal_slow();
 
@@ -173,8 +149,7 @@ impl TryFrom<BatchExecutionPayload> for SealedBlock {
         Ok(SealedBlock {
             header,
             body: transactions,
-            withdrawals: Some(vec![]),
-            ommers: Default::default(),
+            ..Default::default()
         })
     }
 }

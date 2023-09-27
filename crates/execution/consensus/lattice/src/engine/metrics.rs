@@ -1,5 +1,5 @@
 use execution_metrics::{
-    metrics::{self, Counter, Gauge},
+    metrics::{self, Counter},
     Metrics,
 };
 
@@ -7,20 +7,8 @@ use execution_metrics::{
 #[derive(Metrics)]
 #[metrics(scope = "consensus.engine.lattice")]
 pub(crate) struct EngineMetrics {
-    /// The number of times the pipeline was run.
-    pub(crate) pipeline_runs: Counter,
-    /// The total count of forkchoice updated messages received.
-    pub(crate) forkchoice_updated_messages: Counter,
-    /// The total count of new payload messages received.
-    pub(crate) new_payload_messages: Counter,
-    /// The total count of next batch for worker messages received.
-    pub(crate) next_batch_requested: Counter,
-}
-
-/// Metrics for the `EngineSyncController`.
-#[derive(Metrics)]
-#[metrics(scope = "consensus.engine.lattice")]
-pub(crate) struct EngineSyncMetrics {
-    /// How many blocks are currently being downloaded.
-    pub(crate) active_block_downloads: Gauge,
+    /// The number of times a canonical update was requested.
+    pub(crate) canonical_block_update_request: Counter,
+    /// The total count of batches validated.
+    pub(crate) validate_batch_request: Counter,
 }

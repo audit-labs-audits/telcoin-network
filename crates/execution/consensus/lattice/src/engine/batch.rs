@@ -1,55 +1,19 @@
-use crate::{
-    engine::{
-        forkchoice::{ForkchoiceStateHash, ForkchoiceStateTracker},
-        message::OnForkChoiceUpdated,
-        metrics::EngineMetrics,
-    },
-    sync::{EngineSyncController, EngineSyncEvent}, LatticeConsensusEngine, LatticeOnNewPayloadError,
-};
+use crate::{LatticeConsensusEngine, LatticeOnNewPayloadError};
 use execution_db::database::Database;
-use execution_interfaces::{
-    blockchain_tree::{
-        error::{InsertBlockError, InsertBlockErrorKind},
-        BlockStatus, BlockchainTreeEngine, InsertPayloadOk,
-    },
-    consensus::ForkchoiceState,
-    executor::{BlockExecutionError, BlockValidationError},
-    p2p::{bodies::client::BodiesClient, headers::client::HeadersClient},
-    sync::{NetworkSyncUpdater, SyncState},
-    Error,
-};
-use execution_payload_builder::{PayloadBuilderAttributes, PayloadBuilderHandle, PayloadId};
+use execution_interfaces::blockchain_tree::BlockchainTreeEngine;
 use execution_provider::{
-    BlockReader, BlockSource, CanonChainTracker, ProviderError, StageCheckpointReader,
+    BlockReader, CanonChainTracker, StageCheckpointReader,
 };
 use execution_rpc_types::engine::{
-    PayloadAttributes, BatchPayloadStatus, BatchExecutionPayload, BatchPayloadValidationError,
+    BatchPayloadStatus, BatchExecutionPayload,
 };
-use execution_stages::{ControlFlow, Pipeline, PipelineError};
-use execution_tasks::TaskSpawner;
-use futures::{Future, StreamExt};
-use std::{
-    pin::Pin,
-    sync::Arc,
-    task::{Context, Poll},
-};
-use tn_types::execution::{
-    constants::EPOCH_SLOTS, listener::EventListeners, stage::StageId, BlockNumHash, BlockNumber,
-    Head, Header, SealedBlock, SealedHeader, H256, U256,
-};
-use tokio::sync::{
-    mpsc,
-    mpsc::{UnboundedReceiver, UnboundedSender},
-    oneshot,
-};
-use tokio_stream::wrappers::UnboundedReceiverStream;
+use tn_types::execution::SealedBlock;
 use tracing::*;
 
-impl<DB, BT, Client> LatticeConsensusEngine<DB, BT, Client>
+impl<DB, BT> LatticeConsensusEngine<DB, BT>
 where
-    DB: Database + Unpin + 'static,
     BT: BlockchainTreeEngine + BlockReader + CanonChainTracker + StageCheckpointReader + 'static,
-    Client: HeadersClient + BodiesClient + Clone + Unpin + 'static,
+    DB: Database,
 {
     /// When the Consensus layer receives a new batch from a worker's peer,
     /// the transactions in the batch are sent to the execution layer for verification.
@@ -70,7 +34,7 @@ where
     #[instrument(
         level = "trace",
         skip(self, payload),
-        fields(block_hash= ?payload.block_hash, block_number = %payload.block_number.as_u64(), is_pipeline_idle = %self.sync.is_pipeline_idle()),
+        fields(block_hash= ?payload.block_hash, block_number = %payload.block_number.as_u64()),
         target = "consensus::engine",
     )]
     pub(super) fn validate_batch(
@@ -85,10 +49,7 @@ where
             }
         };
 
-        // now check the block itself
-        if let Some(status) = self.check_invalid_ancestor_with_head(block.parent_hash, block.hash) {
-            return Ok(status)
-        }
+        // TODO: spawn this as a task to free the engine up
 
         // TODO:
         // update sync when processing consensus output?

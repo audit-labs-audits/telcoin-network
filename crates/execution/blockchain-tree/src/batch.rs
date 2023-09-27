@@ -43,7 +43,7 @@ impl<DB: Database, C: Consensus, EF: ExecutorFactory> BlockchainTree<DB, C, EF> 
             return self.execute_batch(block, parent)
         }
 
-        return Err(InsertBlockError::consensus_error(
+        Err(InsertBlockError::consensus_error(
             ConsensusError::ParentUnknown {
                 hash: parent.hash,
             },

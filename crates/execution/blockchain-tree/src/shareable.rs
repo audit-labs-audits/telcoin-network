@@ -96,8 +96,18 @@ impl<DB: Database, C: Consensus, EF: ExecutorFactory> BlockchainTreeEngine
     ) -> Result<(), InsertBlockError> {
         trace!(target: "blockchain_tree", hash=?block.hash, number=block.number, parent_hash=?block.parent_hash, "Validating batch");
         let tree = self.tree.read();
-        // TODO: update metrics?
         tree.validate_batch(block)
+    }
+
+    fn update_canonical_tip_after_commit(
+        &mut self,
+        block: SealedBlockWithSenders,
+        number: u64,
+    ) {
+        let mut  tree = self.tree.write();
+        let res = tree.update_canonical_tip_after_commit(block, number);
+        tree.update_chains_metrics();
+        res
     }
 }
 

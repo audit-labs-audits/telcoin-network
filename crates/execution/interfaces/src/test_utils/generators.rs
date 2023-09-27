@@ -174,7 +174,6 @@ pub fn random_batch<R: Rng>(
     number: u64,
     parent: Option<H256>,
     tx_count: Option<u8>,
-    ommers_count: Option<u8>,
 ) -> Batch {
     // Generate transactions
     let tx_count = tx_count.unwrap_or_else(|| rng.gen::<u8>());
@@ -182,29 +181,19 @@ pub fn random_batch<R: Rng>(
         (0..tx_count).map(|_| random_signed_tx(rng)).collect();
     let total_gas = transactions.iter().fold(0, |sum, tx| sum + tx.transaction.gas_limit());
 
-    // Calculate roots
-    let transactions_root = proofs::calculate_transaction_root(&transactions);
+    let transactions = transactions.iter().map(|tx| tx.envelope_encoded().into()).collect();
 
-    // SealedBlock {
-    //     header: Header {
-    //         parent_hash: parent.unwrap_or_default(),
-    //         number,
-    //         gas_used: total_gas,
-    //         gas_limit: total_gas,
-    //         transactions_root,
-    //         base_fee_per_gas: Some(rng.gen()),
-    //         ..Default::default()
-    //     }
-    //     .seal_slow(),
-    //     body: transactions,
-    //     ommers: vec![],
-    //     withdrawals: None,
-    // }
+    let header = Header {
+        parent_hash: parent.unwrap_or_default(),
+        number,
+        gas_used: total_gas,
+        gas_limit: total_gas,
+        base_fee_per_gas: Some(rng.gen_range(7..u64::MAX)),
+        ..Default::default()
+    }
+    .seal_slow();
 
-    // Batch::new(
-
-    // )
-    todo!()
+    Batch::new_with_metadata(transactions, header.into())
 }
 /// Generate a range of random blocks.
 ///

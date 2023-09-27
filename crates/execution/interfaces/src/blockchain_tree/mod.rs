@@ -1,4 +1,4 @@
-use crate::{blockchain_tree::error::InsertBlockError, Error};
+use crate::{blockchain_tree::error::InsertBlockError, Error, executor::{BlockExecutionError, BlockValidationError}};
 use std::collections::{BTreeMap, HashSet};
 use tn_types::execution::{
     BlockHash, BlockNumHash, BlockNumber, Receipt, SealedBlock, SealedBlockWithSenders,
@@ -99,6 +99,13 @@ pub trait BlockchainTreeEngine: BlockchainTreeViewer + Send + Sync {
         &self,
         block: SealedBlockWithSenders,
     ) -> Result<(), InsertBlockError>;
+
+    /// Update tree's canonical tip after commiting canonical block from this node.
+    fn update_canonical_tip_after_commit(
+        &mut self,
+        block: SealedBlockWithSenders,
+        number: u64,
+    );
 }
 
 /// All possible outcomes of a canonicalization attempt of [BlockchainTreeEngine::make_canonical].

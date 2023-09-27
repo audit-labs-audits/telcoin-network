@@ -16,6 +16,7 @@ description = "Adapters for communication across execution and consenus layers."
 tn-types = { workspace = true }
 tn-network-types = { workspace = true }
 lattice-payload-builder = { workspace = true }
+execution-interfaces = { workspace = true }
 execution-lattice-consensus = { workspace = true }
 async-trait = { workspace = true }
 anemo = { workspace = true }
