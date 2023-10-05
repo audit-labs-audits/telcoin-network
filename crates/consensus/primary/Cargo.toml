@@ -30,7 +30,7 @@ tower = { version = "0.4.13", features = ["full"] }
 tracing = "0.1.36"
 tap = "1.0.1"
 tn-network-types = { workspace = true }
-
+indexmap = { version = "1.9.2", features = ["serde"] }
 
 lattice-consensus.workspace = true
 fastcrypto = { workspace = true, features = ["copy_key"] }

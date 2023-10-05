@@ -5,8 +5,8 @@
 use crate::{
     certificate_fetcher::CertificateFetcher,
     certifier::Certifier,
-    metrics::{initialise_metrics, PrimaryMetrics},
-    proposer::{OurDigestMessage, Proposer},
+    metrics::initialise_metrics,
+    proposer::Proposer,
     state_handler::StateHandler,
     synchronizer::Synchronizer, handlers::{PrimaryToPrimaryHandler, WorkerToPrimaryHandler},
 };
@@ -22,18 +22,13 @@ use anemo_tower::{
     set_header::{SetRequestHeaderLayer, SetResponseHeaderLayer},
     trace::{DefaultMakeSpan, DefaultOnFailure, TraceLayer},
 };
-use async_trait::async_trait;
-use consensus_metrics::{
-    metered_channel::{channel_with_total, Receiver, Sender},
-    monitored_scope,
-};
+use consensus_metrics::metered_channel::{channel_with_total, Receiver, Sender};
 use tn_types::consensus::{Protocol, Multiaddr};
 use fastcrypto::{
-    hash::Hash,
     signature_service::SignatureService,
-    traits::{KeyPair as _, ToFromBytes},
+    traits::KeyPair as _,
 };
-use lattice_consensus::{ConsensusRound, dag::DagHandle};
+use lattice_consensus::ConsensusRound;
 use lattice_network::{
     client::NetworkClient,
     epoch_filter::{AllowedEpoch, EPOCH_HEADER_KEY},
@@ -43,43 +38,28 @@ use lattice_network::{
 use lattice_storage::{
     CertificateStore, HeaderStore, PayloadStore, ProposerStore, VoteDigestStore,
 };
-use parking_lot::Mutex;
 use prometheus::Registry;
 use std::{
-    cmp::Reverse,
-    collections::{btree_map::Entry, BTreeMap, BTreeSet, BinaryHeap, HashMap},
+    collections::HashMap,
     net::Ipv4Addr,
     sync::Arc,
     thread::sleep,
     time::Duration,
 };
-use tn_types::{
-    consensus::{
-        Authority, AuthorityIdentifier, Committee, Parameters, WorkerCache,
-        crypto,
-        crypto::{
-            traits::EncodeDecodeBase64, AuthorityKeyPair, NetworkKeyPair, NetworkPublicKey, AuthoritySignature,
-        },
-        Header, HeaderAPI, Round, Vote, VoteInfoAPI, PreSubscribedBroadcastSender,
-        now, Certificate, CertificateAPI, CertificateDigest,
+use tn_types::consensus::{
+    Authority, Committee, Parameters, WorkerCache,
+    crypto::{
+        traits::EncodeDecodeBase64, AuthorityKeyPair, NetworkKeyPair, NetworkPublicKey,
     },
-    ensure,
+    Round, PreSubscribedBroadcastSender, Certificate,
 };
-use tn_network_types::{
-        FetchCertificatesRequest,
-        FetchCertificatesResponse, GetCertificatesRequest, GetCertificatesResponse,
-        PayloadAvailabilityRequest, PayloadAvailabilityResponse,
-        PrimaryToPrimary, PrimaryToPrimaryServer, RequestVoteRequest,
-        RequestVoteResponse, SendCertificateRequest, SendCertificateResponse,
-        WorkerToPrimaryServer,
-};
+use tn_network_types::{PrimaryToPrimaryServer, WorkerToPrimaryServer};
 use tokio::{
     sync::{oneshot, watch},
     task::JoinHandle,
-    time::Instant,
 };
 use tower::ServiceBuilder;
-use tracing::{debug, error, info, instrument, warn};
+use tracing::{error, info};
 
 /// The default channel capacity for each channel of the primary.
 pub const CHANNEL_CAPACITY: usize = 1_000;
@@ -561,7 +541,7 @@ mod test {
     };
     use tn_types::consensus::{
         AuthorityIdentifier, Committee, Parameters, WorkerId,
-        now, BatchDigest, Certificate, CertificateAPI, CertificateDigest, FetchCertificatesRequest,
+        now, BatchDigest, Certificate, CertificateAPI, CertificateDigest,
         Header, HeaderAPI,
         Round, PreSubscribedBroadcastSender,
     };
@@ -571,7 +551,7 @@ mod test {
     };
     use tn_network_types::{
         MockPrimaryToWorker, PayloadAvailabilityRequest,
-        PrimaryToPrimary, RequestVoteRequest,
+        PrimaryToPrimary, RequestVoteRequest, FetchCertificatesRequest,
     };
 
     #[tokio::test]
