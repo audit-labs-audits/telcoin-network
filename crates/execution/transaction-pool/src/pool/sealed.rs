@@ -89,7 +89,7 @@ impl<T: TransactionOrdering + Clone> SealedPool<T> {
         let tx_size = tx.size();
         // add by batch
         self.by_batch_digest
-            .entry(batch_digest)
+            .entry(batch_digest.clone())
             .and_modify(|pool| pool.add_transaction(tx.clone()))
             .or_insert_with(|| {
                 let mut pool = PendingPool::new(self.ordering.clone());

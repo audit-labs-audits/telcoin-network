@@ -16,7 +16,7 @@ use execution_tasks::TaskSpawner;
 use execution_transaction_pool::TransactionPool;
 use revm::primitives::{CfgEnv, BlockEnv};
 use tokio::sync::oneshot;
-use tracing::{trace, warn};
+use tracing::{trace, warn, debug};
 use std::{future::Future, sync::Arc, pin::Pin, task::{Context, Poll}, collections::HashMap};
 use tn_types::{
     execution::{SealedBlock, ChainSpec, Header, SealedHeader},
@@ -107,9 +107,11 @@ where
     fn poll(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
         let this = self.get_mut();
 
+        debug!(target: "payload_job::header", "inside header's poll job");
 
         // poll the pending header if it exists
         if let Some(mut fut) = this.pending_header.take() {
+            debug!(target: "payload_job::header", "some pending header");
             let poll_status = match fut.poll_unpin(cx) {
                 Poll::Ready(Ok(header)) => {
                     let payload = Arc::new(header);
@@ -132,6 +134,7 @@ where
 
         let missing_batches = match this.missing_batches_rx.take() {
             Some(mut receiver) => {
+                warn!("sending missing batches request...");
                 // wait for missing batches from worker
                 let batches = match ready!(receiver.poll_unpin(cx)) {
                     Ok(batches) => batches,
@@ -160,8 +163,10 @@ where
         let waker = cx.waker().clone();
 
         this.executor.spawn_blocking(Box::pin(async move {
+            debug!(target: "payload_job::header", "inside executor for spawn blocking. waiting for guard...");
             // acquire the permit for executing the task
             let _permit = guard.0.acquire().await;
+            debug!(target: "payload_job::header", "permit acquired!!!");
             create_header(
                 client,
                 pool,
@@ -174,6 +179,8 @@ where
                 missing_batches,
             )
         }));
+
+        debug!(target: "payload_job::header", "spawned blocking header task");
 
         // store the pending header for next poll
         this.pending_header = Some(PendingHeader { _cancel, payload: rx });

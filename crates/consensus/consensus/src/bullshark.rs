@@ -95,8 +95,7 @@ impl Bullshark {
                 // start with base zero 0.
                 let next_leader = (round/2 - 1) as usize % committee.size();
                 let authorities = committee.authorities().collect::<Vec<_>>();
-
-                authorities.get(next_leader).unwrap().id()
+                authorities.get(next_leader).unwrap().id();
             } else {
                 // Elect the leader in a stake-weighted choice seeded by the round
                 committee.leader(round).id()
@@ -115,6 +114,8 @@ impl Bullshark {
         // selection yet (see issue #10), repeated calls to this function should still pick
         // from the whole roster of leaders.
         let leader = Self::leader_authority(committee, round);
+
+        debug!(target: "consensu::bullshark", "leader: {leader:?}");
 
         // Return its certificate and the certificate's digest.
         dag.get(&round).and_then(|x| x.get(&leader))
@@ -187,7 +188,6 @@ impl Bullshark {
         state: &mut ConsensusState,
         certificate: Certificate,
     ) -> Result<(Outcome, Vec<CommittedSubDag>), ConsensusError> {
-        debug!("Processing {:?}", certificate);
         let round = certificate.round();
 
         // Add the new certificate to the local storage.
@@ -248,18 +248,22 @@ impl Bullshark {
 
         self.last_leader_election = LastRound { leader_found: true, leader_has_support: false };
 
+        debug!(target: "consensus::bullshark", "round: {round:?}");
+        debug!(target: "consensus::bullshark", "stake: {stake:?}");
+        debug!(target: "consensus::bullshark", "threshold: {:?}", self.committee.validity_threshold());
+
         // If it is the case, we can commit the leader. But first, we need to recursively go back to
         // the last committed leader, and commit all preceding leaders in the right order.
         // Committing a leader block means committing all its dependencies.
         if stake < self.committee.validity_threshold() {
-            debug!("Leader {:?} does not have enough support", leader);
+            debug!(target: "consensus::bullshark", "Leader {:?} does not have enough support", leader);
             return Ok((Outcome::NotEnoughSupportForLeader, Vec::new()))
         }
 
         self.last_leader_election.leader_has_support = true;
 
         // Get an ordered list of past leaders that are linked to the current leader.
-        debug!("Leader {:?} has enough support", leader);
+        debug!(target: "consensus::bullshark", "Leader {:?} has enough support", leader);
         let mut committed_sub_dags = Vec::new();
         let mut total_committed_certificates = 0;
 
@@ -269,7 +273,7 @@ impl Bullshark {
             let sub_dag_index = state.next_sub_dag_index();
             let _span = error_span!("bullshark_process_sub_dag", sub_dag_index);
 
-            debug!("Leader {:?} has enough support", leader);
+            debug!(target: "consensus::bullshark", "Leader {:?} has enough support", leader);
 
             let mut min_round = leader.round();
             let mut sequence = Vec::new();
@@ -285,7 +289,7 @@ impl Bullshark {
                 // Add the certificate to the sequence.
                 sequence.push(x);
             }
-            debug!(min_round, "Subdag has {} certificates", sequence.len());
+            debug!(target: "consensus::bullshark", min_round, "Subdag has {} certificates", sequence.len());
 
             total_committed_certificates += sequence.len();
 
@@ -330,7 +334,7 @@ impl Bullshark {
         // Performance note: if tracing at the debug log level is disabled, this is cheap, see
         // https://github.com/tokio-rs/tracing/pull/326
         for (name, round) in &state.last_committed {
-            debug!("Latest commit of {}: Round {}", name, round);
+            debug!(target: "consensus::bullshark", "Latest commit of {}: Round {}", name, round);
         }
 
         self.metrics.committed_certificates.report(total_committed_certificates as u64);

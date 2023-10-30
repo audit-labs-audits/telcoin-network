@@ -167,9 +167,11 @@ impl<DB: Database, C: Consensus, EF: ExecutorFactory> BlockchainTree<DB, C, EF> 
         block: SealedBlockWithSenders,
         number: u64,
     ) {
-        let blocks = BTreeMap::from([(number, block)]);
+        let blocks = BTreeMap::from([(number, block.clone())]);
         self.block_indices.canonicalize_blocks(&blocks);
         self.finalize_block(number);
+        let chain_notification = CanonStateNotification::Commit { new: Arc::new(block) };
+        let _ = self.canon_state_notification_sender.send(chain_notification);
     }
 
     /// Add the next canonical block after a leader is selected for an even round.
@@ -179,6 +181,8 @@ impl<DB: Database, C: Consensus, EF: ExecutorFactory> BlockchainTree<DB, C, EF> 
         &mut self,
         block: SealedBlockWithSenders,
     ) -> Result<(), Error> {
+        debug!("add_canonical_block: {:?}", block.block.hash());
+
         // akin to self.try_append_canonical_chain(block)
         let factory = self.externals.database();
         let provider = factory
@@ -230,11 +234,12 @@ impl<DB: Database, C: Consensus, EF: ExecutorFactory> BlockchainTree<DB, C, EF> 
 
         // update canonical index
         self.block_indices.canonicalize_blocks(new_canonical_chain.blocks());
-        let chain_notification = CanonStateNotification::Commit { new: Arc::new(new_canonical_chain.clone())};
+        let chain_notification = CanonStateNotification::OldCommit { new: Arc::new(new_canonical_chain.clone())};
         self.commit_canonical(new_canonical_chain)?;
 
-        let _ = self.canon_state_notification_sender.send(chain_notification);
-
+        let res = self.canon_state_notification_sender.send(chain_notification);
+        debug!("res:{res:?}");
+        
         // should remove all blocks until the last canonical
         self.finalize_block(block_number);
         Ok(())
@@ -1039,7 +1044,7 @@ impl<DB: Database, C: Consensus, EF: ExecutorFactory> BlockchainTree<DB, C, EF> 
         // if joins to the tip;
         if new_canon_chain.fork_block_hash() == old_tip.hash {
             chain_notification =
-                CanonStateNotification::Commit { new: Arc::new(new_canon_chain.clone()) };
+                CanonStateNotification::OldCommit { new: Arc::new(new_canon_chain.clone()) };
             // append to database
             self.commit_canonical(new_canon_chain)?;
         } else {
@@ -1084,7 +1089,7 @@ impl<DB: Database, C: Consensus, EF: ExecutorFactory> BlockchainTree<DB, C, EF> 
                 error!(target: "blockchain_tree", "Reverting nothing from db on block: #{:?}", block_hash);
 
                 chain_notification =
-                    CanonStateNotification::Commit { new: Arc::new(new_canon_chain) };
+                    CanonStateNotification::OldCommit { new: Arc::new(new_canon_chain) };
             }
         }
 

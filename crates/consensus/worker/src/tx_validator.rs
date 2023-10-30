@@ -36,7 +36,7 @@ pub struct LatticeTransactionValidator {
 
 impl LatticeTransactionValidator {
     /// Create a new instance of Self
-    fn new(engine_handle: LatticeConsensusEngineHandle) -> Self {
+    pub fn new(engine_handle: LatticeConsensusEngineHandle) -> Self {
         Self { engine_handle }
     }
 }

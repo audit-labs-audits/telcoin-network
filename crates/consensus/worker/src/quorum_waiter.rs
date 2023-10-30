@@ -16,7 +16,7 @@ use tn_types::consensus::{
 use tn_network_types::{WorkerBatchMessage, WorkerOwnBatchMessage};
 use lattice_network::{client::NetworkClient, WorkerToPrimaryClient};
 use tokio::{task::JoinHandle, time::timeout};
-use tracing::{trace, warn};
+use tracing::{trace, warn, debug};
 
 #[cfg(test)]
 #[path = "tests/quorum_waiter_tests.rs"]
@@ -133,6 +133,7 @@ impl QuorumWaiter {
                     let worker_id = self.id.clone();
                     let metadata = batch.clone().owned_metadata();
                     // let digest = batch_digest.clone();
+                    debug!(target: "worker::quorum_waiter", "waiting for 2f nodes to ack.\nthreshold:{threshold:?}\nstake:{total_stake:?}\n");
 
                     pipeline.push(async move {
                         // Keep the timer until a quorum is reached.

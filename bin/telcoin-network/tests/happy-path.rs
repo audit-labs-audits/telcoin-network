@@ -1,5 +1,6 @@
 // Copyright (c) Telcoin, LLC
-use std::{sync::Arc, num::NonZeroUsize, time::Duration};
+use std::{sync::Arc, num::NonZeroUsize, time::Duration, collections::BTreeSet};
+use anemo::Request;
 use execution_blockchain_tree::{TreeExternals, BlockchainTreeConfig, ShareableBlockchainTree, BlockchainTree};
 use execution_db::{init_db, test_utils::create_test_rw_db};
 use execution_interfaces::{consensus::Consensus, blockchain_tree::BlockchainTreeEngine, test_utils::NoopFullBlockClient};
@@ -10,36 +11,39 @@ use execution_rlp::Decodable;
 use execution_tasks::{TokioTaskExecutor, TaskSpawner};
 use execution_transaction_pool::{EthTransactionValidator, TransactionPool, TransactionOrigin, TransactionEvent};
 use futures::StreamExt;
-use lattice_node::worker_node::WorkerNodes;
+use lattice_node::{worker_node::WorkerNodes, primary_node::PrimaryNode, execution_state::LatticeExecutionState};
 use lattice_payload_builder::{LatticePayloadJobGenerator, LatticePayloadJobGeneratorConfig, LatticePayloadBuilderService};
-use lattice_test_utils::{CommitteeFixture, temp_dir, WorkerToWorkerMockServer, test_network};
-use lattice_worker::TrivialTransactionValidator;
+use lattice_test_utils::{CommitteeFixture, temp_dir, WorkerToWorkerMockServer, test_network, PrimaryToPrimaryMockServer, make_optimal_signed_certificates};
+use lattice_worker::LatticeTransactionValidator;
 use telcoin_network::{dirs::{MaybePlatformPath, DataDirPath}, args::utils::genesis_value_parser, init::init_genesis};
 use lattice_storage::NodeStorage;
 use tn_adapters::NetworkAdapter;
-use tn_network_types::{MockWorkerToPrimary, MockEngineToWorker};
+use tn_network_types::{MockWorkerToPrimary, MockEngineToWorker, PrimaryToPrimary, PrimaryToPrimaryClient, SendCertificateRequest};
 use tn_tracing::init_test_tracing;
 use tn_types::{
-    execution::{LATTICE_GENESIS, TransactionSigned},
-    consensus::{Batch, Parameters, BatchAPI, crypto::traits::KeyPair}
+    execution::{LATTICE_GENESIS, TransactionSigned, Signature},
+    consensus::{Batch, Parameters, BatchAPI, crypto::traits::KeyPair, Certificate, CertificateAPI, HeaderAPI}
 };
 use execution_rpc_types::engine::{ExecutionPayload, BatchExecutionPayload};
-use lattice_network::client::NetworkClient;
+use lattice_network::{client::NetworkClient, anemo_ext::NetworkExt};
 use consensus_metrics::RegistryService;
 use prometheus::Registry;
-use tokio::time::sleep;
+use tokio::time::{sleep, timeout};
 use tracing::{debug, info};
 use lattice_typed_store::traits::Map;
-use fastcrypto::hash::Hash;
+use fastcrypto::{hash::Hash, signature_service::SignatureService, secp256k1::Secp256k1KeyPair, ed25519::{Ed25519KeyPair, Ed25519Signature}, traits::Signer};
 mod common;
 use crate::common::{tx_signed_from_raw, pool_transaction_from_raw, bob_raw_tx1, bob_raw_tx3, bob_raw_tx2};
 
-// TODO: this is a good test for simulating consensus in next PR
-// //=== Consensus Layer
-// following along with crates/consensus/executor/tests/consensus_integration_tests.rs
+// Tests:
+// - happy path
+// - fees
+// - missing batches for proposed header?
+// - invalid batch/block
+// - node joins the network & catches up
 
 #[tokio::test]
-async fn test_single_worker_requests_next_batch() -> eyre::Result<(), eyre::Error> {
+async fn test_happy_path_from_submit_tx_to_block() -> eyre::Result<(), eyre::Error> {
     // TODO: consolidate tracing fns:
     // let _guard = setup_tracing();
     // telemetry_subscribers::init_for_testing();
@@ -54,7 +58,6 @@ async fn test_single_worker_requests_next_batch() -> eyre::Result<(), eyre::Erro
     debug!("genesis: \n\n{chain_genesis:?}\n\n");
 
     // initialize genesis before creating tree
-    // results in canonical + finalized block
     let genesis_hash = init_genesis(db.clone(), chain.clone())?;
     assert_eq!(genesis_hash, LATTICE_GENESIS);
 
@@ -74,7 +77,7 @@ async fn test_single_worker_requests_next_batch() -> eyre::Result<(), eyre::Erro
     // original from reth:
     // The size of the broadcast is twice the maximum reorg depth, because at maximum reorg
     // depth at least N blocks must be sent at once.
-    let (canon_state_notification_sender, _receiver) =
+    let (canon_state_notification_sender, mut canon_state_notification_receiver) =
         tokio::sync::broadcast::channel(tree_config.max_reorg_depth() as usize * 2);
 
     // create tree to validate batches and track canonical tip
@@ -84,27 +87,35 @@ async fn test_single_worker_requests_next_batch() -> eyre::Result<(), eyre::Erro
         tree_config,
     )?);
 
+    // TODO: this doesn't work
+    blockchain_tree.make_canonical(&genesis_hash).unwrap();
+    blockchain_tree.finalize_block(1);
+
     // setup the blockchain provider - main struct for interacting with the blockchain
     let factory = ProviderFactory::new(Arc::clone(&db), Arc::clone(&chain));
     let blockchain_db = BlockchainProvider::new(factory, blockchain_tree.clone())?;
 
-    let (_consensus_engine, engine_handle) = LatticeConsensusEngine::new(
+    let (consensus_engine, engine_handle) = LatticeConsensusEngine::new(
         blockchain_db.clone(),
         db.clone(),
         chain.clone(),
     )?;
-    info!("consensus engine initialized");
 
     // let genesis_block_by_hash = blockchain_db.block_by_id(tn_types::execution::BlockId::Hash(genesis_hash.into())).unwrap();
     // let genesis_block_by_num = blockchain_db.block_by_id(BlockId::Number(0.into())).unwrap();
     let genesis_block_by_finalized_tag = blockchain_db.block_by_number_or_tag(tn_types::execution::BlockNumberOrTag::Finalized).unwrap();
-    // let genesis_block_by_earliest_tag = blockchain_db.block_by_number_or_tag(tn_types::execution::BlockNumberOrTag::Earliest)?.unwrap();
-
     debug!("\ngenesis block by finalized tag: {genesis_block_by_finalized_tag:?}\n");
+    // let genesis_block_by_earliest_tag = blockchain_db.block_by_number_or_tag(tn_types::execution::BlockNumberOrTag::Earliest)?.unwrap();
 
     let task_executor = TokioTaskExecutor::default();
 
-    // create transaction pool and batch payload generator
+    // spawn engine task
+    // TODO: remove result - engine should never return?
+    task_executor.spawn_critical("execution-engine", Box::pin(async move {
+        // TODO: oneshot channel here?
+        let _res = consensus_engine.await;
+    }));
+
     let transaction_pool = execution_transaction_pool::Pool::eth_pool(
         EthTransactionValidator::with_additional_tasks(
             blockchain_db.clone(),
@@ -114,6 +125,11 @@ async fn test_single_worker_requests_next_batch() -> eyre::Result<(), eyre::Erro
         ),
         Default::default(),
     );
+
+    // TODO: tx pool maintenance on canon chain update
+    // - what other tasks need to update with canon chain?
+    //
+    // E2E - launch rpc server
 
     // add some transactions - bob is the only account with a seed balance
     let tx_1 = pool_transaction_from_raw(&transaction_pool, bob_raw_tx1());
@@ -133,13 +149,58 @@ async fn test_single_worker_requests_next_batch() -> eyre::Result<(), eyre::Erro
     let fixture = CommitteeFixture::builder()
         .number_of_workers(NonZeroUsize::new(1).unwrap())
         .randomize_ports(true)
+        .stake_distribution((5..9).collect()) // give each authority 2 stake
         .build();
     let committee = fixture.committee();
     let worker_cache = fixture.worker_cache();
     let authority = fixture.authorities().next().unwrap();
     let key_pair = authority.keypair();
+    let network_key_pair = authority.network_keypair();
     let store = NodeStorage::reopen(temp_dir(), None);
     let network_client = NetworkClient::new_from_keypair(&authority.network_keypair(), &authority.engine_network_keypair().public());
+
+
+
+
+
+
+    // create signed mock certificates
+    let genesis =
+        Certificate::genesis(&committee).iter().map(|x| x.digest()).collect::<BTreeSet<_>>();
+    let ids: Vec<_> = fixture.authorities().map(|a| (a.id(), a.keypair().copy())).collect();
+    let (certificates, _next_parents) =
+        make_optimal_signed_certificates(1..=1, &genesis, &committee, ids.as_slice());
+    let all_certificates: Vec<_> = certificates.into_iter().collect();
+    debug!("all certs length: {:?}", all_certificates.len());
+    for (num, cert) in all_certificates.iter().enumerate() {
+        // let Certificate::V1( certificate ) = cert;
+        let header = cert.header();
+        let digest = cert.digest();
+        let author = header.author();
+        let round  = header.round();
+        debug!("\ncert {num}:\ndigest:{digest:?}\nauthor:{author:?}\nround:{round:?}\n");
+    }
+    let round_1_certs = all_certificates[1..].to_vec();
+    let (round_2_certs, _parents) = 
+        make_optimal_signed_certificates(2..=2, &round_1_certs.iter().map(|x| x.digest()).collect::<BTreeSet<_>>(), &committee, ids.as_slice());
+
+    let round_2_certs = round_2_certs.into_iter().collect::<Vec<_>>();
+    let round_2_certs = round_2_certs[1..].to_vec();
+
+    // let round_2_certs = all_certificates[6..].to_vec();
+    for cert in round_1_certs {
+        store.certificate_store.write(cert.clone()).unwrap();
+    }
+    for cert in round_2_certs {
+        store.certificate_store.write(cert.clone()).unwrap();
+    }
+
+
+
+
+
+
+
 
     let batch_generator = LatticePayloadJobGenerator::new(
         blockchain_db.clone(),
@@ -151,98 +212,108 @@ async fn test_single_worker_requests_next_batch() -> eyre::Result<(), eyre::Erro
     );
 
     let (batch_builder_service, batch_builder_handle) = LatticePayloadBuilderService::new(batch_generator);
-    // TODO: why do I have to Box::pin() the payload service here,
-    // when the `PayloadBuilderService` in the cli doesn't?
     task_executor.spawn_critical("batch-builder-service", Box::pin(batch_builder_service));
 
-    // TODO: pass engine handle here and also to Worker's Lattice TransactionValidator
-    let worker_to_engine_receiver = Arc::new(NetworkAdapter::new(batch_builder_handle, engine_handle));
-    network_client.set_worker_to_engine_local_handler(worker_to_engine_receiver);
+    // TODO: better name for adapter
+    let network_adapter = Arc::new(NetworkAdapter::new(batch_builder_handle, engine_handle.clone()));
+    network_client.set_worker_to_engine_local_handler(network_adapter.clone());
+    network_client.set_primary_to_engine_local_handler(network_adapter.clone());
 
+    let execution_state = Arc::new(LatticeExecutionState::new(network_adapter));
 
-    // let (tx_confirmation, _rx_confirmation) = channel(10);
-    // let execution_state = Arc::new(SimpleExecutionState::new(tx_confirmation));
+    // spawn primary
+    let primary = PrimaryNode::new(parameters.clone(), registry_service.clone());
+    primary
+        .start(
+            key_pair.copy(),
+            network_key_pair.copy(),
+            committee.clone(),
+            worker_cache.clone(),
+            network_client.clone(),
+            &store,
+            execution_state,
+        )
+        .await
+        .unwrap();
 
-    // // WHEN
-    // let primary = PrimaryNode::new(parameters.clone(), true, registry_service.clone());
-
-    // // channel for proposer and EL
-    // let (el_sender, mut el_receiver) = tokio::sync::mpsc::channel(1);
-
-    // primary
-    //     .start(
-    //         key_pair.copy(),
-    //         network_key_pair.copy(),
-    //         committee.clone(),
-    //         worker_cache.clone(),
-    //         client.clone(),
-    //         &store,
-    //         execution_state,
-    //         el_sender,
-    //     )
-    //     .await
-    //     .unwrap();
-
-    // // spawn a task to respond to primary header requests
-    // tokio::spawn(async move {
-    //     while let Some((_header, reply)) = el_receiver.recv().await {
-    //         debug!("replying to Primary...");
-    //         let _ = reply.send(());
-    //     }
-    // });
-
-    // AND
     let worker_id = 0;
     let workers = WorkerNodes::new(registry_service, parameters.clone());
-    let (tx_await_batch, mut rx_await_batch) = lattice_test_utils::test_channel!(1000);
-    // only need primary mock server - worker and engine comms are real
-    let mut mock_primary_server = MockWorkerToPrimary::new();
-    mock_primary_server
-        .expect_report_own_batch()
-        .withf(move |notice| {
-            // TODO: check notice digest
-            let message = notice.body();
 
-            message.worker_id == worker_id
-        })
-        .times(1)
-        .returning(move |_| {
-            tx_await_batch.try_send(()).unwrap();
-            Ok(anemo::Response::new(()))
-        });
-    network_client.set_worker_to_primary_local_handler(Arc::new(mock_primary_server));
-
-    // spawn workers
+    // spawn worker
     workers
         .start(
             key_pair.public().clone(),
             vec![(worker_id, authority.worker(worker_id).keypair().copy())],
-            committee,
+            committee.clone(),
             worker_cache,
             network_client.clone(),
             &store,
-            TrivialTransactionValidator::default(),
+            LatticeTransactionValidator::new(engine_handle), // temp solution
         )
         .await
         .unwrap();
 
     // spawn enough receivers to acknowledge the proposed batch
-    let mut listener_handles = Vec::new();
+    let mut worker_listener_handles = Vec::new();
     for worker in fixture.authorities().skip(1).map(|a| a.worker(worker_id)) {
         let handle =
             WorkerToWorkerMockServer::spawn(worker.keypair(), worker.info().worker_address.clone());
-        listener_handles.push(handle);
+        worker_listener_handles.push(handle);
     }
+    debug!("worker listener handles spawned");
 
     tokio::task::yield_now().await;
 
+    // spawn enough receivers to acknowledge the proposed header
+    let mut primary_network_handles = Vec::new();
+    for primary in fixture.authorities().skip(1) {
+        let signature_service = SignatureService::new(primary.keypair().copy());
+        let (rx, network) = PrimaryToPrimaryMockServer::spawn(
+            primary.network_keypair(),
+            primary.address().clone(),
+            primary.id(),
+            signature_service,
+        );
+
+        // construct PrimaryToPrimaryClient
+        let peer_id = anemo::PeerId(primary.network_public_key().0.to_bytes());
+        let peer = network.waiting_peer(peer_id);
+        let client = PrimaryToPrimaryClient::new(peer);
+
+        primary_network_handles.push((rx, network, client));
+    }
+
+    // // skip 2 so threshold isn't reached until this primary proposes header
+    // for network_handle in primary_network_handles.iter().skip(2) {
+    //     // primary.1.client
+    //     // TODO: make client and call client.send_certificate(request)
+    //     // from synchronizer:L802
+    //     let (_rx, _network, client) = network_handle;
+    //     let request = Request::new(SendCertificateRequest { certificate });
+    //     let res = client.send_certificate(request).await;
+    //     debug!("client res: {res:?}");
+    // }
+
+    debug!("primary listener handles spawned");
+
+    tokio::task::yield_now().await;
+
+    // TODO: better approach? less time?
+    // check parameter config
+    //
+    // wait for batch timer
+    debug!("sleeping for 1 sec...");
     sleep(Duration::from_secs(1)).await;
+
+    debug!("sleep over! asserting batch store");
 
     assert!(!store.batch_store.is_empty());
     
     let mut batch = store.batch_store.values().next().unwrap().unwrap();
     let batch_transactions = batch.transactions_mut();
     assert_eq!(batch_transactions.len(), 3);
+
+    debug!("\n\nbatch length looks good\n\n");
 
     let batch_tx1 = TransactionSigned::decode(&mut batch_transactions[0].as_ref()).unwrap();
     let batch_tx2 = TransactionSigned::decode(&mut batch_transactions[1].as_ref()).unwrap();
@@ -253,11 +324,11 @@ async fn test_single_worker_requests_next_batch() -> eyre::Result<(), eyre::Erro
     assert_eq!(batch_tx1, expected_tx1);
     assert_eq!(batch_tx2, expected_tx2);
     assert_eq!(batch_tx3, expected_tx3);
-
-    sleep(Duration::from_secs(1)).await;
+    debug!("\n\nbatch transactions look good\n\n");
 
     let batch_digest = batch.digest();
 
+    debug!("awaiting tx events...");
     // ensure transactions were sealed with the correct batch info
     while let Some(event) = tx1_events.next().await {
         match event {
@@ -292,11 +363,24 @@ async fn test_single_worker_requests_next_batch() -> eyre::Result<(), eyre::Erro
         }
     }
 
+    debug!("asserting tx pool updated");
     // assert tx pool updated
     assert_eq!(transaction_pool.pool_size().sealed, 3);
 
-    // ensure primary received the batch's digest
-    rx_await_batch.recv().await.unwrap();
+    // TODO: check these
+    // canon state tracker update
+    // execution db
+    // primary db
+    // certificate db
+    // tx pool size
+
+    // wait for canon state change or timeout
+    debug!("\n\nwaiting for canon state notification receiver\n\n");
+    let duration = Duration::from_secs(10);
+    let update = timeout(duration, canon_state_notification_receiver.recv()).await;
+    debug!("update: {update:?}");
+    assert!(update.is_ok());
+    primary.shutdown().await;
     workers.shutdown().await;
     // primary.shutdown().await;
     // TODO:
@@ -306,9 +390,6 @@ async fn test_single_worker_requests_next_batch() -> eyre::Result<(), eyre::Erro
     // - check subscribers
     //      - rpc needs them
     //      - prevent batches from going out if canonical state change is happening?
-
-
-
 
     Ok(())
 }

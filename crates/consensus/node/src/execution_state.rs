@@ -1,3 +1,5 @@
+use std::sync::Arc;
+
 // Copyright (c) Telcoin, LLC
 // Copyright (c) Mysten Labs, Inc.
 // SPDX-License-Identifier: Apache-2.0
@@ -7,6 +9,7 @@ use lattice_executor::ExecutionState;
 use tn_adapters::NetworkAdapter;
 use tn_types::consensus::{BatchAPI, ConsensusOutput};
 use tokio::sync::mpsc::Sender;
+use tracing::debug;
 
 /// A simple/dumb execution engine.
 pub struct SimpleExecutionState {
@@ -44,11 +47,11 @@ impl ExecutionState for SimpleExecutionState {
 ///
 /// This is passed to the Node for Primary.start()
 pub struct LatticeExecutionState {
-    adapter: NetworkAdapter,
+    adapter: Arc<NetworkAdapter>,
 }
 
 impl LatticeExecutionState {
-    pub fn new(adapter: NetworkAdapter) -> Self {
+    pub fn new(adapter: Arc<NetworkAdapter>) -> Self {
         Self { adapter }
     }
 }
@@ -56,13 +59,14 @@ impl LatticeExecutionState {
 #[async_trait]
 impl ExecutionState for LatticeExecutionState {
     async fn handle_consensus_output(&self, consensus_output: ConsensusOutput) {
-        let _ = self.adapter.handle_consensus_output(consensus_output).await;
+        let _res = self.adapter.handle_consensus_output(consensus_output).await;
+        debug!(target: "consensu::execution_state", ?_res, "send output to adapter: ");
     }
 
     async fn last_executed_sub_dag_index(&self) -> u64 {
-        // what is this used for?
+        // TODO: call db to get this value
         //
-        // sui_core checks the node's epoch store
-        todo!()
+        // needed to recover
+        0
     }
 }

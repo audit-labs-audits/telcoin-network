@@ -71,7 +71,9 @@ pub enum CanonStateNotification {
     /// This reverts the chain's tip to the first block of the chain.
     Revert { old: Arc<Chain> },
     /// Chain got extended without reorg and only new chain is returned.
-    Commit { new: Arc<Chain> },
+    OldCommit { new: Arc<Chain> },
+    /// Commit for lattice consensus.
+    Commit { new: Arc<SealedBlockWithSenders> },
 }
 
 // For one reason or another, the compiler can't derive PartialEq for CanonStateNotification.
@@ -95,6 +97,7 @@ impl CanonStateNotification {
         match self {
             Self::Reorg { old, .. } => Some(old.clone()),
             Self::Revert { old } => Some(old.clone()),
+            Self::OldCommit { .. } => None,
             Self::Commit { .. } => None,
         }
     }
@@ -108,7 +111,8 @@ impl CanonStateNotification {
         match self {
             Self::Reorg { new, .. } => Some(new.clone()),
             Self::Revert { .. } => None,
-            Self::Commit { new } => Some(new.clone()),
+            Self::OldCommit { new } => Some(new.clone()),
+            Self::Commit { .. } => None,
         }
     }
 
@@ -121,7 +125,8 @@ impl CanonStateNotification {
         match self {
             Self::Reorg { new, .. } => new.tip(),
             Self::Revert { old } => old.first(),
-            Self::Commit { new } => new.tip(),
+            Self::OldCommit { new } => new.tip(),
+            Self::Commit { new } => new,
         }
     }
 

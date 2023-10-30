@@ -16,7 +16,7 @@ pub mod metrics;
 
 pub use crate::{
     client::LocalNarwhalClient,
-    tx_validator::{TransactionValidator, TrivialTransactionValidator},
+    tx_validator::{TransactionValidator, LatticeTransactionValidator, TrivialTransactionValidator},
     worker::Worker,
 };
 

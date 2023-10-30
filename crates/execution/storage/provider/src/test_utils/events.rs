@@ -13,7 +13,7 @@ impl TestCanonStateSubscriptions {
     /// Adds new block commit to the queue that can be consumed with
     /// [`TestCanonStateSubscriptions::subscribe_to_canonical_state`]
     pub fn add_next_commit(&mut self, new: Arc<Chain>) {
-        let event = CanonStateNotification::Commit { new };
+        let event = CanonStateNotification::OldCommit { new };
         self.canon_notif_tx.lock().as_mut().unwrap().retain(|tx| tx.send(event.clone()).is_ok())
     }
 

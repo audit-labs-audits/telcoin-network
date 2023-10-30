@@ -14,27 +14,45 @@ use tn_network_types::{SealBatchRequest, SealedBatchResponse};
 use tn_types::{execution::{
     U256, Receipt, IntoRecoveredTransaction, Withdrawal, H256, constants::{EMPTY_WITHDRAWALS, BEACON_NONCE}, ChainSpec, proofs::{self, EMPTY_ROOT}, EMPTY_OMMER_ROOT, Header, Bytes, TransactionSigned, Block, SealedBlockWithSenders,
 }, consensus::{WorkerId, TimestampSec, BatchDigest, Batch, VersionedMetadata, now, BatchAPI, ConsensusOutput}};
-use tokio::sync::oneshot;
+use tokio::sync::{oneshot, OwnedSemaphorePermit, AcquireError};
 use tracing::{debug, warn, error};
 use execution_transaction_pool::BestTransactions;
-use crate::{BatchPayloadConfig, HeaderPayloadConfig, Cancelled, BatchPayload, LatticePayloadBuilderError, BatchPayloadSizeMetric, HeaderPayload, BlockPayloadConfig, BlockPayload};
+use crate::{BatchPayloadConfig, HeaderPayloadConfig, Cancelled, BatchPayload, LatticePayloadBuilderError, BatchPayloadSizeMetric, HeaderPayload, BlockPayloadConfig, BlockPayload, PayloadTaskGuard};
 
 /// Share the built batch with the quorum waiter for broadcasting to all peers.
 pub(super) async fn seal_batch<Network>(
     network: Network,
     payload: Vec<Vec<u8>>,
     metadata: VersionedMetadata,
-    tx: oneshot::Sender<Result<SealedBatchResponse, LatticePayloadBuilderError>>,
+    tx: oneshot::Sender<Result<(SealedBatchResponse, OwnedSemaphorePermit), LatticePayloadBuilderError>>,
     _cancel: Cancelled,
     waker: Waker,
+    guard: PayloadTaskGuard,
 )
 where
     Network: EngineToWorkerClient + Clone + Unpin + Send + Sync + 'static,
 {
-    let worker_id = 0;
-    let request = SealBatchRequest { payload, metadata };
-    let res = network.seal_batch(worker_id, request).await;
-    let _ = tx.send(res.map_err(Into::into));
+    #[inline(always)]
+    async fn try_seal<Network>(
+        network: Network,
+        payload: Vec<Vec<u8>>,
+        metadata: VersionedMetadata,
+        _cancel: Cancelled,
+        guard: PayloadTaskGuard,
+    ) -> Result<(SealedBatchResponse, OwnedSemaphorePermit), LatticePayloadBuilderError>
+    where
+        Network: EngineToWorkerClient + Clone + Unpin + Send + Sync + 'static,
+    {
+        // TODO: this is hard-coded
+        let worker_id = 0;
+        let request = SealBatchRequest { payload, metadata };
+        debug!(target: "payload_job::batch", "calling seal_batch() on network...");
+        let network_response = network.seal_batch(worker_id, request).await?;
+        // if the quorum waiter is done, acquire the lock to seal the pool
+        let permit = guard.0.acquire_owned().await?;
+        Ok((network_response, permit))
+    }
+    let _ = tx.send(try_seal(network, payload, metadata, _cancel, guard).await);
     waker.wake();
 }
 
@@ -47,7 +65,7 @@ pub(super) fn create_batch<Pool, Client>(
     cancel: Cancelled,
     to_job: oneshot::Sender<Result<BatchPayload, LatticePayloadBuilderError>>,
     waker: Waker,
-) //-> Result<(Vec<TransactionId>, Vec<Vec<u8>>), PayloadBuilderError>
+)
 where
     Client: StateProviderFactory,
     Pool: TransactionPool,
@@ -71,7 +89,7 @@ where
             max_batch_size,
         } = config;
 
-        debug!(parent_hash=?parent_block.hash, parent_number=parent_block.number, "building new payload");
+        debug!(target: "payload_job::batch", parent_hash=?parent_block.hash, parent_number=parent_block.number, "building new batch");
 
         let state = State::new(client.state_by_block_hash(parent_block.hash)?);
         let mut db = CacheDB::new(cached_reads.as_db(&state));
@@ -293,7 +311,7 @@ where
             attributes,
         } = config;
 
-        debug!(parent_hash=?parent_block.hash, parent_number=parent_block.number, "building new payload");
+        debug!(target: "payload_job::header", parent_hash=?parent_block.hash, parent_number=parent_block.number, "building new header");
 
         let state = State::new(client.state_by_block_hash(parent_block.hash)?);
         let mut db = CacheDB::new(cached_reads.as_db(&state));
@@ -437,6 +455,7 @@ where
         Ok(HeaderPayload::new(header))
     }
 
+    debug!(target: "payload_job::header", "\n\ninside header helper fn\n");
     // return the result to the header building job
     let _ = to_job.send(try_build(client, pool, cached_reads, config, cancel, digests, missing_batches));
 
@@ -536,7 +555,7 @@ where
             output,
         } = config;
 
-        debug!(parent_hash=?parent_block.hash, parent_number=parent_block.number, "building new canonical block");
+        debug!(target: "payload_job::block", parent_hash=?parent_block.hash, parent_number=parent_block.number, "building new canonical block");
 
         let state = State::new(client.state_by_block_hash(parent_block.hash)?);
         let mut db = CacheDB::new(cached_reads.as_db(&state));

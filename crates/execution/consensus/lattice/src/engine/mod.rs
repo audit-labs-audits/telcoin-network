@@ -600,19 +600,40 @@ mod tests {
         );
 
         let (engine, env) = TestConsensusEngineBuilder::new(chain_spec.clone())
-            .with_executor_results(Vec::from([exec_result]))
+            .with_executor_results(Vec::from([exec_result.clone()]))
             .build();
-
-        insert_blocks(env.db.as_ref(), chain_spec.clone(), [&data.genesis, &block1].into_iter());
 
         // spawn engine
         let mut engine_rx = spawn_consensus_engine(engine);
 
+        let block1_hash = block1.hash();
+
+        // update canonical chain with block1
+        let payload = Arc::new(BlockPayload::new(
+            block1.seal_with_senders().unwrap(),
+            exec_result,
+            U256::ZERO
+        ));
+        env.send_new_canonical_block(payload).await.unwrap();
+
         // create batch
         let mut rng = generators::rng();
 
+        // ensure default parent hash (H256::ZERO)
+        // fails when batch number != 1
+        let invalid_batch = random_batch(&mut rng, 2, None, Some(3));
+        assert!(env.send_batch_from_peer(invalid_batch).await.is_err());
+
+        // ensure old parent hash fails
+        let invalid_batch = random_batch(&mut rng, 2, Some(data.genesis.hash), Some(3));
+        assert!(env.send_batch_from_peer(invalid_batch).await.is_err());
+
+        // ensure unknown parent hash fails
+        let invalid_batch = random_batch(&mut rng, 2, Some(data.blocks[1].0.block.hash), Some(3));
+        assert!(env.send_batch_from_peer(invalid_batch).await.is_err());
+
         // validate next batch - built off block1
-        let batch = random_batch(&mut rng, 2, Some(block1.hash), Some(3));
+        let batch = random_batch(&mut rng, 2, Some(block1_hash), Some(3));
         env.send_batch_from_peer(batch).await.unwrap();
         assert_matches!(engine_rx.try_recv(), Err(TryRecvError::Empty));
     }

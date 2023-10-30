@@ -7,8 +7,8 @@ use execution_transaction_pool::{TransactionPool, TransactionId, BatchInfo};
 use lattice_network::EngineToWorkerClient;
 use revm::primitives::{CfgEnv, BlockEnv};
 use tn_network_types::SealedBatchResponse;
-use tokio::sync::oneshot;
-use tracing::{trace, warn};
+use tokio::sync::{oneshot, OwnedSemaphorePermit, AcquireError};
+use tracing::{trace, warn, debug};
 use std::{future::Future, sync::Arc, pin::Pin, task::{Context, Poll}};
 use tn_types::{execution::SealedBlock, consensus::VersionedMetadata};
 use futures_core::ready;
@@ -36,6 +36,7 @@ impl BatchPayload {
         metadata: VersionedMetadata,
         executed_tx_ids: Vec<TransactionId>,
         size_metric: BatchPayloadSizeMetric,
+        // permit: OwnedSemaphorePermit,
     ) -> Self {
         Self { batch, metadata, executed_tx_ids, size_metric }
     }
@@ -116,16 +117,21 @@ where
 
         // poll the network call if it exists
         if let Some(mut fut) = this.pending_broadcast.take() {
+            debug!(target: "payload_job::batch", "inside pending broadcast");
             let poll_status = match fut.poll_unpin(cx) {
-                Poll::Ready(Ok(sealed_batch)) => {
+                Poll::Ready(Ok((sealed_batch, permit))) => {
                     // update pool
                     let batch_info = BatchInfo::new(
-                        sealed_batch.digest,
+                        Arc::new(sealed_batch.digest),
                         this.payload_transactions.clone(),
                         sealed_batch.worker_id,
                     );
+                    debug!(target: "payload_job::batch", "ready - attempt to seal pool...");
                     // update pool and return Ready
                     this.pool.on_sealed_batch(batch_info);
+                    debug!(target: "payload_job::batch", "updated sealed pool");
+                    // release permit
+                    drop(permit);
                     Poll::Ready(Ok(()))
                 }
                 Poll::Ready(Err(e)) => {
@@ -147,19 +153,21 @@ where
         if let Some(mut fut) = this.pending_batch.take() {
             let poll_status = match fut.poll_unpin(cx) {
                 Poll::Ready(Ok(payload)) => {
+                    debug!(target: "payload_job::batch", "pending batch ready...");
                     // use the local network to send the batch to the quorum waiter
                     let (tx, rx) = oneshot::channel();
-                    let guard = this.payload_task_guard.clone();
                     let network_client = this.network.clone();
                     let cancel = Cancelled::default();
                     let _cancel = cancel.clone();
                     let waker = cx.waker().clone();
                     let batch = payload.get_batch().clone();
                     let metadata = payload.get_metadata().clone();
+                    let guard = this.payload_task_guard.clone();
                     // need synchronous IO
-                    this.executor.spawn_blocking(Box::pin(async move {
-                        // acquire the permit for executing the task
-                        let _permit = guard.0.acquire().await;
+                    this.executor.spawn(Box::pin(async move {
+                        // TODO: don't acquire guard here bc QW might hang
+                        // and prevent primary's timer from building next header
+                        debug!(target: "payload_job::batch", "sending batch to quorum waiter...");
                         seal_batch(
                             network_client,
                             batch,
@@ -167,6 +175,7 @@ where
                             tx,
                             cancel,
                             waker,
+                            guard,
                         ).await
                     }));
                     this.payload_transactions = payload.get_transaction_ids().clone();
@@ -206,7 +215,7 @@ where
 
         this.executor.spawn_blocking(Box::pin(async move {
             // acquire the permit for executing the task
-            let _permit = guard.0.acquire().await;
+            let permit = guard.0.acquire().await;
             create_batch(
                 client,
                 pool,
@@ -251,15 +260,16 @@ pub(crate) struct PendingBroadcast {
     /// The marker to cancel the job on drop
     _cancel: Cancelled,
     /// The channel to send the result to.
-    network_result: oneshot::Receiver<Result<SealedBatchResponse, LatticePayloadBuilderError>>,
+    network_result: oneshot::Receiver<Result<(SealedBatchResponse, OwnedSemaphorePermit), LatticePayloadBuilderError>>,
 }
 
 impl Future for PendingBroadcast {
-    type Output = Result<SealedBatchResponse, LatticePayloadBuilderError>;
+    // return network responsea and owned permit
+    type Output = Result<(SealedBatchResponse, OwnedSemaphorePermit), LatticePayloadBuilderError>;
 
     fn poll(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
         let res = ready!(self.network_result.poll_unpin(cx));
-        Poll::Ready(res.map_err(Into::into).and_then(|res| res))
+        Poll::Ready(res.map_err(Into::into).and_then(|res| res ))
     }
 }
 

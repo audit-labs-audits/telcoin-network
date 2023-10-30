@@ -1,6 +1,8 @@
 //! Support types for updating the pool.
+use std::sync::Arc;
+
 use crate::{identifier::TransactionId, pool::state::SubPool};
-use tn_types::execution::TxHash;
+use tn_types::{execution::TxHash, consensus::BatchDigest};
 
 /// A change of the transaction's location
 ///
@@ -15,6 +17,8 @@ pub(crate) struct PoolUpdate {
     pub(crate) current: SubPool,
     /// Where to move the transaction to.
     pub(crate) destination: Destination,
+    /// The digest for the batch, if it's included.
+    pub(crate) digest: Option<Arc<BatchDigest>>,
 }
 
 /// Where to move an existing transaction.

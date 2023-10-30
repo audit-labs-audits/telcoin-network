@@ -59,13 +59,16 @@ impl EngineToWorker for EngineToWorkerHandler {
             return Err(anemo::rpc::Status::internal(e.to_string()))
         }
 
-        // Also wait for sending to be done here
+        // TODO: this is an old approach and doesn't really add much
+        // removed to prevent missing batches from tx pool
         //
-        // TODO: Here if we get back Err it means that potentially this was not send
-        //       to a quorum. However, if that happens we can still proceed on the basis
-        //       that another authority will request the batch from us, and we will deliver
-        //       it since it is now stored. So ignore the error for the moment.
-        let _ = done_sending.await;
+        // // Also wait for sending to be done here
+        // //
+        // // TODO: Here if we get back Err it means that potentially this was not send
+        // //       to a quorum. However, if that happens we can still proceed on the basis
+        // //       that another authority will request the batch from us, and we will deliver
+        // //       it since it is now stored. So ignore the error for the moment.
+        // let _ = done_sending.await;
         let worker_id = self.id.clone();
         Ok(anemo::Response::new(
             SealedBatchResponse{ batch, digest, worker_id }

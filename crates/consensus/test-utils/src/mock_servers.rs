@@ -7,8 +7,8 @@
 //! 
 //! Simulate network traffic between nodes and worker/primary.
 use anemo::async_trait;
-use tn_types::consensus::Multiaddr;
-use fastcrypto::traits::KeyPair as _;
+use tn_types::consensus::{Multiaddr, AuthorityIdentifier, crypto::{AuthoritySignature, INTENT_MESSAGE_LENGTH}, Vote};
+use fastcrypto::{traits::KeyPair as _, signature_service::SignatureService, ed25519::ED25519_SIGNATURE_LENGTH};
 use std::collections::HashMap;
 use tn_types::consensus::crypto::NetworkKeyPair;
 use tn_network_types::{
@@ -25,20 +25,23 @@ use tn_network_types::{
 use tokio::sync::mpsc::{channel, Receiver, Sender};
 use tracing::info;
 
-
 #[derive(Clone)]
 pub struct PrimaryToPrimaryMockServer {
     sender: Sender<SendCertificateRequest>,
+    authority_id: AuthorityIdentifier,
+    signature_service: SignatureService<AuthoritySignature, { INTENT_MESSAGE_LENGTH }>,
 }
 
 impl PrimaryToPrimaryMockServer {
     pub fn spawn(
         network_keypair: NetworkKeyPair,
         address: Multiaddr,
+        authority_id: AuthorityIdentifier,
+        signature_service: SignatureService<AuthoritySignature, { INTENT_MESSAGE_LENGTH }>,
     ) -> (Receiver<SendCertificateRequest>, anemo::Network) {
         let addr = address.to_anemo_address().unwrap();
         let (sender, receiver) = channel(1);
-        let service = PrimaryToPrimaryServer::new(Self { sender });
+        let service = PrimaryToPrimaryServer::new(Self { sender, authority_id, signature_service });
 
         let routes = anemo::Router::new().add_rpc_service(service);
         let network = anemo::Network::bind(addr)
@@ -66,9 +69,13 @@ impl PrimaryToPrimary for PrimaryToPrimaryMockServer {
 
     async fn request_vote(
         &self,
-        _request: anemo::Request<RequestVoteRequest>,
+        request: anemo::Request<RequestVoteRequest>,
     ) -> Result<anemo::Response<RequestVoteResponse>, anemo::rpc::Status> {
-        unimplemented!()
+        // always vote in favor
+        let header = &request.body().header;
+        let vote = Some(Vote::new(header, &self.authority_id, &self.signature_service).await);
+        let missing = Vec::new();
+        Ok(anemo::Response::new(RequestVoteResponse { vote, missing }))
     }
     async fn get_certificates(
         &self,

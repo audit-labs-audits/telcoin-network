@@ -17,6 +17,7 @@ use crate::{
     U256,
 };
 use fnv::FnvHashMap;
+use tracing::debug;
 use std::{
     cmp::Ordering,
     collections::{btree_map::Entry, hash_map, BTreeMap, HashMap},
@@ -386,14 +387,15 @@ impl<T: TransactionOrdering + Clone> TxPool<T> {
     fn process_updates(&mut self, updates: impl IntoIterator<Item = PoolUpdate>) -> UpdateOutcome {
         let mut outcome = UpdateOutcome::default();
         for update in updates {
-            let PoolUpdate { id, hash, current, destination } = update;
+            debug!(target: "txpool", "\npool update:\n\n{update:?}");
+            let PoolUpdate { id, hash, current, destination, digest } = update;
             match destination {
                 Destination::Discard => {
                     outcome.discarded.push(hash);
                 }
                 Destination::Pool(move_to) => {
                     debug_assert!(!move_to.eq(&current), "destination must be different");
-                    self.move_transaction(current, move_to, &id, None);
+                    self.move_transaction(current, move_to, &id, digest);
                     if move_to.is_promoted(SubPool::Pending) {
                         outcome.promoted.push(hash);
                     }
@@ -535,6 +537,7 @@ impl<T: TransactionOrdering + Clone> TxPool<T> {
             SubPool::Sealed => {
                 // Note: this cannot fail
                 let batch = batch_digest.unwrap_or_default();
+                debug!(target: "txpool", "add_transaction_to_subpool(): {batch:?}");
                 self.sealed_pool.add_transaction(batch, tx);
             }
         }
@@ -636,6 +639,7 @@ impl<T: TransactionOrdering + Clone> TxPool<T> {
         batch_info: BatchInfo,
     ) -> BatchSealedOutcome {
         let updates = self.all_transactions.update_from_sealed_batch(&batch_info);
+        debug!("updates: {updates:?}");
 
         // Process the sub-pool updates
         let UpdateOutcome { promoted, discarded } = self.process_updates(updates);
@@ -643,7 +647,7 @@ impl<T: TransactionOrdering + Clone> TxPool<T> {
         // update the metrics after the update
         self.update_size_metrics();
 
-        BatchSealedOutcome { batch_digest: batch_info.digest, sealed: promoted, discarded }
+        BatchSealedOutcome { batch_digest: *batch_info.digest.clone(), sealed: promoted, discarded }
     }
 
 
@@ -783,7 +787,7 @@ impl<T: PoolTransaction> AllTransactions<T> {
         for id in batch_info.transactions.iter() {
             let tx = self.txs.get_mut(&id).expect("tx exists in set");
             tx.state.insert(TxState::SEALED_IN_BATCH);
-            Self::record_subpool_update(&mut updates, tx);
+            Self::record_subpool_update(&mut updates, tx, Some(batch_info.digest.clone()));
         }
 
         updates
@@ -845,6 +849,7 @@ impl<T: PoolTransaction> AllTransactions<T> {
                         hash: *tx.transaction.hash(),
                         current: tx.subpool,
                         destination: Destination::Discard,
+                        digest: None,
                     });
                     continue 'transactions
                 }
@@ -878,7 +883,7 @@ impl<T: PoolTransaction> AllTransactions<T> {
             // Update the first transaction of this sender.
             Self::update_tx_base_fee(&self.pending_basefee, tx);
             // Track if the transaction's sub-pool changed.
-            Self::record_subpool_update(&mut updates, tx);
+            Self::record_subpool_update(&mut updates, tx, None);
 
             // Track blocking transactions.
             let mut has_parked_ancestor = !tx.state.is_pending();
@@ -923,7 +928,7 @@ impl<T: PoolTransaction> AllTransactions<T> {
 
                 // Update and record sub-pool changes.
                 Self::update_tx_base_fee(&self.pending_basefee, tx);
-                Self::record_subpool_update(&mut updates, tx);
+                Self::record_subpool_update(&mut updates, tx, None);
 
                 // Advance iterator
                 iter.next();
@@ -937,7 +942,11 @@ impl<T: PoolTransaction> AllTransactions<T> {
     ///
     /// If the sub-pool derived from the state differs from the current pool, it will record a
     /// `PoolUpdate` for this transaction to move it to the new sub-pool.
-    fn record_subpool_update(updates: &mut Vec<PoolUpdate>, tx: &mut PoolInternalTransaction<T>) {
+    fn record_subpool_update(
+        updates: &mut Vec<PoolUpdate>,
+        tx: &mut PoolInternalTransaction<T>,
+        digest: Option<Arc<BatchDigest>>,
+    ) {
         let current_pool = tx.subpool;
         tx.subpool = tx.state.into();
         if current_pool != tx.subpool {
@@ -946,6 +955,7 @@ impl<T: PoolTransaction> AllTransactions<T> {
                 hash: *tx.transaction.hash(),
                 current: current_pool,
                 destination: Destination::Pool(tx.subpool),
+                digest,
             })
         }
     }
@@ -1257,6 +1267,7 @@ impl<T: PoolTransaction> AllTransactions<T> {
                             hash: *tx.transaction.hash(),
                             current: current_pool,
                             destination: Destination::Pool(tx.subpool),
+                            digest: None,
                         })
                     }
                 }

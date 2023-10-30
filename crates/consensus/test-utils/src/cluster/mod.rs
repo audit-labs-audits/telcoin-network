@@ -54,9 +54,6 @@ impl Cluster {
         info!("Validator keys:");
         let mut nodes = HashMap::new();
 
-        // TODO: should this be part of the fixture?
-        // let empty_public_key = [0; 32];
-
         for (id, authority_fixture) in fixture.authorities().enumerate() {
             info!("Key {id} -> {}", authority_fixture.public_key());
 

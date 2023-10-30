@@ -5,7 +5,7 @@ use execution_transaction_pool::error::PoolError;
 use lattice_network::LocalClientError;
 use revm::primitives::EVMError;
 use tn_types::execution::{H256, TransactionSigned};
-use tokio::sync::oneshot;
+use tokio::sync::{oneshot, AcquireError};
 
 use crate::LatticePayloadBuilderServiceCommand;
 
@@ -60,6 +60,9 @@ pub enum LatticePayloadBuilderError {
     /// Error recoving signature for transaction
     #[error("Failed to recover tx signature: {0:?}")]
     RecoverSignature(TransactionSigned),
+    /// Error trying to recover an owned Sempahore for build
+    #[error(transparent)]
+    Acquire(#[from] AcquireError),
 }
 
 impl From<oneshot::error::RecvError> for LatticePayloadBuilderError {

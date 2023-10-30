@@ -34,6 +34,8 @@ impl<DB: Database, C: Consensus, EF: ExecutorFactory> BlockchainTree<DB, C, EF> 
 
         let parent = block.parent_num_hash();
 
+        // TODO: this lets batches from previous round be validated on older blocks
+        //
         // only check canonical chain for parent
         if self
             .is_block_hash_canonical(&parent.hash)

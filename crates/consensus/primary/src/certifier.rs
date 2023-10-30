@@ -329,7 +329,7 @@ impl Certifier {
         Ok(certificate)
     }
 
-    // Logs Certifier errors as appropriate.
+    /// Logs Certifier errors as appropriate.
     fn process_result(result: &PrimaryResult<()>) {
         match result {
             Ok(()) => (),
@@ -346,7 +346,7 @@ impl Certifier {
         }
     }
 
-    // Main loop listening to incoming messages.
+    /// Main loop listening to incoming messages.
     pub async fn run(mut self) -> PrimaryResult<Self> {
         info!("Core on node {} has started successfully.", self.authority_id);
         loop {

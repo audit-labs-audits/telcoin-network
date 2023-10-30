@@ -9348,6 +9348,7 @@ dependencies = [
  "lattice-payload-builder",
  "tn-network-types",
  "tn-types",
+ "tracing",
 ]
 
 [[package]]

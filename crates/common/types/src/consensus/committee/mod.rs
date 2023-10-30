@@ -8,6 +8,7 @@ mod builder;
 pub use builder::*;
 mod authority;
 pub use authority::*;
+use tracing::debug;
 use super::config::{Stake, ConfigError, CommitteeUpdateError};
 use crate::consensus::crypto::{NetworkPublicKey, AuthorityPublicKey};
 use crate::consensus::Multiaddr;

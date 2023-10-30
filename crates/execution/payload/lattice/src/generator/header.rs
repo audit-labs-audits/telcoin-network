@@ -7,6 +7,7 @@ use execution_transaction_pool::TransactionPool;
 use fastcrypto::hash::Hash;
 use indexmap::IndexMap;
 use revm::primitives::{CfgEnv, BlockEnv, Address};
+use tracing::warn;
 use std::{
     sync::Arc, collections::{HashMap, HashSet},
 };
@@ -41,21 +42,27 @@ where
         //   rounds of finality?
 
         // each block should be associated with the round number
-        let parent_block = if attr.round == 0 {
+        // TODO: why aren't blocks finalized?
+        let parent_block ={// if attr.round == 1 {
+            tracing::debug!(target: "payload_job::header", "finding latest for round {:?}", attr.round);
             // use latest block if parent is zero: genesis block
             self.client
                 .block_by_number_or_tag(BlockNumberOrTag::Latest)?
                 .ok_or_else(|| LatticePayloadBuilderError::LatticeBlockFromGenesis)?
                 .seal_slow()
-        } else {
-            // TODO: better to find by round or finalized?
-            self
-                .client
-                // build off canonical state
-                .block_by_number_or_tag(BlockNumberOrTag::Finalized)?
-                .ok_or_else(|| LatticePayloadBuilderError::MissingFinalizedBlock(attr.round))?
-                .seal_slow()
         };
+        // } else {
+        //     // TODO: better to find by round or finalized?
+        //     tracing::debug!("finding last finalized block for round {:?}...", attr.round);
+        //     self
+        //         .client
+        //         // build off canonical state
+        //         .block_by_number_or_tag(BlockNumberOrTag::Finalized)?
+        //         .ok_or_else(|| LatticePayloadBuilderError::MissingFinalizedBlock(attr.round))?
+        //         .seal_slow()
+        // };
+
+        tracing::debug!(target: "payload_job::header", "\nparent block\n{parent_block:?}\n");
 
         // TODO: CfgEnv has a lot of options that may be useful for TN environment
         // configure evm env based on parent block
@@ -66,6 +73,8 @@ where
             ..Default::default()
         };
 
+        // TODO: what if payload.len() is 0??
+        //
         // TODO: get BATCH_GAS_LIMIT from config
         // set gas limit to the number of batches * 30mil
         let gas_limit = U256::from(ETHEREUM_BLOCK_GAS_LIMIT).saturating_mul(
@@ -87,6 +96,7 @@ where
             basefee: U256::from(parent_block.next_block_base_fee().unwrap_or_default()),
         };
 
+        tracing::info!("verifying missing batches...{:?}", attr.payload);
         // check for batches here
         // optional receiver if any batches are missing/corrupted
         let missing_batches_rx = self.verify_batches_present(&attr.payload);
@@ -100,6 +110,7 @@ where
             chain_spec: self.chain_spec.clone(),
             attributes: attr,
         };
+        tracing::debug!(target: "payload_job::header", "missing batches?: {:?}", missing_batches_rx.is_some());
 
         Ok(HeaderPayloadJob {
             config,
@@ -183,6 +194,7 @@ where
         let missing_batches_channel = match missing_batches.is_empty() {
             true => None,
             false => {
+                warn!(target: "payload_job::header", "missing batches present...");
                 let (tx, missing) = oneshot::channel();
                 let pool = self.pool.clone();
                 let network = self.network.clone();
@@ -249,6 +261,7 @@ where
                     // than try to validate and add through all pools
                     let _ = tx.send(returned_batches);
                 }));
+                warn!(target: "payload_job::header", "returned missing batches: {missing:?}");
                 Some(missing)
             }
         };

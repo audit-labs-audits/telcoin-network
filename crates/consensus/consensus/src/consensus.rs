@@ -142,7 +142,7 @@ impl Consensus {
                     }
 
                     // Process the certificate using the selected consensus protocol.
-                    let (_, committed_sub_dags) = self.protocol.process_certificate(&mut self.state, certificate)?;
+                    let (_outcome, committed_sub_dags) = self.protocol.process_certificate(&mut self.state, certificate)?;
 
                     // We extract a list of headers from this specific validator that
                     // have been agreed upon, and signal this back to the narwhal sub-system

@@ -6,7 +6,7 @@ use crate::{metrics::PrimaryMetrics, error::{PrimaryResult, PrimaryError}};
 use indexmap::IndexMap;
 use lattice_network::{PrimaryToEngineClient, client::NetworkClient};
 use consensus_metrics::{
-    metered_channel::{Receiver, Sender},
+    metered_channel::{self, Receiver, Sender},
     spawn_logged_monitored_task,
 };
 use fastcrypto::hash::Hash as _;
@@ -25,7 +25,7 @@ use tn_network_types::{
     BuildHeaderRequest, HeaderPayloadResponse,
 };
 use tokio::{
-    sync::{oneshot, watch},
+    sync::{oneshot, watch, mpsc},
     task::JoinHandle,
     time::{sleep, sleep_until, Duration, Instant},
 };
@@ -99,6 +99,15 @@ pub struct Proposer {
     metrics: Arc<PrimaryMetrics>,
     /// Network for sending rpc call to EL engine.
     network_client: NetworkClient,
+    /// Channel for sending results from network task.
+    /// 
+    /// Own a copy to pass to network task that requests a new
+    /// header from the EL.
+    tx_own_network_task: mpsc::Sender<(Header, Option<VecDeque<OurDigestMessage>>)>,
+    /// Channel for receiving results from network task.
+    ///
+    /// The proposer's `run` method loops, so oneshot won't work.
+    rx_own_network_task: mpsc::Receiver<(Header, Option<VecDeque<OurDigestMessage>>)>,
 }
 
 impl Proposer {
@@ -123,6 +132,10 @@ impl Proposer {
         network_client: NetworkClient,
     ) -> JoinHandle<()> {
         let genesis = Certificate::genesis(&committee);
+        let (
+            tx_own_network_task,
+            rx_own_network_task,
+        ) = mpsc::channel(2);
         spawn_logged_monitored_task!(
             async move {
                 Self {
@@ -148,6 +161,8 @@ impl Proposer {
                     rx_committed_own_headers,
                     metrics,
                     network_client,
+                    tx_own_network_task,
+                    rx_own_network_task,
                 }
                 .run()
                 .await;
@@ -163,30 +178,19 @@ impl Proposer {
     /// The task returns a oneshot channel receiver that receives the built header
     /// or an error upon completion. An Option<VecDeque<OurDigestMessage>> is returned
     /// if the header is new for this round.
-    async fn spawn_build_header(&mut self) -> oneshot::Receiver<PrimaryResult<(Header, Option<VecDeque<OurDigestMessage>>)>> {
+    async fn spawn_build_header(&mut self) -> PrimaryResult<()> {
         let this_round = self.round;
         let this_epoch = self.committee.epoch();
 
-        // result channel
-        let (tx, rx) = oneshot::channel();
-
         // Check if we already have stored a header for this round.
-        match self.proposer_store.get_last_proposed() {
-            Ok(Some(last_header)) => {
-                // clear last parents if the header is from this round
-                if last_header.round() == this_round && last_header.epoch() == this_epoch {
-                    // We have already produced a header for the current round, idempotent re-send
-                    debug!("Proposer re-using existing header for round {this_round}");
-                    self.last_parents.clear(); // Clear parents that are now invalid for next round.
-                    let _ = tx.send(Ok((last_header, None)));
-                    return rx
-                }
+        if let Some(last_header) = self.proposer_store.get_last_proposed()? {
+            // clear last parents if the header is from this round
+            if last_header.round() == this_round && last_header.epoch() == this_epoch {
+                // We have already produced a header for the current round, idempotent re-send
+                debug!(target: "primary::proposer", "Proposer re-using existing header for round {this_round}");
+                self.last_parents.clear(); // Clear parents that are now invalid for next round.
+                let _ = self.tx_own_network_task.send((last_header, None));
             }
-            Ok(None) => (),
-            Err(e) => {
-                let _ = tx.send(Err(e.into()));
-                return rx
-            },
         }
 
         // Make a new header:
@@ -236,10 +240,11 @@ impl Proposer {
         let authority_id = self.authority_id;
         let metrics = self.metrics.clone();
         let max_header_delay = self.max_header_delay;
+        let tx = self.tx_own_network_task.clone();
 
         // spawn network task
         tokio::spawn(async move {
-            // EL data
+            // build request
             let request = BuildHeaderRequest {
                 round: this_round,
                 epoch: this_epoch,
@@ -263,13 +268,13 @@ impl Proposer {
                     // update metrics
                     Proposer::update_metrics(metrics, max_header_delay, leader_and_support, &header, &header_digests);
 
-                    tx.send(Ok((header, Some(header_digests))))
+                    let _ = tx.send((header, Some(header_digests))).await;
                 }
-                Err(e) => tx.send(Err(e.into())),
+                Err(e) => error!("{e:?}"),
             }
         });
 
-        rx
+        Ok(())
     }
 
     /// Process a header for the round and persist it to database.
@@ -303,7 +308,7 @@ impl Proposer {
         }
 
         let num_of_included_digests = header.payload().len();
-
+        
         // Send the new header to the `Certifier` that will broadcast and certify it.
         self.tx_headers.send(header.clone()).await.map_err(|_| PrimaryError::ShuttingDown)?;
 
@@ -333,7 +338,7 @@ impl Proposer {
             }
             trace!(msg);
         } else {
-            debug!("Created header {header:?}");
+            debug!(target: "primary::proposer", "Created header {header:?}");
         }
 
         // Update metrics related to latency
@@ -345,6 +350,7 @@ impl Proposer {
 
             // NOTE: This log entry is used to compute performance.
             tracing::debug!(
+                    target: "primary::proposer", 
                     "Batch {:?} from worker {} took {} seconds from creation to be included in a proposed header",
                     digest.digest,
                     digest.worker_id,
@@ -364,6 +370,7 @@ impl Proposer {
                 (max_header_delay.as_secs_f64(), 0.0)
             };
         debug!(
+            target: "primary::proposer", 
             "Header {:?} was created in {} seconds. Contains {} batches, with average delay {} seconds.",
             header.digest(),
             header_creation_secs,
@@ -403,7 +410,7 @@ impl Proposer {
             .iter()
             .find(|x| {
                 if x.origin() == leader.id() {
-                    debug!("Got leader {:?} for round {}", x, self.round);
+                    debug!(target: "primary::proposer", "Got leader {:?} for round {}", x, self.round);
                     true
                 } else {
                     false
@@ -454,7 +461,7 @@ impl Proposer {
 
     /// Main loop listening to incoming messages.
     pub async fn run(&mut self) {
-        debug!("Dag starting at round {}", self.round);
+        debug!(target: "primary::proposer", "Dag starting at round {}", self.round);
         let mut advance = true;
 
         let timer_start = Instant::now();
@@ -492,7 +499,7 @@ impl Proposer {
             let min_delay_timed_out = min_delay_timer.is_elapsed();
 
             // optional channel if the primary can and should build a new header
-            let opt_channel = if (max_delay_timed_out || ((enough_digests || min_delay_timed_out) && advance)) &&
+            if (max_delay_timed_out || ((enough_digests || min_delay_timed_out) && advance)) &&
                 enough_parents
             {
                 if max_delay_timed_out {
@@ -501,7 +508,7 @@ impl Proposer {
                     // that the network is experiencing periods of asynchrony.
                     // In practice, the latter scenario means we misconfigured the parameter
                     // called `max_header_delay`.
-                    debug!("Timer expired for round {}", self.round);
+                    debug!(target: "primary::proposer", "Timer expired for round {}", self.round);
                 }
 
                 // Advance to the next round.
@@ -528,38 +535,17 @@ impl Proposer {
                 }
                 self.last_round_timestamp = Some(current_timestamp);
 
-                debug!("Dag moved to round {}", self.round);
+                debug!(target: "primary::proposer", "Dag moved to round {}", self.round);
                 
                 // build the next header and return the receiver channel
-                let rx = self.spawn_build_header().await;
+                let _rx = self.spawn_build_header().await;
+            }
 
-                Some(rx)
-            } else { None };
-
-            // workaround for tokio::select!
-            let next_header = async move {
-                match opt_channel {
-                    Some(rx) => {
-                        let res = rx.await.map_err(|_| PrimaryError::ClosedChannel("next header".to_string()))?;
-                        match res {
-                            Err(e @ PrimaryError::ShuttingDown) => {
-                                debug!("{e}");
-                                Err(e)
-                            }
-                            Err(e) => {
-                                panic!("Unexpected error: {e}");
-                            }
-                            Ok(res) => Ok(res),
-                        }
-                    },
-                    None => Err(PrimaryError::ClosedChannel("next header".to_string())),
-                }
-            };
 
             tokio::select! {
-                Ok((header, digests)) = next_header => {
+                Some((header, digests)) = self.rx_own_network_task.recv() => {
                     match self.process_header(header, digests).await {
-                        Err(e @ PrimaryError::ShuttingDown) => debug!("{e}"),
+                        Err(e @ PrimaryError::ShuttingDown) => error!("{e}"),
                         Err(e) => panic!("Unexpected error: {e}"),
                         Ok((header, digests)) => {
                             let reason = if max_delay_timed_out {
@@ -589,7 +575,7 @@ impl Proposer {
                     // If the round has not advanced within header_resend_timeout then try to
                     // re-process our own header.
                     if let Some(header) = &opt_latest_header {
-                        debug!("resend header {:?}", header);
+                        debug!(target: "primary::proposer", "resend header {:?}", header);
 
                         if let Err(err) = self.tx_headers.send(header.clone()).await.map_err(|_| PrimaryError::ShuttingDown) {
                             error!("failed to resend header {:?} : {:?}", header, err);
@@ -645,6 +631,7 @@ impl Proposer {
                         }
 
                         debug!(
+                            target: "primary::proposer", 
                             "Retransmit {} batches in undelivered headers {:?} at commit round {:?}, remaining headers {}",
                             num_to_resend,
                             retransmit_rounds,
@@ -711,6 +698,7 @@ impl Proposer {
                     advance = if self.ready() {
                         if !advance {
                             debug!(
+                                target: "primary::proposer", 
                                 "Ready to advance from round {}",
                                 self.round,
                             );
@@ -803,7 +791,7 @@ mod test {
         let mut mock_engine = MockPrimaryToEngine::new();
         mock_engine.expect_build_header().return_once(
             move |_request| {
-                tracing::debug!("mock engine expect_build_header: {_request:?}");
+                debug!(target: "primary::proposer", "mock engine expect_build_header: {_request:?}");
                 let header = tn_types::execution::Header::default();
                 Ok(
                     anemo::Response::new(
@@ -870,7 +858,7 @@ mod test {
         let mut mock_engine = MockPrimaryToEngine::new();
         mock_engine.expect_build_header().times(2).returning(
             move |_request| {
-                tracing::debug!("mock engine expect_build_header: {_request:?}");
+                debug!("mock engine expect_build_header: {_request:?}");
                 let header = tn_types::execution::Header::default();
                 Ok(
                     anemo::Response::new(
@@ -1005,7 +993,7 @@ mod test {
         let mut mock_engine = MockPrimaryToEngine::new();
         mock_engine.expect_build_header().return_once(
             move |_request| {
-                tracing::debug!("mock engine expect_build_header: {_request:?}");
+                debug!("mock engine expect_build_header: {_request:?}");
                 let header = tn_types::execution::Header::default();
                 Ok(
                     anemo::Response::new(
@@ -1091,7 +1079,7 @@ mod test {
         let mut mock_engine = MockPrimaryToEngine::new();
         mock_engine.expect_build_header().return_once(
             move |_request| {
-                tracing::debug!("mock engine expect_build_header: {_request:?}");
+                debug!("mock engine expect_build_header: {_request:?}");
                 let header = tn_types::execution::Header::default();
                 Ok(
                     anemo::Response::new(

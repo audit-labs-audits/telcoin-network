@@ -710,7 +710,7 @@ pub struct BlockInfo {
 #[derive(Debug, Clone)]
 pub struct BatchInfo {
     /// The batch digest
-    pub(crate) digest: BatchDigest,
+    pub(crate) digest: Arc<BatchDigest>,
     /// The transaction ids of the transactions in the batch.
     pub(crate) transactions: Vec<TransactionId>,
     /// The id of the worker responsible for this batch.
@@ -720,7 +720,7 @@ pub struct BatchInfo {
 impl BatchInfo {
     /// Create a new instance of [Self].
     pub fn new(
-        digest: BatchDigest,
+        digest: Arc<BatchDigest>,
         transactions: Vec<TransactionId>,
         worker_id: WorkerId,
     ) -> Self {

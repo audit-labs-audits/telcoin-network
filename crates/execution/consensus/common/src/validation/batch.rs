@@ -85,5 +85,10 @@ pub fn validate_batch_regarding_parent(
     //     })
     // }
 
+    // Only genesis can have parent hash of 0x0
+    if batch.parent_hash.is_zero() && batch.number != 1 {
+        return Err(ConsensusError::ParentUnknown { hash: batch.parent_hash })
+    }
+
     Ok(())
 }

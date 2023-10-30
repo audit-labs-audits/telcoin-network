@@ -20,7 +20,7 @@ use rand::{
     thread_rng, Rng, RngCore, SeedableRng,
 };
 use telemetry_subscribers::TelemetryGuards;
-use tokio::sync::mpsc::{Receiver, UnboundedReceiver};
+use tokio::sync::{mpsc::{Receiver, UnboundedReceiver}, Semaphore};
 use std::{
     collections::{BTreeSet, VecDeque},
     ops::RangeInclusive, future::Future, pin::Pin, task::{Poll, Context},
@@ -172,36 +172,6 @@ pub fn known_transaction_1() -> Transaction {
 // Fixture
 pub fn batch() -> Batch {
     Batch::new(vec![transaction(), transaction()])
-}
-
-/// Built payload from the EL
-/// 
-/// Returns a BatchPayload with known values.
-pub fn build_batch() -> Result<Arc<BatchPayload>, LatticePayloadBuilderError> {
-   Ok(Arc::new(
-        BatchPayload::new(
-            vec![known_transaction_1()],
-            Default::default(),
-            vec![
-                TransactionId {
-                    sender: SenderId::from(3),
-                    nonce: 0
-                }
-            ],
-            Default::default(),
-        )
-    ))
-}
-
-/// Mock representation of a job that returns a Future built batch payload resutl.
-#[derive(Default, Clone)]
-pub struct MockBatchBuildJob;
-impl Future for MockBatchBuildJob {
-    type Output = Result<Arc<BatchPayload>, LatticePayloadBuilderError>;
-
-    fn poll(self: Pin<&mut Self>, _cx: &mut Context<'_>) -> Poll<Self::Output> {
-        Poll::Ready(build_batch())
-    }
 }
 
 /// generate multiple fixture batches. The number of generated batches

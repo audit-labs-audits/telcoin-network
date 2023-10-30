@@ -72,6 +72,9 @@ where
         // based on the tracked state
 
         match event {
+            CanonStateNotification::Commit { new } => {
+                todo!()
+            }
             CanonStateNotification::Reorg { old, new } => {
                 let (old_blocks, old_state) = old.inner();
                 let (new_blocks, new_state) = new.inner();
@@ -203,7 +206,7 @@ where
                 let _ = pool.add_external_transactions(pruned_old_transactions).await;
                 // TODO: metrics
             }
-            CanonStateNotification::Commit { new } => {
+            CanonStateNotification::OldCommit { new } => {
                 let (blocks, state) = new.inner();
                 let tip = blocks.tip();
 

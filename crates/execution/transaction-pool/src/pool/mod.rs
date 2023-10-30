@@ -160,7 +160,6 @@ where
 
     /// Returns stats about the size of the pool.
     pub(crate) fn size(&self) -> PoolSize {
-        tracing::debug!("attempting to obtain pool.read() lock");
         self.pool.read().size()
     }
 
