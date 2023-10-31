@@ -3,7 +3,9 @@ FROM rust:1.72.1-slim-bookworm as builder
 WORKDIR /usr/src/telcoin-network
 
 RUN apt-get update \
-    && apt-get install -y build-essential cmake libclang-15-dev
+    && apt-get install -y build-essential cmake libclang-15-dev \
+    && apt-get clean \
+    && rm -rf /var/lib/apt/lists/*
 
 COPY Cargo* ./
 COPY bin/ ./bin/
@@ -17,7 +19,12 @@ RUN --mount=type=cache,target=/usr/local/cargo/registry \
     && mv ./target/release/telcoin-network /tmp/
 
 
+# Production Image
 FROM debian:bookworm-slim
+
+# Create a non-root user
+RUN useradd -ms /bin/bash nonroot
+USER nonroot
 
 COPY --from=builder /tmp/telcoin-network /usr/local/bin/telcoin-network
 
