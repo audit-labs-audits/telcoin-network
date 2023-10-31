@@ -9,7 +9,7 @@ readme = "README.md"
 [dependencies]
 # cli
 eyre = "0.6.8"
-clap = { version = "4.0", features = ["derive", "cargo"] }
+clap = { version = "4.0", features = ["derive", "cargo", "env"] }
 thiserror = "1.0"
 tokio = { version = "1.26", features = ["sync", "macros", "rt-multi-thread"] }
 hex-literal = "0.3"

@@ -45,6 +45,16 @@ integration-tests:
 lint:
 	cargo +nightly clippy --fix --all ;
 
+docker-login:
+	gcloud auth application-default login
+	gcloud auth configure-docker us-docker.pkg.dev
+	
+docker-build:
+	docker build . -t us-docker.pkg.dev/telcoin-network/telcoin-network/testnet
+	
+docker-push:
+	docker push us-docker.pkg.dev/telcoin-network/telcoin-network/testnet:latest
+
 # run an http rpc server on default port
 node:
 	cargo run --bin telcoin-network -- node --dev --http --http.api eth,net,web3 ;

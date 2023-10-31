@@ -59,7 +59,7 @@ pub struct RpcServerArgs {
     pub http_addr: Option<IpAddr>,
 
     /// Http server port to listen on
-    #[arg(long = "http.port")]
+    #[arg(long = "http.port", env = "PORT")]
     pub http_port: Option<u16>,
 
     /// Rpc Modules to be configured for the HTTP server
