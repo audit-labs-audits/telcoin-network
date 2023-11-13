@@ -1,13 +1,15 @@
 // Copyright (c) Telcoin, LLC
 // Copyright (c) Mysten Labs, Inc.
 // SPDX-License-Identifier: Apache-2.0
-use super::{be_fix_int_ser, errors::TypedStoreError, RocksDBRawIter};
-use crate::{metrics::RocksDBPerfContext, DBMetrics};
+use std::{marker::PhantomData, sync::Arc};
+
 use bincode::Options;
 use prometheus::{Histogram, HistogramTimer};
 use rocksdb::Direction;
+
+use super::{be_fix_int_ser, errors::TypedStoreError, RocksDBRawIter};
+use crate::{metrics::RocksDBPerfContext, DBMetrics};
 use serde::{de::DeserializeOwned, Serialize};
-use std::{marker::PhantomData, sync::Arc};
 
 /// An iterator over all key-value pairs in a data map.
 pub struct Iter<'a, K, V> {
@@ -120,6 +122,13 @@ impl<'a, K: Serialize, V> Iter<'a, K, V> {
     pub fn skip_to_last(mut self) -> Self {
         self.is_initialized = true;
         self.db_iter.seek_to_last();
+        self
+    }
+
+    /// Seeks to the first key in the database (at this column family).
+    pub fn seek_to_first(mut self) -> Self {
+        self.is_initialized = true;
+        self.db_iter.seek_to_first();
         self
     }
 

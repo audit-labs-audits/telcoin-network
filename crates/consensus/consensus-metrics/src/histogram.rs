@@ -116,7 +116,7 @@ impl HistogramVec {
             register_int_counter_vec_with_registry!(sum_name, desc, labels, registry).unwrap();
         let count =
             register_int_counter_vec_with_registry!(count_name, desc, labels, registry).unwrap();
-        let labels: Vec<_> = labels.iter().cloned().chain(["pct"].into_iter()).collect();
+        let labels: Vec<_> = labels.iter().cloned().chain(["pct"]).collect();
         let gauge = register_int_gauge_vec_with_registry!(name, desc, &labels, registry).unwrap();
         Self::new(gauge, sum, count, percentiles, name)
     }
@@ -206,7 +206,7 @@ impl HistogramCollector {
             const HISTOGRAM_WINDOW_SEC: u64 = 60;
             deadline += Duration::from_secs(HISTOGRAM_WINDOW_SEC);
             if self.cycle(deadline).await.is_err() {
-                return
+                return;
             }
         }
     }

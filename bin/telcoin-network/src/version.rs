@@ -1,6 +1,6 @@
-//! Version information for lattice.
+//! Version information for telcoin network.
 
-/// The short version information for lattice.
+/// The short version information for telcoin network.
 ///
 /// - The latest version from Cargo.toml
 /// - The short SHA of the latest commit.
@@ -13,7 +13,7 @@
 pub(crate) const SHORT_VERSION: &str =
     concat!(env!("CARGO_PKG_VERSION"), " (", env!("VERGEN_GIT_SHA"), ")");
 
-/// The long version information for lattice.
+/// The long version information for telcoin network.
 ///
 /// - The latest version from Cargo.toml
 /// - The long SHA of the latest commit.
@@ -28,7 +28,7 @@ pub(crate) const SHORT_VERSION: &str =
 /// Build Timestamp: 2023-05-19T01:47:19.815651705Z
 /// Build Features: jemalloc
 /// ```
-pub(crate) const LONG_VERSION: &str = concat!(
+pub(crate) const LONG_VERSION: &str = const_str::concat!(
     "Version: ",
     env!("CARGO_PKG_VERSION"),
     "\n",
@@ -39,21 +39,11 @@ pub(crate) const LONG_VERSION: &str = concat!(
     env!("VERGEN_BUILD_TIMESTAMP"),
     "\n",
     "Build Features: ",
-    env!("VERGEN_CARGO_FEATURES")
+    env!("VERGEN_CARGO_FEATURES"),
+    "\n",
+    "Build Profile: ",
+    build_profile_name()
 );
-
-/// The version information for lattice formatted for P2P.
-///
-/// - The latest version from Cargo.toml
-/// - The target triple
-///
-/// # Example
-///
-/// ```text
-/// lattice/v{major}.{minor}.{patch}/{target}
-/// ```
-pub(crate) const P2P_CLIENT_VERSION: &str =
-    concat!("lattice/v", env!("CARGO_PKG_VERSION"), "/", env!("VERGEN_CARGO_TARGET_TRIPLE"));
 
 /// The default extradata used for payload building.
 ///
@@ -63,10 +53,20 @@ pub(crate) const P2P_CLIENT_VERSION: &str =
 /// # Example
 ///
 /// ```text
-/// lattice/v{major}.{minor}.{patch}/{OS}
+/// telcoin-network/v{major}.{minor}.{patch}/{OS}
 /// ```
 pub fn default_extradata() -> String {
-    format!("lattice/v{}/{}", env!("CARGO_PKG_VERSION"), std::env::consts::OS)
+    format!("telcoin-network/v{}/{}", env!("CARGO_PKG_VERSION"), std::env::consts::OS)
+}
+
+const fn build_profile_name() -> &'static str {
+    // Derived from https://stackoverflow.com/questions/73595435/how-to-get-profile-from-cargo-toml-in-build-rs-or-at-runtime
+    // We split on the path separator of the *host* machine, which may be different from
+    // `std::path::MAIN_SEPARATOR_STR`.
+    const OUT_DIR: &str = env!("OUT_DIR");
+    const SEP: char = if const_str::contains!(OUT_DIR, "/") { '/' } else { '\\' };
+    let parts = const_str::split!(OUT_DIR, SEP);
+    parts[parts.len() - 4]
 }
 
 #[cfg(test)]

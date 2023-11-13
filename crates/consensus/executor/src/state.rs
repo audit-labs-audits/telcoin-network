@@ -1,11 +1,11 @@
 // Copyright (c) Telcoin, LLC
 // Copyright (c) Mysten Labs, Inc.
 // SPDX-License-Identifier: Apache-2.0
+use narwhal_types::{Round, SequenceNumber};
 use serde::{Deserialize, Serialize};
-use tn_types::consensus::{Round, SequenceNumber};
 
 /// The state of the subscriber keeping track of the transactions that have already been
-/// executed. It ensures we do not process the same transaction twice, despite crash-recovery.
+/// executed. It ensures we do not process twice the same transaction despite crash-recovery.
 #[derive(Serialize, Deserialize, Clone, Debug, Default, PartialEq, Eq, Copy)]
 pub struct ExecutionIndices {
     /// The round number of the last committed leader.

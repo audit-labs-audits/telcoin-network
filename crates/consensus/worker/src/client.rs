@@ -10,9 +10,8 @@ use std::{
 
 use arc_swap::ArcSwap;
 use consensus_metrics::metered_channel::Sender;
-use tn_types::consensus::{Protocol, Multiaddr};
+use narwhal_types::{Multiaddr, Protocol, Transaction, TxResponse};
 use thiserror::Error;
-use tn_types::consensus::{Transaction, TxResponse};
 use tracing::info;
 
 /// Uses a map to allow running multiple Narwhal instances in the same process.
@@ -21,8 +20,6 @@ static LOCAL_NARWHAL_CLIENTS: Mutex<BTreeMap<Multiaddr, Arc<ArcSwap<LocalNarwhal
 
 /// The maximum allowed size of transactions into Narwhal.
 /// TODO: maybe move to TxValidator?
-///
-/// TODO: do we need gas limit here?
 pub const MAX_ALLOWED_TRANSACTION_SIZE: usize = 6 * 1024 * 1024;
 
 /// Errors returned to clients submitting transactions to Narwhal.
@@ -43,7 +40,7 @@ pub enum NarwhalError {
 /// A client that connects to Narwhal locally.
 #[derive(Clone)]
 pub struct LocalNarwhalClient {
-    /// TODO: maybe use tx_batch_maker for load shedding.
+    /// TODO: maybe use tx_batch_maker for load schedding.
     tx_batch_maker: Sender<(Transaction, TxResponse)>,
 }
 
@@ -82,7 +79,7 @@ impl LocalNarwhalClient {
             return Err(NarwhalError::TransactionTooLarge(
                 transaction.len(),
                 MAX_ALLOWED_TRANSACTION_SIZE,
-            ))
+            ));
         }
         // Send the transaction to the batch maker.
         let (notifier, when_done) = tokio::sync::oneshot::channel();

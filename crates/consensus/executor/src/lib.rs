@@ -2,23 +2,27 @@
 // Copyright (c) Mysten Labs, Inc.
 // SPDX-License-Identifier: Apache-2.0
 mod errors;
-mod metrics;
 mod state;
 mod subscriber;
+
+mod metrics;
+
+pub use errors::{SubscriberError, SubscriberResult};
+pub use state::ExecutionIndices;
+
 use crate::{metrics::ExecutorMetrics, subscriber::spawn_subscriber};
+
 use async_trait::async_trait;
 use consensus_metrics::metered_channel;
-pub use errors::{SubscriberError, SubscriberResult};
-use lattice_network::client::NetworkClient;
-use lattice_storage::{CertificateStore, ConsensusStore};
 use mockall::automock;
-use prometheus::Registry;
-pub use state::ExecutionIndices;
-use std::sync::Arc;
-use tn_types::consensus::{
-    AuthorityIdentifier, Committee, WorkerCache,
-    CertificateDigest, CommittedSubDag, ConditionalBroadcastReceiver, ConsensusOutput,
+use narwhal_network::client::NetworkClient;
+use narwhal_storage::{CertificateStore, ConsensusStore};
+use narwhal_types::{
+    AuthorityIdentifier, CertificateDigest, CommittedSubDag, Committee,
+    ConditionalBroadcastReceiver, ConsensusOutput, WorkerCache,
 };
+use prometheus::Registry;
+use std::sync::Arc;
 use tokio::task::JoinHandle;
 use tracing::info;
 
@@ -30,13 +34,9 @@ pub type SerializedTransactionDigest = u64;
 
 #[automock]
 #[async_trait]
-/// Trait for transferring consensus output to the Execution Layer.
-/// 
-/// Important - if you add method with the default implementation here make sure to update impl
-/// ExecutionState for Arc<T>
 pub trait ExecutionState {
     /// Execute the transaction and atomically persist the consensus index.
-    async fn handle_consensus_output(&self, consensus_output: ConsensusOutput);
+    async fn handle_consensus_output(&mut self, consensus_output: ConsensusOutput);
 
     /// Load the last executed sub-dag index from storage
     async fn last_executed_sub_dag_index(&self) -> u64;
@@ -46,7 +46,7 @@ pub trait ExecutionState {
 pub struct Executor;
 
 impl Executor {
-    /// Spawn a new client subscriber for consensus output.
+    /// Spawn a new client subscriber.
     pub fn spawn<State>(
         authority_id: AuthorityIdentifier,
         worker_cache: WorkerCache,
@@ -86,20 +86,19 @@ impl Executor {
     }
 }
 
-/// Recover the last committed sub-dag to ensure execution of the last consensus output completed.
 pub async fn get_restored_consensus_output<State: ExecutionState>(
     consensus_store: Arc<ConsensusStore>,
     certificate_store: CertificateStore,
     execution_state: &State,
 ) -> Result<Vec<CommittedSubDag>, SubscriberError> {
-    // We always want to recover at least the last committed sub-dag since we can't know
-    // whether the execution has been interrupted and there are still batches/transactions
-    // that need to be sent for execution.
-
+    // We can safely recover from the `last_executed_sub_dag_index + 1` as we have the guarantee
+    // from the consumer that the `last_executed_sub_dag_index` transactions have been atomically
+    // processed and don't need to re-send the last sub dag.
     let last_executed_sub_dag_index = execution_state.last_executed_sub_dag_index().await;
+    let restore_sub_dag_index_from = last_executed_sub_dag_index + 1;
 
     let compressed_sub_dags =
-        consensus_store.read_committed_sub_dags_from(&last_executed_sub_dag_index)?;
+        consensus_store.read_committed_sub_dags_from(&restore_sub_dag_index_from)?;
 
     let mut sub_dags = Vec::new();
     for compressed_sub_dag in compressed_sub_dags {
@@ -114,15 +113,4 @@ pub async fn get_restored_consensus_output<State: ExecutionState>(
     }
 
     Ok(sub_dags)
-}
-
-#[async_trait]
-impl<T: ExecutionState + 'static + Send + Sync> ExecutionState for Arc<T> {
-    async fn handle_consensus_output(&self, consensus_output: ConsensusOutput) {
-        self.as_ref().handle_consensus_output(consensus_output).await
-    }
-
-    async fn last_executed_sub_dag_index(&self) -> u64 {
-        self.as_ref().last_executed_sub_dag_index().await
-    }
 }

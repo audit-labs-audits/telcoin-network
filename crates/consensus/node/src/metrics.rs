@@ -1,13 +1,11 @@
 // Copyright (c) Telcoin, LLC
-// Copyright (c) Telcoin, LLC
 // Copyright (c) Mysten Labs, Inc.
 // SPDX-License-Identifier: Apache-2.0
-use axum::{http::StatusCode, routing::get, Extension, Router};
-use consensus_metrics::spawn_logged_monitored_task;
-use tn_types::consensus::Multiaddr;
-use prometheus::{Registry, TextEncoder};
+use axum::{routing::get, Extension, Router};
+use consensus_metrics::{metrics, spawn_logged_monitored_task};
+use narwhal_types::{AuthorityIdentifier, Multiaddr, WorkerId};
+use prometheus::Registry;
 use std::collections::HashMap;
-use tn_types::consensus::{AuthorityIdentifier, WorkerId};
 use tokio::task::JoinHandle;
 
 const METRICS_ROUTE: &str = "/metrics";
@@ -45,14 +43,4 @@ pub fn start_prometheus_server(addr: Multiaddr, registry: &Registry) -> JoinHand
         },
         "MetricsServerTask"
     )
-}
-
-async fn metrics(registry: Extension<Registry>) -> (StatusCode, String) {
-    let metrics_families = registry.gather();
-    match TextEncoder.encode_to_string(&metrics_families) {
-        Ok(metrics) => (StatusCode::OK, metrics),
-        Err(error) => {
-            (StatusCode::INTERNAL_SERVER_ERROR, format!("unable to encode metrics: {error}"))
-        }
-    }
 }

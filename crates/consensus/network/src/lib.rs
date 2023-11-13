@@ -1,5 +1,5 @@
-// Copyright (c) Telcoin, LLC
 // Copyright (c) 2021, Facebook, Inc. and its affiliates
+// Copyright (c) Telcoin, LLC
 // Copyright (c) Mysten Labs, Inc.
 // SPDX-License-Identifier: Apache-2.0
 #![warn(future_incompatible, nonstandard_style, rust_2018_idioms, rust_2021_compatibility)]
@@ -14,16 +14,15 @@ pub mod failpoints;
 pub mod metrics;
 mod p2p;
 mod retry;
+#[cfg(any(test, feature = "test-utils"))]
+pub mod test_utils;
 mod traits;
-mod error;
-pub use error::LocalClientError;
 
 pub use crate::{
     retry::RetryConfig,
     traits::{
-        PrimaryToPrimaryRpc, PrimaryToWorkerClient, ReliableNetwork,
-        WorkerRpc, WorkerToPrimaryClient, PrimaryToEngineClient,
-        EngineToWorkerClient, WorkerToEngineClient,
+        PrimaryToPrimaryRpc, PrimaryToWorkerClient, ReliableNetwork, WorkerRpc,
+        WorkerToPrimaryClient,
     },
 };
 

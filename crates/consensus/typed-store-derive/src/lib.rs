@@ -1,10 +1,12 @@
 // Copyright (c) Telcoin, LLC
 // Copyright (c) Mysten Labs, Inc.
 // SPDX-License-Identifier: Apache-2.0
+
+use std::collections::{BTreeMap, HashSet};
+
 use proc_macro::TokenStream;
 use proc_macro2::Ident;
 use quote::quote;
-use std::collections::{BTreeMap, HashSet};
 use syn::{
     parse_macro_input, AngleBracketedGenericArguments, Attribute, Generics, ItemStruct, Lit, Meta,
     PathArguments,
@@ -12,7 +14,7 @@ use syn::{
 };
 
 // This is used as default when none is specified
-const DEFAULT_DB_OPTIONS_CUSTOM_FN: &str = "lattice_typed_store::rocks::default_db_options";
+const DEFAULT_DB_OPTIONS_CUSTOM_FN: &str = "narwhal_typed_store::rocks::default_db_options";
 // Custom function which returns the option and overrides the defaults for this table
 const DB_OPTIONS_CUSTOM_FUNCTION: &str = "default_options_override_fn";
 
@@ -62,7 +64,7 @@ fn extract_struct_info(
             let type_str = format!("{}", &type_info.ident);
             // Rough way to check that this is map_type_name
             if allowed_map_type_names.contains(&type_str) {
-                return ((f.ident.as_ref().unwrap().clone(), type_str), (inner_type, options))
+                return ((f.ident.as_ref().unwrap().clone(), type_str), (inner_type, options));
             } else {
                 panic!("All struct members must be of type {allowed_strs}");
             }
@@ -148,13 +150,13 @@ fn extract_generics_names(generics: &Generics) -> Vec<Ident> {
 /// We can also supply column family options on the default ones
 /// A user defined function of signature () -> Options can be provided for each table
 /// If a an override function is not specified, the default in
-/// `lattice_typed_store::rocks::default_db_options` is used ```
-/// use lattice_typed_store::rocks::DBOptions;
-/// use lattice_typed_store::rocks::DBMap;
-/// use lattice_typed_store::rocks::MetricConf;
-/// use lattice_typed_store_derive::DBMapUtils;
-/// use lattice_typed_store::traits::TypedStoreDebug;
-/// use lattice_typed_store::traits::TableSummary;
+/// `typed_store::rocks::default_db_options` is used ```
+/// use narwhal_typed_store::rocks::DBOptions;
+/// use narwhal_typed_store::rocks::DBMap;
+/// use narwhal_typed_store::rocks::MetricConf;
+/// use narwhal_typed_store_derive::DBMapUtils;
+/// use narwhal_typed_store::traits::TypedStoreDebug;
+/// use narwhal_typed_store::traits::TableSummary;
 /// use core::fmt::Error;
 /// /// Define a struct with all members having type DBMap<K, V>
 ///
@@ -171,15 +173,16 @@ fn extract_generics_names(generics: &Generics) -> Vec<Ident> {
 ///     table1: DBMap<String, String>,
 ///     #[default_options_override_fn = "custom_fn_name2"]
 ///     table2: DBMap<i32, String>,
-///     // Nothing specified so `lattice_typed_store::rocks::default_db_options` is used
+///     // Nothing specified so `typed_store::rocks::default_db_options` is used
 ///     table3: DBMap<i32, String>,
 ///     #[default_options_override_fn = "custom_fn_name1"]
 ///     table4: DBMap<i32, String>,
 /// }
 ///
 /// // b. Options specified by DB opener
-/// // For finer control, we also allow the opener of the DB to specify their own options which override the defaults set by the definer
-/// // This is done via a configurator which gives one a struct with field similarly named as that of the DB, but of type Options
+/// // For finer control, we also allow the opener of the DB to specify their own options which
+/// override the defaults set by the definer // This is done via a configurator which gives one a
+/// struct with field similarly named as that of the DB, but of type Options
 ///
 /// #[tokio::main]
 /// async fn main() -> Result<(), Error> {
@@ -193,11 +196,11 @@ fn extract_generics_names(generics: &Generics) -> Vec<Ident> {
 /// let primary_path = tempfile::tempdir().expect("Failed to open temporary directory").into_path();
 ///
 /// // We can then open the DB with the configs
-/// let _ = Tables::open_tables_read_write(primary_path, MetricConf::default(), None, Some(config.build()));
-/// Ok(())
+/// let _ = Tables::open_tables_read_write(primary_path, MetricConf::default(), None,
+/// Some(config.build())); Ok(())
 /// }
 /// ```
-///
+/// 
 /// 2. Auto-generated `open` routine
 /// The function `open_tables_read_write` is generated which allows for specifying DB wide options
 /// and custom table configs as mentioned above
@@ -208,15 +211,17 @@ fn extract_generics_names(generics: &Generics) -> Vec<Ident> {
 ///
 /// Use the function `Tables::get_read_only_handle` which returns a handle that only allows read
 /// only features ```
-/// use lattice_typed_store::rocks::DBOptions;
-/// use lattice_typed_store::rocks::DBMap;
-/// use lattice_typed_store_derive::DBMapUtils;
-/// use lattice_typed_store::traits::TypedStoreDebug;
 /// use core::fmt::Error;
-/// use lattice_typed_store::traits::TableSummary;
+/// use narwhal_typed_store::{
+///     rocks::{DBMap, DBOptions},
+///     traits::{TableSummary, TypedStoreDebug},
+/// };
+/// use narwhal_typed_store_derive::DBMapUtils;
 /// /// Define a struct with all members having type DBMap<K, V>
 ///
-/// fn custom_fn_name1() -> DBOptions {DBOptions::default()}
+/// fn custom_fn_name1() -> DBOptions {
+///     DBOptions::default()
+/// }
 /// fn custom_fn_name2() -> DBOptions {
 ///     let mut op = custom_fn_name1();
 ///     op.options.set_write_buffer_size(123456);
@@ -229,23 +234,30 @@ fn extract_generics_names(generics: &Generics) -> Vec<Ident> {
 ///     table1: DBMap<String, String>,
 ///     #[default_options_override_fn = "custom_fn_name2"]
 ///     table2: DBMap<i32, String>,
-///     // Nothing specified so `lattice_typed_store::rocks::default_db_options` is used
+///     // Nothing specified so `typed_store::rocks::default_db_options` is used
 ///     table3: DBMap<i32, String>,
 ///     #[default_options_override_fn = "custom_fn_name1"]
 ///     table4: DBMap<i32, String>,
 /// }
 /// #[tokio::main]
 /// async fn main() -> Result<(), Error> {
+///     use narwhal_typed_store::rocks::MetricConf;
+///     let primary_path =
+///         tempfile::tempdir().expect("Failed to open temporary directory").into_path();
+///     let _ = Tables::open_tables_read_write(
+///         primary_path.clone(),
+///         narwhal_typed_store::rocks::MetricConf::default(),
+///         None,
+///         None,
+///     );
 ///
-/// use lattice_typed_store::rocks::MetricConf;let primary_path = tempfile::tempdir().expect("Failed to open temporary directory").into_path();
-/// let _ = Tables::open_tables_read_write(primary_path.clone(), lattice_typed_store::rocks::MetricConf::default(), None, None);
-///
-/// // Get the read only handle
-/// let read_only_handle = Tables::get_read_only_handle(primary_path, None, None, MetricConf::default());
-/// // Use this handle for dumping
-/// let ret = read_only_handle.dump("table2", 100, 0).unwrap();
-/// let key_count = read_only_handle.count_keys("table1").unwrap();
-/// Ok(())
+///     // Get the read only handle
+///     let read_only_handle =
+///         Tables::get_read_only_handle(primary_path, None, None, MetricConf::default());
+///     // Use this handle for dumping
+///     let ret = read_only_handle.dump("table2", 100, 0).unwrap();
+///     let key_count = read_only_handle.count_keys("table1").unwrap();
+///     Ok(())
 /// }
 /// ```
 /// 4. Auto-generated memory stats method
@@ -317,7 +329,7 @@ pub fn derive_dbmap_utils_general(input: TokenStream) -> TokenStream {
         /// Create config structs for configuring DBMap tables
         pub struct #config_struct_name {
             #(
-                pub #field_names : lattice_typed_store::rocks::DBOptions,
+                pub #field_names : narwhal_typed_store::rocks::DBOptions,
             )*
         }
 
@@ -326,14 +338,14 @@ pub fn derive_dbmap_utils_general(input: TokenStream) -> TokenStream {
             pub fn init() -> Self {
                 Self {
                     #(
-                        #field_names : lattice_typed_store::rocks::default_db_options(),
+                        #field_names : narwhal_typed_store::rocks::default_db_options(),
                     )*
                 }
             }
 
             /// Build a config
-            pub fn build(&self) -> lattice_typed_store::rocks::DBMapTableConfigMap {
-                lattice_typed_store::rocks::DBMapTableConfigMap::new([
+            pub fn build(&self) -> narwhal_typed_store::rocks::DBMapTableConfigMap {
+                narwhal_typed_store::rocks::DBMapTableConfigMap::new([
                     #(
                         (stringify!(#field_names).to_owned(), self.#field_names.clone()),
                     )*
@@ -374,9 +386,9 @@ pub fn derive_dbmap_utils_general(input: TokenStream) -> TokenStream {
                 path: std::path::PathBuf,
                 as_secondary_with_path: Option<std::path::PathBuf>,
                 is_transaction: bool,
-                metric_conf: lattice_typed_store::rocks::MetricConf,
+                metric_conf: narwhal_typed_store::rocks::MetricConf,
                 global_db_options_override: Option<rocksdb::Options>,
-                tables_db_options_override: Option<lattice_typed_store::rocks::DBMapTableConfigMap>
+                tables_db_options_override: Option<narwhal_typed_store::rocks::DBMapTableConfigMap>
             ) -> Self {
                 let path = &path;
                 let (db, rwopt_cfs) = {
@@ -393,12 +405,12 @@ pub fn derive_dbmap_utils_general(input: TokenStream) -> TokenStream {
                         ]
                     };
                     // Safe to call unwrap because we will have at least one field_name entry in the struct
-                    let rwopt_cfs: std::collections::HashMap<String, lattice_typed_store::rocks::ReadWriteOptions> = opt_cfs.iter().map(|q| (q.0.as_str().to_string(), q.1.rw_options.clone())).collect();
+                    let rwopt_cfs: std::collections::HashMap<String, narwhal_typed_store::rocks::ReadWriteOptions> = opt_cfs.iter().map(|q| (q.0.as_str().to_string(), q.1.rw_options.clone())).collect();
                     let opt_cfs: Vec<_> = opt_cfs.iter().map(|q| (q.0.as_str(), q.1.options.clone())).collect();
                     let db = match (as_secondary_with_path, is_transaction) {
-                        (Some(p), _) => lattice_typed_store::rocks::open_cf_opts_secondary(path, Some(&p), global_db_options_override, metric_conf, &opt_cfs),
-                        (_, true) => lattice_typed_store::rocks::open_cf_opts_transactional(path, global_db_options_override, metric_conf, &opt_cfs),
-                        _ => lattice_typed_store::rocks::open_cf_opts(path, global_db_options_override, metric_conf, &opt_cfs)
+                        (Some(p), _) => narwhal_typed_store::rocks::open_cf_opts_secondary(path, Some(&p), global_db_options_override, metric_conf, &opt_cfs),
+                        (_, true) => narwhal_typed_store::rocks::open_cf_opts_transactional(path, global_db_options_override, metric_conf, &opt_cfs),
+                        _ => narwhal_typed_store::rocks::open_cf_opts(path, global_db_options_override, metric_conf, &opt_cfs)
                     };
                     db.map(|d| (d, rwopt_cfs))
                 }.expect(&format!("Cannot open DB at {:?}", path));
@@ -407,7 +419,7 @@ pub fn derive_dbmap_utils_general(input: TokenStream) -> TokenStream {
                             #field_names
                         ),*
                 ) = (#(
-                        DBMap::#inner_types::reopen(&db, Some(stringify!(#field_names)), rwopt_cfs.get(stringify!(#field_names)).unwrap_or(&lattice_typed_store::rocks::ReadWriteOptions::default())).expect(&format!("Cannot open {} CF.", stringify!(#field_names))[..])
+                        DBMap::#inner_types::reopen(&db, Some(stringify!(#field_names)), rwopt_cfs.get(stringify!(#field_names)).unwrap_or(&narwhal_typed_store::rocks::ReadWriteOptions::default())).expect(&format!("Cannot open {} CF.", stringify!(#field_names))[..])
                     ),*);
 
                 Self {
@@ -433,9 +445,9 @@ pub fn derive_dbmap_utils_general(input: TokenStream) -> TokenStream {
             #[allow(unused_parens)]
             pub fn open_tables_read_write(
                 path: std::path::PathBuf,
-                metric_conf: lattice_typed_store::rocks::MetricConf,
+                metric_conf: narwhal_typed_store::rocks::MetricConf,
                 global_db_options_override: Option<rocksdb::Options>,
-                tables_db_options_override: Option<lattice_typed_store::rocks::DBMapTableConfigMap>
+                tables_db_options_override: Option<narwhal_typed_store::rocks::DBMapTableConfigMap>
             ) -> Self {
                 let inner = #intermediate_db_map_struct_name::open_tables_impl(path, None, false, metric_conf, global_db_options_override, tables_db_options_override);
                 Self {
@@ -452,9 +464,9 @@ pub fn derive_dbmap_utils_general(input: TokenStream) -> TokenStream {
             #[allow(unused_parens)]
             pub fn open_tables_transactional(
                 path: std::path::PathBuf,
-                metric_conf: lattice_typed_store::rocks::MetricConf,
+                metric_conf: narwhal_typed_store::rocks::MetricConf,
                 global_db_options_override: Option<rocksdb::Options>,
-                tables_db_options_override: Option<lattice_typed_store::rocks::DBMapTableConfigMap>
+                tables_db_options_override: Option<narwhal_typed_store::rocks::DBMapTableConfigMap>
             ) -> Self {
                 let inner = #intermediate_db_map_struct_name::open_tables_impl(path, None, true, metric_conf, global_db_options_override, tables_db_options_override);
                 Self {
@@ -476,7 +488,7 @@ pub fn derive_dbmap_utils_general(input: TokenStream) -> TokenStream {
                 primary_path: std::path::PathBuf,
                 with_secondary_path: Option<std::path::PathBuf>,
                 global_db_options_override: Option<rocksdb::Options>,
-                metric_conf: lattice_typed_store::rocks::MetricConf,
+                metric_conf: narwhal_typed_store::rocks::MetricConf,
                 ) -> #secondary_db_map_struct_name #generics {
                 #secondary_db_map_struct_name::open_tables_read_only(primary_path, with_secondary_path, metric_conf, global_db_options_override)
             }
@@ -501,7 +513,7 @@ pub fn derive_dbmap_utils_general(input: TokenStream) -> TokenStream {
             pub fn open_tables_read_only(
                 primary_path: std::path::PathBuf,
                 with_secondary_path: Option<std::path::PathBuf>,
-                metric_conf: lattice_typed_store::rocks::MetricConf,
+                metric_conf: narwhal_typed_store::rocks::MetricConf,
                 global_db_options_override: Option<rocksdb::Options>,
             ) -> Self {
                 let inner = match with_secondary_path {
@@ -527,8 +539,8 @@ pub fn derive_dbmap_utils_general(input: TokenStream) -> TokenStream {
                 Ok(match table_name {
                     #(
                         stringify!(#field_names) => {
-                            lattice_typed_store::traits::Map::try_catch_up_with_primary(&self.#field_names)?;
-                            lattice_typed_store::traits::Map::unbounded_iter(&self.#field_names)
+                            narwhal_typed_store::traits::Map::try_catch_up_with_primary(&self.#field_names)?;
+                            narwhal_typed_store::traits::Map::unbounded_iter(&self.#field_names)
                                 .skip((page_number * (page_size) as usize))
                                 .take(page_size as usize)
                                 .map(|(k, v)| (format!("{:?}", k), format!("{:?}", v)))
@@ -542,14 +554,14 @@ pub fn derive_dbmap_utils_general(input: TokenStream) -> TokenStream {
 
             /// Get key value sizes from the db
             /// Tables must be opened in read only mode using `open_tables_read_only`
-            pub fn table_summary(&self, table_name: &str) -> eyre::Result<lattice_typed_store::traits::TableSummary> {
+            pub fn table_summary(&self, table_name: &str) -> eyre::Result<narwhal_typed_store::traits::TableSummary> {
                 let mut count = 0;
                 let mut key_bytes = 0;
                 let mut value_bytes = 0;
                 match table_name {
                     #(
                         stringify!(#field_names) => {
-                            lattice_typed_store::traits::Map::try_catch_up_with_primary(&self.#field_names)?;
+                            narwhal_typed_store::traits::Map::try_catch_up_with_primary(&self.#field_names)?;
                             self.#field_names.table_summary()
                         }
                     )*
@@ -564,8 +576,8 @@ pub fn derive_dbmap_utils_general(input: TokenStream) -> TokenStream {
                 Ok(match table_name {
                     #(
                         stringify!(#field_names) => {
-                            lattice_typed_store::traits::Map::try_catch_up_with_primary(&self.#field_names)?;
-                            lattice_typed_store::traits::Map::unbounded_iter(&self.#field_names).count()
+                            narwhal_typed_store::traits::Map::try_catch_up_with_primary(&self.#field_names)?;
+                            narwhal_typed_store::traits::Map::unbounded_iter(&self.#field_names).count()
                         }
                     )*
 
@@ -673,7 +685,7 @@ pub fn derive_sallydb_general(input: TokenStream) -> TokenStream {
         /// Create config structs for configuring SallyColumns
         pub struct #sally_config_struct_name {
             #(
-                pub #field_names : lattice_typed_store::sally::SallyColumnOptions,
+                pub #field_names : narwhal_typed_store::sally::SallyColumnOptions,
             )*
         }
 
@@ -682,14 +694,14 @@ pub fn derive_sallydb_general(input: TokenStream) -> TokenStream {
             pub fn init() -> Self {
                 Self {
                     #(
-                        #field_names : lattice_typed_store::sally::default_column_options(),
+                        #field_names : narwhal_typed_store::sally::default_column_options(),
                     )*
                 }
             }
 
             /// Build a config
-            pub fn build(&self) -> lattice_typed_store::sally::SallyDBConfigMap {
-                lattice_typed_store::sally::SallyDBConfigMap::new([
+            pub fn build(&self) -> narwhal_typed_store::sally::SallyDBConfigMap {
+                narwhal_typed_store::sally::SallyDBConfigMap::new([
                     #(
                         (stringify!(#field_names).to_owned(), self.#field_names.clone()),
                     )*
@@ -728,15 +740,15 @@ pub fn derive_sallydb_general(input: TokenStream) -> TokenStream {
             > #intermediate_db_map_struct_name #generics {
             /// Opens a set of tables in read-write mode
             /// If as_secondary_with_path is set, the DB is opened in read only mode with the path specified
-            pub fn init(db_options: lattice_typed_store::sally::SallyDBOptions) -> Self {
+            pub fn init(db_options: narwhal_typed_store::sally::SallyDBOptions) -> Self {
                 match db_options {
-                    lattice_typed_store::sally::SallyDBOptions::TestDB => {
+                    narwhal_typed_store::sally::SallyDBOptions::TestDB => {
                         let (
                             #(
                                 #field_names
                             ),*
                         ) = (#(
-                            SallyColumn::TestDB((lattice_typed_store::test_db::TestDB::#inner_types::open(), lattice_typed_store::sally::SallyConfig::default()))
+                            SallyColumn::TestDB((narwhal_typed_store::test_db::TestDB::#inner_types::open(), narwhal_typed_store::sally::SallyConfig::default()))
                             ),*);
 
                         Self {
@@ -745,7 +757,7 @@ pub fn derive_sallydb_general(input: TokenStream) -> TokenStream {
                             )*
                         }
                     },
-                    lattice_typed_store::sally::SallyDBOptions::RocksDB((path, metric_conf, access_type, global_db_options_override, tables_db_options_override)) => {
+                    narwhal_typed_store::sally::SallyDBOptions::RocksDB((path, metric_conf, access_type, global_db_options_override, tables_db_options_override)) => {
                         let path = &path;
                         let (db, rwopt_cfs) = {
                             let opt_cfs = match tables_db_options_override {
@@ -761,11 +773,11 @@ pub fn derive_sallydb_general(input: TokenStream) -> TokenStream {
                                 ]
                             };
                             // Safe to call unwrap because we will have at least one field_name entry in the struct
-                            let rwopt_cfs: std::collections::HashMap<String, lattice_typed_store::rocks::ReadWriteOptions> = opt_cfs.iter().map(|q| (q.0.as_str().to_string(), q.1.rw_options.clone())).collect();
+                            let rwopt_cfs: std::collections::HashMap<String, narwhal_typed_store::rocks::ReadWriteOptions> = opt_cfs.iter().map(|q| (q.0.as_str().to_string(), q.1.rw_options.clone())).collect();
                             let opt_cfs: Vec<_> = opt_cfs.iter().map(|q| (q.0.as_str(), q.1.options.clone())).collect();
                             let db = match access_type {
-                                RocksDBAccessType::Secondary(Some(p)) => lattice_typed_store::rocks::open_cf_opts_secondary(path, Some(&p), global_db_options_override, metric_conf, &opt_cfs),
-                                _ => lattice_typed_store::rocks::open_cf_opts(path, global_db_options_override, metric_conf, &opt_cfs)
+                                RocksDBAccessType::Secondary(Some(p)) => narwhal_typed_store::rocks::open_cf_opts_secondary(path, Some(&p), global_db_options_override, metric_conf, &opt_cfs),
+                                _ => narwhal_typed_store::rocks::open_cf_opts(path, global_db_options_override, metric_conf, &opt_cfs)
                             };
                             db.map(|d| (d, rwopt_cfs))
                         }.expect(&format!("Cannot open DB at {:?}", path));
@@ -774,7 +786,7 @@ pub fn derive_sallydb_general(input: TokenStream) -> TokenStream {
                                 #field_names
                             ),*
                         ) = (#(
-                            SallyColumn::RocksDB((DBMap::#inner_types::reopen(&db, Some(stringify!(#field_names)), rwopt_cfs.get(stringify!(#field_names)).unwrap_or(&lattice_typed_store::rocks::ReadWriteOptions::default())).expect(&format!("Cannot open {} CF.", stringify!(#field_names))[..]), lattice_typed_store::sally::SallyConfig::default()))
+                            SallyColumn::RocksDB((DBMap::#inner_types::reopen(&db, Some(stringify!(#field_names)), rwopt_cfs.get(stringify!(#field_names)).unwrap_or(&narwhal_typed_store::rocks::ReadWriteOptions::default())).expect(&format!("Cannot open {} CF.", stringify!(#field_names))[..]), narwhal_typed_store::sally::SallyConfig::default()))
                             ),*);
 
                         Self {
@@ -800,7 +812,7 @@ pub fn derive_sallydb_general(input: TokenStream) -> TokenStream {
             /// `tables_db_options_override` apply to each table. If `None`, the attributes from `default_options_override_fn` are used if any
             #[allow(unused_parens)]
             pub fn init(
-                db_options: lattice_typed_store::sally::SallyDBOptions
+                db_options: narwhal_typed_store::sally::SallyDBOptions
             ) -> Self {
                 let inner = #intermediate_db_map_struct_name::init(db_options);
                 Self {
@@ -819,7 +831,7 @@ pub fn derive_sallydb_general(input: TokenStream) -> TokenStream {
 
             /// This opens the DB in read only mode and returns a struct which exposes debug features
             pub fn get_read_only_handle (
-                db_options: lattice_typed_store::sally::SallyReadOnlyDBOptions
+                db_options: narwhal_typed_store::sally::SallyReadOnlyDBOptions
                 ) -> #secondary_db_map_struct_name #generics {
                 #secondary_db_map_struct_name::init_read_only(db_options)
             }
@@ -841,10 +853,10 @@ pub fn derive_sallydb_general(input: TokenStream) -> TokenStream {
             > #secondary_db_map_struct_name #generics {
             /// Open in read only mode. No limitation on number of processes to do this
             pub fn init_read_only(
-                db_options: lattice_typed_store::sally::SallyReadOnlyDBOptions,
+                db_options: narwhal_typed_store::sally::SallyReadOnlyDBOptions,
             ) -> Self {
                 match db_options {
-                    lattice_typed_store::sally::SallyReadOnlyDBOptions::TestDB => {
+                    narwhal_typed_store::sally::SallyReadOnlyDBOptions::TestDB => {
                         let inner = #intermediate_db_map_struct_name::init(SallyDBOptions::TestDB);
                         Self {
                             #(
@@ -852,7 +864,7 @@ pub fn derive_sallydb_general(input: TokenStream) -> TokenStream {
                             )*
                         }
                     },
-                    lattice_typed_store::sally::SallyReadOnlyDBOptions::RocksDB(b) => {
+                    narwhal_typed_store::sally::SallyReadOnlyDBOptions::RocksDB(b) => {
                         let inner = match b.2 {
                             Some(q) => #intermediate_db_map_struct_name::init(SallyDBOptions::RocksDB((b.0, b.1, RocksDBAccessType::Secondary(Some(q)), b.3, None))),
                             None => {
@@ -879,9 +891,9 @@ pub fn derive_sallydb_general(input: TokenStream) -> TokenStream {
                     #(
                         stringify!(#field_names) => {
                             match &self.#field_names {
-                                SallyColumn::RocksDB((db_map, lattice_typed_store::sally::SallyConfig { mode: lattice_typed_store::sally::SallyRunMode::FallbackToDB })) => {
-                                    lattice_typed_store::traits::Map::try_catch_up_with_primary(db_map)?;
-                                    lattice_typed_store::traits::Map::unbounded_iter(db_map)
+                                SallyColumn::RocksDB((db_map, narwhal_typed_store::sally::SallyConfig { mode: narwhal_typed_store::sally::SallyRunMode::FallbackToDB })) => {
+                                    narwhal_typed_store::traits::Map::try_catch_up_with_primary(db_map)?;
+                                    narwhal_typed_store::traits::Map::unbounded_iter(db_map)
                                         .skip((page_number * (page_size) as usize))
                                         .take(page_size as usize)
                                         .map(|(k, v)| (format!("{:?}", k), format!("{:?}", v)))
@@ -895,7 +907,7 @@ pub fn derive_sallydb_general(input: TokenStream) -> TokenStream {
                 })
             }
 
-            pub fn table_summary(&self, table_name: &str) -> eyre::Result<lattice_typed_store::traits::TableSummary> {
+            pub fn table_summary(&self, table_name: &str) -> eyre::Result<narwhal_typed_store::traits::TableSummary> {
                 let mut count = 0;
                 let mut key_bytes = 0;
                 let mut value_bytes = 0;
@@ -903,8 +915,8 @@ pub fn derive_sallydb_general(input: TokenStream) -> TokenStream {
                     #(
                         stringify!(#field_names) => {
                             match &self.#field_names {
-                                SallyColumn::RocksDB((db_map, lattice_typed_store::sally::SallyConfig { mode: lattice_typed_store::sally::SallyRunMode::FallbackToDB })) => {
-                                    lattice_typed_store::traits::Map::try_catch_up_with_primary(db_map)?;
+                                SallyColumn::RocksDB((db_map, narwhal_typed_store::sally::SallyConfig { mode: narwhal_typed_store::sally::SallyRunMode::FallbackToDB })) => {
+                                    narwhal_typed_store::traits::Map::try_catch_up_with_primary(db_map)?;
                                     db_map.table_summary()
                                 }
                                 _ => unimplemented!(),
@@ -923,9 +935,9 @@ pub fn derive_sallydb_general(input: TokenStream) -> TokenStream {
                     #(
                         stringify!(#field_names) => {
                             match &self.#field_names {
-                                SallyColumn::RocksDB((db_map, lattice_typed_store::sally::SallyConfig { mode: lattice_typed_store::sally::SallyRunMode::FallbackToDB })) => {
-                                    lattice_typed_store::traits::Map::try_catch_up_with_primary(db_map)?;
-                                    lattice_typed_store::traits::Map::unbounded_iter(db_map).count()
+                                SallyColumn::RocksDB((db_map, narwhal_typed_store::sally::SallyConfig { mode: narwhal_typed_store::sally::SallyRunMode::FallbackToDB })) => {
+                                    narwhal_typed_store::traits::Map::try_catch_up_with_primary(db_map)?;
+                                    narwhal_typed_store::traits::Map::unbounded_iter(db_map).count()
                                 }
                                 _ => unimplemented!(),
                             }

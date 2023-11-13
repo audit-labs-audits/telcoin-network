@@ -1,6 +1,7 @@
 // Copyright (c) Telcoin, LLC
 // Copyright (c) Mysten Labs, Inc.
 // SPDX-License-Identifier: Apache-2.0
+
 use rocksdb::{CompactionDecision, MergeOperands};
 use std::cmp::Ordering;
 
@@ -43,7 +44,7 @@ pub fn is_ref_count_value(value: &[u8]) -> bool {
 
 fn deserialize_ref_count_value(bytes: &[u8]) -> (Option<&[u8]>, i64) {
     if bytes.is_empty() {
-        return (None, 0)
+        return (None, 0);
     }
     assert!(bytes.len() >= 8);
     let (value, rc_bytes) = bytes.split_at(bytes.len() - 8);

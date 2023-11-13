@@ -3,13 +3,13 @@
 // SPDX-License-Identifier: Apache-2.0
 #![allow(dead_code)]
 
-use lattice_typed_store::{
+use narwhal_typed_store::{
     metrics::SamplingInterval,
     rocks::{be_fix_int_ser, list_tables, DBMap, MetricConf, RocksDBAccessType},
     sally::{SallyColumn, SallyDBOptions, SallyReadOnlyDBOptions},
     traits::{Map, TableSummary, TypedStoreDebug},
 };
-use lattice_typed_store_derive::{DBMapUtils, SallyDB};
+use narwhal_typed_store_derive::{DBMapUtils, SallyDB};
 use once_cell::sync::Lazy;
 use serde::{Deserialize, Serialize};
 use std::{borrow::Borrow, collections::HashSet, fmt::Debug, sync::Mutex, time::Duration};
@@ -249,16 +249,16 @@ struct TablesCustomOptions {
 static TABLE1_OPTIONS_SET_FLAG: Lazy<Mutex<Vec<bool>>> = Lazy::new(|| Mutex::new(vec![]));
 static TABLE2_OPTIONS_SET_FLAG: Lazy<Mutex<Vec<bool>>> = Lazy::new(|| Mutex::new(vec![]));
 
-fn custom_fn_name() -> lattice_typed_store::rocks::DBOptions {
+fn custom_fn_name() -> narwhal_typed_store::rocks::DBOptions {
     TABLE1_OPTIONS_SET_FLAG.lock().unwrap().push(false);
-    lattice_typed_store::rocks::DBOptions::default()
+    narwhal_typed_store::rocks::DBOptions::default()
 }
 
-fn another_custom_fn_name() -> lattice_typed_store::rocks::DBOptions {
+fn another_custom_fn_name() -> narwhal_typed_store::rocks::DBOptions {
     TABLE2_OPTIONS_SET_FLAG.lock().unwrap().push(false);
     TABLE2_OPTIONS_SET_FLAG.lock().unwrap().push(false);
     TABLE2_OPTIONS_SET_FLAG.lock().unwrap().push(false);
-    lattice_typed_store::rocks::DBOptions::default()
+    narwhal_typed_store::rocks::DBOptions::default()
 }
 
 #[tokio::test]
@@ -268,7 +268,7 @@ async fn macro_test_configure() {
     // Get a configurator for this table
     let mut config = Tables::configurator();
     // Config table 1
-    config.table1 = lattice_typed_store::rocks::DBOptions::default();
+    config.table1 = narwhal_typed_store::rocks::DBOptions::default();
     config.table1.options.create_if_missing(true);
     config.table1.options.set_write_buffer_size(123456);
 

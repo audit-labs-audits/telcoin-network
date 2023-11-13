@@ -1,13 +1,13 @@
 // Copyright (c) Telcoin, LLC
 // Copyright (c) Mysten Labs, Inc.
 // SPDX-License-Identifier: Apache-2.0
-#![allow(clippy::all)]
 pub mod errors;
 pub(crate) mod iter;
 pub(crate) mod keys;
 pub(crate) mod safe_iter;
 pub mod util;
 pub(crate) mod values;
+
 use crate::{
     metrics::{DBMetrics, RocksDBPerfContext, SamplingInterval},
     traits::{Map, TableSummary},
@@ -36,13 +36,13 @@ use std::{
 };
 use tap::TapFallible;
 use tokio::sync::oneshot;
-use tracing::{error, info, instrument, warn};
+use tracing::{debug, error, info, instrument, warn};
+
 use self::{iter::Iter, keys::Keys, values::Values};
 use crate::rocks::safe_iter::SafeIter;
 pub use errors::TypedStoreError;
 use std::ops::Bound;
-use tn_macros::{fail_point, nondeterministic};
-
+use telcoin_macros::{fail_point, nondeterministic};
 
 // Write buffer size per RocksDB instance can be set via the env var below.
 // If the env var is not set, use the default value in MiB.
@@ -92,12 +92,12 @@ mod tests;
 ///
 /// We successfully open two different column families.
 /// ```
-/// use typed_store::reopen;
-/// use typed_store::rocks::*;
+/// use narwhal_typed_store::reopen;
+/// use narwhal_typed_store::rocks::*;
 /// use tempfile::tempdir;
 /// use prometheus::Registry;
 /// use std::sync::Arc;
-/// use typed_store::metrics::DBMetrics;
+/// use narwhal_typed_store::metrics::DBMetrics;
 /// use core::fmt::Error;
 ///
 /// #[tokio::main]
@@ -162,7 +162,7 @@ macro_rules! retry_transaction {
                     if let Some(max_retries) = max_retries {
                         if retries > max_retries {
                             error!(?max_retries, "max retries exceeded");
-                            break status
+                            break status;
                         }
                     }
                     if retries > 10 {
@@ -364,9 +364,7 @@ impl RocksDB {
     ) -> Result<Transaction<'_, rocksdb::OptimisticTransactionDB>, TypedStoreError> {
         match self {
             Self::OptimisticTransactionDB(db) => Ok(db.underlying.transaction()),
-            Self::DBWithThreadMode(_) => {
-                Err(TypedStoreError::RocksDBError("operation not supported".to_string()))
-            }
+            Self::DBWithThreadMode(_) => panic!(),
         }
     }
 
@@ -380,9 +378,7 @@ impl RocksDB {
 
                 Ok(db.underlying.transaction_opt(&WriteOptions::default(), &tx_opts))
             }
-            Self::DBWithThreadMode(_) => {
-                Err(TypedStoreError::RocksDBError("operation not supported".to_string()))
-            }
+            Self::DBWithThreadMode(_) => panic!(),
         }
     }
 
@@ -608,9 +604,7 @@ impl RocksDBBatch {
                 batch.delete_range_cf(cf, from, to);
                 Ok(())
             }
-            Self::Transactional(_) => {
-                Err(TypedStoreError::RocksDBError("operation not supported".to_string()))
-            }
+            Self::Transactional(_) => panic!(),
         }
     }
 }
@@ -687,7 +681,7 @@ impl<K, V> DBMap<K, V> {
                     _ = &mut recv => break,
                 }
             }
-            info!("Returning the cf metric logging task for DBMap: {}", &cf);
+            debug!("Returning the cf metric logging task for DBMap: {}", &cf);
         });
         DBMap {
             rocksdb: db.clone(),
@@ -725,21 +719,26 @@ impl<K, V> DBMap<K, V> {
     /// if no column family is passed, the default column family is used.
     ///
     /// ```
-    ///    use typed_store::rocks::*;
-    ///    use typed_store::metrics::DBMetrics;
-    ///    use tempfile::tempdir;
-    ///    use prometheus::Registry;
-    ///    use std::sync::Arc;
-    ///    use core::fmt::Error;
-    ///    #[tokio::main]
-    ///    async fn main() -> Result<(), Error> {
-    ///    /// Open the DB with all needed column families first.
-    ///    let rocks = open_cf(tempdir().unwrap(), None, MetricConf::default(), &["First_CF", "Second_CF"]).unwrap();
-    ///    /// Attach the column families to specific maps.
-    ///    let db_cf_1 = DBMap::<u32,u32>::reopen(&rocks, Some("First_CF"), &ReadWriteOptions::default()).expect("Failed to open storage");
-    ///    let db_cf_2 = DBMap::<u32,u32>::reopen(&rocks, Some("Second_CF"), &ReadWriteOptions::default()).expect("Failed to open storage");
-    ///    Ok(())
-    ///    }
+    /// use core::fmt::Error;
+    /// use narwhal_typed_store::{metrics::DBMetrics, rocks::*};
+    /// use prometheus::Registry;
+    /// use std::sync::Arc;
+    /// use tempfile::tempdir;
+    /// #[tokio::main]
+    /// async fn main() -> Result<(), Error> {
+    ///     /// Open the DB with all needed column families first.
+    ///     let rocks =
+    ///         open_cf(tempdir().unwrap(), None, MetricConf::default(), &["First_CF", "Second_CF"])
+    ///             .unwrap();
+    ///     /// Attach the column families to specific maps.
+    ///     let db_cf_1 =
+    ///         DBMap::<u32, u32>::reopen(&rocks, Some("First_CF"), &ReadWriteOptions::default())
+    ///             .expect("Failed to open storage");
+    ///     let db_cf_2 =
+    ///         DBMap::<u32, u32>::reopen(&rocks, Some("Second_CF"), &ReadWriteOptions::default())
+    ///             .expect("Failed to open storage");
+    ///     Ok(())
+    /// }
     /// ```
     #[instrument(level = "debug", skip(db), err)]
     pub fn reopen(
@@ -771,9 +770,21 @@ impl<K, V> DBMap<K, V> {
     }
 
     pub fn compact_range<J: Serialize>(&self, start: &J, end: &J) -> Result<(), TypedStoreError> {
-        let from_buf = be_fix_int_ser(start.borrow())?;
-        let to_buf = be_fix_int_ser(end.borrow())?;
+        let from_buf = be_fix_int_ser(start)?;
+        let to_buf = be_fix_int_ser(end)?;
         self.rocksdb.compact_range_cf(&self.cf(), Some(from_buf), Some(to_buf));
+        Ok(())
+    }
+
+    pub fn compact_range_raw(
+        &self,
+        cf_name: &str,
+        start: Vec<u8>,
+        end: Vec<u8>,
+    ) -> Result<(), TypedStoreError> {
+        let cf =
+            self.rocksdb.cf_handle(cf_name).expect("compact range: column family does not exist");
+        self.rocksdb.compact_range_cf(&cf, Some(start), Some(end));
         Ok(())
     }
 
@@ -782,8 +793,8 @@ impl<K, V> DBMap<K, V> {
         start: &J,
         end: &J,
     ) -> Result<(), TypedStoreError> {
-        let from_buf = be_fix_int_ser(start.borrow())?;
-        let to_buf = be_fix_int_ser(end.borrow())?;
+        let from_buf = be_fix_int_ser(start)?;
+        let to_buf = be_fix_int_ser(end)?;
         self.rocksdb.compact_range_to_bottom(&self.cf(), Some(from_buf), Some(to_buf));
         Ok(())
     }
@@ -835,12 +846,8 @@ impl<K, V> DBMap<K, V> {
             .rocksdb_multiget_latency_seconds
             .with_label_values(&[&self.cf])
             .start_timer();
-
-        let perf_ctx = if self.multiget_sample_interval.sample() {
-            Some(RocksDBPerfContext::default())
-        } else {
-            None
-        };
+        let perf_ctx =
+            if self.multiget_sample_interval.sample() { Some(RocksDBPerfContext) } else { None };
         let keys_bytes: Result<Vec<_>, TypedStoreError> =
             keys.into_iter().map(|k| be_fix_int_ser(k.borrow())).collect();
         let results: Result<Vec<_>, TypedStoreError> = self
@@ -987,44 +994,48 @@ impl<K, V> DBMap<K, V> {
 /// DBMap<K,V> with each operation.
 ///
 /// ```
-/// use typed_store::rocks::*;
-/// use tempfile::tempdir;
-/// use typed_store::Map;
-/// use typed_store::metrics::DBMetrics;
-/// use prometheus::Registry;
 /// use core::fmt::Error;
+/// use narwhal_typed_store::{metrics::DBMetrics, rocks::*, Map};
+/// use prometheus::Registry;
 /// use std::sync::Arc;
+/// use tempfile::tempdir;
 ///
 /// #[tokio::main]
 /// async fn main() -> Result<(), Error> {
-/// let rocks = open_cf(tempfile::tempdir().unwrap(), None, MetricConf::default(), &["First_CF", "Second_CF"]).unwrap();
+///     let rocks = open_cf(
+///         tempfile::tempdir().unwrap(),
+///         None,
+///         MetricConf::default(),
+///         &["First_CF", "Second_CF"],
+///     )
+///     .unwrap();
 ///
-/// let db_cf_1 = DBMap::reopen(&rocks, Some("First_CF"), &ReadWriteOptions::default())
-///     .expect("Failed to open storage");
-/// let keys_vals_1 = (1..100).map(|i| (i, i.to_string()));
+///     let db_cf_1 = DBMap::reopen(&rocks, Some("First_CF"), &ReadWriteOptions::default())
+///         .expect("Failed to open storage");
+///     let keys_vals_1 = (1..100).map(|i| (i, i.to_string()));
 ///
-/// let db_cf_2 = DBMap::reopen(&rocks, Some("Second_CF"), &ReadWriteOptions::default())
-///     .expect("Failed to open storage");
-/// let keys_vals_2 = (1000..1100).map(|i| (i, i.to_string()));
+///     let db_cf_2 = DBMap::reopen(&rocks, Some("Second_CF"), &ReadWriteOptions::default())
+///         .expect("Failed to open storage");
+///     let keys_vals_2 = (1000..1100).map(|i| (i, i.to_string()));
 ///
-/// let mut batch = db_cf_1.batch();
-/// batch
-///     .insert_batch(&db_cf_1, keys_vals_1.clone())
-///     .expect("Failed to batch insert")
-///     .insert_batch(&db_cf_2, keys_vals_2.clone())
-///     .expect("Failed to batch insert");
+///     let mut batch = db_cf_1.batch();
+///     batch
+///         .insert_batch(&db_cf_1, keys_vals_1.clone())
+///         .expect("Failed to batch insert")
+///         .insert_batch(&db_cf_2, keys_vals_2.clone())
+///         .expect("Failed to batch insert");
 ///
-/// let _ = batch.write().expect("Failed to execute batch");
-/// for (k, v) in keys_vals_1 {
-///     let val = db_cf_1.get(&k).expect("Failed to get inserted key");
-///     assert_eq!(Some(v), val);
-/// }
+///     let _ = batch.write().expect("Failed to execute batch");
+///     for (k, v) in keys_vals_1 {
+///         let val = db_cf_1.get(&k).expect("Failed to get inserted key");
+///         assert_eq!(Some(v), val);
+///     }
 ///
-/// for (k, v) in keys_vals_2 {
-///     let val = db_cf_2.get(&k).expect("Failed to get inserted key");
-///     assert_eq!(Some(v), val);
-/// }
-/// Ok(())
+///     for (k, v) in keys_vals_2 {
+///         let val = db_cf_2.get(&k).expect("Failed to get inserted key");
+///         assert_eq!(Some(v), val);
+///     }
+///     Ok(())
 /// }
 /// ```
 pub struct DBBatch {
@@ -1067,11 +1078,8 @@ impl DBBatch {
             .start_timer();
         let batch_size = self.batch.size_in_bytes();
 
-        let perf_ctx = if self.write_sample_interval.sample() {
-            Some(RocksDBPerfContext::default())
-        } else {
-            None
-        };
+        let perf_ctx =
+            if self.write_sample_interval.sample() { Some(RocksDBPerfContext) } else { None };
         self.rocksdb.write(self.batch, &self.opts)?;
         self.db_metrics
             .op_metrics
@@ -1094,7 +1102,7 @@ impl DBBatch {
         purged_vals: impl IntoIterator<Item = J>,
     ) -> Result<(), TypedStoreError> {
         if !Arc::ptr_eq(&db.rocksdb, &self.rocksdb) {
-            return Err(TypedStoreError::CrossDBBatch)
+            return Err(TypedStoreError::CrossDBBatch);
         }
 
         purged_vals.into_iter().try_for_each::<_, Result<_, TypedStoreError>>(|k| {
@@ -1107,14 +1115,22 @@ impl DBBatch {
     }
 
     /// Deletes a range of keys between `from` (inclusive) and `to` (non-inclusive)
-    pub fn delete_range<K: Serialize, V>(
+    /// by writing a range delete tombstone in the db map
+    /// If the DBMap is configured with ignore_range_deletions set to false,
+    /// the effect of this write will be visible immediately i.e. you won't
+    /// see old values when you do a lookup or scan. But if it is configured
+    /// with ignore_range_deletions set to true, the old value are visible until
+    /// compaction actually deletes them which will happen sometime after. By
+    /// default ignore_range_deletions is set to true on a DBMap (unless it is
+    /// overriden in the config), so please use this function with caution
+    pub fn schedule_delete_range<K: Serialize, V>(
         &mut self,
         db: &DBMap<K, V>,
         from: &K,
         to: &K,
     ) -> Result<(), TypedStoreError> {
         if !Arc::ptr_eq(&db.rocksdb, &self.rocksdb) {
-            return Err(TypedStoreError::CrossDBBatch)
+            return Err(TypedStoreError::CrossDBBatch);
         }
 
         let from_buf = be_fix_int_ser(from)?;
@@ -1131,7 +1147,7 @@ impl DBBatch {
         new_vals: impl IntoIterator<Item = (J, U)>,
     ) -> Result<&mut Self, TypedStoreError> {
         if !Arc::ptr_eq(&db.rocksdb, &self.rocksdb) {
-            return Err(TypedStoreError::CrossDBBatch)
+            return Err(TypedStoreError::CrossDBBatch);
         }
 
         new_vals.into_iter().try_for_each::<_, Result<_, TypedStoreError>>(|(k, v)| {
@@ -1150,7 +1166,7 @@ impl DBBatch {
         new_vals: impl IntoIterator<Item = (J, U)>,
     ) -> Result<&mut Self, TypedStoreError> {
         if !Arc::ptr_eq(&db.rocksdb, &self.rocksdb) {
-            return Err(TypedStoreError::CrossDBBatch)
+            return Err(TypedStoreError::CrossDBBatch);
         }
 
         new_vals.into_iter().try_for_each::<_, Result<_, TypedStoreError>>(|(k, v)| {
@@ -1169,7 +1185,7 @@ impl DBBatch {
         new_vals: impl IntoIterator<Item = (J, B)>,
     ) -> Result<&mut Self, TypedStoreError> {
         if !Arc::ptr_eq(&db.rocksdb, &self.rocksdb) {
-            return Err(TypedStoreError::CrossDBBatch)
+            return Err(TypedStoreError::CrossDBBatch);
         }
         new_vals.into_iter().try_for_each::<_, Result<_, TypedStoreError>>(|(k, v)| {
             let k_buf = be_fix_int_ser(k.borrow())?;
@@ -1200,7 +1216,7 @@ impl<'a> DBTransaction<'a> {
         new_vals: impl IntoIterator<Item = (J, U)>,
     ) -> Result<&mut Self, TypedStoreError> {
         if !Arc::ptr_eq(&db.rocksdb, &self.rocksdb) {
-            return Err(TypedStoreError::CrossDBBatch)
+            return Err(TypedStoreError::CrossDBBatch);
         }
 
         new_vals.into_iter().try_for_each::<_, Result<_, TypedStoreError>>(|(k, v)| {
@@ -1219,7 +1235,7 @@ impl<'a> DBTransaction<'a> {
         purged_vals: impl IntoIterator<Item = J>,
     ) -> Result<&mut Self, TypedStoreError> {
         if !Arc::ptr_eq(&db.rocksdb, &self.rocksdb) {
-            return Err(TypedStoreError::CrossDBBatch)
+            return Err(TypedStoreError::CrossDBBatch);
         }
         purged_vals.into_iter().try_for_each::<_, Result<_, TypedStoreError>>(|k| {
             let k_buf = be_fix_int_ser(k.borrow())?;
@@ -1242,9 +1258,9 @@ impl<'a> DBTransaction<'a> {
         key: &K,
     ) -> Result<Option<V>, TypedStoreError> {
         if !Arc::ptr_eq(&db.rocksdb, &self.rocksdb) {
-            return Err(TypedStoreError::CrossDBBatch)
+            return Err(TypedStoreError::CrossDBBatch);
         }
-        let k_buf = be_fix_int_ser(key.borrow())?;
+        let k_buf = be_fix_int_ser(key)?;
         match self.transaction.get_for_update_cf_opt(&db.cf(), k_buf, true, &db.opts.readopts())? {
             Some(data) => Ok(Some(bcs::from_bytes(&data)?)),
             None => Ok(None),
@@ -1451,12 +1467,8 @@ where
             .rocksdb_get_latency_seconds
             .with_label_values(&[&self.cf])
             .start_timer();
-
-        let perf_ctx = if self.get_sample_interval.sample() {
-            Some(RocksDBPerfContext::default())
-        } else {
-            None
-        };
+        let perf_ctx =
+            if self.get_sample_interval.sample() { Some(RocksDBPerfContext) } else { None };
         let key_buf = be_fix_int_ser(key)?;
         let res = self.rocksdb.get_pinned_cf_opt(&self.cf(), &key_buf, &self.opts.readopts())?;
         self.db_metrics
@@ -1481,12 +1493,8 @@ where
             .rocksdb_get_latency_seconds
             .with_label_values(&[&self.cf])
             .start_timer();
-
-        let perf_ctx = if self.get_sample_interval.sample() {
-            Some(RocksDBPerfContext::default())
-        } else {
-            None
-        };
+        let perf_ctx =
+            if self.get_sample_interval.sample() { Some(RocksDBPerfContext) } else { None };
         let key_buf = be_fix_int_ser(key)?;
         let res = self.rocksdb.get_pinned_cf_opt(&self.cf(), &key_buf, &self.opts.readopts())?;
         self.db_metrics
@@ -1511,12 +1519,8 @@ where
             .rocksdb_put_latency_seconds
             .with_label_values(&[&self.cf])
             .start_timer();
-
-        let perf_ctx = if self.write_sample_interval.sample() {
-            Some(RocksDBPerfContext::default())
-        } else {
-            None
-        };
+        let perf_ctx =
+            if self.write_sample_interval.sample() { Some(RocksDBPerfContext) } else { None };
         let key_buf = be_fix_int_ser(key)?;
         let value_buf = bcs::to_bytes(value)?;
         self.db_metrics
@@ -1539,12 +1543,8 @@ where
             .rocksdb_delete_latency_seconds
             .with_label_values(&[&self.cf])
             .start_timer();
-
-        let perf_ctx = if self.write_sample_interval.sample() {
-            Some(RocksDBPerfContext::default())
-        } else {
-            None
-        };
+        let perf_ctx =
+            if self.write_sample_interval.sample() { Some(RocksDBPerfContext) } else { None };
         let key_buf = be_fix_int_ser(key)?;
         self.rocksdb.delete_cf(&self.cf(), key_buf, &self.opts.writeopts())?;
         self.db_metrics.op_metrics.rocksdb_deletes.with_label_values(&[&self.cf]).inc();
@@ -1554,10 +1554,35 @@ where
         Ok(())
     }
 
+    /// This method first drops the existing column family and then creates a new one
+    /// with the same name. The two operations are not atomic and hence it is possible
+    /// to get into a race condition where the column family has been dropped but new
+    /// one is not created yet
     #[instrument(level = "trace", skip_all, err)]
-    fn clear(&self) -> Result<(), TypedStoreError> {
+    fn unsafe_clear(&self) -> Result<(), TypedStoreError> {
         let _ = self.rocksdb.drop_cf(&self.cf);
         self.rocksdb.create_cf(self.cf.clone(), &default_db_options().options)?;
+        Ok(())
+    }
+
+    /// Writes a range delete tombstone to delete all entries in the db map
+    /// If the DBMap is configured with ignore_range_deletions set to false,
+    /// the effect of this write will be visible immediately i.e. you won't
+    /// see old values when you do a lookup or scan. But if it is configured
+    /// with ignore_range_deletions set to true, the old value are visible until
+    /// compaction actually deletes them which will happen sometime after. By
+    /// default ignore_range_deletions is set to true on a DBMap (unless it is
+    /// overriden in the config), so please use this function with caution
+    #[instrument(level = "trace", skip_all, err)]
+    fn schedule_delete_all(&self) -> Result<(), TypedStoreError> {
+        let mut iter = self.unbounded_iter().seek_to_first();
+        let first_key = iter.next().map(|(k, _v)| k);
+        let last_key = iter.skip_to_last().next().map(|(k, _v)| k);
+        if let Some((first_key, last_key)) = first_key.zip(last_key) {
+            let mut batch = self.batch();
+            batch.schedule_delete_range(self, &first_key, &last_key)?;
+            batch.write()?;
+        }
         Ok(())
     }
 
@@ -1578,12 +1603,8 @@ where
             self.db_metrics.op_metrics.rocksdb_iter_bytes.with_label_values(&[&self.cf]);
         let keys_scanned =
             self.db_metrics.op_metrics.rocksdb_iter_keys.with_label_values(&[&self.cf]);
-
-        let _perf_ctx = if self.iter_sample_interval.sample() {
-            Some(RocksDBPerfContext::default())
-        } else {
-            None
-        };
+        let _perf_ctx =
+            if self.iter_sample_interval.sample() { Some(RocksDBPerfContext) } else { None };
         let db_iter = self.rocksdb.raw_iterator_cf(&self.cf(), self.opts.readopts());
         Iter::new(
             self.cf.clone(),
@@ -1603,12 +1624,8 @@ where
             .rocksdb_iter_latency_seconds
             .with_label_values(&[&self.cf])
             .start_timer();
-
-        let _perf_ctx = if self.iter_sample_interval.sample() {
-            Some(RocksDBPerfContext::default())
-        } else {
-            None
-        };
+        let _perf_ctx =
+            if self.iter_sample_interval.sample() { Some(RocksDBPerfContext) } else { None };
         let bytes_scanned =
             self.db_metrics.op_metrics.rocksdb_iter_bytes.with_label_values(&[&self.cf]);
         let keys_scanned =
@@ -1644,13 +1661,9 @@ where
             self.db_metrics.op_metrics.rocksdb_iter_bytes.with_label_values(&[&self.cf]);
         let keys_scanned =
             self.db_metrics.op_metrics.rocksdb_iter_keys.with_label_values(&[&self.cf]);
-
-        let _perf_ctx = if self.iter_sample_interval.sample() {
-            Some(RocksDBPerfContext::default())
-        } else {
-            None
-        };
-        let mut readopts = ReadOptions::default();
+        let _perf_ctx =
+            if self.iter_sample_interval.sample() { Some(RocksDBPerfContext) } else { None };
+        let mut readopts = self.opts.readopts();
         if let Some(lower_bound) = lower_bound {
             let key_buf = be_fix_int_ser(&lower_bound).unwrap();
             readopts.set_iterate_lower_bound(key_buf);
@@ -1685,14 +1698,9 @@ where
             self.db_metrics.op_metrics.rocksdb_iter_bytes.with_label_values(&[&self.cf]);
         let keys_scanned =
             self.db_metrics.op_metrics.rocksdb_iter_keys.with_label_values(&[&self.cf]);
-
-        let _perf_ctx = if self.iter_sample_interval.sample() {
-            Some(RocksDBPerfContext::default())
-        } else {
-            None
-        };
-
-        let mut readopts = ReadOptions::default();
+        let _perf_ctx =
+            if self.iter_sample_interval.sample() { Some(RocksDBPerfContext) } else { None };
+        let mut readopts = self.opts.readopts();
 
         let lower_bound = range.start_bound();
         let upper_bound = range.end_bound();
@@ -1928,7 +1936,6 @@ impl Default for ReadWriteOptions {
         }
     }
 }
-
 // TODO: refactor this into a builder pattern, where rocksdb::Options are
 // generated after a call to build().
 #[derive(Default, Clone)]
@@ -1952,7 +1959,7 @@ impl DBOptions {
     pub fn optimize_for_large_values_no_scan(mut self, min_blob_size: u64) -> DBOptions {
         if env::var(ENV_VAR_DISABLE_BLOB_STORAGE).is_ok() {
             info!("Large value blob storage optimization is disabled via env var.");
-            return self
+            return self;
         }
 
         // Blob settings.
@@ -2071,8 +2078,8 @@ pub fn default_db_options() -> DBOptions {
         read_size_from_env(ENV_VAR_MAX_BACKGROUND_JOBS).unwrap_or(2).try_into().unwrap(),
     );
 
-    // Consensus uses multiple RocksDB in a node, so total sizes of write buffers and WAL can be
-    // higher than the limits below.
+    // Sui uses multiple RocksDB in a node, so total sizes of write buffers and WAL can be higher
+    // than the limits below.
     //
     // RocksDB also exposes the option to configure total write buffer size across multiple
     // instances via `write_buffer_manager`. But the write buffer flush policy (flushing the
@@ -2081,7 +2088,7 @@ pub fn default_db_options() -> DBOptions {
     //
     // The environment variables are only meant to be emergency overrides. They may go away in
     // future. If you need to modify an option, either update the default value, or override the
-    // option in Narwhal.
+    // option in Sui / Narwhal.
     opt.set_db_write_buffer_size(
         read_size_from_env(ENV_VAR_DB_WRITE_BUFFER_SIZE).unwrap_or(DEFAULT_DB_WRITE_BUFFER_SIZE) *
             1024 *
@@ -2347,14 +2354,14 @@ fn populate_missing_cfs(
 /// If the vector is already minimum, don't change it.
 fn big_endian_saturating_add_one(v: &mut Vec<u8>) {
     if is_max(v) {
-        return
+        return;
     }
     for i in (0..v.len()).rev() {
         if v[i] == u8::MAX {
             v[i] = 0;
         } else {
             v[i] += 1;
-            break
+            break;
         }
     }
 }

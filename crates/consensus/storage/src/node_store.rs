@@ -1,33 +1,32 @@
 // Copyright (c) Telcoin, LLC
 // Copyright (c) Mysten Labs, Inc.
 // SPDX-License-Identifier: Apache-2.0
+
 use crate::{
     payload_store::PayloadStore, proposer_store::ProposerKey, vote_digest_store::VoteDigestStore,
     CertificateStore, CertificateStoreCache, CertificateStoreCacheMetrics, ConsensusStore,
-    HeaderStore, ProposerStore,
+    ProposerStore,
 };
-use lattice_typed_store::{
+use narwhal_typed_store::{
     metrics::SamplingInterval,
     reopen,
     rocks::{default_db_options, open_cf_opts, DBMap, MetricConf, ReadWriteOptions},
 };
-use std::{num::NonZeroUsize, sync::Arc, time::Duration};
-use tn_types::consensus::{
-    AuthorityIdentifier, WorkerId,
-    Batch, BatchDigest, Certificate, CertificateDigest, ConsensusCommit,
-    Header, HeaderDigest, Round, SequenceNumber, VoteInfo,
+use narwhal_types::{
+    AuthorityIdentifier, Batch, BatchDigest, Certificate, CertificateDigest, CommittedSubDagShell,
+    ConsensusCommit, Header, Round, SequenceNumber, VoteInfo, WorkerId,
 };
+use std::{num::NonZeroUsize, sync::Arc, time::Duration};
 
 // A type alias marking the "payload" tokens sent by workers to their primary as batch
 // acknowledgements
 pub type PayloadToken = u8;
 
-/// All the data stores of the node's consensus layer.
+/// All the data stores of the node.
 #[derive(Clone)]
 pub struct NodeStorage {
     pub proposer_store: ProposerStore,
     pub vote_digest_store: VoteDigestStore,
-    pub header_store: HeaderStore,
     pub certificate_store: CertificateStore<CertificateStoreCache>,
     pub payload_store: PayloadStore,
     pub batch_store: DBMap<BatchDigest, Batch>,
@@ -38,7 +37,6 @@ impl NodeStorage {
     /// The datastore column family names.
     pub(crate) const LAST_PROPOSED_CF: &'static str = "last_proposed";
     pub(crate) const VOTES_CF: &'static str = "votes";
-    pub(crate) const HEADERS_CF: &'static str = "headers";
     pub(crate) const CERTIFICATES_CF: &'static str = "certificates";
     pub(crate) const CERTIFICATE_DIGEST_BY_ROUND_CF: &'static str = "certificate_digest_by_round";
     pub(crate) const CERTIFICATE_DIGEST_BY_ORIGIN_CF: &'static str = "certificate_digest_by_origin";
@@ -65,13 +63,6 @@ impl NodeStorage {
         let column_family_options = vec![
             (Self::LAST_PROPOSED_CF, cf_options.clone()),
             (Self::VOTES_CF, cf_options.clone()),
-            (
-                Self::HEADERS_CF,
-                default_db_options()
-                    .optimize_for_write_throughput()
-                    .optimize_for_large_values_no_scan(1 << 10)
-                    .options,
-            ),
             (
                 Self::CERTIFICATES_CF,
                 default_db_options()
@@ -104,30 +95,31 @@ impl NodeStorage {
         let (
             last_proposed_map,
             votes_map,
-            header_map,
             certificate_map,
             certificate_digest_by_round_map,
             certificate_digest_by_origin_map,
             payload_map,
             batch_map,
             last_committed_map,
+            // table `sub_dag` is deprecated in favor of `committed_sub_dag`.
+            // This can be removed when DBMap supports removing tables.
+            _sub_dag_index_map,
             committed_sub_dag_map,
         ) = reopen!(&rocksdb,
             Self::LAST_PROPOSED_CF;<ProposerKey, Header>,
             Self::VOTES_CF;<AuthorityIdentifier, VoteInfo>,
-            Self::HEADERS_CF;<HeaderDigest, Header>,
             Self::CERTIFICATES_CF;<CertificateDigest, Certificate>,
             Self::CERTIFICATE_DIGEST_BY_ROUND_CF;<(Round, AuthorityIdentifier), CertificateDigest>,
             Self::CERTIFICATE_DIGEST_BY_ORIGIN_CF;<(AuthorityIdentifier, Round), CertificateDigest>,
             Self::PAYLOAD_CF;<(BatchDigest, WorkerId), PayloadToken>,
             Self::BATCHES_CF;<BatchDigest, Batch>,
             Self::LAST_COMMITTED_CF;<AuthorityIdentifier, Round>,
+            Self::SUB_DAG_INDEX_CF;<SequenceNumber, CommittedSubDagShell>,
             Self::COMMITTED_SUB_DAG_INDEX_CF;<SequenceNumber, ConsensusCommit>
         );
 
         let proposer_store = ProposerStore::new(last_proposed_map);
         let vote_digest_store = VoteDigestStore::new(votes_map);
-        let header_store = HeaderStore::new(header_map);
 
         let certificate_store_cache = CertificateStoreCache::new(
             NonZeroUsize::new(Self::CERTIFICATE_STORE_CACHE_SIZE).unwrap(),
@@ -141,15 +133,12 @@ impl NodeStorage {
         );
         let payload_store = PayloadStore::new(payload_map);
         let batch_store = batch_map;
-        let consensus_store = Arc::new(ConsensusStore::new(
-            last_committed_map,
-            committed_sub_dag_map,
-        ));
+        let consensus_store =
+            Arc::new(ConsensusStore::new(last_committed_map, committed_sub_dag_map));
 
         Self {
             proposer_store,
             vote_digest_store,
-            header_store,
             certificate_store,
             payload_store,
             batch_store,

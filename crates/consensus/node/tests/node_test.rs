@@ -4,22 +4,23 @@
 
 use consensus_metrics::RegistryService;
 use fastcrypto::traits::KeyPair;
-use lattice_network::client::NetworkClient;
-use lattice_node::{
+use narwhal_network::client::NetworkClient;
+use narwhal_node::{
     execution_state::SimpleExecutionState, primary_node::PrimaryNode, worker_node::WorkerNodes,
 };
-use lattice_storage::NodeStorage;
-use lattice_test_utils::{temp_dir, CommitteeFixture};
-use lattice_worker::TrivialTransactionValidator;
+use narwhal_storage::NodeStorage;
+use narwhal_types::{
+    test_utils::{temp_dir, CommitteeFixture},
+    ChainIdentifier, Parameters,
+};
+use narwhal_worker::TrivialTransactionValidator;
 use prometheus::Registry;
-use std::{num::NonZeroUsize, sync::Arc, time::Duration};
-use tn_types::consensus::Parameters;
-use tn_network_types::{MockPrimaryToEngine, HeaderPayloadResponse};
+use std::{num::NonZeroUsize, time::Duration};
 use tokio::{sync::mpsc::channel, time::sleep};
 
 #[tokio::test]
 async fn simple_primary_worker_node_start_stop() {
-    telemetry_subscribers::init_for_testing();
+    reth_tracing::init_test_tracing();
 
     // GIVEN
     let parameters = Parameters::default();
@@ -34,38 +35,21 @@ async fn simple_primary_worker_node_start_stop() {
     let authority = fixture.authorities().next().unwrap();
     let key_pair = authority.keypair();
     let network_key_pair = authority.network_keypair();
-    let client = NetworkClient::new_from_keypair(&network_key_pair, &authority.engine_network_keypair().public());
-
-    // mock engine header provider
-    let mut mock_engine = MockPrimaryToEngine::new();
-    mock_engine.expect_build_header().returning(
-        move |_request| {
-            tracing::debug!("mock engine expect_build_header: {_request:?}");
-            let header = tn_types::execution::Header::default();
-            Ok(
-                anemo::Response::new(
-                    HeaderPayloadResponse {
-                        sealed_header: header.seal_slow(),
-                    }
-                )
-            )
-        }
-    );
-    client.set_primary_to_engine_local_handler(Arc::new(mock_engine));
+    let client = NetworkClient::new_from_keypair(&network_key_pair);
 
     let store = NodeStorage::reopen(temp_dir(), None);
 
     let (tx_confirmation, _rx_confirmation) = channel(10);
-    let execution_state = Arc::new(SimpleExecutionState::new(tx_confirmation));
+    let execution_state = SimpleExecutionState::new(tx_confirmation);
 
     // WHEN
     let primary_node = PrimaryNode::new(parameters.clone(), registry_service.clone());
-
     primary_node
         .start(
             key_pair.copy(),
             network_key_pair.copy(),
             committee.clone(),
+            ChainIdentifier::unknown(),
             worker_cache.clone(),
             client.clone(),
             &store,
@@ -85,7 +69,7 @@ async fn simple_primary_worker_node_start_stop() {
             worker_cache,
             client,
             &store,
-            TrivialTransactionValidator::default(),
+            TrivialTransactionValidator,
         )
         .await
         .unwrap();
@@ -117,7 +101,7 @@ async fn simple_primary_worker_node_start_stop() {
 
 #[tokio::test]
 async fn primary_node_restart() {
-    telemetry_subscribers::init_for_testing();
+    reth_tracing::init_test_tracing();
 
     // GIVEN
     let parameters = Parameters::default();
@@ -132,41 +116,25 @@ async fn primary_node_restart() {
     let authority = fixture.authorities().next().unwrap();
     let key_pair = authority.keypair();
     let network_key_pair = authority.network_keypair();
-    let client = NetworkClient::new_from_keypair(&network_key_pair, &authority.engine_network_keypair().public());
-    // mock engine header provider
-    let mut mock_engine = MockPrimaryToEngine::new();
-    mock_engine.expect_build_header().returning(
-        move |_request| {
-            tracing::debug!("mock engine expect_build_header: {_request:?}");
-            let header = tn_types::execution::Header::default();
-            Ok(
-                anemo::Response::new(
-                    HeaderPayloadResponse {
-                        sealed_header: header.seal_slow(),
-                    }
-                )
-            )
-        }
-    );
-    client.set_primary_to_engine_local_handler(Arc::new(mock_engine));
+    let client = NetworkClient::new_from_keypair(&network_key_pair);
 
     let store = NodeStorage::reopen(temp_dir(), None);
 
     let (tx_confirmation, _rx_confirmation) = channel(10);
-    let execution_state = Arc::new(SimpleExecutionState::new(tx_confirmation));
+    let execution_state = SimpleExecutionState::new(tx_confirmation.clone());
 
     // AND
     let primary_node = PrimaryNode::new(parameters.clone(), registry_service.clone());
-
     primary_node
         .start(
             key_pair.copy(),
             network_key_pair.copy(),
             committee.clone(),
+            ChainIdentifier::unknown(),
             worker_cache.clone(),
             client.clone(),
             &store,
-            execution_state.clone(),
+            execution_state,
         )
         .await
         .unwrap();
@@ -179,11 +147,13 @@ async fn primary_node_restart() {
     primary_node.shutdown().await;
 
     // AND start again the node
+    let execution_state = SimpleExecutionState::new(tx_confirmation.clone());
     primary_node
         .start(
             key_pair.copy(),
             network_key_pair.copy(),
             committee.clone(),
+            ChainIdentifier::unknown(),
             worker_cache.clone(),
             client.clone(),
             &store,

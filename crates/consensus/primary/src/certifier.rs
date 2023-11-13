@@ -1,26 +1,25 @@
-// Copyright (c) Telcoin, LLC
 // Copyright (c) 2021, Facebook, Inc. and its affiliates
+// Copyright (c) Telcoin, LLC
 // Copyright (c) Mysten Labs, Inc.
 // SPDX-License-Identifier: Apache-2.0
-use crate::{aggregators::VotesAggregator, metrics::PrimaryMetrics, synchronizer::Synchronizer, error::{PrimaryResult, PrimaryError}};
+use crate::{aggregators::VotesAggregator, metrics::PrimaryMetrics, synchronizer::Synchronizer};
+
 use consensus_metrics::{metered_channel::Receiver, monitored_future, spawn_logged_monitored_task};
 use fastcrypto::signature_service::SignatureService;
 use futures::{stream::FuturesUnordered, StreamExt};
-use lattice_network::anemo_ext::NetworkExt;
-use lattice_storage::{CertificateStore, HeaderStore};
+use narwhal_network::anemo_ext::NetworkExt;
+use narwhal_storage::CertificateStore;
+use narwhal_types::{AuthorityIdentifier, Committee};
 use std::{sync::Arc, time::Duration};
-use tn_macros::fail_point_async;
-use tn_types::{
-    consensus::{
-        AuthorityIdentifier, Committee,
-        crypto,
-        crypto::{NetworkPublicKey, AuthoritySignature},
-        Certificate, CertificateDigest, ConditionalBroadcastReceiver, Header, HeaderAPI,
-        Vote, VoteAPI,
-    },
+use telcoin_macros::fail_point_async;
+
+use narwhal_network_types::{PrimaryToPrimaryClient, RequestVoteRequest};
+use narwhal_types::{
     ensure,
+    error::{DagError, DagResult},
+    Certificate, CertificateDigest, ConditionalBroadcastReceiver, Header, HeaderAPI,
+    NetworkPublicKey, Signature, Vote, VoteAPI,
 };
-use tn_network_types::{PrimaryToPrimaryClient, RequestVoteRequest};
 use tokio::{
     sync::oneshot,
     task::{JoinHandle, JoinSet},
@@ -41,14 +40,12 @@ pub struct Certifier {
     authority_id: AuthorityIdentifier,
     /// The committee information.
     committee: Committee,
-    /// The persistent storage keyed to headers.
-    header_store: HeaderStore,
     /// The persistent storage keyed to certificates.
     certificate_store: CertificateStore,
     /// Handles synchronization with other nodes and our workers.
     synchronizer: Arc<Synchronizer>,
     /// Service to sign headers.
-    signature_service: SignatureService<AuthoritySignature, { crypto::INTENT_MESSAGE_LENGTH }>,
+    signature_service: SignatureService<Signature, { narwhal_types::INTENT_MESSAGE_LENGTH }>,
     /// Receiver for shutdown.
     rx_shutdown: ConditionalBroadcastReceiver,
     /// Receives our newly created headers from the `Proposer`.
@@ -60,7 +57,7 @@ pub struct Certifier {
     /// we cancel the previously running before we spawn the next one. However, we don't wait for
     /// the previous to finish to spawn the new one, so we might temporarily have more that one
     /// parallel running, which should be fine though.
-    propose_header_tasks: JoinSet<PrimaryResult<Certificate>>,
+    propose_header_tasks: JoinSet<DagResult<Certificate>>,
     /// A network sender to send the batches to the other workers.
     network: anemo::Network,
     /// Metrics handler
@@ -73,10 +70,9 @@ impl Certifier {
     pub fn spawn(
         authority_id: AuthorityIdentifier,
         committee: Committee,
-        header_store: HeaderStore,
         certificate_store: CertificateStore,
         synchronizer: Arc<Synchronizer>,
-        signature_service: SignatureService<AuthoritySignature, { crypto::INTENT_MESSAGE_LENGTH }>,
+        signature_service: SignatureService<Signature, { narwhal_types::INTENT_MESSAGE_LENGTH }>,
         rx_shutdown: ConditionalBroadcastReceiver,
         rx_headers: Receiver<Header>,
         metrics: Arc<PrimaryMetrics>,
@@ -87,7 +83,6 @@ impl Certifier {
                 Self {
                     authority_id,
                     committee,
-                    header_store,
                     certificate_store,
                     synchronizer,
                     signature_service,
@@ -110,7 +105,7 @@ impl Certifier {
         let core = async move { self.run().await };
 
         match core.await {
-            Err(err @ PrimaryError::ShuttingDown) => debug!("{:?}", err),
+            Err(err @ DagError::ShuttingDown) => debug!("{:?}", err),
             Err(err) => panic!("{:?}", err),
             Ok(_) => {}
         }
@@ -126,7 +121,7 @@ impl Certifier {
         authority: AuthorityIdentifier,
         target: NetworkPublicKey,
         header: Header,
-    ) -> PrimaryResult<Vote> {
+    ) -> DagResult<Vote> {
         let peer_id = anemo::PeerId(target.0.to_bytes());
         let peer = network.waiting_peer(peer_id);
 
@@ -153,7 +148,7 @@ impl Certifier {
                     .collect();
                 if parents.len() != expected_count {
                     warn!("tried to read {expected_count} missing certificates requested by remote primary for vote request, but only found {}", parents.len());
-                    return Err(PrimaryError::ProposedHeaderMissingCertificates)
+                    return Err(DagError::ProposedHeaderMissingCertificates);
                 }
                 parents
             };
@@ -165,15 +160,15 @@ impl Certifier {
                 Ok(response) => {
                     let response = response.into_body();
                     if response.vote.is_some() {
-                        break response.vote.unwrap()
+                        break response.vote.unwrap();
                     }
                     missing_parents = response.missing;
                 }
                 Err(status) => {
                     if status.status() == anemo::types::response::StatusCode::BadRequest {
-                        return Err(PrimaryError::NetworkError(format!(
+                        return Err(DagError::NetworkError(format!(
                             "unrecoverable error requesting vote for {header}: {status:?}"
-                        )))
+                        )));
                     }
                     missing_parents = Vec::new();
                 }
@@ -181,7 +176,7 @@ impl Certifier {
 
             // Retry delay. Using custom values here because pure exponential backoff is hard to
             // configure without it being either too aggressive or too slow. We want the first
-            // retry to be instantaneous, next couple to be fast, and then slow thereafter.
+            // retry to be instantaneous, next couple to be fast, and to slow quickly thereafter.
             tokio::time::sleep(Duration::from_millis(match attempt {
                 1 => 0,
                 2 => 100,
@@ -199,28 +194,28 @@ impl Certifier {
             vote.header_digest() == header.digest() &&
                 vote.origin() == header.author() &&
                 vote.author() == authority,
-            PrimaryError::UnexpectedVote(vote.header_digest())
+            DagError::UnexpectedVote(vote.header_digest())
         );
         // Possible equivocations.
         ensure!(
             header.epoch() == vote.epoch(),
-            PrimaryError::InvalidEpoch { expected: header.epoch(), received: vote.epoch() }
+            DagError::InvalidEpoch { expected: header.epoch(), received: vote.epoch() }
         );
         ensure!(
             header.round() == vote.round(),
-            PrimaryError::InvalidRound { expected: header.round(), received: vote.round() }
+            DagError::InvalidRound { expected: header.round(), received: vote.round() }
         );
 
         // Ensure the header is from the correct epoch.
         ensure!(
             vote.epoch() == committee.epoch(),
-            PrimaryError::InvalidEpoch { expected: committee.epoch(), received: vote.epoch() }
+            DagError::InvalidEpoch { expected: committee.epoch(), received: vote.epoch() }
         );
 
         // Ensure the authority has voting rights.
         ensure!(
             committee.stake_by_id(vote.author()) > 0,
-            PrimaryError::UnknownAuthority(vote.author().to_string())
+            DagError::UnknownAuthority(vote.author().to_string())
         );
 
         Ok(vote)
@@ -230,28 +225,25 @@ impl Certifier {
     async fn propose_header(
         authority_id: AuthorityIdentifier,
         committee: Committee,
-        header_store: HeaderStore,
         certificate_store: CertificateStore,
-        signature_service: SignatureService<AuthoritySignature, { crypto::INTENT_MESSAGE_LENGTH }>,
+        signature_service: SignatureService<Signature, { narwhal_types::INTENT_MESSAGE_LENGTH }>,
         metrics: Arc<PrimaryMetrics>,
         network: anemo::Network,
         header: Header,
         mut cancel: oneshot::Receiver<()>,
-    ) -> PrimaryResult<Certificate> {
+    ) -> DagResult<Certificate> {
         if header.epoch() != committee.epoch() {
             debug!(
                 "Certifier received mismatched header proposal for epoch {}, currently at epoch {}",
                 header.epoch(),
                 committee.epoch()
             );
-            return Err(PrimaryError::InvalidEpoch {
+            return Err(DagError::InvalidEpoch {
                 expected: committee.epoch(),
                 received: header.epoch(),
-            })
+            });
         }
 
-        // Process the header.
-        header_store.write(&header)?;
         metrics.proposed_header_round.set(header.round() as i64);
 
         // Reset the votes aggregator and sign our own header.
@@ -279,7 +271,7 @@ impl Certifier {
             .collect();
         loop {
             if certificate.is_some() {
-                break
+                break;
             }
             tokio::select! {
                 result = &mut requests.next() => {
@@ -297,7 +289,7 @@ impl Certifier {
                 },
                 _ = &mut cancel => {
                     debug!("canceling Header proposal {header} for round {}", header.round());
-                    return Err(PrimaryError::Canceled)
+                    return Err(DagError::Canceled)
                 },
             }
         }
@@ -322,32 +314,32 @@ impl Certifier {
                 }
                 warn!(msg);
             }
-            PrimaryError::CouldNotFormCertificate(header.digest())
+            DagError::CouldNotFormCertificate(header.digest())
         })?;
         debug!("Assembled {certificate:?}");
 
         Ok(certificate)
     }
 
-    /// Logs Certifier errors as appropriate.
-    fn process_result(result: &PrimaryResult<()>) {
+    // Logs Certifier errors as appropriate.
+    fn process_result(result: &DagResult<()>) {
         match result {
             Ok(()) => (),
-            Err(PrimaryError::StoreError(e)) => {
+            Err(DagError::StoreError(e)) => {
                 error!("{e}");
                 panic!("Storage failure: killing node.");
             }
             Err(
-                e @ PrimaryError::TooOld(..) |
-                e @ PrimaryError::VoteTooOld(..) |
-                e @ PrimaryError::InvalidEpoch { .. },
+                e @ DagError::TooOld(..) |
+                e @ DagError::VoteTooOld(..) |
+                e @ DagError::InvalidEpoch { .. },
             ) => debug!("{e}"),
             Err(e) => warn!("{e}"),
         }
     }
 
-    /// Main loop listening to incoming messages.
-    pub async fn run(mut self) -> PrimaryResult<Self> {
+    // Main loop listening to incoming messages.
+    pub async fn run(mut self) -> DagResult<Self> {
         info!("Core on node {} has started successfully.", self.authority_id);
         loop {
             let result = tokio::select! {
@@ -362,7 +354,6 @@ impl Certifier {
 
                     let name = self.authority_id;
                     let committee = self.committee.clone();
-                    let header_store = self.header_store.clone();
                     let certificate_store = self.certificate_store.clone();
                     let signature_service = self.signature_service.clone();
                     let metrics = self.metrics.clone();
@@ -371,7 +362,6 @@ impl Certifier {
                     self.propose_header_tasks.spawn(monitored_future!(Self::propose_header(
                         name,
                         committee,
-                        header_store,
                         certificate_store,
                         signature_service,
                         metrics,
@@ -394,7 +384,7 @@ impl Certifier {
                         Err(e) => {
                             if e.is_cancelled() {
                                 // Ungraceful shutdown.
-                                Err(PrimaryError::ShuttingDown)
+                                Err(DagError::ShuttingDown)
                             } else if e.is_panic() {
                                 // propagate panics.
                                 std::panic::resume_unwind(e.into_panic());

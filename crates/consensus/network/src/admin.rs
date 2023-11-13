@@ -1,13 +1,14 @@
 // Copyright (c) Telcoin, LLC
 // Copyright (c) Mysten Labs, Inc.
 // SPDX-License-Identifier: Apache-2.0
+
 use axum::{extract::Extension, http::StatusCode, routing::get, Json, Router};
 use consensus_metrics::{spawn_logged_monitored_task, spawn_monitored_task};
+use narwhal_types::ConditionalBroadcastReceiver;
 use std::{
     net::{IpAddr, Ipv4Addr, SocketAddr, TcpListener},
     time::Duration,
 };
-use tn_types::consensus::ConditionalBroadcastReceiver;
 use tokio::{task::JoinHandle, time::sleep};
 use tracing::{error, info};
 
@@ -55,7 +56,7 @@ pub fn start_admin_server(
                                 panic!("Failed to boot admin {}: {err}", socket_address)
                             });
 
-                        return
+                        return;
                     }
                     Err(err) => {
                         if total_retries == 0 {
@@ -69,7 +70,7 @@ pub fn start_admin_server(
                         // has not been de-allocated
                         sleep(Duration::from_secs(1)).await;
 
-                        continue
+                        continue;
                     }
                 }
             }

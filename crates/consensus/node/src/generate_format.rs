@@ -1,22 +1,22 @@
 // Copyright (c) Telcoin, LLC
 // Copyright (c) Mysten Labs, Inc.
 // SPDX-License-Identifier: Apache-2.0
-use tn_types::consensus::Multiaddr;
+use clap::Parser;
 use fastcrypto::{
     hash::Hash,
     traits::{KeyPair as _, Signer},
 };
+use narwhal_network_types::{
+    WorkerOthersBatchMessage, WorkerOwnBatchMessage, WorkerSynchronizeMessage,
+};
+use narwhal_types::{
+    Batch, BatchDigest, Certificate, CertificateDigest, CommitteeBuilder, Epoch, Header,
+    HeaderDigest, HeaderV1Builder, KeyPair, MetadataV1, Multiaddr, NetworkKeyPair,
+    VersionedMetadata, WorkerIndex, WorkerInfo,
+};
 use rand::{prelude::StdRng, SeedableRng};
 use serde_reflection::{Registry, Result, Samples, Tracer, TracerConfig};
 use std::{fs::File, io::Write};
-use structopt::{clap::arg_enum, StructOpt};
-use tn_types::consensus::{
-    CommitteeBuilder, Epoch, WorkerIndex, WorkerInfo,
-    crypto::{AuthorityKeyPair, NetworkKeyPair},
-    Batch, BatchDigest, Certificate, CertificateDigest, Header, HeaderDigest, HeaderV1Builder,
-    VersionedMetadata,
-};
-use tn_network_types::{WorkerOthersBatchMessage, WorkerOwnBatchMessage, WorkerSynchronizeMessage};
 
 #[allow(clippy::mutable_key_type)]
 fn get_registry() -> Result<Registry> {
@@ -30,7 +30,7 @@ fn get_registry() -> Result<Registry> {
     // Trace the corresponding header
     let mut rng = StdRng::from_seed([0; 32]);
     let (keys, network_keys): (Vec<_>, Vec<_>) =
-        (0..4).map(|_| (AuthorityKeyPair::generate(&mut rng), NetworkKeyPair::generate(&mut rng))).unzip();
+        (0..4).map(|_| (KeyPair::generate(&mut rng), NetworkKeyPair::generate(&mut rng))).unzip();
 
     let kp = keys[0].copy();
     let pk = kp.public().clone();
@@ -50,10 +50,12 @@ fn get_registry() -> Result<Registry> {
             1,
             primary_address,
             network_key.public().clone(),
+            i.to_string(),
         );
     }
 
     let committee = committee_builder.build();
+    tracer.trace_value(&mut samples, &committee)?;
 
     let certificates: Vec<Certificate> = Certificate::genesis(&committee);
 
@@ -61,7 +63,7 @@ fn get_registry() -> Result<Registry> {
     let authority = committee.authority_by_key(kp.public()).unwrap();
 
     // The values have to be "complete" in a data-centric sense, but not "correct"
-    // cryptographically.
+    // cryptographically. TODO: Update to HeaderV2Builder. Add example SystemMessages.
     let header_builder = HeaderV1Builder::default();
     let header = header_builder
         .author(authority.id())
@@ -72,19 +74,16 @@ fn get_registry() -> Result<Registry> {
         .parents(certificates.iter().map(|x| x.digest()).collect())
         .build()
         .unwrap();
+    tracer.trace_value(&mut samples, &header)?;
 
     let worker_pk = network_keys[0].public().clone();
-    let certificate =
-        Certificate::new_unsigned(&committee, Header::V1(header.clone()), vec![]).unwrap();
-    let signature = keys[0].sign(certificate.digest().as_ref());
+    let signature = keys[0].sign(header.digest().as_ref());
     let certificate = Certificate::new_unsigned(
         &committee,
         Header::V1(header.clone()),
         vec![(authority.id(), signature)],
     )
     .unwrap();
-
-    tracer.trace_value(&mut samples, &header)?;
     tracer.trace_value(&mut samples, &certificate)?;
 
     // WorkerIndex & WorkerInfo will be present in a protocol message once dynamic
@@ -95,7 +94,7 @@ fn get_registry() -> Result<Registry> {
             WorkerInfo {
                 name: worker_pk,
                 worker_address: "/ip4/127.0.0.1/udp/500".to_string().parse().unwrap(),
-                // transactions: "/ip4/127.0.0.1/tcp/400/http".to_string().parse().unwrap(),
+                transactions: "/ip4/127.0.0.1/tcp/400/http".to_string().parse().unwrap(),
             },
         )]
         .into_iter()
@@ -106,7 +105,11 @@ fn get_registry() -> Result<Registry> {
     let own_batch = WorkerOwnBatchMessage {
         digest: BatchDigest([0u8; 32]),
         worker_id: 0,
-        metadata: VersionedMetadata::default(),
+        metadata: VersionedMetadata::V1(MetadataV1 {
+            created_at: 0,
+            received_at: None,
+            sealed_header: Default::default(),
+        }),
     };
     let others_batch = WorkerOthersBatchMessage { digest: BatchDigest([0u8; 32]), worker_id: 0 };
     let sync = WorkerSynchronizeMessage {
@@ -128,29 +131,27 @@ fn get_registry() -> Result<Registry> {
     tracer.registry()
 }
 
-arg_enum! {
-#[derive(Debug, StructOpt, Clone, Copy)]
+#[derive(Debug, clap::ValueEnum, Clone, Copy)]
 enum Action {
     Print,
     Test,
     Record,
 }
-}
 
-#[derive(Debug, StructOpt)]
-#[structopt(
+#[derive(Debug, Parser)]
+#[command(
     name = "Narwhal format generator",
     about = "Trace serde (de)serialization to generate format descriptions for Narwhal types"
 )]
 struct Options {
-    #[structopt(possible_values = &Action::variants(), default_value = "Print", case_insensitive = true)]
+    #[arg(value_enum, default_value = "Print", ignore_case = true)]
     action: Action,
 }
 
 const FILE_PATH: &str = "node/tests/staged/narwhal.yaml";
 
 fn main() {
-    let options = Options::from_args();
+    let options = Options::parse();
     let registry = get_registry().unwrap();
     match options.action {
         Action::Print => {
@@ -167,7 +168,7 @@ fn main() {
             // cargo -q run --example narwhal-generate-format -- print > tests/staged/narwhal.yaml
             let reference = std::fs::read_to_string(FILE_PATH).unwrap();
             let reference: Registry = serde_yaml::from_str(&reference).unwrap();
-            pretty_assertions::assert_eq!(reference, registry);
+            assert_eq!(reference, registry);
         }
     }
 }

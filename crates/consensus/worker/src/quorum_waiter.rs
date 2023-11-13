@@ -1,5 +1,5 @@
-// Copyright (c) Telcoin, LLC
 // Copyright (c) 2021, Facebook, Inc. and its affiliates
+// Copyright (c) Telcoin, LLC
 // Copyright (c) Mysten Labs, Inc.
 // SPDX-License-Identifier: Apache-2.0
 
@@ -7,16 +7,14 @@ use crate::{batch_maker::MAX_PARALLEL_BATCH, metrics::WorkerMetrics};
 use consensus_metrics::{metered_channel::Receiver, monitored_future, spawn_logged_monitored_task};
 use fastcrypto::hash::Hash;
 use futures::stream::{futures_unordered::FuturesUnordered, StreamExt as _};
-use lattice_network::{CancelOnDropHandler, ReliableNetwork};
-use std::{sync::Arc, time::Duration};
-use tn_types::consensus::{
-    Authority, Committee, Stake, WorkerCache, WorkerId,
-    Batch, ConditionalBroadcastReceiver, BatchDigest, BatchAPI,
+use narwhal_network::{CancelOnDropHandler, ReliableNetwork};
+use narwhal_network_types::WorkerBatchMessage;
+use narwhal_types::{
+    Authority, Batch, Committee, ConditionalBroadcastReceiver, Stake, WorkerCache, WorkerId,
 };
-use tn_network_types::{WorkerBatchMessage, WorkerOwnBatchMessage};
-use lattice_network::{client::NetworkClient, WorkerToPrimaryClient};
+use std::{sync::Arc, time::Duration};
 use tokio::{task::JoinHandle, time::timeout};
-use tracing::{trace, warn, debug};
+use tracing::{trace, warn};
 
 #[cfg(test)]
 #[path = "tests/quorum_waiter_tests.rs"]
@@ -35,12 +33,9 @@ pub struct QuorumWaiter {
     /// Receiver for shutdown.
     rx_shutdown: ConditionalBroadcastReceiver,
     /// Input Channel to receive commands.
-    rx_quorum_waiter: Receiver<(Batch, BatchDigest, tokio::sync::oneshot::Sender<()>)>,
+    rx_quorum_waiter: Receiver<(Batch, tokio::sync::oneshot::Sender<()>)>,
     /// A network sender to broadcast the batches to the other workers.
     network: anemo::Network,
-    /// The network client to receive the next batch from the EL
-    /// and report own batch to the prmary.
-    network_client: NetworkClient,
     /// Record metrics for quorum waiter.
     metrics: Arc<WorkerMetrics>,
 }
@@ -54,9 +49,8 @@ impl QuorumWaiter {
         committee: Committee,
         worker_cache: WorkerCache,
         rx_shutdown: ConditionalBroadcastReceiver,
-        rx_quorum_waiter: Receiver<(Batch, BatchDigest, tokio::sync::oneshot::Sender<()>)>,
+        rx_quorum_waiter: Receiver<(Batch, tokio::sync::oneshot::Sender<()>)>,
         network: anemo::Network,
-        network_client: NetworkClient,
         metrics: Arc<WorkerMetrics>,
     ) -> JoinHandle<()> {
         spawn_logged_monitored_task!(
@@ -69,7 +63,6 @@ impl QuorumWaiter {
                     rx_shutdown,
                     rx_quorum_waiter,
                     network,
-                    network_client,
                     metrics,
                 }
                 .run()
@@ -81,7 +74,7 @@ impl QuorumWaiter {
 
     /// Helper function. It waits for a future to complete and then delivers a value.
     async fn waiter(
-        wait_for: CancelOnDropHandler<anemo::Result<anemo::Response<()>>>,
+        wait_for: CancelOnDropHandler<eyre::Result<anemo::Response<()>>>,
         deliver: Stake,
     ) -> Stake {
         let _ = wait_for.await;
@@ -100,7 +93,7 @@ impl QuorumWaiter {
                 // task to the pipeline to send this batch to workers.
                 //
                 // TODO: make the constant a config parameter.
-                Some((batch, digest, channel)) = self.rx_quorum_waiter.recv(), if pipeline.len() < MAX_PARALLEL_BATCH => {
+                Some((batch, channel)) = self.rx_quorum_waiter.recv(), if pipeline.len() < MAX_PARALLEL_BATCH => {
                     // Broadcast the batch to the other workers.
                     let workers: Vec<_> = self
                         .worker_cache
@@ -128,12 +121,6 @@ impl QuorumWaiter {
                     // the dag). This should reduce the amount of syncing.
                     let threshold = self.committee.quorum_threshold();
                     let mut total_stake = self.authority.stake();
-                    // data for WorkerOwnMessage
-                    let client = self.network_client.clone();
-                    let worker_id = self.id.clone();
-                    let metadata = batch.clone().owned_metadata();
-                    // let digest = batch_digest.clone();
-                    debug!(target: "worker::quorum_waiter", "waiting for 2f nodes to ack.\nthreshold:{threshold:?}\nstake:{total_stake:?}\n");
 
                     pipeline.push(async move {
                         // Keep the timer until a quorum is reached.
@@ -141,20 +128,10 @@ impl QuorumWaiter {
                         // A future that sends to 2/3 stake then returns. Also prints a warning
                         // if we terminate before we have managed to get to the full 2/3 stake.
                         let mut opt_channel = Some(channel);
-                        loop {
+                        loop{
                             if let Some(stake) = wait_for_quorum.next().await {
                                 total_stake += stake;
                                 if total_stake >= threshold {
-                                    // report batch to primary
-                                    let message = WorkerOwnBatchMessage { digest, worker_id, metadata };
-                                    if let Err(e) = client.report_own_batch(message).await {
-                                        warn!("Failed to report our batch: {}", e);
-                                        // Drop all response handlers to signal error, since we
-                                        // cannot ensure the primary has actually signaled the
-                                        // batch will eventually be sent.
-                                        // The transaction submitter will see the error and retry.
-                                        break
-                                    }
                                     // Notify anyone waiting for this.
                                     let channel = opt_channel.take().unwrap();
                                     if let Err(e) = channel.send(()) {
@@ -164,7 +141,8 @@ impl QuorumWaiter {
                                 }
                             } else {
                                 // This should not happen unless shutting down, because
-                                // `broadcast()` is supposed to keep retrying.
+                                // `broadcast()` uses `send()` which keeps retrying on
+                                // failed responses.
                                 warn!("Batch dissemination ended without a quorum. Shutting down.");
                                 break;
                             }

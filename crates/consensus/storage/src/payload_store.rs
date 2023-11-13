@@ -1,16 +1,17 @@
 // Copyright (c) Telcoin, LLC
 // Copyright (c) Mysten Labs, Inc.
 // SPDX-License-Identifier: Apache-2.0
+
 use crate::{NodeStorage, PayloadToken};
-use lattice_common::sync::notify_read::NotifyRead;
-use lattice_typed_store::{
+use narwhal_typed_store::{
     reopen,
     rocks::{open_cf, DBMap, MetricConf, ReadWriteOptions},
     Map, TypedStoreError,
 };
+use narwhal_types::{BatchDigest, WorkerId};
 use std::sync::Arc;
-use tn_macros::fail_point;
-use tn_types::consensus::{WorkerId, BatchDigest};
+use telcoin_macros::fail_point;
+use telcoin_sync::sync::notify_read::NotifyRead;
 
 /// Store of the batch digests for the primary node for the own created batches.
 #[derive(Clone)]
@@ -93,7 +94,7 @@ impl PayloadStore {
             self.notify_subscribers.notify(&(digest, worker_id), &());
 
             // reply directly
-            return Ok(())
+            return Ok(());
         }
 
         // now wait to hear back the result
@@ -128,14 +129,14 @@ mod tests {
     use crate::PayloadStore;
     use fastcrypto::hash::Hash;
     use futures::future::join_all;
-    use tn_types::consensus::Batch;
+    use narwhal_types::Batch;
 
     #[tokio::test]
     async fn test_notify_read() {
         let store = PayloadStore::new_for_tests();
 
         // run the tests a few times
-        let batch: Batch = lattice_test_utils::fixture_batch_with_transactions(10);
+        let batch: Batch = narwhal_types::test_utils::fixture_batch_with_transactions(10);
         let id = batch.digest();
         let worker_id = 0;
 

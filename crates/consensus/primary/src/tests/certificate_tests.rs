@@ -1,17 +1,19 @@
 // Copyright (c) Telcoin, LLC
 // Copyright (c) Mysten Labs, Inc.
 // SPDX-License-Identifier: Apache-2.0
+
 // This test file tests the validity of the 'certificates' implementation.
+
 use fastcrypto::traits::KeyPair as _;
-use lattice_test_utils::CommitteeFixture;
+use narwhal_types::{
+    test_utils::CommitteeFixture, AuthorityIdentifier, Certificate, CertificateAPI, KeyPair,
+    SignatureVerificationState, Vote, VoteAPI,
+};
 use rand::{
     rngs::{OsRng, StdRng},
     SeedableRng,
 };
 use std::num::NonZeroUsize;
-use tn_types::consensus::{
-    AuthorityIdentifier, crypto::AuthorityKeyPair, Certificate, Vote, VoteAPI,
-};
 
 #[test]
 fn test_empty_certificate_verification() {
@@ -27,8 +29,32 @@ fn test_empty_certificate_verification() {
     assert!(certificate.verify(&committee, &fixture.worker_cache()).is_err());
 }
 
+// #[test]
+// fn test_valid_certificate_v1_verification() {
+//     let fixture = CommitteeFixture::builder().build();
+//     let cert_v1_protocol_config = get_protocol_config(28);
+//     let committee = fixture.committee();
+//     let header = fixture.header(&cert_v1_protocol_config);
+
+//     let mut signatures = Vec::new();
+
+//     // 3 Signers satisfies the 2F + 1 signed stake requirement
+//     for authority in fixture.authorities().take(3) {
+//         let vote = authority.vote(&header);
+//         signatures.push((vote.author(), vote.signature().clone()));
+//     }
+
+//     let certificate =
+//         Certificate::new_unverified(&cert_v1_protocol_config, &committee, header, signatures)
+//             .unwrap();
+
+//     assert!(certificate
+//         .verify(&committee, &fixture.worker_cache())
+//         .is_ok());
+// }
+
 #[test]
-fn test_valid_certificate_verification() {
+fn test_valid_certificate_v2_verification() {
     let fixture = CommitteeFixture::builder().build();
     let committee = fixture.committee();
     let header = fixture.header();
@@ -43,7 +69,13 @@ fn test_valid_certificate_verification() {
 
     let certificate = Certificate::new_unverified(&committee, header, signatures).unwrap();
 
-    assert!(certificate.verify(&committee, &fixture.worker_cache()).is_ok());
+    let verified_certificate = certificate.verify(&committee, &fixture.worker_cache());
+
+    assert!(verified_certificate.is_ok());
+    assert!(matches!(
+        verified_certificate.unwrap().signature_verification_state(),
+        SignatureVerificationState::VerifiedDirectly(_)
+    ));
 }
 
 #[test]
@@ -105,7 +137,7 @@ fn test_unknown_signature_in_certificate() {
         signatures.push((vote.author(), vote.signature().clone()));
     }
 
-    let malicious_key = AuthorityKeyPair::generate(&mut StdRng::from_rng(OsRng).unwrap());
+    let malicious_key = KeyPair::generate(&mut StdRng::from_rng(OsRng).unwrap());
     let malicious_id: AuthorityIdentifier = AuthorityIdentifier(50u16);
 
     let vote = Vote::new_with_signer(&header, &malicious_id, &malicious_key);

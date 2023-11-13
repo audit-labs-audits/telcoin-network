@@ -1,11 +1,11 @@
-// Copyright (c) Telcoin, LLC
 // Copyright (c) 2021, Facebook, Inc. and its affiliates
+// Copyright (c) Telcoin, LLC
 // Copyright (c) Mysten Labs, Inc.
 // SPDX-License-Identifier: Apache-2.0
 use crate::{
     batch_fetcher::BatchFetcher,
     batch_maker::BatchMaker,
-    handlers::{PrimaryToWorkerHandler, WorkerToWorkerHandler, EngineToWorkerHandler},
+    handlers::{PrimaryReceiverHandler, WorkerReceiverHandler},
     metrics::WorkerChannelMetrics,
     quorum_waiter::QuorumWaiter,
     TransactionValidator, NUM_SHUTDOWN_RECEIVERS,
@@ -22,35 +22,38 @@ use anemo_tower::{
     set_header::{SetRequestHeaderLayer, SetResponseHeaderLayer},
     trace::{DefaultMakeSpan, DefaultOnFailure, TraceLayer},
 };
-use consensus_metrics::{metered_channel::{channel_with_total, Receiver}, spawn_logged_monitored_task};
-use tn_types::consensus::{Protocol, Multiaddr};
-use lattice_network::{
+use consensus_metrics::{metered_channel::channel_with_total, spawn_logged_monitored_task};
+use narwhal_network::{
     client::NetworkClient,
     epoch_filter::{AllowedEpoch, EPOCH_HEADER_KEY},
     failpoints::FailpointsMakeCallbackHandler,
     metrics::MetricsMakeCallbackHandler,
 };
-use lattice_typed_store::rocks::DBMap;
+use narwhal_typed_store::rocks::DBMap;
+use narwhal_types::{
+    traits::KeyPair as _, Authority, AuthorityIdentifier, Committee, Multiaddr, NetworkKeyPair,
+    NetworkPublicKey, Parameters, Protocol, WorkerCache, WorkerId,
+};
 use std::{collections::HashMap, net::Ipv4Addr, sync::Arc, thread::sleep, time::Duration};
-use tap::TapFallible;
-use tn_types::consensus::{
-    Authority, AuthorityIdentifier, Committee, Parameters, WorkerCache, WorkerId,
-    crypto::{traits::KeyPair as _, NetworkKeyPair, NetworkPublicKey},
+
+use narwhal_network_types::{PrimaryToWorkerServer, WorkerToWorkerServer};
+use narwhal_types::{
     Batch, BatchDigest, ConditionalBroadcastReceiver, PreSubscribedBroadcastSender,
 };
-use tn_network_types::WorkerToWorkerServer;
+use tap::TapFallible;
 use tokio::task::JoinHandle;
 use tower::ServiceBuilder;
 use tracing::{error, info};
 
-// #[cfg(test)]
-// #[path = "tests/worker_tests.rs"]
-// pub mod worker_tests;
+#[cfg(test)]
+#[path = "tests/worker_tests.rs"]
+pub mod worker_tests;
 
 /// The default channel capacity for each channel of the worker.
 pub const CHANNEL_CAPACITY: usize = 1_000;
 
-use crate::metrics::{Metrics, WorkerMetrics};
+use crate::metrics::{Metrics, WorkerEndpointMetrics, WorkerMetrics};
+// use crate::transactions_server::TxServer;
 
 pub struct Worker {
     /// This authority.
@@ -93,12 +96,13 @@ impl Worker {
             keypair,
             id,
             committee: committee.clone(),
-            worker_cache,
+            worker_cache: worker_cache.clone(),
             parameters: parameters.clone(),
             store,
         };
 
         let node_metrics = Arc::new(metrics.worker_metrics.unwrap());
+        let endpoint_metrics = metrics.endpoint_metrics.unwrap();
         let channel_metrics: Arc<WorkerChannelMetrics> = Arc::new(metrics.channel_metrics.unwrap());
         let inbound_network_metrics = Arc::new(metrics.inbound_network_metrics.unwrap());
         let outbound_network_metrics = Arc::new(metrics.outbound_network_metrics.unwrap());
@@ -106,10 +110,11 @@ impl Worker {
 
         let mut shutdown_receivers = tx_shutdown.subscribe_n(NUM_SHUTDOWN_RECEIVERS);
 
-        let mut worker_service = WorkerToWorkerServer::new(WorkerToWorkerHandler {
+        let mut worker_service = WorkerToWorkerServer::new(WorkerReceiverHandler {
             id: worker.id,
-            network_client: client.clone(),
+            client: client.clone(),
             store: worker.store.clone(),
+            validator: validator.clone(),
         });
         // Apply rate limits from configuration as needed.
         if let Some(limit) = parameters.anemo.report_batch_rate_limit {
@@ -120,14 +125,28 @@ impl Worker {
                 ),
             ));
         }
-        if let Some(limit) = parameters.anemo.request_batch_rate_limit {
-            worker_service = worker_service.add_layer_for_request_batch(InboundRequestLayer::new(
-                rate_limit::RateLimitLayer::new(
+        if let Some(limit) = parameters.anemo.request_batches_rate_limit {
+            worker_service = worker_service.add_layer_for_request_batches(
+                InboundRequestLayer::new(rate_limit::RateLimitLayer::new(
                     governor::Quota::per_second(limit),
                     rate_limit::WaitMode::Block,
-                ),
-            ));
+                )),
+            );
         }
+
+        // Legacy RPC interface, only used by delete_batches() for external consensus.
+        let primary_service = PrimaryToWorkerServer::new(PrimaryReceiverHandler {
+            authority_id: worker.authority.id(),
+            id: worker.id,
+            committee: worker.committee.clone(),
+            worker_cache: worker.worker_cache.clone(),
+            store: worker.store.clone(),
+            request_batches_timeout: worker.parameters.sync_retry_delay,
+            request_batches_retry_nodes: worker.parameters.sync_retry_nodes,
+            network: None,
+            batch_fetcher: None,
+            validator: validator.clone(),
+        });
 
         // Receive incoming messages from other workers.
         let address = worker
@@ -141,19 +160,23 @@ impl Worker {
 
         let epoch_string: String = committee.epoch().to_string();
 
-        // used for external consensus
-        // // Set up anemo Network.
-        // let our_primary_peer_id = PeerId(authority.network_key().0.to_bytes());
-        // let primary_to_worker_router = anemo::Router::new()
-        //     .add_rpc_service(primary_service)
-        //     // Add an Authorization Layer to ensure that we only service requests from our primary
-        //     .route_layer(RequireAuthorizationLayer::new(AllowedPeers::new([our_primary_peer_id])))
-        //     .route_layer(RequireAuthorizationLayer::new(AllowedEpoch::new(epoch_string.clone())));
+        // Set up anemo Network.
+        let our_primary_peer_id = PeerId(authority.network_key().0.to_bytes());
+        let primary_to_worker_router = anemo::Router::new()
+            .add_rpc_service(primary_service)
+            // Add an Authorization Layer to ensure that we only service requests from our primary
+            .route_layer(RequireAuthorizationLayer::new(AllowedPeers::new([our_primary_peer_id])))
+            .route_layer(RequireAuthorizationLayer::new(AllowedEpoch::new(epoch_string.clone())));
 
+        let worker_peer_ids = worker_cache
+            .all_workers()
+            .into_iter()
+            .map(|(worker_name, _)| PeerId(worker_name.0.to_bytes()));
         let routes = anemo::Router::new()
             .add_rpc_service(worker_service)
-            .route_layer(RequireAuthorizationLayer::new(AllowedEpoch::new(epoch_string.clone())));
-            // .merge(primary_to_worker_router);
+            .route_layer(RequireAuthorizationLayer::new(AllowedPeers::new(worker_peer_ids)))
+            .route_layer(RequireAuthorizationLayer::new(AllowedEpoch::new(epoch_string.clone())))
+            .merge(primary_to_worker_router);
 
         let service = ServiceBuilder::new()
             .layer(
@@ -208,9 +231,9 @@ impl Worker {
             quic_config.keep_alive_interval_ms = Some(5_000);
             let mut config = anemo::Config::default();
             config.quic = Some(quic_config);
-            // Set the max_frame_size to be 2 GB to work around the issue of there being too many
+            // Set the max_frame_size to be 1 GB to work around the issue of there being too many
             // delegation events in the epoch change txn.
-            config.max_frame_size = Some(2 << 30);
+            config.max_frame_size = Some(1 << 30);
             // Set a default timeout of 300s for all RPC requests
             config.inbound_request_timeout_ms = Some(300_000);
             config.outbound_request_timeout_ms = Some(300_000);
@@ -223,10 +246,9 @@ impl Worker {
 
         let network;
         let mut retries_left = 90;
-
         loop {
             let network_result = anemo::Network::bind(addr.clone())
-                .server_name("lattice")
+                .server_name("narwhal")
                 .private_key(worker.keypair.copy().private().0.to_bytes())
                 .config(anemo_config.clone())
                 .outbound_request_layer(outbound_layer.clone())
@@ -234,7 +256,7 @@ impl Worker {
             match network_result {
                 Ok(n) => {
                     network = n;
-                    break
+                    break;
                 }
                 Err(_) => {
                     retries_left -= 1;
@@ -250,6 +272,7 @@ impl Worker {
                 }
             }
         }
+        client.set_worker_network(id, network.clone());
 
         info!("Worker {} listening to worker messages on {}", id, address);
 
@@ -261,35 +284,17 @@ impl Worker {
         );
         client.set_primary_to_worker_local_handler(
             worker_peer_id,
-            Arc::new(PrimaryToWorkerHandler {
+            Arc::new(PrimaryReceiverHandler {
                 authority_id: worker.authority.id(),
                 id: worker.id,
                 committee: worker.committee.clone(),
                 worker_cache: worker.worker_cache.clone(),
                 store: worker.store.clone(),
-                request_batch_timeout: worker.parameters.sync_retry_delay,
-                request_batch_retry_nodes: worker.parameters.sync_retry_nodes,
+                request_batches_timeout: worker.parameters.sync_retry_delay,
+                request_batches_retry_nodes: worker.parameters.sync_retry_nodes,
                 network: Some(network.clone()),
                 batch_fetcher: Some(batch_fetcher),
                 validator: validator.clone(),
-            }),
-        );
-
-        let (tx_quorum_waiter, rx_quorum_waiter) = channel_with_total(
-            CHANNEL_CAPACITY,
-            &channel_metrics.tx_quorum_waiter,
-            &channel_metrics.tx_quorum_waiter_total,
-        );
-        // set engine to worker listener
-        client.set_engine_to_worker_local_handler(
-            // worker_peer_id,
-            worker.id,
-            Arc::new(EngineToWorkerHandler {
-                authority_id: worker.authority.id(),
-                id: worker.id,
-                peer_id: worker_peer_id,
-                store: worker.store.clone(),
-                tx_quorum_waiter,
             }),
         );
 
@@ -326,7 +331,7 @@ impl Worker {
         }
 
         let (connection_monitor_handle, _) =
-            lattice_network::connectivity::ConnectionMonitor::spawn(
+            narwhal_network::connectivity::ConnectionMonitor::spawn(
                 network.downgrade(),
                 network_connection_metrics,
                 peer_types,
@@ -343,7 +348,7 @@ impl Worker {
             id, network_admin_server_base_port
         );
 
-        let admin_handles = lattice_network::admin::start_admin_server(
+        let admin_handles = narwhal_network::admin::start_admin_server(
             network_admin_server_base_port,
             network.clone(),
             shutdown_receivers.pop().unwrap(),
@@ -357,14 +362,25 @@ impl Worker {
             ],
             node_metrics,
             channel_metrics,
+            endpoint_metrics,
+            validator,
             client,
             network.clone(),
-            worker_peer_id,
-            rx_quorum_waiter,
         );
 
         let network_shutdown_handle =
             Self::shutdown_network_listener(shutdown_receivers.pop().unwrap(), network);
+
+        // NOTE: This log entry is used to compute performance.
+        info!(
+            "Worker {} successfully booted on {}",
+            id,
+            worker
+                .worker_cache
+                .worker(authority.protocol_key(), &worker.id)
+                .expect("Our public key or worker id is not in the worker cache")
+                .transactions
+        );
 
         let mut handles = vec![connection_monitor_handle, network_shutdown_handle];
         handles.extend(admin_handles);
@@ -417,28 +433,32 @@ impl Worker {
         mut shutdown_receivers: Vec<ConditionalBroadcastReceiver>,
         node_metrics: Arc<WorkerMetrics>,
         channel_metrics: Arc<WorkerChannelMetrics>,
+        _endpoint_metrics: WorkerEndpointMetrics,
+        _validator: impl TransactionValidator,
         client: NetworkClient,
         network: anemo::Network,
-        worker_peer_id: PeerId,
-        rx_quorum_waiter: Receiver<(Batch, BatchDigest, tokio::sync::oneshot::Sender<()>)>,
     ) -> Vec<JoinHandle<()>> {
         info!("Starting handler for transactions");
 
-        let (tx_batch_maker, rx_batch_maker) = channel_with_total(
+        let (_tx_batch_maker, rx_batch_maker) = channel_with_total(
             CHANNEL_CAPACITY,
             &channel_metrics.tx_batch_maker,
             &channel_metrics.tx_batch_maker_total,
         );
+        let (tx_quorum_waiter, rx_quorum_waiter) = channel_with_total(
+            CHANNEL_CAPACITY,
+            &channel_metrics.tx_quorum_waiter,
+            &channel_metrics.tx_quorum_waiter_total,
+        );
 
-
-        // // We first receive clients' transactions from the network.
-        // let address = self
-        //     .worker_cache
-        //     .worker(self.authority.protocol_key(), &self.id)
-        //     .expect("Our public key or worker id is not in the worker cache")
-        //     .transactions;
-        // let address =
-        //     address.replace(0, |_protocol| Some(Protocol::Ip4(Ipv4Addr::UNSPECIFIED))).unwrap();
+        // We first receive clients' transactions from the network.
+        let address = self
+            .worker_cache
+            .worker(self.authority.protocol_key(), &self.id)
+            .expect("Our public key or worker id is not in the worker cache")
+            .transactions;
+        let address =
+            address.replace(0, |_protocol| Some(Protocol::Ip4(Ipv4Addr::UNSPECIFIED))).unwrap();
 
         // let tx_server_handle = TxServer::spawn(
         //     address.clone(),
@@ -458,9 +478,9 @@ impl Worker {
             self.parameters.max_batch_delay,
             shutdown_receivers.pop().unwrap(),
             rx_batch_maker,
-            // tx_quorum_waiter,
+            tx_quorum_waiter,
             node_metrics.clone(),
-            client.clone(),
+            client,
             self.store.clone(),
         );
 
@@ -474,10 +494,11 @@ impl Worker {
             shutdown_receivers.pop().unwrap(),
             rx_quorum_waiter,
             network,
-            client,
             node_metrics,
         );
 
-        vec![batch_maker_handle, quorum_waiter_handle]//, tx_server_handle]
+        info!("Worker {} listening to client transactions on {}", self.id, address);
+
+        vec![batch_maker_handle, quorum_waiter_handle]
     }
 }

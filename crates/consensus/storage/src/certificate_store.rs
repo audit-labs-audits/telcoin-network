@@ -1,13 +1,7 @@
 // Copyright (c) Telcoin, LLC
 // Copyright (c) Mysten Labs, Inc.
 // SPDX-License-Identifier: Apache-2.0
-use crate::StoreResult;
 use fastcrypto::hash::Hash;
-use lattice_common::sync::notify_read::NotifyRead;
-use lattice_typed_store::{
-    rocks::{DBMap, TypedStoreError::RocksDBError},
-    Map,
-};
 use lru::LruCache;
 use parking_lot::Mutex;
 use prometheus::{register_int_counter_with_registry, IntCounter, Registry};
@@ -19,8 +13,15 @@ use std::{
     sync::Arc,
 };
 use tap::Tap;
-use tn_macros::fail_point;
-use tn_types::consensus::{AuthorityIdentifier, Certificate, CertificateDigest, Round};
+use telcoin_macros::fail_point;
+
+use crate::StoreResult;
+use narwhal_typed_store::{
+    rocks::{DBMap, TypedStoreError::RocksDBError},
+    Map,
+};
+use narwhal_types::{AuthorityIdentifier, Certificate, CertificateDigest, Round};
+use telcoin_sync::sync::notify_read::NotifyRead;
 
 #[derive(Clone)]
 pub struct CertificateStoreCacheMetrics {
@@ -63,7 +64,12 @@ pub trait Cache {
         &self,
         digests: Vec<CertificateDigest>,
     ) -> Vec<(CertificateDigest, Option<Certificate>)>;
+
+    /// Checks existence of one or more digests.
     fn contains(&self, digest: &CertificateDigest) -> bool;
+    fn multi_contains<'a>(&self, digests: impl Iterator<Item = &'a CertificateDigest>)
+        -> Vec<bool>;
+
     fn remove(&self, digest: &CertificateDigest);
     fn remove_all(&self, digests: Vec<CertificateDigest>);
 }
@@ -124,11 +130,21 @@ impl Cache for CertificateStoreCache {
             .collect()
     }
 
-    /// Checks whether the value exists in the LRU cache. The method does not update the LRU record,
-    /// thus it will not count as a "last access" for the provided digest.
+    // The method does not update the LRU record, thus
+    // it will not count as a "last access" for the provided digest.
     fn contains(&self, digest: &CertificateDigest) -> bool {
         let guard = self.cache.lock();
         guard.contains(digest).tap(|result| self.report_result(*result))
+    }
+
+    fn multi_contains<'a>(
+        &self,
+        digests: impl Iterator<Item = &'a CertificateDigest>,
+    ) -> Vec<bool> {
+        let guard = self.cache.lock();
+        digests
+            .map(|digest| guard.contains(digest).tap(|result| self.report_result(*result)))
+            .collect()
     }
 
     fn remove(&self, digest: &CertificateDigest) {
@@ -173,6 +189,13 @@ impl Cache for NoCache {
         false
     }
 
+    fn multi_contains<'a>(
+        &self,
+        digests: impl Iterator<Item = &'a CertificateDigest>,
+    ) -> Vec<bool> {
+        digests.map(|_| false).collect()
+    }
+
     fn remove(&self, _digest: &CertificateDigest) {
         // no-op
     }
@@ -182,12 +205,10 @@ impl Cache for NoCache {
     }
 }
 
-/// The main storage when we have to deal with certificates.
-/// It maintains two storages, one main which saves the certificates
-/// by their ids, and a secondary one which acts as an index
-/// to allow us fast retrieval based for queries based in
-/// certificate rounds.
-/// 
+/// The main storage when we have to deal with certificates. It maintains
+/// two storages, one main which saves the certificates by their ids, and a
+/// secondary one which acts as an index to allow us fast retrieval based
+/// for queries based in certificate rounds.
 /// It also offers pub/sub capabilities in write events. By using the
 /// `notify_read` someone can wait to hear until a certificate by a specific
 /// id has been written in storage.
@@ -196,18 +217,12 @@ pub struct CertificateStore<T: Cache = CertificateStoreCache> {
     /// Holds the certificates by their digest id
     certificates_by_id: DBMap<CertificateDigest, Certificate>,
     /// A secondary index that keeps the certificate digest ids
-    /// by the certificate rounds.
-    /// 
-    /// Certificate origin is used to produce unique keys.
-    /// 
+    /// by the certificate rounds. Certificate origin is used to produce unique keys.
     /// This helps us to perform range requests based on rounds. We avoid storing again the
     /// certificate here to not waste space. To dereference we use the certificates_by_id storage.
     certificate_id_by_round: DBMap<(Round, AuthorityIdentifier), CertificateDigest>,
     /// A secondary index that keeps the certificate digest ids
-    /// by the certificate origins.
-    /// 
-    /// Certificate rounds are used to produce unique keys.
-    ///
+    /// by the certificate origins. Certificate rounds are used to produce unique keys.
     /// This helps us to perform range requests based on rounds. We avoid storing again the
     /// certificate here to not waste space. To dereference we use the certificates_by_id storage.
     certificate_id_by_origin: DBMap<(AuthorityIdentifier, Round), CertificateDigest>,
@@ -323,7 +338,7 @@ impl<T: Cache> CertificateStore<T> {
     /// then None is returned as result.
     pub fn read(&self, id: CertificateDigest) -> StoreResult<Option<Certificate>> {
         if let Some(certificate) = self.cache.read(&id) {
-            return Ok(Some(certificate))
+            return Ok(Some(certificate));
         }
 
         self.certificates_by_id.get(&id)
@@ -342,14 +357,34 @@ impl<T: Cache> CertificateStore<T> {
         }
     }
 
-    /// Retrieves a certificate from the store. If not found
-    /// then None is returned as result.
-    pub fn contains(&self, id: &CertificateDigest) -> StoreResult<bool> {
-        if self.cache.contains(id) {
-            return Ok(true)
+    pub fn contains(&self, digest: &CertificateDigest) -> StoreResult<bool> {
+        if self.cache.contains(digest) {
+            return Ok(true);
         }
+        self.certificates_by_id.contains_key(digest)
+    }
 
-        self.certificates_by_id.contains_key(id)
+    pub fn multi_contains<'a>(
+        &self,
+        digests: impl Iterator<Item = &'a CertificateDigest>,
+    ) -> StoreResult<Vec<bool>> {
+        // Batch checks into the cache and the certificate store.
+        let digests = digests.enumerate().collect::<Vec<_>>();
+        let mut found = self.cache.multi_contains(digests.iter().map(|(_, d)| *d));
+        let store_lookups = digests
+            .iter()
+            .zip(found.iter())
+            .filter_map(|((i, d), hit)| if *hit { None } else { Some((*i, *d)) })
+            .collect::<Vec<_>>();
+        let store_found =
+            self.certificates_by_id.multi_contains_keys(store_lookups.iter().map(|(_, d)| *d))?;
+        for ((i, _d), hit) in store_lookups.into_iter().zip(store_found.into_iter()) {
+            debug_assert!(!found[i]);
+            if hit {
+                found[i] = true;
+            }
+        }
+        Ok(found)
     }
 
     /// Retrieves multiple certificates by their provided ids. The results
@@ -394,7 +429,7 @@ impl<T: Cache> CertificateStore<T> {
             self.notify_subscribers.notify(&id, &cert);
 
             // reply directly
-            return Ok(cert)
+            return Ok(cert);
         }
 
         // now wait to hear back the result
@@ -446,7 +481,7 @@ impl<T: Cache> CertificateStore<T> {
             .filter_map(|c| c.map(|cert| (cert.round(), cert.origin())))
             .collect::<Vec<_>>();
         if keys_by_round.is_empty() {
-            return Ok(())
+            return Ok(());
         }
 
         let mut batch = self.certificates_by_id.batch();
@@ -485,7 +520,7 @@ impl<T: Cache> CertificateStore<T> {
                     digests.push(d);
                 }
                 Ordering::Less => {
-                    continue
+                    continue;
                 }
             }
         }
@@ -520,7 +555,7 @@ impl<T: Cache> CertificateStore<T> {
         let mut result = BTreeMap::<Round, Vec<AuthorityIdentifier>>::new();
         for ((r, origin), _) in iter {
             if r < round {
-                continue
+                continue;
             }
             result.entry(r).or_default().push(origin);
         }
@@ -547,7 +582,7 @@ impl<T: Cache> CertificateStore<T> {
             if round == 0 {
                 round = certificate_round;
             } else if certificate_round < round - 1 {
-                break
+                break;
             }
 
             let certificate = self.certificates_by_id.get(&digest)?.ok_or_else(|| {
@@ -571,7 +606,7 @@ impl<T: Cache> CertificateStore<T> {
             self.certificate_id_by_origin.unbounded_iter().skip_prior_to(&key)?.next()
         {
             if name == origin {
-                return self.read(digest)
+                return self.read(digest);
             }
         }
         Ok(None)
@@ -597,7 +632,7 @@ impl<T: Cache> CertificateStore<T> {
             self.certificate_id_by_origin.unbounded_iter().skip_prior_to(&key)?.next()
         {
             if name == origin {
-                return Ok(Some(round))
+                return Ok(Some(round));
             }
         }
         Ok(None)
@@ -615,7 +650,7 @@ impl<T: Cache> CertificateStore<T> {
             self.certificate_id_by_origin.unbounded_iter().skip_to(&key)?.next()
         {
             if name == origin {
-                return Ok(Some(round))
+                return Ok(Some(round));
             }
         }
         Ok(None)
@@ -625,9 +660,9 @@ impl<T: Cache> CertificateStore<T> {
     pub fn clear(&self) -> StoreResult<()> {
         fail_point!("narwhal-store-before-write");
 
-        self.certificates_by_id.clear()?;
-        self.certificate_id_by_round.clear()?;
-        self.certificate_id_by_origin.clear()?;
+        self.certificates_by_id.unsafe_clear()?;
+        self.certificate_id_by_round.unsafe_clear()?;
+        self.certificate_id_by_origin.unsafe_clear()?;
 
         fail_point!("narwhal-store-after-write");
         Ok(())
@@ -648,19 +683,18 @@ mod test {
     };
     use fastcrypto::hash::Hash;
     use futures::future::join_all;
-    use lattice_test_utils::{temp_dir, CommitteeFixture};
-    use lattice_typed_store::{
+    use narwhal_typed_store::{
         reopen,
         rocks::{open_cf, DBMap, MetricConf, ReadWriteOptions},
+    };
+    use narwhal_types::{
+        test_utils::{temp_dir, CommitteeFixture},
+        AuthorityIdentifier, Certificate, CertificateAPI, CertificateDigest, HeaderAPI, Round,
     };
     use std::{
         collections::{BTreeSet, HashSet},
         num::NonZeroUsize,
         time::Instant,
-    };
-    use tn_types::consensus::{
-        AuthorityIdentifier, Certificate, CertificateAPI, CertificateDigest, HeaderAPI,
-        Round,
     };
 
     fn new_store(path: std::path::PathBuf) -> CertificateStore {
@@ -715,8 +749,8 @@ mod test {
         )
     }
 
-    /// helper method that creates certificates for the provided
-    /// number of rounds.
+    // helper method that creates certificates for the provided
+    // number of rounds.
     fn certificates(rounds: u64) -> Vec<Certificate> {
         let fixture = CommitteeFixture::builder().build();
         let committee = fixture.committee();
@@ -749,16 +783,35 @@ mod test {
         // GIVEN
         // create certificates for 10 rounds
         let certs = certificates(10);
+        let digests = certs.iter().map(|c| c.digest()).collect::<Vec<_>>();
 
-        // store them
+        // verify certs not in the store
+        for cert in &certs {
+            assert!(!store.contains(&cert.digest()).unwrap());
+            assert!(&store.read(cert.digest()).unwrap().is_none());
+        }
+
+        let found = store.multi_contains(digests.iter()).unwrap();
+        assert_eq!(found.len(), certs.len());
+        for hit in found {
+            assert!(!hit);
+        }
+
+        // store the certs
         for cert in &certs {
             store.write(cert.clone()).unwrap();
         }
 
-        // verify
+        // verify certs in the store
         for cert in &certs {
-            store.contains(&cert.digest()).unwrap();
+            assert!(store.contains(&cert.digest()).unwrap());
             assert_eq!(cert, &store.read(cert.digest()).unwrap().unwrap())
+        }
+
+        let found = store.multi_contains(digests.iter()).unwrap();
+        assert_eq!(found.len(), certs.len());
+        for hit in found {
+            assert!(hit);
         }
     }
 
@@ -1075,11 +1128,18 @@ mod test {
             cache.write(cert.clone());
         }
 
+        let digests = certificates.iter().map(|c| c.digest()).collect::<Vec<_>>();
+        let hits = cache.multi_contains(digests.iter());
+
         for (i, cert) in certificates.iter().enumerate() {
             // first 15 certificates should not exist
             if i < 15 {
+                assert!(!hits[i]);
+                assert!(!cache.contains(&cert.digest()));
                 assert!(cache.read(&cert.digest()).is_none());
             } else {
+                assert!(hits[i]);
+                assert!(cache.contains(&cert.digest()));
                 assert!(cache.read(&cert.digest()).is_some());
             }
         }

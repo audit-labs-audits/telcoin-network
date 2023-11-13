@@ -1,35 +1,32 @@
-// Copyright (c) Telcoin, LLC
 // Copyright (c) 2021, Facebook, Inc. and its affiliates
+// Copyright (c) Telcoin, LLC
 // Copyright (c) Mysten Labs, Inc.
 // SPDX-License-Identifier: Apache-2.0
-use crate::{metrics::PrimaryMetrics, synchronizer::Synchronizer, error::{PrimaryResult, PrimaryError}};
+use crate::{consensus::ConsensusRound, metrics::PrimaryMetrics, synchronizer::Synchronizer};
 use anemo::Request;
 use consensus_metrics::{
     metered_channel::Receiver, monitored_future, monitored_scope, spawn_logged_monitored_task,
 };
 use futures::{stream::FuturesUnordered, StreamExt};
-use itertools::Itertools;
-use lattice_consensus::ConsensusRound;
-use lattice_network::PrimaryToPrimaryRpc;
-use lattice_storage::CertificateStore;
+use narwhal_network::PrimaryToPrimaryRpc;
+use narwhal_storage::CertificateStore;
+use narwhal_types::{AuthorityIdentifier, Committee, NetworkPublicKey};
 use rand::{rngs::ThreadRng, seq::SliceRandom};
 use std::{
     collections::{BTreeMap, BTreeSet},
     sync::Arc,
     time::Duration,
 };
-use tn_types::consensus::{
-    AuthorityIdentifier, Committee,
-    crypto::NetworkPublicKey,
-    Certificate, CertificateAPI, ConditionalBroadcastReceiver,
-    HeaderAPI, Round,
-};
-use tn_network_types::{
-    FetchCertificatesRequest, FetchCertificatesResponse, 
+
+use narwhal_network_types::{FetchCertificatesRequest, FetchCertificatesResponse};
+use narwhal_types::{
+    error::{DagError, DagResult},
+    validate_received_certificate_version, Certificate, CertificateAPI,
+    ConditionalBroadcastReceiver, HeaderAPI, Round,
 };
 use tokio::{
     sync::watch,
-    task::{spawn_blocking, JoinHandle, JoinSet},
+    task::{JoinHandle, JoinSet},
     time::{sleep, timeout, Instant},
 };
 use tracing::{debug, error, instrument, trace, warn};
@@ -45,10 +42,6 @@ const PARALLEL_FETCH_REQUEST_INTERVAL_SECS: Duration = Duration::from_secs(5);
 // The timeout for an iteration of parallel fetch requests over all peers would be
 // num peers * PARALLEL_FETCH_REQUEST_INTERVAL_SECS + PARALLEL_FETCH_REQUEST_ADDITIONAL_TIMEOUT
 const PARALLEL_FETCH_REQUEST_ADDITIONAL_TIMEOUT: Duration = Duration::from_secs(15);
-// Number of certificates to verify in a batch. Verifications in each batch run serially.
-// Batch size is chosen so that verifying a batch takes non-trival
-// time (verifying a batch of 200 certificates should take > 100ms).
-const VERIFY_CERTIFICATES_BATCH_SIZE: usize = 200;
 
 #[derive(Clone, Debug)]
 pub enum CertificateFetcherCommand {
@@ -252,7 +245,7 @@ impl CertificateFetcher {
             }
             Err(e) => {
                 warn!("Failed to read from certificate store: {e}");
-                return
+                return;
             }
         };
 
@@ -271,7 +264,7 @@ impl CertificateFetcher {
         });
         if self.targets.is_empty() {
             debug!("Certificates have caught up. Skip fetching.");
-            return
+            return;
         }
 
         let state = self.state.clone();
@@ -295,7 +288,7 @@ impl CertificateFetcher {
                     );
                 }
                 Err(e) => {
-                    warn!("Error from task to fetch certificates: {e}");
+                    warn!("Error from fetch certificates task: {e}");
                 }
             };
 
@@ -315,15 +308,16 @@ async fn run_fetch_task(
     committee: Committee,
     gc_round: Round,
     written_rounds: BTreeMap<AuthorityIdentifier, BTreeSet<Round>>,
-) -> PrimaryResult<()> {
+) -> DagResult<()> {
     // Send request to fetch certificates.
     let request = FetchCertificatesRequest::default()
         .set_bounds(gc_round, written_rounds)
         .set_max_items(MAX_CERTIFICATES_TO_FETCH);
     let Some(response) =
-        fetch_certificates_helper(state.authority_id, &state.network, &committee, request).await else {
-            return Err(PrimaryError::NoCertificateFetched);
-        };
+        fetch_certificates_helper(state.authority_id, &state.network, &committee, request).await
+    else {
+        return Err(DagError::NoCertificateFetched);
+    };
 
     // Process and store fetched certificates.
     let num_certs_fetched = response.certificates.len();
@@ -415,53 +409,36 @@ async fn fetch_certificates_helper(
 async fn process_certificates_helper(
     response: FetchCertificatesResponse,
     synchronizer: &Synchronizer,
-    metrics: Arc<PrimaryMetrics>,
-) -> PrimaryResult<()> {
+    _metrics: Arc<PrimaryMetrics>,
+) -> DagResult<()> {
     trace!("Start sending fetched certificates to processing");
     if response.certificates.len() > MAX_CERTIFICATES_TO_FETCH {
-        return Err(PrimaryError::TooManyFetchedCertificatesReturned(
+        return Err(DagError::TooManyFetchedCertificatesReturned(
             response.certificates.len(),
             MAX_CERTIFICATES_TO_FETCH,
-        ))
+        ));
     }
-    // Verify certificates in parallel.
+
+    // We should not be getting mixed versions of certificates from a
+    // validator, so any individual certificate with mismatched versions
+    // should cancel processing for the entire batch of fetched certificates.
+    let certificates = response
+        .certificates
+        .into_iter()
+        .map(|cert| {
+            validate_received_certificate_version(cert).map_err(|err| {
+                error!("fetched certficate processing error: {err}");
+                DagError::InvalidCertificateVersion
+            })
+        })
+        .collect::<DagResult<Vec<Certificate>>>()?;
+
     // In PrimaryReceiverHandler, certificates already in storage are ignored.
     // The check is unnecessary here, because there is no concurrent processing of older
     // certificates. For byzantine failures, the check will not be effective anyway.
-    let _verify_scope = monitored_scope("VerifyingFetchedCertificates");
-    let all_certificates = response.certificates;
-    let verify_tasks = all_certificates
-        .chunks(VERIFY_CERTIFICATES_BATCH_SIZE)
-        .map(|certs| {
-            let certs = certs.to_vec();
-            let sync = synchronizer.clone();
-            let metrics = metrics.clone();
-            // Use threads dedicated to computation heavy work.
-            spawn_blocking(move || {
-                let now = Instant::now();
-                for c in &certs {
-                    sync.sanitize_certificate(c)?;
-                }
-                metrics
-                    .certificate_fetcher_total_verification_us
-                    .inc_by(now.elapsed().as_micros() as u64);
-                Ok::<Vec<Certificate>, PrimaryError>(certs)
-            })
-        })
-        .collect_vec();
-    // Process verified certificates in the same order as received.
-    for task in verify_tasks {
-        let certificates = task.await.map_err(|_| PrimaryError::Canceled)??;
-        let now = Instant::now();
-        for cert in certificates {
-            if let Err(e) = synchronizer.try_accept_fetched_certificate(cert).await {
-                // It is possible that subsequent certificates are useful,
-                // so not stopping early.
-                warn!("Failed to accept fetched certificate: {e}");
-            }
-        }
-        metrics.certificate_fetcher_total_accept_us.inc_by(now.elapsed().as_micros() as u64);
-    }
+    let _scope = monitored_scope("ProcessingFetchedCertificates");
+
+    synchronizer.try_accept_fetched_certificates(certificates).await?;
 
     trace!("Fetched certificates have been processed");
 

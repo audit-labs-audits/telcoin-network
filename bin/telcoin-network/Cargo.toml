@@ -3,81 +3,50 @@ name = "telcoin-network"
 version.workspace = true
 edition = "2021"
 license = "MIT OR Apache-2.0"
-repository = "https://github.com/telcoin/lattice"
+repository = "https://github.com/telcoin/telcoin-network"
 readme = "README.md"
 
 [dependencies]
-# cli
-eyre = "0.6.8"
-clap = { version = "4.0", features = ["derive", "cargo", "env"] }
-thiserror = "1.0"
-tokio = { version = "1.26", features = ["sync", "macros", "rt-multi-thread"] }
-hex-literal = "0.3"
-tracing = { workspace = true }
-tracing-subscriber = { workspace = true }
-tn-tracing = { workspace = true }
-futures = "0.3"
-tempfile = "3.3.0"
-tokio-util = { workspace = true }
-pin-project = { workspace = true }
+clap = { workspace = true, features = ["derive", "env"] }
+eyre = { workspace = true }
+futures = { workspace = true }
+const-str = "0.5.6"
+fdlimit = { workspace = true }
 humantime = "2.1.0"
-prometheus = { workspace = true }
+metrics-exporter-prometheus = "0.12.1"
+hyper = "0.14.25"
+metrics-util = "0.15.0"
+metrics-process = "1.0.9"
+serde_json = { workspace = true }
+secp256k1 = { workspace = true, features = ["global-context", "rand-std", "recovery"] }
+tokio = { workspace = true, features = ["sync", "macros", "time", "rt-multi-thread"] }
+tracing = { workspace = true }
+pin-project = { workspace = true }
+confy = { workspace = true }
+metrics = { workspace = true }
 
-# rpc args
-jsonrpsee-server = { version = "0.16"}
-
-# execution
-tn-types.workspace = true
-execution-provider.workspace = true
-execution-tasks.workspace = true
-execution-rpc.workspace = true
-execution-rpc-builder.workspace = true
-execution-rpc-engine-api.workspace = true
-execution-transaction-pool.workspace = true
-execution-network-api.workspace = true
-execution-lattice-consensus.workspace = true
-# todo: remove me once dummy transactions are created
-execution-beacon-consensus = { path = "../../crates/execution/consensus/beacon" }
-execution-blockchain-tree.workspace = true
-execution-revm.workspace = true
-execution-basic-payload-builder.workspace = true
-execution-payload-builder.workspace = true
-execution-rlp.workspace = true
-execution-stages.workspace = true
-execution-interfaces = { workspace = true, features = ["test-utils"] }
-execution-revm-inspectors.workspace = true
-execution-network.workspace = true
-execution-config.workspace = true
-execution-downloaders.workspace = true
-execution-db.workspace = true
-lattice-payload-builder = { workspace = true }
-tn-network-types = { workspace = true }
-tn-adapters = { workspace = true }
-
-# io
-confy = "0.5"
-serde = "1.0"
-shellexpand = "3.0.0"
-dirs-next = "2.0.0"
-serde_json = "1.0"
-toml = { version = "0.7", features = ["display"] }
-
-# consensus
-lattice-worker = { workspace = true }
-lattice-node = { workspace = true }
-lattice-storage.workspace = true
+reth = {workspace = true }
+reth-primitives = {workspace = true }
+reth-tracing = {workspace = true }
+reth-config = {workspace = true }
+reth-db = {workspace = true }
+reth-downloaders = {workspace = true }
+reth-interfaces = {workspace = true }
+reth-network = {workspace = true }
+reth-network-api = {workspace = true }
+reth-prune = {workspace = true }
+reth-metrics = {workspace = true }
+reth-revm = {workspace = true }
+reth-rpc-engine-api = {workspace = true }
+reth-provider = {workspace = true }
+reth-snapshot = {workspace = true }
+reth-stages = {workspace = true }
+reth-tasks = {workspace = true }
+reth-transaction-pool = {workspace = true }
+reth-revm-inspectors = {workspace = true }
+reth-auto-seal-consensus = {workspace = true }
+reth-beacon-consensus = {workspace = true }
+reth-blockchain-tree = {workspace = true }
 
 [build-dependencies]
 vergen = { version = "8.0.0", features = ["build", "cargo", "git", "gitcl"] }
-
-[dev-dependencies]
-lattice-test-utils.workspace = true
-proptest = "1.2.0"
-secp256k1 = "0.27.0"
-execution-rpc-types.workspace = true
-execution-db = { workspace = true, features = ["test-utils"] }
-lattice-typed-store = { workspace = true }
-lattice-network = { workspace = true }
-consensus-metrics = { workspace = true }
-fastcrypto = { workspace = true }
-anemo = { workspace = true }

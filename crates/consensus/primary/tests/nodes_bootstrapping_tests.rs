@@ -1,10 +1,47 @@
 // Copyright (c) Telcoin, LLC
 // Copyright (c) Mysten Labs, Inc.
 // SPDX-License-Identifier: Apache-2.0
-use bytes::Bytes;
-use lattice_test_utils::{cluster::Cluster, setup_tracing};
+use narwhal_test_utils::cluster::Cluster;
+
+use narwhal_types::test_utils::setup_tracing;
 use std::time::Duration;
-use tn_types::consensus::{PublicKeyProto, RoundsRequest, TransactionProto};
+
+#[tokio::test(flavor = "current_thread", start_paused = true)]
+async fn test_response_error_after_shutdown_internal_consensus() {
+    // Enabled debug tracing so we can easily observe the
+    // nodes logs.
+    let _guard = setup_tracing();
+
+    let delay = Duration::from_secs(10); // 10 seconds
+
+    // A cluster of 4 nodes will be created, with internal consensus.
+    let cluster = Cluster::new(None);
+
+    // ==== Start first authority ====
+    let authority = cluster.authority(0);
+    authority.start(false, Some(1)).await;
+
+    tokio::time::sleep(delay).await;
+
+    authority.stop_all().await;
+
+    tokio::time::sleep(delay).await;
+
+    let _worker_id = 0;
+    // let mut client = authority.new_transactions_client(&worker_id).await;
+
+    // // Create a fake transaction
+    // let tx_str = "test transaction".to_string();
+    // let tx = bcs::to_bytes(&tx_str).unwrap();
+    // let txn = TransactionProto { transaction: Bytes::from(tx) };
+
+    // // Should fail submitting to consensus.
+    // let Err(e) = client.submit_transaction(txn).await else {
+    //     panic!("Submitting transactions after Narwhal shutdown should fail!");
+    // };
+    // assert!(e.message().contains("error trying to connect: tcp connect error:"), "Actual: {}", e);
+    todo!()
+}
 
 /// Nodes will be started in a staggered fashion. This is simulating
 /// a real world scenario where nodes across validators will not start
@@ -64,6 +101,8 @@ async fn test_node_staggered_starts() {
 #[ignore]
 #[tokio::test]
 async fn test_full_outage_and_recovery() {
+    let _guard = setup_tracing();
+
     let stop_and_start_delay = Duration::from_secs(12);
     let node_advance_delay = Duration::from_secs(60);
 
@@ -191,14 +230,14 @@ async fn test_loss_of_liveness_without_recovery() {
     cluster.authority(2).start(true, Some(1)).await;
     cluster.authority(3).start(true, Some(1)).await;
 
-    // wait and fetch the latest commit round
+    // wait and fetch the latest commit round. All of them should have advanced and we allow a small
+    // threshold in case some node is faster than the others
     tokio::time::sleep(node_advance_delay).await;
-    let rounds_3 = cluster.assert_progress(4, 0).await;
+    let rounds_3 = cluster.assert_progress(4, 2).await;
 
+    // we test that nodes 0 & 1 have actually advanced in rounds compared to before.
     assert!(rounds_3.get(&0) > rounds_2.get(&0));
     assert!(rounds_3.get(&1) > rounds_2.get(&1));
-    assert_eq!(rounds_3.get(&0), rounds_3.get(&2));
-    assert_eq!(rounds_3.get(&0), rounds_3.get(&3));
 }
 
 #[ignore]

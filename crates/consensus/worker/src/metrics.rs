@@ -1,7 +1,8 @@
 // Copyright (c) Telcoin, LLC
 // Copyright (c) Mysten Labs, Inc.
 // SPDX-License-Identifier: Apache-2.0
-use lattice_network::metrics::{NetworkConnectionMetrics, NetworkMetrics};
+use narwhal_network::metrics::{NetworkConnectionMetrics, NetworkMetrics};
+use narwhal_types::MetricsCallbackProvider;
 use prometheus::{
     default_registry, register_histogram_vec_with_registry, register_histogram_with_registry,
     register_int_counter_vec_with_registry, register_int_counter_with_registry,
@@ -21,6 +22,7 @@ const LATENCY_SEC_BUCKETS: &[f64] = &[
 pub struct Metrics {
     pub worker_metrics: Option<WorkerMetrics>,
     pub channel_metrics: Option<WorkerChannelMetrics>,
+    pub endpoint_metrics: Option<WorkerEndpointMetrics>,
     pub inbound_network_metrics: Option<NetworkMetrics>,
     pub outbound_network_metrics: Option<NetworkMetrics>,
     pub network_connection_metrics: Option<NetworkConnectionMetrics>,
@@ -34,6 +36,9 @@ pub fn initialise_metrics(metrics_registry: &Registry) -> Metrics {
     // Channel metrics
     let channel_metrics = WorkerChannelMetrics::new(metrics_registry);
 
+    // Endpoint metrics
+    let endpoint_metrics = WorkerEndpointMetrics::new(metrics_registry);
+
     // The metrics used for communicating over the network
     let inbound_network_metrics = NetworkMetrics::new("worker", "inbound", metrics_registry);
     let outbound_network_metrics = NetworkMetrics::new("worker", "outbound", metrics_registry);
@@ -44,6 +49,7 @@ pub fn initialise_metrics(metrics_registry: &Registry) -> Metrics {
     Metrics {
         worker_metrics: Some(node_metrics),
         channel_metrics: Some(channel_metrics),
+        endpoint_metrics: Some(endpoint_metrics),
         inbound_network_metrics: Some(inbound_network_metrics),
         outbound_network_metrics: Some(outbound_network_metrics),
         network_connection_metrics: Some(network_connection_metrics),
@@ -66,8 +72,8 @@ pub struct WorkerMetrics {
     pub worker_local_fetch_latency: Histogram,
     /// Time it takes to download a payload from remote peer
     pub worker_remote_fetch_latency: Histogram,
-    /// The number of pending remote calls to request_batch
-    pub pending_remote_request_batch: IntGauge,
+    /// The number of pending remote calls to request_batches
+    pub pending_remote_request_batches: IntGauge,
 }
 
 impl WorkerMetrics {
@@ -138,9 +144,9 @@ impl WorkerMetrics {
                 registry
             )
             .unwrap(),
-            pending_remote_request_batch: register_int_gauge_with_registry!(
-                "pending_remote_request_batch",
-                "The number of pending remote calls to request_batch",
+            pending_remote_request_batches: register_int_gauge_with_registry!(
+                "pending_remote_request_batches",
+                "The number of pending remote calls to request_batches",
                 registry
             )
             .unwrap(),
@@ -193,5 +199,56 @@ impl WorkerChannelMetrics {
                 registry
             ).unwrap(),
         }
+    }
+}
+
+#[derive(Clone)]
+pub struct WorkerEndpointMetrics {
+    /// Counter of requests, route is a label (ie separate timeseries per route)
+    requests_by_route: IntCounterVec,
+    /// Request latency, route is a label
+    req_latency_by_route: HistogramVec,
+}
+
+impl WorkerEndpointMetrics {
+    pub fn new(registry: &Registry) -> Self {
+        Self {
+            requests_by_route: register_int_counter_vec_with_registry!(
+                "worker_requests_by_route",
+                "Number of requests by route",
+                &["route", "status", "grpc_status_code"],
+                registry
+            )
+            .unwrap(),
+            req_latency_by_route: register_histogram_vec_with_registry!(
+                "worker_req_latency_by_route",
+                "Latency of a request by route",
+                &["route", "status", "grpc_status_code"],
+                registry
+            )
+            .unwrap(),
+        }
+    }
+}
+
+impl MetricsCallbackProvider for WorkerEndpointMetrics {
+    fn on_request(&self, _path: String) {
+        // For now we just do nothing
+    }
+
+    fn on_response(&self, path: String, latency: Duration, status: u16, grpc_status_code: Code) {
+        let code: i32 = grpc_status_code.into();
+        let labels = [path.as_str(), &status.to_string(), &code.to_string()];
+
+        self.requests_by_route.with_label_values(&labels).inc();
+
+        let req_latency_secs = latency.as_secs_f64();
+        self.req_latency_by_route.with_label_values(&labels).observe(req_latency_secs);
+    }
+}
+
+impl Default for WorkerEndpointMetrics {
+    fn default() -> Self {
+        Self::new(default_registry())
     }
 }

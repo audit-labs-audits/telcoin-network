@@ -1,71 +1,21 @@
 [workspace]
-
+resolver = "2"
 members = [
     "bin/telcoin-network",
 
-    # common
-    "crates/common/macros",
-    "crates/common/telemetry-subscribers",
-    "crates/common/tracing",
-    "crates/common/types",
-    "crates/common/tn-network-types",
-    "crates/common/adapters",
-
-    # execution
-    "crates/execution/blockchain-tree",
-    "crates/execution/config",
-    "crates/execution/consensus/common",
-    "crates/execution/consensus/lattice",
-    "crates/execution/interfaces",
-    "crates/execution/metrics",
-    "crates/execution/metrics/metrics-derive",
-    "crates/execution/net/common",
-    "crates/execution/net/ecies",
-    "crates/execution/net/eth-wire",
-    "crates/execution/net/discv4",
-    "crates/execution/net/dns",
-    "crates/execution/net/nat",
-    "crates/execution/net/network-api",
-    "crates/execution/net/network",
-    "crates/execution/net/downloaders",
-    "crates/execution/payload/basic",
-    "crates/execution/payload/lattice",
-    "crates/execution/payload/builder",
-    "crates/execution/revm",
-    "crates/execution/revm/revm-inspectors",
-    "crates/execution/revm/revm-primitives",
-    "crates/execution/rlp",
-    "crates/execution/rlp/rlp-derive",
-    "crates/execution/rpc/ipc",
-    "crates/execution/rpc/rpc",
-    "crates/execution/rpc/rpc-api",
-    "crates/execution/rpc/rpc-builder",
-    "crates/execution/rpc/rpc-engine-api",
-    "crates/execution/rpc/rpc-types",
-    "crates/execution/rpc/rpc-testing-util",
-    "crates/execution/stages",
-    "crates/execution/storage/codecs",
-    "crates/execution/storage/db",
-    "crates/execution/storage/libmdbx-rs",
-    "crates/execution/storage/libmdbx-rs/mdbx-sys",
-    "crates/execution/storage/provider",
-    "crates/execution/tasks",
-    "crates/execution/transaction-pool",
-    "crates/execution/trie",
-
     # consensus
-    "crates/consensus/node",
-    "crates/consensus/anemo/*",
-    "crates/consensus/consensus",
+    "crates/consensus/types",
     "crates/consensus/consensus-metrics",
-    "crates/consensus/consensus-util-mem",
-    "crates/consensus/consensus-util-mem-derive",
     "crates/consensus/executor",
-    "crates/consensus/lattice-common",
+    "crates/consensus/mem-utils",
+    "crates/consensus/mem-utils-derive",
     "crates/consensus/network",
+    "crates/consensus/network-types",
     "crates/consensus/node",
     "crates/consensus/primary",
     "crates/consensus/storage",
+    "crates/consensus/telcoin-macros",
+    "crates/consensus/telcoin-sync",
     "crates/consensus/test-utils",
     "crates/consensus/typed-store",
     "crates/consensus/typed-store-derive",
@@ -75,130 +25,187 @@ members = [
 [workspace.package]
 version = "0.1.0"
 edition = "2021"
-rust-version = "1.70" # Remember to update .clippy.toml and README.md
+rust-version = "1.73" # Remember to update .clippy.toml and README.md
 license = "MIT OR Apache-2.0"
-homepage = "https://telco.in"
+homepage = "https://telcoin.network"
 repository = "https://github.com/telcoin/telcoin-network"
 
 # Explicitly set the resolver to version 2, which is the default for packages with edition >= 2021
 # https://doc.rust-lang.org/edition-guide/rust-2021/default-cargo-resolver.html
 resolver = "2"
 
-
-# Dependencies that should be kept in sync through the whole workspace
-
 [workspace.dependencies]
-
-#
-# external crates
-#
-
-## eth
-ethers-core = { version = "2.0.7", default-features = false }
-ethers-providers = { version = "2.0.7", default-features = false }
-ethers-signers = { version = "2.0.7", default-features = false }
-ethers-middleware = { version = "2.0.7", default-features = false }
-
-## misc
-bytes = "1.4"
-thiserror = "1.0.37"
-serde_json = "1.0.94"
-serde = { version = "1.0", default-features = false }
-serde_with = "3.0"
-rand = "0.8.5"
-tracing = "0.1.0"
-tracing-subscriber = "0.3.17"
-anyhow = "1.0.72"
-axum = { version = "0.6.6", default-features = false, features = ["headers", "tokio", "http1", "http2", "json", "matched-path", "original-uri", "form", "query"] }
-prometheus = "0.13.3"
-
-### tokio
-tokio-stream = "0.1.11"
-tokio = { version = "1.28.2", default-features = false }
-tokio-util = { version = "0.7.4", features = ["codec"] }
-
-### async
-async-trait = "0.1.68"
+# misc
+clap = "4"
+eyre = "0.6"
 futures = "0.3.26"
+tokio = { version = "1.21", default-features = false }
+tracing = "0.1.0"
 pin-project = "1.0.12"
-futures-util = "0.3.25"
+confy = "0.5"
+metrics = "0.21.1" # Needed for `metrics-macro` to resolve the crate using `::metrics` notation
+serde_json = "1.0.94"
+fdlimit = "0.2.1"
 
-### crypto
-secp256k1 = { version = "0.27.0", default-features = false, features = ["global-context", "rand-std", "recovery"] }
-
-### proc-macros
-proc-macro2 = "1.0"
-quote = "1.0"
-
-# common
-tn-tracing = { path = "crates/common/tracing" }
-tn-macros = { path = "crates/common/macros" }
-#tn-keys = { path = "crates/common/keys" }
-telemetry-subscribers = { path = "crates/common/telemetry-subscribers" }
-tn-types = { path = "crates/common/types" }
-tn-network-types = { path = "crates/common/tn-network-types" }
-tn-adapters = { path = "crates/common/adapters" }
+# crypto
+secp256k1 = { version = "0.27.0", default-features = false, features = [
+    "global-context",
+    "rand-std",
+    "recovery",
+] }
 
 # execution
-revm = { version = "3" }
-revm-primitives = "1.1"
-execution-interfaces = { path = "./crates/execution/interfaces" }
-execution-provider = { path = "./crates/execution/storage/provider" }
-execution-db = { path = "./crates/execution/storage/db" }
-execution-config = { path = "./crates/execution/config" }
-execution-rlp = { path = "./crates/execution/rlp" }
-execution-network = { path = "./crates/execution/net/network" }
-execution-net-nat = { path = "./crates/execution/net/nat" }
-execution-network-api = { path = "./crates/execution/net/network-api" }
-execution-downloaders = { path = "./crates/execution/net/downloaders" }
-execution-lattice-consensus = { path = "./crates/execution/consensus/lattice" }
-execution-blockchain-tree = { path = "./crates/execution/blockchain-tree" }
-execution-codecs = { path = "./crates/execution/storage/codecs" }
-execution-discv4 = { path = "./crates/execution/net/discv4" }
-execution-basic-payload-builder = { path = "./crates/execution/payload/basic" }
-execution-rlp-derive = { path = "./crates/execution/rlp/rlp-derive" }
-execution-rpc-types = { path = "./crates/execution/rpc/rpc-types" }
-execution-metrics = { path = "./crates/execution/metrics" }
-execution-payload-builder = { path = "./crates/execution/payload/builder" }
-execution-transaction-pool = { path = "./crates/execution/transaction-pool" }
-execution-tasks = { path = "./crates/execution/tasks" }
-execution-rpc = { path = "./crates/execution/rpc/rpc" }
-execution-rpc-builder = { path = "./crates/execution/rpc/rpc-builder" }
-execution-rpc-engine-api = { path = "./crates/execution/rpc/rpc-engine-api" }
-execution-stages = { path = "./crates/execution/stages" }
-execution-revm = { path = "./crates/execution/revm" }
-execution-revm-inspectors = { path = "./crates/execution/revm/revm-inspectors" }
-execution-revm-primitives = { path = "./crates/execution/revm/revm-primitives" }
-lattice-payload-builder = { path = "./crates/execution/payload/lattice" }
+reth = { git = "https://github.com/paradigmxyz/reth", rev = "23e789f978efd4a68fdf89b102abe5856d4c2312" }
+reth-primitives = { git = "https://github.com/paradigmxyz/reth", rev = "23e789f978efd4a68fdf89b102abe5856d4c2312" }
+reth-tracing = { git = "https://github.com/paradigmxyz/reth", rev = "23e789f978efd4a68fdf89b102abe5856d4c2312" }
+reth-config = { git = "https://github.com/paradigmxyz/reth", rev = "23e789f978efd4a68fdf89b102abe5856d4c2312" }
+reth-db = { git = "https://github.com/paradigmxyz/reth", rev = "23e789f978efd4a68fdf89b102abe5856d4c2312" }
+reth-downloaders = { git = "https://github.com/paradigmxyz/reth", rev = "23e789f978efd4a68fdf89b102abe5856d4c2312" }
+reth-interfaces = { git = "https://github.com/paradigmxyz/reth", rev = "23e789f978efd4a68fdf89b102abe5856d4c2312" }
+reth-network = { git = "https://github.com/paradigmxyz/reth", rev = "23e789f978efd4a68fdf89b102abe5856d4c2312" }
+reth-network-api = { git = "https://github.com/paradigmxyz/reth", rev = "23e789f978efd4a68fdf89b102abe5856d4c2312" }
+reth-prune = { git = "https://github.com/paradigmxyz/reth", rev = "23e789f978efd4a68fdf89b102abe5856d4c2312" }
+reth-revm = { git = "https://github.com/paradigmxyz/reth", rev = "23e789f978efd4a68fdf89b102abe5856d4c2312" }
+reth-rpc-engine-api = { git = "https://github.com/paradigmxyz/reth", rev = "23e789f978efd4a68fdf89b102abe5856d4c2312" }
+reth-provider = { git = "https://github.com/paradigmxyz/reth", rev = "23e789f978efd4a68fdf89b102abe5856d4c2312" }
+reth-snapshot = { git = "https://github.com/paradigmxyz/reth", rev = "23e789f978efd4a68fdf89b102abe5856d4c2312" }
+reth-stages = { git = "https://github.com/paradigmxyz/reth", rev = "23e789f978efd4a68fdf89b102abe5856d4c2312" }
+reth-tasks = { git = "https://github.com/paradigmxyz/reth", rev = "23e789f978efd4a68fdf89b102abe5856d4c2312" }
+reth-transaction-pool = { git = "https://github.com/paradigmxyz/reth", rev = "23e789f978efd4a68fdf89b102abe5856d4c2312" }
+reth-revm-inspectors = { git = "https://github.com/paradigmxyz/reth", rev = "23e789f978efd4a68fdf89b102abe5856d4c2312" }
+reth-auto-seal-consensus = { git = "https://github.com/paradigmxyz/reth", rev = "23e789f978efd4a68fdf89b102abe5856d4c2312" }
+reth-beacon-consensus = { git = "https://github.com/paradigmxyz/reth", rev = "23e789f978efd4a68fdf89b102abe5856d4c2312" }
+reth-blockchain-tree = { git = "https://github.com/paradigmxyz/reth", rev = "23e789f978efd4a68fdf89b102abe5856d4c2312" }
+reth-metrics = { git = "https://github.com/paradigmxyz/reth", rev = "23e789f978efd4a68fdf89b102abe5856d4c2312" }
+
+
+
+
 
 # consensus
+narwhal-executor = { path = "./crates/consensus/executor" }
+narwhal-network = { path = "./crates/consensus/network" }
+narwhal-node = { path = "./crates/consensus/node" }
+narwhal-worker = { path = "./crates/consensus/worker" }
+narwhal-types = { path = "./crates/consensus/types" }
+narwhal-typed-store = { path = "./crates/consensus/typed-store" }
+narwhal-typed-store-derive = { path = "./crates/consensus/typed-store-derive" }
+narwhal-storage = { path = "./crates/consensus/storage" }
+narwhal-primary = { path = "./crates/consensus/primary" }
+narwhal-test-utils = { path = "./crates/consensus/test-utils" }
+narwhal-network-types = { path = "./crates/consensus/network-types" }
+consensus-metrics = { path = "./crates/consensus/consensus-metrics" }
+telcoin-sync = { path = "./crates/consensus/telcoin-sync" }
+telcoin-macros = { path = "./crates/consensus/telcoin-macros" }
+mem-utils = { path = "./crates/consensus/mem-utils" }
+mem-utils-derive = { path = "./crates/consensus/mem-utils-derive" }
 
-fastcrypto = { git = "https://github.com/MystenLabs/fastcrypto", rev = "c961a01596a87e76f590c7e43aca9d57106dbbb1" }
-fastcrypto-zkp = { git = "https://github.com/MystenLabs/fastcrypto", rev = "c961a01596a87e76f590c7e43aca9d57106dbbb1", package = "fastcrypto-zkp" }
+# misc
+fastcrypto = { git = "https://github.com/MystenLabs/fastcrypto", rev = "802c1ac98061687d6ce024849c747a250dbeea52" }
+fastcrypto-tbls = { git = "https://github.com/MystenLabs/fastcrypto", rev = "802c1ac98061687d6ce024849c747a250dbeea52"}
+match_opt = "0.1.2"
+serde = { version = "1.0.144", features = ["derive", "rc"] }
+serde_repr = "0.1"
+rand = "0.8.5"
+thiserror = "1.0.40"
+tempfile = "3.3.0"
+bcs = "0.1.4"
+bincode = "1.3.3"
+proptest = "1.1.0"
+proptest-derive = "0.3.0"
+serde-reflection = "0.3.6"
+indexmap = { version = "1.9.2", features = ["serde"] }
+itertools = "0.10.5"
+once_cell = "1.18.0"
+prometheus = "0.13.3"
+tonic = { version = "0.10", features = ["transport", "tls"] }
+async-trait = "0.1.61"
+dashmap = "5.4.0"
+parking_lot = "0.12.1"
+scopeguard = "1.1"
+tap = "1.0.1"
+uuid = { version = "1.1.2", features = ["v4", "fast-rng"] }
+mockall = "0.11.4"
+quinn-proto = "0.10.5"
+base64 = "0.21.2"
+derive_builder = "0.12.0"
+enum_dispatch = "0.3"
+roaring = "0.10.1"
+serde_with = { version = "2.1.0", features = ["hex"] }
+collectable = "0.0.2"
+hdrhistogram = "7.5.1"
+ouroboros = "0.17"
+proc-macro2 = "1.0.47"
+quote = "1.0.23"
+rstest = "0.16.0"
+syn = { version = "1.0.104", features = ["full", "derive", "extra-traits"] }
+uint = "0.9.4"
+cfg-if = "1.0.0"
+governor = "0.6.0"
+arc-swap = { version = "1.5.1", features = ["serde"] }
+lru = "0.10"
+tokio-stream = { version = "0.1.14", features = ["sync", "net"] }
+serde_yaml = "0.8.26"
+byteorder = "1.4.3"
+rustversion = "1.0.9"
+protobuf = { version = "2.28", features = ["with-bytes"] }
+bytes = "1.4.0"
+anyhow = "1.0.71"
 
-anemo = { path = "crates/consensus/anemo/anemo" }
-anemo-build = { path = "crates/consensus/anemo/anemo-build" }
-anemo-tower = { path = "crates/consensus/anemo/anemo-tower" }
-#anemo-cli = { path = "crates/consensus/anemo/anemo-cli" }
+criterion = { version = "0.5.0", features = [
+  "async",
+  "async_tokio",
+  "html_reports",
+] }
 
-consensus-metrics = { path = "crates/consensus/consensus-metrics" }
-consensus-util-mem = { path = "crates/consensus/consensus-util-mem" }
+reqwest = { version = "0.11.20", default_features = false, features = [
+  "blocking",
+  "json",
+  "rustls-tls",
+] }
 
-lattice-common = { path = "crates/consensus/lattice-common" }
-#
-lattice-worker = { path = "crates/consensus/worker" }
-lattice-primary = { path = "crates/consensus/primary" }
-lattice-storage = { path = "crates/consensus/storage" }
-lattice-network = { path = "crates/consensus/network" }
-lattice-node = { path = "crates/consensus/node" }
-lattice-executor = { path = "crates/consensus/executor" }
-lattice-consensus = { path = "crates/consensus/consensus" }
-lattice-typed-store = { path = "crates/consensus/typed-store" }
-lattice-typed-store-derive = { path = "crates/consensus/typed-store-derive" }
-lattice-test-utils = { path = "crates/consensus/test-utils" }
+rocksdb = { version = "0.21.0", features = [
+  "snappy",
+  "lz4",
+  "zstd",
+  "zlib",
+  "multi-threaded-cf",
+], default-features = false }
 
-# transative patch used by reth
-[patch.crates-io]
-# patched for quantity U256 responses <https://github.com/recmo/uint/issues/224>
-revm = { git = "https://github.com/bluealloy/revm/", branch = "release/v25" }
-revm-primitives = { git = "https://github.com/bluealloy/revm/", branch = "release/v25" }
+axum = { version = "0.6.6", default-features = false, features = [
+  "headers",
+  "tokio",
+  "http1",
+  "http2",
+  "json",
+  "matched-path",
+  "original-uri",
+  "form",
+  "query",
+  "ws",
+] }
+
+axum-server = { version = "0.5.1", default-features = false, features = [
+  "tls-rustls",
+] }
+
+tower = { version = "0.4.12", features = [
+  "full",
+  "util",
+  "timeout",
+  "load-shed",
+  "limit",
+] }
+
+backoff = { version = "0.4.0", features = [
+  "futures",
+  "futures-core",
+  "pin-project-lite",
+  "tokio",
+  "tokio_1",
+] }
+
+anemo = { git = "https://github.com/mystenlabs/anemo.git", rev = "1169850e6af127397068cd86764c29b1d49dbe35" }
+anemo-build = { git = "https://github.com/mystenlabs/anemo.git", rev = "1169850e6af127397068cd86764c29b1d49dbe35" }
+anemo-cli = { git = "https://github.com/mystenlabs/anemo.git", rev = "1169850e6af127397068cd86764c29b1d49dbe35" }
+anemo-tower = { git = "https://github.com/mystenlabs/anemo.git", rev = "1169850e6af127397068cd86764c29b1d49dbe35" }

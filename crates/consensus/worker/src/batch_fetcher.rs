@@ -2,27 +2,26 @@
 // Copyright (c) Mysten Labs, Inc.
 // SPDX-License-Identifier: Apache-2.0
 
-use anemo::Network;
-use anyhow::bail;
-use async_trait::async_trait;
-use fastcrypto::hash::Hash;
-use futures::{stream::FuturesUnordered, FutureExt, StreamExt};
-use itertools::Itertools;
-use lattice_network::WorkerRpc;
-use lattice_typed_store::{rocks::DBMap, Map};
-use prometheus::IntGauge;
-use rand::{rngs::ThreadRng, seq::SliceRandom};
 use std::{
     collections::{HashMap, HashSet, VecDeque},
     sync::Arc,
     time::Duration,
 };
-use tn_types::consensus::{
-    crypto::NetworkPublicKey, now, Batch, BatchAPI, BatchDigest, MetadataAPI,
-};
-use tn_network_types::{
-    RequestBatchesRequest, RequestBatchesResponse,
-};
+
+use anemo::Network;
+use async_trait::async_trait;
+use eyre::bail;
+use fastcrypto::hash::Hash;
+use futures::{stream::FuturesUnordered, FutureExt, StreamExt};
+use itertools::Itertools;
+use narwhal_network::WorkerRpc;
+use narwhal_typed_store::{rocks::DBMap, Map};
+use narwhal_types::NetworkPublicKey;
+use prometheus::IntGauge;
+use rand::{rngs::ThreadRng, seq::SliceRandom};
+
+use narwhal_network_types::{RequestBatchesRequest, RequestBatchesResponse};
+use narwhal_types::{now, Batch, BatchAPI, BatchDigest, MetadataAPI};
 use tokio::{
     select,
     time::{sleep, sleep_until, Instant},
@@ -77,7 +76,7 @@ impl BatchFetcher {
 
         loop {
             if remaining_digests.is_empty() {
-                return fetched_batches
+                return fetched_batches;
             }
 
             // Fetch from local storage.
@@ -85,7 +84,7 @@ impl BatchFetcher {
             fetched_batches.extend(self.fetch_local(remaining_digests.clone()).await);
             remaining_digests.retain(|d| !fetched_batches.contains_key(d));
             if remaining_digests.is_empty() {
-                return fetched_batches
+                return fetched_batches;
             }
             drop(_timer);
 
@@ -106,7 +105,7 @@ impl BatchFetcher {
                 } else {
                     // No more worker to fetch from. This happens after sending requests to all
                     // workers and then another staggered interval has passed.
-                    break
+                    break;
                 }
                 stagger += REMOTE_PARALLEL_FETCH_INTERVAL;
                 let mut interval = Box::pin(sleep(stagger));
@@ -126,6 +125,7 @@ impl BatchFetcher {
                             }
                             fetched_batches.extend(updated_new_batches.iter().map(|(d, b)| (*d, (*b).clone())));
                             write_batch.insert_batch(&self.batch_store, updated_new_batches).unwrap();
+
 
                             write_batch.write().unwrap();
                             if remaining_digests.is_empty() {
@@ -147,7 +147,7 @@ impl BatchFetcher {
     async fn fetch_local(&self, digests: HashSet<BatchDigest>) -> HashMap<BatchDigest, Batch> {
         let mut fetched_batches = HashMap::new();
         if digests.is_empty() {
-            return fetched_batches
+            return fetched_batches;
         }
 
         // Continue to bulk request from local worker until no remaining digests
@@ -183,16 +183,16 @@ impl BatchFetcher {
             attempt += 1;
             debug!("Remote attempt #{attempt} to fetch {} digests from {worker}", digests.len(),);
             let deadline = Instant::now() + timeout;
-            let request_batch_guard =
-                PendingGuard::make_inc(&self.metrics.pending_remote_request_batch);
+            let request_guard =
+                PendingGuard::make_inc(&self.metrics.pending_remote_request_batches);
             let response =
                 self.safe_request_batches(digests.clone(), worker.clone(), timeout).await;
-            drop(request_batch_guard);
+            drop(request_guard);
             match response {
                 Ok(remote_batches) => {
                     self.metrics.worker_batch_fetch.with_label_values(&["remote", "success"]).inc();
                     debug!("Found {} batches remotely", remote_batches.len());
-                    return remote_batches
+                    return remote_batches;
                 }
                 Err(err) => {
                     if err.to_string().contains("Timeout") {
@@ -208,7 +208,7 @@ impl BatchFetcher {
                             .inc();
                         debug!("Failed retrieving payloads {digests:?} from possibly byzantine {worker} attempt {attempt}: {err}");
                         // Do not bother retrying if the remote worker is byzantine.
-                        return HashMap::new()
+                        return HashMap::new();
                     } else {
                         self.metrics
                             .worker_batch_fetch
@@ -232,10 +232,10 @@ impl BatchFetcher {
         digests_to_fetch: HashSet<BatchDigest>,
         worker: NetworkPublicKey,
         timeout: Duration,
-    ) -> anyhow::Result<HashMap<BatchDigest, Batch>> {
+    ) -> eyre::Result<HashMap<BatchDigest, Batch>> {
         let mut fetched_batches = HashMap::new();
         if digests_to_fetch.is_empty() {
-            return Ok(fetched_batches)
+            return Ok(fetched_batches);
         }
 
         let RequestBatchesResponse { batches, is_size_limit_reached: _ } = self
@@ -289,7 +289,7 @@ pub trait RequestBatchesNetwork: Send + Sync {
         batch_digests: Vec<BatchDigest>,
         worker: NetworkPublicKey,
         timeout: Duration,
-    ) -> anyhow::Result<RequestBatchesResponse>;
+    ) -> eyre::Result<RequestBatchesResponse>;
 }
 
 struct RequestBatchesNetworkImpl {
@@ -303,10 +303,10 @@ impl RequestBatchesNetwork for RequestBatchesNetworkImpl {
         batch_digests: Vec<BatchDigest>,
         worker: NetworkPublicKey,
         timeout: Duration,
-    ) -> anyhow::Result<RequestBatchesResponse> {
+    ) -> eyre::Result<RequestBatchesResponse> {
         let request =
             anemo::Request::new(RequestBatchesRequest { batch_digests }).with_timeout(timeout);
-        self.network.request_batches(worker, request).await
+        self.network.request_batches(&worker, request).await
     }
 }
 
@@ -315,15 +315,97 @@ mod tests {
     use super::*;
     use fastcrypto::{hash::Hash, traits::KeyPair};
     use itertools::Itertools;
+    use narwhal_types::{NetworkKeyPair};
     use rand::rngs::StdRng;
     use std::collections::HashMap;
-    use tn_types::consensus::crypto::NetworkKeyPair;
-    use tokio::time::timeout;
+    
+
+    // // TODO: Remove once we have removed BatchV1 from the codebase.
+    // // Case #1: Receive BatchV1 but network is upgraded past v11 so we fail because we expect
+    // BatchV2 #[tokio::test]
+    // pub async fn test_fetcher_with_batch_v1_and_network_v12() {
+    //     reth_tracing::init_test_tracing();
+    //     let mut network = TestRequestBatchesNetwork::new();
+    //     let batch_store = narwhal_types::test_utils::create_batch_store();
+    //     let batchv1_1 = Batch::V1(BatchV1::new(vec![vec![1]]));
+    //     let batchv1_2 = Batch::V1(BatchV1::new(vec![vec![2]]));
+    //     let (digests, known_workers) = (
+    //         HashSet::from_iter(vec![batchv1_1.digest(), batchv1_2.digest()]),
+    //         HashSet::from_iter(test_pks(&[1, 2])),
+    //     );
+    //     network.put(&[1, 2], batchv1_1.clone());
+    //     network.put(&[2, 3], batchv1_2.clone());
+    //     let fetcher = BatchFetcher {
+    //         name: test_pk(0),
+    //         network: Arc::new(network.clone()),
+    //         batch_store: batch_store.clone(),
+    //         metrics: Arc::new(WorkerMetrics::default()),
+    //     };
+    //     let fetch_result = timeout(
+    //         Duration::from_secs(1),
+    //         fetcher.fetch(digests, known_workers),
+    //     )
+    //     .await;
+    //     assert!(fetch_result.is_err());
+    // }
+
+    // // TODO: Remove once we have removed BatchV1 from the codebase.
+    // // Case #2: Receive BatchV2 and network is upgraded past v11 so we are okay
+    // #[tokio::test]
+    // pub async fn test_fetcher_with_batch_v2_and_network_v12() {
+    //     let mut network = TestRequestBatchesNetwork::new();
+    //     let batch_store = narwhal_types::test_utils::create_batch_store();
+    //     let batchv2_1 = Batch::new(vec![vec![1]]);
+    //     let batchv2_2 = Batch::new(vec![vec![2]]);
+    //     let (digests, known_workers) = (
+    //         HashSet::from_iter(vec![batchv2_1.digest(), batchv2_2.digest()]),
+    //         HashSet::from_iter(test_pks(&[1, 2])),
+    //     );
+    //     network.put(&[1, 2], batchv2_1.clone());
+    //     network.put(&[2, 3], batchv2_2.clone());
+    //     let fetcher = BatchFetcher {
+    //         name: test_pk(0),
+    //         network: Arc::new(network.clone()),
+    //         batch_store: batch_store.clone(),
+    //         metrics: Arc::new(WorkerMetrics::default()),
+    //     };
+    //     let mut expected_batches = HashMap::from_iter(vec![
+    //         (batchv2_1.digest(), batchv2_1.clone()),
+    //         (batchv2_2.digest(), batchv2_2.clone()),
+    //     ]);
+    //     let mut fetched_batches = fetcher.fetch(digests, known_workers).await;
+    //     // Reset metadata from the fetched and expected batches
+    //     for batch in fetched_batches.values_mut() {
+    //         // assert received_at was set to some value before resetting.
+    //         assert!(batch.versioned_metadata().received_at().is_some());
+    //         batch.versioned_metadata_mut().set_received_at(0);
+    //     }
+    //     for batch in expected_batches.values_mut() {
+    //         batch.versioned_metadata_mut().set_received_at(0);
+    //     }
+    //     assert_eq!(fetched_batches, expected_batches);
+    //     assert_eq!(
+    //         batch_store
+    //             .get(&batchv2_1.digest())
+    //             .unwrap()
+    //             .unwrap()
+    //             .digest(),
+    //         batchv2_1.digest()
+    //     );
+    //     assert_eq!(
+    //         batch_store
+    //             .get(&batchv2_2.digest())
+    //             .unwrap()
+    //             .unwrap()
+    //             .digest(),
+    //         batchv2_2.digest()
+    //     );
+    // }
 
     #[tokio::test]
     pub async fn test_fetcher() {
         let mut network = TestRequestBatchesNetwork::new();
-        let batch_store = lattice_test_utils::create_batch_store();
+        let batch_store = narwhal_types::test_utils::create_batch_store();
         let batch1 = Batch::new(vec![vec![1]]);
         let batch2 = Batch::new(vec![vec![2]]);
         let (digests, known_workers) = (
@@ -362,7 +444,7 @@ mod tests {
         // Limit is set to two batches in test request_batches(). Request 3 batches
         // and ensure another request is sent to get the remaining batches.
         let mut network = TestRequestBatchesNetwork::new();
-        let batch_store = lattice_test_utils::create_batch_store();
+        let batch_store = narwhal_types::test_utils::create_batch_store();
         let batch1 = Batch::new(vec![vec![1]]);
         let batch2 = Batch::new(vec![vec![2]]);
         let batch3 = Batch::new(vec![vec![3]]);
@@ -396,7 +478,7 @@ mod tests {
         // Limit is set to two batches in test request_batches(). Request 3 batches
         // and ensure another request is sent to get the remaining batches.
         let mut network = TestRequestBatchesNetwork::new();
-        let batch_store = lattice_test_utils::create_batch_store();
+        let batch_store = narwhal_types::test_utils::create_batch_store();
         let batch1 = Batch::new(vec![vec![1]]);
         let batch2 = Batch::new(vec![vec![2]]);
         let batch3 = Batch::new(vec![vec![3]]);
@@ -436,7 +518,7 @@ mod tests {
     #[tokio::test]
     pub async fn test_fetcher_local_and_remote() {
         let mut network = TestRequestBatchesNetwork::new();
-        let batch_store = lattice_test_utils::create_batch_store();
+        let batch_store = narwhal_types::test_utils::create_batch_store();
         let batch1 = Batch::new(vec![vec![1]]);
         let batch2 = Batch::new(vec![vec![2]]);
         let batch3 = Batch::new(vec![vec![3]]);
@@ -481,7 +563,7 @@ mod tests {
     #[tokio::test]
     pub async fn test_fetcher_response_size_limit() {
         let mut network = TestRequestBatchesNetwork::new();
-        let batch_store = lattice_test_utils::create_batch_store();
+        let batch_store = narwhal_types::test_utils::create_batch_store();
         let num_digests = 12;
         let mut expected_batches = Vec::new();
         let mut local_digests = Vec::new();
@@ -561,7 +643,7 @@ mod tests {
             digests: Vec<BatchDigest>,
             worker: NetworkPublicKey,
             _timeout: Duration,
-        ) -> anyhow::Result<RequestBatchesResponse> {
+        ) -> eyre::Result<RequestBatchesResponse> {
             // Use this to simulate server side response size limit in RequestBatches
             const MAX_REQUEST_BATCHES_RESPONSE_SIZE: usize = 2;
             const MAX_READ_BATCH_DIGESTS: usize = 5;
@@ -580,7 +662,7 @@ mod tests {
                             total_size += batch.size();
                         } else {
                             is_size_limit_reached = true;
-                            break
+                            break;
                         }
                     }
                 }

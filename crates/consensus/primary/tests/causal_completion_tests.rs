@@ -1,10 +1,10 @@
 // Copyright (c) Telcoin, LLC
 // Copyright (c) Mysten Labs, Inc.
 // SPDX-License-Identifier: Apache-2.0
-use bytes::Bytes;
-use lattice_test_utils::{cluster::Cluster, setup_tracing};
+use narwhal_test_utils::cluster::Cluster;
+
+use narwhal_types::test_utils::setup_tracing;
 use std::time::Duration;
-use tn_types::consensus::TransactionProto;
 use tracing::info;
 
 type StringTransaction = String;
@@ -21,33 +21,36 @@ async fn test_restore_from_disk() {
     // start the cluster
     cluster.start(Some(4), Some(1), None).await;
 
-    let id = 0;
-    let client = cluster.authority(0).new_transactions_client(&id).await;
+    let _id = 0;
 
-    // Subscribe to the transaction confirmation channel
-    let mut receiver = cluster.authority(0).primary().await.tx_transaction_confirmation.subscribe();
+    // TODO: setup cluster with rpc / tx pool
 
-    // Create arbitrary transactions
-    let mut total_tx = 3;
-    for tx in [string_transaction(), string_transaction(), string_transaction()] {
-        let mut c = client.clone();
-        tokio::spawn(async move {
-            let tr = bcs::to_bytes(&tx).unwrap();
-            let txn = TransactionProto { transaction: Bytes::from(tr) };
+    // let client = cluster.authority(0).new_transactions_client(&id).await;
 
-            c.submit_transaction(txn).await.unwrap();
-        });
-    }
+    // // Subscribe to the transaction confirmation channel
+    // let mut receiver = cluster.authority(0).primary().await.tx_transaction_confirmation.subscribe();
 
-    // wait for transactions to complete
-    loop {
-        if let Ok(_result) = receiver.recv().await {
-            total_tx -= 1;
-            if total_tx < 1 {
-                break
-            }
-        }
-    }
+    // // Create arbitrary transactions
+    // let mut total_tx = 3;
+    // for tx in [string_transaction(), string_transaction(), string_transaction()] {
+    //     let mut c = client.clone();
+    //     tokio::spawn(async move {
+    //         let tr = bcs::to_bytes(&tx).unwrap();
+    //         let txn = TransactionProto { transaction: Bytes::from(tr) };
+
+    //         c.submit_transaction(txn).await.unwrap();
+    //     });
+    // }
+
+    // // wait for transactions to complete
+    // loop {
+    //     if let Ok(_result) = receiver.recv().await {
+    //         total_tx -= 1;
+    //         if total_tx < 1 {
+    //             break;
+    //         }
+    //     }
+    // }
 
     // Now stop node 0
     cluster.stop_node(0).await;
@@ -139,7 +142,7 @@ async fn test_read_causal_signed_certificates() {
             // node starts catching up and is proposing.
             if value > 1.0 {
                 node_made_progress = true;
-                break
+                break;
             }
         }
     }

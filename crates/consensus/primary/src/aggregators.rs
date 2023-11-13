@@ -1,28 +1,26 @@
-// Copyright (c) Telcoin, LLC
 // Copyright (c) 2021, Facebook, Inc. and its affiliates
+// Copyright (c) Telcoin, LLC
 // Copyright (c) Mysten Labs, Inc.
 // SPDX-License-Identifier: Apache-2.0
 
-use crate::{metrics::PrimaryMetrics, error::{PrimaryResult, PrimaryError}};
+use crate::metrics::PrimaryMetrics;
 use fastcrypto::hash::{Digest, Hash};
+use narwhal_types::{AuthorityIdentifier, Committee, Stake};
 use std::{collections::HashSet, sync::Arc};
-use tn_types::{
-    consensus::{
-        AuthorityIdentifier, Committee, Stake,
-        crypto::{
-            self, to_intent_message, AggregateAuthoritySignature, NarwhalAuthorityAggregateSignature,
-            NarwhalAuthoritySignature, AuthoritySignature,
-        },
-        Certificate, CertificateAPI, Header, Vote, VoteAPI,
-    },
+
+use narwhal_types::{
     ensure,
+    error::{DagError, DagResult},
+    to_intent_message, AggregateSignature, Certificate, CertificateAPI, Header,
+    NarwhalAuthorityAggregateSignature, NarwhalAuthoritySignature, Signature,
+    SignatureVerificationState, Vote, VoteAPI,
 };
 use tracing::warn;
 
 /// Aggregates votes for a particular header into a certificate.
 pub struct VotesAggregator {
     weight: Stake,
-    votes: Vec<(AuthorityIdentifier, AuthoritySignature)>,
+    votes: Vec<(AuthorityIdentifier, Signature)>,
     used: HashSet<AuthorityIdentifier>,
     metrics: Arc<PrimaryMetrics>,
 }
@@ -39,45 +37,56 @@ impl VotesAggregator {
         vote: Vote,
         committee: &Committee,
         header: &Header,
-    ) -> PrimaryResult<Option<Certificate>> {
+    ) -> DagResult<Option<Certificate>> {
         let author = vote.author();
 
         // Ensure it is the first time this authority votes.
-        ensure!(self.used.insert(author), PrimaryError::AuthorityReuse(author.to_string()));
+        ensure!(self.used.insert(author), DagError::AuthorityReuse(author.to_string()));
 
         self.votes.push((author, vote.signature().clone()));
         self.weight += committee.stake_by_id(author);
 
         self.metrics.votes_received_last_round.set(self.votes.len() as i64);
         if self.weight >= committee.quorum_threshold() {
-            let cert = Certificate::new_unverified(committee, header.clone(), self.votes.clone())?;
+            let mut cert =
+                Certificate::new_unverified(committee, header.clone(), self.votes.clone())?;
             let (_, pks) = cert.signed_by(committee);
 
-            let certificate_digest: Digest<{ crypto::DIGEST_LENGTH }> = Digest::from(cert.digest());
-            match AggregateAuthoritySignature::try_from(cert.aggregated_signature())
-                .map_err(|_| PrimaryError::InvalidSignature)?
-                .verify_secure(&to_intent_message(certificate_digest), &pks[..])
+            let certificate_digest: Digest<{ narwhal_types::DIGEST_LENGTH }> =
+                Digest::from(cert.digest());
+            match AggregateSignature::try_from(
+                cert.aggregated_signature().ok_or(DagError::InvalidSignature)?,
+            )
+            .map_err(|_| DagError::InvalidSignature)?
+            .verify_secure(&to_intent_message(certificate_digest), &pks[..])
             {
                 Err(err) => {
                     warn!(
                         "Failed to verify aggregated sig on certificate: {} error: {}",
                         certificate_digest, err
                     );
-                    let mut i = 0;
-                    while i < self.votes.len() {
-                        let (id, sig) = &self.votes[i];
+                    self.votes.retain(|(id, sig)| {
                         let pk = committee.authority_safe(id).protocol_key();
                         if sig.verify_secure(&to_intent_message(certificate_digest), pk).is_err() {
                             warn!("Invalid signature on header from authority: {}", id);
                             self.weight -= committee.stake(pk);
-                            self.votes.remove(i);
+                            false
                         } else {
-                            i += 1;
+                            true
                         }
-                    }
-                    return Ok(None)
+                    });
+                    return Ok(None);
                 }
-                Ok(_) => return Ok(Some(cert)),
+                Ok(_) => {
+                    // TODO: Move this block and the AggregateSignature verification into
+                    // Certificate
+                    cert.set_signature_verification_state(
+                        SignatureVerificationState::VerifiedDirectly(
+                            cert.aggregated_signature().ok_or(DagError::InvalidSignature)?.clone(),
+                        ),
+                    );
+                    return Ok(Some(cert));
+                }
             }
         }
         Ok(None)
@@ -105,7 +114,7 @@ impl CertificatesAggregator {
 
         // Ensure it is the first time this authority votes.
         if !self.used.insert(origin) {
-            return None
+            return None;
         }
 
         self.certificates.push(certificate);
@@ -114,7 +123,7 @@ impl CertificatesAggregator {
             // Note that we do not reset the weight here. If this function is called again and
             // the proposer didn't yet advance round, we can add extra certificates as parents.
             // This is required when running Bullshark as consensus.
-            return Some(self.certificates.drain(..).collect())
+            return Some(self.certificates.drain(..).collect());
         }
         None
     }

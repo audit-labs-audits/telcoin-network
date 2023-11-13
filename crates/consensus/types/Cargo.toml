@@ -1,0 +1,67 @@
+[package]
+name = "narwhal-types"
+version.workspace = true
+edition = "2021"
+license = "Apache-2.0"
+authors = ["Grant Kee <grant.kee@telco.in>", "Mysten Labs <build@mystenlabs.com>"]
+publish = false
+
+[dependencies]
+base64 = { workspace = true }
+bcs = { workspace = true }
+reth-primitives = { workspace = true }
+derive_builder = { workspace = true }
+enum_dispatch = { workspace = true }
+futures = { workspace = true }
+indexmap = { workspace = true }
+mockall = { workspace = true }
+prometheus = { workspace = true }
+proptest = { workspace = true }
+proptest-derive = { workspace = true }
+#prost = { workspace = true }
+rand = { workspace = true }
+roaring = { workspace = true }
+serde = { workspace = true }
+serde_with = { workspace = true }
+serde_json = { workspace = true }
+serde_repr = { workspace = true }
+thiserror = { workspace = true }
+tokio = { workspace = true, features = ["sync", "rt", "macros"] }
+tonic = { workspace = true }
+tracing = { workspace = true }
+mem-utils = { workspace = true }
+eyre = { workspace = true }
+fastcrypto = { workspace = true }
+fastcrypto-tbls = { workspace = true }
+anemo = { workspace = true }
+once_cell = { workspace = true }
+match_opt = { workspace = true }
+multiaddr = "0.17.0"
+narwhal-typed-store = { workspace = true }
+consensus-metrics = { workspace = true }
+telcoin-sync = { workspace = true }
+tempfile = { workspace = true, optional = true }
+fdlimit = { workspace = true, optional = true }
+reth-tracing = { workspace = true, optional = true }
+
+[dev-dependencies]
+criterion = { workspace = true }
+tempfile = { workspace = true }
+fdlimit = { workspace = true }
+#serde_test = { workspace = true }
+#narwhal-test-utils = { workspace = true }
+
+#[target.'cfg(not(target_env = "msvc"))'.build-dependencies]
+#protobuf-src = { workspace = true }
+
+[features]
+default = []
+test-utils = ["tempfile", "fdlimit", "reth-tracing"]
+
+[[bench]]
+name = "batch_digest"
+harness = false
+
+[[bench]]
+name = "verify_certificate"
+harness = false

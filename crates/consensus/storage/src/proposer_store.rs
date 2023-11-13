@@ -1,14 +1,15 @@
 // Copyright (c) Telcoin, LLC
 // Copyright (c) Mysten Labs, Inc.
 // SPDX-License-Identifier: Apache-2.0
+
 use crate::StoreResult;
-use lattice_typed_store::{
+use narwhal_typed_store::{
     reopen,
     rocks::{open_cf, DBMap, MetricConf, ReadWriteOptions},
     Map,
 };
-use tn_macros::fail_point;
-use tn_types::consensus::Header;
+use narwhal_types::Header;
+use telcoin_macros::fail_point;
 
 pub type ProposerKey = u32;
 
@@ -55,12 +56,14 @@ impl ProposerStore {
 #[cfg(test)]
 mod test {
     use crate::{ProposerStore, LAST_PROPOSAL_KEY};
-    use lattice_test_utils::{fixture_batch_with_transactions, CommitteeFixture};
-    use lattice_typed_store::Map;
-    use tn_types::consensus::{CertificateDigest, Header, Round};
+    use narwhal_typed_store::Map;
+    use narwhal_types::{
+        test_utils::{fixture_batch_with_transactions, CommitteeFixture},
+        CertificateDigest, Header, HeaderV1Builder, Round,
+    };
 
     pub fn create_header_for_round(round: Round) -> Header {
-        let builder = tn_types::consensus::HeaderV1Builder::default();
+        let builder = HeaderV1Builder::default();
         let fixture = CommitteeFixture::builder().randomize_ports(true).build();
         let primary = fixture.authorities().next().unwrap();
         let id = primary.id();

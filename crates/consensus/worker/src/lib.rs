@@ -1,5 +1,5 @@
-// Copyright (c) Telcoin, LLC
 // Copyright (c) 2021, Facebook, Inc. and its affiliates
+// Copyright (c) Telcoin, LLC
 // Copyright (c) Mysten Labs, Inc.
 // SPDX-License-Identifier: Apache-2.0
 #![warn(future_incompatible, nonstandard_style, rust_2018_idioms, rust_2021_compatibility)]
@@ -9,6 +9,7 @@ mod batch_maker;
 mod client;
 mod handlers;
 mod quorum_waiter;
+// mod transactions_server;
 mod tx_validator;
 mod worker;
 
@@ -16,7 +17,7 @@ pub mod metrics;
 
 pub use crate::{
     client::LocalNarwhalClient,
-    tx_validator::{TransactionValidator, LatticeTransactionValidator, TrivialTransactionValidator},
+    tx_validator::{TransactionValidator, TrivialTransactionValidator},
     worker::Worker,
 };
 

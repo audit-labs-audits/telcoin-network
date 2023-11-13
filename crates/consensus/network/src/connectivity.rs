@@ -1,14 +1,15 @@
 // Copyright (c) Telcoin, LLC
 // Copyright (c) Mysten Labs, Inc.
 // SPDX-License-Identifier: Apache-2.0
+
 use crate::metrics::NetworkConnectionMetrics;
 use anemo::{types::PeerEvent, PeerId};
 use consensus_metrics::spawn_logged_monitored_task;
 use dashmap::DashMap;
 use futures::future;
+use narwhal_types::ConditionalBroadcastReceiver;
 use quinn_proto::ConnectionStats;
 use std::{collections::HashMap, sync::Arc, time::Duration};
-use tn_types::consensus::ConditionalBroadcastReceiver;
 use tokio::{task::JoinHandle, time};
 
 const CONNECTION_STAT_COLLECTION_INTERVAL: Duration = Duration::from_secs(60);
@@ -61,7 +62,7 @@ impl ConnectionMonitor {
                 };
                 (subscriber, active_peers)
             } else {
-                return
+                return;
             }
         };
 
@@ -102,6 +103,12 @@ impl ConnectionMonitor {
             tokio::select! {
                 _ = connection_stat_collection_interval.tick() => {
                     if let Some(network) = self.network.upgrade() {
+                        self.connection_metrics.socket_receive_buffer_size.set(
+                            network.socket_receive_buf_size() as i64
+                        );
+                        self.connection_metrics.socket_send_buffer_size.set(
+                            network.socket_send_buf_size() as i64
+                        );
                         for peer_id in known_peers.iter() {
                             if let Some(connection) = network.peer(*peer_id) {
                                 let stats = connection.connection_stats();
@@ -126,7 +133,7 @@ impl ConnectionMonitor {
         if let Some(network) = self.network.upgrade() {
             self.connection_metrics.network_peers.set(network.peers().len() as i64);
         } else {
-            return
+            return;
         }
 
         let (peer_id, status, int_status) = match peer_event {

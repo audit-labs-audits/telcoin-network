@@ -1,18 +1,20 @@
-// Copyright (c) Telcoin, LLC
 // Copyright (c) 2021, Facebook, Inc. and its affiliates
+// Copyright (c) Telcoin, LLC
 // Copyright (c) Mysten Labs, Inc.
 // SPDX-License-Identifier: Apache-2.0
 
 use super::*;
 use crate::{metrics::WorkerMetrics, NUM_SHUTDOWN_RECEIVERS};
-use lattice_test_utils::{batch, test_network, CommitteeFixture, WorkerToWorkerMockServer};
+use narwhal_network::test_utils::WorkerToWorkerMockServer;
+use narwhal_types::{
+    test_utils::{batch, test_network, CommitteeFixture},
+    PreSubscribedBroadcastSender,
+};
 use prometheus::Registry;
-use tn_network_types::MockWorkerToPrimary;
-use tn_types::consensus::PreSubscribedBroadcastSender;
 
 #[tokio::test]
 async fn wait_for_quorum() {
-    let (tx_quorum_waiter, rx_quorum_waiter) = lattice_test_utils::test_channel!(1);
+    let (tx_quorum_waiter, rx_quorum_waiter) = narwhal_types::test_channel!(1);
     let fixture = CommitteeFixture::builder().randomize_ports(true).build();
     let committee = fixture.committee();
     let worker_cache = fixture.worker_cache();
@@ -21,11 +23,6 @@ async fn wait_for_quorum() {
 
     let mut tx_shutdown = PreSubscribedBroadcastSender::new(NUM_SHUTDOWN_RECEIVERS);
     let node_metrics = Arc::new(WorkerMetrics::new(&Registry::new()));
-    let network_client = NetworkClient::new_with_empty_id();
-    // Mock the primary client to always succeed.
-    let mut mock_worker_to_primary = MockWorkerToPrimary::new();
-    mock_worker_to_primary.expect_report_own_batch().returning(|_| Ok(anemo::Response::new(())));
-    network_client.set_worker_to_primary_local_handler(Arc::new(mock_worker_to_primary));
 
     // setup network
     let network = test_network(myself.keypair(), &myself.info().worker_address);
@@ -38,7 +35,6 @@ async fn wait_for_quorum() {
         tx_shutdown.subscribe(),
         rx_quorum_waiter,
         network.clone(),
-        network_client,
         node_metrics,
     );
 
@@ -59,7 +55,7 @@ async fn wait_for_quorum() {
 
     // Forward the batch along with the handlers to the `QuorumWaiter`.
     let (s, r) = tokio::sync::oneshot::channel();
-    tx_quorum_waiter.send((batch.clone(), batch.digest(), s)).await.unwrap();
+    tx_quorum_waiter.send((batch.clone(), s)).await.unwrap();
 
     // Wait for the `QuorumWaiter` to gather enough acknowledgements and output the batch.
     r.await.unwrap();
@@ -72,7 +68,7 @@ async fn wait_for_quorum() {
 
 #[tokio::test]
 async fn pipeline_for_quorum() {
-    let (tx_quorum_waiter, rx_quorum_waiter) = lattice_test_utils::test_channel!(1);
+    let (tx_quorum_waiter, rx_quorum_waiter) = narwhal_types::test_channel!(1);
     let fixture = CommitteeFixture::builder().randomize_ports(true).build();
     let committee = fixture.committee();
     let worker_cache = fixture.worker_cache();
@@ -81,12 +77,6 @@ async fn pipeline_for_quorum() {
 
     let mut tx_shutdown = PreSubscribedBroadcastSender::new(NUM_SHUTDOWN_RECEIVERS);
     let node_metrics = Arc::new(WorkerMetrics::new(&Registry::new()));
-    let network_client = NetworkClient::new_with_empty_id();
-    // Mock the primary client to always succeed.
-    let mut mock_worker_to_primary = MockWorkerToPrimary::new();
-    mock_worker_to_primary.expect_report_own_batch().returning(|_| Ok(anemo::Response::new(())));
-    network_client.set_worker_to_primary_local_handler(Arc::new(mock_worker_to_primary));
-
 
     // setup network
     let network = test_network(myself.keypair(), &myself.info().worker_address);
@@ -99,7 +89,6 @@ async fn pipeline_for_quorum() {
         tx_shutdown.subscribe(),
         rx_quorum_waiter,
         network.clone(),
-        network_client,
         node_metrics,
     );
 
@@ -120,11 +109,11 @@ async fn pipeline_for_quorum() {
 
     // Forward the batch along with the handlers to the `QuorumWaiter`.
     let (s0, r0) = tokio::sync::oneshot::channel();
-    tx_quorum_waiter.send((batch.clone(), batch.digest(), s0)).await.unwrap();
+    tx_quorum_waiter.send((batch.clone(), s0)).await.unwrap();
 
     // Forward the batch along with the handlers to the `QuorumWaiter`.
     let (s1, r1) = tokio::sync::oneshot::channel();
-    tx_quorum_waiter.send((batch.clone(), batch.digest(), s1)).await.unwrap();
+    tx_quorum_waiter.send((batch.clone(), s1)).await.unwrap();
 
     // Wait for the `QuorumWaiter` to gather enough acknowledgements and output the batch.
     r0.await.unwrap();

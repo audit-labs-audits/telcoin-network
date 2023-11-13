@@ -1,3 +1,0 @@
-mod trace;
-
-fn main() {}

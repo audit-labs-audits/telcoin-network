@@ -1,14 +1,15 @@
 // Copyright (c) Telcoin, LLC
 // Copyright (c) Mysten Labs, Inc.
 // SPDX-License-Identifier: Apache-2.0
+
 use crate::NodeStorage;
-use lattice_typed_store::{
+use narwhal_typed_store::{
     reopen,
     rocks::{open_cf, DBMap, MetricConf, ReadWriteOptions},
     Map, TypedStoreError,
 };
-use tn_macros::fail_point;
-use tn_types::consensus::{AuthorityIdentifier, Vote, VoteAPI, VoteInfo};
+use narwhal_types::{AuthorityIdentifier, Vote, VoteAPI, VoteInfo};
+use telcoin_macros::fail_point;
 
 /// The storage for the last votes digests per authority
 #[derive(Clone)]

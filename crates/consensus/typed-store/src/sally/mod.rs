@@ -10,22 +10,22 @@
 //! # Examples
 //!
 //! ```
-//! use typed_store::rocks::*;
-//! use typed_store::test_db::*;
-//! use typed_store::sally::SallyDBOptions;
-//! use typed_store_derive::SallyDB;
-//! use typed_store::sally::SallyColumn;
-//! use typed_store::traits::TypedStoreDebug;
-//! use typed_store::traits::TableSummary;
 //! use crate::typed_store::Map;
+//! use narwhal_typed_store::{
+//!     rocks::*,
+//!     sally::{SallyColumn, SallyDBOptions},
+//!     test_db::*,
+//!     traits::{TableSummary, TypedStoreDebug},
+//! };
+//! use narwhal_typed_store_derive::SallyDB;
 //!
 //! // `ExampleTable` is a sally db instance where each column is first initialized with TestDB
 //! // (btree map) backend and later switched to a RocksDB column family
 //!
 //! #[derive(SallyDB)]
 //! pub struct ExampleTable {
-//!   col1: SallyColumn<String, String>,
-//!   col2: SallyColumn<i32, String>,
+//!     col1: SallyColumn<String, String>,
+//!     col2: SallyColumn<i32, String>,
 //! }
 //!
 //! async fn insert_key_vals(table: &ExampleTable) {
@@ -44,7 +44,13 @@
 //!     insert_key_vals(&table).await;
 //!     // switch to rocksdb backend
 //!     let primary_path = tempfile::tempdir().expect("Failed to open db path").into_path();
-//!     table = ExampleTable::init(SallyDBOptions::RocksDB((primary_path, MetricConf::default(), RocksDBAccessType::Primary, None, None)));
+//!     table = ExampleTable::init(SallyDBOptions::RocksDB((
+//!         primary_path,
+//!         MetricConf::default(),
+//!         RocksDBAccessType::Primary,
+//!         None,
+//!         None,
+//!     )));
 //!     insert_key_vals(&table).await;
 //!     Ok(())
 //! }
@@ -305,7 +311,7 @@ impl SallyWriteBatch {
     ) -> Result<(), TypedStoreError> {
         match (self, db) {
             (SallyWriteBatch::RocksDB(db_batch), SallyColumn::RocksDB((db_map, _))) => {
-                db_batch.delete_range(db_map, from, to)
+                db_batch.schedule_delete_range(db_map, from, to)
             }
             (SallyWriteBatch::TestDB(write_batch), SallyColumn::TestDB((test_db, _))) => {
                 write_batch.delete_range(test_db, from, to)

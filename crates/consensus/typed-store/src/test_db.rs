@@ -106,7 +106,7 @@ impl<'a, K: Serialize, V> TestDBIter<'a, K, V> {
             while peeked.is_some() {
                 let serialized = be_fix_int_ser(peeked.unwrap()).expect("serialization failed");
                 if serialized >= serialized_key {
-                    break
+                    break;
                 } else {
                     peekable.next();
                     peeked = peekable.peek();
@@ -127,7 +127,7 @@ impl<'a, K: Serialize, V> TestDBIter<'a, K, V> {
             while peeked.is_some() {
                 let serialized = be_fix_int_ser(peeked.unwrap()).expect("serialization failed");
                 if serialized > serialized_key {
-                    break
+                    break;
                 } else {
                     peekable.next();
                     peeked = peekable.peek();
@@ -256,7 +256,13 @@ where
         Ok(())
     }
 
-    fn clear(&self) -> Result<(), Self::Error> {
+    fn unsafe_clear(&self) -> Result<(), Self::Error> {
+        let mut locked = self.rows.write().unwrap();
+        locked.clear();
+        Ok(())
+    }
+
+    fn schedule_delete_all(&self) -> Result<(), TypedStoreError> {
         let mut locked = self.rows.write().unwrap();
         locked.clear();
         Ok(())
@@ -448,8 +454,8 @@ impl TestDBWriteBatch {
         from: &K,
         to: &K,
     ) -> Result<(), TypedStoreError> {
-        let raw_from = be_fix_int_ser(from.borrow()).unwrap();
-        let raw_to = be_fix_int_ser(to.borrow()).unwrap();
+        let raw_from = be_fix_int_ser(from).unwrap();
+        let raw_to = be_fix_int_ser(to).unwrap();
         self.ops.push_back(WriteBatchOp::DeleteRange((
             db.rows.clone(),
             db.name.clone(),
@@ -665,7 +671,7 @@ mod test {
         let db: TestDB<i32, String> = TestDB::open();
 
         // Test clear of empty map
-        let _ = db.clear();
+        let _ = db.unsafe_clear();
 
         let keys_vals = (0..101).map(|i| (i, i.to_string()));
         let mut wb = db.batch();
@@ -675,15 +681,15 @@ mod test {
 
         // Check we have multiple entries
         assert!(db.safe_iter().count() > 1);
-        let _ = db.clear();
+        let _ = db.unsafe_clear();
         assert_eq!(db.safe_iter().count(), 0);
         // Clear again to ensure safety when clearing empty map
-        let _ = db.clear();
+        let _ = db.unsafe_clear();
         assert_eq!(db.safe_iter().count(), 0);
         // Clear with one item
         let _ = db.insert(&1, &"e".to_string());
         assert_eq!(db.safe_iter().count(), 1);
-        let _ = db.clear();
+        let _ = db.unsafe_clear();
         assert_eq!(db.safe_iter().count(), 0);
     }
 
@@ -693,7 +699,7 @@ mod test {
 
         // Test empty map is truly empty
         assert!(db.is_empty());
-        let _ = db.clear();
+        let _ = db.unsafe_clear();
         assert!(db.is_empty());
 
         let keys_vals = (0..101).map(|i| (i, i.to_string()));
@@ -707,7 +713,7 @@ mod test {
         assert!(!db.is_empty());
 
         // Clear again to ensure empty works after clearing
-        let _ = db.clear();
+        let _ = db.unsafe_clear();
         assert_eq!(db.safe_iter().count(), 0);
         assert!(db.is_empty());
     }

@@ -2,30 +2,35 @@
 // Copyright (c) Mysten Labs, Inc.
 // SPDX-License-Identifier: Apache-2.0
 use crate::{errors::SubscriberResult, metrics::ExecutorMetrics, ExecutionState};
-use consensus_metrics::{metered_channel, spawn_logged_monitored_task};
-use fastcrypto::hash::Hash;
+
+use narwhal_types::{AuthorityIdentifier, Committee, NetworkPublicKey, WorkerCache, WorkerId};
+
 use futures::{stream::FuturesOrdered, StreamExt};
-use lattice_network::{client::NetworkClient, PrimaryToWorkerClient};
+
+use narwhal_network::PrimaryToWorkerClient;
+
+use narwhal_network::client::NetworkClient;
+use narwhal_network_types::FetchBatchesRequest;
 use std::{
     collections::{HashMap, HashSet},
     sync::Arc,
     time::Duration,
     vec,
 };
-use tn_types::consensus::{
-    AuthorityIdentifier, Committee, WorkerCache, WorkerId,
-    crypto::NetworkPublicKey,
+
+use consensus_metrics::{metered_channel, spawn_logged_monitored_task};
+use fastcrypto::hash::Hash;
+
+use narwhal_types::{
     Batch, BatchAPI, BatchDigest, Certificate, CertificateAPI, CommittedSubDag,
-    ConditionalBroadcastReceiver, ConsensusOutput, HeaderAPI, MetadataAPI,
-    Timestamp,
+    ConditionalBroadcastReceiver, ConsensusOutput, HeaderAPI, MetadataAPI, Timestamp,
 };
-use tn_network_types::FetchBatchesRequest;
 use tokio::task::JoinHandle;
 use tracing::{debug, error, info};
 
-/// The `Subscriber` receives certificates sequenced by the consensus and waits until
-/// all transactions references by the certificates are downloaded; it then
-/// forwards the certificates to the Executor as `ConsensusOutput`.
+/// The `Subscriber` receives certificates sequenced by the consensus and waits until the
+/// downloaded all the transactions references by the certificates; it then
+/// forward the certificates to the Executor.
 pub struct Subscriber {
     /// Receiver for shutdown
     rx_shutdown: ConditionalBroadcastReceiver,
@@ -52,15 +57,15 @@ pub fn spawn_subscriber<State: ExecutionState + Send + Sync + 'static>(
     rx_sequence: metered_channel::Receiver<CommittedSubDag>,
     metrics: Arc<ExecutorMetrics>,
     restored_consensus_output: Vec<CommittedSubDag>,
-    execution_state: State,
+    state: State,
 ) -> Vec<JoinHandle<()>> {
     // This is ugly but has to be done this way for now
-    // Currently network incorporates both server and client side of RPC interface
+    // Currently network incorporate both server and client side of RPC interface
     // To construct server side we need to set up routes first, which requires starting Primary
     // Some cleanup is needed
 
     let (tx_notifier, rx_notifier) =
-        metered_channel::channel(lattice_primary::CHANNEL_CAPACITY, &metrics.tx_notifier);
+        metered_channel::channel(narwhal_primary::CHANNEL_CAPACITY, &metrics.tx_notifier);
 
     let rx_shutdown_notify =
         shutdown_receivers.pop().unwrap_or_else(|| panic!("Not enough shutdown receivers"));
@@ -69,7 +74,7 @@ pub fn spawn_subscriber<State: ExecutionState + Send + Sync + 'static>(
 
     vec![
         spawn_logged_monitored_task!(
-            run_notify(execution_state, rx_notifier, rx_shutdown_notify),
+            run_notify(state, rx_notifier, rx_shutdown_notify),
             "SubscriberNotifyTask"
         ),
         spawn_logged_monitored_task!(
@@ -90,7 +95,7 @@ pub fn spawn_subscriber<State: ExecutionState + Send + Sync + 'static>(
 }
 
 async fn run_notify<State: ExecutionState + Send + Sync + 'static>(
-    state: State,
+    mut state: State,
     mut rx_notify: metered_channel::Receiver<ConsensusOutput>,
     mut rx_shutdown: ConditionalBroadcastReceiver,
 ) {
@@ -193,7 +198,7 @@ impl Subscriber {
         let num_certs = deliver.len();
         if num_batches == 0 {
             debug!("No batches to fetch, payload is empty");
-            return ConsensusOutput { sub_dag: Arc::new(deliver), batches: vec![] }
+            return ConsensusOutput { sub_dag: Arc::new(deliver), batches: vec![] };
         }
 
         let sub_dag = Arc::new(deliver);
@@ -234,7 +239,6 @@ impl Subscriber {
         // consensus output
         for cert in &sub_dag.certificates {
             let mut output_batches = Vec::with_capacity(cert.header().payload().len());
-            let output_cert = cert.clone();
 
             inner.metrics.subscriber_current_round.set(cert.round() as i64);
 
@@ -255,7 +259,7 @@ impl Subscriber {
                 );
                 output_batches.push(batch.clone());
             }
-            subscriber_output.batches.push((output_cert, output_batches));
+            subscriber_output.batches.push(output_batches);
         }
         subscriber_output
     }
@@ -313,7 +317,7 @@ impl Subscriber {
                         error!("Failed to fetch batches from worker {worker_name}: {e:?}");
                         // Loop forever on failure. During shutdown, this should get cancelled.
                         tokio::time::sleep(Duration::from_secs(1)).await;
-                        continue
+                        continue;
                     }
                 }
             };
