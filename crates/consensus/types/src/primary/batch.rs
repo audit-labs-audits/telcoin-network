@@ -11,11 +11,31 @@ use mem_utils::MallocSizeOf;
 use proptest_derive::Arbitrary;
 use serde::{Deserialize, Serialize};
 use std::fmt;
+use tokio::sync::oneshot;
 
 /// Type that batches contain.
 pub type Transaction = Vec<u8>;
 
+/// Type for sending ack back to EL once a batch is sealed.
+/// TODO: support propagating errors from the worker to the primary.
+pub type BatchResponse = oneshot::Sender<BatchDigest>;
+
+/// The message type for EL to CL when a new batch is made.
+#[derive(Debug)]
+pub struct NewBatch {
+    /// A batch that was constructed by the EL.
+    pub batch: Batch,
+    /// Reply to the EL once the batch is stored.
+    pub ack: BatchResponse,
+
+    // TODO: add reason for sealing batch here
+    // for metrics: `timeout`, 'gas', or 'bytes/size'
+}
+
 /// The batch for workers to communicate for consensus.
+///
+/// TODO: Batch is just another term for `SealedBlock` in Ethereum.
+/// I think it would better to use `SealedBlock` instead of a redundant type.
 #[cfg_attr(any(test, feature = "arbitrary"), derive(Arbitrary))]
 #[derive(Clone, Serialize, Deserialize, Debug, PartialEq, Eq)]
 #[enum_dispatch(BatchAPI)]
@@ -23,7 +43,6 @@ pub enum Batch {
     /// Version 1 - based on sui V2
     V1(BatchV1),
 }
-
 impl Batch {
     /// Create a new batch for testing only!
     ///
@@ -141,9 +160,11 @@ impl BatchV1 {
         }
     }
 
-    /// The size of the BatchV1 inner data
+    /// The size of the BatchV1 transactions body and sealed header.
     pub fn size(&self) -> usize {
-        self.transactions.iter().map(|t| t.len()).sum()
+        let tx_size: usize = self.transactions.iter().map(|t| t.len()).sum();
+        let header_size = self.versioned_metadata.size();
+        tx_size + header_size
     }
 }
 

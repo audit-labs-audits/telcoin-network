@@ -48,5 +48,10 @@ reth-auto-seal-consensus = {workspace = true }
 reth-beacon-consensus = {workspace = true }
 reth-blockchain-tree = {workspace = true }
 
+[dev-dependencies]
+reth-basic-payload-builder = {workspace = true }
+reth-payload-builder = {workspace = true }
+tempfile = { workspace = true }
+
 [build-dependencies]
 vergen = { version = "8.0.0", features = ["build", "cargo", "git", "gitcl"] }

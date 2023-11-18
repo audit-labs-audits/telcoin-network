@@ -48,8 +48,14 @@ async fn order_leaders() {
     let store = make_consensus_store(&narwhal_types::test_utils::temp_dir());
     let schedule = LeaderSchedule::new(committee.clone(), LeaderSwapTable::default());
     let bad_nodes_stake_threshold = 0;
-    let bullshark =
-        Bullshark::new(committee, store, metrics, NUM_SUB_DAGS_PER_SCHEDULE, schedule.clone(), bad_nodes_stake_threshold);
+    let bullshark = Bullshark::new(
+        committee,
+        store,
+        metrics,
+        NUM_SUB_DAGS_PER_SCHEDULE,
+        schedule.clone(),
+        bad_nodes_stake_threshold,
+    );
 
     // AND the leader of round 6
     let (_, leader) = schedule.leader_certificate(6, &state.dag);
@@ -114,8 +120,14 @@ async fn commit_one_with_leader_schedule_change() {
         let store = make_consensus_store(&narwhal_types::test_utils::temp_dir());
         let schedule = LeaderSchedule::new(committee.clone(), LeaderSwapTable::default());
         let bad_nodes_stake_threshold = 0;
-        let mut bullshark =
-            Bullshark::new(committee, store, metrics, sub_dags_per_schedule, schedule.clone(), bad_nodes_stake_threshold);
+        let mut bullshark = Bullshark::new(
+            committee,
+            store,
+            metrics,
+            sub_dags_per_schedule,
+            schedule.clone(),
+            bad_nodes_stake_threshold,
+        );
 
         let mut committed_sub_dags = Vec::new();
         for certificate in certificates {
@@ -674,7 +686,7 @@ async fn not_enough_support() {
         metrics.clone(),
         NUM_SUB_DAGS_PER_SCHEDULE,
         LeaderSchedule::new(committee.clone(), LeaderSwapTable::default()),
-        bad_nodes_stake_threshold
+        bad_nodes_stake_threshold,
     );
 
     let _consensus_handle = Consensus::spawn(

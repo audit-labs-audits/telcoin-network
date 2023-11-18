@@ -3,18 +3,16 @@
 // SPDX-License-Identifier: Apache-2.0
 use narwhal_test_utils::cluster::Cluster;
 
-use narwhal_types::test_utils::setup_tracing;
+use narwhal_types::test_utils::setup_test_tracing;
 use std::time::Duration;
 use tracing::info;
-
-type StringTransaction = String;
 
 #[ignore]
 #[tokio::test]
 async fn test_restore_from_disk() {
     // Enabled debug tracing so we can easily observe the
     // nodes logs.
-    let _guard = setup_tracing();
+    let _guard = setup_test_tracing();
 
     let mut cluster = Cluster::new(None);
 
@@ -28,7 +26,8 @@ async fn test_restore_from_disk() {
     // let client = cluster.authority(0).new_transactions_client(&id).await;
 
     // // Subscribe to the transaction confirmation channel
-    // let mut receiver = cluster.authority(0).primary().await.tx_transaction_confirmation.subscribe();
+    // let mut receiver =
+    // cluster.authority(0).primary().await.tx_transaction_confirmation.subscribe();
 
     // // Create arbitrary transactions
     // let mut total_tx = 3;
@@ -82,10 +81,6 @@ async fn test_restore_from_disk() {
     assert!(node_recovered_state, "Node did not recover state from disk");
 }
 
-fn string_transaction() -> StringTransaction {
-    StringTransaction::from("test transaction")
-}
-
 #[ignore]
 #[tokio::test]
 async fn test_read_causal_signed_certificates() {
@@ -93,7 +88,7 @@ async fn test_read_causal_signed_certificates() {
 
     // Enabled debug tracing so we can easily observe the
     // nodes logs.
-    let _guard = setup_tracing();
+    let _guard = setup_test_tracing();
 
     let mut cluster = Cluster::new(None);
 

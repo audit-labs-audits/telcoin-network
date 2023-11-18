@@ -2,9 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 use eyre::{eyre, Result};
-use std::{
-    net::{IpAddr, SocketAddr},
-};
+use std::net::{IpAddr, SocketAddr};
 
 pub use ::multiaddr::{Error, Protocol};
 

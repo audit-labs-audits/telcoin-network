@@ -124,7 +124,7 @@ async fn test_recovery() {
 // async fn test_internal_consensus_output() {
 //     // Enabled debug tracing so we can easily observe the
 //     // nodes logs.
-//     let _guard = setup_tracing();
+//     let _guard = setup_test_tracing();
 
 //     let mut cluster = Cluster::new(None);
 

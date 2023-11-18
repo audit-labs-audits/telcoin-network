@@ -40,6 +40,11 @@ impl VersionedMetadata {
     pub fn new_with_timestamp(created_at: TimestampSec, sealed_header: SealedHeader) -> Self {
         Self::V1(MetadataV1 { created_at, received_at: None, sealed_header })
     }
+
+    /// Calculates a heuristic for the in-memory size of the [SealedHeader].
+    pub fn size(&self) -> usize {
+        self.sealed_header().size()
+    }
 }
 
 impl Default for VersionedMetadata {
@@ -55,9 +60,7 @@ impl Default for VersionedMetadata {
 
 impl From<SealedHeader> for VersionedMetadata {
     fn from(sealed_header: SealedHeader) -> Self {
-        // TODO: should this be set by the Worker instead?
-        // use sealed header's timestamp
-        VersionedMetadata::new_with_timestamp(sealed_header.header.timestamp, sealed_header)
+        VersionedMetadata::new(sealed_header)
     }
 }
 

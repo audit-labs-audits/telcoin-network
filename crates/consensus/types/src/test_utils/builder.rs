@@ -1,16 +1,11 @@
-use crate::{
-    utils::get_available_port, CommitteeBuilder, Epoch, Stake,
-};
+use crate::{utils::get_available_port, CommitteeBuilder, Epoch, Stake};
 use fastcrypto::traits::KeyPair as _;
 use once_cell::sync::OnceCell;
 use rand::{
     rngs::{OsRng, StdRng},
     SeedableRng,
 };
-use std::{
-    collections::VecDeque,
-    num::NonZeroUsize,
-};
+use std::{collections::VecDeque, num::NonZeroUsize};
 
 use super::{AuthorityFixture, CommitteeFixture};
 

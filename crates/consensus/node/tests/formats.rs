@@ -15,6 +15,6 @@ fn test_format() {
     //     .status()
     //     .expect("failed to execute process");
     // assert!(status.success());
-    
+
     // TODO: update this test
 }

@@ -14,9 +14,6 @@ pub use consensus::*;
 mod primary;
 pub use primary::*;
 
-mod worker;
-pub use worker::*;
-
 mod metrics;
 pub use metrics::*;
 

@@ -10,7 +10,7 @@ use std::{
 
 use arc_swap::ArcSwap;
 use consensus_metrics::metered_channel::Sender;
-use narwhal_types::{Multiaddr, Protocol, Transaction, TxResponse};
+use narwhal_types::{Multiaddr, NewBatch, Protocol, Transaction};
 use thiserror::Error;
 use tracing::info;
 
@@ -41,12 +41,12 @@ pub enum NarwhalError {
 #[derive(Clone)]
 pub struct LocalNarwhalClient {
     /// TODO: maybe use tx_batch_maker for load schedding.
-    tx_batch_maker: Sender<(Transaction, TxResponse)>,
+    _tx_batch_maker: Sender<NewBatch>,
 }
 
 impl LocalNarwhalClient {
-    pub fn new(tx_batch_maker: Sender<(Transaction, TxResponse)>) -> Arc<Self> {
-        Arc::new(Self { tx_batch_maker })
+    pub fn new(_tx_batch_maker: Sender<NewBatch>) -> Arc<Self> {
+        Arc::new(Self { _tx_batch_maker })
     }
 
     /// Sets the instance of LocalNarwhalClient for the local address.
@@ -82,15 +82,16 @@ impl LocalNarwhalClient {
             ));
         }
         // Send the transaction to the batch maker.
-        let (notifier, when_done) = tokio::sync::oneshot::channel();
-        self.tx_batch_maker
-            .send((transaction, notifier))
-            .await
-            .map_err(|_| NarwhalError::ShuttingDown)?;
+        // let (_notifier, _when_done) = tokio::sync::oneshot::channel();
+        todo!();
+        // self.tx_batch_maker
+        //     .send((transaction, notifier))
+        //     .await
+        //     .map_err(|_| NarwhalError::ShuttingDown)?;
 
-        let _digest = when_done.await.map_err(|_| NarwhalError::TransactionNotIncludedInHeader)?;
+        // let _digest = when_done.await.map_err(|_| NarwhalError::TransactionNotIncludedInHeader)?;
 
-        Ok(())
+        // Ok(())
     }
 
     /// Ensures getter and setter use the same key for the same network address.

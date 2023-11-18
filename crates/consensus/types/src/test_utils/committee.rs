@@ -4,15 +4,11 @@
 // SPDX-License-Identifier: Apache-2.0
 
 use crate::{
-    Certificate, CertificateDigest,
-    Committee, Epoch, Header, HeaderAPI, HeaderV1Builder, Round, Vote, VoteAPI, WorkerCache,
+    Certificate, CertificateDigest, Committee, Epoch, Header, HeaderAPI, HeaderV1Builder, Round,
+    Vote, VoteAPI, WorkerCache,
 };
 
-
-
-use std::{
-    collections::{BTreeSet},
-};
+use std::collections::BTreeSet;
 
 use super::{fixture_batch_with_transactions, AuthorityFixture, Builder};
 

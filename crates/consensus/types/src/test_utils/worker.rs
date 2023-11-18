@@ -1,16 +1,7 @@
-use crate::{
-    NetworkKeyPair,
-    WorkerId, WorkerInfo,
-};
-use fastcrypto::{
-    traits::{KeyPair as _},
-};
+use crate::{NetworkKeyPair, WorkerId, WorkerInfo};
+use fastcrypto::traits::KeyPair as _;
 
-use rand::{
-    rngs::{StdRng},
-    SeedableRng,
-};
-
+use rand::{rngs::StdRng, SeedableRng};
 
 pub struct WorkerFixture {
     pub(crate) keypair: NetworkKeyPair,

@@ -18,14 +18,14 @@ use tonic::{Request, Response, Status};
 use tracing::{error, info, warn};
 use narwhal_types::{
     ConditionalBroadcastReceiver, Empty, Transaction, TransactionProto, Transactions,
-    TransactionsServer, TxResponse, Multiaddr,
+    TransactionsServer, BatchResponse, Multiaddr,
 };
 
 pub struct TxServer<V: TransactionValidator> {
     address: Multiaddr,
     rx_shutdown: ConditionalBroadcastReceiver,
     endpoint_metrics: WorkerEndpointMetrics,
-    tx_batch_maker: Sender<(Transaction, TxResponse)>,
+    tx_batch_maker: Sender<NewBatch>,
     validator: V,
 }
 
@@ -35,7 +35,7 @@ impl<V: TransactionValidator> TxServer<V> {
         address: Multiaddr,
         rx_shutdown: ConditionalBroadcastReceiver,
         endpoint_metrics: WorkerEndpointMetrics,
-        tx_batch_maker: Sender<(Transaction, TxResponse)>,
+        tx_batch_maker: Sender<NewBatch>,
         validator: V,
     ) -> JoinHandle<()> {
         spawn_logged_monitored_task!(

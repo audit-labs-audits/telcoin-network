@@ -48,7 +48,9 @@ use reth_interfaces::{
     },
     RethResult,
 };
-use reth_network::{error::NetworkError, NetworkConfig, NetworkHandle, NetworkManager};
+use reth_network::{
+    error::NetworkError, NetworkConfig, NetworkEvents, NetworkHandle, NetworkManager,
+};
 use reth_network_api::{NetworkInfo, PeersInfo};
 use reth_primitives::{
     constants::eip4844::{LoadKzgSettingsError, MAINNET_KZG_TRUSTED_SETUP},
@@ -446,7 +448,7 @@ impl<Ext: RethCliExt> NodeCommand<Ext> {
             None
         };
 
-        let (highest_snapshots_tx, highest_snapshots_rx) = watch::channel(None);
+        let (_highest_snapshots_tx, highest_snapshots_rx) = watch::channel(None);
 
         let mut hooks = EngineHooks::new();
 
@@ -463,10 +465,10 @@ impl<Ext: RethCliExt> NodeCommand<Ext> {
         };
 
         let _snapshotter = reth_snapshot::Snapshotter::new(
-            db,
+            db.clone(),
+            data_dir.snapshots_path(),
             self.chain.clone(),
             self.chain.snapshot_block_interval,
-            highest_snapshots_tx,
         );
 
         // Configure the consensus engine

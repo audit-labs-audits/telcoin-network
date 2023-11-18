@@ -4,8 +4,9 @@
 use fastcrypto::traits::KeyPair as _;
 use indexmap::IndexMap;
 use narwhal_types::{
+    test_utils::{AuthorityFixture, CommitteeFixture},
     AuthorityIdentifier, Certificate, Committee, Header, HeaderV1, PublicKey, Signature, Stake,
-    Vote, VoteAPI, test_utils::{CommitteeFixture, AuthorityFixture},
+    Vote, VoteAPI,
 };
 use rand::{rngs::OsRng, seq::SliceRandom};
 use std::{collections::BTreeSet, num::NonZeroUsize};

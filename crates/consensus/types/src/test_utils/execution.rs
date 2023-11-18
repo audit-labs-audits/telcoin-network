@@ -1,0 +1,194 @@
+//! Specific test utils for execution layer
+
+use fastcrypto::{
+    secp256k1::Secp256k1KeyPair,
+    traits::{KeyPair as _, ToFromBytes},
+};
+use rand::{rngs::StdRng, SeedableRng};
+use reth_primitives::{
+    public_key_to_address, sign_message, Address, BaseFeeParams, ChainSpec,
+    FromRecoveredPooledTransaction, Genesis, Signature, Transaction, TransactionKind,
+    TransactionSigned, TxEip1559, TxHash, TxValue, B256,
+};
+use reth_provider::BlockReaderIdExt;
+use reth_transaction_pool::{TransactionOrigin, TransactionPool};
+use std::sync::Arc;
+
+/// Yukon parsed Genesis.
+pub fn yukon_genesis() -> Genesis {
+    let yaml = yukon_genesis_string();
+    serde_json::from_str(&yaml).expect("serde parse valid yukon yaml")
+}
+
+/// Yukon chain spec parsed from genesis and ready to go.
+pub fn yukon_chain_spec() -> Arc<ChainSpec> {
+    let genesis = yukon_genesis();
+    Arc::new(genesis.into())
+}
+
+/// Yukon genesis string in yaml format.
+pub fn yukon_genesis_string() -> String {
+    r#"
+{
+    "nonce": "0x0",
+    "timestamp": "0x6553A8CC",
+    "extraData": "0x5343",
+    "gasLimit": "0x1c9c380",
+    "difficulty": "0x0",
+    "mixHash": "0x0000000000000000000000000000000000000000000000000000000000000000",
+    "coinbase": "0x0000000000000000000000000000000000000000",
+    "alloc": {
+        "0x6Be02d1d3665660d22FF9624b7BE0551ee1Ac91b": {
+            "balance": "0x4a47e3c12448f4ad000000"
+        }
+    },
+    "number": "0x0",
+    "gasUsed": "0x0",
+    "parentHash": "0x0000000000000000000000000000000000000000000000000000000000000000",
+    "config": {
+        "ethash": {},
+        "chainId": 2600,
+        "homesteadBlock": 0,
+        "eip150Block": 0,
+        "eip155Block": 0,
+        "eip158Block": 0,
+        "byzantiumBlock": 0,
+        "constantinopleBlock": 0,
+        "petersburgBlock": 0,
+        "istanbulBlock": 0,
+        "berlinBlock": 0,
+        "londonBlock": 0,
+        "terminalTotalDifficulty": 0,
+        "terminalTotalDifficultyPassed": true,
+        "shanghaiTime": 0
+    }
+}"#
+    .to_string()
+}
+
+/// Transaction factory
+pub struct TransactionFactory {
+    /// Keypair for signing transactions
+    keypair: Secp256k1KeyPair,
+    /// The nonce for the next transaction constructed.
+    nonce: u64,
+}
+
+impl TransactionFactory {
+    /// Create a new instance of self from a [0; 32] seed.
+    pub fn new() -> Self {
+        let mut rng = StdRng::from_seed([0; 32]);
+        let keypair = Secp256k1KeyPair::generate(&mut rng);
+        Self { keypair, nonce: 0 }
+    }
+
+    /// Create a new instance of [Self] from a provided keypair.
+    pub fn new_from_keypair(private: &[u8]) -> Self {
+        let keypair = Secp256k1KeyPair::from_bytes(private).unwrap();
+        Self { keypair, nonce: 0 }
+    }
+
+    /// Return the address of the signer.
+    pub fn address(&self) -> Address {
+        let public_key = self.keypair.public.pubkey;
+        public_key_to_address(public_key)
+    }
+
+    /// Change the nonce for the next transaction.
+    pub fn set_nonce(&mut self, nonce: u64) {
+        self.nonce = nonce;
+    }
+
+    /// Increment nonce after a transaction was created and signed.
+    fn inc_nonce(&mut self) {
+        self.nonce += 1;
+    }
+
+    /// Create and sign an EIP1559 transaction.
+    pub fn create_eip1559(
+        &mut self,
+        chain: Arc<ChainSpec>,
+        gas_price: u128,
+        to: Address,
+        value: TxValue,
+    ) -> TransactionSigned {
+        // Eip1559
+        let transaction = Transaction::Eip1559(TxEip1559 {
+            chain_id: chain.chain.id(),
+            nonce: self.nonce.into(),
+            max_priority_fee_per_gas: 0,
+            max_fee_per_gas: gas_price,
+            gas_limit: 1_000_000,
+            to: TransactionKind::Call(to),
+            value,
+            input: Default::default(),
+            access_list: Default::default(),
+        });
+
+        let tx_signature_hash = transaction.signature_hash();
+        let signature = self.sign_hash(tx_signature_hash);
+
+        // increase nonce for next tx
+        self.inc_nonce();
+
+        TransactionSigned::from_transaction_and_signature(transaction, signature)
+    }
+
+    /// Sign the transaction hash with the key in memory
+    fn sign_hash(&self, hash: B256) -> Signature {
+        // let env = std::env::var("WALLET_SECRET_KEY")
+        //     .expect("Wallet address is set through environment variable");
+        // let secret: B256 = env.parse().expect("WALLET_SECRET_KEY must start with 0x");
+        let secret = B256::from_slice(self.keypair.secret.as_ref());
+        let signature = sign_message(secret, hash);
+        signature.expect("failed to sign transaction")
+    }
+
+    /// Create and submit the next transaction to the provided [TransactionPool].
+    pub async fn create_and_submit_eip1559_pool_tx<Pool>(
+        &mut self,
+        chain: Arc<ChainSpec>,
+        gas_price: u128,
+        to: Address,
+        value: TxValue,
+        pool: Pool,
+    ) -> TxHash
+    where
+        Pool: TransactionPool,
+    {
+        let tx = self.create_eip1559(chain, gas_price, to, value);
+        let recovered = tx.try_into_ecrecovered().expect("tx is recovered");
+        let transaction = <Pool::Transaction>::from_recovered_transaction(recovered.into());
+        let hash = pool
+            .add_transaction(TransactionOrigin::Local, transaction)
+            .await
+            .expect("recovered tx added to pool");
+        hash
+    }
+
+    /// Submit a transaction to the provided pool.
+    pub async fn submit_tx_to_pool<Pool>(&self, tx: TransactionSigned, pool: Pool) -> TxHash
+    where
+        Pool: TransactionPool,
+    {
+        let recovered = tx.try_into_ecrecovered().expect("tx is recovered");
+        let transaction = <Pool::Transaction>::from_recovered_transaction(recovered.into());
+        let hash = pool
+            .add_transaction(TransactionOrigin::Local, transaction)
+            .await
+            .expect("recovered tx added to pool");
+        hash
+    }
+}
+
+/// Helper to get the gas price based on the provider's latest header.
+pub fn get_gas_price<Provider>(provider: Provider) -> u128
+where
+    Provider: BlockReaderIdExt,
+{
+    let header = provider
+        .latest_header()
+        .expect("latest header from provider for gas price")
+        .expect("latest header is some for gas price");
+    header.next_block_base_fee(BaseFeeParams::ethereum()).unwrap_or_default().into()
+}

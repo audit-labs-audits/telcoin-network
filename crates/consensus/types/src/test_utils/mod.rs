@@ -6,10 +6,12 @@
 mod authority;
 mod builder;
 mod committee;
+mod execution;
 mod helpers;
 mod worker;
 pub use authority::*;
 pub use builder::*;
 pub use committee::*;
+pub use execution::*;
 pub use helpers::*;
 pub use worker::*;

@@ -315,10 +315,9 @@ mod tests {
     use super::*;
     use fastcrypto::{hash::Hash, traits::KeyPair};
     use itertools::Itertools;
-    use narwhal_types::{NetworkKeyPair};
+    use narwhal_types::NetworkKeyPair;
     use rand::rngs::StdRng;
     use std::collections::HashMap;
-    
 
     // // TODO: Remove once we have removed BatchV1 from the codebase.
     // // Case #1: Receive BatchV1 but network is upgraded past v11 so we fail because we expect

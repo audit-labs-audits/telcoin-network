@@ -1,9 +1,8 @@
 use crate::{
-    to_intent_message, AuthorityIdentifier, Batch,
-    BatchDigest, Certificate, CertificateAPI, CertificateDigest, Committee,
-    Epoch, Header, HeaderAPI, HeaderV1Builder, KeyPair, Multiaddr, NarwhalAuthoritySignature,
-    NetworkKeyPair, Round, Signature, Stake, TimestampSec,
-    Transaction, WorkerId,
+    to_intent_message, AuthorityIdentifier, Batch, BatchDigest, Certificate, CertificateAPI,
+    CertificateDigest, Committee, Epoch, Header, HeaderAPI, HeaderV1Builder, KeyPair, Multiaddr,
+    NarwhalAuthoritySignature, NetworkKeyPair, Round, Signature, Stake, TimestampSec, Transaction,
+    WorkerId,
 };
 use fastcrypto::{hash::Hash, traits::KeyPair as _};
 use indexmap::IndexMap;
@@ -640,7 +639,7 @@ pub fn mock_signed_certificate(
     (cert.digest(), cert)
 }
 
-pub fn setup_tracing() {
+pub fn setup_test_tracing() {
     // Setup tracing
     let tracing_level = "debug";
     let network_tracing_level = "info";

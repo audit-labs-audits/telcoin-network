@@ -21,7 +21,8 @@ use narwhal_types::{
     test_utils::{temp_dir, CommitteeFixture},
     AggregateSignatureBytes, AuthorityIdentifier, BatchDigest, Certificate, CertificateAPI,
     CertificateDigest, Epoch, Header, HeaderAPI, HeaderDigest, HeaderV1,
-    PreSubscribedBroadcastSender, Round, SignatureVerificationState, WorkerId, TimestampSec, SystemMessage,
+    PreSubscribedBroadcastSender, Round, SignatureVerificationState, SystemMessage, TimestampSec,
+    WorkerId,
 };
 use once_cell::sync::OnceCell;
 use prometheus::Registry;
@@ -122,7 +123,7 @@ async fn verify_certificates_v2_in_store(
     );
 }
 
-async fn verify_certificates_v1_in_store(
+async fn _verify_certificates_v1_in_store(
     certificate_store: &CertificateStore,
     certificates: &[Certificate],
 ) {

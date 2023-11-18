@@ -4,10 +4,9 @@
 // SPDX-License-Identifier: Apache-2.0
 
 use crate::{
-    Authority, AuthorityIdentifier, Certificate,
-    Committee, Header, HeaderV1Builder, KeyPair, Multiaddr,
-    NetworkKeyPair, NetworkPublicKey, PublicKey, Round, Stake, Vote,
-    WorkerId, WorkerIndex,
+    Authority, AuthorityIdentifier, Certificate, Committee, Header, HeaderV1Builder, KeyPair,
+    Multiaddr, NetworkKeyPair, NetworkPublicKey, PublicKey, Round, Stake, Vote, WorkerId,
+    WorkerIndex,
 };
 use fastcrypto::{
     hash::Hash,
@@ -15,10 +14,7 @@ use fastcrypto::{
 };
 use once_cell::sync::OnceCell;
 
-use std::{
-    collections::BTreeMap,
-    num::NonZeroUsize,
-};
+use std::{collections::BTreeMap, num::NonZeroUsize};
 
 use super::WorkerFixture;
 

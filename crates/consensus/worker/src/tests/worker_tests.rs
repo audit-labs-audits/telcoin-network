@@ -10,9 +10,7 @@ use fastcrypto::{
     hash::Hash,
 };
 use futures::{stream::FuturesOrdered, StreamExt};
-use narwhal_network_types::{
-    MockWorkerToPrimary, MockWorkerToWorker,
-};
+use narwhal_network_types::{MockWorkerToPrimary, MockWorkerToWorker};
 use narwhal_primary::{
     consensus::{ConsensusRound, LeaderSchedule, LeaderSwapTable},
     Primary, CHANNEL_CAPACITY, NUM_SHUTDOWN_RECEIVERS,

@@ -3,14 +3,14 @@
 // SPDX-License-Identifier: Apache-2.0
 use narwhal_test_utils::cluster::Cluster;
 
-use narwhal_types::test_utils::setup_tracing;
+use narwhal_types::test_utils::setup_test_tracing;
 use std::time::Duration;
 
 #[tokio::test(flavor = "current_thread", start_paused = true)]
 async fn test_response_error_after_shutdown_internal_consensus() {
     // Enabled debug tracing so we can easily observe the
     // nodes logs.
-    let _guard = setup_tracing();
+    let _guard = setup_test_tracing();
 
     let delay = Duration::from_secs(10); // 10 seconds
 
@@ -39,7 +39,8 @@ async fn test_response_error_after_shutdown_internal_consensus() {
     // let Err(e) = client.submit_transaction(txn).await else {
     //     panic!("Submitting transactions after Narwhal shutdown should fail!");
     // };
-    // assert!(e.message().contains("error trying to connect: tcp connect error:"), "Actual: {}", e);
+    // assert!(e.message().contains("error trying to connect: tcp connect error:"), "Actual: {}",
+    // e);
     todo!()
 }
 
@@ -51,7 +52,7 @@ async fn test_response_error_after_shutdown_internal_consensus() {
 async fn test_node_staggered_starts() {
     // Enabled debug tracing so we can easily observe the
     // nodes logs.
-    let _guard = setup_tracing();
+    let _guard = setup_test_tracing();
 
     let node_staggered_delay = Duration::from_secs(60 * 2); // 2 minutes
 
@@ -101,7 +102,7 @@ async fn test_node_staggered_starts() {
 #[ignore]
 #[tokio::test]
 async fn test_full_outage_and_recovery() {
-    let _guard = setup_tracing();
+    let _guard = setup_test_tracing();
 
     let stop_and_start_delay = Duration::from_secs(12);
     let node_advance_delay = Duration::from_secs(60);
@@ -152,7 +153,7 @@ async fn test_full_outage_and_recovery() {
 async fn test_second_node_restart() {
     // Enabled debug tracing so we can easily observe the
     // nodes logs.
-    let _guard = setup_tracing();
+    let _guard = setup_test_tracing();
 
     let restart_delay = Duration::from_secs(120);
     let node_advance_delay = Duration::from_secs(60);
@@ -195,7 +196,7 @@ async fn test_second_node_restart() {
 async fn test_loss_of_liveness_without_recovery() {
     // Enabled debug tracing so we can easily observe the
     // nodes logs.
-    let _guard = setup_tracing();
+    let _guard = setup_test_tracing();
 
     let node_advance_delay = Duration::from_secs(60);
 
@@ -249,7 +250,7 @@ async fn test_loss_of_liveness_without_recovery() {
 async fn test_loss_of_liveness_with_recovery() {
     // Enabled debug tracing so we can easily observe the
     // nodes logs.
-    let _guard = setup_tracing();
+    let _guard = setup_test_tracing();
 
     let node_advance_delay = Duration::from_secs(60);
 
