@@ -116,9 +116,9 @@ impl PrimaryNodeInner {
         Ok(())
     }
 
-    // Will shutdown the primary node and wait until the node has shutdown by waiting on the
-    // underlying components handles. If the node was not already running then the
-    // method will return immediately.
+    /// Will shutdown the primary node and wait until the node has shutdown by waiting on the
+    /// underlying components handles. If the node was not already running then the
+    /// method will return immediately.
     #[instrument(level = "info", skip_all)]
     async fn shutdown(&mut self) {
         if !self.is_running().await {
@@ -160,10 +160,10 @@ impl PrimaryNodeInner {
         self.handles.iter().any(|h| !h.is_finished())
     }
 
-    // Accepts an Option registry. If it's Some, then the new registry will be added in the
-    // registry service and the registry_id will be updated. Also, any previous registry will
-    // be removed. If None is passed, then the registry_id is updated to None and any old
-    // registry is removed from the RegistryService.
+    /// Accepts an Option registry. If it's Some, then the new registry will be added in the
+    /// registry service and the registry_id will be updated. Also, any previous registry will
+    /// be removed. If None is passed, then the registry_id is updated to None and any old
+    /// registry is removed from the RegistryService.
     fn swap_registry(&mut self, registry: Option<Registry>) {
         if let Some((registry_id, _registry)) = self.registry.as_ref() {
             self.registry_service.remove(*registry_id);

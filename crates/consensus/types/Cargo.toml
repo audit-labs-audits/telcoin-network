@@ -52,6 +52,7 @@ reth-transaction-pool = { workspace = true, optional = true }
 criterion = { workspace = true }
 tempfile = { workspace = true }
 fdlimit = { workspace = true }
+narwhal-types = { path = ".", features = ["test-utils"] }
 
 #serde_test = { workspace = true }
 #narwhal-test-utils = { workspace = true }
@@ -61,7 +62,8 @@ fdlimit = { workspace = true }
 
 [features]
 default = []
-test-utils = ["tempfile", "fdlimit", "reth-tracing", "reth-provider", "reth-transaction-pool"]
+test-utils = ["tempfile", "fdlimit", "reth-tracing", "reth-provider", "reth-transaction-pool", "reth-primitives/arbitrary"]
+arbitrary = ["reth-primitives/arbitrary"]
 
 [[bench]]
 name = "batch_digest"

@@ -276,43 +276,6 @@ impl CertificateV1 {
             .collect()
     }
 
-    // /// Create genesis with header payload
-    // pub fn genesis_with_payload(
-    //     committee: &Committee,
-    //     batch: Batch,
-    // ) -> Vec<Self> {
-    //     let timestamp = batch.versioned_metadata().created_at().clone();
-    //     let mut payload = IndexMap::default();
-    //     payload.insert(batch.clone().digest(), (0, timestamp));
-    //     committee
-    //         .authorities()
-    //         .map(|authority| {
-    //             // let header_builder = HeaderV1Builder::default();
-    //             // let header = header_builder
-    //             //     .author(authority.id())
-    //             //     .epoch(committee.epoch())
-    //             //     .with_payload_batch(batch.clone(), 0, timestamp)
-    //             //     .build()
-    //             //     // TODO: remove this unwrap
-    //             //     // starting with removing the Result in .build()
-    //             //     //
-    //             //     // build() also uses .unwrap()
-    //             //     .unwrap();
-    //             Self {
-    //                 // header: Header::V1(header),
-    //                 header: Header::V1(HeaderV1 {
-    //                     author: authority.id(),
-    //                     epoch: committee.epoch(),
-    //                     digest: Default::default(),
-    //                     payload: payload.clone(), // add genesis transactions here?
-    //                     ..HeaderV1::default()
-    //                 }),
-    //                 ..Self::default()
-    //             }
-    //         })
-    //         .collect()
-    // }
-
     /// Create a new, unsafe certificate that checks stake.
     pub fn new_unverified(
         committee: &Committee,

@@ -157,6 +157,7 @@ async fn test_leader_schedule() {
     assert_eq!(certificate, leader_certificate_result.unwrap().clone());
 }
 
+/// TODO: this test is failing - I think it's due to bad stake threshold
 #[tokio::test]
 async fn test_leader_schedule_from_store() {
     // GIVEN

@@ -46,7 +46,7 @@ pub struct Authority {
 
 impl Authority {
     /// The constructor is not public by design. Everyone who wants to create authorities should do
-    /// it via Committee (more specifically can use CommitteeBuilder). As some internal properties
+    /// it via Committee (more specifically can use [CommitteeBuilder]). As some internal properties
     /// of Authority are initialised via the Committee, to ensure that the user will not
     /// accidentally use stale Authority data, should always derive them via the Commitee.
     fn new(

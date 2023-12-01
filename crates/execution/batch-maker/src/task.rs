@@ -1,4 +1,5 @@
 use crate::{mode::MiningMode, Storage};
+use consensus_metrics::metered_channel::Sender;
 use futures_util::{future::BoxFuture, FutureExt};
 use narwhal_types::{Batch, NewBatch};
 use reth_primitives::{ChainSpec, IntoRecoveredTransaction};
@@ -13,7 +14,6 @@ use std::{
     task::{Context, Poll},
 };
 use tokio::sync::oneshot;
-use consensus_metrics::metered_channel::Sender;
 use tokio_stream::wrappers::UnboundedReceiverStream;
 use tracing::{debug, error, warn};
 
@@ -131,18 +131,20 @@ where
                                 // send the new update to the engine, this will trigger the engine
                                 // to download and execute the block we just inserted
                                 let (ack, rx) = oneshot::channel();
-                                let _ = to_worker.send(NewBatch {
-                                    batch: Batch::new_with_metadata(
-                                        // TODO: make batch `TransactionSigned` then convert to
-                                        // bytes in `.digest` impl
-                                        // NOTE: a `Batch` is a `SealedBlock`
-                                        // convert txs to bytes
-                                        tx_bytes,
-                                        // versioned metadata for peer validation
-                                        new_header.into(),
-                                    ),
-                                    ack,
-                                }).await;
+                                let _ = to_worker
+                                    .send(NewBatch {
+                                        batch: Batch::new_with_metadata(
+                                            // TODO: make batch `TransactionSigned` then convert to
+                                            // bytes in `.digest` impl
+                                            // NOTE: a `Batch` is a `SealedBlock`
+                                            // convert txs to bytes
+                                            tx_bytes,
+                                            // versioned metadata for peer validation
+                                            new_header.into(),
+                                        ),
+                                        ack,
+                                    })
+                                    .await;
 
                                 match rx.await {
                                     Ok(digest) => {

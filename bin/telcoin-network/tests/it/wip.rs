@@ -39,14 +39,12 @@ use reth_interfaces::{
         headers::{client::HeadersClient, downloader::HeaderDownloader},
     },
 };
-use reth_network::{
-    NetworkEvents, NetworkHandle, NetworkManager,
-};
+use reth_network::{NetworkEvents, NetworkHandle, NetworkManager};
 use reth_payload_builder::{PayloadBuilderHandle, PayloadBuilderService};
 use reth_primitives::{stage::StageId, ChainSpec, Genesis, Head, B256};
 use reth_provider::{
-    providers::BlockchainProvider, BlockHashReader, BlockReader,
-    CanonStateSubscriptions, HeaderProvider, ProviderFactory, StageCheckpointReader,
+    providers::BlockchainProvider, BlockHashReader, BlockReader, CanonStateSubscriptions,
+    HeaderProvider, ProviderFactory, StageCheckpointReader,
 };
 use reth_revm::Factory;
 use reth_revm_inspectors::stack::Hook;

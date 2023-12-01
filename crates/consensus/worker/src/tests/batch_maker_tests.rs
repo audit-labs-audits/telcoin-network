@@ -44,10 +44,7 @@ async fn make_batch() {
     // Send enough transactions to seal a batch.
     let tx = transaction();
     let (ack, batch1_rx) = tokio::sync::oneshot::channel();
-    let new_batch_1 = NewBatch {
-        batch: Batch::new(vec![tx.clone(), tx.clone()]),
-        ack,
-    };
+    let new_batch_1 = NewBatch { batch: Batch::new(vec![tx.clone(), tx.clone()]), ack };
 
     tx_batch_maker.send(new_batch_1).await.unwrap();
 

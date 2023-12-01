@@ -16,6 +16,7 @@
 #![deny(unused_must_use, rust_2018_idioms)]
 #![cfg_attr(docsrs, feature(doc_cfg, doc_auto_cfg))]
 
+use consensus_metrics::metered_channel::Sender;
 use narwhal_types::NewBatch;
 use reth_interfaces::{
     consensus::{Consensus, ConsensusError},
@@ -42,7 +43,6 @@ use std::{
 };
 use tokio::sync::{RwLock, RwLockReadGuard, RwLockWriteGuard};
 use tracing::{debug, trace, warn};
-use consensus_metrics::metered_channel::Sender;
 
 mod client;
 mod mode;
@@ -420,8 +420,8 @@ mod tests {
     use assert_matches::assert_matches;
     use fastcrypto::hash::Hash;
     use narwhal_types::{
-        test_utils::{get_gas_price, yukon_genesis, TransactionFactory},
-        BatchAPI, MetadataAPI,
+        test_utils::{get_gas_price, TransactionFactory},
+        yukon_genesis, BatchAPI, MetadataAPI,
     };
     use reth::{init::init_genesis, tasks::TokioTaskExecutor};
     use reth_blockchain_tree::noop::NoopBlockchainTree;
@@ -500,6 +500,7 @@ mod tests {
         .build();
 
         let gas_price = get_gas_price(blockchain_db.clone());
+        debug!("gas price: {gas_price:?}");
         let value =
             U256::from(10).checked_pow(U256::from(18)).expect("1e18 doesn't overflow U256").into();
 

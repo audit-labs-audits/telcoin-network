@@ -469,7 +469,7 @@ struct BadHeader {
 // &certificates[num_written..target_index]); }
 
 #[tokio::test(flavor = "current_thread", start_paused = true)]
-async fn fetch_certificates_v2_basic() {
+async fn fetch_certificates_v1_basic() {
     let fixture = CommitteeFixture::builder().randomize_ports(true).build();
     let worker_cache = fixture.worker_cache();
     let primary = fixture.authorities().next().unwrap();
@@ -721,10 +721,7 @@ async fn fetch_certificates_v2_basic() {
     let mut cert = certificates[num_written].clone();
     // This is a bit tedious to craft
     let cloned_header = cert.header().clone();
-    let inner = match cloned_header {
-        Header::V1(data) => data,
-        _ => unreachable!("only v1"),
-    };
+    let Header::V1(inner) = cloned_header;
     let cert_header = unsafe { std::mem::transmute::<HeaderV1, BadHeader>(inner) };
     let wrong_header = BadHeader { ..cert_header };
     let wolf_header = unsafe { std::mem::transmute::<BadHeader, HeaderV1>(wrong_header) };

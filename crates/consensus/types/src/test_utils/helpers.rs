@@ -1,8 +1,8 @@
 use crate::{
-    to_intent_message, AuthorityIdentifier, Batch, BatchDigest, Certificate, CertificateAPI,
-    CertificateDigest, Committee, Epoch, Header, HeaderAPI, HeaderV1Builder, KeyPair, Multiaddr,
-    NarwhalAuthoritySignature, NetworkKeyPair, Round, Signature, Stake, TimestampSec, Transaction,
-    WorkerId,
+    to_intent_message, yukon_chain_spec, AuthorityIdentifier, Batch, BatchDigest, Certificate,
+    CertificateAPI, CertificateDigest, Committee, Epoch, Header, HeaderAPI, HeaderV1Builder,
+    KeyPair, Multiaddr, NarwhalAuthoritySignature, NetworkKeyPair, Round, Signature, Stake,
+    TimestampSec, Transaction, WorkerId,
 };
 use fastcrypto::{hash::Hash, traits::KeyPair as _};
 use indexmap::IndexMap;
@@ -14,11 +14,14 @@ use rand::{
     rngs::{OsRng, StdRng},
     thread_rng, Rng, RngCore, SeedableRng,
 };
+use reth_primitives::{Address, U256};
 use reth_tracing::tracing_subscriber::EnvFilter;
 use std::{
     collections::{BTreeSet, HashMap, VecDeque},
     ops::RangeInclusive,
 };
+
+use super::TransactionFactory;
 
 pub const VOTES_CF: &str = "votes";
 pub const HEADERS_CF: &str = "headers";
@@ -38,16 +41,16 @@ macro_rules! test_channel {
     };
 }
 
-// Note: use the following macros to initialize your Primary / Consensus channels
-// if your test is spawning a primary and you encounter an `AllReg` error.
-//
-// Rationale:
-// The primary initialization will try to edit a specific metric in its registry
-// for its new_certificates and committeed_certificates channel. The gauge situated
-// in the channel you're passing as an argument to the primary initialization is
-// the replacement. If that gauge is a dummy gauge, such as the one above, the
-// initialization of the primary will panic (to protect the production code against
-// an erroneous mistake in editing this bootstrap logic).
+/// Note: use the following macros to initialize your Primary / Consensus channels
+/// if your test is spawning a primary and you encounter an `AllReg` error.
+///
+/// Rationale:
+/// The primary initialization will try to edit a specific metric in its registry
+/// for its new_certificates and committeed_certificates channel. The gauge situated
+/// in the channel you're passing as an argument to the primary initialization is
+/// the replacement. If that gauge is a dummy gauge, such as the one above, the
+/// initialization of the primary will panic (to protect the production code against
+/// an erroneous mistake in editing this bootstrap logic).
 #[macro_export]
 macro_rules! test_committed_certificates_channel {
     ($e:expr) => {
@@ -138,8 +141,8 @@ pub fn fixture_payload(number_of_batches: u8) -> IndexMap<BatchDigest, (WorkerId
     payload
 }
 
-// will create a batch with randomly formed transactions
-// dictated by the parameter number_of_transactions
+/// will create a batch with randomly formed transactions
+/// dictated by the parameter number_of_transactions
 pub fn fixture_batch_with_transactions(number_of_transactions: u32) -> Batch {
     let transactions = (0..number_of_transactions).map(|_v| transaction()).collect();
 
@@ -172,8 +175,26 @@ pub fn batch_with_rand<R: Rng + ?Sized>(rand: &mut R) -> Batch {
 
 // Fixture
 pub fn transaction() -> Transaction {
-    // generate random value transactions, but the length will be always 100 bytes
-    (0..100).map(|_v| rand::random::<u8>()).collect()
+    // TODO: make this better
+    //
+    // The fn is complicated bc everything boils down to this fn
+    // for seeding test data.
+    //
+    // gas price for yukon genesis: 875000000
+    //
+    // very inefficient, but less refactoring => quicker release
+
+    let mut tx_factory = TransactionFactory::new_random();
+    let chain = yukon_chain_spec();
+    let gas_price = 875000000;
+    let value =
+        U256::from(10).checked_pow(U256::from(18)).expect("1e18 doesn't overflow U256").into();
+
+    // random transaction
+    tx_factory.create_eip1559(chain, gas_price, Address::ZERO, value).envelope_encoded().into()
+
+    // // generate random value transactions, but the length will be always 100 bytes
+    // (0..100).map(|_v| rand::random::<u8>()).collect()
 }
 
 ////////////////////////////////////////////////////////////////
@@ -208,10 +229,13 @@ pub fn batch_with_transactions(num_of_transactions: usize) -> Batch {
     Batch::new(transactions)
 }
 
-// Creates one certificate per authority starting and finishing at the specified rounds (inclusive).
-// Outputs a VecDeque of certificates (the certificate with higher round is on the front) and a set
-// of digests to be used as parents for the certificates of the next round.
-// Note : the certificates are unsigned
+/// Creates one certificate per authority starting and finishing at the specified rounds
+/// (inclusive).
+///
+/// Outputs a VecDeque of certificates (the certificate with higher round is on the front) and a set
+/// of digests to be used as parents for the certificates of the next round.
+///
+/// Note : the certificates are unsigned
 pub fn make_optimal_certificates(
     committee: &Committee,
     range: RangeInclusive<Round>,
@@ -221,7 +245,7 @@ pub fn make_optimal_certificates(
     make_certificates(committee, range, initial_parents, ids, 0.0)
 }
 
-// Outputs rounds worth of certificates with optimal parents, signed
+/// Outputs rounds worth of certificates with optimal parents that are signed.
 pub fn make_optimal_signed_certificates(
     range: RangeInclusive<Round>,
     initial_parents: &BTreeSet<CertificateDigest>,
@@ -231,7 +255,7 @@ pub fn make_optimal_signed_certificates(
     make_signed_certificates(range, initial_parents, committee, keys, 0.0)
 }
 
-// Bernoulli-samples from a set of ancestors passed as a argument,
+/// Bernoulli-samples from a set of ancestors passed as a argument,
 fn this_cert_parents(
     ancestors: &BTreeSet<CertificateDigest>,
     failure_prob: f64,
@@ -246,9 +270,9 @@ fn this_cert_parents(
     .collect::<BTreeSet<_>>()
 }
 
-// Utility for making several rounds worth of certificates through iterated parenthood sampling.
-// The making of individual certificates once parents are figured out is delegated to the
-// `make_one_certificate` argument
+/// Utility for making several rounds worth of certificates through iterated parenthood sampling.
+/// The making of individual certificates once parents are figured out is delegated to the
+/// `make_one_certificate` argument
 fn rounds_of_certificates(
     range: RangeInclusive<Round>,
     initial_parents: &BTreeSet<CertificateDigest>,
@@ -278,7 +302,7 @@ fn rounds_of_certificates(
     (certificates, next_parents)
 }
 
-// make rounds worth of unsigned certificates with the sampled number of parents
+/// make rounds worth of unsigned certificates with the sampled number of parents
 pub fn make_certificates(
     committee: &Committee,
     range: RangeInclusive<Round>,
@@ -291,14 +315,14 @@ pub fn make_certificates(
     rounds_of_certificates(range, initial_parents, ids, failure_probability, generator)
 }
 
-// Creates certificates for the provided rounds but also having slow nodes.
-// `range`: the rounds for which we intend to create the certificates for
-// `initial_parents`: the parents to use when start creating the certificates
-// `keys`: the authorities for which it will create certificates for
-// `slow_nodes`: the authorities which are considered slow. Being a slow authority means that we
-// will  still create certificates for them on each round, but no other authority from higher round
-// will refer to those certificates. The number (by stake) of slow_nodes can not be > f , as
-// otherwise no valid graph will be produced.
+/// Creates certificates for the provided rounds but also having slow nodes.
+/// `range`: the rounds for which we intend to create the certificates for
+/// `initial_parents`: the parents to use when start creating the certificates
+/// `keys`: the authorities for which it will create certificates for
+/// `slow_nodes`: the authorities which are considered slow. Being a slow authority means that we
+/// will  still create certificates for them on each round, but no other authority from higher round
+/// will refer to those certificates. The number (by stake) of slow_nodes can not be > f , as
+/// otherwise no valid graph will be produced.
 pub fn make_certificates_with_slow_nodes(
     committee: &Committee,
     range: RangeInclusive<Round>,
@@ -340,22 +364,22 @@ pub fn make_certificates_with_slow_nodes(
 
 #[derive(Debug, Clone, Copy)]
 pub enum TestLeaderSupport {
-    // There will be support for the leader, but less than f+1
+    /// There will be support for the leader, but less than f+1
     Weak,
-    // There will be strong support for the leader, meaning >= f+1
+    /// There will be strong support for the leader, meaning >= f+1
     Strong,
-    // Leader will be completely ommitted by the voters
+    /// Leader will be completely ommitted by the voters
     NoSupport,
 }
 
 pub struct TestLeaderConfiguration {
-    // The round of the leader
+    /// The round of the leader
     pub round: Round,
-    // The leader id. That allow us to explicitly dictate which we consider the leader to be
+    /// The leader id. That allow us to explicitly dictate which we consider the leader to be
     pub authority: AuthorityIdentifier,
-    // If true then the leader for that round will not be created at all
+    /// If true then the leader for that round will not be created at all
     pub should_omit: bool,
-    // The support that this leader should receive from the voters of next round
+    /// The support that this leader should receive from the voters of next round
     pub support: Option<TestLeaderSupport>,
 }
 
@@ -454,12 +478,12 @@ pub fn make_certificates_with_leader_configuration(
     (certificates, next_parents)
 }
 
-// Returns the parents that should be used as part of a newly created certificate.
-// The `slow_nodes` parameter is used to dictate which parents to exclude and not use. The slow
-// node will not be used under some probability which is provided as part of the tuple.
-// If probability to use it is 0.0, then the parent node will NEVER be used.
-// If probability to use it is 1.0, then the parent node will ALWAYS be used.
-// We always make sure to include our "own" certificate, thus the `name` property is needed.
+/// Returns the parents that should be used as part of a newly created certificate.
+/// The `slow_nodes` parameter is used to dictate which parents to exclude and not use. The slow
+/// node will not be used under some probability which is provided as part of the tuple.
+/// If probability to use it is 0.0, then the parent node will NEVER be used.
+/// If probability to use it is 1.0, then the parent node will ALWAYS be used.
+/// We always make sure to include our "own" certificate, thus the `name` property is needed.
 pub fn this_cert_parents_with_slow_nodes(
     authority_id: &AuthorityIdentifier,
     ancestors: Vec<Certificate>,
@@ -517,7 +541,7 @@ pub fn this_cert_parents_with_slow_nodes(
     parents
 }
 
-// make rounds worth of unsigned certificates with the sampled number of parents
+/// make rounds worth of unsigned certificates with the sampled number of parents
 pub fn make_certificates_with_epoch(
     committee: &Committee,
     range: RangeInclusive<Round>,
@@ -542,7 +566,7 @@ pub fn make_certificates_with_epoch(
     (certificates, next_parents)
 }
 
-// make rounds worth of signed certificates with the sampled number of parents
+/// make rounds worth of signed certificates with the sampled number of parents
 pub fn make_signed_certificates(
     range: RangeInclusive<Round>,
     initial_parents: &BTreeSet<CertificateDigest>,
@@ -577,8 +601,8 @@ pub fn mock_certificate_with_rand<R: RngCore + ?Sized>(
     (certificate.digest(), certificate)
 }
 
-// Creates a badly signed certificate from its given round, origin and parents,
-// Note: the certificate is signed by a random key rather than its author
+/// Creates a badly signed certificate from its given round, origin and parents,
+/// Note: the certificate is signed by a random key rather than its author
 pub fn mock_certificate(
     committee: &Committee,
     origin: AuthorityIdentifier,
@@ -588,8 +612,8 @@ pub fn mock_certificate(
     mock_certificate_with_epoch(committee, origin, round, 0, parents)
 }
 
-// Creates a badly signed certificate from its given round, epoch, origin, and parents,
-// Note: the certificate is signed by a random key rather than its author
+/// Creates a badly signed certificate from its given round, epoch, origin, and parents,
+/// Note: the certificate is signed by a random key rather than its author
 pub fn mock_certificate_with_epoch(
     committee: &Committee,
     origin: AuthorityIdentifier,
@@ -610,7 +634,7 @@ pub fn mock_certificate_with_epoch(
     (certificate.digest(), certificate)
 }
 
-// Creates one signed certificate from a set of signers - the signers must include the origin
+/// Creates one signed certificate from a set of signers - the signers must include the origin
 pub fn mock_signed_certificate(
     signers: &[(AuthorityIdentifier, KeyPair)],
     origin: AuthorityIdentifier,
@@ -639,8 +663,8 @@ pub fn mock_signed_certificate(
     (cert.digest(), cert)
 }
 
+/// Setup tracing
 pub fn setup_test_tracing() {
-    // Setup tracing
     let tracing_level = "debug";
     let network_tracing_level = "info";
 

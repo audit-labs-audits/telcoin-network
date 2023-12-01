@@ -3,7 +3,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 mod bullshark;
-#[cfg(test)]
+#[cfg(any(test, feature = "test-utils"))]
 #[path = "tests/consensus_utils.rs"]
 mod consensus_utils;
 mod leader_schedule;
@@ -11,8 +11,8 @@ mod metrics;
 mod state;
 mod utils;
 
-#[cfg(test)]
-use crate::consensus::consensus_utils::{
+#[cfg(any(test, feature = "test-utils"))]
+pub use crate::consensus::consensus_utils::{
     make_certificate_store, make_consensus_store, NUM_SUB_DAGS_PER_SCHEDULE,
 };
 pub use crate::consensus::{

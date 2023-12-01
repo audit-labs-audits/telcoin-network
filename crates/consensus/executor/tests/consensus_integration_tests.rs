@@ -11,6 +11,7 @@ use narwhal_primary::{
 };
 use narwhal_storage::NodeStorage;
 
+
 use narwhal_types::test_utils::{temp_dir, CommitteeFixture};
 use prometheus::Registry;
 
@@ -113,70 +114,70 @@ async fn test_recovery() {
             &execution_state,
         )
         .await
-        .unwrap();
+        .expect("consensus output is restored from storage");
 
         assert_eq!(consensus_output.len(), (2 - last_executed_certificate_index) as usize);
     }
 }
 
-// TODO:
-// #[tokio::test]
-// async fn test_internal_consensus_output() {
-//     // Enabled debug tracing so we can easily observe the
-//     // nodes logs.
-//     let _guard = setup_test_tracing();
+// TODO: this needs to work again
+#[tokio::test]
+async fn test_internal_consensus_output() {
+    // Enabled debug tracing so we can easily observe the
+    // nodes logs.
+    let _guard = setup_test_tracing();
 
-//     let mut cluster = Cluster::new(None);
+    let mut cluster = Cluster::new(None);
 
-//     // start the cluster
-//     cluster.start(Some(4), Some(1), None).await;
+    // start the cluster
+    cluster.start(Some(4), Some(1), None).await;
 
-//     // get a client to send transactions
-//     let worker_id = 0;
+    // get a client to send transactions
+    let worker_id = 0;
 
-//     let authority = cluster.authority(0);
-//     // let mut client = authority.new_transactions_client(&worker_id).await;
+    let authority = cluster.authority(0);
+    // let mut client = authority.new_transactions_client(&worker_id).await;
 
-//     // Subscribe to the transaction confirmation channel
-//     let mut receiver = authority.primary().await.tx_transaction_confirmation.subscribe();
+    // Subscribe to the transaction confirmation channel
+    let mut receiver = authority.primary().await.tx_transaction_confirmation.subscribe();
 
-//     // Create arbitrary transactions
-//     // let mut transactions = Vec::new();
+    // Create arbitrary transactions
+    // let mut transactions = Vec::new();
 
-//     const NUM_OF_TRANSACTIONS: u32 = 10;
-//     // for i in 0..NUM_OF_TRANSACTIONS {
-//     //     let tx = string_transaction(i);
+    const NUM_OF_TRANSACTIONS: u32 = 10;
+    // for i in 0..NUM_OF_TRANSACTIONS {
+    //     let tx = string_transaction(i);
 
-//     //     // serialise and send
-//     //     let tr = bcs::to_bytes(&tx).unwrap();
-//     //     let txn = TransactionProto { transaction: Bytes::from(tr) };
-//     //     client.submit_transaction(txn).await.unwrap();
+    //     // serialise and send
+    //     let tr = bcs::to_bytes(&tx).unwrap();
+    //     let txn = TransactionProto { transaction: Bytes::from(tr) };
+    //     client.submit_transaction(txn).await.unwrap();
 
-//     //     transactions.push(tx);
-//     // }
+    //     transactions.push(tx);
+    // }
 
-//     // wait for transactions to complete
-//     loop {
-//         let result = receiver.recv().await.unwrap();
+    // wait for transactions to complete
+    loop {
+        let result = receiver.recv().await.unwrap();
 
-//         // deserialise transaction
-//         let output_transaction = bcs::from_bytes::<String>(&result).unwrap();
+        // deserialise transaction
+        let output_transaction = bcs::from_bytes::<String>(&result).unwrap();
 
-//         // we always remove the first transaction and check with the one
-//         // sequenced. We want the transactions to be sequenced in the
-//         // same order as we post them.
-//         let expected_transaction = transactions.remove(0);
+        // we always remove the first transaction and check with the one
+        // sequenced. We want the transactions to be sequenced in the
+        // same order as we post them.
+        let expected_transaction = transactions.remove(0);
 
-//         assert_eq!(
-//             expected_transaction, output_transaction,
-//             "Expected to have received transaction with same id. Ordering is important"
-//         );
+        assert_eq!(
+            expected_transaction, output_transaction,
+            "Expected to have received transaction with same id. Ordering is important"
+        );
 
-//         if transactions.is_empty() {
-//             break;
-//         }
-//     }
-// }
+        if transactions.is_empty() {
+            break;
+        }
+    }
+}
 
 // fn string_transaction(id: u32) -> String {
 //     format!("test transaction:{id}")

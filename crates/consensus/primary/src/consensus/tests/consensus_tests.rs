@@ -9,7 +9,7 @@ use narwhal_storage::NodeStorage;
 use prometheus::Registry;
 
 use narwhal_types::{
-    test_utils::{setup_test_tracing, temp_dir, CommitteeFixture},
+    test_utils::{temp_dir, CommitteeFixture},
     Certificate, CertificateAPI, HeaderAPI, PreSubscribedBroadcastSender, ReputationScores,
 };
 use tokio::sync::watch;
@@ -34,7 +34,6 @@ use crate::{
 #[tokio::test]
 async fn test_consensus_recovery_with_bullshark() {
     // GIVEN
-    let _guard = setup_test_tracing();
     let num_sub_dags_per_schedule = 3;
     let storage = NodeStorage::reopen(temp_dir(), None);
 

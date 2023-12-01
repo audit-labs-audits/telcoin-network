@@ -12,7 +12,7 @@ use narwhal_types::{
 };
 use std::sync::Arc;
 
-pub(crate) const NUM_SUB_DAGS_PER_SCHEDULE: u64 = 100;
+pub const NUM_SUB_DAGS_PER_SCHEDULE: u64 = 100;
 
 pub fn make_consensus_store(store_path: &std::path::Path) -> Arc<ConsensusStore> {
     const LAST_COMMITTED_CF: &str = "last_committed";

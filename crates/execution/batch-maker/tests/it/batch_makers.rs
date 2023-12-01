@@ -1,6 +1,6 @@
 //! Batch maker (EL) collects transactions
 //! and creates a batch.
-//! 
+//!
 //! Batch maker (CL) receives the batch from EL
 //! and forwards it to the Quorum Waiter.
 
@@ -10,25 +10,30 @@ use narwhal_network::client::NetworkClient;
 use narwhal_network_types::MockWorkerToPrimary;
 use narwhal_typed_store::Map;
 use narwhal_types::{
-    test_utils::{get_gas_price, yukon_genesis, TransactionFactory, create_batch_store},
-    BatchAPI, PreSubscribedBroadcastSender, Batch, MetadataAPI,
+    test_utils::{create_batch_store, get_gas_price, TransactionFactory},
+    yukon_genesis, Batch, BatchAPI, MetadataAPI, PreSubscribedBroadcastSender,
 };
-use narwhal_worker::{NUM_SHUTDOWN_RECEIVERS, metrics::WorkerMetrics, BatchMaker};
+use narwhal_worker::{metrics::WorkerMetrics, BatchMaker, NUM_SHUTDOWN_RECEIVERS};
+use prometheus::Registry;
 use reth::{init::init_genesis, tasks::TokioTaskExecutor};
 use reth_blockchain_tree::noop::NoopBlockchainTree;
 use reth_db::test_utils::create_test_rw_db;
-use reth_interfaces::p2p::{headers::client::{HeadersClient, HeadersRequest}, priority::Priority};
-use reth_primitives::{GenesisAccount, U256, ChainSpec, Address, TransactionSigned, HeadersDirection};
+use reth_interfaces::p2p::{
+    headers::client::{HeadersClient, HeadersRequest},
+    priority::Priority,
+};
+use reth_primitives::{
+    Address, ChainSpec, GenesisAccount, HeadersDirection, TransactionSigned, U256,
+};
 use reth_provider::{providers::BlockchainProvider, ProviderFactory};
 use reth_tracing::init_test_tracing;
-use prometheus::Registry;
 use reth_transaction_pool::{
-    blobstore::InMemoryBlobStore, PoolConfig, TransactionValidationTaskExecutor, TransactionPool,
+    blobstore::InMemoryBlobStore, PoolConfig, TransactionPool, TransactionValidationTaskExecutor,
 };
-use tn_batch_maker::{MiningMode, BatchMakerBuilder};
-use tracing::debug;
-use std::{str::FromStr, time::Duration, sync::Arc};
+use std::{str::FromStr, sync::Arc, time::Duration};
+use tn_batch_maker::{BatchMakerBuilder, MiningMode};
 use tokio::time::timeout;
+use tracing::debug;
 
 #[tokio::test]
 async fn test_make_batch_el_to_cl() {
@@ -115,9 +120,7 @@ async fn test_make_batch_el_to_cl() {
     let txpool =
         reth_transaction_pool::Pool::eth_pool(validator, blob_store, PoolConfig::default());
     let max_transactions = 1;
-    let mining_mode =
-        MiningMode::instant(max_transactions, txpool.pending_transactions_listener());
-
+    let mining_mode = MiningMode::instant(max_transactions, txpool.pending_transactions_listener());
 
     // build execution batch maker
     let (_, client, task) = BatchMakerBuilder::new(
@@ -172,15 +175,12 @@ async fn test_make_batch_el_to_cl() {
     debug!("pool_size(): {:?}", txpool.pool_size());
     assert_eq!(pending_pool_len, 3);
 
-    
     // spawn mining task once worker is ready
     let _mining_task = tokio::spawn(Box::pin(task));
 
     //
     //=== Test batch flow
     //
-
-
 
     // wait for quorum waiter's channel to recv batch
     let too_long = Duration::from_secs(5);
@@ -229,7 +229,6 @@ async fn test_make_batch_el_to_cl() {
     // TODO: this isn't the right thing to test bc storage should be removed
     //
     assert_eq!(batch.versioned_metadata().sealed_header(), &storage_sealed_header,);
-
 
     // Ensure the batch is stored
     assert!(store.get(&expected_batch.digest()).unwrap().is_some());

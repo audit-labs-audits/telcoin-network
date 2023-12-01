@@ -64,7 +64,9 @@ bytes = { workspace = true }
 reth-tracing = { workspace = true }
 
 [features]
+default = []
 benchmark = []
+test-utils = []
 
 [lib]
 bench = false

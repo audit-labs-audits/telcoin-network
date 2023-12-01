@@ -47,7 +47,7 @@ reth-tracing = { workspace = true }
 narwhal-network = { workspace = true, features = ["test-utils"]}
 
 [features]
-#benchmark = ["narwhal-worker/benchmark", "narwhal-primary/benchmark", "url"]
+# benchmark = ["narwhal-worker/benchmark", "narwhal-primary/benchmark", "url"]
 trace_transaction = ["narwhal-worker/trace_transaction"]
 
 # [[bin]]

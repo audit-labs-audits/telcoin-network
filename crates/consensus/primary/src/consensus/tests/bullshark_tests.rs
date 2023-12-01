@@ -119,7 +119,7 @@ async fn commit_one_with_leader_schedule_change() {
         let mut state = ConsensusState::new(metrics.clone(), gc_depth);
         let store = make_consensus_store(&narwhal_types::test_utils::temp_dir());
         let schedule = LeaderSchedule::new(committee.clone(), LeaderSwapTable::default());
-        let bad_nodes_stake_threshold = 0;
+        let bad_nodes_stake_threshold = 33;
         let mut bullshark = Bullshark::new(
             committee,
             store,
@@ -232,8 +232,15 @@ async fn not_enough_support_with_leader_schedule_change() {
     let store = make_consensus_store(&narwhal_types::test_utils::temp_dir());
     let schedule = LeaderSchedule::new(committee.clone(), LeaderSwapTable::default());
 
-    let mut bullshark =
-        Bullshark::new(committee, store, metrics, sub_dags_per_schedule, schedule, 33);
+    let bad_nodes_stake_threshold = 33;
+    let mut bullshark = Bullshark::new(
+        committee,
+        store,
+        metrics,
+        sub_dags_per_schedule,
+        schedule,
+        bad_nodes_stake_threshold,
+    );
 
     let mut total_13_certs = 0;
     let mut total_15_certs = 0;
@@ -294,10 +301,10 @@ async fn not_enough_support_with_leader_schedule_change() {
     assert_eq!(total_15_certs, 4);
 }
 
-// We test here the leader schedule change when we experience a long period of asynchrony. That
-// prohibit us from committing for 8 rounds where 2 schedule changes should have happened given our
-// setup. Then once we manage to commit on round 15 we observe 2 schedule changes happening and 5
-// commits.
+/// We test here the leader schedule change when we experience a long period of asynchrony. That
+/// prohibit us from committing for 8 rounds where 2 schedule changes should have happened given our
+/// setup. Then once we manage to commit on round 15 we observe 2 schedule changes happening and 5
+/// commits.
 #[tokio::test]
 async fn test_long_period_of_asynchrony_for_leader_schedule_change() {
     // GIVEN
@@ -308,7 +315,7 @@ async fn test_long_period_of_asynchrony_for_leader_schedule_change() {
     let genesis =
         Certificate::genesis(&committee).iter().map(|x| x.digest()).collect::<BTreeSet<_>>();
 
-    let mut certificates: VecDeque<Certificate> = VecDeque::new();
+    let mut certificates = VecDeque::new();
     let mut leader_configs = HashMap::new();
 
     // A vector of tuples (leader_round, leader_authority_id)
@@ -346,8 +353,15 @@ async fn test_long_period_of_asynchrony_for_leader_schedule_change() {
     let store = make_consensus_store(&narwhal_types::test_utils::temp_dir());
     let schedule = LeaderSchedule::new(committee.clone(), LeaderSwapTable::default());
 
-    let mut bullshark =
-        Bullshark::new(committee.clone(), store, metrics, sub_dags_per_schedule, schedule, 33);
+    let bad_nodes_stake_threshold = 33;
+    let mut bullshark = Bullshark::new(
+        committee.clone(),
+        store,
+        metrics,
+        sub_dags_per_schedule,
+        schedule,
+        bad_nodes_stake_threshold,
+    );
 
     let mut total = 0;
     for certificate in certificates {
@@ -408,8 +422,8 @@ async fn test_long_period_of_asynchrony_for_leader_schedule_change() {
     assert_eq!(total, 2);
 }
 
-// Run for 4 dag rounds in ideal conditions (all nodes reference all other nodes). We should commit
-// the leader of round 2.
+/// Run for 4 dag rounds in ideal conditions (all nodes reference all other nodes). We should commit
+/// the leader of round 2.
 #[tokio::test]
 async fn commit_one() {
     let fixture = CommitteeFixture::builder().build();
@@ -490,9 +504,9 @@ async fn commit_one() {
     assert!(committed_sub_dag.reputation_score.all_zero());
 }
 
-// Run for 11 dag rounds with one dead node node (that is not a leader). We should commit the
-// leaders of rounds 2, 4, 6 and 10. The leader of round 8 will be missing, but eventually the
-// leader 10 will get committed.
+/// Run for 11 dag rounds with one dead node node (that is not a leader). We should commit the
+/// leaders of rounds 2, 4, 6 and 10. The leader of round 8 will be missing, but eventually the
+/// leader 10 will get committed.
 #[tokio::test]
 async fn dead_node() {
     // Make the certificates.
@@ -596,8 +610,8 @@ async fn dead_node() {
     }
 }
 
-// Run for 5 dag rounds. The leader of round 2 does not have enough support, but the leader of
-// round 4 does. The leader of rounds 2 and 4 should thus be committed (because they are linked).
+/// Run for 5 dag rounds. The leader of round 2 does not have enough support, but the leader of
+/// round 4 does. The leader of rounds 2 and 4 should thus be committed (because they are linked).
 #[tokio::test]
 async fn not_enough_support() {
     let fixture = CommitteeFixture::builder().build();
@@ -752,8 +766,8 @@ async fn not_enough_support() {
     });
 }
 
-// Run for 7 dag rounds. Node 0 (the leader of round 2) is missing for rounds 1 and 2,
-// and reappears from round 3.
+/// Run for 7 dag rounds. Node 0 (the leader of round 2) is missing for rounds 1 and 2,
+/// and reappears from round 3.
 #[tokio::test]
 async fn missing_leader() {
     let fixture = CommitteeFixture::builder().build();
@@ -851,8 +865,8 @@ async fn missing_leader() {
     assert!(committed_sub_dag.reputation_score.all_zero());
 }
 
-// Run for 11 dag rounds in ideal conditions (all nodes reference all other nodes).
-// Every two rounds (on odd rounds), restart consensus and check consistency.
+/// Run for 11 dag rounds in ideal conditions (all nodes reference all other nodes).
+/// Every two rounds (on odd rounds), restart consensus and check consistency.
 #[tokio::test]
 async fn committed_round_after_restart() {
     let fixture = CommitteeFixture::builder().build();
@@ -1147,8 +1161,8 @@ async fn reset_consensus_scores_on_every_schedule_change() {
     }
 }
 
-// Run for 4 dag rounds in ideal conditions (all nodes reference all other nodes). We should commit
-// the leader of round 2. Then shutdown consensus and restart in a new epoch.
+/// Run for 4 dag rounds in ideal conditions (all nodes reference all other nodes). We should commit
+/// the leader of round 2. Then shutdown consensus and restart in a new epoch.
 #[tokio::test]
 async fn restart_with_new_committee() {
     let fixture = CommitteeFixture::builder().build();
@@ -1255,9 +1269,8 @@ async fn restart_with_new_committee() {
 /// The test ensures the following things:
 /// * garbage collection is removing the certificates from lower rounds according to gc depth only
 /// * no certificate will ever get committed past the gc round
-/// * existing uncommitted certificates in DAG (ex from slow nodes where no-one references them)
-///   they
-/// get cleaned up.
+/// * existing uncommitted certificates in DAG (ex from slow nodes where no-one references them) are
+///   cleaned up.
 #[tokio::test]
 async fn garbage_collection_basic() {
     const GC_DEPTH: Round = 4;
@@ -1338,9 +1351,9 @@ async fn garbage_collection_basic() {
     }
 }
 
-// This test ensures that:
-// * a slow node will never commit anything until its certificates get linked by others
-// * certificates arriving bellow the gc round will never get committed
+/// This test ensures that:
+/// * a slow node will never commit anything until its certificates get linked by others
+/// * certificates arriving bellow the gc round will never get committed
 #[tokio::test]
 async fn slow_node() {
     const GC_DEPTH: Round = 4;
@@ -1468,7 +1481,7 @@ async fn slow_node() {
 }
 
 /// This test creates a DAG that:
-/// * contains a leader has not enough support at round 2
+/// * contains a leader that does not have enough support at round 2
 /// * a leader is missing at round 4
 /// * gc happens on commit of leader round 6
 /// * a dead node (node 4) for the first 3 rounds

@@ -27,7 +27,6 @@ pub struct NewBatch {
     pub batch: Batch,
     /// Reply to the EL once the batch is stored.
     pub ack: BatchResponse,
-
     // TODO: add reason for sealing batch here
     // for metrics: `timeout`, 'gas', or 'bytes/size'
 }

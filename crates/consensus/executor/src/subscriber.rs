@@ -74,6 +74,7 @@ pub fn spawn_subscriber<State: ExecutionState + Send + Sync + 'static>(
 
     vec![
         spawn_logged_monitored_task!(
+            // TODO: spawn EL executor here and pass the rx_notifier to it
             run_notify(state, rx_notifier, rx_shutdown_notify),
             "SubscriberNotifyTask"
         ),
@@ -101,6 +102,7 @@ async fn run_notify<State: ExecutionState + Send + Sync + 'static>(
 ) {
     loop {
         tokio::select! {
+            // TODO: move rx_notify to execution layer
             Some(message) = rx_notify.recv() => {
                 state.handle_consensus_output(message).await;
             }

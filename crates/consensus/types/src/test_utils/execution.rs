@@ -4,67 +4,18 @@ use fastcrypto::{
     secp256k1::Secp256k1KeyPair,
     traits::{KeyPair as _, ToFromBytes},
 };
-use rand::{rngs::StdRng, SeedableRng};
+use rand::{
+    rngs::{OsRng, StdRng},
+    SeedableRng,
+};
 use reth_primitives::{
     public_key_to_address, sign_message, Address, BaseFeeParams, ChainSpec,
-    FromRecoveredPooledTransaction, Genesis, Signature, Transaction, TransactionKind,
-    TransactionSigned, TxEip1559, TxHash, TxValue, B256,
+    FromRecoveredPooledTransaction, Signature, Transaction, TransactionKind, TransactionSigned,
+    TxEip1559, TxHash, TxValue, B256,
 };
 use reth_provider::BlockReaderIdExt;
 use reth_transaction_pool::{TransactionOrigin, TransactionPool};
 use std::sync::Arc;
-
-/// Yukon parsed Genesis.
-pub fn yukon_genesis() -> Genesis {
-    let yaml = yukon_genesis_string();
-    serde_json::from_str(&yaml).expect("serde parse valid yukon yaml")
-}
-
-/// Yukon chain spec parsed from genesis and ready to go.
-pub fn yukon_chain_spec() -> Arc<ChainSpec> {
-    let genesis = yukon_genesis();
-    Arc::new(genesis.into())
-}
-
-/// Yukon genesis string in yaml format.
-pub fn yukon_genesis_string() -> String {
-    r#"
-{
-    "nonce": "0x0",
-    "timestamp": "0x6553A8CC",
-    "extraData": "0x5343",
-    "gasLimit": "0x1c9c380",
-    "difficulty": "0x0",
-    "mixHash": "0x0000000000000000000000000000000000000000000000000000000000000000",
-    "coinbase": "0x0000000000000000000000000000000000000000",
-    "alloc": {
-        "0x6Be02d1d3665660d22FF9624b7BE0551ee1Ac91b": {
-            "balance": "0x4a47e3c12448f4ad000000"
-        }
-    },
-    "number": "0x0",
-    "gasUsed": "0x0",
-    "parentHash": "0x0000000000000000000000000000000000000000000000000000000000000000",
-    "config": {
-        "ethash": {},
-        "chainId": 2600,
-        "homesteadBlock": 0,
-        "eip150Block": 0,
-        "eip155Block": 0,
-        "eip158Block": 0,
-        "byzantiumBlock": 0,
-        "constantinopleBlock": 0,
-        "petersburgBlock": 0,
-        "istanbulBlock": 0,
-        "berlinBlock": 0,
-        "londonBlock": 0,
-        "terminalTotalDifficulty": 0,
-        "terminalTotalDifficultyPassed": true,
-        "shanghaiTime": 0
-    }
-}"#
-    .to_string()
-}
 
 /// Transaction factory
 pub struct TransactionFactory {
@@ -77,7 +28,15 @@ pub struct TransactionFactory {
 impl TransactionFactory {
     /// Create a new instance of self from a [0; 32] seed.
     pub fn new() -> Self {
+        // make this random
         let mut rng = StdRng::from_seed([0; 32]);
+        let keypair = Secp256k1KeyPair::generate(&mut rng);
+        Self { keypair, nonce: 0 }
+    }
+
+    /// Create a new instance of self from a random seed.
+    pub fn new_random() -> Self {
+        let mut rng = StdRng::from_rng(OsRng).expect("OsRng available");
         let keypair = Secp256k1KeyPair::generate(&mut rng);
         Self { keypair, nonce: 0 }
     }

@@ -13,8 +13,8 @@ use narwhal_typed_store::{
     rocks::{default_db_options, open_cf_opts, DBMap, MetricConf, ReadWriteOptions},
 };
 use narwhal_types::{
-    AuthorityIdentifier, Batch, BatchDigest, Certificate, CertificateDigest, CommittedSubDagShell,
-    ConsensusCommit, Header, Round, SequenceNumber, VoteInfo, WorkerId,
+    AuthorityIdentifier, Batch, BatchDigest, Certificate, CertificateDigest, ConsensusCommit,
+    Header, Round, SequenceNumber, VoteInfo, WorkerId,
 };
 use std::{num::NonZeroUsize, sync::Arc, time::Duration};
 
@@ -43,7 +43,6 @@ impl NodeStorage {
     pub(crate) const PAYLOAD_CF: &'static str = "payload";
     pub(crate) const BATCHES_CF: &'static str = "batches";
     pub(crate) const LAST_COMMITTED_CF: &'static str = "last_committed";
-    pub(crate) const SUB_DAG_INDEX_CF: &'static str = "sub_dag";
     pub(crate) const COMMITTED_SUB_DAG_INDEX_CF: &'static str = "committed_sub_dag";
 
     // 100 nodes * 60 rounds (assuming 1 round/sec this will hold data for about the last 1 minute
@@ -81,7 +80,6 @@ impl NodeStorage {
                     .options,
             ),
             (Self::LAST_COMMITTED_CF, cf_options.clone()),
-            (Self::SUB_DAG_INDEX_CF, cf_options.clone()),
             (Self::COMMITTED_SUB_DAG_INDEX_CF, cf_options),
         ];
         let rocksdb = open_cf_opts(
@@ -103,7 +101,7 @@ impl NodeStorage {
             last_committed_map,
             // table `sub_dag` is deprecated in favor of `committed_sub_dag`.
             // This can be removed when DBMap supports removing tables.
-            _sub_dag_index_map,
+            // _sub_dag_index_map,
             committed_sub_dag_map,
         ) = reopen!(&rocksdb,
             Self::LAST_PROPOSED_CF;<ProposerKey, Header>,
@@ -114,7 +112,6 @@ impl NodeStorage {
             Self::PAYLOAD_CF;<(BatchDigest, WorkerId), PayloadToken>,
             Self::BATCHES_CF;<BatchDigest, Batch>,
             Self::LAST_COMMITTED_CF;<AuthorityIdentifier, Round>,
-            Self::SUB_DAG_INDEX_CF;<SequenceNumber, CommittedSubDagShell>,
             Self::COMMITTED_SUB_DAG_INDEX_CF;<SequenceNumber, ConsensusCommit>
         );
 

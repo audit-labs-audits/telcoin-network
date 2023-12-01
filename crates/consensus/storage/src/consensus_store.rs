@@ -9,7 +9,7 @@ use narwhal_typed_store::{
     Map, TypedStoreError,
 };
 use narwhal_types::{
-    AuthorityIdentifier, CommittedSubDag, ConsensusCommit, ConsensusCommitV2, Round, SequenceNumber,
+    AuthorityIdentifier, CommittedSubDag, ConsensusCommit, ConsensusCommitV1, Round, SequenceNumber,
 };
 use std::collections::HashMap;
 use tracing::debug;
@@ -19,7 +19,7 @@ pub struct ConsensusStore {
     /// The latest committed round of each validator.
     last_committed: DBMap<AuthorityIdentifier, Round>,
     /// The global consensus sequence
-    committed_sub_dags_by_index_v2: DBMap<SequenceNumber, ConsensusCommit>,
+    committed_sub_dags_by_index_v1: DBMap<SequenceNumber, ConsensusCommit>,
 }
 
 impl ConsensusStore {
@@ -28,7 +28,7 @@ impl ConsensusStore {
         last_committed: DBMap<AuthorityIdentifier, Round>,
         committed_sub_dags_map: DBMap<SequenceNumber, ConsensusCommit>,
     ) -> Self {
-        Self { last_committed, committed_sub_dags_by_index_v2: committed_sub_dags_map }
+        Self { last_committed, committed_sub_dags_by_index_v1: committed_sub_dags_map }
     }
 
     pub fn new_for_tests() -> Self {
@@ -46,7 +46,7 @@ impl ConsensusStore {
     /// Clear the store.
     pub fn clear(&self) -> StoreResult<()> {
         self.last_committed.unsafe_clear()?;
-        self.committed_sub_dags_by_index_v2.unsafe_clear()?;
+        self.committed_sub_dags_by_index_v1.unsafe_clear()?;
         Ok(())
     }
 
@@ -56,12 +56,12 @@ impl ConsensusStore {
         last_committed: &HashMap<AuthorityIdentifier, Round>,
         sub_dag: &CommittedSubDag,
     ) -> Result<(), TypedStoreError> {
-        let commit = ConsensusCommit::V2(ConsensusCommitV2::from_sub_dag(sub_dag));
+        let commit = ConsensusCommit::V1(ConsensusCommitV1::from_sub_dag(sub_dag));
 
         let mut write_batch = self.last_committed.batch();
         write_batch.insert_batch(&self.last_committed, last_committed.iter())?;
         write_batch.insert_batch(
-            &self.committed_sub_dags_by_index_v2,
+            &self.committed_sub_dags_by_index_v1,
             std::iter::once((sub_dag.sub_dag_index, commit)),
         )?;
         write_batch.write()
@@ -74,7 +74,7 @@ impl ConsensusStore {
 
     /// Gets the latest sub dag index from the store
     pub fn get_latest_sub_dag_index(&self) -> SequenceNumber {
-        self.committed_sub_dags_by_index_v2
+        self.committed_sub_dags_by_index_v1
             .unbounded_iter()
             .skip_to_last()
             .next()
@@ -85,7 +85,7 @@ impl ConsensusStore {
     /// Returns thet latest subdag committed. If none is committed yet, then
     /// None is returned instead.
     pub fn get_latest_sub_dag(&self) -> Option<ConsensusCommit> {
-        self.committed_sub_dags_by_index_v2
+        self.committed_sub_dags_by_index_v1
             .unbounded_iter()
             .skip_to_last()
             .next()
@@ -98,7 +98,7 @@ impl ConsensusStore {
         from: &SequenceNumber,
     ) -> StoreResult<Vec<ConsensusCommit>> {
         Ok(self
-            .committed_sub_dags_by_index_v2
+            .committed_sub_dags_by_index_v1
             .unbounded_iter()
             .skip_to(from)?
             .map(|(_, sub_dag)| sub_dag)
@@ -110,14 +110,14 @@ impl ConsensusStore {
         &self,
         seq: &SequenceNumber,
     ) -> StoreResult<Option<ConsensusCommit>> {
-        self.committed_sub_dags_by_index_v2.get(seq)
+        self.committed_sub_dags_by_index_v1.get(seq)
     }
 
     /// Reads from storage the latest commit sub dag where its ReputationScores are marked as
     /// "final". If none exists yet then this method will return None.
     pub fn read_latest_commit_with_final_reputation_scores(&self) -> Option<ConsensusCommit> {
         for commit in self
-            .committed_sub_dags_by_index_v2
+            .committed_sub_dags_by_index_v1
             .unbounded_iter()
             .skip_to_last()
             .reverse()

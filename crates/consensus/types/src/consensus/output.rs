@@ -1,35 +1,47 @@
-// Copyright (c) Telcoin, LLC
-// Copyright (c) Mysten Labs, Inc.
-// SPDX-License-Identifier: Apache-2.0
-#![allow(clippy::mutable_key_type)]
+//! The ouput from consensus (bullshark)
 
 use crate::{
-    config::{AuthorityIdentifier, Committee},
-    crypto, Batch, Certificate, CertificateAPI, CertificateDigest, HeaderAPI, Round, TimestampSec,
+    crypto, Batch, Certificate, CertificateAPI, CertificateDigest, HeaderAPI,
+    ReputationScores, Round, SequenceNumber, TimestampSec,
 };
 use enum_dispatch::enum_dispatch;
 use fastcrypto::hash::{Digest, Hash, HashFunction};
+
 use serde::{Deserialize, Serialize};
 use std::{
-    cmp::Ordering,
-    collections::HashMap,
     fmt,
     fmt::{Display, Formatter},
     sync::Arc,
 };
 use tokio::sync::mpsc;
-use tracing::warn;
-
-/// A global sequence number assigned to every CommittedSubDag.
-pub type SequenceNumber = u64;
+use tracing::{warn};
 
 #[derive(Clone, Debug)]
 /// The output of Consensus, which includes all the batches for each certificate in the sub dag
-/// It is sent to the the ExecutionState handle_consensus_transactions
+/// It is sent to the the ExecutionState handle_consensus_transaction
 pub struct ConsensusOutput {
     pub sub_dag: Arc<CommittedSubDag>,
     /// Matches certificates in the `sub_dag` one-to-one.
     pub batches: Vec<Vec<Batch>>,
+}
+
+impl ConsensusOutput {
+    /// The leader for the round
+    ///
+    /// TODO: need the address for the authority
+    pub fn leader(&self) -> &Certificate {
+        &self.sub_dag.leader
+    }
+    /// The round for the [CommittedSubDag].
+    ///
+    /// TODO: is this consistent accross all certs?
+    pub fn leader_round(&self) -> Round {
+        self.sub_dag.leader_round()
+    }
+    /// Timestamp for when the subdag was committed.
+    pub fn committed_at(&self) -> TimestampSec {
+        self.sub_dag.commit_timestamp()
+    }
 }
 
 impl Hash<{ crypto::DIGEST_LENGTH }> for ConsensusOutput {
@@ -168,65 +180,6 @@ impl Hash<{ crypto::DIGEST_LENGTH }> for CommittedSubDag {
     }
 }
 
-#[derive(Serialize, Deserialize, Clone, Debug, Default, Eq, PartialEq)]
-pub struct ReputationScores {
-    /// Holds the score for every authority. If an authority is not amongst
-    /// the records of the map then we assume that its score is zero.
-    pub scores_per_authority: HashMap<AuthorityIdentifier, u64>,
-    /// When true it notifies us that those scores will be the last updated scores of the
-    /// current schedule before they get reset for the next schedule and start
-    /// scoring from the beginning. In practice we can leverage this information to
-    /// use the scores during the next schedule until the next final ones are calculated.
-    pub final_of_schedule: bool,
-}
-
-impl ReputationScores {
-    /// Creating a new ReputationScores instance pre-populating the authorities entries with
-    /// zero score value.
-    pub fn new(committee: &Committee) -> Self {
-        let scores_per_authority = committee.authorities().map(|a| (a.id(), 0_u64)).collect();
-
-        Self { scores_per_authority, ..Default::default() }
-    }
-    /// Adds the provided `score` to the existing score for the provided `authority`
-    pub fn add_score(&mut self, authority: AuthorityIdentifier, score: u64) {
-        self.scores_per_authority
-            .entry(authority)
-            .and_modify(|value| *value += score)
-            .or_insert(score);
-    }
-
-    pub fn total_authorities(&self) -> u64 {
-        self.scores_per_authority.len() as u64
-    }
-
-    pub fn all_zero(&self) -> bool {
-        !self.scores_per_authority.values().any(|e| *e > 0)
-    }
-
-    // Returns the authorities in score descending order.
-    pub fn authorities_by_score_desc(&self) -> Vec<(AuthorityIdentifier, u64)> {
-        let mut authorities: Vec<_> = self
-            .scores_per_authority
-            .iter()
-            .map(|(authority, score)| (*authority, *score))
-            .collect();
-
-        authorities.sort_by(|a1, a2| {
-            match a2.1.cmp(&a1.1) {
-                Ordering::Equal => {
-                    // we resolve the score equality deterministically by ordering in authority
-                    // identifier order descending.
-                    a2.0.cmp(&a1.0)
-                }
-                result => result,
-            }
-        });
-
-        authorities
-    }
-}
-
 #[enum_dispatch(ConsensusCommitAPI)]
 trait ConsensusCommitAPI {
     fn certificates(&self) -> Vec<CertificateDigest>;
@@ -237,52 +190,8 @@ trait ConsensusCommitAPI {
     fn commit_timestamp(&self) -> TimestampSec;
 }
 
-// TODO: remove once the upgrade has been rolled out. We want to keep only the
-// CommittedSubDag
 #[derive(Serialize, Deserialize, Clone, Debug)]
-pub struct CommittedSubDagShell {
-    /// The sequence of committed certificates' digests.
-    pub certificates: Vec<CertificateDigest>,
-    /// The leader certificate's digest responsible of committing this sub-dag.
-    pub leader: CertificateDigest,
-    /// The round of the leader
-    pub leader_round: Round,
-    /// Sequence number of the CommittedSubDag
-    pub sub_dag_index: SequenceNumber,
-    /// The so far calculated reputation score for nodes
-    pub reputation_score: ReputationScores,
-}
-
-impl ConsensusCommitAPI for CommittedSubDagShell {
-    fn certificates(&self) -> Vec<CertificateDigest> {
-        self.certificates.clone()
-    }
-
-    fn leader(&self) -> CertificateDigest {
-        self.leader
-    }
-
-    fn leader_round(&self) -> Round {
-        self.leader_round
-    }
-
-    fn sub_dag_index(&self) -> SequenceNumber {
-        self.sub_dag_index
-    }
-
-    fn reputation_score(&self) -> ReputationScores {
-        self.reputation_score.clone()
-    }
-
-    fn commit_timestamp(&self) -> TimestampSec {
-        // We explicitly return 0 as we don't have this information stored already. This will be
-        // handle accordingly to the CommittedSubdag struct.
-        0
-    }
-}
-
-#[derive(Serialize, Deserialize, Clone, Debug)]
-pub struct ConsensusCommitV2 {
+pub struct ConsensusCommitV1 {
     /// The sequence of committed certificates' digests.
     pub certificates: Vec<CertificateDigest>,
     /// The leader certificate's digest responsible of committing this sub-dag.
@@ -298,7 +207,7 @@ pub struct ConsensusCommitV2 {
     pub commit_timestamp: TimestampSec,
 }
 
-impl ConsensusCommitV2 {
+impl ConsensusCommitV1 {
     pub fn from_sub_dag(sub_dag: &CommittedSubDag) -> Self {
         Self {
             certificates: sub_dag.certificates.iter().map(|x| x.digest()).collect(),
@@ -311,7 +220,7 @@ impl ConsensusCommitV2 {
     }
 }
 
-impl ConsensusCommitAPI for ConsensusCommitV2 {
+impl ConsensusCommitAPI for ConsensusCommitV1 {
     fn certificates(&self) -> Vec<CertificateDigest> {
         self.certificates.clone()
     }
@@ -340,62 +249,43 @@ impl ConsensusCommitAPI for ConsensusCommitV2 {
 #[derive(Serialize, Deserialize, Clone, Debug)]
 #[enum_dispatch(ConsensusCommitAPI)]
 pub enum ConsensusCommit {
-    V1(CommittedSubDagShell),
-    V2(ConsensusCommitV2),
+    V1(ConsensusCommitV1),
 }
 
 impl ConsensusCommit {
     pub fn certificates(&self) -> Vec<CertificateDigest> {
         match self {
             ConsensusCommit::V1(sub_dag) => sub_dag.certificates(),
-            ConsensusCommit::V2(sub_dag) => sub_dag.certificates(),
         }
     }
 
     pub fn leader(&self) -> CertificateDigest {
         match self {
             ConsensusCommit::V1(sub_dag) => sub_dag.leader(),
-            ConsensusCommit::V2(sub_dag) => sub_dag.leader(),
         }
     }
 
     pub fn leader_round(&self) -> Round {
         match self {
             ConsensusCommit::V1(sub_dag) => sub_dag.leader_round(),
-            ConsensusCommit::V2(sub_dag) => sub_dag.leader_round(),
         }
     }
 
     pub fn sub_dag_index(&self) -> SequenceNumber {
         match self {
             ConsensusCommit::V1(sub_dag) => sub_dag.sub_dag_index(),
-            ConsensusCommit::V2(sub_dag) => sub_dag.sub_dag_index(),
         }
     }
 
     pub fn reputation_score(&self) -> ReputationScores {
         match self {
             ConsensusCommit::V1(sub_dag) => sub_dag.reputation_score(),
-            ConsensusCommit::V2(sub_dag) => sub_dag.reputation_score(),
         }
     }
 
     pub fn commit_timestamp(&self) -> TimestampSec {
         match self {
             ConsensusCommit::V1(sub_dag) => sub_dag.commit_timestamp(),
-            ConsensusCommit::V2(sub_dag) => sub_dag.commit_timestamp(),
-        }
-    }
-}
-
-impl CommittedSubDagShell {
-    pub fn from_sub_dag(sub_dag: &CommittedSubDag) -> Self {
-        Self {
-            certificates: sub_dag.certificates.iter().map(|x| x.digest()).collect(),
-            leader: sub_dag.leader.digest(),
-            leader_round: sub_dag.leader.round(),
-            sub_dag_index: sub_dag.sub_dag_index,
-            reputation_score: sub_dag.reputation_score.clone(),
         }
     }
 }

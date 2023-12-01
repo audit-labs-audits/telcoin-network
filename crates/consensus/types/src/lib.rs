@@ -28,6 +28,8 @@ mod config;
 pub use config::*;
 mod multiaddr;
 pub use multiaddr::*;
+mod genesis;
+pub use genesis::*;
 
 /// Collection of database test utilities
 #[cfg(any(test, feature = "test-utils"))]
