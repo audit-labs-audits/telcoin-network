@@ -1,8 +1,8 @@
 //! The ouput from consensus (bullshark)
 
 use crate::{
-    crypto, Batch, Certificate, CertificateAPI, CertificateDigest, HeaderAPI,
-    ReputationScores, Round, SequenceNumber, TimestampSec,
+    crypto, Batch, Certificate, CertificateAPI, CertificateDigest, HeaderAPI, ReputationScores,
+    Round, SequenceNumber, TimestampSec,
 };
 use enum_dispatch::enum_dispatch;
 use fastcrypto::hash::{Digest, Hash, HashFunction};
@@ -14,7 +14,7 @@ use std::{
     sync::Arc,
 };
 use tokio::sync::mpsc;
-use tracing::{warn};
+use tracing::warn;
 
 #[derive(Clone, Debug)]
 /// The output of Consensus, which includes all the batches for each certificate in the sub dag

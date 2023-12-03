@@ -340,7 +340,7 @@ impl PrimaryNodeInner {
             leader_schedule.clone(),
             BAD_NODES_STAKE_THRESHOLD,
         );
-        let consensus_handles = Consensus::spawn(
+        let consensus_handle = Consensus::spawn(
             committee.clone(),
             parameters.gc_depth,
             store.consensus_store.clone(),
@@ -354,22 +354,32 @@ impl PrimaryNodeInner {
             consensus_metrics.clone(),
         );
 
+        // TODO: this is what connects the EL and CL
+        //
+        // added this so it compiles, but this is useless without
+        // returning the rx_notifier
+        let metrics = narwhal_executor::ExecutorMetrics::new(&registry);
+        let (tx_notifier, _rx_notifier) =
+            metered_channel::channel(narwhal_primary::CHANNEL_CAPACITY, &metrics.tx_notifier);
+
         // Spawn the client executing the transactions. It can also synchronize with the
         // subscriber handler if it missed some transactions.
-        let executor_handles = Executor::spawn(
+        let executor_handle = Executor::spawn(
             authority_id,
             worker_cache,
             committee.clone(),
             client,
-            execution_state,
-            shutdown_receivers,
+            // execution_state,
+            shutdown_receivers.pop().unwrap(),
             rx_sequence,
-            registry,
             restored_consensus_output,
+            tx_notifier,
+            metrics,
         )?;
 
-        let handles =
-            executor_handles.into_iter().chain(std::iter::once(consensus_handles)).collect();
+        // let handles =
+        //     executor_handles.into_iter().chain(std::iter::once(consensus_handles)).collect();
+        let handles = vec![executor_handle, consensus_handle];
 
         Ok((handles, leader_schedule))
     }

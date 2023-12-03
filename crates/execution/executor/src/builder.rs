@@ -19,10 +19,7 @@ use futures::pin_mut;
 use narwhal_types::yukon_genesis_string;
 use reth::{
     args::get_secret_key,
-    cli::{
-        components::RethNodeComponents,
-        config::PayloadBuilderConfig,
-    },
+    cli::{components::RethNodeComponents, config::PayloadBuilderConfig},
     node::NodeCommand,
     rpc::builder::RpcServerHandle,
 };
@@ -47,8 +44,7 @@ use reth_network::{NetworkHandle, NetworkManager};
 use reth_payload_builder::{PayloadBuilderHandle, PayloadBuilderService};
 use reth_primitives::{stage::StageId, ChainSpec, Head, B256};
 use reth_provider::{
-    BlockHashReader, BlockReader,
-    DatabaseProvider, HeaderProvider, StageCheckpointReader,
+    BlockHashReader, BlockReader, DatabaseProvider, HeaderProvider, StageCheckpointReader,
 };
 use reth_revm_inspectors::stack::Hook;
 use reth_stages::{
@@ -119,8 +115,10 @@ where
     let args = cmd.network;
 
     // TODO: using tempfile here since there should never be any peers
-    let secret_key_path =
-        tempfile::TempDir::new().expect("Failed to make tempdir for secret file").path().join("secret_file");
+    let secret_key_path = tempfile::TempDir::new()
+        .expect("Failed to make tempdir for secret file")
+        .path()
+        .join("secret_file");
     debug!("secret_key_path: {secret_key_path:?}");
     let secret_key = get_secret_key(&secret_key_path)?;
     let default_peers_path =

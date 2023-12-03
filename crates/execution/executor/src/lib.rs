@@ -493,13 +493,11 @@ impl StorageInner {
 mod tests {
     use super::*;
     use assert_matches::assert_matches;
-    
+
     use futures_util::{stream_select, StreamExt};
-    
-    use narwhal_types::{
-        yukon_genesis, BatchAPI, Certificate, CommittedSubDag, ReputationScores,
-    };
-    
+
+    use narwhal_types::{yukon_genesis, BatchAPI, Certificate, CommittedSubDag, ReputationScores};
+
     use reth::{
         cli::components::RethNodeComponentsImpl,
         init::init_genesis,
@@ -509,8 +507,7 @@ mod tests {
         hooks::EngineHooks, BeaconConsensusEngine, MIN_BLOCKS_FOR_PIPELINE_RUN,
     };
     use reth_blockchain_tree::{
-        BlockchainTree, BlockchainTreeConfig, ShareableBlockchainTree,
-        TreeExternals,
+        BlockchainTree, BlockchainTreeConfig, ShareableBlockchainTree, TreeExternals,
     };
     use reth_config::Config;
     use reth_db::test_utils::create_test_rw_db;
@@ -521,8 +518,8 @@ mod tests {
     use reth_network::NetworkEvents;
     use reth_primitives::{GenesisAccount, Head, HeadersDirection};
     use reth_provider::{
-        providers::BlockchainProvider, CanonStateNotification,
-        CanonStateSubscriptions, ProviderFactory,
+        providers::BlockchainProvider, CanonStateNotification, CanonStateSubscriptions,
+        ProviderFactory,
     };
     use reth_revm::Factory;
     use reth_rpc_types::engine::ForkchoiceState;
@@ -805,7 +802,7 @@ mod tests {
             .first()
             .expect("header included")
             .to_owned();
-    
+
         debug!("awaited first reply from storage header");
 
         let storage_sealed_header = storage_header.seal_slow();
@@ -819,23 +816,25 @@ mod tests {
         let canonical_hash = canonical_tip.hash();
 
         // wait for forkchoice to finish updating
-        let (tx, mut rx) = tokio::sync::mpsc::unbounded_channel();
+        let (tx, rx) = tokio::sync::oneshot::channel();
         tokio::spawn(async move {
-            let mut current_finalized_header = blockchain_db.finalized_header()
+            let mut current_finalized_header = blockchain_db
+                .finalized_header()
                 .expect("blockchain db has some finalized header 1")
                 .expect("some finalized header 2");
             while canonical_hash != current_finalized_header.hash() {
                 // sleep - then look up finalized in db again
                 println!("\nwaiting for engine to complete forkchoice update...\n");
                 tokio::time::sleep(std::time::Duration::from_millis(500)).await;
-                current_finalized_header = blockchain_db.finalized_header()
+                current_finalized_header = blockchain_db
+                    .finalized_header()
                     .expect("blockchain db has some finalized header 1")
                     .expect("some finalized header 2");
             }
             tx.send(current_finalized_header)
         });
 
-        let current_finalized_header = timeout(too_long, rx.recv())
+        let current_finalized_header = timeout(too_long, rx)
             .await
             .expect("next canonical block created within time")
             .expect("finalized block retrieved from db");
@@ -849,6 +848,5 @@ mod tests {
         // assert canonical tip contains all txs and senders in batches
         assert_eq!(canonical_tip.block.body, txs_in_output);
         assert_eq!(canonical_tip.senders, senders_in_output);
-
     }
 }

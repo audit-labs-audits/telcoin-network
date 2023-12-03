@@ -11,8 +11,7 @@ arc-swap = { workspace = true }
 async-trait = { workspace = true }
 reth-primitives = { workspace = true }
 cfg-if = { workspace = true }
-# clap = { workspace = true }
-clap = { version = "4", features = ["derive"] }
+clap = { workspace = true, features = ["derive"] }
 futures = { workspace = true }
 rand = { workspace = true }
 thiserror = { workspace = true }
@@ -47,15 +46,15 @@ reth-tracing = { workspace = true }
 narwhal-network = { workspace = true, features = ["test-utils"]}
 
 [features]
-# benchmark = ["narwhal-worker/benchmark", "narwhal-primary/benchmark", "url"]
 trace_transaction = ["narwhal-worker/trace_transaction"]
+# benchmark = ["narwhal-worker/benchmark", "narwhal-primary/benchmark", "url"]
 
 # [[bin]]
 # name = "narwhal-benchmark-client"
 # path = "src/benchmark_client.rs"
 # required-features = ["benchmark"]
 
-[[example]]
-name = "narwhal-generate-format"
-path = "src/generate_format.rs"
-test = false
+#[[example]]
+#name = "narwhal-generate-format"
+#path = "src/generate_format.rs"
+#test = false

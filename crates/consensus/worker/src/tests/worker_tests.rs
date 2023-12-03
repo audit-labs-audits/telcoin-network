@@ -179,12 +179,13 @@ impl TransactionValidator for NilTxValidator {
 //     let batch_digest = batch.digest();
 
 //     let (tx_await_batch, mut rx_await_batch) =
-// narwhal_types::test_channel!(CHANNEL_CAPACITY);     let mut mock_primary_server =
-// MockWorkerToPrimary::new();     mock_primary_server
+// narwhal_types::test_channel!(CHANNEL_CAPACITY);
+// let mut mock_primary_server = MockWorkerToPrimary::new();
+//     mock_primary_server
 //         .expect_report_own_batch()
 //         .withf(move |request| {
 //             let message = request.body();
-
+//
 //             message.digest == batch_digest && message.worker_id == worker_id
 //         })
 //         .times(1)
@@ -193,7 +194,7 @@ impl TransactionValidator for NilTxValidator {
 //             Ok(anemo::Response::new(()))
 //         });
 //     client.set_worker_to_primary_local_handler(Arc::new(mock_primary_server));
-
+//
 //     // Spawn enough workers' listeners to acknowledge our batches.
 //     for worker in fixture.authorities().skip(1).map(|a| a.worker(worker_id)) {
 //         let mut mock_server = MockWorkerToWorker::new();
@@ -202,7 +203,7 @@ impl TransactionValidator for NilTxValidator {
 // anemo::Router::new().add_rpc_service(WorkerToWorkerServer::new(mock_server));
 //         peer_networks.push(worker.new_network(routes));
 //     }
-
+//
 //     // Wait till other services have been able to start up
 //     tokio::task::yield_now().await;
 //     // Send enough transactions to create a batch.

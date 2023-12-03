@@ -1,29 +1,22 @@
 // Copyright (c) Telcoin, LLC
 // Copyright (c) Mysten Labs, Inc.
 // SPDX-License-Identifier: Apache-2.0
-use crate::{errors::SubscriberResult, metrics::ExecutorMetrics, ExecutionState};
-
-use narwhal_types::{AuthorityIdentifier, Committee, NetworkPublicKey, WorkerCache, WorkerId};
-
+use crate::{errors::SubscriberResult, metrics::ExecutorMetrics};
+use consensus_metrics::{metered_channel, spawn_logged_monitored_task};
+use fastcrypto::hash::Hash;
 use futures::{stream::FuturesOrdered, StreamExt};
-
-use narwhal_network::PrimaryToWorkerClient;
-
-use narwhal_network::client::NetworkClient;
+use narwhal_network::{client::NetworkClient, PrimaryToWorkerClient};
 use narwhal_network_types::FetchBatchesRequest;
+use narwhal_types::{
+    AuthorityIdentifier, Batch, BatchAPI, BatchDigest, Certificate, CertificateAPI,
+    CommittedSubDag, Committee, ConditionalBroadcastReceiver, ConsensusOutput, HeaderAPI,
+    MetadataAPI, NetworkPublicKey, Timestamp, WorkerCache, WorkerId,
+};
 use std::{
     collections::{HashMap, HashSet},
     sync::Arc,
     time::Duration,
     vec,
-};
-
-use consensus_metrics::{metered_channel, spawn_logged_monitored_task};
-use fastcrypto::hash::Hash;
-
-use narwhal_types::{
-    Batch, BatchAPI, BatchDigest, Certificate, CertificateAPI, CommittedSubDag,
-    ConditionalBroadcastReceiver, ConsensusOutput, HeaderAPI, MetadataAPI, Timestamp,
 };
 use tokio::task::JoinHandle;
 use tracing::{debug, error, info};
@@ -48,72 +41,70 @@ struct Inner {
     metrics: Arc<ExecutorMetrics>,
 }
 
-pub fn spawn_subscriber<State: ExecutionState + Send + Sync + 'static>(
+pub fn spawn_subscriber(
     authority_id: AuthorityIdentifier,
     worker_cache: WorkerCache,
     committee: Committee,
     client: NetworkClient,
-    mut shutdown_receivers: Vec<ConditionalBroadcastReceiver>,
+    shutdown_subscriber: ConditionalBroadcastReceiver,
     rx_sequence: metered_channel::Receiver<CommittedSubDag>,
     metrics: Arc<ExecutorMetrics>,
     restored_consensus_output: Vec<CommittedSubDag>,
-    state: State,
-) -> Vec<JoinHandle<()>> {
+    tx_notifier: metered_channel::Sender<ConsensusOutput>,
+    // state: State,
+) -> JoinHandle<()> {
     // This is ugly but has to be done this way for now
     // Currently network incorporate both server and client side of RPC interface
     // To construct server side we need to set up routes first, which requires starting Primary
     // Some cleanup is needed
 
-    let (tx_notifier, rx_notifier) =
-        metered_channel::channel(narwhal_primary::CHANNEL_CAPACITY, &metrics.tx_notifier);
+    // let rx_shutdown_notify =
+    //     shutdown_receivers.pop().unwrap_or_else(|| panic!("Not enough shutdown receivers"));
+    // let rx_shutdown_subscriber =
+    //     shutdown_receiver;
 
-    let rx_shutdown_notify =
-        shutdown_receivers.pop().unwrap_or_else(|| panic!("Not enough shutdown receivers"));
-    let rx_shutdown_subscriber =
-        shutdown_receivers.pop().unwrap_or_else(|| panic!("Not enough shutdown receivers"));
-
-    vec![
-        spawn_logged_monitored_task!(
-            // TODO: spawn EL executor here and pass the rx_notifier to it
-            run_notify(state, rx_notifier, rx_shutdown_notify),
-            "SubscriberNotifyTask"
+    // vec![
+    //     spawn_logged_monitored_task!(
+    //         // TODO: spawn EL executor here and pass the rx_notifier to it
+    //         run_notify(state, rx_notifier, rx_shutdown_notify),
+    //         "SubscriberNotifyTask"
+    //     ),
+    spawn_logged_monitored_task!(
+        create_and_run_subscriber(
+            authority_id,
+            worker_cache,
+            committee,
+            shutdown_subscriber,
+            rx_sequence,
+            client,
+            metrics,
+            restored_consensus_output,
+            tx_notifier,
         ),
-        spawn_logged_monitored_task!(
-            create_and_run_subscriber(
-                authority_id,
-                worker_cache,
-                committee,
-                rx_shutdown_subscriber,
-                rx_sequence,
-                client,
-                metrics,
-                restored_consensus_output,
-                tx_notifier,
-            ),
-            "SubscriberTask"
-        ),
-    ]
+        "SubscriberTask"
+    )
+    // ]
 }
 
-async fn run_notify<State: ExecutionState + Send + Sync + 'static>(
-    mut state: State,
-    mut rx_notify: metered_channel::Receiver<ConsensusOutput>,
-    mut rx_shutdown: ConditionalBroadcastReceiver,
-) {
-    loop {
-        tokio::select! {
-            // TODO: move rx_notify to execution layer
-            Some(message) = rx_notify.recv() => {
-                state.handle_consensus_output(message).await;
-            }
+// async fn run_notify<State: ExecutionState + Send + Sync + 'static>(
+//     mut state: State,
+//     mut rx_notify: metered_channel::Receiver<ConsensusOutput>,
+//     mut rx_shutdown: ConditionalBroadcastReceiver,
+// ) {
+//     loop {
+//         tokio::select! {
+//             // TODO: move rx_notify to execution layer
+//             Some(message) = rx_notify.recv() => {
+//                 state.handle_consensus_output(message).await;
+//             }
 
-            _ = rx_shutdown.receiver.recv() => {
-                return
-            }
+//             _ = rx_shutdown.receiver.recv() => {
+//                 return
+//             }
 
-        }
-    }
-}
+//         }
+//     }
+// }
 
 async fn create_and_run_subscriber(
     authority_id: AuthorityIdentifier,

@@ -10,7 +10,8 @@ mod metrics;
 pub use errors::{SubscriberError, SubscriberResult};
 pub use state::ExecutionIndices;
 
-use crate::{metrics::ExecutorMetrics, subscriber::spawn_subscriber};
+pub use crate::metrics::ExecutorMetrics;
+use crate::subscriber::spawn_subscriber;
 
 use async_trait::async_trait;
 use consensus_metrics::metered_channel;
@@ -21,7 +22,6 @@ use narwhal_types::{
     AuthorityIdentifier, CertificateDigest, CommittedSubDag, Committee,
     ConditionalBroadcastReceiver, ConsensusOutput, WorkerCache,
 };
-use prometheus::Registry;
 use std::sync::Arc;
 use tokio::task::JoinHandle;
 use tracing::info;
@@ -47,21 +47,26 @@ pub struct Executor;
 
 impl Executor {
     /// Spawn a new client subscriber.
-    pub fn spawn<State>(
+    pub fn spawn(
         authority_id: AuthorityIdentifier,
         worker_cache: WorkerCache,
         committee: Committee,
         client: NetworkClient,
-        execution_state: State,
-        shutdown_receivers: Vec<ConditionalBroadcastReceiver>,
+        // execution_state: State,
+        shutdown_receivers: ConditionalBroadcastReceiver,
         rx_sequence: metered_channel::Receiver<CommittedSubDag>,
-        registry: &Registry,
         restored_consensus_output: Vec<CommittedSubDag>,
-    ) -> SubscriberResult<Vec<JoinHandle<()>>>
-    where
-        State: ExecutionState + Send + Sync + 'static,
+        tx_notifier: metered_channel::Sender<ConsensusOutput>,
+        // TODO: this is needed to create the tx_notifier channel
+        metrics: ExecutorMetrics,
+    ) -> SubscriberResult<JoinHandle<()>>
+// where
+    //     State: ExecutionState + Send + Sync + 'static,
     {
-        let metrics = ExecutorMetrics::new(registry);
+        // TODO: OLD way was to create metrics here,
+        // before I moved tx_notifier out
+
+        // let metrics = ExecutorMetrics::new(registry);
 
         // This will be needed in the `Subscriber`.
         let arc_metrics = Arc::new(metrics);
@@ -76,7 +81,8 @@ impl Executor {
             rx_sequence,
             arc_metrics,
             restored_consensus_output,
-            execution_state,
+            tx_notifier,
+            // execution_state,
         );
 
         // Return the handle.

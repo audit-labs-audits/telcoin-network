@@ -56,15 +56,11 @@ reth-transaction-pool = { workspace = true, features = ["test-utils"] }
 reth-tracing = { workspace = true }
 fastcrypto = { workspace = true }
 
-# reth = { workspace = true }
-# reth-db = { workspace = true, features = ["test-utils"] }
-# reth-blockchain-tree = { workspace = true }
-
 # integration tests
 anemo = { workspace = true }
 prometheus = { workspace = true }
-narwhal-worker = { workspace = true }
 narwhal-network = { workspace = true }
 narwhal-network-types = { workspace = true }
 narwhal-typed-store = { workspace = true }
 narwhal-primary = { workspace = true, features = ["test-utils"] }
+narwhal-executor = { workspace = true }

@@ -11,7 +11,6 @@ use narwhal_primary::{
 };
 use narwhal_storage::NodeStorage;
 
-
 use narwhal_types::test_utils::{temp_dir, CommitteeFixture};
 use prometheus::Registry;
 

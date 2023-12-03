@@ -8751,7 +8751,6 @@ dependencies = [
  "narwhal-primary",
  "narwhal-typed-store",
  "narwhal-types",
- "narwhal-worker",
  "prometheus",
  "reth",
  "reth-auto-seal-consensus",
