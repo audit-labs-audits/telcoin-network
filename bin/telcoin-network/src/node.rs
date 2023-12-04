@@ -60,17 +60,17 @@ use reth_primitives::{
 };
 use reth_provider::{
     providers::BlockchainProvider, BlockHashReader, BlockReader, CanonStateSubscriptions,
-    HeaderProvider, ProviderFactory, StageCheckpointReader,
+    HeaderProvider, ProviderFactory, StageCheckpointReader, HeaderSyncMode,
 };
 use reth_prune::{segments::SegmentSet, Pruner};
-use reth_revm::Factory;
+use reth_revm::EvmProcessorFactory;
 use reth_revm_inspectors::stack::Hook;
 use reth_rpc_engine_api::EngineApi;
 use reth_snapshot::HighestSnapshotsTracker;
 use reth_stages::{
     prelude::*,
     stages::{
-        AccountHashingStage, ExecutionStage, ExecutionStageThresholds, HeaderSyncMode,
+        AccountHashingStage, ExecutionStage, ExecutionStageThresholds,
         IndexAccountHistoryStage, IndexStorageHistoryStage, MerkleStage, SenderRecoveryStage,
         StorageHashingStage, TotalDifficultyStage, TransactionLookupStage,
     },
@@ -272,16 +272,18 @@ impl<Ext: RethCliExt> NodeCommand<Ext> {
         let prune_config =
             self.pruning.prune_config(Arc::clone(&self.chain))?.or(config.prune.clone());
 
+        let provider_factory = ProviderFactory::new(Arc::clone(&db), Arc::clone(&self.chain));
+
         // configure blockchain tree
         let tree_externals = TreeExternals::new(
-            Arc::clone(&db),
+            provider_factory.clone(),
             Arc::clone(&consensus),
-            Factory::new(self.chain.clone()),
-            Arc::clone(&self.chain),
+            EvmProcessorFactory::new(self.chain.clone()),
         );
+        let tree_config = BlockchainTreeConfig::default();
         let tree = BlockchainTree::new(
             tree_externals,
-            BlockchainTreeConfig::default(),
+            tree_config,
             prune_config.clone().map(|config| config.segments),
         )?
         .with_sync_metrics_tx(sync_metrics_tx.clone());
@@ -293,8 +295,7 @@ impl<Ext: RethCliExt> NodeCommand<Ext> {
         let head = self.lookup_head(Arc::clone(&db)).wrap_err("the head block is missing")?;
 
         // setup the blockchain provider
-        let factory = ProviderFactory::new(Arc::clone(&db), Arc::clone(&self.chain));
-        let blockchain_db = BlockchainProvider::new(factory, blockchain_tree.clone())?;
+        let blockchain_db = BlockchainProvider::new(provider_factory.clone(), blockchain_tree.clone())?;
         let blob_store = InMemoryBlobStore::default();
         let validator = TransactionValidationTaskExecutor::eth_builder(Arc::clone(&self.chain))
             .with_head_timestamp(head.timestamp)
@@ -402,7 +403,7 @@ impl<Ext: RethCliExt> NodeCommand<Ext> {
                     &config,
                     client.clone(),
                     Arc::clone(&consensus),
-                    db.clone(),
+                    provider_factory.clone(),
                     &ctx.task_executor,
                     sync_metrics_tx,
                     prune_config.clone(),
@@ -422,7 +423,7 @@ impl<Ext: RethCliExt> NodeCommand<Ext> {
                     &config,
                     network_client.clone(),
                     Arc::clone(&consensus),
-                    db.clone(),
+                    provider_factory.clone(),
                     &ctx.task_executor,
                     sync_metrics_tx,
                     prune_config.clone(),
@@ -453,7 +454,7 @@ impl<Ext: RethCliExt> NodeCommand<Ext> {
         let mut hooks = EngineHooks::new();
 
         let pruner_events = if let Some(prune_config) = prune_config {
-            let mut pruner = self.build_pruner(&prune_config, db.clone(), highest_snapshots_rx);
+            let mut pruner = self.build_pruner(&prune_config, db.clone(), tree_config, highest_snapshots_rx);
 
             let events = pruner.events();
             hooks.add(PruneHook::new(pruner, Box::new(ctx.task_executor.clone())));
@@ -465,9 +466,8 @@ impl<Ext: RethCliExt> NodeCommand<Ext> {
         };
 
         let _snapshotter = reth_snapshot::Snapshotter::new(
-            db.clone(),
+            provider_factory.clone(),
             data_dir.snapshots_path(),
-            self.chain.clone(),
             self.chain.snapshot_block_interval,
         );
 
@@ -505,7 +505,7 @@ impl<Ext: RethCliExt> NodeCommand<Ext> {
         );
         ctx.task_executor.spawn_critical(
             "events task",
-            events::handle_events(Some(network.clone()), Some(head.number), events),
+            events::handle_events(Some(network.clone()), Some(head.number), events, db.clone()),
         );
 
         let engine_api = EngineApi::new(
@@ -570,7 +570,7 @@ impl<Ext: RethCliExt> NodeCommand<Ext> {
         config: &Config,
         client: Client,
         consensus: Arc<dyn Consensus>,
-        db: DB,
+        provider_factory: ProviderFactory<DB>,
         task_executor: &TaskExecutor,
         metrics_tx: reth_stages::MetricEventsSender,
         prune_config: Option<PruneConfig>,
@@ -586,12 +586,12 @@ impl<Ext: RethCliExt> NodeCommand<Ext> {
             .into_task_with(task_executor);
 
         let body_downloader = BodiesDownloaderBuilder::from(config.stages.bodies)
-            .build(client, Arc::clone(&consensus), db.clone())
+            .build(client, Arc::clone(&consensus), provider_factory.clone())
             .into_task_with(task_executor);
 
         let pipeline = self
             .build_pipeline(
-                db,
+                provider_factory,
                 config,
                 header_downloader,
                 body_downloader,
@@ -682,7 +682,7 @@ impl<Ext: RethCliExt> NodeCommand<Ext> {
         task_executor.spawn_critical("p2p eth request handler", eth);
 
         let known_peers_file = self.network.persistent_peers_file(default_peers_path);
-        task_executor.spawn_critical_with_signal("p2p network task", |shutdown| {
+        task_executor.spawn_critical_with_shutdown_signal("p2p network task", |shutdown| {
             run_network_until_shutdown(shutdown, network, known_peers_file)
         });
 
@@ -805,7 +805,7 @@ impl<Ext: RethCliExt> NodeCommand<Ext> {
     #[allow(clippy::too_many_arguments)]
     async fn build_pipeline<DB, H, B>(
         &self,
-        db: DB,
+        provider_factory: ProviderFactory<DB>,
         config: &Config,
         header_downloader: H,
         body_downloader: B,
@@ -831,7 +831,7 @@ impl<Ext: RethCliExt> NodeCommand<Ext> {
 
         let (tip_tx, tip_rx) = watch::channel(B256::ZERO);
         use reth_revm_inspectors::stack::InspectorStackConfig;
-        let factory = reth_revm::Factory::new(self.chain.clone());
+        let factory = reth_revm::EvmProcessorFactory::new(self.chain.clone());
 
         let stack_config = InspectorStackConfig {
             use_printer_tracer: self.debug.print_inspector,
@@ -857,6 +857,7 @@ impl<Ext: RethCliExt> NodeCommand<Ext> {
             .with_metrics_tx(metrics_tx.clone())
             .add_stages(
                 DefaultStages::new(
+                    provider_factory.clone(),
                     header_mode,
                     Arc::clone(&consensus),
                     header_downloader,
@@ -909,7 +910,7 @@ impl<Ext: RethCliExt> NodeCommand<Ext> {
                     prune_modes.storage_history,
                 )),
             )
-            .build(db, self.chain.clone());
+            .build(provider_factory);
 
         Ok(pipeline)
     }
@@ -919,6 +920,7 @@ impl<Ext: RethCliExt> NodeCommand<Ext> {
         &self,
         config: &PruneConfig,
         db: DB,
+        tree_config: BlockchainTreeConfig,
         highest_snapshots_rx: HighestSnapshotsTracker,
     ) -> Pruner<DB> {
         let segments = SegmentSet::default()
@@ -950,12 +952,14 @@ impl<Ext: RethCliExt> NodeCommand<Ext> {
                 config.segments.storage_history.map(reth_prune::segments::StorageHistory::new),
             );
 
+
         Pruner::new(
             db,
             self.chain.clone(),
             segments.into_vec(),
             config.block_interval,
             self.chain.prune_delete_limit,
+            tree_config.max_reorg_depth() as usize,
             highest_snapshots_rx,
         )
     }

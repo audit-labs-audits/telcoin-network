@@ -16,7 +16,7 @@
 #![cfg_attr(docsrs, feature(doc_cfg, doc_auto_cfg))]
 
 use consensus_metrics::metered_channel::Receiver;
-use narwhal_types::{BatchAPI, ConsensusOutput};
+use narwhal_types::{BatchAPI, ConsensusOutput, now};
 use reth_beacon_consensus::BeaconEngineMessage;
 use reth_interfaces::{
     consensus::{Consensus, ConsensusError},
@@ -263,7 +263,7 @@ impl StorageInner {
         //     .and_then(|parent| parent.next_block_base_fee(chain_spec.base_fee_params));
 
         // use finalized parent for this batch base fee
-        let base_fee_per_gas = parent.next_block_base_fee(chain_spec.base_fee_params);
+        let base_fee_per_gas = parent.next_block_base_fee(chain_spec.base_fee_params(now()));
 
         let mut header = Header {
             parent_hash: parent.hash,
@@ -463,7 +463,7 @@ impl StorageInner {
                     // so encoding and decoding has already happened
                     // and is not expected to fail
                     let recovered =
-                        TransactionSigned::decode_enveloped(tx.into()).map_err(|e| {
+                        TransactionSigned::decode_enveloped(&mut tx.as_ref()).map_err(|e| {
                             // error!(target: "execution::executor", "Failed to decode enveloped tx:
                             // {tx:?}");
                             ExecutorError::DecodeTransaction(e)
@@ -493,15 +493,10 @@ impl StorageInner {
 mod tests {
     use super::*;
     use assert_matches::assert_matches;
-
-    use futures_util::{stream_select, StreamExt};
-
     use narwhal_types::{yukon_genesis, BatchAPI, Certificate, CommittedSubDag, ReputationScores};
-
     use reth::{
         cli::components::RethNodeComponentsImpl,
         init::init_genesis,
-        node::{cl_events::ConsensusLayerHealthEvents, events},
     };
     use reth_beacon_consensus::{
         hooks::EngineHooks, BeaconConsensusEngine, MIN_BLOCKS_FOR_PIPELINE_RUN,
@@ -515,13 +510,12 @@ mod tests {
         headers::client::{HeadersClient, HeadersRequest},
         priority::Priority,
     };
-    use reth_network::NetworkEvents;
     use reth_primitives::{GenesisAccount, Head, HeadersDirection};
     use reth_provider::{
         providers::BlockchainProvider, CanonStateNotification, CanonStateSubscriptions,
         ProviderFactory,
     };
-    use reth_revm::Factory;
+    use reth_revm::EvmProcessorFactory;
     use reth_rpc_types::engine::ForkchoiceState;
     use reth_tasks::TaskManager;
     use reth_tracing::init_test_tracing;
@@ -581,7 +575,7 @@ mod tests {
         for batch in batches.into_iter() {
             for tx in batch.owned_transactions().into_iter() {
                 let tx_signed =
-                    TransactionSigned::decode_enveloped(tx.into()).expect("decode tx signed");
+                    TransactionSigned::decode_enveloped(&mut tx.as_ref()).expect("decode tx signed");
                 let address = tx_signed.recover_signer().expect("signer recoverable");
                 txs_in_output.push(tx_signed);
                 senders_in_output.push(address);
@@ -608,12 +602,13 @@ mod tests {
 
         let consensus: Arc<dyn Consensus> = Arc::new(AutoSealConsensus::new(Arc::clone(&chain)));
 
+        let provider_factory = ProviderFactory::new(Arc::clone(&db), Arc::clone(&chain));
+
         // configure blockchain tree
         let tree_externals = TreeExternals::new(
-            Arc::clone(&db),
+            provider_factory.clone(),
             Arc::clone(&consensus),
-            Factory::new(chain.clone()),
-            Arc::clone(&chain),
+            EvmProcessorFactory::new(chain.clone()),
         );
 
         // TODO: add prune config for full node
@@ -628,8 +623,7 @@ mod tests {
         let blockchain_tree = ShareableBlockchainTree::new(tree);
 
         // provider
-        let factory = ProviderFactory::new(Arc::clone(&db), Arc::clone(&chain));
-        let blockchain_db = BlockchainProvider::new(factory.clone(), blockchain_tree)
+        let blockchain_db = BlockchainProvider::new(provider_factory.clone(), blockchain_tree)
             .expect("blockchain provider is valid");
 
         // skip txpool
@@ -638,14 +632,13 @@ mod tests {
         let manager = TaskManager::new(Handle::current());
         let task_executor = manager.executor();
 
-        let provider = factory.provider().expect("provider from factory");
-        let head: Head = lookup_head(provider).expect("lookup head successful");
+        let head: Head = lookup_head(provider_factory.clone()).expect("lookup head successful");
 
         // network
         let network = build_network(
             chain.clone(),
             task_executor.clone(),
-            factory.clone(),
+            provider_factory.clone(),
             head,
             NoopTransactionPool::default(),
         )
@@ -688,7 +681,7 @@ mod tests {
             &config,
             client.clone(),
             consensus,
-            db,
+            provider_factory.clone(),
             &task_executor,
             metrics_tx,
             chain,
@@ -705,7 +698,8 @@ mod tests {
 
         // capture pipeline events one more time for events stream
         // before passing pipeline to beacon engine
-        let pipeline_events = pipeline.events();
+        // TODO: incompatible with temp db
+        // let pipeline_events = pipeline.events();
 
         // spawn engine
         let hooks = EngineHooks::new();
@@ -735,19 +729,21 @@ mod tests {
         )
         .expect("beacon consensus engine spawned");
 
-        // stream events
-        let events = stream_select!(
-            network.event_listener().map(Into::into),
-            beacon_engine_handle.event_listener().map(Into::into),
-            pipeline_events.map(Into::into),
-            ConsensusLayerHealthEvents::new(Box::new(blockchain_db.clone())).map(Into::into),
-        );
 
+        // TODO: events handler doesn't work with temp db
+        //
+        // stream events
+        // let events = stream_select!(
+        //     network.event_listener().map(Into::into),
+        //     beacon_engine_handle.event_listener().map(Into::into),
+        //     pipeline_events.map(Into::into),
+        //     ConsensusLayerHealthEvents::new(Box::new(blockchain_db.clone())).map(Into::into),
+        // );
         // monitor and print events
-        task_executor.spawn_critical(
-            "events task",
-            events::handle_events(Some(network.clone()), Some(head.number), events),
-        );
+        // task_executor.spawn_critical(
+        //     "events task",
+        //     events::handle_events(Some(network.clone()), Some(head.number), events, db.clone()),
+        // );
 
         // Run consensus engine to completion
         let (tx, _rx) = oneshot::channel();

@@ -25,10 +25,7 @@ use reth::{
 };
 use reth_basic_payload_builder::{BasicPayloadJobGenerator, BasicPayloadJobGeneratorConfig};
 use reth_config::{config::PruneConfig, Config};
-use reth_db::{
-    database::Database,
-    mdbx::{tx::Tx, WriteMap, RO},
-};
+use reth_db::database::Database;
 use reth_downloaders::{
     bodies::bodies::BodiesDownloaderBuilder,
     headers::reverse_headers::ReverseHeadersDownloaderBuilder,
@@ -44,13 +41,13 @@ use reth_network::{NetworkHandle, NetworkManager};
 use reth_payload_builder::{PayloadBuilderHandle, PayloadBuilderService};
 use reth_primitives::{stage::StageId, ChainSpec, Head, B256};
 use reth_provider::{
-    BlockHashReader, BlockReader, DatabaseProvider, HeaderProvider, StageCheckpointReader,
+    BlockHashReader, BlockReader, HeaderProvider, StageCheckpointReader, ProviderFactory, HeaderSyncMode,
 };
 use reth_revm_inspectors::stack::Hook;
 use reth_stages::{
     sets::DefaultStages,
     stages::{
-        AccountHashingStage, ExecutionStage, ExecutionStageThresholds, HeaderSyncMode,
+        AccountHashingStage, ExecutionStage, ExecutionStageThresholds,
         IndexAccountHistoryStage, IndexStorageHistoryStage, MerkleStage, SenderRecoveryStage,
         StorageHashingStage, TotalDifficultyStage, TransactionLookupStage,
     },
@@ -68,7 +65,12 @@ use tracing::debug;
 /// Fetches the head block from the database.
 ///
 /// If the database is empty, returns the genesis block.
-pub fn lookup_head(provider: DatabaseProvider<Tx<'_, RO, WriteMap>>) -> eyre::Result<Head> {
+pub fn lookup_head<DB>(provider_factory: ProviderFactory<DB>) -> eyre::Result<Head>
+where
+    DB: Database + Clone,
+{
+    let provider = provider_factory.provider()?;
+
     let head = provider.get_stage_checkpoint(StageId::Finish)?.unwrap_or_default().block_number;
 
     let header = provider
@@ -145,7 +147,7 @@ where
     executor.spawn_critical("p2p txpool", Box::pin(txpool));
     executor.spawn_critical("p2p eth request handler", Box::pin(eth));
 
-    executor.spawn_critical_with_signal("p2p network task", |shutdown| async move {
+    executor.spawn_critical_with_shutdown_signal("p2p network task", |shutdown| async move {
         pin_mut!(network, shutdown);
         tokio::select! {
             _ = &mut network => {},
@@ -195,7 +197,7 @@ pub async fn build_networked_pipeline<DB, Client>(
     config: &Config,
     client: Client,
     consensus: Arc<dyn Consensus>,
-    db: DB,
+    provider_factory: ProviderFactory<DB>,
     task_executor: &TaskExecutor,
     metrics_tx: reth_stages::MetricEventsSender,
     chain: Arc<ChainSpec>,
@@ -212,11 +214,11 @@ where
         .into_task_with(task_executor);
 
     let body_downloader = BodiesDownloaderBuilder::from(config.stages.bodies)
-        .build(client, Arc::clone(&consensus), db.clone())
+        .build(client, Arc::clone(&consensus), provider_factory.clone())
         .into_task_with(task_executor);
 
     let pipeline = build_pipeline(
-        db,
+        provider_factory,
         config,
         header_downloader,
         body_downloader,
@@ -233,7 +235,7 @@ where
 
 /// Build the pipeline.
 pub async fn build_pipeline<DB, H, B>(
-    db: DB,
+    provider_factory: ProviderFactory<DB>,
     config: &Config,
     header_downloader: H,
     body_downloader: B,
@@ -259,7 +261,7 @@ where
 
     let (tip_tx, _tip_rx) = watch::channel(B256::ZERO);
     use reth_revm_inspectors::stack::InspectorStackConfig;
-    let factory = reth_revm::Factory::new(chain.clone());
+    let factory = reth_revm::EvmProcessorFactory::new(chain.clone());
 
     let stack_config = InspectorStackConfig { use_printer_tracer: true, hook: Hook::None };
 
@@ -273,6 +275,7 @@ where
         .with_metrics_tx(metrics_tx.clone())
         .add_stages(
             DefaultStages::new(
+                provider_factory.clone(),
                 HeaderSyncMode::Continuous,
                 Arc::clone(&consensus),
                 header_downloader,
@@ -325,7 +328,7 @@ where
                 prune_modes.storage_history,
             )),
         )
-        .build(db, chain);
+        .build(provider_factory);
 
     Ok(pipeline)
 }

@@ -49,7 +49,7 @@ use reth_provider::{
     providers::BlockchainProvider, BlockReaderIdExt, CanonStateNotification,
     CanonStateSubscriptions, ProviderFactory,
 };
-use reth_revm::Factory;
+use reth_revm::EvmProcessorFactory;
 use reth_rpc_types::engine::ForkchoiceState;
 use reth_tasks::TaskManager;
 use reth_tracing::init_test_tracing;
@@ -242,7 +242,7 @@ async fn test_execute_consensus_output() {
         for batch in batches.into_iter() {
             for tx in batch.owned_transactions().into_iter() {
                 let tx_signed =
-                    TransactionSigned::decode_enveloped(tx.into()).expect("decode tx signed");
+                    TransactionSigned::decode_enveloped(&mut tx.as_ref()).expect("decode tx signed");
                 let address = tx_signed.recover_signer().expect("signer recoverable");
                 txs_in_output.push(tx_signed);
                 senders_in_output.push(address);
@@ -269,13 +269,13 @@ async fn test_execute_consensus_output() {
     debug!("genesis hash: {genesis_hash:?}");
 
     let consensus: Arc<dyn Consensus> = Arc::new(AutoSealConsensus::new(Arc::clone(&chain)));
+    let provider_factory = ProviderFactory::new(Arc::clone(&db), Arc::clone(&chain));
 
     // configure blockchain tree
     let tree_externals = TreeExternals::new(
-        Arc::clone(&db),
+        provider_factory.clone(),
         Arc::clone(&consensus),
-        Factory::new(chain.clone()),
-        Arc::clone(&chain),
+        EvmProcessorFactory::new(chain.clone()),
     );
 
     // TODO: add prune config for full node
@@ -290,8 +290,7 @@ async fn test_execute_consensus_output() {
     let blockchain_tree = ShareableBlockchainTree::new(tree);
 
     // provider
-    let factory = ProviderFactory::new(Arc::clone(&db), Arc::clone(&chain));
-    let blockchain_db = BlockchainProvider::new(factory.clone(), blockchain_tree)
+    let blockchain_db = BlockchainProvider::new(provider_factory.clone(), blockchain_tree)
         .expect("blockchain provider is valid");
 
     // skip txpool
@@ -300,14 +299,14 @@ async fn test_execute_consensus_output() {
     let manager = TaskManager::new(Handle::current());
     let task_executor = manager.executor();
 
-    let provider = factory.provider().expect("provider from factory");
-    let head: Head = lookup_head(provider).expect("lookup head successful");
+    let provider = provider_factory.provider().expect("provider from factory");
+    let head: Head = lookup_head(provider_factory.clone()).expect("lookup head successful");
 
     // network
     let network = build_network(
         chain.clone(),
         task_executor.clone(),
-        factory.clone(),
+        provider_factory.clone(),
         head,
         NoopTransactionPool::default(),
     )
@@ -350,7 +349,7 @@ async fn test_execute_consensus_output() {
         &config,
         client.clone(),
         consensus,
-        db,
+        provider_factory.clone(),
         &task_executor,
         metrics_tx,
         chain,
@@ -397,19 +396,21 @@ async fn test_execute_consensus_output() {
     )
     .expect("beacon consensus engine spawned");
 
+    // TODO: events handler isn't compatible with temp db
+    //
     // stream events
-    let events = stream_select!(
-        network.event_listener().map(Into::into),
-        beacon_engine_handle.event_listener().map(Into::into),
-        pipeline_events.map(Into::into),
-        ConsensusLayerHealthEvents::new(Box::new(blockchain_db.clone())).map(Into::into),
-    );
+    // let events = stream_select!(
+    //     network.event_listener().map(Into::into),
+    //     beacon_engine_handle.event_listener().map(Into::into),
+    //     pipeline_events.map(Into::into),
+    //     ConsensusLayerHealthEvents::new(Box::new(blockchain_db.clone())).map(Into::into),
+    // );
 
-    // monitor and print events
-    task_executor.spawn_critical(
-        "events task",
-        events::handle_events(Some(network.clone()), Some(head.number), events),
-    );
+    // // monitor and print events
+    // task_executor.spawn_critical(
+    //     "events task",
+    //     events::handle_events(Some(network.clone()), Some(head.number), events),
+    // );
 
     // Run consensus engine to completion
     let (tx, _rx) = oneshot::channel();

@@ -17,7 +17,7 @@
 #![cfg_attr(docsrs, feature(doc_cfg, doc_auto_cfg))]
 
 use consensus_metrics::metered_channel::Sender;
-use narwhal_types::NewBatch;
+use narwhal_types::{NewBatch, now};
 use reth_interfaces::{
     consensus::{Consensus, ConsensusError},
     executor::{BlockExecutionError, BlockValidationError},
@@ -258,7 +258,7 @@ impl StorageInner {
         //     .and_then(|parent| parent.next_block_base_fee(chain_spec.base_fee_params));
 
         // use finalized parent for this batch base fee
-        let base_fee_per_gas = parent.next_block_base_fee(chain_spec.base_fee_params);
+        let base_fee_per_gas = parent.next_block_base_fee(chain_spec.base_fee_params(now()));
 
         let mut header = Header {
             parent_hash: parent.hash,
@@ -563,7 +563,7 @@ mod tests {
 
         // ensure decoded batch transaction is transaction1
         let batch_tx_bytes = batch_txs.first().cloned().expect("one tx in batch");
-        let decoded_batch_tx = TransactionSigned::decode_enveloped(batch_tx_bytes.into())
+        let decoded_batch_tx = TransactionSigned::decode_enveloped(&mut batch_tx_bytes.as_ref())
             .expect("tx bytes are uncorrupted");
         assert_eq!(decoded_batch_tx, transaction1);
 

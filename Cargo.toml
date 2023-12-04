@@ -59,36 +59,36 @@ secp256k1 = { version = "0.27.0", default-features = false, features = [
 ] }
 
 # execution
-reth = { git = "https://github.com/paradigmxyz/reth", rev = "6ee481b81751302de1b8d77861c53d60377e5963" }
-reth-primitives = { git = "https://github.com/paradigmxyz/reth", rev = "6ee481b81751302de1b8d77861c53d60377e5963" }
-reth-tracing = { git = "https://github.com/paradigmxyz/reth", rev = "6ee481b81751302de1b8d77861c53d60377e5963" }
-reth-config = { git = "https://github.com/paradigmxyz/reth", rev = "6ee481b81751302de1b8d77861c53d60377e5963" }
-reth-db = { git = "https://github.com/paradigmxyz/reth", rev = "6ee481b81751302de1b8d77861c53d60377e5963" }
-reth-downloaders = { git = "https://github.com/paradigmxyz/reth", rev = "6ee481b81751302de1b8d77861c53d60377e5963" }
-reth-interfaces = { git = "https://github.com/paradigmxyz/reth", rev = "6ee481b81751302de1b8d77861c53d60377e5963" }
-reth-network = { git = "https://github.com/paradigmxyz/reth", rev = "6ee481b81751302de1b8d77861c53d60377e5963" }
-reth-network-api = { git = "https://github.com/paradigmxyz/reth", rev = "6ee481b81751302de1b8d77861c53d60377e5963" }
-reth-prune = { git = "https://github.com/paradigmxyz/reth", rev = "6ee481b81751302de1b8d77861c53d60377e5963" }
-reth-revm = { git = "https://github.com/paradigmxyz/reth", rev = "6ee481b81751302de1b8d77861c53d60377e5963" }
-reth-rpc-engine-api = { git = "https://github.com/paradigmxyz/reth", rev = "6ee481b81751302de1b8d77861c53d60377e5963" }
-reth-provider = { git = "https://github.com/paradigmxyz/reth", rev = "6ee481b81751302de1b8d77861c53d60377e5963" }
-reth-snapshot = { git = "https://github.com/paradigmxyz/reth", rev = "6ee481b81751302de1b8d77861c53d60377e5963" }
-reth-stages = { git = "https://github.com/paradigmxyz/reth", rev = "6ee481b81751302de1b8d77861c53d60377e5963" }
-reth-tasks = { git = "https://github.com/paradigmxyz/reth", rev = "6ee481b81751302de1b8d77861c53d60377e5963" }
-reth-transaction-pool = { git = "https://github.com/paradigmxyz/reth", rev = "6ee481b81751302de1b8d77861c53d60377e5963" }
-reth-revm-inspectors = { git = "https://github.com/paradigmxyz/reth", rev = "6ee481b81751302de1b8d77861c53d60377e5963" }
-reth-auto-seal-consensus = { git = "https://github.com/paradigmxyz/reth", rev = "6ee481b81751302de1b8d77861c53d60377e5963" }
-reth-beacon-consensus = { git = "https://github.com/paradigmxyz/reth", rev = "6ee481b81751302de1b8d77861c53d60377e5963" }
-reth-blockchain-tree = { git = "https://github.com/paradigmxyz/reth", rev = "6ee481b81751302de1b8d77861c53d60377e5963" }
-reth-metrics = { git = "https://github.com/paradigmxyz/reth", rev = "6ee481b81751302de1b8d77861c53d60377e5963" }
-reth-rpc-types = { git = "https://github.com/paradigmxyz/reth", rev = "6ee481b81751302de1b8d77861c53d60377e5963" }
+reth = { git = "https://github.com/paradigmxyz/reth", rev = "b34b0d3c8de2598b2976f7ee2fc1a166c50b1b94" }
+reth-primitives = { git = "https://github.com/paradigmxyz/reth", rev = "b34b0d3c8de2598b2976f7ee2fc1a166c50b1b94" }
+reth-tracing = { git = "https://github.com/paradigmxyz/reth", rev = "b34b0d3c8de2598b2976f7ee2fc1a166c50b1b94" }
+reth-config = { git = "https://github.com/paradigmxyz/reth", rev = "b34b0d3c8de2598b2976f7ee2fc1a166c50b1b94" }
+reth-db = { git = "https://github.com/paradigmxyz/reth", rev = "b34b0d3c8de2598b2976f7ee2fc1a166c50b1b94" }
+reth-downloaders = { git = "https://github.com/paradigmxyz/reth", rev = "b34b0d3c8de2598b2976f7ee2fc1a166c50b1b94" }
+reth-interfaces = { git = "https://github.com/paradigmxyz/reth", rev = "b34b0d3c8de2598b2976f7ee2fc1a166c50b1b94" }
+reth-network = { git = "https://github.com/paradigmxyz/reth", rev = "b34b0d3c8de2598b2976f7ee2fc1a166c50b1b94" }
+reth-network-api = { git = "https://github.com/paradigmxyz/reth", rev = "b34b0d3c8de2598b2976f7ee2fc1a166c50b1b94" }
+reth-prune = { git = "https://github.com/paradigmxyz/reth", rev = "b34b0d3c8de2598b2976f7ee2fc1a166c50b1b94" }
+reth-revm = { git = "https://github.com/paradigmxyz/reth", rev = "b34b0d3c8de2598b2976f7ee2fc1a166c50b1b94" }
+reth-rpc-engine-api = { git = "https://github.com/paradigmxyz/reth", rev = "b34b0d3c8de2598b2976f7ee2fc1a166c50b1b94" }
+reth-provider = { git = "https://github.com/paradigmxyz/reth", rev = "b34b0d3c8de2598b2976f7ee2fc1a166c50b1b94" }
+reth-snapshot = { git = "https://github.com/paradigmxyz/reth", rev = "b34b0d3c8de2598b2976f7ee2fc1a166c50b1b94" }
+reth-stages = { git = "https://github.com/paradigmxyz/reth", rev = "b34b0d3c8de2598b2976f7ee2fc1a166c50b1b94" }
+reth-tasks = { git = "https://github.com/paradigmxyz/reth", rev = "b34b0d3c8de2598b2976f7ee2fc1a166c50b1b94" }
+reth-transaction-pool = { git = "https://github.com/paradigmxyz/reth", rev = "b34b0d3c8de2598b2976f7ee2fc1a166c50b1b94" }
+reth-revm-inspectors = { git = "https://github.com/paradigmxyz/reth", rev = "b34b0d3c8de2598b2976f7ee2fc1a166c50b1b94" }
+reth-auto-seal-consensus = { git = "https://github.com/paradigmxyz/reth", rev = "b34b0d3c8de2598b2976f7ee2fc1a166c50b1b94" }
+reth-beacon-consensus = { git = "https://github.com/paradigmxyz/reth", rev = "b34b0d3c8de2598b2976f7ee2fc1a166c50b1b94" }
+reth-blockchain-tree = { git = "https://github.com/paradigmxyz/reth", rev = "b34b0d3c8de2598b2976f7ee2fc1a166c50b1b94" }
+reth-metrics = { git = "https://github.com/paradigmxyz/reth", rev = "b34b0d3c8de2598b2976f7ee2fc1a166c50b1b94" }
+reth-rpc-types = { git = "https://github.com/paradigmxyz/reth", rev = "b34b0d3c8de2598b2976f7ee2fc1a166c50b1b94" }
 alloy-rlp = "0.3"
 
 # batch maker
 tn-batch-maker = { path = "crates/execution/batch-maker" }
 futures-util = "0.3.25"
-reth-payload-builder = { git = "https://github.com/paradigmxyz/reth", rev = "6ee481b81751302de1b8d77861c53d60377e5963" }
-reth-basic-payload-builder = { git = "https://github.com/paradigmxyz/reth", rev = "6ee481b81751302de1b8d77861c53d60377e5963" }
+reth-payload-builder = { git = "https://github.com/paradigmxyz/reth", rev = "b34b0d3c8de2598b2976f7ee2fc1a166c50b1b94" }
+reth-basic-payload-builder = { git = "https://github.com/paradigmxyz/reth", rev = "b34b0d3c8de2598b2976f7ee2fc1a166c50b1b94" }
 jsonrpsee = { version = "0.20" }
 assert_matches = { version = "1.5.0" }
 

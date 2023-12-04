@@ -117,7 +117,7 @@ impl TransactionFactory {
     {
         let tx = self.create_eip1559(chain, gas_price, to, value);
         let recovered = tx.try_into_ecrecovered().expect("tx is recovered");
-        let transaction = <Pool::Transaction>::from_recovered_transaction(recovered.into());
+        let transaction = <Pool::Transaction>::from_recovered_pooled_transaction(recovered.into());
         let hash = pool
             .add_transaction(TransactionOrigin::Local, transaction)
             .await
@@ -131,7 +131,7 @@ impl TransactionFactory {
         Pool: TransactionPool,
     {
         let recovered = tx.try_into_ecrecovered().expect("tx is recovered");
-        let transaction = <Pool::Transaction>::from_recovered_transaction(recovered.into());
+        let transaction = <Pool::Transaction>::from_recovered_pooled_transaction(recovered.into());
         let hash = pool
             .add_transaction(TransactionOrigin::Local, transaction)
             .await

@@ -199,7 +199,7 @@ async fn test_make_batch_el_to_cl() {
 
     // ensure batch transaction decodes correctly
     let batch_tx_bytes = batch_txs.first().cloned().expect("one tx in batch");
-    let decoded_batch_tx = TransactionSigned::decode_enveloped(batch_tx_bytes.into())
+    let decoded_batch_tx = TransactionSigned::decode_enveloped(&mut batch_tx_bytes.as_ref())
         .expect("tx bytes are uncorrupted");
     assert_eq!(decoded_batch_tx, transaction1);
 
