@@ -2,15 +2,17 @@
 //!
 //! Batches hold transactions and other data needed to
 // Copyright (c) Telcoin, LLC
-use crate::{crypto, VersionedMetadata};
+use crate::{crypto, MetadataAPI, VersionedMetadata};
 use base64::{engine::general_purpose, Engine};
 use enum_dispatch::enum_dispatch;
 use fastcrypto::hash::{Digest, Hash, HashFunction};
 use mem_utils::MallocSizeOf;
 #[cfg(any(test, feature = "arbitrary"))]
 use proptest_derive::Arbitrary;
+use reth_primitives::{SealedBlock, SealedBlockWithSenders, TransactionSigned};
 use serde::{Deserialize, Serialize};
 use std::fmt;
+use thiserror::Error;
 use tokio::sync::oneshot;
 
 /// Type that batches contain.
@@ -19,6 +21,19 @@ pub type Transaction = Vec<u8>;
 /// Type for sending ack back to EL once a batch is sealed.
 /// TODO: support propagating errors from the worker to the primary.
 pub type BatchResponse = oneshot::Sender<BatchDigest>;
+
+/// Convenince error type for casting batches into SealedBlocks with senders.
+
+/// Batch validation error types
+#[derive(Error, Debug, Clone)]
+pub enum BatchConversionError {
+    /// Errors from BlockExecution
+    #[error("Failed to recover signers for sealed block:\n{0:?}\n")]
+    RecoverSigners(SealedBlock),
+    /// Failed to decode transaction bytes
+    #[error("RLP error decoding transaction: {0}")]
+    DecodeTransaction(#[from] alloy_rlp::Error),
+}
 
 /// The message type for EL to CL when a new batch is made.
 #[derive(Debug)]
@@ -68,6 +83,23 @@ impl Batch {
     }
 }
 
+impl TryFrom<&Batch> for SealedBlockWithSenders {
+    type Error = BatchConversionError;
+
+    fn try_from(batch: &Batch) -> Result<Self, Self::Error> {
+        let header = batch.versioned_metadata().sealed_header().clone();
+        // decode transactions
+        let tx_signed: Result<Vec<TransactionSigned>, alloy_rlp::Error> = batch
+            .transactions_owned()
+            .map(|tx| TransactionSigned::decode_enveloped(&mut tx.as_ref()))
+            .collect();
+        let body = tx_signed?;
+        // seal block
+        let block = SealedBlock { header, body, ommers: vec![], withdrawals: Some(vec![]) };
+        block.try_seal_with_senders().map_err(|block| Self::Error::RecoverSigners(block))
+    }
+}
+
 impl From<Vec<Vec<u8>>> for Batch {
     fn from(value: Vec<Vec<u8>>) -> Self {
         Batch::new(value)
@@ -99,8 +131,8 @@ pub trait BatchAPI {
     fn versioned_metadata_mut(&mut self) -> &mut VersionedMetadata;
     /// TODO
     fn owned_metadata(self) -> VersionedMetadata;
-    /// TODO
-    fn owned_transactions(&self) -> Vec<Transaction>;
+    /// Return an owned iteration of transactions.
+    fn transactions_owned(&self) -> std::vec::IntoIter<Vec<u8>>;
 }
 
 /// The batch version.
@@ -144,8 +176,8 @@ impl BatchAPI for BatchV1 {
         self.versioned_metadata
     }
 
-    fn owned_transactions(&self) -> Vec<Transaction> {
-        self.transactions.clone()
+    fn transactions_owned(&self) -> std::vec::IntoIter<Vec<u8>> {
+        self.transactions.clone().into_iter()
     }
 }
 

@@ -16,7 +16,7 @@
 #![cfg_attr(docsrs, feature(doc_cfg, doc_auto_cfg))]
 
 use consensus_metrics::metered_channel::Receiver;
-use narwhal_types::{BatchAPI, ConsensusOutput, now};
+use narwhal_types::{now, BatchAPI, ConsensusOutput};
 use reth_beacon_consensus::BeaconEngineMessage;
 use reth_interfaces::{
     consensus::{Consensus, ConsensusError},
@@ -458,7 +458,7 @@ impl StorageInner {
         // loop through all transactions in order
         for batches in output.batches.into_iter() {
             for batch in batches.iter() {
-                for tx in batch.owned_transactions().into_iter() {
+                for tx in batch.transactions_owned() {
                     // batches must be validated by this point,
                     // so encoding and decoding has already happened
                     // and is not expected to fail
@@ -481,10 +481,10 @@ impl StorageInner {
 
         // TODO: optimize by returning `impl Iterator<Item = Vec<Bytes>` and using `flat_map` to
         // return an iter of nested vecs since this is the only place where
-        // `.owned_transactions` method is used. this would save memory allocation discussion: https://users.rust-lang.org/t/how-far-to-take-iterators-to-avoid-for-loops/30167/10
+        // `.transactions_owned` method is used. this would save memory allocation discussion: https://users.rust-lang.org/t/how-far-to-take-iterators-to-avoid-for-loops/30167/10
         //
         // output.batches.into_iter().flat_map(|batches| batches.into_iter().flat_map(|batch|
-        // batch.owned_transactions().into_iter().flat_map(|tx|
+        // batch.transactions_owned().into_iter().flat_map(|tx|
         // TransactionSigned::decode_enveloped(tx.into())))).collect()
     }
 }
@@ -494,10 +494,7 @@ mod tests {
     use super::*;
     use assert_matches::assert_matches;
     use narwhal_types::{yukon_genesis, BatchAPI, Certificate, CommittedSubDag, ReputationScores};
-    use reth::{
-        cli::components::RethNodeComponentsImpl,
-        init::init_genesis,
-    };
+    use reth::{cli::components::RethNodeComponentsImpl, init::init_genesis};
     use reth_beacon_consensus::{
         hooks::EngineHooks, BeaconConsensusEngine, MIN_BLOCKS_FOR_PIPELINE_RUN,
     };
@@ -573,9 +570,9 @@ mod tests {
 
         let mut accounts_to_seed = Vec::new();
         for batch in batches.into_iter() {
-            for tx in batch.owned_transactions().into_iter() {
-                let tx_signed =
-                    TransactionSigned::decode_enveloped(&mut tx.as_ref()).expect("decode tx signed");
+            for tx in batch.transactions_owned() {
+                let tx_signed = TransactionSigned::decode_enveloped(&mut tx.as_ref())
+                    .expect("decode tx signed");
                 let address = tx_signed.recover_signer().expect("signer recoverable");
                 txs_in_output.push(tx_signed);
                 senders_in_output.push(address);
@@ -728,7 +725,6 @@ mod tests {
             hooks,
         )
         .expect("beacon consensus engine spawned");
-
 
         // TODO: events handler doesn't work with temp db
         //

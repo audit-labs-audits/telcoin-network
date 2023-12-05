@@ -41,15 +41,16 @@ use reth_network::{NetworkHandle, NetworkManager};
 use reth_payload_builder::{PayloadBuilderHandle, PayloadBuilderService};
 use reth_primitives::{stage::StageId, ChainSpec, Head, B256};
 use reth_provider::{
-    BlockHashReader, BlockReader, HeaderProvider, StageCheckpointReader, ProviderFactory, HeaderSyncMode,
+    BlockHashReader, BlockReader, HeaderProvider, HeaderSyncMode, ProviderFactory,
+    StageCheckpointReader,
 };
 use reth_revm_inspectors::stack::Hook;
 use reth_stages::{
     sets::DefaultStages,
     stages::{
-        AccountHashingStage, ExecutionStage, ExecutionStageThresholds,
-        IndexAccountHistoryStage, IndexStorageHistoryStage, MerkleStage, SenderRecoveryStage,
-        StorageHashingStage, TotalDifficultyStage, TransactionLookupStage,
+        AccountHashingStage, ExecutionStage, ExecutionStageThresholds, IndexAccountHistoryStage,
+        IndexStorageHistoryStage, MerkleStage, SenderRecoveryStage, StorageHashingStage,
+        TotalDifficultyStage, TransactionLookupStage,
     },
     Pipeline, StageSet,
 };

@@ -7,7 +7,6 @@ use anemo::Response;
 use assert_matches::assert_matches;
 use consensus_metrics::metered_channel;
 use fastcrypto::{hash::Hash, traits::KeyPair as _};
-use futures_util::{stream_select, StreamExt};
 use narwhal_network::client::NetworkClient;
 use narwhal_network_types::{FetchBatchesResponse, MockPrimaryToWorker};
 use narwhal_primary::{
@@ -22,11 +21,7 @@ use narwhal_types::{
     yukon_genesis, BatchAPI, Certificate, ConsensusOutput, PreSubscribedBroadcastSender,
 };
 use prometheus::Registry;
-use reth::{
-    cli::components::RethNodeComponentsImpl,
-    init::init_genesis,
-    node::{cl_events::ConsensusLayerHealthEvents, events},
-};
+use reth::{cli::components::RethNodeComponentsImpl, init::init_genesis};
 use reth_auto_seal_consensus::AutoSealConsensus;
 use reth_beacon_consensus::{
     hooks::EngineHooks, BeaconConsensusEngine, MIN_BLOCKS_FOR_PIPELINE_RUN,
@@ -43,7 +38,6 @@ use reth_interfaces::{
         priority::Priority,
     },
 };
-use reth_network::NetworkEvents;
 use reth_primitives::{ChainSpec, GenesisAccount, Head, HeadersDirection, TransactionSigned, U256};
 use reth_provider::{
     providers::BlockchainProvider, BlockReaderIdExt, CanonStateNotification,
@@ -240,9 +234,9 @@ async fn test_execute_consensus_output() {
     // loop through output
     for batches in consensus_output.clone().batches {
         for batch in batches.into_iter() {
-            for tx in batch.owned_transactions().into_iter() {
-                let tx_signed =
-                    TransactionSigned::decode_enveloped(&mut tx.as_ref()).expect("decode tx signed");
+            for tx in batch.transactions_owned() {
+                let tx_signed = TransactionSigned::decode_enveloped(&mut tx.as_ref())
+                    .expect("decode tx signed");
                 let address = tx_signed.recover_signer().expect("signer recoverable");
                 txs_in_output.push(tx_signed);
                 senders_in_output.push(address);
@@ -299,7 +293,6 @@ async fn test_execute_consensus_output() {
     let manager = TaskManager::new(Handle::current());
     let task_executor = manager.executor();
 
-    let provider = provider_factory.provider().expect("provider from factory");
     let head: Head = lookup_head(provider_factory.clone()).expect("lookup head successful");
 
     // network
@@ -364,9 +357,11 @@ async fn test_execute_consensus_output() {
     // spawn task to execute consensus output
     task_executor.spawn(Box::pin(task));
 
+    // TODO: incompatible with tempdir db
+    //
     // capture pipeline events one more time for events stream
     // before passing pipeline to beacon engine
-    let pipeline_events = pipeline.events();
+    // let pipeline_events = pipeline.events();
 
     // spawn engine
     let hooks = EngineHooks::new();

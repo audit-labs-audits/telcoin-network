@@ -1,0 +1,33 @@
+[package]
+name = "tn-batch-validator"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+homepage.workspace = true
+repository.workspace = true
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
+narwhal-types = { workspace = true }
+reth-interfaces = { workspace = true }
+reth-provider = { workspace = true }
+reth-primitives = { workspace = true }
+reth-db = { workspace = true }
+reth-blockchain-tree = { workspace = true }
+alloy-rlp = { workspace = true }
+narwhal-worker = { workspace = true }
+async-trait = { workspace = true }
+thiserror = { workspace = true }
+tracing = { workspace = true }
+
+[dev-dependencies]
+# unit tests
+tokio = { workspace = true, features = ["sync", "time"] }
+narwhal-types = { workspace = true, features = ["test-utils"] }
+reth-tracing = { workspace = true }
+reth = { workspace = true }
+reth-beacon-consensus = { workspace = true }
+
+# integration tests

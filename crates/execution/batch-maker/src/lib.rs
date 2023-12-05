@@ -17,7 +17,7 @@
 #![cfg_attr(docsrs, feature(doc_cfg, doc_auto_cfg))]
 
 use consensus_metrics::metered_channel::Sender;
-use narwhal_types::{NewBatch, now};
+use narwhal_types::{now, NewBatch};
 use reth_interfaces::{
     consensus::{Consensus, ConsensusError},
     executor::{BlockExecutionError, BlockValidationError},
@@ -467,9 +467,10 @@ mod tests {
         debug!("genesis hash: {genesis_hash:?}");
 
         // provider
-        let factory = ProviderFactory::new(Arc::clone(&db), Arc::clone(&chain));
-        let blockchain_db = BlockchainProvider::new(factory, NoopBlockchainTree::default())
-            .expect("test blockchain provider");
+        let provider_factory = ProviderFactory::new(Arc::clone(&db), Arc::clone(&chain));
+        let blockchain_db =
+            BlockchainProvider::new(provider_factory, NoopBlockchainTree::default())
+                .expect("test blockchain provider");
 
         let task_executor = TokioTaskExecutor::default();
 
@@ -512,6 +513,7 @@ mod tests {
             value, // 1 TEL
         );
         debug!("transaction 1: {transaction1:?}");
+        debug!("transaction 1 encoded: {:?}", transaction1.clone().envelope_encoded());
 
         let transaction2 = tx_factory.create_eip1559(
             chain.clone(),
@@ -520,6 +522,7 @@ mod tests {
             value, // 1 TEL
         );
         debug!("transaction 2: {transaction2:?}");
+        debug!("transaction 2 encoded: {:?}", transaction2.clone().envelope_encoded());
 
         let transaction3 = tx_factory.create_eip1559(
             chain.clone(),
@@ -528,6 +531,7 @@ mod tests {
             value, // 1 TEL
         );
         debug!("transaction 3: {transaction3:?}");
+        debug!("transaction 3 encoded: {:?}", transaction3.clone().envelope_encoded());
 
         let added_result = tx_factory.submit_tx_to_pool(transaction1.clone(), txpool.clone()).await;
         assert_matches!(added_result, hash if hash == transaction1.hash());

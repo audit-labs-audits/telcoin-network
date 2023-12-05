@@ -60,7 +60,7 @@ use reth_primitives::{
 };
 use reth_provider::{
     providers::BlockchainProvider, BlockHashReader, BlockReader, CanonStateSubscriptions,
-    HeaderProvider, ProviderFactory, StageCheckpointReader, HeaderSyncMode,
+    HeaderProvider, HeaderSyncMode, ProviderFactory, StageCheckpointReader,
 };
 use reth_prune::{segments::SegmentSet, Pruner};
 use reth_revm::EvmProcessorFactory;
@@ -70,9 +70,9 @@ use reth_snapshot::HighestSnapshotsTracker;
 use reth_stages::{
     prelude::*,
     stages::{
-        AccountHashingStage, ExecutionStage, ExecutionStageThresholds,
-        IndexAccountHistoryStage, IndexStorageHistoryStage, MerkleStage, SenderRecoveryStage,
-        StorageHashingStage, TotalDifficultyStage, TransactionLookupStage,
+        AccountHashingStage, ExecutionStage, ExecutionStageThresholds, IndexAccountHistoryStage,
+        IndexStorageHistoryStage, MerkleStage, SenderRecoveryStage, StorageHashingStage,
+        TotalDifficultyStage, TransactionLookupStage,
     },
 };
 use reth_tasks::TaskExecutor;
@@ -295,7 +295,8 @@ impl<Ext: RethCliExt> NodeCommand<Ext> {
         let head = self.lookup_head(Arc::clone(&db)).wrap_err("the head block is missing")?;
 
         // setup the blockchain provider
-        let blockchain_db = BlockchainProvider::new(provider_factory.clone(), blockchain_tree.clone())?;
+        let blockchain_db =
+            BlockchainProvider::new(provider_factory.clone(), blockchain_tree.clone())?;
         let blob_store = InMemoryBlobStore::default();
         let validator = TransactionValidationTaskExecutor::eth_builder(Arc::clone(&self.chain))
             .with_head_timestamp(head.timestamp)
@@ -454,7 +455,8 @@ impl<Ext: RethCliExt> NodeCommand<Ext> {
         let mut hooks = EngineHooks::new();
 
         let pruner_events = if let Some(prune_config) = prune_config {
-            let mut pruner = self.build_pruner(&prune_config, db.clone(), tree_config, highest_snapshots_rx);
+            let mut pruner =
+                self.build_pruner(&prune_config, db.clone(), tree_config, highest_snapshots_rx);
 
             let events = pruner.events();
             hooks.add(PruneHook::new(pruner, Box::new(ctx.task_executor.clone())));
@@ -951,7 +953,6 @@ impl<Ext: RethCliExt> NodeCommand<Ext> {
             .segment_opt(
                 config.segments.storage_history.map(reth_prune::segments::StorageHistory::new),
             );
-
 
         Pruner::new(
             db,
