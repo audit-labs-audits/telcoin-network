@@ -19,7 +19,7 @@ async fn test_response_error_after_shutdown_internal_consensus() {
 
     // ==== Start first authority ====
     let authority = cluster.authority(0);
-    authority.start(false, Some(1)).await;
+    authority.start(false, Some(1)).await.expect("authority able to start");
 
     tokio::time::sleep(delay).await;
 
@@ -60,7 +60,7 @@ async fn test_node_staggered_starts() {
     let cluster = Cluster::new(None);
 
     // ==== Start first authority ====
-    cluster.authority(0).start(false, Some(1)).await;
+    cluster.authority(0).start(false, Some(1)).await.expect("authority able to start");
 
     tokio::time::sleep(node_staggered_delay).await;
 
@@ -68,7 +68,7 @@ async fn test_node_staggered_starts() {
     cluster.assert_progress(0, 0).await;
 
     // ==== Start second authority ====
-    cluster.authority(1).start(false, Some(1)).await;
+    cluster.authority(1).start(false, Some(1)).await.expect("authority able to start");
 
     tokio::time::sleep(node_staggered_delay).await;
 
@@ -78,7 +78,7 @@ async fn test_node_staggered_starts() {
     // ==== Start third authority ====
     // Now 2f + 1 nodes are becoming available and we expect all the nodes to
     // start making progress (advance in rounds).
-    cluster.authority(2).start(false, Some(1)).await;
+    cluster.authority(2).start(false, Some(1)).await.expect("authority able to start");
 
     tokio::time::sleep(node_staggered_delay).await;
 
@@ -89,7 +89,7 @@ async fn test_node_staggered_starts() {
     // ==== Start fourth authority ====
     // Now 3f + 1 nodes are becoming available (the whole network) and all the nodes
     // should make progress
-    cluster.authority(3).start(false, Some(1)).await;
+    cluster.authority(3).start(false, Some(1)).await.expect("authority able to start");
 
     tokio::time::sleep(node_staggered_delay).await;
 
@@ -130,16 +130,16 @@ async fn test_full_outage_and_recovery() {
     tokio::time::sleep(stop_and_start_delay).await;
 
     // Start all the nodes
-    cluster.authority(0).start(true, Some(1)).await;
+    cluster.authority(0).start(true, Some(1)).await.expect("authority able to start");
     tokio::time::sleep(stop_and_start_delay).await;
 
-    cluster.authority(1).start(true, Some(1)).await;
+    cluster.authority(1).start(true, Some(1)).await.expect("authority able to start");
     tokio::time::sleep(stop_and_start_delay).await;
 
-    cluster.authority(2).start(true, Some(1)).await;
+    cluster.authority(2).start(true, Some(1)).await.expect("authority able to start");
     tokio::time::sleep(stop_and_start_delay).await;
 
-    cluster.authority(3).start(true, Some(1)).await;
+    cluster.authority(3).start(true, Some(1)).await.expect("authority able to start");
 
     // now wait a bit to give the opportunity to recover
     tokio::time::sleep(node_advance_delay).await;
@@ -168,7 +168,7 @@ async fn test_second_node_restart() {
     tokio::time::sleep(node_advance_delay).await;
 
     // Now restart node 2 with some delay between
-    cluster.authority(2).restart(true, restart_delay).await;
+    cluster.authority(2).restart(true, restart_delay).await.expect("authority able to start");
 
     // now wait a bit to give the opportunity to recover
     tokio::time::sleep(node_advance_delay).await;
@@ -177,7 +177,7 @@ async fn test_second_node_restart() {
     cluster.assert_progress(4, 2).await;
 
     // Now restart node 3 with some delay between
-    cluster.authority(3).restart(true, restart_delay).await;
+    cluster.authority(3).restart(true, restart_delay).await.expect("authority able to start");
 
     // now wait a bit to give the opportunity to recover
     tokio::time::sleep(node_advance_delay).await;
@@ -228,8 +228,8 @@ async fn test_loss_of_liveness_without_recovery() {
     assert_eq!(rounds_1, rounds_2);
 
     // Now bring up nodes
-    cluster.authority(2).start(true, Some(1)).await;
-    cluster.authority(3).start(true, Some(1)).await;
+    cluster.authority(2).start(true, Some(1)).await.expect("authority able to start");
+    cluster.authority(3).start(true, Some(1)).await.expect("authority able to start");
 
     // wait and fetch the latest commit round. All of them should have advanced and we allow a small
     // threshold in case some node is faster than the others
@@ -287,8 +287,8 @@ async fn test_loss_of_liveness_with_recovery() {
     assert_eq!(rounds_1, rounds_2);
 
     // Now bring up nodes
-    cluster.authority(2).start(true, Some(1)).await;
-    cluster.authority(3).start(true, Some(1)).await;
+    cluster.authority(2).start(true, Some(1)).await.expect("authority able to start");
+    cluster.authority(3).start(true, Some(1)).await.expect("authority able to start");
 
     // wait and fetch the latest commit round
     tokio::time::sleep(node_advance_delay).await;

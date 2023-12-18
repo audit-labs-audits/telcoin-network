@@ -3,7 +3,7 @@
 // Copyright (c) Mysten Labs, Inc.
 // SPDX-License-Identifier: Apache-2.0
 
-use crate::{batch_fetcher::BatchFetcher, TransactionValidator};
+use crate::batch_fetcher::BatchFetcher;
 use anemo::{types::response::StatusCode, Network};
 use async_trait::async_trait;
 use eyre::Result;
@@ -21,6 +21,7 @@ use narwhal_types::{
     WorkerId,
 };
 use std::{collections::HashSet, time::Duration};
+use tn_batch_validator::BatchValidation;
 use tracing::{debug, trace};
 
 #[cfg(test)]
@@ -37,7 +38,7 @@ pub struct WorkerReceiverHandler<V> {
 }
 
 #[async_trait]
-impl<V: TransactionValidator> WorkerToWorker for WorkerReceiverHandler<V> {
+impl<V: BatchValidation> WorkerToWorker for WorkerReceiverHandler<V> {
     async fn report_batch(
         &self,
         request: anemo::Request<WorkerBatchMessage>,
@@ -127,7 +128,7 @@ pub struct PrimaryReceiverHandler<V> {
 }
 
 #[async_trait]
-impl<V: TransactionValidator> PrimaryToWorker for PrimaryReceiverHandler<V> {
+impl<V: BatchValidation> PrimaryToWorker for PrimaryReceiverHandler<V> {
     async fn synchronize(
         &self,
         request: anemo::Request<WorkerSynchronizeMessage>,

@@ -117,6 +117,7 @@ where
         pool: Pool,
         to_worker: Sender<NewBatch>,
         mode: MiningMode,
+        address: Address,
     ) -> Self {
         let latest_header = client
             .latest_header()
@@ -125,7 +126,7 @@ where
             .unwrap_or_else(|| chain_spec.sealed_genesis_header());
 
         Self {
-            storage: Storage::new(latest_header),
+            storage: Storage::new(latest_header, address),
             client,
             consensus: AutoSealConsensus::new(chain_spec),
             pool,
@@ -166,12 +167,13 @@ pub(crate) struct Storage {
 // == impl Storage ===
 
 impl Storage {
-    fn new(header: SealedHeader) -> Self {
+    fn new(header: SealedHeader, address: Address) -> Self {
         let (header, best_hash) = header.split();
         let mut storage = StorageInner {
             best_hash,
             total_difficulty: header.difficulty,
             best_block: header.number,
+            address,
             ..Default::default()
         };
         storage.headers.insert(0, header);
@@ -205,6 +207,8 @@ pub(crate) struct StorageInner {
     pub(crate) best_hash: B256,
     /// The total difficulty of the chain until this block
     pub(crate) total_difficulty: U256,
+    /// The address for batch beneficiary.
+    pub(crate) address: Address,
 }
 
 // === impl StorageInner ===
@@ -263,7 +267,7 @@ impl StorageInner {
         let mut header = Header {
             parent_hash: parent.hash,
             ommers_hash: EMPTY_OMMER_ROOT_HASH,
-            beneficiary: Default::default(),
+            beneficiary: self.address.clone(),
             state_root: Default::default(),
             transactions_root: Default::default(),
             receipts_root: Default::default(),
@@ -430,7 +434,7 @@ mod tests {
         headers::client::{HeadersClient, HeadersRequest},
         priority::Priority,
     };
-    use reth_primitives::{GenesisAccount, HeadersDirection};
+    use reth_primitives::{alloy_primitives::U160, GenesisAccount, HeadersDirection};
     use reth_provider::{providers::BlockchainProvider, ProviderFactory};
     use reth_tracing::init_test_tracing;
     use reth_transaction_pool::{
@@ -489,6 +493,7 @@ mod tests {
 
         // worker channel
         let (to_worker, mut worker_rx) = narwhal_types::test_channel!(1);
+        let address = Address::from(U160::from(33));
 
         // build batch maker
         let (_, client, task) = BatchMakerBuilder::new(
@@ -497,6 +502,7 @@ mod tests {
             txpool.clone(),
             to_worker,
             mining_mode,
+            address.clone(),
         )
         .build();
 
@@ -600,7 +606,8 @@ mod tests {
 
         // TODO: this isn't the right thing to test bc storage should be removed
         //
-        assert_eq!(new_batch.batch.versioned_metadata().sealed_header(), &storage_sealed_header,);
+        assert_eq!(new_batch.batch.versioned_metadata().sealed_header(), &storage_sealed_header);
+        assert_eq!(storage_sealed_header.beneficiary, address);
 
         // txpool size after mining
         let pending_pool_len = txpool.pool_size().pending;

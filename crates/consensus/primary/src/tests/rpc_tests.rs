@@ -61,7 +61,7 @@ async fn test_server_authorizations() {
             unreachable_committee.authority(&AuthorityIdentifier(0)).unwrap();
         let primary_target_name = unreachable_authority.network_key();
         let primary_peer_id: PeerId = PeerId(primary_target_name.0.to_bytes());
-        let primary_address = unreachable_authority.primary_address();
+        let primary_address = unreachable_authority.primary_network_address();
         let primary_network = test_client.get_primary_network().await.unwrap();
         primary_network
             .connect_with_peer_id(primary_address.to_anemo_address().unwrap(), primary_peer_id)

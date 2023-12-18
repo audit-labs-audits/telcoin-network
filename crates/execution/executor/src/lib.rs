@@ -493,7 +493,9 @@ impl StorageInner {
 mod tests {
     use super::*;
     use assert_matches::assert_matches;
-    use narwhal_types::{yukon_genesis, BatchAPI, Certificate, CommittedSubDag, ReputationScores};
+    use narwhal_types::{
+        execution_args, yukon_genesis, BatchAPI, Certificate, CommittedSubDag, ReputationScores,
+    };
     use reth::{cli::components::RethNodeComponentsImpl, init::init_genesis};
     use reth_beacon_consensus::{
         hooks::EngineHooks, BeaconConsensusEngine, MIN_BLOCKS_FOR_PIPELINE_RUN,
@@ -563,6 +565,7 @@ mod tests {
         //=== Execution
 
         let genesis = yukon_genesis();
+        let args = execution_args();
 
         // collect txs and addresses for later assertions
         let mut txs_in_output = vec![];
@@ -638,6 +641,7 @@ mod tests {
             provider_factory.clone(),
             head,
             NoopTransactionPool::default(),
+            &args.network,
         )
         .await
         .expect("build network successful with no peers");
@@ -707,8 +711,8 @@ mod tests {
             task_executor: task_executor.clone(),
             events: blockchain_db.clone(),
         };
-        let payload_builder =
-            spawn_payload_builder_service(components).expect("payload builder service");
+        let payload_builder = spawn_payload_builder_service(components, &args.builder)
+            .expect("payload builder service");
         let (beacon_consensus_engine, beacon_engine_handle) = BeaconConsensusEngine::with_channel(
             client.clone(),
             pipeline,

@@ -29,8 +29,10 @@ use utils::get_available_port;
 /// The epoch number.
 pub type Epoch = u64;
 
-// Opaque bytes uniquely identifying the current chain. Analogue of the
-// type in `sui-types` crate.
+/// Opaque bytes uniquely identifying the current chain. Analogue of the
+/// type in `sui-types` crate.
+///
+/// TODO: this should be replaced with chainspec.
 #[derive(Clone, Serialize, Deserialize, Debug, Eq, PartialEq)]
 pub struct ChainIdentifier([u8; 32]);
 
@@ -115,7 +117,7 @@ impl<S: Serialize> Export for S {}
 // TODO: This actually represents voting power (out of 10,000) and not amount staked.
 // Consider renaming to `VotingPower`.
 pub type Stake = u64;
-pub type WorkerId = u32;
+pub type WorkerId = u16;
 
 /// Holds all the node properties. An example is provided to
 /// showcase the usage and deserialization from a json file.
@@ -362,6 +364,10 @@ impl Parameters {
     }
 }
 
+/// Information for the worker
+/// - [NetworkPublicKey] for identifying network messages.
+/// - [Multiaddr] for receiving transactions.
+/// - [Multiaddr] for receiving messages from other workers and the primary.
 #[derive(Clone, Serialize, Deserialize, Eq, Hash, PartialEq, Debug)]
 pub struct WorkerInfo {
     /// The public key of this worker.
@@ -372,9 +378,14 @@ pub struct WorkerInfo {
     pub worker_address: Multiaddr,
 }
 
+/// Map of all workers for the authority.
+///
+/// The map associates the worker's id to [WorkerInfo].
 #[derive(Clone, Serialize, Deserialize, Debug)]
 pub struct WorkerIndex(pub BTreeMap<WorkerId, WorkerInfo>);
 
+/// The collection of all workers organized by authority public keys
+/// that comprise the [Committee] for a specific [Epoch].
 #[derive(Clone, Serialize, Deserialize, Debug)]
 pub struct WorkerCache {
     /// The authority to worker index.

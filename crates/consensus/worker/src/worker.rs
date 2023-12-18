@@ -8,7 +8,7 @@ use crate::{
     handlers::{PrimaryReceiverHandler, WorkerReceiverHandler},
     metrics::WorkerChannelMetrics,
     quorum_waiter::QuorumWaiter,
-    TransactionValidator, NUM_SHUTDOWN_RECEIVERS,
+    NUM_SHUTDOWN_RECEIVERS,
 };
 use anemo::{
     codegen::InboundRequestLayer,
@@ -22,7 +22,10 @@ use anemo_tower::{
     set_header::{SetRequestHeaderLayer, SetResponseHeaderLayer},
     trace::{DefaultMakeSpan, DefaultOnFailure, TraceLayer},
 };
-use consensus_metrics::{metered_channel::channel_with_total, spawn_logged_monitored_task};
+use consensus_metrics::{
+    metered_channel::{channel_with_total, Receiver},
+    spawn_logged_monitored_task,
+};
 use narwhal_network::{
     client::NetworkClient,
     epoch_filter::{AllowedEpoch, EPOCH_HEADER_KEY},
@@ -32,9 +35,10 @@ use narwhal_network::{
 use narwhal_typed_store::rocks::DBMap;
 use narwhal_types::{
     traits::KeyPair as _, Authority, AuthorityIdentifier, Committee, Multiaddr, NetworkKeyPair,
-    NetworkPublicKey, Parameters, Protocol, WorkerCache, WorkerId,
+    NetworkPublicKey, NewBatch, Parameters, Protocol, WorkerCache, WorkerId,
 };
 use std::{collections::HashMap, net::Ipv4Addr, sync::Arc, thread::sleep, time::Duration};
+use tn_batch_validator::BatchValidation;
 
 use narwhal_network_types::{PrimaryToWorkerServer, WorkerToWorkerServer};
 use narwhal_types::{
@@ -52,7 +56,7 @@ pub mod worker_tests;
 /// The default channel capacity for each channel of the worker.
 pub const CHANNEL_CAPACITY: usize = 1_000;
 
-use crate::metrics::{Metrics, WorkerEndpointMetrics, WorkerMetrics};
+use crate::metrics::{Metrics, WorkerMetrics};
 // use crate::transactions_server::TxServer;
 
 pub struct Worker {
@@ -80,11 +84,14 @@ impl Worker {
         committee: Committee,
         worker_cache: WorkerCache,
         parameters: Parameters,
-        validator: impl TransactionValidator,
+        validator: impl BatchValidation,
         client: NetworkClient,
         store: DBMap<BatchDigest, Batch>,
         metrics: Metrics,
         tx_shutdown: &mut PreSubscribedBroadcastSender,
+        // for EL batch maker
+        channel_metrics: Arc<WorkerChannelMetrics>,
+        rx_batch_maker: Receiver<NewBatch>,
     ) -> Vec<JoinHandle<()>> {
         let worker_name = keypair.public().clone();
         let worker_peer_id = PeerId(worker_name.0.to_bytes());
@@ -102,8 +109,9 @@ impl Worker {
         };
 
         let node_metrics = Arc::new(metrics.worker_metrics.unwrap());
-        let endpoint_metrics = metrics.endpoint_metrics.unwrap();
-        let channel_metrics: Arc<WorkerChannelMetrics> = Arc::new(metrics.channel_metrics.unwrap());
+        // let endpoint_metrics = metrics.endpoint_metrics.unwrap();
+        // let channel_metrics: Arc<WorkerChannelMetrics> =
+        // Arc::new(metrics.channel_metrics.unwrap());
         let inbound_network_metrics = Arc::new(metrics.inbound_network_metrics.unwrap());
         let outbound_network_metrics = Arc::new(metrics.outbound_network_metrics.unwrap());
         let network_connection_metrics = metrics.network_connection_metrics.unwrap();
@@ -317,7 +325,7 @@ impl Worker {
         let (peer_id, address) = Self::add_peer_in_network(
             &network,
             authority.network_key(),
-            &authority.primary_address(),
+            &authority.primary_network_address(),
         );
         peer_types.insert(peer_id, "our_primary".to_string());
         info!("Adding our primary with peer id {} and address {}", peer_id, address);
@@ -362,10 +370,11 @@ impl Worker {
             ],
             node_metrics,
             channel_metrics,
-            endpoint_metrics,
-            validator,
+            // endpoint_metrics,
+            // validator,
             client,
             network.clone(),
+            rx_batch_maker,
         );
 
         let network_shutdown_handle =
@@ -433,32 +442,31 @@ impl Worker {
         mut shutdown_receivers: Vec<ConditionalBroadcastReceiver>,
         node_metrics: Arc<WorkerMetrics>,
         channel_metrics: Arc<WorkerChannelMetrics>,
-        _endpoint_metrics: WorkerEndpointMetrics,
-        _validator: impl TransactionValidator,
         client: NetworkClient,
         network: anemo::Network,
+        rx_batch_maker: Receiver<NewBatch>,
     ) -> Vec<JoinHandle<()>> {
         info!("Starting handler for transactions");
 
-        let (_tx_batch_maker, rx_batch_maker) = channel_with_total(
-            CHANNEL_CAPACITY,
-            &channel_metrics.tx_batch_maker,
-            &channel_metrics.tx_batch_maker_total,
-        );
+        // let (_tx_batch_maker, rx_batch_maker) = channel_with_total(
+        //     CHANNEL_CAPACITY,
+        //     &channel_metrics.tx_batch_maker,
+        //     &channel_metrics.tx_batch_maker_total,
+        // );
         let (tx_quorum_waiter, rx_quorum_waiter) = channel_with_total(
             CHANNEL_CAPACITY,
             &channel_metrics.tx_quorum_waiter,
             &channel_metrics.tx_quorum_waiter_total,
         );
 
-        // We first receive clients' transactions from the network.
-        let address = self
-            .worker_cache
-            .worker(self.authority.protocol_key(), &self.id)
-            .expect("Our public key or worker id is not in the worker cache")
-            .transactions;
-        let address =
-            address.replace(0, |_protocol| Some(Protocol::Ip4(Ipv4Addr::UNSPECIFIED))).unwrap();
+        // // We first receive clients' transactions from the network.
+        // let address = self
+        //     .worker_cache
+        //     .worker(self.authority.protocol_key(), &self.id)
+        //     .expect("Our public key or worker id is not in the worker cache")
+        //     .transactions;
+        // let address =
+        //     address.replace(0, |_protocol| Some(Protocol::Ip4(Ipv4Addr::UNSPECIFIED))).unwrap();
 
         // let tx_server_handle = TxServer::spawn(
         //     address.clone(),
@@ -496,8 +504,6 @@ impl Worker {
             network,
             node_metrics,
         );
-
-        info!("Worker {} listening to client transactions on {}", self.id, address);
 
         vec![batch_maker_handle, quorum_waiter_handle]
     }

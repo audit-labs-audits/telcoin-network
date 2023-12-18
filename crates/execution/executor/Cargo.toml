@@ -44,7 +44,6 @@ reth-auto-seal-consensus = { workspace = true }
 reth-basic-payload-builder = { workspace = true }
 reth = { workspace = true }
 eyre = { workspace = true }
-clap = { workspace = true }
 futures = { workspace = true }
 tempfile = { workspace = true }
 

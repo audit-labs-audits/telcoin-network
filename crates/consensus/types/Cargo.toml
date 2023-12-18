@@ -41,6 +41,8 @@ narwhal-typed-store = { workspace = true }
 consensus-metrics = { workspace = true }
 telcoin-sync = { workspace = true }
 alloy-rlp = { workspace = true }
+reth = { workspace = true }
+clap = { workspace = true }
 
 # optional dependencies for test-utils
 tempfile = { workspace = true, optional = true }

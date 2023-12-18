@@ -22,7 +22,7 @@ fastcrypto = { workspace = true }
 narwhal-executor = { workspace = true }
 narwhal-network = { workspace = true }
 narwhal-network-types = { workspace = true }
-narwhal-node = { workspace = true }
+tn-node = { workspace = true }
 narwhal-primary = { workspace = true }
 narwhal-types = { workspace = true, features = ["test-utils"] }
 narwhal-worker = { workspace = true }
@@ -30,5 +30,16 @@ narwhal-storage = { workspace = true }
 consensus-metrics = { workspace = true }
 narwhal-typed-store = { workspace = true }
 reth-tracing = { workspace = true }
+reth-interfaces = { workspace = true }
 
 anemo = { workspace = true }
+
+# execution
+eyre = { workspace = true }
+tn-batch-maker = { workspace = true}
+tn-batch-validator = { workspace = true}
+tn-executor = { workspace = true }
+reth = { workspace = true }
+reth-db = { workspace = true, features = ["test-utils"]}
+reth-transaction-pool = { workspace = true }
+jsonrpsee = { workspace = true }

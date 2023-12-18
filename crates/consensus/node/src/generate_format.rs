@@ -23,10 +23,12 @@ fn get_registry() -> Result<Registry> {
     let mut tracer = Tracer::new(TracerConfig::default());
     let mut samples = Samples::new();
     // 1. Record samples for types with custom deserializers.
+    //
     // We want to call
     // tracer.trace_value(&mut samples, ...)?;
     // with all the base types contained in messages, especially the ones with custom serializers;
     // or involving generics (see [serde_reflection documentation](https://docs.rs/serde-reflection/latest/serde_reflection/)).
+    //
     // Trace the corresponding header
     let mut rng = StdRng::from_seed([0; 32]);
     let (keys, network_keys): (Vec<_>, Vec<_>) =
@@ -70,7 +72,7 @@ fn get_registry() -> Result<Registry> {
         .epoch(0)
         .created_at(0)
         .round(1)
-        .payload((0..4u32).map(|wid| (BatchDigest([0u8; 32]), (wid, 0u64))).collect())
+        .payload((0..4u16).map(|wid| (BatchDigest([0u8; 32]), (wid, 0u64))).collect())
         .parents(certificates.iter().map(|x| x.digest()).collect())
         .build()
         .unwrap();

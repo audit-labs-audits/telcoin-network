@@ -10,7 +10,7 @@ members = [
     "crates/consensus/mem-utils-derive",
     "crates/consensus/network",
     "crates/consensus/network-types",
-    "crates/consensus/node",
+    "crates/consensus/tn-node",
     "crates/consensus/primary",
     "crates/consensus/storage",
     "crates/consensus/telcoin-macros",
@@ -85,6 +85,9 @@ reth-metrics = { git = "https://github.com/paradigmxyz/reth", rev = "b34b0d3c8de
 reth-rpc-types = { git = "https://github.com/paradigmxyz/reth", rev = "b34b0d3c8de2598b2976f7ee2fc1a166c50b1b94" }
 alloy-rlp = "0.3"
 
+tn-batch-validator = { path = "crates/execution/batch-validator" }
+tn-executor = { path = "crates/execution/executor" }
+
 # batch maker
 tn-batch-maker = { path = "crates/execution/batch-maker" }
 futures-util = "0.3.25"
@@ -94,9 +97,9 @@ jsonrpsee = { version = "0.20" }
 assert_matches = { version = "1.5.0" }
 
 # consensus
+tn-node = { path = "./crates/consensus/tn-node" }
 narwhal-executor = { path = "./crates/consensus/executor" }
 narwhal-network = { path = "./crates/consensus/network" }
-narwhal-node = { path = "./crates/consensus/node" }
 narwhal-worker = { path = "./crates/consensus/worker" }
 narwhal-types = { path = "./crates/consensus/types" }
 narwhal-typed-store = { path = "./crates/consensus/typed-store" }

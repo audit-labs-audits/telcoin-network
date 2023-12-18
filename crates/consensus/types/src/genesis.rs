@@ -5,9 +5,16 @@
 //!
 //! Yukon is the current name for multi-node testnet.
 
+use clap::Parser;
+use reth::node::NodeCommand;
+use reth_primitives::{ChainSpec, Genesis};
 use std::sync::Arc;
 
-use reth_primitives::{ChainSpec, Genesis};
+/// Return a [NodeCommand] with default args parsed by `clap`.
+pub fn execution_args() -> NodeCommand {
+    NodeCommand::<()>::try_parse_from(["reth", "--dev", "--chain", &yukon_genesis_string()])
+        .expect("clap parse node command")
+}
 
 /// Yukon parsed Genesis.
 pub fn yukon_genesis() -> Genesis {
@@ -22,6 +29,8 @@ pub fn yukon_chain_spec() -> Arc<ChainSpec> {
 }
 
 /// Yukon genesis string in yaml format.
+///
+/// Seed "Bob" and [0; 32] seed addresses.
 pub fn yukon_genesis_string() -> String {
     r#"
 {
@@ -34,6 +43,9 @@ pub fn yukon_genesis_string() -> String {
     "coinbase": "0x0000000000000000000000000000000000000000",
     "alloc": {
         "0x6Be02d1d3665660d22FF9624b7BE0551ee1Ac91b": {
+            "balance": "0x4a47e3c12448f4ad000000"
+        },
+        "0xb14d3c4f5fbfbcfb98af2d330000d49c95b93aa7": {
             "balance": "0x4a47e3c12448f4ad000000"
         }
     },

@@ -1,8 +1,15 @@
+// Copyright (c) Telcoin, LLC
+// SPDX-License-Identifier: Apache-2.0
+
+//! Specific test utils for execution layer
 use crate::{NetworkKeyPair, WorkerId, WorkerInfo};
 use fastcrypto::traits::KeyPair as _;
 
 use rand::{rngs::StdRng, SeedableRng};
 
+/// Fixture representing a worker for an [AuthorityFixture].
+///
+/// [WorkerFixture] holds keypairs and should not be used in production.
 pub struct WorkerFixture {
     pub(crate) keypair: NetworkKeyPair,
     #[allow(dead_code)]

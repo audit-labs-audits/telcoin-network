@@ -9,11 +9,13 @@ use crate::{
     Multiaddr,
 };
 use fastcrypto::{
+    secp256k1::Secp256k1PublicKey,
     serde_helpers::ToFromByteArray,
     traits::{EncodeDecodeBase64, ToFromBytes},
 };
 use mem_utils::MallocSizeOf;
 use rand::{rngs::StdRng, seq::SliceRandom, SeedableRng};
+use reth_primitives::Address;
 use serde::{Deserialize, Serialize};
 use std::{
     collections::{BTreeMap, HashSet},
@@ -33,7 +35,11 @@ pub struct Authority {
     /// The voting power of this authority.
     stake: Stake,
     /// The network address of the primary.
-    primary_address: Multiaddr,
+    primary_network_address: Multiaddr,
+    /// The [Secp256k1] public key for the primary.
+    execution_key: Secp256k1PublicKey,
+    /// The execution address for the primary.
+    execution_address: Address,
     /// Network key of the primary.
     network_key: NetworkPublicKey,
     /// The validator's hostname
@@ -52,7 +58,9 @@ impl Authority {
     fn new(
         protocol_key: PublicKey,
         stake: Stake,
-        primary_address: Multiaddr,
+        primary_network_address: Multiaddr,
+        execution_key: Secp256k1PublicKey,
+        execution_address: Address,
         network_key: NetworkPublicKey,
         hostname: String,
     ) -> Self {
@@ -63,7 +71,9 @@ impl Authority {
             protocol_key,
             protocol_key_bytes,
             stake,
-            primary_address,
+            primary_network_address,
+            execution_key,
+            execution_address,
             network_key,
             hostname,
             initialised: false,
@@ -95,9 +105,19 @@ impl Authority {
         self.stake
     }
 
-    pub fn primary_address(&self) -> Multiaddr {
+    pub fn primary_network_address(&self) -> Multiaddr {
         assert!(self.initialised);
-        self.primary_address.clone()
+        self.primary_network_address.clone()
+    }
+
+    pub fn primary_execution_address(&self) -> Address {
+        assert!(self.initialised);
+        self.execution_address.clone()
+    }
+
+    pub fn execution_key(&self) -> Secp256k1PublicKey {
+        assert!(self.initialised);
+        self.execution_key.clone()
     }
 
     pub fn network_key(&self) -> NetworkPublicKey {
@@ -331,7 +351,7 @@ impl Committee {
     pub fn primary(&self, to: &PublicKey) -> Result<Multiaddr, ConfigError> {
         self.authorities
             .get(&to.clone())
-            .map(|x| x.primary_address.clone())
+            .map(|x| x.primary_network_address.clone())
             .ok_or_else(|| ConfigError::NotInCommittee((*to).encode_base64()))
     }
 
@@ -339,7 +359,7 @@ impl Committee {
     pub fn primary_by_id(&self, to: &AuthorityIdentifier) -> Result<Multiaddr, ConfigError> {
         self.authorities_by_id
             .get(to)
-            .map(|x| x.primary_address.clone())
+            .map(|x| x.primary_network_address.clone())
             .ok_or_else(|| ConfigError::NotInCommittee(to.0.to_string()))
     }
 
@@ -359,7 +379,11 @@ impl Committee {
             .iter()
             .filter(|(name, _)| *name != myself)
             .map(|(name, authority)| {
-                (name.clone(), authority.primary_address.clone(), authority.network_key.clone())
+                (
+                    name.clone(),
+                    authority.primary_network_address.clone(),
+                    authority.network_key.clone(),
+                )
             })
             .collect()
     }
@@ -373,13 +397,13 @@ impl Committee {
             .iter()
             .filter(|(_, authority)| authority.id() != myself)
             .map(|(_, authority)| {
-                (authority.id(), authority.primary_address(), authority.network_key())
+                (authority.id(), authority.primary_network_address(), authority.network_key())
             })
             .collect()
     }
 
     fn get_all_network_addresses(&self) -> HashSet<&Multiaddr> {
-        self.authorities.values().map(|authority| &authority.primary_address).collect()
+        self.authorities.values().map(|authority| &authority.primary_network_address).collect()
     }
 
     /// Return the network addresses that are present in the current committee but that are absent
@@ -415,7 +439,7 @@ impl Committee {
                         // No error met yet, update the accumulator
                         Ok(mut bmap) => {
                             let mut res = authority.clone();
-                            res.primary_address = address;
+                            res.primary_network_address = address;
                             bmap.insert(pk.clone(), res);
                             Ok(bmap)
                         }
@@ -469,12 +493,21 @@ impl CommitteeBuilder {
         mut self,
         protocol_key: PublicKey,
         stake: Stake,
-        primary_address: Multiaddr,
+        primary_network_address: Multiaddr,
+        execution_public_key: Secp256k1PublicKey,
+        primary_execution_address: Address,
         network_key: NetworkPublicKey,
         hostname: String,
     ) -> Self {
-        let authority =
-            Authority::new(protocol_key.clone(), stake, primary_address, network_key, hostname);
+        let authority = Authority::new(
+            protocol_key.clone(),
+            stake,
+            primary_network_address,
+            execution_public_key,
+            primary_execution_address,
+            network_key,
+            hostname,
+        );
         self.authorities.insert(protocol_key, authority);
         self
     }
@@ -487,8 +520,9 @@ impl CommitteeBuilder {
 #[cfg(test)]
 mod tests {
     use crate::{Authority, Committee, KeyPair, Multiaddr, NetworkKeyPair, PublicKey};
-    use fastcrypto::traits::KeyPair as _;
+    use fastcrypto::{secp256k1::Secp256k1KeyPair, traits::KeyPair as _};
     use rand::thread_rng;
+    use reth_primitives::public_key_to_address;
     use std::collections::BTreeMap;
 
     #[test]
@@ -501,11 +535,15 @@ mod tests {
             .map(|i| {
                 let keypair = KeyPair::generate(&mut rng);
                 let network_keypair = NetworkKeyPair::generate(&mut rng);
+                let execution_keypair = Secp256k1KeyPair::generate(&mut rng);
+                let execution_address = public_key_to_address(execution_keypair.public().pubkey);
 
                 let a = Authority::new(
                     keypair.public().clone(),
                     1,
                     Multiaddr::empty(),
+                    execution_keypair.public().clone(),
+                    execution_address,
                     network_keypair.public().clone(),
                     i.to_string(),
                 );

@@ -10,7 +10,7 @@ mod client;
 mod handlers;
 mod quorum_waiter;
 // mod transactions_server;
-mod tx_validator;
+// mod tx_validator;
 mod worker;
 
 pub mod metrics;
@@ -18,8 +18,8 @@ pub mod metrics;
 pub use crate::{
     batch_maker::BatchMaker,
     client::LocalNarwhalClient,
-    tx_validator::{TransactionValidator, TrivialTransactionValidator},
-    worker::Worker,
+    worker::{Worker, CHANNEL_CAPACITY},
+    // tx_validator::{TransactionValidator, TrivialTransactionValidator},
 };
 
 /// The number of shutdown receivers to create on startup. We need one per component loop.

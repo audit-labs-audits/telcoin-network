@@ -1,3 +1,8 @@
+// Copyright (c) Telcoin, LLC
+// SPDX-License-Identifier: Apache-2.0
+
+//! The builder responsible for creating all aspects of the committee fixture.
+use super::{AuthorityFixture, CommitteeFixture};
 use crate::{utils::get_available_port, CommitteeBuilder, Epoch, Stake};
 use fastcrypto::traits::KeyPair as _;
 use once_cell::sync::OnceCell;
@@ -6,8 +11,6 @@ use rand::{
     SeedableRng,
 };
 use std::{collections::VecDeque, num::NonZeroUsize};
-
-use super::{AuthorityFixture, CommitteeFixture};
 
 pub struct Builder<R = OsRng> {
     rng: R,
@@ -108,9 +111,11 @@ impl<R: rand::RngCore + rand::CryptoRng> Builder<R> {
             committee_builder = committee_builder.add_authority(
                 a.public_key().clone(),
                 self.stake.pop_front().unwrap_or(1),
-                a.address.clone(),
+                a.network_address.clone(),
+                a.execution_keypair.public().clone(),
+                a.execution_address.clone(),
                 a.network_public_key(),
-                a.address.to_string(),
+                a.network_address.to_string(),
             );
         }
         let committee = committee_builder.build();

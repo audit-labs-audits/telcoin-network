@@ -17,6 +17,7 @@ use narwhal_primary::{
     NUM_SHUTDOWN_RECEIVERS,
 };
 use narwhal_types::{
+    execution_args,
     test_utils::{batch, CommitteeFixture},
     yukon_genesis, BatchAPI, Certificate, ConsensusOutput, PreSubscribedBroadcastSender,
 };
@@ -225,6 +226,7 @@ async fn test_execute_consensus_output() {
     //=== Execution
 
     let genesis = yukon_genesis();
+    let args = execution_args();
 
     // collect txs and addresses for later assertions
     let mut txs_in_output = vec![];
@@ -302,6 +304,7 @@ async fn test_execute_consensus_output() {
         provider_factory.clone(),
         head,
         NoopTransactionPool::default(),
+        &args.network,
     )
     .await
     .expect("build network successful with no peers");
@@ -325,7 +328,7 @@ async fn test_execute_consensus_output() {
     // Provider's CanonChainTracker:
     //  - rpc uses this to get chain info
 
-    // build batch maker
+    // build executor
     let (_, client, mut task) = Executor::new(
         Arc::clone(&chain),
         blockchain_db.clone(),
@@ -373,7 +376,7 @@ async fn test_execute_consensus_output() {
         events: blockchain_db.clone(),
     };
     let payload_builder =
-        spawn_payload_builder_service(components).expect("payload builder service");
+        spawn_payload_builder_service(components, &args.builder).expect("payload builder service");
     let (beacon_consensus_engine, beacon_engine_handle) = BeaconConsensusEngine::with_channel(
         client.clone(),
         pipeline,
@@ -407,13 +410,17 @@ async fn test_execute_consensus_output() {
     //     events::handle_events(Some(network.clone()), Some(head.number), events),
     // );
 
+    let mut handles = vec![];
+
     // Run consensus engine to completion
     let (tx, _rx) = oneshot::channel();
     info!(target: "reth::cli", "Starting consensus engine");
-    task_executor.spawn_critical_blocking("consensus engine", async move {
+    let engine_handle = task_executor.spawn_critical_blocking("consensus engine", async move {
         let res = beacon_consensus_engine.await;
         let _ = tx.send(res);
     });
+
+    handles.push(engine_handle);
 
     // finalize genesis
     let genesis_state = ForkchoiceState {

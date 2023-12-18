@@ -13,14 +13,10 @@
 //!     - db
 //!     - payload builder
 
-use clap::Parser;
-
 use futures::pin_mut;
-use narwhal_types::yukon_genesis_string;
 use reth::{
-    args::get_secret_key,
+    args::{get_secret_key, NetworkArgs, PayloadBuilderArgs, RpcServerArgs},
     cli::{components::RethNodeComponents, config::PayloadBuilderConfig},
-    node::NodeCommand,
     rpc::builder::RpcServerHandle,
 };
 use reth_basic_payload_builder::{BasicPayloadJobGenerator, BasicPayloadJobGeneratorConfig};
@@ -108,15 +104,12 @@ pub async fn build_network<C, Pool>(
     client: C,
     head: Head,
     pool: Pool,
+    network_args: &NetworkArgs,
 ) -> eyre::Result<NetworkHandle>
 where
     C: BlockReader + HeaderProvider + Clone + Unpin + 'static,
     Pool: TransactionPool + Unpin + 'static,
 {
-    let genesis = yukon_genesis_string();
-    let cmd = NodeCommand::<()>::try_parse_from(["reth", "--dev", "--chain", &genesis])?;
-    let args = cmd.network;
-
     // TODO: using tempfile here since there should never be any peers
     let secret_key_path = tempfile::TempDir::new()
         .expect("Failed to make tempdir for secret file")
@@ -129,12 +122,12 @@ where
     debug!("default_peers_path: {default_peers_path:?}");
 
     // network config
-    let network_config = args
+    let network_config = network_args
         .network_config(&Config::default(), chain, secret_key, default_peers_path)
         .with_task_executor(Box::new(executor.clone()))
         .set_head(head)
-        .listener_addr(SocketAddr::V4(SocketAddrV4::new(args.addr, args.port)))
-        .discovery_addr(SocketAddr::V4(SocketAddrV4::new(args.addr, args.port)))
+        .listener_addr(SocketAddr::V4(SocketAddrV4::new(network_args.addr, network_args.port)))
+        .discovery_addr(SocketAddr::V4(SocketAddrV4::new(network_args.addr, network_args.port)))
         .build(client);
 
     // start network
@@ -162,13 +155,11 @@ where
 /// Construct a new payload builder.
 pub fn spawn_payload_builder_service<Components>(
     components: Components,
+    builder_args: &PayloadBuilderArgs,
 ) -> eyre::Result<PayloadBuilderHandle>
 where
     Components: RethNodeComponents,
 {
-    let genesis = yukon_genesis_string();
-    let cmd = NodeCommand::<()>::try_parse_from(["reth", "--dev", "--chain", &genesis])?;
-    let builder_args = cmd.builder;
     let payload_job_config = BasicPayloadJobGeneratorConfig::default()
         .interval(builder_args.interval())
         .deadline(builder_args.deadline())
@@ -335,13 +326,13 @@ where
 }
 
 /// Start the RPC.
-pub async fn start_rpc<Components>(components: Components) -> eyre::Result<RpcServerHandle>
+pub async fn start_rpc<Components>(
+    components: Components,
+    rpc_args: &RpcServerArgs,
+) -> eyre::Result<RpcServerHandle>
 where
     Components: RethNodeComponents,
 {
-    let genesis = yukon_genesis_string();
-    let cmd = NodeCommand::<()>::try_parse_from(["reth", "--dev", "--chain", &genesis])?;
-    let rpc_args = cmd.rpc;
     let handle = rpc_args
         .start_rpc_server(
             components.provider(),

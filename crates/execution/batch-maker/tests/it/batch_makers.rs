@@ -23,7 +23,8 @@ use reth_interfaces::p2p::{
     priority::Priority,
 };
 use reth_primitives::{
-    Address, ChainSpec, GenesisAccount, HeadersDirection, TransactionSigned, U256,
+    alloy_primitives::U160, Address, ChainSpec, GenesisAccount, HeadersDirection,
+    TransactionSigned, U256,
 };
 use reth_provider::{providers::BlockchainProvider, ProviderFactory};
 use reth_tracing::init_test_tracing;
@@ -121,6 +122,7 @@ async fn test_make_batch_el_to_cl() {
         reth_transaction_pool::Pool::eth_pool(validator, blob_store, PoolConfig::default());
     let max_transactions = 1;
     let mining_mode = MiningMode::instant(max_transactions, txpool.pending_transactions_listener());
+    let address = Address::from(U160::from(333));
 
     // build execution batch maker
     let (_, client, task) = BatchMakerBuilder::new(
@@ -129,6 +131,7 @@ async fn test_make_batch_el_to_cl() {
         txpool.clone(),
         to_worker,
         mining_mode,
+        address,
     )
     .build();
 
@@ -228,10 +231,17 @@ async fn test_make_batch_el_to_cl() {
 
     // TODO: this isn't the right thing to test bc storage should be removed
     //
-    assert_eq!(batch.versioned_metadata().sealed_header(), &storage_sealed_header,);
+    assert_eq!(batch.versioned_metadata().sealed_header(), &storage_sealed_header);
+    assert_eq!(storage_sealed_header.beneficiary, address);
 
     // Ensure the batch is stored
-    assert!(store.get(&expected_batch.digest()).unwrap().is_some());
+    let batch_from_store = store
+        .get(&expected_batch.digest())
+        .expect("store searched for batch")
+        .expect("batch in store");
+    let sealed_header_from_batch_store = batch_from_store.versioned_metadata().sealed_header();
+    assert_eq!(sealed_header_from_batch_store.beneficiary, address);
+
     // txpool size after mining
     let pending_pool_len = txpool.pool_size().pending;
     debug!("pool_size(): {:?}", txpool.pool_size());

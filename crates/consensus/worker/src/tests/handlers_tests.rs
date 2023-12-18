@@ -9,7 +9,7 @@ use narwhal_types::test_utils::{batch, random_network, CommitteeFixture};
 use std::vec;
 
 use super::*;
-use crate::TrivialTransactionValidator;
+use tn_batch_validator::NoopBatchValidator;
 
 #[tokio::test]
 async fn synchronize() {
@@ -67,7 +67,7 @@ async fn synchronize() {
         request_batches_retry_nodes: 3, // Not used in this test.
         network: Some(send_network),
         batch_fetcher: None,
-        validator: TrivialTransactionValidator,
+        validator: NoopBatchValidator,
     };
 
     // Verify the batch is not in store
@@ -159,7 +159,7 @@ async fn synchronize_versioned_batches() {
         request_batches_retry_nodes: 3, // Not used in this test.
         network: Some(send_network),
         batch_fetcher: None,
-        validator: TrivialTransactionValidator,
+        validator: NoopBatchValidator,
     };
 
     // Case #1: Receive BatchV1 but network is upgraded past v11 so we fail because we expect
@@ -201,7 +201,7 @@ async fn synchronize_when_batch_exists() {
         request_batches_retry_nodes: 3, // Not used in this test.
         network: Some(send_network),
         batch_fetcher: None,
-        validator: TrivialTransactionValidator,
+        validator: NoopBatchValidator,
     };
 
     // Store the batch.

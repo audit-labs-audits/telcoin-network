@@ -94,8 +94,8 @@ const FETCH_CERTIFICATES_MAX_HANDLER_TIME: Duration = Duration::from_secs(10);
 pub struct Primary;
 
 impl Primary {
-    // Spawns the primary and returns the JoinHandles of its tasks, as well as a metered receiver
-    // for the Consensus.
+    /// Spawns the primary and returns the JoinHandles of its tasks, as well as a metered receiver
+    /// for the Consensus.
     #[allow(clippy::too_many_arguments)]
     pub fn spawn(
         authority: Authority,
@@ -206,7 +206,7 @@ impl Primary {
         let signature_service = SignatureService::new(signer);
 
         // Spawn the network receiver listening to messages from the other primaries.
-        let address = authority.primary_address();
+        let address = authority.primary_network_address();
         let address =
             address.replace(0, |_protocol| Some(Protocol::Ip4(Ipv4Addr::UNSPECIFIED))).unwrap();
         let mut primary_service = PrimaryToPrimaryServer::new(PrimaryReceiverHandler {
@@ -488,12 +488,17 @@ impl Primary {
             tx_system_messages,
             RandomnessPrivateKey::from(randomness_private_key),
             network,
-            Some(800), // TODO: this value based on sui's current default. may not want this yet
+            // Some(800), // TODO: this value based on sui's current default. may not want this yet
+            None,
         );
         handles.push(state_handler_handle);
 
         // NOTE: This log entry is used to compute performance.
-        info!("Primary {} successfully booted on {}", authority.id(), authority.primary_address());
+        info!(
+            "Primary {} successfully booted on {}",
+            authority.id(),
+            authority.primary_network_address()
+        );
 
         handles
     }

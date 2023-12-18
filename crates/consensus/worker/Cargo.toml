@@ -34,6 +34,7 @@ anemo = { workspace = true }
 anemo-tower = { workspace = true }
 eyre = { workspace = true }
 anyhow = { workspace = true }
+tn-batch-validator = { workspace = true }
 
 [dev-dependencies]
 arc-swap = { workspace = true }
@@ -41,7 +42,7 @@ rand = { workspace = true }
 tempfile = { workspace = true }
 narwhal-test-utils = { workspace = true }
 reqwest = { workspace = true }
-narwhal-node = { workspace = true }
+tn-node = { workspace = true }
 narwhal-primary = { workspace = true }
 narwhal-storage = { workspace = true }
 reth-tracing = { workspace = true }

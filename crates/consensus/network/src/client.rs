@@ -2,21 +2,22 @@
 // Copyright (c) Mysten Labs, Inc.
 // SPDX-License-Identifier: Apache-2.0
 
-use std::{collections::BTreeMap, sync::Arc, time::Duration};
-
+use crate::{
+    error::LocalClientError,
+    traits::{PrimaryToWorkerClient, WorkerToPrimaryClient},
+};
 use anemo::{Network, PeerId, Request};
 use async_trait::async_trait;
 use narwhal_network_types::{
     FetchBatchesRequest, FetchBatchesResponse, PrimaryToWorker, WorkerOthersBatchMessage,
     WorkerOwnBatchMessage, WorkerSynchronizeMessage, WorkerToPrimary,
 };
-use narwhal_types::{error::LocalClientError, traits::KeyPair, NetworkKeyPair, NetworkPublicKey};
+use narwhal_types::{traits::KeyPair, NetworkKeyPair, NetworkPublicKey};
 use parking_lot::RwLock;
+use std::{collections::BTreeMap, sync::Arc, time::Duration};
 use telcoin_sync::sync::notify_once::NotifyOnce;
 use tokio::{select, time::sleep};
 use tracing::error;
-
-use crate::traits::{PrimaryToWorkerClient, WorkerToPrimaryClient};
 
 /// NetworkClient provides the interface to send requests to other nodes, and call other components
 /// directly if they live in the same process. It is used by both primary and worker(s).
@@ -34,7 +35,7 @@ pub struct NetworkClient {
 struct Inner {
     primary_peer_id: PeerId,
     primary_network: Option<Network>,
-    worker_network: BTreeMap<u32, Network>,
+    worker_network: BTreeMap<u16, Network>,
     worker_to_primary_handler: Option<Arc<dyn WorkerToPrimary>>,
     primary_to_worker_handler: BTreeMap<PeerId, Arc<dyn PrimaryToWorker>>,
     shutdown: bool,
@@ -75,7 +76,7 @@ impl NetworkClient {
         inner.primary_network = Some(network);
     }
 
-    pub fn set_worker_network(&self, worker_id: u32, network: Network) {
+    pub fn set_worker_network(&self, worker_id: u16, network: Network) {
         let mut inner = self.inner.write();
         if inner.worker_network.insert(worker_id, network).is_some() {
             error!("Worker {} network is already set", worker_id);
@@ -98,7 +99,7 @@ impl NetworkClient {
         Err(anemo::rpc::Status::internal("Primary has not started"))
     }
 
-    pub async fn get_worker_network(&self, worker_id: u32) -> Result<Network, anemo::rpc::Status> {
+    pub async fn get_worker_network(&self, worker_id: u16) -> Result<Network, anemo::rpc::Status> {
         for _ in 0..Self::GET_CLIENT_RETRIES {
             {
                 let inner = self.inner.read();

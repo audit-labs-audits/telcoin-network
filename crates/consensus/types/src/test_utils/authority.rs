@@ -1,8 +1,10 @@
-// Copyright (c) 2021, Facebook, Inc. and its affiliates
 // Copyright (c) Telcoin, LLC
+// Copyright (c) 2021, Facebook, Inc. and its affiliates
 // Copyright (c) Mysten Labs, Inc.
 // SPDX-License-Identifier: Apache-2.0
 
+//! Authority fixture for holding all keypairs and workers for a validator node within a committee.
+use super::WorkerFixture;
 use crate::{
     Authority, AuthorityIdentifier, Certificate, Committee, Header, HeaderV1Builder, KeyPair,
     Multiaddr, NetworkKeyPair, NetworkPublicKey, PublicKey, Round, Stake, Vote, WorkerId,
@@ -10,77 +12,107 @@ use crate::{
 };
 use fastcrypto::{
     hash::Hash,
+    secp256k1::Secp256k1KeyPair,
     traits::{AllowedRng, KeyPair as _},
 };
 use once_cell::sync::OnceCell;
-
+use reth_primitives::{public_key_to_address, Address};
 use std::{collections::BTreeMap, num::NonZeroUsize};
 
-use super::WorkerFixture;
-
+/// Fixture representing an validator node within the network.
+///
+/// [AuthorityFixture] holds keypairs and should not be used in production.
 pub struct AuthorityFixture {
+    /// Thread-safe cell with a reference to the [Authority] struct used in production.
     pub(crate) authority: OnceCell<Authority>,
+    /// The [KeyPair] for this authority.
     pub(crate) keypair: KeyPair,
+    /// The [NetworkKeyPair] for this authority.
     pub(crate) network_keypair: NetworkKeyPair,
+    /// The [Stake] for this authority.
     pub(crate) stake: Stake,
-    pub(crate) address: Multiaddr,
+    /// The [Multiaddr] within the anemo network for this authority.
+    pub(crate) network_address: Multiaddr,
+    /// All workers for this authority mapped by [WorkerId] to [WorkerFixture].
     pub(crate) workers: BTreeMap<WorkerId, WorkerFixture>,
+    /// The [Secp256k1] keypair for the execution layer.
+    pub(crate) execution_keypair: Secp256k1KeyPair,
+    /// The address for the authority on the EL.
+    pub(crate) execution_address: Address,
 }
 
 impl AuthorityFixture {
+    /// The owned [AuthorityIdentifier] for the authority
     pub fn id(&self) -> AuthorityIdentifier {
         self.authority.get().unwrap().id()
     }
 
+    /// The [Authority] struct used in production.
     pub fn authority(&self) -> &Authority {
         self.authority.get().unwrap()
     }
 
+    /// The authority's bls12381 [KeyPair] used to sign consensus messages.
     pub fn keypair(&self) -> &KeyPair {
         &self.keypair
     }
 
+    /// The authority's ed25519 [NetworkKeyPair] used to sign messages on the network.
     pub fn network_keypair(&self) -> NetworkKeyPair {
         self.network_keypair.copy()
     }
 
+    /// The authority's [Address] for execution layer.
+    pub fn execution_address(&self) -> Address {
+        self.execution_address.clone()
+    }
+
+    /// Create a new anemo network for consensus.
     pub fn new_network(&self, router: anemo::Router) -> anemo::Network {
-        anemo::Network::bind(self.address.to_anemo_address().unwrap())
+        anemo::Network::bind(self.network_address.to_anemo_address().unwrap())
             .server_name("narwhal")
             .private_key(self.network_keypair().private().0.to_bytes())
             .start(router)
             .unwrap()
     }
 
-    pub fn address(&self) -> &Multiaddr {
-        &self.address
+    /// A reference to the authority's [Multiaddr] on the consensus network.
+    pub fn network_address(&self) -> &Multiaddr {
+        &self.network_address
     }
 
+    /// Return a reference to a [WorkerFixture] based on the provided [WorkerId].
     pub fn worker(&self, id: WorkerId) -> &WorkerFixture {
         self.workers.get(&id).unwrap()
     }
 
+    /// A `Vec<NetworkKeypair>` of all workers for the authority.
     pub fn worker_keypairs(&self) -> Vec<NetworkKeyPair> {
         self.workers.values().map(|worker| worker.keypair.copy()).collect()
     }
 
+    /// The authority's [PublicKey].
     pub fn public_key(&self) -> PublicKey {
         self.keypair.public().clone()
     }
 
+    /// The authority's [NetworkPublicKey].
     pub fn network_public_key(&self) -> NetworkPublicKey {
         self.network_keypair.public().clone()
     }
 
+    /// The [WorkerIndex] for the authority.
     pub fn worker_index(&self) -> WorkerIndex {
         WorkerIndex(self.workers.iter().map(|(id, w)| (*id, w.info.clone())).collect())
     }
 
+    /// Create a [Header] with a default payload based on the [Committee] argument.
     pub fn header(&self, committee: &Committee) -> Header {
         let header = self.header_builder(committee).payload(Default::default()).build().unwrap();
         Header::V1(header)
     }
 
+    /// Create a [Header] with a default payload based on the [Committee] and [Round] arguments.
     pub fn header_with_round(&self, committee: &Committee, round: Round) -> Header {
         let header = self
             .header_builder(committee)
@@ -91,6 +123,8 @@ impl AuthorityFixture {
         Header::V1(header)
     }
 
+    /// Return a [HeaderV1Builder] for round 1. The builder is constructed
+    /// with a genesis certificate as the parent.
     pub fn header_builder(&self, committee: &Committee) -> HeaderV1Builder {
         HeaderV1Builder::default()
             .author(self.id())
@@ -99,10 +133,12 @@ impl AuthorityFixture {
             .parents(Certificate::genesis(committee).iter().map(|x| x.digest()).collect())
     }
 
+    /// Sign a [Header] and return a [Vote] with no additional validation.
     pub fn vote(&self, header: &Header) -> Vote {
         Vote::new_with_signer(header, &self.id(), &self.keypair)
     }
 
+    /// Generate a new [AuthorityFixture].
     pub(crate) fn generate<R, P>(
         mut rng: R,
         number_of_workers: NonZeroUsize,
@@ -114,17 +150,29 @@ impl AuthorityFixture {
     {
         let keypair = KeyPair::generate(&mut rng);
         let network_keypair = NetworkKeyPair::generate(&mut rng);
+        let execution_keypair = Secp256k1KeyPair::generate(&mut rng);
         let host = "127.0.0.1";
-        let address: Multiaddr = format!("/ip4/{}/udp/{}", host, get_port(host)).parse().unwrap();
+        let network_address: Multiaddr =
+            format!("/ip4/{}/udp/{}", host, get_port(host)).parse().unwrap();
+        let execution_address = public_key_to_address(execution_keypair.public().pubkey);
 
         let workers = (0..number_of_workers.get())
             .map(|idx| {
-                let worker = WorkerFixture::generate(&mut rng, idx as u32, &mut get_port);
+                let worker = WorkerFixture::generate(&mut rng, idx as u16, &mut get_port);
 
-                (idx as u32, worker)
+                (idx as u16, worker)
             })
             .collect();
 
-        Self { authority: OnceCell::new(), keypair, network_keypair, stake: 1, address, workers }
+        Self {
+            authority: OnceCell::new(),
+            keypair,
+            network_keypair,
+            stake: 1,
+            network_address,
+            workers,
+            execution_keypair,
+            execution_address,
+        }
     }
 }

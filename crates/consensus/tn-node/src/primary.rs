@@ -1,11 +1,20 @@
 // Copyright (c) Telcoin, LLC
 // Copyright (c) Mysten Labs, Inc.
 // SPDX-License-Identifier: Apache-2.0
-use crate::{metrics::new_registry, try_join_all, FuturesUnordered, NodeError};
+
+//! Hierarchical type to hold tasks spawned for a worker in the network.
+use crate::{
+    engine::ExecutionNode, error::NodeError, metrics::new_registry, try_join_all, FuturesUnordered,
+};
 use anemo::PeerId;
-use consensus_metrics::{metered_channel, RegistryID, RegistryService};
+use consensus_metrics::{
+    metered_channel::{self, Sender},
+    RegistryID, RegistryService,
+};
 use fastcrypto::traits::{KeyPair as _, VerifyingKey};
-use narwhal_executor::{get_restored_consensus_output, ExecutionState, Executor, SubscriberResult};
+use narwhal_executor::{
+    get_restored_consensus_output, Executor, ExecutorMetrics, SubscriberResult,
+};
 use narwhal_network::client::NetworkClient;
 use narwhal_primary::{
     consensus::{
@@ -15,14 +24,12 @@ use narwhal_primary::{
 };
 use narwhal_storage::NodeStorage;
 use narwhal_types::{
-    AuthorityIdentifier, ChainIdentifier, Committee, KeyPair, NetworkKeyPair, Parameters,
-    PublicKey, WorkerCache, BAD_NODES_STAKE_THRESHOLD,
+    AuthorityIdentifier, Certificate, ChainIdentifier, Committee, ConditionalBroadcastReceiver,
+    ConsensusOutput, KeyPair, NetworkKeyPair, Parameters, PreSubscribedBroadcastSender, PublicKey,
+    Round, WorkerCache, BAD_NODES_STAKE_THRESHOLD,
 };
 use prometheus::{IntGauge, Registry};
 use std::{sync::Arc, time::Instant};
-use narwhal_types::{
-    Certificate, ConditionalBroadcastReceiver, PreSubscribedBroadcastSender, Round,
-};
 use tokio::{
     sync::{watch, RwLock},
     task::JoinHandle,
@@ -30,19 +37,19 @@ use tokio::{
 use tracing::{info, instrument};
 
 struct PrimaryNodeInner {
-    // The configuration parameters.
+    /// The configuration parameters.
     parameters: Parameters,
-    // A prometheus RegistryService to use for the metrics
+    /// A prometheus RegistryService to use for the metrics
     registry_service: RegistryService,
-    // The latest registry id & registry used for the node
+    /// The latest registry id & registry used for the node
     registry: Option<(RegistryID, Registry)>,
-    // The task handles created from primary
+    /// The task handles created from primary
     handles: FuturesUnordered<JoinHandle<()>>,
-    // Keeping NetworkClient here for quicker shutdown.
+    /// Keeping NetworkClient here for quicker shutdown.
     client: Option<NetworkClient>,
-    // The shutdown signal channel
+    /// The shutdown signal channel
     tx_shutdown: Option<PreSubscribedBroadcastSender>,
-    // Peer ID used for local connections.
+    /// Peer ID used for local connections.
     own_peer_id: Option<PeerId>,
 }
 
@@ -55,7 +62,7 @@ impl PrimaryNodeInner {
     // Starts the primary node with the provided info. If the node is already running then this
     // method will return an error instead.
     #[instrument(level = "info", skip_all)]
-    async fn start<State>(
+    async fn start(
         &mut self, // The private-public key pair of this authority.
         keypair: KeyPair,
         // The private-public network key pair of this authority.
@@ -70,11 +77,14 @@ impl PrimaryNodeInner {
         // The node's store
         // TODO: replace this by a path so the method can open and independent storage
         store: &NodeStorage,
-        // The state used by the client to execute transactions.
-        execution_state: State,
+        // // The state used by the client to execute transactions.
+        // execution_state: State,
+
+        // Execution components needed to spawn the EL Executor
+        execution_components: &ExecutionNode,
     ) -> Result<(), NodeError>
-    where
-        State: ExecutionState + Send + Sync + 'static,
+where
+        // State: ExecutionState + Send + Sync + 'static,
     {
         if self.is_running().await {
             return Err(NodeError::NodeAlreadyRunning);
@@ -83,13 +93,20 @@ impl PrimaryNodeInner {
         self.own_peer_id = Some(PeerId(network_keypair.public().0.to_bytes()));
 
         // create a new registry
-        let registry = new_registry();
+        let registry = new_registry()?;
 
         // create the channel to send the shutdown signal
         let mut tx_shutdown = PreSubscribedBroadcastSender::new(NUM_SHUTDOWN_RECEIVERS);
 
+        // this is what connects the EL and CL
+        let executor_metrics = ExecutorMetrics::new(&registry);
+        let (tx_notifier, rx_notifier) = metered_channel::channel(
+            narwhal_primary::CHANNEL_CAPACITY,
+            &executor_metrics.tx_notifier,
+        );
+
         // spawn primary if not already running
-        let handles = Self::spawn_primary(
+        let primary_handles = Self::spawn_primary(
             keypair,
             network_keypair,
             committee,
@@ -98,18 +115,22 @@ impl PrimaryNodeInner {
             store,
             chain,
             self.parameters.clone(),
-            execution_state,
             &registry,
             &mut tx_shutdown,
+            executor_metrics,
+            tx_notifier,
         )
         .await?;
+
+        // start engine
+        execution_components.start_engine(rx_notifier).await?;
 
         // store the registry
         self.swap_registry(Some(registry));
 
         // now keep the handlers
         self.handles.clear();
-        self.handles.extend(handles);
+        self.handles.extend(primary_handles);
         self.tx_shutdown = Some(tx_shutdown);
 
         Ok(())
@@ -126,7 +147,6 @@ impl PrimaryNodeInner {
 
         // send the shutdown signal to the node
         let now = Instant::now();
-        info!("Sending shutdown message to primary node");
 
         if let Some(c) = self.client.take() {
             c.shutdown();
@@ -177,7 +197,7 @@ impl PrimaryNodeInner {
 
     /// Spawn a new primary. Optionally also spawn the consensus and a client executing
     /// transactions.
-    pub async fn spawn_primary<State>(
+    pub async fn spawn_primary(
         // The private-public key pair of this authority.
         keypair: KeyPair,
         // The private-public network key pair of this authority.
@@ -193,15 +213,20 @@ impl PrimaryNodeInner {
         chain: ChainIdentifier,
         // The configuration parameters.
         parameters: Parameters,
-        // The state used by the client to execute transactions.
-        execution_state: State,
+        // // The state used by the client to execute transactions.
+        // execution_state: State,
         // A prometheus exporter Registry to use for the metrics
         registry: &Registry,
         // The channel to send the shutdown signal
         tx_shutdown: &mut PreSubscribedBroadcastSender,
+        // The metrics for executor
+        // Passing here bc the tx notifier is needed to create the metrics.
+        executor_metrics: ExecutorMetrics,
+        // Receiving half goes to the EL Executor
+        tx_notifier: Sender<ConsensusOutput>,
     ) -> SubscriberResult<Vec<JoinHandle<()>>>
-    where
-        State: ExecutionState + Send + Sync + 'static,
+where
+        // State: ExecutionState + Send + Sync + 'static,
     {
         // These gauge is porcelain: do not modify it without also modifying
         // `primary::metrics::PrimaryChannelMetrics::replace_registered_new_certificates_metric`
@@ -243,12 +268,14 @@ impl PrimaryNodeInner {
             client.clone(),
             store,
             parameters.clone(),
-            execution_state,
+            // execution_state,
             tx_shutdown.subscribe_n(3),
             rx_new_certificates,
             tx_committed_certificates.clone(),
             tx_consensus_round_updates,
             registry,
+            executor_metrics,
+            tx_notifier,
         )
         .await?;
         handles.extend(consensus_handles);
@@ -284,23 +311,30 @@ impl PrimaryNodeInner {
     }
 
     /// Spawn the consensus core and the client executing transactions.
-    async fn spawn_consensus<State>(
+    ///
+    /// Pass the sender channel for consensus output and executor metrics.
+    ///
+    /// TODO: Executor metrics is needed to create the metered channel. This
+    /// could be done a better way, but bigger priorities right now.
+    async fn spawn_consensus(
         authority_id: AuthorityIdentifier,
         worker_cache: WorkerCache,
         committee: Committee,
         client: NetworkClient,
         store: &NodeStorage,
         parameters: Parameters,
-        execution_state: State,
+        // execution_state: State,
         mut shutdown_receivers: Vec<ConditionalBroadcastReceiver>,
         rx_new_certificates: metered_channel::Receiver<Certificate>,
         tx_committed_certificates: metered_channel::Sender<(Round, Vec<Certificate>)>,
         tx_consensus_round_updates: watch::Sender<ConsensusRound>,
         registry: &Registry,
+        executor_metrics: ExecutorMetrics,
+        tx_notifier: Sender<ConsensusOutput>,
     ) -> SubscriberResult<(Vec<JoinHandle<()>>, LeaderSchedule)>
     where
         PublicKey: VerifyingKey,
-        State: ExecutionState + Send + Sync + 'static,
+        // State: ExecutionState + Send + Sync + 'static,
     {
         let consensus_metrics = Arc::new(ConsensusMetrics::new(registry));
         let channel_metrics = ChannelMetrics::new(registry);
@@ -310,12 +344,16 @@ impl PrimaryNodeInner {
             &channel_metrics.tx_sequence,
         );
 
+        // TODO: this should read from execution db
+        //
+        // can we still ensure last sub dag index + 1 is correct?
+
         // Check for any sub-dags that have been sent by consensus but were not processed by the
         // executor.
         let restored_consensus_output = get_restored_consensus_output(
             store.consensus_store.clone(),
             store.certificate_store.clone(),
-            &execution_state,
+            0, // TODO: this currently assumes the last finalized block number
         )
         .await?;
 
@@ -353,14 +391,6 @@ impl PrimaryNodeInner {
             consensus_metrics.clone(),
         );
 
-        // TODO: this is what connects the EL and CL
-        //
-        // added this so it compiles, but this is useless without
-        // returning the rx_notifier
-        let metrics = narwhal_executor::ExecutorMetrics::new(&registry);
-        let (tx_notifier, _rx_notifier) =
-            metered_channel::channel(narwhal_primary::CHANNEL_CAPACITY, &metrics.tx_notifier);
-
         // Spawn the client executing the transactions. It can also synchronize with the
         // subscriber handler if it missed some transactions.
         let executor_handle = Executor::spawn(
@@ -373,7 +403,7 @@ impl PrimaryNodeInner {
             rx_sequence,
             restored_consensus_output,
             tx_notifier,
-            metrics,
+            executor_metrics,
         )?;
 
         // let handles =
@@ -404,8 +434,9 @@ impl PrimaryNode {
         Self { internal: Arc::new(RwLock::new(inner)) }
     }
 
-    pub async fn start<State>(
-        &self, // The private-public key pair of this authority.
+    pub async fn start(
+        &self,
+        // The private-public key pair of this authority.
         keypair: KeyPair,
         // The private-public network key pair of this authority.
         network_keypair: NetworkKeyPair,
@@ -419,11 +450,13 @@ impl PrimaryNode {
         // The node's store
         // TODO: replace this by a path so the method can open and independent storage
         store: &NodeStorage,
-        // The state used by the client to execute transactions.
-        execution_state: State,
+        // // The state used by the client to execute transactions.
+        // execution_state: State,
+        // Execution components needed to spawn the EL Executor
+        execution_components: &ExecutionNode,
     ) -> Result<(), NodeError>
-    where
-        State: ExecutionState + Send + Sync + 'static,
+where
+        // State: ExecutionState + Send + Sync + 'static,
     {
         let mut guard = self.internal.write().await;
         guard.client = Some(client.clone());
@@ -436,7 +469,8 @@ impl PrimaryNode {
                 worker_cache,
                 client,
                 store,
-                execution_state,
+                // execution_state,
+                execution_components,
             )
             .await
     }

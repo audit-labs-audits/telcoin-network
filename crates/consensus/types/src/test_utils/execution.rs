@@ -1,5 +1,7 @@
-//! Specific test utils for execution layer
+// Copyright (c) Telcoin, LLC
+// SPDX-License-Identifier: Apache-2.0
 
+//! Specific test utils for execution layer
 use fastcrypto::{
     secp256k1::Secp256k1KeyPair,
     traits::{KeyPair as _, ToFromBytes},
@@ -27,8 +29,9 @@ pub struct TransactionFactory {
 
 impl TransactionFactory {
     /// Create a new instance of self from a [0; 32] seed.
+    ///
+    /// Address: 0xb14d3c4f5fbfbcfb98af2d330000d49c95b93aa7
     pub fn new() -> Self {
-        // make this random
         let mut rng = StdRng::from_seed([0; 32]);
         let keypair = Secp256k1KeyPair::generate(&mut rng);
         Self { keypair, nonce: 0 }

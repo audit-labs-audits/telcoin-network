@@ -13,11 +13,11 @@ repository.workspace = true
 narwhal-types = { workspace = true }
 reth-interfaces = { workspace = true }
 reth-provider = { workspace = true }
+reth-revm = { workspace = true }
 reth-primitives = { workspace = true }
 reth-db = { workspace = true }
 reth-blockchain-tree = { workspace = true }
 alloy-rlp = { workspace = true }
-narwhal-worker = { workspace = true }
 async-trait = { workspace = true }
 thiserror = { workspace = true }
 tracing = { workspace = true }
@@ -31,3 +31,8 @@ reth = { workspace = true }
 reth-beacon-consensus = { workspace = true }
 
 # integration tests
+
+
+[features]
+default = []
+test-utils = []

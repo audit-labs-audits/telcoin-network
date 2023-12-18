@@ -34,7 +34,7 @@ narwhal-typed-store = { workspace = true }
 indexmap.workspace = true
 tempfile.workspace = true
 narwhal-primary = { workspace = true }
-narwhal-node = { workspace = true }
+tn-node = { workspace = true }
 narwhal-test-utils = { workspace = true }
 narwhal-types = { workspace = true }
 bytes = { workspace = true }

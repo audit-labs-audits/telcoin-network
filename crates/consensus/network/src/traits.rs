@@ -1,7 +1,7 @@
 // Copyright (c) Telcoin, LLC
 // Copyright (c) Mysten Labs, Inc.
 // SPDX-License-Identifier: Apache-2.0
-use crate::CancelOnDropHandler;
+use crate::{error::LocalClientError, CancelOnDropHandler};
 use async_trait::async_trait;
 use eyre::Result;
 use narwhal_network_types::{
@@ -9,7 +9,7 @@ use narwhal_network_types::{
     RequestBatchesRequest, RequestBatchesResponse, WorkerOthersBatchMessage, WorkerOwnBatchMessage,
     WorkerSynchronizeMessage,
 };
-use narwhal_types::{error::LocalClientError, NetworkPublicKey};
+use narwhal_types::NetworkPublicKey;
 
 pub trait ReliableNetwork<Request: Clone + Send + Sync> {
     type Response: Clone + Send + Sync;

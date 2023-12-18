@@ -31,6 +31,7 @@ tower = { workspace = true }
 bytes = { workspace = true }
 anyhow = { workspace = true }
 eyre = { workspace = true }
+thiserror = { workspace = true }
 
 [dev-dependencies]
 bincode = { workspace = true }

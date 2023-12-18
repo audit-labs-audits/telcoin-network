@@ -1,0 +1,56 @@
+// Copyright (c) Telcoin, LLC
+// Copyright (c) Mysten Labs, Inc.
+// SPDX-License-Identifier: Apache-2.0
+use axum::{routing::get, Extension, Router};
+use consensus_metrics::{metrics, spawn_logged_monitored_task};
+use narwhal_types::{AuthorityIdentifier, Multiaddr, WorkerId};
+use prometheus::{Error as PrometheusError, Registry};
+use std::collections::HashMap;
+use tokio::task::JoinHandle;
+
+const METRICS_ROUTE: &str = "/metrics";
+const PRIMARY_METRICS_PREFIX: &str = "narwhal_primary";
+const WORKER_METRICS_PREFIX: &str = "narwhal_worker";
+
+pub fn new_registry() -> Result<Registry, PrometheusError> {
+    Ok(Registry::new_custom(None, None)?)
+}
+
+pub fn primary_metrics_registry(
+    authority_id: AuthorityIdentifier,
+) -> Result<Registry, PrometheusError> {
+    let mut labels = HashMap::new();
+    labels.insert("node_name".to_string(), authority_id.to_string());
+    let registry = Registry::new_custom(Some(PRIMARY_METRICS_PREFIX.to_string()), Some(labels))?;
+
+    Ok(registry)
+}
+
+pub fn worker_metrics_registry(
+    worker_id: WorkerId,
+    authority_id: AuthorityIdentifier,
+) -> Result<Registry, PrometheusError> {
+    let mut labels = HashMap::new();
+    labels.insert("node_name".to_string(), authority_id.to_string());
+    labels.insert("worker_id".to_string(), worker_id.to_string());
+    let registry = Registry::new_custom(Some(WORKER_METRICS_PREFIX.to_string()), Some(labels))?;
+
+    Ok(registry)
+}
+
+#[must_use]
+pub fn start_prometheus_server(addr: Multiaddr, registry: &Registry) -> JoinHandle<()> {
+    let app = Router::new().route(METRICS_ROUTE, get(metrics)).layer(Extension(registry.clone()));
+
+    let socket_addr = addr.to_socket_addr().expect("failed to convert Multiaddr to SocketAddr");
+
+    spawn_logged_monitored_task!(
+        async move {
+            axum::Server::bind(&socket_addr)
+                .serve(app.into_make_service())
+                .await
+                .expect("axum server to bind on open port");
+        },
+        "MetricsServerTask"
+    )
+}

@@ -168,7 +168,7 @@ impl Subscriber {
                 // Receive here consensus messages for which we have downloaded all transactions data.
                 Some(message) = waiting.next() => {
                     if let Err(e) = tx_notifier.send(message).await {
-                        error!("tx_notifier closed: {}", e);
+                        error!("tx_notifier closed for authority {}: {}", self.inner.authority_id, e);
                         return Ok(());
                     }
                 },

@@ -1,46 +1,39 @@
 //! Batch validator
 
-use std::{
-    collections::BTreeMap,
-    fmt::{Debug, Display},
-    sync::Arc,
-};
-
+use crate::error::BatchValidationError;
+use narwhal_types::Batch;
+use reth_blockchain_tree::BundleStateDataRef;
 use reth_db::database::Database;
 use reth_interfaces::{
     blockchain_tree::{error::BlockchainTreeError, BlockchainTreeViewer},
     consensus::Consensus,
     executor::BlockValidationError,
 };
-use reth_provider::{
-    providers::BundleStateProvider, BundleStateDataProvider, BundleStateWithReceipts,
-    ChainSpecProvider, ExecutorFactory, HeaderProvider, ProviderFactory, StateRootProvider,
-};
-
-use crate::error::BatchValidationError;
-use narwhal_types::Batch;
-use reth_blockchain_tree::{BundleStateDataRef, ShareableBlockchainTree};
 use reth_primitives::{GotExpected, Hardfork, SealedBlockWithSenders, U256};
+use reth_provider::{
+    providers::{BlockchainProvider, BundleStateProvider},
+    BlockchainTreePendingStateProvider, BundleStateDataProvider, BundleStateWithReceipts,
+    ChainSpecProvider, ExecutorFactory, HeaderProvider, StateProviderFactory, StateRootProvider,
+};
+use reth_revm::EvmProcessorFactory;
+use std::{
+    collections::BTreeMap,
+    fmt::{Debug, Display},
+    sync::Arc,
+};
 use tracing::debug;
 
 /// Batch validator
 #[derive(Clone)]
-pub struct BatchValidator<DB: Database + Clone, EF: ExecutorFactory + Clone> {
-    /// The provider factory, used to commit the canonical chain, or unwind it.
-    provider_factory: ProviderFactory<DB>,
-    /// The executor factory to execute blocks with.
-    executor_factory: EF,
+pub struct BatchValidator<DB, Tree> {
     /// Validation methods for beacon consensus.
     ///
     /// Required to remain fully compatible with Ethereum.
     consensus: Arc<dyn Consensus>,
-    /// Shareable blockchain tree.
-    ///
-    /// Updated by the engine when executing consensus output.
-    ///
-    /// [Self] still needs a copy of [ProviderFactory] and ExecutorFactory
-    /// bc these `externals` are private in reth.
-    tree: ShareableBlockchainTree<DB, EF>,
+    /// Database provider to encompass tree and provider factory.
+    blockchain_db: BlockchainProvider<DB, Tree>,
+    /// The executor factory to execute blocks with.
+    executor_factory: EvmProcessorFactory,
 }
 
 /// Defines the validation procedure for receiving either a new single transaction (from a client)
@@ -57,10 +50,11 @@ pub trait BatchValidation: Clone + Send + Sync + 'static {
 
 #[async_trait::async_trait]
 // impl<DB, EF> TransactionValidator for BatchValidator<DB, EF>
-impl<DB: Database + Clone, EF: ExecutorFactory + Clone> BatchValidation for BatchValidator<DB, EF>
+impl<DB, Tree> BatchValidation for BatchValidator<DB, Tree>
 where
-    // DB: Database,
-    Self: Clone + Send + Sync + 'static,
+    DB: Database + Sized + Clone + 'static,
+    Tree: BlockchainTreePendingStateProvider + BlockchainTreeViewer + Clone + Send + Sync + 'static,
+    // Self: Clone + Send + Sync + 'static,
 {
     /// Error type for batch validation
     type Error = BatchValidationError;
@@ -116,16 +110,17 @@ where
         debug!(target: "batch_validator", head = ?block_num_hash.hash, ?parent, "Appending block to canonical chain");
 
         // retrieve latest db provider
-        let provider = self.provider_factory.provider()?;
+        // let provider = self.provider_factory.provider()?;
 
         // Validate that the block is post merge
-        let parent_td = provider
+        let parent_td = self
+            .blockchain_db
             .header_td(&block.parent_hash)?
             .ok_or_else(|| BlockchainTreeError::CanonicalChain { block_hash: block.parent_hash })?;
 
         // Pass the parent total difficulty to short-circuit unnecessary calculations.
         if !self
-            .provider_factory
+            .blockchain_db
             .chain_spec()
             .fork(Hardfork::Paris)
             .active_at_ttd(parent_td, U256::ZERO)
@@ -134,7 +129,8 @@ where
         }
 
         // retrieve parent header from provider
-        let parent_header = provider
+        let parent_header = self
+            .blockchain_db
             .header(&block.parent_hash)?
             .ok_or_else(|| BlockchainTreeError::CanonicalChain { block_hash: block.parent_hash })?
             .seal(block.parent_hash);
@@ -142,7 +138,7 @@ where
         // read from canonical tree - updated by `Executor` and engine
         //
         // same return as BlockchainTree::canonical_chain()
-        let canonical_block_hashes = self.tree.canonical_blocks();
+        let canonical_block_hashes = self.blockchain_db.canonical_blocks();
 
         // from AppendableChain::new_canonical_fork() but with state root validation added
         let state = BundleStateWithReceipts::default();
@@ -167,8 +163,7 @@ where
         let block = block.unseal();
 
         let canonical_fork = bundle_state_data_provider.canonical_fork();
-        let state_provider =
-            self.provider_factory.history_by_block_number(canonical_fork.number)?;
+        let state_provider = self.blockchain_db.history_by_block_number(canonical_fork.number)?;
 
         let provider = BundleStateProvider::new(state_provider, bundle_state_data_provider);
 
@@ -189,15 +184,29 @@ where
     }
 }
 
-impl<DB: Database + Clone, EF: ExecutorFactory + Clone> BatchValidator<DB, EF> {
+impl<DB, Tree> BatchValidator<DB, Tree> {
     /// Create a new instance of [Self]
     pub fn new(
-        provider_factory: ProviderFactory<DB>,
-        executor_factory: EF,
         consensus: Arc<dyn Consensus>,
-        tree: ShareableBlockchainTree<DB, EF>,
+        executor_factory: EvmProcessorFactory,
+        blockchain_db: BlockchainProvider<DB, Tree>,
     ) -> Self {
-        Self { provider_factory, executor_factory, consensus, tree }
+        Self { consensus, blockchain_db, executor_factory }
+    }
+}
+
+#[cfg(any(test, feature = "test-utils"))]
+/// Noop validation struct that validates any batch.
+#[derive(Default, Clone)]
+pub struct NoopBatchValidator;
+
+#[cfg(any(test, feature = "test-utils"))]
+#[async_trait::async_trait]
+impl BatchValidation for NoopBatchValidator {
+    type Error = BatchValidationError;
+
+    async fn validate_batch(&self, _batch: &Batch) -> Result<(), Self::Error> {
+        Ok(())
     }
 }
 
@@ -207,11 +216,15 @@ mod tests {
     use narwhal_types::{test_utils::TransactionFactory, yukon_genesis, VersionedMetadata};
     use reth::{init::init_genesis, revm::EvmProcessorFactory};
     use reth_beacon_consensus::BeaconConsensus;
-    use reth_blockchain_tree::{BlockchainTree, BlockchainTreeConfig, TreeExternals};
+    use reth_blockchain_tree::{
+        BlockchainTree, BlockchainTreeConfig, ShareableBlockchainTree, TreeExternals,
+    };
     use reth_db::test_utils::create_test_rw_db;
     use reth_primitives::{
-        hex, Bloom, Bytes, ChainSpec, GenesisAccount, Header, SealedHeader, B256, EMPTY_OMMER_ROOT_HASH,
+        hex, Bloom, Bytes, ChainSpec, GenesisAccount, Header, SealedHeader, B256,
+        EMPTY_OMMER_ROOT_HASH,
     };
+    use reth_provider::ProviderFactory;
     use reth_tracing::init_test_tracing;
     use std::str::FromStr;
 
@@ -259,15 +272,19 @@ mod tests {
 
         let blockchain_tree = ShareableBlockchainTree::new(tree);
 
+        // provider
+        let blockchain_db =
+            BlockchainProvider::new(provider_factory.clone(), blockchain_tree.clone())
+                .expect("blockchain db valid");
+
         // batch validator
         let batch_validator = BatchValidator::new(
-            provider_factory,
-            EvmProcessorFactory::new(chain.clone()),
             Arc::clone(&consensus),
-            blockchain_tree,
+            EvmProcessorFactory::new(chain.clone()),
+            blockchain_db,
         );
 
-        // tx factory - same address - nonce 0-2
+        // tx factory - [0; 32] seed address - nonce 0-2
         //
         // transactions are deterministic bc the factory is seeded with [0; 32]
 

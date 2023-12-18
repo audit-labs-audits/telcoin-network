@@ -58,7 +58,7 @@ async fn test_restore_from_disk() {
     tokio::time::sleep(Duration::from_secs(10)).await;
 
     // Now start the node 0 again
-    cluster.start_node(0, true, Some(1)).await;
+    cluster.start_node(0, true, Some(1)).await.expect("cluster started node 0");
 
     // Let the node recover
     tokio::time::sleep(Duration::from_secs(2)).await;
@@ -118,7 +118,7 @@ async fn test_read_causal_signed_certificates() {
     tokio::time::sleep(Duration::from_secs(10)).await;
 
     // Now start the validator 0 again
-    cluster.start_node(0, true, Some(1)).await;
+    cluster.start_node(0, true, Some(1)).await.expect("cluster started node 0");
 
     // Now check that the current round advances. Give the opportunity with a few
     // iterations. If metric hasn't picked up then we know that node can't make

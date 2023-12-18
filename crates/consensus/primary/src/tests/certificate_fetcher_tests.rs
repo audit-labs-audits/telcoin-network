@@ -517,7 +517,7 @@ async fn fetch_certificates_v1_basic() {
         &primary_channel_metrics,
     ));
 
-    let fake_primary_addr = fake_primary.address().to_anemo_address().unwrap();
+    let fake_primary_addr = fake_primary.network_address().to_anemo_address().unwrap();
     let fake_route =
         anemo::Router::new().add_rpc_service(PrimaryToPrimaryServer::new(NetworkProxy {
             request: tx_fetch_req,
@@ -528,8 +528,10 @@ async fn fetch_certificates_v1_basic() {
         .private_key(fake_primary.network_keypair().copy().private().0.to_bytes())
         .start(fake_route)
         .unwrap();
-    let client_network =
-        narwhal_types::test_utils::test_network(primary.network_keypair(), primary.address());
+    let client_network = narwhal_types::test_utils::test_network(
+        primary.network_keypair(),
+        primary.network_address(),
+    );
     client_network
         .connect_with_peer_id(fake_primary_addr, fake_server_network.peer_id())
         .await
