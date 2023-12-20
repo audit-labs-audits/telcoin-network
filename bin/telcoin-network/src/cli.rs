@@ -1,16 +1,12 @@
 //! CLI definition and entrypoint to executable
-use crate::version::{LONG_VERSION, SHORT_VERSION};
-use clap::{value_parser, ArgAction, Args, Parser, Subcommand, ValueEnum};
-use reth::{
-    args::utils::genesis_value_parser,
-    chain,
-    cli::ext::RethCliExt,
-    db, debug_cmd,
-    dirs::{LogsDir, PlatformPath},
-    node, p2p, recover,
-    runner::CliRunner,
-    stage, test_vectors,
+use crate::{
+    args::clap_genesis_parser,
+    dirs::LogsDir,
+    keys, node,
+    version::{LONG_VERSION, SHORT_VERSION},
 };
+use clap::{value_parser, ArgAction, Args, Parser, Subcommand, ValueEnum};
+use reth::{chain, cli::ext::RethCliExt, dirs::PlatformPath, recover, runner::CliRunner};
 use reth_primitives::ChainSpec;
 use reth_tracing::{
     tracing::{metadata::LevelFilter, Level, Subscriber},
@@ -31,19 +27,15 @@ pub struct Cli<Ext: RethCliExt = ()> {
 
     /// The chain this node is running.
     ///
-    /// Possible values are either a built-in chain or the path to a chain specification file.
-    ///
-    /// Built-in chains:
-    /// - mainnet
-    /// - goerli
-    /// - sepolia
-    /// - holesky
+    /// The value parser matches either a known chain, the path
+    /// to a json file, or a json formatted string in-memory. The json can be either
+    /// a serialized [ChainSpec] or Genesis struct.
     #[arg(
         long,
         value_name = "CHAIN_OR_PATH",
         verbatim_doc_comment,
-        default_value = "mainnet",
-        value_parser = genesis_value_parser,
+        default_value = "yukon",
+        value_parser = clap_genesis_parser,
         global = true,
     )]
     chain: Arc<ChainSpec>,
@@ -84,14 +76,16 @@ impl<Ext: RethCliExt> Cli<Ext> {
         match self.command {
             Commands::Node(command) => runner.run_command_until_exit(|ctx| command.execute(ctx)),
             Commands::Init(command) => runner.run_blocking_until_ctrl_c(command.execute()),
-            Commands::Import(command) => runner.run_blocking_until_ctrl_c(command.execute()),
-            Commands::Db(command) => runner.run_blocking_until_ctrl_c(command.execute()),
-            Commands::Stage(command) => runner.run_blocking_until_ctrl_c(command.execute()),
-            Commands::P2P(command) => runner.run_until_ctrl_c(command.execute()),
-            Commands::TestVectors(command) => runner.run_until_ctrl_c(command.execute()),
+            // Commands::Import(command) => runner.run_blocking_until_ctrl_c(command.execute()),
+            // Commands::Db(command) => runner.run_blocking_until_ctrl_c(command.execute()),
+            // Commands::Stage(command) => runner.run_blocking_until_ctrl_c(command.execute()),
+            // Commands::P2P(command) => runner.run_until_ctrl_c(command.execute()),
+            // Commands::TestVectors(command) => runner.run_until_ctrl_c(command.execute()),
             Commands::Config(command) => runner.run_until_ctrl_c(command.execute()),
-            Commands::Debug(command) => runner.run_command_until_exit(|ctx| command.execute(ctx)),
+            // Commands::Debug(command) => runner.run_command_until_exit(|ctx|
+            // command.execute(ctx)),
             Commands::Recover(command) => runner.run_command_until_exit(|ctx| command.execute(ctx)),
+            Commands::GenerateKeys(command) => runner.run_command_until_exit(|_| command.execute()),
         }
     }
 
@@ -132,33 +126,47 @@ pub enum Commands<Ext: RethCliExt = ()> {
     /// Start the node
     #[command(name = "node")]
     Node(node::NodeCommand<Ext>),
+
     /// Initialize the database from a genesis file.
     #[command(name = "init")]
     Init(chain::InitCommand),
-    /// This syncs RLP encoded blocks from a file.
-    #[command(name = "import")]
-    Import(chain::ImportCommand),
-    /// Database debugging utilities
-    #[command(name = "db")]
-    Db(db::Command),
-    /// Manipulate individual stages.
-    #[command(name = "stage")]
-    Stage(stage::Command),
-    /// P2P Debugging utilities
-    #[command(name = "p2p")]
-    P2P(p2p::Command),
-    /// Generate Test Vectors
-    #[command(name = "test-vectors")]
-    TestVectors(test_vectors::Command),
+
+    // /// This syncs RLP encoded blocks from a file.
+    // #[command(name = "import")]
+    // Import(chain::ImportCommand),
+
+    // /// Database debugging utilities
+    // #[command(name = "db")]
+    // Db(db::Command),
+
+    // /// Manipulate individual stages.
+    // #[command(name = "stage")]
+    // Stage(stage::Command),
+
+    // /// P2P Debugging utilities
+    // #[command(name = "p2p")]
+    // P2P(p2p::Command),
+
+    // /// Generate Test Vectors
+    // #[command(name = "test-vectors")]
+    // TestVectors(test_vectors::Command),
     /// Write config to stdout
     #[command(name = "config")]
     Config(reth::config::Command),
-    /// Various debug routines
-    #[command(name = "debug")]
-    Debug(debug_cmd::Command),
+
+    // /// Various debug routines
+    // #[command(name = "debug")]
+    // Debug(debug_cmd::Command),
     /// Scripts for node recovery
     #[command(name = "recover")]
     Recover(recover::Command),
+
+    //
+    // Key management
+    /// Generate keys for node to participate in consensus.
+    /// TODO: ask @Utku about best practice here
+    #[command(name = "generate-keys")]
+    GenerateKeys(keys::Command),
 }
 
 impl<Ext: RethCliExt> Commands<Ext> {
@@ -318,11 +326,13 @@ impl Display for ColorMode {
 mod tests {
     use super::*;
     use clap::CommandFactory;
+    use narwhal_types::yukon_chain_spec;
 
     #[test]
     fn parse_color_mode() {
-        let reth = Cli::<()>::try_parse_from(["reth", "node", "--color", "always"]).unwrap();
-        assert_eq!(reth.logs.color, ColorMode::Always);
+        let tn =
+            Cli::<()>::try_parse_from(["telcoin-network", "node", "--color", "always"]).unwrap();
+        assert_eq!(tn.logs.color, ColorMode::Always);
     }
 
     /// Tests that the help message is parsed correctly. This ensures that clap args are configured
@@ -330,9 +340,9 @@ mod tests {
     /// runtime
     #[test]
     fn test_parse_help_all_subcommands() {
-        let reth = Cli::<()>::command();
-        for sub_command in reth.get_subcommands() {
-            let err = Cli::<()>::try_parse_from(["reth", sub_command.get_name(), "--help"])
+        let tn = Cli::<()>::command();
+        for sub_command in tn.get_subcommands() {
+            let err = Cli::<()>::try_parse_from(["telcoin-network", sub_command.get_name(), "--help"])
                 .err()
                 .unwrap_or_else(|| {
                     panic!("Failed to parse help message {}", sub_command.get_name())
@@ -348,25 +358,30 @@ mod tests {
     /// name
     #[test]
     fn parse_logs_path() {
-        let mut reth = Cli::<()>::try_parse_from(["reth", "node"]).unwrap();
-        reth.logs.log_file_directory =
-            reth.logs.log_file_directory.join(reth.chain.chain.to_string());
-        let log_dir = reth.logs.log_file_directory;
-        assert!(log_dir.as_ref().ends_with("reth/logs/mainnet"), "{:?}", log_dir);
+        let mut tn = Cli::<()>::try_parse_from(["telcoin-network", "node"]).unwrap();
+        assert_eq!(tn.chain.chain(), yukon_chain_spec().chain());
+        tn.logs.log_file_directory = tn.logs.log_file_directory.join(tn.chain.chain.to_string());
+        let log_dir = tn.logs.log_file_directory;
+        assert!(log_dir.as_ref().ends_with("telcoin-network/logs/2600"), "{:?}", log_dir);
 
-        let mut reth = Cli::<()>::try_parse_from(["reth", "node", "--chain", "sepolia"]).unwrap();
-        reth.logs.log_file_directory =
-            reth.logs.log_file_directory.join(reth.chain.chain.to_string());
-        let log_dir = reth.logs.log_file_directory;
-        assert!(log_dir.as_ref().ends_with("reth/logs/sepolia"), "{:?}", log_dir);
+        let mut tn =
+            Cli::<()>::try_parse_from(["telcoin-network", "node", "--chain", "sepolia"]).unwrap();
+        tn.logs.log_file_directory = tn.logs.log_file_directory.join(tn.chain.chain.to_string());
+        let log_dir = tn.logs.log_file_directory;
+        assert!(log_dir.as_ref().ends_with("telcoin-network/logs/sepolia"), "{:?}", log_dir);
     }
 
     #[test]
     fn override_trusted_setup_file() {
         // We already have a test that asserts that this has been initialized,
         // so we cheat a little bit and check that loading a random file errors.
-        let reth = Cli::<()>::try_parse_from(["reth", "node", "--trusted-setup-file", "README.md"])
-            .unwrap();
-        assert!(reth.run().is_err());
+        let tn = Cli::<()>::try_parse_from([
+            "telcoin-network",
+            "node",
+            "--trusted-setup-file",
+            "README.md",
+        ])
+        .unwrap();
+        assert!(tn.run().is_err());
     }
 }

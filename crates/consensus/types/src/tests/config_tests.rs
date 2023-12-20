@@ -136,7 +136,7 @@ fn update_primary_network_info_test() {
         .into_iter()
         .zip(addresses)
         .map(|((pk, stk), addr)| (pk, (stk, addr)))
-        .collect::<BTreeMap<PublicKey, (Stake, Multiaddr)>>();
+        .collect::<BTreeMap<BlsPublicKey, (Stake, Multiaddr)>>();
 
     let mut comm = committee;
     let res = comm.update_primary_network_info(new_info.clone());

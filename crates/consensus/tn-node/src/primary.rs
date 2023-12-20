@@ -24,9 +24,9 @@ use narwhal_primary::{
 };
 use narwhal_storage::NodeStorage;
 use narwhal_types::{
-    AuthorityIdentifier, Certificate, ChainIdentifier, Committee, ConditionalBroadcastReceiver,
-    ConsensusOutput, KeyPair, NetworkKeyPair, Parameters, PreSubscribedBroadcastSender, PublicKey,
-    Round, WorkerCache, BAD_NODES_STAKE_THRESHOLD,
+    AuthorityIdentifier, BlsKeypair, BlsPublicKey, Certificate, ChainIdentifier, Committee,
+    ConditionalBroadcastReceiver, ConsensusOutput, NetworkKeypair, Parameters,
+    PreSubscribedBroadcastSender, Round, WorkerCache, BAD_NODES_STAKE_THRESHOLD,
 };
 use prometheus::{IntGauge, Registry};
 use std::{sync::Arc, time::Instant};
@@ -64,9 +64,9 @@ impl PrimaryNodeInner {
     #[instrument(level = "info", skip_all)]
     async fn start(
         &mut self, // The private-public key pair of this authority.
-        keypair: KeyPair,
+        keypair: BlsKeypair,
         // The private-public network key pair of this authority.
-        network_keypair: NetworkKeyPair,
+        network_keypair: NetworkKeypair,
         // The committee information.
         committee: Committee,
         chain: ChainIdentifier,
@@ -199,9 +199,9 @@ where
     /// transactions.
     pub async fn spawn_primary(
         // The private-public key pair of this authority.
-        keypair: KeyPair,
+        keypair: BlsKeypair,
         // The private-public network key pair of this authority.
-        network_keypair: NetworkKeyPair,
+        network_keypair: NetworkKeypair,
         // The committee information.
         committee: Committee,
         // The worker information cache.
@@ -333,7 +333,7 @@ where
         tx_notifier: Sender<ConsensusOutput>,
     ) -> SubscriberResult<(Vec<JoinHandle<()>>, LeaderSchedule)>
     where
-        PublicKey: VerifyingKey,
+        BlsPublicKey: VerifyingKey,
         // State: ExecutionState + Send + Sync + 'static,
     {
         let consensus_metrics = Arc::new(ConsensusMetrics::new(registry));
@@ -437,9 +437,9 @@ impl PrimaryNode {
     pub async fn start(
         &self,
         // The private-public key pair of this authority.
-        keypair: KeyPair,
+        keypair: BlsKeypair,
         // The private-public network key pair of this authority.
-        network_keypair: NetworkKeyPair,
+        network_keypair: NetworkKeypair,
         // The committee information.
         committee: Committee,
         chain: ChainIdentifier,

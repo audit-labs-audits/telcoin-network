@@ -1,5 +1,5 @@
-// Copyright (c) 2021, Facebook, Inc. and its affiliates
 // Copyright (c) Telcoin, LLC
+// Copyright (c) 2021, Facebook, Inc. and its affiliates
 // Copyright (c) Mysten Labs, Inc.
 // SPDX-License-Identifier: Apache-2.0
 
@@ -7,6 +7,7 @@ use fastcrypto::{
     bls12381, ed25519,
     error::FastCryptoError,
     hash::{Blake2b256, HashFunction},
+    secp256k1,
     traits::{AggregateAuthenticator, Signer, VerifyingKey},
 };
 
@@ -29,16 +30,20 @@ pub use intent::*;
 // to change all four aliases to point to concrete types that work with each other. Failure to do
 // so will result in a ton of compilation errors, and worse: it will not make sense!
 
-pub type PublicKey = bls12381::min_sig::BLS12381PublicKey;
-pub type PublicKeyBytes = bls12381::min_sig::BLS12381PublicKeyAsBytes;
-pub type Signature = bls12381::min_sig::BLS12381Signature;
-pub type AggregateSignature = bls12381::min_sig::BLS12381AggregateSignature;
-pub type AggregateSignatureBytes = bls12381::min_sig::BLS12381AggregateSignatureAsBytes;
-pub type PrivateKey = bls12381::min_sig::BLS12381PrivateKey;
-pub type KeyPair = bls12381::min_sig::BLS12381KeyPair;
+// Bls used for consensus
+pub type BlsPublicKey = bls12381::min_sig::BLS12381PublicKey;
+pub type BlsPublicKeyBytes = bls12381::min_sig::BLS12381PublicKeyAsBytes;
+pub type BlsSignature = bls12381::min_sig::BLS12381Signature;
+pub type BlsAggregateSignature = bls12381::min_sig::BLS12381AggregateSignature;
+pub type BlsAggregateSignatureBytes = bls12381::min_sig::BLS12381AggregateSignatureAsBytes;
+pub type BlsPrivateKey = bls12381::min_sig::BLS12381PrivateKey;
+pub type BlsKeypair = bls12381::min_sig::BLS12381KeyPair;
 
 pub type NetworkPublicKey = ed25519::Ed25519PublicKey;
-pub type NetworkKeyPair = ed25519::Ed25519KeyPair;
+pub type NetworkKeypair = ed25519::Ed25519KeyPair;
+
+pub type ExecutionPublicKey = secp256k1::Secp256k1PublicKey;
+pub type ExecutionKeypair = secp256k1::Secp256k1KeyPair;
 
 pub type RandomnessSignature = fastcrypto_tbls::types::Signature;
 pub type RandomnessPartialSignature = fastcrypto_tbls::tbls::PartialSignature<RandomnessSignature>;
@@ -63,13 +68,13 @@ pub trait NarwhalAuthoritySignature {
     fn verify_secure<T>(
         &self,
         value: &IntentMessage<T>,
-        author: &PublicKey,
+        author: &BlsPublicKey,
     ) -> Result<(), FastCryptoError>
     where
         T: Serialize;
 }
 
-impl NarwhalAuthoritySignature for Signature {
+impl NarwhalAuthoritySignature for BlsSignature {
     fn new_secure<T>(value: &IntentMessage<T>, secret: &dyn Signer<Self>) -> Self
     where
         T: Serialize,
@@ -81,7 +86,7 @@ impl NarwhalAuthoritySignature for Signature {
     fn verify_secure<T>(
         &self,
         value: &IntentMessage<T>,
-        public_key: &PublicKey,
+        public_key: &BlsPublicKey,
     ) -> Result<(), FastCryptoError>
     where
         T: Serialize,
@@ -91,21 +96,21 @@ impl NarwhalAuthoritySignature for Signature {
     }
 }
 
-pub trait NarwhalAuthorityAggregateSignature {
+pub trait NarwhalAuthorityBlsAggregateSignature {
     fn verify_secure<T>(
         &self,
         value: &IntentMessage<T>,
-        pks: &[PublicKey],
+        pks: &[BlsPublicKey],
     ) -> Result<(), FastCryptoError>
     where
         T: Serialize;
 }
 
-impl NarwhalAuthorityAggregateSignature for AggregateSignature {
+impl NarwhalAuthorityBlsAggregateSignature for BlsAggregateSignature {
     fn verify_secure<T>(
         &self,
         value: &IntentMessage<T>,
-        pks: &[PublicKey],
+        pks: &[BlsPublicKey],
     ) -> Result<(), FastCryptoError>
     where
         T: Serialize,

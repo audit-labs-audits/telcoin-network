@@ -1,7 +1,9 @@
 //! Main node command
 //!
 //! Starts the client
-use crate::{prometheus_exporter, version::SHORT_VERSION};
+use crate::{
+    args::clap_genesis_parser, dirs::DataDirPath, prometheus_exporter, version::SHORT_VERSION,
+};
 use clap::{value_parser, Parser};
 use eyre::Context;
 use fdlimit::raise_fd_limit;
@@ -9,17 +11,15 @@ use futures::{future::Either, pin_mut, stream, stream_select, StreamExt};
 use metrics_exporter_prometheus::PrometheusHandle;
 use reth::{
     args::{
-        get_secret_key,
-        utils::{genesis_value_parser, parse_socket_address},
-        DatabaseArgs, DebugArgs, DevArgs, NetworkArgs, PayloadBuilderArgs, PruningArgs,
-        RpcServerArgs, TxPoolArgs,
+        get_secret_key, utils::parse_socket_address, DatabaseArgs, DebugArgs, DevArgs, NetworkArgs,
+        PayloadBuilderArgs, PruningArgs, RpcServerArgs, TxPoolArgs,
     },
     cli::{
         components::RethNodeComponentsImpl,
         config::RethRpcConfig,
         ext::{RethCliExt, RethNodeCommandConfig},
     },
-    dirs::{DataDirPath, MaybePlatformPath},
+    dirs::MaybePlatformPath,
     init::init_genesis,
     node::{cl_events::ConsensusLayerHealthEvents, events},
     runner::CliContext,
@@ -109,19 +109,14 @@ pub struct NodeCommand<Ext: RethCliExt = ()> {
     ///
     /// Possible values are either a built-in chain or the path to a chain specification file.
     ///
-    /// Built-in chains:
-    /// - mainnet
-    /// - goerli
-    /// - sepolia
-    /// - holesky
-    /// - dev
+    /// Defaults to the custom
     #[arg(
         long,
         value_name = "CHAIN_OR_PATH",
         verbatim_doc_comment,
-        default_value = "mainnet",
+        default_value = "yukon",
         default_value_if("dev", "true", "dev"),
-        value_parser = genesis_value_parser,
+        value_parser = clap_genesis_parser,
         required = false,
     )]
     pub chain: Arc<ChainSpec>,

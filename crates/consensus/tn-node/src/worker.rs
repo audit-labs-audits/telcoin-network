@@ -13,7 +13,7 @@ use fastcrypto::traits::KeyPair;
 use narwhal_network::client::NetworkClient;
 use narwhal_storage::NodeStorage;
 use narwhal_types::{
-    Committee, NetworkKeyPair, Parameters, PreSubscribedBroadcastSender, PublicKey, WorkerCache,
+    BlsPublicKey, Committee, NetworkKeypair, Parameters, PreSubscribedBroadcastSender, WorkerCache,
     WorkerId,
 };
 use narwhal_worker::{
@@ -49,9 +49,9 @@ impl WorkerNodeInner {
     async fn start(
         &mut self,
         // The primary's id
-        primary_name: PublicKey,
+        primary_name: BlsPublicKey,
         // The private-public network key pair of this authority.
-        network_keypair: NetworkKeyPair,
+        network_keypair: NetworkKeypair,
         // The committee information.
         committee: Committee,
         // The worker information cache.
@@ -213,9 +213,9 @@ impl WorkerNode {
     pub async fn start(
         &self,
         // The primary's public key of this authority.
-        primary_key: PublicKey,
+        primary_key: BlsPublicKey,
         // The private-public network key pair of this authority.
-        network_keypair: NetworkKeyPair,
+        network_keypair: NetworkKeypair,
         // The committee information.
         committee: Committee,
         // The worker information cache.
@@ -284,9 +284,9 @@ impl WorkerNodes {
     pub async fn start(
         &self,
         // The primary's public key of this authority.
-        primary_key: PublicKey,
+        primary_key: BlsPublicKey,
         // The ids & keypairs of the workers to spawn.
-        ids_and_keypairs: Vec<(WorkerId, NetworkKeyPair)>,
+        ids_and_keypairs: Vec<(WorkerId, NetworkKeypair)>,
         // The committee information.
         committee: Committee,
         // The worker information cache.

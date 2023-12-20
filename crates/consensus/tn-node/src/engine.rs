@@ -773,9 +773,7 @@ mod tests {
     use assert_matches::assert_matches;
     use consensus_metrics::metered_channel;
     use fastcrypto::{hash::Hash, traits::KeyPair};
-    use jsonrpsee::{
-        core::client::ClientT, rpc_params,
-    };
+    use jsonrpsee::{core::client::ClientT, rpc_params};
     use narwhal_network::client::NetworkClient;
     use narwhal_network_types::{FetchBatchesResponse, MockPrimaryToWorker};
     use narwhal_primary::{

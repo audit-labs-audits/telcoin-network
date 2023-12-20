@@ -34,7 +34,7 @@ use narwhal_network::{
 };
 use narwhal_typed_store::rocks::DBMap;
 use narwhal_types::{
-    traits::KeyPair as _, Authority, AuthorityIdentifier, Committee, Multiaddr, NetworkKeyPair,
+    traits::KeyPair as _, Authority, AuthorityIdentifier, Committee, Multiaddr, NetworkKeypair,
     NetworkPublicKey, NewBatch, Parameters, Protocol, WorkerCache, WorkerId,
 };
 use std::{collections::HashMap, net::Ipv4Addr, sync::Arc, thread::sleep, time::Duration};
@@ -63,7 +63,7 @@ pub struct Worker {
     /// This authority.
     authority: Authority,
     // The private-public key pair of this worker.
-    keypair: NetworkKeyPair,
+    keypair: NetworkKeypair,
     /// The id of this worker used for index-based lookup by other NW nodes.
     id: WorkerId,
     /// The committee information.
@@ -79,7 +79,7 @@ pub struct Worker {
 impl Worker {
     pub fn spawn(
         authority: Authority,
-        keypair: NetworkKeyPair,
+        keypair: NetworkKeypair,
         id: WorkerId,
         committee: Committee,
         worker_cache: WorkerCache,

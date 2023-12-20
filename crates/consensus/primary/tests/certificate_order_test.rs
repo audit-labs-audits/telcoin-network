@@ -5,8 +5,8 @@ use fastcrypto::traits::KeyPair as _;
 use indexmap::IndexMap;
 use narwhal_types::{
     test_utils::{AuthorityFixture, CommitteeFixture},
-    AuthorityIdentifier, Certificate, Committee, Header, HeaderV1, PublicKey, Signature, Stake,
-    Vote, VoteAPI,
+    AuthorityIdentifier, BlsPublicKey, BlsSignature, Certificate, Committee, Header, HeaderV1,
+    Stake, Vote, VoteAPI,
 };
 use rand::{rngs::OsRng, seq::SliceRandom};
 use std::{collections::BTreeSet, num::NonZeroUsize};
@@ -28,8 +28,8 @@ async fn test_certificate_signers_are_ordered() {
     let header = HeaderV1::new(authority.id(), 1, 1, IndexMap::new(), Vec::new(), BTreeSet::new());
 
     // WHEN
-    let mut votes: Vec<(AuthorityIdentifier, Signature)> = Vec::new();
-    let mut sorted_signers: Vec<PublicKey> = Vec::new();
+    let mut votes: Vec<(AuthorityIdentifier, BlsSignature)> = Vec::new();
+    let mut sorted_signers: Vec<BlsPublicKey> = Vec::new();
 
     // The authorities on position 1, 2, 3 are the ones who would sign
     for authority in &authorities[1..=3] {

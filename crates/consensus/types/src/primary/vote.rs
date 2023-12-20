@@ -14,7 +14,8 @@ use std::fmt;
 use crate::{
     config::{AuthorityIdentifier, Epoch},
     crypto::{
-        self, to_intent_message, IntentMessage, NarwhalAuthoritySignature, PublicKey, Signature,
+        self, to_intent_message, BlsPublicKey, BlsSignature, IntentMessage,
+        NarwhalAuthoritySignature,
     },
     Header, HeaderAPI, HeaderDigest, Round,
 };
@@ -34,7 +35,7 @@ impl Vote {
     pub async fn new(
         header: &Header,
         author: &AuthorityIdentifier,
-        signature_service: &SignatureService<Signature, { crypto::INTENT_MESSAGE_LENGTH }>,
+        signature_service: &SignatureService<BlsSignature, { crypto::INTENT_MESSAGE_LENGTH }>,
     ) -> Self {
         Vote::V1(VoteV1::new(header, author, signature_service).await)
     }
@@ -42,7 +43,7 @@ impl Vote {
     /// TODO: docs
     pub fn new_with_signer<S>(header: &Header, author: &AuthorityIdentifier, signer: &S) -> Self
     where
-        S: Signer<Signature>,
+        S: Signer<BlsSignature>,
     {
         Vote::V1(VoteV1::new_with_signer(header, author, signer))
     }
@@ -71,7 +72,7 @@ pub trait VoteAPI {
     /// TODO
     fn author(&self) -> AuthorityIdentifier;
     /// TODO
-    fn signature(&self) -> &<PublicKey as VerifyingKey>::Sig;
+    fn signature(&self) -> &<BlsPublicKey as VerifyingKey>::Sig;
 }
 
 /// VoteV1
@@ -88,7 +89,7 @@ pub struct VoteV1 {
     /// Author of this vote.
     pub author: AuthorityIdentifier,
     /// Signature of the HeaderDigest.
-    pub signature: <PublicKey as VerifyingKey>::Sig,
+    pub signature: <BlsPublicKey as VerifyingKey>::Sig,
 }
 
 impl VoteAPI for VoteV1 {
@@ -107,7 +108,7 @@ impl VoteAPI for VoteV1 {
     fn author(&self) -> AuthorityIdentifier {
         self.author
     }
-    fn signature(&self) -> &<PublicKey as VerifyingKey>::Sig {
+    fn signature(&self) -> &<BlsPublicKey as VerifyingKey>::Sig {
         &self.signature
     }
 }
@@ -116,7 +117,7 @@ impl VoteV1 {
     pub async fn new(
         header: &Header,
         author: &AuthorityIdentifier,
-        signature_service: &SignatureService<Signature, { crypto::INTENT_MESSAGE_LENGTH }>,
+        signature_service: &SignatureService<BlsSignature, { crypto::INTENT_MESSAGE_LENGTH }>,
     ) -> Self {
         let vote = Self {
             header_digest: header.digest(),
@@ -124,7 +125,7 @@ impl VoteV1 {
             epoch: header.epoch(),
             origin: header.author(),
             author: *author,
-            signature: Signature::default(),
+            signature: BlsSignature::default(),
         };
         let signature = signature_service.request_signature(vote.digest().into()).await;
         Self { signature, ..vote }
@@ -132,7 +133,7 @@ impl VoteV1 {
 
     pub fn new_with_signer<S>(header: &Header, author: &AuthorityIdentifier, signer: &S) -> Self
     where
-        S: Signer<Signature>,
+        S: Signer<BlsSignature>,
     {
         let vote = Self {
             header_digest: header.digest(),
@@ -140,11 +141,11 @@ impl VoteV1 {
             epoch: header.epoch(),
             origin: header.author(),
             author: *author,
-            signature: Signature::default(),
+            signature: BlsSignature::default(),
         };
 
         let vote_digest: Digest<{ crypto::DIGEST_LENGTH }> = vote.digest().into();
-        let signature = Signature::new_secure(&to_intent_message(vote_digest), signer);
+        let signature = BlsSignature::new_secure(&to_intent_message(vote_digest), signer);
 
         Self { signature, ..vote }
     }

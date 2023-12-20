@@ -3,7 +3,7 @@ use narwhal_network_types::{
     RequestBatchesRequest, RequestBatchesResponse, WorkerBatchMessage, WorkerToWorker,
     WorkerToWorkerServer,
 };
-use narwhal_types::{traits::KeyPair as _, Multiaddr, NetworkKeyPair};
+use narwhal_types::{traits::KeyPair as _, Multiaddr, NetworkKeypair};
 use tokio::sync::mpsc::{channel, Receiver, Sender};
 use tracing::info;
 
@@ -13,7 +13,7 @@ pub struct WorkerToWorkerMockServer {
 
 impl WorkerToWorkerMockServer {
     pub fn spawn(
-        keypair: NetworkKeyPair,
+        keypair: NetworkKeypair,
         address: Multiaddr,
     ) -> (Receiver<WorkerBatchMessage>, anemo::Network) {
         let addr = address.to_anemo_address().unwrap();

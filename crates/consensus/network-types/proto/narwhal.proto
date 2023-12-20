@@ -30,12 +30,12 @@ message MultiAddr {
     string address = 1;
 }
 
-message PublicKey {
+message BlsPublicKey {
     bytes bytes = 1;
 }
 
 message ValidatorData {
-    PublicKey public_key = 1;
+    BlsPublicKey public_key = 1;
     int64 stake_weight = 2;
     MultiAddr primary_address = 3;
 }
@@ -84,7 +84,7 @@ message ReadCausalResponse {
 message RoundsRequest {
     /// The validator's key for which we want to retrieve
     /// the available rounds.
-    PublicKey public_key = 1;
+    BlsPublicKey public_key = 1;
 }
 
 message RoundsResponse {
@@ -98,7 +98,7 @@ message RoundsResponse {
 }
 
 message NodeReadCausalRequest {
-    PublicKey public_key = 1;
+    BlsPublicKey public_key = 1;
     uint64 round = 2;
 }
 

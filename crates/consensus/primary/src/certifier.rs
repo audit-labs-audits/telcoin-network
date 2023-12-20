@@ -17,8 +17,8 @@ use narwhal_network_types::{PrimaryToPrimaryClient, RequestVoteRequest};
 use narwhal_types::{
     ensure,
     error::{DagError, DagResult},
-    Certificate, CertificateDigest, ConditionalBroadcastReceiver, Header, HeaderAPI,
-    NetworkPublicKey, Signature, Vote, VoteAPI,
+    BlsSignature, Certificate, CertificateDigest, ConditionalBroadcastReceiver, Header, HeaderAPI,
+    NetworkPublicKey, Vote, VoteAPI,
 };
 use tokio::{
     sync::oneshot,
@@ -45,7 +45,7 @@ pub struct Certifier {
     /// Handles synchronization with other nodes and our workers.
     synchronizer: Arc<Synchronizer>,
     /// Service to sign headers.
-    signature_service: SignatureService<Signature, { narwhal_types::INTENT_MESSAGE_LENGTH }>,
+    signature_service: SignatureService<BlsSignature, { narwhal_types::INTENT_MESSAGE_LENGTH }>,
     /// Receiver for shutdown.
     rx_shutdown: ConditionalBroadcastReceiver,
     /// Receives our newly created headers from the `Proposer`.
@@ -72,7 +72,7 @@ impl Certifier {
         committee: Committee,
         certificate_store: CertificateStore,
         synchronizer: Arc<Synchronizer>,
-        signature_service: SignatureService<Signature, { narwhal_types::INTENT_MESSAGE_LENGTH }>,
+        signature_service: SignatureService<BlsSignature, { narwhal_types::INTENT_MESSAGE_LENGTH }>,
         rx_shutdown: ConditionalBroadcastReceiver,
         rx_headers: Receiver<Header>,
         metrics: Arc<PrimaryMetrics>,
@@ -226,7 +226,7 @@ impl Certifier {
         authority_id: AuthorityIdentifier,
         committee: Committee,
         certificate_store: CertificateStore,
-        signature_service: SignatureService<Signature, { narwhal_types::INTENT_MESSAGE_LENGTH }>,
+        signature_service: SignatureService<BlsSignature, { narwhal_types::INTENT_MESSAGE_LENGTH }>,
         metrics: Arc<PrimaryMetrics>,
         network: anemo::Network,
         header: Header,

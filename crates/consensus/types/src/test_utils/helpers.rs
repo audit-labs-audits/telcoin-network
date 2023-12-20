@@ -3,9 +3,9 @@
 
 //! Helper methods for creating useful structs during tests.
 use crate::{
-    to_intent_message, yukon_chain_spec, AuthorityIdentifier, Batch, BatchDigest, Certificate,
-    CertificateAPI, CertificateDigest, Committee, Epoch, Header, HeaderAPI, HeaderV1Builder,
-    KeyPair, Multiaddr, NarwhalAuthoritySignature, NetworkKeyPair, Round, Signature, Stake,
+    to_intent_message, yukon_chain_spec, AuthorityIdentifier, Batch, BatchDigest, BlsKeypair,
+    BlsSignature, Certificate, CertificateAPI, CertificateDigest, Committee, Epoch, Header,
+    HeaderAPI, HeaderV1Builder, Multiaddr, NarwhalAuthoritySignature, NetworkKeypair, Round, Stake,
     TimestampSec, Transaction, WorkerId,
 };
 use fastcrypto::{hash::Hash, traits::KeyPair as _};
@@ -106,7 +106,7 @@ pub fn ensure_test_environment() {
     fdlimit::raise_fd_limit().expect("Could not raise ulimit");
 }
 
-pub fn test_network(keypair: NetworkKeyPair, address: &Multiaddr) -> anemo::Network {
+pub fn test_network(keypair: NetworkKeypair, address: &Multiaddr) -> anemo::Network {
     let address = address.to_anemo_address().unwrap();
     let network_key = keypair.private().0.to_bytes();
     anemo::Network::bind(address)
@@ -117,7 +117,7 @@ pub fn test_network(keypair: NetworkKeyPair, address: &Multiaddr) -> anemo::Netw
 }
 
 pub fn random_network() -> anemo::Network {
-    let network_key = NetworkKeyPair::generate(&mut StdRng::from_rng(OsRng).unwrap());
+    let network_key = NetworkKeypair::generate(&mut StdRng::from_rng(OsRng).unwrap());
     let address = "/ip4/127.0.0.1/udp/0".parse().unwrap();
     test_network(network_key, &address)
 }
@@ -126,8 +126,8 @@ pub fn random_network() -> anemo::Network {
 /// Keys, Committee
 ////////////////////////////////////////////////////////////////
 
-pub fn random_key() -> KeyPair {
-    KeyPair::generate(&mut thread_rng())
+pub fn random_key() -> BlsKeypair {
+    BlsKeypair::generate(&mut thread_rng())
 }
 
 ////////////////////////////////////////////////////////////////
@@ -268,7 +268,7 @@ pub fn make_optimal_signed_certificates(
     range: RangeInclusive<Round>,
     initial_parents: &BTreeSet<CertificateDigest>,
     committee: &Committee,
-    keys: &[(AuthorityIdentifier, KeyPair)],
+    keys: &[(AuthorityIdentifier, BlsKeypair)],
 ) -> (VecDeque<Certificate>, BTreeSet<CertificateDigest>) {
     make_signed_certificates(range, initial_parents, committee, keys, 0.0)
 }
@@ -589,7 +589,7 @@ pub fn make_signed_certificates(
     range: RangeInclusive<Round>,
     initial_parents: &BTreeSet<CertificateDigest>,
     committee: &Committee,
-    keys: &[(AuthorityIdentifier, KeyPair)],
+    keys: &[(AuthorityIdentifier, BlsKeypair)],
     failure_probability: f64,
 ) -> (VecDeque<Certificate>, BTreeSet<CertificateDigest>) {
     let ids = keys.iter().map(|(authority, _)| *authority).collect::<Vec<_>>();
@@ -654,7 +654,7 @@ pub fn mock_certificate_with_epoch(
 
 /// Creates one signed certificate from a set of signers - the signers must include the origin
 pub fn mock_signed_certificate(
-    signers: &[(AuthorityIdentifier, KeyPair)],
+    signers: &[(AuthorityIdentifier, BlsKeypair)],
     origin: AuthorityIdentifier,
     round: Round,
     parents: BTreeSet<CertificateDigest>,
@@ -674,7 +674,7 @@ pub fn mock_signed_certificate(
 
     let mut votes = Vec::new();
     for (name, signer) in signers {
-        let sig = Signature::new_secure(&to_intent_message(cert.header().digest()), signer);
+        let sig = BlsSignature::new_secure(&to_intent_message(cert.header().digest()), signer);
         votes.push((*name, sig))
     }
     let cert = Certificate::new_unverified(committee, Header::V1(header), votes).unwrap();

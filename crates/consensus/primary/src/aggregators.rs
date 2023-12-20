@@ -11,16 +11,16 @@ use std::{collections::HashSet, sync::Arc};
 use narwhal_types::{
     ensure,
     error::{DagError, DagResult},
-    to_intent_message, AggregateSignature, Certificate, CertificateAPI, Header,
-    NarwhalAuthorityAggregateSignature, NarwhalAuthoritySignature, Signature,
-    SignatureVerificationState, Vote, VoteAPI,
+    to_intent_message, BlsAggregateSignature, BlsSignature, Certificate, CertificateAPI, Header,
+    NarwhalAuthorityBlsAggregateSignature, NarwhalAuthoritySignature, SignatureVerificationState,
+    Vote, VoteAPI,
 };
 use tracing::warn;
 
 /// Aggregates votes for a particular header into a certificate.
 pub struct VotesAggregator {
     weight: Stake,
-    votes: Vec<(AuthorityIdentifier, Signature)>,
+    votes: Vec<(AuthorityIdentifier, BlsSignature)>,
     used: HashSet<AuthorityIdentifier>,
     metrics: Arc<PrimaryMetrics>,
 }
@@ -54,7 +54,7 @@ impl VotesAggregator {
 
             let certificate_digest: Digest<{ narwhal_types::DIGEST_LENGTH }> =
                 Digest::from(cert.digest());
-            match AggregateSignature::try_from(
+            match BlsAggregateSignature::try_from(
                 cert.aggregated_signature().ok_or(DagError::InvalidSignature)?,
             )
             .map_err(|_| DagError::InvalidSignature)?
@@ -78,7 +78,7 @@ impl VotesAggregator {
                     return Ok(None);
                 }
                 Ok(_) => {
-                    // TODO: Move this block and the AggregateSignature verification into
+                    // TODO: Move this block and the BlsAggregateSignature verification into
                     // Certificate
                     cert.set_signature_verification_state(
                         SignatureVerificationState::VerifiedDirectly(

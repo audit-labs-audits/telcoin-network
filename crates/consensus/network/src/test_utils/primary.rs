@@ -7,7 +7,7 @@ use narwhal_network_types::{
     RequestVoteRequest, RequestVoteResponse, SendCertificateRequest, SendCertificateResponse,
     WorkerSynchronizeMessage,
 };
-use narwhal_types::{traits::KeyPair as _, Multiaddr, NetworkKeyPair};
+use narwhal_types::{traits::KeyPair as _, Multiaddr, NetworkKeypair};
 
 use tokio::sync::mpsc::{channel, Receiver, Sender};
 use tracing::info;
@@ -19,7 +19,7 @@ pub struct PrimaryToPrimaryMockServer {
 
 impl PrimaryToPrimaryMockServer {
     pub fn spawn(
-        network_keypair: NetworkKeyPair,
+        network_keypair: NetworkKeypair,
         address: Multiaddr,
     ) -> (Receiver<SendCertificateRequest>, anemo::Network) {
         let addr = address.to_anemo_address().unwrap();
@@ -72,7 +72,7 @@ pub struct PrimaryToWorkerMockServer {
 
 impl PrimaryToWorkerMockServer {
     pub fn spawn(
-        keypair: NetworkKeyPair,
+        keypair: NetworkKeypair,
         address: Multiaddr,
     ) -> (Receiver<WorkerSynchronizeMessage>, anemo::Network) {
         let addr = address.to_anemo_address().unwrap();

@@ -100,9 +100,9 @@ impl<R: rand::RngCore + rand::CryptoRng> Builder<R> {
             })
             .collect();
 
-        // now order the AuthorityFixtures by the authority PublicKey so when we iterate either via
-        // the committee.authorities() or via the fixture.authorities() we'll get the same
-        // order.
+        // now order the AuthorityFixtures by the authority BlsPublicKey so when we iterate either
+        // via the committee.authorities() or via the fixture.authorities() we'll get the
+        // same order.
         authorities.sort_by_key(|a1| a1.public_key());
 
         // create the committee in order to assign the ids to the authorities

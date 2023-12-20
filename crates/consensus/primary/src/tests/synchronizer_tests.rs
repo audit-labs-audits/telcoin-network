@@ -17,7 +17,7 @@ use narwhal_network::client::NetworkClient;
 use narwhal_types::{
     error::DagError,
     test_utils::{make_optimal_signed_certificates, mock_signed_certificate, CommitteeFixture},
-    AggregateSignatureBytes, Certificate, CertificateAPI, Committee, Header, HeaderAPI, Round,
+    BlsAggregateSignatureBytes, Certificate, CertificateAPI, Committee, Header, HeaderAPI, Round,
     SignatureVerificationState,
 };
 use prometheus::Registry;
@@ -684,7 +684,7 @@ async fn sanitize_fetched_certificates() {
         let mut cert = cert.clone();
         if r != LEAF_ROUND {
             cert.set_signature_verification_state(SignatureVerificationState::Unverified(
-                AggregateSignatureBytes::default(),
+                BlsAggregateSignatureBytes::default(),
             ));
         }
         certs.push(cert);
@@ -699,7 +699,7 @@ async fn sanitize_fetched_certificates() {
         let mut cert = cert.clone();
         if r == VERIFICATION_ROUND || r == LEAF_ROUND {
             cert.set_signature_verification_state(SignatureVerificationState::Unverified(
-                AggregateSignatureBytes::default(),
+                BlsAggregateSignatureBytes::default(),
             ));
         }
         certs.push(cert);
@@ -714,7 +714,7 @@ async fn sanitize_fetched_certificates() {
         let mut cert = cert.clone();
         if r != VERIFICATION_ROUND && r != LEAF_ROUND {
             cert.set_signature_verification_state(SignatureVerificationState::Unverified(
-                AggregateSignatureBytes::default(),
+                BlsAggregateSignatureBytes::default(),
             ));
         }
         certs.push(cert);

@@ -12,7 +12,6 @@ use crate::{
     state_handler::StateHandler,
     synchronizer::Synchronizer,
 };
-
 use anemo::{
     codegen::InboundRequestLayer,
     types::{response::StatusCode, Address, PeerInfo},
@@ -44,9 +43,9 @@ use narwhal_network::{
 };
 use narwhal_storage::{CertificateStore, PayloadStore, ProposerStore, VoteDigestStore};
 use narwhal_types::{
-    traits::EncodeDecodeBase64, Authority, AuthorityIdentifier, ChainIdentifier, Committee,
-    KeyPair, Multiaddr, NetworkKeyPair, NetworkPublicKey, Parameters, Protocol,
-    RandomnessPrivateKey, Signature, WorkerCache,
+    traits::EncodeDecodeBase64, Authority, AuthorityIdentifier, BlsKeypair, BlsSignature,
+    ChainIdentifier, Committee, Multiaddr, NetworkKeypair, NetworkPublicKey, Parameters, Protocol,
+    RandomnessPrivateKey, WorkerCache,
 };
 use parking_lot::Mutex;
 use prometheus::Registry;
@@ -99,8 +98,8 @@ impl Primary {
     #[allow(clippy::too_many_arguments)]
     pub fn spawn(
         authority: Authority,
-        signer: KeyPair,
-        network_signer: NetworkKeyPair,
+        signer: BlsKeypair,
+        network_signer: NetworkKeypair,
         committee: Committee,
         worker_cache: WorkerCache,
         chain_identifier: ChainIdentifier,
@@ -530,7 +529,7 @@ struct PrimaryReceiverHandler {
     worker_cache: WorkerCache,
     synchronizer: Arc<Synchronizer>,
     /// Service to sign headers.
-    signature_service: SignatureService<Signature, { narwhal_types::INTENT_MESSAGE_LENGTH }>,
+    signature_service: SignatureService<BlsSignature, { narwhal_types::INTENT_MESSAGE_LENGTH }>,
     certificate_store: CertificateStore,
     /// The store to persist the last voted round per authority, used to ensure idempotence.
     vote_digest_store: VoteDigestStore,

@@ -8,8 +8,8 @@ use narwhal_executor::SerializedTransaction;
 use narwhal_network::client::NetworkClient;
 use narwhal_storage::NodeStorage;
 use narwhal_types::{
-    test_utils::temp_dir, AuthorityIdentifier, ChainIdentifier, Committee, KeyPair, NetworkKeyPair,
-    Parameters, WorkerCache,
+    test_utils::temp_dir, AuthorityIdentifier, BlsKeypair, ChainIdentifier, Committee,
+    NetworkKeypair, Parameters, WorkerCache,
 };
 use prometheus::{proto::Metric, Registry};
 use std::{cell::RefCell, path::PathBuf, rc::Rc, sync::Arc};
@@ -24,8 +24,8 @@ use tracing::info;
 pub struct PrimaryNodeDetails {
     pub id: usize,
     pub name: AuthorityIdentifier,
-    pub key_pair: Arc<KeyPair>,
-    pub network_key_pair: Arc<NetworkKeyPair>,
+    pub key_pair: Arc<BlsKeypair>,
+    pub network_key_pair: Arc<NetworkKeypair>,
     pub tx_transaction_confirmation: Sender<SerializedTransaction>,
     node: PrimaryNode,
     store_path: PathBuf,
@@ -39,8 +39,8 @@ impl PrimaryNodeDetails {
     pub(crate) fn new(
         id: usize,
         name: AuthorityIdentifier,
-        key_pair: KeyPair,
-        network_key_pair: NetworkKeyPair,
+        key_pair: BlsKeypair,
+        network_key_pair: NetworkKeypair,
         parameters: Parameters,
         committee: Committee,
         worker_cache: WorkerCache,

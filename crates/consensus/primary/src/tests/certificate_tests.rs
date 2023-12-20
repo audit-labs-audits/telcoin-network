@@ -6,7 +6,7 @@
 
 use fastcrypto::traits::KeyPair as _;
 use narwhal_types::{
-    test_utils::CommitteeFixture, AuthorityIdentifier, Certificate, CertificateAPI, KeyPair,
+    test_utils::CommitteeFixture, AuthorityIdentifier, BlsKeypair, Certificate, CertificateAPI,
     SignatureVerificationState, Vote, VoteAPI,
 };
 use rand::{
@@ -137,7 +137,7 @@ fn test_unknown_signature_in_certificate() {
         signatures.push((vote.author(), vote.signature().clone()));
     }
 
-    let malicious_key = KeyPair::generate(&mut StdRng::from_rng(OsRng).unwrap());
+    let malicious_key = BlsKeypair::generate(&mut StdRng::from_rng(OsRng).unwrap());
     let malicious_id: AuthorityIdentifier = AuthorityIdentifier(50u16);
 
     let vote = Vote::new_with_signer(&header, &malicious_id, &malicious_key);

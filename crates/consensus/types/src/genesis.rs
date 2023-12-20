@@ -32,11 +32,18 @@ pub fn yukon_chain_spec() -> Arc<ChainSpec> {
 ///
 /// Seed "Bob" and [0; 32] seed addresses.
 pub fn yukon_genesis_string() -> String {
+    yukon_genesis_raw().to_string()
+}
+
+/// Static strig for yukon genesis.
+///
+/// Used by CLI and other methods above.
+pub fn yukon_genesis_raw() -> &'static str {
     r#"
 {
     "nonce": "0x0",
     "timestamp": "0x6553A8CC",
-    "extraData": "0x5343",
+    "extraData": "0x21",
     "gasLimit": "0x1c9c380",
     "difficulty": "0x0",
     "mixHash": "0x0000000000000000000000000000000000000000000000000000000000000000",
@@ -70,5 +77,4 @@ pub fn yukon_genesis_string() -> String {
         "shanghaiTime": 0
     }
 }"#
-    .to_string()
 }

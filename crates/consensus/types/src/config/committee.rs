@@ -5,11 +5,10 @@
 
 use super::{CommitteeUpdateError, ConfigError, Epoch, Stake};
 use crate::{
-    crypto::{NetworkPublicKey, PublicKey, PublicKeyBytes},
-    Multiaddr,
+    crypto::{BlsPublicKey, BlsPublicKeyBytes, NetworkPublicKey},
+    ExecutionPublicKey, Multiaddr,
 };
 use fastcrypto::{
-    secp256k1::Secp256k1PublicKey,
     serde_helpers::ToFromByteArray,
     traits::{EncodeDecodeBase64, ToFromBytes},
 };
@@ -28,16 +27,16 @@ pub struct Authority {
     /// The id under which we identify this authority across Narwhal
     #[serde(skip)]
     id: AuthorityIdentifier,
-    /// The authority's main PublicKey which is used to verify the content they sign.
-    protocol_key: PublicKey,
-    /// The authority's main PublicKey expressed as pure bytes
-    protocol_key_bytes: PublicKeyBytes,
+    /// The authority's main BlsPublicKey which is used to verify the content they sign.
+    protocol_key: BlsPublicKey,
+    /// The authority's main BlsPublicKey expressed as pure bytes
+    protocol_key_bytes: BlsPublicKeyBytes,
     /// The voting power of this authority.
     stake: Stake,
     /// The network address of the primary.
     primary_network_address: Multiaddr,
-    /// The [Secp256k1] public key for the primary.
-    execution_key: Secp256k1PublicKey,
+    /// The secp256k1 public key for the primary.
+    execution_key: ExecutionPublicKey,
     /// The execution address for the primary.
     execution_address: Address,
     /// Network key of the primary.
@@ -56,15 +55,15 @@ impl Authority {
     /// of Authority are initialised via the Committee, to ensure that the user will not
     /// accidentally use stale Authority data, should always derive them via the Commitee.
     fn new(
-        protocol_key: PublicKey,
+        protocol_key: BlsPublicKey,
         stake: Stake,
         primary_network_address: Multiaddr,
-        execution_key: Secp256k1PublicKey,
+        execution_key: ExecutionPublicKey,
         execution_address: Address,
         network_key: NetworkPublicKey,
         hostname: String,
     ) -> Self {
-        let protocol_key_bytes = PublicKeyBytes::from(&protocol_key);
+        let protocol_key_bytes = BlsPublicKeyBytes::from(&protocol_key);
 
         Self {
             id: Default::default(),
@@ -90,12 +89,12 @@ impl Authority {
         self.id
     }
 
-    pub fn protocol_key(&self) -> &PublicKey {
+    pub fn protocol_key(&self) -> &BlsPublicKey {
         assert!(self.initialised);
         &self.protocol_key
     }
 
-    pub fn protocol_key_bytes(&self) -> &PublicKeyBytes {
+    pub fn protocol_key_bytes(&self) -> &BlsPublicKeyBytes {
         assert!(self.initialised);
         &self.protocol_key_bytes
     }
@@ -115,7 +114,7 @@ impl Authority {
         self.execution_address.clone()
     }
 
-    pub fn execution_key(&self) -> Secp256k1PublicKey {
+    pub fn execution_key(&self) -> ExecutionPublicKey {
         assert!(self.initialised);
         self.execution_key.clone()
     }
@@ -134,7 +133,7 @@ impl Authority {
 #[derive(Clone, Serialize, Deserialize, Debug, Eq, PartialEq)]
 pub struct Committee {
     /// The authorities of epoch.
-    authorities: BTreeMap<PublicKey, Authority>,
+    authorities: BTreeMap<BlsPublicKey, Authority>,
     /// Keeps and index of the Authorities by their respective identifier
     #[serde(skip)]
     authorities_by_id: BTreeMap<AuthorityIdentifier, Authority>,
@@ -173,9 +172,9 @@ impl Display for AuthorityIdentifier {
 }
 
 impl Committee {
-    /// Any committee should be created via the CommitteeBuilder - this is intentionally be marked
+    /// Any committee should be created via the [CommitteeBuilder] - this is intentionally be marked
     /// as private method.
-    fn new(authorities: BTreeMap<PublicKey, Authority>, epoch: Epoch) -> Self {
+    fn new(authorities: BTreeMap<BlsPublicKey, Authority>, epoch: Epoch) -> Self {
         let mut committee = Self {
             authorities,
             epoch,
@@ -248,13 +247,13 @@ impl Committee {
         })
     }
 
-    pub fn authority_by_key(&self, key: &PublicKey) -> Option<&Authority> {
+    pub fn authority_by_key(&self, key: &BlsPublicKey) -> Option<&Authority> {
         self.authorities.get(key)
     }
 
     /// Returns the keys in the committee
-    pub fn keys(&self) -> Vec<PublicKey> {
-        self.authorities.keys().cloned().collect::<Vec<PublicKey>>()
+    pub fn keys(&self) -> Vec<BlsPublicKey> {
+        self.authorities.keys().cloned().collect::<Vec<BlsPublicKey>>()
     }
 
     /// Returns info from the committee needed for randomness DKG.
@@ -298,7 +297,7 @@ impl Committee {
     }
 
     /// Return the stake of a specific authority.
-    pub fn stake(&self, name: &PublicKey) -> Stake {
+    pub fn stake(&self, name: &BlsPublicKey) -> Stake {
         self.authorities.get(&name.clone()).map_or_else(|| 0, |x| x.stake)
     }
 
@@ -348,7 +347,7 @@ impl Committee {
     }
 
     /// Returns the primary address of the target primary.
-    pub fn primary(&self, to: &PublicKey) -> Result<Multiaddr, ConfigError> {
+    pub fn primary(&self, to: &BlsPublicKey) -> Result<Multiaddr, ConfigError> {
         self.authorities
             .get(&to.clone())
             .map(|x| x.primary_network_address.clone())
@@ -363,7 +362,7 @@ impl Committee {
             .ok_or_else(|| ConfigError::NotInCommittee(to.0.to_string()))
     }
 
-    pub fn network_key(&self, pk: &PublicKey) -> Result<NetworkPublicKey, ConfigError> {
+    pub fn network_key(&self, pk: &BlsPublicKey) -> Result<NetworkPublicKey, ConfigError> {
         self.authorities
             .get(&pk.clone())
             .map(|x| x.network_key.clone())
@@ -373,8 +372,8 @@ impl Committee {
     /// Return all the network addresses in the committee.
     pub fn others_primaries(
         &self,
-        myself: &PublicKey,
-    ) -> Vec<(PublicKey, Multiaddr, NetworkPublicKey)> {
+        myself: &BlsPublicKey,
+    ) -> Vec<(BlsPublicKey, Multiaddr, NetworkPublicKey)> {
         self.authorities
             .iter()
             .filter(|(name, _)| *name != myself)
@@ -421,7 +420,7 @@ impl Committee {
     #[allow(clippy::manual_try_fold)]
     pub fn update_primary_network_info(
         &mut self,
-        mut new_info: BTreeMap<PublicKey, (Stake, Multiaddr)>,
+        mut new_info: BTreeMap<BlsPublicKey, (Stake, Multiaddr)>,
     ) -> Result<(), Vec<CommitteeUpdateError>> {
         let mut errors = None;
 
@@ -479,9 +478,12 @@ impl Committee {
     }
 }
 
+/// Type for building committees.
 pub struct CommitteeBuilder {
+    /// The epoch for the committee.
     epoch: Epoch,
-    authorities: BTreeMap<PublicKey, Authority>,
+    /// The map of [BlsPublicKey] for each [Authority] in the committee.
+    authorities: BTreeMap<BlsPublicKey, Authority>,
 }
 
 impl CommitteeBuilder {
@@ -491,10 +493,10 @@ impl CommitteeBuilder {
 
     pub fn add_authority(
         mut self,
-        protocol_key: PublicKey,
+        protocol_key: BlsPublicKey,
         stake: Stake,
         primary_network_address: Multiaddr,
-        execution_public_key: Secp256k1PublicKey,
+        execution_public_key: ExecutionPublicKey,
         primary_execution_address: Address,
         network_key: NetworkPublicKey,
         hostname: String,
@@ -519,8 +521,10 @@ impl CommitteeBuilder {
 
 #[cfg(test)]
 mod tests {
-    use crate::{Authority, Committee, KeyPair, Multiaddr, NetworkKeyPair, PublicKey};
-    use fastcrypto::{secp256k1::Secp256k1KeyPair, traits::KeyPair as _};
+    use crate::{
+        Authority, BlsKeypair, BlsPublicKey, Committee, ExecutionKeypair, Multiaddr, NetworkKeypair,
+    };
+    use fastcrypto::traits::KeyPair as _;
     use rand::thread_rng;
     use reth_primitives::public_key_to_address;
     use std::collections::BTreeMap;
@@ -533,9 +537,9 @@ mod tests {
 
         let authorities = (0..num_of_authorities)
             .map(|i| {
-                let keypair = KeyPair::generate(&mut rng);
-                let network_keypair = NetworkKeyPair::generate(&mut rng);
-                let execution_keypair = Secp256k1KeyPair::generate(&mut rng);
+                let keypair = BlsKeypair::generate(&mut rng);
+                let network_keypair = NetworkKeypair::generate(&mut rng);
+                let execution_keypair = ExecutionKeypair::generate(&mut rng);
                 let execution_address = public_key_to_address(execution_keypair.public().pubkey);
 
                 let a = Authority::new(
@@ -550,7 +554,7 @@ mod tests {
 
                 (keypair.public().clone(), a)
             })
-            .collect::<BTreeMap<PublicKey, Authority>>();
+            .collect::<BTreeMap<BlsPublicKey, Authority>>();
 
         // WHEN
         let committee = Committee::new(authorities, 10);

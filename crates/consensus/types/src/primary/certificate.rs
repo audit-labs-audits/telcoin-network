@@ -15,8 +15,8 @@ use proptest_derive::Arbitrary;
 use crate::{
     config::{AuthorityIdentifier, Committee, Epoch, Stake, WorkerCache},
     crypto::{
-        self, to_intent_message, AggregateSignature, AggregateSignatureBytes,
-        NarwhalAuthorityAggregateSignature, PublicKey, Signature,
+        self, to_intent_message, BlsAggregateSignature, BlsAggregateSignatureBytes, BlsPublicKey,
+        BlsSignature, NarwhalAuthorityBlsAggregateSignature,
     },
     error::{DagError, DagResult},
     now,
@@ -58,7 +58,7 @@ impl Certificate {
     pub fn new_unverified(
         committee: &Committee,
         header: Header,
-        votes: Vec<(AuthorityIdentifier, Signature)>,
+        votes: Vec<(AuthorityIdentifier, BlsSignature)>,
     ) -> DagResult<Certificate> {
         CertificateV1::new_unverified(committee, header, votes)
     }
@@ -67,7 +67,7 @@ impl Certificate {
     pub fn new_unsigned(
         committee: &Committee,
         header: Header,
-        votes: Vec<(AuthorityIdentifier, Signature)>,
+        votes: Vec<(AuthorityIdentifier, BlsSignature)>,
     ) -> DagResult<Certificate> {
         CertificateV1::new_unsigned(committee, header, votes)
     }
@@ -75,7 +75,7 @@ impl Certificate {
     /// Return the group of authorities that signed this certificate.
     ///
     /// This function requires that certificate was verified against given committee
-    pub fn signed_authorities(&self, committee: &Committee) -> Vec<PublicKey> {
+    pub fn signed_authorities(&self, committee: &Committee) -> Vec<BlsPublicKey> {
         match self {
             Certificate::V1(certificate) => certificate.signed_authorities(committee),
         }
@@ -83,7 +83,7 @@ impl Certificate {
 
     /// Return the total stake and group of authorities that formed the committee for this
     /// certificate.
-    pub fn signed_by(&self, committee: &Committee) -> (Stake, Vec<PublicKey>) {
+    pub fn signed_by(&self, committee: &Committee) -> (Stake, Vec<BlsPublicKey>) {
         match self {
             Certificate::V1(certificate) => certificate.signed_by(committee),
         }
@@ -139,7 +139,7 @@ pub trait CertificateAPI {
     fn header(&self) -> &Header;
 
     /// The aggregate signature for the certriciate.
-    fn aggregated_signature(&self) -> Option<&AggregateSignatureBytes>;
+    fn aggregated_signature(&self) -> Option<&BlsAggregateSignatureBytes>;
 
     /// The bitmap of signed authorities for the certificate.
     ///
@@ -170,7 +170,7 @@ pub trait CertificateAPI {
     fn header_mut(&mut self) -> &mut Header;
 }
 
-// Holds AggregateSignatureBytes but with the added layer to specify the
+// Holds BlsAggregateSignatureBytes but with the added layer to specify the
 // signatures verification state. This will be used to take advantage of the
 // certificate chain that is formed via the DAG by only verifying the
 // leaves of the certificate chain when they are fetched from validators
@@ -179,17 +179,17 @@ pub trait CertificateAPI {
 pub enum SignatureVerificationState {
     // This state occurs when the certificate has not yet received a quorum of
     // signatures.
-    Unsigned(AggregateSignatureBytes),
+    Unsigned(BlsAggregateSignatureBytes),
     // This state occurs when a certificate has just been received from the network
     // and has not been verified yet.
-    Unverified(AggregateSignatureBytes),
+    Unverified(BlsAggregateSignatureBytes),
     // This state occurs when a certificate was either created locally, received
     // via brodacast, or fetched but was not the parent of another certificate.
     // Therefore this certificate had to be verified directly.
-    VerifiedDirectly(AggregateSignatureBytes),
+    VerifiedDirectly(BlsAggregateSignatureBytes),
     // This state occurs when the cert was a parent of another fetched certificate
     // that was verified directly, then this certificate is verified indirectly.
-    VerifiedIndirectly(AggregateSignatureBytes),
+    VerifiedIndirectly(BlsAggregateSignatureBytes),
     // This state occurs only for genesis certificates which always has valid
     // signatures bytes but the bytes are garbage so we don't mark them as verified.
     Genesis,
@@ -197,7 +197,7 @@ pub enum SignatureVerificationState {
 
 impl Default for SignatureVerificationState {
     fn default() -> Self {
-        SignatureVerificationState::Unsigned(AggregateSignatureBytes::default())
+        SignatureVerificationState::Unsigned(BlsAggregateSignatureBytes::default())
     }
 }
 
@@ -207,7 +207,7 @@ impl Default for SignatureVerificationState {
 pub struct CertificateV1 {
     /// Certificate's header.
     pub header: Header,
-    /// Container for [AggregateSignatureBytes].
+    /// Container for [BlsAggregateSignatureBytes].
     pub signature_verification_state: SignatureVerificationState,
     /// Signatures of all authorities?
     #[serde_as(as = "NarwhalBitmap")]
@@ -221,7 +221,7 @@ impl CertificateAPI for CertificateV1 {
         &self.header
     }
 
-    fn aggregated_signature(&self) -> Option<&AggregateSignatureBytes> {
+    fn aggregated_signature(&self) -> Option<&BlsAggregateSignatureBytes> {
         match &self.signature_verification_state {
             SignatureVerificationState::VerifiedDirectly(bytes) |
             SignatureVerificationState::Unverified(bytes) |
@@ -280,7 +280,7 @@ impl CertificateV1 {
     pub fn new_unverified(
         committee: &Committee,
         header: Header,
-        votes: Vec<(AuthorityIdentifier, Signature)>,
+        votes: Vec<(AuthorityIdentifier, BlsSignature)>,
     ) -> DagResult<Certificate> {
         Self::new_unsafe(committee, header, votes, true)
     }
@@ -289,7 +289,7 @@ impl CertificateV1 {
     pub fn new_unsigned(
         committee: &Committee,
         header: Header,
-        votes: Vec<(AuthorityIdentifier, Signature)>,
+        votes: Vec<(AuthorityIdentifier, BlsSignature)>,
     ) -> DagResult<Certificate> {
         Self::new_unsafe(committee, header, votes, false)
     }
@@ -298,7 +298,7 @@ impl CertificateV1 {
     fn new_unsafe(
         committee: &Committee,
         header: Header,
-        votes: Vec<(AuthorityIdentifier, Signature)>,
+        votes: Vec<(AuthorityIdentifier, BlsSignature)>,
         check_stake: bool,
     ) -> DagResult<Certificate> {
         let mut votes = votes;
@@ -338,15 +338,15 @@ impl CertificateV1 {
         );
 
         let aggregated_signature = if sigs.is_empty() {
-            AggregateSignature::default()
+            BlsAggregateSignature::default()
         } else {
-            AggregateSignature::aggregate::<Signature, Vec<&Signature>>(
+            BlsAggregateSignature::aggregate::<BlsSignature, Vec<&BlsSignature>>(
                 sigs.iter().map(|(_, sig)| sig).collect(),
             )
             .map_err(|_| DagError::InvalidSignature)?
         };
 
-        let aggregate_signature_bytes = AggregateSignatureBytes::from(&aggregated_signature);
+        let aggregate_signature_bytes = BlsAggregateSignatureBytes::from(&aggregated_signature);
 
         let signature_verification_state = if !check_stake {
             SignatureVerificationState::Unsigned(aggregate_signature_bytes)
@@ -365,7 +365,7 @@ impl CertificateV1 {
     /// Return the group of authorities that signed this certificate.
     ///
     /// This function requires that certificate was verified against given committee
-    pub fn signed_authorities(&self, committee: &Committee) -> Vec<PublicKey> {
+    pub fn signed_authorities(&self, committee: &Committee) -> Vec<BlsPublicKey> {
         assert_eq!(committee.epoch(), self.epoch());
         let (_stake, pks) = self.signed_by(committee);
         pks
@@ -373,7 +373,7 @@ impl CertificateV1 {
 
     /// Return the total stake and group of authorities that formed the committee for this
     /// certificate.
-    pub fn signed_by(&self, committee: &Committee) -> (Stake, Vec<PublicKey>) {
+    pub fn signed_by(&self, committee: &Committee) -> (Stake, Vec<BlsPublicKey>) {
         // Ensure the certificate has a quorum.
         let mut weight = 0;
 
@@ -424,7 +424,7 @@ impl CertificateV1 {
         Ok(verified_cert)
     }
 
-    fn verify_signature(mut self, pks: Vec<PublicKey>) -> DagResult<Certificate> {
+    fn verify_signature(mut self, pks: Vec<BlsPublicKey>) -> DagResult<Certificate> {
         let aggregrate_signature_bytes = match self.signature_verification_state {
             SignatureVerificationState::VerifiedIndirectly(_) |
             SignatureVerificationState::VerifiedDirectly(_) |
@@ -437,7 +437,7 @@ impl CertificateV1 {
 
         // Verify the signatures
         let certificate_digest: Digest<{ crypto::DIGEST_LENGTH }> = Digest::from(self.digest());
-        AggregateSignature::try_from(aggregrate_signature_bytes)
+        BlsAggregateSignature::try_from(aggregrate_signature_bytes)
             .map_err(|_| DagError::InvalidSignature)?
             .verify_secure(&to_intent_message(certificate_digest), &pks[..])
             .map_err(|_| DagError::InvalidSignature)?;

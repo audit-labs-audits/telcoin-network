@@ -7,8 +7,8 @@ use consensus_metrics::RegistryService;
 use narwhal_network::client::NetworkClient;
 use narwhal_storage::NodeStorage;
 use narwhal_types::{
-    test_utils::temp_dir, AuthorityIdentifier, Committee, Multiaddr, NetworkKeyPair, Parameters,
-    PublicKey, WorkerCache, WorkerId,
+    test_utils::temp_dir, AuthorityIdentifier, BlsPublicKey, Committee, Multiaddr, NetworkKeypair,
+    Parameters, WorkerCache, WorkerId,
 };
 use prometheus::Registry;
 use std::path::PathBuf;
@@ -21,7 +21,7 @@ pub struct WorkerNodeDetails {
     pub transactions_address: Multiaddr,
     pub registry: Registry,
     name: AuthorityIdentifier,
-    primary_key: PublicKey,
+    primary_key: BlsPublicKey,
     node: WorkerNode,
     committee: Committee,
     worker_cache: WorkerCache,
@@ -32,7 +32,7 @@ impl WorkerNodeDetails {
     pub(crate) fn new(
         id: WorkerId,
         name: AuthorityIdentifier,
-        primary_key: PublicKey,
+        primary_key: BlsPublicKey,
         parameters: Parameters,
         transactions_address: Multiaddr,
         committee: Committee,
@@ -57,7 +57,7 @@ impl WorkerNodeDetails {
     /// Starts the node. When preserve_store is true then the last used
     pub(crate) async fn start(
         &mut self,
-        keypair: NetworkKeyPair,
+        keypair: NetworkKeypair,
         client: NetworkClient,
         preserve_store: bool,
         execution_node: &ExecutionNode,

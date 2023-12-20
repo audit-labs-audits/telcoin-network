@@ -47,7 +47,7 @@ impl CommitteeFixture {
         }
     }
 
-    // pub fn header(&self, author: PublicKey) -> Header {
+    // pub fn header(&self, author: BlsPublicKey) -> Header {
     // Currently sign with the last authority
 
     /// Return a header from the last authority in the committee.

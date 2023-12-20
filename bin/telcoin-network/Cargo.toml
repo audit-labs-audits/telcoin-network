@@ -24,6 +24,13 @@ tracing = { workspace = true }
 pin-project = { workspace = true }
 confy = { workspace = true }
 metrics = { workspace = true }
+fastcrypto = { workspace = true }
+rand = { workspace = true }
+rand_chacha = { workspace = true }
+narwhal-types = { workspace = true }
+
+question = "0.2.2"
+dirs-next = "2.0.0"
 
 reth = {workspace = true }
 reth-primitives = {workspace = true }

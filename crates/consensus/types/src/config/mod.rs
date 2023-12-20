@@ -5,7 +5,7 @@
 #![allow(clippy::mutable_key_type)]
 
 use crate::{
-    crypto::{NetworkPublicKey, PublicKey},
+    crypto::{BlsPublicKey, NetworkPublicKey},
     Multiaddr,
 };
 use fastcrypto::traits::EncodeDecodeBase64;
@@ -389,7 +389,7 @@ pub struct WorkerIndex(pub BTreeMap<WorkerId, WorkerInfo>);
 #[derive(Clone, Serialize, Deserialize, Debug)]
 pub struct WorkerCache {
     /// The authority to worker index.
-    pub workers: BTreeMap<PublicKey, WorkerIndex>,
+    pub workers: BTreeMap<BlsPublicKey, WorkerIndex>,
     /// The epoch number for workers
     pub epoch: Epoch,
 }
@@ -434,7 +434,7 @@ impl WorkerCache {
     }
 
     /// Returns the addresses of a specific worker (`id`) of a specific authority (`to`).
-    pub fn worker(&self, to: &PublicKey, id: &WorkerId) -> Result<WorkerInfo, ConfigError> {
+    pub fn worker(&self, to: &BlsPublicKey, id: &WorkerId) -> Result<WorkerInfo, ConfigError> {
         self.workers
             .iter()
             .find_map(|v| match_opt::match_opt!(v, (name, authority) if name == to => authority))
@@ -449,7 +449,7 @@ impl WorkerCache {
     }
 
     /// Returns the addresses of all our workers.
-    pub fn our_workers(&self, myself: &PublicKey) -> Result<Vec<WorkerInfo>, ConfigError> {
+    pub fn our_workers(&self, myself: &BlsPublicKey) -> Result<Vec<WorkerInfo>, ConfigError> {
         let res = self
             .workers
             .iter()
@@ -476,9 +476,9 @@ impl WorkerCache {
     /// specified by `myself`.
     pub fn others_workers_by_id(
         &self,
-        myself: &PublicKey,
+        myself: &BlsPublicKey,
         id: &WorkerId,
-    ) -> Vec<(PublicKey, WorkerInfo)> {
+    ) -> Vec<(BlsPublicKey, WorkerInfo)> {
         self.workers
             .iter()
             .filter(|(name, _)| *name != myself )
@@ -489,7 +489,7 @@ impl WorkerCache {
     }
 
     /// Returns the addresses of all workers that are not of our node.
-    pub fn others_workers(&self, myself: &PublicKey) -> Vec<(PublicKey, WorkerInfo)> {
+    pub fn others_workers(&self, myself: &BlsPublicKey) -> Vec<(BlsPublicKey, WorkerInfo)> {
         self.workers
             .iter()
             .filter(|(name, _)| *name != myself)
@@ -500,7 +500,7 @@ impl WorkerCache {
     /// Return the network addresses that are present in the current worker cache
     /// that are from a primary key that are no longer in the committee. Current
     /// committee keys provided as an argument.
-    pub fn network_diff(&self, keys: Vec<&PublicKey>) -> HashSet<&Multiaddr> {
+    pub fn network_diff(&self, keys: Vec<&BlsPublicKey>) -> HashSet<&Multiaddr> {
         self.workers
             .iter()
             .filter(|(name, _)| !keys.contains(name))

@@ -10,8 +10,8 @@ use fastcrypto::traits::KeyPair;
 use narwhal_network::client::NetworkClient;
 use narwhal_network_types::{MockPrimaryToPrimary, PrimaryToPrimaryServer, RequestVoteResponse};
 use narwhal_types::{
-    test_utils::CommitteeFixture, CertificateAPI, KeyPair as DefinedKeyPair,
-    PreSubscribedBroadcastSender, SignatureVerificationState,
+    test_utils::CommitteeFixture, BlsKeypair, CertificateAPI, PreSubscribedBroadcastSender,
+    SignatureVerificationState,
 };
 use prometheus::Registry;
 use rand::{rngs::StdRng, SeedableRng};
@@ -394,7 +394,7 @@ async fn run_vote_aggregator_with_param(
         let name = primary.id();
         // Create bad signature for a number of byzantines.
         let vote = if i < num_byzantine {
-            let bad_key: DefinedKeyPair = DefinedKeyPair::generate(&mut StdRng::from_seed([0; 32]));
+            let bad_key = BlsKeypair::generate(&mut StdRng::from_seed([0; 32]));
             Vote::new_with_signer(&proposed_header, &name, &bad_key)
         } else {
             Vote::new_with_signer(&proposed_header, &name, primary.keypair())

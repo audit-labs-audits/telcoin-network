@@ -2,10 +2,8 @@
 // SPDX-License-Identifier: Apache-2.0
 
 //! Specific test utils for execution layer
-use fastcrypto::{
-    secp256k1::Secp256k1KeyPair,
-    traits::{KeyPair as _, ToFromBytes},
-};
+use crate::ExecutionKeypair;
+use fastcrypto::traits::{KeyPair as _, ToFromBytes};
 use rand::{
     rngs::{OsRng, StdRng},
     SeedableRng,
@@ -22,7 +20,7 @@ use std::sync::Arc;
 /// Transaction factory
 pub struct TransactionFactory {
     /// Keypair for signing transactions
-    keypair: Secp256k1KeyPair,
+    keypair: ExecutionKeypair,
     /// The nonce for the next transaction constructed.
     nonce: u64,
 }
@@ -33,20 +31,20 @@ impl TransactionFactory {
     /// Address: 0xb14d3c4f5fbfbcfb98af2d330000d49c95b93aa7
     pub fn new() -> Self {
         let mut rng = StdRng::from_seed([0; 32]);
-        let keypair = Secp256k1KeyPair::generate(&mut rng);
+        let keypair = ExecutionKeypair::generate(&mut rng);
         Self { keypair, nonce: 0 }
     }
 
     /// Create a new instance of self from a random seed.
     pub fn new_random() -> Self {
         let mut rng = StdRng::from_rng(OsRng).expect("OsRng available");
-        let keypair = Secp256k1KeyPair::generate(&mut rng);
+        let keypair = ExecutionKeypair::generate(&mut rng);
         Self { keypair, nonce: 0 }
     }
 
     /// Create a new instance of [Self] from a provided keypair.
     pub fn new_from_keypair(private: &[u8]) -> Self {
-        let keypair = Secp256k1KeyPair::from_bytes(private).unwrap();
+        let keypair = ExecutionKeypair::from_bytes(private).unwrap();
         Self { keypair, nonce: 0 }
     }
 

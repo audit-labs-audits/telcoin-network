@@ -5,15 +5,15 @@
 
 use crate::{primary::PrimaryNodeDetails, worker::WorkerNodeDetails};
 use fastcrypto::traits::KeyPair as _;
+use jsonrpsee::http_client::HttpClient;
 use narwhal_network::client::NetworkClient;
 use narwhal_types::{
-    AuthorityIdentifier, Committee, KeyPair, Multiaddr, NetworkKeyPair, Parameters, PublicKey,
-    WorkerCache, WorkerId,
+    AuthorityIdentifier, BlsKeypair, BlsPublicKey, Committee, Multiaddr, NetworkKeypair,
+    Parameters, WorkerCache, WorkerId,
 };
 use std::{collections::HashMap, sync::Arc, time::Duration};
 use tn_node::engine::ExecutionNode;
 use tokio::sync::{RwLock, RwLockWriteGuard};
-use jsonrpsee::http_client::HttpClient;
 use tracing::{error, info};
 
 /// The authority details hold all the necessary structs and details
@@ -28,7 +28,7 @@ use tracing::{error, info};
 pub struct AuthorityDetails {
     pub id: usize,
     pub name: AuthorityIdentifier,
-    pub public_key: PublicKey,
+    pub public_key: BlsPublicKey,
     internal: Arc<RwLock<AuthorityDetailsInternal>>,
 }
 
@@ -36,7 +36,7 @@ pub struct AuthorityDetails {
 struct AuthorityDetailsInternal {
     client: Option<NetworkClient>,
     primary: PrimaryNodeDetails,
-    worker_keypairs: Vec<NetworkKeyPair>,
+    worker_keypairs: Vec<NetworkKeypair>,
     workers: HashMap<WorkerId, WorkerNodeDetails>,
     execution: ExecutionNode,
 }
@@ -46,9 +46,9 @@ impl AuthorityDetails {
     pub fn new(
         id: usize,
         name: AuthorityIdentifier,
-        key_pair: KeyPair,
-        network_key_pair: NetworkKeyPair,
-        worker_keypairs: Vec<NetworkKeyPair>,
+        key_pair: BlsKeypair,
+        network_key_pair: NetworkKeypair,
+        worker_keypairs: Vec<NetworkKeypair>,
         parameters: Parameters,
         committee: Committee,
         worker_cache: WorkerCache,
@@ -153,7 +153,7 @@ impl AuthorityDetails {
         let client = self.create_network_client(&mut internal).await;
 
         let worker_keypairs =
-            internal.worker_keypairs.iter().map(|kp| kp.copy()).collect::<Vec<NetworkKeyPair>>();
+            internal.worker_keypairs.iter().map(|kp| kp.copy()).collect::<Vec<NetworkKeypair>>();
 
         let execution_engine = internal.execution.clone();
 

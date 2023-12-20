@@ -6,13 +6,12 @@
 //! Authority fixture for holding all keypairs and workers for a validator node within a committee.
 use super::WorkerFixture;
 use crate::{
-    Authority, AuthorityIdentifier, Certificate, Committee, Header, HeaderV1Builder, KeyPair,
-    Multiaddr, NetworkKeyPair, NetworkPublicKey, PublicKey, Round, Stake, Vote, WorkerId,
-    WorkerIndex,
+    Authority, AuthorityIdentifier, BlsKeypair, BlsPublicKey, Certificate, Committee,
+    ExecutionKeypair, Header, HeaderV1Builder, Multiaddr, NetworkKeypair, NetworkPublicKey, Round,
+    Stake, Vote, WorkerId, WorkerIndex,
 };
 use fastcrypto::{
     hash::Hash,
-    secp256k1::Secp256k1KeyPair,
     traits::{AllowedRng, KeyPair as _},
 };
 use once_cell::sync::OnceCell;
@@ -26,17 +25,17 @@ pub struct AuthorityFixture {
     /// Thread-safe cell with a reference to the [Authority] struct used in production.
     pub(crate) authority: OnceCell<Authority>,
     /// The [KeyPair] for this authority.
-    pub(crate) keypair: KeyPair,
-    /// The [NetworkKeyPair] for this authority.
-    pub(crate) network_keypair: NetworkKeyPair,
+    pub(crate) keypair: BlsKeypair,
+    /// The [NetworkKeypair] for this authority.
+    pub(crate) network_keypair: NetworkKeypair,
     /// The [Stake] for this authority.
     pub(crate) stake: Stake,
     /// The [Multiaddr] within the anemo network for this authority.
     pub(crate) network_address: Multiaddr,
     /// All workers for this authority mapped by [WorkerId] to [WorkerFixture].
     pub(crate) workers: BTreeMap<WorkerId, WorkerFixture>,
-    /// The [Secp256k1] keypair for the execution layer.
-    pub(crate) execution_keypair: Secp256k1KeyPair,
+    /// The [ExecutionKeypair] for the execution layer.
+    pub(crate) execution_keypair: ExecutionKeypair,
     /// The address for the authority on the EL.
     pub(crate) execution_address: Address,
 }
@@ -53,12 +52,12 @@ impl AuthorityFixture {
     }
 
     /// The authority's bls12381 [KeyPair] used to sign consensus messages.
-    pub fn keypair(&self) -> &KeyPair {
+    pub fn keypair(&self) -> &BlsKeypair {
         &self.keypair
     }
 
-    /// The authority's ed25519 [NetworkKeyPair] used to sign messages on the network.
-    pub fn network_keypair(&self) -> NetworkKeyPair {
+    /// The authority's ed25519 [NetworkKeypair] used to sign messages on the network.
+    pub fn network_keypair(&self) -> NetworkKeypair {
         self.network_keypair.copy()
     }
 
@@ -87,12 +86,12 @@ impl AuthorityFixture {
     }
 
     /// A `Vec<NetworkKeypair>` of all workers for the authority.
-    pub fn worker_keypairs(&self) -> Vec<NetworkKeyPair> {
+    pub fn worker_keypairs(&self) -> Vec<NetworkKeypair> {
         self.workers.values().map(|worker| worker.keypair.copy()).collect()
     }
 
     /// The authority's [PublicKey].
-    pub fn public_key(&self) -> PublicKey {
+    pub fn public_key(&self) -> BlsPublicKey {
         self.keypair.public().clone()
     }
 
@@ -148,9 +147,9 @@ impl AuthorityFixture {
         R: AllowedRng,
         P: FnMut(&str) -> u16,
     {
-        let keypair = KeyPair::generate(&mut rng);
-        let network_keypair = NetworkKeyPair::generate(&mut rng);
-        let execution_keypair = Secp256k1KeyPair::generate(&mut rng);
+        let keypair = BlsKeypair::generate(&mut rng);
+        let network_keypair = NetworkKeypair::generate(&mut rng);
+        let execution_keypair = ExecutionKeypair::generate(&mut rng);
         let host = "127.0.0.1";
         let network_address: Multiaddr =
             format!("/ip4/{}/udp/{}", host, get_port(host)).parse().unwrap();

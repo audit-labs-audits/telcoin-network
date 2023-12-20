@@ -19,7 +19,7 @@ use narwhal_network_types::{
 use narwhal_storage::{CertificateStore, NodeStorage};
 use narwhal_types::{
     test_utils::{temp_dir, CommitteeFixture},
-    AggregateSignatureBytes, AuthorityIdentifier, BatchDigest, Certificate, CertificateAPI,
+    AuthorityIdentifier, BatchDigest, BlsAggregateSignatureBytes, Certificate, CertificateAPI,
     CertificateDigest, Epoch, Header, HeaderAPI, HeaderDigest, HeaderV1,
     PreSubscribedBroadcastSender, Round, SignatureVerificationState, SystemMessage, TimestampSec,
     WorkerId,
@@ -742,7 +742,7 @@ async fn fetch_certificates_v1_basic() {
     for cert in certificates.iter().skip(num_written).take(204) {
         let mut cert = cert.clone();
         cert.set_signature_verification_state(SignatureVerificationState::Unverified(
-            AggregateSignatureBytes::default(),
+            BlsAggregateSignatureBytes::default(),
         ));
         certs.push(cert);
     }

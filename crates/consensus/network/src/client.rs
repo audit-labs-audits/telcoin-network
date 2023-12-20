@@ -12,7 +12,7 @@ use narwhal_network_types::{
     FetchBatchesRequest, FetchBatchesResponse, PrimaryToWorker, WorkerOthersBatchMessage,
     WorkerOwnBatchMessage, WorkerSynchronizeMessage, WorkerToPrimary,
 };
-use narwhal_types::{traits::KeyPair, NetworkKeyPair, NetworkPublicKey};
+use narwhal_types::{traits::KeyPair, NetworkKeypair, NetworkPublicKey};
 use parking_lot::RwLock;
 use std::{collections::BTreeMap, sync::Arc, time::Duration};
 use telcoin_sync::sync::notify_once::NotifyOnce;
@@ -59,7 +59,7 @@ impl NetworkClient {
         }
     }
 
-    pub fn new_from_keypair(primary_network_keypair: &NetworkKeyPair) -> Self {
+    pub fn new_from_keypair(primary_network_keypair: &NetworkKeypair) -> Self {
         Self::new(PeerId(primary_network_keypair.public().0.into()))
     }
 

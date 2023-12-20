@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 //! Specific test utils for execution layer
-use crate::{NetworkKeyPair, WorkerId, WorkerInfo};
+use crate::{NetworkKeypair, WorkerId, WorkerInfo};
 use fastcrypto::traits::KeyPair as _;
 
 use rand::{rngs::StdRng, SeedableRng};
@@ -11,14 +11,14 @@ use rand::{rngs::StdRng, SeedableRng};
 ///
 /// [WorkerFixture] holds keypairs and should not be used in production.
 pub struct WorkerFixture {
-    pub(crate) keypair: NetworkKeyPair,
+    pub(crate) keypair: NetworkKeypair,
     #[allow(dead_code)]
     pub(crate) id: WorkerId,
     pub(crate) info: WorkerInfo,
 }
 
 impl WorkerFixture {
-    pub fn keypair(&self) -> NetworkKeyPair {
+    pub fn keypair(&self) -> NetworkKeypair {
         self.keypair.copy()
     }
 
@@ -39,7 +39,7 @@ impl WorkerFixture {
         R: rand::RngCore + rand::CryptoRng,
         P: FnMut(&str) -> u16,
     {
-        let keypair = NetworkKeyPair::generate(&mut StdRng::from_rng(rng).unwrap());
+        let keypair = NetworkKeypair::generate(&mut StdRng::from_rng(rng).unwrap());
         let worker_name = keypair.public().clone();
         let host = "127.0.0.1";
         let worker_address = format!("/ip4/{}/udp/{}", host, get_port(host)).parse().unwrap();
