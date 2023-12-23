@@ -26,7 +26,7 @@ pub use crate::consensus::{
 use narwhal_typed_store::StoreError;
 use thiserror::Error;
 
-use narwhal_types::Certificate;
+use tn_types::Certificate;
 
 /// The default channel size used in the consensus and subscriber logic.
 pub const DEFAULT_CHANNEL_SIZE: usize = 1_000;

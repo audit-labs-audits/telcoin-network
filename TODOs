@@ -1,0 +1,19 @@
+# TODOs
+
+- organize this content better
+
+- handle epochs
+
+- read stake from contract
+
+- use ERC-20 as native currency
+
+- add tx pool to executor to filter duplicate transactions
+
+- better batch building
+
+- deployment tools (docker, genesis ceremony, scripts, etc.)
+
+- create a committee and save it as a yaml
+    - read committee from file to start network
+

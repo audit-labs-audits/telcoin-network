@@ -3,8 +3,8 @@
 // SPDX-License-Identifier: Apache-2.0
 use narwhal_test_utils::cluster::Cluster;
 
-use narwhal_types::test_utils::setup_test_tracing;
 use std::time::Duration;
+use tn_types::test_utils::setup_test_tracing;
 use tracing::info;
 
 #[ignore]

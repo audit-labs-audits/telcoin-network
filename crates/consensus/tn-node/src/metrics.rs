@@ -3,9 +3,9 @@
 // SPDX-License-Identifier: Apache-2.0
 use axum::{routing::get, Extension, Router};
 use consensus_metrics::{metrics, spawn_logged_monitored_task};
-use narwhal_types::{AuthorityIdentifier, Multiaddr, WorkerId};
 use prometheus::{Error as PrometheusError, Registry};
 use std::collections::HashMap;
+use tn_types::{AuthorityIdentifier, Multiaddr, WorkerId};
 use tokio::task::JoinHandle;
 
 const METRICS_ROUTE: &str = "/metrics";

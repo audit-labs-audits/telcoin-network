@@ -29,7 +29,7 @@ narwhal-network = { workspace = true }
 narwhal-primary = { workspace = true, features = ["test-utils"] }
 prometheus = { workspace = true }
 narwhal-storage = { workspace = true }
-narwhal-types = { workspace = true }
+tn-types = { workspace = true }
 narwhal-network-types = { workspace = true }
 narwhal-worker = { workspace = true }
 eyre = { workspace = true }
@@ -58,6 +58,8 @@ tn-batch-validator = { workspace = true }
 
 tempfile = { workspace = true }
 jsonrpsee = { workspace = true }
+
+tn-config = { workspace = true }
 
 [dev-dependencies]
 serde-reflection = { workspace = true }

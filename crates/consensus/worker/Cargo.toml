@@ -21,11 +21,12 @@ tonic = { workspace = true }
 tower = { workspace = true }
 tracing = { workspace = true }
 itertools = { workspace = true }
+tn-config = { workspace = true }
 
 fastcrypto = { workspace = true, features = ["copy_key"] }
 narwhal-network = { workspace = true }
 narwhal-network-types = { workspace = true }
-narwhal-types = { workspace = true }
+tn-types = { workspace = true }
 prometheus = { workspace = true }
 narwhal-typed-store = { workspace = true }
 consensus-metrics = { workspace = true }
@@ -46,7 +47,7 @@ tn-node = { workspace = true }
 narwhal-primary = { workspace = true }
 narwhal-storage = { workspace = true }
 reth-tracing = { workspace = true }
-narwhal-types = { workspace = true, features = ["test-utils"] }
+tn-types = { workspace = true, features = ["test-utils"] }
 narwhal-network = { workspace = true, features = ["test-utils"] }
 bytes = { workspace = true }
 

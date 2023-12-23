@@ -9,9 +9,9 @@ use std::{
 };
 
 use narwhal_storage::ConsensusStore;
-use narwhal_types::AuthorityIdentifier;
+use tn_types::AuthorityIdentifier;
 
-use narwhal_types::{
+use tn_types::{
     test_utils::{mock_certificate, CommitteeFixture},
     Certificate, CommittedSubDag, ReputationScores, Round,
 };

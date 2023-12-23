@@ -12,11 +12,11 @@ use narwhal_typed_store::{
     reopen,
     rocks::{default_db_options, open_cf_opts, DBMap, MetricConf, ReadWriteOptions},
 };
-use narwhal_types::{
+use std::{num::NonZeroUsize, sync::Arc, time::Duration};
+use tn_types::{
     AuthorityIdentifier, Batch, BatchDigest, Certificate, CertificateDigest, ConsensusCommit,
     Header, Round, SequenceNumber, VoteInfo, WorkerId,
 };
-use std::{num::NonZeroUsize, sync::Arc, time::Duration};
 
 // A type alias marking the "payload" tokens sent by workers to their primary as batch
 // acknowledgements

@@ -6,19 +6,19 @@ use super::*;
 
 use crate::NUM_SHUTDOWN_RECEIVERS;
 use narwhal_network_types::MockWorkerToPrimary;
-use narwhal_types::{
+use prometheus::Registry;
+use tn_types::{
     test_utils::{create_batch_store, transaction},
     PreSubscribedBroadcastSender,
 };
-use prometheus::Registry;
 
 #[tokio::test]
 async fn make_batch() {
     let client = NetworkClient::new_with_empty_id();
     let store = create_batch_store();
     let mut tx_shutdown = PreSubscribedBroadcastSender::new(NUM_SHUTDOWN_RECEIVERS);
-    let (tx_batch_maker, rx_batch_maker) = narwhal_types::test_channel!(1);
-    let (tx_quorum_waiter, mut rx_quorum_waiter) = narwhal_types::test_channel!(1);
+    let (tx_batch_maker, rx_batch_maker) = tn_types::test_channel!(1);
+    let (tx_quorum_waiter, mut rx_quorum_waiter) = tn_types::test_channel!(1);
     let node_metrics = WorkerMetrics::new(&Registry::new());
 
     // Mock the primary client to always succeed.
@@ -69,8 +69,8 @@ async fn make_batch() {
 //     let client = create_network_client();
 //     let store = create_batch_store();
 //     let mut tx_shutdown = PreSubscribedBroadcastSender::new(NUM_SHUTDOWN_RECEIVERS);
-//     let (tx_batch_maker, rx_batch_maker) = narwhal_types::test_channel!(1);
-//     let (tx_quorum_waiter, mut rx_quorum_waiter) = narwhal_types::test_channel!(1);
+//     let (tx_batch_maker, rx_batch_maker) = tn_types::test_channel!(1);
+//     let (tx_quorum_waiter, mut rx_quorum_waiter) = tn_types::test_channel!(1);
 //     let node_metrics = WorkerMetrics::new(&Registry::new());
 
 //     // Mock the primary client to always succeed.

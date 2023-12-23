@@ -18,11 +18,11 @@ use consensus_metrics::metered_channel;
 use mockall::automock;
 use narwhal_network::client::NetworkClient;
 use narwhal_storage::{CertificateStore, ConsensusStore};
-use narwhal_types::{
+use std::sync::Arc;
+use tn_types::{
     AuthorityIdentifier, CertificateDigest, CommittedSubDag, Committee,
     ConditionalBroadcastReceiver, ConsensusOutput, WorkerCache,
 };
-use std::sync::Arc;
 use tokio::task::JoinHandle;
 use tracing::info;
 

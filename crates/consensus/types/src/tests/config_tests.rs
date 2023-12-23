@@ -19,12 +19,12 @@
 // 1. Run `cargo insta test --review` under `./config`.
 // 2. Review, accept or reject changes.
 
-use narwhal_types::{
+use tn_types::{
     Import, NetworkAdminServerParameters, Parameters, PrometheusMetricsParameters, Stake,
 };
 use crypto::PublicKey;
 use insta::assert_json_snapshot;
-use narwhal_types::Multiaddr;
+use tn_types::Multiaddr;
 use narwhal_config as config;
 use rand::{rngs::StdRng, seq::SliceRandom, SeedableRng};
 use std::{
@@ -33,7 +33,7 @@ use std::{
     io::Write,
 };
 use tempfile::tempdir;
-use narwhal_types::test_utils::CommitteeFixture;
+use tn_types::test_utils::CommitteeFixture;
 
 #[test]
 fn leader_election_rotates_through_all() {

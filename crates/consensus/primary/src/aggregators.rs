@@ -5,10 +5,10 @@
 
 use crate::metrics::PrimaryMetrics;
 use fastcrypto::hash::{Digest, Hash};
-use narwhal_types::{AuthorityIdentifier, Committee, Stake};
 use std::{collections::HashSet, sync::Arc};
+use tn_types::{AuthorityIdentifier, Committee, Stake};
 
-use narwhal_types::{
+use tn_types::{
     ensure,
     error::{DagError, DagResult},
     to_intent_message, BlsAggregateSignature, BlsSignature, Certificate, CertificateAPI, Header,
@@ -52,7 +52,7 @@ impl VotesAggregator {
                 Certificate::new_unverified(committee, header.clone(), self.votes.clone())?;
             let (_, pks) = cert.signed_by(committee);
 
-            let certificate_digest: Digest<{ narwhal_types::DIGEST_LENGTH }> =
+            let certificate_digest: Digest<{ tn_types::DIGEST_LENGTH }> =
                 Digest::from(cert.digest());
             match BlsAggregateSignature::try_from(
                 cert.aggregated_signature().ok_or(DagError::InvalidSignature)?,

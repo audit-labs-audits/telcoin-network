@@ -7,7 +7,7 @@ use fastcrypto::{
     serde_helpers::ToFromByteArray,
     traits::{KeyPair, ToFromBytes},
 };
-use narwhal_types::test_utils::CommitteeFixture;
+use tn_types::test_utils::CommitteeFixture;
 
 #[tokio::test]
 async fn start_dkg() {
@@ -38,7 +38,7 @@ async fn start_dkg() {
     )
     .unwrap();
 
-    let (tx_system_messages, mut rx_system_messages) = narwhal_types::test_channel!(1);
+    let (tx_system_messages, mut rx_system_messages) = tn_types::test_channel!(1);
     randomness_state.start_dkg(&tx_system_messages).await;
 
     let dkg_message = rx_system_messages.recv().await.unwrap();

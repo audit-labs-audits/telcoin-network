@@ -2,8 +2,8 @@
 //!
 //! These messages are passed as unreliable send and
 //! don't expect a response.
-use narwhal_types::{AuthorityIdentifier, Batch, BatchDigest, VersionedMetadata, WorkerId};
 use serde::{Deserialize, Serialize};
+use tn_types::{AuthorityIdentifier, Batch, BatchDigest, VersionedMetadata, WorkerId};
 
 /// Used by the primary to request that the worker sync the target missing batches.
 #[derive(Clone, Debug, Serialize, Deserialize)]

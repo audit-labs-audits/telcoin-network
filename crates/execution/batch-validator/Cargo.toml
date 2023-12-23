@@ -10,7 +10,7 @@ repository.workspace = true
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
-narwhal-types = { workspace = true }
+tn-types = { workspace = true }
 reth-interfaces = { workspace = true }
 reth-provider = { workspace = true }
 reth-revm = { workspace = true }
@@ -25,7 +25,7 @@ tracing = { workspace = true }
 [dev-dependencies]
 # unit tests
 tokio = { workspace = true, features = ["sync", "time"] }
-narwhal-types = { workspace = true, features = ["test-utils"] }
+tn-types = { workspace = true, features = ["test-utils"] }
 reth-tracing = { workspace = true }
 reth = { workspace = true }
 reth-beacon-consensus = { workspace = true }

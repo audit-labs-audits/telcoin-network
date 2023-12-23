@@ -8,10 +8,10 @@ use narwhal_typed_store::{
     rocks::{open_cf, DBMap, MetricConf, ReadWriteOptions},
     Map, TypedStoreError,
 };
-use narwhal_types::{BatchDigest, WorkerId};
 use std::sync::Arc;
 use telcoin_macros::fail_point;
 use telcoin_sync::sync::notify_read::NotifyRead;
+use tn_types::{BatchDigest, WorkerId};
 
 /// Store of the batch digests for the primary node for the own created batches.
 #[derive(Clone)]
@@ -129,14 +129,14 @@ mod tests {
     use crate::PayloadStore;
     use fastcrypto::hash::Hash;
     use futures::future::join_all;
-    use narwhal_types::Batch;
+    use tn_types::Batch;
 
     #[tokio::test]
     async fn test_notify_read() {
         let store = PayloadStore::new_for_tests();
 
         // run the tests a few times
-        let batch: Batch = narwhal_types::test_utils::fixture_batch_with_transactions(10);
+        let batch: Batch = tn_types::test_utils::fixture_batch_with_transactions(10);
         let id = batch.digest();
         let worker_id = 0;
 

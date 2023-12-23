@@ -3,13 +3,13 @@
 // SPDX-License-Identifier: Apache-2.0
 use fastcrypto::traits::KeyPair as _;
 use indexmap::IndexMap;
-use narwhal_types::{
+use rand::{rngs::OsRng, seq::SliceRandom};
+use std::{collections::BTreeSet, num::NonZeroUsize};
+use tn_types::{
     test_utils::{AuthorityFixture, CommitteeFixture},
     AuthorityIdentifier, BlsPublicKey, BlsSignature, Certificate, Committee, Header, HeaderV1,
     Stake, Vote, VoteAPI,
 };
-use rand::{rngs::OsRng, seq::SliceRandom};
-use std::{collections::BTreeSet, num::NonZeroUsize};
 
 #[tokio::test]
 async fn test_certificate_signers_are_ordered() {

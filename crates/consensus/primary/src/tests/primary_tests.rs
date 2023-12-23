@@ -22,12 +22,6 @@ use narwhal_network_types::{
     FetchCertificatesRequest, MockPrimaryToWorker, PrimaryToPrimary, RequestVoteRequest,
 };
 use narwhal_storage::{NodeStorage, VoteDigestStore};
-use narwhal_types::{
-    now,
-    test_utils::{make_optimal_signed_certificates, temp_dir, CommitteeFixture},
-    AuthorityIdentifier, Certificate, CertificateAPI, ChainIdentifier, Committee, Header,
-    HeaderAPI, Parameters, PreSubscribedBroadcastSender, SignatureVerificationState, VoteAPI,
-};
 use narwhal_worker::{
     metrics::{initialise_metrics, WorkerChannelMetrics},
     Worker,
@@ -40,6 +34,13 @@ use std::{
     time::Duration,
 };
 use tn_batch_validator::NoopBatchValidator;
+use tn_config::Parameters;
+use tn_types::{
+    now,
+    test_utils::{make_optimal_signed_certificates, temp_dir, CommitteeFixture},
+    AuthorityIdentifier, Certificate, CertificateAPI, ChainIdentifier, Committee, Header,
+    HeaderAPI, PreSubscribedBroadcastSender, SignatureVerificationState, VoteAPI,
+};
 use tokio::{sync::watch, time::timeout};
 
 #[tokio::test]
@@ -287,13 +288,13 @@ async fn test_request_vote_has_missing_parents() {
     let metrics = Arc::new(PrimaryMetrics::new(&Registry::new()));
     let primary_channel_metrics = PrimaryChannelMetrics::new(&Registry::new());
     let network =
-        narwhal_types::test_utils::test_network(target.network_keypair(), target.network_address());
+        tn_types::test_utils::test_network(target.network_keypair(), target.network_address());
     let client = NetworkClient::new_from_keypair(&target.network_keypair());
 
     let (certificate_store, payload_store) = create_db_stores();
-    let (tx_certificate_fetcher, _rx_certificate_fetcher) = narwhal_types::test_channel!(1);
-    let (tx_new_certificates, _rx_new_certificates) = narwhal_types::test_channel!(100);
-    let (tx_parents, _rx_parents) = narwhal_types::test_channel!(100);
+    let (tx_certificate_fetcher, _rx_certificate_fetcher) = tn_types::test_channel!(1);
+    let (tx_new_certificates, _rx_new_certificates) = tn_types::test_channel!(100);
+    let (tx_parents, _rx_parents) = tn_types::test_channel!(100);
     let (_tx_consensus_round_updates, rx_consensus_round_updates) =
         watch::channel(ConsensusRound::new(1, 0));
     let (tx_narwhal_round_updates, rx_narwhal_round_updates) = watch::channel(1u64);
@@ -345,11 +346,7 @@ async fn test_request_vote_has_missing_parents() {
             .author(author_id)
             .round(3)
             .parents(round_2_certs.iter().map(|c| c.digest()).collect())
-            .with_payload_batch(
-                narwhal_types::test_utils::fixture_batch_with_transactions(10),
-                0,
-                0,
-            )
+            .with_payload_batch(tn_types::test_utils::fixture_batch_with_transactions(10), 0, 0)
             .build()
             .unwrap(),
     );
@@ -433,13 +430,13 @@ async fn test_request_vote_accept_missing_parents() {
     let metrics = Arc::new(PrimaryMetrics::new(&Registry::new()));
     let primary_channel_metrics = PrimaryChannelMetrics::new(&Registry::new());
     let network =
-        narwhal_types::test_utils::test_network(target.network_keypair(), target.network_address());
+        tn_types::test_utils::test_network(target.network_keypair(), target.network_address());
     let client = NetworkClient::new_from_keypair(&target.network_keypair());
 
     let (certificate_store, payload_store) = create_db_stores();
-    let (tx_certificate_fetcher, _rx_certificate_fetcher) = narwhal_types::test_channel!(1);
-    let (tx_new_certificates, _rx_new_certificates) = narwhal_types::test_channel!(100);
-    let (tx_parents, _rx_parents) = narwhal_types::test_channel!(100);
+    let (tx_certificate_fetcher, _rx_certificate_fetcher) = tn_types::test_channel!(1);
+    let (tx_new_certificates, _rx_new_certificates) = tn_types::test_channel!(100);
+    let (tx_parents, _rx_parents) = tn_types::test_channel!(100);
     let (_tx_consensus_round_updates, rx_consensus_round_updates) =
         watch::channel(ConsensusRound::new(1, 0));
     let (tx_narwhal_round_updates, rx_narwhal_round_updates) = watch::channel(1u64);
@@ -492,11 +489,7 @@ async fn test_request_vote_accept_missing_parents() {
             .author(author_id)
             .round(3)
             .parents(round_2_certs.iter().map(|c| c.digest()).collect())
-            .with_payload_batch(
-                narwhal_types::test_utils::fixture_batch_with_transactions(10),
-                0,
-                0,
-            )
+            .with_payload_batch(tn_types::test_utils::fixture_batch_with_transactions(10), 0, 0)
             .build()
             .unwrap(),
     );
@@ -593,16 +586,14 @@ async fn test_request_vote_missing_batches() {
     let signature_service = SignatureService::new(primary.keypair().copy());
     let metrics = Arc::new(PrimaryMetrics::new(&Registry::new()));
     let primary_channel_metrics = PrimaryChannelMetrics::new(&Registry::new());
-    let network = narwhal_types::test_utils::test_network(
-        primary.network_keypair(),
-        primary.network_address(),
-    );
+    let network =
+        tn_types::test_utils::test_network(primary.network_keypair(), primary.network_address());
     let client = NetworkClient::new_from_keypair(&primary.network_keypair());
 
     let (certificate_store, payload_store) = create_db_stores();
-    let (tx_certificate_fetcher, _rx_certificate_fetcher) = narwhal_types::test_channel!(1);
-    let (tx_new_certificates, _rx_new_certificates) = narwhal_types::test_channel!(100);
-    let (tx_parents, _rx_parents) = narwhal_types::test_channel!(100);
+    let (tx_certificate_fetcher, _rx_certificate_fetcher) = tn_types::test_channel!(1);
+    let (tx_new_certificates, _rx_new_certificates) = tn_types::test_channel!(100);
+    let (tx_parents, _rx_parents) = tn_types::test_channel!(100);
     let (_tx_consensus_round_updates, rx_consensus_round_updates) =
         watch::channel(ConsensusRound::new(1, 0));
     let (_tx_narwhal_round_updates, rx_narwhal_round_updates) = watch::channel(1u64);
@@ -641,11 +632,7 @@ async fn test_request_vote_missing_batches() {
         let header = Header::V1(
             primary
                 .header_builder(&fixture.committee())
-                .with_payload_batch(
-                    narwhal_types::test_utils::fixture_batch_with_transactions(10),
-                    0,
-                    0,
-                )
+                .with_payload_batch(tn_types::test_utils::fixture_batch_with_transactions(10), 0, 0)
                 .build()
                 .unwrap(),
         );
@@ -664,11 +651,7 @@ async fn test_request_vote_missing_batches() {
             .header_builder(&fixture.committee())
             .round(2)
             .parents(certificates.keys().cloned().collect())
-            .with_payload_batch(
-                narwhal_types::test_utils::fixture_batch_with_transactions(10),
-                1,
-                0,
-            )
+            .with_payload_batch(tn_types::test_utils::fixture_batch_with_transactions(10), 1, 0)
             .build()
             .unwrap(),
     );
@@ -725,16 +708,14 @@ async fn test_request_vote_already_voted() {
     let signature_service = SignatureService::new(primary.keypair().copy());
     let metrics = Arc::new(PrimaryMetrics::new(&Registry::new()));
     let primary_channel_metrics = PrimaryChannelMetrics::new(&Registry::new());
-    let network = narwhal_types::test_utils::test_network(
-        primary.network_keypair(),
-        primary.network_address(),
-    );
+    let network =
+        tn_types::test_utils::test_network(primary.network_keypair(), primary.network_address());
     let client = NetworkClient::new_from_keypair(&primary.network_keypair());
 
     let (certificate_store, payload_store) = create_db_stores();
-    let (tx_certificate_fetcher, _rx_certificate_fetcher) = narwhal_types::test_channel!(1);
-    let (tx_new_certificates, _rx_new_certificates) = narwhal_types::test_channel!(100);
-    let (tx_parents, _rx_parents) = narwhal_types::test_channel!(100);
+    let (tx_certificate_fetcher, _rx_certificate_fetcher) = tn_types::test_channel!(1);
+    let (tx_new_certificates, _rx_new_certificates) = tn_types::test_channel!(100);
+    let (tx_parents, _rx_parents) = tn_types::test_channel!(100);
     let (_tx_consensus_round_updates, rx_consensus_round_updates) =
         watch::channel(ConsensusRound::new(1, 0));
     let (_tx_narwhal_round_updates, rx_narwhal_round_updates) = watch::channel(1u64);
@@ -774,11 +755,7 @@ async fn test_request_vote_already_voted() {
         let header = Header::V1(
             primary
                 .header_builder(&fixture.committee())
-                .with_payload_batch(
-                    narwhal_types::test_utils::fixture_batch_with_transactions(10),
-                    0,
-                    0,
-                )
+                .with_payload_batch(tn_types::test_utils::fixture_batch_with_transactions(10), 0, 0)
                 .build()
                 .unwrap(),
         );
@@ -813,11 +790,7 @@ async fn test_request_vote_already_voted() {
             .header_builder(&fixture.committee())
             .round(2)
             .parents(certificates.keys().cloned().collect())
-            .with_payload_batch(
-                narwhal_types::test_utils::fixture_batch_with_transactions(10),
-                1,
-                0,
-            )
+            .with_payload_batch(tn_types::test_utils::fixture_batch_with_transactions(10), 1, 0)
             .build()
             .unwrap(),
     );
@@ -856,11 +829,7 @@ async fn test_request_vote_already_voted() {
             .header_builder(&fixture.committee())
             .round(2)
             .parents(certificates.keys().cloned().collect())
-            .with_payload_batch(
-                narwhal_types::test_utils::fixture_batch_with_transactions(10),
-                1,
-                0,
-            )
+            .with_payload_batch(tn_types::test_utils::fixture_batch_with_transactions(10), 1, 0)
             .build()
             .unwrap(),
     );
@@ -899,9 +868,9 @@ async fn test_request_vote_already_voted() {
 //     let client = NetworkClient::new_from_keypair(&primary.network_keypair());
 
 //     let (certificate_store, payload_store) = create_db_stores();
-//     let (tx_certificate_fetcher, _rx_certificate_fetcher) = narwhal_types::test_channel!(1);
-//     let (tx_new_certificates, _rx_new_certificates) = narwhal_types::test_channel!(100);
-//     let (tx_parents, _rx_parents) = narwhal_types::test_channel!(100);
+//     let (tx_certificate_fetcher, _rx_certificate_fetcher) = tn_types::test_channel!(1);
+//     let (tx_new_certificates, _rx_new_certificates) = tn_types::test_channel!(100);
+//     let (tx_parents, _rx_parents) = tn_types::test_channel!(100);
 //     let (_tx_consensus_round_updates, rx_consensus_round_updates) =
 //         watch::channel(ConsensusRound::default());
 //     let (_tx_narwhal_round_updates, rx_narwhal_round_updates) = watch::channel(1u64);
@@ -1073,9 +1042,9 @@ async fn test_fetch_certificates_v2_handler() {
     let client = NetworkClient::new_from_keypair(&primary.network_keypair());
 
     let (certificate_store, payload_store) = create_db_stores();
-    let (tx_certificate_fetcher, _rx_certificate_fetcher) = narwhal_types::test_channel!(1);
-    let (tx_new_certificates, _rx_new_certificates) = narwhal_types::test_channel!(100);
-    let (tx_parents, _rx_parents) = narwhal_types::test_channel!(100);
+    let (tx_certificate_fetcher, _rx_certificate_fetcher) = tn_types::test_channel!(1);
+    let (tx_new_certificates, _rx_new_certificates) = tn_types::test_channel!(100);
+    let (tx_parents, _rx_parents) = tn_types::test_channel!(100);
     let (_tx_consensus_round_updates, rx_consensus_round_updates) =
         watch::channel(ConsensusRound::default());
     let (_tx_narwhal_round_updates, rx_narwhal_round_updates) = watch::channel(1u64);
@@ -1210,16 +1179,14 @@ async fn test_request_vote_created_at_in_future() {
     let signature_service = SignatureService::new(primary.keypair().copy());
     let metrics = Arc::new(PrimaryMetrics::new(&Registry::new()));
     let primary_channel_metrics = PrimaryChannelMetrics::new(&Registry::new());
-    let network = narwhal_types::test_utils::test_network(
-        primary.network_keypair(),
-        primary.network_address(),
-    );
+    let network =
+        tn_types::test_utils::test_network(primary.network_keypair(), primary.network_address());
     let client = NetworkClient::new_from_keypair(&primary.network_keypair());
 
     let (certificate_store, payload_store) = create_db_stores();
-    let (tx_certificate_fetcher, _rx_certificate_fetcher) = narwhal_types::test_channel!(1);
-    let (tx_new_certificates, _rx_new_certificates) = narwhal_types::test_channel!(100);
-    let (tx_parents, _rx_parents) = narwhal_types::test_channel!(100);
+    let (tx_certificate_fetcher, _rx_certificate_fetcher) = tn_types::test_channel!(1);
+    let (tx_new_certificates, _rx_new_certificates) = tn_types::test_channel!(100);
+    let (tx_parents, _rx_parents) = tn_types::test_channel!(100);
     let (_tx_consensus_round_updates, rx_consensus_round_updates) =
         watch::channel(ConsensusRound::new(1, 0));
     let (_tx_narwhal_round_updates, rx_narwhal_round_updates) = watch::channel(1u64);
@@ -1258,11 +1225,7 @@ async fn test_request_vote_created_at_in_future() {
         let header = Header::V1(
             primary
                 .header_builder(&fixture.committee())
-                .with_payload_batch(
-                    narwhal_types::test_utils::fixture_batch_with_transactions(10),
-                    0,
-                    0,
-                )
+                .with_payload_batch(tn_types::test_utils::fixture_batch_with_transactions(10), 0, 0)
                 .build()
                 .unwrap(),
         );
@@ -1301,11 +1264,7 @@ async fn test_request_vote_created_at_in_future() {
             .header_builder(&fixture.committee())
             .round(2)
             .parents(certificates.keys().cloned().collect())
-            .with_payload_batch(
-                narwhal_types::test_utils::fixture_batch_with_transactions(10),
-                1,
-                0,
-            )
+            .with_payload_batch(tn_types::test_utils::fixture_batch_with_transactions(10), 1, 0)
             .created_at(created_at)
             .build()
             .unwrap(),
@@ -1333,7 +1292,7 @@ async fn test_request_vote_created_at_in_future() {
         .header_builder(&fixture.committee())
         .round(2)
         .parents(certificates.keys().cloned().collect())
-        .with_payload_batch(narwhal_types::test_utils::fixture_batch_with_transactions(10), 1, 0)
+        .with_payload_batch(tn_types::test_utils::fixture_batch_with_transactions(10), 1, 0)
         .created_at(created_at)
         .build()
         .unwrap();

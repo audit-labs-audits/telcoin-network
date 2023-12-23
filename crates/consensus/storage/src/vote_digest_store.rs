@@ -8,8 +8,8 @@ use narwhal_typed_store::{
     rocks::{open_cf, DBMap, MetricConf, ReadWriteOptions},
     Map, TypedStoreError,
 };
-use narwhal_types::{AuthorityIdentifier, Vote, VoteAPI, VoteInfo};
 use telcoin_macros::fail_point;
+use tn_types::{AuthorityIdentifier, Vote, VoteAPI, VoteInfo};
 
 /// The storage for the last votes digests per authority
 #[derive(Clone)]

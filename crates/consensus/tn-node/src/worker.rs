@@ -12,16 +12,16 @@ use consensus_metrics::{metered_channel::channel_with_total, RegistryID, Registr
 use fastcrypto::traits::KeyPair;
 use narwhal_network::client::NetworkClient;
 use narwhal_storage::NodeStorage;
-use narwhal_types::{
-    BlsPublicKey, Committee, NetworkKeypair, Parameters, PreSubscribedBroadcastSender, WorkerCache,
-    WorkerId,
-};
 use narwhal_worker::{
     metrics::{initialise_metrics, Metrics, WorkerChannelMetrics},
     Worker, CHANNEL_CAPACITY, NUM_SHUTDOWN_RECEIVERS,
 };
 use prometheus::Registry;
 use std::{collections::HashMap, sync::Arc, time::Instant};
+use tn_config::Parameters;
+use tn_types::{
+    BlsPublicKey, Committee, NetworkKeypair, PreSubscribedBroadcastSender, WorkerCache, WorkerId,
+};
 use tokio::{sync::RwLock, task::JoinHandle};
 use tracing::{info, instrument};
 

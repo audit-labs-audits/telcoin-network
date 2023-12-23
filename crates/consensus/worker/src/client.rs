@@ -10,8 +10,8 @@ use std::{
 
 use arc_swap::ArcSwap;
 use consensus_metrics::metered_channel::Sender;
-use narwhal_types::{Multiaddr, NewBatch, Protocol, Transaction};
 use thiserror::Error;
+use tn_types::{Multiaddr, NewBatch, Protocol, Transaction};
 use tracing::info;
 
 /// Uses a map to allow running multiple Narwhal instances in the same process.

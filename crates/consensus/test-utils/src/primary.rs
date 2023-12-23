@@ -7,13 +7,14 @@ use fastcrypto::traits::KeyPair as _;
 use narwhal_executor::SerializedTransaction;
 use narwhal_network::client::NetworkClient;
 use narwhal_storage::NodeStorage;
-use narwhal_types::{
-    test_utils::temp_dir, AuthorityIdentifier, BlsKeypair, ChainIdentifier, Committee,
-    NetworkKeypair, Parameters, WorkerCache,
-};
 use prometheus::{proto::Metric, Registry};
 use std::{cell::RefCell, path::PathBuf, rc::Rc, sync::Arc};
+use tn_config::Parameters;
 use tn_node::{engine::ExecutionNode, primary::PrimaryNode};
+use tn_types::{
+    test_utils::temp_dir, AuthorityIdentifier, BlsKeypair, ChainIdentifier, Committee,
+    NetworkKeypair, WorkerCache,
+};
 use tokio::{
     sync::{broadcast::Sender, mpsc::channel},
     task::JoinHandle,

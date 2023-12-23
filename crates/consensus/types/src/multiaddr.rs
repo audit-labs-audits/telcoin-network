@@ -140,6 +140,12 @@ impl std::fmt::Display for Multiaddr {
     }
 }
 
+impl Default for Multiaddr {
+    fn default() -> Self {
+        Self::empty()
+    }
+}
+
 impl std::str::FromStr for Multiaddr {
     type Err = Error;
 

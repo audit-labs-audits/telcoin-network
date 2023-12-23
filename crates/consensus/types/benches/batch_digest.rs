@@ -6,8 +6,8 @@ use criterion::{
 };
 use fastcrypto::hash::Hash;
 
-use narwhal_types::Batch;
 use rand::Rng;
+use tn_types::Batch;
 
 pub fn batch_digest(c: &mut Criterion) {
     let mut digest_group = c.benchmark_group("Batch digests");

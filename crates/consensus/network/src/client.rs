@@ -12,10 +12,10 @@ use narwhal_network_types::{
     FetchBatchesRequest, FetchBatchesResponse, PrimaryToWorker, WorkerOthersBatchMessage,
     WorkerOwnBatchMessage, WorkerSynchronizeMessage, WorkerToPrimary,
 };
-use narwhal_types::{traits::KeyPair, NetworkKeypair, NetworkPublicKey};
 use parking_lot::RwLock;
 use std::{collections::BTreeMap, sync::Arc, time::Duration};
 use telcoin_sync::sync::notify_once::NotifyOnce;
+use tn_types::{traits::KeyPair, NetworkKeypair, NetworkPublicKey};
 use tokio::{select, time::sleep};
 use tracing::error;
 

@@ -2,7 +2,6 @@ use crate::Storage;
 use consensus_metrics::metered_channel::Receiver;
 use futures_util::{future::BoxFuture, FutureExt};
 
-use narwhal_types::ConsensusOutput;
 use reth_beacon_consensus::{BeaconEngineMessage, ForkchoiceStatus};
 use reth_interfaces::consensus::ForkchoiceState;
 use reth_primitives::ChainSpec;
@@ -10,6 +9,7 @@ use reth_provider::{
     BlockReaderIdExt, CanonChainTracker, CanonStateNotificationSender, Chain, StateProviderFactory,
 };
 use reth_stages::PipelineEvent;
+use tn_types::ConsensusOutput;
 
 use std::{
     collections::VecDeque,

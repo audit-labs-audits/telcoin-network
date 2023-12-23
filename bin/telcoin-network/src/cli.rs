@@ -2,7 +2,7 @@
 use crate::{
     args::clap_genesis_parser,
     dirs::LogsDir,
-    keys, node,
+    keytool, node,
     version::{LONG_VERSION, SHORT_VERSION},
 };
 use clap::{value_parser, ArgAction, Args, Parser, Subcommand, ValueEnum};
@@ -23,7 +23,7 @@ use std::{fmt, fmt::Display, sync::Arc};
 pub struct Cli<Ext: RethCliExt = ()> {
     /// The command to run
     #[clap(subcommand)]
-    command: Commands<Ext>,
+    pub command: Commands<Ext>,
 
     /// The chain this node is running.
     ///
@@ -38,7 +38,7 @@ pub struct Cli<Ext: RethCliExt = ()> {
         value_parser = clap_genesis_parser,
         global = true,
     )]
-    chain: Arc<ChainSpec>,
+    pub chain: Arc<ChainSpec>,
 
     /// Add a new instance of a node.
     ///
@@ -54,13 +54,15 @@ pub struct Cli<Ext: RethCliExt = ()> {
     /// - HTTP_RPC_PORT: default - `instance` + 1
     /// - WS_RPC_PORT: default + `instance` * 2 - 2
     #[arg(long, value_name = "INSTANCE", global = true, default_value_t = 1, value_parser = value_parser!(u16).range(..=200))]
-    instance: u16,
+    pub instance: u16,
 
+    /// The log configuration.
     #[clap(flatten)]
-    logs: Logs,
+    pub logs: Logs,
 
+    /// Verbosity settings for the CLI.
     #[clap(flatten)]
-    verbosity: Verbosity,
+    pub verbosity: Verbosity,
 }
 
 impl<Ext: RethCliExt> Cli<Ext> {
@@ -76,16 +78,15 @@ impl<Ext: RethCliExt> Cli<Ext> {
         match self.command {
             Commands::Node(command) => runner.run_command_until_exit(|ctx| command.execute(ctx)),
             Commands::Init(command) => runner.run_blocking_until_ctrl_c(command.execute()),
+            Commands::Config(command) => runner.run_until_ctrl_c(command.execute()),
+            Commands::Recover(command) => runner.run_command_until_exit(|ctx| command.execute(ctx)),
+            Commands::GenerateKeys(command) => runner.run_command_until_exit(|_| command.execute()),
             // Commands::Import(command) => runner.run_blocking_until_ctrl_c(command.execute()),
             // Commands::Db(command) => runner.run_blocking_until_ctrl_c(command.execute()),
             // Commands::Stage(command) => runner.run_blocking_until_ctrl_c(command.execute()),
             // Commands::P2P(command) => runner.run_until_ctrl_c(command.execute()),
             // Commands::TestVectors(command) => runner.run_until_ctrl_c(command.execute()),
-            Commands::Config(command) => runner.run_until_ctrl_c(command.execute()),
-            // Commands::Debug(command) => runner.run_command_until_exit(|ctx|
-            // command.execute(ctx)),
-            Commands::Recover(command) => runner.run_command_until_exit(|ctx| command.execute(ctx)),
-            Commands::GenerateKeys(command) => runner.run_command_until_exit(|_| command.execute()),
+            // Commands::Debug(command) => runner.run_command_until_exit(|ctx| command.execute(ctx)),
         }
     }
 
@@ -162,11 +163,10 @@ pub enum Commands<Ext: RethCliExt = ()> {
     Recover(recover::Command),
 
     //
-    // Key management
-    /// Generate keys for node to participate in consensus.
-    /// TODO: ask @Utku about best practice here
-    #[command(name = "generate-keys")]
-    GenerateKeys(keys::Command),
+    /// Key management.
+    /// Generate or read keys for node management.
+    #[command(name = "keytool")]
+    GenerateKeys(keytool::KeyArgs),
 }
 
 impl<Ext: RethCliExt> Commands<Ext> {
@@ -326,7 +326,7 @@ impl Display for ColorMode {
 mod tests {
     use super::*;
     use clap::CommandFactory;
-    use narwhal_types::yukon_chain_spec;
+    use tn_types::yukon_chain_spec;
 
     #[test]
     fn parse_color_mode() {

@@ -5,7 +5,7 @@ use std::fmt::{Debug, Display};
 // SPDX-License-Identifier: Apache-2.0
 use async_trait::async_trait;
 
-use narwhal_types::Batch;
+use tn_types::Batch;
 
 /// Defines the validation procedure for receiving either a new single transaction (from a client)
 /// of a batch of transactions (from another validator). Invalid transactions will not receive

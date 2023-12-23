@@ -2,12 +2,12 @@
 
 use eyre::ErrReport;
 use narwhal_executor::SubscriberError;
-use narwhal_types::WorkerId;
 use reth::init::InitDatabaseError;
 use reth_beacon_consensus::BeaconForkChoiceUpdateError;
 use reth_interfaces::RethError;
 use reth_provider::ProviderError;
 use thiserror::Error;
+use tn_types::WorkerId;
 
 #[derive(Debug, Error)]
 pub enum NodeError {

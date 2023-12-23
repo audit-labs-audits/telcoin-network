@@ -1,7 +1,6 @@
 //! Batch validator
 
 use crate::error::BatchValidationError;
-use narwhal_types::Batch;
 use reth_blockchain_tree::BundleStateDataRef;
 use reth_db::database::Database;
 use reth_interfaces::{
@@ -21,6 +20,7 @@ use std::{
     fmt::{Debug, Display},
     sync::Arc,
 };
+use tn_types::Batch;
 use tracing::debug;
 
 /// Batch validator
@@ -213,7 +213,6 @@ impl BatchValidation for NoopBatchValidator {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use narwhal_types::{test_utils::TransactionFactory, yukon_genesis, VersionedMetadata};
     use reth::{init::init_genesis, revm::EvmProcessorFactory};
     use reth_beacon_consensus::BeaconConsensus;
     use reth_blockchain_tree::{
@@ -227,6 +226,7 @@ mod tests {
     use reth_provider::ProviderFactory;
     use reth_tracing::init_test_tracing;
     use std::str::FromStr;
+    use tn_types::{test_utils::TransactionFactory, yukon_genesis, VersionedMetadata};
 
     #[tokio::test]
     async fn test_valid_batch() {

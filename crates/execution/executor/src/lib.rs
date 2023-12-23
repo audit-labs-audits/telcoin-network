@@ -7,16 +7,15 @@
 //! be mined.
 
 #![doc(
-    html_logo_url = "https://raw.githubusercontent.com/paradigmxyz/reth/main/assets/reth-docs.png",
-    html_favicon_url = "https://avatars0.githubusercontent.com/u/97369466?s=256",
-    issue_tracker_base_url = "https://github.com/paradigmxyz/reth/issues/"
+    html_logo_url = "https://www.telco.in/logos/TEL.svg",
+    html_favicon_url = "https://www.telco.in/logos/TEL.svg",
+    issue_tracker_base_url = "https://github.com/telcoin-association/telcoin-network/issues/"
 )]
 #![warn(missing_debug_implementations, missing_docs, unreachable_pub, rustdoc::all)]
 #![deny(unused_must_use, rust_2018_idioms)]
 #![cfg_attr(docsrs, feature(doc_cfg, doc_auto_cfg))]
 
 use consensus_metrics::metered_channel::Receiver;
-use narwhal_types::{now, BatchAPI, ConsensusOutput};
 use reth_beacon_consensus::BeaconEngineMessage;
 use reth_interfaces::{
     consensus::{Consensus, ConsensusError},
@@ -41,6 +40,7 @@ use std::{
     sync::Arc,
     time::{SystemTime, UNIX_EPOCH},
 };
+use tn_types::{now, BatchAPI, ConsensusOutput};
 use tokio::sync::{mpsc::UnboundedSender, RwLock, RwLockReadGuard, RwLockWriteGuard};
 use tracing::{debug, trace, warn};
 
@@ -493,9 +493,6 @@ impl StorageInner {
 mod tests {
     use super::*;
     use assert_matches::assert_matches;
-    use narwhal_types::{
-        execution_args, yukon_genesis, BatchAPI, Certificate, CommittedSubDag, ReputationScores,
-    };
     use reth::{cli::components::RethNodeComponentsImpl, init::init_genesis};
     use reth_beacon_consensus::{
         hooks::EngineHooks, BeaconConsensusEngine, MIN_BLOCKS_FOR_PIPELINE_RUN,
@@ -520,6 +517,9 @@ mod tests {
     use reth_tracing::init_test_tracing;
     use reth_transaction_pool::noop::NoopTransactionPool;
     use std::{str::FromStr, time::Duration};
+    use tn_types::{
+        execution_args, yukon_genesis, BatchAPI, Certificate, CommittedSubDag, ReputationScores,
+    };
     use tokio::{
         runtime::Handle,
         sync::{mpsc::unbounded_channel, oneshot},
@@ -549,7 +549,7 @@ mod tests {
         let sub_dag_index = 1;
         let reputation_scores = ReputationScores::default();
         let previous_sub_dag = None;
-        let batches = narwhal_types::test_utils::batches(4); // create 4 batches
+        let batches = tn_types::test_utils::batches(4); // create 4 batches
         let consensus_output = ConsensusOutput {
             sub_dag: CommittedSubDag::new(
                 vec![Certificate::default()],
@@ -647,7 +647,7 @@ mod tests {
         .expect("build network successful with no peers");
 
         // engine channel
-        let (to_executor, from_consensus) = narwhal_types::test_channel!(1);
+        let (to_executor, from_consensus) = tn_types::test_channel!(1);
         let (to_engine, from_engine) = unbounded_channel();
         let mut canon_state_notification_receiver = blockchain_db.subscribe_to_canonical_state();
 

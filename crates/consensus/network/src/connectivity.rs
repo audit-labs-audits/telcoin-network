@@ -7,9 +7,9 @@ use anemo::{types::PeerEvent, PeerId};
 use consensus_metrics::spawn_logged_monitored_task;
 use dashmap::DashMap;
 use futures::future;
-use narwhal_types::ConditionalBroadcastReceiver;
 use quinn_proto::ConnectionStats;
 use std::{collections::HashMap, sync::Arc, time::Duration};
+use tn_types::ConditionalBroadcastReceiver;
 use tokio::{task::JoinHandle, time};
 
 const CONNECTION_STAT_COLLECTION_INTERVAL: Duration = Duration::from_secs(60);

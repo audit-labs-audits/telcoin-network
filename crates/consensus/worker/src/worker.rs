@@ -33,18 +33,17 @@ use narwhal_network::{
     metrics::MetricsMakeCallbackHandler,
 };
 use narwhal_typed_store::rocks::DBMap;
-use narwhal_types::{
-    traits::KeyPair as _, Authority, AuthorityIdentifier, Committee, Multiaddr, NetworkKeypair,
-    NetworkPublicKey, NewBatch, Parameters, Protocol, WorkerCache, WorkerId,
-};
 use std::{collections::HashMap, net::Ipv4Addr, sync::Arc, thread::sleep, time::Duration};
 use tn_batch_validator::BatchValidation;
+use tn_types::{
+    traits::KeyPair as _, Authority, AuthorityIdentifier, Committee, Multiaddr, NetworkKeypair,
+    NetworkPublicKey, NewBatch, Protocol, WorkerCache, WorkerId,
+};
 
 use narwhal_network_types::{PrimaryToWorkerServer, WorkerToWorkerServer};
-use narwhal_types::{
-    Batch, BatchDigest, ConditionalBroadcastReceiver, PreSubscribedBroadcastSender,
-};
 use tap::TapFallible;
+use tn_config::Parameters;
+use tn_types::{Batch, BatchDigest, ConditionalBroadcastReceiver, PreSubscribedBroadcastSender};
 use tokio::task::JoinHandle;
 use tower::ServiceBuilder;
 use tracing::{error, info};

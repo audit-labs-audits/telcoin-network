@@ -4,11 +4,11 @@
 
 use axum::{extract::Extension, http::StatusCode, routing::get, Json, Router};
 use consensus_metrics::{spawn_logged_monitored_task, spawn_monitored_task};
-use narwhal_types::ConditionalBroadcastReceiver;
 use std::{
     net::{IpAddr, Ipv4Addr, SocketAddr, TcpListener},
     time::Duration,
 };
+use tn_types::ConditionalBroadcastReceiver;
 use tokio::{task::JoinHandle, time::sleep};
 use tracing::{error, info};
 

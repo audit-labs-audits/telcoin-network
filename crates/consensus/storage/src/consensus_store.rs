@@ -8,10 +8,10 @@ use narwhal_typed_store::{
     rocks::{open_cf, DBMap, MetricConf, ReadWriteOptions},
     Map, TypedStoreError,
 };
-use narwhal_types::{
+use std::collections::HashMap;
+use tn_types::{
     AuthorityIdentifier, CommittedSubDag, ConsensusCommit, ConsensusCommitV1, Round, SequenceNumber,
 };
-use std::collections::HashMap;
 use tracing::debug;
 
 /// The persistent storage of the sequencer.
@@ -141,10 +141,8 @@ impl ConsensusStore {
 #[cfg(test)]
 mod test {
     use crate::ConsensusStore;
-    use narwhal_types::{
-        test_utils::CommitteeFixture, Certificate, CommittedSubDag, ReputationScores,
-    };
     use std::collections::HashMap;
+    use tn_types::{test_utils::CommitteeFixture, Certificate, CommittedSubDag, ReputationScores};
 
     #[tokio::test]
     async fn test_read_latest_final_reputation_scores() {

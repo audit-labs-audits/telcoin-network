@@ -1,11 +1,11 @@
 //! Request message types
-use narwhal_types::{
-    AuthorityIdentifier, Batch, BatchDigest, Certificate, Header, NetworkPublicKey, Round,
-    VersionedMetadata, WorkerId,
-};
 use roaring::RoaringBitmap;
 use serde::{Deserialize, Serialize};
 use std::collections::{BTreeMap, BTreeSet, HashSet};
+use tn_types::{
+    AuthorityIdentifier, Batch, BatchDigest, Certificate, Header, NetworkPublicKey, Round,
+    VersionedMetadata, WorkerId,
+};
 use tracing::warn;
 
 /// Request for broadcasting certificates to peers.

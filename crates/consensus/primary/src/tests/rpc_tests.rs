@@ -8,7 +8,7 @@ use anemo::PeerId;
 use narwhal_network::{PrimaryToPrimaryRpc, WorkerRpc};
 use narwhal_network_types::{FetchCertificatesRequest, RequestBatchesRequest};
 use narwhal_test_utils::cluster::Cluster;
-use narwhal_types::AuthorityIdentifier;
+use tn_types::AuthorityIdentifier;
 
 #[tokio::test(flavor = "current_thread", start_paused = true)]
 async fn test_server_authorizations() {

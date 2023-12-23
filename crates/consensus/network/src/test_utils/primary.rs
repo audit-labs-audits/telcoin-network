@@ -7,7 +7,7 @@ use narwhal_network_types::{
     RequestVoteRequest, RequestVoteResponse, SendCertificateRequest, SendCertificateResponse,
     WorkerSynchronizeMessage,
 };
-use narwhal_types::{traits::KeyPair as _, Multiaddr, NetworkKeypair};
+use tn_types::{traits::KeyPair as _, Multiaddr, NetworkKeypair};
 
 use tokio::sync::mpsc::{channel, Receiver, Sender};
 use tracing::info;

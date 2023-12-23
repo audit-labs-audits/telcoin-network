@@ -5,11 +5,11 @@
 use super::*;
 use crate::{consensus::LeaderSwapTable, NUM_SHUTDOWN_RECEIVERS};
 use indexmap::IndexMap;
-use narwhal_types::{
+use prometheus::Registry;
+use tn_types::{
     test_utils::{fixture_payload, CommitteeFixture},
     PreSubscribedBroadcastSender,
 };
-use prometheus::Registry;
 
 #[tokio::test]
 async fn propose_empty() {
@@ -20,11 +20,11 @@ async fn propose_empty() {
     let name = primary.id();
 
     let mut tx_shutdown = PreSubscribedBroadcastSender::new(NUM_SHUTDOWN_RECEIVERS);
-    let (_tx_parents, rx_parents) = narwhal_types::test_channel!(1);
-    let (_tx_committed_own_headers, rx_committed_own_headers) = narwhal_types::test_channel!(1);
-    let (_tx_our_digests, rx_our_digests) = narwhal_types::test_channel!(1);
-    let (_tx_system_messages, rx_system_messages) = narwhal_types::test_channel!(1);
-    let (tx_headers, mut rx_headers) = narwhal_types::test_channel!(1);
+    let (_tx_parents, rx_parents) = tn_types::test_channel!(1);
+    let (_tx_committed_own_headers, rx_committed_own_headers) = tn_types::test_channel!(1);
+    let (_tx_our_digests, rx_our_digests) = tn_types::test_channel!(1);
+    let (_tx_system_messages, rx_system_messages) = tn_types::test_channel!(1);
+    let (tx_headers, mut rx_headers) = tn_types::test_channel!(1);
     let (tx_narwhal_round_updates, _rx_narwhal_round_updates) = watch::channel(0u64);
 
     let metrics = Arc::new(PrimaryMetrics::new(&Registry::new()));
@@ -67,11 +67,11 @@ async fn propose_payload_and_repropose_after_n_seconds() {
     let header_resend_delay = Duration::from_secs(3);
 
     let mut tx_shutdown = PreSubscribedBroadcastSender::new(NUM_SHUTDOWN_RECEIVERS);
-    let (tx_parents, rx_parents) = narwhal_types::test_channel!(1);
-    let (tx_our_digests, rx_our_digests) = narwhal_types::test_channel!(1);
-    let (_tx_system_messages, rx_system_messages) = narwhal_types::test_channel!(1);
-    let (_tx_committed_own_headers, rx_committed_own_headers) = narwhal_types::test_channel!(1);
-    let (tx_headers, mut rx_headers) = narwhal_types::test_channel!(1);
+    let (tx_parents, rx_parents) = tn_types::test_channel!(1);
+    let (tx_our_digests, rx_our_digests) = tn_types::test_channel!(1);
+    let (_tx_system_messages, rx_system_messages) = tn_types::test_channel!(1);
+    let (_tx_committed_own_headers, rx_committed_own_headers) = tn_types::test_channel!(1);
+    let (tx_headers, mut rx_headers) = tn_types::test_channel!(1);
     let (tx_narwhal_round_updates, _rx_narwhal_round_updates) = watch::channel(0u64);
 
     let metrics = Arc::new(PrimaryMetrics::new(&Registry::new()));
@@ -187,12 +187,12 @@ async fn equivocation_protection() {
     let proposer_store = ProposerStore::new_for_tests();
 
     let mut tx_shutdown = PreSubscribedBroadcastSender::new(NUM_SHUTDOWN_RECEIVERS);
-    let (tx_parents, rx_parents) = narwhal_types::test_channel!(1);
-    let (tx_our_digests, rx_our_digests) = narwhal_types::test_channel!(1);
-    let (_tx_system_messages, rx_system_messages) = narwhal_types::test_channel!(1);
-    let (tx_headers, mut rx_headers) = narwhal_types::test_channel!(1);
+    let (tx_parents, rx_parents) = tn_types::test_channel!(1);
+    let (tx_our_digests, rx_our_digests) = tn_types::test_channel!(1);
+    let (_tx_system_messages, rx_system_messages) = tn_types::test_channel!(1);
+    let (tx_headers, mut rx_headers) = tn_types::test_channel!(1);
     let (tx_narwhal_round_updates, _rx_narwhal_round_updates) = watch::channel(0u64);
-    let (_tx_committed_own_headers, rx_committed_own_headers) = narwhal_types::test_channel!(1);
+    let (_tx_committed_own_headers, rx_committed_own_headers) = tn_types::test_channel!(1);
     let metrics = Arc::new(PrimaryMetrics::new(&Registry::new()));
 
     // Spawn the proposer.
@@ -255,12 +255,12 @@ async fn equivocation_protection() {
     assert!(proposer_handle.await.is_ok());
 
     let mut tx_shutdown = PreSubscribedBroadcastSender::new(NUM_SHUTDOWN_RECEIVERS);
-    let (tx_parents, rx_parents) = narwhal_types::test_channel!(1);
-    let (tx_our_digests, rx_our_digests) = narwhal_types::test_channel!(1);
-    let (_tx_system_messages, rx_system_messages) = narwhal_types::test_channel!(1);
-    let (tx_headers, mut rx_headers) = narwhal_types::test_channel!(1);
+    let (tx_parents, rx_parents) = tn_types::test_channel!(1);
+    let (tx_our_digests, rx_our_digests) = tn_types::test_channel!(1);
+    let (_tx_system_messages, rx_system_messages) = tn_types::test_channel!(1);
+    let (tx_headers, mut rx_headers) = tn_types::test_channel!(1);
     let (tx_narwhal_round_updates, _rx_narwhal_round_updates) = watch::channel(0u64);
-    let (_tx_committed_own_headers, rx_committed_own_headers) = narwhal_types::test_channel!(1);
+    let (_tx_committed_own_headers, rx_committed_own_headers) = tn_types::test_channel!(1);
     let metrics = Arc::new(PrimaryMetrics::new(&Registry::new()));
 
     let _proposer_handle = Proposer::spawn(

@@ -6,11 +6,10 @@
 use crate::authority::AuthorityDetails;
 use fastcrypto::traits::KeyPair as _;
 use itertools::Itertools;
-use narwhal_types::{
-    test_utils::CommitteeFixture, yukon_chain_spec, Committee, Parameters, WorkerCache, WorkerId,
-};
 use std::{collections::HashMap, time::Duration};
+use tn_config::Parameters;
 use tn_node::engine::ExecutionNode;
+use tn_types::{test_utils::CommitteeFixture, yukon_chain_spec, Committee, WorkerCache, WorkerId};
 use tracing::info;
 
 #[cfg(test)]

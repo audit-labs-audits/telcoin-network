@@ -11,42 +11,42 @@ pub fn config_path_prefix(chain: Chain) -> String {
     }
 }
 
-/// Returns the path to the reth data directory.
+/// Returns the path to the telcoin network data directory.
 ///
 /// Refer to [dirs_next::data_dir] for cross-platform behavior.
 pub fn data_dir() -> Option<PathBuf> {
     dirs_next::data_dir().map(|root| root.join("telcoin-network"))
 }
 
-/// Returns the path to the reth database.
+/// Returns the path to the telcoin network database.
 ///
 /// Refer to [dirs_next::data_dir] for cross-platform behavior.
 pub fn database_path() -> Option<PathBuf> {
     data_dir().map(|root| root.join("db"))
 }
 
-/// Returns the path to the reth configuration directory.
+/// Returns the path to the telcoin network configuration directory.
 ///
 /// Refer to [dirs_next::config_dir] for cross-platform behavior.
 pub fn config_dir() -> Option<PathBuf> {
     dirs_next::config_dir().map(|root| root.join("telcoin-network"))
 }
 
-/// Returns the path to the reth cache directory.
+/// Returns the path to the telcoin network cache directory.
 ///
 /// Refer to [dirs_next::cache_dir] for cross-platform behavior.
 pub fn cache_dir() -> Option<PathBuf> {
     dirs_next::cache_dir().map(|root| root.join("telcoin-network"))
 }
 
-/// Returns the path to the reth logs directory.
+/// Returns the path to the telcoin network logs directory.
 ///
 /// Refer to [dirs_next::cache_dir] for cross-platform behavior.
 pub fn logs_dir() -> Option<PathBuf> {
     cache_dir().map(|root| root.join("logs"))
 }
 
-/// Returns the path to the reth data dir.
+/// Returns the path to the telcoin network data dir.
 ///
 /// The data dir should contain a subdirectory for each chain, and those chain directories will
 /// include all information for that chain, such as the p2p secret.
@@ -60,7 +60,7 @@ impl XdgPath for DataDirPath {
     }
 }
 
-/// Returns the path to the reth logs directory.
+/// Returns the path to the telcoin network logs directory.
 ///
 /// Refer to [dirs_next::cache_dir] for cross-platform behavior.
 #[derive(Clone, Copy, Debug, Default)]

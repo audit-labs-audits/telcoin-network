@@ -14,7 +14,7 @@ telcoin-sync.workspace = true
 futures.workspace = true
 tokio = { workspace = true, features = ["sync", "rt", "macros"] }
 tracing.workspace = true
-narwhal-types = { workspace = true }
+tn-types = { workspace = true }
 narwhal-typed-store = { workspace = true }
 telcoin-macros.workspace = true
 prometheus.workspace = true
@@ -23,4 +23,4 @@ parking_lot.workspace = true
 tap.workspace = true
 
 [dev-dependencies]
-narwhal-types = { workspace = true, features = ["test-utils"] }
+tn-types = { workspace = true, features = ["test-utils"] }

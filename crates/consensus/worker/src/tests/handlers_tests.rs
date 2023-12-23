@@ -5,8 +5,8 @@
 
 use fastcrypto::hash::Hash;
 use narwhal_network_types::{MockWorkerToWorker, WorkerToWorkerServer};
-use narwhal_types::test_utils::{batch, random_network, CommitteeFixture};
 use std::vec;
+use tn_types::test_utils::{batch, random_network, CommitteeFixture};
 
 use super::*;
 use tn_batch_validator::NoopBatchValidator;
@@ -22,7 +22,7 @@ async fn synchronize() {
     let id = 0;
 
     // Create a new test store.
-    let store = narwhal_types::test_utils::create_batch_store();
+    let store = tn_types::test_utils::create_batch_store();
 
     // Create network with mock behavior to respond to RequestBatches request.
     let target_primary = fixture.authorities().nth(1).unwrap();
@@ -93,7 +93,7 @@ async fn synchronize_versioned_batches() {
     let id = 0;
 
     // Create a new test store.
-    let store = narwhal_types::test_utils::create_batch_store();
+    let store = tn_types::test_utils::create_batch_store();
 
     // Create network with mock behavior to respond to RequestBatches request.
     let target_primary = fixture.authorities().nth(1).unwrap();
@@ -186,7 +186,7 @@ async fn synchronize_when_batch_exists() {
     let id = 0;
 
     // Create a new test store.
-    let store = narwhal_types::test_utils::create_batch_store();
+    let store = tn_types::test_utils::create_batch_store();
 
     // Create network without mock behavior since it will not be needed.
     let send_network = random_network();

@@ -7,12 +7,13 @@ use crate::{primary::PrimaryNodeDetails, worker::WorkerNodeDetails};
 use fastcrypto::traits::KeyPair as _;
 use jsonrpsee::http_client::HttpClient;
 use narwhal_network::client::NetworkClient;
-use narwhal_types::{
-    AuthorityIdentifier, BlsKeypair, BlsPublicKey, Committee, Multiaddr, NetworkKeypair,
-    Parameters, WorkerCache, WorkerId,
-};
 use std::{collections::HashMap, sync::Arc, time::Duration};
+use tn_config::Parameters;
 use tn_node::engine::ExecutionNode;
+use tn_types::{
+    AuthorityIdentifier, BlsKeypair, BlsPublicKey, Committee, Multiaddr, NetworkKeypair,
+    WorkerCache, WorkerId,
+};
 use tokio::sync::{RwLock, RwLockWriteGuard};
 use tracing::{error, info};
 

@@ -20,8 +20,8 @@ use narwhal_typed_store::{
     rocks::{DBMap, TypedStoreError::RocksDBError},
     Map,
 };
-use narwhal_types::{AuthorityIdentifier, Certificate, CertificateDigest, Round};
 use telcoin_sync::sync::notify_read::NotifyRead;
+use tn_types::{AuthorityIdentifier, Certificate, CertificateDigest, Round};
 
 #[derive(Clone)]
 pub struct CertificateStoreCacheMetrics {
@@ -687,14 +687,14 @@ mod test {
         reopen,
         rocks::{open_cf, DBMap, MetricConf, ReadWriteOptions},
     };
-    use narwhal_types::{
-        test_utils::{temp_dir, CommitteeFixture},
-        AuthorityIdentifier, Certificate, CertificateAPI, CertificateDigest, HeaderAPI, Round,
-    };
     use std::{
         collections::{BTreeSet, HashSet},
         num::NonZeroUsize,
         time::Instant,
+    };
+    use tn_types::{
+        test_utils::{temp_dir, CommitteeFixture},
+        AuthorityIdentifier, Certificate, CertificateAPI, CertificateDigest, HeaderAPI, Round,
     };
 
     fn new_store(path: std::path::PathBuf) -> CertificateStore {

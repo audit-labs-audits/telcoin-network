@@ -1,6 +1,5 @@
 //! Error types for building and executing output from consensus.
 
-use narwhal_types::BatchConversionError;
 use reth_interfaces::{
     blockchain_tree::error::BlockchainTreeError,
     consensus::ConsensusError,
@@ -9,6 +8,7 @@ use reth_interfaces::{
 use reth_primitives::{GotExpected, B256};
 use reth_provider::ProviderError;
 use thiserror::Error;
+use tn_types::BatchConversionError;
 
 /// Batch validation error types
 #[derive(Error, Debug, Clone)]

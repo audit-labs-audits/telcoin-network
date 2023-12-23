@@ -11,16 +11,16 @@ use crate::consensus::{
 use consensus_metrics::{metered_channel, spawn_logged_monitored_task};
 use fastcrypto::hash::Hash;
 use narwhal_storage::{CertificateStore, ConsensusStore};
-use narwhal_types::{
-    AuthorityIdentifier, Certificate, CertificateAPI, CertificateDigest, CommittedSubDag,
-    Committee, ConditionalBroadcastReceiver, ConsensusCommit, HeaderAPI, Round, SequenceNumber,
-    Timestamp,
-};
 use std::{
     cmp::{max, Ordering},
     collections::{BTreeMap, BTreeSet, HashMap},
     fmt::Debug,
     sync::Arc,
+};
+use tn_types::{
+    AuthorityIdentifier, Certificate, CertificateAPI, CertificateDigest, CommittedSubDag,
+    Committee, ConditionalBroadcastReceiver, ConsensusCommit, HeaderAPI, Round, SequenceNumber,
+    Timestamp,
 };
 use tokio::{sync::watch, task::JoinHandle};
 use tracing::{debug, info, instrument};

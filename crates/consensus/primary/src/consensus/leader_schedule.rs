@@ -3,7 +3,6 @@
 // SPDX-License-Identifier: Apache-2.0
 
 use narwhal_storage::ConsensusStore;
-use narwhal_types::{Authority, AuthorityIdentifier, Committee, Stake};
 use parking_lot::RwLock;
 use rand::{rngs::StdRng, seq::SliceRandom, SeedableRng};
 use std::{
@@ -11,8 +10,9 @@ use std::{
     fmt::{Debug, Formatter},
     sync::Arc,
 };
+use tn_types::{Authority, AuthorityIdentifier, Committee, Stake};
 
-use narwhal_types::{Certificate, ReputationScores, Round};
+use tn_types::{Certificate, ReputationScores, Round};
 use tracing::{debug, trace};
 
 use super::Dag;

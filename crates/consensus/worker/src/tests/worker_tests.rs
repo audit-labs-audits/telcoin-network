@@ -5,28 +5,18 @@
 use super::*;
 use crate::metrics::initialise_metrics;
 use async_trait::async_trait;
-use fastcrypto::{
-    encoding::{Encoding, Hex},
-    hash::Hash,
-};
-use futures::{stream::FuturesOrdered, StreamExt};
-use narwhal_network_types::{MockWorkerToPrimary, MockWorkerToWorker};
+use fastcrypto::encoding::{Encoding, Hex};
 use narwhal_primary::{
     consensus::{ConsensusRound, LeaderSchedule, LeaderSwapTable},
     Primary, CHANNEL_CAPACITY, NUM_SHUTDOWN_RECEIVERS,
 };
 use narwhal_storage::NodeStorage;
-use narwhal_typed_store::{
-    rocks,
-    rocks::{MetricConf, ReadWriteOptions},
-};
-use narwhal_types::{
-    test_utils::{batch, temp_dir, CommitteeFixture},
-    BatchAPI, ChainIdentifier, PreSubscribedBroadcastSender,
-};
+
 use prometheus::Registry;
 use tn_batch_validator::NoopBatchValidator;
-
+use tn_types::{
+    test_utils::{temp_dir, CommitteeFixture}, ChainIdentifier, PreSubscribedBroadcastSender,
+};
 use std::time::Duration;
 use tokio::sync::watch;
 
@@ -93,7 +83,7 @@ impl BatchValidation for NilBatchValidator {
 //     tokio::task::yield_now().await;
 //     // Send enough transactions to create a batch.
 //     let address = worker_cache.worker(&public_key, &worker_id).unwrap().transactions;
-//     let config = narwhal_types::Config::new();
+//     let config = tn_types::Config::new();
 //     let channel = config.connect_lazy(&address).unwrap();
 //     let mut client = TransactionsClient::new(channel);
 //     let tx = transaction();
@@ -177,7 +167,7 @@ impl BatchValidation for NilBatchValidator {
 //     let batch_digest = batch.digest();
 
 //     let (tx_await_batch, mut rx_await_batch) =
-// narwhal_types::test_channel!(CHANNEL_CAPACITY);
+// tn_types::test_channel!(CHANNEL_CAPACITY);
 // let mut mock_primary_server = MockWorkerToPrimary::new();
 //     mock_primary_server
 //         .expect_report_own_batch()
@@ -206,7 +196,7 @@ impl BatchValidation for NilBatchValidator {
 //     tokio::task::yield_now().await;
 //     // Send enough transactions to create a batch.
 //     let address = worker_cache.worker(&authority_public_key, &worker_id).unwrap().transactions;
-//     let config = narwhal_types::Config::new();
+//     let config = tn_types::Config::new();
 //     let channel = config.connect_lazy(&address).unwrap();
 //     let client = TransactionsClient::new(channel);
 
@@ -302,7 +292,7 @@ impl BatchValidation for NilBatchValidator {
 //     let batch = batch();
 //     let batch_digest = batch.digest();
 
-//     let (tx_await_batch, mut rx_await_batch) = narwhal_types::test_channel!(CHANNEL_CAPACITY);
+//     let (tx_await_batch, mut rx_await_batch) = tn_types::test_channel!(CHANNEL_CAPACITY);
 //     let mut mock_primary_server = MockWorkerToPrimary::new();
 //     mock_primary_server
 //         .expect_report_own_batch()
@@ -375,8 +365,8 @@ async fn get_network_peers_from_admin_server() {
     let store = NodeStorage::reopen(temp_dir(), None);
 
     let (tx_new_certificates, _rx_new_certificates) =
-        narwhal_types::test_new_certificates_channel!(CHANNEL_CAPACITY);
-    let (tx_feedback, rx_feedback) = narwhal_types::test_channel!(CHANNEL_CAPACITY);
+        tn_types::test_new_certificates_channel!(CHANNEL_CAPACITY);
+    let (tx_feedback, rx_feedback) = tn_types::test_channel!(CHANNEL_CAPACITY);
     let (_tx_consensus_round_updates, rx_consensus_round_updates) =
         watch::channel(ConsensusRound::default());
     let mut tx_shutdown = PreSubscribedBroadcastSender::new(NUM_SHUTDOWN_RECEIVERS);
@@ -494,8 +484,8 @@ async fn get_network_peers_from_admin_server() {
     };
 
     let (tx_new_certificates_2, _rx_new_certificates_2) =
-        narwhal_types::test_new_certificates_channel!(CHANNEL_CAPACITY);
-    let (tx_feedback_2, rx_feedback_2) = narwhal_types::test_channel!(CHANNEL_CAPACITY);
+        tn_types::test_new_certificates_channel!(CHANNEL_CAPACITY);
+    let (tx_feedback_2, rx_feedback_2) = tn_types::test_channel!(CHANNEL_CAPACITY);
     let (_tx_consensus_round_updates, rx_consensus_round_updates) =
         watch::channel(ConsensusRound::default());
 

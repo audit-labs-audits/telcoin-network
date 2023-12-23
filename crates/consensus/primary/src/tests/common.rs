@@ -7,7 +7,7 @@ use narwhal_typed_store::{
     reopen, rocks,
     rocks::{DBMap, MetricConf, ReadWriteOptions},
 };
-use narwhal_types::{
+use tn_types::{
     test_utils::{
         temp_dir, CERTIFICATES_CF, CERTIFICATE_DIGEST_BY_ORIGIN_CF, CERTIFICATE_DIGEST_BY_ROUND_CF,
         PAYLOAD_CF,

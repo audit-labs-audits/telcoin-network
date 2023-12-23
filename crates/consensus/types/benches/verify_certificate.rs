@@ -6,11 +6,11 @@ use criterion::{
     criterion_group, criterion_main, BenchmarkId, Criterion, SamplingMode, Throughput,
 };
 use fastcrypto::{hash::Hash, traits::KeyPair};
-use narwhal_types::{
+use std::collections::BTreeSet;
+use tn_types::{
     test_utils::{make_optimal_signed_certificates, CommitteeFixture},
     Certificate,
 };
-use std::collections::BTreeSet;
 
 pub fn verify_certificates(c: &mut Criterion) {
     let mut bench_group = c.benchmark_group("verify_certificate");

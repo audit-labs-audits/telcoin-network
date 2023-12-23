@@ -9,7 +9,6 @@ use crate::consensus::{
 use fastcrypto::hash::{Hash, HashFunction};
 use futures::{stream::FuturesUnordered, StreamExt};
 use narwhal_storage::ConsensusStore;
-use narwhal_types::{Authority, AuthorityIdentifier, Committee, Stake};
 use prometheus::Registry;
 use rand::{
     distributions::{Bernoulli, Distribution},
@@ -23,8 +22,9 @@ use std::{
     ops::RangeInclusive,
     sync::Arc,
 };
+use tn_types::{Authority, AuthorityIdentifier, Committee, Stake};
 
-use narwhal_types::{
+use tn_types::{
     test_utils::{mock_certificate_with_rand, CommitteeFixture},
     Certificate, CertificateAPI, CertificateDigest, HeaderAPI, Round,
 };
@@ -64,8 +64,8 @@ struct ExecutionPlan {
 }
 
 impl ExecutionPlan {
-    fn hash(&self) -> [u8; narwhal_types::DIGEST_LENGTH] {
-        let mut hasher = narwhal_types::DefaultHashFunction::new();
+    fn hash(&self) -> [u8; tn_types::DIGEST_LENGTH] {
+        let mut hasher = tn_types::DefaultHashFunction::new();
         self.certificates.iter().for_each(|c| {
             hasher.update(c.digest());
         });
@@ -163,7 +163,7 @@ async fn bullshark_randomised_tests() {
 
     // Create a single store to be re-used across Bullshark instances to avoid hitting
     // a "too many files open" issue.
-    let store = make_consensus_store(&narwhal_types::test_utils::temp_dir());
+    let store = make_consensus_store(&tn_types::test_utils::temp_dir());
 
     // Run the actual tests via separate tasks
     loop {
@@ -364,7 +364,7 @@ pub fn make_certificates_with_parameters(
                 .collect();
 
             let mut parent_digests: BTreeSet<CertificateDigest> =
-                narwhal_types::test_utils::this_cert_parents_with_slow_nodes(
+                tn_types::test_utils::this_cert_parents_with_slow_nodes(
                     &authority.id(),
                     current_parents.clone(),
                     ids.as_slice(),

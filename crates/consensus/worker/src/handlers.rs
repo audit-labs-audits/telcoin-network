@@ -16,12 +16,12 @@ use narwhal_network_types::{
     WorkerToWorker, WorkerToWorkerClient,
 };
 use narwhal_typed_store::{rocks::DBMap, Map};
-use narwhal_types::{
+use std::{collections::HashSet, time::Duration};
+use tn_batch_validator::BatchValidation;
+use tn_types::{
     now, AuthorityIdentifier, Batch, BatchAPI, BatchDigest, Committee, MetadataAPI, WorkerCache,
     WorkerId,
 };
-use std::{collections::HashSet, time::Duration};
-use tn_batch_validator::BatchValidation;
 use tracing::{debug, trace};
 
 #[cfg(test)]

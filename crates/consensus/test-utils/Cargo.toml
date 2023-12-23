@@ -24,7 +24,7 @@ narwhal-network = { workspace = true }
 narwhal-network-types = { workspace = true }
 tn-node = { workspace = true }
 narwhal-primary = { workspace = true }
-narwhal-types = { workspace = true, features = ["test-utils"] }
+tn-types = { workspace = true, features = ["test-utils"] }
 narwhal-worker = { workspace = true }
 narwhal-storage = { workspace = true }
 consensus-metrics = { workspace = true }
@@ -33,6 +33,7 @@ reth-tracing = { workspace = true }
 reth-interfaces = { workspace = true }
 
 anemo = { workspace = true }
+tn-config = { workspace = true }
 
 # execution
 eyre = { workspace = true }

@@ -10,14 +10,14 @@ use consensus_metrics::{
 };
 use fastcrypto::hash::Hash as _;
 use narwhal_storage::ProposerStore;
-use narwhal_types::{AuthorityIdentifier, Committee, WorkerId};
 use std::{
     cmp::Ordering,
     collections::{BTreeMap, VecDeque},
     sync::Arc,
 };
+use tn_types::{AuthorityIdentifier, Committee, WorkerId};
 
-use narwhal_types::{
+use tn_types::{
     error::{DagError, DagResult},
     now, BatchDigest, Certificate, CertificateAPI, ConditionalBroadcastReceiver, Header, HeaderAPI,
     HeaderV1, Round, SystemMessage, TimestampSec,

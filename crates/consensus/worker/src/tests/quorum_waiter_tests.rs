@@ -6,15 +6,15 @@
 use super::*;
 use crate::{metrics::WorkerMetrics, NUM_SHUTDOWN_RECEIVERS};
 use narwhal_network::test_utils::WorkerToWorkerMockServer;
-use narwhal_types::{
+use prometheus::Registry;
+use tn_types::{
     test_utils::{batch, test_network, CommitteeFixture},
     PreSubscribedBroadcastSender,
 };
-use prometheus::Registry;
 
 #[tokio::test]
 async fn wait_for_quorum() {
-    let (tx_quorum_waiter, rx_quorum_waiter) = narwhal_types::test_channel!(1);
+    let (tx_quorum_waiter, rx_quorum_waiter) = tn_types::test_channel!(1);
     let fixture = CommitteeFixture::builder().randomize_ports(true).build();
     let committee = fixture.committee();
     let worker_cache = fixture.worker_cache();
@@ -68,7 +68,7 @@ async fn wait_for_quorum() {
 
 #[tokio::test]
 async fn pipeline_for_quorum() {
-    let (tx_quorum_waiter, rx_quorum_waiter) = narwhal_types::test_channel!(1);
+    let (tx_quorum_waiter, rx_quorum_waiter) = tn_types::test_channel!(1);
     let fixture = CommitteeFixture::builder().randomize_ports(true).build();
     let committee = fixture.committee();
     let worker_cache = fixture.worker_cache();

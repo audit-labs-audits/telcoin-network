@@ -7,16 +7,16 @@ use fastcrypto::hash::Hash;
 use futures::{stream::FuturesOrdered, StreamExt};
 use narwhal_network::{client::NetworkClient, PrimaryToWorkerClient};
 use narwhal_network_types::FetchBatchesRequest;
-use narwhal_types::{
-    AuthorityIdentifier, Batch, BatchAPI, BatchDigest, Certificate, CertificateAPI,
-    CommittedSubDag, Committee, ConditionalBroadcastReceiver, ConsensusOutput, HeaderAPI,
-    MetadataAPI, NetworkPublicKey, Timestamp, WorkerCache, WorkerId,
-};
 use std::{
     collections::{HashMap, HashSet},
     sync::Arc,
     time::Duration,
     vec,
+};
+use tn_types::{
+    AuthorityIdentifier, Batch, BatchAPI, BatchDigest, Certificate, CertificateAPI,
+    CommittedSubDag, Committee, ConditionalBroadcastReceiver, ConsensusOutput, HeaderAPI,
+    MetadataAPI, NetworkPublicKey, Timestamp, WorkerCache, WorkerId,
 };
 use tokio::task::JoinHandle;
 use tracing::{debug, error, info};

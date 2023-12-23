@@ -17,7 +17,6 @@ use narwhal_network::{
     PrimaryToWorkerClient, RetryConfig,
 };
 use narwhal_storage::{CertificateStore, PayloadStore};
-use narwhal_types::{AuthorityIdentifier, Committee, NetworkPublicKey, WorkerCache};
 use parking_lot::Mutex;
 use std::{
     cmp::min,
@@ -29,12 +28,13 @@ use std::{
     time::Duration,
 };
 use telcoin_sync::sync::notify_once::NotifyOnce;
+use tn_types::{AuthorityIdentifier, Committee, NetworkPublicKey, WorkerCache};
 
 use narwhal_network_types::{
     PrimaryToPrimaryClient, SendCertificateRequest, SendCertificateResponse,
     WorkerSynchronizeMessage,
 };
-use narwhal_types::{
+use tn_types::{
     ensure,
     error::{AcceptNotification, DagError, DagResult},
     Certificate, CertificateAPI, CertificateDigest, Header, HeaderAPI, Round,
@@ -1470,11 +1470,11 @@ mod tests {
     use crate::synchronizer::State;
     use fastcrypto::{hash::Hash, traits::KeyPair};
     use itertools::Itertools;
-    use narwhal_types::{
+    use std::{collections::BTreeSet, num::NonZeroUsize};
+    use tn_types::{
         test_utils::{make_optimal_signed_certificates, CommitteeFixture},
         Certificate, Committee, Round,
     };
-    use std::{collections::BTreeSet, num::NonZeroUsize};
 
     // Tests that gc_once is reporting back missing certificates up to gc_round and no further.
     #[tokio::test]

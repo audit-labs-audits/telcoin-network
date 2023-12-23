@@ -5,7 +5,7 @@ use crate::{
     error::{DagError, DagResult},
     serde::NarwhalBitmap,
 };
-use narwhal_types::{AuthorityIdentifier, Committee, Epoch, Stake, WorkerCache, WorkerId};
+use tn_types::{AuthorityIdentifier, Committee, Epoch, Stake, WorkerCache, WorkerId};
 use crypto::{
     to_intent_message, BlsAggregateSignature, BlsAggregateSignatureBytes,
     NarwhalAuthorityBlsAggregateSignature, NarwhalAuthoritySignature, NetworkPublicKey, BlsPublicKey,

@@ -13,7 +13,7 @@ warning: unused variable: `rand`
     |
     = note: `#[warn(unused_variables)]` on by default
 
-warning: `narwhal-types` (lib) generated 1 warning (run `cargo fix --lib -p narwhal-types` to apply 1 suggestion)
+warning: `tn-types` (lib) generated 1 warning (run `cargo fix --lib -p tn-types` to apply 1 suggestion)
 warning: field `authority_id` is never read
   --> crates/consensus/tn-node/src/engine.rs:59:5
    |

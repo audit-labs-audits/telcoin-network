@@ -2,7 +2,6 @@
 // Copyright (c) Mysten Labs, Inc.
 // SPDX-License-Identifier: Apache-2.0
 use narwhal_network::metrics::{NetworkConnectionMetrics, NetworkMetrics};
-use narwhal_types::MetricsCallbackProvider;
 use prometheus::{
     default_registry, register_histogram_vec_with_registry, register_histogram_with_registry,
     register_int_counter_vec_with_registry, register_int_counter_with_registry,
@@ -10,6 +9,7 @@ use prometheus::{
     Registry,
 };
 use std::time::Duration;
+use tn_types::MetricsCallbackProvider;
 use tonic::Code;
 
 const LATENCY_SEC_BUCKETS: &[f64] = &[

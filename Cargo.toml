@@ -1,6 +1,7 @@
 [workspace]
 members = [
     "bin/telcoin-network",
+    "crates/config",
 
     # consensus
     "crates/consensus/types",
@@ -48,8 +49,10 @@ tokio = { version = "1.21", default-features = false }
 tracing = "0.1.0"
 pin-project = "1.0.12"
 confy = "0.5"
+toml = "0.8"
 metrics = "0.21.1" # Needed for `metrics-macro` to resolve the crate using `::metrics` notation
 serde_json = "1.0.94"
+humantime-serde = "1.1"
 fdlimit = "0.2.1"
 
 # crypto
@@ -96,12 +99,15 @@ reth-basic-payload-builder = { git = "https://github.com/paradigmxyz/reth", rev 
 jsonrpsee = { version = "0.20" }
 assert_matches = { version = "1.5.0" }
 
-# consensus
+# common
+tn-config = { path = "./crates/config" }
+tn-types = { path = "./crates/consensus/types" }
 tn-node = { path = "./crates/consensus/tn-node" }
+
+# consensus
 narwhal-executor = { path = "./crates/consensus/executor" }
 narwhal-network = { path = "./crates/consensus/network" }
 narwhal-worker = { path = "./crates/consensus/worker" }
-narwhal-types = { path = "./crates/consensus/types" }
 narwhal-typed-store = { path = "./crates/consensus/typed-store" }
 narwhal-typed-store-derive = { path = "./crates/consensus/typed-store-derive" }
 narwhal-storage = { path = "./crates/consensus/storage" }

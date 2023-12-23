@@ -8,12 +8,12 @@ use consensus_metrics::{
 };
 use fastcrypto::groups;
 use fastcrypto_tbls::{dkg, nodes};
-use narwhal_types::{AuthorityIdentifier, ChainIdentifier, Committee, RandomnessPrivateKey};
+use tn_types::{AuthorityIdentifier, ChainIdentifier, Committee, RandomnessPrivateKey};
 
-use narwhal_types::{
+use tap::TapFallible;
+use tn_types::{
     Certificate, CertificateAPI, ConditionalBroadcastReceiver, HeaderAPI, Round, SystemMessage,
 };
-use tap::TapFallible;
 use tokio::task::JoinHandle;
 use tracing::{debug, error, info, warn};
 

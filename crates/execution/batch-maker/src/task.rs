@@ -1,7 +1,6 @@
 use crate::{mode::MiningMode, Storage};
 use consensus_metrics::metered_channel::Sender;
 use futures_util::{future::BoxFuture, FutureExt};
-use narwhal_types::{Batch, NewBatch};
 use reth_primitives::{ChainSpec, IntoRecoveredTransaction};
 use reth_provider::{BlockReaderIdExt, CanonChainTracker, StateProviderFactory};
 use reth_stages::PipelineEvent;
@@ -13,6 +12,7 @@ use std::{
     sync::Arc,
     task::{Context, Poll},
 };
+use tn_types::{Batch, NewBatch};
 use tokio::sync::oneshot;
 use tokio_stream::wrappers::UnboundedReceiverStream;
 use tracing::{debug, error, warn};

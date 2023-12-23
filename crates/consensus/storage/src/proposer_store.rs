@@ -8,8 +8,8 @@ use narwhal_typed_store::{
     rocks::{open_cf, DBMap, MetricConf, ReadWriteOptions},
     Map,
 };
-use narwhal_types::Header;
 use telcoin_macros::fail_point;
+use tn_types::Header;
 
 pub type ProposerKey = u32;
 
@@ -57,7 +57,7 @@ impl ProposerStore {
 mod test {
     use crate::{ProposerStore, LAST_PROPOSAL_KEY};
     use narwhal_typed_store::Map;
-    use narwhal_types::{
+    use tn_types::{
         test_utils::{fixture_batch_with_transactions, CommitteeFixture},
         CertificateDigest, Header, HeaderV1Builder, Round,
     };

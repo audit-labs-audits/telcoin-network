@@ -9,7 +9,7 @@ warning: unused variable: `rand`
     |
     = note: `#[warn(unused_variables)]` on by default
 
-warning: `narwhal-types` (lib) generated 1 warning (run `cargo fix --lib -p narwhal-types` to apply 1 suggestion)
+warning: `tn-types` (lib) generated 1 warning (run `cargo fix --lib -p tn-types` to apply 1 suggestion)
    Compiling tn-node v0.1.0 (/Users/grant/coding/telcoin/telcoin-network/crates/consensus/tn-node)
 warning: field `authority_id` is never read
   --> crates/consensus/tn-node/src/engine.rs:59:5
@@ -177,7 +177,7 @@ warning: unused variable: `rand`
     |
     = note: `#[warn(unused_variables)]` on by default
 
-warning: `narwhal-types` (lib) generated 1 warning (run `cargo fix --lib -p narwhal-types` to apply 1 suggestion)
+warning: `tn-types` (lib) generated 1 warning (run `cargo fix --lib -p tn-types` to apply 1 suggestion)
 warning: field `authority_id` is never read
   --> crates/consensus/tn-node/src/engine.rs:59:5
    |
@@ -352,7 +352,7 @@ warning: unused variable: `rand`
     |
     = note: `#[warn(unused_variables)]` on by default
 
-warning: `narwhal-types` (lib) generated 1 warning (run `cargo fix --lib -p narwhal-types` to apply 1 suggestion)
+warning: `tn-types` (lib) generated 1 warning (run `cargo fix --lib -p tn-types` to apply 1 suggestion)
 warning: field `authority_id` is never read
   --> crates/consensus/tn-node/src/engine.rs:59:5
    |

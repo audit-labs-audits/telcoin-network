@@ -9,10 +9,6 @@ use fastcrypto::hash::Hash;
 use narwhal_network::client::NetworkClient;
 use narwhal_network_types::MockWorkerToPrimary;
 use narwhal_typed_store::Map;
-use narwhal_types::{
-    test_utils::{create_batch_store, get_gas_price, TransactionFactory},
-    yukon_genesis, Batch, BatchAPI, MetadataAPI, PreSubscribedBroadcastSender,
-};
 use narwhal_worker::{metrics::WorkerMetrics, BatchMaker, NUM_SHUTDOWN_RECEIVERS};
 use prometheus::Registry;
 use reth::{init::init_genesis, tasks::TokioTaskExecutor};
@@ -33,6 +29,10 @@ use reth_transaction_pool::{
 };
 use std::{str::FromStr, sync::Arc, time::Duration};
 use tn_batch_maker::{BatchMakerBuilder, MiningMode};
+use tn_types::{
+    test_utils::{create_batch_store, get_gas_price, TransactionFactory},
+    yukon_genesis, Batch, BatchAPI, MetadataAPI, PreSubscribedBroadcastSender,
+};
 use tokio::time::timeout;
 use tracing::debug;
 
@@ -41,7 +41,7 @@ async fn test_make_batch_el_to_cl() {
     init_test_tracing();
 
     // worker channel
-    let (to_worker, rx_batch_maker) = narwhal_types::test_channel!(1);
+    let (to_worker, rx_batch_maker) = tn_types::test_channel!(1);
 
     //
     //=== Consensus Layer
@@ -50,7 +50,7 @@ async fn test_make_batch_el_to_cl() {
     let network_client = NetworkClient::new_with_empty_id();
     let store = create_batch_store();
     let mut tx_shutdown = PreSubscribedBroadcastSender::new(NUM_SHUTDOWN_RECEIVERS);
-    let (tx_quorum_waiter, mut rx_quorum_waiter) = narwhal_types::test_channel!(1);
+    let (tx_quorum_waiter, mut rx_quorum_waiter) = tn_types::test_channel!(1);
     let node_metrics = WorkerMetrics::new(&Registry::new());
 
     // Mock the primary client to always succeed.

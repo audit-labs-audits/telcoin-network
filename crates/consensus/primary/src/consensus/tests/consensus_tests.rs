@@ -8,7 +8,7 @@ use fastcrypto::hash::Hash;
 use narwhal_storage::NodeStorage;
 use prometheus::Registry;
 
-use narwhal_types::{
+use tn_types::{
     test_utils::{temp_dir, CommitteeFixture},
     Certificate, CertificateAPI, HeaderAPI, PreSubscribedBroadcastSender, ReputationScores,
 };
@@ -51,12 +51,12 @@ async fn test_consensus_recovery_with_bullshark() {
     let genesis =
         Certificate::genesis(&committee).iter().map(|x| x.digest()).collect::<BTreeSet<_>>();
     let (certificates, _next_parents) =
-        narwhal_types::test_utils::make_optimal_certificates(&committee, 1..=7, &genesis, &ids);
+        tn_types::test_utils::make_optimal_certificates(&committee, 1..=7, &genesis, &ids);
 
     // AND Spawn the consensus engine.
-    let (tx_waiter, rx_waiter) = narwhal_types::test_channel!(100);
-    let (tx_primary, _rx_primary) = narwhal_types::test_channel!(100);
-    let (tx_output, mut rx_output) = narwhal_types::test_channel!(1);
+    let (tx_waiter, rx_waiter) = tn_types::test_channel!(100);
+    let (tx_primary, _rx_primary) = tn_types::test_channel!(100);
+    let (tx_output, mut rx_output) = tn_types::test_channel!(1);
     let (tx_consensus_round_updates, _rx_consensus_round_updates) =
         watch::channel(ConsensusRound::default());
 
@@ -151,9 +151,9 @@ async fn test_consensus_recovery_with_bullshark() {
     // AND bring up consensus again. Store is clean. Now send again the same certificates
     // but up to round 3.
     let mut tx_shutdown = PreSubscribedBroadcastSender::new(NUM_SHUTDOWN_RECEIVERS);
-    let (tx_waiter, rx_waiter) = narwhal_types::test_channel!(100);
-    let (tx_primary, _rx_primary) = narwhal_types::test_channel!(100);
-    let (tx_output, mut rx_output) = narwhal_types::test_channel!(1);
+    let (tx_waiter, rx_waiter) = tn_types::test_channel!(100);
+    let (tx_primary, _rx_primary) = tn_types::test_channel!(100);
+    let (tx_output, mut rx_output) = tn_types::test_channel!(1);
     let (tx_consensus_round_updates, _rx_consensus_round_updates) =
         watch::channel(ConsensusRound::default());
 
@@ -229,9 +229,9 @@ async fn test_consensus_recovery_with_bullshark() {
 
     // AND bring up consensus again. Re-use the same store, so we can recover certificates
     let mut tx_shutdown = PreSubscribedBroadcastSender::new(NUM_SHUTDOWN_RECEIVERS);
-    let (tx_waiter, rx_waiter) = narwhal_types::test_channel!(100);
-    let (tx_primary, _rx_primary) = narwhal_types::test_channel!(100);
-    let (tx_output, mut rx_output) = narwhal_types::test_channel!(1);
+    let (tx_waiter, rx_waiter) = tn_types::test_channel!(100);
+    let (tx_primary, _rx_primary) = tn_types::test_channel!(100);
+    let (tx_output, mut rx_output) = tn_types::test_channel!(1);
     let (tx_consensus_round_updates, _rx_consensus_round_updates) =
         watch::channel(ConsensusRound::default());
 

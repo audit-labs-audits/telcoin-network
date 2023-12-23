@@ -7,10 +7,10 @@ use narwhal_typed_store::{
     reopen, rocks,
     rocks::{DBMap, MetricConf, ReadWriteOptions},
 };
-use narwhal_types::{
+use std::sync::Arc;
+use tn_types::{
     AuthorityIdentifier, Certificate, CertificateDigest, ConsensusCommit, Round, SequenceNumber,
 };
-use std::sync::Arc;
 
 pub const NUM_SUB_DAGS_PER_SCHEDULE: u64 = 100;
 

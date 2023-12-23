@@ -2,9 +2,9 @@
 // Copyright (c) Mysten Labs, Inc.
 // SPDX-License-Identifier: Apache-2.0
 use narwhal_typed_store::StoreError;
-use narwhal_types::{CertificateDigest, WorkerId};
 use std::fmt::Debug;
 use thiserror::Error;
+use tn_types::{CertificateDigest, WorkerId};
 
 #[macro_export]
 macro_rules! bail {

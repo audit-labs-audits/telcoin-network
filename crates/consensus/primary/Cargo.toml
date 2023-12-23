@@ -26,11 +26,13 @@ tower = { workspace = true }
 tracing = { workspace = true }
 tap = { workspace = true }
 
+tn-config = { workspace = true }
+
 fastcrypto = { workspace = true }
 fastcrypto-tbls = { workspace = true }
 narwhal-network = { workspace = true }
 narwhal-network-types = { workspace = true }
-narwhal-types = { workspace = true }
+tn-types = { workspace = true }
 narwhal-storage = { workspace = true }
 narwhal-typed-store = { workspace = true }
 telcoin-macros = { workspace = true }

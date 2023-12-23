@@ -10,16 +10,16 @@ use consensus_metrics::{
 use futures::{stream::FuturesUnordered, StreamExt};
 use narwhal_network::PrimaryToPrimaryRpc;
 use narwhal_storage::CertificateStore;
-use narwhal_types::{AuthorityIdentifier, Committee, NetworkPublicKey};
 use rand::{rngs::ThreadRng, seq::SliceRandom};
 use std::{
     collections::{BTreeMap, BTreeSet},
     sync::Arc,
     time::Duration,
 };
+use tn_types::{AuthorityIdentifier, Committee, NetworkPublicKey};
 
 use narwhal_network_types::{FetchCertificatesRequest, FetchCertificatesResponse};
-use narwhal_types::{
+use tn_types::{
     error::{DagError, DagResult},
     validate_received_certificate_version, Certificate, CertificateAPI,
     ConditionalBroadcastReceiver, HeaderAPI, Round,

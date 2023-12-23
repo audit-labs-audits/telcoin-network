@@ -13,8 +13,8 @@ use narwhal_network_types::{
     FetchCertificatesRequest, FetchCertificatesResponse, PrimaryToPrimaryClient,
     RequestBatchesRequest, RequestBatchesResponse, WorkerBatchMessage, WorkerToWorkerClient,
 };
-use narwhal_types::NetworkPublicKey;
 use std::time::Duration;
+use tn_types::NetworkPublicKey;
 
 fn send<F, R, Fut>(
     network: anemo::Network,

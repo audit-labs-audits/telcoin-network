@@ -1,10 +1,10 @@
 //! Utilities for parsing args
 
 use crate::dirs::DataDirPath;
-use narwhal_types::yukon_chain_spec;
 use reth::{args::utils::genesis_value_parser, dirs::MaybePlatformPath};
 use reth_primitives::ChainSpec;
 use std::{str::FromStr, sync::Arc};
+use tn_types::yukon_chain_spec;
 
 /// Create a default path for the node.
 pub fn tn_platform_path(value: &str) -> eyre::Result<MaybePlatformPath<DataDirPath>> {

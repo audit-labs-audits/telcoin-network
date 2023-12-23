@@ -17,16 +17,16 @@ use narwhal_network_types::{
     RequestVoteRequest, RequestVoteResponse, SendCertificateRequest, SendCertificateResponse,
 };
 use narwhal_storage::{CertificateStore, NodeStorage};
-use narwhal_types::{
+use once_cell::sync::OnceCell;
+use prometheus::Registry;
+use std::{collections::BTreeSet, sync::Arc, time::Duration};
+use tn_types::{
     test_utils::{temp_dir, CommitteeFixture},
     AuthorityIdentifier, BatchDigest, BlsAggregateSignatureBytes, Certificate, CertificateAPI,
     CertificateDigest, Epoch, Header, HeaderAPI, HeaderDigest, HeaderV1,
     PreSubscribedBroadcastSender, Round, SignatureVerificationState, SystemMessage, TimestampSec,
     WorkerId,
 };
-use once_cell::sync::OnceCell;
-use prometheus::Registry;
-use std::{collections::BTreeSet, sync::Arc, time::Duration};
 use tokio::{
     sync::{
         mpsc::{self, error::TryRecvError, Receiver, Sender},
@@ -195,9 +195,9 @@ struct BadHeader {
 //     let mut tx_shutdown = PreSubscribedBroadcastSender::new(NUM_SHUTDOWN_RECEIVERS);
 //     // synchronizer to certificate fetcher
 //     let (tx_certificate_fetcher, rx_certificate_fetcher) =
-// narwhal_types::test_channel!(1000);     let (tx_new_certificates, _rx_new_certificates) =
-// narwhal_types::test_channel!(1000);     let (tx_parents, _rx_parents) =
-// narwhal_types::test_channel!(1000);     // FetchCertificateProxy -> test
+// tn_types::test_channel!(1000);     let (tx_new_certificates, _rx_new_certificates) =
+// tn_types::test_channel!(1000);     let (tx_parents, _rx_parents) =
+// tn_types::test_channel!(1000);     // FetchCertificateProxy -> test
 //     let (tx_fetch_req, mut rx_fetch_req) = mpsc::channel(1000);
 //     // test -> FetchCertificateProxy
 //     let (tx_fetch_resp, rx_fetch_resp) = mpsc::channel(1000);
@@ -240,7 +240,7 @@ struct BadHeader {
 //         .private_key(fake_primary.network_keypair().copy().private().0.to_bytes())
 //         .start(fake_route)
 //         .unwrap();
-//     let client_network = narwhal_types::test_utils::test_network(primary.network_keypair(),
+//     let client_network = tn_types::test_utils::test_network(primary.network_keypair(),
 // primary.address());     client_network
 //         .connect_with_peer_id(fake_primary_addr, fake_server_network.peer_id())
 //         .await
@@ -483,9 +483,9 @@ async fn fetch_certificates_v1_basic() {
     // kept empty
     let mut tx_shutdown = PreSubscribedBroadcastSender::new(NUM_SHUTDOWN_RECEIVERS);
     // synchronizer to certificate fetcher
-    let (tx_certificate_fetcher, rx_certificate_fetcher) = narwhal_types::test_channel!(1000);
-    let (tx_new_certificates, _rx_new_certificates) = narwhal_types::test_channel!(1000);
-    let (tx_parents, _rx_parents) = narwhal_types::test_channel!(1000);
+    let (tx_certificate_fetcher, rx_certificate_fetcher) = tn_types::test_channel!(1000);
+    let (tx_new_certificates, _rx_new_certificates) = tn_types::test_channel!(1000);
+    let (tx_parents, _rx_parents) = tn_types::test_channel!(1000);
     // FetchCertificateProxy -> test
     let (tx_fetch_req, mut rx_fetch_req) = mpsc::channel(1000);
     // test -> FetchCertificateProxy
@@ -528,10 +528,8 @@ async fn fetch_certificates_v1_basic() {
         .private_key(fake_primary.network_keypair().copy().private().0.to_bytes())
         .start(fake_route)
         .unwrap();
-    let client_network = narwhal_types::test_utils::test_network(
-        primary.network_keypair(),
-        primary.network_address(),
-    );
+    let client_network =
+        tn_types::test_utils::test_network(primary.network_keypair(), primary.network_address());
     client_network
         .connect_with_peer_id(fake_primary_addr, fake_server_network.peer_id())
         .await

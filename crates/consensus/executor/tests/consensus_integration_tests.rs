@@ -11,13 +11,13 @@ use narwhal_primary::{
 };
 use narwhal_storage::NodeStorage;
 
-use narwhal_types::test_utils::{temp_dir, CommitteeFixture};
 use prometheus::Registry;
+use tn_types::test_utils::{temp_dir, CommitteeFixture};
 
 use std::{collections::BTreeSet, sync::Arc};
 use tokio::sync::watch;
 
-use narwhal_types::{Certificate, PreSubscribedBroadcastSender, Round};
+use tn_types::{Certificate, PreSubscribedBroadcastSender, Round};
 
 #[tokio::test]
 async fn test_recovery() {
@@ -36,20 +36,20 @@ async fn test_recovery() {
     let genesis =
         Certificate::genesis(&committee).iter().map(|x| x.digest()).collect::<BTreeSet<_>>();
     let (mut certificates, next_parents) =
-        narwhal_types::test_utils::make_optimal_certificates(&committee, 1..=4, &genesis, &ids);
+        tn_types::test_utils::make_optimal_certificates(&committee, 1..=4, &genesis, &ids);
 
     // Make two certificate (f+1) with round 5 to trigger the commits.
     let (_, certificate) =
-        narwhal_types::test_utils::mock_certificate(&committee, ids[0], 5, next_parents.clone());
+        tn_types::test_utils::mock_certificate(&committee, ids[0], 5, next_parents.clone());
     certificates.push_back(certificate);
     let (_, certificate) =
-        narwhal_types::test_utils::mock_certificate(&committee, ids[1], 5, next_parents);
+        tn_types::test_utils::mock_certificate(&committee, ids[1], 5, next_parents);
     certificates.push_back(certificate);
 
     // Spawn the consensus engine and sink the primary channel.
-    let (tx_waiter, rx_waiter) = narwhal_types::test_channel!(1);
-    let (tx_primary, mut rx_primary) = narwhal_types::test_channel!(1);
-    let (tx_output, mut rx_output) = narwhal_types::test_channel!(1);
+    let (tx_waiter, rx_waiter) = tn_types::test_channel!(1);
+    let (tx_primary, mut rx_primary) = tn_types::test_channel!(1);
+    let (tx_output, mut rx_output) = tn_types::test_channel!(1);
     let (tx_consensus_round_updates, _rx_consensus_round_updates) =
         watch::channel(ConsensusRound::default());
 

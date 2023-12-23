@@ -16,7 +16,7 @@ use tokio::task::JoinHandle;
 use tokio::time::{sleep, timeout};
 use tonic::{Request, Response, Status};
 use tracing::{error, info, warn};
-use narwhal_types::{
+use tn_types::{
     ConditionalBroadcastReceiver, Empty, Transaction, TransactionProto, Transactions,
     TransactionsServer, BatchResponse, Multiaddr,
 };
@@ -71,7 +71,7 @@ impl<V: TransactionValidator> TxServer<V> {
         let mut server: Server;
 
         loop {
-            match narwhal_types::Config::new()
+            match tn_types::Config::new()
                 .server_builder_with_metrics(self.endpoint_metrics.clone())
                 .add_service(TransactionsServer::new(tx_handler.clone()))
                 .bind(&self.address)

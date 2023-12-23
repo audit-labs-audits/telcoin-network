@@ -1,5 +1,5 @@
 [package]
-name = "narwhal-types"
+name = "tn-types"
 version.workspace = true
 edition = "2021"
 license = "Apache-2.0"
@@ -55,7 +55,7 @@ reth-transaction-pool = { workspace = true, optional = true }
 criterion = { workspace = true }
 tempfile = { workspace = true }
 fdlimit = { workspace = true }
-narwhal-types = { path = ".", features = ["test-utils"] }
+tn-types = { path = ".", features = ["test-utils"] }
 
 #serde_test = { workspace = true }
 #narwhal-test-utils = { workspace = true }

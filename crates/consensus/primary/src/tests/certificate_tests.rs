@@ -5,15 +5,15 @@
 // This test file tests the validity of the 'certificates' implementation.
 
 use fastcrypto::traits::KeyPair as _;
-use narwhal_types::{
-    test_utils::CommitteeFixture, AuthorityIdentifier, BlsKeypair, Certificate, CertificateAPI,
-    SignatureVerificationState, Vote, VoteAPI,
-};
 use rand::{
     rngs::{OsRng, StdRng},
     SeedableRng,
 };
 use std::num::NonZeroUsize;
+use tn_types::{
+    test_utils::CommitteeFixture, AuthorityIdentifier, BlsKeypair, Certificate, CertificateAPI,
+    SignatureVerificationState, Vote, VoteAPI,
+};
 
 #[test]
 fn test_empty_certificate_verification() {

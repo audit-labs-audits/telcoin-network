@@ -12,7 +12,7 @@ description = "Commonly used types in telcoin network's internal network communi
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
-narwhal-types = { workspace = true }
+tn-types = { workspace = true }
 anemo = { workspace = true}
 serde = { workspace = true, features = ["derive"] }
 tracing = { workspace = true }

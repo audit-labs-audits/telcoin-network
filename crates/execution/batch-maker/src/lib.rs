@@ -8,16 +8,15 @@
 //! be mined.
 
 #![doc(
-    html_logo_url = "https://raw.githubusercontent.com/paradigmxyz/reth/main/assets/reth-docs.png",
-    html_favicon_url = "https://avatars0.githubusercontent.com/u/97369466?s=256",
-    issue_tracker_base_url = "https://github.com/paradigmxyz/reth/issues/"
+    html_logo_url = "https://www.telco.in/logos/TEL.svg",
+    html_favicon_url = "https://www.telco.in/logos/TEL.svg",
+    issue_tracker_base_url = "https://github.com/telcoin-association/telcoin-network/issues/"
 )]
 #![warn(missing_debug_implementations, missing_docs, unreachable_pub, rustdoc::all)]
 #![deny(unused_must_use, rust_2018_idioms)]
 #![cfg_attr(docsrs, feature(doc_cfg, doc_auto_cfg))]
 
 use consensus_metrics::metered_channel::Sender;
-use narwhal_types::{now, NewBatch};
 use reth_interfaces::{
     consensus::{Consensus, ConsensusError},
     executor::{BlockExecutionError, BlockValidationError},
@@ -41,6 +40,7 @@ use std::{
     sync::Arc,
     time::{SystemTime, UNIX_EPOCH},
 };
+use tn_types::{now, NewBatch};
 use tokio::sync::{RwLock, RwLockReadGuard, RwLockWriteGuard};
 use tracing::{debug, trace, warn};
 
@@ -423,10 +423,6 @@ mod tests {
     use super::*;
     use assert_matches::assert_matches;
     use fastcrypto::hash::Hash;
-    use narwhal_types::{
-        test_utils::{get_gas_price, TransactionFactory},
-        yukon_genesis, BatchAPI, MetadataAPI,
-    };
     use reth::{init::init_genesis, tasks::TokioTaskExecutor};
     use reth_blockchain_tree::noop::NoopBlockchainTree;
     use reth_db::test_utils::create_test_rw_db;
@@ -441,6 +437,10 @@ mod tests {
         blobstore::InMemoryBlobStore, PoolConfig, TransactionValidationTaskExecutor,
     };
     use std::{str::FromStr, time::Duration};
+    use tn_types::{
+        test_utils::{get_gas_price, TransactionFactory},
+        yukon_genesis, BatchAPI, MetadataAPI,
+    };
     use tokio::time::timeout;
 
     #[tokio::test]
@@ -492,7 +492,7 @@ mod tests {
             MiningMode::instant(max_transactions, txpool.pending_transactions_listener());
 
         // worker channel
-        let (to_worker, mut worker_rx) = narwhal_types::test_channel!(1);
+        let (to_worker, mut worker_rx) = tn_types::test_channel!(1);
         let address = Address::from(U160::from(33));
 
         // build batch maker

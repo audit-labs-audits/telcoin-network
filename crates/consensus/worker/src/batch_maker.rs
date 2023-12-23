@@ -15,11 +15,11 @@ use fastcrypto::hash::Hash;
 use futures::{future::BoxFuture, stream::FuturesUnordered, StreamExt};
 use narwhal_network::{client::NetworkClient, WorkerToPrimaryClient};
 use narwhal_typed_store::{rocks::DBMap, Map};
-use narwhal_types::{NewBatch, WorkerId};
 use std::sync::Arc;
+use tn_types::{NewBatch, WorkerId};
 
 use narwhal_network_types::WorkerOwnBatchMessage;
-use narwhal_types::{
+use tn_types::{
     error::DagError, now, Batch, BatchAPI, BatchDigest, ConditionalBroadcastReceiver, MetadataAPI,
 };
 use tokio::{

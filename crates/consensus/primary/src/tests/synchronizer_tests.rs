@@ -14,18 +14,18 @@ use fastcrypto::{hash::Hash, traits::KeyPair};
 use futures::{stream::FuturesUnordered, StreamExt};
 use itertools::Itertools;
 use narwhal_network::client::NetworkClient;
-use narwhal_types::{
-    error::DagError,
-    test_utils::{make_optimal_signed_certificates, mock_signed_certificate, CommitteeFixture},
-    BlsAggregateSignatureBytes, Certificate, CertificateAPI, Committee, Header, HeaderAPI, Round,
-    SignatureVerificationState,
-};
 use prometheus::Registry;
 use std::{
     collections::{BTreeSet, HashMap},
     num::NonZeroUsize,
     sync::Arc,
     time::Duration,
+};
+use tn_types::{
+    error::DagError,
+    test_utils::{make_optimal_signed_certificates, mock_signed_certificate, CommitteeFixture},
+    BlsAggregateSignatureBytes, Certificate, CertificateAPI, Committee, Header, HeaderAPI, Round,
+    SignatureVerificationState,
 };
 use tokio::sync::watch;
 
@@ -41,9 +41,9 @@ async fn accept_certificates() {
     let primary_channel_metrics = PrimaryChannelMetrics::new(&Registry::new());
     let client = NetworkClient::new_from_keypair(&primary.network_keypair());
 
-    let (tx_certificate_fetcher, _rx_certificate_fetcher) = narwhal_types::test_channel!(1);
-    let (tx_new_certificates, mut rx_new_certificates) = narwhal_types::test_channel!(3);
-    let (tx_parents, mut rx_parents) = narwhal_types::test_channel!(4);
+    let (tx_certificate_fetcher, _rx_certificate_fetcher) = tn_types::test_channel!(1);
+    let (tx_new_certificates, mut rx_new_certificates) = tn_types::test_channel!(3);
+    let (tx_parents, mut rx_parents) = tn_types::test_channel!(4);
     let (_tx_consensus_round_updates, rx_consensus_round_updates) =
         watch::channel(ConsensusRound::default());
 
@@ -128,9 +128,9 @@ async fn accept_suspended_certificates() {
     let client = NetworkClient::new_from_keypair(&primary.network_keypair());
 
     let (certificate_store, payload_store) = create_db_stores();
-    let (tx_certificate_fetcher, _rx_certificate_fetcher) = narwhal_types::test_channel!(100);
-    let (tx_new_certificates, _rx_new_certificates) = narwhal_types::test_channel!(100);
-    let (tx_parents, _rx_parents) = narwhal_types::test_channel!(100);
+    let (tx_certificate_fetcher, _rx_certificate_fetcher) = tn_types::test_channel!(100);
+    let (tx_new_certificates, _rx_new_certificates) = tn_types::test_channel!(100);
+    let (tx_parents, _rx_parents) = tn_types::test_channel!(100);
     let (_tx_consensus_round_updates, rx_consensus_round_updates) =
         watch::channel(ConsensusRound::new(1, 0));
 
@@ -219,9 +219,9 @@ async fn synchronizer_recover_basic() {
     let metrics = Arc::new(PrimaryMetrics::new(&Registry::new()));
     let primary_channel_metrics = PrimaryChannelMetrics::new(&Registry::new());
 
-    let (tx_certificate_fetcher, _rx_certificate_fetcher) = narwhal_types::test_channel!(1);
-    let (tx_new_certificates, _rx_new_certificates) = narwhal_types::test_channel!(3);
-    let (tx_parents, _rx_parents) = narwhal_types::test_channel!(4);
+    let (tx_certificate_fetcher, _rx_certificate_fetcher) = tn_types::test_channel!(1);
+    let (tx_new_certificates, _rx_new_certificates) = tn_types::test_channel!(3);
+    let (tx_parents, _rx_parents) = tn_types::test_channel!(4);
     let (_tx_consensus_round_updates, rx_consensus_round_updates) =
         watch::channel(ConsensusRound::default());
 
@@ -265,9 +265,9 @@ async fn synchronizer_recover_basic() {
     drop(synchronizer);
 
     // Restart Synchronizer.
-    let (tx_certificate_fetcher, _rx_certificate_fetcher) = narwhal_types::test_channel!(1);
-    let (tx_new_certificates, _rx_new_certificates) = narwhal_types::test_channel!(3);
-    let (tx_parents, mut rx_parents) = narwhal_types::test_channel!(4);
+    let (tx_certificate_fetcher, _rx_certificate_fetcher) = tn_types::test_channel!(1);
+    let (tx_new_certificates, _rx_new_certificates) = tn_types::test_channel!(3);
+    let (tx_parents, mut rx_parents) = tn_types::test_channel!(4);
 
     let _synchronizer = Arc::new(Synchronizer::new(
         name,
@@ -319,9 +319,9 @@ async fn synchronizer_recover_partial_certs() {
     let metrics = Arc::new(PrimaryMetrics::new(&Registry::new()));
     let primary_channel_metrics = PrimaryChannelMetrics::new(&Registry::new());
 
-    let (tx_certificate_fetcher, _rx_certificate_fetcher) = narwhal_types::test_channel!(1);
-    let (tx_new_certificates, _rx_new_certificates) = narwhal_types::test_channel!(3);
-    let (tx_parents, _rx_parents) = narwhal_types::test_channel!(4);
+    let (tx_certificate_fetcher, _rx_certificate_fetcher) = tn_types::test_channel!(1);
+    let (tx_new_certificates, _rx_new_certificates) = tn_types::test_channel!(3);
+    let (tx_parents, _rx_parents) = tn_types::test_channel!(4);
     let (_tx_consensus_round_updates, rx_consensus_round_updates) =
         watch::channel(ConsensusRound::default());
 
@@ -364,9 +364,9 @@ async fn synchronizer_recover_partial_certs() {
     drop(synchronizer);
 
     // Restart Synchronizer.
-    let (tx_certificate_fetcher, _rx_certificate_fetcher) = narwhal_types::test_channel!(1);
-    let (tx_new_certificates, _rx_new_certificates) = narwhal_types::test_channel!(3);
-    let (tx_parents, mut rx_parents) = narwhal_types::test_channel!(4);
+    let (tx_certificate_fetcher, _rx_certificate_fetcher) = tn_types::test_channel!(1);
+    let (tx_new_certificates, _rx_new_certificates) = tn_types::test_channel!(3);
+    let (tx_parents, mut rx_parents) = tn_types::test_channel!(4);
 
     let synchronizer = Arc::new(Synchronizer::new(
         name,
@@ -417,9 +417,9 @@ async fn synchronizer_recover_previous_round() {
     let metrics = Arc::new(PrimaryMetrics::new(&Registry::new()));
     let primary_channel_metrics = PrimaryChannelMetrics::new(&Registry::new());
 
-    let (tx_certificate_fetcher, _rx_certificate_fetcher) = narwhal_types::test_channel!(1);
-    let (tx_new_certificates, _rx_new_certificates) = narwhal_types::test_channel!(6);
-    let (tx_parents, _rx_parents) = narwhal_types::test_channel!(10);
+    let (tx_certificate_fetcher, _rx_certificate_fetcher) = tn_types::test_channel!(1);
+    let (tx_new_certificates, _rx_new_certificates) = tn_types::test_channel!(6);
+    let (tx_parents, _rx_parents) = tn_types::test_channel!(10);
     let (_tx_consensus_round_updates, rx_consensus_round_updates) =
         watch::channel(ConsensusRound::default());
 
@@ -471,9 +471,9 @@ async fn synchronizer_recover_previous_round() {
     drop(synchronizer);
 
     // Restart Synchronizer.
-    let (tx_certificate_fetcher, _rx_certificate_fetcher) = narwhal_types::test_channel!(1);
-    let (tx_new_certificates, _rx_new_certificates) = narwhal_types::test_channel!(6);
-    let (tx_parents, mut rx_parents) = narwhal_types::test_channel!(10);
+    let (tx_certificate_fetcher, _rx_certificate_fetcher) = tn_types::test_channel!(1);
+    let (tx_new_certificates, _rx_new_certificates) = tn_types::test_channel!(6);
+    let (tx_parents, mut rx_parents) = tn_types::test_channel!(10);
 
     let _synchronizer = Arc::new(Synchronizer::new(
         name,
@@ -514,9 +514,9 @@ async fn deliver_certificate_using_store() {
     let primary_channel_metrics = PrimaryChannelMetrics::new(&Registry::new());
 
     let (certificates_store, payload_store) = create_db_stores();
-    let (tx_certificate_fetcher, _rx_certificate_fetcher) = narwhal_types::test_channel!(1);
-    let (tx_new_certificates, _rx_new_certificates) = narwhal_types::test_channel!(100);
-    let (tx_parents, _rx_parents) = narwhal_types::test_channel!(100);
+    let (tx_certificate_fetcher, _rx_certificate_fetcher) = tn_types::test_channel!(1);
+    let (tx_new_certificates, _rx_new_certificates) = tn_types::test_channel!(100);
+    let (tx_parents, _rx_parents) = tn_types::test_channel!(100);
     let (_tx_consensus_round_updates, rx_consensus_round_updates) =
         watch::channel(ConsensusRound::default());
 
@@ -571,9 +571,9 @@ async fn deliver_certificate_not_found_parents() {
     let primary_channel_metrics = PrimaryChannelMetrics::new(&Registry::new());
 
     let (certificates_store, payload_store) = create_db_stores();
-    let (tx_certificate_fetcher, mut rx_certificate_fetcher) = narwhal_types::test_channel!(1);
-    let (tx_new_certificates, _rx_new_certificates) = narwhal_types::test_channel!(100);
-    let (tx_parents, _rx_parents) = narwhal_types::test_channel!(100);
+    let (tx_certificate_fetcher, mut rx_certificate_fetcher) = tn_types::test_channel!(1);
+    let (tx_new_certificates, _rx_new_certificates) = tn_types::test_channel!(100);
+    let (tx_parents, _rx_parents) = tn_types::test_channel!(100);
     let (_tx_consensus_round_updates, rx_consensus_round_updates) =
         watch::channel(ConsensusRound::default());
 
@@ -637,9 +637,9 @@ async fn sanitize_fetched_certificates() {
     let primary_channel_metrics = PrimaryChannelMetrics::new(&Registry::new());
 
     let (certificates_store, payload_store) = create_db_stores();
-    let (tx_certificate_fetcher, _rx_certificate_fetcher) = narwhal_types::test_channel!(1);
-    let (tx_new_certificates, _rx_new_certificates) = narwhal_types::test_channel!(10000);
-    let (tx_parents, _rx_parents) = narwhal_types::test_channel!(10000);
+    let (tx_certificate_fetcher, _rx_certificate_fetcher) = tn_types::test_channel!(1);
+    let (tx_new_certificates, _rx_new_certificates) = tn_types::test_channel!(10000);
+    let (tx_parents, _rx_parents) = tn_types::test_channel!(10000);
     let (_tx_consensus_round_updates, rx_consensus_round_updates) =
         watch::channel(ConsensusRound::default());
 
@@ -747,9 +747,9 @@ async fn sync_batches_drops_old() {
     let client = NetworkClient::new_from_keypair(&primary.network_keypair());
 
     let (certificate_store, payload_store) = create_db_stores();
-    let (tx_certificate_fetcher, _rx_certificate_fetcher) = narwhal_types::test_channel!(1);
-    let (tx_new_certificates, _rx_new_certificates) = narwhal_types::test_channel!(100);
-    let (tx_parents, _rx_parents) = narwhal_types::test_channel!(100);
+    let (tx_certificate_fetcher, _rx_certificate_fetcher) = tn_types::test_channel!(1);
+    let (tx_new_certificates, _rx_new_certificates) = tn_types::test_channel!(100);
+    let (tx_parents, _rx_parents) = tn_types::test_channel!(100);
     let (tx_consensus_round_updates, rx_consensus_round_updates) =
         watch::channel(ConsensusRound::new(1, 0));
     let primary_channel_metrics = PrimaryChannelMetrics::new(&Registry::new());
@@ -775,11 +775,7 @@ async fn sync_batches_drops_old() {
         let header = Header::V1(
             author
                 .header_builder(&fixture.committee())
-                .with_payload_batch(
-                    narwhal_types::test_utils::fixture_batch_with_transactions(10),
-                    0,
-                    0,
-                )
+                .with_payload_batch(tn_types::test_utils::fixture_batch_with_transactions(10), 0, 0)
                 .build()
                 .unwrap(),
         );
@@ -798,11 +794,7 @@ async fn sync_batches_drops_old() {
             .header_builder(&fixture.committee())
             .round(2)
             .parents(certificates.keys().cloned().collect())
-            .with_payload_batch(
-                narwhal_types::test_utils::fixture_batch_with_transactions(10),
-                1,
-                0,
-            )
+            .with_payload_batch(tn_types::test_utils::fixture_batch_with_transactions(10), 1, 0)
             .build()
             .unwrap(),
     );
@@ -833,9 +825,9 @@ async fn gc_suspended_certificates_v1() {
     let client = NetworkClient::new_from_keypair(&primary.network_keypair());
 
     let (certificate_store, payload_store) = create_db_stores();
-    let (tx_certificate_fetcher, _rx_certificate_fetcher) = narwhal_types::test_channel!(100);
-    let (tx_new_certificates, mut rx_new_certificates) = narwhal_types::test_channel!(100);
-    let (tx_parents, _rx_parents) = narwhal_types::test_channel!(100);
+    let (tx_certificate_fetcher, _rx_certificate_fetcher) = tn_types::test_channel!(100);
+    let (tx_new_certificates, mut rx_new_certificates) = tn_types::test_channel!(100);
+    let (tx_parents, _rx_parents) = tn_types::test_channel!(100);
     let (tx_consensus_round_updates, rx_consensus_round_updates) =
         watch::channel(ConsensusRound::new(1, 0));
     let primary_channel_metrics = PrimaryChannelMetrics::new(&Registry::new());
@@ -936,9 +928,9 @@ async fn gc_suspended_certificates_v2() {
     let client = NetworkClient::new_from_keypair(&primary.network_keypair());
 
     let (certificate_store, payload_store) = create_db_stores();
-    let (tx_certificate_fetcher, _rx_certificate_fetcher) = narwhal_types::test_channel!(100);
-    let (tx_new_certificates, mut rx_new_certificates) = narwhal_types::test_channel!(100);
-    let (tx_parents, _rx_parents) = narwhal_types::test_channel!(100);
+    let (tx_certificate_fetcher, _rx_certificate_fetcher) = tn_types::test_channel!(100);
+    let (tx_new_certificates, mut rx_new_certificates) = tn_types::test_channel!(100);
+    let (tx_parents, _rx_parents) = tn_types::test_channel!(100);
     let (tx_consensus_round_updates, rx_consensus_round_updates) =
         watch::channel(ConsensusRound::new(1, 0));
     let primary_channel_metrics = PrimaryChannelMetrics::new(&Registry::new());

@@ -1,9 +1,7 @@
 //! Response message types
-use narwhal_types::{
-    Batch, BatchDigest, Certificate, CertificateDigest, Vote, WorkerId, WorkerInfo,
-};
 use serde::{Deserialize, Serialize};
 use std::collections::{BTreeMap, HashMap};
+use tn_types::{Batch, BatchDigest, Certificate, CertificateDigest, Vote, WorkerId, WorkerInfo};
 
 /// Response from peers after receiving a certificate.
 #[derive(Clone, Debug, Serialize, Deserialize)]

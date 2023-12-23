@@ -8,12 +8,10 @@ use crate::consensus::{
 };
 use fastcrypto::hash::Hash;
 use narwhal_storage::ConsensusStore;
-use narwhal_types::{Committee, Stake};
 use std::{collections::VecDeque, sync::Arc};
+use tn_types::{Committee, Stake};
 
-use narwhal_types::{
-    Certificate, CertificateAPI, CommittedSubDag, HeaderAPI, ReputationScores, Round,
-};
+use tn_types::{Certificate, CertificateAPI, CommittedSubDag, HeaderAPI, ReputationScores, Round};
 use tokio::time::Instant;
 use tracing::{debug, error_span};
 

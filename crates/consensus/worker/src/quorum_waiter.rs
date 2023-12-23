@@ -9,10 +9,10 @@ use fastcrypto::hash::Hash;
 use futures::stream::{futures_unordered::FuturesUnordered, StreamExt as _};
 use narwhal_network::{CancelOnDropHandler, ReliableNetwork};
 use narwhal_network_types::WorkerBatchMessage;
-use narwhal_types::{
+use std::{sync::Arc, time::Duration};
+use tn_types::{
     Authority, Batch, Committee, ConditionalBroadcastReceiver, Stake, WorkerCache, WorkerId,
 };
-use std::{sync::Arc, time::Duration};
 use tokio::{task::JoinHandle, time::timeout};
 use tracing::{trace, warn};
 

@@ -2,9 +2,9 @@
 // Copyright (c) Mysten Labs, Inc.
 // SPDX-License-Identifier: Apache-2.0
 use crate::cluster::Cluster;
-use narwhal_types::test_utils::ensure_test_environment;
 use reth::providers::BlockReader;
 use std::time::Duration;
+use tn_types::test_utils::ensure_test_environment;
 
 #[tokio::test]
 async fn basic_cluster_setup() {

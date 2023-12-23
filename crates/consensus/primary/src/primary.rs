@@ -42,11 +42,6 @@ use narwhal_network::{
     metrics::MetricsMakeCallbackHandler,
 };
 use narwhal_storage::{CertificateStore, PayloadStore, ProposerStore, VoteDigestStore};
-use narwhal_types::{
-    traits::EncodeDecodeBase64, Authority, AuthorityIdentifier, BlsKeypair, BlsSignature,
-    ChainIdentifier, Committee, Multiaddr, NetworkKeypair, NetworkPublicKey, Parameters, Protocol,
-    RandomnessPrivateKey, WorkerCache,
-};
 use parking_lot::Mutex;
 use prometheus::Registry;
 use std::{
@@ -57,13 +52,19 @@ use std::{
     thread::sleep,
     time::Duration,
 };
+use tn_types::{
+    traits::EncodeDecodeBase64, Authority, AuthorityIdentifier, BlsKeypair, BlsSignature,
+    ChainIdentifier, Committee, Multiaddr, NetworkKeypair, NetworkPublicKey, Protocol,
+    RandomnessPrivateKey, WorkerCache,
+};
 
 use narwhal_network_types::{
     FetchCertificatesRequest, FetchCertificatesResponse, PrimaryToPrimary, PrimaryToPrimaryServer,
     RequestVoteRequest, RequestVoteResponse, SendCertificateRequest, SendCertificateResponse,
     WorkerOthersBatchMessage, WorkerOwnBatchMessage, WorkerToPrimary, WorkerToPrimaryServer,
 };
-use narwhal_types::{
+use tn_config::Parameters;
+use tn_types::{
     ensure,
     error::{DagError, DagResult},
     now, validate_received_certificate_version, Certificate, CertificateAPI, CertificateDigest,
@@ -529,7 +530,7 @@ struct PrimaryReceiverHandler {
     worker_cache: WorkerCache,
     synchronizer: Arc<Synchronizer>,
     /// Service to sign headers.
-    signature_service: SignatureService<BlsSignature, { narwhal_types::INTENT_MESSAGE_LENGTH }>,
+    signature_service: SignatureService<BlsSignature, { tn_types::INTENT_MESSAGE_LENGTH }>,
     certificate_store: CertificateStore,
     /// The store to persist the last voted round per authority, used to ensure idempotence.
     vote_digest_store: VoteDigestStore,

@@ -23,13 +23,14 @@ use narwhal_primary::{
     Primary, PrimaryChannelMetrics, NUM_SHUTDOWN_RECEIVERS,
 };
 use narwhal_storage::NodeStorage;
-use narwhal_types::{
-    AuthorityIdentifier, BlsKeypair, BlsPublicKey, Certificate, ChainIdentifier, Committee,
-    ConditionalBroadcastReceiver, ConsensusOutput, NetworkKeypair, Parameters,
-    PreSubscribedBroadcastSender, Round, WorkerCache, BAD_NODES_STAKE_THRESHOLD,
-};
 use prometheus::{IntGauge, Registry};
 use std::{sync::Arc, time::Instant};
+use tn_config::Parameters;
+use tn_types::{
+    AuthorityIdentifier, BlsKeypair, BlsPublicKey, Certificate, ChainIdentifier, Committee,
+    ConditionalBroadcastReceiver, ConsensusOutput, NetworkKeypair, PreSubscribedBroadcastSender,
+    Round, WorkerCache, BAD_NODES_STAKE_THRESHOLD,
+};
 use tokio::{
     sync::{watch, RwLock},
     task::JoinHandle,

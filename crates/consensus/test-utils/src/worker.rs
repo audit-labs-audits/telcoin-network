@@ -6,13 +6,14 @@
 use consensus_metrics::RegistryService;
 use narwhal_network::client::NetworkClient;
 use narwhal_storage::NodeStorage;
-use narwhal_types::{
-    test_utils::temp_dir, AuthorityIdentifier, BlsPublicKey, Committee, Multiaddr, NetworkKeypair,
-    Parameters, WorkerCache, WorkerId,
-};
 use prometheus::Registry;
 use std::path::PathBuf;
+use tn_config::Parameters;
 use tn_node::{engine::ExecutionNode, metrics::worker_metrics_registry, worker::WorkerNode};
+use tn_types::{
+    test_utils::temp_dir, AuthorityIdentifier, BlsPublicKey, Committee, Multiaddr, NetworkKeypair,
+    WorkerCache, WorkerId,
+};
 use tracing::info;
 
 #[derive(Clone)]

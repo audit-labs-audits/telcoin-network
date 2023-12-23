@@ -2,7 +2,6 @@
 
 use crate::error::ExecutionError;
 use consensus_metrics::metered_channel::{Receiver, Sender};
-use narwhal_types::{execution_args, AuthorityIdentifier, ConsensusOutput, NewBatch, WorkerId};
 use reth::{
     args::{NetworkArgs, RpcServerArgs},
     cli::components::RethNodeComponentsImpl,
@@ -40,6 +39,7 @@ use tn_executor::{
     build_network, build_networked_pipeline, lookup_head, spawn_payload_builder_service, start_rpc,
     Executor,
 };
+use tn_types::{execution_args, AuthorityIdentifier, ConsensusOutput, NewBatch, WorkerId};
 // cargo test --package narwhal-test-utils --lib -- cluster::cluster_tests::basic_cluster_setup
 // --exact --nocapture
 use tokio::{
@@ -783,11 +783,6 @@ mod tests {
         },
         NUM_SHUTDOWN_RECEIVERS,
     };
-    use narwhal_types::{
-        test_utils::{batch, get_gas_price, CommitteeFixture, TransactionFactory},
-        yukon_chain_spec, yukon_genesis, AuthorityIdentifier, BatchAPI, Certificate,
-        ConsensusOutput, PreSubscribedBroadcastSender,
-    };
     use prometheus::Registry;
     use reth::{
         args::NetworkArgs,
@@ -804,6 +799,11 @@ mod tests {
         str::FromStr,
         sync::Arc,
         time::Duration,
+    };
+    use tn_types::{
+        test_utils::{batch, get_gas_price, CommitteeFixture, TransactionFactory},
+        yukon_chain_spec, yukon_genesis, AuthorityIdentifier, BatchAPI, Certificate,
+        ConsensusOutput, PreSubscribedBroadcastSender,
     };
     use tokio::{
         runtime::Handle,
@@ -885,7 +885,7 @@ mod tests {
         let address = Address::ZERO;
 
         let node = ExecutionNode::new(AuthorityIdentifier(0), chain.clone(), address)?;
-        let (tx_notifier, rx_notifier) = narwhal_types::test_channel!(1);
+        let (tx_notifier, rx_notifier) = tn_types::test_channel!(1);
         node.start_engine(rx_notifier).await?;
 
         // atomic bool
@@ -912,7 +912,7 @@ mod tests {
 
         // test worker shutdown
         let worker_id = 0;
-        let (to_worker, mut from_worker) = narwhal_types::test_channel!(1);
+        let (to_worker, mut from_worker) = tn_types::test_channel!(1);
         node.start_batch_maker(to_worker.clone(), worker_id).await?;
         drop(to_worker);
 
@@ -968,31 +968,27 @@ mod tests {
         let genesis =
             Certificate::genesis(&committee).iter().map(|x| x.digest()).collect::<BTreeSet<_>>();
         let (mut certificates, next_parents) =
-            narwhal_types::test_utils::make_optimal_certificates(&committee, 1..=2, &genesis, &ids);
+            tn_types::test_utils::make_optimal_certificates(&committee, 1..=2, &genesis, &ids);
 
         // Make two certificate (f+1) with round 3 to trigger the commits.
-        let (_, certificate) = narwhal_types::test_utils::mock_certificate(
-            &committee,
-            ids[0],
-            3,
-            next_parents.clone(),
-        );
+        let (_, certificate) =
+            tn_types::test_utils::mock_certificate(&committee, ids[0], 3, next_parents.clone());
         certificates.push_back(certificate);
         let (_, certificate) =
-            narwhal_types::test_utils::mock_certificate(&committee, ids[1], 3, next_parents);
+            tn_types::test_utils::mock_certificate(&committee, ids[1], 3, next_parents);
         certificates.push_back(certificate);
 
         // Spawn the consensus engine and sink the primary channel.
-        let (tx_new_certificates, rx_new_certificates) = narwhal_types::test_channel!(1);
-        let (tx_primary, mut rx_primary) = narwhal_types::test_channel!(1);
-        let (tx_sequence, rx_sequence) = narwhal_types::test_channel!(1);
+        let (tx_new_certificates, rx_new_certificates) = tn_types::test_channel!(1);
+        let (tx_primary, mut rx_primary) = tn_types::test_channel!(1);
+        let (tx_sequence, rx_sequence) = tn_types::test_channel!(1);
         let (tx_consensus_round_updates, _rx_consensus_round_updates) =
             watch::channel(ConsensusRound::new(0, 0));
 
         let mut tx_shutdown = PreSubscribedBroadcastSender::new(NUM_SHUTDOWN_RECEIVERS);
 
-        let store = make_consensus_store(&narwhal_types::test_utils::temp_dir());
-        let cert_store = make_certificate_store(&narwhal_types::test_utils::temp_dir());
+        let store = make_consensus_store(&tn_types::test_utils::temp_dir());
+        let cert_store = make_certificate_store(&tn_types::test_utils::temp_dir());
         let gc_depth = 50;
         let metrics = Arc::new(ConsensusMetrics::new(&registry));
 
@@ -1156,7 +1152,7 @@ mod tests {
         let blockchain_db = node.get_provider().await;
         let mut canon_state_notification_receiver = blockchain_db.subscribe_to_canonical_state();
 
-        let (to_execution, rx_notifier) = narwhal_types::test_channel!(1);
+        let (to_execution, rx_notifier) = tn_types::test_channel!(1);
         debug!("created execution node");
 
         // start engine
@@ -1241,7 +1237,7 @@ mod tests {
 
         // worker info
         let worker_id = 0;
-        let (to_worker, mut worker_rx) = narwhal_types::test_channel!(1);
+        let (to_worker, mut worker_rx) = tn_types::test_channel!(1);
         node.start_batch_maker(to_worker, worker_id).await?;
 
         assert!(node.worker_is_running(&worker_id).await);

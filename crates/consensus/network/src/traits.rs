@@ -9,7 +9,7 @@ use narwhal_network_types::{
     RequestBatchesRequest, RequestBatchesResponse, WorkerOthersBatchMessage, WorkerOwnBatchMessage,
     WorkerSynchronizeMessage,
 };
-use narwhal_types::NetworkPublicKey;
+use tn_types::NetworkPublicKey;
 
 pub trait ReliableNetwork<Request: Clone + Send + Sync> {
     type Response: Clone + Send + Sync;

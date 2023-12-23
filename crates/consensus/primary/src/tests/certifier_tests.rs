@@ -9,13 +9,13 @@ use crate::{consensus::ConsensusRound, PrimaryChannelMetrics, NUM_SHUTDOWN_RECEI
 use fastcrypto::traits::KeyPair;
 use narwhal_network::client::NetworkClient;
 use narwhal_network_types::{MockPrimaryToPrimary, PrimaryToPrimaryServer, RequestVoteResponse};
-use narwhal_types::{
-    test_utils::CommitteeFixture, BlsKeypair, CertificateAPI, PreSubscribedBroadcastSender,
-    SignatureVerificationState,
-};
 use prometheus::Registry;
 use rand::{rngs::StdRng, SeedableRng};
 use std::num::NonZeroUsize;
+use tn_types::{
+    test_utils::CommitteeFixture, BlsKeypair, CertificateAPI, PreSubscribedBroadcastSender,
+    SignatureVerificationState,
+};
 use tokio::{sync::watch, time::Duration};
 
 // // TODO: Remove after network has moved to CertificateV2
@@ -34,10 +34,10 @@ use tokio::{sync::watch, time::Duration};
 //     let metrics = Arc::new(PrimaryMetrics::new(&Registry::new()));
 //     let primary_channel_metrics = PrimaryChannelMetrics::new(&Registry::new());
 //     let mut tx_shutdown = PreSubscribedBroadcastSender::new(NUM_SHUTDOWN_RECEIVERS);
-//     let (tx_certificate_fetcher, _rx_certificate_fetcher) = narwhal_types::test_channel!(1);
-//     let (tx_headers, rx_headers) = narwhal_types::test_channel!(1);
-//     let (tx_new_certificates, mut rx_new_certificates) = narwhal_types::test_channel!(3);
-//     let (tx_parents, _rx_parents) = narwhal_types::test_channel!(1);
+//     let (tx_certificate_fetcher, _rx_certificate_fetcher) = tn_types::test_channel!(1);
+//     let (tx_headers, rx_headers) = tn_types::test_channel!(1);
+//     let (tx_new_certificates, mut rx_new_certificates) = tn_types::test_channel!(3);
+//     let (tx_parents, _rx_parents) = tn_types::test_channel!(1);
 //     let (_tx_consensus_round_updates, rx_consensus_round_updates) =
 //         watch::channel(ConsensusRound::new(0, 0));
 //     let (certificate_store, payload_store) = create_db_stores();
@@ -152,10 +152,10 @@ async fn propose_header_and_form_certificate_v2() {
     let metrics = Arc::new(PrimaryMetrics::new(&Registry::new()));
     let primary_channel_metrics = PrimaryChannelMetrics::new(&Registry::new());
     let mut tx_shutdown = PreSubscribedBroadcastSender::new(NUM_SHUTDOWN_RECEIVERS);
-    let (tx_certificate_fetcher, _rx_certificate_fetcher) = narwhal_types::test_channel!(1);
-    let (tx_headers, rx_headers) = narwhal_types::test_channel!(1);
-    let (tx_new_certificates, mut rx_new_certificates) = narwhal_types::test_channel!(3);
-    let (tx_parents, _rx_parents) = narwhal_types::test_channel!(1);
+    let (tx_certificate_fetcher, _rx_certificate_fetcher) = tn_types::test_channel!(1);
+    let (tx_headers, rx_headers) = tn_types::test_channel!(1);
+    let (tx_new_certificates, mut rx_new_certificates) = tn_types::test_channel!(3);
+    let (tx_parents, _rx_parents) = tn_types::test_channel!(1);
     let (_tx_consensus_round_updates, rx_consensus_round_updates) =
         watch::channel(ConsensusRound::new(0, 0));
     let (certificate_store, payload_store) = create_db_stores();
@@ -258,10 +258,10 @@ async fn propose_header_failure() {
     let metrics = Arc::new(PrimaryMetrics::new(&Registry::new()));
     let primary_channel_metrics = PrimaryChannelMetrics::new(&Registry::new());
     let mut tx_shutdown = PreSubscribedBroadcastSender::new(NUM_SHUTDOWN_RECEIVERS);
-    let (tx_certificate_fetcher, _rx_certificate_fetcher) = narwhal_types::test_channel!(1);
-    let (tx_headers, rx_headers) = narwhal_types::test_channel!(1);
-    let (tx_new_certificates, mut rx_new_certificates) = narwhal_types::test_channel!(3);
-    let (tx_parents, _rx_parents) = narwhal_types::test_channel!(1);
+    let (tx_certificate_fetcher, _rx_certificate_fetcher) = tn_types::test_channel!(1);
+    let (tx_headers, rx_headers) = tn_types::test_channel!(1);
+    let (tx_new_certificates, mut rx_new_certificates) = tn_types::test_channel!(3);
+    let (tx_parents, _rx_parents) = tn_types::test_channel!(1);
     let (_tx_consensus_round_updates, rx_consensus_round_updates) =
         watch::channel(ConsensusRound::default());
     let (certificate_store, payload_store) = create_db_stores();
@@ -368,10 +368,10 @@ async fn run_vote_aggregator_with_param(
     let metrics = Arc::new(PrimaryMetrics::new(&Registry::new()));
     let primary_channel_metrics = PrimaryChannelMetrics::new(&Registry::new());
     let mut tx_shutdown = PreSubscribedBroadcastSender::new(NUM_SHUTDOWN_RECEIVERS);
-    let (tx_certificate_fetcher, _rx_certificate_fetcher) = narwhal_types::test_channel!(1);
-    let (tx_headers, rx_headers) = narwhal_types::test_channel!(1);
-    let (tx_new_certificates, mut rx_new_certificates) = narwhal_types::test_channel!(3);
-    let (tx_parents, _rx_parents) = narwhal_types::test_channel!(1);
+    let (tx_certificate_fetcher, _rx_certificate_fetcher) = tn_types::test_channel!(1);
+    let (tx_headers, rx_headers) = tn_types::test_channel!(1);
+    let (tx_new_certificates, mut rx_new_certificates) = tn_types::test_channel!(3);
+    let (tx_parents, _rx_parents) = tn_types::test_channel!(1);
     let (_tx_consensus_round_updates, rx_consensus_round_updates) =
         watch::channel(ConsensusRound::new(0, 0));
     let (certificate_store, payload_store) = create_db_stores();
@@ -475,10 +475,10 @@ async fn shutdown_core() {
     let primary_channel_metrics = PrimaryChannelMetrics::new(&Registry::new());
 
     let mut tx_shutdown = PreSubscribedBroadcastSender::new(NUM_SHUTDOWN_RECEIVERS);
-    let (tx_certificate_fetcher, _rx_certificate_fetcher) = narwhal_types::test_channel!(1);
-    let (_tx_headers, rx_headers) = narwhal_types::test_channel!(1);
-    let (tx_new_certificates, _rx_new_certificates) = narwhal_types::test_channel!(1);
-    let (tx_parents, _rx_parents) = narwhal_types::test_channel!(1);
+    let (tx_certificate_fetcher, _rx_certificate_fetcher) = tn_types::test_channel!(1);
+    let (_tx_headers, rx_headers) = tn_types::test_channel!(1);
+    let (tx_new_certificates, _rx_new_certificates) = tn_types::test_channel!(1);
+    let (tx_parents, _rx_parents) = tn_types::test_channel!(1);
     let (_tx_consensus_round_updates, rx_consensus_round_updates) =
         watch::channel(ConsensusRound::new(0, 0));
 

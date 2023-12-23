@@ -16,12 +16,12 @@ use futures::{stream::FuturesUnordered, FutureExt, StreamExt};
 use itertools::Itertools;
 use narwhal_network::WorkerRpc;
 use narwhal_typed_store::{rocks::DBMap, Map};
-use narwhal_types::NetworkPublicKey;
 use prometheus::IntGauge;
 use rand::{rngs::ThreadRng, seq::SliceRandom};
+use tn_types::NetworkPublicKey;
 
 use narwhal_network_types::{RequestBatchesRequest, RequestBatchesResponse};
-use narwhal_types::{now, Batch, BatchAPI, BatchDigest, MetadataAPI};
+use tn_types::{now, Batch, BatchAPI, BatchDigest, MetadataAPI};
 use tokio::{
     select,
     time::{sleep, sleep_until, Instant},
@@ -315,9 +315,9 @@ mod tests {
     use super::*;
     use fastcrypto::{hash::Hash, traits::KeyPair};
     use itertools::Itertools;
-    use narwhal_types::NetworkKeypair;
     use rand::rngs::StdRng;
     use std::collections::HashMap;
+    use tn_types::NetworkKeypair;
 
     // // TODO: Remove once we have removed BatchV1 from the codebase.
     // // Case #1: Receive BatchV1 but network is upgraded past v11 so we fail because we expect
@@ -325,7 +325,7 @@ mod tests {
     // pub async fn test_fetcher_with_batch_v1_and_network_v12() {
     //     reth_tracing::init_test_tracing();
     //     let mut network = TestRequestBatchesNetwork::new();
-    //     let batch_store = narwhal_types::test_utils::create_batch_store();
+    //     let batch_store = tn_types::test_utils::create_batch_store();
     //     let batchv1_1 = Batch::V1(BatchV1::new(vec![vec![1]]));
     //     let batchv1_2 = Batch::V1(BatchV1::new(vec![vec![2]]));
     //     let (digests, known_workers) = (
@@ -353,7 +353,7 @@ mod tests {
     // #[tokio::test]
     // pub async fn test_fetcher_with_batch_v2_and_network_v12() {
     //     let mut network = TestRequestBatchesNetwork::new();
-    //     let batch_store = narwhal_types::test_utils::create_batch_store();
+    //     let batch_store = tn_types::test_utils::create_batch_store();
     //     let batchv2_1 = Batch::new(vec![vec![1]]);
     //     let batchv2_2 = Batch::new(vec![vec![2]]);
     //     let (digests, known_workers) = (
@@ -404,7 +404,7 @@ mod tests {
     #[tokio::test]
     pub async fn test_fetcher() {
         let mut network = TestRequestBatchesNetwork::new();
-        let batch_store = narwhal_types::test_utils::create_batch_store();
+        let batch_store = tn_types::test_utils::create_batch_store();
         let batch1 = Batch::new(vec![vec![1]]);
         let batch2 = Batch::new(vec![vec![2]]);
         let (digests, known_workers) = (
@@ -443,7 +443,7 @@ mod tests {
         // Limit is set to two batches in test request_batches(). Request 3 batches
         // and ensure another request is sent to get the remaining batches.
         let mut network = TestRequestBatchesNetwork::new();
-        let batch_store = narwhal_types::test_utils::create_batch_store();
+        let batch_store = tn_types::test_utils::create_batch_store();
         let batch1 = Batch::new(vec![vec![1]]);
         let batch2 = Batch::new(vec![vec![2]]);
         let batch3 = Batch::new(vec![vec![3]]);
@@ -477,7 +477,7 @@ mod tests {
         // Limit is set to two batches in test request_batches(). Request 3 batches
         // and ensure another request is sent to get the remaining batches.
         let mut network = TestRequestBatchesNetwork::new();
-        let batch_store = narwhal_types::test_utils::create_batch_store();
+        let batch_store = tn_types::test_utils::create_batch_store();
         let batch1 = Batch::new(vec![vec![1]]);
         let batch2 = Batch::new(vec![vec![2]]);
         let batch3 = Batch::new(vec![vec![3]]);
@@ -517,7 +517,7 @@ mod tests {
     #[tokio::test]
     pub async fn test_fetcher_local_and_remote() {
         let mut network = TestRequestBatchesNetwork::new();
-        let batch_store = narwhal_types::test_utils::create_batch_store();
+        let batch_store = tn_types::test_utils::create_batch_store();
         let batch1 = Batch::new(vec![vec![1]]);
         let batch2 = Batch::new(vec![vec![2]]);
         let batch3 = Batch::new(vec![vec![3]]);
@@ -562,7 +562,7 @@ mod tests {
     #[tokio::test]
     pub async fn test_fetcher_response_size_limit() {
         let mut network = TestRequestBatchesNetwork::new();
-        let batch_store = narwhal_types::test_utils::create_batch_store();
+        let batch_store = tn_types::test_utils::create_batch_store();
         let num_digests = 12;
         let mut expected_batches = Vec::new();
         let mut local_digests = Vec::new();
