@@ -25,6 +25,8 @@ use thiserror::Error;
 
 pub mod committee;
 pub use committee::*;
+
+use self::utils::get_available_tcp_port;
 pub mod utils;
 
 /// The epoch number.
@@ -149,9 +151,11 @@ impl PrimaryInfo {
 
 impl Default for PrimaryInfo {
     fn default() -> Self {
+        let host = std::env::var("NARWHAL_HOST").unwrap_or("127.0.0.1".to_string());
+
         Self {
             network_key: NetworkPublicKey::insecure_default(),
-            network_address: Default::default(),
+            network_address: format!("/ip4/{}/udp/{}", &host, get_available_tcp_port(&host)).parse().expect("multiaddr parsed for primary"),
             worker_network_key: NetworkPublicKey::insecure_default(),
             worker_index: Default::default(),
         }
@@ -181,10 +185,11 @@ pub struct WorkerInfo {
 
 impl Default for WorkerInfo {
     fn default() -> Self {
+        let host = std::env::var("NARWHAL_HOST").unwrap_or("127.0.0.1".to_string());
         Self {
             name: NetworkPublicKey::insecure_default(),
-            transactions: Multiaddr::default(),
-            worker_address: Multiaddr::default(),
+            transactions: format!("/ip4/{}/tcp/{}/http",&host, get_available_tcp_port(&host)).parse().expect("multiaddress parsed for worker txs"),
+            worker_address: format!("/ip4/{}/udp/{}", &host, get_available_tcp_port(&host)).parse().expect("multiaddr parsed for worker consensus"),
         }
     }
 }
@@ -192,8 +197,14 @@ impl Default for WorkerInfo {
 /// Map of all workers for the authority.
 ///
 /// The map associates the worker's id to [WorkerInfo].
-#[derive(Clone, Debug, Default, PartialEq)]
+#[derive(Clone, Debug, PartialEq)]
 pub struct WorkerIndex(pub BTreeMap<WorkerId, WorkerInfo>);
+
+impl Default for WorkerIndex {
+    fn default() -> Self {
+        Self(BTreeMap::from([(0, WorkerInfo::default())]))
+    }
+}
 
 // TODO: abandon TOML for config
 // Custom serilaization impl for WorkerIndex bc int types are invalid keys for TOML files.

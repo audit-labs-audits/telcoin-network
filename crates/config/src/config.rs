@@ -78,7 +78,10 @@ impl Config {
 
     /// Update the worker network key.
     pub fn update_worker_network_key(&mut self, value: NetworkPublicKey) -> eyre::Result<()> {
-        self.validator_info.primary_info.worker_network_key = value;
+        self.validator_info.primary_info.worker_network_key = value.clone();
+        for worker in self.validator_info.primary_info.worker_index.0.iter_mut() {
+            worker.1.name = value.clone();
+        }
         Ok(())
     }
 

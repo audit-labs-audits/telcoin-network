@@ -57,6 +57,7 @@ reth-revm-inspectors = {workspace = true }
 reth-auto-seal-consensus = {workspace = true }
 reth-beacon-consensus = {workspace = true }
 reth-blockchain-tree = {workspace = true }
+dotenv = "0.15.0"
 
 [dev-dependencies]
 reth-basic-payload-builder = {workspace = true }

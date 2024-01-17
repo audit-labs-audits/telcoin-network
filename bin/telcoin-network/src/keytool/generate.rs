@@ -87,6 +87,7 @@ pub struct ValidatorArgs {
         long = "address",
         alias = "execution-address",
         help_heading = "The address that should receive block rewards. Pass `0` to use the zero address.",
+        env = "EXECUTION_ADDRESS", // TODO: this doesn't work like it should
         value_parser = clap_address_parser,
         verbatim_doc_comment
     )]

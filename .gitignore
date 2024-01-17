@@ -13,3 +13,7 @@ data/
 
 # intellij-based IDEs
 .idea
+
+.env
+
+turtles

@@ -16,7 +16,7 @@ pub fn get_available_tcp_port(host: &str) -> u16 {
         }
     }
 
-    panic!("Error: could not find an available port");
+    panic!("Error: could not find an available port on host: {}\n", host);
 }
 
 fn get_ephemeral_port(host: &str) -> std::io::Result<u16> {

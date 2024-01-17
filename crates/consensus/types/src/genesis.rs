@@ -6,7 +6,7 @@
 //! Yukon is the current name for multi-node testnet.
 
 use crate::{
-    BlsPublicKey, BlsSignature, Epoch, Intent, IntentMessage, PrimaryInfo, ValidatorSignature,
+    BlsPublicKey, BlsSignature, Epoch, Intent, IntentMessage, PrimaryInfo, ValidatorSignature, verify_proof_of_possession,
 };
 use clap::Parser;
 use eyre::Context;
@@ -104,7 +104,7 @@ pub struct NetworkGenesis {
     // /// The committee
     // committee: Committee,
     /// Execution data
-    _chain: ChainSpec,
+    chain: ChainSpec,
     /// Validator signatures
     validators: BTreeMap<BlsPublicKey, ValidatorInfo>,
     // // Validator signatures over checkpoint
@@ -114,7 +114,7 @@ pub struct NetworkGenesis {
 impl NetworkGenesis {
     /// Create new version of [NetworkGenesis] using the yukon genesis [ChainSpec].
     pub fn new() -> Self {
-        Self { _chain: yukon_genesis().into(), validators: Default::default() }
+        Self { chain: yukon_genesis().into(), validators: Default::default() }
     }
 
     /// Add validator information to the genesis directory.
@@ -160,7 +160,7 @@ impl NetworkGenesis {
         }
 
         let network_genesis = Self {
-            _chain: yukon_genesis().into(),
+            chain: yukon_genesis().into(),
             validators,
             // signatures,
         };
@@ -260,6 +260,21 @@ impl NetworkGenesis {
         //     )?;
         // }
 
+        Ok(())
+    }
+
+    /// Validate each validator:
+    /// - verify proof of possession
+    /// 
+    /// TODO: addition validation?
+    ///     - validator name isn't default
+    ///     - ???
+    pub fn validate(&self) -> eyre::Result<()> {
+        for (pubkey, validator) in self.validators.iter() {
+            info!(target: "genesis::validate", "verifying validator: {}", pubkey);
+            verify_proof_of_possession(&validator.proof_of_possession, pubkey, &self.chain)?;
+        }
+        info!(target: "genesis::validate", "all validators valid for genesis");
         Ok(())
     }
 }
@@ -425,5 +440,82 @@ mod tests {
         let loaded_validator =
             loaded_network_genesis.validators.get(validator.public_key()).unwrap();
         assert_eq!(&validator, loaded_validator);
+    }
+
+    #[test]
+    fn test_validate_genesis() {
+        let mut network_genesis = NetworkGenesis::new();
+        // create keys and information for validators
+        for v in 0..4 {
+            let bls_keypair = BlsKeypair::generate(&mut StdRng::from_seed([0; 32]));
+            let network_keypair = NetworkKeypair::generate(&mut StdRng::from_seed([0; 32]));
+            let address = Address::from_raw_public_key(&[0; 64]);
+            let proof_of_possession =
+                generate_proof_of_possession(&bls_keypair, &yukon_chain_spec()).unwrap();
+            let primary_network_address = Multiaddr::empty();
+            let worker_info = WorkerInfo::default();
+            let worker_index = WorkerIndex(BTreeMap::from([(0, worker_info)]));
+            let primary_info = PrimaryInfo::new(
+                network_keypair.public().clone(),
+                primary_network_address,
+                network_keypair.public().clone(),
+                worker_index,
+            );
+            let name = format!("validator-{}", v);
+            // create validator
+            let validator = ValidatorInfo::new(
+                name,
+                bls_keypair.public().clone(),
+                primary_info,
+                address,
+                proof_of_possession,
+            );
+            // add validator
+            network_genesis.add_validator(validator.clone());
+        }
+        // validate
+        assert!(network_genesis.validate().is_ok())
+    }
+
+    #[test]
+    fn test_validate_genesis_fails() {
+        // this uses `yukon_genesis`
+        let mut network_genesis = NetworkGenesis::new();
+        // create keys and information for validators
+        for v in 0..4 {
+            let bls_keypair = BlsKeypair::generate(&mut StdRng::from_seed([0; 32]));
+            let network_keypair = NetworkKeypair::generate(&mut StdRng::from_seed([0; 32]));
+            let address = Address::from_raw_public_key(&[0; 64]);
+
+            // create wrong chain spec
+            let mut wrong_chain = yukon_chain_spec();
+            wrong_chain.genesis.timestamp = 0;
+
+            // generate proof with wrong chain spec
+            let proof_of_possession =
+                generate_proof_of_possession(&bls_keypair, &wrong_chain).unwrap();
+            let primary_network_address = Multiaddr::empty();
+            let worker_info = WorkerInfo::default();
+            let worker_index = WorkerIndex(BTreeMap::from([(0, worker_info)]));
+            let primary_info = PrimaryInfo::new(
+                network_keypair.public().clone(),
+                primary_network_address,
+                network_keypair.public().clone(),
+                worker_index,
+            );
+            let name = format!("validator-{}", v);
+            // create validator
+            let validator = ValidatorInfo::new(
+                name,
+                bls_keypair.public().clone(),
+                primary_info,
+                address,
+                proof_of_possession,
+            );
+            // add validator
+            network_genesis.add_validator(validator.clone());
+        }
+        // validate should fail
+        assert!(network_genesis.validate().is_err(), "proof of possession should fail")
     }
 }

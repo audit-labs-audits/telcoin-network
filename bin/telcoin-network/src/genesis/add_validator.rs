@@ -52,7 +52,7 @@ pub struct AddValidator {
         value_name = "CHAIN_OR_PATH",
         verbatim_doc_comment,
         default_value = "yukon",
-        default_value_if("dev", "true", "dev"),
+        // default_value_if("dev", "true", "dev"),
         value_parser = clap_genesis_parser,
         required = false,
     )]
@@ -102,12 +102,6 @@ impl AddValidator {
         // add validator info to network genesis
         //
         // write network genesis to file
-
-        // let validator_bls_key = self.get_bls_key(&config.keypath.join(BLS_KEYFILE))?;
-        // let primary_network_key =
-        // self.get_network_key(&config.keypath.join(PRIMARY_NETWORK_KEYFILE))?;
-        // let worker_network_key =
-        // self.get_network_key(&config.keypath.join(WORKER_NETWORK_KEYFILE))?;
 
         let genesis_path = data_dir.genesis_path();
 

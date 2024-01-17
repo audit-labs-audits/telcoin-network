@@ -3,12 +3,14 @@
 //! The genesis ceremony is how networks are started.
 
 mod add_validator;
-use self::add_validator::AddValidator;
-use crate::{args::clap_genesis_parser, dirs::DataDirPath};
+mod validate;
+use self::{add_validator::AddValidator, validate::ValidateArgs};
+use crate::{args::clap_genesis_parser, dirs::{DataDirPath, TelcoinDirs}};
 use clap::{Args, Subcommand};
 
 use reth::dirs::MaybePlatformPath;
 use reth_primitives::ChainSpec;
+use tn_types::NetworkGenesis;
 use std::{path::PathBuf, sync::Arc};
 
 /// Generate keypairs and save them to a file.
@@ -28,6 +30,11 @@ pub struct GenesisArgs {
     /// The path to the committee file to use.
     #[arg(long, value_name = "COMMITTEE_FILE", verbatim_doc_comment)]
     pub committee_file: Option<PathBuf>,
+
+    // TODO: support custom genesis path
+    // /// The path to the genesis directory with validator information to build the committee.
+    // #[arg(long, value_name = "GENESIS_DIR", verbatim_doc_comment)]
+    // pub genesis_dir: Option<PathBuf>,
 
     /// The chain this node is running.
     ///
@@ -52,11 +59,16 @@ pub struct GenesisArgs {
 ///Subcommand to either generate keys or read public keys.
 #[derive(Debug, Clone, Subcommand)]
 pub enum CeremonySubcommand {
+    /// Initialize the genesis directory.
+    #[command(name = "init")]
+    Initialize,
     /// Add validator to committee.
     #[command(name = "add-validator")]
     AddValidator(AddValidator),
+    /// Verify the current validators.
+    #[command(name = "validate")]
+    Validate(ValidateArgs),
     // TODO: add more commands
-    // - init (create committe file?)
     // - list validators (print peers)
     // - verify and sign (sign EL Genesis)
     // - finalize (todo)
@@ -71,8 +83,17 @@ impl GenesisArgs {
         // let mut config = self.load_config()?;
 
         match &self.command {
+            CeremonySubcommand::Initialize => {
+                // TODO: support custom genesis path
+                let datadir = self.datadir.unwrap_or_chain_default(self.chain.chain);
+                let network_genesis = NetworkGenesis::new();
+                network_genesis.write_to_path(datadir.genesis_path())?;
+            }
             // add validator to the committee file
             CeremonySubcommand::AddValidator(args) => {
+                args.execute().await?;
+            }
+            CeremonySubcommand::Validate(args) => {
                 args.execute().await?;
             }
         }

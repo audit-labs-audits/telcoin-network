@@ -68,6 +68,8 @@ pub struct Cli<Ext: RethCliExt = ()> {
 impl<Ext: RethCliExt> Cli<Ext> {
     /// Execute the configured cli command.
     pub fn run(mut self) -> eyre::Result<()> {
+        // load environment
+        dotenv::dotenv()?;
         // add network name to logs dir
         self.logs.log_file_directory =
             self.logs.log_file_directory.join(self.chain.chain.to_string());
@@ -127,7 +129,7 @@ pub fn run() -> eyre::Result<()> {
 #[derive(Debug, Subcommand)]
 pub enum Commands<Ext: RethCliExt = ()> {
     /// Genesis ceremony for starting the network.
-    #[command(name = "genesis-ceremony")]
+    #[command(name = "genesis")]
     Genesis(genesis::GenesisArgs),
 
     /// Start the node
