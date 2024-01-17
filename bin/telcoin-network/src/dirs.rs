@@ -70,15 +70,16 @@ pub fn validators_dir() -> Option<PathBuf> {
 pub trait TelcoinDirs {
     /// Return the path to `configuration` yaml file.
     fn node_config_path(&self) -> PathBuf;
-    /// Return the path to the directory that holds 
+    /// Return the path to the directory that holds
     /// private keys for the validator operating this node.
     fn validator_keys(&self) -> PathBuf;
     /// Return the path to `genesis` dir.
     fn genesis_path(&self) -> PathBuf;
-    /// Return the path to the directory where
-    /// individual and public validator information
-    /// is collected for genesis.
+    /// Return the path to the directory where individual and public validator information is
+    /// collected for genesis.
     fn validator_info_path(&self) -> PathBuf;
+    /// Return the path to the committee file.
+    fn committee_path(&self) -> PathBuf;
 }
 
 impl TelcoinDirs for ChainPath<DataDirPath> {
@@ -96,6 +97,10 @@ impl TelcoinDirs for ChainPath<DataDirPath> {
 
     fn genesis_path(&self) -> PathBuf {
         self.as_ref().join("genesis")
+    }
+
+    fn committee_path(&self) -> PathBuf {
+        self.genesis_path().join("committee.yaml")
     }
 }
 

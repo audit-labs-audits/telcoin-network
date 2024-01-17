@@ -6,16 +6,16 @@
 //! Authority fixture for holding all keypairs and workers for a validator node within a committee.
 use super::WorkerFixture;
 use crate::{
-    Authority, AuthorityIdentifier, BlsKeypair, BlsPublicKey, Certificate, Committee,
-    ExecutionKeypair, Header, HeaderV1Builder, Multiaddr, NetworkKeypair, NetworkPublicKey, Round,
-    Stake, Vote, WorkerId, WorkerIndex,
+    Authority, AuthorityIdentifier, BlsKeypair, BlsPublicKey, Certificate, Committee, Header,
+    HeaderV1Builder, Multiaddr, NetworkKeypair, NetworkPublicKey, Round, Stake, Vote, WorkerId,
+    WorkerIndex,
 };
 use fastcrypto::{
     hash::Hash,
     traits::{AllowedRng, KeyPair as _},
 };
 use once_cell::sync::OnceCell;
-use reth_primitives::{public_key_to_address, Address};
+use reth_primitives::Address;
 use std::{collections::BTreeMap, num::NonZeroUsize};
 
 /// Fixture representing an validator node within the network.
@@ -34,8 +34,6 @@ pub struct AuthorityFixture {
     pub(crate) network_address: Multiaddr,
     /// All workers for this authority mapped by [WorkerId] to [WorkerFixture].
     pub(crate) workers: BTreeMap<WorkerId, WorkerFixture>,
-    /// The [ExecutionKeypair] for the execution layer.
-    pub(crate) execution_keypair: ExecutionKeypair,
     /// The address for the authority on the EL.
     pub(crate) execution_address: Address,
 }
@@ -149,11 +147,10 @@ impl AuthorityFixture {
     {
         let keypair = BlsKeypair::generate(&mut rng);
         let network_keypair = NetworkKeypair::generate(&mut rng);
-        let execution_keypair = ExecutionKeypair::generate(&mut rng);
         let host = "127.0.0.1";
         let network_address: Multiaddr =
             format!("/ip4/{}/udp/{}", host, get_port(host)).parse().unwrap();
-        let execution_address = public_key_to_address(execution_keypair.public().pubkey);
+        let execution_address = Address::random();
 
         let workers = (0..number_of_workers.get())
             .map(|idx| {
@@ -170,7 +167,6 @@ impl AuthorityFixture {
             stake: 1,
             network_address,
             workers,
-            execution_keypair,
             execution_address,
         }
     }

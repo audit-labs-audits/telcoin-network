@@ -108,11 +108,10 @@ impl<R: rand::RngCore + rand::CryptoRng> Builder<R> {
         // create the committee in order to assign the ids to the authorities
         let mut committee_builder = CommitteeBuilder::new(self.epoch);
         for a in authorities.iter() {
-            committee_builder = committee_builder.add_authority(
+            committee_builder.add_authority(
                 a.public_key().clone(),
                 self.stake.pop_front().unwrap_or(1),
                 a.network_address.clone(),
-                a.execution_keypair.public().clone(),
                 a.execution_address.clone(),
                 a.network_public_key(),
                 a.network_address.to_string(),

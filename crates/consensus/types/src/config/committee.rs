@@ -6,7 +6,7 @@
 use super::{CommitteeUpdateError, ConfigError, Epoch, Stake};
 use crate::{
     crypto::{BlsPublicKey, BlsPublicKeyBytes, NetworkPublicKey},
-    ExecutionPublicKey, Multiaddr,
+    Multiaddr,
 };
 use fastcrypto::{
     serde_helpers::ToFromByteArray,
@@ -35,9 +35,8 @@ pub struct Authority {
     stake: Stake,
     /// The network address of the primary.
     primary_network_address: Multiaddr,
-    /// The secp256k1 public key for the primary.
-    execution_key: ExecutionPublicKey,
-    /// The execution address for the primary.
+    /// The execution address for the authority.
+    /// This address will be used as the suggested fee recipient.
     execution_address: Address,
     /// Network key of the primary.
     network_key: NetworkPublicKey,
@@ -58,7 +57,6 @@ impl Authority {
         protocol_key: BlsPublicKey,
         stake: Stake,
         primary_network_address: Multiaddr,
-        execution_key: ExecutionPublicKey,
         execution_address: Address,
         network_key: NetworkPublicKey,
         hostname: String,
@@ -71,7 +69,6 @@ impl Authority {
             protocol_key_bytes,
             stake,
             primary_network_address,
-            execution_key,
             execution_address,
             network_key,
             hostname,
@@ -109,14 +106,9 @@ impl Authority {
         self.primary_network_address.clone()
     }
 
-    pub fn primary_execution_address(&self) -> Address {
+    pub fn execution_address(&self) -> Address {
         assert!(self.initialised);
         self.execution_address.clone()
-    }
-
-    pub fn execution_key(&self) -> ExecutionPublicKey {
-        assert!(self.initialised);
-        self.execution_key.clone()
     }
 
     pub fn network_key(&self) -> NetworkPublicKey {
@@ -172,8 +164,8 @@ impl Display for AuthorityIdentifier {
 }
 
 impl Committee {
-    /// Any committee should be created via the [CommitteeBuilder] - this is intentionally be marked
-    /// as private method.
+    /// Any committee should be created via the [CommitteeBuilder] - this is intentionally
+    /// a private method.
     fn new(authorities: BTreeMap<BlsPublicKey, Authority>, epoch: Epoch) -> Self {
         let mut committee = Self {
             authorities,
@@ -507,31 +499,31 @@ pub struct CommitteeBuilder {
 }
 
 impl CommitteeBuilder {
+    /// Create a new instance of [CommitteeBuilder] for making a new [Committee].
     pub fn new(epoch: Epoch) -> Self {
         Self { epoch, authorities: BTreeMap::new() }
     }
 
+    /// Add an authority to the committee builder.
     pub fn add_authority(
-        mut self,
+        &mut self,
         protocol_key: BlsPublicKey,
         stake: Stake,
         primary_network_address: Multiaddr,
-        execution_public_key: ExecutionPublicKey,
-        primary_execution_address: Address,
+        execution_address: Address,
         network_key: NetworkPublicKey,
         hostname: String,
-    ) -> Self {
+    ) {
         let authority = Authority::new(
             protocol_key.clone(),
             stake,
             primary_network_address,
-            execution_public_key,
-            primary_execution_address,
+            execution_address,
             network_key,
             hostname,
         );
         self.authorities.insert(protocol_key, authority);
-        self
+        // self
     }
 
     pub fn build(self) -> Committee {
@@ -541,12 +533,10 @@ impl CommitteeBuilder {
 
 #[cfg(test)]
 mod tests {
-    use crate::{
-        Authority, BlsKeypair, BlsPublicKey, Committee, ExecutionKeypair, Multiaddr, NetworkKeypair,
-    };
+    use crate::{Authority, BlsKeypair, BlsPublicKey, Committee, Multiaddr, NetworkKeypair};
     use fastcrypto::traits::KeyPair as _;
     use rand::thread_rng;
-    use reth_primitives::public_key_to_address;
+    use reth_primitives::Address;
     use std::collections::BTreeMap;
 
     #[test]
@@ -559,14 +549,12 @@ mod tests {
             .map(|i| {
                 let keypair = BlsKeypair::generate(&mut rng);
                 let network_keypair = NetworkKeypair::generate(&mut rng);
-                let execution_keypair = ExecutionKeypair::generate(&mut rng);
-                let execution_address = public_key_to_address(execution_keypair.public().pubkey);
+                let execution_address = Address::random();
 
                 let a = Authority::new(
                     keypair.public().clone(),
                     1,
                     Multiaddr::empty(),
-                    execution_keypair.public().clone(),
                     execution_address,
                     network_keypair.public().clone(),
                     i.to_string(),

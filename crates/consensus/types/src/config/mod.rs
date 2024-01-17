@@ -155,7 +155,9 @@ impl Default for PrimaryInfo {
 
         Self {
             network_key: NetworkPublicKey::insecure_default(),
-            network_address: format!("/ip4/{}/udp/{}", &host, get_available_tcp_port(&host)).parse().expect("multiaddr parsed for primary"),
+            network_address: format!("/ip4/{}/udp/{}", &host, get_available_tcp_port(&host))
+                .parse()
+                .expect("multiaddr parsed for primary"),
             worker_network_key: NetworkPublicKey::insecure_default(),
             worker_index: Default::default(),
         }
@@ -188,8 +190,12 @@ impl Default for WorkerInfo {
         let host = std::env::var("NARWHAL_HOST").unwrap_or("127.0.0.1".to_string());
         Self {
             name: NetworkPublicKey::insecure_default(),
-            transactions: format!("/ip4/{}/tcp/{}/http",&host, get_available_tcp_port(&host)).parse().expect("multiaddress parsed for worker txs"),
-            worker_address: format!("/ip4/{}/udp/{}", &host, get_available_tcp_port(&host)).parse().expect("multiaddr parsed for worker consensus"),
+            transactions: format!("/ip4/{}/tcp/{}/http", &host, get_available_tcp_port(&host))
+                .parse()
+                .expect("multiaddress parsed for worker txs"),
+            worker_address: format!("/ip4/{}/udp/{}", &host, get_available_tcp_port(&host))
+                .parse()
+                .expect("multiaddr parsed for worker consensus"),
         }
     }
 }

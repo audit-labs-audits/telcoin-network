@@ -113,13 +113,19 @@ impl ValidatorArgs {
 
         // network keypair for authority
         let network_keypair = self.generate_keypair_from_rng::<NetworkKeypair>()?;
-        self.write_keypair_to_file(&network_keypair, &authority_key_path.join(PRIMARY_NETWORK_KEYFILE))?;
+        self.write_keypair_to_file(
+            &network_keypair,
+            &authority_key_path.join(PRIMARY_NETWORK_KEYFILE),
+        )?;
         config.update_primary_network_key(network_keypair.public().clone())?;
         drop(network_keypair); // calls zeroize() for OnceCell containing private key
 
         // network keypair for workers
         let network_keypair = self.generate_keypair_from_rng::<NetworkKeypair>()?;
-        self.write_keypair_to_file(&network_keypair, &authority_key_path.join(WORKER_NETWORK_KEYFILE))?;
+        self.write_keypair_to_file(
+            &network_keypair,
+            &authority_key_path.join(WORKER_NETWORK_KEYFILE),
+        )?;
         config.update_worker_network_key(network_keypair.public().clone())?;
         drop(network_keypair); // calls zeroize() for OnceCell containing private key
 

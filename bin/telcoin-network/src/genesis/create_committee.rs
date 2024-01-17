@@ -1,9 +1,10 @@
-//! Validate the validators for genesis.
+//! Create a committee from the validators in genesis.
 
 use clap::Args;
 use reth::dirs::MaybePlatformPath;
 use reth_primitives::ChainSpec;
 use std::{path::PathBuf, sync::Arc};
+use tn_config::{traits::ConfigTrait, Config};
 use tn_types::NetworkGenesis;
 
 use crate::{
@@ -14,7 +15,7 @@ use tracing::info;
 
 /// Add the validator to the node
 #[derive(Debug, Clone, Args)]
-pub struct ValidateArgs {
+pub struct CreateCommitteeArgs {
     /// The path to the data dir for all reth files and subdirectories.
     ///
     /// Defaults to the OS-specific data directory:
@@ -56,7 +57,7 @@ pub struct ValidateArgs {
     pub chain: Arc<ChainSpec>,
 }
 
-impl ValidateArgs {
+impl CreateCommitteeArgs {
     /// Execute `Validate` command
     ///
     /// Process:
@@ -71,6 +72,8 @@ impl ValidateArgs {
         let data_dir = self.datadir.unwrap_or_chain_default(self.chain.chain);
         let genesis_path = data_dir.genesis_path();
         let network_genesis = NetworkGenesis::load_from_path(&genesis_path)?;
-        network_genesis.validate()
+        network_genesis.validate()?;
+        let committee = network_genesis.create_committee()?;
+        Config::store_path(data_dir.committee_path(), committee)
     }
 }

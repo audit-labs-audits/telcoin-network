@@ -6,7 +6,8 @@
 //! Yukon is the current name for multi-node testnet.
 
 use crate::{
-    BlsPublicKey, BlsSignature, Epoch, Intent, IntentMessage, PrimaryInfo, ValidatorSignature, verify_proof_of_possession,
+    verify_proof_of_possession, BlsPublicKey, BlsSignature, Committee, CommitteeBuilder, Epoch,
+    Intent, IntentMessage, Multiaddr, NetworkPublicKey, PrimaryInfo, ValidatorSignature,
 };
 use clap::Parser;
 use eyre::Context;
@@ -265,7 +266,7 @@ impl NetworkGenesis {
 
     /// Validate each validator:
     /// - verify proof of possession
-    /// 
+    ///
     /// TODO: addition validation?
     ///     - validator name isn't default
     ///     - ???
@@ -276,6 +277,22 @@ impl NetworkGenesis {
         }
         info!(target: "genesis::validate", "all validators valid for genesis");
         Ok(())
+    }
+
+    /// Create a committee from the validators in [NetworkGenesis].
+    pub fn create_committee(&self) -> eyre::Result<Committee> {
+        let mut committee_builder = CommitteeBuilder::new(0);
+        for (pubkey, validator) in self.validators.iter() {
+            committee_builder.add_authority(
+                pubkey.clone(),
+                1,
+                validator.primary_network_address().clone(),
+                validator.execution_address,
+                validator.primary_network_key().clone(),
+                "hostname".to_string(),
+            );
+        }
+        Ok(committee_builder.build())
     }
 }
 
@@ -331,6 +348,16 @@ impl ValidatorInfo {
     /// Return public key bytes.
     pub fn public_key(&self) -> &BlsPublicKey {
         &self.bls_public_key
+    }
+
+    /// Return the primary's network address.
+    pub fn primary_network_key(&self) -> &NetworkPublicKey {
+        &self.primary_info.network_key
+    }
+
+    /// Return the primary's network address.
+    pub fn primary_network_address(&self) -> &Multiaddr {
+        &self.primary_info.network_address
     }
 }
 

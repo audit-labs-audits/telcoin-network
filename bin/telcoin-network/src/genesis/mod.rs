@@ -3,15 +3,21 @@
 //! The genesis ceremony is how networks are started.
 
 mod add_validator;
+mod create_committee;
 mod validate;
-use self::{add_validator::AddValidator, validate::ValidateArgs};
-use crate::{args::clap_genesis_parser, dirs::{DataDirPath, TelcoinDirs}};
+use self::{
+    add_validator::AddValidator, create_committee::CreateCommitteeArgs, validate::ValidateArgs,
+};
+use crate::{
+    args::clap_genesis_parser,
+    dirs::{DataDirPath, TelcoinDirs},
+};
 use clap::{Args, Subcommand};
 
 use reth::dirs::MaybePlatformPath;
 use reth_primitives::ChainSpec;
-use tn_types::NetworkGenesis;
 use std::{path::PathBuf, sync::Arc};
+use tn_types::NetworkGenesis;
 
 /// Generate keypairs and save them to a file.
 #[derive(Debug, Args)]
@@ -35,7 +41,6 @@ pub struct GenesisArgs {
     // /// The path to the genesis directory with validator information to build the committee.
     // #[arg(long, value_name = "GENESIS_DIR", verbatim_doc_comment)]
     // pub genesis_dir: Option<PathBuf>,
-
     /// The chain this node is running.
     ///
     /// The value parser matches either a known chain, the path
@@ -68,6 +73,9 @@ pub enum CeremonySubcommand {
     /// Verify the current validators.
     #[command(name = "validate")]
     Validate(ValidateArgs),
+    /// Create a committee from genesis.
+    #[command(name = "create-committee", alias = "finalize")]
+    CreateCommittee(CreateCommitteeArgs),
     // TODO: add more commands
     // - list validators (print peers)
     // - verify and sign (sign EL Genesis)
@@ -94,6 +102,9 @@ impl GenesisArgs {
                 args.execute().await?;
             }
             CeremonySubcommand::Validate(args) => {
+                args.execute().await?;
+            }
+            CeremonySubcommand::CreateCommittee(args) => {
                 args.execute().await?;
             }
         }
