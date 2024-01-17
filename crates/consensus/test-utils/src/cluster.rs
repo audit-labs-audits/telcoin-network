@@ -9,7 +9,9 @@ use itertools::Itertools;
 use std::{collections::HashMap, time::Duration};
 use tn_config::Parameters;
 use tn_node::engine::ExecutionNode;
-use tn_types::{test_utils::CommitteeFixture, yukon_chain_spec, Committee, WorkerCache, WorkerId};
+use tn_types::{
+    test_utils::CommitteeFixture, yukon_chain_spec_arc, Committee, WorkerCache, WorkerId,
+};
 use tracing::info;
 
 #[cfg(test)]
@@ -39,7 +41,7 @@ impl Cluster {
         let committee = fixture.committee();
         let worker_cache = fixture.worker_cache();
         let params = parameters.unwrap_or_else(Self::parameters);
-        let chain = yukon_chain_spec();
+        let chain = yukon_chain_spec_arc();
 
         info!("###### Creating new cluster ######");
         info!("Validator keys:");

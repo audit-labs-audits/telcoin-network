@@ -1,10 +1,14 @@
 //! Key command to generate all keys for running a full validator node.
 
 mod generate;
-use crate::{args::clap_genesis_parser, dirs::DataDirPath};
+use self::generate::NodeType;
+use crate::{
+    args::clap_genesis_parser,
+    dirs::{DataDirPath, TelcoinDirs},
+};
 use clap::{value_parser, Args, Subcommand};
-use eyre::{anyhow, Context};
-use fastcrypto::traits::KeyPair as KeyPairTraits;
+use eyre::Context;
+
 use generate::GenerateKeys;
 use question::{Answer, Question};
 use reth::dirs::{ChainPath, MaybePlatformPath};
@@ -13,9 +17,8 @@ use std::{
     path::{Path, PathBuf},
     sync::Arc,
 };
-use tn_config::Config;
+use tn_config::{traits::ConfigTrait, Config};
 use tracing::{debug, info};
-use self::generate::NodeType;
 
 /// Generate keypairs and save them to a file.
 #[derive(Debug, Args)]
@@ -48,6 +51,10 @@ pub struct KeyArgs {
     chain: Arc<ChainSpec>,
 
     /// Generate command that creates keypairs and writes to file.
+    ///
+    /// TODO: rename this key "command".
+    /// Intentionally leaving this here to help others identify
+    /// patterns in clap.
     #[command(subcommand)]
     pub read_or_write: KeySubcommand,
 
@@ -96,23 +103,15 @@ impl KeyArgs {
             KeySubcommand::Generate(args) => {
                 match &args.node_type {
                     NodeType::ValidatorKeys(args) => {
-                        // initialize path
-                        let path_name = format!("authority-keys-{}", self.instance);
-                        let authority_key_path = datadir.as_ref().join(&path_name);
-                        // init path warns users if overwriting keys
+                        let authority_key_path = datadir.validator_keys();
+                        // initialize path and warn users if overwriting keys
                         self.init_path(&authority_key_path, args.force)?;
                         // execute and store keypath
                         args.execute(&authority_key_path, &mut config).await?;
                         config.keypath = authority_key_path;
+
                         debug!("{config:?}");
-                        // note: there is serialization issues with value not being emitted before
-                        // tables serde skip_serializing seems to work, as
-                        // well as putting maps last this is further
-                        // complicated bc reth still uses default confy features,
-                        // so toml it is for now
-                        //
-                        // see also https://github.com/paradigmxyz/reth/issues/805
-                        confy::store_path(self.config_path(), config)?;
+                        Config::store_path(self.config_path(), config)?;
                     }
                 }
             }
@@ -133,11 +132,6 @@ impl KeyArgs {
             // authority dir
             std::fs::create_dir_all(rpath).wrap_err_with(|| {
                 format!("Could not create authority key directory {}", rpath.display())
-            })?;
-            // workers dir
-            let worker_path = rpath.join("workers");
-            std::fs::create_dir(&worker_path).wrap_err_with(|| {
-                format!("Could not create worker key directory {}", worker_path.display())
             })?;
         } else if !force {
             // ask user if they want to continue generating new keys
@@ -176,18 +170,6 @@ impl KeyArgs {
         }
     }
 
-    /// Read from file as Base64 encoded `privkey` and return a AuthorityKeyPair.
-    ///
-    /// TODO: when would this ever be used?
-    pub fn read_authority_keypair_from_file<KP, Path>(&self, path: Path) -> eyre::Result<KP>
-    where
-        KP: KeyPairTraits,
-        Path: AsRef<std::path::Path>,
-    {
-        let contents = std::fs::read_to_string(path)?;
-        KP::decode_base64(contents.as_str().trim()).map_err(|e| anyhow!(e))
-    }
-
     /// Returns the chain specific path to the data dir.
     fn data_dir(&self) -> ChainPath<DataDirPath> {
         self.datadir.unwrap_or_chain_default(self.chain.chain)
@@ -195,7 +177,7 @@ impl KeyArgs {
 
     /// Returns the path to the config file.
     fn config_path(&self) -> PathBuf {
-        self.config.clone().unwrap_or_else(|| self.data_dir().as_ref().join("telcoin-network.toml"))
+        self.config.clone().unwrap_or_else(|| self.data_dir().node_config_path())
     }
 
     /// Loads the reth config with the given datadir root
@@ -203,7 +185,7 @@ impl KeyArgs {
         debug!("loading config...");
         let config_path = self.config_path();
         debug!(?config_path);
-        let config = confy::load_path::<Config>(&config_path).unwrap_or_default();
+        let config = Config::load_from_path::<Config>(&config_path).unwrap_or_default();
         debug!("{:?}", config);
 
         info!(target: "tn::cli", path = ?config_path, "Configuration loaded");
@@ -217,7 +199,7 @@ mod tests {
     use crate::cli::Cli;
     use clap::Parser;
     use tempfile::tempdir;
-    use tn_config::Config;
+    use tn_config::{traits::ConfigTrait, Config};
 
     /// Test that generate keys command works.
     /// This test also ensures that confy is able to
@@ -243,6 +225,6 @@ mod tests {
 
         tn.run().expect("generate keys command successful");
 
-        confy::load_path::<Config>(tempdir.as_path()).expect("confy loaded toml okay");
+        Config::load_from_path::<Config>(tempdir.as_path()).expect("config loaded yaml okay");
     }
 }

@@ -1,15 +1,22 @@
 //! Generate subcommand
 
-use crate::dirs::DataDirPath;
+use crate::{
+    args::{clap_address_parser, clap_genesis_parser},
+    dirs::DataDirPath,
+};
 use clap::{value_parser, Args, Subcommand};
 use fastcrypto::traits::KeyPair as KeyPairTraits;
 use rand::prelude::*;
 use rand_chacha::ChaCha20Rng;
 use reth::dirs::MaybePlatformPath;
-use std::path::{Path, PathBuf};
-use tn_config::Config;
-use tn_types::{BlsKeypair, ExecutionKeypair, NetworkKeypair, WorkerInfo};
-use tracing::{debug, info};
+use reth_primitives::{Address, ChainSpec};
+use std::{
+    path::{Path, PathBuf},
+    sync::Arc,
+};
+use tn_config::{Config, BLS_KEYFILE, PRIMARY_NETWORK_KEYFILE, WORKER_NETWORK_KEYFILE};
+use tn_types::{generate_proof_of_possession, BlsKeypair, NetworkKeypair};
+use tracing::info;
 
 /// Generate keypairs and save them to a file.
 #[derive(Debug, Clone, Args)]
@@ -40,6 +47,21 @@ pub enum NodeType {
 
 #[derive(Debug, Clone, Args)]
 pub struct ValidatorArgs {
+    /// The chain this node is running.
+    ///
+    /// The value parser matches either a known chain, the path
+    /// to a json file, or a json formatted string in-memory. The json can be either
+    /// a serialized [ChainSpec] or Genesis struct.
+    #[arg(
+        long,
+        value_name = "CHAIN_OR_PATH",
+        verbatim_doc_comment,
+        default_value = "yukon",
+        value_parser = clap_genesis_parser,
+        global = true,
+    )]
+    pub chain: Arc<ChainSpec>,
+
     /// The number of workers for the primary.
     #[arg(long, value_name = "workers", global = true, default_value_t = 1, value_parser = value_parser!(u16).range(..=4))]
     pub workers: u16,
@@ -54,6 +76,21 @@ pub struct ValidatorArgs {
         verbatim_doc_comment
     )]
     pub force: bool,
+
+    /// The address for suggested fee recipient.
+    ///
+    /// The execution layer address, derived from `secp256k1` keypair.
+    /// The validator uses this address when producing batches and blocks.
+    /// Validators can pass "0" to use the zero address.
+    /// Address doesn't have to start with "0x", but the CLI supports the "0x" format too.
+    #[arg(
+        long = "address",
+        alias = "execution-address",
+        help_heading = "The address that should receive block rewards. Pass `0` to use the zero address.",
+        value_parser = clap_address_parser,
+        verbatim_doc_comment
+    )]
+    pub address: Address,
 }
 
 impl ValidatorArgs {
@@ -67,38 +104,47 @@ impl ValidatorArgs {
 
         // bls keypair for consensus - drop after write to zeroize memory
         let bls_keypair = self.generate_keypair_from_rng::<BlsKeypair>()?;
-        self.write_keypair_to_file(&bls_keypair, &authority_key_path.join("bls.key"))?;
+        self.write_keypair_to_file(&bls_keypair, &authority_key_path.join(BLS_KEYFILE))?;
+        let proof = generate_proof_of_possession(&bls_keypair, &self.chain)?;
         config.update_protocol_key(bls_keypair.public().clone())?;
+        config.update_proof_of_possession(proof)?;
         drop(bls_keypair); // calls zeroize() for OnceCell containing private key
 
         // network keypair for authority
         let network_keypair = self.generate_keypair_from_rng::<NetworkKeypair>()?;
-        self.write_keypair_to_file(&network_keypair, &authority_key_path.join("network.key"))?;
-        config.update_network_key(network_keypair.public().clone())?;
+        self.write_keypair_to_file(&network_keypair, &authority_key_path.join(PRIMARY_NETWORK_KEYFILE))?;
+        config.update_primary_network_key(network_keypair.public().clone())?;
         drop(network_keypair); // calls zeroize() for OnceCell containing private key
 
-        // secp keypair for execution
-        let execution_keypair = self.generate_keypair_from_rng::<ExecutionKeypair>()?;
-        self.write_keypair_to_file(&execution_keypair, &authority_key_path.join("execution.key"))?;
-        config.update_execution_key(execution_keypair.public().clone())?;
-        drop(execution_keypair); // calls zeroize() for OnceCell containing private key
+        // network keypair for workers
+        let network_keypair = self.generate_keypair_from_rng::<NetworkKeypair>()?;
+        self.write_keypair_to_file(&network_keypair, &authority_key_path.join(WORKER_NETWORK_KEYFILE))?;
+        config.update_worker_network_key(network_keypair.public().clone())?;
+        drop(network_keypair); // calls zeroize() for OnceCell containing private key
 
-        let workers_dir = authority_key_path.join("workers");
-        for worker in 0..self.workers {
-            // TODO: better way to make this path the same between here and parent command's init
-            // method
-            debug!("worker: {worker:?}");
-            let worker_path = format!("worker-{worker}.key");
+        // add execution address
+        config.update_execution_address(self.address)?;
 
-            // network keypair for worker
-            let network_keypair = self.generate_keypair_from_rng::<NetworkKeypair>()?;
-            self.write_keypair_to_file(&network_keypair, &workers_dir.join(worker_path))?;
-            let worker_info =
-                WorkerInfo { name: network_keypair.public().clone(), ..Default::default() };
-            debug!(?worker_info);
-            config.workers.insert(worker, worker_info);
-            drop(network_keypair); // calls zeroize() for OnceCell containing private key
-        }
+        // // secp keypair for execution
+        // let execution_keypair = self.generate_keypair_from_rng::<ExecutionKeypair>()?;
+        // self.write_keypair_to_file(&execution_keypair,
+        // &authority_key_path.join("execution.key"))?;
+        // config.update_execution_key(execution_keypair.public().clone())?;
+        // drop(execution_keypair); // calls zeroize() for OnceCell containing private key
+
+        // let workers_dir = authority_key_path.join("workers");
+        // for worker in 0..self.workers {
+        //     let worker_path = format!("worker-{worker}.key");
+
+        //     // network keypair for worker
+        //     let network_keypair = self.generate_keypair_from_rng::<NetworkKeypair>()?;
+        //     self.write_keypair_to_file(&network_keypair, &workers_dir.join(worker_path))?;
+        //     let worker_info =
+        //         WorkerInfo { name: network_keypair.public().clone(), ..Default::default() };
+        //     debug!(?worker_info);
+        //     config.workers.insert(worker, worker_info);
+        //     drop(network_keypair); // calls zeroize() for OnceCell containing private key
+        // }
 
         Ok(())
     }

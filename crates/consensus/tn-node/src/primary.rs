@@ -60,8 +60,8 @@ impl PrimaryNodeInner {
     /// TODO: move this to node properties
     const CONSENSUS_SCHEDULE_CHANGE_SUB_DAGS: u64 = 300;
 
-    // Starts the primary node with the provided info. If the node is already running then this
-    // method will return an error instead.
+    /// Starts the primary node with the provided info. If the node is already running then this
+    /// method will return an error instead.
     #[instrument(level = "info", skip_all)]
     async fn start(
         &mut self, // The private-public key pair of this authority.

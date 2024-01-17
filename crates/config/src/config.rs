@@ -1,79 +1,91 @@
 //! Configurations for the Telcoin Network.
 
-use fastcrypto::traits::{InsecureDefault, ToFromBytes};
+use fastcrypto::traits::KeyPair as KeyPairTrait;
+use reth_primitives::{Address, ChainSpec};
 use serde::{Deserialize, Serialize};
-use std::{num::NonZeroU32, path::PathBuf, time::Duration};
+use std::{
+    num::NonZeroU32,
+    path::{Path, PathBuf},
+    time::Duration,
+};
 use tn_types::{
-    utils::get_available_port, BlsPublicKey, ExecutionPublicKey, Multiaddr, NetworkPublicKey,
-    WorkerIndex,
+    utils::get_available_tcp_port, yukon_chain_spec, BlsPublicKey, BlsSignature, Multiaddr,
+    NetworkPublicKey, ValidatorInfo,
 };
 use tracing::info;
 
+use crate::traits::ConfigTrait;
+
+/// The filename to use when reading/writing the validator's BlsKey.
+pub const BLS_KEYFILE: &'static str = "bls.key";
+/// The filename to use when reading/writing the primary's network key.
+pub const PRIMARY_NETWORK_KEYFILE: &'static str = "primary.key";
+/// The filename to use when reading/writing the network key used by all workers.
+pub const WORKER_NETWORK_KEYFILE: &'static str = "worker.key";
+
 /// Configuration for the Telcoin Network node.
-#[derive(Debug, Clone, Default, Deserialize, PartialEq, Serialize)]
+#[derive(Debug, Clone, Deserialize, Serialize)]
 // #[serde(default)]
 pub struct Config {
     /// The path where keys are stored, if successfully generated.
     ///
     /// Note: `PathBuf` default is "".
     pub keypath: PathBuf,
-    /// Configuration for the authority.
-    ///
-    /// Validator information.
-    pub authority: AuthorityConfig,
+
+    /// [ValidatorInfo] for the node
+    pub validator_info: ValidatorInfo,
+
     /// Parameters for the network.
     pub parameters: Parameters,
-    /// Configuration for the workers for this authority.
-    ///
-    /// Note: due to TOML constraints, maps must be the last
-    /// serialized value.   
-    pub workers: WorkerIndex,
+
+    /// The [ChainSpec] for the node.
+    pub chain_spec: ChainSpec,
 }
+
+impl Default for Config {
+    fn default() -> Self {
+        Self {
+            // defaults
+            keypath: Default::default(),
+            validator_info: Default::default(),
+            parameters: Default::default(),
+            // specify yukon chain spec
+            chain_spec: yukon_chain_spec(),
+        }
+    }
+}
+
+impl ConfigTrait for Config {}
 
 impl Config {
     /// Update the authority protocol key.
     pub fn update_protocol_key(&mut self, value: BlsPublicKey) -> eyre::Result<()> {
-        self.authority.protocol_key = value;
+        self.validator_info.bls_public_key = value;
+        Ok(())
+    }
+
+    /// Update the authority execution address.
+    pub fn update_proof_of_possession(&mut self, value: BlsSignature) -> eyre::Result<()> {
+        self.validator_info.proof_of_possession = value;
         Ok(())
     }
 
     /// Update the authority network key.
-    pub fn update_network_key(&mut self, value: NetworkPublicKey) -> eyre::Result<()> {
-        self.authority.network_key = value;
+    pub fn update_primary_network_key(&mut self, value: NetworkPublicKey) -> eyre::Result<()> {
+        self.validator_info.primary_info.network_key = value;
         Ok(())
     }
 
-    /// Update the authority execution key.
-    pub fn update_execution_key(&mut self, value: ExecutionPublicKey) -> eyre::Result<()> {
-        self.authority.execution_key = value;
+    /// Update the worker network key.
+    pub fn update_worker_network_key(&mut self, value: NetworkPublicKey) -> eyre::Result<()> {
+        self.validator_info.primary_info.worker_network_key = value;
         Ok(())
     }
-}
 
-/// Configuration for this authority.
-#[derive(Debug, Clone, Deserialize, PartialEq, Serialize)]
-#[serde(default)]
-pub struct AuthorityConfig {
-    /// The authority's protocol key.
-    pub protocol_key: BlsPublicKey,
-    /// The authority's network key.
-    pub network_key: NetworkPublicKey,
-    /// The authority's network key.
-    pub execution_key: ExecutionPublicKey,
-    /// The primary's [Multiaddr].
-    pub primary_network_address: Multiaddr,
-}
-
-impl Default for AuthorityConfig {
-    fn default() -> Self {
-        Self {
-            protocol_key: BlsPublicKey::insecure_default(),
-            network_key: NetworkPublicKey::insecure_default(),
-            // seed with [2u8; 33] bc 0 is undefined in secp256k1 curve
-            execution_key: ExecutionPublicKey::from_bytes(&[2u8; 33])
-                .expect("default execution public key all twos"),
-            primary_network_address: Multiaddr::empty(),
-        }
+    /// Update the authority execution address.
+    pub fn update_execution_address(&mut self, value: Address) -> eyre::Result<()> {
+        self.validator_info.execution_address = value;
+        Ok(())
     }
 }
 
@@ -188,8 +200,8 @@ impl Default for NetworkAdminServerParameters {
     fn default() -> Self {
         let host = "127.0.0.1";
         Self {
-            primary_network_admin_server_port: get_available_port(host),
-            worker_network_admin_server_base_port: get_available_port(host),
+            primary_network_admin_server_port: get_available_tcp_port(host),
+            worker_network_admin_server_base_port: get_available_tcp_port(host),
         }
     }
 }
@@ -272,7 +284,7 @@ impl Default for PrometheusMetricsParameters {
     fn default() -> Self {
         let host = "127.0.0.1";
         Self {
-            socket_addr: format!("/ip4/{}/tcp/{}/http", host, get_available_port(host))
+            socket_addr: format!("/ip4/{}/tcp/{}/http", host, get_available_tcp_port(host))
                 .parse()
                 .unwrap(),
         }
@@ -340,4 +352,16 @@ impl Parameters {
             self.network_admin_server.worker_network_admin_server_base_port
         );
     }
+}
+
+/// Read from file as Base64 encoded `privkey` and return a KeyPair.
+///
+/// TODO: where should this function go?
+pub fn read_validator_keypair_from_file<KP, P>(path: P) -> eyre::Result<KP>
+where
+    KP: KeyPairTrait,
+    P: AsRef<Path>,
+{
+    let contents = std::fs::read_to_string(path)?;
+    KP::decode_base64(contents.as_str().trim()).map_err(|e| eyre::eyre!(e))
 }

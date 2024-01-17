@@ -16,7 +16,7 @@ use crate::{
     config::{AuthorityIdentifier, Committee, Epoch, Stake, WorkerCache},
     crypto::{
         self, to_intent_message, BlsAggregateSignature, BlsAggregateSignatureBytes, BlsPublicKey,
-        BlsSignature, NarwhalAuthorityBlsAggregateSignature,
+        BlsSignature, ValidatorAggregateSignature,
     },
     error::{DagError, DagResult},
     now,
@@ -431,7 +431,7 @@ impl CertificateV1 {
             SignatureVerificationState::Genesis => return Ok(Certificate::V1(self)),
             SignatureVerificationState::Unverified(ref bytes) => bytes,
             SignatureVerificationState::Unsigned(_) => {
-                bail!(DagError::CertificateRequiresQuorum);
+                return Err(DagError::CertificateRequiresQuorum);
             }
         };
 

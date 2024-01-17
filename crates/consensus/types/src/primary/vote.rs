@@ -14,8 +14,7 @@ use std::fmt;
 use crate::{
     config::{AuthorityIdentifier, Epoch},
     crypto::{
-        self, to_intent_message, BlsPublicKey, BlsSignature, IntentMessage,
-        NarwhalAuthoritySignature,
+        self, to_intent_message, BlsPublicKey, BlsSignature, IntentMessage, ValidatorSignature,
     },
     Header, HeaderAPI, HeaderDigest, Round,
 };

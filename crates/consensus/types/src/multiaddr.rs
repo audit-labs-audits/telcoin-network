@@ -10,6 +10,10 @@ pub use ::multiaddr::{Error, Protocol};
 pub struct Multiaddr(::multiaddr::Multiaddr);
 
 impl Multiaddr {
+    pub fn new(addr: ::multiaddr::Multiaddr) -> Self {
+        Self(addr)
+    }
+
     pub fn empty() -> Self {
         Self(::multiaddr::Multiaddr::empty())
     }

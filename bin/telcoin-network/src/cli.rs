@@ -2,7 +2,7 @@
 use crate::{
     args::clap_genesis_parser,
     dirs::LogsDir,
-    keytool, node,
+    genesis, keytool, node,
     version::{LONG_VERSION, SHORT_VERSION},
 };
 use clap::{value_parser, ArgAction, Args, Parser, Subcommand, ValueEnum};
@@ -76,17 +76,19 @@ impl<Ext: RethCliExt> Cli<Ext> {
 
         let runner = CliRunner::default();
         match self.command {
+            Commands::Genesis(command) => runner.run_command_until_exit(|_ctx| command.execute()),
             Commands::Node(command) => runner.run_command_until_exit(|ctx| command.execute(ctx)),
             Commands::Init(command) => runner.run_blocking_until_ctrl_c(command.execute()),
             Commands::Config(command) => runner.run_until_ctrl_c(command.execute()),
             Commands::Recover(command) => runner.run_command_until_exit(|ctx| command.execute(ctx)),
-            Commands::GenerateKeys(command) => runner.run_command_until_exit(|_| command.execute()),
+            Commands::Keytool(command) => runner.run_command_until_exit(|_| command.execute()),
             // Commands::Import(command) => runner.run_blocking_until_ctrl_c(command.execute()),
             // Commands::Db(command) => runner.run_blocking_until_ctrl_c(command.execute()),
             // Commands::Stage(command) => runner.run_blocking_until_ctrl_c(command.execute()),
             // Commands::P2P(command) => runner.run_until_ctrl_c(command.execute()),
             // Commands::TestVectors(command) => runner.run_until_ctrl_c(command.execute()),
-            // Commands::Debug(command) => runner.run_command_until_exit(|ctx| command.execute(ctx)),
+            // Commands::Debug(command) => runner.run_command_until_exit(|ctx|
+            // command.execute(ctx)),
         }
     }
 
@@ -124,6 +126,10 @@ pub fn run() -> eyre::Result<()> {
 /// Commands to be executed
 #[derive(Debug, Subcommand)]
 pub enum Commands<Ext: RethCliExt = ()> {
+    /// Genesis ceremony for starting the network.
+    #[command(name = "genesis-ceremony")]
+    Genesis(genesis::GenesisArgs),
+
     /// Start the node
     #[command(name = "node")]
     Node(node::NodeCommand<Ext>),
@@ -166,7 +172,7 @@ pub enum Commands<Ext: RethCliExt = ()> {
     /// Key management.
     /// Generate or read keys for node management.
     #[command(name = "keytool")]
-    GenerateKeys(keytool::KeyArgs),
+    Keytool(keytool::KeyArgs),
 }
 
 impl<Ext: RethCliExt> Commands<Ext> {
@@ -326,7 +332,7 @@ impl Display for ColorMode {
 mod tests {
     use super::*;
     use clap::CommandFactory;
-    use tn_types::yukon_chain_spec;
+    use tn_types::yukon_chain_spec_arc;
 
     #[test]
     fn parse_color_mode() {
@@ -359,7 +365,7 @@ mod tests {
     #[test]
     fn parse_logs_path() {
         let mut tn = Cli::<()>::try_parse_from(["telcoin-network", "node"]).unwrap();
-        assert_eq!(tn.chain.chain(), yukon_chain_spec().chain());
+        assert_eq!(tn.chain.chain(), yukon_chain_spec_arc().chain());
         tn.logs.log_file_directory = tn.logs.log_file_directory.join(tn.chain.chain.to_string());
         let log_dir = tn.logs.log_file_directory;
         assert!(log_dir.as_ref().ends_with("telcoin-network/logs/2600"), "{:?}", log_dir);

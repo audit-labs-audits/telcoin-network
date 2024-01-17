@@ -3,15 +3,14 @@
 
 //! Helper methods for creating useful structs during tests.
 use crate::{
-    to_intent_message, yukon_chain_spec, AuthorityIdentifier, Batch, BatchDigest, BlsKeypair,
+    to_intent_message, yukon_chain_spec_arc, AuthorityIdentifier, Batch, BatchDigest, BlsKeypair,
     BlsSignature, Certificate, CertificateAPI, CertificateDigest, Committee, Epoch, Header,
-    HeaderAPI, HeaderV1Builder, Multiaddr, NarwhalAuthoritySignature, NetworkKeypair, Round, Stake,
-    TimestampSec, Transaction, WorkerId,
+    HeaderAPI, HeaderV1Builder, Multiaddr, NetworkKeypair, Round, Stake, TimestampSec, Transaction,
+    ValidatorSignature, WorkerId,
 };
 use fastcrypto::{hash::Hash, traits::KeyPair as _};
 use indexmap::IndexMap;
 use narwhal_typed_store::rocks::{DBMap, MetricConf, ReadWriteOptions};
-
 use rand::{
     distributions::Bernoulli,
     prelude::Distribution,
@@ -176,7 +175,7 @@ pub fn transaction_with_rand<R: Rng + ?Sized>(_rand: &mut R) -> Transaction {
     // very inefficient, but less refactoring => quicker release
 
     let mut tx_factory = TransactionFactory::new_random();
-    let chain = yukon_chain_spec();
+    let chain = yukon_chain_spec_arc();
     let gas_price = 875000000;
     let value =
         U256::from(10).checked_pow(U256::from(18)).expect("1e18 doesn't overflow U256").into();
@@ -203,7 +202,7 @@ pub fn transaction() -> Transaction {
     // TODO: use [0; 32] seed account instead?
     // Address: 0xb14d3c4f5fbfbcfb98af2d330000d49c95b93aa7
     let mut tx_factory = TransactionFactory::new_random();
-    let chain = yukon_chain_spec();
+    let chain = yukon_chain_spec_arc();
     let gas_price = 875000000;
     let value =
         U256::from(10).checked_pow(U256::from(18)).expect("1e18 doesn't overflow U256").into();

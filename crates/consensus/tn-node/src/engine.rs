@@ -802,7 +802,7 @@ mod tests {
     };
     use tn_types::{
         test_utils::{batch, get_gas_price, CommitteeFixture, TransactionFactory},
-        yukon_chain_spec, yukon_genesis, AuthorityIdentifier, BatchAPI, Certificate,
+        yukon_chain_spec_arc, yukon_genesis, AuthorityIdentifier, BatchAPI, Certificate,
         ConsensusOutput, PreSubscribedBroadcastSender,
     };
     use tokio::{
@@ -1228,7 +1228,7 @@ mod tests {
     async fn test_batch_maker_and_rpc() -> eyre::Result<()> {
         init_test_tracing();
         // genesis
-        let chain = yukon_chain_spec();
+        let chain = yukon_chain_spec_arc();
         let address = Address::from(U160::from(3003));
 
         debug!("creating execution node..");

@@ -6,18 +6,12 @@ use std::fmt::Debug;
 use thiserror::Error;
 use tn_types::{CertificateDigest, WorkerId};
 
-#[macro_export]
-macro_rules! bail {
-    ($e:expr) => {
-        return Err($e)
-    };
-}
-
+/// Return an error if the condition is false.
 #[macro_export(local_inner_macros)]
 macro_rules! ensure {
     ($cond:expr, $e:expr) => {
         if !($cond) {
-            bail!($e);
+            return Err($e);
         }
     };
 }

@@ -29,13 +29,13 @@ impl TryFrom<u8> for IntentVersion {
 }
 
 /// This enums specifies the application ID. Two intents in two different applications
-/// (i.e., Narwhal, Sui, Ethereum etc) should never collide, so that even when a signing
-/// key is reused, nobody can take a signature designated for app_1 and present it as a
-/// valid signature for an (any) intent in app_2.
+/// (i.e., Narwhal, Telcoin, Ethereum, Polygon etc) should never collide, so that even when a
+/// signing key is reused, nobody can take a signature designated for app_1 and present it as a
+/// valid signature for any intent in app_2.
 #[derive(Serialize_repr, Deserialize_repr, Copy, Clone, PartialEq, Eq, Debug, Hash)]
 #[repr(u8)]
 pub enum AppId {
-    Sui = 0,
+    Telcoin = 0,
     Narwhal = 1,
 }
 
@@ -49,7 +49,7 @@ impl TryFrom<u8> for AppId {
 
 impl Default for AppId {
     fn default() -> Self {
-        Self::Sui
+        Self::Telcoin
     }
 }
 
@@ -101,8 +101,8 @@ impl FromStr for Intent {
 }
 
 impl Intent {
-    pub fn sui_app(scope: IntentScope) -> Self {
-        Self { version: IntentVersion::V0, scope, app_id: AppId::Sui }
+    pub fn telcoin_app(scope: IntentScope) -> Self {
+        Self { version: IntentVersion::V0, scope, app_id: AppId::Telcoin }
     }
 
     pub fn narwhal_app(scope: IntentScope) -> Self {
@@ -134,13 +134,4 @@ impl<T> IntentMessage<T> {
 #[derive(Debug, PartialEq, Eq, Clone, Serialize, Deserialize)]
 pub struct PersonalMessage {
     pub message: Vec<u8>,
-}
-
-pub trait SecureIntent: Serialize + private::SealedIntent {}
-
-pub(crate) mod private {
-    use super::IntentMessage;
-
-    pub trait SealedIntent {}
-    impl<T> SealedIntent for IntentMessage<T> {}
 }

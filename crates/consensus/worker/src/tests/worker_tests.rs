@@ -13,11 +13,12 @@ use narwhal_primary::{
 use narwhal_storage::NodeStorage;
 
 use prometheus::Registry;
+use std::time::Duration;
 use tn_batch_validator::NoopBatchValidator;
 use tn_types::{
-    test_utils::{temp_dir, CommitteeFixture}, ChainIdentifier, PreSubscribedBroadcastSender,
+    test_utils::{temp_dir, CommitteeFixture},
+    ChainIdentifier, PreSubscribedBroadcastSender,
 };
-use std::time::Duration;
 use tokio::sync::watch;
 
 // A test validator that rejects every batch

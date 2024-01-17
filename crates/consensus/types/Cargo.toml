@@ -36,13 +36,15 @@ fastcrypto-tbls = { workspace = true }
 anemo = { workspace = true }
 once_cell = { workspace = true }
 match_opt = { workspace = true }
-multiaddr = "0.17.0"
+multiaddr = { workspace = true }
 narwhal-typed-store = { workspace = true }
 consensus-metrics = { workspace = true }
 telcoin-sync = { workspace = true }
 alloy-rlp = { workspace = true }
 reth = { workspace = true }
 clap = { workspace = true }
+schemars = { version = "0.8.16" }
+serde_yaml = { workspace = true }
 
 # optional dependencies for test-utils
 tempfile = { workspace = true, optional = true }

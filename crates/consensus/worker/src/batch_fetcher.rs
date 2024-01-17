@@ -10,7 +10,6 @@ use std::{
 
 use anemo::Network;
 use async_trait::async_trait;
-use eyre::bail;
 use fastcrypto::hash::Hash;
 use futures::{stream::FuturesUnordered, FutureExt, StreamExt};
 use itertools::Itertools;
@@ -249,7 +248,7 @@ impl BatchFetcher {
         for batch in batches {
             let batch_digest = batch.digest();
             if !digests_to_fetch.contains(&batch_digest) {
-                bail!(
+                eyre::bail!(
                     "[Protocol violation] Worker {worker} returned batch with digest \
                     {batch_digest} which is not part of the requested digests: {digests_to_fetch:?}"
                 );

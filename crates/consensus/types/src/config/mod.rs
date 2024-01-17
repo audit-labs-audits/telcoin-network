@@ -9,12 +9,17 @@ use crate::{
     Multiaddr,
 };
 use fastcrypto::traits::{EncodeDecodeBase64, InsecureDefault};
-use serde::{de::DeserializeOwned, ser::SerializeMap, Deserialize, Serialize, Serializer};
-
+use serde::{
+    de::{self, DeserializeOwned, MapAccess, Visitor},
+    ser::SerializeMap,
+    Deserialize, Deserializer, Serialize, Serializer,
+};
 use std::{
     collections::{BTreeMap, HashSet},
+    fmt,
     fs::{self, OpenOptions},
     io::{BufWriter, Write as _},
+    str::FromStr,
 };
 use thiserror::Error;
 
@@ -110,6 +115,49 @@ pub trait Export: Serialize {
 
 impl<S: Serialize> Export for S {}
 
+/// Information for the Primary.
+///
+/// TODO: update AuthorityFixture, etc. to use this instead.
+/// Currently, Primary details are fanned out in authority details.
+#[derive(Serialize, Deserialize, PartialEq, Clone, Debug)]
+pub struct PrimaryInfo {
+    /// The primary's public network key. Used to sign messages (ie - headers, certs, votes)
+    pub network_key: NetworkPublicKey,
+    /// The WAN address for the primary.
+    /// This is where peers should send consensus messages for this primary to process.
+    pub network_address: Multiaddr,
+    /// The worker public network key.
+    ///
+    /// TODO: should each worker have their own key?
+    /// Adding this for CLI - expects only 1 worker for now.
+    pub worker_network_key: NetworkPublicKey,
+    /// The workers for this primary.
+    pub worker_index: WorkerIndex,
+}
+
+impl PrimaryInfo {
+    /// Create a new instance of [PrimaryInfo].
+    pub fn new(
+        network_key: NetworkPublicKey,
+        network_address: Multiaddr,
+        worker_network_key: NetworkPublicKey,
+        worker_index: WorkerIndex,
+    ) -> Self {
+        Self { network_key, network_address, worker_network_key, worker_index }
+    }
+}
+
+impl Default for PrimaryInfo {
+    fn default() -> Self {
+        Self {
+            network_key: NetworkPublicKey::insecure_default(),
+            network_address: Default::default(),
+            worker_network_key: NetworkPublicKey::insecure_default(),
+            worker_index: Default::default(),
+        }
+    }
+}
+
 // TODO: This actually represents voting power (out of 10,000) and not amount staked.
 // Consider renaming to `VotingPower`.
 pub type Stake = u64;
@@ -121,9 +169,11 @@ pub type WorkerId = u16;
 /// - [Multiaddr] for receiving messages from other workers and the primary.
 #[derive(Clone, Serialize, Deserialize, Eq, Hash, PartialEq, Debug)]
 pub struct WorkerInfo {
-    /// The public key of this worker.
+    /// The network public key of this worker used to sign worker messages (ie - batches).
     pub name: NetworkPublicKey,
     /// Address to receive client transactions (WAN).
+    ///
+    /// AKA) RPC multiaddress.
     pub transactions: Multiaddr,
     /// Address to receive messages from other workers (WAN) and our primary.
     pub worker_address: Multiaddr,
@@ -142,11 +192,10 @@ impl Default for WorkerInfo {
 /// Map of all workers for the authority.
 ///
 /// The map associates the worker's id to [WorkerInfo].
-#[derive(Clone, Debug, Default, PartialEq, Deserialize)]
-pub struct WorkerIndex(
-    pub BTreeMap<WorkerId, WorkerInfo>,
-);
+#[derive(Clone, Debug, Default, PartialEq)]
+pub struct WorkerIndex(pub BTreeMap<WorkerId, WorkerInfo>);
 
+// TODO: abandon TOML for config
 // Custom serilaization impl for WorkerIndex bc int types are invalid keys for TOML files.
 impl Serialize for WorkerIndex {
     fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
@@ -159,6 +208,52 @@ impl Serialize for WorkerIndex {
             map.serialize_entry(&k, &v)?;
         }
         map.end()
+    }
+}
+
+// Custom dserilaization impl for WorkerIndex bc int types are invalid keys for TOML files.
+impl<'de> Deserialize<'de> for WorkerIndex {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        // Define a custom visitor to handle the deserialization process.
+        struct WorkerIndexVisitor;
+
+        // Implement the Visitor trait for our custom visitor.
+        impl<'de> Visitor<'de> for WorkerIndexVisitor {
+            // Specify the type that will be produced by this visitor.
+            type Value = WorkerIndex;
+
+            // Provide a formatter for error messages when deserialization fails.
+            fn expecting(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
+                formatter.write_str("a map of string keys to values")
+            }
+
+            // Custom implementation for visiting a map. This method will be called by Serde.
+            fn visit_map<M>(self, mut map: M) -> Result<WorkerIndex, M::Error>
+            where
+                M: MapAccess<'de>,
+            {
+                // Create a new BTreeMap to store the deserialized entries.
+                let mut btree_map = BTreeMap::new();
+
+                // Iterate through each entry in the serialized map.
+                while let Some((key, value)) = map.next_entry::<String, WorkerInfo>()? {
+                    // Parse the key from a string to a WorkerId (u16).
+                    let key = WorkerId::from_str(&key).map_err(de::Error::custom)?;
+
+                    // Insert the key-value pair into the BTreeMap.
+                    btree_map.insert(key, value);
+                }
+
+                // Return the deserialized WorkerIndex.
+                Ok(WorkerIndex(btree_map))
+            }
+        }
+
+        // Call deserialize_map to start the deserialization process using our custom visitor.
+        deserializer.deserialize_map(WorkerIndexVisitor)
     }
 }
 

@@ -3,7 +3,7 @@
 
 //! The builder responsible for creating all aspects of the committee fixture.
 use super::{AuthorityFixture, CommitteeFixture};
-use crate::{utils::get_available_port, CommitteeBuilder, Epoch, Stake};
+use crate::{utils::get_available_tcp_port, CommitteeBuilder, Epoch, Stake};
 use fastcrypto::traits::KeyPair as _;
 use once_cell::sync::OnceCell;
 use rand::{
@@ -81,7 +81,7 @@ impl<R> Builder<R> {
 impl<R: rand::RngCore + rand::CryptoRng> Builder<R> {
     pub fn build(mut self) -> CommitteeFixture {
         if !self.stake.is_empty() {
-            assert_eq!(self.stake.len(), self.committee_size.get(), "Stake vector has been provided but is different length the committe - it should be the same");
+            assert_eq!(self.stake.len(), self.committee_size.get(), "Stake vector has been provided but is different length the committee - it should be the same");
         }
 
         let mut authorities: Vec<AuthorityFixture> = (0..self.committee_size.get())
@@ -91,7 +91,7 @@ impl<R: rand::RngCore + rand::CryptoRng> Builder<R> {
                     self.number_of_workers,
                     |host| {
                         if self.randomize_ports {
-                            get_available_port(host)
+                            get_available_tcp_port(host)
                         } else {
                             0
                         }

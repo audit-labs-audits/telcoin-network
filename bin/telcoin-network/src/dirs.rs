@@ -1,7 +1,11 @@
 //! reth data directories.
-use reth::dirs::XdgPath;
+use reth::dirs::{ChainPath, XdgPath};
 use reth_primitives::Chain;
 use std::{fmt::Debug, path::PathBuf};
+use tn_types::GENESIS_VALIDATORS_DIR;
+
+/// The path to join for the directory that stores validator keys.
+pub const VALIDATOR_KEYS_DIR: &'static str = "validator-keys";
 
 /// Constructs a string to be used as a path for configuration and db paths.
 pub fn config_path_prefix(chain: Chain) -> String {
@@ -44,6 +48,55 @@ pub fn cache_dir() -> Option<PathBuf> {
 /// Refer to [dirs_next::cache_dir] for cross-platform behavior.
 pub fn logs_dir() -> Option<PathBuf> {
     cache_dir().map(|root| root.join("logs"))
+}
+
+/// Returns the path to the telcoin network genesis directory.
+///
+/// Refer to [dirs_next::cache_dir] for cross-platform behavior.
+pub fn genesis_dir() -> Option<PathBuf> {
+    config_dir().map(|root| root.join("genesis"))
+}
+
+/// Returns the path to the telcoin network committee directory.
+///
+/// Child of `genesis_dir`.
+///
+/// Refer to [dirs_next::cache_dir] for cross-platform behavior.
+pub fn validators_dir() -> Option<PathBuf> {
+    genesis_dir().map(|root| root.join(GENESIS_VALIDATORS_DIR))
+}
+
+/// Telcoin Network specific directories.
+pub trait TelcoinDirs {
+    /// Return the path to `configuration` yaml file.
+    fn node_config_path(&self) -> PathBuf;
+    /// Return the path to the directory that holds 
+    /// private keys for the validator operating this node.
+    fn validator_keys(&self) -> PathBuf;
+    /// Return the path to `genesis` dir.
+    fn genesis_path(&self) -> PathBuf;
+    /// Return the path to the directory where
+    /// individual and public validator information
+    /// is collected for genesis.
+    fn validator_info_path(&self) -> PathBuf;
+}
+
+impl TelcoinDirs for ChainPath<DataDirPath> {
+    fn node_config_path(&self) -> PathBuf {
+        self.as_ref().join("telcoin-network.yaml")
+    }
+
+    fn validator_keys(&self) -> PathBuf {
+        self.as_ref().join(VALIDATOR_KEYS_DIR)
+    }
+
+    fn validator_info_path(&self) -> PathBuf {
+        self.as_ref().join("validator")
+    }
+
+    fn genesis_path(&self) -> PathBuf {
+        self.as_ref().join("genesis")
+    }
 }
 
 /// Returns the path to the telcoin network data dir.

@@ -12,8 +12,7 @@ use tn_types::{
     ensure,
     error::{DagError, DagResult},
     to_intent_message, BlsAggregateSignature, BlsSignature, Certificate, CertificateAPI, Header,
-    NarwhalAuthorityBlsAggregateSignature, NarwhalAuthoritySignature, SignatureVerificationState,
-    Vote, VoteAPI,
+    SignatureVerificationState, ValidatorAggregateSignature, ValidatorSignature, Vote, VoteAPI,
 };
 use tracing::warn;
 

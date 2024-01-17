@@ -48,8 +48,6 @@ futures = "0.3.26"
 tokio = { version = "1.21", default-features = false }
 tracing = "0.1.0"
 pin-project = "1.0.12"
-confy = "0.5"
-toml = "0.8"
 metrics = "0.21.1" # Needed for `metrics-macro` to resolve the crate using `::metrics` notation
 serde_json = "1.0.94"
 humantime-serde = "1.1"
@@ -172,6 +170,7 @@ rustversion = "1.0.9"
 protobuf = { version = "2.28", features = ["with-bytes"] }
 bytes = "1.4.0"
 anyhow = "1.0.71"
+multiaddr = "0.17"
 
 criterion = { version = "0.5.0", features = [
   "async",

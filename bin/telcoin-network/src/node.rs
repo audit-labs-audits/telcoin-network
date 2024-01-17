@@ -604,9 +604,12 @@ impl<Ext: RethCliExt> NodeCommand<Ext> {
     }
 
     /// Loads the reth config with the given datadir root
-    fn load_config(&self, config_path: PathBuf) -> eyre::Result<Config> {
-        confy::load_path::<Config>(config_path.clone())
-            .wrap_err_with(|| format!("Could not load config file {:?}", config_path))
+    fn load_config(&self, _config_path: PathBuf) -> eyre::Result<Config> {
+        // confy::load_path::<Config>(config_path.clone())
+        //     .wrap_err_with(|| format!("Could not load config file {:?}", config_path))
+        //
+        // removed confy since TOML sucks
+        todo!()
     }
 
     /// Loads the trusted setup params from a given file path or falls back to

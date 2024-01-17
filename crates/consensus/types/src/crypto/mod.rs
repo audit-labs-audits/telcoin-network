@@ -3,68 +3,124 @@
 // Copyright (c) Mysten Labs, Inc.
 // SPDX-License-Identifier: Apache-2.0
 
+//! Type aliases selecting the signature algorithm for the code base.
+//!
+//! Here we select the types that are used by default in the code base.
+//!
+//! Guidelines:
+//! - refer to these aliases always (avoid using the individual scheme implementations)
+//! - use generic schemes (avoid using the algo's `Struct`` impl functions)
+//! - change type aliases to update codebase with new crypto
+
+use eyre::Context;
 use fastcrypto::{
     bls12381, ed25519,
     error::FastCryptoError,
     hash::{Blake2b256, HashFunction},
     secp256k1,
-    traits::{AggregateAuthenticator, Signer, VerifyingKey},
+    traits::{AggregateAuthenticator, KeyPair, Signer, ToFromBytes, VerifyingKey},
 };
-
 // This re-export allows using the trait-defined APIs
 pub use fastcrypto::traits;
+use reth_primitives::ChainSpec;
 use serde::Serialize;
 mod intent;
 pub use intent::*;
 
-////////////////////////////////////////////////////////////////////////
-/// Type aliases selecting the signature algorithm for the code base.
-////////////////////////////////////////////////////////////////////////
-// Here we select the types that are used by default in the code base.
-// The whole code base should only:
-// - refer to those aliases and not use the individual scheme implementations
-// - not use the schemes in a way that break genericity (e.g. using their Struct impl functions)
-// - swap one of those aliases to point to another type if necessary
 //
-// Beware: if you change those aliases to point to another scheme implementation, you will have
-// to change all four aliases to point to concrete types that work with each other. Failure to do
-// so will result in a ton of compilation errors, and worse: it will not make sense!
-
-// Bls used for consensus
+// CONSENSUS
+//
+/// Validator's main protocol public key.
 pub type BlsPublicKey = bls12381::min_sig::BLS12381PublicKey;
+/// Byte representation of validator's main protocol public key.
 pub type BlsPublicKeyBytes = bls12381::min_sig::BLS12381PublicKeyAsBytes;
+/// Validator's main protocol key signature.
 pub type BlsSignature = bls12381::min_sig::BLS12381Signature;
+/// Collection of validator main protocol key signatures.
 pub type BlsAggregateSignature = bls12381::min_sig::BLS12381AggregateSignature;
+/// Byte representation of the collection of validator main protocol key signatures.
 pub type BlsAggregateSignatureBytes = bls12381::min_sig::BLS12381AggregateSignatureAsBytes;
+/// Validator's main protocol private key.
 pub type BlsPrivateKey = bls12381::min_sig::BLS12381PrivateKey;
+/// Validator's main protocol keypair.
 pub type BlsKeypair = bls12381::min_sig::BLS12381KeyPair;
-
+//
+// NETWORK
+//
+/// Public key used to sign network messages between peers during consensus.
 pub type NetworkPublicKey = ed25519::Ed25519PublicKey;
+/// Keypair used to sign network messages between peers during consensus.
 pub type NetworkKeypair = ed25519::Ed25519KeyPair;
-
+//
+// EXECUTION
+//
+/// Public key used for signing transactions in the Execution Layer.
 pub type ExecutionPublicKey = secp256k1::Secp256k1PublicKey;
+/// Keypair used for signing transactions in the Execution Layer.
 pub type ExecutionKeypair = secp256k1::Secp256k1KeyPair;
 
+// TODO: implement randomness
 pub type RandomnessSignature = fastcrypto_tbls::types::Signature;
 pub type RandomnessPartialSignature = fastcrypto_tbls::tbls::PartialSignature<RandomnessSignature>;
 pub type RandomnessPrivateKey =
     fastcrypto_tbls::ecies::PrivateKey<fastcrypto::groups::bls12381::G2Element>;
-////////////////////////////////////////////////////////////////////////
 
-// Type alias selecting the default hash function for the code base.
+/// Type alias selecting the default hash function for the code base.
 pub type DefaultHashFunction = Blake2b256;
 pub const DIGEST_LENGTH: usize = DefaultHashFunction::OUTPUT_SIZE;
 pub const INTENT_MESSAGE_LENGTH: usize = INTENT_PREFIX_LENGTH + DIGEST_LENGTH;
 
+/// Creates a proof of that the authority account address is owned by the
+/// holder of authority protocol key, and also ensures that the authority
+/// protocol public key exists.
+///
+/// The proof of possession is a [BlsSignature] committed over the intent message
+/// `intent || message` (See more at [IntentMessage] and [Intent]).
+/// The message is constructed as: [BlsPublicKey] || [ChainSpec].
+pub fn generate_proof_of_possession(
+    keypair: &BlsKeypair,
+    chain_spec: &ChainSpec,
+) -> eyre::Result<BlsSignature> {
+    let mut msg = keypair.public().as_bytes().to_vec();
+    let chain_bytes = bcs::to_bytes(chain_spec)?;
+    msg.extend_from_slice(chain_bytes.as_slice());
+    let sig = BlsSignature::new_secure(
+        &IntentMessage::new(Intent::telcoin_app(IntentScope::ProofOfPossession), msg),
+        keypair,
+    );
+    Ok(sig)
+}
+
+/// Verify proof of possession against the expected intent message,
+///
+/// The intent message is expected to contain the validator's public key
+/// and the [ChainSpec] for the network.
+pub fn verify_proof_of_possession(
+    proof: &BlsSignature,
+    public_key: &BlsPublicKey,
+    chain_spec: &ChainSpec,
+) -> eyre::Result<()> {
+    public_key.validate().with_context(|| "Provided public key invalid")?;
+    let mut msg = public_key.as_bytes().to_vec();
+    let chain_bytes = bcs::to_bytes(chain_spec)?;
+    msg.extend_from_slice(chain_bytes.as_slice());
+    let result = proof.verify_secure(
+        &IntentMessage::new(Intent::telcoin_app(IntentScope::ProofOfPossession), msg),
+        public_key.into(),
+    );
+
+    Ok(result?)
+}
+
 /// A trait for sign and verify over an intent message, instead of the message itself. See more at
 /// [struct IntentMessage].
-pub trait NarwhalAuthoritySignature {
+pub trait ValidatorSignature {
     /// Create a new signature over an intent message.
     fn new_secure<T>(value: &IntentMessage<T>, secret: &dyn Signer<Self>) -> Self
     where
         T: Serialize;
 
-    /// Verify the signature on an intent message against the public key.
+    /// Verify the signature over an intent message against a public key.
     fn verify_secure<T>(
         &self,
         value: &IntentMessage<T>,
@@ -74,7 +130,7 @@ pub trait NarwhalAuthoritySignature {
         T: Serialize;
 }
 
-impl NarwhalAuthoritySignature for BlsSignature {
+impl ValidatorSignature for BlsSignature {
     fn new_secure<T>(value: &IntentMessage<T>, secret: &dyn Signer<Self>) -> Self
     where
         T: Serialize,
@@ -96,7 +152,7 @@ impl NarwhalAuthoritySignature for BlsSignature {
     }
 }
 
-pub trait NarwhalAuthorityBlsAggregateSignature {
+pub trait ValidatorAggregateSignature {
     fn verify_secure<T>(
         &self,
         value: &IntentMessage<T>,
@@ -106,7 +162,7 @@ pub trait NarwhalAuthorityBlsAggregateSignature {
         T: Serialize;
 }
 
-impl NarwhalAuthorityBlsAggregateSignature for BlsAggregateSignature {
+impl ValidatorAggregateSignature for BlsAggregateSignature {
     fn verify_secure<T>(
         &self,
         value: &IntentMessage<T>,
@@ -124,4 +180,128 @@ impl NarwhalAuthorityBlsAggregateSignature for BlsAggregateSignature {
 /// IntentScope::HeaderDigest and the app id is AppId::Narwhal.
 pub fn to_intent_message<T>(value: T) -> IntentMessage<T> {
     IntentMessage::new(Intent::narwhal_app(IntentScope::HeaderDigest), value)
+}
+
+// TODO: not sure I want to keep this
+
+// /// Defines the compressed version of the public key for validators.
+// #[serde_as]
+// #[derive(
+//     Copy,
+//     Clone,
+//     PartialEq,
+//     Eq,
+//     Hash,
+//     PartialOrd,
+//     Ord,
+//     Serialize,
+//     Deserialize,
+//     schemars::JsonSchema,
+//     AsRef,
+// )]
+// #[as_ref(forward)]
+// pub struct BlsPublicKeyBytes(
+//     #[schemars(with = "Base64")]
+//     #[serde_as(as = "Readable<Base64, Bytes>")]
+//     pub [u8; BlsPublicKey::LENGTH],
+// );
+
+// /// Use with serde_as to control serde for human-readable serialization and deserialization
+// /// `H` : serde_as SerializeAs/DeserializeAs delegation for human readable in/output
+// /// `R` : serde_as SerializeAs/DeserializeAs delegation for non-human readable in/output
+// ///
+// /// # Example:
+// ///
+// /// ```text
+// /// #[serde_as]
+// /// #[derive(Deserialize, Serialize)]
+// /// struct Example(#[serde_as(as = "Readable<DisplayFromStr, _>")] [u8; 20]);
+// /// ```
+// ///
+// /// The above example will delegate human-readable serde to `DisplayFromStr`
+// /// and array tuple (default) for non-human-readable serializer.
+// pub struct Readable<H, R> {
+//     human_readable: PhantomData<H>,
+//     non_human_readable: PhantomData<R>,
+// }
+
+// impl<T: ?Sized, H, R> SerializeAs<T> for Readable<H, R>
+// where
+//     H: SerializeAs<T>,
+//     R: SerializeAs<T>,
+// {
+//     fn serialize_as<S>(value: &T, serializer: S) -> Result<S::Ok, S::Error>
+//     where
+//         S: Serializer,
+//     {
+//         if serializer.is_human_readable() {
+//             H::serialize_as(value, serializer)
+//         } else {
+//             R::serialize_as(value, serializer)
+//         }
+//     }
+// }
+
+// impl<'de, R, H, T> DeserializeAs<'de, T> for Readable<H, R>
+// where
+//     H: DeserializeAs<'de, T>,
+//     R: DeserializeAs<'de, T>,
+// {
+//     fn deserialize_as<D>(deserializer: D) -> Result<T, D::Error>
+//     where
+//         D: Deserializer<'de>,
+//     {
+//         if deserializer.is_human_readable() {
+//             H::deserialize_as(deserializer)
+//         } else {
+//             R::deserialize_as(deserializer)
+//         }
+//     }
+// }
+
+#[cfg(test)]
+mod tests {
+    use super::{generate_proof_of_possession, verify_proof_of_possession};
+    use crate::{yukon_chain_spec_arc, yukon_genesis, BlsKeypair};
+    use fastcrypto::traits::KeyPair;
+    use rand::{
+        rngs::{OsRng, StdRng},
+        SeedableRng,
+    };
+
+    #[test]
+    fn test_proof_of_possession_success() {
+        let keypair = BlsKeypair::generate(&mut StdRng::from_rng(OsRng).unwrap());
+        let chain_spec = yukon_chain_spec_arc();
+        let proof = generate_proof_of_possession(&keypair, &chain_spec).unwrap();
+        assert!(verify_proof_of_possession(&proof, keypair.public(), &chain_spec).is_ok())
+    }
+
+    #[test]
+    fn test_proof_of_possession_fails_wrong_signature() {
+        let keypair = BlsKeypair::generate(&mut StdRng::from_rng(OsRng).unwrap());
+        let malicious_key = BlsKeypair::generate(&mut StdRng::from_rng(OsRng).unwrap());
+        let chain_spec = yukon_chain_spec_arc();
+        let proof = generate_proof_of_possession(&malicious_key, &chain_spec).unwrap();
+        assert!(verify_proof_of_possession(&proof, keypair.public(), &chain_spec).is_err())
+    }
+
+    #[test]
+    fn test_proof_of_possession_fails_wrong_public_key() {
+        let keypair = BlsKeypair::generate(&mut StdRng::from_rng(OsRng).unwrap());
+        let malicious_key = BlsKeypair::generate(&mut StdRng::from_rng(OsRng).unwrap());
+        let chain_spec = yukon_chain_spec_arc();
+        let proof = generate_proof_of_possession(&keypair, &chain_spec).unwrap();
+        assert!(verify_proof_of_possession(&proof, malicious_key.public(), &chain_spec).is_err())
+    }
+
+    #[test]
+    fn test_proof_of_possession_fails_wrong_message() {
+        let keypair = BlsKeypair::generate(&mut StdRng::from_rng(OsRng).unwrap());
+        let chain_spec = yukon_chain_spec_arc();
+        let mut wrong = yukon_genesis();
+        wrong.timestamp = 0;
+        let proof = generate_proof_of_possession(&keypair, &wrong.into()).unwrap();
+        assert!(verify_proof_of_possession(&proof, keypair.public(), &chain_spec).is_err())
+    }
 }
