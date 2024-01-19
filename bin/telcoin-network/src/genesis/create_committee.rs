@@ -63,6 +63,8 @@ impl CreateCommitteeArgs {
     /// Process:
     /// - loop through validators within the genesis directory
     /// - ensure valid state for validators
+    /// - write Committee to file
+    /// - write WorkerCache to file
     ///
     /// TODO: `validate` only verifies proof of possession for now
     pub async fn execute(&self) -> eyre::Result<()> {
@@ -72,8 +74,16 @@ impl CreateCommitteeArgs {
         let data_dir = self.datadir.unwrap_or_chain_default(self.chain.chain);
         let genesis_path = data_dir.genesis_path();
         let network_genesis = NetworkGenesis::load_from_path(&genesis_path)?;
+
+        // validate only checks proof of possession for now
         network_genesis.validate()?;
+
+        // generate committee and worker cache
         let committee = network_genesis.create_committee()?;
-        Config::store_path(data_dir.committee_path(), committee)
+        let worker_cache = network_genesis.create_worker_cache()?;
+
+        // write to file
+        Config::store_path(data_dir.committee_path(), committee)?;
+        Config::store_path(data_dir.worker_cache_path(), worker_cache)
     }
 }

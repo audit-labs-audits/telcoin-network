@@ -72,9 +72,9 @@ impl AddValidator {
 
         // add network name to data dir
         let data_dir = self.datadir.unwrap_or_chain_default(self.chain.chain);
-        let config_path = self.config.clone().unwrap_or(data_dir.config_path());
+        let config_path = self.config.clone().unwrap_or(data_dir.node_config_path());
 
-        let config: Config = self.load_config(config_path.clone())?;
+        let config = self.load_config(config_path.clone())?;
 
         // always store reth.toml in the data dir, not the chain specific data dir
         info!(target: "genesis::ceremony", path = ?config_path, "Configuration loaded");

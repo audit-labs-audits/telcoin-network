@@ -1,4 +1,4 @@
-FROM rust:1.72.1-slim-bookworm as builder
+FROM rust:1.75-slim-bookworm as builder
 
 WORKDIR /usr/src/telcoin-network
 
@@ -26,6 +26,6 @@ FROM debian:bookworm-slim
 RUN useradd -ms /bin/bash nonroot
 USER nonroot
 
-COPY --from=builder /tmp/telcoin-network /usr/local/bin/telcoin-network
+COPY --from=builder /tmp/telcoin-network /usr/local/bin/telcoin
 
-CMD ["telcoin-network", "node", "--dev", "--http", "--http.api", "eth,net,web3", "--http.addr", "0.0.0.0"]
+CMD ["telcoin", "node"]

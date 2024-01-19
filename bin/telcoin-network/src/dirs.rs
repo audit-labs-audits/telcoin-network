@@ -72,7 +72,7 @@ pub trait TelcoinDirs {
     fn node_config_path(&self) -> PathBuf;
     /// Return the path to the directory that holds
     /// private keys for the validator operating this node.
-    fn validator_keys(&self) -> PathBuf;
+    fn validator_keys_path(&self) -> PathBuf;
     /// Return the path to `genesis` dir.
     fn genesis_path(&self) -> PathBuf;
     /// Return the path to the directory where individual and public validator information is
@@ -80,6 +80,10 @@ pub trait TelcoinDirs {
     fn validator_info_path(&self) -> PathBuf;
     /// Return the path to the committee file.
     fn committee_path(&self) -> PathBuf;
+    /// Return the path to the worker cache file.
+    fn worker_cache_path(&self) -> PathBuf;
+    /// Return the path to narwhal's node storage.
+    fn narwhal_db_path(&self) -> PathBuf;
 }
 
 impl TelcoinDirs for ChainPath<DataDirPath> {
@@ -87,7 +91,7 @@ impl TelcoinDirs for ChainPath<DataDirPath> {
         self.as_ref().join("telcoin-network.yaml")
     }
 
-    fn validator_keys(&self) -> PathBuf {
+    fn validator_keys_path(&self) -> PathBuf {
         self.as_ref().join(VALIDATOR_KEYS_DIR)
     }
 
@@ -101,6 +105,14 @@ impl TelcoinDirs for ChainPath<DataDirPath> {
 
     fn committee_path(&self) -> PathBuf {
         self.genesis_path().join("committee.yaml")
+    }
+
+    fn worker_cache_path(&self) -> PathBuf {
+        self.genesis_path().join("worker_cache.yaml")
+    }
+
+    fn narwhal_db_path(&self) -> PathBuf {
+        self.as_ref().join("narwhal-db")
     }
 }
 
@@ -140,14 +152,14 @@ mod tests {
     #[test]
     fn test_maybe_data_dir_path() {
         let path = MaybePlatformPath::<DataDirPath>::default();
-        let path = path.unwrap_or_chain_default(Chain::Id(2600));
-        assert!(path.as_ref().ends_with("telcoin-network/2600"), "{:?}", path);
+        let path = path.unwrap_or_chain_default(Chain::Id(2017));
+        assert!(path.as_ref().ends_with("telcoin-network/2017"), "{:?}", path);
 
         let db_path = path.db_path();
-        assert!(db_path.ends_with("telcoin-network/2600/db"), "{:?}", db_path);
+        assert!(db_path.ends_with("telcoin-network/2017/db"), "{:?}", db_path);
 
         let path = MaybePlatformPath::<DataDirPath>::from_str("my/path/to/datadir").unwrap();
-        let path = path.unwrap_or_chain_default(Chain::Id(2600));
+        let path = path.unwrap_or_chain_default(Chain::Id(2017));
         assert!(path.as_ref().ends_with("my/path/to/datadir"), "{:?}", path);
     }
 }

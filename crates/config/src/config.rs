@@ -10,7 +10,7 @@ use std::{
 };
 use tn_types::{
     utils::get_available_tcp_port, yukon_chain_spec, BlsPublicKey, BlsSignature, Multiaddr,
-    NetworkPublicKey, ValidatorInfo,
+    NetworkPublicKey, ValidatorInfo, WorkerIndex,
 };
 use tracing::info;
 
@@ -89,6 +89,28 @@ impl Config {
     pub fn update_execution_address(&mut self, value: Address) -> eyre::Result<()> {
         self.validator_info.execution_address = value;
         Ok(())
+    }
+
+    /// Return a reference to the
+    pub fn chain_spec(&self) -> &ChainSpec {
+        &self.chain_spec
+    }
+
+    /// Return a reference to the exeuction address for suggested fee recipient.
+    pub fn execution_address(&self) -> &Address {
+        &self.validator_info.execution_address
+    }
+
+    /// Return a reference to the primary's public key.
+    pub fn primary_public_key(&self) -> eyre::Result<&BlsPublicKey> {
+        Ok(self.validator_info.public_key())
+    }
+
+    /// Return a reference to the primary's [WorkerIndex].
+    ///
+    /// The [WorkerIndex] contains all workers for this validator.
+    pub fn workers(&self) -> &WorkerIndex {
+        self.validator_info.worker_index()
     }
 }
 

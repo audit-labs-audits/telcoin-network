@@ -8,6 +8,7 @@ use crate::{
     crypto::{BlsPublicKey, NetworkPublicKey},
     Multiaddr,
 };
+use eyre::ContextCompat;
 use fastcrypto::traits::{EncodeDecodeBase64, InsecureDefault};
 use serde::{
     de::{self, DeserializeOwned, MapAccess, Visitor},
@@ -147,15 +148,23 @@ impl PrimaryInfo {
     ) -> Self {
         Self { network_key, network_address, worker_network_key, worker_index }
     }
+
+    /// Return a reference to the primary's [WorkerIndex].
+    pub fn worker_index(&self) -> &WorkerIndex {
+        &self.worker_index
+    }
 }
 
 impl Default for PrimaryInfo {
     fn default() -> Self {
+        // TODO: env vars should be applied at the CLI level, not here
         let host = std::env::var("NARWHAL_HOST").unwrap_or("127.0.0.1".to_string());
+        let open_port = get_available_tcp_port(&host).to_string();
+        let primary_udp_port = std::env::var("PRIMARY_UDP_PORT").unwrap_or(open_port);
 
         Self {
             network_key: NetworkPublicKey::insecure_default(),
-            network_address: format!("/ip4/{}/udp/{}", &host, get_available_tcp_port(&host))
+            network_address: format!("/ip4/{}/udp/{}", &host, primary_udp_port)
                 .parse()
                 .expect("multiaddr parsed for primary"),
             worker_network_key: NetworkPublicKey::insecure_default(),
@@ -187,13 +196,17 @@ pub struct WorkerInfo {
 
 impl Default for WorkerInfo {
     fn default() -> Self {
+        // TODO: env vars should be applied at the CLI level, not here
         let host = std::env::var("NARWHAL_HOST").unwrap_or("127.0.0.1".to_string());
+        let open_port = get_available_tcp_port(&host).to_string();
+        let worker_udp_port = std::env::var("WORKER_UDP_PORT").unwrap_or(open_port);
+
         Self {
             name: NetworkPublicKey::insecure_default(),
             transactions: format!("/ip4/{}/tcp/{}/http", &host, get_available_tcp_port(&host))
                 .parse()
                 .expect("multiaddress parsed for worker txs"),
-            worker_address: format!("/ip4/{}/udp/{}", &host, get_available_tcp_port(&host))
+            worker_address: format!("/ip4/{}/udp/{}", &host, worker_udp_port)
                 .parse()
                 .expect("multiaddr parsed for worker consensus"),
         }
@@ -282,11 +295,25 @@ impl WorkerIndex {
     pub fn insert(&mut self, worker_id: WorkerId, worker_info: WorkerInfo) {
         self.0.insert(worker_id, worker_info);
     }
+
+    /// Return information for the first worker in the index.
+    ///
+    /// TODO: this is a temporary solution while valiators only
+    /// have one worker per primary.
+    pub fn first_worker(&self) -> eyre::Result<(&WorkerId, &WorkerInfo)> {
+        Ok(self.0.first_key_value().with_context(|| "No workers found in index")?)
+    }
 }
 
 /// The collection of all workers organized by authority public keys
 /// that comprise the [Committee] for a specific [Epoch].
-#[derive(Clone, Serialize, Deserialize, Debug)]
+///
+/// TODO: remove default? Added for compatibility with [ConfigTrait].
+/// Probably a better way to do this.
+///
+/// TODO: why isn't this a part of [Committee]?
+/// It's always needed by members of the committee.
+#[derive(Clone, Serialize, Deserialize, Debug, Default)]
 pub struct WorkerCache {
     /// The epoch number for workers
     pub epoch: Epoch,

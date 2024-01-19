@@ -26,38 +26,42 @@ metrics = { workspace = true }
 fastcrypto = { workspace = true }
 rand = { workspace = true }
 rand_chacha = { workspace = true }
+prometheus = { workspace = true }
 tn-types = { workspace = true }
 tn-config = { workspace = true }
+tn-node = { workspace = true }
+narwhal-network = { workspace = true }
+consensus-metrics = { workspace = true }
 
 question = "0.2.2"
 dirs-next = "2.0.0"
 
 # config
 serde_yaml = { workspace = true }
+dotenv = "0.15.0"
 
 reth = {workspace = true }
 reth-primitives = {workspace = true }
 reth-tracing = {workspace = true }
-reth-config = {workspace = true }
-reth-db = {workspace = true }
-reth-downloaders = {workspace = true }
-reth-interfaces = {workspace = true }
-reth-network = {workspace = true }
-reth-network-api = {workspace = true }
-reth-prune = {workspace = true }
 reth-metrics = {workspace = true }
-reth-revm = {workspace = true }
-reth-rpc-engine-api = {workspace = true }
-reth-provider = {workspace = true }
-reth-snapshot = {workspace = true }
-reth-stages = {workspace = true }
-reth-tasks = {workspace = true }
-reth-transaction-pool = {workspace = true }
-reth-revm-inspectors = {workspace = true }
-reth-auto-seal-consensus = {workspace = true }
-reth-beacon-consensus = {workspace = true }
-reth-blockchain-tree = {workspace = true }
-dotenv = "0.15.0"
+reth-db = {workspace = true }
+# reth-config = {workspace = true }
+# reth-downloaders = {workspace = true }
+# reth-interfaces = {workspace = true }
+# reth-network = {workspace = true }
+# reth-network-api = {workspace = true }
+# reth-prune = {workspace = true }
+# reth-revm = {workspace = true }
+# reth-rpc-engine-api = {workspace = true }
+# reth-provider = {workspace = true }
+# reth-snapshot = {workspace = true }
+# reth-stages = {workspace = true }
+# reth-tasks = {workspace = true }
+# reth-transaction-pool = {workspace = true }
+# reth-revm-inspectors = {workspace = true }
+# reth-auto-seal-consensus = {workspace = true }
+# reth-beacon-consensus = {workspace = true }
+# reth-blockchain-tree = {workspace = true }
 
 [dev-dependencies]
 reth-basic-payload-builder = {workspace = true }

@@ -63,6 +63,11 @@ impl NetworkClient {
         Self::new(PeerId(primary_network_keypair.public().0.into()))
     }
 
+    /// Create a new [NetworkClient] from the primary's network key.
+    pub fn new_from_public_key(primary_network_public_key: &NetworkPublicKey) -> Self {
+        Self::new(PeerId(primary_network_public_key.0.into()))
+    }
+
     pub fn new_with_empty_id() -> Self {
         // ED25519_PUBLIC_KEY_LENGTH is 32 bytes.
         Self::new(PeerId([0u8; 32]))

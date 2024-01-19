@@ -2,6 +2,8 @@
 Consensus layer (CL) is an implemntation of Narwhal and Bullshark.
 Execution layer (EL) is an implementation of rETH.
 
+Requires Rust 1.75
+
 ## CLI Usage
 The CLI is used to create validator information, join a committee, and start the network. The following `.env` variables are useful but not required:
 - `NARWHAL_HOST`: The ipv4 address of the host running the node. Narwhal uses this address for consensus messages.

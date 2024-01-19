@@ -41,6 +41,7 @@ pub struct Metrics {
 }
 
 impl Metrics {
+    /// Create new [Metrics] for consensus performance.
     fn new(registry: &Registry) -> Self {
         Self {
             tasks: register_int_gauge_vec_with_registry!(
@@ -89,8 +90,10 @@ impl Metrics {
     }
 }
 
+/// [OnceCell] container for consensus [Metrics].
 static METRICS: OnceCell<Metrics> = OnceCell::new();
 
+/// Set the inner [Metrics] for [OnceCell].
 pub fn init_metrics(registry: &Registry) {
     let _ = METRICS
         .set(Metrics::new(registry))
@@ -98,6 +101,7 @@ pub fn init_metrics(registry: &Registry) {
         .tap_err(|_| warn!("init_metrics registry overwritten"));
 }
 
+/// Return the inner [Metrics].
 pub fn get_metrics() -> Option<&'static Metrics> {
     METRICS.get()
 }
@@ -235,8 +239,11 @@ impl<F: Future> Future for MonitoredScopeFuture<F> {
 
 pub type RegistryID = Uuid;
 
-/// A service to manage the prometheus registries. This service allow us to create
-/// a new Registry on demand and keep it accessible for processing/polling.
+/// A service to manage the prometheus registries.
+///
+/// The service creates a new Registry on demand while
+/// ensuring it stays accessible for processing/polling.
+///
 /// The service can be freely cloned/shared across threads.
 #[derive(Clone)]
 pub struct RegistryService {
@@ -246,22 +253,22 @@ pub struct RegistryService {
 }
 
 impl RegistryService {
-    // Creates a new registry service and also adds the main/default registry that is supposed to
-    // be preserved and never get removed
+    /// Creates a new registry service and also adds the main/default registry that is supposed to
+    /// be preserved and never get removed
     pub fn new(default_registry: Registry) -> Self {
         Self { default_registry, registries_by_id: Arc::new(DashMap::new()) }
     }
 
-    // Returns the default registry for the service that someone can use
-    // if they don't want to create a new one.
+    /// Returns the default registry for the service that someone can use
+    /// if they don't want to create a new one.
     pub fn default_registry(&self) -> Registry {
         self.default_registry.clone()
     }
 
-    // Adds a new registry to the service. The corresponding RegistryID is returned so can later be
-    // used for removing the Registry. Method panics if we try to insert a registry with the same
-    // id. As this can be quite serious for the operation of the node we don't want to
-    // accidentally swap an existing registry - we expected a removal to happen explicitly.
+    /// Adds a new registry to the service. The corresponding RegistryID is returned so can later be
+    /// used for removing the Registry. Method panics if we try to insert a registry with the same
+    /// id. As this can be quite serious for the operation of the node we don't want to
+    /// accidentally swap an existing registry - we expected a removal to happen explicitly.
     pub fn add(&self, registry: Registry) -> RegistryID {
         let registry_id = Uuid::new_v4();
         if self.registries_by_id.insert(registry_id, registry).is_some() {
@@ -271,13 +278,13 @@ impl RegistryService {
         registry_id
     }
 
-    // Removes the registry from the service. If Registry existed then this method returns true,
-    // otherwise false is returned instead.
+    /// Removes the registry from the service. If Registry existed then this method returns true,
+    /// otherwise false is returned instead.
     pub fn remove(&self, registry_id: RegistryID) -> bool {
         self.registries_by_id.remove(&registry_id).is_some()
     }
 
-    // Returns all the registries of the service
+    /// Returns all the registries of the service
     pub fn get_all(&self) -> Vec<Registry> {
         let mut registries: Vec<Registry> =
             self.registries_by_id.iter().map(|r| r.value().clone()).collect();
@@ -286,7 +293,7 @@ impl RegistryService {
         registries
     }
 
-    // Returns all the metric families from the registries that a service holds.
+    /// Returns all the metric families from the registries that a service holds.
     pub fn gather_all(&self) -> Vec<prometheus::proto::MetricFamily> {
         self.get_all().iter().flat_map(|r| r.gather()).collect()
     }

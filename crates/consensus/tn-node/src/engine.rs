@@ -1288,7 +1288,7 @@ mod tests {
             .expect("worker's http rpc server is running");
         let chain_id: String = http_client.request("eth_chainId", rpc_params![]).await?;
 
-        assert_eq!("0xa28", chain_id); // 2600 in hex
+        assert_eq!("0x7e1", chain_id); // 2017 in hex
         debug!(?chain_id);
 
         let _tx1_hash: B256 = http_client

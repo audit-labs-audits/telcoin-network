@@ -103,7 +103,7 @@ impl KeyArgs {
             KeySubcommand::Generate(args) => {
                 match &args.node_type {
                     NodeType::ValidatorKeys(args) => {
-                        let authority_key_path = datadir.validator_keys();
+                        let authority_key_path = datadir.validator_keys_path();
                         // initialize path and warn users if overwriting keys
                         self.init_path(&authority_key_path, args.force)?;
                         // execute and store keypath

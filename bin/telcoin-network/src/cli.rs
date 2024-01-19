@@ -370,7 +370,7 @@ mod tests {
         assert_eq!(tn.chain.chain(), yukon_chain_spec_arc().chain());
         tn.logs.log_file_directory = tn.logs.log_file_directory.join(tn.chain.chain.to_string());
         let log_dir = tn.logs.log_file_directory;
-        assert!(log_dir.as_ref().ends_with("telcoin-network/logs/2600"), "{:?}", log_dir);
+        assert!(log_dir.as_ref().ends_with("telcoin-network/logs/2017"), "{:?}", log_dir);
 
         let mut tn =
             Cli::<()>::try_parse_from(["telcoin-network", "node", "--chain", "sepolia"]).unwrap();

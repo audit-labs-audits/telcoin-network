@@ -122,7 +122,11 @@ impl Authority {
     }
 }
 
-#[derive(Clone, Serialize, Deserialize, Debug, Eq, PartialEq)]
+/// The committee lists all validators that participate in consensus.
+///
+/// TODO: remove default? Added for compatibility with [ConfigTrait].
+/// Probably a better way to do this.
+#[derive(Clone, Serialize, Deserialize, Debug, Eq, PartialEq, Default)]
 pub struct Committee {
     /// The authorities of epoch.
     authorities: BTreeMap<BlsPublicKey, Authority>,

@@ -78,6 +78,7 @@ impl PrimaryNodeDetails {
         metric.map(|m| m.get_metric().first().unwrap().clone())
     }
 
+    /// TODO: this needs to be cleaned up
     pub(crate) async fn start(
         &mut self,
         client: NetworkClient,

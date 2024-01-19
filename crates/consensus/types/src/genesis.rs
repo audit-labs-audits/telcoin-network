@@ -8,6 +8,7 @@
 use crate::{
     verify_proof_of_possession, BlsPublicKey, BlsSignature, Committee, CommitteeBuilder, Epoch,
     Intent, IntentMessage, Multiaddr, NetworkPublicKey, PrimaryInfo, ValidatorSignature,
+    WorkerCache, WorkerIndex,
 };
 use clap::Parser;
 use eyre::Context;
@@ -24,7 +25,6 @@ use std::{
     sync::Arc,
 };
 use tracing::{info, warn};
-
 pub const GENESIS_VALIDATORS_DIR: &'static str = "validators";
 
 /// Return a [NodeCommand] with default args parsed by `clap`.
@@ -59,6 +59,11 @@ pub fn yukon_genesis_string() -> String {
 /// Static strig for yukon genesis.
 ///
 /// Used by CLI and other methods above.
+///
+/// Note the significance of ChainId "2017":
+/// - Telcoin was founded in Singapore in 2017
+/// - 2017 in hex is "0x7e1" (ie- "tel")
+/// - 2017 => 1 in numerology
 pub fn yukon_genesis_raw() -> &'static str {
     r#"
 {
@@ -82,7 +87,7 @@ pub fn yukon_genesis_raw() -> &'static str {
     "parentHash": "0x0000000000000000000000000000000000000000000000000000000000000000",
     "config": {
         "ethash": {},
-        "chainId": 2600,
+        "chainId": 2017,
         "homesteadBlock": 0,
         "eip150Block": 0,
         "eip155Block": 0,
@@ -279,7 +284,7 @@ impl NetworkGenesis {
         Ok(())
     }
 
-    /// Create a committee from the validators in [NetworkGenesis].
+    /// Create a [Committee] from the validators in [NetworkGenesis].
     pub fn create_committee(&self) -> eyre::Result<Committee> {
         let mut committee_builder = CommitteeBuilder::new(0);
         for (pubkey, validator) in self.validators.iter() {
@@ -293,6 +298,21 @@ impl NetworkGenesis {
             );
         }
         Ok(committee_builder.build())
+    }
+
+    /// Create a [WorkerCache] from the validators in [NetworkGenesis].
+    pub fn create_worker_cache(&self) -> eyre::Result<WorkerCache> {
+        let workers = self
+            .validators
+            .iter()
+            .map(|(pubkey, validator)| {
+                (pubkey.clone(), validator.primary_info.worker_index.clone())
+            })
+            .collect();
+
+        let worker_cache = WorkerCache { epoch: 0, workers };
+
+        Ok(worker_cache)
     }
 }
 
@@ -359,6 +379,11 @@ impl ValidatorInfo {
     pub fn primary_network_address(&self) -> &Multiaddr {
         &self.primary_info.network_address
     }
+
+    /// Return a reference to the primary's [WorkerIndex].
+    pub fn worker_index(&self) -> &WorkerIndex {
+        self.primary_info.worker_index()
+    }
 }
 
 impl Default for ValidatorInfo {
@@ -372,6 +397,10 @@ impl Default for ValidatorInfo {
         }
     }
 }
+
+/// TODO: decide if this is needed or not.
+///
+/// If using aggregate signatures for NetworkGenesis over chainspec.
 #[derive(Clone, Debug, Eq, Serialize, Deserialize)]
 pub struct ValidatorSignatureInfo {
     pub epoch: Epoch,
