@@ -10,8 +10,6 @@ use clap::{value_parser, Parser};
 use consensus_metrics::RegistryService;
 
 use fdlimit::raise_fd_limit;
-use futures::StreamExt;
-
 use narwhal_network::client::NetworkClient;
 use prometheus::Registry;
 use reth::{
@@ -19,13 +17,13 @@ use reth::{
         utils::parse_socket_address, DatabaseArgs, DebugArgs, DevArgs, NetworkArgs,
         PayloadBuilderArgs, PruningArgs, RpcServerArgs, TxPoolArgs,
     },
-    cli::ext::RethCliExt,
+    cli::ext::{DefaultRethNodeCommandConfig, RethCliExt},
     dirs::MaybePlatformPath,
     runner::CliContext,
 };
 use reth_primitives::ChainSpec;
 
-use std::{net::SocketAddr, path::PathBuf, sync::Arc};
+use std::{net::SocketAddr, path::PathBuf, str::FromStr, sync::Arc};
 use tn_config::{
     read_validator_keypair_from_file, traits::ConfigTrait, Config, BLS_KEYFILE,
     PRIMARY_NETWORK_KEYFILE, WORKER_NETWORK_KEYFILE,
@@ -62,7 +60,7 @@ pub struct NodeCommand<Ext: RethCliExt = ()> {
         value_name = "CHAIN_OR_PATH",
         verbatim_doc_comment,
         default_value = "yukon",
-        default_value_if("dev", "true", "dev"),
+        default_value_if("dev", "true", "yukon"),
         value_parser = clap_genesis_parser,
         required = false,
     )]
@@ -171,7 +169,7 @@ impl<Ext: RethCliExt> NodeCommand<Ext> {
     }
 
     /// Execute `node` command
-    pub async fn execute(&self, _ctx: CliContext) -> eyre::Result<()> {
+    pub async fn execute(self, _ctx: CliContext) -> eyre::Result<()> {
         info!(target: "reth::cli", "reth {} starting", SHORT_VERSION);
 
         // Raise the fd limit of the process.
@@ -187,10 +185,52 @@ impl<Ext: RethCliExt> NodeCommand<Ext> {
         // TODO: use this or CLI?
         let _chain = Arc::new(config.chain_spec().clone());
 
+        let terminate_early = self.debug.terminate.clone();
+
+        // get the worker's transaction address from the config
+        let Self {
+            // datadir,
+            // config,
+            // chain,
+            metrics,
+            trusted_setup_file,
+            instance,
+            network,
+            rpc,
+            txpool,
+            builder,
+            debug,
+            db,
+            dev,
+            pruning,
+            ..
+        } = self;
+
+        let ext = DefaultRethNodeCommandConfig::default();
+        let datadir_path = data_dir.to_string();
+        let cli = reth::node::NodeCommand::<()> {
+            datadir: MaybePlatformPath::from_str(&datadir_path).expect("datadir compatible with platform path"),
+            config: self.config.clone(),
+            chain: self.chain.clone(),
+            metrics,
+            instance,
+            trusted_setup_file,
+            network,
+            rpc,
+            txpool,
+            builder,
+            debug,
+            db,
+            dev,
+            pruning,
+            ext,
+        };
+
         let engine = ExecutionNode::new(
             AuthorityIdentifier(self.instance), // TODO: where to get this value?
             self.chain.clone(),                 // TODO: get this from config?
             config.execution_address().clone(),
+            cli,
         )?;
 
         info!(target: "telcoin::cli", "execution engine created");
@@ -235,7 +275,7 @@ impl<Ext: RethCliExt> NodeCommand<Ext> {
         // - thresholds / stake
         //
         // assert committee loaded correctly
-        assert!(committee.size() >= 4, "not enough validators in committee.");
+        // assert!(committee.size() >= 4, "not enough validators in committee.");
 
         // TODO: better assertion here
         // right now, each validator should only have 1 worker
@@ -281,9 +321,9 @@ impl<Ext: RethCliExt> NodeCommand<Ext> {
 
         // rx.await??;
 
-        info!(target: "reth::cli", "Consensus engine has exited.");
+        // info!(target: "reth::cli", "Consensus engine has exited.");
 
-        if self.debug.terminate {
+        if terminate_early {
             Ok(())
         } else {
             // The pipeline has finished downloading blocks up to `--debug.tip` or

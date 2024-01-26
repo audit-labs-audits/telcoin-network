@@ -65,7 +65,7 @@ impl ValidateArgs {
     ///
     /// TODO: `validate` only verifies proof of possession for now
     pub async fn execute(&self) -> eyre::Result<()> {
-        info!(target: "genesis::add-validator", "Adding validator to committee");
+        info!(target: "genesis::validate", "validating validators nominated for committee");
 
         // load network genesis
         let data_dir = self.datadir.unwrap_or_chain_default(self.chain.chain);

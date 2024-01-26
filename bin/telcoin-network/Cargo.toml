@@ -38,7 +38,6 @@ dirs-next = "2.0.0"
 
 # config
 serde_yaml = { workspace = true }
-dotenv = "0.15.0"
 
 reth = {workspace = true }
 reth-primitives = {workspace = true }

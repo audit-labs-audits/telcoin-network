@@ -18,12 +18,11 @@ RUN --mount=type=cache,target=/usr/local/cargo/registry \
     cargo build --release \
     && mv ./target/release/telcoin-network /tmp/
 
-
 # Production Image
 FROM debian:bookworm-slim
 
 # Create a non-root user
-RUN useradd -ms /bin/bash nonroot
+RUN useradd -u 1101 -U -ms /bin/bash nonroot
 USER nonroot
 
 COPY --from=builder /tmp/telcoin-network /usr/local/bin/telcoin

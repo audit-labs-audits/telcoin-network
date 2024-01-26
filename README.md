@@ -16,14 +16,22 @@ curl http://localhost:8545 \
 --data '{"method":"faucet_transfer","params":["0x6Be02d1d3665660d22FF9624b7BE0551ee1Ac91b"],"id":1,"jsonrpc":"2.0" }' 
 --data '{"method":"faucet_transfer","params":["0x86FC4954D645258e68E71de59A41066C55bd9966"],"id":1,"jsonrpc":"2.0" }' 
 
+### get chain id
+curl 35.209.93.191:80 \
+curl localhost:8544 \
+curl 35.223.83.94:8544 \
+-X POST \
+-H "Content-Type: application/json" \
+--data '{"method":"eth_chainId","params":[],"id":1,"jsonrpc":"2.0"}'
+
 ### get block number
-curl http://localhost:8545 \
+curl localhost:8544 \
 -X POST \
 -H "Content-Type: application/json" \
 --data '{"method":"eth_blockNumber","params":[],"id":1,"jsonrpc":"2.0"}'
  
 ### get block by number
-curl http://localhost:8545 \
+curl http://localhost:8544 \
 -X POST \
 -H "Content-Type: application/json" \
 --data '{"method":"eth_getBlockByNumber","params":["1"],"id":1,"jsonrpc":"2.0"}'

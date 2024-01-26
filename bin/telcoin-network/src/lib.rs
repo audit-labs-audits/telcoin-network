@@ -34,5 +34,5 @@ pub mod dirs;
 pub mod genesis;
 pub mod keytool;
 pub mod node;
-pub mod prometheus_exporter;
+// pub mod prometheus_exporter;
 pub mod version;

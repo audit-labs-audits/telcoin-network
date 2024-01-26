@@ -56,7 +56,6 @@ tn-executor = { workspace = true }
 tn-batch-maker = { workspace = true }
 tn-batch-validator = { workspace = true }
 
-tempfile = { workspace = true }
 jsonrpsee = { workspace = true }
 
 tn-config = { workspace = true }
@@ -69,6 +68,7 @@ reth-tracing = { workspace = true }
 narwhal-network = { workspace = true, features = ["test-utils"]}
 narwhal-primary = { workspace = true }
 assert_matches = { workspace = true }
+tempfile = { workspace = true }
 
 [features]
 trace_transaction = ["narwhal-worker/trace_transaction"]

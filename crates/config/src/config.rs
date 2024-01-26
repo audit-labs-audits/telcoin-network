@@ -180,11 +180,11 @@ impl Parameters {
     }
 
     fn default_max_header_delay() -> Duration {
-        Duration::from_secs(1)
+        Duration::from_secs(10)
     }
 
     fn default_min_header_delay() -> Duration {
-        Duration::from_secs_f64(0.5)
+        Duration::from_secs_f64(1.0)
     }
 
     fn default_gc_depth() -> u64 {
@@ -225,8 +225,8 @@ impl Default for NetworkAdminServerParameters {
     fn default() -> Self {
         let host = "127.0.0.1";
         Self {
-            primary_network_admin_server_port: get_available_tcp_port(host),
-            worker_network_admin_server_base_port: get_available_tcp_port(host),
+            primary_network_admin_server_port: get_available_tcp_port(host).unwrap_or_default(),
+            worker_network_admin_server_base_port: get_available_tcp_port(host).unwrap_or_default(),
         }
     }
 }
@@ -309,7 +309,7 @@ impl Default for PrometheusMetricsParameters {
     fn default() -> Self {
         let host = "127.0.0.1";
         Self {
-            socket_addr: format!("/ip4/{}/tcp/{}/http", host, get_available_tcp_port(host))
+            socket_addr: format!("/ip4/{}/tcp/{}/http", host, get_available_tcp_port(host).unwrap_or_default())
                 .parse()
                 .unwrap(),
         }

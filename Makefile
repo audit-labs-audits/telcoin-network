@@ -55,6 +55,10 @@ docker-build:
 docker-push:
 	docker push us-docker.pkg.dev/telcoin-network/telcoin-network/yukon:latest ;
 
+docker-layerg:
+	docker build . -t layerg/yukon ;
+	docker push layerg/yukon:latest ;
+
 # run an http rpc server on default port
 node:
 	cargo run --bin telcoin-network -- node --dev --http --http.api eth,net,web3 ;

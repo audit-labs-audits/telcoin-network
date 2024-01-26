@@ -32,7 +32,6 @@ use reth_transaction_pool::{
     TransactionValidationTaskExecutor,
 };
 use std::{collections::HashMap, sync::Arc};
-use tempfile::tempdir;
 use tn_batch_maker::{BatchMakerBuilder, MiningMode};
 use tn_batch_validator::BatchValidator;
 use tn_executor::{
@@ -46,7 +45,7 @@ use tokio::{
     runtime::Handle,
     sync::{mpsc::unbounded_channel, RwLock},
 };
-use tracing::{debug, instrument, warn};
+use tracing::{debug, info, instrument, warn};
 
 /// Inner type for holding execution layer types.
 struct ExecutionNodeInner<DB, Tree> {
@@ -465,7 +464,9 @@ where
             events: self.blockchain_db.clone(),
         };
 
+        
         let rpc_handle = start_rpc(components, &self.args.rpc).await?;
+        info!(target: "rpc::start", http_address = ?&self.args.rpc.http_addr, http_port = &self.args.rpc.http_port, "rpc server running at ");
 
         // store the worker's execution info
         let worker_components =
@@ -579,6 +580,7 @@ impl ExecutionNode
         authority_id: AuthorityIdentifier,
         chain: Arc<ChainSpec>,
         address: Address,
+        params: NodeCommand,
     ) -> Result<Self, ExecutionError> {
         // TODO: why doesn't this generic work?
         // ) -> Result<ExecutionNode<DB, Tree>, ExecutionError> { // TODO: why doesn't this generic
@@ -586,13 +588,19 @@ impl ExecutionNode
         // ShareableBlockchainTree<Arc<DatabaseEnv>, EvmProcessorFactory>>, ExecutionError> {
         // setup EL using test db
 
-        let args = execution_args();
-        let db_path = tempdir()?;
-        let db_log_level = None; // LogLevel::Fatal ?
-        let db = Arc::new(init_db(&db_path, db_log_level)?.with_metrics());
+        // TODO: ports are overwritten later
+        //
+        // use rpc args from cli
+        // let mut args = execution_args();
+        // args.rpc = rpc_args;
+
+        let datadir = params.datadir.unwrap_or_chain_default(chain.chain);
+
+        let db_path = datadir.db_path();
+        let db = Arc::new(init_db(&db_path, params.db.log_level)?.with_metrics());
         let genesis_hash = init_genesis(db.clone(), chain.clone())?;
 
-        debug!(target: "execution_node", ?genesis_hash);
+        debug!(target: "execution::new", ?genesis_hash, "genesis initialized");
 
         let auto_consensus: Arc<dyn Consensus> =
             Arc::new(AutoSealConsensus::new(Arc::clone(&chain)));
@@ -629,7 +637,7 @@ impl ExecutionNode
             authority_id,
             address,
             chain,
-            args,
+            params,
             None,
             provider_factory,
             auto_consensus,

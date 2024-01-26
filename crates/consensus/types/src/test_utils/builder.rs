@@ -91,7 +91,7 @@ impl<R: rand::RngCore + rand::CryptoRng> Builder<R> {
                     self.number_of_workers,
                     |host| {
                         if self.randomize_ports {
-                            get_available_tcp_port(host)
+                            get_available_tcp_port(host).unwrap_or_default()
                         } else {
                             0
                         }

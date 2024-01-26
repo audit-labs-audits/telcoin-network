@@ -18,7 +18,7 @@ use std::{
     sync::Arc,
 };
 use tn_config::{traits::ConfigTrait, Config};
-use tracing::{debug, info};
+use tracing::{debug, info, warn};
 
 /// Generate keypairs and save them to a file.
 #[derive(Debug, Args)]
@@ -134,24 +134,28 @@ impl KeyArgs {
                 format!("Could not create authority key directory {}", rpath.display())
             })?;
         } else if !force {
-            // ask user if they want to continue generating new keys
-            let answer =
-                Question::new("Keys might already exist. Do you want to generate new keys? (y/n)")
-                    .confirm();
+            warn!("overwriting keys for validator")
+            // TODO: this causes an infinite recursion of the question
+            // when run from the yukon genesis makefile
 
-            if answer != Answer::YES {
-                // TODO: something better than panic here
-                panic!("Abandoning new key generation.")
-            }
+            // // ask user if they want to continue generating new keys
+            // let answer =
+            //     Question::new("Keys might already exist. Do you want to generate new keys? (y/n)")
+            //         .confirm();
 
-            // double-check
-            let answer = Question::new("Warning: this action is irreversable. Are you sure you want to overwrite authority keys? (y/n)")
-                .confirm();
+            // if answer != Answer::YES {
+            //     // TODO: something better than panic here
+            //     panic!("Abandoning new key generation.")
+            // }
 
-            if answer != Answer::YES {
-                // TODO: something better than panic here
-                panic!("Abandoning new key generation.")
-            }
+            // // double-check
+            // let answer = Question::new("Warning: this action is irreversable. Are you sure you want to overwrite authority keys? (y/n)")
+            //     .confirm();
+
+            // if answer != Answer::YES {
+            //     // TODO: something better than panic here
+            //     panic!("Abandoning new key generation.")
+            // }
         }
 
         Ok(())

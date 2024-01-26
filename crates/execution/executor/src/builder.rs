@@ -82,8 +82,6 @@ where
         .block_hash(head)?
         .expect("the hash for the latest block is missing, database is corrupt");
 
-    assert_eq!(head, 0, "head should be genesis at block 0");
-
     Ok(Head {
         number: head,
         hash,

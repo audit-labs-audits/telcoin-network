@@ -16,6 +16,7 @@ use fastcrypto::traits::{InsecureDefault, Signer};
 use reth::node::NodeCommand;
 use reth_primitives::{keccak256, Address, ChainSpec, Genesis};
 use serde::{Deserialize, Serialize};
+use tempfile::tempdir;
 use std::{
     collections::BTreeMap,
     ffi::OsStr,
@@ -29,7 +30,8 @@ pub const GENESIS_VALIDATORS_DIR: &'static str = "validators";
 
 /// Return a [NodeCommand] with default args parsed by `clap`.
 pub fn execution_args() -> NodeCommand {
-    NodeCommand::<()>::try_parse_from(["reth", "--dev", "--chain", &yukon_genesis_string()])
+    let datadir = tempdir().unwrap();
+    NodeCommand::<()>::try_parse_from(["reth", "--dev", "--chain", &yukon_genesis_string(), "--datadir", datadir.path().to_str().expect("tmpdir path to string in execution_args()")])
         .expect("clap parse node command")
 }
 
