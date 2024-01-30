@@ -4,6 +4,30 @@ RPCs are the primary client for requesting information from the TN blockchain.
 ## Submitting Transactions
 The protocol does not gossip transactions at the txpool level. Instead, each validator bundles transactions that it sees as valid and produces a "batch". The batch is sent to all other validators for verification.
 
+## Update 01/28/2024
+The worse-case scenario is every worker batch is identical, which would result in essentially whay Ethereum already does. It's a waste of network resources to include duplicate transactions.
+
+What is the correct way to handle duplicate transactions in Consensus Outuput?
+
+- transactions are executed one by one, and errors for the transaction are ignored.
+    - ensures only one version of the transaction is included (based on nonce)
+    - gas / priority fee will go to the validator who's worker included the tx in the batch
+    - IDEA: EL tracks addresses taking advantage of duplicate submissions (from nonce perspective)
+        - known addresses are required to pay a higher gas price for 24hours
+            - reinforces security by gas so users can't repeatedly submit multiple transactions
+            - free market still for users who are eager to include tx and willing to pay more
+                - empowers users while ensuring at least one validator is rewarded (a bit of a gamble though)
+        - what if the user resubmmits a tx?
+            - the price still increases
+            - although unfortunate, the gas price is only raised temporarily
+            - other validators may choose to waive the increase
+                - this should not affect validators at large because the greater cost is paid to upload the tx
+                - validators who choose to "ignore" gas increases for duplicate transactions pay the cost of uploading redundant data but reap no additional benefit
+- worker batch maker should set base fee ?
+        
+
+
+
 ### Problems
 
 #### Scaling Transaction Submission: One RPC per Validator

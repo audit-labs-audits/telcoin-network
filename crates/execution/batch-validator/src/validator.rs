@@ -88,18 +88,18 @@ where
         // parent should be canonical - lookup in db
 
         // the following is taken from BlockchainTree::try_append_canonical_chain()
-        //
+
         // the main reason for porting this code is bc batches may or may not
         // extend the canonical tip, but state root still needs to be validated
-        //
+
         // in reth, this is only done when canonical head is extended
         // but batches may be behind canonical tip, which should still
         // be considered potentially valid
-        //
+
         // moving this code here prevents having to revert the tree after
         // validating the batch because `on_new_payload` results in appending
         // the execution payload to either a fork or the canonical tree
-        //
+
         // all other methods are private
 
         // try to recover signed transactions

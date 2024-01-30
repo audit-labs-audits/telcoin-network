@@ -209,7 +209,8 @@ impl<Ext: RethCliExt> NodeCommand<Ext> {
         let ext = DefaultRethNodeCommandConfig::default();
         let datadir_path = data_dir.to_string();
         let cli = reth::node::NodeCommand::<()> {
-            datadir: MaybePlatformPath::from_str(&datadir_path).expect("datadir compatible with platform path"),
+            datadir: MaybePlatformPath::from_str(&datadir_path)
+                .expect("datadir compatible with platform path"),
             config: self.config.clone(),
             chain: self.chain.clone(),
             metrics,

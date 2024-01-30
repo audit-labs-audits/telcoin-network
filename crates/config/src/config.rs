@@ -309,9 +309,13 @@ impl Default for PrometheusMetricsParameters {
     fn default() -> Self {
         let host = "127.0.0.1";
         Self {
-            socket_addr: format!("/ip4/{}/tcp/{}/http", host, get_available_tcp_port(host).unwrap_or_default())
-                .parse()
-                .unwrap(),
+            socket_addr: format!(
+                "/ip4/{}/tcp/{}/http",
+                host,
+                get_available_tcp_port(host).unwrap_or_default()
+            )
+            .parse()
+            .unwrap(),
         }
     }
 }

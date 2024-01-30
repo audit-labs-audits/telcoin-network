@@ -17,9 +17,9 @@ curl http://localhost:8545 \
 --data '{"method":"faucet_transfer","params":["0x86FC4954D645258e68E71de59A41066C55bd9966"],"id":1,"jsonrpc":"2.0" }' 
 
 ### get chain id
-curl 35.209.93.191:80 \
 curl localhost:8544 \
-curl 35.223.83.94:8544 \
+curl 35.208.38.251:8544 \
+curl 34.122.21.94:8544 \
 -X POST \
 -H "Content-Type: application/json" \
 --data '{"method":"eth_chainId","params":[],"id":1,"jsonrpc":"2.0"}'
@@ -31,10 +31,10 @@ curl localhost:8544 \
 --data '{"method":"eth_blockNumber","params":[],"id":1,"jsonrpc":"2.0"}'
  
 ### get block by number
-curl http://localhost:8544 \
+curl 35.208.38.251:8544 \
 -X POST \
 -H "Content-Type: application/json" \
---data '{"method":"eth_getBlockByNumber","params":["1"],"id":1,"jsonrpc":"2.0"}'
+--data '{"method":"eth_getBlockByNumber","params":["latest"],"id":1,"jsonrpc":"2.0"}'
 
 ### get gas price
 curl http://localhost:8545 \
@@ -65,3 +65,9 @@ curl http://localhost:8545 \
 -X POST \
 -H "Content-Type: application/json" \
 --data '{"method":"eth_getTransactionByHash","params":["0x82a124595cc3793dff50bfcc3f0b6729e16c1f26316f57764e3966e303923ea7"],"id":1,"jsonrpc":"2.0"}'
+
+### Get transaction receipt
+curl 35.208.38.251:8544 \
+  -X POST \
+  -H "Content-Type: application/json" \
+  --data '{"method":"eth_getTransactionReceipt","params": ["0x5340fbcd36fffe11d4e8da962c54446a6fb9a43fc9a2b69d14a2430888b9e69c"],"id":1,"jsonrpc":"2.0"}'

@@ -222,6 +222,7 @@ async fn test_execute_consensus_output() {
     //
     // refactor with valid data once test util helpers are in place
     let consensus_output = commit_one().await;
+    let expected_beneficiary = consensus_output.beneficiary();
 
     //=== Execution
 
@@ -508,10 +509,8 @@ async fn test_execute_consensus_output() {
     debug!("update completed...");
     assert_eq!(canonical_hash, current_finalized_header.hash());
 
-    // TODO: assert leader certificate is beneficiary
-    assert!(canonical_tip.beneficiary.is_zero());
-
     // assert canonical tip contains all txs and senders in batches
+    assert_eq!(canonical_tip.block.beneficiary, expected_beneficiary);
     assert_eq!(canonical_tip.block.body, txs_in_output);
     assert_eq!(canonical_tip.senders, senders_in_output);
 }

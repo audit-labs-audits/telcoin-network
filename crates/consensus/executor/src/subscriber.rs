@@ -7,6 +7,7 @@ use fastcrypto::hash::Hash;
 use futures::{stream::FuturesOrdered, StreamExt};
 use narwhal_network::{client::NetworkClient, PrimaryToWorkerClient};
 use narwhal_network_types::FetchBatchesRequest;
+use reth_primitives::Address;
 use std::{
     collections::{HashMap, HashSet},
     sync::Arc,
@@ -19,7 +20,7 @@ use tn_types::{
     MetadataAPI, NetworkPublicKey, Timestamp, WorkerCache, WorkerId,
 };
 use tokio::task::JoinHandle;
-use tracing::{debug, error, info};
+use tracing::{debug, error, info, warn};
 
 /// The `Subscriber` receives certificates sequenced by the consensus and waits until the
 /// downloaded all the transactions references by the certificates; it then
@@ -189,14 +190,31 @@ impl Subscriber {
     async fn fetch_batches(inner: Arc<Inner>, deliver: CommittedSubDag) -> ConsensusOutput {
         let num_batches = deliver.num_batches();
         let num_certs = deliver.len();
+
+        // get the execution address of the authority or use zero address
+        let leader = inner.committee.authority(&deliver.leader.origin());
+        let address = if let Some(authority) = leader {
+            authority.execution_address()
+        } else {
+            warn!("Execution address missing for {}", &deliver.leader.origin());
+            Address::ZERO
+        };
+
         if num_batches == 0 {
             debug!("No batches to fetch, payload is empty");
-            return ConsensusOutput { sub_dag: Arc::new(deliver), batches: vec![] };
+            return ConsensusOutput {
+                sub_dag: Arc::new(deliver),
+                batches: vec![],
+                beneficiary: address,
+            };
         }
 
         let sub_dag = Arc::new(deliver);
-        let mut subscriber_output =
-            ConsensusOutput { sub_dag: sub_dag.clone(), batches: Vec::with_capacity(num_certs) };
+        let mut subscriber_output = ConsensusOutput {
+            sub_dag: sub_dag.clone(),
+            batches: Vec::with_capacity(num_certs),
+            beneficiary: address,
+        };
 
         let mut batch_digests_and_workers: HashMap<
             NetworkPublicKey,

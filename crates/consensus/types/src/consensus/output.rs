@@ -7,6 +7,7 @@ use crate::{
 use enum_dispatch::enum_dispatch;
 use fastcrypto::hash::{Digest, Hash, HashFunction};
 
+use reth_primitives::Address;
 use serde::{Deserialize, Serialize};
 use std::{
     fmt,
@@ -23,6 +24,8 @@ pub struct ConsensusOutput {
     pub sub_dag: Arc<CommittedSubDag>,
     /// Matches certificates in the `sub_dag` one-to-one.
     pub batches: Vec<Vec<Batch>>,
+    /// The beneficiary for block rewards.
+    pub beneficiary: Address,
 }
 
 impl ConsensusOutput {
@@ -41,6 +44,13 @@ impl ConsensusOutput {
     /// Timestamp for when the subdag was committed.
     pub fn committed_at(&self) -> TimestampSec {
         self.sub_dag.commit_timestamp()
+    }
+    /// Execution address of the leader for the round.
+    ///
+    /// The address is used in the executed block as the
+    /// beneficiary for block rewards.
+    pub fn beneficiary(&self) -> Address {
+        self.beneficiary.clone()
     }
 }
 

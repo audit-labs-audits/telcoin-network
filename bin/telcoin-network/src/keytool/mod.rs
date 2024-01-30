@@ -10,7 +10,6 @@ use clap::{value_parser, Args, Subcommand};
 use eyre::Context;
 
 use generate::GenerateKeys;
-use question::{Answer, Question};
 use reth::dirs::{ChainPath, MaybePlatformPath};
 use reth_primitives::ChainSpec;
 use std::{
@@ -140,8 +139,8 @@ impl KeyArgs {
 
             // // ask user if they want to continue generating new keys
             // let answer =
-            //     Question::new("Keys might already exist. Do you want to generate new keys? (y/n)")
-            //         .confirm();
+            //     Question::new("Keys might already exist. Do you want to generate new keys?
+            // (y/n)")         .confirm();
 
             // if answer != Answer::YES {
             //     // TODO: something better than panic here
@@ -149,8 +148,8 @@ impl KeyArgs {
             // }
 
             // // double-check
-            // let answer = Question::new("Warning: this action is irreversable. Are you sure you want to overwrite authority keys? (y/n)")
-            //     .confirm();
+            // let answer = Question::new("Warning: this action is irreversable. Are you sure you
+            // want to overwrite authority keys? (y/n)")     .confirm();
 
             // if answer != Answer::YES {
             //     // TODO: something better than panic here

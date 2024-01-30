@@ -35,11 +35,7 @@ use reth_revm::{
     database::StateProviderDatabase, db::states::bundle_state::BundleRetention,
     processor::EVMProcessor, State,
 };
-use std::{
-    collections::HashMap,
-    sync::Arc,
-    time::{SystemTime, UNIX_EPOCH},
-};
+use std::{collections::HashMap, sync::Arc};
 use tn_types::{now, BatchAPI, ConsensusOutput};
 use tokio::sync::{mpsc::UnboundedSender, RwLock, RwLockReadGuard, RwLockWriteGuard};
 use tracing::{debug, trace, warn};
@@ -255,6 +251,8 @@ impl StorageInner {
         transactions: &Vec<TransactionSigned>,
         chain_spec: Arc<ChainSpec>,
         parent: SealedHeader,
+        timestamp: u64,
+        beneficiary: Address,
     ) -> Header {
         // // check previous block for base fee
         // let base_fee_per_gas = self
@@ -268,7 +266,7 @@ impl StorageInner {
         let mut header = Header {
             parent_hash: parent.hash,
             ommers_hash: EMPTY_OMMER_ROOT_HASH,
-            beneficiary: Default::default(),
+            beneficiary,
             state_root: Default::default(),
             transactions_root: Default::default(),
             receipts_root: Default::default(),
@@ -278,7 +276,7 @@ impl StorageInner {
             number: parent.number + 1,
             gas_limit: ETHEREUM_BLOCK_GAS_LIMIT,
             gas_used: 0,
-            timestamp: SystemTime::now().duration_since(UNIX_EPOCH).unwrap_or_default().as_secs(),
+            timestamp,
             mix_hash: Default::default(),
             nonce: 0,
             base_fee_per_gas,
@@ -379,6 +377,10 @@ impl StorageInner {
         // use the last canonical block for next batch
         debug!(target: "execution::executor", latest=?client.latest_header().unwrap());
 
+        // capture timestamp and beneficiary before consuming output
+        let timestamp = output.committed_at();
+        let beneficiary = output.beneficiary();
+
         // try to recover transactions and signers
         let transactions = self.try_recover_transactions(output)?;
 
@@ -388,7 +390,13 @@ impl StorageInner {
         let parent = client.finalized_header().unwrap();
         debug!(target: "execution::executor", finalized=?parent);
         let parent = client.latest_header().unwrap().unwrap();
-        let header = self.build_header_template(&transactions, chain_spec.clone(), parent);
+        let header = self.build_header_template(
+            &transactions,
+            chain_spec.clone(),
+            parent,
+            timestamp,
+            beneficiary,
+        );
 
         let block = Block {
             header: header.clone(),
@@ -550,6 +558,8 @@ mod tests {
         let reputation_scores = ReputationScores::default();
         let previous_sub_dag = None;
         let batches = tn_types::test_utils::batches(4); // create 4 batches
+        let beneficiary = Address::from_str("0xdbdbdb2cbd23b783741e8d7fcf51e459b497e4a6")
+            .expect("beneficiary address from str");
         let consensus_output = ConsensusOutput {
             sub_dag: CommittedSubDag::new(
                 vec![Certificate::default()],
@@ -560,6 +570,7 @@ mod tests {
             )
             .into(),
             batches: vec![batches.clone()],
+            beneficiary,
         };
 
         //=== Execution
@@ -838,11 +849,9 @@ mod tests {
         debug!("update completed...");
         assert_eq!(canonical_hash, current_finalized_header.hash());
 
-        // TODO: assert leader certificate is beneficiary
-        assert!(canonical_tip.beneficiary.is_zero());
-
         // assert canonical tip contains all txs and senders in batches
         assert_eq!(canonical_tip.block.body, txs_in_output);
+        assert_eq!(canonical_tip.block.beneficiary, beneficiary);
         assert_eq!(canonical_tip.senders, senders_in_output);
     }
 }

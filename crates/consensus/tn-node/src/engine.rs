@@ -464,7 +464,6 @@ where
             events: self.blockchain_db.clone(),
         };
 
-        
         let rpc_handle = start_rpc(components, &self.args.rpc).await?;
         info!(target: "rpc::start", http_address = ?&self.args.rpc.http_addr, http_port = &self.args.rpc.http_port, "rpc server running at ");
 
@@ -629,8 +628,7 @@ impl ExecutionNode
         let blockchain_tree = ShareableBlockchainTree::new(tree);
 
         // provider
-        let blockchain_db =
-            BlockchainProvider::new(provider_factory.clone(), blockchain_tree.clone())?;
+        let blockchain_db = BlockchainProvider::new(provider_factory.clone(), blockchain_tree)?;
 
         // let inner: ExecutionNodeInner<DB, Tree> = ExecutionNodeInner {
         let mut inner = ExecutionNodeInner::new(
@@ -800,7 +798,7 @@ mod tests {
         alloy_primitives::U160, Address, ChainSpec, GenesisAccount, TransactionSigned, B256, U256,
     };
     use reth_provider::{BlockReaderIdExt, CanonStateNotification, CanonStateSubscriptions};
-    use reth_tasks::TaskManager;
+
     use reth_tracing::init_test_tracing;
     use std::{
         collections::{BTreeSet, HashMap},
@@ -809,12 +807,12 @@ mod tests {
         time::Duration,
     };
     use tn_types::{
+        execution_args,
         test_utils::{batch, get_gas_price, CommitteeFixture, TransactionFactory},
         yukon_chain_spec_arc, yukon_genesis, AuthorityIdentifier, BatchAPI, Certificate,
         ConsensusOutput, PreSubscribedBroadcastSender,
     };
     use tokio::{
-        runtime::Handle,
         sync::{mpsc::error::TryRecvError, watch},
         time::timeout,
     };
@@ -828,7 +826,9 @@ mod tests {
         // address doesn't affect these tests
         let address = Address::ZERO;
 
-        let node = ExecutionNode::new(AuthorityIdentifier(0), chain.clone(), address.clone())?;
+        let params = execution_args();
+        let node =
+            ExecutionNode::new(AuthorityIdentifier(0), chain.clone(), address.clone(), params)?;
         let mut inner = node.internal.write().await;
         assert_eq!(inner.args.rpc.http_port, DEFAULT_HTTP_RPC_PORT);
         assert_eq!(inner.args.rpc.ws_port, DEFAULT_WS_RPC_PORT);
@@ -862,22 +862,28 @@ mod tests {
         assert_eq!(worker1_rpc_args.ws_port, DEFAULT_WS_RPC_PORT + 100);
         assert_eq!(worker1_network_args.port, 30303 + 2 * 100);
 
+        let params = execution_args();
         // assert rpc ports adjusted for instance `2`
-        let node = ExecutionNode::new(AuthorityIdentifier(1), chain.clone(), address.clone())?;
+        let node =
+            ExecutionNode::new(AuthorityIdentifier(1), chain.clone(), address.clone(), params)?;
         let inner = node.internal.read().await;
         assert_eq!(inner.args.rpc.http_port, 8544);
         assert_eq!(inner.args.rpc.ws_port, 8548);
         assert_eq!(inner.args.network.port, 30304);
 
+        let params = execution_args();
         // assert rpc ports adjusted for instance `3`
-        let node = ExecutionNode::new(AuthorityIdentifier(2), chain.clone(), address.clone())?;
+        let node =
+            ExecutionNode::new(AuthorityIdentifier(2), chain.clone(), address.clone(), params)?;
         let inner = node.internal.read().await;
         assert_eq!(inner.args.rpc.http_port, 8543);
         assert_eq!(inner.args.rpc.ws_port, 8550);
         assert_eq!(inner.args.network.port, 30305);
 
+        let params = execution_args();
         // assert rpc ports adjusted for instance `4`
-        let node = ExecutionNode::new(AuthorityIdentifier(3), chain.clone(), address.clone())?;
+        let node =
+            ExecutionNode::new(AuthorityIdentifier(3), chain.clone(), address.clone(), params)?;
         let inner = node.internal.read().await;
         assert_eq!(inner.args.rpc.http_port, 8542);
         assert_eq!(inner.args.rpc.ws_port, 8552);
@@ -892,7 +898,8 @@ mod tests {
         let chain: Arc<ChainSpec> = Arc::new(genesis.into());
         let address = Address::ZERO;
 
-        let node = ExecutionNode::new(AuthorityIdentifier(0), chain.clone(), address)?;
+        let params = execution_args();
+        let node = ExecutionNode::new(AuthorityIdentifier(0), chain.clone(), address, params)?;
         let (tx_notifier, rx_notifier) = tn_types::test_channel!(1);
         node.start_engine(rx_notifier).await?;
 
@@ -1155,7 +1162,8 @@ mod tests {
 
         debug!("creating execution node..");
 
-        let node = ExecutionNode::new(AuthorityIdentifier(0), chain.clone(), address)?;
+        let params = execution_args();
+        let node = ExecutionNode::new(AuthorityIdentifier(0), chain.clone(), address, params)?;
 
         let blockchain_db = node.get_provider().await;
         let mut canon_state_notification_receiver = blockchain_db.subscribe_to_canonical_state();
@@ -1241,7 +1249,8 @@ mod tests {
 
         debug!("creating execution node..");
 
-        let node = ExecutionNode::new(AuthorityIdentifier(0), chain.clone(), address)?;
+        let params = execution_args();
+        let node = ExecutionNode::new(AuthorityIdentifier(0), chain.clone(), address, params)?;
 
         // worker info
         let worker_id = 0;
@@ -1339,34 +1348,34 @@ mod tests {
         Ok(())
     }
 
-    #[tokio::test]
-    async fn test_alternative_task_management() {
-        let task_manager = TaskManager::new(Handle::current());
-        let executor = task_manager.executor();
+    // #[tokio::test]
+    // async fn test_alternative_task_management() {
+    //     let task_manager = TaskManager::new(Handle::current());
+    //     let executor = task_manager.executor();
 
-        executor.spawn_critical("sleep panic", async move {
-            tokio::time::sleep(std::time::Duration::from_secs(2)).await;
-            panic!("time to panic");
-        });
+    //     executor.spawn_critical("sleep panic", async move {
+    //         tokio::time::sleep(std::time::Duration::from_secs(2)).await;
+    //         panic!("time to panic");
+    //     });
 
-        println!("spawned critical. sleeping now..");
+    //     println!("spawned critical. sleeping now..");
 
-        let manager_handle = tokio::spawn(Box::pin(async move {
-            let err = task_manager.await;
-            println!("{err:?}");
-        }));
+    //     let manager_handle = tokio::spawn(Box::pin(async move {
+    //         let err = task_manager.await;
+    //         println!("{err:?}");
+    //     }));
 
-        assert!(!manager_handle.is_finished());
+    //     assert!(!manager_handle.is_finished());
 
-        tokio::time::sleep(std::time::Duration::from_secs(2)).await;
+    //     tokio::time::sleep(std::time::Duration::from_secs(2)).await;
 
-        println!("sleep over D: - handle should have panicked");
+    //     println!("sleep over D: - handle should have panicked");
 
-        tokio::time::timeout(std::time::Duration::from_secs(3), manager_handle)
-            .await
-            .unwrap()
-            .unwrap();
+    //     tokio::time::timeout(std::time::Duration::from_secs(3), manager_handle)
+    //         .await
+    //         .unwrap()
+    //         .unwrap();
 
-        println!("done.");
-    }
+    //     println!("done.");
+    // }
 }

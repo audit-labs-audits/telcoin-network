@@ -10,7 +10,8 @@ use std::{collections::HashMap, time::Duration};
 use tn_config::Parameters;
 use tn_node::engine::ExecutionNode;
 use tn_types::{
-    execution_args, test_utils::CommitteeFixture, yukon_chain_spec_arc, Committee, WorkerCache, WorkerId
+    execution_args, test_utils::CommitteeFixture, yukon_chain_spec_arc, Committee, WorkerCache,
+    WorkerId,
 };
 use tracing::info;
 
@@ -56,9 +57,13 @@ impl Cluster {
             // TODO: fix this - only here to compile
             let rpc_args = execution_args();
 
-            let engine =
-                ExecutionNode::new(authority_id, chain.clone(), authority_execution_address, rpc_args)
-                    .expect("execution node created for authority");
+            let engine = ExecutionNode::new(
+                authority_id,
+                chain.clone(),
+                authority_execution_address,
+                rpc_args,
+            )
+            .expect("execution node created for authority");
 
             let authority = AuthorityDetails::new(
                 id,

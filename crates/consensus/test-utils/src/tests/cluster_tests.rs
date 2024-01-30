@@ -32,6 +32,12 @@ async fn basic_cluster_setup() {
         let el = authority.execution_components().await.expect("execution layer running");
         let db = el.get_provider().await;
         let blocks = db.block_range(0..=3).expect("at least 3 blocks");
+
+        println!("{:?}\n\n\n", authority.id);
+        for block in blocks.iter() {
+            println!("\n{block:?}");
+        }
+
         block_vec.push(blocks.clone());
     }
 

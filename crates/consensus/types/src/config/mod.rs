@@ -202,9 +202,13 @@ impl Default for WorkerInfo {
 
         Self {
             name: NetworkPublicKey::insecure_default(),
-            transactions: format!("/ip4/{}/tcp/{}/http", &host, get_available_tcp_port(&host).unwrap_or_default())
-                .parse()
-                .expect("multiaddress parsed for worker txs"),
+            transactions: format!(
+                "/ip4/{}/tcp/{}/http",
+                &host,
+                get_available_tcp_port(&host).unwrap_or_default()
+            )
+            .parse()
+            .expect("multiaddress parsed for worker txs"),
             worker_address: format!("/ip4/{}/udp/{}", &host, worker_udp_port)
                 .parse()
                 .expect("multiaddr parsed for worker consensus"),
