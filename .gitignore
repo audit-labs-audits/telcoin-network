@@ -16,4 +16,5 @@ data/
 
 .env
 
-turtles
+# local-testnet.sh
+local-validators

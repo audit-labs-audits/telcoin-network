@@ -24,6 +24,8 @@ What is the correct way to handle duplicate transactions in Consensus Outuput?
                 - this should not affect validators at large because the greater cost is paid to upload the tx
                 - validators who choose to "ignore" gas increases for duplicate transactions pay the cost of uploading redundant data but reap no additional benefit
 - worker batch maker should set base fee ?
+    - pending block would be batch that hasn't reached quorum yet?
+        - pending batches fill the pending que until the next canonical block forms, then prune the tree?
         
 
 
