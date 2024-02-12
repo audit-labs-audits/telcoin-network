@@ -21,8 +21,11 @@ RUN --mount=type=cache,target=/usr/local/cargo/registry \
 # Production Image
 FROM debian:bookworm-slim
 
+# specify user id for nonroot
+ENV USER_ID=1101
+
 # Create a non-root user
-RUN useradd -u 1101 -U -ms /bin/bash nonroot
+RUN useradd -u $USER_ID -U -ms /bin/bash nonroot
 USER nonroot
 
 COPY --from=builder /tmp/telcoin-network /usr/local/bin/telcoin

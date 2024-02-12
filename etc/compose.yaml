@@ -1,0 +1,159 @@
+version: '3.8'
+services:
+  setup1:
+    build:
+      context: ../
+      dockerfile: etc/Dockerfile
+    environment:
+      - NARWHAL_HOST=10.10.0.21
+      - EXECUTION_ADDRESS=0x1111111111111111111111111111111111111111
+    user: "root"
+    command:
+      - "bash"
+      - "/setup_validator.sh"
+    volumes:
+      - ./setup_validator.sh:/setup_validator.sh
+      - validator1-data:/home/nonroot/data
+  setup2:
+    build:
+      context: ../
+      dockerfile: etc/Dockerfile
+    environment:
+      - NARWHAL_HOST=10.10.0.22
+      - EXECUTION_ADDRESS=0x2222222222222222222222222222222222222222
+    user: "root"
+    command:
+      - "bash"
+      - "/setup_validator.sh"
+    volumes:
+      - ./setup_validator.sh:/setup_validator.sh
+      - validator2-data:/home/nonroot/data
+  setup3:
+    build:
+      context: ../
+      dockerfile: etc/Dockerfile
+    environment:
+      - NARWHAL_HOST=10.10.0.23
+      - EXECUTION_ADDRESS=0x3333333333333333333333333333333333333333
+    user: "root"
+    command:
+      - "bash"
+      - "/setup_validator.sh"
+    volumes:
+      - ./setup_validator.sh:/setup_validator.sh
+      - validator3-data:/home/nonroot/data
+  setup4:
+    build:
+      context: ../
+      dockerfile: etc/Dockerfile
+    environment:
+      - NARWHAL_HOST=10.10.0.24
+      - EXECUTION_ADDRESS=0x4444444444444444444444444444444444444444
+    user: "root"
+    command:
+      - "bash"
+      - "/setup_validator.sh"
+    volumes:
+      - ./setup_validator.sh:/setup_validator.sh
+      - validator4-data:/home/nonroot/data
+
+  comittee:
+    build:
+      context: ../
+      dockerfile: etc/Dockerfile
+    user: "root"
+    command: >
+      bash -c "
+        chown -R 1101:1101 /home/nonroot/data/genesis &&
+        whoami &&
+        ls -al /home/nonroot/data/ &&
+        cp -r /home/nonroot/data/validator-*/genesis/validators /home/nonroot/data/genesis/ &&
+        /usr/local/bin/telcoin genesis create-committee --datadir /home/nonroot/data &&
+        cp -r /home/nonroot/data/genesis/committee.yaml /home/nonroot/data/genesis/worker_cache.yaml /home/nonroot/data/validator-1/genesis/ &&
+        cp -r /home/nonroot/data/genesis/committee.yaml /home/nonroot/data/genesis/worker_cache.yaml /home/nonroot/data/validator-2/genesis/ &&
+        cp -r /home/nonroot/data/genesis/committee.yaml /home/nonroot/data/genesis/worker_cache.yaml /home/nonroot/data/validator-3/genesis/ &&
+        cp -r /home/nonroot/data/genesis/committee.yaml /home/nonroot/data/genesis/worker_cache.yaml /home/nonroot/data/validator-4/genesis/ &&
+        ls -al /home/nonroot
+      "
+    depends_on:
+      - setup1
+      - setup2
+      - setup3
+      - setup4
+    volumes:
+      - sharedgenesisdir:/home/nonroot/data/genesis
+      - validator1-data:/home/nonroot/data/validator-1
+      - validator2-data:/home/nonroot/data/validator-2
+      - validator3-data:/home/nonroot/data/validator-3
+      - validator4-data:/home/nonroot/data/validator-4
+
+  validator1:
+    build:
+      context: ../
+      dockerfile: etc/Dockerfile
+    depends_on:
+      - comittee
+    command: /usr/local/bin/telcoin node --datadir /home/nonroot/data --dev --chain yukon --http.addr 0.0.0.0
+    ports:
+      - 8544:8544
+    volumes:
+      - validator1-data:/home/nonroot/data
+    networks:
+      validators:
+        ipv4_address: 10.10.0.21
+  validator2:
+    build:
+      context: ../
+      dockerfile: etc/Dockerfile
+    depends_on:
+      - comittee
+    command: /usr/local/bin/telcoin node --datadir /home/nonroot/data --dev --chain yukon --http.addr 0.0.0.0
+    ports:
+      - 8545:8544
+    volumes:
+      - validator2-data:/home/nonroot/data
+    networks:
+      validators:
+        ipv4_address: 10.10.0.22
+  validator3:
+    build:
+      context: ../
+      dockerfile: etc/Dockerfile
+    depends_on:
+      - comittee
+    command: /usr/local/bin/telcoin node --datadir /home/nonroot/data --dev --chain yukon --http.addr 0.0.0.0
+    ports:
+      - 8546:8544
+    volumes:
+      - validator3-data:/home/nonroot/data
+    networks:
+      validators:
+        ipv4_address: 10.10.0.23
+  validator4:
+    build:
+      context: ../
+      dockerfile: etc/Dockerfile
+    depends_on:
+      - comittee
+    command: /usr/local/bin/telcoin node --datadir /home/nonroot/data --dev --chain yukon --http.addr 0.0.0.0
+    ports:
+      - 8547:8544
+    volumes:
+      - validator4-data:/home/nonroot/data
+    networks:
+      validators:
+        ipv4_address: 10.10.0.24
+
+volumes:
+  validator1-data:
+  validator2-data:
+  validator3-data:
+  validator4-data:
+  sharedgenesisdir:
+
+networks:
+  validators:
+    driver: bridge
+    ipam:
+      config:
+        - subnet: 10.10.0.0/16

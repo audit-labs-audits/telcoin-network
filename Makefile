@@ -50,14 +50,20 @@ docker-login:
 	gcloud auth configure-docker us-docker.pkg.dev ;
 	
 docker-build:
-	docker build . -t us-docker.pkg.dev/telcoin-network/telcoin-network/yukon ;
-	
+	docker build -t us-docker.pkg.dev/telcoin-network/telcoin-network/yukon -f ./etc/Dockerfile . ;
+
 docker-push:
 	docker push us-docker.pkg.dev/telcoin-network/telcoin-network/yukon:latest ;
 
 docker-layerg:
-	docker build . -t layerg/yukon ;
+	docker build -t layerg/yukon -f ./etc/Dockerfile . ;
 	docker push layerg/yukon:latest ;
+
+up:
+	docker compose -f ./etc/compose.yaml up --build --remove-orphans --detach ;
+
+down:
+	docker compose -f ./etc/compose.yaml down --remove-orphans -v ;
 
 # run an http rpc server on default port
 node:
