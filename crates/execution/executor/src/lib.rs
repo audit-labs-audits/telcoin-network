@@ -526,7 +526,7 @@ mod tests {
     use reth_transaction_pool::noop::NoopTransactionPool;
     use std::{str::FromStr, time::Duration};
     use tn_types::{
-        execution_args, yukon_genesis, BatchAPI, Certificate, CommittedSubDag, ReputationScores,
+        adiri_genesis, execution_args, BatchAPI, Certificate, CommittedSubDag, ReputationScores,
     };
     use tokio::{
         runtime::Handle,
@@ -575,7 +575,7 @@ mod tests {
 
         //=== Execution
 
-        let genesis = yukon_genesis();
+        let genesis = adiri_genesis();
         let args = execution_args();
 
         // collect txs and addresses for later assertions

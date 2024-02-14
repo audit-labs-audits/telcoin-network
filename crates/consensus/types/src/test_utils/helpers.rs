@@ -3,7 +3,7 @@
 
 //! Helper methods for creating useful structs during tests.
 use crate::{
-    to_intent_message, yukon_chain_spec_arc, AuthorityIdentifier, Batch, BatchDigest, BlsKeypair,
+    adiri_chain_spec_arc, to_intent_message, AuthorityIdentifier, Batch, BatchDigest, BlsKeypair,
     BlsSignature, Certificate, CertificateAPI, CertificateDigest, Committee, Epoch, Header,
     HeaderAPI, HeaderV1Builder, Multiaddr, NetworkKeypair, Round, Stake, TimestampSec, Transaction,
     ValidatorSignature, WorkerId,
@@ -170,12 +170,12 @@ pub fn fixture_payload_with_rand<R: Rng + ?Sized>(
 /// Create a transaction with a randomly generated keypair.
 pub fn transaction_with_rand<R: Rng + ?Sized>(_rand: &mut R) -> Transaction {
     // generate random value transactions, but the length will be always 100 bytes
-    // gas price for yukon genesis: 875000000
+    // gas price for adiri genesis: 875000000
     //
     // very inefficient, but less refactoring => quicker release
 
     let mut tx_factory = TransactionFactory::new_random();
-    let chain = yukon_chain_spec_arc();
+    let chain = adiri_chain_spec_arc();
     let gas_price = 875000000;
     let value =
         U256::from(10).checked_pow(U256::from(18)).expect("1e18 doesn't overflow U256").into();
@@ -195,14 +195,14 @@ pub fn transaction() -> Transaction {
     // The fn is complicated bc everything boils down to this fn
     // for seeding test data.
     //
-    // gas price for yukon genesis: 875000000
+    // gas price for adiri genesis: 875000000
     //
     // very inefficient, but less refactoring => quicker release
 
     // TODO: use [0; 32] seed account instead?
     // Address: 0xb14d3c4f5fbfbcfb98af2d330000d49c95b93aa7
     let mut tx_factory = TransactionFactory::new_random();
-    let chain = yukon_chain_spec_arc();
+    let chain = adiri_chain_spec_arc();
     let gas_price = 875000000;
     let value =
         U256::from(10).checked_pow(U256::from(18)).expect("1e18 doesn't overflow U256").into();

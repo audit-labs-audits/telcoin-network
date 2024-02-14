@@ -34,7 +34,7 @@ pub struct Cli<Ext: RethCliExt = ()> {
         long,
         value_name = "CHAIN_OR_PATH",
         verbatim_doc_comment,
-        default_value = "yukon",
+        default_value = "adiri",
         value_parser = clap_genesis_parser,
         global = true,
     )]
@@ -332,7 +332,7 @@ impl Display for ColorMode {
 mod tests {
     use super::*;
     use clap::CommandFactory;
-    use tn_types::yukon_chain_spec_arc;
+    use tn_types::adiri_chain_spec_arc;
 
     #[test]
     fn parse_color_mode() {
@@ -365,7 +365,7 @@ mod tests {
     #[test]
     fn parse_logs_path() {
         let mut tn = Cli::<()>::try_parse_from(["telcoin-network", "node"]).unwrap();
-        assert_eq!(tn.chain.chain(), yukon_chain_spec_arc().chain());
+        assert_eq!(tn.chain.chain(), adiri_chain_spec_arc().chain());
         tn.logs.log_file_directory = tn.logs.log_file_directory.join(tn.chain.chain.to_string());
         let log_dir = tn.logs.log_file_directory;
         assert!(log_dir.as_ref().ends_with("telcoin-network/logs/2017"), "{:?}", log_dir);

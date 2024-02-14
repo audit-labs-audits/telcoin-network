@@ -3,7 +3,7 @@
 //! The yaml, chainspec, and Genesis struct are used for all
 //! testing purposes.
 //!
-//! Yukon is the current name for multi-node testnet.
+//! adiri is the current name for multi-node testnet.
 
 use crate::{
     verify_proof_of_possession, BlsPublicKey, BlsSignature, Committee, CommitteeBuilder, Epoch,
@@ -26,7 +26,7 @@ use std::{
 };
 use tempfile::tempdir;
 use tracing::{info, warn};
-pub const GENESIS_VALIDATORS_DIR: &'static str = "validators";
+pub const GENESIS_VALIDATORS_DIR: &str = "validators";
 
 /// Return a [NodeCommand] with default args parsed by `clap`.
 pub fn execution_args() -> NodeCommand {
@@ -35,37 +35,37 @@ pub fn execution_args() -> NodeCommand {
         "reth",
         "--dev",
         "--chain",
-        &yukon_genesis_string(),
+        &adiri_genesis_string(),
         "--datadir",
         datadir.path().to_str().expect("tmpdir path to string in execution_args()"),
     ])
     .expect("clap parse node command")
 }
 
-/// Yukon parsed Genesis.
-pub fn yukon_genesis() -> Genesis {
-    let yaml = yukon_genesis_string();
-    serde_json::from_str(&yaml).expect("serde parse valid yukon yaml")
+/// adiri parsed Genesis.
+pub fn adiri_genesis() -> Genesis {
+    let yaml = adiri_genesis_string();
+    serde_json::from_str(&yaml).expect("serde parse valid adiri yaml")
 }
 
-/// Yukon chain spec parsed from genesis.
-pub fn yukon_chain_spec() -> ChainSpec {
-    yukon_genesis().into()
+/// adiri chain spec parsed from genesis.
+pub fn adiri_chain_spec() -> ChainSpec {
+    adiri_genesis().into()
 }
 
-/// Yukon chain spec parsed from genesis and wrapped in [Arc].
-pub fn yukon_chain_spec_arc() -> Arc<ChainSpec> {
-    Arc::new(yukon_chain_spec())
+/// adiri chain spec parsed from genesis and wrapped in [Arc].
+pub fn adiri_chain_spec_arc() -> Arc<ChainSpec> {
+    Arc::new(adiri_chain_spec())
 }
 
-/// Yukon genesis string in yaml format.
+/// adiri genesis string in yaml format.
 ///
 /// Seed "Bob" and [0; 32] seed addresses.
-pub fn yukon_genesis_string() -> String {
-    yukon_genesis_raw().to_string()
+pub fn adiri_genesis_string() -> String {
+    adiri_genesis_raw().to_string()
 }
 
-/// Static strig for yukon genesis.
+/// Static strig for adiri genesis.
 ///
 /// Used by CLI and other methods above.
 ///
@@ -73,7 +73,7 @@ pub fn yukon_genesis_string() -> String {
 /// - Telcoin was founded in Singapore in 2017
 /// - 2017 in hex is "0x7e1" (ie- "tel")
 /// - 2017 => 1 in numerology
-pub fn yukon_genesis_raw() -> &'static str {
+pub fn adiri_genesis_raw() -> &'static str {
     r#"
 {
     "nonce": "0x0",
@@ -126,10 +126,16 @@ pub struct NetworkGenesis {
     // signatures: BTreeMap<BlsPublicKey, ValidatorSignatureInfo>,
 }
 
+impl Default for NetworkGenesis {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl NetworkGenesis {
-    /// Create new version of [NetworkGenesis] using the yukon genesis [ChainSpec].
+    /// Create new version of [NetworkGenesis] using the adiri genesis [ChainSpec].
     pub fn new() -> Self {
-        Self { chain: yukon_genesis().into(), validators: Default::default() }
+        Self { chain: adiri_genesis().into(), validators: Default::default() }
     }
 
     /// Add validator information to the genesis directory.
@@ -175,7 +181,7 @@ impl NetworkGenesis {
         }
 
         let network_genesis = Self {
-            chain: yukon_genesis().into(),
+            chain: adiri_genesis().into(),
             validators,
             // signatures,
         };
@@ -458,7 +464,7 @@ impl PartialEq for ValidatorSignatureInfo {
 mod tests {
     use super::NetworkGenesis;
     use crate::{
-        generate_proof_of_possession, yukon_chain_spec, BlsKeypair, Multiaddr, NetworkKeypair,
+        adiri_chain_spec, generate_proof_of_possession, BlsKeypair, Multiaddr, NetworkKeypair,
         PrimaryInfo, ValidatorInfo, WorkerIndex, WorkerInfo,
     };
     use fastcrypto::traits::KeyPair;
@@ -476,7 +482,7 @@ mod tests {
         let network_keypair = NetworkKeypair::generate(&mut StdRng::from_seed([0; 32]));
         let address = Address::from_raw_public_key(&[0; 64]);
         let proof_of_possession =
-            generate_proof_of_possession(&bls_keypair, &yukon_chain_spec()).unwrap();
+            generate_proof_of_possession(&bls_keypair, &adiri_chain_spec()).unwrap();
         let primary_network_address = Multiaddr::empty();
         let worker_info = WorkerInfo::default();
         let worker_index = WorkerIndex(BTreeMap::from([(0, worker_info)]));
@@ -516,7 +522,7 @@ mod tests {
             let network_keypair = NetworkKeypair::generate(&mut StdRng::from_seed([0; 32]));
             let address = Address::from_raw_public_key(&[0; 64]);
             let proof_of_possession =
-                generate_proof_of_possession(&bls_keypair, &yukon_chain_spec()).unwrap();
+                generate_proof_of_possession(&bls_keypair, &adiri_chain_spec()).unwrap();
             let primary_network_address = Multiaddr::empty();
             let worker_info = WorkerInfo::default();
             let worker_index = WorkerIndex(BTreeMap::from([(0, worker_info)]));
@@ -544,7 +550,7 @@ mod tests {
 
     #[test]
     fn test_validate_genesis_fails() {
-        // this uses `yukon_genesis`
+        // this uses `adiri_genesis`
         let mut network_genesis = NetworkGenesis::new();
         // create keys and information for validators
         for v in 0..4 {
@@ -553,7 +559,7 @@ mod tests {
             let address = Address::from_raw_public_key(&[0; 64]);
 
             // create wrong chain spec
-            let mut wrong_chain = yukon_chain_spec();
+            let mut wrong_chain = adiri_chain_spec();
             wrong_chain.genesis.timestamp = 0;
 
             // generate proof with wrong chain spec

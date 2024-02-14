@@ -443,7 +443,7 @@ async fn get_network_peers_from_admin_server() {
     let resp = reqwest::get(format!(
         "http://127.0.0.1:{}/known_peers",
         worker_1_parameters.network_admin_server.worker_network_admin_server_base_port +
-            worker_id as u16
+            worker_id
     ))
     .await
     .unwrap()
@@ -458,7 +458,7 @@ async fn get_network_peers_from_admin_server() {
     let resp = reqwest::get(format!(
         "http://127.0.0.1:{}/peers",
         worker_1_parameters.network_admin_server.worker_network_admin_server_base_port +
-            worker_id as u16
+            worker_id
     ))
     .await
     .unwrap()
@@ -565,7 +565,7 @@ async fn get_network_peers_from_admin_server() {
     let resp = reqwest::get(format!(
         "http://127.0.0.1:{}/known_peers",
         worker_2_parameters.network_admin_server.worker_network_admin_server_base_port +
-            worker_id as u16
+            worker_id
     ))
     .await
     .unwrap()
@@ -580,7 +580,7 @@ async fn get_network_peers_from_admin_server() {
     let resp = reqwest::get(format!(
         "http://127.0.0.1:{}/peers",
         worker_1_parameters.network_admin_server.worker_network_admin_server_base_port +
-            worker_id as u16
+            worker_id
     ))
     .await
     .unwrap()
@@ -599,7 +599,7 @@ async fn get_network_peers_from_admin_server() {
     let resp = reqwest::get(format!(
         "http://127.0.0.1:{}/peers",
         worker_2_parameters.network_admin_server.worker_network_admin_server_base_port +
-            worker_id as u16
+            worker_id
     ))
     .await
     .unwrap()

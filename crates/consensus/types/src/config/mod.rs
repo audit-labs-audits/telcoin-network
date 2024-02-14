@@ -304,7 +304,7 @@ impl WorkerIndex {
     /// TODO: this is a temporary solution while valiators only
     /// have one worker per primary.
     pub fn first_worker(&self) -> eyre::Result<(&WorkerId, &WorkerInfo)> {
-        Ok(self.0.first_key_value().with_context(|| "No workers found in index")?)
+        self.0.first_key_value().with_context(|| "No workers found in index")
     }
 }
 

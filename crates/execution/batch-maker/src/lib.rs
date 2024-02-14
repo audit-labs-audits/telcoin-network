@@ -267,7 +267,7 @@ impl StorageInner {
         let mut header = Header {
             parent_hash: parent.hash,
             ommers_hash: EMPTY_OMMER_ROOT_HASH,
-            beneficiary: self.address.clone(),
+            beneficiary: self.address,
             state_root: Default::default(),
             transactions_root: Default::default(),
             receipts_root: Default::default(),
@@ -438,15 +438,16 @@ mod tests {
     };
     use std::{str::FromStr, time::Duration};
     use tn_types::{
+        adiri_genesis,
         test_utils::{get_gas_price, TransactionFactory},
-        yukon_genesis, BatchAPI, MetadataAPI,
+        BatchAPI, MetadataAPI,
     };
     use tokio::time::timeout;
 
     #[tokio::test]
     async fn test_make_batch() {
         init_test_tracing();
-        let genesis = yukon_genesis();
+        let genesis = adiri_genesis();
         let mut tx_factory = TransactionFactory::new();
         let factory_address = tx_factory.address();
         debug!("seeding factory address: {factory_address:?}");
@@ -502,7 +503,7 @@ mod tests {
             txpool.clone(),
             to_worker,
             mining_mode,
-            address.clone(),
+            address,
         )
         .build();
 

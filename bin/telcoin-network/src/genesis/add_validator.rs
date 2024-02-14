@@ -51,7 +51,7 @@ pub struct AddValidator {
         long,
         value_name = "CHAIN_OR_PATH",
         verbatim_doc_comment,
-        default_value = "yukon",
+        default_value = "adiri",
         // default_value_if("dev", "true", "dev"),
         value_parser = clap_genesis_parser,
         required = false,

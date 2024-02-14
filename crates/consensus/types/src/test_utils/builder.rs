@@ -112,7 +112,7 @@ impl<R: rand::RngCore + rand::CryptoRng> Builder<R> {
                 a.public_key().clone(),
                 self.stake.pop_front().unwrap_or(1),
                 a.network_address.clone(),
-                a.execution_address.clone(),
+                a.execution_address,
                 a.network_public_key(),
                 a.network_address.to_string(),
             );

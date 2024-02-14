@@ -422,7 +422,7 @@ where
             txpool.clone(),
             to_worker,
             mining_mode,
-            self.address.clone(),
+            self.address,
         )
         .build();
 
@@ -541,7 +541,7 @@ where
 
     /// Atomic boolean that's updated on start/shutdown methods
     fn worker_is_running(&self, worker_id: &WorkerId) -> bool {
-        if let Some(_) = self.worker_components.get(worker_id) {
+        if self.worker_components.get(worker_id).is_some() {
             return true;
         }
 
@@ -596,7 +596,7 @@ impl ExecutionNode
         let datadir = params.datadir.unwrap_or_chain_default(chain.chain);
 
         let db_path = datadir.db_path();
-        let db = Arc::new(init_db(&db_path, params.db.log_level)?.with_metrics());
+        let db = Arc::new(init_db(db_path, params.db.log_level)?.with_metrics());
         let genesis_hash = init_genesis(db.clone(), chain.clone())?;
 
         debug!(target: "execution::new", ?genesis_hash, "genesis initialized");
@@ -645,7 +645,7 @@ impl ExecutionNode
 
         // use inner u16 for instance
         let instance = authority_id.0 + 1;
-        inner.adjust_engine_ports(instance as u16)?;
+        inner.adjust_engine_ports(instance)?;
 
         Ok(ExecutionNode { internal: Arc::new(RwLock::new(inner)) })
     }
@@ -807,10 +807,9 @@ mod tests {
         time::Duration,
     };
     use tn_types::{
-        execution_args,
+        adiri_chain_spec_arc, adiri_genesis, execution_args,
         test_utils::{batch, get_gas_price, CommitteeFixture, TransactionFactory},
-        yukon_chain_spec_arc, yukon_genesis, AuthorityIdentifier, BatchAPI, Certificate,
-        ConsensusOutput, PreSubscribedBroadcastSender,
+        AuthorityIdentifier, BatchAPI, Certificate, ConsensusOutput, PreSubscribedBroadcastSender,
     };
     use tokio::{
         sync::{mpsc::error::TryRecvError, watch},
@@ -821,14 +820,14 @@ mod tests {
     #[tokio::test]
     async fn test_rpc_ports_adjust() -> eyre::Result<()> {
         // assert defaults for instance `1`
-        let genesis = yukon_genesis();
+        let genesis = adiri_genesis();
         let chain: Arc<ChainSpec> = Arc::new(genesis.into());
         // address doesn't affect these tests
         let address = Address::ZERO;
 
         let params = execution_args();
         let node =
-            ExecutionNode::new(AuthorityIdentifier(0), chain.clone(), address.clone(), params)?;
+            ExecutionNode::new(AuthorityIdentifier(0), chain.clone(), address, params)?;
         let mut inner = node.internal.write().await;
         assert_eq!(inner.args.rpc.http_port, DEFAULT_HTTP_RPC_PORT);
         assert_eq!(inner.args.rpc.ws_port, DEFAULT_WS_RPC_PORT);
@@ -865,7 +864,7 @@ mod tests {
         let params = execution_args();
         // assert rpc ports adjusted for instance `2`
         let node =
-            ExecutionNode::new(AuthorityIdentifier(1), chain.clone(), address.clone(), params)?;
+            ExecutionNode::new(AuthorityIdentifier(1), chain.clone(), address, params)?;
         let inner = node.internal.read().await;
         assert_eq!(inner.args.rpc.http_port, 8544);
         assert_eq!(inner.args.rpc.ws_port, 8548);
@@ -874,7 +873,7 @@ mod tests {
         let params = execution_args();
         // assert rpc ports adjusted for instance `3`
         let node =
-            ExecutionNode::new(AuthorityIdentifier(2), chain.clone(), address.clone(), params)?;
+            ExecutionNode::new(AuthorityIdentifier(2), chain.clone(), address, params)?;
         let inner = node.internal.read().await;
         assert_eq!(inner.args.rpc.http_port, 8543);
         assert_eq!(inner.args.rpc.ws_port, 8550);
@@ -883,7 +882,7 @@ mod tests {
         let params = execution_args();
         // assert rpc ports adjusted for instance `4`
         let node =
-            ExecutionNode::new(AuthorityIdentifier(3), chain.clone(), address.clone(), params)?;
+            ExecutionNode::new(AuthorityIdentifier(3), chain.clone(), address, params)?;
         let inner = node.internal.read().await;
         assert_eq!(inner.args.rpc.http_port, 8542);
         assert_eq!(inner.args.rpc.ws_port, 8552);
@@ -894,7 +893,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_shutdowns() -> eyre::Result<()> {
-        let genesis = yukon_genesis();
+        let genesis = adiri_genesis();
         let chain: Arc<ChainSpec> = Arc::new(genesis.into());
         let address = Address::ZERO;
 
@@ -1126,7 +1125,7 @@ mod tests {
 
         // TODO: better way to do this?
         // seed genesis with output from consensus
-        let genesis = yukon_genesis();
+        let genesis = adiri_genesis();
 
         // collect txs and addresses for later assertions
         let mut txs_in_output = vec![];
@@ -1172,7 +1171,7 @@ mod tests {
         debug!("created execution node");
 
         // start engine
-        let _handles = node.start_engine(rx_notifier).await?;
+        node.start_engine(rx_notifier).await?;
         debug!("time to sleep");
 
         let res = to_execution.send(consensus_output).await;
@@ -1244,7 +1243,7 @@ mod tests {
     async fn test_batch_maker_and_rpc() -> eyre::Result<()> {
         init_test_tracing();
         // genesis
-        let chain = yukon_chain_spec_arc();
+        let chain = adiri_chain_spec_arc();
         let address = Address::from(U160::from(3003));
 
         debug!("creating execution node..");

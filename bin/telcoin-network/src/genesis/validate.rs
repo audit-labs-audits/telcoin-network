@@ -48,7 +48,7 @@ pub struct ValidateArgs {
         long,
         value_name = "CHAIN_OR_PATH",
         verbatim_doc_comment,
-        default_value = "yukon",
+        default_value = "adiri",
         // default_value_if("dev", "true", "dev"),
         value_parser = clap_genesis_parser,
         required = false,
@@ -70,7 +70,7 @@ impl ValidateArgs {
         // load network genesis
         let data_dir = self.datadir.unwrap_or_chain_default(self.chain.chain);
         let genesis_path = data_dir.genesis_path();
-        let network_genesis = NetworkGenesis::load_from_path(&genesis_path)?;
+        let network_genesis = NetworkGenesis::load_from_path(genesis_path)?;
         network_genesis.validate()
     }
 }

@@ -5,7 +5,7 @@ use std::{fmt::Debug, path::PathBuf};
 use tn_types::GENESIS_VALIDATORS_DIR;
 
 /// The path to join for the directory that stores validator keys.
-pub const VALIDATOR_KEYS_DIR: &'static str = "validator-keys";
+pub const VALIDATOR_KEYS_DIR: &str = "validator-keys";
 
 /// Constructs a string to be used as a path for configuration and db paths.
 pub fn config_path_prefix(chain: Chain) -> String {

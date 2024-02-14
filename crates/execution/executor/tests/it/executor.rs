@@ -54,9 +54,9 @@ use tn_executor::{
     build_network, build_networked_pipeline, lookup_head, spawn_payload_builder_service, Executor,
 };
 use tn_types::{
-    execution_args,
+    adiri_genesis, execution_args,
     test_utils::{batch, CommitteeFixture},
-    yukon_genesis, BatchAPI, Certificate, ConsensusOutput, PreSubscribedBroadcastSender,
+    BatchAPI, Certificate, ConsensusOutput, PreSubscribedBroadcastSender,
 };
 use tokio::{
     runtime::Handle,
@@ -226,7 +226,7 @@ async fn test_execute_consensus_output() {
 
     //=== Execution
 
-    let genesis = yukon_genesis();
+    let genesis = adiri_genesis();
     let args = execution_args();
 
     // collect txs and addresses for later assertions

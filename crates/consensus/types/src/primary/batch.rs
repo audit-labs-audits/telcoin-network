@@ -96,7 +96,7 @@ impl TryFrom<&Batch> for SealedBlockWithSenders {
         let body = tx_signed?;
         // seal block
         let block = SealedBlock { header, body, ommers: vec![], withdrawals: Some(vec![]) };
-        block.try_seal_with_senders().map_err(|block| Self::Error::RecoverSigners(block))
+        block.try_seal_with_senders().map_err(Self::Error::RecoverSigners)
     }
 }
 

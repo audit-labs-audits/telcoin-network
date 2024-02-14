@@ -42,7 +42,8 @@ integration-tests:
 	cargo test --color=always --test integration tests ;
 
 # format and lint
-lint:
+fmt:
+	cargo +nightly fmt ;
 	cargo +nightly clippy --fix --all ;
 
 docker-login:
@@ -50,10 +51,10 @@ docker-login:
 	gcloud auth configure-docker us-docker.pkg.dev ;
 	
 docker-build:
-	docker build -t us-docker.pkg.dev/telcoin-network/telcoin-network/yukon -f ./etc/Dockerfile . ;
+	docker build -t us-docker.pkg.dev/telcoin-network/telcoin-network/adiri -f ./etc/Dockerfile . ;
 
 docker-push:
-	docker push us-docker.pkg.dev/telcoin-network/telcoin-network/yukon:latest ;
+	docker push us-docker.pkg.dev/telcoin-network/telcoin-network/adiri:latest ;
 
 docker-layerg:
 	docker build -t layerg/yukon -f ./etc/Dockerfile . ;

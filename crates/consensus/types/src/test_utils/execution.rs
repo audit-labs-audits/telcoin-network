@@ -25,6 +25,12 @@ pub struct TransactionFactory {
     nonce: u64,
 }
 
+impl Default for TransactionFactory {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl TransactionFactory {
     /// Create a new instance of self from a [0; 32] seed.
     ///
@@ -75,7 +81,7 @@ impl TransactionFactory {
         // Eip1559
         let transaction = Transaction::Eip1559(TxEip1559 {
             chain_id: chain.chain.id(),
-            nonce: self.nonce.into(),
+            nonce: self.nonce,
             max_priority_fee_per_gas: 0,
             max_fee_per_gas: gas_price,
             gas_limit: 1_000_000,
@@ -119,11 +125,11 @@ impl TransactionFactory {
         let tx = self.create_eip1559(chain, gas_price, to, value);
         let recovered = tx.try_into_ecrecovered().expect("tx is recovered");
         let transaction = <Pool::Transaction>::from_recovered_pooled_transaction(recovered.into());
-        let hash = pool
+        
+        pool
             .add_transaction(TransactionOrigin::Local, transaction)
             .await
-            .expect("recovered tx added to pool");
-        hash
+            .expect("recovered tx added to pool")
     }
 
     /// Submit a transaction to the provided pool.
@@ -133,11 +139,11 @@ impl TransactionFactory {
     {
         let recovered = tx.try_into_ecrecovered().expect("tx is recovered");
         let transaction = <Pool::Transaction>::from_recovered_pooled_transaction(recovered.into());
-        let hash = pool
+        
+        pool
             .add_transaction(TransactionOrigin::Local, transaction)
             .await
-            .expect("recovered tx added to pool");
-        hash
+            .expect("recovered tx added to pool")
     }
 }
 

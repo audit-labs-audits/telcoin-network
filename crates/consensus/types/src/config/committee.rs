@@ -108,7 +108,7 @@ impl Authority {
 
     pub fn execution_address(&self) -> Address {
         assert!(self.initialised);
-        self.execution_address.clone()
+        self.execution_address
     }
 
     pub fn network_key(&self) -> NetworkPublicKey {

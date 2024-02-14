@@ -13,7 +13,7 @@ const PRIMARY_METRICS_PREFIX: &str = "narwhal_primary";
 const WORKER_METRICS_PREFIX: &str = "narwhal_worker";
 
 pub fn new_registry() -> Result<Registry, PrometheusError> {
-    Ok(Registry::new_custom(None, None)?)
+    Registry::new_custom(None, None)
 }
 
 pub fn primary_metrics_registry(

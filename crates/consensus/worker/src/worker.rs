@@ -348,7 +348,7 @@ impl Worker {
         let network_admin_server_base_port = parameters
             .network_admin_server
             .worker_network_admin_server_base_port
-            .checked_add(id as u16)
+            .checked_add(id)
             .unwrap();
         info!(
             "Worker {} listening to network admin messages on 127.0.0.1:{}",

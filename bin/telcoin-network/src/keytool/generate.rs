@@ -56,7 +56,7 @@ pub struct ValidatorArgs {
         long,
         value_name = "CHAIN_OR_PATH",
         verbatim_doc_comment,
-        default_value = "yukon",
+        default_value = "adiri",
         value_parser = clap_genesis_parser,
         global = true,
     )]
@@ -105,7 +105,7 @@ impl ValidatorArgs {
 
         // bls keypair for consensus - drop after write to zeroize memory
         let bls_keypair = self.generate_keypair_from_rng::<BlsKeypair>()?;
-        self.write_keypair_to_file(&bls_keypair, &authority_key_path.join(BLS_KEYFILE))?;
+        self.write_keypair_to_file(&bls_keypair, authority_key_path.join(BLS_KEYFILE))?;
         let proof = generate_proof_of_possession(&bls_keypair, &self.chain)?;
         config.update_protocol_key(bls_keypair.public().clone())?;
         config.update_proof_of_possession(proof)?;
@@ -115,7 +115,7 @@ impl ValidatorArgs {
         let network_keypair = self.generate_keypair_from_rng::<NetworkKeypair>()?;
         self.write_keypair_to_file(
             &network_keypair,
-            &authority_key_path.join(PRIMARY_NETWORK_KEYFILE),
+            authority_key_path.join(PRIMARY_NETWORK_KEYFILE),
         )?;
         config.update_primary_network_key(network_keypair.public().clone())?;
         drop(network_keypair); // calls zeroize() for OnceCell containing private key
@@ -124,7 +124,7 @@ impl ValidatorArgs {
         let network_keypair = self.generate_keypair_from_rng::<NetworkKeypair>()?;
         self.write_keypair_to_file(
             &network_keypair,
-            &authority_key_path.join(WORKER_NETWORK_KEYFILE),
+            authority_key_path.join(WORKER_NETWORK_KEYFILE),
         )?;
         config.update_worker_network_key(network_keypair.public().clone())?;
         drop(network_keypair); // calls zeroize() for OnceCell containing private key

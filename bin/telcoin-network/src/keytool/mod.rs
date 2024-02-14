@@ -43,7 +43,7 @@ pub struct KeyArgs {
         long,
         value_name = "CHAIN_OR_PATH",
         verbatim_doc_comment,
-        default_value = "yukon",
+        default_value = "adiri",
         value_parser = clap_genesis_parser,
         required = false,
     )]
@@ -135,7 +135,7 @@ impl KeyArgs {
         } else if !force {
             warn!("overwriting keys for validator")
             // TODO: this causes an infinite recursion of the question
-            // when run from the yukon genesis makefile
+            // when run from the adiri genesis makefile
 
             // // ask user if they want to continue generating new keys
             // let answer =

@@ -61,7 +61,7 @@ impl AuthorityFixture {
 
     /// The authority's [Address] for execution layer.
     pub fn execution_address(&self) -> Address {
-        self.execution_address.clone()
+        self.execution_address
     }
 
     /// Create a new anemo network for consensus.

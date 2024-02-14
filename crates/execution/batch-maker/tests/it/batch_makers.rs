@@ -30,8 +30,9 @@ use reth_transaction_pool::{
 use std::{str::FromStr, sync::Arc, time::Duration};
 use tn_batch_maker::{BatchMakerBuilder, MiningMode};
 use tn_types::{
+    adiri_genesis,
     test_utils::{create_batch_store, get_gas_price, TransactionFactory},
-    yukon_genesis, Batch, BatchAPI, MetadataAPI, PreSubscribedBroadcastSender,
+    Batch, BatchAPI, MetadataAPI, PreSubscribedBroadcastSender,
 };
 use tokio::time::timeout;
 use tracing::debug;
@@ -80,7 +81,7 @@ async fn test_make_batch_el_to_cl() {
     //=== Execution Layer
     //
 
-    let genesis = yukon_genesis();
+    let genesis = adiri_genesis();
     let mut tx_factory = TransactionFactory::new();
     let factory_address = tx_factory.address();
     debug!("seeding factory address: {factory_address:?}");

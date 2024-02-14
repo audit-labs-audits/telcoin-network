@@ -93,7 +93,7 @@ services:
       dockerfile: etc/Dockerfile
     depends_on:
       - comittee
-    command: /usr/local/bin/telcoin node --datadir /home/nonroot/data --dev --chain yukon --http.addr 0.0.0.0
+    command: /usr/local/bin/telcoin node --datadir /home/nonroot/data --dev --chain adiri --http.addr 0.0.0.0
     ports:
       - 8544:8544
     volumes:
@@ -107,7 +107,7 @@ services:
       dockerfile: etc/Dockerfile
     depends_on:
       - comittee
-    command: /usr/local/bin/telcoin node --datadir /home/nonroot/data --dev --chain yukon --http.addr 0.0.0.0
+    command: /usr/local/bin/telcoin node --datadir /home/nonroot/data --dev --chain adiri --http.addr 0.0.0.0
     ports:
       - 8545:8544
     volumes:
@@ -121,7 +121,7 @@ services:
       dockerfile: etc/Dockerfile
     depends_on:
       - comittee
-    command: /usr/local/bin/telcoin node --datadir /home/nonroot/data --dev --chain yukon --http.addr 0.0.0.0
+    command: /usr/local/bin/telcoin node --datadir /home/nonroot/data --dev --chain adiri --http.addr 0.0.0.0
     ports:
       - 8546:8544
     volumes:
@@ -135,7 +135,7 @@ services:
       dockerfile: etc/Dockerfile
     depends_on:
       - comittee
-    command: /usr/local/bin/telcoin node --datadir /home/nonroot/data --dev --chain yukon --http.addr 0.0.0.0
+    command: /usr/local/bin/telcoin node --datadir /home/nonroot/data --dev --chain adiri --http.addr 0.0.0.0
     ports:
       - 8547:8544
     volumes:

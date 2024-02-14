@@ -106,7 +106,7 @@ pub fn verify_proof_of_possession(
     msg.extend_from_slice(chain_bytes.as_slice());
     let result = proof.verify_secure(
         &IntentMessage::new(Intent::telcoin_app(IntentScope::ProofOfPossession), msg),
-        public_key.into(),
+        public_key,
     );
 
     Ok(result?)
@@ -262,7 +262,7 @@ pub fn to_intent_message<T>(value: T) -> IntentMessage<T> {
 #[cfg(test)]
 mod tests {
     use super::{generate_proof_of_possession, verify_proof_of_possession};
-    use crate::{yukon_chain_spec_arc, yukon_genesis, BlsKeypair};
+    use crate::{adiri_chain_spec_arc, adiri_genesis, BlsKeypair};
     use fastcrypto::traits::KeyPair;
     use rand::{
         rngs::{OsRng, StdRng},
@@ -272,7 +272,7 @@ mod tests {
     #[test]
     fn test_proof_of_possession_success() {
         let keypair = BlsKeypair::generate(&mut StdRng::from_rng(OsRng).unwrap());
-        let chain_spec = yukon_chain_spec_arc();
+        let chain_spec = adiri_chain_spec_arc();
         let proof = generate_proof_of_possession(&keypair, &chain_spec).unwrap();
         assert!(verify_proof_of_possession(&proof, keypair.public(), &chain_spec).is_ok())
     }
@@ -281,7 +281,7 @@ mod tests {
     fn test_proof_of_possession_fails_wrong_signature() {
         let keypair = BlsKeypair::generate(&mut StdRng::from_rng(OsRng).unwrap());
         let malicious_key = BlsKeypair::generate(&mut StdRng::from_rng(OsRng).unwrap());
-        let chain_spec = yukon_chain_spec_arc();
+        let chain_spec = adiri_chain_spec_arc();
         let proof = generate_proof_of_possession(&malicious_key, &chain_spec).unwrap();
         assert!(verify_proof_of_possession(&proof, keypair.public(), &chain_spec).is_err())
     }
@@ -290,7 +290,7 @@ mod tests {
     fn test_proof_of_possession_fails_wrong_public_key() {
         let keypair = BlsKeypair::generate(&mut StdRng::from_rng(OsRng).unwrap());
         let malicious_key = BlsKeypair::generate(&mut StdRng::from_rng(OsRng).unwrap());
-        let chain_spec = yukon_chain_spec_arc();
+        let chain_spec = adiri_chain_spec_arc();
         let proof = generate_proof_of_possession(&keypair, &chain_spec).unwrap();
         assert!(verify_proof_of_possession(&proof, malicious_key.public(), &chain_spec).is_err())
     }
@@ -298,8 +298,8 @@ mod tests {
     #[test]
     fn test_proof_of_possession_fails_wrong_message() {
         let keypair = BlsKeypair::generate(&mut StdRng::from_rng(OsRng).unwrap());
-        let chain_spec = yukon_chain_spec_arc();
-        let mut wrong = yukon_genesis();
+        let chain_spec = adiri_chain_spec_arc();
+        let mut wrong = adiri_genesis();
         wrong.timestamp = 0;
         let proof = generate_proof_of_possession(&keypair, &wrong.into()).unwrap();
         assert!(verify_proof_of_possession(&proof, keypair.public(), &chain_spec).is_err())

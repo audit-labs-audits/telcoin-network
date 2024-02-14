@@ -50,7 +50,7 @@ impl ConsensusOutput {
     /// The address is used in the executed block as the
     /// beneficiary for block rewards.
     pub fn beneficiary(&self) -> Address {
-        self.beneficiary.clone()
+        self.beneficiary
     }
 }
 

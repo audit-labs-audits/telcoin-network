@@ -9,7 +9,7 @@ use std::{
     time::Duration,
 };
 use tn_types::{
-    utils::get_available_tcp_port, yukon_chain_spec, BlsPublicKey, BlsSignature, Multiaddr,
+    adiri_chain_spec, utils::get_available_tcp_port, BlsPublicKey, BlsSignature, Multiaddr,
     NetworkPublicKey, ValidatorInfo, WorkerIndex,
 };
 use tracing::info;
@@ -17,11 +17,11 @@ use tracing::info;
 use crate::traits::ConfigTrait;
 
 /// The filename to use when reading/writing the validator's BlsKey.
-pub const BLS_KEYFILE: &'static str = "bls.key";
+pub const BLS_KEYFILE: &str = "bls.key";
 /// The filename to use when reading/writing the primary's network key.
-pub const PRIMARY_NETWORK_KEYFILE: &'static str = "primary.key";
+pub const PRIMARY_NETWORK_KEYFILE: &str = "primary.key";
 /// The filename to use when reading/writing the network key used by all workers.
-pub const WORKER_NETWORK_KEYFILE: &'static str = "worker.key";
+pub const WORKER_NETWORK_KEYFILE: &str = "worker.key";
 
 /// Configuration for the Telcoin Network node.
 #[derive(Debug, Clone, Deserialize, Serialize)]
@@ -49,8 +49,8 @@ impl Default for Config {
             keypath: Default::default(),
             validator_info: Default::default(),
             parameters: Default::default(),
-            // specify yukon chain spec
-            chain_spec: yukon_chain_spec(),
+            // specify adiri chain spec
+            chain_spec: adiri_chain_spec(),
         }
     }
 }

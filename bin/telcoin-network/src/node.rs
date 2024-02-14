@@ -59,8 +59,8 @@ pub struct NodeCommand<Ext: RethCliExt = ()> {
         long,
         value_name = "CHAIN_OR_PATH",
         verbatim_doc_comment,
-        default_value = "yukon",
-        default_value_if("dev", "true", "yukon"),
+        default_value = "adiri",
+        default_value_if("dev", "true", "adiri"),
         value_parser = clap_genesis_parser,
         required = false,
     )]
@@ -185,7 +185,7 @@ impl<Ext: RethCliExt> NodeCommand<Ext> {
         // TODO: use this or CLI?
         let _chain = Arc::new(config.chain_spec().clone());
 
-        let terminate_early = self.debug.terminate.clone();
+        let terminate_early = self.debug.terminate;
 
         // get the worker's transaction address from the config
         let Self {
@@ -230,7 +230,7 @@ impl<Ext: RethCliExt> NodeCommand<Ext> {
         let engine = ExecutionNode::new(
             AuthorityIdentifier(self.instance), // TODO: where to get this value?
             self.chain.clone(),                 // TODO: get this from config?
-            config.execution_address().clone(),
+            *config.execution_address(),
             cli,
         )?;
 
@@ -252,7 +252,7 @@ impl<Ext: RethCliExt> NodeCommand<Ext> {
         let primary = PrimaryNode::new(config.parameters.clone(), registry_service.clone());
         let (worker_id, _worker_info) = config.workers().first_worker()?;
         let worker =
-            WorkerNode::new(worker_id.clone(), config.parameters.clone(), registry_service);
+            WorkerNode::new(*worker_id, config.parameters.clone(), registry_service);
 
         // TODO: find a better way to manage keys
         //

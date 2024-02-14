@@ -226,12 +226,12 @@ mod tests {
     use reth_provider::ProviderFactory;
     use reth_tracing::init_test_tracing;
     use std::str::FromStr;
-    use tn_types::{test_utils::TransactionFactory, yukon_genesis, VersionedMetadata};
+    use tn_types::{adiri_genesis, test_utils::TransactionFactory, VersionedMetadata};
 
     #[tokio::test]
     async fn test_valid_batch() {
         init_test_tracing();
-        let genesis = yukon_genesis();
+        let genesis = adiri_genesis();
         let tx_factory = TransactionFactory::new();
         let factory_address = tx_factory.address();
         debug!("seeding factory address: {factory_address:?}");

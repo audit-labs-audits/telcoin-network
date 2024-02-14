@@ -80,6 +80,6 @@ for ((i=0; i<$LENGTH; i++)); do
 
     if [ "$START" = true ]; then
         # start validator
-        cargo run --bin telcoin-network -- node --datadir "${DATADIR}" --dev --chain yukon --instance "${INSTANCE}"
+        cargo run --bin telcoin-network -- node --datadir "${DATADIR}" --dev --chain adiri --instance "${INSTANCE}"
     fi
 done
