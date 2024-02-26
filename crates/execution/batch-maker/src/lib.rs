@@ -251,7 +251,7 @@ impl StorageInner {
     /// transactions.
     pub(crate) fn build_header_template(
         &self,
-        transactions: &Vec<TransactionSigned>,
+        transactions: &[TransactionSigned],
         chain_spec: Arc<ChainSpec>,
         parent: SealedHeader,
     ) -> Header {

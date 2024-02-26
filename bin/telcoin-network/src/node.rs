@@ -8,29 +8,29 @@ use crate::{
 };
 use clap::{value_parser, Parser};
 use consensus_metrics::RegistryService;
-
 use fdlimit::raise_fd_limit;
 use narwhal_network::client::NetworkClient;
 use prometheus::Registry;
+#[cfg(not(feature = "faucet"))]
+use reth::cli::ext::DefaultRethNodeCommandConfig;
 use reth::{
     args::{
         utils::parse_socket_address, DatabaseArgs, DebugArgs, DevArgs, NetworkArgs,
         PayloadBuilderArgs, PruningArgs, RpcServerArgs, TxPoolArgs,
     },
-    cli::ext::{DefaultRethNodeCommandConfig, RethCliExt},
+    cli::ext::RethCliExt,
     dirs::MaybePlatformPath,
-    runner::CliContext,
 };
 use reth_primitives::ChainSpec;
-
 use std::{net::SocketAddr, path::PathBuf, str::FromStr, sync::Arc};
 use tn_config::{
     read_validator_keypair_from_file, traits::ConfigTrait, Config, BLS_KEYFILE,
     PRIMARY_NETWORK_KEYFILE, WORKER_NETWORK_KEYFILE,
 };
+#[cfg(feature = "faucet")]
+use tn_faucet::{FaucetArgs, FaucetCliExt};
 use tn_node::{engine::ExecutionNode, primary::PrimaryNode, worker::WorkerNode, NodeStorage};
 use tn_types::{AuthorityIdentifier, ChainIdentifier, Committee, WorkerCache};
-
 use tracing::*;
 
 /// Start the node
@@ -127,6 +127,11 @@ pub struct NodeCommand<Ext: RethCliExt = ()> {
     /// Additional cli arguments
     #[clap(flatten)]
     pub ext: Ext::Node,
+
+    #[cfg(feature = "faucet")]
+    /// Faucet args when feature enabled.
+    #[clap(flatten)]
+    pub faucet: FaucetArgs,
 }
 
 impl<Ext: RethCliExt> NodeCommand<Ext> {
@@ -147,7 +152,9 @@ impl<Ext: RethCliExt> NodeCommand<Ext> {
             db,
             dev,
             pruning,
-            ..
+            #[cfg(feature = "faucet")]
+            faucet,
+            .. // ext
         } = self;
         NodeCommand {
             datadir,
@@ -165,11 +172,13 @@ impl<Ext: RethCliExt> NodeCommand<Ext> {
             dev,
             pruning,
             ext,
+            #[cfg(feature = "faucet")]
+            faucet,
         }
     }
 
     /// Execute `node` command
-    pub async fn execute(self, _ctx: CliContext) -> eyre::Result<()> {
+    pub async fn execute(self) -> eyre::Result<()> {
         info!(target: "reth::cli", "reth {} starting", SHORT_VERSION);
 
         // Raise the fd limit of the process.
@@ -206,25 +215,55 @@ impl<Ext: RethCliExt> NodeCommand<Ext> {
             ..
         } = self;
 
-        let ext = DefaultRethNodeCommandConfig::default();
         let datadir_path = data_dir.to_string();
-        let cli = reth::node::NodeCommand::<()> {
-            datadir: MaybePlatformPath::from_str(&datadir_path)
-                .expect("datadir compatible with platform path"),
-            config: self.config.clone(),
-            chain: self.chain.clone(),
-            metrics,
-            instance,
-            trusted_setup_file,
-            network,
-            rpc,
-            txpool,
-            builder,
-            debug,
-            db,
-            dev,
-            pruning,
-            ext,
+
+        // convert this CLI into one compatible with reth library
+        let cli = {
+            cfg_if::cfg_if! {
+                if #[cfg(feature = "faucet" )] {
+                    let Self { faucet, .. } = self;
+
+                    reth::node::NodeCommand::<FaucetCliExt> {
+                        datadir: MaybePlatformPath::from_str(&datadir_path)
+                            .expect("datadir compatible with platform path"),
+                        config: self.config.clone(),
+                        chain: self.chain.clone(),
+                        metrics,
+                        instance,
+                        trusted_setup_file,
+                        network,
+                        rpc,
+                        txpool,
+                        builder,
+                        debug,
+                        db,
+                        dev,
+                        pruning,
+                        ext: faucet,
+                    }
+                } else {
+                    let ext = DefaultRethNodeCommandConfig::default();
+
+                    reth::node::NodeCommand::<()> {
+                        datadir: MaybePlatformPath::from_str(&datadir_path)
+                            .expect("datadir compatible with platform path"),
+                        config: self.config.clone(),
+                        chain: self.chain.clone(),
+                        metrics,
+                        instance,
+                        trusted_setup_file,
+                        network,
+                        rpc,
+                        txpool,
+                        builder,
+                        debug,
+                        db,
+                        dev,
+                        pruning,
+                        ext,
+                    }
+                }
+            }
         };
 
         let engine = ExecutionNode::new(
@@ -251,8 +290,7 @@ impl<Ext: RethCliExt> NodeCommand<Ext> {
             NetworkClient::new_from_public_key(config.validator_info.primary_network_key());
         let primary = PrimaryNode::new(config.parameters.clone(), registry_service.clone());
         let (worker_id, _worker_info) = config.workers().first_worker()?;
-        let worker =
-            WorkerNode::new(*worker_id, config.parameters.clone(), registry_service);
+        let worker = WorkerNode::new(*worker_id, config.parameters.clone(), registry_service);
 
         // TODO: find a better way to manage keys
         //

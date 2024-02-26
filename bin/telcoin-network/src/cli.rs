@@ -77,7 +77,7 @@ impl<Ext: RethCliExt> Cli<Ext> {
         let runner = CliRunner::default();
         match self.command {
             Commands::Genesis(command) => runner.run_command_until_exit(|_ctx| command.execute()),
-            Commands::Node(command) => runner.run_command_until_exit(|ctx| command.execute(ctx)),
+            Commands::Node(command) => runner.run_command_until_exit(|_ctx| command.execute()),
             Commands::Init(command) => runner.run_blocking_until_ctrl_c(command.execute()),
             Commands::Config(command) => runner.run_until_ctrl_c(command.execute()),
             Commands::Recover(command) => runner.run_command_until_exit(|ctx| command.execute(ctx)),

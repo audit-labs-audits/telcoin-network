@@ -3,16 +3,12 @@
 // SPDX-License-Identifier: Apache-2.0
 
 //! Cluster fixture to represent a local network.
-use crate::authority::AuthorityDetails;
+use crate::{authority::AuthorityDetails, default_test_execution_node};
 use fastcrypto::traits::KeyPair as _;
 use itertools::Itertools;
 use std::{collections::HashMap, time::Duration};
 use tn_config::Parameters;
-use tn_node::engine::ExecutionNode;
-use tn_types::{
-    adiri_chain_spec_arc, execution_args, test_utils::CommitteeFixture, Committee, WorkerCache,
-    WorkerId,
-};
+use tn_types::{test_utils::CommitteeFixture, Committee, WorkerCache, WorkerId};
 use tracing::info;
 
 #[cfg(test)]
@@ -42,7 +38,6 @@ impl Cluster {
         let committee = fixture.committee();
         let worker_cache = fixture.worker_cache();
         let params = parameters.unwrap_or_else(Self::parameters);
-        let chain = adiri_chain_spec_arc();
 
         info!("###### Creating new cluster ######");
         info!("Validator keys:");
@@ -54,16 +49,12 @@ impl Cluster {
             let authority_id = authority_fixture.id();
             let authority_execution_address = authority_fixture.execution_address();
 
-            // TODO: fix this - only here to compile
-            let rpc_args = execution_args();
-
-            let engine = ExecutionNode::new(
-                authority_id,
-                chain.clone(),
-                authority_execution_address,
-                rpc_args,
+            let engine = default_test_execution_node(
+                Some(authority_id),
+                None, // default: adiri chain
+                Some(authority_execution_address),
             )
-            .expect("execution node created for authority");
+            .expect("default test execution node");
 
             let authority = AuthorityDetails::new(
                 id,

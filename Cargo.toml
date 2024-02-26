@@ -25,6 +25,7 @@ members = [
     "crates/execution/batch-maker",
     "crates/execution/batch-validator",
     "crates/execution/executor",
+    "crates/execution/faucet",
 ]
 
 # Explicitly set the resolver to version 2, which is the default for packages with edition >= 2021
@@ -72,6 +73,8 @@ reth-network = { git = "https://github.com/paradigmxyz/reth", rev = "b34b0d3c8de
 reth-network-api = { git = "https://github.com/paradigmxyz/reth", rev = "b34b0d3c8de2598b2976f7ee2fc1a166c50b1b94" }
 reth-prune = { git = "https://github.com/paradigmxyz/reth", rev = "b34b0d3c8de2598b2976f7ee2fc1a166c50b1b94" }
 reth-revm = { git = "https://github.com/paradigmxyz/reth", rev = "b34b0d3c8de2598b2976f7ee2fc1a166c50b1b94" }
+reth-rpc = { git = "https://github.com/paradigmxyz/reth", rev = "b34b0d3c8de2598b2976f7ee2fc1a166c50b1b94" }
+reth-rpc-types = { git = "https://github.com/paradigmxyz/reth", rev = "b34b0d3c8de2598b2976f7ee2fc1a166c50b1b94" }
 reth-rpc-engine-api = { git = "https://github.com/paradigmxyz/reth", rev = "b34b0d3c8de2598b2976f7ee2fc1a166c50b1b94" }
 reth-provider = { git = "https://github.com/paradigmxyz/reth", rev = "b34b0d3c8de2598b2976f7ee2fc1a166c50b1b94" }
 reth-snapshot = { git = "https://github.com/paradigmxyz/reth", rev = "b34b0d3c8de2598b2976f7ee2fc1a166c50b1b94" }
@@ -83,7 +86,6 @@ reth-auto-seal-consensus = { git = "https://github.com/paradigmxyz/reth", rev = 
 reth-beacon-consensus = { git = "https://github.com/paradigmxyz/reth", rev = "b34b0d3c8de2598b2976f7ee2fc1a166c50b1b94" }
 reth-blockchain-tree = { git = "https://github.com/paradigmxyz/reth", rev = "b34b0d3c8de2598b2976f7ee2fc1a166c50b1b94" }
 reth-metrics = { git = "https://github.com/paradigmxyz/reth", rev = "b34b0d3c8de2598b2976f7ee2fc1a166c50b1b94" }
-reth-rpc-types = { git = "https://github.com/paradigmxyz/reth", rev = "b34b0d3c8de2598b2976f7ee2fc1a166c50b1b94" }
 alloy-rlp = "0.3"
 
 tn-batch-validator = { path = "crates/execution/batch-validator" }
@@ -101,6 +103,9 @@ assert_matches = { version = "1.5.0" }
 tn-config = { path = "./crates/config" }
 tn-types = { path = "./crates/consensus/types" }
 tn-node = { path = "./crates/consensus/tn-node" }
+
+# optional
+tn-faucet = { path = "./crates/execution/faucet" }
 
 # consensus
 narwhal-executor = { path = "./crates/consensus/executor" }
@@ -171,6 +176,7 @@ protobuf = { version = "2.28", features = ["with-bytes"] }
 bytes = "1.4.0"
 anyhow = "1.0.71"
 multiaddr = "0.17"
+humantime = "2.1.0"
 
 criterion = { version = "0.5.0", features = [
   "async",

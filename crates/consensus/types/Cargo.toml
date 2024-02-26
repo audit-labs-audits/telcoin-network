@@ -41,8 +41,6 @@ narwhal-typed-store = { workspace = true }
 consensus-metrics = { workspace = true }
 telcoin-sync = { workspace = true }
 alloy-rlp = { workspace = true }
-reth = { workspace = true }
-clap = { workspace = true }
 schemars = { version = "0.8.16" }
 serde_yaml = { workspace = true }
 
@@ -58,6 +56,8 @@ criterion = { workspace = true }
 tempfile = { workspace = true }
 fdlimit = { workspace = true }
 tn-types = { path = ".", features = ["test-utils"] }
+
+secp256k1 = "0.27.0"
 
 #serde_test = { workspace = true }
 #narwhal-test-utils = { workspace = true }

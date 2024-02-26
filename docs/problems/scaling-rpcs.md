@@ -5,7 +5,7 @@ RPCs are the primary client for requesting information from the TN blockchain.
 The protocol does not gossip transactions at the txpool level. Instead, each validator bundles transactions that it sees as valid and produces a "batch". The batch is sent to all other validators for verification.
 
 ## Update 01/28/2024
-The worse-case scenario is every worker batch is identical, which would result in essentially whay Ethereum already does. It's a waste of network resources to include duplicate transactions.
+The worse-case scenario is every worker batch is identical, which would result in essentially what Ethereum already does. It's a waste of network resources to include duplicate transactions.
 
 What is the correct way to handle duplicate transactions in Consensus Outuput?
 
@@ -23,12 +23,17 @@ What is the correct way to handle duplicate transactions in Consensus Outuput?
             - other validators may choose to waive the increase
                 - this should not affect validators at large because the greater cost is paid to upload the tx
                 - validators who choose to "ignore" gas increases for duplicate transactions pay the cost of uploading redundant data but reap no additional benefit
-- worker batch maker should set base fee ?
+- worker batch maker should set base fee on a per batch basis?
     - pending block would be batch that hasn't reached quorum yet?
         - pending batches fill the pending que until the next canonical block forms, then prune the tree?
-        
-
-
+- execution is per batch within Consensus Output
+    - how to track canonical tip block number?
+        - use block "nonce"
+            - u64: history of chain hasn't used this value, so okay to use
+            - sufficiently large to handle block per 0.1 seconds
+                - `2^64 / (36000*24 * 365) = 58494241735.5 years to reach max`
+    - mechanism to track redundant / duplicate nonce transactions within multiple batches
+        - increase gas per address
 
 ### Problems
 
@@ -92,7 +97,7 @@ result: only `c` and `d` reach quorum
 
 All transactions for `a` and `b` are excluded from the block, including the duplicate `tx1`. What is to stop the user from trying again? What if `tx1` was submitted to all the batches? This is essentially a DoS attack since no batches can reach quorum.
 
-**more efficient/sophistacated approach**: 
+**more efficient/sophisticated approach**: 
 `c` and `d` receive `a`'s batch first. they vote in favor. then they receive `b` with a duplicate tx1. All validators compare the conflicting batches `a` and `b` to see which one has the most gas fees. That is the batch they keep. In this hypothetical, `b` has more gas fees so it is selected above `a`. However, `c` and `d` have already voted for `a`. 
 
 Even if they've alread voted for `a`, they still vote for `b`. They then remove batch `a` from their primary's proposed block. When `a` sees `b`, it votes for `b` even though it's conflicting because `b` has more gas. `b` sees `a` and does not vote for `a`. `a` would still reach quorum, as would the others. The proposed blocks would not include `a`'s batch because `b` came along and essentially replaced it. The proposed blocks would only includ `2b`, `2c`, and `2d`.
@@ -108,12 +113,12 @@ Even tell it's primary, remove my batch for this round?
 
 **smart contract hope**: since the native token for Telcoin Network is controlled by a smart contract, is it possible to enable a UTXO-like solution at the contract level? A lot of layer-2 solutions are turning to this and only using the account model after finality.
 
-
 #### TX Confirmation Lost in Transit
 Wallet submits a tx to a validator's rpc endpoint. The RPC receives the tx and sends back "OK", but the confirmation is dropped due to some network issue. The RPC adds it to the next batch and a worker broadcasts the batch containing the user's transaction to all peers for quorum.
 
 The wallet still waits for a response that the tx was received by the RPC, but it never comes. So the wallet retries and submits the transaction again. The RPC needs a cache to keep track of transactions that are 'pending' in batches.
 
 If the RPC only checks the canoncial chain, then the tx is still valid and should be included in the next batch. However, by the time consensus is reached and the next batch is broadcast, the tx will be a duplicate.
+
 ###### Solution
 RPC must keep track of transactions that were already included in a pending batch.

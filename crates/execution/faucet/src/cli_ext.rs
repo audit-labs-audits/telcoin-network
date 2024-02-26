@@ -1,0 +1,254 @@
+//! Extension for cli.
+//!
+//! CLI supports adding extensions to the main components for the node.
+//! The only extension supported right now is the `faucet` for testnet.
+
+use crate::{FaucetConfig, FaucetRpcExt, FaucetRpcExtApiServer, FaucetWallet};
+use clap::Args;
+use ecdsa::elliptic_curve::{pkcs8::DecodePublicKey as _, sec1::ToEncodedPoint};
+use eyre::ContextCompat;
+use k256::PublicKey as PubKey;
+use reth::{
+    args::utils::parse_duration_from_secs,
+    cli::{
+        components::{RethNodeComponents, RethRpcComponents},
+        config::RethRpcConfig,
+        ext::{RethCliExt, RethNodeCommandConfig},
+    },
+};
+use reth_primitives::{public_key_to_address, U256};
+use secp256k1::PublicKey;
+use std::{str::FromStr, time::Duration};
+use tracing::{error, info, warn};
+
+/// Defines the extension for the CLI to use.
+#[derive(Debug)]
+pub struct FaucetCliExt;
+
+impl RethCliExt for FaucetCliExt {
+    type Node = FaucetArgs;
+}
+
+/// Args for running the faucet.
+/// Used to build the faucet config.
+#[derive(Args, Clone, Debug)]
+pub struct FaucetArgs {
+    /// The amount of time a recipient must wait before
+    /// the faucet will transfer again.
+    ///
+    /// Specified in seconds.
+    #[clap(long, default_value = "86400", value_parser = parse_duration_from_secs, value_name = "WAIT_PERIOD")]
+    pub(crate) wait_period: Duration,
+
+    /// The amount of TEL to transfer to each recipient.
+    #[clap(long, default_value = "1", value_parser = parse_u256_from_decimal_value, value_name = "TRANSFER_AMOUNT")]
+    pub(crate) transfer_amount: U256,
+
+    /// The chain id for the faucet to use when creating transactions.
+    #[clap(long, default_value_t = 2017, value_name = "CHAIN_ID")]
+    pub(crate) chain_id: u64,
+
+    /// The public key for the wallet.
+    ///
+    /// Currently supports pem format or hex (without leading 0x)
+    ///
+    /// Google KMS strategy:
+    /// Use the startup script to retrieve this value and set the env variable in pem format.
+    #[clap(long, value_parser = parse_pubkey, env = "FAUCET_PUBLIC_KEY")]
+    pub(crate) public_key: PublicKey,
+
+    /// Bool indicating Google KMS is in use for faucet signatures.
+    ///
+    /// When true, the following keys must be set:
+    /// - project_id
+    /// - key_locations
+    /// - key_rings
+    /// - crypto_keys
+    /// - crypto_keys_versions
+    ///
+    /// If set to false, the faucet endpoint isn't merged with the configured RPC modules.
+    #[clap(long)]
+    pub(crate) google_kms: bool,
+
+    /// Google KMS Project ID.
+    ///
+    /// Used by `name` to make API call.
+    #[clap(long, env = "PROJECT_ID")]
+    pub(crate) project_id: Option<String>,
+
+    /// Google KMS key locations.
+    ///
+    /// Used by `name` to make API call.
+    #[clap(long, env = "KMS_KEY_LOCATIONS")]
+    pub(crate) key_locations: Option<String>,
+
+    /// Google KMS key rings.
+    ///
+    /// Used by `name` to make API call.
+    #[clap(long, env = "KMS_KEY_RINGS")]
+    pub(crate) key_rings: Option<String>,
+
+    /// Google KMS crypto keys.
+    ///
+    /// Used by `name` to make API call.
+    #[clap(long, env = "KMS_CRYPTO_KEYS")]
+    pub(crate) crypto_keys: Option<String>,
+
+    /// Google KMS crypto key versions.
+    ///
+    /// Used by `name` to make API call.
+    #[clap(long, env = "KMS_CRYPTO_KEY_VERSIONS")]
+    pub(crate) crypto_key_versions: Option<String>,
+}
+
+/// Installs the "faucet" rpc namespace.
+impl RethNodeCommandConfig for FaucetArgs {
+    /// Allows for registering additional RPC modules for the transports.
+    ///
+    /// This is expected to call the merge functions of [reth_rpc_builder::TransportRpcModules], for
+    /// example [reth_rpc_builder::TransportRpcModules::merge_configured]
+    fn extend_rpc_modules<Conf, Reth>(
+        &mut self,
+        _config: &Conf,
+        _components: &Reth,
+        rpc_components: RethRpcComponents<'_, Reth>,
+    ) -> eyre::Result<()>
+    where
+        Conf: RethRpcConfig,
+        Reth: RethNodeComponents,
+    {
+        // create faucet rpc namespace
+        let provider = rpc_components.registry.provider().clone();
+        let pool = rpc_components.registry.pool().clone();
+
+        // calculate address from uncompressed public key
+        let address = public_key_to_address(self.public_key);
+        // compressed public key bytes
+        let public_key_bytes = self.public_key.serialize();
+
+        if self.google_kms {
+            // set in arg
+            let google_project_id = self.project_id.as_ref()
+                .expect("No Google Project ID detected. Please specify it explicitly using env variable: PROJECT_ID");
+            // retrieve api information from env
+            let locations = self
+                .key_locations
+                .as_ref()
+                .expect("KMS_KEY_LOCATIONS must be set in the environment");
+            let key_rings =
+                self.key_rings.as_ref().expect("KMS_KEY_RINGS must be set in the environment");
+            let crypto_keys =
+                self.crypto_keys.as_ref().expect("KMS_CRYPTO_KEYS must be set in the environment");
+            let crypto_key_versions = self
+                .crypto_key_versions
+                .as_ref()
+                .expect("KMS_CRYPTO_KEY_VERSIONS must be set in the environment");
+
+            // construct api endpoint for Google KMS requests
+            let name = format!(
+                "projects/{}/locations/{}/keyRings/{}/cryptoKeys/{}/cryptoKeyVersions/{}",
+                google_project_id, locations, key_rings, crypto_keys, crypto_key_versions
+            );
+
+            let wallet = FaucetWallet { address, public_key_bytes, name };
+            let config = FaucetConfig {
+                wait_period: self.wait_period,
+                transfer_amount: self.transfer_amount,
+                chain_id: self.chain_id,
+                wallet,
+            };
+
+            let ext = FaucetRpcExt::new(provider, pool, config);
+
+            // add faucet module
+            if let Err(e) = rpc_components.modules.merge_configured(ext.into_rpc()) {
+                error!(target: "faucet", "Error merging faucet rpc module: {e:?}");
+            }
+
+            info!(target: "faucet", "Google KMS active - faucet extension merged.");
+        } else {
+            warn!(target: "faucet", "Google KMS inactive - skipping faucet extension.");
+        };
+
+        Ok(())
+    }
+}
+
+// begin helper/utility functions for parsing faucet values
+
+/// Parse decimal representation for value of TEL.
+///
+/// TEL has 18 decimal places and requires U256 for
+pub fn parse_u256_from_decimal_value(value: &str) -> eyre::Result<U256> {
+    let decimal_amount = value.parse::<u16>()?;
+    let token_amount = U256::from(10 * decimal_amount)
+        .checked_pow(U256::from(18))
+        .with_context(|| "Unable to parse decimal representation for faucet amount")?;
+    Ok(token_amount)
+}
+
+/// Parse public key from pem or hex slice.
+pub fn parse_pubkey(value: &str) -> eyre::Result<PublicKey> {
+    // google kms uses pem key formatting
+    let public_key = if value.contains("-----BEGIN PUBLIC KEY-----") {
+        // k256 public key to convert from pem
+        let pubkey_from_pem = PubKey::from_public_key_pem(value)?;
+        // secp256k1 public key from uncompressed k256 variation
+        PublicKey::from_slice(pubkey_from_pem.to_encoded_point(false).as_bytes())?
+    } else {
+        // note: default value set if missing from env
+        PublicKey::from_str(value)?
+    };
+
+    Ok(public_key)
+}
+
+#[cfg(test)]
+
+mod tests {
+    use crate::FaucetArgs;
+    use clap::Parser;
+    use narwhal_test_utils::CommandParser;
+    use secp256k1::PublicKey;
+    use std::str::FromStr;
+
+    #[test]
+    fn test_pem_pubkey_parses() {
+        // test pubkey passed to cli
+        let parsed = CommandParser::<FaucetArgs>::try_parse_from([
+            "tn",
+            "--public-key",
+            "029bef8d556d80e43ae7e0becb3a7e6838b95defe45896ed6075bb9035d06c9964",
+        ])
+        .expect("parsed default args");
+
+        let expected = PublicKey::from_str(
+            "029bef8d556d80e43ae7e0becb3a7e6838b95defe45896ed6075bb9035d06c9964",
+        )
+        .unwrap();
+        assert_eq!(parsed.args.public_key, expected);
+
+        // test google kms active without setting required API info in the env
+        let missing_env_parsed =
+            CommandParser::<FaucetArgs>::try_parse_from(["tn", "--google_kms"]);
+        assert!(missing_env_parsed.is_err());
+
+        // Google KMS example
+        let pem_public_key = "-----BEGIN PUBLIC KEY-----\nMFYwEAYHKoZIzj0CAQYFK4EEAAoDQgAEqzv8pSIJXo3PJZsGv+feaCZJFQoG3ed5\ngl0o/dpBKtwT+yajMYTCravDiqW/g62W+PNVzLoCbaot1WdlwXcp4Q==\n-----END PUBLIC KEY-----\n";
+        std::env::set_var("FAUCET_PUBLIC_KEY", pem_public_key);
+        // std::env::set_var("PROJECT_ID", "test-project");
+        // std::env::set_var("KMS_KEY_LOCATIONS", "global");
+        // std::env::set_var("KMS_KEY_RINGS", "test-key-ring");
+        // std::env::set_var("KMS_CRYPTO_KEYS", "test-crypto-keys");
+        // std::env::set_var("KMS_CRYPTO_KEY_VERSIONS", "1");
+
+        let pem_parsed = CommandParser::<FaucetArgs>::try_parse_from(["tn", "--google-kms"])
+            .expect("parse google kms active");
+
+        let expected = PublicKey::from_str(
+            "03ab3bfca522095e8dcf259b06bfe7de682649150a06dde779825d28fdda412adc",
+        )
+        .unwrap();
+        assert_eq!(pem_parsed.args.public_key, expected);
+    }
+}

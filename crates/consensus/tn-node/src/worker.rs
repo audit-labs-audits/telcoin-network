@@ -17,6 +17,7 @@ use narwhal_worker::{
     Worker, CHANNEL_CAPACITY, NUM_SHUTDOWN_RECEIVERS,
 };
 use prometheus::Registry;
+use reth::cli::ext::RethCliExt;
 use std::{collections::HashMap, sync::Arc, time::Instant};
 use tn_config::Parameters;
 use tn_types::{
@@ -46,7 +47,7 @@ impl WorkerNodeInner {
     /// Starts the worker node with the provided info. If the node is already running then this
     /// method will return an error instead.
     #[instrument(level = "info", skip_all)]
-    async fn start(
+    async fn start<Ext>(
         &mut self,
         // The primary's id
         primary_name: BlsPublicKey,
@@ -65,8 +66,11 @@ impl WorkerNodeInner {
         // own one.
         metrics: Option<Metrics>,
         // used to create the batch maker process
-        execution_node: &ExecutionNode,
-    ) -> Result<(), NodeError> {
+        execution_node: &ExecutionNode<Ext>,
+    ) -> Result<(), NodeError>
+    where
+        Ext: RethCliExt,
+    {
         if self.is_running().await {
             return Err(NodeError::NodeAlreadyRunning);
         }
@@ -210,7 +214,7 @@ impl WorkerNode {
         Self { internal: Arc::new(RwLock::new(inner)) }
     }
 
-    pub async fn start(
+    pub async fn start<Ext>(
         &self,
         // The primary's public key of this authority.
         primary_key: BlsPublicKey,
@@ -228,8 +232,11 @@ impl WorkerNode {
         // An optional metrics struct
         metrics: Option<Metrics>,
         // used to create the batch maker process
-        execution_node: &ExecutionNode,
-    ) -> Result<(), NodeError> {
+        execution_node: &ExecutionNode<Ext>,
+    ) -> Result<(), NodeError>
+    where
+        Ext: RethCliExt,
+    {
         let mut guard = self.internal.write().await;
         guard
             .start(
@@ -281,7 +288,7 @@ impl WorkerNodes {
     }
 
     #[instrument(level = "info", skip_all)]
-    pub async fn start(
+    pub async fn start<Ext>(
         &self,
         // The primary's public key of this authority.
         primary_key: BlsPublicKey,
@@ -297,8 +304,11 @@ impl WorkerNodes {
         // TODO: replace this by a path so the method can open and independent storage
         store: &NodeStorage,
         // used to create the batch maker process
-        execution_node: &ExecutionNode,
-    ) -> Result<(), NodeError> {
+        execution_node: &ExecutionNode<Ext>,
+    ) -> Result<(), NodeError>
+    where
+        Ext: RethCliExt,
+    {
         let worker_ids_running = self.workers_running().await;
         if !worker_ids_running.is_empty() {
             return Err(NodeError::WorkerNodesAlreadyRunning(worker_ids_running));

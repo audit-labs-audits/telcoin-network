@@ -4,7 +4,7 @@
 ROOT_DIR:=$(shell dirname $(realpath $(firstword $(MAKEFILE_LIST))))
 BASE_DIR:=$(shell basename $(ROOT_DIR))
 
-.DEFAULT: help check-deps
+.DEFAULT: help
 
 help:
 	@echo ;
@@ -28,23 +28,21 @@ help:
 check-deps:
 	find . -type f -name Cargo.toml -exec sed -rne 's/^name = "(.*)"/\1/p' {} + | xargs -I {} sh -c "echo '\n\n{}:' && cargo +nightly udeps --package {}" ;
 
+check:
+	cargo check --all --all-features ;
+
 # run tests
 test:
 	cargo test --all --all-features;
 
 fmt:
-	cargo +nightly fmt -- --check
+	cargo +nightly fmt ;
 
 clippy:
-	cargo +nightly clippy --all --all-features -- -D warnings
+	cargo +nightly clippy --all --all-features --fix ;
 
 integration-tests:
 	cargo test --color=always --test integration tests ;
-
-# format and lint
-fmt:
-	cargo +nightly fmt ;
-	cargo +nightly clippy --fix --all ;
 
 docker-login:
 	gcloud auth application-default login ;
@@ -65,6 +63,9 @@ up:
 
 down:
 	docker compose -f ./etc/compose.yaml down --remove-orphans -v ;
+
+validators:
+	./etc/local-testnet.sh ;
 
 # run an http rpc server on default port
 node:

@@ -12,7 +12,7 @@ eyre = { workspace = true }
 futures = { workspace = true }
 const-str = "0.5.6"
 fdlimit = { workspace = true }
-humantime = "2.1.0"
+humantime = { workspace = true }
 metrics-exporter-prometheus = "0.12.1"
 hyper = "0.14.25"
 metrics-util = "0.15.0"
@@ -33,37 +33,34 @@ tn-node = { workspace = true }
 narwhal-network = { workspace = true }
 consensus-metrics = { workspace = true }
 dirs-next = "2.0.0"
+cfg-if = { workspace = true }
+tn-faucet = { workspace = true, optional = true }
 
 # config
 serde_yaml = { workspace = true }
 
-reth = {workspace = true }
-reth-primitives = {workspace = true }
-reth-tracing = {workspace = true }
-reth-metrics = {workspace = true }
-reth-db = {workspace = true }
-# reth-config = {workspace = true }
-# reth-downloaders = {workspace = true }
-# reth-interfaces = {workspace = true }
-# reth-network = {workspace = true }
-# reth-network-api = {workspace = true }
-# reth-prune = {workspace = true }
-# reth-revm = {workspace = true }
-# reth-rpc-engine-api = {workspace = true }
-# reth-provider = {workspace = true }
-# reth-snapshot = {workspace = true }
-# reth-stages = {workspace = true }
-# reth-tasks = {workspace = true }
-# reth-transaction-pool = {workspace = true }
-# reth-revm-inspectors = {workspace = true }
-# reth-auto-seal-consensus = {workspace = true }
-# reth-beacon-consensus = {workspace = true }
-# reth-blockchain-tree = {workspace = true }
+reth = { workspace = true }
+reth-primitives = { workspace = true }
+reth-tracing = { workspace = true }
+reth-metrics = { workspace = true }
+reth-db = { workspace = true }
 
 [dev-dependencies]
 reth-basic-payload-builder = {workspace = true }
 reth-payload-builder = {workspace = true }
 tempfile = { workspace = true }
+
+# faucet-specific
+gcloud-sdk = { version = "0.24.3", default-features = false, features = ["google-cloud-kms-v1", "tls-webpki-roots"] }
+jsonrpsee = { workspace = true }
+k256 = "0.13.3"
+narwhal-test-utils = { workspace = true }
+tonic = { workspace = true }
+
+
+[features]
+default = []
+faucet = ["tn-faucet"]
 
 [build-dependencies]
 vergen = { version = "8.0.0", features = ["build", "cargo", "git", "gitcl"] }

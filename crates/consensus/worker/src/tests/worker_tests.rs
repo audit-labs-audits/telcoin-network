@@ -442,8 +442,7 @@ async fn get_network_peers_from_admin_server() {
     // Test getting all known peers for worker 1
     let resp = reqwest::get(format!(
         "http://127.0.0.1:{}/known_peers",
-        worker_1_parameters.network_admin_server.worker_network_admin_server_base_port +
-            worker_id
+        worker_1_parameters.network_admin_server.worker_network_admin_server_base_port + worker_id
     ))
     .await
     .unwrap()
@@ -457,8 +456,7 @@ async fn get_network_peers_from_admin_server() {
     // Test getting all connected peers for worker 1 (worker at index 0 for primary 1)
     let resp = reqwest::get(format!(
         "http://127.0.0.1:{}/peers",
-        worker_1_parameters.network_admin_server.worker_network_admin_server_base_port +
-            worker_id
+        worker_1_parameters.network_admin_server.worker_network_admin_server_base_port + worker_id
     ))
     .await
     .unwrap()
@@ -564,8 +562,7 @@ async fn get_network_peers_from_admin_server() {
     // Test getting all known peers for worker 2 (worker at index 0 for primary 2)
     let resp = reqwest::get(format!(
         "http://127.0.0.1:{}/known_peers",
-        worker_2_parameters.network_admin_server.worker_network_admin_server_base_port +
-            worker_id
+        worker_2_parameters.network_admin_server.worker_network_admin_server_base_port + worker_id
     ))
     .await
     .unwrap()
@@ -579,8 +576,7 @@ async fn get_network_peers_from_admin_server() {
     // Test getting all connected peers for worker 1 (worker at index 0 for primary 1)
     let resp = reqwest::get(format!(
         "http://127.0.0.1:{}/peers",
-        worker_1_parameters.network_admin_server.worker_network_admin_server_base_port +
-            worker_id
+        worker_1_parameters.network_admin_server.worker_network_admin_server_base_port + worker_id
     ))
     .await
     .unwrap()
@@ -598,8 +594,7 @@ async fn get_network_peers_from_admin_server() {
     // Test getting all connected peers for worker 2 (worker at index 0 for primary 2)
     let resp = reqwest::get(format!(
         "http://127.0.0.1:{}/peers",
-        worker_2_parameters.network_admin_server.worker_network_admin_server_base_port +
-            worker_id
+        worker_2_parameters.network_admin_server.worker_network_admin_server_base_port + worker_id
     ))
     .await
     .unwrap()

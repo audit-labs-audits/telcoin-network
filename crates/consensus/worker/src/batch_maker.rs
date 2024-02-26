@@ -30,8 +30,6 @@ use tracing::{error, warn};
 
 #[cfg(feature = "trace_transaction")]
 use byteorder::{BigEndian, ReadBytesExt};
-#[cfg(feature = "benchmark")]
-use std::convert::TryInto;
 
 // The number of batches to store / transmit in parallel.
 pub const MAX_PARALLEL_BATCH: usize = 100;
@@ -154,16 +152,19 @@ impl BatchMaker {
     ) -> Option<BoxFuture<'a, ()>> {
         #[cfg(feature = "benchmark")]
         {
-            let digest = batch.digest();
+            let digest = new_batch.batch.digest();
 
             // Look for sample txs (they all start with 0) and gather their txs id (the next 8
             // bytes).
-            let tx_ids: Vec<_> = batch
+            let tx_ids: Vec<_> = new_batch
+                .batch
                 .transactions()
                 .iter()
                 .filter(|tx| tx[0] == 0u8 && tx.len() > 8)
                 .filter_map(|tx| tx[1..9].try_into().ok())
                 .collect();
+
+            let size = tx_ids.len();
 
             for id in tx_ids {
                 // NOTE: This log entry is used to compute performance.
@@ -175,7 +176,8 @@ impl BatchMaker {
                 // The first 8 bytes of each transaction message is reserved for an identifier
                 // that's useful for debugging and tracking the lifetime of messages between
                 // Narwhal and clients.
-                let tracking_ids: Vec<_> = batch
+                let tracking_ids: Vec<_> = new_batch
+                    .batch
                     .transactions()
                     .iter()
                     .map(|tx| {

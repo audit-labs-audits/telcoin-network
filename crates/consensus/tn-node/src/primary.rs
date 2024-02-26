@@ -24,6 +24,7 @@ use narwhal_primary::{
 };
 use narwhal_storage::NodeStorage;
 use prometheus::{IntGauge, Registry};
+use reth::cli::ext::RethCliExt;
 use std::{sync::Arc, time::Instant};
 use tn_config::Parameters;
 use tn_types::{
@@ -63,7 +64,7 @@ impl PrimaryNodeInner {
     /// Starts the primary node with the provided info. If the node is already running then this
     /// method will return an error instead.
     #[instrument(level = "info", skip_all)]
-    async fn start(
+    async fn start<Ext>(
         &mut self, // The private-public key pair of this authority.
         keypair: BlsKeypair,
         // The private-public network key pair of this authority.
@@ -82,9 +83,10 @@ impl PrimaryNodeInner {
         // execution_state: State,
 
         // Execution components needed to spawn the EL Executor
-        execution_components: &ExecutionNode,
+        execution_components: &ExecutionNode<Ext>,
     ) -> Result<(), NodeError>
-where
+    where
+        Ext: RethCliExt,
         // State: ExecutionState + Send + Sync + 'static,
     {
         if self.is_running().await {
@@ -435,7 +437,7 @@ impl PrimaryNode {
         Self { internal: Arc::new(RwLock::new(inner)) }
     }
 
-    pub async fn start(
+    pub async fn start<Ext>(
         &self,
         // The private-public key pair of this authority.
         keypair: BlsKeypair,
@@ -454,9 +456,10 @@ impl PrimaryNode {
         // // The state used by the client to execute transactions.
         // execution_state: State,
         // Execution components needed to spawn the EL Executor
-        execution_components: &ExecutionNode,
+        execution_components: &ExecutionNode<Ext>,
     ) -> Result<(), NodeError>
-where
+    where
+        Ext: RethCliExt,
         // State: ExecutionState + Send + Sync + 'static,
     {
         let mut guard = self.internal.write().await;

@@ -14,10 +14,16 @@
 //!     - payload builder
 
 use futures::pin_mut;
+use futures_util::TryFutureExt;
 use reth::{
-    args::{get_secret_key, NetworkArgs, PayloadBuilderArgs, RpcServerArgs},
-    cli::{components::RethNodeComponents, config::PayloadBuilderConfig},
-    rpc::builder::RpcServerHandle,
+    args::{get_secret_key, NetworkArgs, PayloadBuilderArgs},
+    cli::{
+        components::{RethNodeComponents, RethRpcComponents},
+        config::{PayloadBuilderConfig, RethRpcConfig},
+        ext::{RethCliExt, RethNodeCommandConfig},
+    },
+    node::NodeCommand,
+    rpc::builder::{RethModuleRegistry, RpcModuleBuilder, RpcModuleConfig, RpcServerHandle},
 };
 use reth_basic_payload_builder::{BasicPayloadJobGenerator, BasicPayloadJobGeneratorConfig};
 use reth_config::{config::PruneConfig, Config};
@@ -57,7 +63,7 @@ use std::{
     sync::Arc,
 };
 use tokio::sync::watch;
-use tracing::debug;
+use tracing::{debug, info};
 
 /// Fetches the head block from the database.
 ///
@@ -324,22 +330,67 @@ where
 }
 
 /// Start the RPC.
-pub async fn start_rpc<Components>(
+pub async fn start_rpc<Components, Ext>(
     components: Components,
-    rpc_args: &RpcServerArgs,
+    node: &mut NodeCommand<Ext>,
 ) -> eyre::Result<RpcServerHandle>
 where
     Components: RethNodeComponents,
+    Ext: RethCliExt,
 {
-    let handle = rpc_args
-        .start_rpc_server(
-            components.provider(),
-            components.pool(),
-            components.network(),
-            components.task_executor(),
-            components.events(),
-        )
-        .await?;
+    // clone node components
+    let provider = components.provider();
+    let pool = components.pool();
+    let network = components.network();
+    let events = components.events();
+    let executor = components.task_executor();
+
+    let module_config = node.rpc.transport_rpc_module_config();
+    debug!(target: "reth::cli", http=?module_config.http(), ws=?module_config.ws(), "Using RPC module config");
+
+    let mut modules = RpcModuleBuilder::default()
+        .with_provider(provider.clone())
+        .with_pool(pool.clone())
+        .with_network(network.clone())
+        .with_events(events.clone())
+        .with_executor(executor.clone())
+        .build(module_config);
+
+    // TODO: leaving this messy because I anticipate coming back to this code
+    // to find a better way to support `on_rpc_server_started`, etc.
+    let mut registry = RethModuleRegistry::new(
+        provider,
+        pool,
+        network,
+        executor,
+        events,
+        RpcModuleConfig::new(node.rpc.eth_config()), // TODO: this seems really complicated
+    );
+    // .build_with_auth_server(module_config, engine_api);
+
+    let rpc_components = RethRpcComponents { registry: &mut registry, modules: &mut modules };
+
+    // apply configured customization
+    node.ext.extend_rpc_modules(&node.rpc, &components, rpc_components)?;
+
+    let server_config = node.rpc.rpc_server_config();
+    let launch_rpc = modules.clone().start_server(server_config).map_ok(|handle| {
+        if let Some(url) = handle.ipc_endpoint() {
+            info!(target: "reth::cli", url=%url, "RPC IPC server started");
+        }
+        if let Some(addr) = handle.http_local_addr() {
+            info!(target: "reth::cli", url=%addr, "RPC HTTP server started");
+        }
+        if let Some(addr) = handle.ws_local_addr() {
+            info!(target: "reth::cli", url=%addr, "RPC WS server started");
+        }
+        handle
+    });
+
+    let handle = launch_rpc.await?;
+
+    // TODO: support this method?
+    // ext.on_rpc_server_started(rpc_args, &components, rpc_components, handle)?;
 
     Ok(handle)
 }

@@ -8,6 +8,7 @@ use narwhal_executor::SerializedTransaction;
 use narwhal_network::client::NetworkClient;
 use narwhal_storage::NodeStorage;
 use prometheus::{proto::Metric, Registry};
+use reth::cli::ext::RethCliExt;
 use std::{cell::RefCell, path::PathBuf, rc::Rc, sync::Arc};
 use tn_config::Parameters;
 use tn_node::{engine::ExecutionNode, primary::PrimaryNode};
@@ -79,12 +80,15 @@ impl PrimaryNodeDetails {
     }
 
     /// TODO: this needs to be cleaned up
-    pub(crate) async fn start(
+    pub(crate) async fn start<Ext>(
         &mut self,
         client: NetworkClient,
         preserve_store: bool,
-        execution_components: &ExecutionNode,
-    ) -> eyre::Result<()> {
+        execution_components: &ExecutionNode<Ext>,
+    ) -> eyre::Result<()>
+    where
+        Ext: RethCliExt,
+    {
         if self.is_running().await {
             panic!("Tried to start a node that is already running");
         }

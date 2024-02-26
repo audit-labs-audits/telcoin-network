@@ -54,6 +54,7 @@ assert_matches = { workspace = true }
 reth-transaction-pool = { workspace = true, features = ["test-utils"] }
 reth-tracing = { workspace = true }
 fastcrypto = { workspace = true }
+narwhal-test-utils = { workspace = true }
 
 # integration tests
 anemo = { workspace = true }

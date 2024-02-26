@@ -12,7 +12,6 @@ arc-swap = { workspace = true }
 async-trait = { workspace = true }
 reth-primitives = { workspace = true }
 cfg-if = { workspace = true }
-clap = { workspace = true, features = ["derive"] }
 futures = { workspace = true }
 rand = { workspace = true }
 thiserror = { workspace = true }
@@ -69,6 +68,7 @@ narwhal-network = { workspace = true, features = ["test-utils"]}
 narwhal-primary = { workspace = true }
 assert_matches = { workspace = true }
 tempfile = { workspace = true }
+clap = { workspace = true, features = ["derive", "env"] }
 
 [features]
 trace_transaction = ["narwhal-worker/trace_transaction"]

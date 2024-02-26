@@ -39,7 +39,7 @@ struct AuthorityDetailsInternal {
     primary: PrimaryNodeDetails,
     worker_keypairs: Vec<NetworkKeypair>,
     workers: HashMap<WorkerId, WorkerNodeDetails>,
-    execution: ExecutionNode,
+    execution: ExecutionNode<()>,
 }
 
 #[allow(clippy::arc_with_non_send_sync)]
@@ -53,7 +53,7 @@ impl AuthorityDetails {
         parameters: Parameters,
         committee: Committee,
         worker_cache: WorkerCache,
-        execution: ExecutionNode,
+        execution: ExecutionNode<()>,
     ) -> Self {
         // Create all the nodes we have in the committee
         let public_key = key_pair.public().clone();
@@ -262,7 +262,7 @@ impl AuthorityDetails {
 
     /// Return the current execution node running. If the authority restarts, this
     /// method should be called again to ensure the latest reference is used.
-    pub async fn execution_components(&self) -> eyre::Result<ExecutionNode> {
+    pub async fn execution_components(&self) -> eyre::Result<ExecutionNode<()>> {
         let internal = self.internal.read().await;
         Ok(internal.execution.clone())
     }

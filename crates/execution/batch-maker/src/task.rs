@@ -127,34 +127,32 @@ where
                     match storage.build_and_execute(transactions.clone(), &client, chain_spec) {
                         Ok((new_header, _bundle_state)) => {
                             // TODO: make this a future
-                            loop {
-                                // send the new update to the engine, this will trigger the engine
-                                // to download and execute the block we just inserted
-                                let (ack, rx) = oneshot::channel();
-                                let _ = to_worker
-                                    .send(NewBatch {
-                                        batch: Batch::new_with_metadata(
-                                            // TODO: make batch `TransactionSigned` then convert to
-                                            // bytes in `.digest` impl
-                                            // NOTE: a `Batch` is a `SealedBlock`
-                                            // convert txs to bytes
-                                            tx_bytes,
-                                            // versioned metadata for peer validation
-                                            new_header.into(),
-                                        ),
-                                        ack,
-                                    })
-                                    .await;
+                            //
+                            // send the new update to the engine, this will trigger the engine
+                            // to download and execute the block we just inserted
+                            let (ack, rx) = oneshot::channel();
+                            let _ = to_worker
+                                .send(NewBatch {
+                                    batch: Batch::new_with_metadata(
+                                        // TODO: make batch `TransactionSigned` then convert to
+                                        // bytes in `.digest` impl
+                                        // NOTE: a `Batch` is a `SealedBlock`
+                                        // convert txs to bytes
+                                        tx_bytes,
+                                        // versioned metadata for peer validation
+                                        new_header.into(),
+                                    ),
+                                    ack,
+                                })
+                                .await;
 
-                                match rx.await {
-                                    Ok(digest) => {
-                                        debug!(target: "execution::batch_maker", ?digest, "Batch sealed:");
-                                        break
-                                    }
-                                    Err(err) => {
-                                        error!(target: "execution::batch_maker", ?err, "Execution's BatchMaker Ack Failed:");
-                                        return None
-                                    }
+                            match rx.await {
+                                Ok(digest) => {
+                                    debug!(target: "execution::batch_maker", ?digest, "Batch sealed:");
+                                }
+                                Err(err) => {
+                                    error!(target: "execution::batch_maker", ?err, "Execution's BatchMaker Ack Failed:");
+                                    return None
                                 }
                             }
 

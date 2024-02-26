@@ -10,11 +10,11 @@ The CLI is used to create validator information, join a committee, and start the
 
 ## Helpful CURL commands
 ### faucet request
-curl http://localhost:8545 \
+curl http://localhost:8544 \
 -X POST \
 -H "Content-Type: application/json" \
---data '{"method":"faucet_transfer","params":["0x6Be02d1d3665660d22FF9624b7BE0551ee1Ac91b"],"id":1,"jsonrpc":"2.0" }' 
 --data '{"method":"faucet_transfer","params":["0x86FC4954D645258e68E71de59A41066C55bd9966"],"id":1,"jsonrpc":"2.0" }' 
+--data '{"method":"faucet_transfer","params":["0x6Be02d1d3665660d22FF9624b7BE0551ee1Ac91b"],"id":1,"jsonrpc":"2.0" }' 
 
 ### get chain id
 curl localhost:8544 \
@@ -43,10 +43,10 @@ curl http://localhost:8545 \
 --data '{"method":"eth_gasPrice","params":[],"id":1,"jsonrpc":"2.0"}'
  
 ### get balance for test wallet
-curl http://localhost:8545 \
+curl http://localhost:8544 \
 -X POST \
 -H "Content-Type: application/json" \
---data '{"method":"eth_getBalance","params":["0x6Be02d1d3665660d22FF9624b7BE0551ee1Ac91b", "latest"],"id":1,"jsonrpc":"2.0"}'
+--data '{"method":"eth_getBalance","params":["0x86FC4954D645258e68E71de59A41066C55bd9966", "latest"],"id":1,"jsonrpc":"2.0"}'
 
 ### transactions pool status
 curl http://localhost:8545 \

@@ -3,8 +3,7 @@
 use crate::error::ExecutionError;
 use consensus_metrics::metered_channel::{Receiver, Sender};
 use reth::{
-    args::{NetworkArgs, RpcServerArgs},
-    cli::components::RethNodeComponentsImpl,
+    cli::{components::RethNodeComponentsImpl, ext::RethCliExt},
     init::init_genesis,
     node::NodeCommand,
     rpc::builder::RpcServerHandle,
@@ -38,9 +37,7 @@ use tn_executor::{
     build_network, build_networked_pipeline, lookup_head, spawn_payload_builder_service, start_rpc,
     Executor,
 };
-use tn_types::{execution_args, AuthorityIdentifier, ConsensusOutput, NewBatch, WorkerId};
-// cargo test --package narwhal-test-utils --lib -- cluster::cluster_tests::basic_cluster_setup
-// --exact --nocapture
+use tn_types::{AuthorityIdentifier, ConsensusOutput, NewBatch, WorkerId};
 use tokio::{
     runtime::Handle,
     sync::{mpsc::unbounded_channel, RwLock},
@@ -48,7 +45,7 @@ use tokio::{
 use tracing::{debug, info, instrument, warn};
 
 /// Inner type for holding execution layer types.
-struct ExecutionNodeInner<DB, Tree> {
+struct ExecutionNodeInner<DB, Tree, Ext: RethCliExt> {
     /// The id for the authority within the network.
     authority_id: AuthorityIdentifier,
     /// The [Address] for the authority.
@@ -64,7 +61,7 @@ struct ExecutionNodeInner<DB, Tree> {
     /// Node command for constructing components.
     /// The struct is parsed from reth's CLI, and the
     /// ports are adjusted to prevent collisions.
-    args: NodeCommand,
+    args: NodeCommand<Ext>,
     /// The task manager wrapped as an option for spawning tasks to handle
     /// output from consensus.
     ///
@@ -105,7 +102,7 @@ pub struct WorkerExecutionComponents {
     // - txpool
 }
 
-impl<DB, Tree> ExecutionNodeInner<DB, Tree>
+impl<DB, Tree, Ext> ExecutionNodeInner<DB, Tree, Ext>
 where
     DB: Database + Clone + Unpin + 'static,
     Tree: BlockchainTreeEngine
@@ -114,18 +111,19 @@ where
         + Unpin
         + Clone
         + 'static,
+    Ext: RethCliExt,
 {
     pub fn new(
         authority_id: AuthorityIdentifier,
         address: Address,
         chain: Arc<ChainSpec>,
-        args: NodeCommand,
+        args: NodeCommand<Ext>,
         engine_task_manager: Option<TaskManager>,
         provider_factory: ProviderFactory<DB>,
         auto_consensus: Arc<dyn Consensus>,
         blockchain_db: BlockchainProvider<DB, Tree>,
         canon_state_notification_sender: CanonStateNotificationSender,
-    ) -> ExecutionNodeInner<DB, Tree> {
+    ) -> ExecutionNodeInner<DB, Tree, Ext> {
         // ) -> ExecutionNodeInner<Arc<DatabaseEnv>, ShareableBlockchainTree<Arc<DatabaseEnv>,
         // EvmProcessorFactory>> {
         Self {
@@ -171,20 +169,20 @@ where
     fn adjust_worker_ports(
         &mut self,
         instance: u16,
-        rpc_args: &mut RpcServerArgs,
-        network_args: &mut NetworkArgs,
+        // rpc_args: &mut RpcServerArgs,
+        // network_args: &mut NetworkArgs,
         // network_args: &mut NetworkArgs,
     ) -> eyre::Result<()> {
         debug!("{} - adjusting ports for worker instance: {instance:?}", self.authority_id);
         // http port is scaled by a factor of -instance
-        rpc_args.http_port -= instance * 100 - 100;
+        self.args.rpc.http_port -= instance * 100 - 100;
         debug!("{} - http port now: {:?}", self.args.rpc.http_port, self.authority_id);
         // ws port is scaled by a factor of instance * 2
-        rpc_args.ws_port += instance * 100 - 100;
+        self.args.rpc.ws_port += instance * 100 - 100;
         debug!("{} - ws port now: {:?}", self.args.rpc.ws_port, self.authority_id);
         // network port is scaled by a factor of +instance
         // network_args.port -= 1;
-        network_args.port += instance * 100;
+        self.args.network.port += instance * 100;
 
         debug!("{} - network port now: {:?}", self.args.network.port, self.authority_id);
 
@@ -428,18 +426,7 @@ where
 
         // spawn batch maker mining task
         task_executor.spawn_critical("batch maker", task);
-
-        // clone the adjusted execution ports to further adjust on a per-worker basis
-        let mut rpc_args = self.args.rpc.clone();
-
-        // TODO: impl custom network type for workers
-        // for now, moving forward with this approach bc NetworkArgs aren't cloneable
-        let mut network_args = execution_args().network; // network args aren't cloneable
-                                                         //let mut network_args = NetworkArgs::default(); // network args aren't cloneable
-                                                         // update adjusted port
-        network_args.port = self.args.network.port; // default == 30303
-                                                    // +1 for instance - adjust ports per worker instance
-        self.adjust_worker_ports(worker_id + 1, &mut rpc_args, &mut network_args)?;
+        self.adjust_worker_ports(worker_id + 1)?;
 
         let head: Head = lookup_head(self.provider_factory.clone())?;
         let network = build_network(
@@ -448,7 +435,7 @@ where
             self.provider_factory.clone(),
             head,
             txpool.clone(),
-            &network_args,
+            &self.args.network,
         )
         .await?;
 
@@ -464,8 +451,9 @@ where
             events: self.blockchain_db.clone(),
         };
 
-        let rpc_handle = start_rpc(components, &self.args.rpc).await?;
-        info!(target: "rpc::start", http_address = ?&self.args.rpc.http_addr, http_port = &self.args.rpc.http_port, "rpc server running at ");
+        let rpc_handle = start_rpc(components, &mut self.args).await?;
+
+        info!(target: "rpc::start", http_address = ?&self.args.rpc.http_addr, http_port = &self.args.rpc.http_port, "rpc http server listening at ");
 
         // store the worker's execution info
         let worker_components =
@@ -559,42 +547,35 @@ where
 }
 
 #[derive(Clone)]
-pub struct ExecutionNode {
+pub struct ExecutionNode<Ext: RethCliExt> {
     internal: Arc<
         RwLock<
             ExecutionNodeInner<
                 Arc<DatabaseEnv>,
                 ShareableBlockchainTree<Arc<DatabaseEnv>, EvmProcessorFactory>,
+                Ext,
             >,
         >,
     >,
 }
 
-impl ExecutionNode
-// where
-//     DB: Database,
-//     Tree: BlockchainTreeViewer,
+impl<Ext> ExecutionNode<Ext>
+where
+    Ext: RethCliExt,
+    //     DB: Database,
+    //     Tree: BlockchainTreeViewer,
 {
     pub fn new(
         authority_id: AuthorityIdentifier,
         chain: Arc<ChainSpec>,
         address: Address,
-        params: NodeCommand,
+        params: NodeCommand<Ext>,
     ) -> Result<Self, ExecutionError> {
         // TODO: why doesn't this generic work?
         // ) -> Result<ExecutionNode<DB, Tree>, ExecutionError> { // TODO: why doesn't this generic
         // work? ) -> Result<ExecutionNode<Arc<DatabaseEnv>,
         // ShareableBlockchainTree<Arc<DatabaseEnv>, EvmProcessorFactory>>, ExecutionError> {
-        // setup EL using test db
-
-        // TODO: ports are overwritten later
-        //
-        // use rpc args from cli
-        // let mut args = execution_args();
-        // args.rpc = rpc_args;
-
         let datadir = params.datadir.unwrap_or_chain_default(chain.chain);
-
         let db_path = datadir.db_path();
         let db = Arc::new(init_db(db_path, params.db.log_level)?.with_metrics());
         let genesis_hash = init_genesis(db.clone(), chain.clone())?;
@@ -777,6 +758,7 @@ mod tests {
     use super::ExecutionNode;
     use anemo::Response;
     use assert_matches::assert_matches;
+    use clap::Parser;
     use consensus_metrics::metered_channel;
     use fastcrypto::{hash::Hash, traits::KeyPair};
     use jsonrpsee::{core::client::ClientT, rpc_params};
@@ -791,7 +773,7 @@ mod tests {
     };
     use prometheus::Registry;
     use reth::{
-        args::NetworkArgs,
+        node::NodeCommand,
         rpc::builder::constants::{DEFAULT_HTTP_RPC_PORT, DEFAULT_WS_RPC_PORT},
     };
     use reth_primitives::{
@@ -806,8 +788,9 @@ mod tests {
         sync::Arc,
         time::Duration,
     };
+    use tempfile::tempdir;
     use tn_types::{
-        adiri_chain_spec_arc, adiri_genesis, execution_args,
+        adiri_chain_spec_arc, adiri_genesis, adiri_genesis_string,
         test_utils::{batch, get_gas_price, CommitteeFixture, TransactionFactory},
         AuthorityIdentifier, BatchAPI, Certificate, ConsensusOutput, PreSubscribedBroadcastSender,
     };
@@ -815,56 +798,59 @@ mod tests {
         sync::{mpsc::error::TryRecvError, watch},
         time::timeout,
     };
+
     use tracing::debug;
+
+    fn execution_args() -> NodeCommand<()> {
+        let datadir = tempdir().unwrap();
+        // try parse command with faucet args
+        NodeCommand::<()>::try_parse_from([
+            "reth",
+            "--dev",
+            "--chain",
+            &adiri_genesis_string(),
+            "--datadir",
+            datadir.path().to_str().expect("tmpdir path to string in execution_args()"),
+        ])
+        .expect("clap parse node command")
+    }
 
     #[tokio::test]
     async fn test_rpc_ports_adjust() -> eyre::Result<()> {
         // assert defaults for instance `1`
-        let genesis = adiri_genesis();
-        let chain: Arc<ChainSpec> = Arc::new(genesis.into());
-        // address doesn't affect these tests
+        let chain = adiri_chain_spec_arc();
         let address = Address::ZERO;
-
         let params = execution_args();
-        let node =
-            ExecutionNode::new(AuthorityIdentifier(0), chain.clone(), address, params)?;
-        let mut inner = node.internal.write().await;
+        let node0 = ExecutionNode::new(AuthorityIdentifier(0), chain.clone(), address, params)?;
+        let mut inner = node0.internal.write().await;
         assert_eq!(inner.args.rpc.http_port, DEFAULT_HTTP_RPC_PORT);
         assert_eq!(inner.args.rpc.ws_port, DEFAULT_WS_RPC_PORT);
         assert_eq!(inner.args.network.port, 30303);
-        // clone args - simulate `ExecutionNode::start_batch_maker()`
-        let mut worker0_rpc_args = inner.args.rpc.clone();
-        let mut worker0_network_args = NetworkArgs::default();
         // start_batch_maker adds +1 to worker instance
-        inner.adjust_worker_ports(1, &mut worker0_rpc_args, &mut worker0_network_args)?;
+        inner.adjust_worker_ports(1)?;
         // assert nodes args didn't change
         assert_eq!(inner.args.rpc.http_port, DEFAULT_HTTP_RPC_PORT);
         assert_eq!(inner.args.rpc.ws_port, DEFAULT_WS_RPC_PORT);
-        assert_eq!(inner.args.network.port, 30303);
-        // assert cloned args changed for worker instance
-        assert_eq!(worker0_rpc_args.http_port, DEFAULT_HTTP_RPC_PORT);
-        assert_eq!(worker0_rpc_args.ws_port, DEFAULT_WS_RPC_PORT);
-        // must be different than engine's network port
-        assert_ne!(worker0_network_args.port, 30303);
+        assert_eq!(inner.args.network.port, 30403);
 
         // test another worker
-        let mut worker1_rpc_args = inner.args.rpc.clone();
-        let mut worker1_network_args = NetworkArgs::default();
-        worker1_network_args.port = inner.args.network.port;
-        inner.adjust_worker_ports(2, &mut worker1_rpc_args, &mut worker1_network_args)?;
-        // assert nodes args didn't change
-        assert_eq!(inner.args.rpc.http_port, DEFAULT_HTTP_RPC_PORT);
-        assert_eq!(inner.args.rpc.ws_port, DEFAULT_WS_RPC_PORT);
-        assert_eq!(inner.args.network.port, 30303);
+        let params = execution_args();
+        let node1 = ExecutionNode::new(AuthorityIdentifier(1), chain.clone(), address, params)?;
+        // let worker1_rpc_args = inner.args.rpc.clone();
+        let mut inner = node1.internal.write().await;
+        inner.adjust_worker_ports(2)?;
+        // // assert nodes args didn't change
+        // assert_eq!(inner.args.rpc.http_port, DEFAULT_HTTP_RPC_PORT);
+        // assert_eq!(inner.args.rpc.ws_port, DEFAULT_WS_RPC_PORT);
+        // assert_eq!(inner.args.network.port, 30303);
         // assert cloned args changed for worker instance
-        assert_eq!(worker1_rpc_args.http_port, DEFAULT_HTTP_RPC_PORT - 100);
-        assert_eq!(worker1_rpc_args.ws_port, DEFAULT_WS_RPC_PORT + 100);
-        assert_eq!(worker1_network_args.port, 30303 + 2 * 100);
+        assert_eq!(inner.args.rpc.http_port, DEFAULT_HTTP_RPC_PORT - 100);
+        assert_eq!(inner.args.rpc.ws_port, DEFAULT_WS_RPC_PORT + 100);
+        assert_eq!(inner.args.network.port, 30303 + 2 * 100);
 
         let params = execution_args();
         // assert rpc ports adjusted for instance `2`
-        let node =
-            ExecutionNode::new(AuthorityIdentifier(1), chain.clone(), address, params)?;
+        let node = ExecutionNode::new(AuthorityIdentifier(1), chain.clone(), address, params)?;
         let inner = node.internal.read().await;
         assert_eq!(inner.args.rpc.http_port, 8544);
         assert_eq!(inner.args.rpc.ws_port, 8548);
@@ -872,8 +858,7 @@ mod tests {
 
         let params = execution_args();
         // assert rpc ports adjusted for instance `3`
-        let node =
-            ExecutionNode::new(AuthorityIdentifier(2), chain.clone(), address, params)?;
+        let node = ExecutionNode::new(AuthorityIdentifier(2), chain.clone(), address, params)?;
         let inner = node.internal.read().await;
         assert_eq!(inner.args.rpc.http_port, 8543);
         assert_eq!(inner.args.rpc.ws_port, 8550);
@@ -881,8 +866,7 @@ mod tests {
 
         let params = execution_args();
         // assert rpc ports adjusted for instance `4`
-        let node =
-            ExecutionNode::new(AuthorityIdentifier(3), chain.clone(), address, params)?;
+        let node = ExecutionNode::new(AuthorityIdentifier(3), chain.clone(), address, params)?;
         let inner = node.internal.read().await;
         assert_eq!(inner.args.rpc.http_port, 8542);
         assert_eq!(inner.args.rpc.ws_port, 8552);
@@ -1346,6 +1330,32 @@ mod tests {
 
         Ok(())
     }
+
+    // #[tokio::test]
+    // async fn test_spawn_blocking() {
+    //     let task_manager = reth_tasks::TaskManager::new(tokio::runtime::Handle::current());
+    //     let executor = task_manager.executor();
+
+    //     println!("spawning blocking");
+
+    //     let _init = executor.spawn_blocking(async move {
+    //         println!("~~did we make it?");
+    //         tokio::time::sleep(std::time::Duration::from_secs(2)).await;
+    //         println!("~~sleep inside blocking task")
+    //     });
+
+    //     println!("spawned blocking task :D");
+
+    //     let _manager_handle = tokio::spawn(Box::pin(async move {
+    //         println!("this is inside tokio::spawn :O");
+    //     }));
+
+    //     // manager_handle.await.unwrap();
+
+    //     println!("another println");
+    //     tokio::time::sleep(std::time::Duration::from_secs(2)).await;
+    //     println!("done.");
+    // }
 
     // #[tokio::test]
     // async fn test_alternative_task_management() {

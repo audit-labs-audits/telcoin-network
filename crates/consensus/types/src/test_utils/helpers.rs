@@ -200,7 +200,6 @@ pub fn transaction() -> Transaction {
     // very inefficient, but less refactoring => quicker release
 
     // TODO: use [0; 32] seed account instead?
-    // Address: 0xb14d3c4f5fbfbcfb98af2d330000d49c95b93aa7
     let mut tx_factory = TransactionFactory::new_random();
     let chain = adiri_chain_spec_arc();
     let gas_price = 875000000;

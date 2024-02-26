@@ -5,5 +5,9 @@
 
 mod authority;
 pub mod cluster;
+mod execution;
 mod primary;
 mod worker;
+pub use execution::{
+    default_test_execution_node, execution_params, faucet_test_execution_node, CommandParser,
+};

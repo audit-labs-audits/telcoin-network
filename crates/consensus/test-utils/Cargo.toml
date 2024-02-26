@@ -25,6 +25,7 @@ narwhal-network-types = { workspace = true }
 tn-node = { workspace = true }
 narwhal-primary = { workspace = true }
 tn-types = { workspace = true, features = ["test-utils"] }
+tn-faucet = { workspace = true }
 narwhal-worker = { workspace = true }
 narwhal-storage = { workspace = true }
 consensus-metrics = { workspace = true }
@@ -44,3 +45,6 @@ reth = { workspace = true }
 reth-db = { workspace = true, features = ["test-utils"]}
 reth-transaction-pool = { workspace = true }
 jsonrpsee = { workspace = true }
+clap = { workspace = true, features = ["env"] }
+
+telcoin-network = { path = "../../../bin/telcoin-network" }

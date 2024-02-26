@@ -1,0 +1,43 @@
+[package]
+name = "tn-faucet"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+homepage.workspace = true
+repository.workspace = true
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
+tracing = { workspace = true }
+humantime = { workspace = true }
+futures = { workspace = true }
+tokio = { workspace = true, features = ["sync"] }
+reth = { workspace = true }
+reth-primitives = { workspace = true }
+reth-provider = { workspace = true }
+reth-rpc = { workspace = true }
+reth-tasks = { workspace = true }
+reth-transaction-pool = { workspace = true }
+async-trait = { workspace = true }
+jsonrpsee = { workspace = true }
+clap = { workspace = true, features = ["env"] }
+eyre = { workspace = true }
+tokio-stream = { workspace = true, features = ["sync"] }
+lru_time_cache = { version = "0.11.11" }
+
+# google cloud feature
+gcloud-sdk = { version = "0.24.3", default-features = false, features = ["google-cloud-kms-v1", "tls-webpki-roots"] }
+k256 = "0.13.3"
+ecdsa = { version = "0.16.9", features = ["pem"] }
+secp256k1 = "0.27.0"
+tonic = { workspace = true }
+cfg-if = { workspace = true}
+
+[dev-dependencies]
+reth-tracing = { workspace = true }
+tn-types = { workspace = true }
+consensus-metrics = { workspace = true }
+narwhal-test-utils = { workspace = true }
+prometheus = { workspace = true }

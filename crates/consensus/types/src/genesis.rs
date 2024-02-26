@@ -10,10 +10,8 @@ use crate::{
     Intent, IntentMessage, Multiaddr, NetworkPublicKey, PrimaryInfo, ValidatorSignature,
     WorkerCache, WorkerIndex,
 };
-use clap::Parser;
 use eyre::Context;
 use fastcrypto::traits::{InsecureDefault, Signer};
-use reth::node::NodeCommand;
 use reth_primitives::{keccak256, Address, ChainSpec, Genesis};
 use serde::{Deserialize, Serialize};
 use std::{
@@ -24,23 +22,8 @@ use std::{
     path::Path,
     sync::Arc,
 };
-use tempfile::tempdir;
 use tracing::{info, warn};
 pub const GENESIS_VALIDATORS_DIR: &str = "validators";
-
-/// Return a [NodeCommand] with default args parsed by `clap`.
-pub fn execution_args() -> NodeCommand {
-    let datadir = tempdir().unwrap();
-    NodeCommand::<()>::try_parse_from([
-        "reth",
-        "--dev",
-        "--chain",
-        &adiri_genesis_string(),
-        "--datadir",
-        datadir.path().to_str().expect("tmpdir path to string in execution_args()"),
-    ])
-    .expect("clap parse node command")
-}
 
 /// adiri parsed Genesis.
 pub fn adiri_genesis() -> Genesis {
@@ -88,6 +71,21 @@ pub fn adiri_genesis_raw() -> &'static str {
             "balance": "0x4a47e3c12448f4ad000000"
         },
         "0xb14d3c4f5fbfbcfb98af2d330000d49c95b93aa7": {
+            "balance": "0x4a47e3c12448f4ad000000"
+        },
+        "0x781e3f2014d83dB831df4cAA3BA78aEc57396B50": {
+            "balance": "0x4a47e3c12448f4ad000000"
+        },
+        "0xe626ce81714cb7777b1bf8ad2323963fb3398ad5": {
+            "balance": "0x4a47e3c12448f4ad000000"
+        },
+        "0xb3fabbd1d2edde4d9ced3ce352859ce1bebf7907": {
+            "balance": "0x4a47e3c12448f4ad000000"
+        },
+        "0xa3478861957661b2d8974d9309646a71271d98b9": {
+            "balance": "0x4a47e3c12448f4ad000000"
+        },
+        "0xe69151677e5aec0b4fc0a94bfcaf20f6f0f975eb": {
             "balance": "0x4a47e3c12448f4ad000000"
         }
     },

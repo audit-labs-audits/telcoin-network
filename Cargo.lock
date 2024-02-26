@@ -896,7 +896,7 @@ checksum = "0c1a6197b2120bb2185a267f6515038558b019e92b832bb0320e96d66268dcf9"
 dependencies = [
  "fastrand 1.9.0",
  "futures-core",
- "pin-project",
+ "pin-project 1.1.3",
  "tokio",
 ]
 
@@ -2507,7 +2507,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "91cff35c70bba8a626e3185d8cd48cc11b5437e1a5bcd15b9b5fa3c64b6dfee7"
 dependencies = [
  "pkcs8 0.9.0",
- "signature 1.6.4",
+ "signature 1.4.0",
  "zeroize",
 ]
 
@@ -3068,6 +3068,49 @@ dependencies = [
 ]
 
 [[package]]
+name = "gcemeta"
+version = "0.2.3"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "47d460327b24cc34c86d53d60a90e9e6044817f7906ebd9baa5c3d0ee13e1ecf"
+dependencies = [
+ "bytes",
+ "hyper",
+ "serde",
+ "serde_json",
+ "thiserror",
+ "tokio",
+ "tracing",
+]
+
+[[package]]
+name = "gcloud-sdk"
+version = "0.24.3"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "01450cc82595d09a0ff81312e4ff4e68c9a3b96659bab4db009f56575217bc3b"
+dependencies = [
+ "async-trait",
+ "chrono",
+ "futures",
+ "gcemeta",
+ "hyper",
+ "jsonwebtoken 9.2.0",
+ "once_cell",
+ "prost 0.12.3",
+ "prost-types 0.12.3",
+ "reqwest",
+ "secret-vault-value",
+ "serde",
+ "serde_json",
+ "tokio",
+ "tonic 0.10.2",
+ "tower",
+ "tower-layer",
+ "tower-util",
+ "tracing",
+ "url",
+]
+
+[[package]]
 name = "generic-array"
 version = "0.14.7"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -3097,8 +3140,10 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "fe9006bed769170c11f845cf00c7c1e9092aeb3f268e007c3e760ac68008070f"
 dependencies = [
  "cfg-if",
+ "js-sys",
  "libc",
  "wasi 0.11.0+wasi-snapshot-preview1",
+ "wasm-bindgen",
 ]
 
 [[package]]
@@ -3145,7 +3190,7 @@ dependencies = [
  "gloo-utils",
  "http",
  "js-sys",
- "pin-project",
+ "pin-project 1.1.3",
  "serde",
  "serde_json",
  "thiserror",
@@ -3963,7 +4008,7 @@ dependencies = [
  "gloo-net",
  "http",
  "jsonrpsee-core",
- "pin-project",
+ "pin-project 1.1.3",
  "rustls-native-certs",
  "soketto",
  "thiserror",
@@ -4102,7 +4147,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "6971da4d9c3aa03c3d8f3ff0f4155b534aad021292003895a469716b2a230378"
 dependencies = [
  "base64 0.21.5",
- "pem",
+ "pem 1.1.1",
  "ring 0.16.20",
  "serde",
  "serde_json",
@@ -4110,10 +4155,25 @@ dependencies = [
 ]
 
 [[package]]
-name = "k256"
-version = "0.13.2"
+name = "jsonwebtoken"
+version = "9.2.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "3f01b677d82ef7a676aa37e099defd83a28e15687112cafdd112d60236b6115b"
+checksum = "5c7ea04a7c5c055c175f189b6dc6ba036fd62306b58c66c9f6389036c503a3f4"
+dependencies = [
+ "base64 0.21.5",
+ "js-sys",
+ "pem 3.0.3",
+ "ring 0.17.7",
+ "serde",
+ "serde_json",
+ "simple_asn1",
+]
+
+[[package]]
+name = "k256"
+version = "0.13.3"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "956ff9b67e26e1a6a866cb758f12c6f8746208489e3e4a4b5580802f2f0a587b"
 dependencies = [
  "cfg-if",
  "ecdsa",
@@ -4296,6 +4356,12 @@ checksum = "31e24f1ad8321ca0e8a1e0ac13f23cb668e6f5466c2c57319f6a5cf1cc8e3b1c"
 dependencies = [
  "linked-hash-map",
 ]
+
+[[package]]
+name = "lru_time_cache"
+version = "0.11.11"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "9106e1d747ffd48e6be5bb2d97fa706ed25b144fbee4d5c02eae110cd8d6badd"
 
 [[package]]
 name = "lz4-sys"
@@ -4817,6 +4883,7 @@ name = "narwhal-test-utils"
 version = "0.1.0"
 dependencies = [
  "anemo",
+ "clap",
  "consensus-metrics",
  "eyre",
  "fastcrypto",
@@ -4839,11 +4906,13 @@ dependencies = [
  "reth-interfaces",
  "reth-tracing",
  "reth-transaction-pool",
+ "telcoin-network",
  "tempfile",
  "tn-batch-maker",
  "tn-batch-validator",
  "tn-config",
  "tn-executor",
+ "tn-faucet",
  "tn-node",
  "tn-types",
  "tokio",
@@ -5365,6 +5434,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "pem"
+version = "3.0.3"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "1b8fcc794035347fb64beda2d3b462595dd2753e3f268d89c5aae77e8cf2c310"
+dependencies = [
+ "base64 0.21.5",
+ "serde",
+]
+
+[[package]]
 name = "pem-rfc7468"
 version = "0.6.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -5466,11 +5545,31 @@ dependencies = [
 
 [[package]]
 name = "pin-project"
+version = "0.4.30"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "3ef0f924a5ee7ea9cbcea77529dba45f8a9ba9f622419fe3386ca581a3ae9d5a"
+dependencies = [
+ "pin-project-internal 0.4.30",
+]
+
+[[package]]
+name = "pin-project"
 version = "1.1.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "fda4ed1c6c173e3fc7a83629421152e01d7b1f9b7f65fb301e490e8cfc656422"
 dependencies = [
- "pin-project-internal",
+ "pin-project-internal 1.1.3",
+]
+
+[[package]]
+name = "pin-project-internal"
+version = "0.4.30"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "851c8d0ce9bebe43790dedfc86614c23494ac9f423dd618d3a61fc693eafe61e"
+dependencies = [
+ "proc-macro2 1.0.71",
+ "quote 1.0.33",
+ "syn 1.0.109",
 ]
 
 [[package]]
@@ -5859,7 +5958,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "0b82eaa1d779e9a4bc1c3217db8ffbeabaae1dca241bf70183242128d48681cd"
 dependencies = [
  "bytes",
- "prost-derive",
+ "prost-derive 0.11.9",
 ]
 
 [[package]]
@@ -5869,6 +5968,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "146c289cda302b98a28d40c8b3b90498d6e526dd24ac2ecea73e4e491685b94a"
 dependencies = [
  "bytes",
+ "prost-derive 0.12.3",
 ]
 
 [[package]]
@@ -5886,7 +5986,7 @@ dependencies = [
  "petgraph",
  "prettyplease 0.1.25",
  "prost 0.11.9",
- "prost-types",
+ "prost-types 0.11.9",
  "regex",
  "syn 1.0.109",
  "tempfile",
@@ -5907,12 +6007,34 @@ dependencies = [
 ]
 
 [[package]]
+name = "prost-derive"
+version = "0.12.3"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "efb6c9a1dd1def8e2124d17e83a20af56f1570d6c2d2bd9e266ccb768df3840e"
+dependencies = [
+ "anyhow",
+ "itertools 0.11.0",
+ "proc-macro2 1.0.71",
+ "quote 1.0.33",
+ "syn 2.0.42",
+]
+
+[[package]]
 name = "prost-types"
 version = "0.11.9"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "213622a1460818959ac1181aaeb2dc9c7f63df720db7d788b3e24eacd1983e13"
 dependencies = [
  "prost 0.11.9",
+]
+
+[[package]]
+name = "prost-types"
+version = "0.12.3"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "193898f59edcf43c26227dcd4c8427f00d99d61e95dcde58dabd49fa291d470e"
+dependencies = [
+ "prost 0.12.3",
 ]
 
 [[package]]
@@ -6173,7 +6295,7 @@ version = "0.9.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "6413f3de1edee53342e6138e75b56d32e7bc6e332b3bd62d497b1929d4cfbcdd"
 dependencies = [
- "pem",
+ "pem 1.1.1",
  "ring 0.16.20",
  "time",
  "yasna",
@@ -6279,6 +6401,7 @@ version = "0.11.23"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "37b1ae8d9ac08420c66222fb9096fc5de435c3c48542bc5336c51892cffafb41"
 dependencies = [
+ "async-compression",
  "base64 0.21.5",
  "bytes",
  "encoding_rs",
@@ -6293,6 +6416,7 @@ dependencies = [
  "js-sys",
  "log",
  "mime",
+ "mime_guess",
  "once_cell",
  "percent-encoding",
  "pin-project-lite",
@@ -6304,10 +6428,12 @@ dependencies = [
  "system-configuration",
  "tokio",
  "tokio-rustls",
+ "tokio-util",
  "tower-service",
  "url",
  "wasm-bindgen",
  "wasm-bindgen-futures",
+ "wasm-streams",
  "web-sys",
  "webpki-roots",
  "winreg",
@@ -6357,7 +6483,7 @@ dependencies = [
  "metrics-exporter-prometheus",
  "metrics-process",
  "metrics-util",
- "pin-project",
+ "pin-project 1.1.3",
  "pretty_assertions",
  "proptest",
  "rand 0.8.5",
@@ -6627,7 +6753,7 @@ dependencies = [
  "futures-util",
  "itertools 0.11.0",
  "metrics",
- "pin-project",
+ "pin-project 1.1.3",
  "rayon",
  "reth-db",
  "reth-interfaces",
@@ -6659,7 +6785,7 @@ dependencies = [
  "futures",
  "generic-array",
  "hmac",
- "pin-project",
+ "pin-project 1.1.3",
  "rand 0.8.5",
  "reth-net-common",
  "reth-primitives",
@@ -6684,7 +6810,7 @@ dependencies = [
  "bytes",
  "futures",
  "metrics",
- "pin-project",
+ "pin-project 1.1.3",
  "reth-codecs",
  "reth-discv4",
  "reth-ecies",
@@ -6751,7 +6877,7 @@ dependencies = [
  "futures",
  "jsonrpsee",
  "parity-tokio-ipc",
- "pin-project",
+ "pin-project 1.1.3",
  "serde_json",
  "thiserror",
  "tokio",
@@ -6815,7 +6941,7 @@ name = "reth-net-common"
 version = "0.1.0-alpha.13"
 source = "git+https://github.com/paradigmxyz/reth?rev=b34b0d3c8de2598b2976f7ee2fc1a166c50b1b94#b34b0d3c8de2598b2976f7ee2fc1a166c50b1b94"
 dependencies = [
- "pin-project",
+ "pin-project 1.1.3",
  "reth-primitives",
  "tokio",
 ]
@@ -6851,7 +6977,7 @@ dependencies = [
  "linked_hash_set",
  "metrics",
  "parking_lot 0.12.1",
- "pin-project",
+ "pin-project 1.1.3",
  "rand 0.8.5",
  "reth-discv4",
  "reth-dns-discovery",
@@ -6982,7 +7108,7 @@ dependencies = [
  "itertools 0.11.0",
  "metrics",
  "parking_lot 0.12.1",
- "pin-project",
+ "pin-project 1.1.3",
  "rayon",
  "reth-db",
  "reth-interfaces",
@@ -7065,10 +7191,10 @@ dependencies = [
  "http-body",
  "hyper",
  "jsonrpsee",
- "jsonwebtoken",
+ "jsonwebtoken 8.3.0",
  "lazy_static",
  "metrics",
- "pin-project",
+ "pin-project 1.1.3",
  "rand 0.8.5",
  "rayon",
  "reth-consensus-common",
@@ -7223,7 +7349,7 @@ dependencies = [
  "itertools 0.11.0",
  "metrics",
  "num-traits",
- "pin-project",
+ "pin-project 1.1.3",
  "rayon",
  "reth-codecs",
  "reth-db",
@@ -7352,7 +7478,7 @@ dependencies = [
  "once_cell",
  "revm-primitives",
  "ripemd",
- "secp256k1 0.28.0",
+ "secp256k1 0.28.2",
  "sha2 0.10.8",
  "substrate-bn",
 ]
@@ -7785,11 +7911,11 @@ dependencies = [
 
 [[package]]
 name = "secp256k1"
-version = "0.28.0"
+version = "0.28.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "2acea373acb8c21ecb5a23741452acd2593ed44ee3d343e72baaa143bc89d0d5"
+checksum = "d24b59d129cdadea20aea4fb2352fa053712e5d713eee47d700cd4b2bc002f10"
 dependencies = [
- "secp256k1-sys 0.9.1",
+ "secp256k1-sys 0.9.2",
 ]
 
 [[package]]
@@ -7803,11 +7929,24 @@ dependencies = [
 
 [[package]]
 name = "secp256k1-sys"
-version = "0.9.1"
+version = "0.9.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "4dd97a086ec737e30053fd5c46f097465d25bb81dd3608825f65298c4c98be83"
+checksum = "e5d1746aae42c19d583c3c1a8c646bfad910498e2051c551a7f2e3c0c9fbb7eb"
 dependencies = [
  "cc",
+]
+
+[[package]]
+name = "secret-vault-value"
+version = "0.3.8"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "f5f8cfb86d2019f64a4cfb49e499f401f406fbec946c1ffeea9d0504284347de"
+dependencies = [
+ "prost 0.12.3",
+ "prost-types 0.12.3",
+ "serde",
+ "serde_json",
+ "zeroize",
 ]
 
 [[package]]
@@ -8162,9 +8301,9 @@ dependencies = [
 
 [[package]]
 name = "signature"
-version = "1.6.4"
+version = "1.4.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "74233d3b3b2f6d4b006dc19dee745e73e2a6bfb6f93607cd3b02bd5b00797d7c"
+checksum = "02658e48d89f2bec991f9a78e69cfa4c316f8d6a6c4ec12fae1aeb263d486788"
 
 [[package]]
 name = "signature"
@@ -8516,6 +8655,7 @@ dependencies = [
 name = "telcoin-network"
 version = "0.1.0"
 dependencies = [
+ "cfg-if",
  "clap",
  "consensus-metrics",
  "const-str",
@@ -8524,14 +8664,18 @@ dependencies = [
  "fastcrypto",
  "fdlimit",
  "futures",
+ "gcloud-sdk",
  "humantime",
  "hyper",
+ "jsonrpsee",
+ "k256",
  "metrics",
  "metrics-exporter-prometheus",
  "metrics-process",
  "metrics-util",
  "narwhal-network",
- "pin-project",
+ "narwhal-test-utils",
+ "pin-project 1.1.3",
  "prometheus",
  "rand 0.8.5",
  "rand_chacha 0.3.1",
@@ -8547,9 +8691,11 @@ dependencies = [
  "serde_yaml",
  "tempfile",
  "tn-config",
+ "tn-faucet",
  "tn-node",
  "tn-types",
  "tokio",
+ "tonic 0.10.2",
  "tracing",
  "vergen",
 ]
@@ -8788,6 +8934,7 @@ dependencies = [
  "narwhal-network",
  "narwhal-network-types",
  "narwhal-primary",
+ "narwhal-test-utils",
  "narwhal-typed-store",
  "prometheus",
  "reth",
@@ -8815,6 +8962,39 @@ dependencies = [
  "tn-types",
  "tokio",
  "tokio-stream",
+ "tracing",
+]
+
+[[package]]
+name = "tn-faucet"
+version = "0.1.0"
+dependencies = [
+ "async-trait",
+ "cfg-if",
+ "clap",
+ "consensus-metrics",
+ "ecdsa",
+ "eyre",
+ "futures",
+ "gcloud-sdk",
+ "humantime",
+ "jsonrpsee",
+ "k256",
+ "lru_time_cache",
+ "narwhal-test-utils",
+ "prometheus",
+ "reth",
+ "reth-primitives",
+ "reth-provider",
+ "reth-rpc",
+ "reth-tasks",
+ "reth-tracing",
+ "reth-transaction-pool",
+ "secp256k1 0.27.0",
+ "tn-types",
+ "tokio",
+ "tokio-stream",
+ "tonic 0.10.2",
  "tracing",
 ]
 
@@ -8881,7 +9061,6 @@ dependencies = [
  "anemo",
  "base64 0.21.5",
  "bcs",
- "clap",
  "consensus-metrics",
  "criterion",
  "derive_builder 0.12.0",
@@ -8902,13 +9081,13 @@ dependencies = [
  "proptest",
  "proptest-derive 0.3.0",
  "rand 0.8.5",
- "reth",
  "reth-primitives",
  "reth-provider",
  "reth-tracing",
  "reth-transaction-pool",
  "roaring",
  "schemars",
+ "secp256k1 0.27.0",
  "serde",
  "serde_json",
  "serde_repr",
@@ -9075,9 +9254,9 @@ dependencies = [
  "hyper",
  "hyper-timeout",
  "percent-encoding",
- "pin-project",
+ "pin-project 1.1.3",
  "prost 0.11.9",
- "prost-derive",
+ "prost-derive 0.11.9",
  "tokio",
  "tokio-stream",
  "tokio-util",
@@ -9105,7 +9284,7 @@ dependencies = [
  "hyper",
  "hyper-timeout",
  "percent-encoding",
- "pin-project",
+ "pin-project 1.1.3",
  "prost 0.12.3",
  "rustls",
  "rustls-pemfile",
@@ -9116,6 +9295,7 @@ dependencies = [
  "tower-layer",
  "tower-service",
  "tracing",
+ "webpki-roots",
 ]
 
 [[package]]
@@ -9128,7 +9308,7 @@ dependencies = [
  "futures-util",
  "hdrhistogram",
  "indexmap 1.9.3",
- "pin-project",
+ "pin-project 1.1.3",
  "pin-project-lite",
  "rand 0.8.5",
  "slab",
@@ -9180,6 +9360,18 @@ name = "tower-service"
 version = "0.3.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "b6bc1c9ce2b5135ac7f93c72918fc37feb872bdc6a5533a8b85eb4b86bfdae52"
+
+[[package]]
+name = "tower-util"
+version = "0.3.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "d1093c19826d33807c72511e68f73b4a0469a3f22c2bd5f7d5212178b4b89674"
+dependencies = [
+ "futures-core",
+ "futures-util",
+ "pin-project 0.4.30",
+ "tower-service",
+]
 
 [[package]]
 name = "tracing"
@@ -9234,7 +9426,7 @@ checksum = "97d095ae15e245a057c8e8451bab9b3ee1e1f68e9ba2b4fbc18d0ac5237835f2"
 dependencies = [
  "futures",
  "futures-task",
- "pin-project",
+ "pin-project 1.1.3",
  "tracing",
 ]
 
@@ -9709,6 +9901,19 @@ name = "wasm-bindgen-shared"
 version = "0.2.89"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "7ab9b36309365056cd639da3134bf87fa8f3d86008abf99e612384a6eecd459f"
+
+[[package]]
+name = "wasm-streams"
+version = "0.3.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "b4609d447824375f43e1ffbc051b50ad8f4b3ae8219680c94452ea05eb240ac7"
+dependencies = [
+ "futures-util",
+ "js-sys",
+ "wasm-bindgen",
+ "wasm-bindgen-futures",
+ "web-sys",
+]
 
 [[package]]
 name = "web-sys"

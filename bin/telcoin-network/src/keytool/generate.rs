@@ -10,10 +10,7 @@ use rand::prelude::*;
 use rand_chacha::ChaCha20Rng;
 use reth::dirs::MaybePlatformPath;
 use reth_primitives::{Address, ChainSpec};
-use std::{
-    path::{Path, PathBuf},
-    sync::Arc,
-};
+use std::{path::Path, sync::Arc};
 use tn_config::{Config, BLS_KEYFILE, PRIMARY_NETWORK_KEYFILE, WORKER_NETWORK_KEYFILE};
 use tn_types::{generate_proof_of_possession, BlsKeypair, NetworkKeypair};
 use tracing::info;
@@ -98,7 +95,7 @@ impl ValidatorArgs {
     /// Create all necessary information needed for validator and save to file.
     pub async fn execute(
         &self,
-        authority_key_path: &PathBuf,
+        authority_key_path: &Path,
         config: &mut Config,
     ) -> eyre::Result<()> {
         info!(target: "tn::generate_keys", "generating keys for full validator node");

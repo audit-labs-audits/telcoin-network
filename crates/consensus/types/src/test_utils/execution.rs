@@ -35,6 +35,7 @@ impl TransactionFactory {
     /// Create a new instance of self from a [0; 32] seed.
     ///
     /// Address: 0xb14d3c4f5fbfbcfb98af2d330000d49c95b93aa7
+    /// Secret: 9bf49a6a0755f953811fce125f2683d50429c3bb49e074147e0089a52eae155f
     pub fn new() -> Self {
         let mut rng = StdRng::from_seed([0; 32]);
         let keypair = ExecutionKeypair::generate(&mut rng);
@@ -125,9 +126,8 @@ impl TransactionFactory {
         let tx = self.create_eip1559(chain, gas_price, to, value);
         let recovered = tx.try_into_ecrecovered().expect("tx is recovered");
         let transaction = <Pool::Transaction>::from_recovered_pooled_transaction(recovered.into());
-        
-        pool
-            .add_transaction(TransactionOrigin::Local, transaction)
+
+        pool.add_transaction(TransactionOrigin::Local, transaction)
             .await
             .expect("recovered tx added to pool")
     }
@@ -139,9 +139,8 @@ impl TransactionFactory {
     {
         let recovered = tx.try_into_ecrecovered().expect("tx is recovered");
         let transaction = <Pool::Transaction>::from_recovered_pooled_transaction(recovered.into());
-        
-        pool
-            .add_transaction(TransactionOrigin::Local, transaction)
+
+        pool.add_transaction(TransactionOrigin::Local, transaction)
             .await
             .expect("recovered tx added to pool")
     }
@@ -157,4 +156,30 @@ where
         .expect("latest header from provider for gas price")
         .expect("latest header is some for gas price");
     header.next_block_base_fee(BaseFeeParams::ethereum()).unwrap_or_default().into()
+}
+
+#[cfg(test)]
+mod tests {
+    use reth_primitives::hex;
+    use std::str::FromStr;
+
+    use super::*;
+    #[test]
+    fn test_print_key_info() {
+        let mut rng = StdRng::from_seed([0; 32]);
+        let keypair = ExecutionKeypair::generate(&mut rng);
+        // let private = base64::encode(keypair.secret.as_bytes());
+        let _bytes = keypair.secret.as_bytes();
+        let bytes = keypair.public().as_bytes();
+
+        // 9bf49a6a0755f953811fce125f2683d50429c3bb49e074147e0089a52eae155f
+        println!("{:?}", hex::encode(bytes));
+        // public key hex
+        // 029bef8d556d80e43ae7e0becb3a7e6838b95defe45896ed6075bb9035d06c9964
+        let pkey = secp256k1::PublicKey::from_str(
+            "029bef8d556d80e43ae7e0becb3a7e6838b95defe45896ed6075bb9035d06c9964",
+        )
+        .unwrap();
+        println!("pkey: {pkey:?}");
+    }
 }

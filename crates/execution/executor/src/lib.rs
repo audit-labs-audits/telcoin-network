@@ -248,7 +248,7 @@ impl StorageInner {
     /// transactions.
     pub(crate) fn build_header_template(
         &self,
-        transactions: &Vec<TransactionSigned>,
+        transactions: &[TransactionSigned],
         chain_spec: Arc<ChainSpec>,
         parent: SealedHeader,
         timestamp: u64,
@@ -501,6 +501,7 @@ impl StorageInner {
 mod tests {
     use super::*;
     use assert_matches::assert_matches;
+    use narwhal_test_utils::execution_params;
     use reth::{cli::components::RethNodeComponentsImpl, init::init_genesis};
     use reth_beacon_consensus::{
         hooks::EngineHooks, BeaconConsensusEngine, MIN_BLOCKS_FOR_PIPELINE_RUN,
@@ -525,9 +526,7 @@ mod tests {
     use reth_tracing::init_test_tracing;
     use reth_transaction_pool::noop::NoopTransactionPool;
     use std::{str::FromStr, time::Duration};
-    use tn_types::{
-        adiri_genesis, execution_args, BatchAPI, Certificate, CommittedSubDag, ReputationScores,
-    };
+    use tn_types::{adiri_genesis, BatchAPI, Certificate, CommittedSubDag, ReputationScores};
     use tokio::{
         runtime::Handle,
         sync::{mpsc::unbounded_channel, oneshot},
@@ -576,7 +575,7 @@ mod tests {
         //=== Execution
 
         let genesis = adiri_genesis();
-        let args = execution_args();
+        let args = execution_params().expect("execution params");
 
         // collect txs and addresses for later assertions
         let mut txs_in_output = vec![];
