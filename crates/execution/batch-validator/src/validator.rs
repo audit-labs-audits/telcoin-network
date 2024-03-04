@@ -220,19 +220,23 @@ mod tests {
     };
     use reth_db::test_utils::create_test_rw_db;
     use reth_primitives::{
-        hex, Bloom, Bytes, ChainSpec, GenesisAccount, Header, SealedHeader, B256,
+        hex, Address, Bloom, Bytes, ChainSpec, GenesisAccount, Header, SealedHeader, B256,
         EMPTY_OMMER_ROOT_HASH,
     };
     use reth_provider::ProviderFactory;
     use reth_tracing::init_test_tracing;
     use std::str::FromStr;
-    use tn_types::{adiri_genesis, test_utils::TransactionFactory, VersionedMetadata};
+    use tn_types::{
+        adiri_genesis,
+        test_utils::{get_gas_price, TransactionFactory},
+        VersionedMetadata,
+    };
 
     #[tokio::test]
     async fn test_valid_batch() {
         init_test_tracing();
         let genesis = adiri_genesis();
-        let tx_factory = TransactionFactory::new();
+        let mut tx_factory = TransactionFactory::new();
         let factory_address = tx_factory.address();
         debug!("seeding factory address: {factory_address:?}");
 
@@ -277,6 +281,9 @@ mod tests {
             BlockchainProvider::new(provider_factory.clone(), blockchain_tree.clone())
                 .expect("blockchain db valid");
 
+        // get gas price before passing db
+        let gas_price = get_gas_price(&blockchain_db);
+
         // batch validator
         let batch_validator = BatchValidator::new(
             Arc::clone(&consensus),
@@ -308,7 +315,10 @@ mod tests {
         //              input: Bytes(0x),
         //          })
         //      }
-        let raw_tx1 = Bytes::from_str("0x02f871820a28808084342770c0830f4240940000000000000000000000000000000000000000880de0b6b3a764000080c001a083f87b2af6f42e7315f94e3c6278c1ea8fab3d45e739bdd706440c5b22961d1ca012f7d46ca56fdb9bacfcbb6f9a621742728faa80dc84c1a0ab078e542bb23d08").expect("tx1 valid bytes");
+        // let raw_tx1 =
+        // Bytes::from_str("
+        // 0x02f871820a28808084342770c0830f4240940000000000000000000000000000000000000000880de0b6b3a764000080c001a083f87b2af6f42e7315f94e3c6278c1ea8fab3d45e739bdd706440c5b22961d1ca012f7d46ca56fdb9bacfcbb6f9a621742728faa80dc84c1a0ab078e542bb23d08"
+        // ).expect("tx1 valid bytes");
 
         // tx2: TransactionSigned {
         //          hash: 0x7d27749eeebc64d3385fab2301b619a84c78fc8d9ba4efd7e7d4f9fe8a59a6d3,
@@ -330,7 +340,10 @@ mod tests {
         //              input: Bytes(0x),
         //          })
         //      }
-        let raw_tx2 = Bytes::from_str("0x02f871820a28018084342770c0830f4240940000000000000000000000000000000000000000880de0b6b3a764000080c001a0934803978ef6e920072232c5f1c50b690722a7385bcd155879218bb2e2f67b2fa06c12751b4acd898b2c0935e183a7f5d324eed939106f87a6f2cd744f7ef3b39b").expect("tx2 valid bytes");
+        // let raw_tx2 =
+        // Bytes::from_str("
+        // 0x02f871820a28018084342770c0830f4240940000000000000000000000000000000000000000880de0b6b3a764000080c001a0934803978ef6e920072232c5f1c50b690722a7385bcd155879218bb2e2f67b2fa06c12751b4acd898b2c0935e183a7f5d324eed939106f87a6f2cd744f7ef3b39b"
+        // ).expect("tx2 valid bytes");
 
         // tx3: TransactionSigned {
         //          hash: 0xf6bb571157b2553543f055ab0a24ad0fc1faf4c907c7faaabce6c40026ef462f,
@@ -352,19 +365,49 @@ mod tests {
         //              input: Bytes(0x),
         //          })
         //      }
-        let raw_tx3 = Bytes::from_str("0x02f871820a28028084342770c0830f4240940000000000000000000000000000000000000000880de0b6b3a764000080c001a06b323119aefa01f11b805394e332b405db72a7d090d9ea73f69e0df7794b59d1a04b29e1b127058630e5f9adbe77c2841421b7d6ece8c833e4fd4513ce612c89fe").expect("tx3 valid bytes");
+        // let raw_tx3 =
+        // Bytes::from_str("
+        // 0x02f871820a28028084342770c0830f4240940000000000000000000000000000000000000000880de0b6b3a764000080c001a06b323119aefa01f11b805394e332b405db72a7d090d9ea73f69e0df7794b59d1a04b29e1b127058630e5f9adbe77c2841421b7d6ece8c833e4fd4513ce612c89fe"
+        // ).expect("tx3 valid bytes");
+        //
+        let value =
+            U256::from(10).checked_pow(U256::from(18)).expect("1e18 doesn't overflow U256").into();
+
+        // create 3 transactions
+        let transaction1 = tx_factory.create_eip1559(
+            chain.clone(),
+            gas_price,
+            Address::ZERO,
+            value, // 1 TEL
+        );
+        debug!("transaction 1: {transaction1:?}");
+
+        let transaction2 = tx_factory.create_eip1559(
+            chain.clone(),
+            gas_price,
+            Address::ZERO,
+            value, // 1 TEL
+        );
+        debug!("transaction 2: {transaction2:?}");
+
+        let transaction3 = tx_factory.create_eip1559(
+            chain.clone(),
+            gas_price,
+            Address::ZERO,
+            value, // 1 TEL
+        );
 
         // sealed header
         let sealed_header = SealedHeader {
             header: Header {
                 parent_hash: hex!(
-                    "17a97098c8913123d9abc2dc3afff5663f79c6e9c161773e9a0248fbeb7ab43e"
+                    "9ca9e62a3599c89955a93e0c76130973221f6056af2afd738d8514a66a900ebb"
                 )
                 .into(),
                 ommers_hash: EMPTY_OMMER_ROOT_HASH,
                 beneficiary: hex!("0000000000000000000000000000000000000000").into(),
                 state_root: hex!(
-                    "d8921ee90cc4ab6dac98d20d1b1d013bdf0d54eb99b907612b9f0053426f2bb5"
+                    "1e6751bd30803af71e305b61cf2da9bb3fa1a6841bc333f49c7422e1f8b0d013"
                 )
                 .into(),
                 transactions_root: hex!(
@@ -392,7 +435,11 @@ mod tests {
             },
             hash: hex!("ed9242a844ec144e25b58c085184c3c4ae8709226771659badf7e45cdd415c58").into(),
         };
-        let transactions = vec![raw_tx1.into(), raw_tx2.into(), raw_tx3.into()];
+        let transactions = vec![
+            transaction1.envelope_encoded().into(),
+            transaction2.envelope_encoded().into(),
+            transaction3.envelope_encoded().into(),
+        ];
         let metadata = VersionedMetadata::new(sealed_header.clone());
         let batch = Batch::new_with_metadata(transactions, metadata);
 

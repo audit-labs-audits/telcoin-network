@@ -136,7 +136,7 @@ async fn test_make_batch_el_to_cl() {
     )
     .build();
 
-    let gas_price = get_gas_price(blockchain_db.clone());
+    let gas_price = get_gas_price(&blockchain_db);
     let value =
         U256::from(10).checked_pow(U256::from(18)).expect("1e18 doesn't overflow U256").into();
 

@@ -507,7 +507,7 @@ mod tests {
         )
         .build();
 
-        let gas_price = get_gas_price(blockchain_db.clone());
+        let gas_price = get_gas_price(&blockchain_db);
         debug!("gas price: {gas_price:?}");
         let value =
             U256::from(10).checked_pow(U256::from(18)).expect("1e18 doesn't overflow U256").into();

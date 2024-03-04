@@ -147,7 +147,7 @@ impl TransactionFactory {
 }
 
 /// Helper to get the gas price based on the provider's latest header.
-pub fn get_gas_price<Provider>(provider: Provider) -> u128
+pub fn get_gas_price<Provider>(provider: &Provider) -> u128
 where
     Provider: BlockReaderIdExt,
 {
@@ -161,25 +161,32 @@ where
 #[cfg(test)]
 mod tests {
     use reth_primitives::hex;
-    use std::str::FromStr;
+    // use std::str::FromStr;
 
     use super::*;
     #[test]
     fn test_print_key_info() {
-        let mut rng = StdRng::from_seed([0; 32]);
-        let keypair = ExecutionKeypair::generate(&mut rng);
+        // let mut rng = StdRng::from_seed([0; 32]);
+        // let keypair = ExecutionKeypair::generate(&mut rng);
+
+        let keypair = ExecutionKeypair::generate(&mut StdRng::from_rng(OsRng).unwrap());
+
         // let private = base64::encode(keypair.secret.as_bytes());
-        let _bytes = keypair.secret.as_bytes();
+        let bytes = keypair.secret.as_bytes();
+        println!("secret: {:?}", hex::encode(bytes));
         let bytes = keypair.public().as_bytes();
+        println!("public: {:?}", hex::encode(bytes));
 
         // 9bf49a6a0755f953811fce125f2683d50429c3bb49e074147e0089a52eae155f
-        println!("{:?}", hex::encode(bytes));
-        // public key hex
+        // println!("{:?}", hex::encode(bytes));
+        // public key hex [0; 32]
         // 029bef8d556d80e43ae7e0becb3a7e6838b95defe45896ed6075bb9035d06c9964
-        let pkey = secp256k1::PublicKey::from_str(
-            "029bef8d556d80e43ae7e0becb3a7e6838b95defe45896ed6075bb9035d06c9964",
-        )
-        .unwrap();
-        println!("pkey: {pkey:?}");
+        //
+        // let pkey = secp256k1::PublicKey::from_str(
+        //     "029bef8d556d80e43ae7e0becb3a7e6838b95defe45896ed6075bb9035d06c9964",
+        // )
+        // .unwrap();
+        // println!("{:?}", public_key_to_address(pkey));
+        // println!("pkey: {pkey:?}");
     }
 }

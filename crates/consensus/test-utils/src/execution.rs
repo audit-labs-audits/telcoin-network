@@ -99,13 +99,13 @@ pub fn default_test_execution_node(
 }
 
 /// Create CLI command for tests calling `ExecutionNode::new`.
-pub fn execution_params() -> eyre::Result<reth::node::NodeCommand<FaucetCliExt>> {
+pub fn execution_params() -> eyre::Result<reth::node::NodeCommand<()>> {
     let tempdir = tempdir().expect("tempdir created").into_path();
 
     // use same approach as telcoin-network binary
-    let command = NodeCommand::<FaucetCliExt>::try_parse_from([
+    let command = NodeCommand::<()>::try_parse_from([
         "telcoin-network",
-        "node",
+        // "node",
         "--dev",
         "--chain",
         "adiri",
@@ -113,7 +113,7 @@ pub fn execution_params() -> eyre::Result<reth::node::NodeCommand<FaucetCliExt>>
         tempdir.to_str().expect("tempdir path clean"),
     ])?;
 
-    let NodeCommand::<FaucetCliExt> {
+    let NodeCommand::<()> {
         datadir,
         config,
         chain,
@@ -128,11 +128,10 @@ pub fn execution_params() -> eyre::Result<reth::node::NodeCommand<FaucetCliExt>>
         db,
         dev,
         pruning,
-        ext,
         ..
     } = command;
 
-    let params = reth::node::NodeCommand::<FaucetCliExt> {
+    let params = reth::node::NodeCommand::<()> {
         datadir: MaybePlatformPath::from_str(&datadir.to_string())
             .expect("datadir compatible with platform path"),
         config,
@@ -148,7 +147,7 @@ pub fn execution_params() -> eyre::Result<reth::node::NodeCommand<FaucetCliExt>>
         db,
         dev,
         pruning,
-        ext,
+        ext: Default::default(),
     };
 
     Ok(params)

@@ -67,12 +67,6 @@ pub fn adiri_genesis_raw() -> &'static str {
     "mixHash": "0x0000000000000000000000000000000000000000000000000000000000000000",
     "coinbase": "0x0000000000000000000000000000000000000000",
     "alloc": {
-        "0x6Be02d1d3665660d22FF9624b7BE0551ee1Ac91b": {
-            "balance": "0x4a47e3c12448f4ad000000"
-        },
-        "0xb14d3c4f5fbfbcfb98af2d330000d49c95b93aa7": {
-            "balance": "0x4a47e3c12448f4ad000000"
-        },
         "0x781e3f2014d83dB831df4cAA3BA78aEc57396B50": {
             "balance": "0x4a47e3c12448f4ad000000"
         },
