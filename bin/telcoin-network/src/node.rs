@@ -179,7 +179,7 @@ impl<Ext: RethCliExt> NodeCommand<Ext> {
 
     /// Execute `node` command
     pub async fn execute(self) -> eyre::Result<()> {
-        info!(target: "reth::cli", "reth {} starting", SHORT_VERSION);
+        info!(target: "tn::cli", "telcoin-network {} starting", SHORT_VERSION);
 
         // Raise the fd limit of the process.
         // Does not do anything on windows.
@@ -359,8 +359,6 @@ impl<Ext: RethCliExt> NodeCommand<Ext> {
         // let mut config: Config = self.load_config(config_path.clone())?;
 
         // rx.await??;
-
-        // info!(target: "reth::cli", "Consensus engine has exited.");
 
         if terminate_early {
             Ok(())

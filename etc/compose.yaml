@@ -92,6 +92,9 @@ services:
       dockerfile: etc/Dockerfile
     depends_on:
       - comittee
+    user: "root"
+    environment:
+      - RUST_LOG=info,execution=debug
     command: /usr/local/bin/telcoin node --datadir /home/nonroot/data --dev --chain adiri --http.addr 0.0.0.0
     ports:
       - 8544:8544
@@ -106,6 +109,7 @@ services:
       dockerfile: etc/Dockerfile
     depends_on:
       - comittee
+    user: "root"
     command: /usr/local/bin/telcoin node --datadir /home/nonroot/data --dev --chain adiri --http.addr 0.0.0.0
     ports:
       - 8545:8544
@@ -120,6 +124,7 @@ services:
       dockerfile: etc/Dockerfile
     depends_on:
       - comittee
+    user: "root"
     command: /usr/local/bin/telcoin node --datadir /home/nonroot/data --dev --chain adiri --http.addr 0.0.0.0
     ports:
       - 8546:8544
@@ -134,6 +139,7 @@ services:
       dockerfile: etc/Dockerfile
     depends_on:
       - comittee
+    user: "root"
     command: /usr/local/bin/telcoin node --datadir /home/nonroot/data --dev --chain adiri --http.addr 0.0.0.0
     ports:
       - 8547:8544

@@ -108,6 +108,9 @@ impl PrimaryNodeInner {
             &executor_metrics.tx_notifier,
         );
 
+        // used to retrieve the last executed certificate in case of restarts
+        let last_executed_sub_dag_index = execution_components.last_executed_output().await.expect("execution found HEAD");
+
         // spawn primary if not already running
         let primary_handles = Self::spawn_primary(
             keypair,
@@ -122,6 +125,7 @@ impl PrimaryNodeInner {
             &mut tx_shutdown,
             executor_metrics,
             tx_notifier,
+            last_executed_sub_dag_index,
         )
         .await?;
 
@@ -227,6 +231,8 @@ impl PrimaryNodeInner {
         executor_metrics: ExecutorMetrics,
         // Receiving half goes to the EL Executor
         tx_notifier: Sender<ConsensusOutput>,
+        // Used for recovering after crashes/restarts
+        last_executed_sub_dag_index: u64,
     ) -> SubscriberResult<Vec<JoinHandle<()>>>
 where
         // State: ExecutionState + Send + Sync + 'static,
@@ -271,7 +277,6 @@ where
             client.clone(),
             store,
             parameters.clone(),
-            // execution_state,
             tx_shutdown.subscribe_n(3),
             rx_new_certificates,
             tx_committed_certificates.clone(),
@@ -279,6 +284,8 @@ where
             registry,
             executor_metrics,
             tx_notifier,
+            // in loo of sui's execution_state:
+            last_executed_sub_dag_index,
         )
         .await?;
         handles.extend(consensus_handles);
@@ -334,6 +341,7 @@ where
         registry: &Registry,
         executor_metrics: ExecutorMetrics,
         tx_notifier: Sender<ConsensusOutput>,
+        last_executed_sub_dag_index: u64,
     ) -> SubscriberResult<(Vec<JoinHandle<()>>, LeaderSchedule)>
     where
         BlsPublicKey: VerifyingKey,
@@ -347,16 +355,30 @@ where
             &channel_metrics.tx_sequence,
         );
 
-        // TODO: this should read from execution db
+        // TODO: this may need to be adjusted depending on how TN executes output
         //
-        // can we still ensure last sub dag index + 1 is correct?
+        // if executor engine executes-per-batch:
+        //  - executing consensus output per batch ~> 1 batch == 1 block
+        //  - use nonce or mixed hash or difficulty to track the output's "last committed subdag"
+        //  - how to handle restart mid-execution?
+        //      - only some of the batches completed
+        //      - so, don't use `last_executed_sub_dag_index + 1`
+        //          - use just `last_executed_sub_dag_index` and re-execute the output again
+        //          - less efficient, but ensures correctness
+        //          - maybe there's a way to optimize this like only re-execute if the blocks/batches don't match the output batch count?
+        //              - but this is probably unlikely to happen anyway
+        //                  - ie) crashes/restarts at a clean execution boundary
+        // 
+        // for now, all batches are contained within a single block, (ie 1 consensus output = 1 executed block)
+        // so use block number for restored consensus output
+        // since block number == last_executed_sub_dag_index
 
         // Check for any sub-dags that have been sent by consensus but were not processed by the
         // executor.
         let restored_consensus_output = get_restored_consensus_output(
             store.consensus_store.clone(),
             store.certificate_store.clone(),
-            0, // TODO: this currently assumes the last finalized block number
+            last_executed_sub_dag_index,
         )
         .await?;
 

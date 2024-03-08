@@ -246,6 +246,27 @@ where
     //     Ok(executor)
     // }
 
+
+    /// Fetch the last executed stated from the database.
+    /// 
+    /// This method is called when the primary spawns to retrieve
+    /// the last committed sub dag from it's database in the case
+    /// of the node restarting.
+    /// 
+    /// TODO: there is some consideration about executing batches as blocks
+    /// for scalability, but for now all output is one block,
+    /// so just use the head's number.
+    /// 
+    /// The primary adds +1 to this value for recovering output
+    /// since the execution layer is confirming the last executing block.
+    async fn last_executed_output(&self) -> eyre::Result<u64> {
+        // TODO: this might change depending on how output is executed
+        // this may need to change in the future, so leaving it a separate
+        // method for now.
+        let head: Head = lookup_head(self.provider_factory.clone())?;
+        Ok(head.number)
+    }
+
     /// Spawn tasks associated with executing output from consensus.
     ///
     /// The method is consumed by [PrimaryNodeInner::start].
@@ -629,6 +650,11 @@ where
         inner.adjust_engine_ports(instance)?;
 
         Ok(ExecutionNode { internal: Arc::new(RwLock::new(inner)) })
+    }
+
+    pub async fn last_executed_output(&self) -> eyre::Result<u64> {
+        let guard = self.internal.read().await;
+        guard.last_executed_output().await
     }
 
     pub async fn start_engine(
