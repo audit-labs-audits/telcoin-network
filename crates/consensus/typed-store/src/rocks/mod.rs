@@ -240,7 +240,7 @@ impl RocksDB {
         delegate_call!(self.multi_get_cf_opt(keys, readopts))
     }
 
-    pub fn batched_multi_get_cf_opt<I, K>(
+    pub fn batched_multi_get_cf_opt<'a, I, K>(
         &self,
         cf: &impl AsColumnFamilyRef,
         keys: I,
@@ -248,8 +248,8 @@ impl RocksDB {
         readopts: &ReadOptions,
     ) -> Vec<Result<Option<DBPinnableSlice<'_>>, Error>>
     where
-        I: IntoIterator<Item = K>,
-        K: AsRef<[u8]>,
+    K: AsRef<[u8]> + 'a,
+    I: IntoIterator<Item = &'a K>,
     {
         delegate_call!(self.batched_multi_get_cf_opt(cf, keys, sorted_input, readopts))
     }
@@ -854,7 +854,7 @@ impl<K, V> DBMap<K, V> {
             .rocksdb
             .batched_multi_get_cf_opt(
                 &self.cf(),
-                keys_bytes?,
+                &keys_bytes?,
                 /* sorted_keys= */ false,
                 &self.opts.readopts(),
             )
