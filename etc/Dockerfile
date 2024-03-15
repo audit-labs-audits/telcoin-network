@@ -1,9 +1,9 @@
-FROM rust:1.75-slim-bookworm as builder
+FROM rust:1.76-slim-bookworm as builder
 
 WORKDIR /usr/src/telcoin-network
 
 RUN apt-get update \
-    && apt-get install -y build-essential cmake libclang-15-dev \
+    && apt-get install -y build-essential cmake libclang-16-dev \
     && apt-get clean \
     && rm -rf /var/lib/apt/lists/*
 
@@ -15,7 +15,7 @@ COPY crates/ ./crates/
 RUN --mount=type=cache,target=/usr/local/cargo/registry \
     --mount=type=cache,target=/usr/local/cargo/git \
     --mount=type=cache,target=./target \
-    cargo build --release \
+    cargo build --release --features faucet \
     && mv ./target/release/telcoin-network /tmp/
 
 # Production Image
