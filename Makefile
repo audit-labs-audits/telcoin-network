@@ -54,9 +54,14 @@ docker-build:
 docker-push:
 	docker push us-docker.pkg.dev/telcoin-network/telcoin-network/adiri:latest ;
 
+docker-builder:
+	docker buildx create --name tn-builder --use ;
+
+docker-builder-init:
+	docker buildx inspect --bootstrap ;
+
 docker-layerg:
-	docker build -t layerg/yukon -f ./etc/Dockerfile . ;
-	docker push layerg/yukon:latest ;
+	docker buildx build -f ./etc/Dockerfile --platform linux/amd64,linux/arm64 -t layerg/adiri . --push ;
 
 up:
 	docker compose -f ./etc/compose.yaml up --build --remove-orphans --detach ;
