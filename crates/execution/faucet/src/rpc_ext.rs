@@ -15,7 +15,7 @@ use reth_transaction_pool::TransactionPool;
 pub trait FaucetRpcExtApi {
     /// Transfer TEL to an address
     #[method(name = "transfer")]
-    async fn transfer(&self, address: Address) -> EthResult<TxHash>;
+    async fn transfer(&self, address: Address, contract: Option<Address>) -> EthResult<TxHash>;
 }
 
 /// The type that implements Faucet namespace trait.
@@ -33,8 +33,8 @@ impl FaucetRpcExtApiServer for FaucetRpcExt {
     /// recipient's request is valid.
     ///
     /// By default, addresses are removed from the cache every 24 hours.
-    async fn transfer(&self, address: Address) -> EthResult<TxHash> {
-        self.faucet.handle_request(address).await
+    async fn transfer(&self, address: Address, contract: Option<Address>) -> EthResult<TxHash> {
+        self.faucet.handle_request(address, contract).await
     }
 }
 

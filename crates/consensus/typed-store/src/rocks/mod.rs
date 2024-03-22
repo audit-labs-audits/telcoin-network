@@ -248,8 +248,8 @@ impl RocksDB {
         readopts: &ReadOptions,
     ) -> Vec<Result<Option<DBPinnableSlice<'_>>, Error>>
     where
-    K: AsRef<[u8]> + 'a,
-    I: IntoIterator<Item = &'a K>,
+        K: AsRef<[u8]> + 'a,
+        I: IntoIterator<Item = &'a K>,
     {
         delegate_call!(self.batched_multi_get_cf_opt(cf, keys, sorted_input, readopts))
     }

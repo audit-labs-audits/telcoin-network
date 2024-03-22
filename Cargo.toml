@@ -88,6 +88,9 @@ reth-blockchain-tree = { git = "https://github.com/paradigmxyz/reth", rev = "b34
 reth-metrics = { git = "https://github.com/paradigmxyz/reth", rev = "b34b0d3c8de2598b2976f7ee2fc1a166c50b1b94" }
 alloy-rlp = "0.3"
 
+# matches Cargo.lock
+alloy-sol-types = "0.5.3"
+
 tn-batch-validator = { path = "crates/execution/batch-validator" }
 tn-executor = { path = "crates/execution/executor" }
 

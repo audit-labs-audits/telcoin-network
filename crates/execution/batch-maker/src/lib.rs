@@ -292,7 +292,7 @@ impl StorageInner {
         } else {
             proofs::calculate_transaction_root(transactions)
         };
-        
+
         // TODO: is there a better way?
         //
         // sometimes batches are produced too quickly
@@ -446,7 +446,9 @@ mod tests {
     };
     use std::{str::FromStr, time::Duration};
     use tn_types::{
-        adiri_chain_spec_arc, adiri_genesis, test_utils::{get_gas_price, TransactionFactory}, BatchAPI, MetadataAPI
+        adiri_chain_spec_arc, adiri_genesis,
+        test_utils::{get_gas_price, TransactionFactory},
+        BatchAPI, MetadataAPI,
     };
     use tokio::time::timeout;
 
@@ -631,14 +633,18 @@ mod tests {
     #[tokio::test]
     async fn test_parent_timestamp_changes() {
         // actual error from adiri:
-        // WARN request{route=/narwhal.WorkerToWorker/ReportBatch remote_peer_id=0599b3e5 direction=outbound}: anemo_tower::trace::on_failure: response failed error=Status code: 400 Bad Request Invalid batch: block timestamp 1707774238 is in the past compared to the parent timestamp 1707774238 latency=0 ms
+        // WARN request{route=/narwhal.WorkerToWorker/ReportBatch remote_peer_id=0599b3e5
+        // direction=outbound}: anemo_tower::trace::on_failure: response failed error=Status code:
+        // 400 Bad Request Invalid batch: block timestamp 1707774238 is in the past compared to the
+        // parent timestamp 1707774238 latency=0 ms
         let address = Address::from(U160::from(100));
         let mut sealed_header = SealedHeader::default();
         let chain_spec = adiri_chain_spec_arc();
         let storage = Storage::new(sealed_header.clone(), address);
         let system_time = now();
         sealed_header.timestamp = system_time.into();
-        let template = storage.write().await.build_header_template(&Vec::new(), chain_spec, sealed_header);
+        let template =
+            storage.write().await.build_header_template(&Vec::new(), chain_spec, sealed_header);
         let expected: u64 = system_time + 1;
         assert!(template.timestamp == expected);
     }

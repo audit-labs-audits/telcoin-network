@@ -6,7 +6,8 @@
 //! address if the address hasn't received from the faucet
 //! wallet within the time period.
 
-use crate::{FaucetWallet, GoogleKMSClient, Secp256k1PubKeyBytes};
+use crate::{Drip, FaucetWallet, GoogleKMSClient, Secp256k1PubKeyBytes};
+use alloy_sol_types::SolType;
 use futures::StreamExt;
 use gcloud_sdk::{
     google::cloud::kms::v1::{
@@ -48,14 +49,29 @@ use tracing::{debug, error};
 /// and then submits a transaction (or returns an error). The faucet is a
 /// direct address -> address transfer. The faucet address is seeded in genesis.
 pub(crate) struct FaucetService<Provider, Pool, Tasks> {
+    /// The faucet contract's address.
+    ///
+    /// The value is used to send call data to the contract that mints stablecoins.
+    pub(crate) faucet_contract: Address,
     /// The channel between the RPC and the faucet.
-    pub(crate) request_rx: UnboundedReceiverStream<(Address, oneshot::Sender<EthResult<TxHash>>)>,
+    ///
+    /// The channel contains:
+    /// - the receiving user's address
+    /// - an optional contract address (when requesting stablecoins)
+    /// - the oneshot channel to return the result
+    pub(crate) request_rx:
+        UnboundedReceiverStream<(Address, Option<Address>, oneshot::Sender<EthResult<TxHash>>)>,
     /// Database impl for retrieving blockchain data.
     pub(crate) provider: Provider,
     /// The pool for submitting transactions.
     pub(crate) pool: Pool,
     /// The cache for verifying an address hasn't exceeded time-based request limit.
-    pub(crate) lru_cache: LruCache<Address, SystemTime>,
+    ///
+    /// The cache maps a user's address with the contract's address to the time of the request.
+    ///
+    /// Users request faucet transfers for native tokens (zero address) and
+    /// stablecoin tokens (contract address) at specific times.
+    pub(crate) lru_cache: LruCache<(Address, Address), SystemTime>,
     /// The chain id for constructing transactions.
     pub(crate) chain_id: u64,
     /// The amount to transfer (specified in `FaucetConfig`).
@@ -68,12 +84,13 @@ pub(crate) struct FaucetService<Provider, Pool, Tasks> {
     pub(crate) wallet: FaucetWallet,
     /// Sending half of the cache channel.
     ///
-    /// Addresses sent on this channel are added to the LRU cache.
-    pub(crate) add_to_cache_tx: UnboundedSender<Address>,
+    /// The user's address and contract address are sent through this channel
+    /// then added to the LRU cache.
+    pub(crate) add_to_cache_tx: UnboundedSender<(Address, Address)>,
     /// Receiving half of the cache channel.
     ///
     /// Addresses received on this channel are added to the LRU cache.
-    pub(crate) update_cache_rx: UnboundedReceiver<Address>,
+    pub(crate) update_cache_rx: UnboundedReceiver<(Address, Address)>,
 }
 
 impl<Provider, Pool, Tasks> FaucetService<Provider, Pool, Tasks>
@@ -92,33 +109,101 @@ where
         end.duration_since(SystemTime::now()).map_err(|e| EthApiError::InvalidParams(e.to_string()))
     }
 
+    /// Process the transfer request for the faucet service.
+    ///
+    /// This method intentionally uses `&mut self` to ensure nonce is incremented correctly.
+    fn process_transfer_request(
+        &mut self,
+        user: Address,
+        contract: Address,
+        reply: oneshot::Sender<EthResult<TxHash>>,
+    ) -> EthResult<()> {
+        // create transaction based on request type
+        let transaction = self.create_transaction_to_sign(user, contract)?;
+        // request signature from kms
+        let kms_name = self.wallet.name();
+        // let kms_client = self.kms_client();
+        let public_key = self.wallet.kms_public_key();
+        let chain_id = self.chain_id;
+        let pool = self.pool.clone();
+        let add_to_cache = self.add_to_cache_tx.clone();
+
+        // request signature and submit to txpool
+        self.executor.spawn(Box::pin(async move {
+            let digest = transaction.signature_hash();
+            let response =
+                Self::request_kms_signature(kms_name, digest, chain_id, public_key).await;
+
+            // submit tx to pool
+            match response {
+                Ok(signature) => {
+                    let tx_for_pool =
+                        TransactionSigned::from_transaction_and_signature(transaction, signature);
+                    let res = submit_transaction(pool, tx_for_pool).await;
+                    if res.is_ok() {
+                        // forward address to update cache
+                        let _ = add_to_cache.send((user, contract));
+                    }
+                    // reply to rpc
+                    let _ = reply.send(res);
+                }
+                Err(e) => error!(target: "faucet", ?e, "Error requesting KMS signature"),
+            }
+        }));
+
+        Ok(())
+    }
+
     /// Create a EIP1559 transaction with max fee per gas set to 1 TEL.
     ///
     /// This method intentionally uses `&mut self` to ensure nonce is incremented correctly.
     /// TODO: use AtomicU64 for thread safe nonce increments
-    fn create_transaction_to_sign(&mut self, to: Address) -> EthResult<Transaction> {
+    fn create_transaction_to_sign(
+        &mut self,
+        to: Address,
+        contract: Address,
+    ) -> EthResult<Transaction> {
         // find the tx nonce and gas price
         let nonce = self.get_transaction_count()?;
         let gas_price = self.gas_price()?;
 
-        let transaction = Transaction::Eip1559(TxEip1559 {
-            chain_id: self.chain_id,
-            nonce,
-            max_priority_fee_per_gas: gas_price,
-            max_fee_per_gas: gas_price,
-            gas_limit: 1_000_000,
-            to: TransactionKind::Call(to),
-            value: self.transfer_amount.into(),
-            input: Default::default(),
-            access_list: Default::default(),
-        });
+        let transaction = if contract.is_zero() {
+            // native token transaction
+            Transaction::Eip1559(TxEip1559 {
+                chain_id: self.chain_id,
+                nonce,
+                max_priority_fee_per_gas: gas_price,
+                max_fee_per_gas: gas_price,
+                gas_limit: 1_000_000,
+                to: TransactionKind::Call(to),
+                value: self.transfer_amount.into(),
+                input: Default::default(),
+                access_list: Default::default(),
+            })
+        } else {
+            // hardcoded selector: keccak256("drip(address,address)")[0..4]
+            let selector = [235, 56, 57, 167];
+            // encode params
+            let params: Vec<u8> = Drip::abi_encode_params(&(&to, &contract)).into();
+            // combine params with selector to create input for contract call
+            let input = [&selector, &params[..]].concat().into();
+
+            // stablecoin transaction - call faucet contract
+            Transaction::Eip1559(TxEip1559 {
+                chain_id: self.chain_id,
+                nonce,
+                max_priority_fee_per_gas: gas_price,
+                max_fee_per_gas: gas_price,
+                gas_limit: 1_000_000,
+                to: TransactionKind::Call(self.faucet_contract),
+                value: U256::ZERO.into(),
+                input,
+                access_list: Default::default(),
+            })
+        };
 
         debug!(target: "faucet", ?transaction);
         Ok(transaction)
-
-        // old way:
-        // let signature = self.sign_hash(tx_signature_hash)?;
-        // Ok(TransactionSigned::from_transaction_and_signature(transaction, signature))
     }
 
     /// Taken from rpc/src/eth/api/state.rs
@@ -306,17 +391,29 @@ where
 
         loop {
             // listen for cache updates
-            while let Poll::Ready(Some(address)) = this.update_cache_rx.poll_recv(cx) {
-                this.lru_cache.insert(address, SystemTime::now());
+            while let Poll::Ready(Some((address, contract))) = this.update_cache_rx.poll_recv(cx) {
+                // insert user's address and contract address into LRU cache
+                this.lru_cache.insert((address, contract), SystemTime::now());
             }
 
             match ready!(this.request_rx.poll_next_unpin(cx)) {
                 None => {
                     unreachable!("faucet request_rx can't close - always listening for addresses from the rpc")
                 }
-                Some((address, reply)) => {
-                    // check the cache
-                    if let Some(time) = this.lru_cache.peek(&address) {
+                Some((address, contract, reply)) => {
+                    // assign token address for checking LRU cache
+                    let contract_address = if let Some(address) = contract {
+                        // stablecoin transfer
+                        address
+                    } else {
+                        // native token transfer
+                        Address::ZERO
+                    };
+
+                    // check the cache for user's address
+                    // use `::peek` so cache timer doesn't reset
+                    if let Some(time) = this.lru_cache.peek(&(address, contract_address)) {
+                        // return remaining time if address combo is still cached
                         let wait_period_over = this.calc_wait_period(time);
                         let error = match wait_period_over {
                             Ok(time) => {
@@ -328,51 +425,17 @@ where
                             }
                             Err(e) => Err(e),
                         };
+
+                        // return the error and check the next request
                         let _ = reply.send(error);
-                    } else {
-                        // create transaction to sign
-                        match this.create_transaction_to_sign(address) {
-                            Ok(transaction) => {
-                                // request signature from kms
-                                let kms_name = this.wallet.name();
-                                // let kms_client = this.kms_client();
-                                let public_key = this.wallet.kms_public_key();
-                                let chain_id = this.chain_id;
-                                let pool = this.pool.clone();
-                                let add_to_cache = this.add_to_cache_tx.clone();
+                        continue
+                    }
 
-                                // request signature and submit to txpool
-                                this.executor.spawn(Box::pin(async move {
-                                    let digest = transaction.signature_hash();
-                                    let response = Self::request_kms_signature(
-                                        kms_name,
-                                        digest,
-                                        chain_id,
-                                        public_key,
-                                    ).await;
-
-                                    // submit tx to pool
-                                    match response {
-                                        Ok(signature) => {
-                                            let tx_for_pool = TransactionSigned::from_transaction_and_signature(transaction, signature);
-                                            let res = submit_transaction(pool, tx_for_pool).await;
-                                            if res.is_ok() {
-                                                // forward address to update cache
-                                                let _ = add_to_cache.send(address);
-                                            }
-                                            // reply to rpc
-                                            let _ = reply.send(res);
-
-                                        }
-                                        Err(e) => error!(target: "faucet", ?e, "Error requesting KMS signature"),
-                                    }
-                                }));
-                            }
-                            Err(e) => {
-                                error!(target: "faucet", ?e, "Error creating faucet transaction")
-                            }
-                        }
-                    };
+                    // user's request not in cache - process request
+                    if let Err(e) = this.process_transfer_request(address, contract_address, reply)
+                    {
+                        error!(target: "faucet", ?e, "Error creating faucet transaction")
+                    }
                 }
             }
         }

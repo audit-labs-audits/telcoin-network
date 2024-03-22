@@ -7,6 +7,7 @@
 //! signature to be EVM compatible. The faucet service does all of this and
 //! then submits the transaction to the RPC Transaction Pool for the next batch.
 
+use alloy_sol_types::SolType;
 use gcloud_sdk::{
     google::cloud::kms::v1::{
         key_management_service_client::KeyManagementServiceClient, GetPublicKeyRequest,
@@ -17,11 +18,13 @@ use jsonrpsee::{core::client::ClientT, http_client::HttpClientBuilder, rpc_param
 use k256::{elliptic_curve::sec1::ToEncodedPoint, pkcs8::DecodePublicKey, PublicKey as PubKey};
 use narwhal_test_utils::faucet_test_execution_node;
 use reth_primitives::{
-    alloy_primitives::U160, public_key_to_address, Address, GenesisAccount, TransactionSigned, U256,
+    alloy_primitives::U160, hex, public_key_to_address, Address, GenesisAccount, TransactionSigned,
+    U256,
 };
 use reth_tracing::init_test_tracing;
 use secp256k1::PublicKey;
 use std::{str::FromStr, sync::Arc, time::Duration};
+use tn_faucet::Drip;
 use tn_types::{adiri_genesis, test_channel, BatchAPI, NewBatch};
 use tokio::time::timeout;
 
@@ -136,7 +139,102 @@ async fn test_faucet_transfers_tel_with_google_kms() -> eyre::Result<()> {
     // assert recovered transaction
     assert_eq!(tx_hash, recovered.hash_ref().to_string());
     assert_eq!(recovered.transaction.to(), Some(address));
-    Ok(())
+
+    // ensure duplicate request is error
+    let response = client.request::<String, _>("faucet_transfer", rpc_params![address]).await;
+    Ok(assert!(response.is_err()))
+}
+
+#[tokio::test]
+async fn test_faucet_transfers_stablecoin_with_google_kms() -> eyre::Result<()> {
+    init_test_tracing();
+
+    // set application credentials for accessing Google KMS API
+    std::env::set_var("GOOGLE_APPLICATION_CREDENTIALS", "./gcloud-credentials.json");
+    // set Project ID for google_sdk
+    std::env::set_var("PROJECT_ID", "telcoin-network");
+    // set env vars for faucet cli
+    std::env::set_var("KMS_KEY_LOCATIONS", "global");
+    std::env::set_var("KMS_KEY_RINGS", "tests");
+    std::env::set_var("KMS_CRYPTO_KEYS", "key-for-unit-tests");
+    std::env::set_var("KMS_CRYPTO_KEY_VERSIONS", "1");
+
+    // fetch kms address from google and set env
+    set_google_kms_public_key_env_var().await?;
+    let kms_pem_pubkey = std::env::var("FAUCET_PUBLIC_KEY")?;
+    // k256 public key to convert from pem
+    let pubkey_from_pem = PubKey::from_public_key_pem(&kms_pem_pubkey)?;
+    // secp256k1 public key from uncompressed k256 variation
+    let public_key = PublicKey::from_slice(pubkey_from_pem.to_encoded_point(false).as_bytes())?;
+    // calculate address from uncompressed public key
+    let wallet_address = public_key_to_address(public_key);
+
+    // create genesis and fund account
+    let genesis = adiri_genesis();
+    let faucet_account = vec![(wallet_address, GenesisAccount::default().with_balance(U256::MAX))];
+    let genesis = genesis.extend_accounts(faucet_account.into_iter());
+    let chain = Arc::new(genesis.into());
+
+    // create engine node
+    let engine = faucet_test_execution_node(true, None, Some(chain), None)?;
+
+    println!("starting batch maker...");
+    let worker_id = 0;
+    let (to_worker, mut next_batch) = test_channel!(2);
+
+    // start batch maker
+    engine.start_batch_maker(to_worker, worker_id).await?;
+
+    let user_address = Address::from(U160::from(8991));
+    let client = HttpClientBuilder::default().build("http://127.0.0.1:8544")?;
+
+    // assert starting balance is 0
+    let starting_balance: String =
+        client.request("eth_getBalance", rpc_params!(user_address)).await?;
+    assert_eq!(U256::from_str(&starting_balance)?, U256::ZERO);
+
+    let contract_address = Address::from(U160::from(12345678));
+
+    // note: response is different each time bc KMS
+    let tx_hash: String =
+        client.request("faucet_transfer", rpc_params![user_address, contract_address]).await?;
+
+    // more than enough time for the next block
+    let duration = Duration::from_secs(15);
+
+    // wait for canon event or timeout
+    let new_batch: NewBatch = timeout(duration, next_batch.recv()).await?.expect("batch received");
+
+    let batch_txs = new_batch.batch.transactions();
+    let tx = batch_txs.first().expect("first batch tx from faucet");
+    let recovered = TransactionSigned::decode_enveloped(&mut tx.as_ref())?;
+
+    // TODO: this is hardcoded in the faucet after contract is deployed
+    let faucet_contract = hex!("c1CCc28BB47290aab2f87D4AF81CEfE6626EE878").into();
+    let contract_params: Vec<u8> =
+        Drip::abi_encode_params(&(&user_address, &contract_address)).into();
+
+    // keccak256("drip(address,address)")[0..4]
+    let selector = [235, 56, 57, 167];
+    let expected_input = [&selector, &contract_params[..]].concat();
+
+    // assert recovered transaction
+    assert_eq!(tx_hash, recovered.hash_ref().to_string());
+    assert_eq!(recovered.transaction.to(), Some(faucet_contract));
+    assert_eq!(recovered.transaction.input(), &expected_input);
+
+    // ensure duplicate request is error
+    let response = client
+        .request::<String, _>("faucet_transfer", rpc_params![user_address, contract_address])
+        .await;
+    assert!(response.is_err());
+
+    // ensure user can request a different stablecoin
+    let contract_address = Address::from(U160::from(87654321));
+    let response = client
+        .request::<String, _>("faucet_transfer", rpc_params![user_address, contract_address])
+        .await;
+    Ok(assert!(response.is_ok()))
 }
 
 /// Keys obtained from google kms calling:

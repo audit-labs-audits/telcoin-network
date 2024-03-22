@@ -33,6 +33,8 @@ use tn_types::adiri_genesis;
 use tokio::{runtime::Handle, task::JoinHandle, time::timeout};
 use tracing::{error, info};
 
+// TODO: need to test stablecoin requests for faucet
+// but not sure how to compile/deploy contracts.
 #[tokio::test]
 async fn test_faucet_transfers_tel_with_google_kms_e2e() -> eyre::Result<()> {
     init_test_tracing();

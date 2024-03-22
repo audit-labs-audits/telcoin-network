@@ -14,7 +14,7 @@ use gcloud_sdk::{
     GoogleAuthMiddleware,
 };
 use lru_time_cache::LruCache;
-use reth_primitives::{Address, TxHash, U256};
+use reth_primitives::{hex, Address, TxHash, U256};
 use reth_provider::{BlockReaderIdExt, StateProviderFactory};
 use reth_rpc::eth::error::{EthApiError, EthResult};
 use reth_tasks::{TaskSpawner, TokioTaskExecutor};
@@ -37,6 +37,11 @@ pub(crate) use service::FaucetService;
 pub type GoogleKMSClient = GoogleApi<KeyManagementServiceClient<GoogleAuthMiddleware>>;
 /// Serialized public key in bytes: `[u8; 33]`
 pub type Secp256k1PubKeyBytes = [u8; PUBLIC_KEY_SIZE];
+/// The abi encoded type parameters for the drip method
+/// of the faucet contract deployed at contract address.
+///
+/// pub for integration test
+pub type Drip = alloy_sol_types::sol! { (address, address) };
 
 /// Configure the faucet with a wait period between transfers and the amount of TEL to transfer.
 pub struct FaucetConfig {
@@ -94,7 +99,7 @@ impl FaucetWallet {
 /// on a different task.
 pub(crate) struct Faucet {
     /// Channel to service task.
-    to_service: UnboundedSender<(Address, oneshot::Sender<EthResult<TxHash>>)>,
+    to_service: UnboundedSender<(Address, Option<Address>, oneshot::Sender<EthResult<TxHash>>)>,
 }
 
 impl Faucet {
@@ -111,7 +116,14 @@ impl Faucet {
         // Construct an `LruCache` of `<String, SystemTime>`s, limited by 24hr expiry time
         let lru_cache = LruCache::with_expiry_duration(wait_period);
         let (add_to_cache_tx, update_cache_rx) = tokio::sync::mpsc::unbounded_channel();
+
+        // TODO: take this from CLI
+        //
+        // This value is hardcoded for now after deploying contract to adiri testnet
+        let faucet_contract = hex!("c1CCc28BB47290aab2f87D4AF81CEfE6626EE878").into();
+
         let service = FaucetService {
+            faucet_contract,
             request_rx: UnboundedReceiverStream::new(rx),
             provider,
             pool,
@@ -166,15 +178,20 @@ impl Faucet {
     }
 
     /// Requests a new transfer from faucet wallet to an address.
-    pub(crate) async fn handle_request(&self, address: Address) -> EthResult<TxHash> {
+    pub(crate) async fn handle_request(
+        &self,
+        address: Address,
+        contract: Option<Address>,
+    ) -> EthResult<TxHash> {
         let (tx, rx) = oneshot::channel();
-        let _ = self.to_service.send((address, tx));
+        let _ = self.to_service.send((address, contract, tx));
         rx.await.map_err(|e| EthApiError::InvalidParams(e.to_string())).and_then(|res| res)
     }
 }
 
 #[cfg(test)]
 mod tests {
+    use alloy_sol_types::SolType;
     use ecdsa::elliptic_curve::{pkcs8::DecodePublicKey as _, sec1::ToEncodedPoint};
     use gcloud_sdk::{
         google::cloud::kms::v1::{
@@ -184,7 +201,9 @@ mod tests {
         GoogleApi, GoogleAuthMiddleware, GoogleEnvironment,
     };
     use k256::PublicKey as PubKey;
-    use reth_primitives::{keccak256, public_key_to_address, Signature as RSignature, U256};
+    use reth_primitives::{
+        address, hex, keccak256, public_key_to_address, Signature as RSignature, U256,
+    };
     use reth_tracing::init_test_tracing;
     use secp256k1::{
         ecdsa::{RecoverableSignature, RecoveryId, Signature},
@@ -421,7 +440,3 @@ mod tests {
         println!("public key:\n {:?}", pem_pubkey);
     }
 }
-
-// logging
-// update CORS
-//
