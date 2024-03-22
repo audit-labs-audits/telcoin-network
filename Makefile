@@ -48,20 +48,17 @@ docker-login:
 	gcloud auth application-default login ;
 	gcloud auth configure-docker us-docker.pkg.dev ;
 	
-docker-build:
-	docker build -t us-docker.pkg.dev/telcoin-network/telcoin-network/adiri -f ./etc/Dockerfile . ;
+docker-adiri:
+	docker buildx build -f ./etc/Dockerfile --platform linux/amd64,linux/arm64 -t us-docker.pkg.dev/telcoin-network/tn-public/adiri . --push ;
 
 docker-push:
-	docker push us-docker.pkg.dev/telcoin-network/telcoin-network/adiri:latest ;
+	docker push us-docker.pkg.dev/telcoin-network/tn-public/adiri:latest ;
 
 docker-builder:
 	docker buildx create --name tn-builder --use ;
 
 docker-builder-init:
 	docker buildx inspect --bootstrap ;
-
-docker-layerg:
-	docker buildx build -f ./etc/Dockerfile --platform linux/amd64,linux/arm64 -t layerg/adiri . --push ;
 
 up:
 	docker compose -f ./etc/compose.yaml up --build --remove-orphans --detach ;
