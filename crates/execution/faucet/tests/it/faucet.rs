@@ -212,7 +212,7 @@ async fn test_faucet_transfers_stablecoin_with_google_kms() -> eyre::Result<()> 
     // TODO: this is hardcoded in the faucet after contract is deployed
     let faucet_contract = hex!("c1CCc28BB47290aab2f87D4AF81CEfE6626EE878").into();
     let contract_params: Vec<u8> =
-        Drip::abi_encode_params(&(&user_address, &contract_address)).into();
+        Drip::abi_encode_params(&(&contract_address, &user_address)).into();
 
     // keccak256("drip(address,address)")[0..4]
     let selector = [235, 56, 57, 167];

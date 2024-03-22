@@ -184,7 +184,7 @@ where
             // hardcoded selector: keccak256("drip(address,address)")[0..4]
             let selector = [235, 56, 57, 167];
             // encode params
-            let params: Vec<u8> = Drip::abi_encode_params(&(&to, &contract)).into();
+            let params: Vec<u8> = Drip::abi_encode_params(&(&contract, &to)).into();
             // combine params with selector to create input for contract call
             let input = [&selector, &params[..]].concat().into();
 
