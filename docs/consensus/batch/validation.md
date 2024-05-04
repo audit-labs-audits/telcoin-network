@@ -94,3 +94,33 @@ Engine steps:
     - defaults used for values not needed in the batch
 3. if valid, engine calls `try_insert` on tree if status is not syncing
     - crates/execution/blockchain-tree/src/blockchain_tree.rs
+
+## Optimization: Add Valid TXs to Own Pool
+When a batch is considered valid, the worker adds the decoded transactions to it's pending pool.
+
+### Questions
+- Can we bypass tx validation when adding to the pool?
+    - The worker's own batch validator expensively validated the transactions already
+- Should the batch validator optimistically add the transactions (ignore errors) before or after sharing result with worker?
+    - before by spawning a new thread
+        - `BatchValidator` needs `TaskExecutor` and `Pool`
+            - add Pool and Executor generics?
+        - executor spawns task before returning `Ok(())`
+            - txs added optimistically
+            - possible to still have duplicates, but at least we tried
+            - doesn't really matter if adding txs failed
+                - worth testing what happens when duplicate tx is added to the pending pool
+- Is validation spawning threads in an optimal way?
+    - this affects when transactions should be added to the txpool
+    - assume not, regardless:
+- Does this open an attack surface?
+    - aka, does adding another worker's transactions to our own pending pool create a way to deny service?
+    - what about supporting multiple workers?
+        - they would each have their own rpc/txpools
+        - these could be gossiped to each other via execution layer p2p
+            - workers of the same primary gossip transactions like eth
+        - may be useful to have specific worker just for bridging
+            - but what if that worker pool gets stuck?
+                - bridging stopped
+            - better to gossip transactions amongst all workers
+                - they are also more likely to get duplicates than geographically distanced nodes
