@@ -7,3 +7,4 @@ The logic behind protocol design decisions.
 - [flow](./flow.md)
 - [genesis](./genesis.md)
 - [payloads](./payloads.md)
+- [bridging](./bridging.md)
