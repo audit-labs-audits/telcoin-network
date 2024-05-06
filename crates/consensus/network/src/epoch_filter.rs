@@ -46,9 +46,8 @@ impl AuthorizeRequest for AllowedEpoch {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use anemo::{types::response::StatusCode, Request, Response};
+    use anemo::types::response::StatusCode;
     use anemo_tower::auth::RequireAuthorizationLayer;
-    use bytes::Bytes;
     use tower::{BoxError, Service, ServiceBuilder, ServiceExt};
 
     #[tokio::test]

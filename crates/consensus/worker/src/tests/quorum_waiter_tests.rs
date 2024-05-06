@@ -4,7 +4,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 use super::*;
-use crate::{metrics::WorkerMetrics, NUM_SHUTDOWN_RECEIVERS};
+use crate::NUM_SHUTDOWN_RECEIVERS;
 use narwhal_network::test_utils::WorkerToWorkerMockServer;
 use prometheus::Registry;
 use tn_types::{

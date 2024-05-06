@@ -1,9 +1,9 @@
 //! RPC extension
 
-use crate::FaucetConfig;
-
 use super::Faucet;
-use jsonrpsee::{core::async_trait, proc_macros::rpc};
+use crate::FaucetConfig;
+use async_trait::async_trait;
+use jsonrpsee::proc_macros::rpc;
 use reth_primitives::{Address, TxHash};
 use reth_provider::{BlockReaderIdExt, StateProviderFactory};
 use reth_rpc::eth::error::EthResult;

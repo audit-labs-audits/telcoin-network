@@ -1,16 +1,14 @@
 use crate::Storage;
 use consensus_metrics::metered_channel::Receiver;
 use futures_util::{future::BoxFuture, FutureExt};
-
 use reth_beacon_consensus::{BeaconEngineMessage, ForkchoiceStatus};
 use reth_interfaces::consensus::ForkchoiceState;
+use reth_node_api::{ConfigureEvm, EngineTypes};
 use reth_primitives::ChainSpec;
 use reth_provider::{
     BlockReaderIdExt, CanonChainTracker, CanonStateNotificationSender, Chain, StateProviderFactory,
 };
 use reth_stages::PipelineEvent;
-use tn_types::ConsensusOutput;
-
 use std::{
     collections::VecDeque,
     future::Future,
@@ -18,12 +16,13 @@ use std::{
     sync::Arc,
     task::{Context, Poll},
 };
+use tn_types::ConsensusOutput;
 use tokio::sync::{mpsc::UnboundedSender, oneshot};
 use tokio_stream::wrappers::UnboundedReceiverStream;
 use tracing::{debug, error, warn};
 
 /// A Future that listens for new ready transactions and puts new blocks into storage
-pub struct MiningTask<Client> {
+pub struct MiningTask<Client, Engine: EngineTypes, EvmConfig> {
     /// The configured chain spec
     chain_spec: Arc<ChainSpec>,
     /// The client used to interact with the state
@@ -35,7 +34,7 @@ pub struct MiningTask<Client> {
     /// The backlog of output from consensus that's ready to be executed.
     queued: VecDeque<ConsensusOutput>,
     /// TODO: ideally this would just be a sender of hashes
-    to_engine: UnboundedSender<BeaconEngineMessage>,
+    to_engine: UnboundedSender<BeaconEngineMessage<Engine>>,
     /// Used to notify consumers of new blocks
     canon_state_notification: CanonStateNotificationSender,
     /// The pipeline events to listen on
@@ -43,19 +42,25 @@ pub struct MiningTask<Client> {
     /// Receiving end from CL's `Executor`. The `ConsensusOutput` is sent
     /// to the mining task here.
     from_consensus: Receiver<ConsensusOutput>,
+    /// The type that defines how to configure the EVM.
+    evm_config: EvmConfig,
 }
 
 // === impl MiningTask ===
 
-impl<Client> MiningTask<Client> {
+impl<Client, Engine, EvmConfig> MiningTask<Client, Engine, EvmConfig>
+where
+    Engine: EngineTypes,
+{
     /// Creates a new instance of the task
     pub(crate) fn new(
         chain_spec: Arc<ChainSpec>,
-        to_engine: UnboundedSender<BeaconEngineMessage>,
+        to_engine: UnboundedSender<BeaconEngineMessage<Engine>>,
         canon_state_notification: CanonStateNotificationSender,
         storage: Storage,
         client: Client,
         from_consensus: Receiver<ConsensusOutput>,
+        evm_config: EvmConfig,
     ) -> Self {
         Self {
             chain_spec,
@@ -67,6 +72,7 @@ impl<Client> MiningTask<Client> {
             queued: Default::default(),
             pipe_line_events: None,
             from_consensus,
+            evm_config,
         }
     }
 
@@ -76,9 +82,11 @@ impl<Client> MiningTask<Client> {
     }
 }
 
-impl<Client> Future for MiningTask<Client>
+impl<Client, Engine, EvmConfig> Future for MiningTask<Client, Engine, EvmConfig>
 where
     Client: StateProviderFactory + CanonChainTracker + BlockReaderIdExt + Clone + Unpin + 'static,
+    Engine: EngineTypes + 'static,
+    EvmConfig: ConfigureEvm + Clone + Unpin + Send + Sync + 'static,
 {
     type Output = ();
 
@@ -106,16 +114,16 @@ where
                 let to_engine = this.to_engine.clone();
                 let client = this.client.clone();
                 let chain_spec = Arc::clone(&this.chain_spec);
-                // let pool = this.pool.clone();
                 let events = this.pipe_line_events.take();
                 let canon_state_notification = this.canon_state_notification.clone();
+                let evm_config = this.evm_config.clone();
 
                 // Create the mining future that creates a block, notifies the engine that drives
                 // the pipeline
                 this.insert_task = Some(Box::pin(async move {
                     let mut storage = storage.write().await;
 
-                    match storage.build_and_execute(output, &client, chain_spec) {
+                    match storage.build_and_execute(output, &client, chain_spec, evm_config) {
                         Ok((sealed_block_with_senders, bundle_state)) => {
                             // send sealed forkchoice update to engine
                             let new_header_hash = sealed_block_with_senders.hash();
@@ -173,8 +181,11 @@ where
 
                             debug!(target: "execution::executor", header=?sealed_block_with_senders.hash(), "sending block notification");
 
-                            let chain =
-                                Arc::new(Chain::new(vec![sealed_block_with_senders], bundle_state));
+                            let chain = Arc::new(Chain::new(
+                                vec![sealed_block_with_senders],
+                                bundle_state,
+                                None,
+                            ));
 
                             // send block notification
                             let _ = canon_state_notification
@@ -206,7 +217,10 @@ where
     }
 }
 
-impl<Client> std::fmt::Debug for MiningTask<Client> {
+impl<Client, Engine, EvmConfig> std::fmt::Debug for MiningTask<Client, Engine, EvmConfig>
+where
+    Engine: EngineTypes,
+{
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("MiningTask").finish_non_exhaustive()
     }

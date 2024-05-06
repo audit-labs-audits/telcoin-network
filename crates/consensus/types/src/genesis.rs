@@ -12,7 +12,10 @@ use crate::{
 };
 use eyre::Context;
 use fastcrypto::traits::{InsecureDefault, Signer};
+use reth_blockchain_tree::ShareableBlockchainTree;
 use reth_primitives::{keccak256, Address, ChainSpec, Genesis};
+use reth_provider::providers::BlockchainProvider;
+use reth_revm::EvmProcessorFactory;
 use serde::{Deserialize, Serialize};
 use std::{
     collections::BTreeMap,
@@ -23,7 +26,12 @@ use std::{
     sync::Arc,
 };
 use tracing::{info, warn};
+/// The validators directory used to create genesis.
 pub const GENESIS_VALIDATORS_DIR: &str = "validators";
+
+/// The database provider interface for execution layer.
+pub type BlockchainProviderType<DB, Evm> =
+    BlockchainProvider<DB, ShareableBlockchainTree<DB, EvmProcessorFactory<Evm>>>;
 
 /// adiri parsed Genesis.
 pub fn adiri_genesis() -> Genesis {
@@ -56,6 +64,12 @@ pub fn adiri_genesis_string() -> String {
 /// - Telcoin was founded in Singapore in 2017
 /// - 2017 in hex is "0x7e1" (ie- "tel")
 /// - 2017 => 1 in numerology
+///
+/// Faucet addresses:
+/// - 0xe626ce81714cb7777b1bf8ad2323963fb3398ad5
+/// - 0xb3fabbd1d2edde4d9ced3ce352859ce1bebf7907
+/// - 0xa3478861957661b2d8974d9309646a71271d98b9
+/// - 0xe69151677e5aec0b4fc0a94bfcaf20f6f0f975eb
 pub fn adiri_genesis_raw() -> &'static str {
     r#"
 {
@@ -151,7 +165,7 @@ impl NetworkGenesis {
         }
 
         // Load validator information
-        let mut validators = BTreeMap::new();
+        let mut validators = Vec::new();
         for entry in fs::read_dir(path.join(GENESIS_VALIDATORS_DIR))? {
             let entry = entry?;
             let path = entry.path();
@@ -166,11 +180,14 @@ impl NetworkGenesis {
                 let info_bytes = fs::read(&path)?;
                 let validator: ValidatorInfo = serde_yaml::from_slice(&info_bytes)
                     .with_context(|| format!("validator failed to load from {}", path.display()))?;
-                validators.insert(validator.bls_public_key.clone(), validator);
+                validators.push((validator.bls_public_key.clone(), validator));
             } else {
                 warn!("skipping dir: {}\ndirs should not be in validators dir", path.display());
             }
         }
+
+        // prevent mutable key type
+        let validators = BTreeMap::from_iter(validators);
 
         let network_genesis = Self {
             chain: adiri_genesis().into(),

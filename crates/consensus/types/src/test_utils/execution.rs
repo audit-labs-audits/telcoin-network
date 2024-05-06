@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 //! Specific test utils for execution layer
-use crate::ExecutionKeypair;
+use crate::{adiri_genesis, ExecutionKeypair};
 use fastcrypto::traits::{KeyPair as _, ToFromBytes};
 use rand::{
     rngs::{OsRng, StdRng},
@@ -10,12 +10,21 @@ use rand::{
 };
 use reth_primitives::{
     public_key_to_address, sign_message, Address, BaseFeeParams, ChainSpec,
-    FromRecoveredPooledTransaction, Signature, Transaction, TransactionKind, TransactionSigned,
-    TxEip1559, TxHash, TxValue, B256,
+    FromRecoveredPooledTransaction, Genesis, GenesisAccount, PooledTransactionsElement, Signature,
+    Transaction, TransactionKind, TransactionSigned, TxEip1559, TxHash, B256, U256,
 };
 use reth_provider::BlockReaderIdExt;
 use reth_transaction_pool::{TransactionOrigin, TransactionPool};
 use std::sync::Arc;
+
+/// Adiri genesis with funded [TransactionFactory] default account.
+pub fn test_genesis() -> Genesis {
+    let genesis = adiri_genesis();
+    let default_address = TransactionFactory::default().address();
+    let default_factory_account =
+        vec![(default_address, GenesisAccount::default().with_balance(U256::MAX))];
+    genesis.extend_accounts(default_factory_account)
+}
 
 /// Transaction factory
 pub struct TransactionFactory {
@@ -77,7 +86,7 @@ impl TransactionFactory {
         chain: Arc<ChainSpec>,
         gas_price: u128,
         to: Address,
-        value: TxValue,
+        value: U256,
     ) -> TransactionSigned {
         // Eip1559
         let transaction = Transaction::Eip1559(TxEip1559 {
@@ -117,15 +126,17 @@ impl TransactionFactory {
         chain: Arc<ChainSpec>,
         gas_price: u128,
         to: Address,
-        value: TxValue,
+        value: U256,
         pool: Pool,
     ) -> TxHash
     where
         Pool: TransactionPool,
     {
         let tx = self.create_eip1559(chain, gas_price, to, value);
-        let recovered = tx.try_into_ecrecovered().expect("tx is recovered");
-        let transaction = <Pool::Transaction>::from_recovered_pooled_transaction(recovered.into());
+        let pooled_tx =
+            PooledTransactionsElement::try_from_broadcast(tx).expect("tx valid for pool");
+        let recovered = pooled_tx.try_into_ecrecovered().expect("tx is recovered");
+        let transaction = <Pool::Transaction>::from_recovered_pooled_transaction(recovered);
 
         pool.add_transaction(TransactionOrigin::Local, transaction)
             .await
@@ -137,8 +148,12 @@ impl TransactionFactory {
     where
         Pool: TransactionPool,
     {
-        let recovered = tx.try_into_ecrecovered().expect("tx is recovered");
-        let transaction = <Pool::Transaction>::from_recovered_pooled_transaction(recovered.into());
+        let pooled_tx =
+            PooledTransactionsElement::try_from_broadcast(tx).expect("tx valid for pool");
+        let recovered = pooled_tx.try_into_ecrecovered().expect("tx is recovered");
+        let transaction = <Pool::Transaction>::from_recovered_pooled_transaction(recovered);
+
+        println!("transaction: \n{transaction:?}\n");
 
         pool.add_transaction(TransactionOrigin::Local, transaction)
             .await

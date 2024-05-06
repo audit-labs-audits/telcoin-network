@@ -11,15 +11,13 @@ use crate::{
 use eyre::ContextCompat;
 use fastcrypto::traits::{EncodeDecodeBase64, InsecureDefault};
 use serde::{
-    de::{self, DeserializeOwned, MapAccess, Visitor},
+    de::{self, MapAccess, Visitor},
     ser::SerializeMap,
     Deserialize, Deserializer, Serialize, Serializer,
 };
 use std::{
     collections::{BTreeMap, HashSet},
     fmt,
-    fs::{self, OpenOptions},
-    io::{BufWriter, Write as _},
     str::FromStr,
 };
 use thiserror::Error;
@@ -67,9 +65,6 @@ pub enum ConfigError {
 
     #[error("Failed to read config file '{file}': {message}")]
     ImportError { file: String, message: String },
-
-    #[error("Failed to write config file '{file}': {message}")]
-    ExportError { file: String, message: String },
 }
 
 #[derive(Error, Debug)]
@@ -83,40 +78,6 @@ pub enum CommitteeUpdateError {
     #[error("Node {0} has a different stake than expected")]
     DifferentStake(String),
 }
-
-pub trait Import: DeserializeOwned {
-    fn import(path: &str) -> Result<Self, ConfigError> {
-        let reader = || -> Result<Self, std::io::Error> {
-            let data = fs::read(path)?;
-            Ok(serde_json::from_slice(data.as_slice())?)
-        };
-        reader().map_err(|e| ConfigError::ImportError {
-            file: path.to_string(),
-            message: e.to_string(),
-        })
-    }
-}
-
-impl<D: DeserializeOwned> Import for D {}
-
-pub trait Export: Serialize {
-    fn export(&self, path: &str) -> Result<(), ConfigError> {
-        let writer = || -> Result<(), std::io::Error> {
-            let file = OpenOptions::new().create(true).write(true).open(path)?;
-            let mut writer = BufWriter::new(file);
-            let data = serde_json::to_string_pretty(self).unwrap();
-            writer.write_all(data.as_ref())?;
-            writer.write_all(b"\n")?;
-            Ok(())
-        };
-        writer().map_err(|e| ConfigError::ExportError {
-            file: path.to_string(),
-            message: e.to_string(),
-        })
-    }
-}
-
-impl<S: Serialize> Export for S {}
 
 /// Information for the Primary.
 ///

@@ -177,8 +177,7 @@ pub fn transaction_with_rand<R: Rng + ?Sized>(_rand: &mut R) -> Transaction {
     let mut tx_factory = TransactionFactory::new_random();
     let chain = adiri_chain_spec_arc();
     let gas_price = 875000000;
-    let value =
-        U256::from(10).checked_pow(U256::from(18)).expect("1e18 doesn't overflow U256").into();
+    let value = U256::from(10).checked_pow(U256::from(18)).expect("1e18 doesn't overflow U256");
 
     // random transaction
     tx_factory.create_eip1559(chain, gas_price, Address::ZERO, value).envelope_encoded().into()
@@ -203,8 +202,7 @@ pub fn transaction() -> Transaction {
     let mut tx_factory = TransactionFactory::new_random();
     let chain = adiri_chain_spec_arc();
     let gas_price = 875000000;
-    let value =
-        U256::from(10).checked_pow(U256::from(18)).expect("1e18 doesn't overflow U256").into();
+    let value = U256::from(10).checked_pow(U256::from(18)).expect("1e18 doesn't overflow U256");
 
     // random transaction
     tx_factory.create_eip1559(chain, gas_price, Address::ZERO, value).envelope_encoded().into()
@@ -313,7 +311,7 @@ fn rounds_of_certificates(
             certificates.push_back(certificate);
             next_parents.insert(digest);
         }
-        parents = next_parents.clone();
+        parents.clone_from(&next_parents);
     }
     (certificates, next_parents)
 }
@@ -373,7 +371,7 @@ pub fn make_certificates_with_slow_nodes(
             certificates.push_back(certificate.clone());
             next_parents.push(certificate);
         }
-        parents = next_parents.clone();
+        parents.clone_from(&next_parents);
     }
     (certificates, next_parents)
 }
@@ -489,7 +487,7 @@ pub fn make_certificates_with_leader_configuration(
             certificates.push_back(certificate.clone());
             next_parents.insert(certificate.digest());
         }
-        parents = next_parents.clone();
+        parents.clone_from(&next_parents);
     }
     (certificates, next_parents)
 }
@@ -577,7 +575,7 @@ pub fn make_certificates_with_epoch(
             certificates.push_back(certificate);
             next_parents.insert(digest);
         }
-        parents = next_parents.clone();
+        parents.clone_from(&next_parents);
     }
     (certificates, next_parents)
 }

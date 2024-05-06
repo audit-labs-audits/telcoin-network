@@ -2,6 +2,7 @@
 // Copyright (c) Mysten Labs, Inc.
 // SPDX-License-Identifier: Apache-2.0
 use narwhal_test_utils::cluster::Cluster;
+use reth::tasks::TaskManager;
 
 use std::time::Duration;
 use tn_types::test_utils::setup_test_tracing;
@@ -14,7 +15,9 @@ async fn test_restore_from_disk() {
     // nodes logs.
     setup_test_tracing();
 
-    let mut cluster = Cluster::new(None);
+    let manager = TaskManager::current();
+    let executor = manager.executor();
+    let mut cluster = Cluster::new(None, executor);
 
     // start the cluster
     cluster.start(Some(4), Some(1), None).await;
@@ -90,7 +93,9 @@ async fn test_read_causal_signed_certificates() {
     // nodes logs.
     setup_test_tracing();
 
-    let mut cluster = Cluster::new(None);
+    let manager = TaskManager::current();
+    let executor = manager.executor();
+    let mut cluster = Cluster::new(None, executor);
 
     // start the cluster
     cluster.start(Some(4), Some(1), None).await;

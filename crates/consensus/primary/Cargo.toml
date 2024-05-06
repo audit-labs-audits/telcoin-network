@@ -65,6 +65,7 @@ reqwest = { workspace = true }
 bytes = { workspace = true }
 reth-tracing = { workspace = true }
 tn-batch-validator = { workspace = true, features = ["test-utils"] }
+reth = { workspace = true }
 
 [features]
 default = []

@@ -8,15 +8,13 @@ mod validate;
 use self::{
     add_validator::AddValidator, create_committee::CreateCommitteeArgs, validate::ValidateArgs,
 };
-use crate::{
-    args::clap_genesis_parser,
-    dirs::{DataDirPath, TelcoinDirs},
-};
+use crate::args::clap_genesis_parser;
 use clap::{Args, Subcommand};
 
 use reth::dirs::MaybePlatformPath;
 use reth_primitives::ChainSpec;
 use std::{path::PathBuf, sync::Arc};
+use tn_node::dirs::{DataDirPath, TelcoinDirs as _};
 use tn_types::NetworkGenesis;
 
 /// Generate keypairs and save them to a file.

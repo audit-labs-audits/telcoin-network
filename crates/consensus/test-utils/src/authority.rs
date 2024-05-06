@@ -7,6 +7,8 @@ use crate::{primary::PrimaryNodeDetails, worker::WorkerNodeDetails};
 use fastcrypto::traits::KeyPair as _;
 use jsonrpsee::http_client::HttpClient;
 use narwhal_network::client::NetworkClient;
+use reth_db::{test_utils::TempDatabase, DatabaseEnv};
+use reth_node_ethereum::EthEvmConfig;
 use std::{collections::HashMap, sync::Arc, time::Duration};
 use tn_config::Parameters;
 use tn_node::engine::ExecutionNode;
@@ -15,7 +17,7 @@ use tn_types::{
     WorkerCache, WorkerId,
 };
 use tokio::sync::{RwLock, RwLockWriteGuard};
-use tracing::{error, info};
+use tracing::info;
 
 /// The authority details hold all the necessary structs and details
 /// to identify and manage a specific authority. An authority is
@@ -39,7 +41,7 @@ struct AuthorityDetailsInternal {
     primary: PrimaryNodeDetails,
     worker_keypairs: Vec<NetworkKeypair>,
     workers: HashMap<WorkerId, WorkerNodeDetails>,
-    execution: ExecutionNode<()>,
+    execution: ExecutionNode<Arc<TempDatabase<DatabaseEnv>>, EthEvmConfig>,
 }
 
 #[allow(clippy::arc_with_non_send_sync)]
@@ -53,7 +55,7 @@ impl AuthorityDetails {
         parameters: Parameters,
         committee: Committee,
         worker_cache: WorkerCache,
-        execution: ExecutionNode<()>,
+        execution: ExecutionNode<Arc<TempDatabase<DatabaseEnv>>, EthEvmConfig>,
     ) -> Self {
         // Create all the nodes we have in the committee
         let public_key = key_pair.public().clone();
@@ -146,7 +148,10 @@ impl AuthorityDetails {
         let internal = self.internal.read().await;
 
         internal.primary.stop().await;
-        internal.execution.shutdown_engine().await;
+
+        // TODO: spawned with task executor
+        // either implement with TaskManager or setup kill signal
+        // internal.execution.shutdown_engine().await;
     }
 
     pub async fn start_all_workers(&self, preserve_store: bool) -> eyre::Result<()> {
@@ -195,9 +200,10 @@ impl AuthorityDetails {
             .await;
 
         // only log errors for now
-        if let Err(e) = internal.execution.shutdown_worker(&id).await {
-            error!(?e);
-        }
+        // TODO: these are only spawned with TaskExecutor for now
+        // if let Err(e) = internal.execution.shutdown_worker(&id).await {
+        //     error!(?e);
+        // }
     }
 
     /// Stops all the nodes (primary & workers).
@@ -217,8 +223,8 @@ impl AuthorityDetails {
         }
 
         // TODO: should this be shutdown between primary and worker?
-        internal.execution.shutdown_all().await;
-        info!("{} - execution node shutdown for authority", self.name);
+        // internal.execution.shutdown_all().await;
+        // info!("{} - execution node shutdown for authority", self.name);
     }
 
     /// Will restart the node with the current setup that has been chosen
@@ -262,7 +268,9 @@ impl AuthorityDetails {
 
     /// Return the current execution node running. If the authority restarts, this
     /// method should be called again to ensure the latest reference is used.
-    pub async fn execution_components(&self) -> eyre::Result<ExecutionNode<()>> {
+    pub async fn execution_components(
+        &self,
+    ) -> eyre::Result<ExecutionNode<Arc<TempDatabase<DatabaseEnv>>, EthEvmConfig>> {
         let internal = self.internal.read().await;
         Ok(internal.execution.clone())
     }
@@ -314,14 +322,14 @@ impl AuthorityDetails {
             return true;
         }
 
-        if internal.execution.engine_is_running().await {
-            return true;
-        }
+        // if internal.execution.engine_is_running().await {
+        //     return true;
+        // }
 
-        // TODO: this only works for one worker for now
-        if internal.execution.any_workers_running().await {
-            return true;
-        }
+        // // TODO: this only works for one worker for now
+        // if internal.execution.any_workers_running().await {
+        //     return true;
+        // }
 
         for (_, worker) in internal.workers.iter() {
             if worker.is_running().await {

@@ -8,10 +8,9 @@ use narwhal_executor::SerializedTransaction;
 use narwhal_network::client::NetworkClient;
 use narwhal_storage::NodeStorage;
 use prometheus::{proto::Metric, Registry};
-use reth::cli::ext::RethCliExt;
 use std::{cell::RefCell, path::PathBuf, rc::Rc, sync::Arc};
 use tn_config::Parameters;
-use tn_node::{engine::ExecutionNode, primary::PrimaryNode};
+use tn_node::primary::PrimaryNode;
 use tn_types::{
     test_utils::temp_dir, AuthorityIdentifier, BlsKeypair, ChainIdentifier, Committee,
     NetworkKeypair, WorkerCache,
@@ -21,6 +20,8 @@ use tokio::{
     task::JoinHandle,
 };
 use tracing::info;
+
+use crate::TestExecutionNode;
 
 #[derive(Clone)]
 pub struct PrimaryNodeDetails {
@@ -80,15 +81,12 @@ impl PrimaryNodeDetails {
     }
 
     /// TODO: this needs to be cleaned up
-    pub(crate) async fn start<Ext>(
+    pub(crate) async fn start(
         &mut self,
         client: NetworkClient,
         preserve_store: bool,
-        execution_components: &ExecutionNode<Ext>,
-    ) -> eyre::Result<()>
-    where
-        Ext: RethCliExt,
-    {
+        execution_components: &TestExecutionNode,
+    ) -> eyre::Result<()> {
         if self.is_running().await {
             panic!("Tried to start a node that is already running");
         }
@@ -113,11 +111,9 @@ impl PrimaryNodeDetails {
                 self.worker_cache.clone(),
                 client,
                 &primary_store,
-                // SimpleExecutionState::new(tx_transaction_confirmation),
                 execution_components,
             )
             .await?;
-        // .unwrap();
 
         let (tx, _) = tokio::sync::broadcast::channel(narwhal_primary::CHANNEL_CAPACITY);
         let transactions_sender = tx.clone();

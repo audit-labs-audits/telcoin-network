@@ -1,9 +1,6 @@
 //! Generate subcommand
 
-use crate::{
-    args::{clap_address_parser, clap_genesis_parser},
-    dirs::DataDirPath,
-};
+use crate::args::{clap_address_parser, clap_genesis_parser};
 use clap::{value_parser, Args, Subcommand};
 use fastcrypto::traits::KeyPair as KeyPairTraits;
 use rand::prelude::*;
@@ -12,6 +9,7 @@ use reth::dirs::MaybePlatformPath;
 use reth_primitives::{Address, ChainSpec};
 use std::{path::Path, sync::Arc};
 use tn_config::{Config, BLS_KEYFILE, PRIMARY_NETWORK_KEYFILE, WORKER_NETWORK_KEYFILE};
+use tn_node::dirs::DataDirPath;
 use tn_types::{generate_proof_of_possession, BlsKeypair, NetworkKeypair};
 use tracing::info;
 

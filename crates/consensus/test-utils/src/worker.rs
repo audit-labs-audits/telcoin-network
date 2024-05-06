@@ -7,15 +7,16 @@ use consensus_metrics::RegistryService;
 use narwhal_network::client::NetworkClient;
 use narwhal_storage::NodeStorage;
 use prometheus::Registry;
-use reth::cli::ext::RethCliExt;
 use std::path::PathBuf;
 use tn_config::Parameters;
-use tn_node::{engine::ExecutionNode, metrics::worker_metrics_registry, worker::WorkerNode};
+use tn_node::{metrics::worker_metrics_registry, worker::WorkerNode};
 use tn_types::{
     test_utils::temp_dir, AuthorityIdentifier, BlsPublicKey, Committee, Multiaddr, NetworkKeypair,
     WorkerCache, WorkerId,
 };
 use tracing::info;
+
+use crate::TestExecutionNode;
 
 #[derive(Clone)]
 pub struct WorkerNodeDetails {
@@ -57,16 +58,14 @@ impl WorkerNodeDetails {
     }
 
     /// Starts the node. When preserve_store is true then the last used
-    pub(crate) async fn start<Ext>(
+    pub(crate) async fn start(
         &mut self,
         keypair: NetworkKeypair,
         client: NetworkClient,
         preserve_store: bool,
-        execution_node: &ExecutionNode<Ext>,
+        execution_node: &TestExecutionNode,
     ) -> eyre::Result<()>
-    where
-        Ext: RethCliExt,
-    {
+where {
         if self.is_running().await {
             panic!("Worker with id {} is already running, can't start again", self.id);
         }

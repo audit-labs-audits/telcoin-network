@@ -2,7 +2,7 @@
 // Copyright (c) Mysten Labs, Inc.
 // SPDX-License-Identifier: Apache-2.0
 use fastcrypto::hash::Hash;
-use narwhal_executor::{get_restored_consensus_output, MockExecutionState};
+use narwhal_executor::get_restored_consensus_output;
 use narwhal_primary::{
     consensus::{
         Bullshark, Consensus, ConsensusMetrics, ConsensusRound, LeaderSchedule, LeaderSwapTable,
@@ -101,12 +101,6 @@ async fn test_recovery() {
     // Now assume that we want to recover from a crash. We are testing all the recovery cases
     // from restoring the executed sub dag index = 0 up to 2.
     for last_executed_certificate_index in 0..=expected_committed_sub_dags {
-        let mut execution_state = MockExecutionState::new();
-        execution_state
-            .expect_last_executed_sub_dag_index()
-            .times(1)
-            .returning(move || last_executed_certificate_index);
-
         let consensus_output = get_restored_consensus_output(
             consensus_store.clone(),
             certificate_store.clone(),
@@ -127,7 +121,9 @@ async fn test_recovery() {
 //     // nodes logs.
 //     let _guard = setup_test_tracing();
 
-//     let mut cluster = Cluster::new(None);
+// let manager = TaskManager::current();
+// let executor = manager.executor();
+//     let mut cluster = Cluster::new(None, executor);
 
 //     // start the cluster
 //     cluster.start(Some(4), Some(1), None).await;

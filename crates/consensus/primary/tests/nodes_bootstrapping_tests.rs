@@ -2,6 +2,7 @@
 // Copyright (c) Mysten Labs, Inc.
 // SPDX-License-Identifier: Apache-2.0
 use narwhal_test_utils::cluster::Cluster;
+use reth::tasks::TaskManager;
 
 use std::time::Duration;
 use tn_types::test_utils::setup_test_tracing;
@@ -15,7 +16,9 @@ async fn test_response_error_after_shutdown_internal_consensus() {
     let delay = Duration::from_secs(10); // 10 seconds
 
     // A cluster of 4 nodes will be created, with internal consensus.
-    let cluster = Cluster::new(None);
+    let manager = TaskManager::current();
+    let executor = manager.executor();
+    let cluster = Cluster::new(None, executor);
 
     // ==== Start first authority ====
     let authority = cluster.authority(0);
@@ -57,7 +60,9 @@ async fn test_node_staggered_starts() {
     let node_staggered_delay = Duration::from_secs(60 * 2); // 2 minutes
 
     // A cluster of 4 nodes will be created
-    let cluster = Cluster::new(None);
+    let manager = TaskManager::current();
+    let executor = manager.executor();
+    let cluster = Cluster::new(None, executor);
 
     // ==== Start first authority ====
     cluster.authority(0).start(false, Some(1)).await.expect("authority able to start");
@@ -108,7 +113,9 @@ async fn test_full_outage_and_recovery() {
     let node_advance_delay = Duration::from_secs(60);
 
     // A cluster of 4 nodes will be created
-    let mut cluster = Cluster::new(None);
+    let manager = TaskManager::current();
+    let executor = manager.executor();
+    let mut cluster = Cluster::new(None, executor);
 
     // ===== Start the cluster ====
     cluster.start(Some(4), Some(1), None).await;
@@ -159,7 +166,9 @@ async fn test_second_node_restart() {
     let node_advance_delay = Duration::from_secs(60);
 
     // A cluster of 4 nodes will be created
-    let mut cluster = Cluster::new(None);
+    let manager = TaskManager::current();
+    let executor = manager.executor();
+    let mut cluster = Cluster::new(None, executor);
 
     // ===== Start the cluster ====
     cluster.start(Some(4), Some(1), None).await;
@@ -201,7 +210,9 @@ async fn test_loss_of_liveness_without_recovery() {
     let node_advance_delay = Duration::from_secs(60);
 
     // A cluster of 4 nodes will be created
-    let mut cluster = Cluster::new(None);
+    let manager = TaskManager::current();
+    let executor = manager.executor();
+    let mut cluster = Cluster::new(None, executor);
 
     // ===== Start the cluster ====
     cluster.start(Some(4), Some(1), None).await;
@@ -255,7 +266,9 @@ async fn test_loss_of_liveness_with_recovery() {
     let node_advance_delay = Duration::from_secs(60);
 
     // A cluster of 4 nodes will be created
-    let mut cluster = Cluster::new(None);
+    let manager = TaskManager::current();
+    let executor = manager.executor();
+    let mut cluster = Cluster::new(None, executor);
 
     // ===== Start the cluster ====
     cluster.start(Some(4), Some(1), None).await;

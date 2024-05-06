@@ -9,9 +9,6 @@ pub(crate) enum ExecutorError {
     /// Errors from BlockExecution
     #[error("Block execution error: {0}")]
     Execution(#[from] BlockExecutionError),
-    /// Error when creating a new [SealedBlockWithSenders]
-    #[error("Failed to seal block with senders")]
-    UnevenSendersForSealedBlock,
     /// Failed to decode transaction bytes
     #[error("RLP error decoding transaction within consensus output: {0}")]
     DecodeTransaction(#[from] alloy_rlp::Error),

@@ -8,12 +8,17 @@ use anemo::PeerId;
 use narwhal_network::{PrimaryToPrimaryRpc, WorkerRpc};
 use narwhal_network_types::{FetchCertificatesRequest, RequestBatchesRequest};
 use narwhal_test_utils::cluster::Cluster;
+use reth::tasks::TaskManager;
+use reth_tracing::init_test_tracing;
 use tn_types::AuthorityIdentifier;
 
-#[tokio::test(flavor = "current_thread", start_paused = true)]
+#[tokio::test]
 async fn test_server_authorizations() {
+    init_test_tracing();
     // Set up primaries and workers with a committee.
-    let mut test_cluster = Cluster::new(None);
+    let manager = TaskManager::current();
+    let executor = manager.executor();
+    let mut test_cluster = Cluster::new(None, executor);
     test_cluster.start(Some(4), Some(1), None).await;
     tokio::time::sleep(Duration::from_secs(3)).await;
 
@@ -48,7 +53,9 @@ async fn test_server_authorizations() {
     }
 
     // Set up primaries and workers with a another committee.
-    let mut unreachable_cluster = Cluster::new(None);
+    let manager = TaskManager::current();
+    let executor = manager.executor();
+    let mut unreachable_cluster = Cluster::new(None, executor);
     unreachable_cluster.start(Some(4), Some(1), None).await;
     tokio::time::sleep(Duration::from_secs(3)).await;
 

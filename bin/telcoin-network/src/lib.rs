@@ -30,7 +30,6 @@
 
 pub mod args;
 pub mod cli;
-pub mod dirs;
 pub mod genesis;
 pub mod keytool;
 pub mod node;

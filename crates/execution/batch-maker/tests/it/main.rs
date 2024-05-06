@@ -1,5 +1,5 @@
 //! Batch maker EL -> CL integration test
 
-mod batch_makers;
+mod batch_maker;
 
 fn main() {}

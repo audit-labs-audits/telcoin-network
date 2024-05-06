@@ -38,6 +38,8 @@ tn-config = { workspace = true }
 
 # execution
 eyre = { workspace = true }
+reth-node-ethereum = { workspace = true }
+reth-stages = { workspace = true }
 tn-batch-maker = { workspace = true}
 tn-batch-validator = { workspace = true}
 tn-executor = { workspace = true }

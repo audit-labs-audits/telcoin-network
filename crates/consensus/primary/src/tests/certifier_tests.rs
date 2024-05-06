@@ -16,7 +16,7 @@ use tn_types::{
     test_utils::CommitteeFixture, BlsKeypair, CertificateAPI, PreSubscribedBroadcastSender,
     SignatureVerificationState,
 };
-use tokio::{sync::watch, time::Duration};
+use tokio::sync::watch;
 
 // // TODO: Remove after network has moved to CertificateV2
 // #[tokio::test(flavor = "current_thread", start_paused = true)]
@@ -461,8 +461,9 @@ async fn run_vote_aggregator_with_param(
             .is_err());
     }
 }
+
 #[tokio::test]
-async fn shutdown_core() {
+async fn test_shutdown_core() {
     let fixture = CommitteeFixture::builder().build();
     let committee = fixture.committee();
     let worker_cache = fixture.worker_cache();

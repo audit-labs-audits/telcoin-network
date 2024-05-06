@@ -2,10 +2,7 @@
 
 mod generate;
 use self::generate::NodeType;
-use crate::{
-    args::clap_genesis_parser,
-    dirs::{DataDirPath, TelcoinDirs},
-};
+use crate::args::clap_genesis_parser;
 use clap::{value_parser, Args, Subcommand};
 use eyre::Context;
 
@@ -17,6 +14,7 @@ use std::{
     sync::Arc,
 };
 use tn_config::{traits::ConfigTrait, Config};
+use tn_node::dirs::{DataDirPath, TelcoinDirs as _};
 use tracing::{debug, info, warn};
 
 /// Generate keypairs and save them to a file.
@@ -201,6 +199,7 @@ impl KeyArgs {
 mod tests {
     use crate::cli::Cli;
     use clap::Parser;
+    use reth::commands::node::NoArgs;
     use tempfile::tempdir;
     use tn_config::{traits::ConfigTrait, Config};
 
@@ -214,7 +213,7 @@ mod tests {
     fn test_generate_keypairs() {
         // use tempdir
         let tempdir = tempdir().expect("tempdir created").into_path();
-        let tn = Cli::<()>::try_parse_from([
+        let tn = Cli::<NoArgs>::try_parse_from([
             "telcoin-network",
             "keytool",
             "generate",
@@ -226,7 +225,7 @@ mod tests {
         ])
         .expect("cli parsed");
 
-        tn.run().expect("generate keys command successful");
+        tn.run(|_, _, _| async move { Ok(()) }).expect("generate keys command");
 
         Config::load_from_path::<Config>(tempdir.as_path()).expect("config loaded yaml okay");
     }

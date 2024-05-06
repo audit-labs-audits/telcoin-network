@@ -29,7 +29,7 @@ use tokio_stream::wrappers::UnboundedReceiverStream;
 mod cli_ext;
 mod rpc_ext;
 mod service;
-pub use cli_ext::{parse_u256_from_decimal_value, FaucetArgs, FaucetCliExt};
+pub use cli_ext::{parse_u256_from_decimal_value, FaucetArgs};
 pub use rpc_ext::{FaucetRpcExt, FaucetRpcExtApiServer};
 pub(crate) use service::FaucetService;
 
@@ -191,7 +191,7 @@ impl Faucet {
 
 #[cfg(test)]
 mod tests {
-    use alloy_sol_types::SolType;
+
     use ecdsa::elliptic_curve::{pkcs8::DecodePublicKey as _, sec1::ToEncodedPoint};
     use gcloud_sdk::{
         google::cloud::kms::v1::{
@@ -201,9 +201,7 @@ mod tests {
         GoogleApi, GoogleAuthMiddleware, GoogleEnvironment,
     };
     use k256::PublicKey as PubKey;
-    use reth_primitives::{
-        address, hex, keccak256, public_key_to_address, Signature as RSignature, U256,
-    };
+    use reth_primitives::{keccak256, public_key_to_address, Signature as RSignature, U256};
     use reth_tracing::init_test_tracing;
     use secp256k1::{
         ecdsa::{RecoverableSignature, RecoveryId, Signature},
@@ -417,11 +415,11 @@ mod tests {
 
         let signed_data = kms_client
             .get()
-            .asymmetric_sign(tonic::Request::new(AsymmetricSignRequest {
+            .asymmetric_sign(AsymmetricSignRequest {
                 name: name.clone(),
                 digest,
                 ..Default::default()
-            }))
+            })
             .await
             .expect("kms response with signed data")
             .into_inner()
@@ -431,7 +429,7 @@ mod tests {
 
         let pem_pubkey = kms_client
             .get()
-            .get_public_key(tonic::Request::new(GetPublicKeyRequest { name }))
+            .get_public_key(GetPublicKeyRequest { name })
             .await
             .expect("kms response with public key")
             .into_inner()

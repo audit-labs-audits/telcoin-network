@@ -312,10 +312,8 @@ impl RequestBatchesNetwork for RequestBatchesNetworkImpl {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use fastcrypto::{hash::Hash, traits::KeyPair};
-    use itertools::Itertools;
+    use fastcrypto::traits::KeyPair;
     use rand::rngs::StdRng;
-    use std::collections::HashMap;
     use tn_types::NetworkKeypair;
 
     // // TODO: Remove once we have removed BatchV1 from the codebase.

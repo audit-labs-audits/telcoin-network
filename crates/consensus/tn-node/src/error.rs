@@ -2,7 +2,7 @@
 
 use eyre::ErrReport;
 use narwhal_executor::SubscriberError;
-use reth::init::InitDatabaseError;
+use reth::core::init::InitDatabaseError;
 use reth_beacon_consensus::BeaconForkChoiceUpdateError;
 use reth_interfaces::RethError;
 use reth_provider::ProviderError;
@@ -55,15 +55,7 @@ pub enum ExecutionError {
     #[error(transparent)]
     FinalizeGenesis(#[from] BeaconForkChoiceUpdateError),
 
-    /// Attempt to retrieve the optional [TaskManager]'s task executor.
-    #[error("TaskManager is not running.")]
-    TaskManagerNotStarted,
-
     /// Worker id is not included in the execution node's known worker hashmap.
     #[error("Worker not found: {0:?}")]
     WorkerNotFound(WorkerId),
-
-    /// RPC handle unable to provide socket address for worker bc it's not running
-    #[error("Worker {0:?} does not have a {1} server running")]
-    WorkerRPCNotRunning(WorkerId, String),
 }

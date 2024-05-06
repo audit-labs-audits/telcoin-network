@@ -14,67 +14,20 @@ use gcloud_sdk::{
     },
     GoogleApi, GoogleAuthMiddleware, GoogleEnvironment,
 };
-use jsonrpsee::{core::client::ClientT, http_client::HttpClientBuilder, rpc_params};
+use jsonrpsee::{core::client::ClientT, rpc_params};
 use k256::{elliptic_curve::sec1::ToEncodedPoint, pkcs8::DecodePublicKey, PublicKey as PubKey};
 use narwhal_test_utils::faucet_test_execution_node;
 use reth_primitives::{
     alloy_primitives::U160, hex, public_key_to_address, Address, GenesisAccount, TransactionSigned,
     U256,
 };
+use reth_tasks::TaskManager;
 use reth_tracing::init_test_tracing;
 use secp256k1::PublicKey;
 use std::{str::FromStr, sync::Arc, time::Duration};
 use tn_faucet::Drip;
 use tn_types::{adiri_genesis, test_channel, BatchAPI, NewBatch};
 use tokio::time::timeout;
-
-/// Retrieve the public key from KMS.
-///
-/// This simulates what the startup script should do on deployed nodes:
-/// - set an env variable to the PEM formatted key.
-async fn set_google_kms_public_key_env_var() -> eyre::Result<()> {
-    // Detect Google project ID using environment variables PROJECT_ID/GCP_PROJECT_ID
-    // or GKE metadata server when the app runs inside GKE
-    let google_project_id = GoogleEnvironment::detect_google_project_id().await
-        .expect("No Google Project ID detected. Please specify it explicitly using env variable: PROJECT_ID");
-
-    let kms_client: GoogleApi<KeyManagementServiceClient<GoogleAuthMiddleware>> =
-        GoogleApi::from_function(
-            KeyManagementServiceClient::new,
-            "https://cloudkms.googleapis.com",
-            None,
-        )
-        .await?;
-
-    // retrieve api information from env
-    let locations = std::env::var("KMS_KEY_LOCATIONS")
-        .expect("KMS_KEY_LOCATIONS must be set in the environment");
-    let key_rings =
-        std::env::var("KMS_KEY_RINGS").expect("KMS_KEY_RINGS must be set in the environment");
-    let crypto_keys =
-        std::env::var("KMS_CRYPTO_KEYS").expect("KMS_CRYPTO_KEYS must be set in the environment");
-    let crypto_key_versions = std::env::var("KMS_CRYPTO_KEY_VERSIONS")
-        .expect("KMS_CRYPTO_KEY_VERSIONS must be set in the environment");
-
-    // construct api endpoint for Google KMS requests
-    let name = format!(
-        "projects/{}/locations/{}/keyRings/{}/cryptoKeys/{}/cryptoKeyVersions/{}",
-        google_project_id, locations, key_rings, crypto_keys, crypto_key_versions
-    );
-
-    // request KMS public key
-    let kms_pubkey_response = kms_client
-        .get()
-        .get_public_key(tonic::Request::new(GetPublicKeyRequest { name: name.clone() }))
-        .await?;
-
-    // convert pem pubkey format
-    let kms_pem_pubkey = kms_pubkey_response.into_inner().pem;
-    // store to env
-    std::env::set_var("FAUCET_PUBLIC_KEY", kms_pem_pubkey);
-
-    Ok(())
-}
 
 #[tokio::test]
 async fn test_faucet_transfers_tel_with_google_kms() -> eyre::Result<()> {
@@ -106,18 +59,22 @@ async fn test_faucet_transfers_tel_with_google_kms() -> eyre::Result<()> {
     let genesis = genesis.extend_accounts(faucet_account.into_iter());
     let chain = Arc::new(genesis.into());
 
+    let manager = TaskManager::current();
+    let executor = manager.executor();
+
     // create engine node
-    let engine = faucet_test_execution_node(true, None, Some(chain), None)?;
+    let execution_node = faucet_test_execution_node(true, Some(chain), None, executor)?;
 
     println!("starting batch maker...");
     let worker_id = 0;
     let (to_worker, mut next_batch) = test_channel!(1);
 
     // start batch maker
-    engine.start_batch_maker(to_worker, worker_id).await?;
+    execution_node.start_batch_maker(to_worker, worker_id).await?;
+
+    let client = execution_node.worker_http_client(&worker_id).await?.expect("worker rpc client");
 
     let address = Address::from(U160::from(8991));
-    let client = HttpClientBuilder::default().build("http://127.0.0.1:8544")?;
 
     // assert starting balance is 0
     let starting_balance: String = client.request("eth_getBalance", rpc_params!(address)).await?;
@@ -175,18 +132,21 @@ async fn test_faucet_transfers_stablecoin_with_google_kms() -> eyre::Result<()> 
     let genesis = genesis.extend_accounts(faucet_account.into_iter());
     let chain = Arc::new(genesis.into());
 
+    let manager = TaskManager::current();
+    let executor = manager.executor();
+
     // create engine node
-    let engine = faucet_test_execution_node(true, None, Some(chain), None)?;
+    let execution_node = faucet_test_execution_node(true, Some(chain), None, executor)?;
 
     println!("starting batch maker...");
     let worker_id = 0;
     let (to_worker, mut next_batch) = test_channel!(2);
 
     // start batch maker
-    engine.start_batch_maker(to_worker, worker_id).await?;
+    execution_node.start_batch_maker(to_worker, worker_id).await?;
 
     let user_address = Address::from(U160::from(8991));
-    let client = HttpClientBuilder::default().build("http://127.0.0.1:8544")?;
+    let client = execution_node.worker_http_client(&worker_id).await?.expect("worker rpc client");
 
     // assert starting balance is 0
     let starting_balance: String =
@@ -211,8 +171,7 @@ async fn test_faucet_transfers_stablecoin_with_google_kms() -> eyre::Result<()> 
 
     // TODO: this is hardcoded in the faucet after contract is deployed
     let faucet_contract = hex!("c1CCc28BB47290aab2f87D4AF81CEfE6626EE878").into();
-    let contract_params: Vec<u8> =
-        Drip::abi_encode_params(&(&contract_address, &user_address)).into();
+    let contract_params: Vec<u8> = Drip::abi_encode_params(&(&contract_address, &user_address));
 
     // keccak256("drip(address,address)")[0..4]
     let selector = [235, 56, 57, 167];
@@ -302,6 +261,52 @@ fn test_print_kms_wallets() -> eyre::Result<()> {
     // 0xb3fabbd1d2edde4d9ced3ce352859ce1bebf7907
     // 0xa3478861957661b2d8974d9309646a71271d98b9
     // 0xe69151677e5aec0b4fc0a94bfcaf20f6f0f975eb
+
+    Ok(())
+}
+
+/// Retrieve the public key from KMS.
+///
+/// This simulates what the startup script should do on deployed nodes:
+/// - set an env variable to the PEM formatted key.
+async fn set_google_kms_public_key_env_var() -> eyre::Result<()> {
+    // Detect Google project ID using environment variables PROJECT_ID/GCP_PROJECT_ID
+    // or GKE metadata server when the app runs inside GKE
+    let google_project_id = GoogleEnvironment::detect_google_project_id().await
+        .expect("No Google Project ID detected. Please specify it explicitly using env variable: PROJECT_ID");
+
+    let kms_client: GoogleApi<KeyManagementServiceClient<GoogleAuthMiddleware>> =
+        GoogleApi::from_function(
+            KeyManagementServiceClient::new,
+            "https://cloudkms.googleapis.com",
+            None,
+        )
+        .await?;
+
+    // retrieve api information from env
+    let locations = std::env::var("KMS_KEY_LOCATIONS")
+        .expect("KMS_KEY_LOCATIONS must be set in the environment");
+    let key_rings =
+        std::env::var("KMS_KEY_RINGS").expect("KMS_KEY_RINGS must be set in the environment");
+    let crypto_keys =
+        std::env::var("KMS_CRYPTO_KEYS").expect("KMS_CRYPTO_KEYS must be set in the environment");
+    let crypto_key_versions = std::env::var("KMS_CRYPTO_KEY_VERSIONS")
+        .expect("KMS_CRYPTO_KEY_VERSIONS must be set in the environment");
+
+    // construct api endpoint for Google KMS requests
+    let name = format!(
+        "projects/{}/locations/{}/keyRings/{}/cryptoKeys/{}/cryptoKeyVersions/{}",
+        google_project_id, locations, key_rings, crypto_keys, crypto_key_versions
+    );
+
+    // request KMS public key
+    let kms_pubkey_response =
+        kms_client.get().get_public_key(GetPublicKeyRequest { name: name.clone() }).await?;
+
+    // convert pem pubkey format
+    let kms_pem_pubkey = kms_pubkey_response.into_inner().pem;
+    // store to env
+    std::env::set_var("FAUCET_PUBLIC_KEY", kms_pem_pubkey);
 
     Ok(())
 }

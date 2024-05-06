@@ -1,9 +1,9 @@
 //! Utilities for parsing args
 
-use crate::dirs::DataDirPath;
 use reth::{args::utils::genesis_value_parser, dirs::MaybePlatformPath};
 use reth_primitives::{Address, ChainSpec};
 use std::{str::FromStr, sync::Arc};
+use tn_node::dirs::DataDirPath;
 use tn_types::adiri_chain_spec_arc;
 
 /// Create a default path for the node.

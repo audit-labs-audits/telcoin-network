@@ -7,19 +7,16 @@
 use super::*;
 
 use crate::consensus::{
-    make_certificate_store, make_consensus_store, Consensus, ConsensusMetrics, ConsensusRound,
+    make_certificate_store, make_consensus_store, Consensus, ConsensusRound,
     NUM_SHUTDOWN_RECEIVERS, NUM_SUB_DAGS_PER_SCHEDULE,
 };
 #[allow(unused_imports)]
 use fastcrypto::traits::KeyPair;
 use prometheus::Registry;
-use std::collections::HashMap;
 #[cfg(test)]
-use std::collections::{BTreeSet, VecDeque};
-use tn_types::{
-    test_utils::CommitteeFixture, AuthorityIdentifier, CertificateAPI, HeaderAPI,
-    PreSubscribedBroadcastSender,
-};
+use std::collections::BTreeSet;
+use std::collections::HashMap;
+use tn_types::{test_utils::CommitteeFixture, AuthorityIdentifier, PreSubscribedBroadcastSender};
 #[allow(unused_imports)]
 use tokio::sync::mpsc::channel;
 use tokio::sync::watch;
@@ -663,7 +660,7 @@ async fn not_enough_support() {
     certificates.push_back(certificate);
     next_parents.insert(digest);
 
-    parents = next_parents.clone();
+    parents.clone_from(&next_parents);
 
     // Rounds 4: Fully connected graph. This is the where we "boost" the leader.
     let nodes: Vec<_> = ids.to_vec();

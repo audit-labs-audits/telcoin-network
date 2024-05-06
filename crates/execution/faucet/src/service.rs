@@ -19,7 +19,7 @@ use gcloud_sdk::{
 use humantime::format_duration;
 use lru_time_cache::LruCache;
 use reth_primitives::{
-    Address, BaseFeeParams, FromRecoveredTransaction, Signature as EthSignature, Transaction,
+    Address, BaseFeeParams, FromRecoveredPooledTransaction, Signature as EthSignature, Transaction,
     TransactionKind, TransactionSigned, TxEip1559, TxHash, B256, U256,
 };
 use reth_provider::{BlockReaderIdExt, StateProviderFactory};
@@ -176,7 +176,7 @@ where
                 max_fee_per_gas: gas_price,
                 gas_limit: 1_000_000,
                 to: TransactionKind::Call(to),
-                value: self.transfer_amount.into(),
+                value: self.transfer_amount,
                 input: Default::default(),
                 access_list: Default::default(),
             })
@@ -184,7 +184,7 @@ where
             // hardcoded selector: keccak256("drip(address,address)")[0..4]
             let selector = [235, 56, 57, 167];
             // encode params
-            let params: Vec<u8> = Drip::abi_encode_params(&(&contract, &to)).into();
+            let params: Vec<u8> = Drip::abi_encode_params(&(&contract, &to));
             // combine params with selector to create input for contract call
             let input = [&selector, &params[..]].concat().into();
 
@@ -196,7 +196,7 @@ where
                 max_fee_per_gas: gas_price,
                 gas_limit: 1_000_000,
                 to: TransactionKind::Call(self.faucet_contract),
-                value: U256::ZERO.into(),
+                value: U256::ZERO,
                 input,
                 access_list: Default::default(),
             })
@@ -279,11 +279,11 @@ where
         let digest = Some(KMSDigest { digest });
         let signed_data = client
             .get()
-            .asymmetric_sign(tonic::Request::new(AsymmetricSignRequest {
+            .asymmetric_sign(AsymmetricSignRequest {
                 name: name.clone(),
                 digest,
                 ..Default::default()
-            }))
+            })
             .await?
             .into_inner()
             .signature;
@@ -447,7 +447,12 @@ where
     Pool: TransactionPool + Clone + 'static,
 {
     let recovered = tx.try_into_ecrecovered().or(Err(EthApiError::InvalidTransactionSignature))?;
-    let transaction = <Pool::Transaction>::from_recovered_transaction(recovered);
-    let hash = pool.add_transaction(TransactionOrigin::Local, transaction).await?;
+
+    let pool_transaction = match recovered.try_into() {
+        Ok(converted) => <Pool::Transaction>::from_recovered_pooled_transaction(converted),
+        Err(_) => return Err(EthApiError::TransactionConversionError),
+    };
+
+    let hash = pool.add_transaction(TransactionOrigin::Local, pool_transaction).await?;
     Ok(hash)
 }

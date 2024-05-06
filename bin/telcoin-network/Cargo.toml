@@ -32,18 +32,20 @@ tn-config = { workspace = true }
 tn-node = { workspace = true }
 narwhal-network = { workspace = true }
 consensus-metrics = { workspace = true }
-dirs-next = "2.0.0"
-cfg-if = { workspace = true }
 tn-faucet = { workspace = true, optional = true }
 
 # config
 serde_yaml = { workspace = true }
 
 reth = { workspace = true }
+reth-config = { workspace = true }
 reth-primitives = { workspace = true }
 reth-tracing = { workspace = true }
 reth-metrics = { workspace = true }
 reth-db = { workspace = true }
+reth-node-core = { workspace = true }
+reth-node-ethereum = { workspace = true }
+reth-stages = { workspace = true }
 
 [dev-dependencies]
 reth-basic-payload-builder = {workspace = true }
@@ -56,7 +58,6 @@ jsonrpsee = { workspace = true }
 k256 = "0.13.3"
 narwhal-test-utils = { workspace = true }
 tonic = { workspace = true }
-
 
 [features]
 default = []

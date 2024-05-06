@@ -1,48 +1,41 @@
 //! Main node command
 //!
 //! Starts the client
-use crate::{
-    args::clap_genesis_parser,
-    dirs::{DataDirPath, TelcoinDirs},
-    version::SHORT_VERSION,
-};
+use crate::{args::clap_genesis_parser, version::SHORT_VERSION};
 use clap::{value_parser, Parser};
-use consensus_metrics::RegistryService;
+use core::fmt;
 use fdlimit::raise_fd_limit;
-use narwhal_network::client::NetworkClient;
-use prometheus::Registry;
-#[cfg(not(feature = "faucet"))]
-use reth::cli::ext::DefaultRethNodeCommandConfig;
+use futures::Future;
 use reth::{
     args::{
         utils::parse_socket_address, DatabaseArgs, DebugArgs, DevArgs, NetworkArgs,
         PayloadBuilderArgs, PruningArgs, RpcServerArgs, TxPoolArgs,
     },
-    cli::ext::RethCliExt,
-    dirs::MaybePlatformPath,
+    builder::NodeConfig,
+    commands::node::NoArgs,
+    dirs::{ChainPath, MaybePlatformPath},
+    CliContext,
 };
+use reth_db::{init_db, DatabaseEnv};
 use reth_primitives::ChainSpec;
 use std::{net::SocketAddr, path::PathBuf, str::FromStr, sync::Arc};
-use tn_config::{
-    read_validator_keypair_from_file, traits::ConfigTrait, Config, BLS_KEYFILE,
-    PRIMARY_NETWORK_KEYFILE, WORKER_NETWORK_KEYFILE,
+use tn_config::{traits::ConfigTrait, Config};
+use tn_node::{
+    dirs::{DataDirPath, TelcoinDirs as _},
+    engine::TnBuilder,
 };
-#[cfg(feature = "faucet")]
-use tn_faucet::{FaucetArgs, FaucetCliExt};
-use tn_node::{engine::ExecutionNode, primary::PrimaryNode, worker::WorkerNode, NodeStorage};
-use tn_types::{AuthorityIdentifier, ChainIdentifier, Committee, WorkerCache};
 use tracing::*;
 
 /// Start the node
 #[derive(Debug, Parser)]
-pub struct NodeCommand<Ext: RethCliExt = ()> {
-    /// The path to the data dir for all reth files and subdirectories.
+pub struct NodeCommand<Ext: clap::Args + fmt::Debug = NoArgs> {
+    /// The path to the data dir for all telcoin-network files and subdirectories.
     ///
     /// Defaults to the OS-specific data directory:
     ///
-    /// - Linux: `$XDG_DATA_HOME/reth/` or `$HOME/.local/share/reth/`
-    /// - Windows: `{FOLDERID_RoamingAppData}/reth/`
-    /// - macOS: `$HOME/Library/Application Support/reth/`
+    /// - Linux: `$XDG_DATA_HOME/telcoin-network/` or `$HOME/.local/share/telcoin-network/`
+    /// - Windows: `{FOLDERID_RoamingAppData}/telcoin-network/`
+    /// - macOS: `$HOME/Library/Application Support/telcoin-network/`
     #[arg(long, value_name = "DATA_DIR", verbatim_doc_comment, default_value_t)]
     pub datadir: MaybePlatformPath<DataDirPath>,
 
@@ -88,9 +81,12 @@ pub struct NodeCommand<Ext: RethCliExt = ()> {
     #[arg(long, value_name = "INSTANCE", global = true, default_value_t = 1, value_parser = value_parser!(u16).range(..=200))]
     pub instance: u16,
 
-    /// Overrides the KZG trusted setup by reading from the supplied file.
-    #[arg(long, value_name = "PATH")]
-    pub trusted_setup_file: Option<PathBuf>,
+    /// Sets all ports to unused, allowing the OS to choose random unused ports when sockets are
+    /// bound.
+    ///
+    /// Mutually exclusive with `--instance`.
+    #[arg(long, conflicts_with = "instance", global = true)]
+    pub with_unused_ports: bool,
 
     /// All networking related arguments
     #[clap(flatten)]
@@ -126,43 +122,38 @@ pub struct NodeCommand<Ext: RethCliExt = ()> {
 
     /// Additional cli arguments
     #[clap(flatten)]
-    pub ext: Ext::Node,
-
-    #[cfg(feature = "faucet")]
-    /// Faucet args when feature enabled.
-    #[clap(flatten)]
-    pub faucet: FaucetArgs,
+    pub ext: Ext,
 }
 
-impl<Ext: RethCliExt> NodeCommand<Ext> {
-    /// Replaces the extension of the node command
-    pub fn with_ext<E: RethCliExt>(self, ext: E::Node) -> NodeCommand<E> {
+impl<Ext: clap::Args + fmt::Debug> NodeCommand<Ext> {
+    /// Execute `node` command
+    pub async fn execute<L, Fut>(self, ctx: CliContext, launcher: L) -> eyre::Result<()>
+    where
+        L: FnOnce(TnBuilder<Arc<DatabaseEnv>>, Ext, ChainPath<DataDirPath>) -> Fut,
+        Fut: Future<Output = eyre::Result<()>>,
+    {
+        info!(target: "tn::cli", "telcoin-network {} starting", SHORT_VERSION);
+
+        // Raise the fd limit of the process.
+        // Does not do anything on windows.
+        raise_fd_limit()?;
+
+        // add network name to data dir
+        let tn_data_dir = self.datadir.unwrap_or_chain_default(self.chain.chain);
+
+        // TODO: use config or CLI chain spec?
+        let config_path = self.config.clone().unwrap_or(tn_data_dir.node_config_path());
+        let tn_config: Config = Config::load_from_path(config_path)?;
+        info!(target: "telcoin::cli", validator = ?tn_config.validator_info.name, "config loaded");
+
+        // get the worker's transaction address from the config
         let Self {
-            datadir,
-            config,
-            chain,
-            metrics,
-            trusted_setup_file,
-            instance,
-            network,
-            rpc,
-            txpool,
-            builder,
-            debug,
-            db,
-            dev,
-            pruning,
-            #[cfg(feature = "faucet")]
-            faucet,
-            .. // ext
-        } = self;
-        NodeCommand {
-            datadir,
-            config,
+            // datadir,
+            // config,
             chain,
             metrics,
             instance,
-            trusted_setup_file,
+            with_unused_ports,
             network,
             rpc,
             txpool,
@@ -172,37 +163,14 @@ impl<Ext: RethCliExt> NodeCommand<Ext> {
             dev,
             pruning,
             ext,
-            #[cfg(feature = "faucet")]
-            faucet,
-        }
-    }
+            ..
+        } = self;
 
-    /// Execute `node` command
-    pub async fn execute(self) -> eyre::Result<()> {
-        info!(target: "tn::cli", "telcoin-network {} starting", SHORT_VERSION);
-
-        // Raise the fd limit of the process.
-        // Does not do anything on windows.
-        raise_fd_limit();
-
-        // add network name to data dir
-        let data_dir = self.datadir.unwrap_or_chain_default(self.chain.chain);
-        let config_path = self.config.clone().unwrap_or(data_dir.node_config_path());
-        let config: Config = Config::load_from_path(config_path)?;
-        info!(target: "telcoin::cli", validator = ?config.validator_info.name, "config loaded");
-
-        // TODO: use this or CLI?
-        let _chain = Arc::new(config.chain_spec().clone());
-
-        let terminate_early = self.debug.terminate;
-
-        // get the worker's transaction address from the config
-        let Self {
-            // datadir,
-            // config,
-            // chain,
+        // set up reth node config for engine components
+        let mut node_config = NodeConfig {
+            config: self.config,
+            chain,
             metrics,
-            trusted_setup_file,
             instance,
             network,
             rpc,
@@ -212,160 +180,39 @@ impl<Ext: RethCliExt> NodeCommand<Ext> {
             db,
             dev,
             pruning,
-            ..
-        } = self;
-
-        let datadir_path = data_dir.to_string();
-
-        // convert this CLI into one compatible with reth library
-        let cli = {
-            cfg_if::cfg_if! {
-                if #[cfg(feature = "faucet" )] {
-                    let Self { faucet, .. } = self;
-
-                    reth::node::NodeCommand::<FaucetCliExt> {
-                        datadir: MaybePlatformPath::from_str(&datadir_path)
-                            .expect("datadir compatible with platform path"),
-                        config: self.config.clone(),
-                        chain: self.chain.clone(),
-                        metrics,
-                        instance,
-                        trusted_setup_file,
-                        network,
-                        rpc,
-                        txpool,
-                        builder,
-                        debug,
-                        db,
-                        dev,
-                        pruning,
-                        ext: faucet,
-                    }
-                } else {
-                    let ext = DefaultRethNodeCommandConfig::default();
-
-                    reth::node::NodeCommand::<()> {
-                        datadir: MaybePlatformPath::from_str(&datadir_path)
-                            .expect("datadir compatible with platform path"),
-                        config: self.config.clone(),
-                        chain: self.chain.clone(),
-                        metrics,
-                        instance,
-                        trusted_setup_file,
-                        network,
-                        rpc,
-                        txpool,
-                        builder,
-                        debug,
-                        db,
-                        dev,
-                        pruning,
-                        ext,
-                    }
-                }
-            }
         };
 
-        let engine = ExecutionNode::new(
-            AuthorityIdentifier(self.instance), // TODO: where to get this value?
-            self.chain.clone(),                 // TODO: get this from config?
-            *config.execution_address(),
-            cli,
-        )?;
-
-        info!(target: "telcoin::cli", "execution engine created");
-
-        let narwhal_db_path = data_dir.narwhal_db_path();
-
-        info!(target: "telcoin::cli", "opening node storage at {:?}", narwhal_db_path);
-
-        // open storage for consensus - no metrics passed
-        // TODO: pass metrics here?
-        let node_storage = NodeStorage::reopen(narwhal_db_path, None);
-
-        info!(target: "telcoin::cli", "node storage open");
-
-        let registry_service = RegistryService::new(Registry::new());
-        let network_client =
-            NetworkClient::new_from_public_key(config.validator_info.primary_network_key());
-        let primary = PrimaryNode::new(config.parameters.clone(), registry_service.clone());
-        let (worker_id, _worker_info) = config.workers().first_worker()?;
-        let worker = WorkerNode::new(*worker_id, config.parameters.clone(), registry_service);
-
-        // TODO: find a better way to manage keys
-        //
-        // load keys to start the primary
-        let validator_keypath = data_dir.validator_keys_path();
-        info!(target: "telcoin::cli", "loading validator keys at {:?}", validator_keypath);
-        let bls_keypair = read_validator_keypair_from_file(validator_keypath.join(BLS_KEYFILE))?;
-        let network_keypair =
-            read_validator_keypair_from_file(validator_keypath.join(PRIMARY_NETWORK_KEYFILE))?;
-
-        // load committee from file
-        let mut committee: Committee = Config::load_from_path(data_dir.committee_path())?;
-        committee.load();
-        info!(target: "telcoin::cli", "committee loaded");
-        // TODO: make worker cache part of committee?
-        let worker_cache: WorkerCache = Config::load_from_path(data_dir.worker_cache_path())?;
-        info!(target: "telcoin::cli", "worker cache loaded");
-
-        // TODO: this could be a separate method on `Committee` to have robust checks in place
-        // - all public keys are unique
-        // - thresholds / stake
-        //
-        // assert committee loaded correctly
-        // assert!(committee.size() >= 4, "not enough validators in committee.");
-
-        // TODO: better assertion here
-        // right now, each validator should only have 1 worker
-        // this assertion would incorrectly pass if 1 authority had 2 workers and another had 0
-        //
-        // assert worker cache loaded correctly
-        assert!(
-            worker_cache.all_workers().len() == committee.size(),
-            "each validator within committee must have one worker"
-        );
-
-        // start the primary
-        primary
-            .start(
-                bls_keypair,
-                network_keypair,
-                committee.clone(),
-                ChainIdentifier::unknown(), // TODO: use ChainSpec here
-                worker_cache.clone(),
-                network_client.clone(),
-                &node_storage,
-                &engine,
-            )
-            .await?;
-
-        let worker_network_keypair =
-            read_validator_keypair_from_file(validator_keypath.join(WORKER_NETWORK_KEYFILE))?;
-        // start the worker
-        worker
-            .start(
-                config.primary_public_key()?.clone(), // TODO: remove result for this method
-                worker_network_keypair,
-                committee,
-                worker_cache,
-                network_client,
-                &node_storage,
-                None, // optional metrics
-                &engine,
-            )
-            .await?;
-
-        // let mut config: Config = self.load_config(config_path.clone())?;
-
-        // rx.await??;
-
-        if terminate_early {
-            Ok(())
-        } else {
-            // The pipeline has finished downloading blocks up to `--debug.tip` or
-            // `--debug.max-block`. Keep other node components alive for further usage.
-            futures::future::pending().await
+        if with_unused_ports {
+            node_config = node_config.with_unused_ports();
         }
+
+        // create node builders for Primary and Worker
+        //
+        // Register the prometheus recorder before creating the database,
+        // because database init needs it to register metrics.
+        let _ = node_config.install_prometheus_recorder()?;
+
+        let db_path = tn_data_dir.db_path();
+        info!(target: "tn::engine", path = ?db_path, "opening database");
+        let database =
+            Arc::new(init_db(db_path.clone(), node_config.db.database_args())?.with_metrics());
+
+        // create a reth datadir from tn datadir
+        let chain_for_datadir = node_config.chain.chain();
+        let datadir_path = tn_data_dir.to_string();
+        let reth_datadir = MaybePlatformPath::from_str(&datadir_path)?;
+        let data_dir = reth_datadir.unwrap_or_chain_default(chain_for_datadir);
+
+        // TODO: temporary solution until upstream reth supports public rpc hooks
+        let builder = TnBuilder {
+            database,
+            node_config,
+            data_dir,
+            executor: ctx.task_executor,
+            tn_config,
+            opt_faucet_args: None,
+        };
+
+        launcher(builder, ext, tn_data_dir).await
     }
 }

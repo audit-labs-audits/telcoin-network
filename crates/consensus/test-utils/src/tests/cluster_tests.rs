@@ -2,7 +2,7 @@
 // Copyright (c) Mysten Labs, Inc.
 // SPDX-License-Identifier: Apache-2.0
 use crate::cluster::Cluster;
-use reth::providers::{BlockIdReader, BlockReader};
+use reth::{providers::BlockReader, tasks::TaskManager};
 use std::time::Duration;
 use tn_types::test_utils::ensure_test_environment;
 
@@ -10,7 +10,11 @@ use tn_types::test_utils::ensure_test_environment;
 async fn basic_cluster_setup() {
     ensure_test_environment();
     reth_tracing::init_test_tracing();
-    let mut cluster = Cluster::new(None);
+    // handle to the current runtime
+    let manager = TaskManager::current();
+    let executor = manager.executor();
+
+    let mut cluster = Cluster::new(None, executor);
 
     // start the cluster will all the possible nodes
     cluster.start(Some(4), Some(1), None).await;
@@ -56,12 +60,13 @@ async fn basic_cluster_setup() {
     assert!(cluster.authorities().await.is_empty());
 }
 
-
 // #[tokio::test]
 // async fn basic_cluster_recovery() {
 //     ensure_test_environment();
 //     reth_tracing::init_test_tracing();
-//     let mut cluster = Cluster::new(None);
+// let manager = TaskManager::current();
+// let executor = manager.executor();
+//     let mut cluster = Cluster::new(None, executor);
 
 //     // start the cluster will all the possible nodes
 //     cluster.start(Some(4), Some(1), None).await;
@@ -96,11 +101,11 @@ async fn basic_cluster_setup() {
 //     assert!(block_vec.windows(2).all(|w| w[0] == w[1]));
 
 //     let last_finalized_block = {
-//         let engine_0 = cluster.authority(0).execution_components().await.expect("validator0 engine available");
-//         let db0 = engine_0.get_provider().await;
+//         let engine_0 = cluster.authority(0).execution_components().await.expect("validator0
+// engine available");         let db0 = engine_0.get_provider().await;
 //         db0.finalized_block_number().expect("finalized block number available");
 //     };
-    
+
 //     println!("\nlast finalized block:\n\n{last_finalized_block:?}\n");
 
 //     // stop validator 0
@@ -111,8 +116,6 @@ async fn basic_cluster_setup() {
 //     tokio::time::sleep(Duration::from_secs(3)).await;
 
 //     cluster.start_node(0, preserve_store, workers_per_authority)
-
-
 
 //     // No authority should still run
 //     assert!(cluster.authorities().await.is_empty());

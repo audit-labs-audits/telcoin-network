@@ -6,6 +6,7 @@
 use crate::{authority::AuthorityDetails, default_test_execution_node};
 use fastcrypto::traits::KeyPair as _;
 use itertools::Itertools;
+use reth::tasks::TaskExecutor;
 use std::{collections::HashMap, time::Duration};
 use tn_config::Parameters;
 use tn_types::{test_utils::CommitteeFixture, Committee, WorkerCache, WorkerId};
@@ -33,7 +34,7 @@ impl Cluster {
     ///
     /// Fields passed in via Parameters will be used, expect specified ports which have to be
     /// different for each instance. If None, the default Parameters will be used.
-    pub fn new(parameters: Option<Parameters>) -> Self {
+    pub fn new(parameters: Option<Parameters>, executor: TaskExecutor) -> Self {
         let fixture = CommitteeFixture::builder().randomize_ports(true).build();
         let committee = fixture.committee();
         let worker_cache = fixture.worker_cache();
@@ -50,9 +51,9 @@ impl Cluster {
             let authority_execution_address = authority_fixture.execution_address();
 
             let engine = default_test_execution_node(
-                Some(authority_id),
                 None, // default: adiri chain
                 Some(authority_execution_address),
+                executor.clone(),
             )
             .expect("default test execution node");
 

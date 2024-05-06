@@ -21,7 +21,11 @@ use jsonrpsee::{
 };
 use k256::{elliptic_curve::sec1::ToEncodedPoint, pkcs8::DecodePublicKey, PublicKey as PubKey};
 use narwhal_test_utils::CommandParser;
-use reth::tasks::{TaskExecutor, TaskManager};
+use reth::{
+    tasks::{TaskExecutor, TaskManager},
+    CliContext,
+};
+use reth_node_ethereum::EthEvmConfig;
 use reth_primitives::{
     alloy_primitives::U160, public_key_to_address, Address, ChainSpec, GenesisAccount, U256,
 };
@@ -29,6 +33,8 @@ use reth_tracing::init_test_tracing;
 use secp256k1::PublicKey;
 use std::{str::FromStr, sync::Arc, time::Duration};
 use telcoin_network::{genesis::GenesisArgs, keytool::KeyArgs, node::NodeCommand};
+use tn_faucet::FaucetArgs;
+use tn_node::launch_node;
 use tn_types::adiri_genesis;
 use tokio::{runtime::Handle, task::JoinHandle, time::timeout};
 use tracing::{error, info};
@@ -54,7 +60,7 @@ async fn test_faucet_transfers_tel_with_google_kms_e2e() -> eyre::Result<()> {
     tokio::time::sleep(Duration::from_secs(10)).await;
 
     let address = Address::from(U160::from(8991));
-    let client = HttpClientBuilder::default().build("http://127.0.0.1:8544")?;
+    let client = HttpClientBuilder::default().build("http://127.0.0.1:8545")?;
 
     // assert starting balance is 0
     let starting_balance: String = client.request("eth_getBalance", rpc_params!(address)).await?;
@@ -116,10 +122,8 @@ async fn set_google_kms_public_key_env_var() -> eyre::Result<()> {
     );
 
     // request KMS public key
-    let kms_pubkey_response = kms_client
-        .get()
-        .get_public_key(tonic::Request::new(GetPublicKeyRequest { name: name.clone() }))
-        .await?;
+    let kms_pubkey_response =
+        kms_client.get().get_public_key(GetPublicKeyRequest { name: name.clone() }).await?;
 
     // convert pem pubkey format
     let kms_pem_pubkey = kms_pubkey_response.into_inner().pem;
@@ -244,7 +248,7 @@ async fn spawn_local_testnet(
 
         let instance = v.chars().last().expect("validator instance").to_string();
 
-        let mut command = NodeCommand::<()>::parse_from([
+        let mut command = NodeCommand::<FaucetArgs>::parse_from([
             "tn",
             "--dev",
             "--datadir",
@@ -262,12 +266,21 @@ async fn spawn_local_testnet(
             "--google-kms",
         ]);
 
+        let cli_ctx = CliContext { task_executor: task_executor.clone() };
+
+        // update genesis with seeded accounts
         command.chain = chain.clone();
+
         // collect join handles
         node_handles.push(task_executor.spawn_critical(
             v,
             Box::pin(async move {
-                let err = command.execute().await;
+                let err = command
+                    .execute(cli_ctx, |mut builder, faucet_args, tn_datadir| async move {
+                        builder.opt_faucet_args = Some(faucet_args);
+                        launch_node(builder, EthEvmConfig::default(), tn_datadir).await
+                    })
+                    .await;
                 error!("{:?}", err);
             }),
         ));

@@ -2059,9 +2059,14 @@ pub fn default_db_options() -> DBOptions {
 
     // One common issue when running tests on Mac is that the default ulimit is too low,
     // leading to I/O errors such as "Too many open files". Raising fdlimit to bypass it.
-    if let Some(limit) = fdlimit::raise_fd_limit() {
+    if let Ok(outcome) = fdlimit::raise_fd_limit() {
         // on windows raise_fd_limit return None
-        opt.set_max_open_files((limit / 8) as i32);
+        match outcome {
+            fdlimit::Outcome::LimitRaised { to, .. } => {
+                opt.set_max_open_files((to / 8) as i32);
+            }
+            fdlimit::Outcome::Unsupported => (),
+        }
     }
 
     // The table cache is locked for updates and this determines the number
@@ -2228,7 +2233,9 @@ pub fn open_cf_opts_secondary<P: AsRef<Path>>(
         // Customize database options
         let mut options = db_options.unwrap_or_else(|| default_db_options().options);
 
-        fdlimit::raise_fd_limit();
+        // try to raise the fdlimit
+        // does nothing on windows
+        let _ = fdlimit::raise_fd_limit();
         // This is a requirement by RocksDB when opening as secondary
         options.set_max_open_files(-1);
 
@@ -2352,7 +2359,7 @@ fn populate_missing_cfs(
 /// Given a vec<u8>, find the value which is one more than the vector
 /// if the vector was a big endian number.
 /// If the vector is already minimum, don't change it.
-fn big_endian_saturating_add_one(v: &mut Vec<u8>) {
+fn big_endian_saturating_add_one(v: &mut [u8]) {
     if is_max(v) {
         return;
     }

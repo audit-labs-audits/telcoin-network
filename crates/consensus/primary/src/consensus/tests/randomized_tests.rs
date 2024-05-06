@@ -434,7 +434,7 @@ pub fn make_certificates_with_parameters(
             // update the total round stake
             total_round_stake += authority.stake();
         }
-        parents = next_parents.clone();
+        parents.clone_from(&next_parents);
 
         // Sanity checks
         // Ensure total stake of the round provides strong quorum
@@ -533,7 +533,7 @@ fn generate_and_run_execution_plans(
 
         // Compare the results with the previously executed plan results
         if committed_certificates.is_empty() {
-            committed_certificates = plan_committed_certificates.clone();
+            committed_certificates.clone_from(&plan_committed_certificates);
         } else {
             assert_eq!(
                 committed_certificates,

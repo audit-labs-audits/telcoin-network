@@ -1,17 +1,28 @@
 //! Test-utilities for execution/engine node.
 
 use clap::{Args, Parser};
+use core::fmt;
 use reth::{
-    cli::ext::DefaultRethNodeCommandConfig,
+    builder::NodeConfig,
+    commands::node::NoArgs,
     dirs::MaybePlatformPath,
     primitives::{Address, ChainSpec},
+    tasks::TaskExecutor,
 };
+use reth_db::{
+    test_utils::{create_test_rw_db, TempDatabase},
+    DatabaseEnv,
+};
+use reth_node_ethereum::EthEvmConfig;
 use std::{str::FromStr, sync::Arc};
 use telcoin_network::node::NodeCommand;
 use tempfile::tempdir;
-use tn_faucet::FaucetCliExt;
-use tn_node::engine::ExecutionNode;
-use tn_types::AuthorityIdentifier;
+use tn_config::Config;
+use tn_faucet::FaucetArgs;
+use tn_node::engine::{ExecutionNode, TnBuilder};
+
+/// Convnenience type for testing Execution Node.
+pub type TestExecutionNode = ExecutionNode<Arc<TempDatabase<DatabaseEnv>>, EthEvmConfig>;
 
 /// A helper type to parse Args more easily.
 #[derive(Parser, Debug)]
@@ -26,99 +37,56 @@ pub struct CommandParser<T: Args> {
 /// - opt_chain: `adiri`
 /// - opt_address: `0x1111111111111111111111111111111111111111`
 pub fn default_test_execution_node(
-    opt_authority_identifier: Option<AuthorityIdentifier>,
     opt_chain: Option<Arc<ChainSpec>>,
     opt_address: Option<Address>,
-) -> eyre::Result<ExecutionNode<()>> {
-    let tempdir = tempdir().expect("tempdir created").into_path();
-
-    // use same approach as telcoin-network binary
-    let command = NodeCommand::<()>::try_parse_from([
-        "telcoin-network",
-        // "node",
-        "--dev",
-        "--chain",
-        "adiri",
-        "--datadir",
-        tempdir.to_str().expect("tempdir path clean"),
-    ])?;
-
-    let NodeCommand::<()> {
-        datadir,
-        config,
-        chain,
-        metrics,
-        trusted_setup_file,
-        instance,
-        network,
-        rpc,
-        txpool,
-        builder,
-        debug,
-        db,
-        dev,
-        pruning,
-        ..
-    } = command;
-
-    // let ext: Ext::Node = NoArgs::with(());
-    // let params = reth::node::NodeCommand::<FaucetCliExt> {
-    let params = reth::node::NodeCommand {
-        datadir: MaybePlatformPath::from_str(&datadir.to_string())
-            .expect("datadir compatible with platform path"),
-        config,
-        chain: chain.clone(),
-        metrics,
-        instance,
-        trusted_setup_file,
-        network,
-        rpc,
-        txpool,
-        builder,
-        debug,
-        db,
-        dev,
-        pruning,
-        ext: DefaultRethNodeCommandConfig::default(),
-        // ext: faucet,
-        // ext: NoArgs::with(()),
-        // ext: Default::default(),
-    };
-
-    // check args then use test defaults
-    let authority_identifier = opt_authority_identifier.unwrap_or(AuthorityIdentifier(1));
-    let chain = opt_chain.unwrap_or(chain);
-    let address = opt_address.unwrap_or_else(|| {
-        Address::from_str("0x1111111111111111111111111111111111111111").expect("address from 0x1s")
-    });
+    executor: TaskExecutor,
+) -> eyre::Result<TestExecutionNode> {
+    let (builder, _) = execution_builder::<NoArgs>(
+        opt_chain,
+        opt_address,
+        executor,
+        None, // optional args
+    )?;
 
     // create engine node
-    let engine = ExecutionNode::new(authority_identifier, chain, address, params)?;
+    let engine = ExecutionNode::new(builder, EthEvmConfig::default())?;
 
     Ok(engine)
 }
 
 /// Create CLI command for tests calling `ExecutionNode::new`.
-pub fn execution_params() -> eyre::Result<reth::node::NodeCommand<()>> {
+pub fn execution_builder<CliExt: clap::Args + fmt::Debug>(
+    opt_chain: Option<Arc<ChainSpec>>,
+    opt_address: Option<Address>,
+    executor: TaskExecutor,
+    opt_args: Option<Vec<&str>>,
+) -> eyre::Result<(TnBuilder<Arc<TempDatabase<DatabaseEnv>>>, CliExt)> {
     let tempdir = tempdir().expect("tempdir created").into_path();
 
-    // use same approach as telcoin-network binary
-    let command = NodeCommand::<()>::try_parse_from([
+    let default_args = [
         "telcoin-network",
-        // "node",
         "--dev",
         "--chain",
         "adiri",
         "--datadir",
         tempdir.to_str().expect("tempdir path clean"),
-    ])?;
+    ];
 
-    let NodeCommand::<()> {
+    // extend faucet args if provided
+    let cli_args = if let Some(args) = opt_args {
+        [&default_args, &args[..]].concat()
+    } else {
+        default_args.to_vec()
+    };
+
+    // use same approach as telcoin-network binary
+    let command = NodeCommand::<CliExt>::try_parse_from(cli_args)?;
+
+    let NodeCommand {
         datadir,
         config,
         chain,
         metrics,
-        trusted_setup_file,
         instance,
         network,
         rpc,
@@ -128,17 +96,19 @@ pub fn execution_params() -> eyre::Result<reth::node::NodeCommand<()>> {
         db,
         dev,
         pruning,
+        ext,
         ..
     } = command;
 
-    let params = reth::node::NodeCommand::<()> {
-        datadir: MaybePlatformPath::from_str(&datadir.to_string())
-            .expect("datadir compatible with platform path"),
+    // overwrite chain spec if passed in
+    let chain = opt_chain.unwrap_or(chain);
+
+    // set up reth node config for engine components
+    let node_config = NodeConfig {
         config,
-        chain: chain.clone(),
+        chain,
         metrics,
         instance,
-        trusted_setup_file,
         network,
         rpc,
         txpool,
@@ -147,10 +117,35 @@ pub fn execution_params() -> eyre::Result<reth::node::NodeCommand<()>> {
         db,
         dev,
         pruning,
-        ext: Default::default(),
     };
 
-    Ok(params)
+    // ensure unused ports
+    let node_config = node_config.with_unused_ports();
+
+    let database = create_test_rw_db();
+
+    // create a reth datadir from tn datadir
+    let chain_for_datadir = node_config.chain.chain();
+    let datadir_path = datadir.to_string();
+    let reth_datadir = MaybePlatformPath::from_str(&datadir_path)?;
+    let data_dir = reth_datadir.unwrap_or_chain_default(chain_for_datadir);
+    let mut tn_config = Config::default();
+
+    // check args then use test defaults
+    let address = opt_address.unwrap_or_else(|| {
+        Address::from_str("0x1111111111111111111111111111111111111111").expect("address from 0x1s")
+    });
+
+    // update execution address
+    tn_config.validator_info.execution_address = address;
+
+    // TODO: this a temporary approach until upstream reth supports public rpc hooks
+    let opt_faucet_args = None;
+
+    let builder =
+        TnBuilder { database, node_config, data_dir, executor, tn_config, opt_faucet_args };
+
+    Ok((builder, ext))
 }
 
 /// Convenience function for creating engine node using tempdir and optional args.
@@ -161,74 +156,32 @@ pub fn execution_params() -> eyre::Result<reth::node::NodeCommand<()>> {
 // #[cfg(feature = "faucet")]
 pub fn faucet_test_execution_node(
     google_kms: bool,
-    opt_authority_identifier: Option<AuthorityIdentifier>,
     opt_chain: Option<Arc<ChainSpec>>,
     opt_address: Option<Address>,
-) -> eyre::Result<ExecutionNode<FaucetCliExt>> {
-    let tempdir = tempdir().expect("tempdir created").into_path();
+    executor: TaskExecutor,
+) -> eyre::Result<TestExecutionNode> {
+    let faucet_args = ["--google-kms"];
 
-    // use same approach as telcoin-network binary
-    let command = NodeCommand::<FaucetCliExt>::try_parse_from([
-        "telcoin-network",
-        // "node",
-        "--dev",
-        "--chain",
-        "adiri",
-        "--datadir",
-        tempdir.to_str().expect("tempdir path clean"),
-        // pass -google-kms flag
-        (if google_kms { "--google-kms" } else { "" }),
-    ])?;
+    // TODO: support non-google-kms faucet
+    let extended_args = if google_kms { Some(faucet_args.to_vec()) } else { None };
 
-    let NodeCommand::<FaucetCliExt> {
-        datadir,
-        config,
-        chain,
-        metrics,
-        trusted_setup_file,
-        instance,
-        network,
-        rpc,
-        txpool,
-        builder,
-        debug,
-        db,
-        dev,
-        pruning,
-        ext,
-        ..
-    } = command;
+    // execution builder + faucet args
+    let (builder, faucet) =
+        execution_builder::<FaucetArgs>(opt_chain, opt_address, executor, extended_args)?;
 
-    // let ext: Ext::Node = NoArgs::with(());
-    // let params = reth::node::NodeCommand::<FaucetCliExt> {
-    let params = reth::node::NodeCommand::<FaucetCliExt> {
-        datadir: MaybePlatformPath::from_str(&datadir.to_string())
-            .expect("datadir compatible with platform path"),
-        config,
-        chain: chain.clone(),
-        metrics,
-        instance,
-        trusted_setup_file,
-        network,
-        rpc,
-        txpool,
-        builder,
-        debug,
-        db,
-        dev,
-        pruning,
-        ext,
+    // replace default builder's faucet args
+    let TnBuilder { database, node_config, data_dir, executor, tn_config, .. } = builder;
+    let builder = TnBuilder {
+        database,
+        node_config,
+        data_dir,
+        executor,
+        tn_config,
+        opt_faucet_args: Some(faucet),
     };
 
-    // check args then use test defaults
-    let authority_identifier = opt_authority_identifier.unwrap_or(AuthorityIdentifier(1));
-    let chain = opt_chain.unwrap_or(chain);
-    let address = opt_address.unwrap_or_else(|| {
-        Address::from_str("0x1111111111111111111111111111111111111111").expect("address from 0x1s")
-    });
-
     // create engine node
-    let engine = ExecutionNode::new(authority_identifier, chain, address, params)?;
+    let engine = ExecutionNode::new(builder, EthEvmConfig::default())?;
 
     Ok(engine)
 }

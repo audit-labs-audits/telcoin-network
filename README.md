@@ -1,6 +1,6 @@
 # Telcoin Network
 Consensus layer (CL) is an implemntation of Narwhal and Bullshark.
-Execution layer (EL) is an implementation of rETH.
+Execution layer (EL) is an implementation of reth.
 
 Requires Rust 1.76
 
@@ -10,10 +10,10 @@ The CLI is used to create validator information, join a committee, and start the
 
 ## Helpful CURL commands
 ### faucet request
-curl localhost:8544 \
+curl https://adiri.tel \
 -X POST \
 -H "Content-Type: application/json" \
---data '{"method":"faucet_transfer","params":["0x86FC4954D645258e68E71de59A41066C55bd9966"],"id":1,"jsonrpc":"2.0" }' 
+--data '{"method":"faucet_transfer","params":["0xffE2815E73f7E0f30892f38b724651D663D3978e", "0xb7bE13B047e1151649191593C8f7719BB0563609"],"id":1,"jsonrpc":"2.0" }' 
 
 ### get chain id
 curl localhost:8544 \
@@ -42,10 +42,10 @@ curl http://localhost:8545 \
 --data '{"method":"eth_gasPrice","params":[],"id":1,"jsonrpc":"2.0"}'
  
 ### get balance for test wallet
-curl localhost:8544 \
+curl https://adiri.tel \
 -X POST \
 -H "Content-Type: application/json" \
---data '{"method":"eth_getBalance","params":["address", "latest"],"id":1,"jsonrpc":"2.0"}'
+--data '{"method":"eth_getBalance","params":["0x911C4954D645258e68E71de59A41066C55bd9966", "latest"],"id":1,"jsonrpc":"2.0"}'
 
 ### transactions pool status
 curl localhost:8545 \

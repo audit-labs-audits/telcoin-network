@@ -7,24 +7,22 @@ use reth::dirs::MaybePlatformPath;
 use reth_primitives::ChainSpec;
 use std::{path::PathBuf, sync::Arc};
 use tn_config::{traits::ConfigTrait, Config};
+use tn_node::dirs::{DataDirPath, TelcoinDirs as _};
 use tn_types::NetworkGenesis;
 
-use crate::{
-    args::clap_genesis_parser,
-    dirs::{DataDirPath, TelcoinDirs},
-};
+use crate::args::clap_genesis_parser;
 use tracing::info;
 
 /// Add the validator to the node
 #[derive(Debug, Clone, Args)]
 pub struct AddValidator {
-    /// The path to the data dir for all reth files and subdirectories.
+    /// The path to the data dir for all telcoin-network files and subdirectories.
     ///
     /// Defaults to the OS-specific data directory:
     ///
-    /// - Linux: `$XDG_DATA_HOME/reth/` or `$HOME/.local/share/reth/`
-    /// - Windows: `{FOLDERID_RoamingAppData}/reth/`
-    /// - macOS: `$HOME/Library/Application Support/reth/`
+    /// - Linux: `$XDG_DATA_HOME/telcoin-network/` or `$HOME/.local/share/telcoin-network/`
+    /// - Windows: `{FOLDERID_RoamingAppData}/telcoin-network/`
+    /// - macOS: `$HOME/Library/Application Support/telcoin-network/`
     #[arg(long, value_name = "DATA_DIR", verbatim_doc_comment, default_value_t)]
     pub datadir: MaybePlatformPath<DataDirPath>,
 
@@ -76,7 +74,6 @@ impl AddValidator {
 
         let config = self.load_config(config_path.clone())?;
 
-        // always store reth.toml in the data dir, not the chain specific data dir
         info!(target: "genesis::ceremony", path = ?config_path, "Configuration loaded");
 
         // load config file

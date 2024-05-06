@@ -11,27 +11,21 @@ use narwhal_network_types::MockWorkerToPrimary;
 use narwhal_typed_store::Map;
 use narwhal_worker::{metrics::WorkerMetrics, BatchMaker, NUM_SHUTDOWN_RECEIVERS};
 use prometheus::Registry;
-use reth::{init::init_genesis, tasks::TokioTaskExecutor};
+use reth::tasks::TaskManager;
 use reth_blockchain_tree::noop::NoopBlockchainTree;
-use reth_db::test_utils::create_test_rw_db;
-use reth_interfaces::p2p::{
-    headers::client::{HeadersClient, HeadersRequest},
-    priority::Priority,
-};
-use reth_primitives::{
-    alloy_primitives::U160, Address, ChainSpec, GenesisAccount, HeadersDirection,
-    TransactionSigned, U256,
-};
+use reth_db::test_utils::{create_test_rw_db, tempdir_path};
+use reth_node_core::init::init_genesis;
+use reth_node_ethereum::EthEvmConfig;
+use reth_primitives::{alloy_primitives::U160, Address, ChainSpec, TransactionSigned, U256};
 use reth_provider::{providers::BlockchainProvider, ProviderFactory};
 use reth_tracing::init_test_tracing;
 use reth_transaction_pool::{
     blobstore::InMemoryBlobStore, PoolConfig, TransactionPool, TransactionValidationTaskExecutor,
 };
-use std::{str::FromStr, sync::Arc, time::Duration};
+use std::{sync::Arc, time::Duration};
 use tn_batch_maker::{BatchMakerBuilder, MiningMode};
 use tn_types::{
-    adiri_genesis,
-    test_utils::{create_batch_store, get_gas_price, TransactionFactory},
+    test_utils::{create_batch_store, get_gas_price, test_genesis, TransactionFactory},
     Batch, BatchAPI, MetadataAPI, PreSubscribedBroadcastSender,
 };
 use tokio::time::timeout;
@@ -81,43 +75,36 @@ async fn test_make_batch_el_to_cl() {
     //=== Execution Layer
     //
 
-    let genesis = adiri_genesis();
-    let mut tx_factory = TransactionFactory::new();
-    let factory_address = tx_factory.address();
-    debug!("seeding factory address: {factory_address:?}");
+    // adiri genesis with TxFactory funded
+    let genesis = test_genesis();
 
-    // fund factory with 99mil TEL
-    let account = vec![(
-        factory_address,
-        GenesisAccount::default().with_balance(
-            U256::from_str("0x51E410C0F93FE543000000").expect("account balance is parsed"),
-        ),
-    )];
-
-    let genesis = genesis.extend_accounts(account);
-    debug!("seeded genesis: {genesis:?}");
+    // let genesis = genesis.extend_accounts(account);
     let head_timestamp = genesis.timestamp;
     let chain: Arc<ChainSpec> = Arc::new(genesis.into());
 
-    // init genesis
+    // temp db
     let db = create_test_rw_db();
-    let genesis_hash = init_genesis(db.clone(), chain.clone()).expect("init genesis");
-
-    debug!("genesis hash: {genesis_hash:?}");
 
     // provider
-    let factory = ProviderFactory::new(Arc::clone(&db), Arc::clone(&chain));
+    let factory = ProviderFactory::new(Arc::clone(&db), Arc::clone(&chain), tempdir_path())
+        .expect("provider factory");
+
+    let genesis_hash = init_genesis(factory.clone()).expect("init genesis");
     let blockchain_db = BlockchainProvider::new(factory, NoopBlockchainTree::default())
         .expect("test blockchain provider");
 
-    let task_executor = TokioTaskExecutor::default();
+    debug!("genesis hash: {genesis_hash:?}");
+
+    // task manger
+    let manager = TaskManager::current();
+    let executor = manager.executor();
 
     // txpool
     let blob_store = InMemoryBlobStore::default();
     let validator = TransactionValidationTaskExecutor::eth_builder(Arc::clone(&chain))
         .with_head_timestamp(head_timestamp)
         .with_additional_tasks(1)
-        .build_with_tasks(blockchain_db.clone(), task_executor, blob_store.clone());
+        .build_with_tasks(blockchain_db.clone(), executor, blob_store.clone());
 
     let txpool =
         reth_transaction_pool::Pool::eth_pool(validator, blob_store, PoolConfig::default());
@@ -125,20 +112,24 @@ async fn test_make_batch_el_to_cl() {
     let mining_mode = MiningMode::instant(max_transactions, txpool.pending_transactions_listener());
     let address = Address::from(U160::from(333));
 
+    let evm_config = EthEvmConfig::default();
+
     // build execution batch maker
-    let (_, client, task) = BatchMakerBuilder::new(
+    let task = BatchMakerBuilder::new(
         Arc::clone(&chain),
         blockchain_db.clone(),
         txpool.clone(),
         to_worker,
         mining_mode,
         address,
+        evm_config,
     )
     .build();
 
     let gas_price = get_gas_price(&blockchain_db);
-    let value =
-        U256::from(10).checked_pow(U256::from(18)).expect("1e18 doesn't overflow U256").into();
+    let value = U256::from(10).checked_pow(U256::from(18)).expect("1e18 doesn't overflow U256");
+    let mut tx_factory = TransactionFactory::new();
+    println!("\n\ncreating first transaction....\n\n");
 
     // create 3 transactions
     let transaction1 = tx_factory.create_eip1559(
@@ -207,33 +198,10 @@ async fn test_make_batch_el_to_cl() {
         .expect("tx bytes are uncorrupted");
     assert_eq!(decoded_batch_tx, transaction1);
 
-    // retrieve block number 1 from storage
-    //
-    // at this point, we know the task has completed because
-    // the task's Storage write lock must be dropped for the
-    // read lock to be available here
-    let storage_header = client
-        .get_headers_with_priority(
-            HeadersRequest { start: 1.into(), limit: 1, direction: HeadersDirection::Rising },
-            Priority::Normal,
-        )
-        .await
-        .expect("header is available from storage")
-        .into_data()
-        .first()
-        .expect("header included")
-        .to_owned();
-
-    debug!("awaited first reply from storage header");
-
-    let storage_sealed_header = storage_header.seal_slow();
-
-    debug!("storage sealed header: {storage_sealed_header:?}");
-
-    // TODO: this isn't the right thing to test bc storage should be removed
-    //
-    assert_eq!(batch.versioned_metadata().sealed_header(), &storage_sealed_header);
-    assert_eq!(storage_sealed_header.beneficiary, address);
+    // ensure enough time passes for store to pass
+    let _ = tokio::time::sleep(std::time::Duration::from_secs(1)).await;
+    let first_batch = store.safe_iter().next();
+    debug!("first batch? {:?}", first_batch);
 
     // Ensure the batch is stored
     let batch_from_store = store

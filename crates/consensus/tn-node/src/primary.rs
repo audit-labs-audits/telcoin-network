@@ -24,7 +24,8 @@ use narwhal_primary::{
 };
 use narwhal_storage::NodeStorage;
 use prometheus::{IntGauge, Registry};
-use reth::cli::ext::RethCliExt;
+use reth_db::{database::Database, database_metrics::DatabaseMetrics};
+use reth_node_builder::ConfigureEvm;
 use std::{sync::Arc, time::Instant};
 use tn_config::Parameters;
 use tn_types::{
@@ -64,7 +65,7 @@ impl PrimaryNodeInner {
     /// Starts the primary node with the provided info. If the node is already running then this
     /// method will return an error instead.
     #[instrument(level = "info", skip_all)]
-    async fn start<Ext>(
+    async fn start<DB, Evm>(
         &mut self, // The private-public key pair of this authority.
         keypair: BlsKeypair,
         // The private-public network key pair of this authority.
@@ -83,14 +84,14 @@ impl PrimaryNodeInner {
         // execution_state: State,
 
         // Execution components needed to spawn the EL Executor
-        execution_components: &ExecutionNode<Ext>,
-    ) -> Result<(), NodeError>
+        execution_components: &ExecutionNode<DB, Evm>,
+    ) -> eyre::Result<()>
     where
-        Ext: RethCliExt,
-        // State: ExecutionState + Send + Sync + 'static,
+        DB: Database + DatabaseMetrics + Clone + Unpin + 'static,
+        Evm: ConfigureEvm + Clone + 'static,
     {
         if self.is_running().await {
-            return Err(NodeError::NodeAlreadyRunning);
+            return Err(NodeError::NodeAlreadyRunning.into());
         }
 
         self.own_peer_id = Some(PeerId(network_keypair.public().0.to_bytes()));
@@ -109,7 +110,8 @@ impl PrimaryNodeInner {
         );
 
         // used to retrieve the last executed certificate in case of restarts
-        let last_executed_sub_dag_index = execution_components.last_executed_output().await.expect("execution found HEAD");
+        let last_executed_sub_dag_index =
+            execution_components.last_executed_output().await.expect("execution found HEAD");
 
         // spawn primary if not already running
         let primary_handles = Self::spawn_primary(
@@ -365,12 +367,13 @@ where
         //      - so, don't use `last_executed_sub_dag_index + 1`
         //          - use just `last_executed_sub_dag_index` and re-execute the output again
         //          - less efficient, but ensures correctness
-        //          - maybe there's a way to optimize this like only re-execute if the blocks/batches don't match the output batch count?
+        //          - maybe there's a way to optimize this like only re-execute if the
+        //            blocks/batches don't match the output batch count?
         //              - but this is probably unlikely to happen anyway
         //                  - ie) crashes/restarts at a clean execution boundary
-        // 
-        // for now, all batches are contained within a single block, (ie 1 consensus output = 1 executed block)
-        // so use block number for restored consensus output
+        //
+        // for now, all batches are contained within a single block, (ie 1 consensus output = 1
+        // executed block) so use block number for restored consensus output
         // since block number == last_executed_sub_dag_index
 
         // Check for any sub-dags that have been sent by consensus but were not processed by the
@@ -459,7 +462,7 @@ impl PrimaryNode {
         Self { internal: Arc::new(RwLock::new(inner)) }
     }
 
-    pub async fn start<Ext>(
+    pub async fn start<DB, Evm>(
         &self,
         // The private-public key pair of this authority.
         keypair: BlsKeypair,
@@ -478,11 +481,11 @@ impl PrimaryNode {
         // // The state used by the client to execute transactions.
         // execution_state: State,
         // Execution components needed to spawn the EL Executor
-        execution_components: &ExecutionNode<Ext>,
-    ) -> Result<(), NodeError>
+        execution_components: &ExecutionNode<DB, Evm>,
+    ) -> eyre::Result<()>
     where
-        Ext: RethCliExt,
-        // State: ExecutionState + Send + Sync + 'static,
+        DB: Database + DatabaseMetrics + Clone + Unpin + 'static,
+        Evm: ConfigureEvm + Clone + 'static,
     {
         let mut guard = self.internal.write().await;
         guard.client = Some(client.clone());

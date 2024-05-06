@@ -9,7 +9,7 @@ use fastcrypto::hash::{Digest, Hash, HashFunction};
 use mem_utils::MallocSizeOf;
 #[cfg(any(test, feature = "arbitrary"))]
 use proptest_derive::Arbitrary;
-use reth_primitives::{SealedBlock, SealedBlockWithSenders, TransactionSigned};
+use reth_primitives::{SealedBlock, SealedBlockWithSenders, TransactionSigned, Withdrawals};
 use serde::{Deserialize, Serialize};
 use std::fmt;
 use thiserror::Error;
@@ -95,7 +95,12 @@ impl TryFrom<&Batch> for SealedBlockWithSenders {
             .collect();
         let body = tx_signed?;
         // seal block
-        let block = SealedBlock { header, body, ommers: vec![], withdrawals: Some(vec![]) };
+        let block = SealedBlock {
+            header,
+            body,
+            ommers: vec![],
+            withdrawals: Some(Withdrawals::new(vec![])),
+        };
         block.try_seal_with_senders().map_err(Self::Error::RecoverSigners)
     }
 }

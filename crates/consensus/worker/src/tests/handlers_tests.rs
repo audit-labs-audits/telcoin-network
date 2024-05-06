@@ -3,7 +3,6 @@
 // Copyright (c) Mysten Labs, Inc.
 // SPDX-License-Identifier: Apache-2.0
 
-use fastcrypto::hash::Hash;
 use narwhal_network_types::{MockWorkerToWorker, WorkerToWorkerServer};
 use std::vec;
 use tn_types::test_utils::{batch, random_network, CommitteeFixture};
