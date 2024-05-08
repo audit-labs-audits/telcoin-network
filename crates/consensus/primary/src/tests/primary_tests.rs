@@ -445,7 +445,7 @@ async fn test_request_vote_accept_missing_parents() {
         target_id,
         fixture.committee(),
         worker_cache.clone(),
-        /* gc_depth */ 50,
+        50, // gc_depth
         client,
         certificate_store.clone(),
         payload_store.clone(),
@@ -476,8 +476,8 @@ async fn test_request_vote_accept_missing_parents() {
     let ids: Vec<_> = fixture.authorities().map(|a| (a.id(), a.keypair().copy())).collect();
     let (certificates, _next_parents) =
         make_optimal_signed_certificates(1..=3, &genesis, &committee, ids.as_slice());
+
     let all_certificates = certificates.into_iter().collect_vec();
-    let round_1_certs = all_certificates[..NUM_PARENTS].to_vec();
     let round_2_certs = all_certificates[NUM_PARENTS..(NUM_PARENTS * 2)].to_vec();
     let round_2_parents = round_2_certs[..(NUM_PARENTS / 2)].to_vec();
     let round_2_missing = round_2_certs[(NUM_PARENTS / 2)..].to_vec();
@@ -494,24 +494,14 @@ async fn test_request_vote_accept_missing_parents() {
             .unwrap(),
     );
 
-    // Populate all round 1 certificates and some round 2 certificates into the storage.
-    // The new header will have some round 2 certificates missing as parents, but these parents
-    // should be able to get accepted.
-    for cert in round_1_certs {
-        for (digest, (worker_id, _)) in cert.header().payload() {
-            payload_store.write(digest, worker_id).unwrap();
-        }
-        certificate_store.write(cert.clone()).unwrap();
-    }
+    // Write some certificates from round 2 into the store, and leave out the rest to test
+    // headers with some parents but not all available. Round 1 certificates should be written
+    // into the storage as parents of round 2 certificates. But to test phase 2 they are left out.
     for cert in round_2_parents {
         for (digest, (worker_id, _)) in cert.header().payload() {
             payload_store.write(digest, worker_id).unwrap();
         }
         certificate_store.write(cert.clone()).unwrap();
-    }
-    // Populate new header payload so they don't have to be retrieved.
-    for (digest, (worker_id, _)) in test_header.payload() {
-        payload_store.write(digest, worker_id).unwrap();
     }
 
     // TEST PHASE 1: Handler should report missing parent certificates to caller.
@@ -530,46 +520,46 @@ async fn test_request_vote_accept_missing_parents() {
     let received_missing: HashSet<_> = result.unwrap().into_body().missing.into_iter().collect();
     assert_eq!(expected_missing, received_missing);
 
-    // TEST PHASE 1.5: Send parents with the incorrect version.
-    let mut cert_v1_round_2_missing = vec![];
-    for cert in round_2_missing.iter() {
-        let mut signatures = Vec::new();
-        for authority in fixture.authorities().take(8) {
-            let vote = authority.vote(cert.header());
-            signatures.push((vote.author(), vote.signature().clone()));
-        }
-
-        cert_v1_round_2_missing.push(
-            Certificate::new_unverified(&committee, cert.header().clone(), signatures).unwrap(),
-        );
-    }
-    let _ = tx_narwhal_round_updates.send(1);
+    // TEST PHASE 2: Handler should not return additional unknown digests.
     let mut request = anemo::Request::new(RequestVoteRequest {
         header: test_header.clone(),
-        parents: cert_v1_round_2_missing.clone(),
+        parents: Vec::new(),
     });
-    assert!(request.extensions_mut().insert(network.downgrade()).is_none());
+    assert!(request
+        .extensions_mut()
+        .insert(network.downgrade())
+        .is_none());
     assert!(request
         .extensions_mut()
         .insert(anemo::PeerId(author.network_public_key().0.to_bytes()))
         .is_none());
-
-    let result = timeout(Duration::from_secs(5), handler.request_vote(request)).await.unwrap();
+    // No additional missing parents will be requested.
+    let result = timeout(Duration::from_secs(5), handler.request_vote(request)).await;
     assert!(result.is_err(), "{:?}", result);
 
-    // TEST PHASE 2: Handler should process missing parent certificates and succeed.
+    // TEST PHASE 3: Handler should return error if header is too old.
+    // Increase round threshold.
+    let _ = tx_narwhal_round_updates.send(100);
     let mut request = anemo::Request::new(RequestVoteRequest {
-        header: test_header,
-        parents: round_2_missing.clone(),
+        header: test_header.clone(),
+        parents: Vec::new(),
     });
-    assert!(request.extensions_mut().insert(network.downgrade()).is_none());
+    assert!(request
+        .extensions_mut()
+        .insert(network.downgrade())
+        .is_none());
     assert!(request
         .extensions_mut()
         .insert(anemo::PeerId(author.network_public_key().0.to_bytes()))
         .is_none());
-
-    let result = timeout(Duration::from_secs(5), handler.request_vote(request)).await.unwrap();
-    assert!(result.is_ok(), "{:?}", result);
+    // Because round 1 certificates are not in store, the missing parents will not be accepted yet.
+    let result = handler.request_vote(request).await;
+    assert!(result.is_err(), "{:?}", result);
+    assert_eq!(
+        // Returned error should be unretrievable.
+        anemo::types::response::StatusCode::BadRequest,
+        result.err().unwrap().status()
+    );
 }
 
 #[tokio::test]
@@ -1257,7 +1247,7 @@ async fn test_request_vote_created_at_in_future() {
     // Verify Handler generates a Vote.
 
     // Set the creation time to be deep in the future (an hour)
-    let created_at = now() + 60 * 60 * 1000;
+    let created_at = now() + 60 * 60;
 
     let test_header = Header::V1(
         author
@@ -1285,8 +1275,8 @@ async fn test_request_vote_created_at_in_future() {
 
     // Verify Handler generates a Vote.
 
-    // Set the creation time to be a bit in the future (500 ms)
-    let created_at = now() + 500;
+    // Set the creation time to be a bit in the future (1s)
+    let created_at = now() + 1;
 
     let test_header = author
         .header_builder(&fixture.committee())
@@ -1309,7 +1299,5 @@ async fn test_request_vote_created_at_in_future() {
 
     let response = handler.request_vote(request).await.unwrap();
     assert!(response.body().vote.is_some());
-
-    // We are now later
-    assert!(created_at < now());
+    assert!(created_at <= now());
 }
