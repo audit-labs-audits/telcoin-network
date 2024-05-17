@@ -831,7 +831,7 @@ async fn test_request_vote_already_voted() {
 }
 
 #[tokio::test]
-async fn test_fetch_certificates_v2_handler() {
+async fn test_fetch_certificates_handler() {
     let fixture = CommitteeFixture::builder()
         .randomize_ports(true)
         .committee_size(NonZeroUsize::new(4).unwrap())
