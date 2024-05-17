@@ -528,9 +528,7 @@ async fn test_request_vote_accept_missing_parents() {
     let result = handler.request_vote(request).await;
 
     let expected_missing: HashSet<_> = round_2_missing.iter().map(|c| c.digest()).collect();
-    println!("expected missing:\n {:?}", expected_missing);
     let received_missing: HashSet<_> = result.unwrap().into_body().missing.into_iter().collect();
-    println!("\nreceived missing:\n {:?}", received_missing);
     assert_eq!(expected_missing, received_missing);
 
     // TEST PHASE 2: Handler should process missing parent certificates and succeed.
