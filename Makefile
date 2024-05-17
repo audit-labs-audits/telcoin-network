@@ -61,40 +61,51 @@ udeps:
 check:
 	cargo check --workspace --all-features ;
 
-# run tests
+# run workspace unit tests
 test:
 	cargo test --workspace --all-features -- --test-threads 4 ;
 
+# run faucet integration test
 test-faucet:
 	cargo test --package telcoin-network --features faucet --test it ;
 
+# format using +nightly toolchain
 fmt:
 	cargo +nightly fmt ;
 
+# clippy formatter + try to fix problems
 clippy:
 	cargo +nightly clippy --all --all-features --fix ;
 
+# login to gcloud artifact registry for managing docker images
 docker-login:
 	gcloud auth application-default login ;
 	gcloud auth configure-docker us-docker.pkg.dev ;
 	
+# build and push latest adiri image for amd64 and arm64
 docker-adiri:
 	docker buildx build -f ./etc/Dockerfile --platform linux/amd64,linux/arm64 -t us-docker.pkg.dev/telcoin-network/tn-public/adiri . --push ;
 
+# push local adiri:latest to the gcloud artifact registry
 docker-push:
 	docker push us-docker.pkg.dev/telcoin-network/tn-public/adiri:latest ;
 
+# docker buildx used for multiple processor image building
 docker-builder:
 	docker buildx create --name tn-builder --use ;
 
+# inpect and bootstrap docker buildx for multiple processor image building
 docker-builder-init:
 	docker buildx inspect --bootstrap ;
 
+# bring docker compose up
 up:
 	docker compose -f ./etc/compose.yaml up --build --remove-orphans --detach ;
 
+# bring docker compose down
 down:
 	docker compose -f ./etc/compose.yaml down --remove-orphans -v ;
 
+# alternative approach to run 4 local validator nodes outside of docker on local machine
 validators:
 	./etc/local-testnet.sh ;
