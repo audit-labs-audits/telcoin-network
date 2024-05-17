@@ -625,6 +625,7 @@ impl PrimaryReceiverHandler {
         } else {
             let mut validated_received_parents = vec![];
             for parent in parents {
+                println!("validating received parents...");
                 validated_received_parents.push(
                     validate_received_certificate_version(parent).map_err(|err| {
                         error!("request vote parents processing error: {err}");
