@@ -47,12 +47,12 @@ telcoin-sync = { workspace = true }
 alloy-rlp = { workspace = true }
 schemars = { version = "0.8.16" }
 serde_yaml = { workspace = true }
+reth-provider = { workspace = true }
 
 # optional dependencies for test-utils
 tempfile = { workspace = true, optional = true }
 fdlimit = { workspace = true, optional = true }
 reth-tracing = { workspace = true, optional = true }
-reth-provider = { workspace = true, optional = true }
 reth-transaction-pool = { workspace = true, optional = true }
 
 [dev-dependencies]
@@ -71,7 +71,7 @@ secp256k1 = "0.27.0"
 
 [features]
 default = []
-test-utils = ["tempfile", "fdlimit", "reth-tracing", "reth-provider", "reth-transaction-pool", "reth-primitives/arbitrary"]
+test-utils = ["tempfile", "fdlimit", "reth-tracing", "reth-transaction-pool", "reth-primitives/arbitrary"]
 arbitrary = ["reth-primitives/arbitrary"]
 
 [[bench]]
