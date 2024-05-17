@@ -8,7 +8,7 @@ BASE_DIR:=$(shell basename $(ROOT_DIR))
 
 help:
 	@echo ;
-	@echo "make udeps ;
+	@echo "make udeps" ;
 	@echo "    :::> Check unused dependencies in the entire project by package." ;
 	@echo "    :::> Dev needs 'cargo-udeps' installed." ;
 	@echo "    :::> Dev also needs rust nightly and protobuf (on mac). ";
