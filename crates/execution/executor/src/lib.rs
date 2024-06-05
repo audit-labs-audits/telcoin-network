@@ -38,6 +38,7 @@ use tracing::{debug, error, trace, warn};
 mod client;
 mod error;
 mod task;
+mod payload;
 
 pub use crate::client::AutoSealClient;
 use error::ExecutorError;
