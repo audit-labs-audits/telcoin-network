@@ -2,16 +2,15 @@
 
 use reth_interfaces::{
     blockchain_tree::error::BlockchainTreeError,
-    consensus::ConsensusError,
     executor::{BlockExecutionError, BlockValidationError},
 };
 use reth_primitives::{GotExpected, B256};
 use reth_provider::ProviderError;
 use thiserror::Error;
-use tn_types::BatchConversionError;
+use tn_types::{BatchConversionError, ConsensusError};
 
 /// Batch validation error types
-#[derive(Error, Debug, Clone)]
+#[derive(Error, Debug)]
 pub enum BatchValidationError {
     /// Errors from BlockExecution
     #[error("Block execution error: {0}")]

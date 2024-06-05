@@ -24,8 +24,11 @@ use narwhal_primary::{
 };
 use narwhal_storage::NodeStorage;
 use prometheus::{IntGauge, Registry};
-use reth_db::{database::Database, database_metrics::DatabaseMetrics};
-use reth_node_builder::ConfigureEvm;
+use reth_db::{
+    database::Database,
+    database_metrics::{DatabaseMetadata, DatabaseMetrics},
+};
+use reth_evm::execute::BlockExecutorProvider;
 use std::{sync::Arc, time::Instant};
 use tn_config::Parameters;
 use tn_types::{
@@ -87,8 +90,8 @@ impl PrimaryNodeInner {
         execution_components: &ExecutionNode<DB, Evm>,
     ) -> eyre::Result<()>
     where
-        DB: Database + DatabaseMetrics + Clone + Unpin + 'static,
-        Evm: ConfigureEvm + Clone + 'static,
+        DB: Database + DatabaseMetadata + DatabaseMetrics + Clone + Unpin + 'static,
+        Evm: BlockExecutorProvider + Clone + 'static,
     {
         if self.is_running().await {
             return Err(NodeError::NodeAlreadyRunning.into());
@@ -484,8 +487,8 @@ impl PrimaryNode {
         execution_components: &ExecutionNode<DB, Evm>,
     ) -> eyre::Result<()>
     where
-        DB: Database + DatabaseMetrics + Clone + Unpin + 'static,
-        Evm: ConfigureEvm + Clone + 'static,
+        DB: Database + DatabaseMetadata + DatabaseMetrics + Clone + Unpin + 'static,
+        Evm: BlockExecutorProvider + Clone + 'static,
     {
         let mut guard = self.internal.write().await;
         guard.client = Some(client.clone());

@@ -13,7 +13,7 @@ use reth_db::{
     test_utils::{create_test_rw_db, TempDatabase},
     DatabaseEnv,
 };
-use reth_node_ethereum::EthEvmConfig;
+use reth_node_ethereum::{EthEvmConfig, EthExecutorProvider};
 use std::{str::FromStr, sync::Arc};
 use telcoin_network::node::NodeCommand;
 use tempfile::tempdir;
@@ -22,7 +22,7 @@ use tn_faucet::FaucetArgs;
 use tn_node::engine::{ExecutionNode, TnBuilder};
 
 /// Convnenience type for testing Execution Node.
-pub type TestExecutionNode = ExecutionNode<Arc<TempDatabase<DatabaseEnv>>, EthEvmConfig>;
+pub type TestExecutionNode = ExecutionNode<Arc<TempDatabase<DatabaseEnv>>, EthExecutorProvider>;
 
 /// A helper type to parse Args more easily.
 #[derive(Parser, Debug)]
@@ -48,8 +48,11 @@ pub fn default_test_execution_node(
         None, // optional args
     )?;
 
+    let block_executor =
+        EthExecutorProvider::new(Arc::clone(&builder.node_config.chain), EthEvmConfig::default());
+
     // create engine node
-    let engine = ExecutionNode::new(builder, EthEvmConfig::default())?;
+    let engine = ExecutionNode::new(builder, block_executor)?;
 
     Ok(engine)
 }
@@ -58,7 +61,7 @@ pub fn default_test_execution_node(
 pub fn execution_builder<CliExt: clap::Args + fmt::Debug>(
     opt_chain: Option<Arc<ChainSpec>>,
     opt_address: Option<Address>,
-    executor: TaskExecutor,
+    task_executor: TaskExecutor,
     opt_args: Option<Vec<&str>>,
 ) -> eyre::Result<(TnBuilder<Arc<TempDatabase<DatabaseEnv>>>, CliExt)> {
     let tempdir = tempdir().expect("tempdir created").into_path();
@@ -143,7 +146,7 @@ pub fn execution_builder<CliExt: clap::Args + fmt::Debug>(
     let opt_faucet_args = None;
 
     let builder =
-        TnBuilder { database, node_config, data_dir, executor, tn_config, opt_faucet_args };
+        TnBuilder { database, node_config, data_dir, task_executor, tn_config, opt_faucet_args };
 
     Ok((builder, ext))
 }
@@ -170,18 +173,21 @@ pub fn faucet_test_execution_node(
         execution_builder::<FaucetArgs>(opt_chain, opt_address, executor, extended_args)?;
 
     // replace default builder's faucet args
-    let TnBuilder { database, node_config, data_dir, executor, tn_config, .. } = builder;
+    let TnBuilder { database, node_config, data_dir, task_executor, tn_config, .. } = builder;
     let builder = TnBuilder {
         database,
         node_config,
         data_dir,
-        executor,
+        task_executor,
         tn_config,
         opt_faucet_args: Some(faucet),
     };
 
+    let block_executor =
+        EthExecutorProvider::new(Arc::clone(&builder.node_config.chain), EthEvmConfig::default());
+
     // create engine node
-    let engine = ExecutionNode::new(builder, EthEvmConfig::default())?;
+    let engine = ExecutionNode::new(builder, block_executor)?;
 
     Ok(engine)
 }

@@ -6,18 +6,23 @@ use std::sync::Arc;
 
 use consensus_metrics::metered_channel::{Receiver, Sender};
 use reth::dirs::{ChainPath, DataDirPath};
-use reth_db::{database::Database, database_metrics::DatabaseMetrics};
-use reth_node_builder::{ConfigureEvm, NodeConfig};
+use reth_db::{
+    database::Database,
+    database_metrics::{DatabaseMetadata, DatabaseMetrics},
+};
+use reth_evm::execute::BlockExecutorProvider;
+use reth_node_builder::NodeConfig;
 mod inner;
 mod primary;
 mod worker;
 
 pub use primary::*;
+use reth_provider::providers::BlockchainProvider;
 use reth_tasks::TaskExecutor;
 use tn_batch_validator::BatchValidator;
 use tn_config::Config;
 use tn_faucet::FaucetArgs;
-use tn_types::{BlockchainProviderType, ConsensusOutput, NewBatch, WorkerId};
+use tn_types::{ConsensusOutput, NewBatch, WorkerId};
 use tokio::sync::RwLock;
 pub use worker::*;
 
@@ -62,7 +67,7 @@ pub struct TnBuilder<DB> {
     /// Task executor to spawn tasks for the node.
     ///
     /// The executor drops tasks when the CLI's TaskManager is dropped.
-    pub executor: TaskExecutor,
+    pub task_executor: TaskExecutor,
     /// Telcoin Network config.
     ///
     /// TODO: consolidate configs
@@ -77,15 +82,15 @@ pub struct TnBuilder<DB> {
 pub struct ExecutionNode<DB, Evm>
 where
     DB: Database + DatabaseMetrics + Clone + Unpin + 'static,
-    Evm: ConfigureEvm + Clone + 'static,
+    Evm: BlockExecutorProvider + Clone + 'static,
 {
     internal: Arc<RwLock<ExecutionNodeInner<DB, Evm>>>,
 }
 
 impl<DB, Evm> ExecutionNode<DB, Evm>
 where
-    DB: Database + DatabaseMetrics + Clone + Unpin + 'static,
-    Evm: ConfigureEvm + Clone + 'static,
+    DB: Database + DatabaseMetadata + DatabaseMetrics + Clone + Unpin + 'static,
+    Evm: BlockExecutorProvider + Clone + 'static,
 {
     /// Create a new instance of `Self`.
     pub fn new(tn_builder: TnBuilder<DB>, evm: Evm) -> eyre::Result<Self> {
@@ -126,7 +131,7 @@ where
     }
 
     /// Return an database provider.
-    pub async fn get_provider(&self) -> BlockchainProviderType<DB, Evm> {
+    pub async fn get_provider(&self) -> BlockchainProvider<DB> {
         let guard = self.internal.read().await;
         guard.get_provider()
     }
