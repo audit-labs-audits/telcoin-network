@@ -139,8 +139,8 @@ fn extract_generics_names(generics: &Generics) -> Vec<Ident> {
 /// or DBMap<K, V> `TypedStoreDebug` traits are then derived
 /// The main features are:
 /// 1. Flexible configuration of each table (column family) via defaults and overrides
-/// 2. Auto-generated `open` routine
-/// 3. Auto-generated `read_only_mode` handle
+/// 2. Auto-generated "open" routine
+/// 3. Auto-generated "read_only_mode" handle
 /// 4. Auto-generated memory stats method
 /// 5. Other convenience features
 ///
@@ -150,7 +150,7 @@ fn extract_generics_names(generics: &Generics) -> Vec<Ident> {
 /// We can also supply column family options on the default ones
 /// A user defined function of signature () -> Options can be provided for each table
 /// If a an override function is not specified, the default in
-/// `typed_store::rocks::default_db_options` is used ```
+/// "typed_store::rocks::default_db_options" is used ```
 /// use narwhal_typed_store::rocks::DBOptions;
 /// use narwhal_typed_store::rocks::DBMap;
 /// use narwhal_typed_store::rocks::MetricConf;
@@ -177,14 +177,14 @@ fn extract_generics_names(generics: &Generics) -> Vec<Ident> {
 ///     table3: DBMap<i32, String>,
 ///     #[default_options_override_fn = "custom_fn_name1"]
 ///     table4: DBMap<i32, String>,
-/// }
+/// } ```
 ///
-/// // b. Options specified by DB opener
-/// // For finer control, we also allow the opener of the DB to specify their own options which
+/// b. Options specified by DB opener
+/// For finer control, we also allow the opener of the DB to specify their own options which
 /// override the defaults set by the definer // This is done via a configurator which gives one a
 /// struct with field similarly named as that of the DB, but of type Options
 ///
-/// #[tokio::main]
+/// ```#[tokio::main]
 /// async fn main() -> Result<(), Error> {
 /// // Get a configurator for this table
 /// let mut config = Tables::configurator();
@@ -200,17 +200,18 @@ fn extract_generics_names(generics: &Generics) -> Vec<Ident> {
 /// Some(config.build())); Ok(())
 /// }
 /// ```
-/// 
-/// 2. Auto-generated `open` routine
-/// The function `open_tables_read_write` is generated which allows for specifying DB wide options
+///
+/// 2. Auto-generated "open" routine
+/// The function "open_tables_read_write" is generated which allows for specifying DB wide options
 /// and custom table configs as mentioned above
 ///
-/// 3. Auto-generated `read_only_mode` handle
+/// 3. Auto-generated "read_only_mode" handle
 /// This mode provides handle struct which opens the DB in read only mode and has certain features
 /// like dumping and counting the keys in the tables
 ///
-/// Use the function `Tables::get_read_only_handle` which returns a handle that only allows read
-/// only features ```
+/// Use the function "Tables::get_read_only_handle" which returns a handle that only allows read
+/// only features:
+/// ```
 /// use core::fmt::Error;
 /// use narwhal_typed_store::{
 ///     rocks::{DBMap, DBOptions},
@@ -239,6 +240,7 @@ fn extract_generics_names(generics: &Generics) -> Vec<Ident> {
 ///     #[default_options_override_fn = "custom_fn_name1"]
 ///     table4: DBMap<i32, String>,
 /// }
+///
 /// #[tokio::main]
 /// async fn main() -> Result<(), Error> {
 ///     use narwhal_typed_store::rocks::MetricConf;
@@ -260,17 +262,18 @@ fn extract_generics_names(generics: &Generics) -> Vec<Ident> {
 ///     Ok(())
 /// }
 /// ```
+///
 /// 4. Auto-generated memory stats method
-/// `self.get_memory_usage` is derived to provide memory and cache usage
+/// "self.get_memory_usage" is derived to provide memory and cache usage
 ///
 /// 5. Other convenience features
-/// `Tables::describe_tables` is used to get a list of the table names and key-value types as string
+/// "Tables::describe_tables" is used to get a list of the table names and key-value types as string
 /// in a BTreeMap
 ///
 /// // Bad usage example
 /// // Structs fields most only be of type Store<K, V> or DMBap<K, V>
-/// // This will fail to compile with error `All struct members must be of type Store<K, V> or
-/// DMBap<K, V>` // #[derive(DBMapUtils)]
+/// // This will fail to compile with error "All struct members must be of type Store<K, V> or
+/// DMBap<K, V>" // #[derive(DBMapUtils)]
 /// // struct BadTables {
 /// //     table1: Store<String, String>,
 /// //     bad_field: u32,
@@ -533,7 +536,7 @@ pub fn derive_dbmap_utils_general(input: TokenStream) -> TokenStream {
             }
 
             /// Dump all key-value pairs in the page at the given table name
-            /// Tables must be opened in read only mode using `open_tables_read_only`
+            /// Tables must be opened in read only mode using "open_tables_read_only"
             pub fn dump(&self, table_name: &str, page_size: u16,
                 page_number: usize) -> eyre::Result<std::collections::BTreeMap<String, String>> {
                 Ok(match table_name {
@@ -553,7 +556,7 @@ pub fn derive_dbmap_utils_general(input: TokenStream) -> TokenStream {
             }
 
             /// Get key value sizes from the db
-            /// Tables must be opened in read only mode using `open_tables_read_only`
+            /// Tables must be opened in read only mode using "open_tables_read_only"
             pub fn table_summary(&self, table_name: &str) -> eyre::Result<narwhal_typed_store::traits::TableSummary> {
                 let mut count = 0;
                 let mut key_bytes = 0;
@@ -571,7 +574,7 @@ pub fn derive_dbmap_utils_general(input: TokenStream) -> TokenStream {
             }
 
             /// Count the keys in this table
-            /// Tables must be opened in read only mode using `open_tables_read_only`
+            /// Tables must be opened in read only mode using "open_tables_read_only"
             pub fn count_keys(&self, table_name: &str) -> eyre::Result<usize> {
                 Ok(match table_name {
                     #(
@@ -884,7 +887,7 @@ pub fn derive_sallydb_general(input: TokenStream) -> TokenStream {
             }
 
             /// Dump all key-value pairs in the page at the given table name
-            /// Tables must be opened in read only mode using `open_tables_read_only`
+            /// Tables must be opened in read only mode using "open_tables_read_only"
             pub fn dump(&self, table_name: &str, page_size: u16,
                 page_number: usize) -> eyre::Result<std::collections::BTreeMap<String, String>> {
                 Ok(match table_name {
@@ -929,7 +932,7 @@ pub fn derive_sallydb_general(input: TokenStream) -> TokenStream {
             }
 
             /// Count the keys in this table
-            /// Tables must be opened in read only mode using `open_tables_read_only`
+            /// Tables must be opened in read only mode using "open_tables_read_only"
             pub fn count_keys(&self, table_name: &str) -> eyre::Result<usize> {
                 Ok(match table_name {
                     #(

@@ -1,9 +1,8 @@
 //! Recreated `AutoSealConsensus` to reduce the amount of imports from reth.
 
 use super::{Consensus, ConsensusError};
-use reth_primitives::{
-    BlockWithSenders, ChainSpec, Header, Receipt, SealedBlock, SealedHeader, U256,
-};
+use reth_consensus::PostExecutionInput;
+use reth_primitives::{BlockWithSenders, ChainSpec, Header, SealedBlock, SealedHeader, U256};
 use std::sync::Arc;
 
 /// A consensus implementation that validates everything.
@@ -56,7 +55,7 @@ impl Consensus for AutoSealConsensus {
     fn validate_block_post_execution(
         &self,
         _block: &BlockWithSenders,
-        _receipts: &[Receipt],
+        _input: PostExecutionInput<'_>,
     ) -> Result<(), ConsensusError> {
         Ok(())
     }

@@ -8,7 +8,7 @@ use fdlimit::raise_fd_limit;
 use futures::Future;
 use reth::{
     args::{
-        utils::parse_socket_address, DatabaseArgs, DebugArgs, DevArgs, NetworkArgs,
+        utils::parse_socket_address, DatabaseArgs, DatadirArgs, DebugArgs, DevArgs, NetworkArgs,
         PayloadBuilderArgs, PruningArgs, RpcServerArgs, TxPoolArgs,
     },
     builder::NodeConfig,
@@ -18,10 +18,10 @@ use reth::{
 };
 use reth_db::{init_db, DatabaseEnv};
 use reth_primitives::ChainSpec;
-use std::{net::SocketAddr, path::PathBuf, str::FromStr, sync::Arc};
+use std::{net::SocketAddr, path::PathBuf, sync::Arc};
 use tn_config::{traits::ConfigTrait, Config};
 use tn_node::{
-    dirs::{DataDirPath, TelcoinDirs as _},
+    dirs::{default_datadir_args, DataDirPath, TelcoinDirs as _},
     engine::TnBuilder,
 };
 use tracing::*;
@@ -29,16 +29,6 @@ use tracing::*;
 /// Start the node
 #[derive(Debug, Parser)]
 pub struct NodeCommand<Ext: clap::Args + fmt::Debug = NoArgs> {
-    /// The path to the data dir for all telcoin-network files and subdirectories.
-    ///
-    /// Defaults to the OS-specific data directory:
-    ///
-    /// - Linux: `$XDG_DATA_HOME/telcoin-network/` or `$HOME/.local/share/telcoin-network/`
-    /// - Windows: `{FOLDERID_RoamingAppData}/telcoin-network/`
-    /// - macOS: `$HOME/Library/Application Support/telcoin-network/`
-    #[arg(long, value_name = "DATA_DIR", verbatim_doc_comment, default_value_t)]
-    pub datadir: MaybePlatformPath<DataDirPath>,
-
     /// The path to the configuration file to use.
     #[arg(long, value_name = "FILE", verbatim_doc_comment)]
     pub config: Option<PathBuf>,
@@ -87,6 +77,18 @@ pub struct NodeCommand<Ext: clap::Args + fmt::Debug = NoArgs> {
     /// Mutually exclusive with `--instance`.
     #[arg(long, conflicts_with = "instance", global = true)]
     pub with_unused_ports: bool,
+
+    // TODO: this is painful to maintain
+    // need a better way to overwrite reth DataDirPath
+    /// The path to the data dir for all telcoin-network files and subdirectories.
+    ///
+    /// Defaults to the OS-specific data directory:
+    ///
+    /// - Linux: `$XDG_DATA_HOME/telcoin-network/` or `$HOME/.local/share/telcoin-network/`
+    /// - Windows: `{FOLDERID_RoamingAppData}/telcoin-network/`
+    /// - macOS: `$HOME/Library/Application Support/telcoin-network/`
+    #[arg(long, value_name = "DATA_DIR", verbatim_doc_comment, default_value_t)]
+    pub datadir: MaybePlatformPath<DataDirPath>,
 
     /// All networking related arguments
     #[clap(flatten)]
@@ -138,17 +140,19 @@ impl<Ext: clap::Args + fmt::Debug> NodeCommand<Ext> {
         // Does not do anything on windows.
         raise_fd_limit()?;
 
-        // add network name to data dir
-        let tn_data_dir = self.datadir.unwrap_or_chain_default(self.chain.chain);
+        // use TN-specific datadir for finding tn-config
+        let default_args = default_datadir_args();
+        let tn_datadir =
+            self.datadir.unwrap_or_chain_default(self.chain.chain, default_args.clone());
 
         // TODO: use config or CLI chain spec?
-        let config_path = self.config.clone().unwrap_or(tn_data_dir.node_config_path());
+        let config_path = self.config.clone().unwrap_or(tn_datadir.node_config_path());
         let tn_config: Config = Config::load_from_path(config_path)?;
         info!(target: "telcoin::cli", validator = ?tn_config.validator_info.name, "config loaded");
 
         // get the worker's transaction address from the config
         let Self {
-            // datadir,
+            // datadir
             // config,
             chain,
             metrics,
@@ -166,12 +170,19 @@ impl<Ext: clap::Args + fmt::Debug> NodeCommand<Ext> {
             ..
         } = self;
 
+        // create a reth DatadirArgs from tn datadir
+        let datadir = DatadirArgs {
+            datadir: MaybePlatformPath::from(PathBuf::from(tn_datadir.clone())),
+            static_files_path: None,
+        };
+
         // set up reth node config for engine components
         let mut node_config = NodeConfig {
             config: self.config,
             chain,
             metrics,
             instance,
+            datadir,
             network,
             rpc,
             txpool,
@@ -192,27 +203,20 @@ impl<Ext: clap::Args + fmt::Debug> NodeCommand<Ext> {
         // because database init needs it to register metrics.
         let _ = node_config.install_prometheus_recorder()?;
 
-        let db_path = tn_data_dir.db();
+        let db_path = tn_datadir.db();
         info!(target: "tn::engine", path = ?db_path, "opening database");
         let database =
             Arc::new(init_db(db_path.clone(), node_config.db.database_args())?.with_metrics());
-
-        // create a reth datadir from tn datadir
-        let chain_for_datadir = node_config.chain.chain();
-        let datadir_path = tn_data_dir.to_string();
-        let reth_datadir = MaybePlatformPath::from_str(&datadir_path)?;
-        let data_dir = reth_datadir.unwrap_or_chain_default(chain_for_datadir);
 
         // TODO: temporary solution until upstream reth supports public rpc hooks
         let builder = TnBuilder {
             database,
             node_config,
-            data_dir,
             task_executor: ctx.task_executor,
             tn_config,
             opt_faucet_args: None,
         };
 
-        launcher(builder, ext, tn_data_dir).await
+        launcher(builder, ext, tn_datadir).await
     }
 }

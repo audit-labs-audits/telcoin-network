@@ -5,7 +5,6 @@
 use std::sync::Arc;
 
 use consensus_metrics::metered_channel::{Receiver, Sender};
-use reth::dirs::{ChainPath, DataDirPath};
 use reth_db::{
     database::Database,
     database_metrics::{DatabaseMetadata, DatabaseMetrics},
@@ -62,8 +61,6 @@ pub struct TnBuilder<DB> {
     pub database: DB,
     /// THe node configuration.
     pub node_config: NodeConfig,
-    /// The directory for storing node data.
-    pub data_dir: ChainPath<DataDirPath>,
     /// Task executor to spawn tasks for the node.
     ///
     /// The executor drops tasks when the CLI's TaskManager is dropped.

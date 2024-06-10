@@ -14,7 +14,7 @@ use std::{
     sync::Arc,
 };
 use tn_config::{traits::ConfigTrait, Config};
-use tn_node::dirs::{DataDirPath, TelcoinDirs as _};
+use tn_node::dirs::{default_datadir_args, DataDirPath, TelcoinDirs as _};
 use tracing::{debug, info, warn};
 
 /// Generate keypairs and save them to a file.
@@ -173,7 +173,7 @@ impl KeyArgs {
 
     /// Returns the chain specific path to the data dir.
     fn data_dir(&self) -> ChainPath<DataDirPath> {
-        self.datadir.unwrap_or_chain_default(self.chain.chain)
+        self.datadir.unwrap_or_chain_default(self.chain.chain, default_datadir_args())
     }
 
     /// Returns the path to the config file.
@@ -222,11 +222,14 @@ mod tests {
             "1",
             "--datadir",
             tempdir.to_str().expect("tempdir path clean"),
+            "--address",
+            "0",
         ])
         .expect("cli parsed");
 
         tn.run(|_, _, _| async move { Ok(()) }).expect("generate keys command");
 
-        Config::load_from_path::<Config>(tempdir.as_path()).expect("config loaded yaml okay");
+        Config::load_from_path::<Config>(tempdir.join("telcoin-network.yaml").as_path())
+            .expect("config loaded yaml okay");
     }
 }

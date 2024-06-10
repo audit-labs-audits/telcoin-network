@@ -11,7 +11,7 @@ repository.workspace = true
 
 [dependencies]
 tn-types = { workspace = true }
-reth-interfaces = { workspace = true }
+reth-consensus = { workspace = true }
 reth-provider = { workspace = true }
 reth-primitives = { workspace = true }
 reth-db = { workspace = true }
@@ -33,6 +33,7 @@ reth-node-core = { workspace = true }
 reth = { workspace = true }
 reth-beacon-consensus = { workspace = true }
 reth-primitives = { workspace = true, features = ["test-utils"]}
+reth-db-common = { workspace = true }
 
 # integration tests
 

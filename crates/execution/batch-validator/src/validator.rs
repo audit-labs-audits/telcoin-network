@@ -1,22 +1,19 @@
 //! Batch validator
 
 use crate::error::BatchValidationError;
-use reth_blockchain_tree::BundleStateDataRef;
+use reth_blockchain_tree::error::BlockchainTreeError;
+use reth_consensus::PostExecutionInput;
 use reth_db::database::Database;
-use reth_evm::execute::{BlockExecutionOutput, BlockExecutorProvider, Executor};
-use reth_interfaces::{
-    blockchain_tree::{error::BlockchainTreeError, BlockchainTreeViewer},
-    executor::BlockValidationError,
+use reth_evm::execute::{
+    BlockExecutionOutput, BlockExecutorProvider, BlockValidationError, Executor,
 };
 use reth_primitives::{GotExpected, Hardfork, Receipts, SealedBlockWithSenders, U256};
 use reth_provider::{
-    providers::{BlockchainProvider, BundleStateProvider},
-    BundleStateForkProvider as _, BundleStateWithReceipts, ChainSpecProvider, HeaderProvider,
-    StateProviderFactory, StateRootProvider,
+    providers::BlockchainProvider, BundleStateWithReceipts, ChainSpecProvider,
+    DatabaseProviderFactory, HeaderProvider, StateRootProvider,
 };
 use reth_revm::database::StateProviderDatabase;
 use std::{
-    collections::BTreeMap,
     fmt::{Debug, Display},
     sync::Arc,
 };
@@ -51,7 +48,6 @@ pub trait BatchValidation: Clone + Send + Sync + 'static {
 }
 
 #[async_trait::async_trait]
-// impl<DB, EF> TransactionValidator for BatchValidator<DB, EF>
 impl<DB, Evm> BatchValidation for BatchValidator<DB, Evm>
 where
     DB: Database + Sized + Clone + 'static,
@@ -153,36 +149,13 @@ where
             .ok_or(BlockchainTreeError::CanonicalChain { block_hash: parent.hash })?
             .seal(parent.hash);
 
-        // read from canonical tree - updated by `Executor` and engine
-        //
-        // same return as BlockchainTree::canonical_chain()
-        let canonical_block_hashes = self.blockchain_db.canonical_blocks();
-
-        // from AppendableChain::new_canonical_fork() but with state root validation added
-        let state = BundleStateWithReceipts::default();
-        let empty = BTreeMap::new();
-
-        // get the bundle state provider.
-        let bundle_state_data_provider = BundleStateDataRef {
-            state: &state,
-            sidechain_block_hashes: &empty,
-            canonical_block_hashes: &canonical_block_hashes,
-            canonical_fork: parent,
-        };
-
         // from AppendableChain::validate_and_execute() - private method
         //
         // ported here to prevent redundant creation of bundle state provider
         // just to check state root
 
         self.consensus.validate_header_against_parent(&sealed_block, &parent_header)?;
-
-        // let (block, senders) = block.into_components();
-        // let block = block.unseal();
-
         let block_with_senders = sealed_block.unseal();
-
-        let canonical_fork = bundle_state_data_provider.canonical_fork();
 
         // NOTE: this diverges from reth-beta approach
         // but is still valid within the context of our consensus
@@ -190,17 +163,33 @@ where
         // behind the canonical tip
         //
         // TODO: validate base fee based on parent batch
-        let state_provider = self.blockchain_db.history_by_block_number(canonical_fork.number)?;
 
-        // capture current state
-        let provider = BundleStateProvider::new(state_provider, bundle_state_data_provider);
-        let db = StateProviderDatabase::new(&provider);
+        // // capture current state
+        // let provider = BundleStateProvider::new(state_provider, bundle_state_data_provider);
+        // let db = StateProviderDatabase::new(&provider);
+
+        // different approach for creating state provider than reth's `validate_and_execute`
+        // on `AppendableChain`
+        //
+        // reth uses `ConsistentDbView`, but this will throw an error if the current tip
+        // doesn't match the one recorded during the db view's initialization.
+        // TN expected to write several blocks at a time, so tip potentially always changing
+        //
+        // create state provider based on batch's parent
+        let db = StateProviderDatabase::new(
+            self.blockchain_db
+                .database_provider_ro()?
+                .state_provider_by_block_number(parent.number)?,
+        );
 
         // executor for single block
         let executor = self.executor_factory.executor(db);
         let state = executor.execute((&block_with_senders, U256::MAX).into())?;
-        let BlockExecutionOutput { state, receipts, .. } = state;
-        self.consensus.validate_block_post_execution(&block_with_senders, &receipts)?;
+        let BlockExecutionOutput { state, receipts, requests, .. } = state;
+        self.consensus.validate_block_post_execution(
+            &block_with_senders,
+            PostExecutionInput::new(&receipts, &requests),
+        )?;
 
         // create bundle state
         let bundle_state = BundleStateWithReceipts::new(
@@ -214,7 +203,12 @@ where
         // see reth::blockchain_tree::chain::AppendableChain::validate_and_execute()
         //
         // check state root
-        let state_root = provider.state_root(bundle_state.state())?;
+        let db = StateProviderDatabase::new(
+            self.blockchain_db
+                .database_provider_ro()?
+                .state_provider_by_block_number(parent.number)?,
+        );
+        let state_root = db.state_root(bundle_state.state())?;
         if block_with_senders.state_root != state_root {
             return Err(BatchValidationError::BodyStateRootDiff(GotExpected {
                 got: state_root,
@@ -264,12 +258,12 @@ mod tests {
         BlockchainTree, BlockchainTreeConfig, ShareableBlockchainTree, TreeExternals,
     };
     use reth_db::test_utils::{create_test_rw_db, tempdir_path};
-    use reth_node_core::init::init_genesis;
+    use reth_db_common::init::init_genesis;
     use reth_primitives::{
         constants::EMPTY_WITHDRAWALS, hex, proofs::calculate_transaction_root, Address, Bloom,
         Bytes, ChainSpec, GenesisAccount, Header, SealedHeader, B256, EMPTY_OMMER_ROOT_HASH,
     };
-    use reth_provider::ProviderFactory;
+    use reth_provider::{providers::StaticFileProvider, ProviderFactory};
     use reth_tracing::init_test_tracing;
     use std::str::FromStr;
     use tn_types::{
@@ -317,6 +311,7 @@ mod tests {
                 excess_blob_gas: None,
                 parent_beacon_block_root: None,
                 extra_data: Bytes::default(),
+                requests_root: None,
             },
             hex!("ed9242a844ec144e25b58c085184c3c4ae8709226771659badf7e45cdd415c58").into(),
         )
@@ -344,9 +339,12 @@ mod tests {
 
         // init genesis
         let db = create_test_rw_db();
-        let provider_factory =
-            ProviderFactory::new(Arc::clone(&db), Arc::clone(&chain), tempdir_path())
-                .expect("provider factory");
+        let provider_factory = ProviderFactory::new(
+            Arc::clone(&db),
+            Arc::clone(&chain),
+            StaticFileProvider::read_write(tempdir_path())
+                .expect("static file provider read write created with tempdir path"),
+        );
         let genesis_hash = init_genesis(provider_factory.clone()).expect("init genesis");
         debug!("genesis hash: {genesis_hash:?}");
 
@@ -457,9 +455,12 @@ mod tests {
 
         // init genesis
         let db = create_test_rw_db();
-        let provider_factory =
-            ProviderFactory::new(Arc::clone(&db), Arc::clone(&chain), tempdir_path())
-                .expect("provider factory");
+        let provider_factory = ProviderFactory::new(
+            Arc::clone(&db),
+            Arc::clone(&chain),
+            StaticFileProvider::read_write(tempdir_path())
+                .expect("static file provider read write created with tempdir path"),
+        );
         let genesis_hash = init_genesis(provider_factory.clone()).expect("init genesis");
         debug!("genesis hash: {genesis_hash:?}");
 
@@ -566,9 +567,12 @@ mod tests {
 
         // init genesis
         let db = create_test_rw_db();
-        let provider_factory =
-            ProviderFactory::new(Arc::clone(&db), Arc::clone(&chain), tempdir_path())
-                .expect("provider factory");
+        let provider_factory = ProviderFactory::new(
+            Arc::clone(&db),
+            Arc::clone(&chain),
+            StaticFileProvider::read_write(tempdir_path())
+                .expect("static file provider read write created with tempdir path"),
+        );
         let genesis_hash = init_genesis(provider_factory.clone()).expect("init genesis");
         debug!("genesis hash: {genesis_hash:?}");
 
@@ -676,9 +680,12 @@ mod tests {
 
         // init genesis
         let db = create_test_rw_db();
-        let provider_factory =
-            ProviderFactory::new(Arc::clone(&db), Arc::clone(&chain), tempdir_path())
-                .expect("provider factory");
+        let provider_factory = ProviderFactory::new(
+            Arc::clone(&db),
+            Arc::clone(&chain),
+            StaticFileProvider::read_write(tempdir_path())
+                .expect("static file provider read write created with tempdir path"),
+        );
         let genesis_hash = init_genesis(provider_factory.clone()).expect("init genesis");
         debug!("genesis hash: {genesis_hash:?}");
 
@@ -828,9 +835,12 @@ mod tests {
 
         // init genesis
         let db = create_test_rw_db();
-        let provider_factory =
-            ProviderFactory::new(Arc::clone(&db), Arc::clone(&chain), tempdir_path())
-                .expect("provider factory");
+        let provider_factory = ProviderFactory::new(
+            Arc::clone(&db),
+            Arc::clone(&chain),
+            StaticFileProvider::read_write(tempdir_path())
+                .expect("static file provider read write created with tempdir path"),
+        );
         let genesis_hash = init_genesis(provider_factory.clone()).expect("init genesis");
         debug!("genesis hash: {genesis_hash:?}");
 
