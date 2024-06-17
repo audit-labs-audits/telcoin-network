@@ -1,13 +1,18 @@
 //! Recreated `AutoSealConsensus` to reduce the amount of imports from reth.
 
-use crate::ConsensusOutput;
+use crate::{Batch, BatchAPI, ConsensusOutput, MetadataAPI};
 
 use super::{Consensus, ConsensusError};
 use reth_chainspec::ChainSpec;
 use reth_consensus::PostExecutionInput;
 use reth_engine_primitives::PayloadBuilderAttributes;
 use reth_primitives::{
-    Address, BlockWithSenders, ChainSpec, Header, SealedBlock, SealedHeader, B256, U256,
+    constants::EIP1559_INITIAL_BASE_FEE, revm::config::revm_spec_by_timestamp_after_merge, Address,
+    BlockWithSenders, ChainSpec, Hardfork, Header, SealedBlock, SealedHeader, Withdrawals, B256,
+    U256,
+};
+use reth_revm::primitives::{
+    BlobExcessGasAndPrice, BlockEnv, CfgEnv, CfgEnvWithHandlerCfg, SpecId,
 };
 use reth_primitives::{BlockWithSenders, Header, SealedBlock, SealedHeader, U256};
 use reth_rpc_types::{engine::PayloadId, Withdrawal};
@@ -85,80 +90,162 @@ pub struct BuildArguments<Provider> {
 
 /// The type used to build the next canonical block.
 #[derive(Debug)]
-pub struct TNPayload;
+pub struct TNPayload<'a> {
+    //
+    // this is the concept of the batch with additional information from consensus output needed for execution
+    //
+    /// The hash of the last block executed from the previous round of consensus.
+    pub parent: B256,
+    /// Attributes to use when building the payload.
+    pub attributes: TNPayloadAttributes<'a>,
+}
+
+impl<'a> TNPayload<'a> {
+    /// Create a new instance of [Self].
+    pub fn new(parent: B256, attributes: TNPayloadAttributes<'a>) -> Self {
+        Self { parent, attributes }
+    }
+}
 
 /// The type constructed from a [Batch] and the [ConsensusOutput] that includes it for execution.
 ///
 /// It contains all the attributes required to initiate a payload build process.
-#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
-pub struct TNPayloadAttributes {
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct TNPayloadAttributes<'a> {
     /// Value for the `timestamp` field of the new payload
     pub timestamp: u64,
     /// Value for the `prevRandao` field of the new payload
     pub prev_randao: B256,
     /// Suggested value for the `feeRecipient` field of the new payload
     pub suggested_fee_recipient: Address,
-    /// Array of [`Withdrawal`] enabled with V2
-    /// See <https://github.com/ethereum/execution-apis/blob/6452a6b194d7db269bf1dbd087a267251d3cc7f8/src/engine/shanghai.md#payloadattributesv2>
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub withdrawals: Option<Vec<Withdrawal>>,
-    /// Root of the parent beacon block enabled with V3.
-    ///
-    /// See also <https://github.com/ethereum/execution-apis/blob/main/src/engine/cancun.md#payloadattributesv3>
-    #[serde(skip_serializing_if = "Option::is_none")]
+    /// Array of [`Withdrawal`].
+    pub withdrawals: Withdrawals,
+    /// Root of the parent beacon block?
     pub parent_beacon_block_root: Option<B256>,
+    /// The batch to build this payload from.
+    pub batch: &'a Batch,
+    /// The index of the batch within the entire output from consensus.
+    pub batch_index: usize,
+    /// The beneficiary from the round of consensus.
+    pub beneficiary: Address,
+    /// The previous canonical block.
+    pub parent_block: SealedBlock,
+}
+
+impl<'a> TNPayloadAttributes<'a> {
+    /// Create a new instance of [Self].
+    pub fn new() -> Self {
+        todo!()
+    }
 }
 
 /// Implement [PayloadBuilderAttributes] for extending the canonical tip after consensus is reached.
-impl PayloadBuilderAttributes for TNPayload {
-    type RpcPayloadAttributes = TNPayloadAttributes;
+impl<'a> PayloadBuilderAttributes for TNPayload<'a> {
+    type RpcPayloadAttributes = TNPayloadAttributes<'a>;
 
     // TODO: use actual error here
     type Error = Infallible;
 
-    fn try_new(
-        parent: reth_primitives::B256,
-        rpc_payload_attributes: Self::RpcPayloadAttributes,
-    ) -> Result<Self, Self::Error>
-    where
-        Self: Sized,
-    {
-        todo!()
+    fn try_new(parent: B256, attributes: Self::RpcPayloadAttributes) -> Result<Self, Self::Error> {
+        Ok(Self::new(parent, attributes))
     }
 
     fn payload_id(&self) -> PayloadId {
-        todo!()
+        // construct the payload id from the batch's index
+        // guaranteed to always be unique within each output
+        PayloadId::new(self.attributes.batch_index.to_le_bytes())
     }
 
-    fn parent(&self) -> reth_primitives::B256 {
-        todo!()
+    fn parent(&self) -> B256 {
+        self.parent
     }
 
     fn timestamp(&self) -> u64 {
+        self.attributes.timestamp
+    }
+
+    fn parent_beacon_block_root(&self) -> Option<B256> {
+        self.attributes.parent_beacon_block_root
+    }
+
+    fn suggested_fee_recipient(&self) -> Address {
+        self.attributes.beneficiary
+    }
+
+    fn prev_randao(&self) -> B256 {
         todo!()
     }
 
-    fn parent_beacon_block_root(&self) -> Option<reth_primitives::B256> {
-        todo!()
-    }
-
-    fn suggested_fee_recipient(&self) -> reth_primitives::Address {
-        todo!()
-    }
-
-    fn prev_randao(&self) -> reth_primitives::B256 {
-        todo!()
-    }
-
-    fn withdrawals(&self) -> &reth_primitives::Withdrawals {
-        todo!()
+    fn withdrawals(&self) -> &Withdrawals {
+        // self.attributes.withdrawals.unwrap_or_default().into()
+        &self.attributes.withdrawals
     }
 
     fn cfg_and_block_env(
         &self,
         chain_spec: &ChainSpec,
         parent: &Header,
-    ) -> (reth_revm::primitives::CfgEnvWithHandlerCfg, reth_revm::primitives::BlockEnv) {
-        todo!()
+    ) -> (CfgEnvWithHandlerCfg, BlockEnv) {
+        // configure evm env based on parent block
+        let cfg = CfgEnv::default().with_chain_id(chain_spec.chain().id());
+
+        // ensure we're not missing any timestamp based hardforks
+        let spec_id = revm_spec_by_timestamp_after_merge(chain_spec, self.timestamp());
+
+        // TODO: support blob_excess_gas_and_price for Batch
+        // let blob_excess_gas_and_price = parent
+        //     .next_block_excess_blob_gas()
+        //     .or_else(|| {
+        //         if spec_id == SpecId::CANCUN {
+        //             // default excess blob gas is zero
+        //             Some(0)
+        //         } else {
+        //             None
+        //         }
+        //     })
+        //     .map(BlobExcessGasAndPrice::new);
+        let blob_excess_gas_and_price = Some(BlobExcessGasAndPrice::new(0));
+
+        // use the batch's sealed header for "parent" values
+        let batch_block = self.attributes.batch.versioned_metadata().sealed_header();
+
+        // TODO: is this the correct value for basefee?
+        let basefee = batch_block.base_fee_per_gas;
+        // parent.next_block_base_fee(chain_spec.base_fee_params_at_timestamp(self.timestamp()));
+
+        // ensure gas_limit enforced during batch validation
+        let gas_limit = U256::from(batch_block.gas_limit);
+
+        // TODO: DELETE ME
+        // basefee is always included, leaving this here for now since basefee is still a question
+        //
+        //
+        // // If we are on the London fork boundary, we need to multiply the parent's gas limit by the
+        // // elasticity multiplier to get the new gas limit.
+        // if chain_spec.fork(Hardfork::London).transitions_at_block(parent.number + 1) {
+        //     let elasticity_multiplier =
+        //         chain_spec.base_fee_params_at_timestamp(self.timestamp()).elasticity_multiplier;
+
+        //     // multiply the gas limit by the elasticity multiplier
+        //     gas_limit *= U256::from(elasticity_multiplier);
+
+        //     // set the base fee to the initial base fee from the EIP-1559 spec
+        //     basefee = Some(EIP1559_INITIAL_BASE_FEE)
+        // }
+
+        let block_env = BlockEnv {
+            number: U256::from(self.attributes.parent_block.number + 1),
+            coinbase: self.suggested_fee_recipient(),
+            timestamp: U256::from(self.timestamp()),
+            difficulty: U256::ZERO,
+            prevrandao: Some(self.prev_randao()),
+            gas_limit,
+            // calculate basefee based on parent block's gas usage
+            basefee: basefee.map(U256::from).unwrap_or_default(),
+            // calculate excess gas based on parent block's blob gas usage
+            blob_excess_gas_and_price,
+        };
+
+        (CfgEnvWithHandlerCfg::new_with_spec_id(cfg, spec_id), block_env)
     }
 }
