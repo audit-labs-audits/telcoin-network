@@ -59,10 +59,15 @@ impl Hash<{ crypto::DIGEST_LENGTH }> for ConsensusOutput {
 
     fn digest(&self) -> ConsensusOutputDigest {
         let mut hasher = crypto::DefaultHashFunction::new();
+        // hash subdag
         hasher.update(self.sub_dag.digest());
+        // hash batch in order
         self.batches.iter().flatten().for_each(|b| {
             hasher.update(b.digest());
         });
+        // hash beneficiary
+        hasher.update(self.beneficiary);
+        // finalize
         ConsensusOutputDigest(hasher.finalize().into())
     }
 }
