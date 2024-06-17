@@ -1,5 +1,7 @@
 //! Recreated `AutoSealConsensus` to reduce the amount of imports from reth.
 
+use crate::ConsensusOutput;
+
 use super::{Consensus, ConsensusError};
 use reth_chainspec::ChainSpec;
 use reth_consensus::PostExecutionInput;
@@ -60,4 +62,17 @@ impl Consensus for AutoSealConsensus {
     ) -> Result<(), ConsensusError> {
         Ok(())
     }
+}
+
+/// The type for building blocks that extend the canonical tip.
+#[derive(Debug)]
+pub struct BuildArguments<Provider> {
+    /// State provider.
+    pub provider: Provider,
+    /// Output from consensus that contains all the transactions to execute.
+    pub output: ConsensusOutput,
+    /// Last executed block from the previous consensus output.
+    pub parent_block: SealedBlock,
+    /// The chain spec.
+    pub chain_spec: Arc<ChainSpec>,
 }
