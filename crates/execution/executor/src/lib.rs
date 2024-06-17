@@ -15,7 +15,6 @@
 #![deny(unused_must_use, rust_2018_idioms)]
 #![cfg_attr(docsrs, feature(doc_cfg, doc_auto_cfg))]
 
-use consensus_metrics::metered_channel::Receiver;
 use reth_beacon_consensus::BeaconEngineMessage;
 use reth_evm::execute::{
     BlockExecutionError, BlockExecutionOutput, BlockExecutorProvider, BlockValidationError,
@@ -34,7 +33,8 @@ use reth_provider::{
 use reth_revm::database::StateProviderDatabase;
 use std::{collections::HashMap, sync::Arc};
 use tn_types::{now, AutoSealConsensus, BatchAPI, ConsensusOutput};
-use tokio::sync::{mpsc::UnboundedSender, RwLock, RwLockReadGuard, RwLockWriteGuard};
+use tokio::sync::{broadcast, mpsc::UnboundedSender, RwLock, RwLockReadGuard, RwLockWriteGuard};
+use tokio_stream::wrappers::BroadcastStream;
 use tracing::{debug, error, trace, warn};
 
 mod client;
@@ -51,7 +51,7 @@ pub struct Executor<Client, Engine: EngineTypes, EvmConfig> {
     client: Client,
     consensus: AutoSealConsensus,
     storage: Storage,
-    from_consensus: Receiver<ConsensusOutput>,
+    from_consensus: broadcast::Receiver<ConsensusOutput>,
     to_engine: UnboundedSender<BeaconEngineMessage<Engine>>,
     canon_state_notification: CanonStateNotificationSender,
     evm_config: EvmConfig,
@@ -68,7 +68,7 @@ where
     pub fn new(
         chain_spec: Arc<ChainSpec>,
         client: Client,
-        from_consensus: Receiver<ConsensusOutput>,
+        from_consensus: broadcast::Receiver<ConsensusOutput>,
         to_engine: UnboundedSender<BeaconEngineMessage<Engine>>,
         canon_state_notification: CanonStateNotificationSender,
         evm_config: EvmConfig,
@@ -105,13 +105,15 @@ where
             evm_config,
         } = self;
         let auto_client = AutoSealClient::new(storage.clone());
+        // cast broadcast channel to stream for convenient iter methods
+        let consensus_output_stream = BroadcastStream::new(from_consensus);
         let task = MiningTask::new(
             Arc::clone(consensus.chain_spec()),
             to_engine,
             canon_state_notification,
             storage,
             client,
-            from_consensus,
+            consensus_output_stream,
             evm_config,
         );
         (consensus, auto_client, task)
@@ -552,7 +554,7 @@ mod tests {
         let manager = TaskManager::current();
         let executor = manager.executor();
         let execution_node = default_test_execution_node(Some(chain), None, executor)?;
-        let (to_executor, from_consensus) = tn_types::test_channel!(1);
+        let (to_executor, from_consensus) = tokio::sync::broadcast::channel(1);
         execution_node.start_engine(from_consensus).await?;
         tokio::task::yield_now().await;
 
@@ -562,7 +564,7 @@ mod tests {
         //=== Testing begins
 
         // send output to executor
-        let res = to_executor.send(consensus_output).await;
+        let res = to_executor.send(consensus_output);
         debug!("res: {:?}", res);
         assert!(res.is_ok());
 
@@ -696,7 +698,7 @@ mod tests {
         let manager = TaskManager::current();
         let executor = manager.executor();
         let execution_node = default_test_execution_node(Some(chain), None, executor)?;
-        let (to_executor, from_consensus) = tn_types::test_channel!(1);
+        let (to_executor, from_consensus) = tokio::sync::broadcast::channel(1);
         execution_node.start_engine(from_consensus).await?;
         tokio::task::yield_now().await;
 
@@ -706,7 +708,7 @@ mod tests {
         //=== Testing begins
 
         // send output to executor
-        let res = to_executor.send(consensus_output).await;
+        let res = to_executor.send(consensus_output);
         debug!("res: {:?}", res);
         assert!(res.is_ok());
 

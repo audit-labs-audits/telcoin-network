@@ -1,6 +1,6 @@
 //! Inner-execution node components for both Worker and Primary execution.
 
-use consensus_metrics::metered_channel::{Receiver, Sender};
+use consensus_metrics::metered_channel::Sender;
 use eyre::Context as _;
 use futures::{stream_select, StreamExt};
 use jsonrpsee::http_client::HttpClient;
@@ -45,7 +45,7 @@ use tn_batch_validator::BatchValidator;
 use tn_executor::Executor;
 use tn_faucet::{FaucetArgs, FaucetRpcExtApiServer as _};
 use tn_types::{Consensus, ConsensusOutput, NewBatch, WorkerId};
-use tokio::sync::mpsc::unbounded_channel;
+use tokio::sync::{broadcast, mpsc::unbounded_channel};
 use tokio_stream::wrappers::UnboundedReceiverStream;
 use tracing::{debug, error, info};
 
@@ -172,7 +172,7 @@ where
     /// All tasks are spawned with the [ExecutionNodeInner]'s [TaskManager].
     pub(super) async fn start_engine(
         &self,
-        from_consensus: Receiver<ConsensusOutput>,
+        from_consensus: broadcast::Receiver<ConsensusOutput>,
     ) -> eyre::Result<()> {
         // TODO: start metrics endpoint - need to update Generics
         //
@@ -482,7 +482,7 @@ where
     }
 
     /// Return an database provider.
-    pub fn get_provider(&self) -> BlockchainProvider<DB> {
+    pub(super) fn get_provider(&self) -> BlockchainProvider<DB> {
         self.blockchain_db.clone()
     }
 

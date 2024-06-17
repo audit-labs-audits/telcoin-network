@@ -1,5 +1,5 @@
 use crate::Storage;
-use consensus_metrics::metered_channel::Receiver;
+use futures::StreamExt;
 use futures_util::{future::BoxFuture, FutureExt};
 use reth_beacon_consensus::{BeaconEngineMessage, ForkchoiceStatus};
 use reth_evm::execute::BlockExecutorProvider;
@@ -20,6 +20,7 @@ use std::{
 };
 use tn_types::ConsensusOutput;
 use tokio::sync::{mpsc::UnboundedSender, oneshot};
+use tokio_stream::wrappers::BroadcastStream;
 use tracing::{debug, error, warn};
 
 /// A Future that listens for new ready transactions and puts new blocks into storage
@@ -42,7 +43,7 @@ pub struct MiningTask<Client, Engine: EngineTypes, BlockExecutor> {
     pipeline_events: Option<EventStream<PipelineEvent>>,
     /// Receiving end from CL's `Executor`. The `ConsensusOutput` is sent
     /// to the mining task here.
-    from_consensus: Receiver<ConsensusOutput>,
+    consensus_output_stream: BroadcastStream<ConsensusOutput>,
     /// The type used for block execution
     block_executor: BlockExecutor,
 }
@@ -60,7 +61,7 @@ where
         canon_state_notification: CanonStateNotificationSender,
         storage: Storage,
         client: Client,
-        from_consensus: Receiver<ConsensusOutput>,
+        consensus_output_stream: BroadcastStream<ConsensusOutput>,
         block_executor: BlockExecutor,
     ) -> Self {
         Self {
@@ -72,7 +73,7 @@ where
             canon_state_notification,
             queued: Default::default(),
             pipeline_events: None,
-            from_consensus,
+            consensus_output_stream,
             block_executor,
         }
     }
@@ -97,15 +98,25 @@ where
         // this executes output from consensus
         loop {
             // check if output is available from consensus
-            if let Poll::Ready(Some(output)) = this.from_consensus.poll_recv(cx) {
-                // consensus returned output that needs to be executed
-                this.queued.push_back(output)
+            match this.consensus_output_stream.poll_next_unpin(cx) {
+                Poll::Ready(Some(Ok(output))) => {
+                    // queue the output for local execution
+                    this.queued.push_back(output)
+                }
+                Poll::Ready(Some(Err(e))) => {
+                    error!(target: "execution::executor", ?e, "for consensus output stream");
+                }
+                Poll::Ready(None) => {
+                    // stream has ended
+                    return Poll::Ready(());
+                }
+                Poll::Pending => { /* nothing to do */ }
             }
 
             if this.insert_task.is_none() {
                 if this.queued.is_empty() {
                     // nothing to insert
-                    break
+                    break;
                 }
 
                 // ready to queue in new insert task
@@ -167,18 +178,18 @@ where
                                             ForkchoiceStatus::Valid => break,
                                             ForkchoiceStatus::Invalid => {
                                                 error!(target: "execution::executor", ?fcu_response, "Forkchoice update returned invalid response");
-                                                return None
+                                                return None;
                                             }
                                             ForkchoiceStatus::Syncing => {
                                                 debug!(target: "execution::executor", ?fcu_response, "Forkchoice update returned SYNCING, waiting for VALID");
                                                 // wait for the next fork choice update
-                                                continue
+                                                continue;
                                             }
                                         }
                                     }
                                     Err(err) => {
                                         error!(target: "execution::executor", ?err, "Autoseal fork choice update failed");
-                                        return None
+                                        return None;
                                     }
                                 }
                             }
@@ -218,7 +229,7 @@ where
                     }
                     Poll::Pending => {
                         this.insert_task = Some(fut);
-                        break
+                        break;
                     }
                 }
             }

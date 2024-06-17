@@ -4,7 +4,7 @@
 
 use std::sync::Arc;
 
-use consensus_metrics::metered_channel::{Receiver, Sender};
+use consensus_metrics::metered_channel::Sender;
 use reth_db::{
     database::Database,
     database_metrics::{DatabaseMetadata, DatabaseMetrics},
@@ -15,6 +15,7 @@ mod inner;
 mod primary;
 mod worker;
 
+use self::inner::ExecutionNodeInner;
 pub use primary::*;
 use reth_provider::providers::BlockchainProvider;
 use reth_tasks::TaskExecutor;
@@ -22,35 +23,8 @@ use tn_batch_validator::BatchValidator;
 use tn_config::Config;
 use tn_faucet::FaucetArgs;
 use tn_types::{ConsensusOutput, NewBatch, WorkerId};
-use tokio::sync::RwLock;
+use tokio::sync::{broadcast, RwLock};
 pub use worker::*;
-
-use self::inner::ExecutionNodeInner;
-
-// steps for Engine
-// - pass db to `new()`
-//      - new should also create the `BuilderContext` used by both worker/primary engines
-//          - however, BuilderContext uses NodeTypes, not FullNodeComponents
-//          - so build this in method
-//      - config used by both?
-//      -
-
-/// Create a new engine node:
-/// derived from `reth/node_builder/builder.rs:launch()` on L417
-///
-/// The engine node has two aspects to it: worker/primary
-///     - reth builder breaks up `NodeBuilder`
-///         - the main difference between worker/primary is the `NodeComponents`
-///         - both need up to `components_builder`
-///             - start_batch_maker: calls `self.worker_components` which is `NodeComponents` for
-///               worker
-///             - start_engine: calls `self.primary_components` which is `NodeComponents` for
-///               primary
-///     - self needs `BuilderContext` for both
-///     - only worker needs `hooks` ?
-fn _new() {
-    todo!()
-}
 
 /// The struct used to build the execution nodes.
 ///
@@ -99,7 +73,7 @@ where
     /// Execution engine to produce blocks after consensus.
     pub async fn start_engine(
         &self,
-        from_consensus: Receiver<ConsensusOutput>,
+        from_consensus: broadcast::Receiver<ConsensusOutput>,
     ) -> eyre::Result<()> {
         let guard = self.internal.read().await;
         guard.start_engine(from_consensus).await
