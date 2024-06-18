@@ -40,6 +40,7 @@ use tracing::{debug, error, trace, warn};
 
 mod client;
 mod error;
+mod payload_builder;
 mod task;
 
 pub use crate::client::AutoSealClient;

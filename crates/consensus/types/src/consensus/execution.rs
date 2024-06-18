@@ -116,8 +116,6 @@ pub struct TNPayloadAttributes<'a> {
     pub timestamp: u64,
     /// Value for the `prevRandao` field of the new payload
     pub prev_randao: B256,
-    /// Suggested value for the `feeRecipient` field of the new payload
-    pub suggested_fee_recipient: Address,
     /// Array of [`Withdrawal`].
     pub withdrawals: Withdrawals,
     /// Root of the parent beacon block?
@@ -134,8 +132,22 @@ pub struct TNPayloadAttributes<'a> {
 
 impl<'a> TNPayloadAttributes<'a> {
     /// Create a new instance of [Self].
-    pub fn new() -> Self {
-        todo!()
+    pub fn new(
+        output: &ConsensusOutput,
+        batch: &Batch,
+        batch_index: usize,
+        parent_block: SealedBlock,
+    ) -> Self {
+        Self {
+            timestamp: output.committed_at(),
+            prev_randao: todo!(),
+            withdrawals: todo!(),
+            parent_beacon_block_root: todo!(),
+            batch,
+            batch_index,
+            beneficiary: output.beneficiary(),
+            parent_block,
+        }
     }
 }
 
