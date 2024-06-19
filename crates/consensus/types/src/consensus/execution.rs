@@ -127,7 +127,7 @@ pub struct TNPayloadAttributes<'a> {
     /// The beneficiary from the round of consensus.
     pub beneficiary: Address,
     /// The previous canonical block.
-    pub parent_block: SealedBlock,
+    pub parent_block: &'a SealedBlock,
 }
 
 impl<'a> TNPayloadAttributes<'a> {
@@ -136,7 +136,7 @@ impl<'a> TNPayloadAttributes<'a> {
         output: &ConsensusOutput,
         batch: &Batch,
         batch_index: usize,
-        parent_block: SealedBlock,
+        parent_block: &SealedBlock,
     ) -> Self {
         Self {
             timestamp: output.committed_at(),
@@ -196,7 +196,7 @@ impl<'a> PayloadBuilderAttributes for TNPayload<'a> {
     fn cfg_and_block_env(
         &self,
         chain_spec: &ChainSpec,
-        parent: &Header,
+        _parent: &Header,
     ) -> (CfgEnvWithHandlerCfg, BlockEnv) {
         // configure evm env based on parent block
         let cfg = CfgEnv::default().with_chain_id(chain_spec.chain().id());
