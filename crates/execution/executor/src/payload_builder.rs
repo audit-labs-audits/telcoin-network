@@ -7,9 +7,12 @@ use std::sync::Arc;
 use reth_evm::ConfigureEvm;
 use reth_node_api::PayloadBuilderAttributes as _;
 use reth_payload_builder::error::PayloadBuilderError;
-use reth_primitives::{ChainSpec, SealedBlock, TransactionSigned, U256};
+use reth_primitives::{
+    revm::env::tx_env_with_recovered, ChainSpec, SealedBlock, TransactionSigned,
+    TransactionSignedEcRecovered, U256,
+};
 use reth_provider::StateProviderFactory;
-use reth_revm::{database::StateProviderDatabase, State};
+use reth_revm::{database::StateProviderDatabase, primitives::EnvWithHandlerCfg, State};
 use tn_types::{Batch, BatchAPI as _, BuildArguments, TNPayload, TNPayloadAttributes};
 use tracing::{debug, error};
 
@@ -96,7 +99,7 @@ where
     let block_gas_limit: u64 = block_env.gas_limit.try_into().unwrap_or(u64::MAX);
     let base_fee = block_env.basefee.to::<u64>();
 
-    // let mut executed_txs = Vec::new();
+    let mut executed_txs = Vec::new();
 
     let mut total_fees = U256::ZERO;
 
@@ -122,24 +125,57 @@ where
     // )
     // .map_err(|err| PayloadBuilderError::Internal(err.into()))?;
 
-    // let mut receipts = Vec::new();
+    let mut receipts = Vec::new();
 
-    // TODO: parallelize tx recovery when it's worth it (see reth blockchain_tree)
+    // TODO: parallelize tx recovery when it's worth it (see TransactionSigned::recover_signers())
 
-    let batch_txs: Result<Vec<TransactionSigned>, _> = payload
-        .attributes
-        .batch
-        .transactions_owned()
-        .map(|tx_bytes| {
-            // batches must be validated by this point,
-            // so encoding and decoding has already happened
-            // and is not expected to fail
-            TransactionSigned::decode_enveloped(&mut tx_bytes.as_ref()).map_err(|e| {
-                error!(target: "execution::executor", "Failed to decode enveloped tx: {tx_bytes:?}");
-                ExecutorError::DecodeTransaction(e)
-            })
-        })
-        .collect();
+    // let batch_txs: Result<Vec<TransactionSignedEcRecovered>, _> = payload
+    //     .attributes
+    //     .batch
+    //     .transactions_owned()
+    //     .map(|tx_bytes| {
+    //         // batches must be validated by this point,
+    //         // so encoding and decoding has already happened
+    //         // and is not expected to fail
+    //         TransactionSigned::decode_enveloped(&mut tx_bytes.as_ref()).map_err(|e| {
+    //             error!(target: "execution::executor", "Failed to decode enveloped tx: {tx_bytes:?}");
+    //             ExecutorError::DecodeTransaction(e)
+    //         })
+    //         .expect("batch already validated")
+    //         .try_into_ecrecovered()
+    //     })
+    //     .collect();
+
+    // let batch_txs = batch_txs.expect("batch valid");
+    // let recovered_batch_txs = TransactionSigned::recover_signers(&batch_txs, batch_txs.len());
+
+    let sealed_block_with_senders = batch
+
+    for tx in batch_txs.iter() {
+        // TODO: support blob gas
+        //
+        // // There's only limited amount of blob space available per block, so we need to check if
+        // // the EIP-4844 can still fit in the block
+        // if let Some(blob_tx) = tx.as_eip4844() {
+        //     let tx_blob_gas = blob_tx.blob_gas();
+        //     if sum_blob_gas_used + tx_blob_gas > MAX_DATA_GAS_PER_BLOCK {
+        //         // we can't fit this _blob_ transaction into the block, so we mark it as
+        //         // invalid, which removes its dependent transactions from
+        //         // the iterator. This is similar to the gas limit condition
+        //         // for regular transactions above.
+        //         trace!(target: "payload_builder", tx=?tx.hash, ?sum_blob_gas_used, ?tx_blob_gas, "skipping blob transaction because it would exceed the max data gas per block");
+        //         best_txs.mark_invalid(&pool_tx);
+        //         continue;
+        //     }
+        // }
+
+        //
+        let env = EnvWithHandlerCfg::new_with_cfg_env(
+            cfg.clone(),
+            block_env.clone(),
+            tx_env_with_recovered(tx),
+        );
+    }
 
     Ok(())
 }
