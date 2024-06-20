@@ -255,5 +255,11 @@ where
         executed_txs.push(tx.into_signed());
     }
 
+    // TODO: logic for requests, withdrawals
+
+    // build header
+
+    // return parent block to use with next batch
+
     Ok(())
 }
