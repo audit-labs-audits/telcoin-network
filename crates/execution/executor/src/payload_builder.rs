@@ -8,12 +8,17 @@ use reth_evm::ConfigureEvm;
 use reth_node_api::PayloadBuilderAttributes as _;
 use reth_payload_builder::error::PayloadBuilderError;
 use reth_primitives::{
-    revm::env::tx_env_with_recovered, ChainSpec, SealedBlock, SealedBlockWithSenders, TransactionSigned, TransactionSignedEcRecovered, U256
+    revm::env::tx_env_with_recovered, ChainSpec, Receipt, SealedBlock, SealedBlockWithSenders,
+    TransactionSigned, TransactionSignedEcRecovered, U256,
 };
 use reth_provider::StateProviderFactory;
-use reth_revm::{database::StateProviderDatabase, primitives::EnvWithHandlerCfg, State};
+use reth_revm::{
+    database::StateProviderDatabase,
+    primitives::{EVMError, EnvWithHandlerCfg, ResultAndState},
+    DatabaseCommit, State,
+};
 use tn_types::{Batch, BatchAPI as _, BuildArguments, TNPayload, TNPayloadAttributes};
-use tracing::{debug, error};
+use tracing::{debug, error, warn};
 
 use crate::error::ExecutorError;
 
@@ -52,10 +57,16 @@ where
     // let flat_batches: Vec<Batch> = output.clone().batches.into_iter().flatten().collect();
 
     // TODO: add this as a method on ConsensusOutput and parallelize
-    let sealed_blocks_with_senders: Result<Vec<SealedBlockWithSenders>, _> = output.batches.iter().flat_map(|batches| {
-        // try convert batch to sealed block
-        batches.iter().map(|batch| SealedBlockWithSenders::try_from(batch))
-    }).collect();
+    let sealed_blocks_with_senders: Result<Vec<SealedBlockWithSenders>, _> = output
+        .batches
+        .iter()
+        .flat_map(|batches| {
+            // try convert batch to sealed block
+            //
+            // this should never fail since batches are validated
+            batches.iter().map(|batch| SealedBlockWithSenders::try_from(batch))
+        })
+        .collect();
 
     // TODO: use flat_map() here?
     for (block_index, block) in sealed_blocks_with_senders?.iter().enumerate() {
@@ -154,9 +165,9 @@ where
     // let batch_txs = batch_txs.expect("batch valid");
     // let recovered_batch_txs = TransactionSigned::recover_signers(&batch_txs, batch_txs.len());
 
-    let sealed_block_with_senders = batch
+    let txs = payload.attributes.block.into_transactions_ecrecovered();
 
-    for tx in batch_txs.iter() {
+    for tx in txs {
         // TODO: support blob gas
         //
         // // There's only limited amount of blob space available per block, so we need to check if
@@ -178,8 +189,70 @@ where
         let env = EnvWithHandlerCfg::new_with_cfg_env(
             cfg.clone(),
             block_env.clone(),
-            tx_env_with_recovered(tx),
+            tx_env_with_recovered(&tx),
         );
+
+        // Configure the environment for the block.
+        let mut evm = evm_config.evm_with_env(&mut db, env);
+
+        let ResultAndState { result, state } = match evm.transact() {
+            Ok(res) => res,
+            Err(err) => {
+                match err {
+                    EVMError::Transaction(err) => {
+                        warn!(target: "execution::executor", tx_hash=?tx.hash(), ?err);
+
+                        continue;
+                    }
+                    err => {
+                        // this is an error that we should treat as fatal for this attempt
+                        // - invalid header resulting from misconfigured BlockEnv
+                        // - Database error
+                        // - custom error (unsure)
+                        return Err(err.into());
+                    }
+                }
+            }
+        };
+        // drop evm so db is released.
+        drop(evm);
+        // commit changes
+        db.commit(state);
+
+        // // add to the total blob gas used if the transaction successfully executed
+        // if let Some(blob_tx) = tx.transaction.as_eip4844() {
+        //     let tx_blob_gas = blob_tx.blob_gas();
+        //     sum_blob_gas_used += tx_blob_gas;
+
+        //     // if we've reached the max data gas per block, we can skip blob txs entirely
+        //     if sum_blob_gas_used == MAX_DATA_GAS_PER_BLOCK {
+        //         best_txs.skip_blobs();
+        //     }
+        // }
+
+        let gas_used = result.gas_used();
+
+        // add gas used by the transaction to cumulative gas used, before creating the receipt
+        cumulative_gas_used += gas_used;
+
+        // Push transaction changeset and calculate header bloom filter for receipt.
+        #[allow(clippy::needless_update)] // side-effect of optimism fields
+        receipts.push(Some(Receipt {
+            tx_type: tx.tx_type(),
+            success: result.is_success(),
+            cumulative_gas_used,
+            logs: result.into_logs().into_iter().map(Into::into).collect(),
+            ..Default::default()
+        }));
+
+        // update add to total fees
+        let miner_fee = tx
+            .effective_tip_per_gas(Some(base_fee))
+            .expect("fee is always valid; execution succeeded");
+        total_fees += U256::from(miner_fee) * U256::from(gas_used);
+
+        // append transaction to the list of executed transactions
+        executed_txs.push(tx.into_signed());
     }
 
     Ok(())
