@@ -8,8 +8,8 @@ use reth_consensus::PostExecutionInput;
 use reth_engine_primitives::PayloadBuilderAttributes;
 use reth_primitives::{
     constants::EIP1559_INITIAL_BASE_FEE, revm::config::revm_spec_by_timestamp_after_merge, Address,
-    BlockWithSenders, ChainSpec, Hardfork, Header, SealedBlock, SealedHeader, Withdrawals, B256,
-    U256,
+    BlockWithSenders, ChainSpec, Hardfork, Header, SealedBlock, SealedBlockWithSenders,
+    SealedHeader, Withdrawals, B256, U256,
 };
 use reth_revm::primitives::{
     BlobExcessGasAndPrice, BlockEnv, CfgEnv, CfgEnvWithHandlerCfg, SpecId,
@@ -92,7 +92,7 @@ pub struct BuildArguments<Provider> {
 #[derive(Debug)]
 pub struct TNPayload<'a> {
     //
-    // this is the concept of the batch with additional information from consensus output needed for execution
+    // this is the concept of the block with additional information from consensus output needed for execution
     //
     /// The hash of the last block executed from the previous round of consensus.
     pub parent: B256,
@@ -120,10 +120,10 @@ pub struct TNPayloadAttributes<'a> {
     pub withdrawals: Withdrawals,
     /// Root of the parent beacon block?
     pub parent_beacon_block_root: Option<B256>,
-    /// The batch to build this payload from.
-    pub batch: &'a Batch,
-    /// The index of the batch within the entire output from consensus.
-    pub batch_index: usize,
+    /// The block to build this payload from.
+    pub block: &'a SealedBlockWithSenders,
+    /// The index of the block within the entire output from consensus.
+    pub block_index: usize,
     /// The beneficiary from the round of consensus.
     pub beneficiary: Address,
     /// The previous canonical block.
@@ -134,8 +134,8 @@ impl<'a> TNPayloadAttributes<'a> {
     /// Create a new instance of [Self].
     pub fn new(
         output: &ConsensusOutput,
-        batch: &Batch,
-        batch_index: usize,
+        block: &SealedBlockWithSenders,
+        block_index: usize,
         parent_block: &SealedBlock,
     ) -> Self {
         Self {
@@ -143,8 +143,8 @@ impl<'a> TNPayloadAttributes<'a> {
             prev_randao: todo!(),
             withdrawals: todo!(),
             parent_beacon_block_root: todo!(),
-            batch,
-            batch_index,
+            block,
+            block_index,
             beneficiary: output.beneficiary(),
             parent_block,
         }
@@ -163,9 +163,9 @@ impl<'a> PayloadBuilderAttributes for TNPayload<'a> {
     }
 
     fn payload_id(&self) -> PayloadId {
-        // construct the payload id from the batch's index
+        // construct the payload id from the block's index
         // guaranteed to always be unique within each output
-        PayloadId::new(self.attributes.batch_index.to_le_bytes())
+        PayloadId::new(self.attributes.block_index.to_le_bytes())
     }
 
     fn parent(&self) -> B256 {
@@ -218,15 +218,15 @@ impl<'a> PayloadBuilderAttributes for TNPayload<'a> {
         //     .map(BlobExcessGasAndPrice::new);
         let blob_excess_gas_and_price = Some(BlobExcessGasAndPrice::new(0));
 
-        // use the batch's sealed header for "parent" values
-        let batch_block = self.attributes.batch.versioned_metadata().sealed_header();
+        // use the block's sealed header for "parent" values
+        let block = self.attributes.block.header();
 
         // TODO: is this the correct value for basefee?
-        let basefee = batch_block.base_fee_per_gas;
+        let basefee = block.base_fee_per_gas;
         // parent.next_block_base_fee(chain_spec.base_fee_params_at_timestamp(self.timestamp()));
 
-        // ensure gas_limit enforced during batch validation
-        let gas_limit = U256::from(batch_block.gas_limit);
+        // ensure gas_limit enforced during block validation
+        let gas_limit = U256::from(block.gas_limit);
 
         // TODO: DELETE ME
         // basefee is always included, leaving this here for now since basefee is still a question

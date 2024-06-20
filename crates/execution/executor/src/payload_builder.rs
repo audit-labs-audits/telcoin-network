@@ -8,8 +8,7 @@ use reth_evm::ConfigureEvm;
 use reth_node_api::PayloadBuilderAttributes as _;
 use reth_payload_builder::error::PayloadBuilderError;
 use reth_primitives::{
-    revm::env::tx_env_with_recovered, ChainSpec, SealedBlock, TransactionSigned,
-    TransactionSignedEcRecovered, U256,
+    revm::env::tx_env_with_recovered, ChainSpec, SealedBlock, SealedBlockWithSenders, TransactionSigned, TransactionSignedEcRecovered, U256
 };
 use reth_provider::StateProviderFactory;
 use reth_revm::{database::StateProviderDatabase, primitives::EnvWithHandlerCfg, State};
@@ -50,12 +49,18 @@ where
     //      - ommers hash ensures all batches accounted for
     //      - ommers length used to get the last block in the output by nonce
 
-    let flat_batches: Vec<Batch> = output.clone().batches.into_iter().flatten().collect();
+    // let flat_batches: Vec<Batch> = output.clone().batches.into_iter().flatten().collect();
+
+    // TODO: add this as a method on ConsensusOutput and parallelize
+    let sealed_blocks_with_senders: Result<Vec<SealedBlockWithSenders>, _> = output.batches.iter().flat_map(|batches| {
+        // try convert batch to sealed block
+        batches.iter().map(|batch| SealedBlockWithSenders::try_from(batch))
+    }).collect();
 
     // TODO: use flat_map() here?
-    for (batch_index, batch) in flat_batches.iter().enumerate() {
+    for (block_index, block) in sealed_blocks_with_senders?.iter().enumerate() {
         let payload_attributes =
-            TNPayloadAttributes::new(&output, batch, batch_index, &parent_block);
+            TNPayloadAttributes::new(&output, block, block_index, &parent_block);
         let payload = TNPayload::try_new(parent_block.hash(), payload_attributes)?;
 
         build_block_from_batch_payload(
