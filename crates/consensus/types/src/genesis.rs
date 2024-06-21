@@ -6,9 +6,9 @@
 //! adiri is the current name for multi-node testnet.
 
 use crate::{
-    verify_proof_of_possession, BlsPublicKey, BlsSignature, Committee, CommitteeBuilder, Epoch,
-    Intent, IntentMessage, Multiaddr, NetworkPublicKey, PrimaryInfo, ValidatorSignature,
-    WorkerCache, WorkerIndex,
+    verify_proof_of_possession, BlsPublicKey, BlsSignature, Committee, CommitteeBuilder, Config,
+    ConfigTrait, Epoch, Intent, IntentMessage, Multiaddr, NetworkPublicKey, PrimaryInfo,
+    TelcoinDirs, ValidatorSignature, WorkerCache, WorkerIndex,
 };
 use eyre::Context;
 use fastcrypto::traits::{InsecureDefault, Signer};
@@ -45,7 +45,7 @@ pub fn adiri_chain_spec_arc() -> Arc<ChainSpec> {
 /// adiri genesis string in yaml format.
 ///
 /// Seed "Bob" and [0; 32] seed addresses.
-pub fn adiri_genesis_string() -> String {
+fn adiri_genesis_string() -> String {
     adiri_genesis_raw().to_string()
 }
 
@@ -63,7 +63,7 @@ pub fn adiri_genesis_string() -> String {
 /// - 0xb3fabbd1d2edde4d9ced3ce352859ce1bebf7907
 /// - 0xa3478861957661b2d8974d9309646a71271d98b9
 /// - 0xe69151677e5aec0b4fc0a94bfcaf20f6f0f975eb
-pub fn adiri_genesis_raw() -> &'static str {
+fn adiri_genesis_raw() -> &'static str {
     r#"
 {
     "nonce": "0x0",
@@ -137,6 +137,11 @@ impl NetworkGenesis {
         Self { chain: adiri_genesis().into(), validators: Default::default() }
     }
 
+    /// Create new version of [NetworkGenesis] using the adiri genesis [ChainSpec].
+    pub fn with_chain_spec(chain: ChainSpec) -> Self {
+        Self { chain, validators: Default::default() }
+    }
+
     /// Add validator information to the genesis directory.
     ///
     /// Adding [ValidatorInfo] to the genesis directory allows other
@@ -146,11 +151,11 @@ impl NetworkGenesis {
     }
 
     /// Generate a [NetworkGenesis] by reading files in a directory.
-    pub fn load_from_path<P>(path: P) -> eyre::Result<Self>
+    pub fn load_from_path<P>(telcoin_paths: &P) -> eyre::Result<Self>
     where
-        P: AsRef<Path>,
+        P: TelcoinDirs,
     {
-        let path = path.as_ref();
+        let path = telcoin_paths.genesis_path();
         info!(target: "genesis::ceremony", ?path, "Loading Network Genesis");
 
         if !path.is_dir() {
@@ -182,8 +187,10 @@ impl NetworkGenesis {
         // prevent mutable key type
         let validators = BTreeMap::from_iter(validators);
 
+        let tn_config: Config = Config::load_from_path(telcoin_paths.node_config_path())?;
+
         let network_genesis = Self {
-            chain: adiri_genesis().into(),
+            chain: tn_config.chain_spec,
             validators,
             // signatures,
         };
@@ -467,18 +474,56 @@ mod tests {
     use super::NetworkGenesis;
     use crate::{
         adiri_chain_spec, generate_proof_of_possession, BlsKeypair, Multiaddr, NetworkKeypair,
-        PrimaryInfo, ValidatorInfo, WorkerIndex, WorkerInfo,
+        PrimaryInfo, TelcoinDirs, ValidatorInfo, WorkerIndex, WorkerInfo,
     };
     use fastcrypto::traits::KeyPair;
     use rand::{rngs::StdRng, SeedableRng};
     use reth_primitives::Address;
-    use std::collections::BTreeMap;
+    use std::{collections::BTreeMap, path::PathBuf};
     use tempfile::tempdir;
+
+    struct TempTCDirs(PathBuf);
+
+    impl Default for TempTCDirs {
+        fn default() -> Self {
+            Self(tempdir().expect("tempdir created").into_path())
+        }
+    }
+
+    impl TelcoinDirs for TempTCDirs {
+        fn node_config_path(&self) -> PathBuf {
+            self.0.join("telcoin-network.yaml")
+        }
+
+        fn validator_keys_path(&self) -> PathBuf {
+            self.0.join("validator-keys")
+        }
+
+        fn validator_info_path(&self) -> PathBuf {
+            self.0.join("validator")
+        }
+
+        fn genesis_path(&self) -> PathBuf {
+            self.0.join("genesis")
+        }
+
+        fn committee_path(&self) -> PathBuf {
+            self.genesis_path().join("committee.yaml")
+        }
+
+        fn worker_cache_path(&self) -> PathBuf {
+            self.genesis_path().join("worker_cache.yaml")
+        }
+
+        fn narwhal_db_path(&self) -> PathBuf {
+            self.0.join("narwhal-db")
+        }
+    }
 
     #[test]
     fn test_write_and_read_network_genesis() {
         let mut network_genesis = NetworkGenesis::new();
-        let path = tempdir().expect("tempdir created").into_path();
+        let paths = TempTCDirs::default();
         // create keys and information for validator
         let bls_keypair = BlsKeypair::generate(&mut StdRng::from_seed([0; 32]));
         let network_keypair = NetworkKeypair::generate(&mut StdRng::from_seed([0; 32]));
@@ -506,10 +551,10 @@ mod tests {
         // add validator
         network_genesis.add_validator(validator.clone());
         // save to file
-        network_genesis.write_to_path(&path).unwrap();
+        network_genesis.write_to_path(&paths.node_config_path()).unwrap();
         // load network genesis
         let loaded_network_genesis =
-            NetworkGenesis::load_from_path(&path).expect("unable to load network genesis");
+            NetworkGenesis::load_from_path(&paths).expect("unable to load network genesis");
         let loaded_validator =
             loaded_network_genesis.validators.get(validator.public_key()).unwrap();
         assert_eq!(&validator, loaded_validator);

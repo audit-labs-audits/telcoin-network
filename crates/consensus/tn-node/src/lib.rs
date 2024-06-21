@@ -1,26 +1,24 @@
 use consensus_metrics::RegistryService;
 // Copyright (c) Telcoin, LLC
 // SPDX-License-Identifier: Apache-2.0
-use dirs::DataDirPath;
 use engine::{ExecutionNode, TnBuilder};
 use futures::{future::try_join_all, stream::FuturesUnordered};
 use narwhal_network::client::NetworkClient;
 pub use narwhal_storage::{CertificateStoreCacheMetrics, NodeStorage};
 use prometheus::Registry;
-use reth::dirs::ChainPath;
 use reth_db::{
     database::Database,
     database_metrics::{DatabaseMetadata, DatabaseMetrics},
 };
 use reth_evm::execute::BlockExecutorProvider;
 use tn_config::{
-    read_validator_keypair_from_file, traits::ConfigTrait as _, Config, BLS_KEYFILE,
+    read_validator_keypair_from_file, Config, ConfigTrait as _, BLS_KEYFILE,
     PRIMARY_NETWORK_KEYFILE, WORKER_NETWORK_KEYFILE,
 };
-use tn_types::{ChainIdentifier, Committee, WorkerCache};
+use tn_types::{ChainIdentifier, Committee, TelcoinDirs, WorkerCache};
 use tracing::info;
 
-use crate::{dirs::TelcoinDirs as _, primary::PrimaryNode, worker::WorkerNode};
+use crate::{primary::PrimaryNode, worker::WorkerNode};
 
 pub mod dirs;
 pub mod engine;
@@ -32,10 +30,10 @@ pub mod worker;
 /// Launch all components for the node.
 ///
 /// Worker, Primary, and Execution.
-pub async fn launch_node<DB, Evm>(
+pub async fn launch_node<DB, Evm, P: TelcoinDirs>(
     mut builder: TnBuilder<DB>,
     evm_config: Evm,
-    tn_datadir: ChainPath<DataDirPath>,
+    tn_datadir: &P,
 ) -> eyre::Result<()>
 where
     DB: Database + DatabaseMetadata + DatabaseMetrics + Clone + Unpin + 'static,

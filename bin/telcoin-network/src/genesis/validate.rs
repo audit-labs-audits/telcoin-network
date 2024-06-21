@@ -4,7 +4,7 @@ use clap::Args;
 use reth::dirs::MaybePlatformPath;
 use reth_primitives::ChainSpec;
 use std::{path::PathBuf, sync::Arc};
-use tn_node::dirs::{default_datadir_args, DataDirPath, TelcoinDirs as _};
+use tn_node::dirs::{default_datadir_args, DataDirChainPath, DataDirPath};
 use tn_types::NetworkGenesis;
 
 use crate::args::clap_genesis_parser;
@@ -66,10 +66,9 @@ impl ValidateArgs {
         info!(target: "genesis::validate", "validating validators nominated for committee");
 
         // load network genesis
-        let datadir =
-            self.datadir.unwrap_or_chain_default(self.chain.chain, default_datadir_args());
-        let genesis_path = datadir.genesis_path();
-        let network_genesis = NetworkGenesis::load_from_path(genesis_path)?;
+        let datadir: DataDirChainPath =
+            self.datadir.unwrap_or_chain_default(self.chain.chain, default_datadir_args()).into();
+        let network_genesis = NetworkGenesis::load_from_path(&datadir)?;
         network_genesis.validate()
     }
 }
