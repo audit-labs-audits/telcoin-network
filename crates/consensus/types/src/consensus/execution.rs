@@ -123,7 +123,7 @@ pub struct TNPayloadAttributes<'a> {
     /// The block to build this payload from.
     pub block: &'a SealedBlockWithSenders,
     /// The index of the block within the entire output from consensus.
-    pub block_index: usize,
+    pub block_index: u64,
     /// The beneficiary from the round of consensus.
     pub beneficiary: Address,
     /// The previous canonical block.
@@ -135,7 +135,7 @@ impl<'a> TNPayloadAttributes<'a> {
     pub fn new(
         output: &ConsensusOutput,
         block: &SealedBlockWithSenders,
-        block_index: usize,
+        block_index: u64,
         parent_block: &SealedBlock,
     ) -> Self {
         Self {

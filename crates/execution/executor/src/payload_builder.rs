@@ -6,14 +6,16 @@ use std::sync::Arc;
 
 use reth_evm::ConfigureEvm;
 use reth_node_api::PayloadBuilderAttributes as _;
-use reth_payload_builder::error::PayloadBuilderError;
+use reth_payload_builder::{database::CachedReads, error::PayloadBuilderError};
 use reth_primitives::{
-    revm::env::tx_env_with_recovered, ChainSpec, Receipt, SealedBlock, SealedBlockWithSenders,
-    TransactionSigned, TransactionSignedEcRecovered, U256,
+    constants::EMPTY_WITHDRAWALS, revm::env::tx_env_with_recovered, Block, ChainSpec, Header,
+    Receipt, Receipts, SealedBlock, SealedBlockWithSenders, TransactionSigned,
+    TransactionSignedEcRecovered, EMPTY_OMMER_ROOT_HASH, U256,
 };
-use reth_provider::StateProviderFactory;
+use reth_provider::{BundleStateWithReceipts, StateProviderFactory};
 use reth_revm::{
     database::StateProviderDatabase,
+    db::states::bundle_state::BundleRetention,
     primitives::{EVMError, EnvWithHandlerCfg, ResultAndState},
     DatabaseCommit, State,
 };
@@ -71,7 +73,7 @@ where
     // TODO: use flat_map() here?
     for (block_index, block) in sealed_blocks_with_senders?.iter().enumerate() {
         let payload_attributes =
-            TNPayloadAttributes::new(&output, block, block_index, &parent_block);
+            TNPayloadAttributes::new(&output, block, block_index as u64, &parent_block);
         let payload = TNPayload::try_new(parent_block.hash(), payload_attributes)?;
 
         build_block_from_batch_payload(
@@ -104,7 +106,10 @@ where
 {
     let state_provider = provider.state_by_block_hash(parent_block.hash())?;
     let state = StateProviderDatabase::new(state_provider);
-    let mut db = State::builder().with_database(state).with_bundle_update().build();
+    let mut db = State::builder()
+        .with_database_ref(CachedReads::default().as_db(state))
+        .with_bundle_update()
+        .build();
 
     debug!(target: "payload_builder", parent_hash = ?parent_block.hash(), parent_number = parent_block.number, "building new payload");
     let mut total_gas_used = 0;
@@ -165,7 +170,7 @@ where
     // let batch_txs = batch_txs.expect("batch valid");
     // let recovered_batch_txs = TransactionSigned::recover_signers(&batch_txs, batch_txs.len());
 
-    let txs = payload.attributes.block.into_transactions_ecrecovered();
+    let txs = payload.attributes.block.clone().into_transactions_ecrecovered();
 
     for tx in txs {
         // TODO: support blob gas
@@ -236,13 +241,11 @@ where
         cumulative_gas_used += gas_used;
 
         // Push transaction changeset and calculate header bloom filter for receipt.
-        #[allow(clippy::needless_update)] // side-effect of optimism fields
         receipts.push(Some(Receipt {
             tx_type: tx.tx_type(),
             success: result.is_success(),
             cumulative_gas_used,
             logs: result.into_logs().into_iter().map(Into::into).collect(),
-            ..Default::default()
         }));
 
         // update add to total fees
@@ -257,9 +260,81 @@ where
 
     // TODO: logic for requests, withdrawals
 
-    // build header
+    // merge all transitions into bundle state, this would apply the withdrawal balance changes
+    // and 4788 contract call
+    db.merge_transitions(BundleRetention::PlainState);
 
-    // return parent block to use with next batch
+    let bundle = BundleStateWithReceipts::new(
+        db.take_bundle(),
+        Receipts::from_vec(vec![receipts]),
+        block_number,
+    );
+    let receipts_root = bundle.receipts_root_slow(block_number).expect("Number is in range");
+    let logs_bloom = bundle.block_logs_bloom(block_number).expect("Number is in range");
+
+    // calculate the state root
+    let state_root = {
+        let state_provider = db.database.0.inner.borrow_mut();
+        state_provider.db.state_root(bundle.state())?
+    };
+
+    // create the block header
+    let transactions_root = reth_primitives::proofs::calculate_transaction_root(&executed_txs);
+
+    // initialize empty blob sidecars at first. If cancun is active then this will
+    let mut blob_sidecars = Vec::new();
+    let mut excess_blob_gas = None;
+    let mut blob_gas_used = None;
+
+    // // only determine cancun fields when active
+    // if chain_spec.is_cancun_active_at_timestamp(payload.attributes.timestamp) {
+    //     // grab the blob sidecars from the executed txs
+    //     blob_sidecars = pool.get_all_blobs_exact(
+    //         executed_txs.iter().filter(|tx| tx.is_eip4844()).map(|tx| tx.hash).collect(),
+    //     )?;
+
+    //     excess_blob_gas = if chain_spec.is_cancun_active_at_timestamp(parent_block.timestamp) {
+    //         let parent_excess_blob_gas = parent_block.excess_blob_gas.unwrap_or_default();
+    //         let parent_blob_gas_used = parent_block.blob_gas_used.unwrap_or_default();
+    //         Some(calculate_excess_blob_gas(parent_excess_blob_gas, parent_blob_gas_used))
+    //     } else {
+    //         // for the first post-fork block, both parent.blob_gas_used and
+    //         // parent.excess_blob_gas are evaluated as 0
+    //         Some(calculate_excess_blob_gas(0, 0))
+    //     };
+
+    //     blob_gas_used = Some(sum_blob_gas_used);
+    // }
+
+    let header = Header {
+        parent_hash: parent_block.hash(),
+        ommers_hash: EMPTY_OMMER_ROOT_HASH,
+        beneficiary: block_env.coinbase,
+        state_root,
+        transactions_root,
+        receipts_root,
+        withdrawals_root: Some(EMPTY_WITHDRAWALS),
+        logs_bloom,
+        timestamp: payload.attributes.timestamp,
+        mix_hash: todo!(),
+        nonce: payload.attributes.block_index,
+        base_fee_per_gas: Some(base_fee),
+        number: parent_block.number + 1,
+        gas_limit: block_gas_limit,
+        difficulty: U256::ZERO,
+        gas_used: cumulative_gas_used,
+        extra_data: todo!(),
+        parent_beacon_block_root: todo!(),
+        blob_gas_used,
+        excess_blob_gas,
+        requests_root: None,
+    };
+
+    // seal the block
+    let block = Block { header, body: executed_txs, ommers: vec![], withdrawals, requests };
+
+    let sealed_block = block.seal_slow();
+    debug!(target: "payload_builder", ?sealed_block, "sealed built block");
 
     Ok(())
 }
