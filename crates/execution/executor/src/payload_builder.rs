@@ -2,8 +2,6 @@
 //!
 //! This approach heavily inspired by reth's `default_ethereum_payload_builder`.
 
-use std::sync::Arc;
-
 use reth_evm::ConfigureEvm;
 use reth_node_api::PayloadBuilderAttributes as _;
 use reth_payload_builder::{database::CachedReads, error::PayloadBuilderError};
@@ -19,6 +17,7 @@ use reth_revm::{
     primitives::{EVMError, EnvWithHandlerCfg, ResultAndState},
     DatabaseCommit, State,
 };
+use std::sync::Arc;
 use tn_types::{Batch, BatchAPI as _, BuildArguments, TNPayload, TNPayloadAttributes};
 use tracing::{debug, error, warn};
 
