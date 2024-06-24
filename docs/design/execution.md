@@ -25,33 +25,33 @@ Because blocks contain these fields, they are accessible to be re-purposed for T
 ##### Ommers
 *Ethereum*: A collection of uncle headers. Considered a "constant value" (empty vec) in PoS.
 
-*TN*: All other batches in the ConsensusOutput
+*TN*: The ordered list of batche hashes (flattened) in the ConsensusOutput.
 
-*Logic*: Batches are proposed in parallel. This could be used to guarantee a complete ConsensusOutput included all batches, but may not be strictly necessary.
+*Logic*: Batches are proposed in parallel. This could be used to guarantee a complete ConsensusOutput included all batches. Batch validation ensures parent hash matches. TN can include this data without any cascading consequences using the current default `EthBeaconConsensus` logic from reth because batches don't have ommers, only final execution blocks.
 
 ##### Ommers Hash
-*Ethereum*: Considered a "constant value" (EMPTY_OMMER_ROOT_HASH).
+*Ethereum*: Considered a "constant value" (EMPTY_OMMER_ROOT_HASH) post-merge.
 
-*TN*: Hash of ordered vector - ensures correct ordering?
+*TN*: Hash of ommers (ordered list of batch hashes in ConsensusOutput) - ensures correct ordering.
 
 *Logic*: Unused hash value that is unlikely to be re-assigned in Ethereum.
 
 ##### Nonce
 *Ethereum*: Considered a "constant value" (0x0).
 
-*TN*: Index of batch within `ConsensusOutput` in little endian format.
+*TN*: Index of batch within `ConsensusOutput` in little endian format. Or, the sub dag index's `SequenceNumber` (also u64).
 
 *Logic*: Is this redundant? Could help with block explorers. Could help with ensuring all batches in ConsensusOutput are executed. What happens during recovery? Need to ensure all batches were executed correctly. Block number cannot apply to batches or rounds since they are executed in multiples.
 
 ##### Difficulty
 *Ethereum*: Could be used for prev-randao. Geth uses this, but reth uses "mixed_hash" for prev-randao value.
 
-*TN*: leave it alone and consider using it for `randao` value CL needs this value from EL.
+*TN*: Commited subdag round, aka `CommittedSubDag`'s `SequenceNumber`. leave it alone and consider using it for `randao` value CL needs this value from EL? Should this be the committed subdag round?
 
 *Logic*: [EIP-4399](https://eips.ethereum.org/EIPS/eip-4399) in favor of supplanting DIFFICULTY opcode with PREVRANDAO. If so, TN could use this for randao values.
 
 ##### Mixed Hash
-*Ethereum*: A 256-bit hash which, combined with the nonce, proves that a sufficient amount of computation has been carried out on this block (formally Hm). Post-merge, execution clients (reth and geth) use it to hold the prev randao value used to select the next quorum of validators by beacon chain. The block has `mixed_hash` and the beacon block has `prev_randao`. These values are converted when the execution payload is constructed from the built block.
+*Ethereum*: A 256-bit hash which, combined with the nonce, proves that a sufficient amount of computation has been carried out on this block (formally Hm). Post-merge, execution clients (reth and geth) use it to hold the prev randao value used to select the next quorum of validators by beacon chain. The block has `mixed_hash` and the beacon block has `prev_randao`. These values are converted when the execution payload is constructed from the built block and used by Beacon chain for validator shuffling.
 
 *TN*: `ConsensusOutput` hash.
 
@@ -60,9 +60,9 @@ Because blocks contain these fields, they are accessible to be re-purposed for T
 ##### Extra Data
 *Ethereum*: Anything a validator wants to use - 32 bytes.
 
-*TN*: Anything a validator wants to use? This could also be used for the `ConsensusOutput` hash.
+*TN*: The hash of the batch that was used to execute this block. Could later become anything a validator wants to use? This could also be used for the `ConsensusOutput` hash.
 
-*Logic*: Using extra data now prevents TN from ever using it again. While other "unused" block fields are in place, prefer to use these instead.
+*Logic*: It's unclear exactly what data is most useful for indexing blocks down the road. Extra data needs to be consistent amongst all validators to ensure correct hash of executed block, but using extra data now prevents TN from ever using it again. While other "unused" block fields are in place, prefer to use these instead.
 
 ##### Parent beacon block root
 *Ethereum*: the hash of the parent beacon block's root to support minimal trust for accessing consensus state.
