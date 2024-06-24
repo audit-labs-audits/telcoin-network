@@ -20,7 +20,7 @@ pub trait ConfigTrait {
     fn load_from_path<T: Serialize + DeserializeOwned + Default>(
         path: impl AsRef<Path>,
     ) -> eyre::Result<T> {
-        info!("tn:config loading: {}", path.as_ref().display());
+        info!(target: "tn::config", path = ?path.as_ref(), "Loading configuration");
         match File::open(&path) {
             Ok(mut file) => {
                 let mut cfg_string = String::new();
