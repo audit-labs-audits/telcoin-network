@@ -11,8 +11,10 @@ use self::{
 use crate::args::clap_genesis_parser;
 use clap::{Args, Subcommand};
 
+use rand::{rngs::StdRng, SeedableRng};
 use reth::dirs::MaybePlatformPath;
-use reth_primitives::{ChainSpec, GenesisAccount, U256};
+use reth_primitives::{keccak256, Address, ChainSpec, GenesisAccount, U256};
+use secp256k1::Secp256k1;
 use std::{path::PathBuf, sync::Arc};
 use tn_node::dirs::{default_datadir_args, DataDirChainPath, DataDirPath};
 use tn_types::{Config, ConfigTrait, NetworkGenesis, TelcoinDirs as _};
@@ -87,22 +89,21 @@ pub struct Initialize {
     /// (must provide on all validator genesis inits) to have an account with a deterministically
     /// derived key. This is ONLY for dev testing, never use this for other chains.
     #[arg(long)]
-    pub test_funded_account: Option<String>,
+    pub dev_funded_account: Option<String>,
 }
 
 /// Take a string and return the deterministic account derived from it.  This is be used
 /// with similiar functionality in the test client to allow easy testing using simple strings
 /// for accounts.
 fn account_from_word(key_word: &str) -> reth_primitives::alloy_primitives::Address {
-    let seed = reth_primitives::alloy_primitives::keccak256(key_word.as_bytes());
-    let mut rand = <rand::rngs::StdRng as rand::SeedableRng>::from_seed(seed.0);
-    let secp = secp256k1::Secp256k1::new();
+    let seed = keccak256(key_word.as_bytes());
+    let mut rand = <StdRng as SeedableRng>::from_seed(seed.0);
+    let secp = Secp256k1::new();
     let (_, public_key) = secp.generate_keypair(&mut rand);
     // strip out the first byte because that should be the SECP256K1_TAG_PUBKEY_UNCOMPRESSED
     // tag returned by libsecp's uncompressed pubkey serialization
-    let hash =
-        reth_primitives::alloy_primitives::keccak256(&public_key.serialize_uncompressed()[1..]);
-    reth_primitives::alloy_primitives::Address::from_slice(&hash[12..])
+    let hash = keccak256(&public_key.serialize_uncompressed()[1..]);
+    Address::from_slice(&hash[12..])
 }
 
 impl GenesisArgs {
@@ -125,7 +126,7 @@ impl GenesisArgs {
                 let config_path = self.config.clone().unwrap_or(datadir.node_config_path());
 
                 let mut tn_config: Config = Config::load_from_path(&config_path)?;
-                if let Some(acct_str) = &init.test_funded_account {
+                if let Some(acct_str) = &init.dev_funded_account {
                     let addr = account_from_word(acct_str);
                     tn_config.chain_spec.genesis.alloc.insert(
                         addr,

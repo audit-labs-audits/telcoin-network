@@ -7,6 +7,7 @@ use std::{
     io::{ErrorKind::NotFound, Read, Write},
     path::{Path, PathBuf},
 };
+use tracing::info;
 
 /// Based on `confy` crate.
 /// Problem: reth uses TOML and TN uses yaml, so must replicate the necessary code as a trait.
@@ -19,7 +20,7 @@ pub trait ConfigTrait {
     fn load_from_path<T: Serialize + DeserializeOwned + Default>(
         path: impl AsRef<Path>,
     ) -> eyre::Result<T> {
-        println!("XXXXXXX loading {}", path.as_ref().display());
+        info!("tn:config loading: {}", path.as_ref().display());
         match File::open(&path) {
             Ok(mut file) => {
                 let mut cfg_string = String::new();

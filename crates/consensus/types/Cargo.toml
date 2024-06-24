@@ -6,6 +6,7 @@ license = "Apache-2.0"
 authors = [
     "Grant Kee <grant.kee@telco.in>",
     "Mysten Labs <build@mystenlabs.com>",
+    "Steven Stanfield <steve@telcoin.org>",
 ]
 publish = false
 
