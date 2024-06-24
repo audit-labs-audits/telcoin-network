@@ -551,7 +551,7 @@ mod tests {
         // add validator
         network_genesis.add_validator(validator.clone());
         // save to file
-        network_genesis.write_to_path(&paths.node_config_path()).unwrap();
+        network_genesis.write_to_path(paths.node_config_path()).unwrap();
         // load network genesis
         let loaded_network_genesis =
             NetworkGenesis::load_from_path(&paths).expect("unable to load network genesis");

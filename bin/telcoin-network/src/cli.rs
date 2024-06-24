@@ -208,7 +208,7 @@ mod tests {
 
         // let end = format!("{}/logs", DEFAULT_ROOT_DIR);
 
-        let end = format!("reth/logs");
+        let end = "reth/logs".to_string();
         assert!(log_dir.as_ref().ends_with(end), "{log_dir:?}");
     }
 
