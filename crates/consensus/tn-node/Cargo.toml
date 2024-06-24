@@ -65,7 +65,6 @@ tn-executor = { workspace = true }
 tn-batch-maker = { workspace = true }
 tn-batch-validator = { workspace = true }
 jsonrpsee = { workspace = true }
-tn-config = { workspace = true }
 fdlimit = { workspace = true }
 
 # added during upgrade to beta.3

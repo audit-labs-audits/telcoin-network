@@ -37,7 +37,6 @@ reth-tracing = { workspace = true }
 
 
 anemo = { workspace = true }
-tn-config = { workspace = true }
 
 # execution
 eyre = { workspace = true }

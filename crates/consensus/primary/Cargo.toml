@@ -35,8 +35,6 @@ tower = { workspace = true }
 tracing = { workspace = true }
 tap = { workspace = true }
 
-tn-config = { workspace = true }
-
 fastcrypto = { workspace = true }
 fastcrypto-tbls = { workspace = true }
 narwhal-network = { workspace = true }

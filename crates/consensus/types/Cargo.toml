@@ -6,6 +6,7 @@ license = "Apache-2.0"
 authors = [
     "Grant Kee <grant.kee@telco.in>",
     "Mysten Labs <build@mystenlabs.com>",
+    "Steven Stanfield <steve@telcoin.org>",
 ]
 publish = false
 
@@ -28,6 +29,7 @@ serde = { workspace = true }
 serde_with = { workspace = true }
 serde_json = { workspace = true }
 serde_repr = { workspace = true }
+humantime-serde = { workspace = true }
 thiserror = { workspace = true }
 tokio = { workspace = true, features = ["sync", "rt", "macros"] }
 tonic = { workspace = true }

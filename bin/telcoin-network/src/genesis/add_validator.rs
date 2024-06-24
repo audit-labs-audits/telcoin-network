@@ -6,9 +6,8 @@ use eyre::Context;
 use reth::dirs::MaybePlatformPath;
 use reth_primitives::ChainSpec;
 use std::{path::PathBuf, sync::Arc};
-use tn_config::{traits::ConfigTrait, Config};
-use tn_node::dirs::{default_datadir_args, DataDirPath, TelcoinDirs as _};
-use tn_types::NetworkGenesis;
+use tn_node::dirs::{default_datadir_args, DataDirChainPath, DataDirPath};
+use tn_types::{Config, ConfigTrait, NetworkGenesis, TelcoinDirs as _};
 
 use crate::args::clap_genesis_parser;
 use tracing::info;
@@ -69,8 +68,8 @@ impl AddValidator {
         info!(target: "genesis::add-validator", "Adding validator to committee");
 
         // add network name to data dir
-        let data_dir =
-            self.datadir.unwrap_or_chain_default(self.chain.chain, default_datadir_args());
+        let data_dir: DataDirChainPath =
+            self.datadir.unwrap_or_chain_default(self.chain.chain, default_datadir_args()).into();
         let config_path = self.config.clone().unwrap_or(data_dir.node_config_path());
 
         let config = self.load_config(config_path.clone())?;
@@ -106,11 +105,11 @@ impl AddValidator {
         // TODO: is this the right approach?
         let validator_info = config.validator_info.clone();
 
-        let mut network_genesis = NetworkGenesis::load_from_path(&genesis_path)?;
+        let mut network_genesis = NetworkGenesis::load_from_path(&data_dir)?;
 
         network_genesis.add_validator(validator_info);
 
-        network_genesis.write_to_path(&genesis_path)
+        network_genesis.write_to_path(genesis_path)
     }
 
     /// Loads the reth config with the given datadir root

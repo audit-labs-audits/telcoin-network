@@ -20,9 +20,8 @@ pub use primary::*;
 use reth_provider::providers::BlockchainProvider;
 use reth_tasks::TaskExecutor;
 use tn_batch_validator::BatchValidator;
-use tn_config::Config;
 use tn_faucet::FaucetArgs;
-use tn_types::{ConsensusOutput, NewBatch, WorkerId};
+use tn_types::{Config, ConsensusOutput, NewBatch, WorkerId};
 use tokio::sync::{broadcast, RwLock};
 pub use worker::*;
 

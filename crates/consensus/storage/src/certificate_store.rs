@@ -163,6 +163,7 @@ impl Cache for CertificateStoreCache {
 /// An implementation that basically disables the caching functionality when used for
 /// CertificateStore.
 #[derive(Clone)]
+#[allow(dead_code)]
 struct NoCache {}
 
 impl Cache for NoCache {

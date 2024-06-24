@@ -9,11 +9,10 @@ use narwhal_network::client::NetworkClient;
 use narwhal_storage::NodeStorage;
 use prometheus::{proto::Metric, Registry};
 use std::{cell::RefCell, path::PathBuf, rc::Rc, sync::Arc};
-use tn_config::Parameters;
 use tn_node::primary::PrimaryNode;
 use tn_types::{
     test_utils::temp_dir, AuthorityIdentifier, BlsKeypair, ChainIdentifier, Committee,
-    ConsensusOutput, NetworkKeypair, WorkerCache,
+    ConsensusOutput, NetworkKeypair, Parameters, WorkerCache,
 };
 use tokio::{
     sync::{

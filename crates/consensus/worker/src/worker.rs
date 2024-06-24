@@ -37,12 +37,11 @@ use std::{collections::HashMap, net::Ipv4Addr, sync::Arc, thread::sleep, time::D
 use tn_batch_validator::BatchValidation;
 use tn_types::{
     traits::KeyPair as _, Authority, AuthorityIdentifier, Committee, Multiaddr, NetworkKeypair,
-    NetworkPublicKey, NewBatch, Protocol, WorkerCache, WorkerId,
+    NetworkPublicKey, NewBatch, Parameters, Protocol, WorkerCache, WorkerId,
 };
 
 use narwhal_network_types::{PrimaryToWorkerServer, WorkerToWorkerServer};
 use tap::TapFallible;
-use tn_config::Parameters;
 use tn_types::{Batch, BatchDigest, ConditionalBroadcastReceiver, PreSubscribedBroadcastSender};
 use tokio::task::JoinHandle;
 use tower::ServiceBuilder;

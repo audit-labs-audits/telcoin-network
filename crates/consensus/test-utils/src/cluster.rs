@@ -8,8 +8,9 @@ use fastcrypto::traits::KeyPair as _;
 use itertools::Itertools;
 use reth::tasks::TaskExecutor;
 use std::{collections::HashMap, time::Duration};
-use tn_config::Parameters;
-use tn_types::{test_utils::CommitteeFixture, Committee, ConsensusOutput, WorkerCache, WorkerId};
+use tn_types::{
+    test_utils::CommitteeFixture, Committee, ConsensusOutput, Parameters, WorkerCache, WorkerId,
+};
 use tokio::sync::broadcast;
 use tracing::info;
 

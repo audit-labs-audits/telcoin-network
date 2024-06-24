@@ -13,17 +13,17 @@ use reth::{
     },
     builder::NodeConfig,
     commands::node::NoArgs,
-    dirs::{ChainPath, MaybePlatformPath},
+    dirs::MaybePlatformPath,
     CliContext,
 };
 use reth_db::{init_db, DatabaseEnv};
 use reth_primitives::ChainSpec;
 use std::{net::SocketAddr, path::PathBuf, sync::Arc};
-use tn_config::{traits::ConfigTrait, Config};
 use tn_node::{
-    dirs::{default_datadir_args, DataDirPath, TelcoinDirs as _},
+    dirs::{default_datadir_args, DataDirChainPath, DataDirPath},
     engine::TnBuilder,
 };
+use tn_types::{Config, ConfigTrait, TelcoinDirs as _};
 use tracing::*;
 
 /// Start the node
@@ -129,9 +129,9 @@ pub struct NodeCommand<Ext: clap::Args + fmt::Debug = NoArgs> {
 
 impl<Ext: clap::Args + fmt::Debug> NodeCommand<Ext> {
     /// Execute `node` command
-    pub async fn execute<L, Fut>(self, ctx: CliContext, launcher: L) -> eyre::Result<()>
+    pub async fn execute<L, Fut>(mut self, ctx: CliContext, launcher: L) -> eyre::Result<()>
     where
-        L: FnOnce(TnBuilder<Arc<DatabaseEnv>>, Ext, ChainPath<DataDirPath>) -> Fut,
+        L: FnOnce(TnBuilder<Arc<DatabaseEnv>>, Ext, DataDirChainPath) -> Fut,
         Fut: Future<Output = eyre::Result<()>>,
     {
         info!(target: "tn::cli", "telcoin-network {} starting", SHORT_VERSION);
@@ -142,12 +142,15 @@ impl<Ext: clap::Args + fmt::Debug> NodeCommand<Ext> {
 
         // use TN-specific datadir for finding tn-config
         let default_args = default_datadir_args();
-        let tn_datadir =
-            self.datadir.unwrap_or_chain_default(self.chain.chain, default_args.clone());
+        let tn_datadir: DataDirChainPath =
+            self.datadir.unwrap_or_chain_default(self.chain.chain, default_args.clone()).into();
 
         // TODO: use config or CLI chain spec?
         let config_path = self.config.clone().unwrap_or(tn_datadir.node_config_path());
-        let tn_config: Config = Config::load_from_path(config_path)?;
+
+        let tn_config: Config = Config::load_from_path(&config_path)?;
+        // Make sure we are using the chain from config not just the default.
+        self.chain = Arc::new(tn_config.chain_spec.clone());
         info!(target: "telcoin::cli", validator = ?tn_config.validator_info.name, "config loaded");
 
         // get the worker's transaction address from the config

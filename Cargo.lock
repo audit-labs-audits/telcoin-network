@@ -5359,7 +5359,6 @@ dependencies = [
  "tempfile",
  "thiserror",
  "tn-batch-validator",
- "tn-config",
  "tn-node",
  "tn-types",
  "tokio",
@@ -5419,7 +5418,6 @@ dependencies = [
  "tempfile",
  "tn-batch-maker",
  "tn-batch-validator",
- "tn-config",
  "tn-executor",
  "tn-faucet",
  "tn-node",
@@ -5507,7 +5505,6 @@ dependencies = [
  "tempfile",
  "thiserror",
  "tn-batch-validator",
- "tn-config",
  "tn-node",
  "tn-types",
  "tokio",
@@ -9969,7 +9966,6 @@ dependencies = [
  "serde_json",
  "serde_yaml",
  "tempfile",
- "tn-config",
  "tn-faucet",
  "tn-node",
  "tn-types",
@@ -10221,21 +10217,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "tn-config"
-version = "0.1.0"
-dependencies = [
- "eyre",
- "fastcrypto",
- "humantime-serde",
- "reth-primitives",
- "serde",
- "serde_json",
- "serde_yaml",
- "tn-types",
- "tracing",
-]
-
-[[package]]
 name = "tn-executor"
 version = "0.1.0"
 dependencies = [
@@ -10379,7 +10360,6 @@ dependencies = [
  "thiserror",
  "tn-batch-maker",
  "tn-batch-validator",
- "tn-config",
  "tn-executor",
  "tn-faucet",
  "tn-types",
@@ -10406,6 +10386,7 @@ dependencies = [
  "fastcrypto-tbls",
  "fdlimit",
  "futures",
+ "humantime-serde",
  "indexmap 1.9.3",
  "match_opt",
  "mem-utils",

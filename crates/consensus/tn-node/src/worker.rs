@@ -23,9 +23,9 @@ use reth_db::{
 };
 use reth_evm::execute::BlockExecutorProvider;
 use std::{collections::HashMap, sync::Arc, time::Instant};
-use tn_config::Parameters;
 use tn_types::{
-    BlsPublicKey, Committee, NetworkKeypair, PreSubscribedBroadcastSender, WorkerCache, WorkerId,
+    BlsPublicKey, Committee, NetworkKeypair, Parameters, PreSubscribedBroadcastSender, WorkerCache,
+    WorkerId,
 };
 use tokio::{sync::RwLock, task::JoinHandle};
 use tracing::{info, instrument};

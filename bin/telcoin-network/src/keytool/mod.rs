@@ -7,14 +7,14 @@ use clap::{value_parser, Args, Subcommand};
 use eyre::Context;
 
 use generate::GenerateKeys;
-use reth::dirs::{ChainPath, MaybePlatformPath};
+use reth::dirs::MaybePlatformPath;
 use reth_primitives::ChainSpec;
 use std::{
     path::{Path, PathBuf},
     sync::Arc,
 };
-use tn_config::{traits::ConfigTrait, Config};
-use tn_node::dirs::{default_datadir_args, DataDirPath, TelcoinDirs as _};
+use tn_node::dirs::{default_datadir_args, DataDirChainPath, DataDirPath};
+use tn_types::{Config, ConfigTrait, TelcoinDirs as _};
 use tracing::{debug, info, warn};
 
 /// Generate keypairs and save them to a file.
@@ -172,8 +172,8 @@ impl KeyArgs {
     }
 
     /// Returns the chain specific path to the data dir.
-    fn data_dir(&self) -> ChainPath<DataDirPath> {
-        self.datadir.unwrap_or_chain_default(self.chain.chain, default_datadir_args())
+    fn data_dir(&self) -> DataDirChainPath {
+        self.datadir.unwrap_or_chain_default(self.chain.chain, default_datadir_args()).into()
     }
 
     /// Returns the path to the config file.
@@ -201,7 +201,7 @@ mod tests {
     use clap::Parser;
     use reth::commands::node::NoArgs;
     use tempfile::tempdir;
-    use tn_config::{traits::ConfigTrait, Config};
+    use tn_types::{Config, ConfigTrait};
 
     /// Test that generate keys command works.
     /// This test also ensures that confy is able to

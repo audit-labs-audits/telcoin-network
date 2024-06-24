@@ -4,8 +4,8 @@ use reth::{
     dirs::{ChainPath, MaybePlatformPath, XdgPath},
 };
 use reth_primitives::Chain;
-use std::{fmt::Debug, path::PathBuf, str::FromStr as _};
-use tn_types::GENESIS_VALIDATORS_DIR;
+use std::{fmt::Debug, ops::Deref, path::PathBuf, str::FromStr as _};
+use tn_types::{TelcoinDirs, GENESIS_VALIDATORS_DIR};
 
 /// The path to join for the directory that stores validator keys.
 pub const VALIDATOR_KEYS_DIR: &str = "validator-keys";
@@ -81,41 +81,45 @@ pub fn validators_dir() -> Option<PathBuf> {
     genesis_dir().map(|root| root.join(GENESIS_VALIDATORS_DIR))
 }
 
-/// Telcoin Network specific directories.
-pub trait TelcoinDirs {
-    /// Return the path to `configuration` yaml file.
-    fn node_config_path(&self) -> PathBuf;
-    /// Return the path to the directory that holds
-    /// private keys for the validator operating this node.
-    fn validator_keys_path(&self) -> PathBuf;
-    /// Return the path to `genesis` dir.
-    fn genesis_path(&self) -> PathBuf;
-    /// Return the path to the directory where individual and public validator information is
-    /// collected for genesis.
-    fn validator_info_path(&self) -> PathBuf;
-    /// Return the path to the committee file.
-    fn committee_path(&self) -> PathBuf;
-    /// Return the path to the worker cache file.
-    fn worker_cache_path(&self) -> PathBuf;
-    /// Return the path to narwhal's node storage.
-    fn narwhal_db_path(&self) -> PathBuf;
+#[derive(Clone, Debug)]
+pub struct DataDirChainPath(ChainPath<DataDirPath>);
+
+impl Deref for DataDirChainPath {
+    type Target = ChainPath<DataDirPath>;
+
+    fn deref(&self) -> &Self::Target {
+        &self.0
+    }
 }
 
-impl TelcoinDirs for ChainPath<DataDirPath> {
+impl From<ChainPath<DataDirPath>> for DataDirChainPath {
+    fn from(value: ChainPath<DataDirPath>) -> Self {
+        Self(value)
+    }
+}
+
+impl From<DataDirChainPath> for PathBuf {
+    fn from(value: DataDirChainPath) -> Self {
+        value.0.into()
+    }
+}
+
+//impl TelcoinDirs for ChainPath<DataDirPath> {
+impl TelcoinDirs for DataDirChainPath {
     fn node_config_path(&self) -> PathBuf {
-        self.as_ref().join("telcoin-network.yaml")
+        self.0.as_ref().join("telcoin-network.yaml")
     }
 
     fn validator_keys_path(&self) -> PathBuf {
-        self.as_ref().join(VALIDATOR_KEYS_DIR)
+        self.0.as_ref().join(VALIDATOR_KEYS_DIR)
     }
 
     fn validator_info_path(&self) -> PathBuf {
-        self.as_ref().join("validator")
+        self.0.as_ref().join("validator")
     }
 
     fn genesis_path(&self) -> PathBuf {
-        self.as_ref().join("genesis")
+        self.0.as_ref().join("genesis")
     }
 
     fn committee_path(&self) -> PathBuf {
@@ -127,7 +131,7 @@ impl TelcoinDirs for ChainPath<DataDirPath> {
     }
 
     fn narwhal_db_path(&self) -> PathBuf {
-        self.as_ref().join("narwhal-db")
+        self.0.as_ref().join("narwhal-db")
     }
 }
 

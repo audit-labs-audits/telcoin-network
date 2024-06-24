@@ -27,11 +27,10 @@ use reth_db::{
 };
 use reth_evm::execute::BlockExecutorProvider;
 use std::{sync::Arc, time::Instant};
-use tn_config::Parameters;
 use tn_types::{
     AuthorityIdentifier, BlsKeypair, BlsPublicKey, Certificate, ChainIdentifier, Committee,
-    ConditionalBroadcastReceiver, ConsensusOutput, NetworkKeypair, PreSubscribedBroadcastSender,
-    Round, WorkerCache, BAD_NODES_STAKE_THRESHOLD,
+    ConditionalBroadcastReceiver, ConsensusOutput, NetworkKeypair, Parameters,
+    PreSubscribedBroadcastSender, Round, WorkerCache, BAD_NODES_STAKE_THRESHOLD,
 };
 use tokio::{
     sync::{broadcast, watch, RwLock},

@@ -34,12 +34,11 @@ use std::{
     time::Duration,
 };
 use tn_batch_validator::NoopBatchValidator;
-use tn_config::Parameters;
 use tn_types::{
     now,
     test_utils::{make_optimal_signed_certificates, temp_dir, CommitteeFixture},
     AuthorityIdentifier, Certificate, CertificateAPI, ChainIdentifier, Committee, Header,
-    HeaderAPI, PreSubscribedBroadcastSender, SignatureVerificationState,
+    HeaderAPI, Parameters, PreSubscribedBroadcastSender, SignatureVerificationState,
 };
 use tokio::{sync::watch, time::timeout};
 

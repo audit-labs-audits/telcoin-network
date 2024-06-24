@@ -1,7 +1,6 @@
 [workspace]
 members = [
     "bin/telcoin-network",
-    "crates/config",
 
     # consensus
     "crates/consensus/types",
@@ -121,7 +120,6 @@ jsonrpsee = { version = "0.22" }
 assert_matches = { version = "1.5.0" }
 
 # common
-tn-config = { path = "./crates/config" }
 tn-types = { path = "./crates/consensus/types" }
 tn-node = { path = "./crates/consensus/tn-node" }
 

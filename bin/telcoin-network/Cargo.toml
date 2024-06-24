@@ -37,7 +37,6 @@ rand = { workspace = true }
 rand_chacha = { workspace = true }
 prometheus = { workspace = true }
 tn-types = { workspace = true }
-tn-config = { workspace = true }
 tn-node = { workspace = true }
 narwhal-network = { workspace = true }
 consensus-metrics = { workspace = true }

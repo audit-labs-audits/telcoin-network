@@ -6,13 +6,13 @@ use crate::{
 };
 use clap::{value_parser, Parser, Subcommand};
 use futures::Future;
-use reth::{commands::node::NoArgs, dirs::ChainPath, CliRunner};
+use reth::{commands::node::NoArgs, CliRunner};
 use reth_db::DatabaseEnv;
 use reth_node_core::args::LogArgs;
 use reth_primitives::ChainSpec;
 use reth_tracing::FileWorkerGuard;
 use std::{ffi::OsString, fmt, sync::Arc};
-use tn_node::{dirs::DataDirPath, engine::TnBuilder};
+use tn_node::{dirs::DataDirChainPath, engine::TnBuilder};
 
 /// The main TN cli interface.
 ///
@@ -121,7 +121,7 @@ impl<Ext: clap::Args + fmt::Debug> Cli<Ext> {
     /// ````
     pub fn run<L, Fut>(mut self, launcher: L) -> eyre::Result<()>
     where
-        L: FnOnce(TnBuilder<Arc<DatabaseEnv>>, Ext, ChainPath<DataDirPath>) -> Fut,
+        L: FnOnce(TnBuilder<Arc<DatabaseEnv>>, Ext, DataDirChainPath) -> Fut,
         Fut: Future<Output = eyre::Result<()>>,
     {
         // add network name to logs dir
@@ -208,7 +208,7 @@ mod tests {
 
         // let end = format!("{}/logs", DEFAULT_ROOT_DIR);
 
-        let end = format!("reth/logs");
+        let end = "reth/logs".to_string();
         assert!(log_dir.as_ref().ends_with(end), "{log_dir:?}");
     }
 
