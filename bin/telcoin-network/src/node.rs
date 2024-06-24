@@ -19,12 +19,11 @@ use reth::{
 use reth_db::{init_db, DatabaseEnv};
 use reth_primitives::ChainSpec;
 use std::{net::SocketAddr, path::PathBuf, sync::Arc};
-use tn_config::{Config, ConfigTrait};
 use tn_node::{
     dirs::{default_datadir_args, DataDirChainPath, DataDirPath},
     engine::TnBuilder,
 };
-use tn_types::TelcoinDirs as _;
+use tn_types::{Config, ConfigTrait, TelcoinDirs as _};
 use tracing::*;
 
 /// Start the node

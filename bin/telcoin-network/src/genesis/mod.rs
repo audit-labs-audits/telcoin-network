@@ -124,7 +124,7 @@ impl GenesisArgs {
                 // TODO: use config or CLI chain spec?
                 let config_path = self.config.clone().unwrap_or(datadir.node_config_path());
 
-                let mut tn_config: tn_config::Config = Config::load_from_path(&config_path)?;
+                let mut tn_config: Config = Config::load_from_path(&config_path)?;
                 if let Some(acct_str) = &init.test_funded_account {
                     let addr = account_from_word(acct_str);
                     tn_config.chain_spec.genesis.alloc.insert(

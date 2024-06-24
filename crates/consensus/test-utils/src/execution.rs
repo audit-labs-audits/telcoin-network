@@ -17,9 +17,9 @@ use reth_node_ethereum::{EthEvmConfig, EthExecutorProvider};
 use std::{str::FromStr, sync::Arc};
 use telcoin_network::node::NodeCommand;
 use tempfile::tempdir;
-use tn_config::Config;
 use tn_faucet::FaucetArgs;
 use tn_node::engine::{ExecutionNode, TnBuilder};
+use tn_types::Config;
 
 /// Convnenience type for testing Execution Node.
 pub type TestExecutionNode = ExecutionNode<Arc<TempDatabase<DatabaseEnv>>, EthExecutorProvider>;

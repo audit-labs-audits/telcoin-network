@@ -10,11 +10,10 @@ use narwhal_network::client::NetworkClient;
 use reth_db::{test_utils::TempDatabase, DatabaseEnv};
 use reth_node_ethereum::EthExecutorProvider;
 use std::{collections::HashMap, sync::Arc, time::Duration};
-use tn_config::Parameters;
 use tn_node::engine::ExecutionNode;
 use tn_types::{
     AuthorityIdentifier, BlsKeypair, BlsPublicKey, Committee, ConsensusOutput, Multiaddr,
-    NetworkKeypair, WorkerCache, WorkerId,
+    NetworkKeypair, Parameters, WorkerCache, WorkerId,
 };
 use tokio::sync::{broadcast, RwLock, RwLockWriteGuard};
 use tracing::info;

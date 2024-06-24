@@ -13,9 +13,8 @@ use std::{
     path::{Path, PathBuf},
     sync::Arc,
 };
-use tn_config::{Config, ConfigTrait};
 use tn_node::dirs::{default_datadir_args, DataDirChainPath, DataDirPath};
-use tn_types::TelcoinDirs as _;
+use tn_types::{Config, ConfigTrait, TelcoinDirs as _};
 use tracing::{debug, info, warn};
 
 /// Generate keypairs and save them to a file.
@@ -202,7 +201,7 @@ mod tests {
     use clap::Parser;
     use reth::commands::node::NoArgs;
     use tempfile::tempdir;
-    use tn_config::{Config, ConfigTrait};
+    use tn_types::{Config, ConfigTrait};
 
     /// Test that generate keys command works.
     /// This test also ensures that confy is able to

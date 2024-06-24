@@ -11,11 +11,10 @@ use reth_db::{
     database_metrics::{DatabaseMetadata, DatabaseMetrics},
 };
 use reth_evm::execute::BlockExecutorProvider;
-use tn_config::{
-    read_validator_keypair_from_file, Config, ConfigTrait as _, BLS_KEYFILE,
-    PRIMARY_NETWORK_KEYFILE, WORKER_NETWORK_KEYFILE,
+use tn_types::{
+    read_validator_keypair_from_file, ChainIdentifier, Committee, Config, ConfigTrait, TelcoinDirs,
+    WorkerCache, BLS_KEYFILE, PRIMARY_NETWORK_KEYFILE, WORKER_NETWORK_KEYFILE,
 };
-use tn_types::{ChainIdentifier, Committee, TelcoinDirs, WorkerCache};
 use tracing::info;
 
 use crate::{primary::PrimaryNode, worker::WorkerNode};

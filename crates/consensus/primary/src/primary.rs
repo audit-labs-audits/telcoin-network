@@ -54,7 +54,7 @@ use std::{
 };
 use tn_types::{
     traits::EncodeDecodeBase64, Authority, AuthorityIdentifier, BlsKeypair, BlsSignature,
-    ChainIdentifier, Committee, Multiaddr, NetworkKeypair, NetworkPublicKey, Protocol,
+    ChainIdentifier, Committee, Multiaddr, NetworkKeypair, NetworkPublicKey, Parameters, Protocol,
     RandomnessPrivateKey, WorkerCache,
 };
 
@@ -63,7 +63,6 @@ use narwhal_network_types::{
     RequestVoteRequest, RequestVoteResponse, SendCertificateRequest, SendCertificateResponse,
     WorkerOthersBatchMessage, WorkerOwnBatchMessage, WorkerToPrimary, WorkerToPrimaryServer,
 };
-use tn_config::Parameters;
 use tn_types::{
     ensure,
     error::{DagError, DagResult},

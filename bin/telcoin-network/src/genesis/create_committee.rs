@@ -4,9 +4,8 @@ use clap::Args;
 use reth::dirs::MaybePlatformPath;
 use reth_primitives::ChainSpec;
 use std::{path::PathBuf, sync::Arc};
-use tn_config::{Config, ConfigTrait};
 use tn_node::dirs::{default_datadir_args, DataDirChainPath, DataDirPath};
-use tn_types::{NetworkGenesis, TelcoinDirs as _};
+use tn_types::{Config, ConfigTrait, NetworkGenesis, TelcoinDirs as _};
 
 use crate::args::clap_genesis_parser;
 use tracing::info;
