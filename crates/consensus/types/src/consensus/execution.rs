@@ -107,7 +107,7 @@ impl<'a> TNPayload<'a> {
     }
 }
 
-/// The type constructed from a [Batch] and the [ConsensusOutput] that includes it for execution.
+/// The type used to construct a [TNPayload].
 ///
 /// It contains all the attributes required to initiate a payload build process.
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -184,6 +184,7 @@ impl<'a> PayloadBuilderAttributes for TNPayload<'a> {
         self.attributes.beneficiary
     }
 
+    /// This is used by TN to indicate the [Batch]'s hash.
     fn prev_randao(&self) -> B256 {
         todo!()
     }

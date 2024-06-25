@@ -39,34 +39,34 @@ Because blocks contain these fields, they are accessible to be re-purposed for T
 ##### Nonce
 *Ethereum*: Considered a "constant value" (0x0).
 
-*TN*: Index of batch within `ConsensusOutput` in little endian format. Or, the sub dag index's `SequenceNumber` (also u64).
+*TN*: The sub dag index's `SequenceNumber` (also u64). The "nonce" for consensus.
 
 *Logic*: Is this redundant? Could help with block explorers. Could help with ensuring all batches in ConsensusOutput are executed. What happens during recovery? Need to ensure all batches were executed correctly. Block number cannot apply to batches or rounds since they are executed in multiples.
 
 ##### Difficulty
-*Ethereum*: Could be used for prev-randao. Geth uses this, but reth uses "mixed_hash" for prev-randao value.
+*Ethereum*: No longer used post-merge and must be 0.
 
-*TN*: Commited subdag round, aka `CommittedSubDag`'s `SequenceNumber`. leave it alone and consider using it for `randao` value CL needs this value from EL? Should this be the committed subdag round?
+*TN*: This could be used for documenting validator rewards? Leave it alone and consider using it for `randao` value CL needs this value from EL?
 
 *Logic*: [EIP-4399](https://eips.ethereum.org/EIPS/eip-4399) in favor of supplanting DIFFICULTY opcode with PREVRANDAO. If so, TN could use this for randao values.
 
 ##### Mixed Hash
 *Ethereum*: A 256-bit hash which, combined with the nonce, proves that a sufficient amount of computation has been carried out on this block (formally Hm). Post-merge, execution clients (reth and geth) use it to hold the prev randao value used to select the next quorum of validators by beacon chain. The block has `mixed_hash` and the beacon block has `prev_randao`. These values are converted when the execution payload is constructed from the built block and used by Beacon chain for validator shuffling.
 
-*TN*: `ConsensusOutput` hash.
+*TN*: `Batch` hash.
 
 *Logic*: Randao is likely to be handled exclusively by consensus. If EL needs to supply a randao value, then use block's difficulty field.
 
 ##### Extra Data
 *Ethereum*: Anything a validator wants to use - 32 bytes.
 
-*TN*: The hash of the batch that was used to execute this block. Could later become anything a validator wants to use? This could also be used for the `ConsensusOutput` hash.
+*TN*: The index of the batch. Also consider: The priority fee rewards for validator? The hash of the batch that was used to execute this block? This could also be used for the `ConsensusOutput` hash? Can't use ms timestamp because execution times could vary between validators.
 
 *Logic*: It's unclear exactly what data is most useful for indexing blocks down the road. Extra data needs to be consistent amongst all validators to ensure correct hash of executed block, but using extra data now prevents TN from ever using it again. While other "unused" block fields are in place, prefer to use these instead.
 
 ##### Parent beacon block root
 *Ethereum*: the hash of the parent beacon block's root to support minimal trust for accessing consensus state.
 
-*TN*: `ConsensusOutput` hash? Staking contract root? Nothing?
+*TN*: `ConsensusOutput` hash.
 
 *Logic*: The parent beacon block root is mostly helpful for supporting staking pools like Lido and isn't really relevant to TN directly. However, it could be useful for calculating epoch shuffles. IMPORTANT: ensure implementation wouldn't violate EVM expectations.
