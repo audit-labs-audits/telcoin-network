@@ -69,7 +69,6 @@ where
         })
         .collect();
 
-    // TODO: use flat_map() here?
     for (block_index, block) in sealed_blocks_with_senders?.iter().enumerate() {
         let payload_attributes =
             TNPayloadAttributes::new(&output, block, block_index as u64, &parent_block);
