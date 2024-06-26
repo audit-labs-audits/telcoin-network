@@ -6,8 +6,8 @@ use reth_evm::ConfigureEvm;
 use reth_node_api::PayloadBuilderAttributes as _;
 use reth_payload_builder::{database::CachedReads, error::PayloadBuilderError};
 use reth_primitives::{
-    constants::EMPTY_WITHDRAWALS, revm::env::tx_env_with_recovered, Block, ChainSpec, Header,
-    Receipt, Receipts, SealedBlock, SealedBlockWithSenders, TransactionSigned,
+    constants::EMPTY_WITHDRAWALS, proofs, revm::env::tx_env_with_recovered, Block, ChainSpec,
+    Header, Receipt, Receipts, SealedBlock, SealedBlockWithSenders, TransactionSigned,
     TransactionSignedEcRecovered, EMPTY_OMMER_ROOT_HASH, U256,
 };
 use reth_provider::{BundleStateWithReceipts, StateProviderFactory};
@@ -18,7 +18,7 @@ use reth_revm::{
     DatabaseCommit, State,
 };
 use std::sync::Arc;
-use tn_types::{Batch, BatchAPI as _, BuildArguments, TNPayload, TNPayloadAttributes};
+use tn_types::{Batch, BatchAPI as _, BuildArguments, MetadataAPI, TNPayload, TNPayloadAttributes};
 use tracing::{debug, error, warn};
 
 use crate::error::ExecutorError;
@@ -57,6 +57,9 @@ where
 
     // let flat_batches: Vec<Batch> = output.clone().batches.into_iter().flatten().collect();
 
+    // create ommers while converting Batch to SealedBlockWithSenders
+    let mut ommers = Vec::new();
+
     // TODO: add this as a method on ConsensusOutput and parallelize
     let sealed_blocks_with_senders: Result<Vec<SealedBlockWithSenders>, _> = output
         .batches
@@ -65,13 +68,28 @@ where
             // try convert batch to sealed block
             //
             // this should never fail since batches are validated
-            batches.iter().map(|batch| SealedBlockWithSenders::try_from(batch))
+            batches.iter().map(|batch| {
+                // collect headers for ommers while looping through each batch
+                //
+                // TODO: is there a better way to do this?
+                ommers.push(batch.versioned_metadata().sealed_header().header().clone());
+                let sealed_block = SealedBlockWithSenders::try_from(batch);
+            })
         })
         .collect();
 
+    // calculate ommers hash
+    let ommers_root = proofs::calculate_ommers_root(&ommers);
+
     for (block_index, block) in sealed_blocks_with_senders?.iter().enumerate() {
-        let payload_attributes =
-            TNPayloadAttributes::new(&output, block, block_index as u64, &parent_block);
+        let payload_attributes = TNPayloadAttributes::new(
+            &output,
+            block,
+            block_index as u64,
+            &parent_block,
+            ommers.clone(),
+            ommers_root,
+        );
         let payload = TNPayload::try_new(parent_block.hash(), payload_attributes)?;
 
         build_block_from_batch_payload(

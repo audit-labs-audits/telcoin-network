@@ -25,7 +25,7 @@ Because blocks contain these fields, they are accessible to be re-purposed for T
 ##### Ommers
 *Ethereum*: A collection of uncle headers. Considered a "constant value" (empty vec) in PoS.
 
-*TN*: The ordered list of batche hashes (flattened) in the ConsensusOutput.
+*TN*: The ordered list of batch hashes (flattened) in the ConsensusOutput.
 
 *Logic*: Batches are proposed in parallel. This could be used to guarantee a complete ConsensusOutput included all batches. Batch validation ensures parent hash matches. TN can include this data without any cascading consequences using the current default `EthBeaconConsensus` logic from reth because batches don't have ommers, only final execution blocks.
 
@@ -46,7 +46,7 @@ Because blocks contain these fields, they are accessible to be re-purposed for T
 ##### Difficulty
 *Ethereum*: No longer used post-merge and must be 0.
 
-*TN*: This could be used for documenting validator rewards? Leave it alone and consider using it for `randao` value CL needs this value from EL?
+*TN*: Batch index? This could be used for documenting validator rewards? Leave it alone and consider using it for `randao` value CL needs this value from EL?
 
 *Logic*: [EIP-4399](https://eips.ethereum.org/EIPS/eip-4399) in favor of supplanting DIFFICULTY opcode with PREVRANDAO. If so, TN could use this for randao values.
 
@@ -60,7 +60,7 @@ Because blocks contain these fields, they are accessible to be re-purposed for T
 ##### Extra Data
 *Ethereum*: Anything a validator wants to use - 32 bytes.
 
-*TN*: The index of the batch. Also consider: The priority fee rewards for validator? The hash of the batch that was used to execute this block? This could also be used for the `ConsensusOutput` hash? Can't use ms timestamp because execution times could vary between validators.
+*TN*: The index of the batch? Better to use `difficulty` because U256 type? Also consider: The priority fee rewards for validator? The hash of the batch that was used to execute this block? This could also be used for the `ConsensusOutput` hash? Can't use ms timestamp because execution times could vary between validators.
 
 *Logic*: It's unclear exactly what data is most useful for indexing blocks down the road. Extra data needs to be consistent amongst all validators to ensure correct hash of executed block, but using extra data now prevents TN from ever using it again. While other "unused" block fields are in place, prefer to use these instead.
 

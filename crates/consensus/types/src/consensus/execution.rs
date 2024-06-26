@@ -109,25 +109,36 @@ impl<'a> TNPayload<'a> {
 
 /// The type used to construct a [TNPayload].
 ///
-/// It contains all the attributes required to initiate a payload build process.
+/// It contains all the attributes required to initiate a payload build process. The actual struct itself is a mediary for maintaining compatibility with reth's api. Otherwise, doesn't provide much utility.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct TNPayloadAttributes<'a> {
+    /// Ommers on TN are all the hashes of batches.
+
     /// Value for the `timestamp` field of the new payload
     pub timestamp: u64,
     /// Value for the `prevRandao` field of the new payload
-    pub prev_randao: B256,
-    /// Array of [`Withdrawal`].
-    pub withdrawals: Withdrawals,
-    /// Root of the parent beacon block?
-    pub parent_beacon_block_root: Option<B256>,
+    pub batch_hash: B256,
+    /// Hash value for [ConsensusOutput].
+    ///
+    /// TODO: ensure optimized hashing of output:
+    /// - don't rehash batches, just hash their hashes?
+    pub parent_beacon_block_root: B256,
     /// The block to build this payload from.
+    ///
+    /// Ensures transaction senders are recovered for execution.
+    ///
+    /// TODO: this is where Withdrawals should come from, but currently always empty.
     pub block: &'a SealedBlockWithSenders,
     /// The index of the block within the entire output from consensus.
-    pub block_index: u64,
+    ///
+    /// Used as executed block's `extra_data`.
+    pub batch_index: u64,
     /// The beneficiary from the round of consensus.
     pub beneficiary: Address,
     /// The previous canonical block.
     pub parent_block: &'a SealedBlock,
+    // TODO:
+    // - indicate first batch in new output to process rewards?
 }
 
 impl<'a> TNPayloadAttributes<'a> {
@@ -135,8 +146,10 @@ impl<'a> TNPayloadAttributes<'a> {
     pub fn new(
         output: &ConsensusOutput,
         block: &SealedBlockWithSenders,
-        block_index: u64,
+        batch_index: u64,
         parent_block: &SealedBlock,
+        ommers: Vec<Header>,
+        ommers_root: B256,
     ) -> Self {
         Self {
             timestamp: output.committed_at(),
@@ -144,9 +157,11 @@ impl<'a> TNPayloadAttributes<'a> {
             withdrawals: todo!(),
             parent_beacon_block_root: todo!(),
             block,
-            block_index,
+            batch_index,
             beneficiary: output.beneficiary(),
             parent_block,
+            ommers,
+            ommers_root,
         }
     }
 }
@@ -189,6 +204,7 @@ impl<'a> PayloadBuilderAttributes for TNPayload<'a> {
         todo!()
     }
 
+    /// Taken from batch, but currently always empty.
     fn withdrawals(&self) -> &Withdrawals {
         // self.attributes.withdrawals.unwrap_or_default().into()
         &self.attributes.withdrawals
@@ -251,7 +267,7 @@ impl<'a> PayloadBuilderAttributes for TNPayload<'a> {
             coinbase: self.suggested_fee_recipient(),
             timestamp: U256::from(self.timestamp()),
             difficulty: U256::ZERO,
-            prevrandao: Some(self.prev_randao()),
+            prevrandao: Some(self.prev_randao()), // this batch's hash for TN
             gas_limit,
             // calculate basefee based on parent block's gas usage
             basefee: basefee.map(U256::from).unwrap_or_default(),
