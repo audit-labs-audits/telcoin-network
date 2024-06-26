@@ -4,15 +4,10 @@ use crate::{
     adiri_chain_spec, utils::get_available_tcp_port, BlsPublicKey, BlsSignature, Multiaddr,
     NetworkPublicKey, ValidatorInfo, WorkerIndex,
 };
-use core::fmt;
 use fastcrypto::traits::KeyPair as KeyPairTrait;
 use reth_chainspec::ChainSpec;
 use reth_primitives::{Address, Genesis};
-use serde::{
-    de::{self, MapAccess, SeqAccess, Visitor},
-    ser::SerializeStruct,
-    Deserialize, Serialize,
-};
+use serde::{Deserialize, Serialize};
 use std::{
     num::NonZeroU32,
     path::{Path, PathBuf},
@@ -32,7 +27,7 @@ pub const WORKER_NETWORK_KEYFILE: &str = "worker.key";
 // Can not use serde derive macros because ChainSpec is not serializable...
 // Implemented manually below, basically we save/load genesis and derive the chainspec from that.
 /// Configuration for the Telcoin Network node.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Config {
     /// The path where keys are stored, if successfully generated.
     ///
@@ -45,8 +40,8 @@ pub struct Config {
     /// Parameters for the network.
     pub parameters: Parameters,
 
-    /// The [ChainSpec] for the node.
-    pub chain_spec: ChainSpec,
+    /// The [Genesis] for the node.
+    pub genesis: Genesis,
 }
 
 impl Default for Config {
@@ -57,119 +52,12 @@ impl Default for Config {
             validator_info: Default::default(),
             parameters: Default::default(),
             // specify adiri chain spec
-            chain_spec: adiri_chain_spec(),
+            genesis: adiri_chain_spec().genesis,
         }
     }
 }
 
 impl ConfigTrait for Config {}
-
-// Manual implementation of Serialize because ChainSpec is not serializable...
-impl Serialize for Config {
-    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
-    where
-        S: serde::Serializer,
-    {
-        let mut s = serializer.serialize_struct("Config", 4)?;
-        s.serialize_field("keypath", &self.keypath)?;
-        s.serialize_field("validator_info", &self.validator_info)?;
-        s.serialize_field("parameters", &self.parameters)?;
-        s.serialize_field("genesis", &self.chain_spec.genesis)?;
-        s.end()
-    }
-}
-
-// Manual implementation of Deserialize because ChainSpec is not deserializable...
-// This is mostly boiler plate from the book (i.e. what the macro would do), but uses Genesis as a
-// standin for ChainSpec.
-impl<'de> Deserialize<'de> for Config {
-    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
-    where
-        D: serde::Deserializer<'de>,
-    {
-        #[derive(Deserialize)]
-        #[serde(field_identifier, rename_all = "snake_case")]
-        enum Field {
-            Keypath,
-            ValidatorInfo,
-            Parameters,
-            Genesis,
-        }
-
-        struct ConfigVisitor;
-
-        impl<'de> Visitor<'de> for ConfigVisitor {
-            type Value = Config;
-
-            fn expecting(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
-                formatter.write_str("struct Config")
-            }
-
-            fn visit_seq<V>(self, mut seq: V) -> Result<Config, V::Error>
-            where
-                V: SeqAccess<'de>,
-            {
-                let keypath =
-                    seq.next_element()?.ok_or_else(|| de::Error::invalid_length(0, &self))?;
-                let validator_info =
-                    seq.next_element()?.ok_or_else(|| de::Error::invalid_length(1, &self))?;
-                let parameters =
-                    seq.next_element()?.ok_or_else(|| de::Error::invalid_length(2, &self))?;
-                let genesis: Genesis =
-                    seq.next_element()?.ok_or_else(|| de::Error::invalid_length(3, &self))?;
-                Ok(Config { keypath, validator_info, parameters, chain_spec: genesis.into() })
-            }
-
-            fn visit_map<V>(self, mut map: V) -> Result<Config, V::Error>
-            where
-                V: MapAccess<'de>,
-            {
-                let mut keypath = None;
-                let mut validator_info = None;
-                let mut parameters = None;
-                let mut genesis: Option<Genesis> = None;
-                while let Some(key) = map.next_key()? {
-                    match key {
-                        Field::Keypath => {
-                            if keypath.is_some() {
-                                return Err(de::Error::duplicate_field("keypath"));
-                            }
-                            keypath = Some(map.next_value()?);
-                        }
-                        Field::ValidatorInfo => {
-                            if validator_info.is_some() {
-                                return Err(de::Error::duplicate_field("validator_info"));
-                            }
-                            validator_info = Some(map.next_value()?);
-                        }
-                        Field::Parameters => {
-                            if parameters.is_some() {
-                                return Err(de::Error::duplicate_field("parameters"));
-                            }
-                            parameters = Some(map.next_value()?);
-                        }
-                        Field::Genesis => {
-                            if genesis.is_some() {
-                                return Err(de::Error::duplicate_field("genesis"));
-                            }
-                            genesis = Some(map.next_value()?);
-                        }
-                    }
-                }
-                let keypath = keypath.ok_or_else(|| de::Error::missing_field("keypath"))?;
-                let validator_info =
-                    validator_info.ok_or_else(|| de::Error::missing_field("validator_info"))?;
-                let parameters =
-                    parameters.ok_or_else(|| de::Error::missing_field("parameters"))?;
-                let genesis = genesis.ok_or_else(|| de::Error::missing_field("genesis"))?;
-                Ok(Config { keypath, validator_info, parameters, chain_spec: genesis.into() })
-            }
-        }
-
-        const FIELDS: &[&str] = &["keypath", "validator_info", "parameters", "genesis"];
-        deserializer.deserialize_struct("Config", FIELDS, ConfigVisitor)
-    }
-}
 
 impl Config {
     /// Update the authority protocol key.
@@ -206,8 +94,13 @@ impl Config {
     }
 
     /// Return a reference to the
-    pub fn chain_spec(&self) -> &ChainSpec {
-        &self.chain_spec
+    pub fn genesis(&self) -> &Genesis {
+        &self.genesis
+    }
+
+    /// Return the ChainSpec for the configured Genesis
+    pub fn chain_spec(&self) -> ChainSpec {
+        self.genesis.clone().into()
     }
 
     /// Return a reference to the exeuction address for suggested fee recipient.

@@ -150,7 +150,7 @@ impl<Ext: clap::Args + fmt::Debug> NodeCommand<Ext> {
 
         let tn_config: Config = Config::load_from_path(&config_path)?;
         // Make sure we are using the chain from config not just the default.
-        self.chain = Arc::new(tn_config.chain_spec.clone());
+        self.chain = Arc::new(tn_config.chain_spec());
         info!(target: "telcoin::cli", validator = ?tn_config.validator_info.name, "config loaded");
 
         // get the worker's transaction address from the config

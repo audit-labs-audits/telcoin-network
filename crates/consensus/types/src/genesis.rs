@@ -194,7 +194,7 @@ impl NetworkGenesis {
         let tn_config: Config = Config::load_from_path(telcoin_paths.node_config_path())?;
 
         let network_genesis = Self {
-            chain: tn_config.chain_spec,
+            chain: tn_config.chain_spec(),
             validators,
             // signatures,
         };
