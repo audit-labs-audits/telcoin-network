@@ -23,7 +23,6 @@ futures = { workspace = true }
 indexmap = { workspace = true }
 prometheus = { workspace = true }
 proptest = { workspace = true }
-proptest-derive = { workspace = true }
 rand = { workspace = true }
 roaring = { workspace = true }
 serde = { workspace = true }

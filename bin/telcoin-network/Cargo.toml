@@ -55,6 +55,7 @@ reth-node-core = { workspace = true }
 reth-node-ethereum = { workspace = true }
 reth-stages = { workspace = true }
 reth-chainspec = { workspace = true }
+tikv-jemallocator = { workspace = true, optional = true }
 
 [dev-dependencies]
 reth-basic-payload-builder = { workspace = true }
@@ -74,6 +75,7 @@ tonic = { workspace = true }
 [features]
 default = []
 faucet = ["tn-faucet"]
+jemalloc = ["tikv-jemallocator"]
 
 [build-dependencies]
 vergen = { version = "8.0.0", features = ["build", "cargo", "git", "gitcl"] }

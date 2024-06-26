@@ -32,6 +32,7 @@ pub struct CreateCommitteeArgs {
     /// The GENESIS_DIRECTORY contains more directories:
     /// - committee
     /// - todo
+    ///
     /// Validators add their information to the directory using VCS like
     /// github. Using individual files prevents merge conflicts.
     #[arg(long, value_name = "GENESIS_DIRECTORY", verbatim_doc_comment)]
