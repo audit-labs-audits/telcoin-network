@@ -90,19 +90,19 @@ pub struct BuildArguments<Provider> {
 
 /// The type used to build the next canonical block.
 #[derive(Debug)]
-pub struct TNPayload<'a> {
+pub struct TNPayload {
     //
     // this is the concept of the block with additional information from consensus output needed for execution
     //
     /// The hash of the last block executed from the previous round of consensus.
     pub parent: B256,
     /// Attributes to use when building the payload.
-    pub attributes: TNPayloadAttributes<'a>,
+    pub attributes: TNPayloadAttributes,
 }
 
-impl<'a> TNPayload<'a> {
+impl TNPayload {
     /// Create a new instance of [Self].
-    pub fn new(parent: B256, attributes: TNPayloadAttributes<'a>) -> Self {
+    pub fn new(parent: B256, attributes: TNPayloadAttributes) -> Self {
         Self { parent, attributes }
     }
 }
@@ -111,64 +111,67 @@ impl<'a> TNPayload<'a> {
 ///
 /// It contains all the attributes required to initiate a payload build process. The actual struct itself is a mediary for maintaining compatibility with reth's api. Otherwise, doesn't provide much utility.
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub struct TNPayloadAttributes<'a> {
+pub struct TNPayloadAttributes {
+    /// The previous canonical block.
+    pub parent_block: SealedBlock,
     /// Ommers on TN are all the hashes of batches.
-
+    pub ommers: Vec<Header>,
+    /// Hash of all ommers in this output from consensus.
+    pub ommers_root: B256,
+    /// The beneficiary from the round of consensus.
+    pub beneficiary: Address,
+    /// The index of the block within the entire output from consensus.
+    ///
+    /// Used as executed block's `extra_data`.
+    pub batch_index: u64,
     /// Value for the `timestamp` field of the new payload
     pub timestamp: u64,
-    /// Value for the `prevRandao` field of the new payload
+    /// Value for the `mix_hash` field in the new block.
     pub batch_hash: B256,
     /// Hash value for [ConsensusOutput].
     ///
     /// TODO: ensure optimized hashing of output:
     /// - don't rehash batches, just hash their hashes?
     pub parent_beacon_block_root: B256,
-    /// The block to build this payload from.
+    /// The block from this batch that's used to build this payload from.
     ///
     /// Ensures transaction senders are recovered for execution.
     ///
     /// TODO: this is where Withdrawals should come from, but currently always empty.
-    pub block: &'a SealedBlockWithSenders,
-    /// The index of the block within the entire output from consensus.
-    ///
-    /// Used as executed block's `extra_data`.
-    pub batch_index: u64,
-    /// The beneficiary from the round of consensus.
-    pub beneficiary: Address,
-    /// The previous canonical block.
-    pub parent_block: &'a SealedBlock,
+    pub batch_block: SealedBlockWithSenders,
     // TODO:
     // - indicate first batch in new output to process rewards?
 }
 
-impl<'a> TNPayloadAttributes<'a> {
+impl TNPayloadAttributes {
     /// Create a new instance of [Self].
     pub fn new(
-        output: &ConsensusOutput,
-        block: &SealedBlockWithSenders,
-        batch_index: u64,
-        parent_block: &SealedBlock,
+        parent_block: SealedBlock,
         ommers: Vec<Header>,
         ommers_root: B256,
+        batch_index: u64,
+        batch_hash: B256,
+        output: &ConsensusOutput,
+        output_digest: B256,
+        batch_block: SealedBlockWithSenders,
     ) -> Self {
         Self {
-            timestamp: output.committed_at(),
-            prev_randao: todo!(),
-            withdrawals: todo!(),
-            parent_beacon_block_root: todo!(),
-            block,
-            batch_index,
-            beneficiary: output.beneficiary(),
             parent_block,
             ommers,
             ommers_root,
+            beneficiary: output.beneficiary(),
+            batch_index,
+            timestamp: output.committed_at(),
+            batch_hash,
+            parent_beacon_block_root: output_digest,
+            batch_block,
         }
     }
 }
 
 /// Implement [PayloadBuilderAttributes] for extending the canonical tip after consensus is reached.
-impl<'a> PayloadBuilderAttributes for TNPayload<'a> {
-    type RpcPayloadAttributes = TNPayloadAttributes<'a>;
+impl PayloadBuilderAttributes for TNPayload {
+    type RpcPayloadAttributes = TNPayloadAttributes;
 
     // TODO: use actual error here
     type Error = Infallible;

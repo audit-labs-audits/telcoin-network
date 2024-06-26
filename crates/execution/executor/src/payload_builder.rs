@@ -59,6 +59,7 @@ where
 
     // create ommers while converting Batch to SealedBlockWithSenders
     let mut ommers = Vec::new();
+    let output_digest = output.digest();
 
     // TODO: add this as a method on ConsensusOutput and parallelize
     let sealed_blocks_with_senders: Result<Vec<SealedBlockWithSenders>, _> = output
@@ -73,7 +74,7 @@ where
                 //
                 // TODO: is there a better way to do this?
                 ommers.push(batch.versioned_metadata().sealed_header().header().clone());
-                let sealed_block = SealedBlockWithSenders::try_from(batch);
+                SealedBlockWithSenders::try_from(batch)
             })
         })
         .collect();
@@ -81,7 +82,7 @@ where
     // calculate ommers hash
     let ommers_root = proofs::calculate_ommers_root(&ommers);
 
-    for (block_index, block) in sealed_blocks_with_senders?.iter().enumerate() {
+    for (block_index, block) in sealed_blocks_with_senders?.into_iter().enumerate() {
         let payload_attributes = TNPayloadAttributes::new(
             &output,
             block,
