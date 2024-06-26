@@ -42,6 +42,7 @@ struct Inner {
     metrics: Arc<ExecutorMetrics>,
 }
 
+#[allow(clippy::too_many_arguments)]
 pub fn spawn_subscriber(
     authority_id: AuthorityIdentifier,
     worker_cache: WorkerCache,
@@ -107,6 +108,7 @@ pub fn spawn_subscriber(
 //     }
 // }
 
+#[allow(clippy::too_many_arguments)]
 async fn create_and_run_subscriber(
     authority_id: AuthorityIdentifier,
     worker_cache: WorkerCache,

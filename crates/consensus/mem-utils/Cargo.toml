@@ -10,7 +10,7 @@ repository = "https://github.com/mystenlabs/mysten-infra"
 description = "Collection of memory related utilities"
 license = "MIT OR Apache-2.0"
 edition = "2021"
-rust-version = "1.56.1"
+rust-version.workspace = true
 publish = false
 
 [dependencies]

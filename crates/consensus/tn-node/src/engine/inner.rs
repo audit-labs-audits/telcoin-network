@@ -4,7 +4,7 @@ use consensus_metrics::metered_channel::Sender;
 use eyre::Context as _;
 use futures::{stream_select, StreamExt};
 use jsonrpsee::http_client::HttpClient;
-use reth::rpc::builder::{RpcModuleBuilder, RpcServerHandle};
+use reth::rpc::builder::{config::RethRpcServerConfig, RpcModuleBuilder, RpcServerHandle};
 use reth_auto_seal_consensus::AutoSealConsensus;
 use reth_beacon_consensus::{
     hooks::{EngineHooks, StaticFileHook},
@@ -22,19 +22,21 @@ use reth_evm::execute::BlockExecutorProvider;
 use reth_exex::ExExManagerHandle;
 use reth_network::NetworkEvents;
 use reth_node_builder::{
+    common::WithConfigs,
     components::{NetworkBuilder as _, PayloadServiceBuilder as _, PoolBuilder},
     setup::build_networked_pipeline,
-    BuilderContext, NodeConfig, RethRpcConfig,
+    BuilderContext, NodeConfig,
 };
 use reth_node_ethereum::{
     node::{EthereumNetworkBuilder, EthereumPayloadBuilder, EthereumPoolBuilder},
     EthEvmConfig,
 };
-use reth_primitives::{Address, Head, PruneModes};
+use reth_primitives::{Address, Head};
 use reth_provider::{
     providers::{BlockchainProvider, StaticFileProvider},
     CanonStateNotificationSender, ProviderFactory, StaticFileProviderFactory as _,
 };
+use reth_prune::PruneModes;
 use reth_rpc_types::engine::ForkchoiceState;
 use reth_static_file::StaticFileProducer;
 use reth_tasks::TaskExecutor;
@@ -194,8 +196,10 @@ where
             head,
             self.blockchain_db.clone(),
             self.task_executor.clone(),
-            self.node_config.clone(),
-            reth_config::Config::default(), // mostly peer / staging configs
+            WithConfigs {
+                config: self.node_config.clone(),
+                toml_config: reth_config::Config::default(),
+            },
         );
 
         // let components_builder = PrimaryNode::<DB, _>::components();
@@ -253,7 +257,6 @@ where
         let static_file_producer_events = static_file_producer.lock().events();
 
         let pipeline = build_networked_pipeline(
-            &self.node_config.clone(),
             &reth_config.stages,
             client.clone(),
             Arc::clone(&auto_consensus),
@@ -281,8 +284,7 @@ where
             self.blockchain_db.clone(),
             Box::new(self.task_executor.clone()),
             Box::new(network.clone()),
-            None,  // max block
-            false, // self.debug.continuous,
+            None, // max block
             payload_builder,
             None, // initial_target
             MIN_BLOCKS_FOR_PIPELINE_RUN,
@@ -353,8 +355,10 @@ where
             head,
             self.blockchain_db.clone(),
             self.task_executor.clone(),
-            self.node_config.clone(),
-            reth_config::Config::default(), // mostly peer / staging configs
+            WithConfigs {
+                config: self.node_config.clone(),
+                toml_config: reth_config::Config::default(), /* mostly peer / staging configs */
+            },
         );
 
         // default tx pool

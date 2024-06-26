@@ -16,6 +16,7 @@
 #![cfg_attr(docsrs, feature(doc_cfg, doc_auto_cfg))]
 
 use reth_beacon_consensus::BeaconEngineMessage;
+use reth_chainspec::ChainSpec;
 use reth_evm::execute::{
     BlockExecutionError, BlockExecutionOutput, BlockExecutorProvider, BlockValidationError,
     Executor as _,
@@ -23,12 +24,12 @@ use reth_evm::execute::{
 use reth_node_api::EngineTypes;
 use reth_primitives::{
     constants::{EMPTY_TRANSACTIONS, ETHEREUM_BLOCK_GAS_LIMIT},
-    proofs, Address, Block, BlockBody, BlockHash, BlockHashOrNumber, BlockNumber, ChainSpec,
-    Header, Receipts, SealedBlockWithSenders, SealedHeader, TransactionSigned, Withdrawals, B256,
+    proofs, Address, Block, BlockBody, BlockHash, BlockHashOrNumber, BlockNumber, Header,
+    SealedBlockWithSenders, SealedHeader, TransactionSigned, Withdrawals, B256,
     EMPTY_OMMER_ROOT_HASH, U256,
 };
 use reth_provider::{
-    BlockReaderIdExt, BundleStateWithReceipts, CanonStateNotificationSender, StateProviderFactory,
+    BlockReaderIdExt, CanonStateNotificationSender, ExecutionOutcome, StateProviderFactory,
 };
 use reth_revm::database::StateProviderDatabase;
 use std::{collections::HashMap, sync::Arc};
@@ -270,7 +271,7 @@ impl StorageInner {
         provider: &Provider,
         chain_spec: Arc<ChainSpec>,
         executor: &Executor,
-    ) -> Result<(SealedBlockWithSenders, BundleStateWithReceipts), ExecutorError>
+    ) -> Result<(SealedBlockWithSenders, ExecutionOutcome), ExecutorError>
     where
         Executor: BlockExecutorProvider,
         Provider: StateProviderFactory + BlockReaderIdExt,
@@ -337,11 +338,7 @@ impl StorageInner {
         // execute the block
         let BlockExecutionOutput { state, receipts, gas_used, .. } =
             executor.executor(&mut db).execute((&block, U256::ZERO).into())?;
-        let bundle_state = BundleStateWithReceipts::new(
-            state,
-            Receipts::from_block_receipt(receipts),
-            block_number,
-        );
+        let bundle_state = ExecutionOutcome::new(state, receipts.into(), block_number, vec![]);
 
         let Block { mut header, body, .. } = block.block;
         let body = BlockBody {

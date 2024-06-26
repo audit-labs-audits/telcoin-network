@@ -5,7 +5,8 @@ use crate::{
     NetworkPublicKey, ValidatorInfo, WorkerIndex,
 };
 use fastcrypto::traits::KeyPair as KeyPairTrait;
-use reth_primitives::{Address, ChainSpec};
+use reth_chainspec::ChainSpec;
+use reth_primitives::Address;
 use serde::{Deserialize, Serialize};
 use std::{
     num::NonZeroU32,
@@ -39,6 +40,7 @@ pub struct Config {
     pub parameters: Parameters,
 
     /// The [ChainSpec] for the node.
+    #[serde(skip)]
     pub chain_spec: ChainSpec,
 }
 

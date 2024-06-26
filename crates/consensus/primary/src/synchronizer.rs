@@ -326,6 +326,7 @@ pub struct Synchronizer {
 }
 
 impl Synchronizer {
+    #[allow(clippy::too_many_arguments)]
     pub fn new(
         authority_id: AuthorityIdentifier,
         committee: Committee,

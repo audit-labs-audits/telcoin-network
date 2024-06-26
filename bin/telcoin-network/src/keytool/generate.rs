@@ -6,7 +6,8 @@ use fastcrypto::traits::KeyPair as KeyPairTraits;
 use rand::prelude::*;
 use rand_chacha::ChaCha20Rng;
 use reth::dirs::MaybePlatformPath;
-use reth_primitives::{Address, ChainSpec};
+use reth_chainspec::ChainSpec;
+use reth_primitives::Address;
 use std::{path::Path, sync::Arc};
 use tn_node::dirs::DataDirPath;
 use tn_types::{

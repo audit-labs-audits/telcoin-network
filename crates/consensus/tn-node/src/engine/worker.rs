@@ -17,19 +17,18 @@ use reth_eth_wire::DisconnectReason;
 use reth_evm::execute::BlockExecutorProvider;
 use reth_network::NetworkHandle;
 use reth_network_api::{
-    NetworkError, NetworkInfo, PeerInfo, PeerKind, Peers, PeersInfo, Reputation,
+    NetworkError, NetworkInfo, NetworkStatus, PeerInfo, PeerKind, Peers, PeersInfo, Reputation,
     ReputationChangeKind,
 };
-use reth_network_types::PeerId;
+use reth_network_peers::{NodeRecord, PeerId};
 use reth_node_builder::{
     components::NetworkBuilder,
     node::{FullNodeTypes, NodeTypes},
     BuilderContext,
 };
 use reth_node_ethereum::EthEngineTypes;
-use reth_primitives::NodeRecord;
 use reth_provider::providers::BlockchainProvider;
-use reth_rpc_types::{admin::EthProtocolInfo, NetworkStatus};
+use reth_rpc_types::admin::EthProtocolInfo;
 use reth_transaction_pool::TransactionPool;
 use std::{
     marker::PhantomData,
@@ -45,7 +44,7 @@ pub struct WorkerNode<DB, Evm> {
     evm: PhantomData<Evm>,
 }
 
-impl<DB, Evm> NodeTypes for WorkerNode<DB, Evm>
+impl<DB: Unpin, Evm: Unpin> NodeTypes for WorkerNode<DB, Evm>
 where
     DB: Send + Sync + 'static,
     Evm: Send + Sync + 'static,

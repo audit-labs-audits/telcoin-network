@@ -13,7 +13,8 @@ use clap::{Args, Subcommand};
 
 use rand::{rngs::StdRng, SeedableRng};
 use reth::dirs::MaybePlatformPath;
-use reth_primitives::{keccak256, Address, ChainSpec, GenesisAccount, U256};
+use reth_chainspec::ChainSpec;
+use reth_primitives::{keccak256, Address, GenesisAccount, U256};
 use secp256k1::Secp256k1;
 use std::{path::PathBuf, sync::Arc};
 use tn_node::dirs::{default_datadir_args, DataDirChainPath, DataDirPath};

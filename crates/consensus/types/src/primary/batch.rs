@@ -50,7 +50,6 @@ pub struct NewBatch {
 ///
 /// TODO: Batch is just another term for `SealedBlock` in Ethereum.
 /// I think it would better to use `SealedBlock` instead of a redundant type.
-#[cfg_attr(any(test, feature = "arbitrary"), derive(Arbitrary))]
 #[derive(Clone, Serialize, Deserialize, Debug, PartialEq, Eq)]
 #[enum_dispatch(BatchAPI)]
 pub enum Batch {
@@ -144,7 +143,6 @@ pub trait BatchAPI {
 /// The batch version.
 ///
 /// akin to BatchV2 in sui
-#[cfg_attr(any(test, feature = "arbitrary"), derive(Arbitrary))]
 #[derive(Clone, Serialize, Deserialize, Debug, PartialEq, Eq)]
 pub struct BatchV1 {
     /// List of transactions.

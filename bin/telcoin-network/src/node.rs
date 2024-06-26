@@ -16,8 +16,8 @@ use reth::{
     dirs::MaybePlatformPath,
     CliContext,
 };
+use reth_chainspec::ChainSpec;
 use reth_db::{init_db, DatabaseEnv};
-use reth_primitives::ChainSpec;
 use std::{net::SocketAddr, path::PathBuf, sync::Arc};
 use tn_node::{
     dirs::{default_datadir_args, DataDirChainPath, DataDirPath},

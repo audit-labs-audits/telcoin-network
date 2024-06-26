@@ -43,7 +43,7 @@ struct AuthorityDetailsInternal {
     execution: ExecutionNode<Arc<TempDatabase<DatabaseEnv>>, EthExecutorProvider>,
 }
 
-#[allow(clippy::arc_with_non_send_sync)]
+#[allow(clippy::arc_with_non_send_sync, clippy::too_many_arguments)]
 impl AuthorityDetails {
     pub fn new(
         id: usize,

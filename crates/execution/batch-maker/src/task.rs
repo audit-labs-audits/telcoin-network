@@ -1,8 +1,9 @@
 use crate::{mode::MiningMode, Storage};
 use consensus_metrics::metered_channel::Sender;
 use futures_util::{future::BoxFuture, FutureExt};
+use reth_chainspec::ChainSpec;
 use reth_evm::execute::BlockExecutorProvider;
-use reth_primitives::{ChainSpec, IntoRecoveredTransaction, Withdrawals};
+use reth_primitives::{IntoRecoveredTransaction, Withdrawals};
 use reth_provider::{BlockReaderIdExt, CanonChainTracker, StateProviderFactory};
 use reth_stages::PipelineEvent;
 use reth_transaction_pool::{TransactionPool, ValidPoolTransaction};

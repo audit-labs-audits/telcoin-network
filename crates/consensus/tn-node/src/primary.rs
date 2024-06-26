@@ -67,6 +67,7 @@ impl PrimaryNodeInner {
 
     /// Starts the primary node with the provided info. If the node is already running then this
     /// method will return an error instead.
+    #[allow(clippy::too_many_arguments)]
     #[instrument(level = "info", skip_all)]
     async fn start<DB, Evm>(
         &mut self,
@@ -211,6 +212,7 @@ impl PrimaryNodeInner {
 
     /// Spawn a new primary. Optionally also spawn the consensus and a client executing
     /// transactions.
+    #[allow(clippy::too_many_arguments)]
     pub async fn spawn_primary(
         // The private-public key pair of this authority.
         keypair: BlsKeypair,
@@ -333,6 +335,7 @@ where
     ///
     /// TODO: Executor metrics is needed to create the metered channel. This
     /// could be done a better way, but bigger priorities right now.
+    #[allow(clippy::too_many_arguments)]
     async fn spawn_consensus(
         authority_id: AuthorityIdentifier,
         worker_cache: WorkerCache,
@@ -477,6 +480,7 @@ impl PrimaryNode {
         Self { internal: Arc::new(RwLock::new(inner)) }
     }
 
+    #[allow(clippy::too_many_arguments)]
     pub async fn start<DB, Evm>(
         &self,
         // The private-public key pair of this authority.
