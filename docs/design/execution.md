@@ -67,6 +67,6 @@ Because blocks contain these fields, they are accessible to be re-purposed for T
 ##### Parent beacon block root
 *Ethereum*: the hash of the parent beacon block's root to support minimal trust for accessing consensus state.
 
-*TN*: `ConsensusOutput` hash.
+*TN*: `ConsensusOutput` hash. Or should this be used for managing rewards/validator sets on chain?
 
 *Logic*: The parent beacon block root is mostly helpful for supporting staking pools like Lido and isn't really relevant to TN directly. However, it could be useful for calculating epoch shuffles. IMPORTANT: ensure implementation wouldn't violate EVM expectations.

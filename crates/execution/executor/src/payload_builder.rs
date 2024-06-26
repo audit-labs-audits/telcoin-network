@@ -112,7 +112,7 @@ where
 #[inline]
 fn build_block_from_batch_payload<'a, EvmConfig, Provider>(
     evm_config: &EvmConfig,
-    payload: TNPayload<'a>,
+    payload: TNPayload,
     parent_block: &SealedBlock,
     provider: &Provider,
     chain_spec: Arc<ChainSpec>,

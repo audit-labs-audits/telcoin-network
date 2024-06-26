@@ -91,9 +91,6 @@ pub struct BuildArguments<Provider> {
 /// The type used to build the next canonical block.
 #[derive(Debug)]
 pub struct TNPayload {
-    //
-    // this is the concept of the block with additional information from consensus output needed for execution
-    //
     /// The hash of the last block executed from the previous round of consensus.
     pub parent: B256,
     /// Attributes to use when building the payload.
@@ -127,12 +124,12 @@ pub struct TNPayloadAttributes {
     /// Value for the `timestamp` field of the new payload
     pub timestamp: u64,
     /// Value for the `mix_hash` field in the new block.
-    pub batch_hash: B256,
-    /// Hash value for [ConsensusOutput].
+    pub batch_digest: B256,
+    /// Hash value for [ConsensusOutput]. Used as the executed block's "parent_beacon_block_root".
     ///
     /// TODO: ensure optimized hashing of output:
     /// - don't rehash batches, just hash their hashes?
-    pub parent_beacon_block_root: B256,
+    pub consensus_output_digest: B256,
     /// The block from this batch that's used to build this payload from.
     ///
     /// Ensures transaction senders are recovered for execution.
@@ -141,6 +138,7 @@ pub struct TNPayloadAttributes {
     pub batch_block: SealedBlockWithSenders,
     // TODO:
     // - indicate first batch in new output to process rewards?
+    // or is it better to have a special "rewards" block at each epoch?
 }
 
 impl TNPayloadAttributes {
@@ -150,9 +148,9 @@ impl TNPayloadAttributes {
         ommers: Vec<Header>,
         ommers_root: B256,
         batch_index: u64,
-        batch_hash: B256,
+        batch_digest: B256,
         output: &ConsensusOutput,
-        output_digest: B256,
+        consensus_output_digest: B256,
         batch_block: SealedBlockWithSenders,
     ) -> Self {
         Self {
@@ -162,8 +160,8 @@ impl TNPayloadAttributes {
             beneficiary: output.beneficiary(),
             batch_index,
             timestamp: output.committed_at(),
-            batch_hash,
-            parent_beacon_block_root: output_digest,
+            batch_digest,
+            consensus_output_digest,
             batch_block,
         }
     }
@@ -173,7 +171,7 @@ impl TNPayloadAttributes {
 impl PayloadBuilderAttributes for TNPayload {
     type RpcPayloadAttributes = TNPayloadAttributes;
 
-    // TODO: use actual error here
+    // try_new cannot fail because Self::new() cannot fail
     type Error = Infallible;
 
     fn try_new(parent: B256, attributes: Self::RpcPayloadAttributes) -> Result<Self, Self::Error> {
@@ -183,7 +181,7 @@ impl PayloadBuilderAttributes for TNPayload {
     fn payload_id(&self) -> PayloadId {
         // construct the payload id from the block's index
         // guaranteed to always be unique within each output
-        PayloadId::new(self.attributes.block_index.to_le_bytes())
+        PayloadId::new(self.attributes.batch_index.to_le_bytes())
     }
 
     fn parent(&self) -> B256 {
@@ -195,7 +193,7 @@ impl PayloadBuilderAttributes for TNPayload {
     }
 
     fn parent_beacon_block_root(&self) -> Option<B256> {
-        self.attributes.parent_beacon_block_root
+        Some(self.attributes.consensus_output_digest)
     }
 
     fn suggested_fee_recipient(&self) -> Address {
@@ -203,14 +201,16 @@ impl PayloadBuilderAttributes for TNPayload {
     }
 
     /// This is used by TN to indicate the [Batch]'s hash.
+    ///
+    /// This is used as the executed block's "mix_hash".
     fn prev_randao(&self) -> B256 {
-        todo!()
+        self.attributes.batch_digest
     }
 
     /// Taken from batch, but currently always empty.
     fn withdrawals(&self) -> &Withdrawals {
-        // self.attributes.withdrawals.unwrap_or_default().into()
-        &self.attributes.withdrawals
+        // TODO: handle withdrawals
+        todo!()
     }
 
     fn cfg_and_block_env(
@@ -239,7 +239,7 @@ impl PayloadBuilderAttributes for TNPayload {
         let blob_excess_gas_and_price = Some(BlobExcessGasAndPrice::new(0));
 
         // use the block's sealed header for "parent" values
-        let block = self.attributes.block.header();
+        let block = self.attributes.batch_block.header();
 
         // TODO: is this the correct value for basefee?
         let basefee = block.base_fee_per_gas;
@@ -265,6 +265,7 @@ impl PayloadBuilderAttributes for TNPayload {
         //     basefee = Some(EIP1559_INITIAL_BASE_FEE)
         // }
 
+        // TODO: is this the correct block env?
         let block_env = BlockEnv {
             number: U256::from(self.attributes.parent_block.number + 1),
             coinbase: self.suggested_fee_recipient(),
