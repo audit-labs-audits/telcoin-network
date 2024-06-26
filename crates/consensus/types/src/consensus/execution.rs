@@ -94,6 +94,9 @@ pub struct TNPayload {
     /// The hash of the last block executed from the previous round of consensus.
     pub parent: B256,
     /// Attributes to use when building the payload.
+    ///
+    /// Stored here for simplicity to maintain compatibility with reth api and implementing
+    /// `PayloadBuilderAttributes` on Self.
     pub attributes: TNPayloadAttributes,
 }
 
@@ -125,6 +128,10 @@ pub struct TNPayloadAttributes {
     pub batch_index: u64,
     /// Value for the `timestamp` field of the new payload
     pub timestamp: u64,
+    /// TODO: support withdrawals
+    ///
+    /// This is currently always empty vec.
+    withdrawals: Withdrawals,
     /// Value for the `mix_hash` field in the new block.
     pub batch_digest: B256,
     /// Hash value for [ConsensusOutput]. Used as the executed block's "parent_beacon_block_root".
@@ -140,7 +147,7 @@ pub struct TNPayloadAttributes {
     pub batch_block: SealedBlockWithSenders,
     // TODO:
     // - indicate first batch in new output to process rewards?
-    // or is it better to have a special "rewards" block at each epoch?
+    // - or is it better to have a special "rewards" block at each epoch?
 }
 
 impl TNPayloadAttributes {
@@ -155,6 +162,9 @@ impl TNPayloadAttributes {
         consensus_output_digest: B256,
         batch_block: SealedBlockWithSenders,
     ) -> Self {
+        // TODO: support withdrawals
+        let withdrawals = batch_block.withdrawals.clone().unwrap_or_default();
+
         Self {
             parent_block,
             ommers,
@@ -162,6 +172,7 @@ impl TNPayloadAttributes {
             beneficiary: output.beneficiary(),
             batch_index,
             timestamp: output.committed_at(),
+            withdrawals,
             batch_digest,
             consensus_output_digest,
             batch_block,
@@ -211,8 +222,7 @@ impl PayloadBuilderAttributes for TNPayload {
 
     /// Taken from batch, but currently always empty.
     fn withdrawals(&self) -> &Withdrawals {
-        // TODO: handle withdrawals
-        todo!()
+        &self.attributes.withdrawals
     }
 
     fn cfg_and_block_env(
@@ -226,18 +236,7 @@ impl PayloadBuilderAttributes for TNPayload {
         // ensure we're not missing any timestamp based hardforks
         let spec_id = revm_spec_by_timestamp_after_merge(chain_spec, self.timestamp());
 
-        // TODO: support blob_excess_gas_and_price for Batch
-        // let blob_excess_gas_and_price = parent
-        //     .next_block_excess_blob_gas()
-        //     .or_else(|| {
-        //         if spec_id == SpecId::CANCUN {
-        //             // default excess blob gas is zero
-        //             Some(0)
-        //         } else {
-        //             None
-        //         }
-        //     })
-        //     .map(BlobExcessGasAndPrice::new);
+        // TODO: this should be variably set by the worker based on demand just like basefee
         let blob_excess_gas_and_price = Some(BlobExcessGasAndPrice::new(0));
 
         // use the block's sealed header for "parent" values
