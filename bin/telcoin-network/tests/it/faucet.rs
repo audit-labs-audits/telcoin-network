@@ -25,9 +25,10 @@ use reth::{
     tasks::{TaskExecutor, TaskManager},
     CliContext,
 };
+use reth_chainspec::ChainSpec;
 use reth_node_ethereum::{EthEvmConfig, EthExecutorProvider};
 use reth_primitives::{
-    alloy_primitives::U160, public_key_to_address, Address, ChainSpec, GenesisAccount, U256,
+    alloy_primitives::U160, public_key_to_address, Address, GenesisAccount, U256,
 };
 use reth_tracing::init_test_tracing;
 use secp256k1::PublicKey;

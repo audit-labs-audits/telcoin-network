@@ -10320,6 +10320,7 @@ dependencies = [
  "fastcrypto",
  "fdlimit",
  "futures",
+ "gcloud-sdk",
  "humantime",
  "hyper 0.14.29",
  "jsonrpsee",
