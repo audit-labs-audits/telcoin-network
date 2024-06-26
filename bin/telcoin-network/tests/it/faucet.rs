@@ -283,7 +283,7 @@ async fn spawn_local_testnet(
                             std::sync::Arc::clone(&builder.node_config.chain),
                             EthEvmConfig::default(),
                         );
-                        launch_node(builder, executor, tn_datadir).await
+                        launch_node(builder, executor, &tn_datadir).await
                     })
                     .await;
                 error!("{:?}", err);
