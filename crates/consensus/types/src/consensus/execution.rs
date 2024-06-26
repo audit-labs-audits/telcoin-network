@@ -106,7 +106,9 @@ impl TNPayload {
 
 /// The type used to construct a [TNPayload].
 ///
-/// It contains all the attributes required to initiate a payload build process. The actual struct itself is a mediary for maintaining compatibility with reth's api. Otherwise, doesn't provide much utility.
+/// It contains all the attributes required to initiate a payload build process. The actual struct
+/// itself is a mediary for maintaining compatibility with reth's api. Otherwise, doesn't provide
+/// much utility.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct TNPayloadAttributes {
     /// The previous canonical block.
@@ -252,8 +254,8 @@ impl PayloadBuilderAttributes for TNPayload {
         // basefee is always included, leaving this here for now since basefee is still a question
         //
         //
-        // // If we are on the London fork boundary, we need to multiply the parent's gas limit by the
-        // // elasticity multiplier to get the new gas limit.
+        // // If we are on the London fork boundary, we need to multiply the parent's gas limit by
+        // the // elasticity multiplier to get the new gas limit.
         // if chain_spec.fork(Hardfork::London).transitions_at_block(parent.number + 1) {
         //     let elasticity_multiplier =
         //         chain_spec.base_fee_params_at_timestamp(self.timestamp()).elasticity_multiplier;

@@ -100,8 +100,9 @@ where
             &provider,
             chain_spec.clone(),
         )?;
-        // let block_gas_limit: u64 = initialized_block_env.gas_limit.try_into().unwrap_or(u64::MAX);
-        // let base_fee = initialized_block_env.basefee.to::<u64>();
+        // let block_gas_limit: u64 =
+        // initialized_block_env.gas_limit.try_into().unwrap_or(u64::MAX); let base_fee =
+        // initialized_block_env.basefee.to::<u64>();
 
         // let mut executed_txs = Vec::new();
     }
@@ -176,8 +177,8 @@ where
     //         // so encoding and decoding has already happened
     //         // and is not expected to fail
     //         TransactionSigned::decode_enveloped(&mut tx_bytes.as_ref()).map_err(|e| {
-    //             error!(target: "execution::executor", "Failed to decode enveloped tx: {tx_bytes:?}");
-    //             ExecutorError::DecodeTransaction(e)
+    //             error!(target: "execution::executor", "Failed to decode enveloped tx:
+    // {tx_bytes:?}");             ExecutorError::DecodeTransaction(e)
     //         })
     //         .expect("batch already validated")
     //         .try_into_ecrecovered()
@@ -201,7 +202,8 @@ where
         //         // invalid, which removes its dependent transactions from
         //         // the iterator. This is similar to the gas limit condition
         //         // for regular transactions above.
-        //         trace!(target: "payload_builder", tx=?tx.hash, ?sum_blob_gas_used, ?tx_blob_gas, "skipping blob transaction because it would exceed the max data gas per block");
+        //         trace!(target: "payload_builder", tx=?tx.hash, ?sum_blob_gas_used, ?tx_blob_gas,
+        // "skipping blob transaction because it would exceed the max data gas per block");
         //         best_txs.mark_invalid(&pool_tx);
         //         continue;
         //     }
