@@ -6,7 +6,7 @@ use crate::{
 };
 use fastcrypto::traits::KeyPair as KeyPairTrait;
 use reth_chainspec::ChainSpec;
-use reth_primitives::Address;
+use reth_primitives::{Address, Genesis};
 use serde::{Deserialize, Serialize};
 use std::{
     num::NonZeroU32,
@@ -25,8 +25,7 @@ pub const PRIMARY_NETWORK_KEYFILE: &str = "primary.key";
 pub const WORKER_NETWORK_KEYFILE: &str = "worker.key";
 
 /// Configuration for the Telcoin Network node.
-#[derive(Debug, Clone, Deserialize, Serialize)]
-// #[serde(default)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Config {
     /// The path where keys are stored, if successfully generated.
     ///
@@ -39,9 +38,8 @@ pub struct Config {
     /// Parameters for the network.
     pub parameters: Parameters,
 
-    /// The [ChainSpec] for the node.
-    #[serde(skip)]
-    pub chain_spec: ChainSpec,
+    /// The [Genesis] for the node.
+    pub genesis: Genesis,
 }
 
 impl Default for Config {
@@ -52,7 +50,7 @@ impl Default for Config {
             validator_info: Default::default(),
             parameters: Default::default(),
             // specify adiri chain spec
-            chain_spec: adiri_chain_spec(),
+            genesis: adiri_chain_spec().genesis,
         }
     }
 }
@@ -94,8 +92,13 @@ impl Config {
     }
 
     /// Return a reference to the
-    pub fn chain_spec(&self) -> &ChainSpec {
-        &self.chain_spec
+    pub fn genesis(&self) -> &Genesis {
+        &self.genesis
+    }
+
+    /// Return the ChainSpec for the configured Genesis
+    pub fn chain_spec(&self) -> ChainSpec {
+        self.genesis.clone().into()
     }
 
     /// Return a reference to the exeuction address for suggested fee recipient.
