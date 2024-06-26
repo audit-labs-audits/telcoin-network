@@ -24,8 +24,6 @@ pub const PRIMARY_NETWORK_KEYFILE: &str = "primary.key";
 /// The filename to use when reading/writing the network key used by all workers.
 pub const WORKER_NETWORK_KEYFILE: &str = "worker.key";
 
-// Can not use serde derive macros because ChainSpec is not serializable...
-// Implemented manually below, basically we save/load genesis and derive the chainspec from that.
 /// Configuration for the Telcoin Network node.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Config {
