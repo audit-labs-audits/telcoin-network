@@ -7,8 +7,9 @@ use reth_chainspec::ChainSpec;
 use reth_consensus::PostExecutionInput;
 use reth_engine_primitives::PayloadBuilderAttributes;
 use reth_primitives::{
-    revm::config::revm_spec_by_timestamp_after_merge, Address, BlockWithSenders, ChainSpec, Header,
-    SealedBlock, SealedBlockWithSenders, SealedHeader, Withdrawals, B256, U256,
+    constants::EIP1559_INITIAL_BASE_FEE, revm::config::revm_spec_by_timestamp_after_merge, Address,
+    BlockWithSenders, ChainSpec, Header, SealedBlock, SealedBlockWithSenders, SealedHeader,
+    Withdrawals, B256, U256,
 };
 use reth_primitives::{BlockWithSenders, Header, SealedBlock, SealedHeader, U256};
 use reth_revm::primitives::{BlobExcessGasAndPrice, BlockEnv, CfgEnv, CfgEnvWithHandlerCfg};
@@ -17,6 +18,7 @@ use reth_revm::primitives::{
 };
 use reth_rpc_types::{engine::PayloadId, BlockNumHash};
 use std::{convert::Infallible, sync::Arc};
+use tracing::warn;
 
 /// A consensus implementation that validates everything.
 ///
@@ -248,40 +250,35 @@ impl PayloadBuilderAttributes for TNPayload {
         // use the block's sealed header for "parent" values
         let block = self.attributes.batch_block.header();
 
-        // TODO: is this the correct value for basefee?
-        let basefee = block.base_fee_per_gas;
-        // parent.next_block_base_fee(chain_spec.base_fee_params_at_timestamp(self.timestamp()));
+        // use the basefee set by the worker when creating the batch
+        let worker_basefee = match block.base_fee_per_gas {
+            Some(fee) => fee,
+            None => {
+                warn!(target: "executor::payload", "missing worker's basefee - using default");
+                EIP1559_INITIAL_BASE_FEE
+            }
+        };
+
+        // cast to U256
+        let basefee = U256::from(worker_basefee);
 
         // ensure gas_limit enforced during block validation
         let gas_limit = U256::from(block.gas_limit);
 
-        // TODO: DELETE ME
-        // basefee is always included, leaving this here for now since basefee is still a question
-        //
-        //
-        // // If we are on the London fork boundary, we need to multiply the parent's gas limit by
-        // the // elasticity multiplier to get the new gas limit.
-        // if chain_spec.fork(Hardfork::London).transitions_at_block(parent.number + 1) {
-        //     let elasticity_multiplier =
-        //         chain_spec.base_fee_params_at_timestamp(self.timestamp()).elasticity_multiplier;
-
-        //     // multiply the gas limit by the elasticity multiplier
-        //     gas_limit *= U256::from(elasticity_multiplier);
-
-        //     // set the base fee to the initial base fee from the EIP-1559 spec
-        //     basefee = Some(EIP1559_INITIAL_BASE_FEE)
-        // }
-
-        // TODO: is this the correct block env?
+        // create block environment to re-execute batch
         let block_env = BlockEnv {
             number: U256::from(self.attributes.parent_num_hash.number + 1),
             coinbase: self.suggested_fee_recipient(),
             timestamp: U256::from(self.timestamp()),
+            // leave difficulty zero
+            // this value is useful for post-execution, but batch is created with this value
             difficulty: U256::ZERO,
+            // [EIP-4399]: https://eips.ethereum.org/EIPS/eip-4399
+            //
+            // TODO: prevrandao must be consistent for proper re-execution of the batch
             prevrandao: Some(self.prev_randao()), // this batch's hash for TN
             gas_limit,
-            // calculate basefee based on parent block's gas usage
-            basefee: basefee.map(U256::from).unwrap_or_default(),
+            basefee,
             // calculate excess gas based on parent block's blob gas usage
             blob_excess_gas_and_price,
         };

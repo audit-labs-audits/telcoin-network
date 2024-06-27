@@ -53,14 +53,14 @@ Because blocks contain these fields, they are accessible to be re-purposed for T
 ##### Mixed Hash
 *Ethereum*: A 256-bit hash which, combined with the nonce, proves that a sufficient amount of computation has been carried out on this block (formally Hm). Post-merge, execution clients (reth and geth) use it to hold the prev randao value used to select the next quorum of validators by beacon chain. The block has `mixed_hash` and the beacon block has `prev_randao`. These values are converted when the execution payload is constructed from the built block and used by Beacon chain for validator shuffling.
 
-*TN*: `Batch` hash.
+*TN*:
 
-*Logic*: Randao is likely to be handled exclusively by consensus. If EL needs to supply a randao value, then use block's difficulty field.
+*Logic*:  On-chain programs might rely on this value for randomness, and it must be consistent when the batch is made and the final block is executed.
 
 ##### Extra Data
 *Ethereum*: Anything a validator wants to use - 32 bytes.
 
-*TN*: The index of the batch? Better to use `difficulty` because U256 type? Also consider: The priority fee rewards for validator? The hash of the batch that was used to execute this block? This could also be used for the `ConsensusOutput` hash? Can't use ms timestamp because execution times could vary between validators. Is it valuable to include the leader's round?
+*TN*: Batch Hash. The index of the batch? Better to use `difficulty` because U256 type? Also consider: The priority fee rewards for validator? The hash of the batch that was used to execute this block? This could also be used for the `ConsensusOutput` hash? Can't use ms timestamp because execution times could vary between validators. Is it valuable to include the leader's round?
 
 *Logic*: It's unclear exactly what data is most useful for indexing blocks down the road. Extra data needs to be consistent amongst all validators to ensure correct hash of executed block, but using extra data now prevents TN from ever using it again. While other "unused" block fields are in place, prefer to use these instead.
 
