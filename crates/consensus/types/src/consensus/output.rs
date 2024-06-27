@@ -7,7 +7,7 @@ use crate::{
 use enum_dispatch::enum_dispatch;
 use fastcrypto::hash::{Digest, Hash, HashFunction};
 
-use reth_primitives::Address;
+use reth_primitives::{Address, B256};
 use serde::{Deserialize, Serialize};
 use std::{
     fmt,
@@ -36,14 +36,16 @@ impl ConsensusOutput {
         &self.sub_dag.leader
     }
     /// The round for the [CommittedSubDag].
-    ///
-    /// TODO: is this consistent accross all certs?
     pub fn leader_round(&self) -> Round {
         self.sub_dag.leader_round()
     }
     /// Timestamp for when the subdag was committed.
     pub fn committed_at(&self) -> TimestampSec {
         self.sub_dag.commit_timestamp()
+    }
+    /// The subdag index (`SequenceNumber`).
+    pub fn nonce(&self) -> SequenceNumber {
+        self.sub_dag.sub_dag_index
     }
     /// Execution address of the leader for the round.
     ///
@@ -154,6 +156,7 @@ impl CommittedSubDag {
         self.certificates.iter().last().map_or_else(|| false, |x| x == output)
     }
 
+    /// The Certificate's round.
     pub fn leader_round(&self) -> Round {
         self.leader.round()
     }
@@ -192,6 +195,12 @@ impl Hash<{ crypto::DIGEST_LENGTH }> for CommittedSubDag {
             panic!("Serialization of {} should not fail", self.commit_timestamp)
         }));
         ConsensusOutputDigest(hasher.finalize().into())
+    }
+}
+
+impl From<ConsensusOutputDigest> for B256 {
+    fn from(value: ConsensusOutputDigest) -> Self {
+        B256::from_slice(value.as_ref())
     }
 }
 

@@ -1,22 +1,21 @@
 //! Recreated `AutoSealConsensus` to reduce the amount of imports from reth.
 
-use crate::{Batch, BatchAPI, ConsensusOutput, MetadataAPI};
+use crate::ConsensusOutput;
 
 use super::{Consensus, ConsensusError};
 use reth_chainspec::ChainSpec;
 use reth_consensus::PostExecutionInput;
 use reth_engine_primitives::PayloadBuilderAttributes;
 use reth_primitives::{
-    constants::EIP1559_INITIAL_BASE_FEE, revm::config::revm_spec_by_timestamp_after_merge, Address,
-    BlockWithSenders, ChainSpec, Hardfork, Header, SealedBlock, SealedBlockWithSenders,
-    SealedHeader, Withdrawals, B256, U256,
+    revm::config::revm_spec_by_timestamp_after_merge, Address, BlockWithSenders, ChainSpec, Header,
+    SealedBlock, SealedBlockWithSenders, SealedHeader, Withdrawals, B256, U256,
 };
+use reth_primitives::{BlockWithSenders, Header, SealedBlock, SealedHeader, U256};
+use reth_revm::primitives::{BlobExcessGasAndPrice, BlockEnv, CfgEnv, CfgEnvWithHandlerCfg};
 use reth_revm::primitives::{
     BlobExcessGasAndPrice, BlockEnv, CfgEnv, CfgEnvWithHandlerCfg, SpecId,
 };
-use reth_primitives::{BlockWithSenders, Header, SealedBlock, SealedHeader, U256};
-use reth_rpc_types::{engine::PayloadId, Withdrawal};
-use serde::{Deserialize, Serialize};
+use reth_rpc_types::{engine::PayloadId, BlockNumHash};
 use std::{convert::Infallible, sync::Arc};
 
 /// A consensus implementation that validates everything.
@@ -91,8 +90,6 @@ pub struct BuildArguments<Provider> {
 /// The type used to build the next canonical block.
 #[derive(Debug)]
 pub struct TNPayload {
-    /// The hash of the last block executed from the previous round of consensus.
-    pub parent: B256,
     /// Attributes to use when building the payload.
     ///
     /// Stored here for simplicity to maintain compatibility with reth api and implementing
@@ -102,8 +99,8 @@ pub struct TNPayload {
 
 impl TNPayload {
     /// Create a new instance of [Self].
-    pub fn new(parent: B256, attributes: TNPayloadAttributes) -> Self {
-        Self { parent, attributes }
+    pub fn new(attributes: TNPayloadAttributes) -> Self {
+        Self { attributes }
     }
 }
 
@@ -114,24 +111,28 @@ impl TNPayload {
 /// much utility.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct TNPayloadAttributes {
-    /// The previous canonical block.
-    pub parent_block: SealedBlock,
+    /// The previous canonical block's number and hash.
+    pub parent_num_hash: BlockNumHash,
     /// Ommers on TN are all the hashes of batches.
     pub ommers: Vec<Header>,
     /// Hash of all ommers in this output from consensus.
     pub ommers_root: B256,
     /// The beneficiary from the round of consensus.
     pub beneficiary: Address,
+    /// The index of the subdag, which equates to the round of consensus.
+    ///
+    /// Used as the executed block header's `nonce`.
+    pub nonce: u64,
     /// The index of the block within the entire output from consensus.
     ///
-    /// Used as executed block's `extra_data`.
+    /// Used as executed block header's `difficulty`.
     pub batch_index: u64,
     /// Value for the `timestamp` field of the new payload
     pub timestamp: u64,
     /// TODO: support withdrawals
     ///
     /// This is currently always empty vec.
-    withdrawals: Withdrawals,
+    pub withdrawals: Withdrawals,
     /// Value for the `mix_hash` field in the new block.
     pub batch_digest: B256,
     /// Hash value for [ConsensusOutput]. Used as the executed block's "parent_beacon_block_root".
@@ -153,7 +154,7 @@ pub struct TNPayloadAttributes {
 impl TNPayloadAttributes {
     /// Create a new instance of [Self].
     pub fn new(
-        parent_block: SealedBlock,
+        parent_block: &SealedBlock,
         ommers: Vec<Header>,
         ommers_root: B256,
         batch_index: u64,
@@ -165,11 +166,15 @@ impl TNPayloadAttributes {
         // TODO: support withdrawals
         let withdrawals = batch_block.withdrawals.clone().unwrap_or_default();
 
+        // only need parent number and hash
+        let parent_num_hash = parent_block.num_hash();
+
         Self {
-            parent_block,
+            parent_num_hash,
             ommers,
             ommers_root,
             beneficiary: output.beneficiary(),
+            nonce: output.nonce(),
             batch_index,
             timestamp: output.committed_at(),
             withdrawals,
@@ -187,8 +192,9 @@ impl PayloadBuilderAttributes for TNPayload {
     // try_new cannot fail because Self::new() cannot fail
     type Error = Infallible;
 
-    fn try_new(parent: B256, attributes: Self::RpcPayloadAttributes) -> Result<Self, Self::Error> {
-        Ok(Self::new(parent, attributes))
+    /// This is bypassed in the current implementation.
+    fn try_new(_parent: B256, attributes: Self::RpcPayloadAttributes) -> Result<Self, Self::Error> {
+        Ok(Self::new(attributes))
     }
 
     fn payload_id(&self) -> PayloadId {
@@ -198,7 +204,7 @@ impl PayloadBuilderAttributes for TNPayload {
     }
 
     fn parent(&self) -> B256 {
-        self.parent
+        self.attributes.parent_num_hash.hash
     }
 
     fn timestamp(&self) -> u64 {
@@ -268,7 +274,7 @@ impl PayloadBuilderAttributes for TNPayload {
 
         // TODO: is this the correct block env?
         let block_env = BlockEnv {
-            number: U256::from(self.attributes.parent_block.number + 1),
+            number: U256::from(self.attributes.parent_num_hash.number + 1),
             coinbase: self.suggested_fee_recipient(),
             timestamp: U256::from(self.timestamp()),
             difficulty: U256::ZERO,

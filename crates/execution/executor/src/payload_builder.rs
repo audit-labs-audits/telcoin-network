@@ -2,12 +2,13 @@
 //!
 //! This approach heavily inspired by reth's `default_ethereum_payload_builder`.
 
+use fastcrypto::hash::Hash as _;
 use reth_evm::ConfigureEvm;
 use reth_node_api::PayloadBuilderAttributes as _;
 use reth_payload_builder::{database::CachedReads, error::PayloadBuilderError};
 use reth_primitives::{
-    constants::EMPTY_WITHDRAWALS, proofs, revm::env::tx_env_with_recovered, Block, ChainSpec,
-    Header, Receipt, Receipts, SealedBlock, SealedBlockWithSenders, TransactionSigned,
+    constants::EMPTY_WITHDRAWALS, proofs, revm::env::tx_env_with_recovered, Block, Bytes,
+    ChainSpec, Header, Receipt, Receipts, SealedBlock, SealedBlockWithSenders, TransactionSigned,
     TransactionSignedEcRecovered, EMPTY_OMMER_ROOT_HASH, U256,
 };
 use reth_provider::{BundleStateWithReceipts, StateProviderFactory};
@@ -17,8 +18,10 @@ use reth_revm::{
     primitives::{EVMError, EnvWithHandlerCfg, ResultAndState},
     DatabaseCommit, State,
 };
-use std::sync::Arc;
-use tn_types::{Batch, BatchAPI as _, BuildArguments, MetadataAPI, TNPayload, TNPayloadAttributes};
+use std::{collections::VecDeque, sync::Arc};
+use tn_types::{
+    Batch, BatchAPI as _, BatchDigest, BuildArguments, MetadataAPI, TNPayload, TNPayloadAttributes,
+};
 use tracing::{debug, error, warn};
 
 use crate::error::ExecutorError;
@@ -60,9 +63,10 @@ where
     // create ommers while converting Batch to SealedBlockWithSenders
     let mut ommers = Vec::new();
     let output_digest = output.digest();
+    let mut batch_digests: VecDeque<BatchDigest> = VecDeque::new();
 
     // TODO: add this as a method on ConsensusOutput and parallelize
-    let sealed_blocks_with_senders: Result<Vec<SealedBlockWithSenders>, _> = output
+    let sealed_blocks_with_senders_result: Result<Vec<SealedBlockWithSenders>, _> = output
         .batches
         .iter()
         .flat_map(|batches| {
@@ -73,7 +77,11 @@ where
                 // collect headers for ommers while looping through each batch
                 //
                 // TODO: is there a better way to do this?
-                ommers.push(batch.versioned_metadata().sealed_header().header().clone());
+                // ommers.push(batch.versioned_metadata().sealed_header().header().clone());
+                // TODO: include batch hashes when Subscriber fetches batches for ConsensusOutput
+                // let batch_digest = batch.digest();
+                // batch_digests.push_back(batch_digest);
+                // create sealed block from batch for execution
                 SealedBlockWithSenders::try_from(batch)
             })
         })
@@ -82,14 +90,22 @@ where
     // calculate ommers hash
     let ommers_root = proofs::calculate_ommers_root(&ommers);
 
-    for (block_index, block) in sealed_blocks_with_senders?.into_iter().enumerate() {
+    // unwrap result
+    let sealed_blocks_with_senders = sealed_blocks_with_senders_result?;
+
+    // assert vecs match
+    assert_eq!(sealed_blocks_with_senders.len(), batch_digests.len());
+
+    for (block_index, block) in sealed_blocks_with_senders.into_iter().enumerate() {
         let payload_attributes = TNPayloadAttributes::new(
-            &output,
-            block,
-            block_index as u64,
             &parent_block,
             ommers.clone(),
             ommers_root,
+            block_index as u64,
+            batch_digests.pop_front().expect("batch digests assertion already passed").into(),
+            &output,
+            output_digest.into(),
+            block,
         );
         let payload = TNPayload::try_new(parent_block.hash(), payload_attributes)?;
 
@@ -124,10 +140,9 @@ where
 {
     let state_provider = provider.state_by_block_hash(parent_block.hash())?;
     let state = StateProviderDatabase::new(state_provider);
-    let mut db = State::builder()
-        .with_database_ref(CachedReads::default().as_db(state))
-        .with_bundle_update()
-        .build();
+    let mut cached_reads = CachedReads::default();
+    let mut db =
+        State::builder().with_database_ref(cached_reads.as_db(state)).with_bundle_update().build();
 
     debug!(target: "payload_builder", parent_hash = ?parent_block.hash(), parent_number = parent_block.number, "building new payload");
     let mut total_gas_used = 0;
@@ -188,7 +203,7 @@ where
     // let batch_txs = batch_txs.expect("batch valid");
     // let recovered_batch_txs = TransactionSigned::recover_signers(&batch_txs, batch_txs.len());
 
-    let txs = payload.attributes.block.clone().into_transactions_ecrecovered();
+    let txs = payload.attributes.batch_block.clone().into_transactions_ecrecovered();
 
     for tx in txs {
         // TODO: support blob gas
@@ -301,7 +316,7 @@ where
     let transactions_root = reth_primitives::proofs::calculate_transaction_root(&executed_txs);
 
     // initialize empty blob sidecars at first. If cancun is active then this will
-    let mut blob_sidecars = Vec::new();
+    // let mut blob_sidecars = Vec::new();
     let mut excess_blob_gas = None;
     let mut blob_gas_used = None;
 
@@ -326,31 +341,32 @@ where
     // }
 
     let header = Header {
-        parent_hash: parent_block.hash(),
-        ommers_hash: EMPTY_OMMER_ROOT_HASH,
+        parent_hash: payload.parent(),
+        ommers_hash: payload.attributes.ommers_root,
         beneficiary: block_env.coinbase,
         state_root,
         transactions_root,
         receipts_root,
         withdrawals_root: Some(EMPTY_WITHDRAWALS),
         logs_bloom,
-        timestamp: payload.attributes.timestamp,
-        mix_hash: todo!(),
-        nonce: payload.attributes.block_index,
+        timestamp: payload.timestamp(),
+        mix_hash: payload.prev_randao(),
+        nonce: payload.attributes.batch_index,
         base_fee_per_gas: Some(base_fee),
         number: parent_block.number + 1,
         gas_limit: block_gas_limit,
-        difficulty: U256::ZERO,
+        difficulty: U256::from(payload.attributes.batch_index),
         gas_used: cumulative_gas_used,
-        extra_data: todo!(),
-        parent_beacon_block_root: todo!(),
+        extra_data: Bytes::default(),
+        parent_beacon_block_root: payload.parent_beacon_block_root(),
         blob_gas_used,
         excess_blob_gas,
         requests_root: None,
     };
 
     // seal the block
-    let block = Block { header, body: executed_txs, ommers: vec![], withdrawals, requests };
+    let withdrawals = Some(payload.withdrawals().clone());
+    let block = Block { header, body: executed_txs, ommers: vec![], withdrawals, requests: None };
 
     let sealed_block = block.seal_slow();
     debug!(target: "payload_builder", ?sealed_block, "sealed built block");
