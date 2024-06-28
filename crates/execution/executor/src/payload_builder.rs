@@ -120,11 +120,12 @@ where
         )?;
 
         debug!(target: "execution::executor", ?next_canonical_block);
-        // let block_gas_limit: u64 =
-        // initialized_block_env.gas_limit.try_into().unwrap_or(u64::MAX); let base_fee =
-        // initialized_block_env.basefee.to::<u64>();
 
-        // let mut executed_txs = Vec::new();
+        // next steps:
+        // - save block to db
+        // - possible to reuse state to prevent extra call to db?
+        // - set this block as parent_block
+        // - handle end of loop
     }
 
     Ok(())
@@ -363,7 +364,7 @@ where
         gas_limit: block_gas_limit,
         difficulty: U256::from(payload.attributes.batch_index),
         gas_used: cumulative_gas_used,
-        extra_data: Bytes::default(),
+        extra_data: payload.attributes.batch_digest.into(),
         parent_beacon_block_root: payload.parent_beacon_block_root(),
         blob_gas_used,
         excess_blob_gas,

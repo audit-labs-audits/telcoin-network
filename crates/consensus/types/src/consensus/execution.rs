@@ -274,7 +274,7 @@ impl PayloadBuilderAttributes for TNPayload {
             // [EIP-4399]: https://eips.ethereum.org/EIPS/eip-4399
             //
             // TODO: prevrandao must be consistent for proper re-execution of the batch
-            prevrandao: Some(self.prev_randao()), // this batch's hash for TN
+            prevrandao: Some(self.prev_randao()),
             gas_limit,
             basefee,
             // calculate excess gas based on parent block's blob gas usage
