@@ -109,13 +109,15 @@ where
         );
         let payload = TNPayload::try_new(parent_block.hash(), payload_attributes)?;
 
-        build_block_from_batch_payload(
+        let next_canonical_block = build_block_from_batch_payload(
             &evm_config,
             payload,
             &parent_block,
             &provider,
             chain_spec.clone(),
         )?;
+
+        debug!(target: "execution::executor", ?next_canonical_block);
         // let block_gas_limit: u64 =
         // initialized_block_env.gas_limit.try_into().unwrap_or(u64::MAX); let base_fee =
         // initialized_block_env.basefee.to::<u64>();
@@ -133,7 +135,7 @@ fn build_block_from_batch_payload<'a, EvmConfig, Provider>(
     parent_block: &SealedBlock,
     provider: &Provider,
     chain_spec: Arc<ChainSpec>,
-) -> eyre::Result<()>
+) -> eyre::Result<SealedBlock>
 where
     EvmConfig: ConfigureEvm,
     Provider: StateProviderFactory,
@@ -371,5 +373,5 @@ where
     let sealed_block = block.seal_slow();
     debug!(target: "payload_builder", ?sealed_block, "sealed built block");
 
-    Ok(())
+    Ok(sealed_block)
 }

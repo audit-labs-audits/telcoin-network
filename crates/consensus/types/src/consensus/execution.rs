@@ -135,7 +135,7 @@ pub struct TNPayloadAttributes {
     ///
     /// This is currently always empty vec.
     pub withdrawals: Withdrawals,
-    /// Value for the `mix_hash` field in the new block.
+    /// Value for the `extra_data` field in the new block.
     pub batch_digest: B256,
     /// Hash value for [ConsensusOutput]. Used as the executed block's "parent_beacon_block_root".
     ///
@@ -221,11 +221,11 @@ impl PayloadBuilderAttributes for TNPayload {
         self.attributes.beneficiary
     }
 
-    /// This is used by TN to indicate the [Batch]'s hash.
+    /// PrevRandao is used by TN to provide a source for randomness on-chain.
     ///
     /// This is used as the executed block's "mix_hash".
     fn prev_randao(&self) -> B256 {
-        self.attributes.batch_digest
+        self.attributes.batch_block.mix_hash
     }
 
     /// Taken from batch, but currently always empty.
@@ -244,14 +244,14 @@ impl PayloadBuilderAttributes for TNPayload {
         // ensure we're not missing any timestamp based hardforks
         let spec_id = revm_spec_by_timestamp_after_merge(chain_spec, self.timestamp());
 
-        // TODO: this should be variably set by the worker based on demand just like basefee
+        // use the batch's sealed header for "parent" values
+        let batch = self.attributes.batch_block.header();
+
+        // use the blob excess gas and price set by the worker during batch creation
         let blob_excess_gas_and_price = Some(BlobExcessGasAndPrice::new(0));
 
-        // use the block's sealed header for "parent" values
-        let block = self.attributes.batch_block.header();
-
-        // use the basefee set by the worker when creating the batch
-        let worker_basefee = match block.base_fee_per_gas {
+        // use the basefee set by the worker during batch creation
+        let worker_basefee = match batch.base_fee_per_gas {
             Some(fee) => fee,
             None => {
                 warn!(target: "executor::payload", "missing worker's basefee - using default");
@@ -263,7 +263,7 @@ impl PayloadBuilderAttributes for TNPayload {
         let basefee = U256::from(worker_basefee);
 
         // ensure gas_limit enforced during block validation
-        let gas_limit = U256::from(block.gas_limit);
+        let gas_limit = U256::from(batch.gas_limit);
 
         // create block environment to re-execute batch
         let block_env = BlockEnv {
