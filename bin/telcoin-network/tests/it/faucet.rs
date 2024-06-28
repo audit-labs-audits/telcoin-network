@@ -277,14 +277,18 @@ async fn spawn_local_testnet(
             v,
             Box::pin(async move {
                 let err = command
-                    .execute(cli_ctx, |mut builder, faucet_args, tn_datadir| async move {
-                        builder.opt_faucet_args = Some(faucet_args);
-                        let executor = EthExecutorProvider::new(
-                            std::sync::Arc::clone(&builder.node_config.chain),
-                            EthEvmConfig::default(),
-                        );
-                        launch_node(builder, executor, &tn_datadir).await
-                    })
+                    .execute(
+                        cli_ctx,
+                        false, // don't overwrite chain with the default
+                        |mut builder, faucet_args, tn_datadir| async move {
+                            builder.opt_faucet_args = Some(faucet_args);
+                            let executor = EthExecutorProvider::new(
+                                std::sync::Arc::clone(&builder.node_config.chain),
+                                EthEvmConfig::default(),
+                            );
+                            launch_node(builder, executor, &tn_datadir).await
+                        },
+                    )
                     .await;
                 error!("{:?}", err);
             }),

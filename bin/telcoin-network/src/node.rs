@@ -129,7 +129,13 @@ pub struct NodeCommand<Ext: clap::Args + fmt::Debug = NoArgs> {
 
 impl<Ext: clap::Args + fmt::Debug> NodeCommand<Ext> {
     /// Execute `node` command
-    pub async fn execute<L, Fut>(mut self, ctx: CliContext, launcher: L) -> eyre::Result<()>
+    pub async fn execute<L, Fut>(
+        mut self,
+        ctx: CliContext,
+        load_config: bool, /* If false will not attempt to load a previously saved config-
+                            * useful for testing. */
+        launcher: L,
+    ) -> eyre::Result<()>
     where
         L: FnOnce(TnBuilder<Arc<DatabaseEnv>>, Ext, DataDirChainPath) -> Fut,
         Fut: Future<Output = eyre::Result<()>>,
@@ -144,14 +150,15 @@ impl<Ext: clap::Args + fmt::Debug> NodeCommand<Ext> {
         let default_args = default_datadir_args();
         let tn_datadir: DataDirChainPath =
             self.datadir.unwrap_or_chain_default(self.chain.chain, default_args.clone()).into();
-
         // TODO: use config or CLI chain spec?
         let config_path = self.config.clone().unwrap_or(tn_datadir.node_config_path());
 
         let tn_config: Config = Config::load_from_path(&config_path)?;
-        // Make sure we are using the chain from config not just the default.
-        self.chain = Arc::new(tn_config.chain_spec());
-        info!(target: "telcoin::cli", validator = ?tn_config.validator_info.name, "config loaded");
+        if load_config {
+            // Make sure we are using the chain from config not just the default.
+            self.chain = Arc::new(tn_config.chain_spec());
+            info!(target: "telcoin::cli", validator = ?tn_config.validator_info.name, "config loaded");
+        }
 
         // get the worker's transaction address from the config
         let Self {

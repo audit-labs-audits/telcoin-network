@@ -19,10 +19,10 @@ pub struct PrimaryNode<DB, Provider> {
     evm: PhantomData<Provider>,
 }
 
-impl<DB: Unpin, Provider: Unpin> NodeTypes for PrimaryNode<DB, Provider>
+impl<DB, Provider> NodeTypes for PrimaryNode<DB, Provider>
 where
-    DB: Send + Sync + 'static,
-    Provider: Send + Sync + 'static,
+    DB: Send + Sync + Unpin + 'static,
+    Provider: Send + Sync + Unpin + 'static,
 {
     type Primitives = ();
     type Engine = EthEngineTypes;

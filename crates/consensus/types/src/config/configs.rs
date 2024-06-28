@@ -1,7 +1,7 @@
 //! Configurations for the Telcoin Network.
 
 use crate::{
-    adiri_chain_spec, utils::get_available_tcp_port, BlsPublicKey, BlsSignature, Multiaddr,
+    adiri_genesis, utils::get_available_tcp_port, BlsPublicKey, BlsSignature, Multiaddr,
     NetworkPublicKey, ValidatorInfo, WorkerIndex,
 };
 use fastcrypto::traits::KeyPair as KeyPairTrait;
@@ -50,7 +50,7 @@ impl Default for Config {
             validator_info: Default::default(),
             parameters: Default::default(),
             // specify adiri chain spec
-            genesis: adiri_chain_spec().genesis,
+            genesis: adiri_genesis(),
         }
     }
 }

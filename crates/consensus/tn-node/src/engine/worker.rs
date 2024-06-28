@@ -44,10 +44,10 @@ pub struct WorkerNode<DB, Evm> {
     evm: PhantomData<Evm>,
 }
 
-impl<DB: Unpin, Evm: Unpin> NodeTypes for WorkerNode<DB, Evm>
+impl<DB, Evm> NodeTypes for WorkerNode<DB, Evm>
 where
-    DB: Send + Sync + 'static,
-    Evm: Send + Sync + 'static,
+    DB: Send + Sync + Unpin + 'static,
+    Evm: Send + Sync + Unpin + 'static,
 {
     type Primitives = ();
     type Engine = EthEngineTypes;

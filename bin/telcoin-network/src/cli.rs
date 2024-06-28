@@ -134,7 +134,7 @@ impl<Ext: clap::Args + fmt::Debug> Cli<Ext> {
         match self.command {
             Commands::Genesis(command) => runner.run_command_until_exit(|_| command.execute()),
             Commands::Node(command) => {
-                runner.run_command_until_exit(|ctx| command.execute(ctx, launcher))
+                runner.run_command_until_exit(|ctx| command.execute(ctx, true, launcher))
             }
             Commands::Keytool(command) => runner.run_command_until_exit(|_| command.execute()),
         }
