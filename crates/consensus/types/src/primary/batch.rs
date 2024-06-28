@@ -7,8 +7,6 @@ use base64::{engine::general_purpose, Engine};
 use enum_dispatch::enum_dispatch;
 use fastcrypto::hash::{Digest, Hash, HashFunction};
 use mem_utils::MallocSizeOf;
-#[cfg(any(test, feature = "arbitrary"))]
-use proptest_derive::Arbitrary;
 use reth_primitives::{SealedBlock, SealedBlockWithSenders, TransactionSigned, Withdrawals};
 use serde::{Deserialize, Serialize};
 use std::fmt;
@@ -204,7 +202,6 @@ impl BatchV1 {
 }
 
 /// Digest of the batch.
-#[cfg_attr(any(test, feature = "arbitrary"), derive(Arbitrary))]
 #[derive(
     Clone, Copy, Serialize, Deserialize, Default, PartialEq, Eq, Hash, PartialOrd, Ord, MallocSizeOf,
 )]
