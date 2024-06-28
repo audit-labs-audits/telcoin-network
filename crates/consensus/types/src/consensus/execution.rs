@@ -5,14 +5,12 @@ use crate::ConsensusOutput;
 use super::{Consensus, ConsensusError};
 use reth_chainspec::ChainSpec;
 use reth_consensus::PostExecutionInput;
-use reth_engine_primitives::PayloadBuilderAttributes;
+use reth_payload_primitives::PayloadBuilderAttributes;
 use reth_primitives::{
     constants::EIP1559_INITIAL_BASE_FEE, revm::config::revm_spec_by_timestamp_after_merge, Address,
-    BlockWithSenders, ChainSpec, Header, SealedBlock, SealedBlockWithSenders, SealedHeader,
-    Withdrawals, B256, U256,
+    BlockWithSenders, Header, SealedBlock, SealedBlockWithSenders, SealedHeader, Withdrawals, B256,
+    U256,
 };
-use reth_primitives::{BlockWithSenders, Header, SealedBlock, SealedHeader, U256};
-use reth_revm::primitives::{BlobExcessGasAndPrice, BlockEnv, CfgEnv, CfgEnvWithHandlerCfg};
 use reth_revm::primitives::{
     BlobExcessGasAndPrice, BlockEnv, CfgEnv, CfgEnvWithHandlerCfg, SpecId,
 };

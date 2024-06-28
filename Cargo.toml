@@ -78,10 +78,12 @@ reth-network-p2p = { git = "https://github.com/paradigmxyz/reth", tag = "v1.0.0"
 reth-network-peers = { git = "https://github.com/paradigmxyz/reth", tag = "v1.0.0" }
 reth-prune = { git = "https://github.com/paradigmxyz/reth", tag = "v1.0.0" }
 reth-evm = { git = "https://github.com/paradigmxyz/reth", tag = "v1.0.0" }
+reth-execution-types = { git = "https://github.com/paradigmxyz/reth", tag = "v1.0.0" }
 reth-revm = { git = "https://github.com/paradigmxyz/reth", tag = "v1.0.0" }
 reth-exex = { git = "https://github.com/paradigmxyz/reth", tag = "v1.0.0" }
 reth-rpc = { git = "https://github.com/paradigmxyz/reth", tag = "v1.0.0" }
 reth-rpc-types = { git = "https://github.com/paradigmxyz/reth", tag = "v1.0.0" }
+reth-payload-primitives = { git = "https://github.com/paradigmxyz/reth", tag = "v1.0.0" }
 reth-rpc-engine-api = { git = "https://github.com/paradigmxyz/reth", tag = "v1.0.0" }
 reth-provider = { git = "https://github.com/paradigmxyz/reth", tag = "v1.0.0" }
 reth-snapshot = { git = "https://github.com/paradigmxyz/reth", tag = "v1.0.0" }

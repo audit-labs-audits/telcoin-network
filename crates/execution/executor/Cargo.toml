@@ -18,6 +18,7 @@ thiserror = { workspace = true }
 
 reth-primitives = { workspace = true }
 reth-chainspec = { workspace = true }
+reth-execution-types = { workspace = true }
 reth-tokio-util = { workspace = true }
 reth-revm = { workspace = true }
 reth-stages = { workspace = true }
