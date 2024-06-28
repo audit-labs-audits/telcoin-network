@@ -7,9 +7,9 @@ use crate::{
 use clap::{value_parser, Parser, Subcommand};
 use futures::Future;
 use reth::{commands::node::NoArgs, CliRunner};
+use reth_chainspec::ChainSpec;
 use reth_db::DatabaseEnv;
 use reth_node_core::args::LogArgs;
-use reth_primitives::ChainSpec;
 use reth_tracing::FileWorkerGuard;
 use std::{ffi::OsString, fmt, sync::Arc};
 use tn_node::{dirs::DataDirChainPath, engine::TnBuilder};
@@ -134,7 +134,7 @@ impl<Ext: clap::Args + fmt::Debug> Cli<Ext> {
         match self.command {
             Commands::Genesis(command) => runner.run_command_until_exit(|_| command.execute()),
             Commands::Node(command) => {
-                runner.run_command_until_exit(|ctx| command.execute(ctx, launcher))
+                runner.run_command_until_exit(|ctx| command.execute(ctx, true, launcher))
             }
             Commands::Keytool(command) => runner.run_command_until_exit(|_| command.execute()),
         }

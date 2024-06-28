@@ -25,9 +25,10 @@ use reth::{
     tasks::{TaskExecutor, TaskManager},
     CliContext,
 };
+use reth_chainspec::ChainSpec;
 use reth_node_ethereum::{EthEvmConfig, EthExecutorProvider};
 use reth_primitives::{
-    alloy_primitives::U160, public_key_to_address, Address, ChainSpec, GenesisAccount, U256,
+    alloy_primitives::U160, public_key_to_address, Address, GenesisAccount, U256,
 };
 use reth_tracing::init_test_tracing;
 use secp256k1::PublicKey;
@@ -276,14 +277,18 @@ async fn spawn_local_testnet(
             v,
             Box::pin(async move {
                 let err = command
-                    .execute(cli_ctx, |mut builder, faucet_args, tn_datadir| async move {
-                        builder.opt_faucet_args = Some(faucet_args);
-                        let executor = EthExecutorProvider::new(
-                            std::sync::Arc::clone(&builder.node_config.chain),
-                            EthEvmConfig::default(),
-                        );
-                        launch_node(builder, executor, tn_datadir).await
-                    })
+                    .execute(
+                        cli_ctx,
+                        false, // don't overwrite chain with the default
+                        |mut builder, faucet_args, tn_datadir| async move {
+                            builder.opt_faucet_args = Some(faucet_args);
+                            let executor = EthExecutorProvider::new(
+                                std::sync::Arc::clone(&builder.node_config.chain),
+                                EthEvmConfig::default(),
+                            );
+                            launch_node(builder, executor, &tn_datadir).await
+                        },
+                    )
                     .await;
                 error!("{:?}", err);
             }),

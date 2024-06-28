@@ -7,8 +7,6 @@ use base64::{engine::general_purpose, Engine};
 use enum_dispatch::enum_dispatch;
 use fastcrypto::hash::{Digest, Hash, HashFunction};
 use mem_utils::MallocSizeOf;
-#[cfg(any(test, feature = "arbitrary"))]
-use proptest_derive::Arbitrary;
 use reth_primitives::{SealedBlock, SealedBlockWithSenders, TransactionSigned, Withdrawals};
 use serde::{Deserialize, Serialize};
 use std::fmt;
@@ -50,7 +48,6 @@ pub struct NewBatch {
 ///
 /// TODO: Batch is just another term for `SealedBlock` in Ethereum.
 /// I think it would better to use `SealedBlock` instead of a redundant type.
-#[cfg_attr(any(test, feature = "arbitrary"), derive(Arbitrary))]
 #[derive(Clone, Serialize, Deserialize, Debug, PartialEq, Eq)]
 #[enum_dispatch(BatchAPI)]
 pub enum Batch {
@@ -144,7 +141,6 @@ pub trait BatchAPI {
 /// The batch version.
 ///
 /// akin to BatchV2 in sui
-#[cfg_attr(any(test, feature = "arbitrary"), derive(Arbitrary))]
 #[derive(Clone, Serialize, Deserialize, Debug, PartialEq, Eq)]
 pub struct BatchV1 {
     /// List of transactions.
@@ -206,7 +202,6 @@ impl BatchV1 {
 }
 
 /// Digest of the batch.
-#[cfg_attr(any(test, feature = "arbitrary"), derive(Arbitrary))]
 #[derive(
     Clone, Copy, Serialize, Deserialize, Default, PartialEq, Eq, Hash, PartialOrd, Ord, MallocSizeOf,
 )]

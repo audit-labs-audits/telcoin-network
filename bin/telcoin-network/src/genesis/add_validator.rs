@@ -4,7 +4,7 @@ use clap::Args;
 use eyre::Context;
 
 use reth::dirs::MaybePlatformPath;
-use reth_primitives::ChainSpec;
+use reth_chainspec::ChainSpec;
 use std::{path::PathBuf, sync::Arc};
 use tn_node::dirs::{default_datadir_args, DataDirChainPath, DataDirPath};
 use tn_types::{Config, ConfigTrait, NetworkGenesis, TelcoinDirs as _};
@@ -34,6 +34,7 @@ pub struct AddValidator {
     /// The GENESIS_DIRECTORY contains more directories:
     /// - committee
     /// - todo
+    ///
     /// Validators add their information to the directory using VCS like
     /// github. Using individual files prevents merge conflicts.
     #[arg(long, value_name = "GENESIS_DIRECTORY", verbatim_doc_comment)]

@@ -13,7 +13,8 @@ use clap::{Args, Subcommand};
 
 use rand::{rngs::StdRng, SeedableRng};
 use reth::dirs::MaybePlatformPath;
-use reth_primitives::{keccak256, Address, ChainSpec, GenesisAccount, U256};
+use reth_chainspec::ChainSpec;
+use reth_primitives::{keccak256, Address, GenesisAccount, U256};
 use secp256k1::Secp256k1;
 use std::{path::PathBuf, sync::Arc};
 use tn_node::dirs::{default_datadir_args, DataDirChainPath, DataDirPath};
@@ -128,15 +129,14 @@ impl GenesisArgs {
                 let mut tn_config: Config = Config::load_from_path(&config_path)?;
                 if let Some(acct_str) = &init.dev_funded_account {
                     let addr = account_from_word(acct_str);
-                    tn_config.chain_spec.genesis.alloc.insert(
+                    tn_config.genesis.alloc.insert(
                         addr,
                         GenesisAccount::default().with_balance(U256::from(10).pow(U256::from(27))), // One Billion TEL
                     );
                     Config::store_path(config_path, tn_config.clone())?;
                 }
 
-                let network_genesis =
-                    NetworkGenesis::with_chain_spec(tn_config.chain_spec().clone());
+                let network_genesis = NetworkGenesis::with_chain_spec(tn_config.chain_spec());
                 network_genesis.write_to_path(datadir.genesis_path())?;
             }
             // add validator to the committee file

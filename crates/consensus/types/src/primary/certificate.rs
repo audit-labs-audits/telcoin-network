@@ -9,9 +9,6 @@ use serde::{Deserialize, Serialize};
 use serde_with::serde_as;
 use std::{collections::VecDeque, fmt};
 
-#[cfg(any(test, feature = "arbitrary"))]
-use proptest_derive::Arbitrary;
-
 use crate::{
     config::{AuthorityIdentifier, Committee, Epoch, Stake, WorkerCache},
     crypto::{
@@ -484,7 +481,6 @@ pub fn validate_received_certificate_version(
 }
 
 /// Certificate digest.
-#[cfg_attr(any(test, feature = "arbitrary"), derive(Arbitrary))]
 #[derive(
     Clone, Copy, Serialize, Deserialize, Default, MallocSizeOf, PartialEq, Eq, Hash, PartialOrd, Ord,
 )]

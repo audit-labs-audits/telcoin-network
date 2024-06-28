@@ -13,3 +13,9 @@ edition = "2021"
 once_cell = { workspace = true }
 futures = { workspace = true }
 tracing = { workspace = true }
+
+[lints.rust]
+unexpected_cfgs = { level = "warn", check-cfg = [
+    'cfg(msim)',
+    'cfg(fail_points)',
+] }

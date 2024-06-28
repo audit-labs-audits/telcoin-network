@@ -18,8 +18,9 @@ use gcloud_sdk::{
 };
 use humantime::format_duration;
 use lru_time_cache::LruCache;
+use reth_chainspec::BaseFeeParams;
 use reth_primitives::{
-    Address, BaseFeeParams, FromRecoveredPooledTransaction, Signature as EthSignature, Transaction,
+    Address, FromRecoveredPooledTransaction, Signature as EthSignature, Transaction,
     TransactionSigned, TxEip1559, TxHash, TxKind, B256, U256,
 };
 use reth_provider::{BlockReaderIdExt, StateProviderFactory};

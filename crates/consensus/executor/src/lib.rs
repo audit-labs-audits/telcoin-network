@@ -47,6 +47,7 @@ pub struct Executor;
 
 impl Executor {
     /// Spawn a new client subscriber.
+    #[allow(clippy::too_many_arguments)]
     pub fn spawn(
         authority_id: AuthorityIdentifier,
         worker_cache: WorkerCache,

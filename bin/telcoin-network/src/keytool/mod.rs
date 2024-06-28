@@ -8,7 +8,7 @@ use eyre::Context;
 
 use generate::GenerateKeys;
 use reth::dirs::MaybePlatformPath;
-use reth_primitives::ChainSpec;
+use reth_chainspec::ChainSpec;
 use std::{
     path::{Path, PathBuf},
     sync::Arc,

@@ -13,10 +13,11 @@ use narwhal_worker::{metrics::WorkerMetrics, BatchMaker, NUM_SHUTDOWN_RECEIVERS}
 use prometheus::Registry;
 use reth::{beacon_consensus::EthBeaconConsensus, tasks::TaskManager};
 use reth_blockchain_tree::noop::NoopBlockchainTree;
+use reth_chainspec::ChainSpec;
 use reth_db::test_utils::{create_test_rw_db, tempdir_path};
 use reth_db_common::init::init_genesis;
 use reth_node_ethereum::{EthEvmConfig, EthExecutorProvider};
-use reth_primitives::{alloy_primitives::U160, Address, ChainSpec, TransactionSigned, U256};
+use reth_primitives::{alloy_primitives::U160, Address, TransactionSigned, U256};
 use reth_provider::{
     providers::{BlockchainProvider, StaticFileProvider},
     ProviderFactory,

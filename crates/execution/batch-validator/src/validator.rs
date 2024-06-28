@@ -7,10 +7,10 @@ use reth_db::database::Database;
 use reth_evm::execute::{
     BlockExecutionOutput, BlockExecutorProvider, BlockValidationError, Executor,
 };
-use reth_primitives::{GotExpected, Hardfork, Receipts, SealedBlockWithSenders, U256};
+use reth_primitives::{GotExpected, Hardfork, SealedBlockWithSenders, U256};
 use reth_provider::{
-    providers::BlockchainProvider, BundleStateWithReceipts, ChainSpecProvider,
-    DatabaseProviderFactory, HeaderProvider, StateRootProvider,
+    providers::BlockchainProvider, ChainSpecProvider, DatabaseProviderFactory, HeaderProvider,
+    StateRootProvider,
 };
 use reth_revm::database::StateProviderDatabase;
 use std::{
@@ -191,13 +191,6 @@ where
             PostExecutionInput::new(&receipts, &requests),
         )?;
 
-        // create bundle state
-        let bundle_state = BundleStateWithReceipts::new(
-            state,
-            Receipts::from_block_receipt(receipts),
-            block_with_senders.number,
-        );
-
         // TODO: enable ParallelStateRoot feature (or AsyncStateRoot)
         // for better perfomance
         // see reth::blockchain_tree::chain::AppendableChain::validate_and_execute()
@@ -208,7 +201,7 @@ where
                 .database_provider_ro()?
                 .state_provider_by_block_number(parent.number)?,
         );
-        let state_root = db.state_root(bundle_state.state())?;
+        let state_root = db.state_root(&state)?;
         if block_with_senders.state_root != state_root {
             return Err(BatchValidationError::BodyStateRootDiff(GotExpected {
                 got: state_root,
@@ -257,11 +250,12 @@ mod tests {
     use reth_blockchain_tree::{
         BlockchainTree, BlockchainTreeConfig, ShareableBlockchainTree, TreeExternals,
     };
+    use reth_chainspec::ChainSpec;
     use reth_db::test_utils::{create_test_rw_db, tempdir_path};
     use reth_db_common::init::init_genesis;
     use reth_primitives::{
         constants::EMPTY_WITHDRAWALS, hex, proofs::calculate_transaction_root, Address, Bloom,
-        Bytes, ChainSpec, GenesisAccount, Header, SealedHeader, B256, EMPTY_OMMER_ROOT_HASH,
+        Bytes, GenesisAccount, Header, SealedHeader, B256, EMPTY_OMMER_ROOT_HASH,
     };
     use reth_provider::{providers::StaticFileProvider, ProviderFactory};
     use reth_tracing::init_test_tracing;

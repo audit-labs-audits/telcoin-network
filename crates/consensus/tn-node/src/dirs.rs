@@ -3,7 +3,7 @@ use reth::{
     args::DatadirArgs,
     dirs::{ChainPath, MaybePlatformPath, XdgPath},
 };
-use reth_primitives::Chain;
+use reth_chainspec::Chain;
 use std::{fmt::Debug, ops::Deref, path::PathBuf, str::FromStr as _};
 use tn_types::{TelcoinDirs, GENESIS_VALIDATORS_DIR};
 

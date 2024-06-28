@@ -75,6 +75,7 @@ pub struct Worker {
 }
 
 impl Worker {
+    #[allow(clippy::too_many_arguments)]
     pub fn spawn(
         authority: Authority,
         keypair: NetworkKeypair,
@@ -142,13 +143,11 @@ impl Worker {
 
         // Legacy RPC interface, only used by delete_batches() for external consensus.
         let primary_service = PrimaryToWorkerServer::new(PrimaryReceiverHandler {
-            authority_id: worker.authority.id(),
             id: worker.id,
             committee: worker.committee.clone(),
             worker_cache: worker.worker_cache.clone(),
             store: worker.store.clone(),
             request_batches_timeout: worker.parameters.sync_retry_delay,
-            request_batches_retry_nodes: worker.parameters.sync_retry_nodes,
             network: None,
             batch_fetcher: None,
             validator: validator.clone(),
@@ -291,13 +290,11 @@ impl Worker {
         client.set_primary_to_worker_local_handler(
             worker_peer_id,
             Arc::new(PrimaryReceiverHandler {
-                authority_id: worker.authority.id(),
                 id: worker.id,
                 committee: worker.committee.clone(),
                 worker_cache: worker.worker_cache.clone(),
                 store: worker.store.clone(),
                 request_batches_timeout: worker.parameters.sync_retry_delay,
-                request_batches_retry_nodes: worker.parameters.sync_retry_nodes,
                 network: Some(network.clone()),
                 batch_fetcher: Some(batch_fetcher),
                 validator: validator.clone(),
