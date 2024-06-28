@@ -55,7 +55,7 @@ Because blocks contain these fields, they are accessible to be re-purposed for T
 
 *TN*:
 
-*Logic*:  On-chain programs might rely on this value for randomness, and it must be consistent when the batch is made and the final block is executed.
+*Logic*:  On-chain programs might rely on this value for randomness, and it must be consistent when the batch is made and the final block is executed. It's also important that the random value is verifiable yet unpredictable.
 
 ##### Extra Data
 *Ethereum*: Anything a validator wants to use - 32 bytes.
