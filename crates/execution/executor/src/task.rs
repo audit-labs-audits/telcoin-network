@@ -143,7 +143,7 @@ where
                     match storage.build_and_execute(
                         output,
                         withdrawals,
-                        provider,
+                        &provider,
                         chain_spec,
                         &block_executor,
                     ) {

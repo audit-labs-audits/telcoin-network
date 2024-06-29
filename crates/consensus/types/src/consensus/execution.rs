@@ -82,7 +82,7 @@ pub struct BuildArguments<Provider> {
     /// Output from consensus that contains all the transactions to execute.
     pub output: ConsensusOutput,
     /// Last executed block from the previous consensus output.
-    pub parent_block: SealedBlock,
+    pub parent_block: BlockNumHash,
     /// The chain spec.
     pub chain_spec: Arc<ChainSpec>,
 }
@@ -92,7 +92,7 @@ impl<P> BuildArguments<P> {
     pub fn new(
         provider: P,
         output: ConsensusOutput,
-        parent_block: SealedBlock,
+        parent_block: BlockNumHash,
         chain_spec: Arc<ChainSpec>,
     ) -> Self {
         Self { provider, output, parent_block, chain_spec }
@@ -124,7 +124,7 @@ impl TNPayload {
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct TNPayloadAttributes {
     /// The previous canonical block's number and hash.
-    pub parent_num_hash: BlockNumHash,
+    pub parent_block: BlockNumHash,
     /// Ommers on TN are all the hashes of batches.
     pub ommers: Vec<Header>,
     /// Hash of all ommers in this output from consensus.
@@ -166,7 +166,7 @@ pub struct TNPayloadAttributes {
 impl TNPayloadAttributes {
     /// Create a new instance of [Self].
     pub fn new(
-        parent_block: &SealedBlock,
+        parent_block: BlockNumHash,
         ommers: Vec<Header>,
         ommers_root: B256,
         batch_index: u64,
@@ -178,11 +178,8 @@ impl TNPayloadAttributes {
         // TODO: support withdrawals
         let withdrawals = batch_block.withdrawals.clone().unwrap_or_default();
 
-        // only need parent number and hash
-        let parent_num_hash = parent_block.num_hash();
-
         Self {
-            parent_num_hash,
+            parent_block,
             ommers,
             ommers_root,
             beneficiary: output.beneficiary(),
@@ -216,7 +213,7 @@ impl PayloadBuilderAttributes for TNPayload {
     }
 
     fn parent(&self) -> B256 {
-        self.attributes.parent_num_hash.hash
+        self.attributes.parent_block.hash
     }
 
     fn timestamp(&self) -> u64 {
@@ -246,16 +243,13 @@ impl PayloadBuilderAttributes for TNPayload {
     fn cfg_and_block_env(
         &self,
         chain_spec: &ChainSpec,
-        _parent: &Header,
+        batch: &Header,
     ) -> (CfgEnvWithHandlerCfg, BlockEnv) {
         // configure evm env based on parent block
         let cfg = CfgEnv::default().with_chain_id(chain_spec.chain().id());
 
         // ensure we're not missing any timestamp based hardforks
         let spec_id = revm_spec_by_timestamp_after_merge(chain_spec, self.timestamp());
-
-        // use the batch's sealed header for "parent" values
-        let batch = self.attributes.batch_block.header();
 
         // use the blob excess gas and price set by the worker during batch creation
         let blob_excess_gas_and_price = Some(BlobExcessGasAndPrice::new(0));
@@ -277,7 +271,8 @@ impl PayloadBuilderAttributes for TNPayload {
 
         // create block environment to re-execute batch
         let block_env = BlockEnv {
-            number: U256::from(self.attributes.parent_num_hash.number + 1),
+            // the block's number should come from the canonical tip, NOT the batch block's number
+            number: U256::from(self.attributes.parent_block.number + 1),
             coinbase: self.suggested_fee_recipient(),
             timestamp: U256::from(self.timestamp()),
             // leave difficulty zero

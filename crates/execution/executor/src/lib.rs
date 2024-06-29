@@ -270,7 +270,7 @@ impl StorageInner {
         &mut self,
         output: ConsensusOutput,
         withdrawals: Option<Withdrawals>,
-        provider: Provider,
+        provider: &Provider,
         chain_spec: Arc<ChainSpec>,
         executor: &Executor,
     ) -> Result<(SealedBlockWithSenders, ExecutionOutcome), ExecutorError>

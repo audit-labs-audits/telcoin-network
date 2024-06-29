@@ -108,7 +108,7 @@ where
 
     for (block_index, block) in sealed_blocks_with_senders.into_iter().enumerate() {
         let payload_attributes = TNPayloadAttributes::new(
-            &parent_block,
+            parent_block,
             ommers.clone(),
             ommers_root,
             block_index as u64,
@@ -117,15 +117,10 @@ where
             output_digest.into(),
             block,
         );
-        let payload = TNPayload::try_new(parent_block.hash(), payload_attributes)?;
+        let payload = TNPayload::try_new(parent_block.hash, payload_attributes)?;
 
-        let next_canonical_block = build_block_from_batch_payload(
-            &evm_config,
-            payload,
-            &parent_block,
-            &provider,
-            chain_spec.clone(),
-        )?;
+        let next_canonical_block =
+            build_block_from_batch_payload(&evm_config, payload, &provider, chain_spec.clone())?;
 
         debug!(target: "execution::executor", ?next_canonical_block);
 
@@ -143,7 +138,6 @@ where
 fn build_block_from_batch_payload<'a, EvmConfig, Provider>(
     evm_config: &EvmConfig,
     payload: TNPayload,
-    parent_block: &SealedBlock,
     provider: &Provider,
     chain_spec: Arc<ChainSpec>,
 ) -> eyre::Result<SealedBlock>
@@ -151,7 +145,7 @@ where
     EvmConfig: ConfigureEvm,
     Provider: StateProviderFactory,
 {
-    let state_provider = provider.state_by_block_hash(parent_block.hash())?;
+    let state_provider = provider.state_by_block_hash(payload.attributes.parent_block.hash)?;
     let state = StateProviderDatabase::new(state_provider);
 
     // TODO: using same apprach as reth here bc I can't find the State::builder()'s methods
@@ -161,7 +155,7 @@ where
     let mut db =
         State::builder().with_database_ref(cached_reads.as_db(state)).with_bundle_update().build();
 
-    debug!(target: "payload_builder", parent_hash = ?parent_block.hash(), parent_number = parent_block.number, "building new payload");
+    debug!(target: "payload_builder", parent_hash = ?payload.attributes.parent_block.hash, parent_number = payload.attributes.parent_block.number, "building new payload");
     // collect these totals to report at the end
     let mut total_gas_used = 0;
     let mut cumulative_gas_used = 0;
@@ -171,7 +165,9 @@ where
     // let mut sum_blob_gas_used = 0;
 
     // initialize values for execution from block env
-    let (cfg, block_env) = payload.cfg_and_block_env(chain_spec.as_ref(), parent_block.header());
+    // note: use the batch's sealed header for "parent" values
+    let (cfg, block_env) =
+        payload.cfg_and_block_env(chain_spec.as_ref(), payload.attributes.batch_block.header());
     let block_gas_limit: u64 = block_env.gas_limit.try_into().unwrap_or(u64::MAX);
     let base_fee = block_env.basefee.to::<u64>();
     let block_number = block_env.number.to::<u64>();
@@ -359,7 +355,7 @@ where
         mix_hash: payload.prev_randao(),
         nonce: payload.attributes.batch_index,
         base_fee_per_gas: Some(base_fee),
-        number: parent_block.number + 1,
+        number: payload.attributes.parent_block.number + 1, // ensure this matches the block env
         gas_limit: block_gas_limit,
         difficulty: U256::from(payload.attributes.batch_index),
         gas_used: cumulative_gas_used,
