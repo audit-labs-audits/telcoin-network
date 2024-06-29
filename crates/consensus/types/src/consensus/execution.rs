@@ -87,6 +87,18 @@ pub struct BuildArguments<Provider> {
     pub chain_spec: Arc<ChainSpec>,
 }
 
+impl<P> BuildArguments<P> {
+    /// Initialize new instance of [Self].
+    pub fn new(
+        provider: P,
+        output: ConsensusOutput,
+        parent_block: SealedBlock,
+        chain_spec: Arc<ChainSpec>,
+    ) -> Self {
+        Self { provider, output, parent_block, chain_spec }
+    }
+}
+
 /// The type used to build the next canonical block.
 #[derive(Debug)]
 pub struct TNPayload {

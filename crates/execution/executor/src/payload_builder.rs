@@ -46,7 +46,7 @@ where
 {
     let BuildArguments { provider, output, mut parent_block, chain_spec } = args;
 
-    //
+    // TODO: explore "batch-execution" concept in reth: BlockExecutorProvider trait
     //
     // TODO: ensure this is called after the previous ConsensusOutput is complete.
     // to avoid race condition of executing next round before previous round is complete.

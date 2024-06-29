@@ -32,8 +32,9 @@ use reth_provider::{
     BlockReaderIdExt, CanonStateNotificationSender, ExecutionOutcome, StateProviderFactory,
 };
 use reth_revm::database::StateProviderDatabase;
+use reth_rpc_types::BlockNumHash;
 use std::{collections::HashMap, sync::Arc};
-use tn_types::{now, AutoSealConsensus, BatchAPI, ConsensusOutput};
+use tn_types::{now, AutoSealConsensus, BatchAPI, BuildArguments, ConsensusOutput};
 use tokio::sync::{broadcast, mpsc::UnboundedSender, RwLock, RwLockReadGuard, RwLockWriteGuard};
 use tokio_stream::wrappers::BroadcastStream;
 use tracing::{debug, error, trace, warn};
@@ -269,7 +270,7 @@ impl StorageInner {
         &mut self,
         output: ConsensusOutput,
         withdrawals: Option<Withdrawals>,
-        provider: &Provider,
+        provider: Provider,
         chain_spec: Arc<ChainSpec>,
         executor: &Executor,
     ) -> Result<(SealedBlockWithSenders, ExecutionOutcome), ExecutorError>
@@ -459,6 +460,28 @@ impl StorageInner {
         // output.batches.into_iter().flat_map(|batches| batches.into_iter().flat_map(|batch|
         // batch.transactions_owned().into_iter().flat_map(|tx|
         // TransactionSigned::decode_enveloped(tx.into())))).collect()
+    }
+    pub(crate) fn build_and_execute2<Provider, Executor>(
+        &mut self,
+        output: ConsensusOutput,
+        withdrawals: Option<Withdrawals>,
+        provider: Provider,
+        chain_spec: Arc<ChainSpec>,
+        executor: &Executor,
+    ) -> Result<(SealedBlockWithSenders, ExecutionOutcome), ExecutorError>
+    where
+        Executor: BlockExecutorProvider,
+        Provider: StateProviderFactory + BlockReaderIdExt,
+    {
+        // TODO: get this from somewhere else
+        let evm_config = reth_evm_ethereum::EthEvmConfig::default();
+        // TODO: get this from storage efficiently
+        // - storage should store each round of consensus output as a Vec<SealedBlock>
+        // - also, only need parent num hash
+        let parent_num_hash = BlockNumHash::new(self.best_block, self.best_hash);
+        let build_args = BuildArguments::new(provider, output, parent_num_hash, chain_spec);
+
+        todo!()
     }
 }
 
