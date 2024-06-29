@@ -123,7 +123,6 @@ where
                 // ready to queue in new insert task
                 let storage = this.storage.clone();
                 let output = this.queued.pop_front().expect("not empty");
-
                 let to_engine = this.to_engine.clone();
                 let client = this.client.clone();
                 let chain_spec = Arc::clone(&this.chain_spec);

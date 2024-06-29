@@ -74,7 +74,8 @@ where
         .iter()
         .flat_map(|batches| {
             batches.iter().map(|batch| {
-                // create sealed block from batch for execution this should never fail since batches are validated
+                // create sealed block from batch for execution this should never fail since batches
+                // are validated
                 SealedBlockWithSenders::try_from(batch)
             })
         })
