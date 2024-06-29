@@ -9,9 +9,11 @@ use reth_execution_types::ExecutionOutcome;
 use reth_node_api::PayloadBuilderAttributes as _;
 use reth_payload_builder::{database::CachedReads, error::PayloadBuilderError};
 use reth_primitives::{
-    constants::EMPTY_WITHDRAWALS, proofs, revm::env::tx_env_with_recovered, Block, Bytes, Header,
-    Receipt, Receipts, SealedBlock, SealedBlockWithSenders, TransactionSigned,
-    TransactionSignedEcRecovered, EMPTY_OMMER_ROOT_HASH, U256,
+    constants::{eip4844::MAX_DATA_GAS_PER_BLOCK, EMPTY_WITHDRAWALS},
+    proofs,
+    revm::env::tx_env_with_recovered,
+    Block, Bytes, Header, Receipt, Receipts, SealedBlock, SealedBlockWithSenders,
+    TransactionSigned, TransactionSignedEcRecovered, EMPTY_OMMER_ROOT_HASH, U256,
 };
 use reth_provider::StateProviderFactory;
 use reth_revm::{
@@ -55,12 +57,11 @@ where
     //
     // TODO: in order to absolutely ensure execution completed:
     // - search provider for all blocks with previous consensus output hash
+    //      - use timestamp?
     // - ensure ommers and nonce match up
     //      - ommers includes all other batches
     //      - ommers hash ensures all batches accounted for
     //      - ommers length used to get the last block in the output by nonce
-
-    // let flat_batches: Vec<Batch> = output.clone().batches.into_iter().flatten().collect();
 
     // create ommers while converting Batch to SealedBlockWithSenders
     let output_digest = output.digest();
@@ -72,18 +73,8 @@ where
         .batches
         .iter()
         .flat_map(|batches| {
-            // try convert batch to sealed block
-            //
-            // this should never fail since batches are validated
             batches.iter().map(|batch| {
-                // collect headers for ommers while looping through each batch
-                //
-                // TODO: is there a better way to do this?
-                // ommers.push(batch.versioned_metadata().sealed_header().header().clone());
-                // TODO: include batch hashes when Subscriber fetches batches for ConsensusOutput
-                // let batch_digest = batch.digest();
-                // batch_digests.push_back(batch_digest);
-                // create sealed block from batch for execution
+                // create sealed block from batch for execution this should never fail since batches are validated
                 SealedBlockWithSenders::try_from(batch)
             })
         })
@@ -94,43 +85,17 @@ where
         .batches
         .iter()
         .flat_map(|batches| {
-            // try convert batch to sealed block
-            //
-            // this should never fail since batches are validated
-            batches.iter().map(|batch| {
-                // collect headers for ommers while looping through each batch
-                //
-                // TODO: is there a better way to do this?
-                batch.versioned_metadata().sealed_header().header().clone()
-                // TODO: include batch hashes when Subscriber fetches batches for ConsensusOutput
-                // let batch_digest = batch.digest();
-                // batch_digests.push_back(batch_digest);
-                // create sealed block from batch for execution
-                // SealedBlockWithSenders::try_from(batch)
-            })
+            batches.iter().map(|batch| batch.versioned_metadata().sealed_header().header().clone())
         })
         .collect();
 
+    // TODO: include batch digests when Subscriber fetches batches for ConsensusOutput
     let mut batch_digests: VecDeque<BatchDigest> = output
         .batches
         .iter()
-        .flat_map(|batches| {
-            // try convert batch to sealed block
-            //
-            // this should never fail since batches are validated
-            batches.iter().map(|batch| {
-                // collect headers for ommers while looping through each batch
-                //
-                // TODO: is there a better way to do this?
-                // batch.versioned_metadata().sealed_header().header().clone()
-                // TODO: include batch hashes when Subscriber fetches batches for ConsensusOutput
-                // let batch_digest = batch.digest();
-                batch.digest()
-                // create sealed block from batch for execution
-                // SealedBlockWithSenders::try_from(batch)
-            })
-        })
+        .flat_map(|batches| batches.iter().map(|batch| batch.digest()))
         .collect();
+
     // calculate ommers hash
     let ommers_root = proofs::calculate_ommers_root(&ommers);
 
@@ -187,23 +152,27 @@ where
 {
     let state_provider = provider.state_by_block_hash(parent_block.hash())?;
     let state = StateProviderDatabase::new(state_provider);
+
+    // TODO: using same apprach as reth here bc I can't find the State::builder()'s methods
+    // I'm not sure what `with_bundle_update` does, and using `CachedReads` is the only way
+    // I can get the state root section below to compile
     let mut cached_reads = CachedReads::default();
     let mut db =
         State::builder().with_database_ref(cached_reads.as_db(state)).with_bundle_update().build();
 
     debug!(target: "payload_builder", parent_hash = ?parent_block.hash(), parent_number = parent_block.number, "building new payload");
+    // collect these totals to report at the end
     let mut total_gas_used = 0;
     let mut cumulative_gas_used = 0;
-    let mut sum_blob_gas_used = 0;
+    let mut total_fees = U256::ZERO;
+    let mut executed_txs = Vec::new();
+    let mut receipts = Vec::new();
+    // let mut sum_blob_gas_used = 0;
 
+    // initialize values for execution from block env
     let (cfg, block_env) = payload.cfg_and_block_env(chain_spec.as_ref(), parent_block.header());
     let block_gas_limit: u64 = block_env.gas_limit.try_into().unwrap_or(u64::MAX);
     let base_fee = block_env.basefee.to::<u64>();
-
-    let mut executed_txs = Vec::new();
-
-    let mut total_fees = U256::ZERO;
-
     let block_number = block_env.number.to::<u64>();
 
     // // apply eip-4788 pre block contract call
@@ -216,6 +185,7 @@ where
     //     &attributes,
     // )?;
 
+    // // TODO: TN needs to support this
     // // apply eip-2935 blockhashes update
     // apply_blockhashes_update(
     //     &mut db,
@@ -226,52 +196,28 @@ where
     // )
     // .map_err(|err| PayloadBuilderError::Internal(err.into()))?;
 
-    let mut receipts = Vec::new();
-
     // TODO: parallelize tx recovery when it's worth it (see TransactionSigned::recover_signers())
-
-    // let batch_txs: Result<Vec<TransactionSignedEcRecovered>, _> = payload
-    //     .attributes
-    //     .batch
-    //     .transactions_owned()
-    //     .map(|tx_bytes| {
-    //         // batches must be validated by this point,
-    //         // so encoding and decoding has already happened
-    //         // and is not expected to fail
-    //         TransactionSigned::decode_enveloped(&mut tx_bytes.as_ref()).map_err(|e| {
-    //             error!(target: "execution::executor", "Failed to decode enveloped tx:
-    // {tx_bytes:?}");             ExecutorError::DecodeTransaction(e)
-    //         })
-    //         .expect("batch already validated")
-    //         .try_into_ecrecovered()
-    //     })
-    //     .collect();
-
-    // let batch_txs = batch_txs.expect("batch valid");
-    // let recovered_batch_txs = TransactionSigned::recover_signers(&batch_txs, batch_txs.len());
 
     let txs = payload.attributes.batch_block.clone().into_transactions_ecrecovered();
 
     for tx in txs {
-        // TODO: support blob gas
-        //
+        // // TODO: support blob gas with cancun genesis hardfork
+        // //
         // // There's only limited amount of blob space available per block, so we need to check if
         // // the EIP-4844 can still fit in the block
+        // //
+        // // note: this should never be a problem
         // if let Some(blob_tx) = tx.as_eip4844() {
         //     let tx_blob_gas = blob_tx.blob_gas();
         //     if sum_blob_gas_used + tx_blob_gas > MAX_DATA_GAS_PER_BLOCK {
-        //         // we can't fit this _blob_ transaction into the block, so we mark it as
-        //         // invalid, which removes its dependent transactions from
-        //         // the iterator. This is similar to the gas limit condition
-        //         // for regular transactions above.
-        //         trace!(target: "payload_builder", tx=?tx.hash, ?sum_blob_gas_used, ?tx_blob_gas,
+        //         // this should never happen and is considered an error
+        //         error!(target: "payload_builder", tx=?tx.hash, ?sum_blob_gas_used, ?tx_blob_gas,
         // "skipping blob transaction because it would exceed the max data gas per block");
-        //         best_txs.mark_invalid(&pool_tx);
+        //         // TODO: should this break the process?
         //         continue;
         //     }
         // }
 
-        //
         let env = EnvWithHandlerCfg::new_with_cfg_env(
             cfg.clone(),
             block_env.clone(),
@@ -285,13 +231,18 @@ where
             Ok(res) => res,
             Err(err) => {
                 match err {
+                    // allow transaction errors (ie - duplicates)
+                    //
+                    // it's possible that another worker's batch included this transaction
                     EVMError::Transaction(err) => {
                         warn!(target: "execution::executor", tx_hash=?tx.hash(), ?err);
+
+                        // TODO: collect metrics here
 
                         continue;
                     }
                     err => {
-                        // this is an error that we should treat as fatal for this attempt
+                        // this is an error that we should treat as fatal
                         // - invalid header resulting from misconfigured BlockEnv
                         // - Database error
                         // - custom error (unsure)
@@ -300,6 +251,7 @@ where
                 }
             }
         };
+
         // drop evm so db is released.
         drop(evm);
         // commit changes
@@ -310,10 +262,11 @@ where
         //     let tx_blob_gas = blob_tx.blob_gas();
         //     sum_blob_gas_used += tx_blob_gas;
 
-        //     // if we've reached the max data gas per block, we can skip blob txs entirely
-        //     if sum_blob_gas_used == MAX_DATA_GAS_PER_BLOCK {
-        //         best_txs.skip_blobs();
-        //     }
+        //     // TODO: this is important for worker's batch payload builder
+        //     // // if we've reached the max data gas per block, we can skip blob txs entirely
+        //     // if sum_blob_gas_used == MAX_DATA_GAS_PER_BLOCK {
+        //     //     best_txs.skip_blobs();
+        //     // }
         // }
 
         let gas_used = result.gas_used();
@@ -339,7 +292,10 @@ where
         executed_txs.push(tx.into_signed());
     }
 
-    // TODO: logic for requests, withdrawals
+    // TODO: logic for withdrawals
+    //
+    // let WithdrawalsOutcome { withdrawals_root, withdrawals } =
+    //     commit_withdrawals(&mut db, &chain_spec, attributes.timestamp, attributes.withdrawals)?;
 
     // merge all transitions into bundle state, this would apply the withdrawal balance changes
     // and 4788 contract call
@@ -364,10 +320,10 @@ where
     // create the block header
     let transactions_root = reth_primitives::proofs::calculate_transaction_root(&executed_txs);
 
-    // initialize empty blob sidecars at first. If cancun is active then this will
+    // // initialize empty blob sidecars at first. If cancun is active then this will
     // let mut blob_sidecars = Vec::new();
-    let mut excess_blob_gas = None;
-    let mut blob_gas_used = None;
+    // let mut excess_blob_gas = None;
+    // let mut blob_gas_used = None;
 
     // // only determine cancun fields when active
     // if chain_spec.is_cancun_active_at_timestamp(payload.attributes.timestamp) {
@@ -408,9 +364,9 @@ where
         gas_used: cumulative_gas_used,
         extra_data: payload.attributes.batch_digest.into(),
         parent_beacon_block_root: payload.parent_beacon_block_root(),
-        blob_gas_used,
-        excess_blob_gas,
-        requests_root: None, // TODO: support requests
+        blob_gas_used: None,   // TODO: support blobs
+        excess_blob_gas: None, // TODO: support blobs
+        requests_root: None,
     };
 
     // seal the block
