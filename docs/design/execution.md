@@ -70,3 +70,52 @@ Because blocks contain these fields, they are accessible to be re-purposed for T
 *TN*: `ConsensusOutput` hash. Or should this be used for managing rewards/validator sets on chain?
 
 *Logic*: The parent beacon block root is mostly helpful for supporting staking pools like Lido and isn't really relevant to TN directly. However, it could be useful for calculating epoch shuffles. IMPORTANT: ensure implementation wouldn't violate EVM expectations.
+
+## System Calls
+At times, the protocol needs to manage state directly. System calls provide a secure, gaselss approach to previewing state changes. The protocol can then use this "preview" of the state change to update the database directly, which avoids the need for gas entirely.
+
+## Telcoin Network: EIP Compatiblity
+### [EIP-2935](https://eips.ethereum.org/EIPS/eip-2935): Historic Block Hashes
+Support for stateless clients.
+
+#### Abstract
+> Store last `HISTORY_SERVE_WINDOW` historical block hashes in the storage of a system contract as part of the block processing logic. Furthermore this EIP has no impact on `BLOCKHASH` resolution mechanism (and hence its range/costs etc).
+
+#### Motivation
+> EVM implicitly assumes the client has the recent block (hashes) at hand. This assumption is not future-proof given the prospect of stateless clients. Including the block hashes in the state will allow bundling these hashes in the witness provided to a stateless client. This is already possible in the MPT and will become more efficient post-Verkle.
+>
+> Extending the range of blocks which BLOCKHASH can serve (BLOCKHASH_SERVE_WINDOW) would have been a semantics change. Using extending that via this contract storage would allow a soft-transition. Rollups can benefit from the longer history window through directly querying this contract.
+>
+> A side benefit of this approach could be that it allows building/validating proofs related to last HISTORY_SERVE_WINDOW ancestors directly against the current state.
+
+### [EIP-4844](https://eips.ethereum.org/EIPS/eip-4844): Shard Blob Transactions
+TODO
+
+Add support for Layer 2s. TN supports layer 2 transaction data type. This is not functional yet because some design decisions need to be carefully considered regarding blob sidecars. Ethereum tasks the consensus layer for persisting the blobs for data availability.
+
+#### Abstract
+> Introduce a new transaction format for “blob-carrying transactions” which contain a large amount of data that cannot be accessed by EVM execution, but whose commitment can be accessed. The format is intended to be fully compatible with the format that will be used in full sharding.
+
+#### Motivation
+Rollups and Layer 2s are increasingly popular and help to further reduce transaction fees while increasing transaction throughput.
+
+### [EIP-4788](https://eips.ethereum.org/EIPS/eip-4788): Beacon Root Contract
+TODO
+
+How can this be used to verify consensus output?
+
+#### Abstract
+> Commit to the hash tree root of each beacon chain block in the corresponding execution payload header.
+>
+> Store each of these roots in a smart contract.
+
+#### Motivation
+> Roots of the beacon chain blocks are cryptographic accumulators that allow proofs of arbitrary consensus state. Exposing these roots inside the EVM allows for trust-minimized access to the consensus layer. This functionality supports a wide variety of use cases that improve trust assumptions of staking pools, restaking constructions, smart contract bridges, MEV mitigations and more.
+
+### [EIP-7685](https://eips.ethereum.org/EIPS/eip-7685): Execution to Consensus Layer Requests
+TN does not anticipate a need for supporting this EIP at this time.
+
+##### Motivation
+> The proliferation of smart contract controlled validators has caused there to be a demand for additional EL triggered behaviors. By allowing these systems to delegate administrative operations to their governing smart contracts, they can avoid intermediaries needing to step in and ensure certain operations occur. This creates a safer system for end users.
+
+TN validators may decide to manage themselves on chain through smart contracts, at which point a TIP will be introduced to support this EIP.
