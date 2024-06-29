@@ -63,9 +63,9 @@ where
     // let flat_batches: Vec<Batch> = output.clone().batches.into_iter().flatten().collect();
 
     // create ommers while converting Batch to SealedBlockWithSenders
-    let mut ommers = Vec::new();
     let output_digest = output.digest();
-    let mut batch_digests: VecDeque<BatchDigest> = VecDeque::new();
+    // let mut ommers = Vec::new();
+    // let mut batch_digests: VecDeque<BatchDigest> = VecDeque::new();
 
     // TODO: add this as a method on ConsensusOutput and parallelize
     let sealed_blocks_with_senders_result: Result<Vec<SealedBlockWithSenders>, _> = output
@@ -89,6 +89,48 @@ where
         })
         .collect();
 
+    // TODO: include this information when parallelizing?
+    let ommers: Vec<Header> = output
+        .batches
+        .iter()
+        .flat_map(|batches| {
+            // try convert batch to sealed block
+            //
+            // this should never fail since batches are validated
+            batches.iter().map(|batch| {
+                // collect headers for ommers while looping through each batch
+                //
+                // TODO: is there a better way to do this?
+                batch.versioned_metadata().sealed_header().header().clone()
+                // TODO: include batch hashes when Subscriber fetches batches for ConsensusOutput
+                // let batch_digest = batch.digest();
+                // batch_digests.push_back(batch_digest);
+                // create sealed block from batch for execution
+                // SealedBlockWithSenders::try_from(batch)
+            })
+        })
+        .collect();
+
+    let mut batch_digests: VecDeque<BatchDigest> = output
+        .batches
+        .iter()
+        .flat_map(|batches| {
+            // try convert batch to sealed block
+            //
+            // this should never fail since batches are validated
+            batches.iter().map(|batch| {
+                // collect headers for ommers while looping through each batch
+                //
+                // TODO: is there a better way to do this?
+                // batch.versioned_metadata().sealed_header().header().clone()
+                // TODO: include batch hashes when Subscriber fetches batches for ConsensusOutput
+                // let batch_digest = batch.digest();
+                batch.digest()
+                // create sealed block from batch for execution
+                // SealedBlockWithSenders::try_from(batch)
+            })
+        })
+        .collect();
     // calculate ommers hash
     let ommers_root = proofs::calculate_ommers_root(&ommers);
 
