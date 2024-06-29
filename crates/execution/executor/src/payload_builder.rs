@@ -36,7 +36,7 @@ use crate::error::ExecutorError;
 /// and configuration, this function creates a transaction payload. Returns
 /// a result indicating success with the payload or an error in case of failure.
 #[inline]
-fn execute_consensus_output<EvmConfig, Provider>(
+pub fn execute_consensus_output<EvmConfig, Provider>(
     evm_config: EvmConfig,
     args: BuildArguments<Provider>,
 ) -> eyre::Result<()>

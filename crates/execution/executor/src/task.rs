@@ -143,7 +143,10 @@ where
                     match storage.build_and_execute(
                         output,
                         withdrawals,
-                        &provider,
+                        // TODO: consider specifying lifetime parameter on BuildArgs
+                        // to pass this as a reference
+                        // currently always wrapped in Arc, so not too inefficient
+                        provider.clone(),
                         chain_spec,
                         &block_executor,
                     ) {
