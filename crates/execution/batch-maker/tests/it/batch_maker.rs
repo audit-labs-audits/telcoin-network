@@ -10,7 +10,6 @@ use narwhal_network::client::NetworkClient;
 use narwhal_network_types::MockWorkerToPrimary;
 use narwhal_typed_store::Map;
 use narwhal_worker::{metrics::WorkerMetrics, BatchMaker, NUM_SHUTDOWN_RECEIVERS};
-use prometheus::Registry;
 use reth::{beacon_consensus::EthBeaconConsensus, tasks::TaskManager};
 use reth_blockchain_tree::noop::NoopBlockchainTree;
 use reth_chainspec::ChainSpec;
@@ -51,7 +50,7 @@ async fn test_make_batch_el_to_cl() {
     let store = create_batch_store();
     let mut tx_shutdown = PreSubscribedBroadcastSender::new(NUM_SHUTDOWN_RECEIVERS);
     let (tx_quorum_waiter, mut rx_quorum_waiter) = tn_types::test_channel!(1);
-    let node_metrics = WorkerMetrics::new(&Registry::new());
+    let node_metrics = WorkerMetrics::default();
 
     // Mock the primary client to always succeed.
     let mut mock_server = MockWorkerToPrimary::new();

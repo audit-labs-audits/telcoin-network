@@ -23,7 +23,7 @@ use narwhal_network_types::{
 };
 use narwhal_storage::{NodeStorage, VoteDigestStore};
 use narwhal_worker::{
-    metrics::{initialise_metrics, WorkerChannelMetrics},
+    metrics::{Metrics, WorkerChannelMetrics},
     Worker,
 };
 use prometheus::Registry;
@@ -109,7 +109,7 @@ async fn test_get_network_peers_from_admin_server() {
     tokio::time::sleep(Duration::from_secs(1)).await;
 
     let registry_1 = Registry::new();
-    let metrics_1 = initialise_metrics(&registry_1);
+    let metrics_1 = Metrics::new_with_registry(&registry_1);
 
     let worker_1_parameters = Parameters {
         batch_size: 200, // Two transactions.
@@ -119,8 +119,7 @@ async fn test_get_network_peers_from_admin_server() {
     let mut tx_shutdown_worker = PreSubscribedBroadcastSender::new(NUM_SHUTDOWN_RECEIVERS);
 
     // For EL batch maker
-    let channel_metrics: Arc<WorkerChannelMetrics> =
-        Arc::new(metrics_1.clone().channel_metrics.unwrap());
+    let channel_metrics: Arc<WorkerChannelMetrics> = Arc::new(metrics_1.clone().channel_metrics);
     let (_tx_batch_maker, rx_batch_maker) = channel_with_total(
         CHANNEL_CAPACITY,
         &channel_metrics.tx_batch_maker,
