@@ -7,7 +7,7 @@ use base64::{engine::general_purpose, Engine};
 use enum_dispatch::enum_dispatch;
 use fastcrypto::hash::{Digest, Hash, HashFunction};
 use mem_utils::MallocSizeOf;
-use reth_primitives::{SealedBlock, SealedBlockWithSenders, TransactionSigned, Withdrawals};
+use reth_primitives::{SealedBlock, SealedBlockWithSenders, TransactionSigned, Withdrawals, B256};
 use serde::{Deserialize, Serialize};
 use std::fmt;
 use thiserror::Error;
@@ -245,5 +245,13 @@ impl Hash<{ crypto::DIGEST_LENGTH }> for BatchV1 {
         BatchDigest::new(
             crypto::DefaultHashFunction::digest_iterator(self.transactions.iter()).into(),
         )
+    }
+}
+
+// Convenience function for casting `BatchDigest` into EL B256.
+// note: these are both 32-bytes
+impl From<BatchDigest> for B256 {
+    fn from(value: BatchDigest) -> Self {
+        B256::from_slice(value.as_ref())
     }
 }

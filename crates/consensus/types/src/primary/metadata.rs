@@ -5,9 +5,8 @@
 //! [SealedHeader]. The Batch itself contains the
 //! raw transactions, which are used during validation
 //! to recreate the included [SealedHeader].
-use enum_dispatch::enum_dispatch;
-
 use crate::{now, TimestampSec};
+use enum_dispatch::enum_dispatch;
 use reth_primitives::SealedHeader;
 use serde::{Deserialize, Serialize};
 

@@ -13,10 +13,12 @@ publish = false
 [dependencies]
 base64 = { workspace = true }
 bcs = { workspace = true }
+reth-payload-primitives = { workspace = true }
 reth-primitives = { workspace = true }
 reth-chainspec = { workspace = true }
 reth-db = { workspace = true }
 reth-revm = { workspace = true }
+reth-rpc-types = { workspace = true }
 derive_builder = { workspace = true }
 enum_dispatch = { workspace = true }
 futures = { workspace = true }
