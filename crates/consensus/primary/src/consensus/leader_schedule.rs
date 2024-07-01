@@ -185,7 +185,11 @@ impl LeaderSchedule {
     /// Restores the LeaderSchedule by using the storage. It will attempt to retrieve the last
     /// committed "final" ReputationScores and use them to create build a LeaderSwapTable to use
     /// for the LeaderSchedule.
-    pub fn from_store(committee: Committee, store: Arc<ConsensusStore>) -> Self {
+    pub fn from_store(
+        committee: Committee,
+        store: Arc<ConsensusStore>,
+        bad_nodes_stake_threshold: u64,
+    ) -> Self {
         let table = store.read_latest_commit_with_final_reputation_scores().map_or(
             LeaderSwapTable::default(),
             |commit| {
@@ -193,17 +197,7 @@ impl LeaderSchedule {
                     &committee,
                     commit.leader_round(),
                     &commit.reputation_score(),
-                    // protocol_config.consensus_bad_nodes_stake_threshold():
-                    //
-                    // Taking a baby step approach, we consider only 20% by stake as bad nodes so
-                    // we have a 80% by stake of nodes participating in the
-                    // leader committee. That allow us for more redundancy in
-                    // case we have validators under performing - since the
-                    // responsibility is shared amongst more nodes. We can increase that once we do
-                    // have higher confidence.
-                    //
-                    // for now, use 0
-                    0,
+                    bad_nodes_stake_threshold,
                 )
             },
         );

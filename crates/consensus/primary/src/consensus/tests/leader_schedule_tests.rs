@@ -9,6 +9,7 @@ use std::{
 };
 
 use narwhal_storage::ConsensusStore;
+use reth_tracing::init_test_tracing;
 use tn_types::AuthorityIdentifier;
 
 use tn_types::{
@@ -160,6 +161,7 @@ async fn test_leader_schedule() {
 /// TODO: this test is failing - I think it's due to bad stake threshold
 #[tokio::test]
 async fn test_leader_schedule_from_store() {
+    init_test_tracing();
     // GIVEN
     let fixture = CommitteeFixture::builder().build();
     let committee = fixture.committee();
@@ -173,7 +175,7 @@ async fn test_leader_schedule_from_store() {
     let leader_2 = schedule.leader(2);
     assert_eq!(leader_2.id(), authority_ids[0]);
 
-    // AND we add some a commit with a final score where the validator 0 is expected to be the
+    // AND we add a commit with a final score where the validator 0 is expected to be the
     // lowest score one.
     let mut scores = ReputationScores::new(&committee);
     scores.final_of_schedule = true;
@@ -186,7 +188,7 @@ async fn test_leader_schedule_from_store() {
     store.write_consensus_state(&HashMap::new(), &sub_dag).unwrap();
 
     // WHEN
-    let schedule = LeaderSchedule::from_store(committee, store);
+    let schedule = LeaderSchedule::from_store(committee, store, 33);
 
     // THEN the stored schedule should be returned and eventually the low score leader should be
     // swapped with a high score one.
