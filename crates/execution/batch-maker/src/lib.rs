@@ -17,15 +17,17 @@
 #![cfg_attr(docsrs, feature(doc_cfg, doc_auto_cfg))]
 
 use consensus_metrics::metered_channel::Sender;
-use reth_evm::execute::{BlockExecutionOutput, BlockExecutorProvider, Executor};
-use reth_interfaces::executor::{BlockExecutionError, BlockValidationError};
+use reth_chainspec::ChainSpec;
+use reth_evm::execute::{
+    BlockExecutionError, BlockExecutionOutput, BlockExecutorProvider, BlockValidationError,
+    Executor,
+};
 use reth_primitives::{
     constants::{EMPTY_TRANSACTIONS, ETHEREUM_BLOCK_GAS_LIMIT},
-    proofs, Address, Block, BlockBody, BlockHash, BlockHashOrNumber, BlockNumber, ChainSpec,
-    Header, Receipts, SealedHeader, TransactionSigned, Withdrawals, B256, EMPTY_OMMER_ROOT_HASH,
-    U256,
+    proofs, Address, Block, BlockBody, BlockHash, BlockHashOrNumber, BlockNumber, Header,
+    SealedHeader, TransactionSigned, Withdrawals, B256, EMPTY_OMMER_ROOT_HASH, U256,
 };
-use reth_provider::{BlockReaderIdExt, BundleStateWithReceipts, StateProviderFactory};
+use reth_provider::{BlockReaderIdExt, ExecutionOutcome, StateProviderFactory};
 use reth_revm::database::StateProviderDatabase;
 use reth_transaction_pool::TransactionPool;
 use std::{
@@ -248,6 +250,7 @@ impl StorageInner {
             excess_blob_gas: None,
             extra_data: Default::default(),
             parent_beacon_block_root: None,
+            requests_root: None,
         };
 
         header.transactions_root = if transactions.is_empty() {
@@ -278,7 +281,7 @@ impl StorageInner {
         provider: &Provider,
         chain_spec: Arc<ChainSpec>,
         executor: &Executor,
-    ) -> Result<(SealedHeader, BundleStateWithReceipts), BlockExecutionError>
+    ) -> Result<(SealedHeader, ExecutionOutcome), BlockExecutionError>
     where
         Executor: BlockExecutorProvider,
         Provider: StateProviderFactory + BlockReaderIdExt,
@@ -303,12 +306,15 @@ impl StorageInner {
             withdrawals.as_ref(),
         );
 
-        let block =
-            Block { header, body: transactions, ommers: vec![], withdrawals: withdrawals.clone() }
-                .with_recovered_senders()
-                .ok_or(BlockExecutionError::Validation(
-                    BlockValidationError::SenderRecoveryError,
-                ))?;
+        let block = Block {
+            header,
+            body: transactions,
+            ommers: vec![],
+            withdrawals: withdrawals.clone(),
+            requests: None,
+        }
+        .with_recovered_senders()
+        .ok_or(BlockExecutionError::Validation(BlockValidationError::SenderRecoveryError))?;
 
         trace!(target: "execution::batch_maker", transactions=?&block.body, "executing transactions");
 
@@ -322,16 +328,12 @@ impl StorageInner {
         let block_number = block.number;
 
         // execute the block
-        let BlockExecutionOutput { state, receipts, gas_used } =
+        let BlockExecutionOutput { state, receipts, gas_used, .. } =
             executor.executor(&mut db).execute((&block, U256::ZERO).into())?;
-        let bundle_state = BundleStateWithReceipts::new(
-            state,
-            Receipts::from_block_receipt(receipts),
-            block_number,
-        );
+        let bundle_state = ExecutionOutcome::new(state, receipts.into(), block_number, vec![]);
 
         let Block { mut header, body, .. } = block.block;
-        let body = BlockBody { transactions: body, ommers: vec![], withdrawals };
+        let body = BlockBody { transactions: body, ommers: vec![], withdrawals, requests: None };
 
         trace!(target: "execution::batch_maker", ?bundle_state, ?header, ?body, "executed block, calculating state root and completing header");
 
@@ -371,10 +373,13 @@ mod tests {
     use reth::tasks::TaskManager;
     use reth_blockchain_tree::noop::NoopBlockchainTree;
     use reth_db::test_utils::{create_test_rw_db, tempdir_path};
-    use reth_node_core::init::init_genesis;
+    use reth_db_common::init::init_genesis;
     use reth_node_ethereum::{EthEvmConfig, EthExecutorProvider};
     use reth_primitives::{alloy_primitives::U160, GenesisAccount};
-    use reth_provider::{providers::BlockchainProvider, ProviderFactory};
+    use reth_provider::{
+        providers::{BlockchainProvider, StaticFileProvider},
+        ProviderFactory,
+    };
     use reth_tracing::init_test_tracing;
     use reth_transaction_pool::{
         blobstore::InMemoryBlobStore, PoolConfig, TransactionValidationTaskExecutor,
@@ -411,9 +416,12 @@ mod tests {
         // init genesis
         let db = create_test_rw_db();
         // provider
-        let provider_factory =
-            ProviderFactory::new(Arc::clone(&db), Arc::clone(&chain), tempdir_path())
-                .expect("provider factory");
+        let provider_factory = ProviderFactory::new(
+            Arc::clone(&db),
+            Arc::clone(&chain),
+            StaticFileProvider::read_write(tempdir_path())
+                .expect("static file provider read write created with tempdir path"),
+        );
         let genesis_hash = init_genesis(provider_factory.clone()).expect("init genesis");
 
         debug!("genesis hash: {genesis_hash:?}");

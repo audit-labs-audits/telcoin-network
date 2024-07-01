@@ -23,9 +23,9 @@ use reth_db::{
 };
 use reth_evm::execute::BlockExecutorProvider;
 use std::{collections::HashMap, sync::Arc, time::Instant};
-use tn_config::Parameters;
 use tn_types::{
-    BlsPublicKey, Committee, NetworkKeypair, PreSubscribedBroadcastSender, WorkerCache, WorkerId,
+    BlsPublicKey, Committee, NetworkKeypair, Parameters, PreSubscribedBroadcastSender, WorkerCache,
+    WorkerId,
 };
 use tokio::{sync::RwLock, task::JoinHandle};
 use tracing::{info, instrument};
@@ -50,6 +50,7 @@ pub struct WorkerNodeInner {
 impl WorkerNodeInner {
     /// Starts the worker node with the provided info. If the node is already running then this
     /// method will return an error instead.
+    #[allow(clippy::too_many_arguments)]
     #[instrument(level = "info", skip_all)]
     async fn start<DB, Evm>(
         &mut self,
@@ -219,6 +220,7 @@ impl WorkerNode {
         Self { internal: Arc::new(RwLock::new(inner)) }
     }
 
+    #[allow(clippy::too_many_arguments)]
     pub async fn start<DB, Evm>(
         &self,
         // The primary's public key of this authority.
@@ -293,6 +295,7 @@ impl WorkerNodes {
         }
     }
 
+    #[allow(clippy::too_many_arguments)]
     #[instrument(level = "info", skip_all)]
     pub async fn start<DB, Evm>(
         &self,

@@ -15,33 +15,39 @@
 #![deny(unused_must_use, rust_2018_idioms)]
 #![cfg_attr(docsrs, feature(doc_cfg, doc_auto_cfg))]
 
-use consensus_metrics::metered_channel::Receiver;
 use reth_beacon_consensus::BeaconEngineMessage;
-use reth_evm::execute::{BlockExecutionOutput, BlockExecutorProvider, Executor as _};
-use reth_interfaces::executor::{BlockExecutionError, BlockValidationError};
+use reth_chainspec::ChainSpec;
+use reth_evm::execute::{
+    BlockExecutionError, BlockExecutionOutput, BlockExecutorProvider, BlockValidationError,
+    Executor as _,
+};
 use reth_node_api::EngineTypes;
 use reth_primitives::{
     constants::{EMPTY_TRANSACTIONS, ETHEREUM_BLOCK_GAS_LIMIT},
-    proofs, Address, Block, BlockBody, BlockHash, BlockHashOrNumber, BlockNumber, ChainSpec,
-    Header, Receipts, SealedBlockWithSenders, SealedHeader, TransactionSigned, Withdrawals, B256,
+    proofs, Address, Block, BlockBody, BlockHash, BlockHashOrNumber, BlockNumber, Header,
+    SealedBlockWithSenders, SealedHeader, TransactionSigned, Withdrawals, B256,
     EMPTY_OMMER_ROOT_HASH, U256,
 };
 use reth_provider::{
-    BlockReaderIdExt, BundleStateWithReceipts, CanonStateNotificationSender, StateProviderFactory,
+    BlockReaderIdExt, CanonStateNotificationSender, ExecutionOutcome, StateProviderFactory,
 };
 use reth_revm::database::StateProviderDatabase;
+use reth_rpc_types::BlockNumHash;
 use std::{collections::HashMap, sync::Arc};
-use tn_types::{now, AutoSealConsensus, BatchAPI, ConsensusOutput};
-use tokio::sync::{mpsc::UnboundedSender, RwLock, RwLockReadGuard, RwLockWriteGuard};
+use tn_types::{now, AutoSealConsensus, BatchAPI, BuildArguments, ConsensusOutput};
+use tokio::sync::{broadcast, mpsc::UnboundedSender, RwLock, RwLockReadGuard, RwLockWriteGuard};
+use tokio_stream::wrappers::BroadcastStream;
 use tracing::{debug, error, trace, warn};
 
 mod client;
 mod error;
+mod payload_builder;
 mod task;
 mod payload;
 
 pub use crate::client::AutoSealClient;
 use error::ExecutorError;
+pub use payload_builder::execute_consensus_output;
 pub use task::MiningTask;
 
 /// Builder type for configuring the setup
@@ -50,7 +56,7 @@ pub struct Executor<Client, Engine: EngineTypes, EvmConfig> {
     client: Client,
     consensus: AutoSealConsensus,
     storage: Storage,
-    from_consensus: Receiver<ConsensusOutput>,
+    from_consensus: broadcast::Receiver<ConsensusOutput>,
     to_engine: UnboundedSender<BeaconEngineMessage<Engine>>,
     canon_state_notification: CanonStateNotificationSender,
     evm_config: EvmConfig,
@@ -67,7 +73,7 @@ where
     pub fn new(
         chain_spec: Arc<ChainSpec>,
         client: Client,
-        from_consensus: Receiver<ConsensusOutput>,
+        from_consensus: broadcast::Receiver<ConsensusOutput>,
         to_engine: UnboundedSender<BeaconEngineMessage<Engine>>,
         canon_state_notification: CanonStateNotificationSender,
         evm_config: EvmConfig,
@@ -104,13 +110,15 @@ where
             evm_config,
         } = self;
         let auto_client = AutoSealClient::new(storage.clone());
+        // cast broadcast channel to stream for convenient iter methods
+        let consensus_output_stream = BroadcastStream::new(from_consensus);
         let task = MiningTask::new(
             Arc::clone(consensus.chain_spec()),
             to_engine,
             canon_state_notification,
             storage,
             client,
-            from_consensus,
+            consensus_output_stream,
             evm_config,
         );
         (consensus, auto_client, task)
@@ -245,6 +253,7 @@ impl StorageInner {
             excess_blob_gas: None,
             extra_data: Default::default(),
             parent_beacon_block_root: None,
+            requests_root: None,
         };
 
         header.transactions_root = if transactions.is_empty() {
@@ -263,10 +272,10 @@ impl StorageInner {
         &mut self,
         output: ConsensusOutput,
         withdrawals: Option<Withdrawals>,
-        provider: &Provider,
+        provider: Provider,
         chain_spec: Arc<ChainSpec>,
         executor: &Executor,
-    ) -> Result<(SealedBlockWithSenders, BundleStateWithReceipts), ExecutorError>
+    ) -> Result<(SealedBlockWithSenders, ExecutionOutcome), ExecutorError>
     where
         Executor: BlockExecutorProvider,
         Provider: StateProviderFactory + BlockReaderIdExt,
@@ -309,6 +318,7 @@ impl StorageInner {
             body: transactions.clone(),
             ommers: vec![],
             withdrawals: withdrawals.clone(),
+            requests: None,
         }
         .with_recovered_senders()
         .ok_or(BlockExecutionError::Validation(BlockValidationError::SenderRecoveryError))?;
@@ -330,17 +340,17 @@ impl StorageInner {
         let block_number = block.number;
 
         // execute the block
-        let BlockExecutionOutput { state, receipts, gas_used } =
+        let BlockExecutionOutput { state, receipts, gas_used, .. } =
             executor.executor(&mut db).execute((&block, U256::ZERO).into())?;
-        let bundle_state = BundleStateWithReceipts::new(
-            state,
-            Receipts::from_block_receipt(receipts),
-            block_number,
-        );
+        let bundle_state = ExecutionOutcome::new(state, receipts.into(), block_number, vec![]);
 
         let Block { mut header, body, .. } = block.block;
-        let body =
-            BlockBody { transactions: body, ommers: vec![], withdrawals: withdrawals.clone() };
+        let body = BlockBody {
+            transactions: body,
+            ommers: vec![],
+            withdrawals: withdrawals.clone(),
+            requests: None,
+        };
 
         debug!(target: "execution::executor", ?bundle_state, ?header, ?body, "executed block, calculating roots to complete header");
 
@@ -385,7 +395,8 @@ impl StorageInner {
         let senders_length = senders.len();
 
         // seal the block
-        let block = Block { header, body: transactions, ommers: vec![], withdrawals };
+        let block =
+            Block { header, body: transactions, ommers: vec![], withdrawals, requests: None };
         let sealed_block = block.seal_slow();
 
         trace!(target: "execution::executor", sealed_block=?sealed_block, "sealed block");
@@ -451,6 +462,36 @@ impl StorageInner {
         // output.batches.into_iter().flat_map(|batches| batches.into_iter().flat_map(|batch|
         // batch.transactions_owned().into_iter().flat_map(|tx|
         // TransactionSigned::decode_enveloped(tx.into())))).collect()
+    }
+    pub(crate) fn build_and_execute2<Provider, Executor>(
+        &mut self,
+        output: ConsensusOutput,
+        withdrawals: Option<Withdrawals>,
+        provider: Provider,
+        chain_spec: Arc<ChainSpec>,
+        executor: &Executor,
+    ) -> Result<(SealedBlockWithSenders, ExecutionOutcome), ExecutorError>
+    where
+        Executor: BlockExecutorProvider,
+        Provider: StateProviderFactory + BlockReaderIdExt,
+    {
+        // TODO: get this from somewhere else
+        let evm_config = reth_evm_ethereum::EthEvmConfig::default();
+        // TODO: get this from storage efficiently
+        // - storage should store each round of consensus output as a Vec<SealedBlock>
+        // - also, only need parent num hash
+        //
+        // Does this need to verify the previous round of consensus was fully executed?
+        let parent_num_hash = BlockNumHash::new(self.best_block, self.best_hash);
+        let build_args = BuildArguments::new(provider, output, parent_num_hash, chain_spec);
+
+        execute_consensus_output(evm_config, build_args)?;
+
+        // TODO:
+        // - how to feed blocks to engine?
+        // - review "batch-execution" concept in reth: BlockExecutorProvider trait
+
+        todo!()
     }
 }
 
@@ -544,7 +585,7 @@ mod tests {
         let manager = TaskManager::current();
         let executor = manager.executor();
         let execution_node = default_test_execution_node(Some(chain), None, executor)?;
-        let (to_executor, from_consensus) = tn_types::test_channel!(1);
+        let (to_executor, from_consensus) = tokio::sync::broadcast::channel(1);
         execution_node.start_engine(from_consensus).await?;
         tokio::task::yield_now().await;
 
@@ -554,7 +595,7 @@ mod tests {
         //=== Testing begins
 
         // send output to executor
-        let res = to_executor.send(consensus_output).await;
+        let res = to_executor.send(consensus_output);
         debug!("res: {:?}", res);
         assert!(res.is_ok());
 
@@ -688,7 +729,7 @@ mod tests {
         let manager = TaskManager::current();
         let executor = manager.executor();
         let execution_node = default_test_execution_node(Some(chain), None, executor)?;
-        let (to_executor, from_consensus) = tn_types::test_channel!(1);
+        let (to_executor, from_consensus) = tokio::sync::broadcast::channel(1);
         execution_node.start_engine(from_consensus).await?;
         tokio::task::yield_now().await;
 
@@ -698,7 +739,7 @@ mod tests {
         //=== Testing begins
 
         // send output to executor
-        let res = to_executor.send(consensus_output).await;
+        let res = to_executor.send(consensus_output);
         debug!("res: {:?}", res);
         assert!(res.is_ok());
 

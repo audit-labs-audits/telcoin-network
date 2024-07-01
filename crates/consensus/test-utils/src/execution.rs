@@ -3,12 +3,10 @@
 use clap::{Args, Parser};
 use core::fmt;
 use reth::{
-    builder::NodeConfig,
-    commands::node::NoArgs,
-    dirs::MaybePlatformPath,
-    primitives::{Address, ChainSpec},
+    args::DatadirArgs, builder::NodeConfig, commands::node::NoArgs, primitives::Address,
     tasks::TaskExecutor,
 };
+use reth_chainspec::ChainSpec;
 use reth_db::{
     test_utils::{create_test_rw_db, TempDatabase},
     DatabaseEnv,
@@ -17,9 +15,9 @@ use reth_node_ethereum::{EthEvmConfig, EthExecutorProvider};
 use std::{str::FromStr, sync::Arc};
 use telcoin_network::node::NodeCommand;
 use tempfile::tempdir;
-use tn_config::Config;
 use tn_faucet::FaucetArgs;
 use tn_node::engine::{ExecutionNode, TnBuilder};
+use tn_types::Config;
 
 /// Convnenience type for testing Execution Node.
 pub type TestExecutionNode = ExecutionNode<Arc<TempDatabase<DatabaseEnv>>, EthExecutorProvider>;
@@ -64,16 +62,7 @@ pub fn execution_builder<CliExt: clap::Args + fmt::Debug>(
     task_executor: TaskExecutor,
     opt_args: Option<Vec<&str>>,
 ) -> eyre::Result<(TnBuilder<Arc<TempDatabase<DatabaseEnv>>>, CliExt)> {
-    let tempdir = tempdir().expect("tempdir created").into_path();
-
-    let default_args = [
-        "telcoin-network",
-        "--dev",
-        "--chain",
-        "adiri",
-        "--datadir",
-        tempdir.to_str().expect("tempdir path clean"),
-    ];
+    let default_args = ["telcoin-network", "--dev", "--chain", "adiri"];
 
     // extend faucet args if provided
     let cli_args = if let Some(args) = opt_args {
@@ -86,7 +75,6 @@ pub fn execution_builder<CliExt: clap::Args + fmt::Debug>(
     let command = NodeCommand::<CliExt>::try_parse_from(cli_args)?;
 
     let NodeCommand {
-        datadir,
         config,
         chain,
         metrics,
@@ -106,12 +94,16 @@ pub fn execution_builder<CliExt: clap::Args + fmt::Debug>(
     // overwrite chain spec if passed in
     let chain = opt_chain.unwrap_or(chain);
 
+    let datadir = tempdir()?.into_path().into();
+    let datadir = DatadirArgs { datadir, static_files_path: None };
+
     // set up reth node config for engine components
     let node_config = NodeConfig {
         config,
         chain,
         metrics,
         instance,
+        datadir,
         network,
         rpc,
         txpool,
@@ -126,12 +118,6 @@ pub fn execution_builder<CliExt: clap::Args + fmt::Debug>(
     let node_config = node_config.with_unused_ports();
 
     let database = create_test_rw_db();
-
-    // create a reth datadir from tn datadir
-    let chain_for_datadir = node_config.chain.chain();
-    let datadir_path = datadir.to_string();
-    let reth_datadir = MaybePlatformPath::from_str(&datadir_path)?;
-    let data_dir = reth_datadir.unwrap_or_chain_default(chain_for_datadir);
     let mut tn_config = Config::default();
 
     // check args then use test defaults
@@ -145,8 +131,7 @@ pub fn execution_builder<CliExt: clap::Args + fmt::Debug>(
     // TODO: this a temporary approach until upstream reth supports public rpc hooks
     let opt_faucet_args = None;
 
-    let builder =
-        TnBuilder { database, node_config, data_dir, task_executor, tn_config, opt_faucet_args };
+    let builder = TnBuilder { database, node_config, task_executor, tn_config, opt_faucet_args };
 
     Ok((builder, ext))
 }
@@ -173,11 +158,10 @@ pub fn faucet_test_execution_node(
         execution_builder::<FaucetArgs>(opt_chain, opt_address, executor, extended_args)?;
 
     // replace default builder's faucet args
-    let TnBuilder { database, node_config, data_dir, task_executor, tn_config, .. } = builder;
+    let TnBuilder { database, node_config, task_executor, tn_config, .. } = builder;
     let builder = TnBuilder {
         database,
         node_config,
-        data_dir,
         task_executor,
         tn_config,
         opt_faucet_args: Some(faucet),

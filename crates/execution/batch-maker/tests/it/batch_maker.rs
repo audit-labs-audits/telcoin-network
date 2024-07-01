@@ -13,11 +13,15 @@ use narwhal_worker::{metrics::WorkerMetrics, BatchMaker, NUM_SHUTDOWN_RECEIVERS}
 use prometheus::Registry;
 use reth::{beacon_consensus::EthBeaconConsensus, tasks::TaskManager};
 use reth_blockchain_tree::noop::NoopBlockchainTree;
+use reth_chainspec::ChainSpec;
 use reth_db::test_utils::{create_test_rw_db, tempdir_path};
-use reth_node_core::init::init_genesis;
+use reth_db_common::init::init_genesis;
 use reth_node_ethereum::{EthEvmConfig, EthExecutorProvider};
-use reth_primitives::{alloy_primitives::U160, Address, ChainSpec, TransactionSigned, U256};
-use reth_provider::{providers::BlockchainProvider, ProviderFactory};
+use reth_primitives::{alloy_primitives::U160, Address, TransactionSigned, U256};
+use reth_provider::{
+    providers::{BlockchainProvider, StaticFileProvider},
+    ProviderFactory,
+};
 use reth_tracing::init_test_tracing;
 use reth_transaction_pool::{
     blobstore::InMemoryBlobStore, PoolConfig, TransactionPool, TransactionValidationTaskExecutor,
@@ -87,8 +91,12 @@ async fn test_make_batch_el_to_cl() {
     let db = create_test_rw_db();
 
     // provider
-    let factory = ProviderFactory::new(Arc::clone(&db), Arc::clone(&chain), tempdir_path())
-        .expect("provider factory");
+    let factory = ProviderFactory::new(
+        Arc::clone(&db),
+        Arc::clone(&chain),
+        StaticFileProvider::read_write(tempdir_path())
+            .expect("static file provider read write created with tempdir path"),
+    );
 
     let genesis_hash = init_genesis(factory.clone()).expect("init genesis");
     let blockchain_db = BlockchainProvider::new(factory, Arc::new(NoopBlockchainTree::default()))

@@ -10,7 +10,7 @@ use tn_node::launch_node;
 // We use jemalloc for performance reasons
 #[cfg(all(feature = "jemalloc", unix))]
 #[global_allocator]
-static ALLOC: jemallocator::Jemalloc = jemallocator::Jemalloc;
+static ALLOC: tikv_jemallocator::Jemalloc = tikv_jemallocator::Jemalloc;
 
 fn main() {
     #[cfg(not(feature = "faucet"))]
@@ -20,7 +20,7 @@ fn main() {
                 Arc::clone(&builder.node_config.chain),
                 EthEvmConfig::default(),
             );
-            launch_node(builder, executor, tn_datadir).await
+            launch_node(builder, executor, &tn_datadir).await
         })
     {
         eprintln!("Error: {err:?}");
@@ -35,7 +35,7 @@ fn main() {
                 Arc::clone(&builder.node_config.chain),
                 EthEvmConfig::default(),
             );
-            launch_node(builder, executor, tn_datadir).await
+            launch_node(builder, executor, &tn_datadir).await
         },
     ) {
         eprintln!("Error: {err:?}");

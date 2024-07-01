@@ -1,10 +1,11 @@
 use crate::Storage;
-use consensus_metrics::metered_channel::Receiver;
+use futures::StreamExt;
 use futures_util::{future::BoxFuture, FutureExt};
 use reth_beacon_consensus::{BeaconEngineMessage, ForkchoiceStatus};
+use reth_chainspec::ChainSpec;
 use reth_evm::execute::BlockExecutorProvider;
 use reth_node_api::EngineTypes;
-use reth_primitives::{ChainSpec, Withdrawals};
+use reth_primitives::Withdrawals;
 use reth_provider::{
     BlockReaderIdExt, CanonChainTracker, CanonStateNotificationSender, Chain, StateProviderFactory,
 };
@@ -13,6 +14,7 @@ use reth_stages::PipelineEvent;
 use reth_tokio_util::EventStream;
 use std::{
     collections::VecDeque,
+    fmt::Formatter,
     future::Future,
     pin::Pin,
     sync::Arc,
@@ -20,14 +22,15 @@ use std::{
 };
 use tn_types::ConsensusOutput;
 use tokio::sync::{mpsc::UnboundedSender, oneshot};
+use tokio_stream::wrappers::BroadcastStream;
 use tracing::{debug, error, warn};
 
 /// A Future that listens for new ready transactions and puts new blocks into storage
-pub struct MiningTask<Client, Engine: EngineTypes, BlockExecutor> {
+pub struct MiningTask<Provider, Engine: EngineTypes, BlockExecutor> {
     /// The configured chain spec
     chain_spec: Arc<ChainSpec>,
     /// The client used to interact with the state
-    client: Client,
+    provider: Provider,
     /// Single active future that inserts a new block into `storage`
     insert_task: Option<BoxFuture<'static, Option<EventStream<PipelineEvent>>>>,
     /// Shared storage to insert new blocks
@@ -42,14 +45,14 @@ pub struct MiningTask<Client, Engine: EngineTypes, BlockExecutor> {
     pipeline_events: Option<EventStream<PipelineEvent>>,
     /// Receiving end from CL's `Executor`. The `ConsensusOutput` is sent
     /// to the mining task here.
-    from_consensus: Receiver<ConsensusOutput>,
+    consensus_output_stream: BroadcastStream<ConsensusOutput>,
     /// The type used for block execution
     block_executor: BlockExecutor,
 }
 
 // === impl MiningTask ===
 
-impl<Client, Engine, BlockExecutor> MiningTask<Client, Engine, BlockExecutor>
+impl<Provider, Engine, BlockExecutor> MiningTask<Provider, Engine, BlockExecutor>
 where
     Engine: EngineTypes,
 {
@@ -59,20 +62,20 @@ where
         to_engine: UnboundedSender<BeaconEngineMessage<Engine>>,
         canon_state_notification: CanonStateNotificationSender,
         storage: Storage,
-        client: Client,
-        from_consensus: Receiver<ConsensusOutput>,
+        provider: Provider,
+        consensus_output_stream: BroadcastStream<ConsensusOutput>,
         block_executor: BlockExecutor,
     ) -> Self {
         Self {
             chain_spec,
-            client,
+            provider,
             insert_task: None,
             storage,
             to_engine,
             canon_state_notification,
             queued: Default::default(),
             pipeline_events: None,
-            from_consensus,
+            consensus_output_stream,
             block_executor,
         }
     }
@@ -83,9 +86,9 @@ where
     }
 }
 
-impl<Client, Engine, BlockExecutor> Future for MiningTask<Client, Engine, BlockExecutor>
+impl<Provider, Engine, BlockExecutor> Future for MiningTask<Provider, Engine, BlockExecutor>
 where
-    Client: StateProviderFactory + CanonChainTracker + BlockReaderIdExt + Clone + Unpin + 'static,
+    Provider: StateProviderFactory + CanonChainTracker + BlockReaderIdExt + Clone + Unpin + 'static,
     Engine: EngineTypes + 'static,
     BlockExecutor: BlockExecutorProvider,
 {
@@ -97,23 +100,32 @@ where
         // this executes output from consensus
         loop {
             // check if output is available from consensus
-            if let Poll::Ready(Some(output)) = this.from_consensus.poll_recv(cx) {
-                // consensus returned output that needs to be executed
-                this.queued.push_back(output)
+            match this.consensus_output_stream.poll_next_unpin(cx) {
+                Poll::Ready(Some(Ok(output))) => {
+                    // queue the output for local execution
+                    this.queued.push_back(output)
+                }
+                Poll::Ready(Some(Err(e))) => {
+                    error!(target: "execution::executor", ?e, "for consensus output stream");
+                }
+                Poll::Ready(None) => {
+                    // stream has ended
+                    return Poll::Ready(());
+                }
+                Poll::Pending => { /* nothing to do */ }
             }
 
             if this.insert_task.is_none() {
                 if this.queued.is_empty() {
                     // nothing to insert
-                    break
+                    break;
                 }
 
                 // ready to queue in new insert task
                 let storage = this.storage.clone();
                 let output = this.queued.pop_front().expect("not empty");
-
                 let to_engine = this.to_engine.clone();
-                let client = this.client.clone();
+                let provider = this.provider.clone();
                 let chain_spec = Arc::clone(&this.chain_spec);
                 let events = this.pipeline_events.take();
                 let canon_state_notification = this.canon_state_notification.clone();
@@ -122,6 +134,7 @@ where
                 // Create the mining future that creates a block, notifies the engine that drives
                 // the pipeline
                 this.insert_task = Some(Box::pin(async move {
+                    // hold the lock so only one consensus output is processed at a time
                     let mut storage = storage.write().await;
 
                     // TODO: support withdrawals
@@ -130,7 +143,10 @@ where
                     match storage.build_and_execute(
                         output,
                         withdrawals,
-                        &client,
+                        // TODO: consider specifying lifetime parameter on BuildArgs
+                        // to pass this as a reference
+                        // currently always wrapped in Arc, so not too inefficient
+                        provider.clone(),
                         chain_spec,
                         &block_executor,
                     ) {
@@ -167,27 +183,27 @@ where
                                             ForkchoiceStatus::Valid => break,
                                             ForkchoiceStatus::Invalid => {
                                                 error!(target: "execution::executor", ?fcu_response, "Forkchoice update returned invalid response");
-                                                return None
+                                                return None;
                                             }
                                             ForkchoiceStatus::Syncing => {
                                                 debug!(target: "execution::executor", ?fcu_response, "Forkchoice update returned SYNCING, waiting for VALID");
                                                 // wait for the next fork choice update
-                                                continue
+                                                continue;
                                             }
                                         }
                                     }
                                     Err(err) => {
                                         error!(target: "execution::executor", ?err, "Autoseal fork choice update failed");
-                                        return None
+                                        return None;
                                     }
                                 }
                             }
 
                             // update canon chain for rpc
                             let new_header = sealed_block_with_senders.header.clone();
-                            client.set_canonical_head(new_header.clone());
-                            client.set_safe(new_header.clone());
-                            client.set_finalized(new_header);
+                            provider.set_canonical_head(new_header.clone());
+                            provider.set_safe(new_header.clone());
+                            provider.set_finalized(new_header);
 
                             debug!(target: "execution::executor", header=?sealed_block_with_senders.hash(), "sending block notification");
 
@@ -217,7 +233,7 @@ where
                     }
                     Poll::Pending => {
                         this.insert_task = Some(fut);
-                        break
+                        break;
                     }
                 }
             }
@@ -227,11 +243,11 @@ where
     }
 }
 
-impl<Client, Engine, EvmConfig> std::fmt::Debug for MiningTask<Client, Engine, EvmConfig>
+impl<Provider, Engine, EvmConfig> std::fmt::Debug for MiningTask<Provider, Engine, EvmConfig>
 where
     Engine: EngineTypes,
 {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("MiningTask").finish_non_exhaustive()
     }
 }

@@ -10,13 +10,12 @@ use narwhal_network::client::NetworkClient;
 use reth_db::{test_utils::TempDatabase, DatabaseEnv};
 use reth_node_ethereum::EthExecutorProvider;
 use std::{collections::HashMap, sync::Arc, time::Duration};
-use tn_config::Parameters;
 use tn_node::engine::ExecutionNode;
 use tn_types::{
-    AuthorityIdentifier, BlsKeypair, BlsPublicKey, Committee, Multiaddr, NetworkKeypair,
-    WorkerCache, WorkerId,
+    AuthorityIdentifier, BlsKeypair, BlsPublicKey, Committee, ConsensusOutput, Multiaddr,
+    NetworkKeypair, Parameters, WorkerCache, WorkerId,
 };
-use tokio::sync::{RwLock, RwLockWriteGuard};
+use tokio::sync::{broadcast, RwLock, RwLockWriteGuard};
 use tracing::info;
 
 /// The authority details hold all the necessary structs and details
@@ -44,7 +43,7 @@ struct AuthorityDetailsInternal {
     execution: ExecutionNode<Arc<TempDatabase<DatabaseEnv>>, EthExecutorProvider>,
 }
 
-#[allow(clippy::arc_with_non_send_sync)]
+#[allow(clippy::arc_with_non_send_sync, clippy::too_many_arguments)]
 impl AuthorityDetails {
     pub fn new(
         id: usize,
@@ -350,5 +349,13 @@ impl AuthorityDetails {
             internal.client = Some(client);
         }
         internal.client.as_ref().unwrap().clone()
+    }
+
+    /// Subscribe to [ConsensusOutput] broadcast.
+    ///
+    /// NOTE: this broadcasts to all subscribers, but lagging receivers will lose messages
+    pub async fn subscribe_consensus_output(&self) -> broadcast::Receiver<ConsensusOutput> {
+        let internal = self.internal.read().await;
+        internal.primary.subscribe_consensus_output().await
     }
 }

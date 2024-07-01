@@ -18,8 +18,9 @@ use gcloud_sdk::{
 };
 use humantime::format_duration;
 use lru_time_cache::LruCache;
+use reth_chainspec::BaseFeeParams;
 use reth_primitives::{
-    Address, BaseFeeParams, FromRecoveredPooledTransaction, Signature as EthSignature, Transaction,
+    Address, FromRecoveredPooledTransaction, Signature as EthSignature, Transaction,
     TransactionSigned, TxEip1559, TxHash, TxKind, B256, U256,
 };
 use reth_provider::{BlockReaderIdExt, StateProviderFactory};
@@ -368,7 +369,7 @@ where
                     // calculate v based on EIP-155
                     let v = recovery_id as u64 + chain_id * 2 + 35;
                     let y_odd_parity = v % 2 == 0;
-                    return Ok(y_odd_parity)
+                    return Ok(y_odd_parity);
                 }
             }
         }
@@ -428,7 +429,7 @@ where
 
                         // return the error and check the next request
                         let _ = reply.send(error);
-                        continue
+                        continue;
                     }
 
                     // user's request not in cache - process request

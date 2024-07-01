@@ -1,14 +1,10 @@
 //! Inner-execution node components for both Worker and Primary execution.
 
-use consensus_metrics::metered_channel::{Receiver, Sender};
+use consensus_metrics::metered_channel::Sender;
 use eyre::Context as _;
 use futures::{stream_select, StreamExt};
 use jsonrpsee::http_client::HttpClient;
-use reth::{
-    core::init::init_genesis,
-    dirs::{ChainPath, DataDirPath},
-    rpc::builder::{RpcModuleBuilder, RpcServerHandle},
-};
+use reth::rpc::builder::{config::RethRpcServerConfig, RpcModuleBuilder, RpcServerHandle};
 use reth_auto_seal_consensus::AutoSealConsensus;
 use reth_beacon_consensus::{
     hooks::{EngineHooks, StaticFileHook},
@@ -21,23 +17,26 @@ use reth_db::{
     database::Database,
     database_metrics::{DatabaseMetadata, DatabaseMetrics},
 };
+use reth_db_common::init::init_genesis;
 use reth_evm::execute::BlockExecutorProvider;
 use reth_exex::ExExManagerHandle;
 use reth_network::NetworkEvents;
 use reth_node_builder::{
+    common::WithConfigs,
     components::{NetworkBuilder as _, PayloadServiceBuilder as _, PoolBuilder},
     setup::build_networked_pipeline,
-    BuilderContext, NodeConfig, RethRpcConfig,
+    BuilderContext, NodeConfig,
 };
 use reth_node_ethereum::{
     node::{EthereumNetworkBuilder, EthereumPayloadBuilder, EthereumPoolBuilder},
     EthEvmConfig,
 };
-use reth_primitives::{Address, Head, PruneModes};
+use reth_primitives::{Address, Head};
 use reth_provider::{
-    providers::BlockchainProvider, CanonStateNotificationSender, ProviderFactory,
-    StaticFileProviderFactory as _,
+    providers::{BlockchainProvider, StaticFileProvider},
+    CanonStateNotificationSender, ProviderFactory, StaticFileProviderFactory as _,
 };
+use reth_prune::PruneModes;
 use reth_rpc_types::engine::ForkchoiceState;
 use reth_static_file::StaticFileProducer;
 use reth_tasks::TaskExecutor;
@@ -48,18 +47,15 @@ use tn_batch_validator::BatchValidator;
 use tn_executor::Executor;
 use tn_faucet::{FaucetArgs, FaucetRpcExtApiServer as _};
 use tn_types::{Consensus, ConsensusOutput, NewBatch, WorkerId};
-use tokio::sync::mpsc::unbounded_channel;
+use tokio::sync::{broadcast, mpsc::unbounded_channel};
 use tokio_stream::wrappers::UnboundedReceiverStream;
 use tracing::{debug, error, info};
 
+use super::{PrimaryNode, TnBuilder};
 use crate::{
     engine::{WorkerNetwork, WorkerNode},
     error::ExecutionError,
 };
-
-use super::{PrimaryNode, TnBuilder};
-
-/// Inner type for holding execution layer types.
 
 /// Inner type for holding execution layer types.
 pub(super) struct ExecutionNodeInner<DB, Evm>
@@ -93,8 +89,6 @@ where
     /// This type is owned by the current runtime and facilitates
     /// a convenient way to spawn tasks that shutdown with the runtime.
     task_executor: TaskExecutor,
-    /// Root data directory.
-    data_dir: ChainPath<DataDirPath>,
     /// TODO: temporary solution until upstream reth supports public rpc hooks
     opt_faucet_args: Option<FaucetArgs>,
     /// Collection of execution components by worker.
@@ -107,27 +101,13 @@ where
     Evm: BlockExecutorProvider + 'static,
 {
     /// Create a new instance of `Self`.
-    pub(super) fn new(
-        // address: Address,
-        // config: NodeConfig,
-        // blockchain_db: BlockchainProvider<DB>,
-        // provider_factory: ProviderFactory<DB>,
-        // evm: Evm,
-        // canon_state_notification_sender: CanonStateNotificationSender,
-        // executor: TaskExecutor,
-        // datadir: ChainPath<DataDirPath>,
-        tn_builder: TnBuilder<DB>,
-        evm: Evm,
-    ) -> eyre::Result<Self> {
+    pub(super) fn new(tn_builder: TnBuilder<DB>, evm: Evm) -> eyre::Result<Self> {
         // deconstruct the builder
-        let TnBuilder {
-            database,
-            node_config,
-            data_dir,
-            task_executor,
-            tn_config,
-            opt_faucet_args,
-        } = tn_builder;
+        let TnBuilder { database, node_config, task_executor, tn_config, opt_faucet_args } =
+            tn_builder;
+
+        // resolve the node's datadir
+        let datadir = node_config.datadir();
 
         // Raise the fd limit of the process.
         // Does not do anything on windows.
@@ -136,12 +116,9 @@ where
         let provider_factory = ProviderFactory::new(
             database.clone(),
             Arc::clone(&node_config.chain),
-            data_dir.static_files(),
-        )?
+            StaticFileProvider::read_write(datadir.static_files())?,
+        )
         .with_static_files_metrics();
-
-        // let genesis_hash = init_genesis(db_instance.db.clone(), config.chain.clone())?;
-        // info!(target: "engine", hardforks = config.chain.display_hardforks());
 
         debug!(target: "tn::execution", chain=%node_config.chain.chain, genesis=?node_config.chain.genesis_hash(), "Initializing genesis");
 
@@ -159,12 +136,7 @@ where
         task_executor.spawn_critical("stages metrics listener task", sync_metrics_listener);
 
         // get config from file
-        // let reth_config = reth_config::Config::default(); // TODO: probably want to persist this?
         let prune_config = node_config.prune_config(); //.or(reth_config.prune.clone());
-
-        // let evm_config = EthEvmConfig::default();
-
-        // let evm_config = types.evm_config();
         let tree_config = BlockchainTreeConfig::default();
         let tree_externals =
             TreeExternals::new(provider_factory.clone(), auto_consensus.clone(), evm.clone());
@@ -174,15 +146,6 @@ where
             prune_config.map(|config| config.segments.clone()),
         )?
         .with_sync_metrics_tx(sync_metrics_tx.clone());
-
-        // let tree = node_config.build_blockchain_tree(
-        //     provider_factory.clone(),
-        //     consensus.clone(),
-        //     prune_config,
-        //     sync_metrics_tx.clone(),
-        //     tree_config,
-        //     evm.clone(),
-        // )?;
 
         let canon_state_notification_sender = tree.canon_state_notification_sender();
         let blockchain_tree = Arc::new(ShareableBlockchainTree::new(tree));
@@ -200,7 +163,6 @@ where
             evm,
             canon_state_notification_sender,
             task_executor,
-            data_dir,
             opt_faucet_args,
             workers: HashMap::default(),
         })
@@ -212,7 +174,7 @@ where
     /// All tasks are spawned with the [ExecutionNodeInner]'s [TaskManager].
     pub(super) async fn start_engine(
         &self,
-        from_consensus: Receiver<ConsensusOutput>,
+        from_consensus: broadcast::Receiver<ConsensusOutput>,
     ) -> eyre::Result<()> {
         // TODO: start metrics endpoint - need to update Generics
         //
@@ -234,9 +196,10 @@ where
             head,
             self.blockchain_db.clone(),
             self.task_executor.clone(),
-            self.data_dir.clone(),
-            self.node_config.clone(),
-            reth_config::Config::default(), // mostly peer / staging configs
+            WithConfigs {
+                config: self.node_config.clone(),
+                toml_config: reth_config::Config::default(),
+            },
         );
 
         // let components_builder = PrimaryNode::<DB, _>::components();
@@ -280,11 +243,8 @@ where
             Arc::new(AutoSealConsensus::new(self.node_config.chain.clone()));
         let mut hooks = EngineHooks::new();
 
-        let static_file_producer = StaticFileProducer::new(
-            self.provider_factory.clone(),
-            self.provider_factory.static_file_provider(),
-            PruneModes::default(),
-        );
+        let static_file_producer =
+            StaticFileProducer::new(self.provider_factory.clone(), PruneModes::default());
 
         // let static_file_producer_events = static_file_producer.lock().events();
 
@@ -297,7 +257,6 @@ where
         let static_file_producer_events = static_file_producer.lock().events();
 
         let pipeline = build_networked_pipeline(
-            &self.node_config.clone(),
             &reth_config.stages,
             client.clone(),
             Arc::clone(&auto_consensus),
@@ -325,8 +284,7 @@ where
             self.blockchain_db.clone(),
             Box::new(self.task_executor.clone()),
             Box::new(network.clone()),
-            None,  // max block
-            false, // self.debug.continuous,
+            None, // max block
             payload_builder,
             None, // initial_target
             MIN_BLOCKS_FOR_PIPELINE_RUN,
@@ -397,9 +355,10 @@ where
             head,
             self.blockchain_db.clone(),
             self.task_executor.clone(),
-            self.data_dir.clone(),
-            self.node_config.clone(),
-            reth_config::Config::default(), // mostly peer / staging configs
+            WithConfigs {
+                config: self.node_config.clone(),
+                toml_config: reth_config::Config::default(), /* mostly peer / staging configs */
+            },
         );
 
         // default tx pool
@@ -527,7 +486,7 @@ where
     }
 
     /// Return an database provider.
-    pub fn get_provider(&self) -> BlockchainProvider<DB> {
+    pub(super) fn get_provider(&self) -> BlockchainProvider<DB> {
         self.blockchain_db.clone()
     }
 
