@@ -20,42 +20,59 @@ const LATENCY_SEC_BUCKETS: &[f64] = &[
 
 #[derive(Clone)]
 pub struct Metrics {
-    pub worker_metrics: Option<WorkerMetrics>,
-    pub channel_metrics: Option<WorkerChannelMetrics>,
-    pub endpoint_metrics: Option<WorkerEndpointMetrics>,
-    pub inbound_network_metrics: Option<NetworkMetrics>,
-    pub outbound_network_metrics: Option<NetworkMetrics>,
-    pub network_connection_metrics: Option<NetworkConnectionMetrics>,
+    pub worker_metrics: WorkerMetrics,
+    pub channel_metrics: WorkerChannelMetrics,
+    pub endpoint_metrics: WorkerEndpointMetrics,
+    pub inbound_network_metrics: NetworkMetrics,
+    pub outbound_network_metrics: NetworkMetrics,
+    pub network_connection_metrics: NetworkConnectionMetrics,
 }
 
-/// Initialises the metrics
-pub fn initialise_metrics(metrics_registry: &Registry) -> Metrics {
-    // Essential/core metrics across the worker node
-    let node_metrics = WorkerMetrics::new(metrics_registry);
+impl Metrics {
+    fn try_new(registry: &Registry) -> Result<Self, prometheus::Error> {
+        // Essential/core metrics across the worker node
+        let worker_metrics = WorkerMetrics::try_new(registry)?;
 
-    // Channel metrics
-    let channel_metrics = WorkerChannelMetrics::new(metrics_registry);
+        // Channel metrics
+        let channel_metrics = WorkerChannelMetrics::try_new(registry)?;
 
-    // Endpoint metrics
-    let endpoint_metrics = WorkerEndpointMetrics::new(metrics_registry);
+        // Endpoint metrics
+        let endpoint_metrics = WorkerEndpointMetrics::try_new(registry)?;
 
-    // The metrics used for communicating over the network
-    let inbound_network_metrics = NetworkMetrics::new("worker", "inbound", metrics_registry);
-    let outbound_network_metrics = NetworkMetrics::new("worker", "outbound", metrics_registry);
+        // The metrics used for communicating over the network
+        let inbound_network_metrics = NetworkMetrics::try_new("worker", "inbound", registry)?;
+        let outbound_network_metrics = NetworkMetrics::try_new("worker", "outbound", registry)?;
 
-    // Network metrics for the worker connection
-    let network_connection_metrics = NetworkConnectionMetrics::new("worker", metrics_registry);
+        // Network metrics for the worker connection
+        let network_connection_metrics = NetworkConnectionMetrics::try_new("worker", registry)?;
 
-    Metrics {
-        worker_metrics: Some(node_metrics),
-        channel_metrics: Some(channel_metrics),
-        endpoint_metrics: Some(endpoint_metrics),
-        inbound_network_metrics: Some(inbound_network_metrics),
-        outbound_network_metrics: Some(outbound_network_metrics),
-        network_connection_metrics: Some(network_connection_metrics),
+        Ok(Metrics {
+            worker_metrics,
+            channel_metrics,
+            endpoint_metrics,
+            inbound_network_metrics,
+            outbound_network_metrics,
+            network_connection_metrics,
+        })
+    }
+    pub fn new_with_registry(registry: &Registry) -> Self {
+        Self::try_new(registry).expect("Prometheus error, are you using it wrong?")
+    }
+
+    pub fn new() -> Self {
+        match Self::try_new(default_registry()) {
+            Ok(metrics) => metrics,
+            Err(_) => {
+                // If we are in a test then don't panic on prometheus errors (usually an already
+                // registered error) but try again with a new Registry. This is not
+                // great for prod code, however should not happen, but will happen in tests do to
+                // how Rust runs them so lets just gloss over it. cfg(test) does not
+                // always work as expected.
+                Self::try_new(&Registry::new()).expect("Prometheus error, are you using it wrong?")
+            }
+        }
     }
 }
-
 #[derive(Clone)]
 pub struct WorkerMetrics {
     /// Number of created batches from the batch_maker
@@ -77,8 +94,8 @@ pub struct WorkerMetrics {
 }
 
 impl WorkerMetrics {
-    pub fn new(registry: &Registry) -> Self {
-        Self {
+    fn try_new(registry: &Registry) -> Result<Self, prometheus::Error> {
+        Ok(Self {
             created_batch_size: register_histogram_vec_with_registry!(
                 "created_batch_size",
                 "Size in bytes of the created batches",
@@ -98,8 +115,7 @@ impl WorkerMetrics {
                     1_000_000.0
                 ],
                 registry
-            )
-            .unwrap(),
+            )?,
             created_batch_latency: register_histogram_vec_with_registry!(
                 "created_batch_latency",
                 "The latency of creating (sealing) a batch",
@@ -107,56 +123,66 @@ impl WorkerMetrics {
                 // buckets in seconds
                 LATENCY_SEC_BUCKETS.to_vec(),
                 registry
-            )
-            .unwrap(),
+            )?,
             parallel_worker_batches: register_int_gauge_with_registry!(
                 "parallel_worker_batches",
                 "The number of parallel worker batches currently processed by the worker",
                 registry
-            )
-            .unwrap(),
+            )?,
             batch_broadcast_quorum_latency: register_histogram_with_registry!(
                 "batch_broadcast_quorum_latency",
                 "The latency of broadcasting batches to a quorum in seconds",
                 // buckets in seconds
                 LATENCY_SEC_BUCKETS.to_vec(),
                 registry
-            )
-            .unwrap(),
+            )?,
             worker_batch_fetch: register_int_counter_vec_with_registry!(
                 "worker_batch_fetch",
                 "Counter of remote/local batch fetch statuses",
                 &["source", "status"],
                 registry
-            )
-            .unwrap(),
+            )?,
             worker_local_fetch_latency: register_histogram_with_registry!(
                 "worker_local_fetch_latency",
                 "Time it takes to download a payload from local storage",
                 LATENCY_SEC_BUCKETS.to_vec(),
                 registry
-            )
-            .unwrap(),
+            )?,
             worker_remote_fetch_latency: register_histogram_with_registry!(
                 "worker_remote_fetch_latency",
                 "Time it takes to download a payload from remote worker peer",
                 LATENCY_SEC_BUCKETS.to_vec(),
                 registry
-            )
-            .unwrap(),
+            )?,
             pending_remote_request_batches: register_int_gauge_with_registry!(
                 "pending_remote_request_batches",
                 "The number of pending remote calls to request_batches",
                 registry
-            )
-            .unwrap(),
+            )?,
+        })
+    }
+    pub fn new_with_registry(registry: &Registry) -> Self {
+        Self::try_new(registry).expect("Prometheus error, are you using it wrong?")
+    }
+
+    pub fn new() -> Self {
+        match Self::try_new(default_registry()) {
+            Ok(metrics) => metrics,
+            Err(_) => {
+                // If we are in a test then don't panic on prometheus errors (usually an already
+                // registered error) but try again with a new Registry. This is not
+                // great for prod code, however should not happen, but will happen in tests do to
+                // how Rust runs them so lets just gloss over it. cfg(test) does not
+                // always work as expected.
+                Self::try_new(&Registry::new()).expect("Prometheus error, are you using it wrong?")
+            }
         }
     }
 }
 
 impl Default for WorkerMetrics {
     fn default() -> Self {
-        Self::new(default_registry())
+        Self::new()
     }
 }
 
@@ -174,31 +200,31 @@ pub struct WorkerChannelMetrics {
 }
 
 impl WorkerChannelMetrics {
-    pub fn new(registry: &Registry) -> Self {
-        Self {
+    fn try_new(registry: &Registry) -> Result<Self, prometheus::Error> {
+        Ok(Self {
             tx_batch_maker: register_int_gauge_with_registry!(
                 "tx_batch_maker",
                 "occupancy of the channel from the `worker::TxReceiverhandler` to the `worker::BatchMaker`",
                 registry
-            ).unwrap(),
+            )?,
             tx_quorum_waiter: register_int_gauge_with_registry!(
                 "tx_quorum_waiter",
                 "occupancy of the channel from the `worker::BatchMaker` to the `worker::QuorumWaiter`",
                 registry
-            ).unwrap(),
+            )?,
 
             // Totals:
             tx_batch_maker_total: register_int_counter_with_registry!(
                 "tx_batch_maker_total",
                 "total received from the channel from the `worker::TxReceiverhandler` to the `worker::BatchMaker`",
                 registry
-            ).unwrap(),
+            )?,
             tx_quorum_waiter_total: register_int_counter_with_registry!(
                 "tx_quorum_waiter_total",
                 "total received from the channel from the `worker::BatchMaker` to the `worker::QuorumWaiter`",
                 registry
-            ).unwrap(),
-        }
+            )?,
+        })
     }
 }
 
@@ -211,22 +237,34 @@ pub struct WorkerEndpointMetrics {
 }
 
 impl WorkerEndpointMetrics {
-    pub fn new(registry: &Registry) -> Self {
-        Self {
+    fn try_new(registry: &Registry) -> Result<Self, prometheus::Error> {
+        Ok(Self {
             requests_by_route: register_int_counter_vec_with_registry!(
                 "worker_requests_by_route",
                 "Number of requests by route",
                 &["route", "status", "grpc_status_code"],
                 registry
-            )
-            .unwrap(),
+            )?,
             req_latency_by_route: register_histogram_vec_with_registry!(
                 "worker_req_latency_by_route",
                 "Latency of a request by route",
                 &["route", "status", "grpc_status_code"],
                 registry
-            )
-            .unwrap(),
+            )?,
+        })
+    }
+
+    pub fn new() -> Self {
+        match Self::try_new(default_registry()) {
+            Ok(metrics) => metrics,
+            Err(_) => {
+                // If we are in a test then don't panic on prometheus errors (usually an already
+                // registered error) but try again with a new Registry. This is not
+                // great for prod code, however should not happen, but will happen in tests do to
+                // how Rust runs them so lets just gloss over it. cfg(test) does not
+                // always work as expected.
+                Self::try_new(&Registry::new()).expect("Prometheus error, are you using it wrong?")
+            }
         }
     }
 }
@@ -249,6 +287,6 @@ impl MetricsCallbackProvider for WorkerEndpointMetrics {
 
 impl Default for WorkerEndpointMetrics {
     fn default() -> Self {
-        Self::new(default_registry())
+        Self::new()
     }
 }

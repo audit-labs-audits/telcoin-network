@@ -6,7 +6,6 @@
 use super::*;
 use crate::NUM_SHUTDOWN_RECEIVERS;
 use narwhal_network::test_utils::WorkerToWorkerMockServer;
-use prometheus::Registry;
 use tn_types::{
     test_utils::{batch, test_network, CommitteeFixture},
     PreSubscribedBroadcastSender,
@@ -22,7 +21,7 @@ async fn wait_for_quorum() {
     let myself = fixture.authorities().next().unwrap().worker(0);
 
     let mut tx_shutdown = PreSubscribedBroadcastSender::new(NUM_SHUTDOWN_RECEIVERS);
-    let node_metrics = Arc::new(WorkerMetrics::new(&Registry::new()));
+    let node_metrics = Arc::new(WorkerMetrics::default());
 
     // setup network
     let network = test_network(myself.keypair(), &myself.info().worker_address);
@@ -76,7 +75,7 @@ async fn pipeline_for_quorum() {
     let myself = fixture.authorities().next().unwrap().worker(0);
 
     let mut tx_shutdown = PreSubscribedBroadcastSender::new(NUM_SHUTDOWN_RECEIVERS);
-    let node_metrics = Arc::new(WorkerMetrics::new(&Registry::new()));
+    let node_metrics = Arc::new(WorkerMetrics::default());
 
     // setup network
     let network = test_network(myself.keypair(), &myself.info().worker_address);

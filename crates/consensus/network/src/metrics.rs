@@ -55,40 +55,35 @@ pub struct NetworkConnectionMetrics {
 }
 
 impl NetworkConnectionMetrics {
-    pub fn new(node: &'static str, registry: &Registry) -> Self {
-        Self {
+    pub fn try_new(node: &'static str, registry: &Registry) -> Result<Self, prometheus::Error> {
+        Ok(Self {
             network_peer_connected: register_int_gauge_vec_with_registry!(
                 format!("{node}_network_peer_connected"),
                 "The connection status of a peer. 0 if not connected, 1 if connected",
                 &["peer_id", "type"],
                 registry
-            )
-            .unwrap(),
+            )?,
             network_peers: register_int_gauge_with_registry!(
                 format!("{node}_network_peers"),
                 "The number of connected peers.",
                 registry
-            )
-            .unwrap(),
+            )?,
             network_peer_disconnects: register_int_counter_vec_with_registry!(
                 format!("{node}_network_peer_disconnects"),
                 "Number of disconnect events per peer.",
                 &["peer_id", "reason"],
                 registry
-            )
-            .unwrap(),
+            )?,
             socket_receive_buffer_size: register_int_gauge_with_registry!(
                 format!("{node}_socket_receive_buffer_size"),
                 "Receive buffer size of Anemo socket.",
                 registry
-            )
-            .unwrap(),
+            )?,
             socket_send_buffer_size: register_int_gauge_with_registry!(
                 format!("{node}_socket_send_buffer_size"),
                 "Send buffer size of Anemo socket.",
                 registry
-            )
-            .unwrap(),
+            )?,
 
             // PathStats
             network_peer_rtt: register_int_gauge_vec_with_registry!(
@@ -96,43 +91,37 @@ impl NetworkConnectionMetrics {
                 "The rtt for a peer connection in ms.",
                 &["peer_id"],
                 registry
-            )
-            .unwrap(),
+            )?,
             network_peer_lost_packets: register_int_gauge_vec_with_registry!(
                 format!("{node}_network_peer_lost_packets"),
                 "The total number of lost packets for a peer connection.",
                 &["peer_id"],
                 registry
-            )
-            .unwrap(),
+            )?,
             network_peer_lost_bytes: register_int_gauge_vec_with_registry!(
                 format!("{node}_network_peer_lost_bytes"),
                 "The total number of lost bytes for a peer connection.",
                 &["peer_id"],
                 registry
-            )
-            .unwrap(),
+            )?,
             network_peer_sent_packets: register_int_gauge_vec_with_registry!(
                 format!("{node}_network_peer_sent_packets"),
                 "The total number of sent packets for a peer connection.",
                 &["peer_id"],
                 registry
-            )
-            .unwrap(),
+            )?,
             network_peer_congestion_events: register_int_gauge_vec_with_registry!(
                 format!("{node}_network_peer_congestion_events"),
                 "The total number of congestion events for a peer connection.",
                 &["peer_id"],
                 registry
-            )
-            .unwrap(),
+            )?,
             network_peer_congestion_window: register_int_gauge_vec_with_registry!(
                 format!("{node}_network_peer_congestion_window"),
                 "The congestion window for a peer connection.",
                 &["peer_id"],
                 registry
-            )
-            .unwrap(),
+            )?,
 
             // FrameStats
             network_peer_closed_connections: register_int_gauge_vec_with_registry!(
@@ -140,22 +129,19 @@ impl NetworkConnectionMetrics {
                 "The number of closed connections for a peer connection.",
                 &["peer_id", "direction"],
                 registry
-            )
-            .unwrap(),
+            )?,
             network_peer_max_data: register_int_gauge_vec_with_registry!(
                 format!("{node}_network_peer_max_data"),
                 "The number of max data frames for a peer connection.",
                 &["peer_id", "direction"],
                 registry
-            )
-            .unwrap(),
+            )?,
             network_peer_data_blocked: register_int_gauge_vec_with_registry!(
                 format!("{node}_network_peer_data_blocked"),
                 "The number of data blocked frames for a peer connection.",
                 &["peer_id", "direction"],
                 registry
-            )
-            .unwrap(),
+            )?,
 
             // UDPStats
             network_peer_udp_datagrams: register_int_gauge_vec_with_registry!(
@@ -163,23 +149,23 @@ impl NetworkConnectionMetrics {
                 "The total number datagrams observed by the UDP peer connection.",
                 &["peer_id", "direction"],
                 registry
-            )
-            .unwrap(),
+            )?,
             network_peer_udp_bytes: register_int_gauge_vec_with_registry!(
                 format!("{node}_network_peer_udp_bytes"),
                 "The total number bytes observed by the UDP peer connection.",
                 &["peer_id", "direction"],
                 registry
-            )
-            .unwrap(),
+            )?,
             network_peer_udp_transmits: register_int_gauge_vec_with_registry!(
                 format!("{node}_network_peer_udp_transmits"),
                 "The total number transmits observed by the UDP peer connection.",
                 &["peer_id", "direction"],
                 registry
-            )
-            .unwrap(),
-        }
+            )?,
+        })
+    }
+    pub fn new(node: &'static str, registry: &Registry) -> Self {
+        Self::try_new(node, registry).expect("Prometheus error, are you using it wrong?")
     }
 }
 
@@ -217,14 +203,17 @@ const SIZE_BYTE_BUCKETS: &[f64] = &[
 ];
 
 impl NetworkMetrics {
-    pub fn new(node: &'static str, direction: &'static str, registry: &Registry) -> Self {
+    pub fn try_new(
+        node: &'static str,
+        direction: &'static str,
+        registry: &Registry,
+    ) -> Result<Self, prometheus::Error> {
         let requests = register_int_counter_vec_with_registry!(
             format!("{node}_{direction}_requests"),
             "The number of requests made on the network",
             &["route"],
             registry
-        )
-        .unwrap();
+        )?;
 
         let request_latency = register_histogram_vec_with_registry!(
             format!("{node}_{direction}_request_latency"),
@@ -232,8 +221,7 @@ impl NetworkMetrics {
             &["route"],
             LATENCY_SEC_BUCKETS.to_vec(),
             registry,
-        )
-        .unwrap();
+        )?;
 
         let request_size = register_histogram_vec_with_registry!(
             format!("{node}_{direction}_request_size"),
@@ -241,8 +229,7 @@ impl NetworkMetrics {
             &["route"],
             SIZE_BYTE_BUCKETS.to_vec(),
             registry,
-        )
-        .unwrap();
+        )?;
 
         let response_size = register_histogram_vec_with_registry!(
             format!("{node}_{direction}_response_size"),
@@ -250,42 +237,37 @@ impl NetworkMetrics {
             &["route"],
             SIZE_BYTE_BUCKETS.to_vec(),
             registry,
-        )
-        .unwrap();
+        )?;
 
         let excessive_size_requests = register_int_counter_vec_with_registry!(
             format!("{node}_{direction}_excessive_size_requests"),
             "The number of excessively large request messages sent",
             &["route"],
             registry
-        )
-        .unwrap();
+        )?;
 
         let excessive_size_responses = register_int_counter_vec_with_registry!(
             format!("{node}_{direction}_excessive_size_responses"),
             "The number of excessively large response messages seen",
             &["route"],
             registry
-        )
-        .unwrap();
+        )?;
 
         let inflight_requests = register_int_gauge_vec_with_registry!(
             format!("{node}_{direction}_inflight_requests"),
             "The number of inflight network requests",
             &["route"],
             registry
-        )
-        .unwrap();
+        )?;
 
         let errors = register_int_counter_vec_with_registry!(
             format!("{node}_{direction}_request_errors"),
             "Number of errors by route",
             &["route", "status"],
             registry,
-        )
-        .unwrap();
+        )?;
 
-        Self {
+        Ok(Self {
             requests,
             request_latency,
             request_size,
@@ -294,7 +276,10 @@ impl NetworkMetrics {
             excessive_size_responses,
             inflight_requests,
             errors,
-        }
+        })
+    }
+    pub fn new(node: &'static str, direction: &'static str, registry: &Registry) -> Self {
+        Self::try_new(node, direction, registry).expect("Prometheus error, are you using it wrong?")
     }
 }
 

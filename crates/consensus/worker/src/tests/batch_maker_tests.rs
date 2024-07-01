@@ -6,7 +6,6 @@ use super::*;
 
 use crate::NUM_SHUTDOWN_RECEIVERS;
 use narwhal_network_types::MockWorkerToPrimary;
-use prometheus::Registry;
 use tn_types::{
     test_utils::{create_batch_store, transaction},
     PreSubscribedBroadcastSender,
@@ -19,7 +18,7 @@ async fn make_batch() {
     let mut tx_shutdown = PreSubscribedBroadcastSender::new(NUM_SHUTDOWN_RECEIVERS);
     let (tx_batch_maker, rx_batch_maker) = tn_types::test_channel!(1);
     let (tx_quorum_waiter, mut rx_quorum_waiter) = tn_types::test_channel!(1);
-    let node_metrics = WorkerMetrics::new(&Registry::new());
+    let node_metrics = WorkerMetrics::default();
 
     // Mock the primary client to always succeed.
     let mut mock_server = MockWorkerToPrimary::new();

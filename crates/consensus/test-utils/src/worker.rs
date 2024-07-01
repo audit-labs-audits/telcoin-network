@@ -3,12 +3,10 @@
 
 //! Worker fixture for the cluster
 
-use consensus_metrics::RegistryService;
 use narwhal_network::client::NetworkClient;
 use narwhal_storage::NodeStorage;
-use prometheus::Registry;
 use std::path::PathBuf;
-use tn_node::{metrics::worker_metrics_registry, worker::WorkerNode};
+use tn_node::worker::WorkerNode;
 use tn_types::{
     test_utils::temp_dir, AuthorityIdentifier, BlsPublicKey, Committee, Multiaddr, NetworkKeypair,
     Parameters, WorkerCache, WorkerId,
@@ -21,7 +19,6 @@ use crate::TestExecutionNode;
 pub struct WorkerNodeDetails {
     pub id: WorkerId,
     pub transactions_address: Multiaddr,
-    pub registry: Registry,
     name: AuthorityIdentifier,
     primary_key: BlsPublicKey,
     node: WorkerNode,
@@ -40,14 +37,12 @@ impl WorkerNodeDetails {
         committee: Committee,
         worker_cache: WorkerCache,
     ) -> Self {
-        let registry_service = RegistryService::new(Registry::new());
-        let node = WorkerNode::new(id, parameters, registry_service);
+        let node = WorkerNode::new(id, parameters);
 
         Self {
             id,
             name,
             primary_key,
-            registry: Registry::new(),
             store_path: temp_dir(),
             transactions_address,
             committee,
@@ -69,8 +64,6 @@ where {
             panic!("Worker with id {} is already running, can't start again", self.id);
         }
 
-        let registry = worker_metrics_registry(self.id, self.name)?;
-
         // Make the data store.
         let store_path = if preserve_store { self.store_path.clone() } else { temp_dir() };
 
@@ -86,13 +79,11 @@ where {
                 self.worker_cache.clone(),
                 client,
                 &worker_store,
-                None,
                 execution_node,
             )
             .await?;
 
         self.store_path = store_path;
-        self.registry = registry;
 
         Ok(())
     }
