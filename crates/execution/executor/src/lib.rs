@@ -479,6 +479,8 @@ impl StorageInner {
         // TODO: get this from storage efficiently
         // - storage should store each round of consensus output as a Vec<SealedBlock>
         // - also, only need parent num hash
+        //
+        // Does this need to verify the previous round of consensus was fully executed?
         let parent_num_hash = BlockNumHash::new(self.best_block, self.best_hash);
         let build_args = BuildArguments::new(provider, output, parent_num_hash, chain_spec);
 
