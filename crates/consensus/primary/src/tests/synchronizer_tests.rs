@@ -6,14 +6,13 @@ use crate::{
     certificate_fetcher::CertificateFetcherCommand,
     common::create_db_stores,
     consensus::{gc_round, ConsensusRound},
-    metrics::PrimaryMetrics,
     synchronizer::Synchronizer,
-    PrimaryChannelMetrics,
 };
 use fastcrypto::{hash::Hash, traits::KeyPair};
 use futures::{stream::FuturesUnordered, StreamExt};
 use itertools::Itertools;
 use narwhal_network::client::NetworkClient;
+use narwhal_primary_metrics::{PrimaryChannelMetrics, PrimaryMetrics};
 use std::{
     collections::{BTreeSet, HashMap},
     num::NonZeroUsize,

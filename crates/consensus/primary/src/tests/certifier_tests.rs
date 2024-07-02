@@ -5,10 +5,11 @@
 use super::*;
 use crate::common::create_db_stores;
 
-use crate::{consensus::ConsensusRound, PrimaryChannelMetrics, NUM_SHUTDOWN_RECEIVERS};
+use crate::{consensus::ConsensusRound, NUM_SHUTDOWN_RECEIVERS};
 use fastcrypto::traits::KeyPair;
 use narwhal_network::client::NetworkClient;
 use narwhal_network_types::{MockPrimaryToPrimary, PrimaryToPrimaryServer, RequestVoteResponse};
+use narwhal_primary_metrics::PrimaryChannelMetrics;
 use rand::{rngs::StdRng, SeedableRng};
 use std::num::NonZeroUsize;
 use tn_types::{

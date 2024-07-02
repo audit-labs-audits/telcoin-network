@@ -7,7 +7,6 @@ use crate::{
     certificate_fetcher::CertificateFetcher,
     certifier::Certifier,
     consensus::{ConsensusRound, LeaderSchedule},
-    metrics::{Metrics, PrimaryMetrics},
     proposer::{OurDigestMessage, Proposer},
     state_handler::StateHandler,
     synchronizer::Synchronizer,
@@ -41,6 +40,7 @@ use narwhal_network::{
     failpoints::FailpointsMakeCallbackHandler,
     metrics::MetricsMakeCallbackHandler,
 };
+use narwhal_primary_metrics::{Metrics, PrimaryMetrics};
 use narwhal_storage::{CertificateStore, PayloadStore, ProposerStore, VoteDigestStore};
 use parking_lot::Mutex;
 use std::{
@@ -112,8 +112,8 @@ impl Primary {
         rx_committed_certificates: Receiver<(Round, Vec<Certificate>)>,
         rx_consensus_round_updates: watch::Receiver<ConsensusRound>,
         tx_shutdown: &mut PreSubscribedBroadcastSender,
-        tx_committed_certificates: Sender<(Round, Vec<Certificate>)>,
         leader_schedule: LeaderSchedule,
+        metrics: &Metrics,
     ) -> Vec<JoinHandle<()>> {
         // Write the parameters to the logs.
         parameters.tracing();
@@ -126,54 +126,36 @@ impl Primary {
             authority.protocol_key().encode_base64(),
         );
 
-        let metrics = Metrics::default(); // Initialize the metrics
-        let mut primary_channel_metrics = metrics.primary_channel_metrics;
-        let inbound_network_metrics = Arc::new(metrics.inbound_network_metrics);
-        let outbound_network_metrics = Arc::new(metrics.outbound_network_metrics);
-        let node_metrics = Arc::new(metrics.node_metrics);
-        let network_connection_metrics = metrics.network_connection_metrics;
-
         let (tx_our_digests, rx_our_digests) = channel_with_total(
             CHANNEL_CAPACITY,
-            &primary_channel_metrics.tx_our_digests,
-            &primary_channel_metrics.tx_our_digests_total,
+            &metrics.primary_channel_metrics.tx_our_digests,
+            &metrics.primary_channel_metrics.tx_our_digests_total,
         );
         let (tx_system_messages, rx_system_messages) = channel_with_total(
             CHANNEL_CAPACITY,
-            &primary_channel_metrics.tx_system_messages,
-            &primary_channel_metrics.tx_system_messages_total,
+            &metrics.primary_channel_metrics.tx_system_messages,
+            &metrics.primary_channel_metrics.tx_system_messages_total,
         );
         let (tx_parents, rx_parents) = channel_with_total(
             CHANNEL_CAPACITY,
-            &primary_channel_metrics.tx_parents,
-            &primary_channel_metrics.tx_parents_total,
+            &metrics.primary_channel_metrics.tx_parents,
+            &metrics.primary_channel_metrics.tx_parents_total,
         );
         let (tx_headers, rx_headers) = channel_with_total(
             CHANNEL_CAPACITY,
-            &primary_channel_metrics.tx_headers,
-            &primary_channel_metrics.tx_headers_total,
+            &metrics.primary_channel_metrics.tx_headers,
+            &metrics.primary_channel_metrics.tx_headers_total,
         );
         let (tx_certificate_fetcher, rx_certificate_fetcher) = channel_with_total(
             CHANNEL_CAPACITY,
-            &primary_channel_metrics.tx_certificate_fetcher,
-            &primary_channel_metrics.tx_certificate_fetcher_total,
+            &metrics.primary_channel_metrics.tx_certificate_fetcher,
+            &metrics.primary_channel_metrics.tx_certificate_fetcher_total,
         );
         let (tx_committed_own_headers, rx_committed_own_headers) = channel_with_total(
             CHANNEL_CAPACITY,
-            &primary_channel_metrics.tx_committed_own_headers,
-            &primary_channel_metrics.tx_committed_own_headers_total,
+            &metrics.primary_channel_metrics.tx_committed_own_headers,
+            &metrics.primary_channel_metrics.tx_committed_own_headers_total,
         );
-
-        // we need to hack the gauge from this consensus channel into the primary registry
-        // This avoids a cyclic dependency in the initialization of consensus and primary
-        let committed_certificates_gauge = tx_committed_certificates.gauge().clone();
-        primary_channel_metrics.replace_registered_committed_certificates_metric(Box::new(
-            committed_certificates_gauge,
-        ));
-
-        let new_certificates_gauge = tx_new_certificates.gauge().clone();
-        primary_channel_metrics
-            .replace_registered_new_certificates_metric(Box::new(new_certificates_gauge));
 
         let (tx_narwhal_round_updates, rx_narwhal_round_updates) = watch::channel(0u64);
 
@@ -189,8 +171,8 @@ impl Primary {
             tx_new_certificates,
             tx_parents,
             rx_consensus_round_updates.clone(),
-            node_metrics.clone(),
-            &primary_channel_metrics,
+            metrics.node_metrics.clone(),
+            &metrics.primary_channel_metrics,
         ));
 
         // Convert authority private key into key used for random beacon.
@@ -214,7 +196,7 @@ impl Primary {
             vote_digest_store,
             rx_narwhal_round_updates,
             parent_digests: Default::default(),
-            metrics: node_metrics.clone(),
+            metrics: metrics.node_metrics.clone(),
         })
         // Allow only one inflight RequestVote RPC at a time per peer.
         // This is required for correctness.
@@ -273,7 +255,7 @@ impl Primary {
                     .on_failure(DefaultOnFailure::new().level(tracing::Level::WARN)),
             )
             .layer(CallbackLayer::new(MetricsMakeCallbackHandler::new(
-                inbound_network_metrics,
+                metrics.inbound_network_metrics.clone(),
                 parameters.anemo.excessive_message_size(),
             )))
             .layer(CallbackLayer::new(FailpointsMakeCallbackHandler::new()))
@@ -290,7 +272,7 @@ impl Primary {
                     .on_failure(DefaultOnFailure::new().level(tracing::Level::WARN)),
             )
             .layer(CallbackLayer::new(MetricsMakeCallbackHandler::new(
-                outbound_network_metrics,
+                metrics.outbound_network_metrics.clone(),
                 parameters.anemo.excessive_message_size(),
             )))
             .layer(CallbackLayer::new(FailpointsMakeCallbackHandler::new()))
@@ -398,7 +380,7 @@ impl Primary {
         let (connection_monitor_handle, _) =
             narwhal_network::connectivity::ConnectionMonitor::spawn(
                 network.downgrade(),
-                network_connection_metrics,
+                metrics.network_connection_metrics.clone(),
                 peer_types,
                 Some(tx_shutdown.subscribe()),
             );
@@ -423,7 +405,7 @@ impl Primary {
             signature_service,
             tx_shutdown.subscribe(),
             rx_headers,
-            node_metrics.clone(),
+            metrics.node_metrics.clone(),
             network.clone(),
         );
 
@@ -438,7 +420,7 @@ impl Primary {
             tx_shutdown.subscribe(),
             rx_certificate_fetcher,
             synchronizer,
-            node_metrics.clone(),
+            metrics.node_metrics.clone(),
         );
 
         // When the `Synchronizer` collects enough parent certificates, the `Proposer` generates
@@ -459,7 +441,7 @@ impl Primary {
             tx_headers,
             tx_narwhal_round_updates,
             rx_committed_own_headers,
-            node_metrics,
+            metrics.node_metrics.clone(),
             leader_schedule,
         );
 

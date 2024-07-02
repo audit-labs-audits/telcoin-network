@@ -1,9 +1,10 @@
+use std::sync::Arc;
+
 // Copyright (c) Telcoin, LLC
 // Copyright (c) Mysten Labs, Inc.
 // SPDX-License-Identifier: Apache-2.0
 use narwhal_network::metrics::{NetworkConnectionMetrics, NetworkMetrics};
 use prometheus::{
-    core::{AtomicI64, GenericGauge},
     default_registry, linear_buckets, register_histogram_vec_with_registry,
     register_histogram_with_registry, register_int_counter_vec_with_registry,
     register_int_counter_with_registry, register_int_gauge_vec_with_registry,
@@ -18,28 +19,31 @@ const LATENCY_SEC_BUCKETS: &[f64] = &[
 ];
 
 #[derive(Clone)]
-pub(crate) struct Metrics {
-    pub(crate) inbound_network_metrics: NetworkMetrics,
-    pub(crate) outbound_network_metrics: NetworkMetrics,
-    pub(crate) primary_channel_metrics: PrimaryChannelMetrics,
-    pub(crate) node_metrics: PrimaryMetrics,
-    pub(crate) network_connection_metrics: NetworkConnectionMetrics,
+pub struct Metrics {
+    pub inbound_network_metrics: Arc<NetworkMetrics>,
+    pub outbound_network_metrics: Arc<NetworkMetrics>,
+    pub primary_channel_metrics: Arc<PrimaryChannelMetrics>,
+    pub node_metrics: Arc<PrimaryMetrics>,
+    pub network_connection_metrics: Arc<NetworkConnectionMetrics>,
 }
 
 impl Metrics {
     fn try_new(registry: &Registry) -> Result<Self, prometheus::Error> {
         // The metrics used for communicating over the network
-        let inbound_network_metrics = NetworkMetrics::try_new("primary", "inbound", registry)?;
-        let outbound_network_metrics = NetworkMetrics::try_new("primary", "outbound", registry)?;
+        let inbound_network_metrics =
+            Arc::new(NetworkMetrics::try_new("primary", "inbound", registry)?);
+        let outbound_network_metrics =
+            Arc::new(NetworkMetrics::try_new("primary", "outbound", registry)?);
 
         // The metrics used for measuring the occupancy of the channels in the primary
-        let primary_channel_metrics = PrimaryChannelMetrics::try_new(registry)?;
+        let primary_channel_metrics = Arc::new(PrimaryChannelMetrics::try_new(registry)?);
 
         // Essential/core metrics across the primary node
-        let node_metrics = PrimaryMetrics::try_new(registry)?;
+        let node_metrics = Arc::new(PrimaryMetrics::try_new(registry)?);
 
         // Network metrics for the primary connection
-        let network_connection_metrics = NetworkConnectionMetrics::try_new("primary", registry)?;
+        let network_connection_metrics =
+            Arc::new(NetworkConnectionMetrics::try_new("primary", registry)?);
 
         Ok(Metrics {
             node_metrics,
@@ -130,10 +134,6 @@ pub struct PrimaryChannelMetrics {
     pub tx_certificate_acceptor_total: IntCounter,
     /// Total received the channel to synchronize missing batches
     pub tx_batch_tasks_total: IntCounter,
-
-    // We might need the registry for a swap.  If None then use default_registry() (use the
-    // accessor).
-    registy: Option<Box<Registry>>,
 }
 
 impl PrimaryChannelMetrics {
@@ -279,7 +279,6 @@ impl PrimaryChannelMetrics {
                 "total received on the channel synchronizing batches for provided headers & certificates",
                 registry
             )?,
-            registy: None,
         })
     }
 
@@ -292,47 +291,9 @@ impl PrimaryChannelMetrics {
                 // great for prod code, however should not happen, but will happen in tests do to
                 // how Rust runs them so lets just gloss over it. cfg(test) does not
                 // always work as expected.
-                let registry = Box::new(Registry::new());
-                let mut s =
-                    Self::try_new(&registry).expect("Prometheus error, are you using it wrong?");
-                s.registy = Some(registry);
-                s
+                Self::try_new(&Registry::new()).expect("Prometheus error, are you using it wrong?")
             }
         }
-    }
-
-    /// Return a reference to the registry used to create this struct.
-    /// Will most likely be the default registry.
-    fn registry(&self) -> &Registry {
-        if let Some(reg) = &self.registy {
-            reg
-        } else {
-            default_registry()
-        }
-    }
-
-    pub fn replace_registered_new_certificates_metric(
-        &mut self,
-        collector: Box<GenericGauge<AtomicI64>>,
-    ) {
-        let new_certificates_counter =
-            IntGauge::new(Self::NAME_NEW_CERTS, Self::DESC_NEW_CERTS).unwrap();
-        // TODO: Sanity-check by hashing the descs against one another
-        self.registry().unregister(Box::new(new_certificates_counter.clone())).unwrap();
-        self.registry().register(collector).unwrap();
-        self.tx_new_certificates = new_certificates_counter;
-    }
-
-    pub fn replace_registered_committed_certificates_metric(
-        &mut self,
-        collector: Box<GenericGauge<AtomicI64>>,
-    ) {
-        let committed_certificates_counter =
-            IntGauge::new(Self::NAME_COMMITTED_CERTS, Self::DESC_COMMITTED_CERTS).unwrap();
-        // TODO: Sanity-check by hashing the descs against one another
-        self.registry().unregister(Box::new(committed_certificates_counter.clone())).unwrap();
-        self.registry().register(collector).unwrap();
-        self.tx_committed_certificates = committed_certificates_counter;
     }
 }
 

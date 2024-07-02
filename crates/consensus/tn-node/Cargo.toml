@@ -38,6 +38,7 @@ narwhal-worker = { workspace = true }
 eyre = { workspace = true }
 
 consensus-metrics = { workspace = true }
+narwhal-primary-metrics = { workspace = true }
 
 anemo = { workspace = true }
 reqwest = { workspace = true }

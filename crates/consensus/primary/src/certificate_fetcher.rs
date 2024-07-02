@@ -2,13 +2,14 @@
 // Copyright (c) Telcoin, LLC
 // Copyright (c) Mysten Labs, Inc.
 // SPDX-License-Identifier: Apache-2.0
-use crate::{consensus::ConsensusRound, metrics::PrimaryMetrics, synchronizer::Synchronizer};
+use crate::{consensus::ConsensusRound, synchronizer::Synchronizer};
 use anemo::Request;
 use consensus_metrics::{
     metered_channel::Receiver, monitored_future, monitored_scope, spawn_logged_monitored_task,
 };
 use futures::{stream::FuturesUnordered, StreamExt};
 use narwhal_network::PrimaryToPrimaryRpc;
+use narwhal_primary_metrics::PrimaryMetrics;
 use narwhal_storage::CertificateStore;
 use rand::{rngs::ThreadRng, seq::SliceRandom};
 use std::{

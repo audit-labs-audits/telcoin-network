@@ -1,0 +1,32 @@
+[package]
+name = "narwhal-primary-metrics"
+version.workspace = true
+authors = [
+    "Grant Kee <grant.kee@telco.in>",
+    "Mysten Labs <build@mystenlabs.com>",
+    "Steven Stanfield <steve@telcoin.org>",
+]
+license = "Apache-2.0"
+publish = false
+edition = "2021"
+
+[dependencies]
+#eyre = { workspace = true }
+#axum = { workspace = true }
+#tracing = { workspace = true }
+#scopeguard = { workspace = true }
+prometheus = { workspace = true }
+#once_cell = { workspace = true }
+#tap = { workspace = true }
+#tokio = { workspace = true }
+#dashmap = { workspace = true }
+#uuid = { workspace = true }
+#parking_lot = { workspace = true }
+#futures = { workspace = true }
+#protobuf = { workspace = true }
+#async-trait = { workspace = true }
+
+narwhal-network = { workspace = true }
+
+[lints.rust]
+unexpected_cfgs = { level = "warn", check-cfg = ['cfg(msim)'] }

@@ -81,7 +81,7 @@ impl WorkerNodeInner {
 
         let metrics = Metrics::new();
         // For EL batch maker
-        let channel_metrics: Arc<WorkerChannelMetrics> = Arc::new(metrics.clone().channel_metrics);
+        let channel_metrics: Arc<WorkerChannelMetrics> = metrics.channel_metrics.clone();
         let (tx_batch_maker, rx_batch_maker) = channel_with_total(
             CHANNEL_CAPACITY,
             &channel_metrics.tx_batch_maker,

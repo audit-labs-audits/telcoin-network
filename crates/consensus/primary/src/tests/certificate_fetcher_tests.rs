@@ -3,8 +3,8 @@
 // SPDX-License-Identifier: Apache-2.0
 
 use crate::{
-    certificate_fetcher::CertificateFetcher, consensus::ConsensusRound, metrics::PrimaryMetrics,
-    primary::NUM_SHUTDOWN_RECEIVERS, synchronizer::Synchronizer, PrimaryChannelMetrics,
+    certificate_fetcher::CertificateFetcher, consensus::ConsensusRound,
+    primary::NUM_SHUTDOWN_RECEIVERS, synchronizer::Synchronizer,
 };
 use anemo::async_trait;
 use eyre::Result;
@@ -16,6 +16,7 @@ use narwhal_network_types::{
     FetchCertificatesRequest, FetchCertificatesResponse, PrimaryToPrimary, PrimaryToPrimaryServer,
     RequestVoteRequest, RequestVoteResponse, SendCertificateRequest, SendCertificateResponse,
 };
+use narwhal_primary_metrics::{PrimaryChannelMetrics, PrimaryMetrics};
 use narwhal_storage::{CertificateStore, NodeStorage};
 use once_cell::sync::OnceCell;
 use std::{collections::BTreeSet, sync::Arc, time::Duration};

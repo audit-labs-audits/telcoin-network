@@ -3,8 +3,8 @@
 // Copyright (c) Mysten Labs, Inc.
 // SPDX-License-Identifier: Apache-2.0
 
-use crate::metrics::PrimaryMetrics;
 use fastcrypto::hash::{Digest, Hash};
+use narwhal_primary_metrics::PrimaryMetrics;
 use std::{collections::HashSet, sync::Arc};
 use tn_types::{AuthorityIdentifier, Committee, Stake};
 

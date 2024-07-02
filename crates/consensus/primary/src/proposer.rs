@@ -3,12 +3,13 @@
 // Copyright (c) Mysten Labs, Inc.
 // SPDX-License-Identifier: Apache-2.0
 
-use crate::{consensus::LeaderSchedule, metrics::PrimaryMetrics};
+use crate::consensus::LeaderSchedule;
 use consensus_metrics::{
     metered_channel::{Receiver, Sender},
     spawn_logged_monitored_task,
 };
 use fastcrypto::hash::Hash as _;
+use narwhal_primary_metrics::PrimaryMetrics;
 use narwhal_storage::ProposerStore;
 use std::{
     cmp::Ordering,
@@ -449,7 +450,7 @@ impl Proposer {
                 enough_parents;
 
             debug!(
-                "Proposer loop starts: round={} enough_parents={} enough_digests={} advance={} max_delay_timed_out={} min_delay_timed_out={} should_create_header={}", 
+                "Proposer loop starts: round={} enough_parents={} enough_digests={} advance={} max_delay_timed_out={} min_delay_timed_out={} should_create_header={}",
                 self.round, enough_parents, enough_digests, advance, max_delay_timed_out, min_delay_timed_out, should_create_header
             );
 

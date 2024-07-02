@@ -16,7 +16,6 @@ mod synchronizer;
 #[cfg(test)]
 #[path = "tests/common.rs"]
 mod common;
-mod metrics;
 
 #[cfg(test)]
 #[path = "tests/certificate_tests.rs"]
@@ -30,7 +29,4 @@ mod rpc_tests;
 #[path = "tests/certificate_order_test.rs"]
 mod certificate_order_test;
 
-pub use crate::{
-    metrics::PrimaryChannelMetrics,
-    primary::{Primary, CHANNEL_CAPACITY, NUM_SHUTDOWN_RECEIVERS},
-};
+pub use crate::primary::{Primary, CHANNEL_CAPACITY, NUM_SHUTDOWN_RECEIVERS};

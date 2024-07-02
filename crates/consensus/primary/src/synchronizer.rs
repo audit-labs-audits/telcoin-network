@@ -16,6 +16,7 @@ use narwhal_network::{
     client::NetworkClient,
     PrimaryToWorkerClient, RetryConfig,
 };
+use narwhal_primary_metrics::{PrimaryChannelMetrics, PrimaryMetrics};
 use narwhal_storage::{CertificateStore, PayloadStore};
 use parking_lot::Mutex;
 use std::{
@@ -49,7 +50,7 @@ use tracing::{debug, error, instrument, trace, warn};
 
 use crate::{
     aggregators::CertificatesAggregator, certificate_fetcher::CertificateFetcherCommand,
-    consensus::ConsensusRound, metrics::PrimaryMetrics, PrimaryChannelMetrics, CHANNEL_CAPACITY,
+    consensus::ConsensusRound, CHANNEL_CAPACITY,
 };
 
 #[cfg(test)]
