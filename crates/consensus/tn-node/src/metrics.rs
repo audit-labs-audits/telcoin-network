@@ -5,12 +5,12 @@ use axum::{routing::get, Extension, Router};
 use consensus_metrics::{metrics, spawn_logged_monitored_task};
 use prometheus::{Error as PrometheusError, Registry};
 use std::collections::HashMap;
-use tn_types::{AuthorityIdentifier, Multiaddr, WorkerId};
+use tn_types::{AuthorityIdentifier, Multiaddr};
 use tokio::task::JoinHandle;
 
 const METRICS_ROUTE: &str = "/metrics";
 const PRIMARY_METRICS_PREFIX: &str = "narwhal_primary";
-const WORKER_METRICS_PREFIX: &str = "narwhal_worker";
+const _WORKER_METRICS_PREFIX: &str = "narwhal_worker";
 
 pub fn new_registry() -> Result<Registry, PrometheusError> {
     Registry::new_custom(None, None)
@@ -22,18 +22,6 @@ pub fn primary_metrics_registry(
     let mut labels = HashMap::new();
     labels.insert("node_name".to_string(), authority_id.to_string());
     let registry = Registry::new_custom(Some(PRIMARY_METRICS_PREFIX.to_string()), Some(labels))?;
-
-    Ok(registry)
-}
-
-pub fn worker_metrics_registry(
-    worker_id: WorkerId,
-    authority_id: AuthorityIdentifier,
-) -> Result<Registry, PrometheusError> {
-    let mut labels = HashMap::new();
-    labels.insert("node_name".to_string(), authority_id.to_string());
-    labels.insert("worker_id".to_string(), worker_id.to_string());
-    let registry = Registry::new_custom(Some(WORKER_METRICS_PREFIX.to_string()), Some(labels))?;
 
     Ok(registry)
 }

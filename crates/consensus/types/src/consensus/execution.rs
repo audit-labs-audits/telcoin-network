@@ -11,9 +11,7 @@ use reth_primitives::{
     BlockWithSenders, Header, SealedBlock, SealedBlockWithSenders, SealedHeader, Withdrawals, B256,
     U256,
 };
-use reth_revm::primitives::{
-    BlobExcessGasAndPrice, BlockEnv, CfgEnv, CfgEnvWithHandlerCfg, SpecId,
-};
+use reth_revm::primitives::{BlobExcessGasAndPrice, BlockEnv, CfgEnv, CfgEnvWithHandlerCfg};
 use reth_rpc_types::{engine::PayloadId, BlockNumHash};
 use std::{convert::Infallible, sync::Arc};
 use tracing::warn;
@@ -165,6 +163,7 @@ pub struct TNPayloadAttributes {
 
 impl TNPayloadAttributes {
     /// Create a new instance of [Self].
+    #[allow(clippy::too_many_arguments)]
     pub fn new(
         parent_block: BlockNumHash,
         ommers: Vec<Header>,
@@ -231,6 +230,10 @@ impl PayloadBuilderAttributes for TNPayload {
     /// PrevRandao is used by TN to provide a source for randomness on-chain.
     ///
     /// This is used as the executed block's "mix_hash".
+<<<<<<< HEAD
+=======
+    /// [EIP-4399]: https://eips.ethereum.org/EIPS/eip-4399
+>>>>>>> main
     fn prev_randao(&self) -> B256 {
         self.attributes.batch_block.mix_hash
     }
@@ -278,9 +281,6 @@ impl PayloadBuilderAttributes for TNPayload {
             // leave difficulty zero
             // this value is useful for post-execution, but batch is created with this value
             difficulty: U256::ZERO,
-            // [EIP-4399]: https://eips.ethereum.org/EIPS/eip-4399
-            //
-            // TODO: prevrandao must be consistent for proper re-execution of the batch
             prevrandao: Some(self.prev_randao()),
             gas_limit,
             basefee,

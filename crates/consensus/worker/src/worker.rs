@@ -107,13 +107,13 @@ impl Worker {
             store,
         };
 
-        let node_metrics = Arc::new(metrics.worker_metrics.unwrap());
+        let node_metrics = Arc::new(metrics.worker_metrics);
         // let endpoint_metrics = metrics.endpoint_metrics.unwrap();
         // let channel_metrics: Arc<WorkerChannelMetrics> =
         // Arc::new(metrics.channel_metrics.unwrap());
-        let inbound_network_metrics = Arc::new(metrics.inbound_network_metrics.unwrap());
-        let outbound_network_metrics = Arc::new(metrics.outbound_network_metrics.unwrap());
-        let network_connection_metrics = metrics.network_connection_metrics.unwrap();
+        let inbound_network_metrics = Arc::new(metrics.inbound_network_metrics);
+        let outbound_network_metrics = Arc::new(metrics.outbound_network_metrics);
+        let network_connection_metrics = metrics.network_connection_metrics;
 
         let mut shutdown_receivers = tx_shutdown.subscribe_n(NUM_SHUTDOWN_RECEIVERS);
 

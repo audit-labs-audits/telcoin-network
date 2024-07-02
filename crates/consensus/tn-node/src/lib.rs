@@ -61,7 +61,7 @@ where
         NetworkClient::new_from_public_key(config.validator_info.primary_network_key());
     let primary = PrimaryNode::new(config.parameters.clone(), registry_service.clone());
     let (worker_id, _worker_info) = config.workers().first_worker()?;
-    let worker = WorkerNode::new(*worker_id, config.parameters.clone(), registry_service);
+    let worker = WorkerNode::new(*worker_id, config.parameters.clone());
 
     // TODO: find a better way to manage keys
     //
@@ -123,7 +123,6 @@ where
             worker_cache,
             network_client,
             &node_storage,
-            None, // optional metrics
             &engine,
         )
         .await?;

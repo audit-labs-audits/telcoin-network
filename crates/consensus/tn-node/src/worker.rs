@@ -3,9 +3,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 //! Hierarchical type to hold tasks spawned for a worker in the network.
-use crate::{
-    engine::ExecutionNode, error::NodeError, metrics::new_registry, try_join_all, FuturesUnordered,
-};
+use crate::{engine::ExecutionNode, error::NodeError, try_join_all, FuturesUnordered};
 use anemo::PeerId;
 use arc_swap::{ArcSwap, ArcSwapOption};
 use consensus_metrics::{metered_channel::channel_with_total, RegistryID, RegistryService};
@@ -13,10 +11,9 @@ use fastcrypto::traits::KeyPair;
 use narwhal_network::client::NetworkClient;
 use narwhal_storage::NodeStorage;
 use narwhal_worker::{
-    metrics::{initialise_metrics, Metrics, WorkerChannelMetrics},
+    metrics::{Metrics, WorkerChannelMetrics},
     Worker, CHANNEL_CAPACITY, NUM_SHUTDOWN_RECEIVERS,
 };
-use prometheus::Registry;
 use reth_db::{
     database::Database,
     database_metrics::{DatabaseMetadata, DatabaseMetrics},
@@ -35,10 +32,6 @@ pub struct WorkerNodeInner {
     id: WorkerId,
     // The configuration parameters.
     parameters: Parameters,
-    // A prometheus RegistryService to use for the metrics
-    registry_service: RegistryService,
-    // The latest registry id & registry used for the node
-    registry: Option<(RegistryID, Registry)>,
     // The task handles created from primary
     handles: FuturesUnordered<JoinHandle<()>>,
     // The shutdown signal channel
@@ -67,9 +60,6 @@ impl WorkerNodeInner {
         // The node's store
         // TODO: replace this by a path so the method can open and independent storage
         store: &NodeStorage,
-        // Optionally, if passed, then this metrics struct should be used instead of creating our
-        // own one.
-        metrics: Option<Metrics>,
         // used to create the batch maker process
         execution_node: &ExecutionNode<DB, Evm>,
     ) -> eyre::Result<()>
@@ -83,24 +73,15 @@ impl WorkerNodeInner {
 
         self.own_peer_id = Some(PeerId(network_keypair.public().0.to_bytes()));
 
-        let (metrics, registry) = if let Some(metrics) = metrics {
-            (metrics, None)
-        } else {
-            // create a new registry
-            let registry = new_registry()?;
-
-            (initialise_metrics(&registry), Some(registry))
-        };
-
         let mut tx_shutdown = PreSubscribedBroadcastSender::new(NUM_SHUTDOWN_RECEIVERS);
 
         let authority = committee.authority_by_key(&primary_name).unwrap_or_else(|| {
             panic!("Our node with key {:?} should be in committee", primary_name)
         });
 
+        let metrics = Metrics::new();
         // For EL batch maker
-        let channel_metrics: Arc<WorkerChannelMetrics> =
-            Arc::new(metrics.clone().channel_metrics.unwrap());
+        let channel_metrics: Arc<WorkerChannelMetrics> = Arc::new(metrics.clone().channel_metrics);
         let (tx_batch_maker, rx_batch_maker) = channel_with_total(
             CHANNEL_CAPACITY,
             &channel_metrics.tx_batch_maker,
@@ -128,11 +109,6 @@ impl WorkerNodeInner {
         // spawn batch maker for worker
         execution_node.start_batch_maker(tx_batch_maker, self.id).await?;
 
-        // store the registry
-        if let Some(registry) = registry {
-            self.swap_registry(Some(registry));
-        }
-
         // now keep the handlers
         self.handles.clear();
         self.handles.extend(handles);
@@ -159,8 +135,6 @@ impl WorkerNodeInner {
         // Now wait until handles have been completed
         try_join_all(&mut self.handles).await.unwrap();
 
-        self.swap_registry(None);
-
         info!(
             "Narwhal worker {} shutdown is complete - took {} seconds",
             self.id,
@@ -178,22 +152,6 @@ impl WorkerNodeInner {
     async fn wait(&mut self) {
         try_join_all(&mut self.handles).await.unwrap();
     }
-
-    /// Accepts an Option registry. If it's Some, then the new registry will be added in the
-    /// registry service and the registry_id will be updated. Also, any previous registry will
-    /// be removed. If None is passed, then the registry_id is updated to None and any old
-    /// registry is removed from the RegistryService.
-    fn swap_registry(&mut self, registry: Option<Registry>) {
-        if let Some((registry_id, _registry)) = self.registry.as_ref() {
-            self.registry_service.remove(*registry_id);
-        }
-
-        if let Some(registry) = registry {
-            self.registry = Some((self.registry_service.add(registry.clone()), registry));
-        } else {
-            self.registry = None
-        }
-    }
 }
 
 #[derive(Clone)]
@@ -202,16 +160,10 @@ pub struct WorkerNode {
 }
 
 impl WorkerNode {
-    pub fn new(
-        id: WorkerId,
-        parameters: Parameters,
-        registry_service: RegistryService,
-    ) -> WorkerNode {
+    pub fn new(id: WorkerId, parameters: Parameters) -> WorkerNode {
         let inner = WorkerNodeInner {
             id,
             parameters,
-            registry_service,
-            registry: None,
             handles: FuturesUnordered::new(),
             tx_shutdown: None,
             own_peer_id: None,
@@ -236,8 +188,6 @@ impl WorkerNode {
         // The node's store
         // TODO: replace this by a path so the method can open and independent storage
         store: &NodeStorage,
-        // An optional metrics struct
-        metrics: Option<Metrics>,
         // used to create the batch maker process
         execution_node: &ExecutionNode<DB, Evm>,
     ) -> eyre::Result<()>
@@ -254,7 +204,6 @@ impl WorkerNode {
                 worker_cache,
                 client,
                 store,
-                metrics,
                 execution_node,
             )
             .await
@@ -324,11 +273,6 @@ impl WorkerNodes {
             return Err(NodeError::WorkerNodesAlreadyRunning(worker_ids_running).into());
         }
 
-        // create the registry first
-        let registry = new_registry()?;
-
-        let metrics = initialise_metrics(&registry);
-
         self.client.store(Some(Arc::new(client.clone())));
 
         // now clear the previous handles - we want to do that proactively
@@ -338,8 +282,7 @@ impl WorkerNodes {
         let mut workers = HashMap::<WorkerId, WorkerNode>::new();
         // start all the workers one by one
         for (worker_id, key_pair) in ids_and_keypairs {
-            let worker =
-                WorkerNode::new(worker_id, self.parameters.clone(), self.registry_service.clone());
+            let worker = WorkerNode::new(worker_id, self.parameters.clone());
 
             worker
                 .start(
@@ -349,7 +292,6 @@ impl WorkerNodes {
                     worker_cache.clone(),
                     client.clone(),
                     store,
-                    Some(metrics.clone()),
                     execution_node,
                 )
                 .await?;
@@ -359,15 +301,6 @@ impl WorkerNodes {
 
         // update the worker handles.
         self.workers.store(Arc::new(workers));
-
-        // now add the registry
-        let registry_id = self.registry_service.add(registry);
-
-        if let Some(old_registry_id) = self.registry_id.swap(Some(Arc::new(registry_id))) {
-            // a little of defensive programming - ensure that we always clean up the previous
-            // registry
-            self.registry_service.remove(*old_registry_id.as_ref());
-        }
 
         Ok(())
     }

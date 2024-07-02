@@ -3,7 +3,6 @@
 // Copyright (c) Mysten Labs, Inc.
 // SPDX-License-Identifier: Apache-2.0
 use super::*;
-use crate::metrics::initialise_metrics;
 use async_trait::async_trait;
 use fastcrypto::encoding::{Encoding, Hex};
 use narwhal_primary::{
@@ -61,7 +60,7 @@ impl BatchValidation for NilBatchValidator {
 //     .unwrap();
 
 //     let registry = Registry::new();
-//     let metrics = initialise_metrics(&registry);
+//     let metrics = Metrics::new_with_registry(&registry);
 
 //     let mut tx_shutdown = PreSubscribedBroadcastSender::new(NUM_SHUTDOWN_RECEIVERS);
 
@@ -141,7 +140,7 @@ impl BatchValidation for NilBatchValidator {
 //     .unwrap();
 
 //     let registry = Registry::new();
-//     let metrics = initialise_metrics(&registry);
+//     let metrics = Metrics::new_with_registry(&registry);
 
 //     let mut tx_shutdown = PreSubscribedBroadcastSender::new(NUM_SHUTDOWN_RECEIVERS);
 
@@ -256,7 +255,7 @@ impl BatchValidation for NilBatchValidator {
 //     .unwrap();
 
 //     let registry = Registry::new();
-//     let metrics = initialise_metrics(&registry);
+//     let metrics = Metrics::new_with_registry(&registry);
 
 //     let mut tx_shutdown = PreSubscribedBroadcastSender::new(NUM_SHUTDOWN_RECEIVERS);
 
@@ -399,7 +398,7 @@ async fn get_network_peers_from_admin_server() {
     tokio::time::sleep(Duration::from_secs(1)).await;
 
     let registry_1 = Registry::new();
-    let metrics_1 = initialise_metrics(&registry_1);
+    let metrics_1 = Metrics::new_with_registry(&registry_1);
     let mut tx_shutdown = PreSubscribedBroadcastSender::new(NUM_SHUTDOWN_RECEIVERS);
 
     let worker_1_parameters = Parameters {
@@ -408,8 +407,7 @@ async fn get_network_peers_from_admin_server() {
     };
 
     // For EL batch maker
-    let channel_metrics: Arc<WorkerChannelMetrics> =
-        Arc::new(metrics_1.clone().channel_metrics.unwrap());
+    let channel_metrics: Arc<WorkerChannelMetrics> = Arc::new(metrics_1.clone().channel_metrics);
     let (_tx_batch_maker, rx_batch_maker) = channel_with_total(
         CHANNEL_CAPACITY,
         &channel_metrics.tx_batch_maker,
@@ -517,7 +515,7 @@ async fn get_network_peers_from_admin_server() {
     tokio::time::sleep(Duration::from_secs(1)).await;
 
     let registry_2 = Registry::new();
-    let metrics_2 = initialise_metrics(&registry_2);
+    let metrics_2 = Metrics::new_with_registry(&registry_2);
 
     let worker_2_parameters = Parameters {
         batch_size: 200, // Two transactions.
@@ -527,8 +525,7 @@ async fn get_network_peers_from_admin_server() {
     let mut tx_shutdown_worker = PreSubscribedBroadcastSender::new(NUM_SHUTDOWN_RECEIVERS);
 
     // For EL batch maker
-    let channel_metrics: Arc<WorkerChannelMetrics> =
-        Arc::new(metrics_2.clone().channel_metrics.unwrap());
+    let channel_metrics: Arc<WorkerChannelMetrics> = Arc::new(metrics_2.clone().channel_metrics);
     let (_tx_batch_maker, rx_batch_maker) = channel_with_total(
         CHANNEL_CAPACITY,
         &channel_metrics.tx_batch_maker,
@@ -626,7 +623,6 @@ async fn get_network_peers_from_admin_server() {
             metrics_2
                 .clone()
                 .network_connection_metrics
-                .unwrap()
                 .network_peer_connected
                 .get_metric_with(&m)
                 .unwrap()

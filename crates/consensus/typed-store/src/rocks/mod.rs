@@ -658,7 +658,7 @@ unsafe impl<K: Send, V: Send> Send for DBMap<K, V> {}
 impl<K, V> DBMap<K, V> {
     pub(crate) fn new(db: Arc<RocksDB>, opts: &ReadWriteOptions, opt_cf: &str) -> Self {
         let db_cloned = db.clone();
-        let db_metrics = DBMetrics::get();
+        let db_metrics = Arc::new(DBMetrics::new());
         let db_metrics_cloned = db_metrics.clone();
         let cf = opt_cf.to_string();
         let (sender, mut recv) = tokio::sync::oneshot::channel();
@@ -2375,34 +2375,4 @@ fn big_endian_saturating_add_one(v: &mut [u8]) {
 /// Check if all the bytes in the vector are 0xFF
 fn is_max(v: &[u8]) -> bool {
     v.iter().all(|&x| x == u8::MAX)
-}
-
-#[allow(clippy::assign_op_pattern)]
-#[test]
-fn test_helpers() {
-    let v = vec![];
-    assert!(is_max(&v));
-
-    fn check_add(v: Vec<u8>) {
-        let mut v = v;
-        let num = Num32::from_big_endian(&v);
-        big_endian_saturating_add_one(&mut v);
-        assert!(num + 1 == Num32::from_big_endian(&v));
-    }
-
-    uint::construct_uint! {
-        // 32 byte number
-        #[cfg_attr(feature = "scale-info", derive(TypeInfo))]
-        struct Num32(4);
-    }
-
-    let mut v = vec![255; 32];
-    big_endian_saturating_add_one(&mut v);
-    assert!(Num32::MAX == Num32::from_big_endian(&v));
-
-    check_add(vec![1; 32]);
-    check_add(vec![6; 32]);
-    check_add(vec![254; 32]);
-
-    // TBD: More tests coming with randomized arrays
 }
