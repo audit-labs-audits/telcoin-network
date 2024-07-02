@@ -3,11 +3,9 @@
 // SPDX-License-Identifier: Apache-2.0
 
 //! Hierarchical type to hold tasks spawned for a worker in the network.
-use crate::{
-    engine::ExecutionNode, error::NodeError, metrics::new_registry, try_join_all, FuturesUnordered,
-};
+use crate::{engine::ExecutionNode, error::NodeError, try_join_all, FuturesUnordered};
 use anemo::PeerId;
-use consensus_metrics::{metered_channel, RegistryID, RegistryService};
+use consensus_metrics::metered_channel;
 use fastcrypto::traits::{KeyPair as _, VerifyingKey};
 use narwhal_executor::{
     get_restored_consensus_output, Executor, ExecutorMetrics, SubscriberResult,
@@ -20,7 +18,7 @@ use narwhal_primary::{
     Primary, PrimaryChannelMetrics, CHANNEL_CAPACITY, NUM_SHUTDOWN_RECEIVERS,
 };
 use narwhal_storage::NodeStorage;
-use prometheus::{IntGauge, Registry};
+use prometheus::IntGauge;
 use reth_db::{
     database::Database,
     database_metrics::{DatabaseMetadata, DatabaseMetrics},
@@ -41,10 +39,6 @@ use tracing::{info, instrument};
 struct PrimaryNodeInner {
     /// The configuration parameters.
     parameters: Parameters,
-    /// A prometheus RegistryService to use for the metrics
-    registry_service: RegistryService,
-    /// The latest registry id & registry used for the node
-    registry: Option<(RegistryID, Registry)>,
     /// The task handles created from primary
     handles: FuturesUnordered<JoinHandle<()>>,
     /// Keeping NetworkClient here for quicker shutdown.
@@ -101,13 +95,10 @@ impl PrimaryNodeInner {
 
         self.own_peer_id = Some(PeerId(network_keypair.public().0.to_bytes()));
 
-        // create a new registry
-        let registry = new_registry()?;
-
         // create the channel to send the shutdown signal
         let mut tx_shutdown = PreSubscribedBroadcastSender::new(NUM_SHUTDOWN_RECEIVERS);
 
-        let executor_metrics = ExecutorMetrics::new(&registry);
+        let executor_metrics = ExecutorMetrics::default();
 
         // used to retrieve the last executed certificate in case of restarts
         let last_executed_sub_dag_index =
@@ -129,7 +120,6 @@ impl PrimaryNodeInner {
             store,
             chain,
             self.parameters.clone(),
-            &registry,
             &mut tx_shutdown,
             executor_metrics,
             consensus_output_notification_sender,
@@ -139,9 +129,6 @@ impl PrimaryNodeInner {
 
         // start engine
         execution_components.start_engine(consensus_output_rx).await?;
-
-        // store the registry
-        self.swap_registry(Some(registry));
 
         // now keep the handlers
         self.handles.clear();
@@ -175,8 +162,6 @@ impl PrimaryNodeInner {
         // Now wait until handles have been completed
         try_join_all(&mut self.handles).await.unwrap();
 
-        self.swap_registry(None);
-
         info!(
             "Narwhal primary shutdown is complete - took {} seconds",
             now.elapsed().as_secs_f64()
@@ -192,22 +177,6 @@ impl PrimaryNodeInner {
     // true, otherwise false will returned instead.
     async fn is_running(&self) -> bool {
         self.handles.iter().any(|h| !h.is_finished())
-    }
-
-    /// Accepts an Option registry. If it's Some, then the new registry will be added in the
-    /// registry service and the registry_id will be updated. Also, any previous registry will
-    /// be removed. If None is passed, then the registry_id is updated to None and any old
-    /// registry is removed from the RegistryService.
-    fn swap_registry(&mut self, registry: Option<Registry>) {
-        if let Some((registry_id, _registry)) = self.registry.as_ref() {
-            self.registry_service.remove(*registry_id);
-        }
-
-        if let Some(registry) = registry {
-            self.registry = Some((self.registry_service.add(registry.clone()), registry));
-        } else {
-            self.registry = None
-        }
     }
 
     /// Spawn a new primary. Optionally also spawn the consensus and a client executing
@@ -231,8 +200,6 @@ impl PrimaryNodeInner {
         parameters: Parameters,
         // // The state used by the client to execute transactions.
         // execution_state: State,
-        // A prometheus exporter Registry to use for the metrics
-        registry: &Registry,
         // The channel to send the shutdown signal
         tx_shutdown: &mut PreSubscribedBroadcastSender,
         // The metrics for executor
@@ -290,7 +257,6 @@ where
             rx_new_certificates,
             tx_committed_certificates.clone(),
             tx_consensus_round_updates,
-            registry,
             executor_metrics,
             consensus_output_notification_sender,
             // in loo of sui's execution_state:
@@ -321,7 +287,6 @@ where
             rx_consensus_round_updates,
             tx_shutdown,
             tx_committed_certificates,
-            registry,
             leader_schedule,
         );
         handles.extend(primary_handles);
@@ -348,7 +313,6 @@ where
         rx_new_certificates: metered_channel::Receiver<Certificate>,
         tx_committed_certificates: metered_channel::Sender<(Round, Vec<Certificate>)>,
         tx_consensus_round_updates: watch::Sender<ConsensusRound>,
-        registry: &Registry,
         executor_metrics: ExecutorMetrics,
         consensus_output_notification_sender: broadcast::Sender<ConsensusOutput>,
         last_executed_sub_dag_index: u64,
@@ -357,8 +321,8 @@ where
         BlsPublicKey: VerifyingKey,
         // State: ExecutionState + Send + Sync + 'static,
     {
-        let consensus_metrics = Arc::new(ConsensusMetrics::new(registry));
-        let channel_metrics = ChannelMetrics::new(registry);
+        let consensus_metrics = Arc::new(ConsensusMetrics::default());
+        let channel_metrics = ChannelMetrics::default();
 
         let (tx_sequence, rx_sequence) = metered_channel::channel(
             narwhal_primary::CHANNEL_CAPACITY,
@@ -463,7 +427,7 @@ pub struct PrimaryNode {
 }
 
 impl PrimaryNode {
-    pub fn new(parameters: Parameters, registry_service: RegistryService) -> PrimaryNode {
+    pub fn new(parameters: Parameters) -> PrimaryNode {
         // TODO: what is an appropriate channel capacity? CHANNEL_CAPACITY currently set to 10k
         // which seems really high but is consistent for now
         let (consensus_output_notification_sender, _receiver) =
@@ -471,8 +435,6 @@ impl PrimaryNode {
 
         let inner = PrimaryNodeInner {
             parameters,
-            registry_service,
-            registry: None,
             handles: FuturesUnordered::new(),
             client: None,
             tx_shutdown: None,
@@ -539,11 +501,6 @@ impl PrimaryNode {
     pub async fn wait(&self) {
         let mut guard = self.internal.write().await;
         guard.wait().await
-    }
-
-    pub async fn registry(&self) -> Option<(RegistryID, Registry)> {
-        let guard = self.internal.read().await;
-        guard.registry.clone()
     }
 
     pub async fn subscribe_consensus_output(&self) -> broadcast::Receiver<ConsensusOutput> {

@@ -18,7 +18,6 @@ use narwhal_network_types::{
 };
 use narwhal_storage::{CertificateStore, NodeStorage};
 use once_cell::sync::OnceCell;
-use prometheus::Registry;
 use std::{collections::BTreeSet, sync::Arc, time::Duration};
 use tn_types::{
     test_utils::{temp_dir, CommitteeFixture},
@@ -476,8 +475,8 @@ async fn fetch_certificates_v1_basic() {
     let client = NetworkClient::new_from_keypair(&primary.network_keypair());
     let id = primary.id();
     let fake_primary = fixture.authorities().nth(1).unwrap();
-    let metrics = Arc::new(PrimaryMetrics::new(&Registry::new()));
-    let primary_channel_metrics = PrimaryChannelMetrics::new(&Registry::new());
+    let metrics = Arc::new(PrimaryMetrics::default());
+    let primary_channel_metrics = PrimaryChannelMetrics::default();
     let gc_depth: Round = 50;
 
     // kept empty

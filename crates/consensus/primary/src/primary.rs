@@ -7,7 +7,7 @@ use crate::{
     certificate_fetcher::CertificateFetcher,
     certifier::Certifier,
     consensus::{ConsensusRound, LeaderSchedule},
-    metrics::{initialise_metrics, PrimaryMetrics},
+    metrics::{Metrics, PrimaryMetrics},
     proposer::{OurDigestMessage, Proposer},
     state_handler::StateHandler,
     synchronizer::Synchronizer,
@@ -43,7 +43,6 @@ use narwhal_network::{
 };
 use narwhal_storage::{CertificateStore, PayloadStore, ProposerStore, VoteDigestStore};
 use parking_lot::Mutex;
-use prometheus::Registry;
 use std::{
     cmp::Reverse,
     collections::{btree_map::Entry, BTreeMap, BTreeSet, BinaryHeap, HashMap},
@@ -114,7 +113,6 @@ impl Primary {
         rx_consensus_round_updates: watch::Receiver<ConsensusRound>,
         tx_shutdown: &mut PreSubscribedBroadcastSender,
         tx_committed_certificates: Sender<(Round, Vec<Certificate>)>,
-        registry: &Registry,
         leader_schedule: LeaderSchedule,
     ) -> Vec<JoinHandle<()>> {
         // Write the parameters to the logs.
@@ -128,13 +126,12 @@ impl Primary {
             authority.protocol_key().encode_base64(),
         );
 
-        // Initialize the metrics
-        let metrics = initialise_metrics(registry);
-        let mut primary_channel_metrics = metrics.primary_channel_metrics.unwrap();
-        let inbound_network_metrics = Arc::new(metrics.inbound_network_metrics.unwrap());
-        let outbound_network_metrics = Arc::new(metrics.outbound_network_metrics.unwrap());
-        let node_metrics = Arc::new(metrics.node_metrics.unwrap());
-        let network_connection_metrics = metrics.network_connection_metrics.unwrap();
+        let metrics = Metrics::default(); // Initialize the metrics
+        let mut primary_channel_metrics = metrics.primary_channel_metrics;
+        let inbound_network_metrics = Arc::new(metrics.inbound_network_metrics);
+        let outbound_network_metrics = Arc::new(metrics.outbound_network_metrics);
+        let node_metrics = Arc::new(metrics.node_metrics);
+        let network_connection_metrics = metrics.network_connection_metrics;
 
         let (tx_our_digests, rx_our_digests) = channel_with_total(
             CHANNEL_CAPACITY,
@@ -170,14 +167,13 @@ impl Primary {
         // we need to hack the gauge from this consensus channel into the primary registry
         // This avoids a cyclic dependency in the initialization of consensus and primary
         let committed_certificates_gauge = tx_committed_certificates.gauge().clone();
-        primary_channel_metrics.replace_registered_committed_certificates_metric(
-            registry,
-            Box::new(committed_certificates_gauge),
-        );
+        primary_channel_metrics.replace_registered_committed_certificates_metric(Box::new(
+            committed_certificates_gauge,
+        ));
 
         let new_certificates_gauge = tx_new_certificates.gauge().clone();
         primary_channel_metrics
-            .replace_registered_new_certificates_metric(registry, Box::new(new_certificates_gauge));
+            .replace_registered_new_certificates_metric(Box::new(new_certificates_gauge));
 
         let (tx_narwhal_round_updates, rx_narwhal_round_updates) = watch::channel(0u64);
 

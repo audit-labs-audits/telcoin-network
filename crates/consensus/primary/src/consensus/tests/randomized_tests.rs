@@ -9,7 +9,6 @@ use crate::consensus::{
 use fastcrypto::hash::{Hash, HashFunction};
 use futures::{stream::FuturesUnordered, StreamExt};
 use narwhal_storage::ConsensusStore;
-use prometheus::Registry;
 use rand::{
     distributions::{Bernoulli, Distribution},
     prelude::SliceRandom,
@@ -498,7 +497,7 @@ fn generate_and_run_execution_plans(
         }
 
         // Now create a new Bullshark engine
-        let metrics = Arc::new(ConsensusMetrics::new(&Registry::new()));
+        let metrics = Arc::new(ConsensusMetrics::default());
         let mut state = ConsensusState::new(metrics.clone(), gc_depth);
         const SUB_DAGS_PER_SCHEDULE: u64 = 5;
         let bad_nodes_stake_threshold = 0;

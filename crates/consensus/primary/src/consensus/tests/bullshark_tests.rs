@@ -12,7 +12,6 @@ use crate::consensus::{
 };
 #[allow(unused_imports)]
 use fastcrypto::traits::KeyPair;
-use prometheus::Registry;
 #[cfg(test)]
 use std::collections::BTreeSet;
 use std::collections::HashMap;
@@ -37,7 +36,7 @@ async fn order_leaders() {
     let (certificates, _next_parents) =
         tn_types::test_utils::make_optimal_certificates(&committee, 1..=7, &genesis, &ids);
 
-    let metrics = Arc::new(ConsensusMetrics::new(&Registry::new()));
+    let metrics = Arc::new(ConsensusMetrics::default());
     let gc_depth = 50;
     let mut state = ConsensusState::new(metrics.clone(), gc_depth);
 
@@ -112,7 +111,7 @@ async fn commit_one_with_leader_schedule_change() {
             &ids,
         );
 
-        let metrics = Arc::new(ConsensusMetrics::new(&Registry::new()));
+        let metrics = Arc::new(ConsensusMetrics::default());
         let gc_depth = 50;
         let sub_dags_per_schedule = 3;
         let mut state = ConsensusState::new(metrics.clone(), gc_depth);
@@ -222,7 +221,7 @@ async fn not_enough_support_with_leader_schedule_change() {
     );
     certificates.extend(out);
 
-    let metrics = Arc::new(ConsensusMetrics::new(&Registry::new()));
+    let metrics = Arc::new(ConsensusMetrics::default());
     let gc_depth = 50;
     let sub_dags_per_schedule = 4;
     let mut state = ConsensusState::new(metrics.clone(), gc_depth);
@@ -341,7 +340,7 @@ async fn test_long_period_of_asynchrony_for_leader_schedule_change() {
     );
     certificates.extend(out);
 
-    let metrics = Arc::new(ConsensusMetrics::new(&Registry::new()));
+    let metrics = Arc::new(ConsensusMetrics::default());
     let gc_depth = 50;
     let sub_dags_per_schedule = 4;
     let mut state = ConsensusState::new(metrics.clone(), gc_depth);
@@ -450,7 +449,7 @@ async fn commit_one() {
     let store = make_consensus_store(&tn_types::test_utils::temp_dir());
     let cert_store = make_certificate_store(&tn_types::test_utils::temp_dir());
     let gc_depth = 50;
-    let metrics = Arc::new(ConsensusMetrics::new(&Registry::new()));
+    let metrics = Arc::new(ConsensusMetrics::default());
 
     let bullshark = Bullshark::new(
         committee.clone(),
@@ -529,7 +528,7 @@ async fn dead_node() {
     let store = make_consensus_store(&tn_types::test_utils::temp_dir());
     let cert_store = make_certificate_store(&tn_types::test_utils::temp_dir());
     let gc_depth = 50;
-    let metrics = Arc::new(ConsensusMetrics::new(&Registry::new()));
+    let metrics = Arc::new(ConsensusMetrics::default());
 
     let bullshark = Bullshark::new(
         committee.clone(),
@@ -683,7 +682,7 @@ async fn not_enough_support() {
     let store = make_consensus_store(&tn_types::test_utils::temp_dir());
     let cert_store = make_certificate_store(&tn_types::test_utils::temp_dir());
     let gc_depth = 50;
-    let metrics = Arc::new(ConsensusMetrics::new(&Registry::new()));
+    let metrics = Arc::new(ConsensusMetrics::default());
 
     let bullshark = Bullshark::new(
         committee.clone(),
@@ -801,7 +800,7 @@ async fn missing_leader() {
     let store = make_consensus_store(&tn_types::test_utils::temp_dir());
     let cert_store = make_certificate_store(&tn_types::test_utils::temp_dir());
     let gc_depth = 50;
-    let metrics = Arc::new(ConsensusMetrics::new(&Registry::new()));
+    let metrics = Arc::new(ConsensusMetrics::default());
     let bullshark = Bullshark::new(
         committee.clone(),
         store.clone(),
@@ -887,7 +886,7 @@ async fn committed_round_after_restart() {
 
         let mut tx_shutdown = PreSubscribedBroadcastSender::new(NUM_SHUTDOWN_RECEIVERS);
         let gc_depth = 50;
-        let metrics = Arc::new(ConsensusMetrics::new(&Registry::new()));
+        let metrics = Arc::new(ConsensusMetrics::default());
 
         let bullshark = Bullshark::new(
             committee.clone(),
@@ -964,7 +963,7 @@ async fn delayed_certificates_are_rejected() {
     // Make certificates for rounds 1 to 11.
     let genesis =
         Certificate::genesis(&committee).iter().map(|x| x.digest()).collect::<BTreeSet<_>>();
-    let metrics = Arc::new(ConsensusMetrics::new(&Registry::new()));
+    let metrics = Arc::new(ConsensusMetrics::default());
     let (certificates, _) = tn_types::test_utils::make_certificates_with_epoch(
         &committee,
         1..=5,
@@ -1018,7 +1017,7 @@ async fn submitting_equivocating_certificate_should_error() {
     // Make certificates for rounds 1 to 11.
     let genesis =
         Certificate::genesis(&committee).iter().map(|x| x.digest()).collect::<BTreeSet<_>>();
-    let metrics = Arc::new(ConsensusMetrics::new(&Registry::new()));
+    let metrics = Arc::new(ConsensusMetrics::default());
     let (certificates, _) = tn_types::test_utils::make_certificates_with_epoch(
         &committee,
         1..=1,
@@ -1079,7 +1078,7 @@ async fn reset_consensus_scores_on_every_schedule_change() {
     // Make certificates for rounds 1 to 50.
     let genesis =
         Certificate::genesis(&committee).iter().map(|x| x.digest()).collect::<BTreeSet<_>>();
-    let metrics = Arc::new(ConsensusMetrics::new(&Registry::new()));
+    let metrics = Arc::new(ConsensusMetrics::default());
     let (certificates, _) = tn_types::test_utils::make_certificates_with_epoch(
         &committee,
         1..=50,
@@ -1162,7 +1161,7 @@ async fn restart_with_new_committee() {
         let store = make_consensus_store(&tn_types::test_utils::temp_dir());
         let cert_store = make_certificate_store(&tn_types::test_utils::temp_dir());
         let gc_depth = 50;
-        let metrics = Arc::new(ConsensusMetrics::new(&Registry::new()));
+        let metrics = Arc::new(ConsensusMetrics::default());
         let bullshark = Bullshark::new(
             committee.clone(),
             store.clone(),
@@ -1281,7 +1280,7 @@ async fn garbage_collection_basic() {
     // Create Bullshark consensus engine
     let store = make_consensus_store(&tn_types::test_utils::temp_dir());
 
-    let metrics = Arc::new(ConsensusMetrics::new(&Registry::new()));
+    let metrics = Arc::new(ConsensusMetrics::default());
     let mut state = ConsensusState::new(metrics.clone(), GC_DEPTH);
     let mut bullshark = Bullshark::new(
         committee.clone(),
@@ -1375,7 +1374,7 @@ async fn slow_node() {
 
     // Create Bullshark consensus engine
     let store = make_consensus_store(&tn_types::test_utils::temp_dir());
-    let metrics = Arc::new(ConsensusMetrics::new(&Registry::new()));
+    let metrics = Arc::new(ConsensusMetrics::default());
     let mut state = ConsensusState::new(metrics.clone(), GC_DEPTH);
     let mut bullshark = Bullshark::new(
         committee.clone(),
@@ -1542,7 +1541,7 @@ async fn not_enough_support_and_missing_leaders_and_gc() {
 
     // Create Bullshark consensus engine
     let store = make_consensus_store(&tn_types::test_utils::temp_dir());
-    let metrics = Arc::new(ConsensusMetrics::new(&Registry::new()));
+    let metrics = Arc::new(ConsensusMetrics::default());
     let mut state = ConsensusState::new(metrics.clone(), GC_DEPTH);
     let mut bullshark = Bullshark::new(
         committee.clone(),

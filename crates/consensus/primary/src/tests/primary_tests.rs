@@ -101,7 +101,6 @@ async fn test_get_network_peers_from_admin_server() {
         rx_consensus_round_updates,
         &mut tx_shutdown,
         tx_feedback,
-        &Registry::new(),
         LeaderSchedule::new(committee.clone(), LeaderSwapTable::default()),
     );
 
@@ -221,7 +220,6 @@ async fn test_get_network_peers_from_admin_server() {
         rx_consensus_round_updates,
         &mut tx_shutdown_2,
         tx_feedback_2,
-        &Registry::new(),
         LeaderSchedule::new(committee, LeaderSwapTable::default()),
     );
 
@@ -283,8 +281,8 @@ async fn test_request_vote_has_missing_parents() {
     let author_id = author.id();
     let worker_cache = fixture.worker_cache();
     let signature_service = SignatureService::new(target.keypair().copy());
-    let metrics = Arc::new(PrimaryMetrics::new(&Registry::new()));
-    let primary_channel_metrics = PrimaryChannelMetrics::new(&Registry::new());
+    let metrics = Arc::new(PrimaryMetrics::default());
+    let primary_channel_metrics = PrimaryChannelMetrics::default();
     let network =
         tn_types::test_utils::test_network(target.network_keypair(), target.network_address());
     let client = NetworkClient::new_from_keypair(&target.network_keypair());
@@ -425,8 +423,8 @@ async fn test_request_vote_accept_missing_parents() {
     let author_id = author.id();
     let worker_cache = fixture.worker_cache();
     let signature_service = SignatureService::new(target.keypair().copy());
-    let metrics = Arc::new(PrimaryMetrics::new(&Registry::new()));
-    let primary_channel_metrics = PrimaryChannelMetrics::new(&Registry::new());
+    let metrics = Arc::new(PrimaryMetrics::default());
+    let primary_channel_metrics = PrimaryChannelMetrics::default();
     let network =
         tn_types::test_utils::test_network(target.network_keypair(), target.network_address());
     let client = NetworkClient::new_from_keypair(&target.network_keypair());
@@ -556,8 +554,8 @@ async fn test_request_vote_missing_batches() {
     let authority_id = primary.id();
     let author = fixture.authorities().nth(2).unwrap();
     let signature_service = SignatureService::new(primary.keypair().copy());
-    let metrics = Arc::new(PrimaryMetrics::new(&Registry::new()));
-    let primary_channel_metrics = PrimaryChannelMetrics::new(&Registry::new());
+    let metrics = Arc::new(PrimaryMetrics::default());
+    let primary_channel_metrics = PrimaryChannelMetrics::default();
     let network =
         tn_types::test_utils::test_network(primary.network_keypair(), primary.network_address());
     let client = NetworkClient::new_from_keypair(&primary.network_keypair());
@@ -678,8 +676,8 @@ async fn test_request_vote_already_voted() {
     let id = primary.id();
     let author = fixture.authorities().nth(2).unwrap();
     let signature_service = SignatureService::new(primary.keypair().copy());
-    let metrics = Arc::new(PrimaryMetrics::new(&Registry::new()));
-    let primary_channel_metrics = PrimaryChannelMetrics::new(&Registry::new());
+    let metrics = Arc::new(PrimaryMetrics::default());
+    let primary_channel_metrics = PrimaryChannelMetrics::default();
     let network =
         tn_types::test_utils::test_network(primary.network_keypair(), primary.network_address());
     let client = NetworkClient::new_from_keypair(&primary.network_keypair());
@@ -833,8 +831,8 @@ async fn test_fetch_certificates_handler() {
     let worker_cache = fixture.worker_cache();
     let primary = fixture.authorities().next().unwrap();
     let signature_service = SignatureService::new(primary.keypair().copy());
-    let metrics = Arc::new(PrimaryMetrics::new(&Registry::new()));
-    let primary_channel_metrics = PrimaryChannelMetrics::new(&Registry::new());
+    let metrics = Arc::new(PrimaryMetrics::default());
+    let primary_channel_metrics = PrimaryChannelMetrics::default();
     let client = NetworkClient::new_from_keypair(&primary.network_keypair());
 
     let (certificate_store, payload_store) = create_db_stores();
@@ -973,8 +971,8 @@ async fn test_request_vote_created_at_in_future() {
     let id = primary.id();
     let author = fixture.authorities().nth(2).unwrap();
     let signature_service = SignatureService::new(primary.keypair().copy());
-    let metrics = Arc::new(PrimaryMetrics::new(&Registry::new()));
-    let primary_channel_metrics = PrimaryChannelMetrics::new(&Registry::new());
+    let metrics = Arc::new(PrimaryMetrics::default());
+    let primary_channel_metrics = PrimaryChannelMetrics::default();
     let network =
         tn_types::test_utils::test_network(primary.network_keypair(), primary.network_address());
     let client = NetworkClient::new_from_keypair(&primary.network_keypair());

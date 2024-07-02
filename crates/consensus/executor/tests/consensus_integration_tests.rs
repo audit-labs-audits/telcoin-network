@@ -11,7 +11,6 @@ use narwhal_primary::{
 };
 use narwhal_storage::NodeStorage;
 
-use prometheus::Registry;
 use tn_types::{
     test_utils::{temp_dir, CommitteeFixture},
     DEFAULT_BAD_NODES_STAKE_THRESHOLD,
@@ -60,7 +59,7 @@ async fn test_recovery() {
 
     const GC_DEPTH: Round = 50;
     const NUM_SUB_DAGS_PER_SCHEDULE: u64 = 100;
-    let metrics = Arc::new(ConsensusMetrics::new(&Registry::new()));
+    let metrics = Arc::new(ConsensusMetrics::default());
     let bullshark = Bullshark::new(
         committee.clone(),
         consensus_store.clone(),

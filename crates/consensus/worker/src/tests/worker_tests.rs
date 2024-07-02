@@ -390,7 +390,6 @@ async fn get_network_peers_from_admin_server() {
         rx_consensus_round_updates,
         &mut tx_shutdown,
         tx_feedback,
-        &Registry::new(),
         LeaderSchedule::new(committee.clone(), LeaderSwapTable::default()),
     );
 
@@ -507,7 +506,6 @@ async fn get_network_peers_from_admin_server() {
         rx_consensus_round_updates,
         &mut tx_shutdown_2,
         tx_feedback_2,
-        &Registry::new(),
         LeaderSchedule::new(committee.clone(), LeaderSwapTable::default()),
     );
 

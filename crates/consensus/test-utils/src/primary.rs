@@ -2,12 +2,11 @@
 // SPDX-License-Identifier: Apache-2.0
 
 //! Primary fixture for the cluster
-use consensus_metrics::RegistryService;
 use fastcrypto::traits::KeyPair as _;
 use narwhal_executor::SerializedTransaction;
 use narwhal_network::client::NetworkClient;
 use narwhal_storage::NodeStorage;
-use prometheus::{proto::Metric, Registry};
+use prometheus::proto::Metric;
 use std::{cell::RefCell, path::PathBuf, rc::Rc, sync::Arc};
 use tn_node::primary::PrimaryNode;
 use tn_types::{
@@ -53,9 +52,7 @@ impl PrimaryNodeDetails {
         // used just to initialise the struct value
         let (tx, _) = tokio::sync::broadcast::channel(1);
 
-        let registry_service = RegistryService::new(Registry::new());
-
-        let node = PrimaryNode::new(parameters.clone(), registry_service);
+        let node = PrimaryNode::new(parameters.clone());
 
         Self {
             id,
@@ -75,8 +72,9 @@ impl PrimaryNodeDetails {
     /// Returns the metric - if exists - identified by the provided name.
     /// If metric has not been found then None is returned instead.
     pub async fn metric(&self, name: &str) -> Option<Metric> {
-        let (_registry_id, registry) = self.node.registry().await.unwrap();
-        let metrics = registry.gather();
+        // XXXX check the gather below...
+        //let (_registry_id, registry) = self.node.registry().await.unwrap();
+        let metrics = prometheus::gather();
 
         let metric = metrics.into_iter().find(|m| m.get_name() == name);
         metric.map(|m| m.get_metric().first().unwrap().clone())
