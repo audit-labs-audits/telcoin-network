@@ -230,10 +230,7 @@ impl PayloadBuilderAttributes for TNPayload {
     /// PrevRandao is used by TN to provide a source for randomness on-chain.
     ///
     /// This is used as the executed block's "mix_hash".
-<<<<<<< HEAD
-=======
     /// [EIP-4399]: https://eips.ethereum.org/EIPS/eip-4399
->>>>>>> main
     fn prev_randao(&self) -> B256 {
         self.attributes.batch_block.mix_hash
     }

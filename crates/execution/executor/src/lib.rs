@@ -43,7 +43,6 @@ mod client;
 mod error;
 mod payload_builder;
 mod task;
-mod payload;
 
 pub use crate::client::AutoSealClient;
 use error::ExecutorError;

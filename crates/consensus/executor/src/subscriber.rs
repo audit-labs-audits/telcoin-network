@@ -9,7 +9,7 @@ use narwhal_network::{client::NetworkClient, PrimaryToWorkerClient};
 use narwhal_network_types::FetchBatchesRequest;
 use reth_primitives::Address;
 use std::{
-    collections::{HashMap, HashSet},
+    collections::{HashMap, HashSet, VecDeque},
     sync::Arc,
     time::Duration,
     vec,
@@ -214,6 +214,7 @@ impl Subscriber {
                 sub_dag: Arc::new(deliver),
                 batches: vec![],
                 beneficiary: address,
+                batch_digests: VecDeque::new(),
             };
         }
 
@@ -222,6 +223,7 @@ impl Subscriber {
             sub_dag: sub_dag.clone(),
             batches: Vec::with_capacity(num_certs),
             beneficiary: address,
+            batch_digests: VecDeque::new(),
         };
 
         let mut batch_digests_and_workers: HashMap<
@@ -243,6 +245,7 @@ impl Subscriber {
                 let (batch_set, worker_set) =
                     batch_digests_and_workers.entry(own_worker_name).or_default();
                 batch_set.insert(*digest);
+                subscriber_output.batch_digests.push_back(*digest);
                 worker_set.extend(workers);
             }
         }

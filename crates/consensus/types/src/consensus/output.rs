@@ -1,8 +1,8 @@
 //! The ouput from consensus (bullshark)
 
 use crate::{
-    crypto, Batch, Certificate, CertificateAPI, CertificateDigest, HeaderAPI, ReputationScores,
-    Round, SequenceNumber, TimestampSec,
+    crypto, Batch, BatchDigest, Certificate, CertificateAPI, CertificateDigest, HeaderAPI,
+    ReputationScores, Round, SequenceNumber, TimestampSec,
 };
 use enum_dispatch::enum_dispatch;
 use fastcrypto::hash::{Digest, Hash, HashFunction};
@@ -10,8 +10,8 @@ use fastcrypto::hash::{Digest, Hash, HashFunction};
 use reth_primitives::{Address, B256};
 use serde::{Deserialize, Serialize};
 use std::{
-    fmt,
-    fmt::{Display, Formatter},
+    collections::VecDeque,
+    fmt::{self, Display, Formatter},
     sync::Arc,
 };
 use tokio::sync::mpsc;
@@ -26,6 +26,8 @@ pub struct ConsensusOutput {
     pub batches: Vec<Vec<Batch>>,
     /// The beneficiary for block rewards.
     pub beneficiary: Address,
+    /// The ordered set of [BatchDigests].
+    pub batch_digests: VecDeque<BatchDigest>,
 }
 
 impl ConsensusOutput {
