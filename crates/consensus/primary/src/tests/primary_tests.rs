@@ -5,7 +5,6 @@ use super::{Primary, PrimaryReceiverHandler, CHANNEL_CAPACITY};
 use crate::{
     common::create_db_stores,
     consensus::{ConsensusRound, LeaderSchedule, LeaderSwapTable},
-    metrics::{PrimaryChannelMetrics, PrimaryMetrics},
     synchronizer::Synchronizer,
     NUM_SHUTDOWN_RECEIVERS,
 };
@@ -21,6 +20,7 @@ use narwhal_network::client::NetworkClient;
 use narwhal_network_types::{
     FetchCertificatesRequest, MockPrimaryToWorker, PrimaryToPrimary, RequestVoteRequest,
 };
+use narwhal_primary_metrics::{PrimaryChannelMetrics, PrimaryMetrics};
 use narwhal_storage::{NodeStorage, VoteDigestStore};
 use narwhal_worker::{
     metrics::{Metrics, WorkerChannelMetrics},
@@ -69,7 +69,7 @@ async fn test_get_network_peers_from_admin_server() {
         )
         .unwrap(),
     );
-    let (tx_feedback, rx_feedback) = consensus_metrics::metered_channel::channel(
+    let (_tx_feedback, rx_feedback) = consensus_metrics::metered_channel::channel(
         CHANNEL_CAPACITY,
         &prometheus::IntGauge::new(
             PrimaryChannelMetrics::NAME_COMMITTED_CERTS,
@@ -100,9 +100,8 @@ async fn test_get_network_peers_from_admin_server() {
         rx_feedback,
         rx_consensus_round_updates,
         &mut tx_shutdown,
-        tx_feedback,
-        &Registry::new(),
         LeaderSchedule::new(committee.clone(), LeaderSwapTable::default()),
+        &narwhal_primary_metrics::Metrics::default(),
     );
 
     // Wait for tasks to start
@@ -119,7 +118,7 @@ async fn test_get_network_peers_from_admin_server() {
     let mut tx_shutdown_worker = PreSubscribedBroadcastSender::new(NUM_SHUTDOWN_RECEIVERS);
 
     // For EL batch maker
-    let channel_metrics: Arc<WorkerChannelMetrics> = Arc::new(metrics_1.clone().channel_metrics);
+    let channel_metrics: Arc<WorkerChannelMetrics> = metrics_1.channel_metrics.clone();
     let (_tx_batch_maker, rx_batch_maker) = channel_with_total(
         CHANNEL_CAPACITY,
         &channel_metrics.tx_batch_maker,
@@ -190,7 +189,7 @@ async fn test_get_network_peers_from_admin_server() {
             )
             .unwrap(),
         );
-    let (tx_feedback_2, rx_feedback_2) = consensus_metrics::metered_channel::channel(
+    let (_tx_feedback_2, rx_feedback_2) = consensus_metrics::metered_channel::channel(
         CHANNEL_CAPACITY,
         &prometheus::IntGauge::new(
             PrimaryChannelMetrics::NAME_COMMITTED_CERTS,
@@ -220,9 +219,8 @@ async fn test_get_network_peers_from_admin_server() {
         /* rx_consensus */ rx_feedback_2,
         rx_consensus_round_updates,
         &mut tx_shutdown_2,
-        tx_feedback_2,
-        &Registry::new(),
         LeaderSchedule::new(committee, LeaderSwapTable::default()),
+        &narwhal_primary_metrics::Metrics::default(),
     );
 
     // Wait for tasks to start
@@ -283,8 +281,8 @@ async fn test_request_vote_has_missing_parents() {
     let author_id = author.id();
     let worker_cache = fixture.worker_cache();
     let signature_service = SignatureService::new(target.keypair().copy());
-    let metrics = Arc::new(PrimaryMetrics::new(&Registry::new()));
-    let primary_channel_metrics = PrimaryChannelMetrics::new(&Registry::new());
+    let metrics = Arc::new(PrimaryMetrics::default());
+    let primary_channel_metrics = PrimaryChannelMetrics::default();
     let network =
         tn_types::test_utils::test_network(target.network_keypair(), target.network_address());
     let client = NetworkClient::new_from_keypair(&target.network_keypair());
@@ -425,8 +423,8 @@ async fn test_request_vote_accept_missing_parents() {
     let author_id = author.id();
     let worker_cache = fixture.worker_cache();
     let signature_service = SignatureService::new(target.keypair().copy());
-    let metrics = Arc::new(PrimaryMetrics::new(&Registry::new()));
-    let primary_channel_metrics = PrimaryChannelMetrics::new(&Registry::new());
+    let metrics = Arc::new(PrimaryMetrics::default());
+    let primary_channel_metrics = PrimaryChannelMetrics::default();
     let network =
         tn_types::test_utils::test_network(target.network_keypair(), target.network_address());
     let client = NetworkClient::new_from_keypair(&target.network_keypair());
@@ -556,8 +554,8 @@ async fn test_request_vote_missing_batches() {
     let authority_id = primary.id();
     let author = fixture.authorities().nth(2).unwrap();
     let signature_service = SignatureService::new(primary.keypair().copy());
-    let metrics = Arc::new(PrimaryMetrics::new(&Registry::new()));
-    let primary_channel_metrics = PrimaryChannelMetrics::new(&Registry::new());
+    let metrics = Arc::new(PrimaryMetrics::default());
+    let primary_channel_metrics = PrimaryChannelMetrics::default();
     let network =
         tn_types::test_utils::test_network(primary.network_keypair(), primary.network_address());
     let client = NetworkClient::new_from_keypair(&primary.network_keypair());
@@ -678,8 +676,8 @@ async fn test_request_vote_already_voted() {
     let id = primary.id();
     let author = fixture.authorities().nth(2).unwrap();
     let signature_service = SignatureService::new(primary.keypair().copy());
-    let metrics = Arc::new(PrimaryMetrics::new(&Registry::new()));
-    let primary_channel_metrics = PrimaryChannelMetrics::new(&Registry::new());
+    let metrics = Arc::new(PrimaryMetrics::default());
+    let primary_channel_metrics = PrimaryChannelMetrics::default();
     let network =
         tn_types::test_utils::test_network(primary.network_keypair(), primary.network_address());
     let client = NetworkClient::new_from_keypair(&primary.network_keypair());
@@ -833,8 +831,8 @@ async fn test_fetch_certificates_handler() {
     let worker_cache = fixture.worker_cache();
     let primary = fixture.authorities().next().unwrap();
     let signature_service = SignatureService::new(primary.keypair().copy());
-    let metrics = Arc::new(PrimaryMetrics::new(&Registry::new()));
-    let primary_channel_metrics = PrimaryChannelMetrics::new(&Registry::new());
+    let metrics = Arc::new(PrimaryMetrics::default());
+    let primary_channel_metrics = PrimaryChannelMetrics::default();
     let client = NetworkClient::new_from_keypair(&primary.network_keypair());
 
     let (certificate_store, payload_store) = create_db_stores();
@@ -973,8 +971,8 @@ async fn test_request_vote_created_at_in_future() {
     let id = primary.id();
     let author = fixture.authorities().nth(2).unwrap();
     let signature_service = SignatureService::new(primary.keypair().copy());
-    let metrics = Arc::new(PrimaryMetrics::new(&Registry::new()));
-    let primary_channel_metrics = PrimaryChannelMetrics::new(&Registry::new());
+    let metrics = Arc::new(PrimaryMetrics::default());
+    let primary_channel_metrics = PrimaryChannelMetrics::default();
     let network =
         tn_types::test_utils::test_network(primary.network_keypair(), primary.network_address());
     let client = NetworkClient::new_from_keypair(&primary.network_keypair());

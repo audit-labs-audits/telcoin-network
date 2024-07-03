@@ -107,13 +107,7 @@ impl Worker {
             store,
         };
 
-        let node_metrics = Arc::new(metrics.worker_metrics);
-        // let endpoint_metrics = metrics.endpoint_metrics.unwrap();
-        // let channel_metrics: Arc<WorkerChannelMetrics> =
-        // Arc::new(metrics.channel_metrics.unwrap());
-        let inbound_network_metrics = Arc::new(metrics.inbound_network_metrics);
-        let outbound_network_metrics = Arc::new(metrics.outbound_network_metrics);
-        let network_connection_metrics = metrics.network_connection_metrics;
+        let node_metrics = metrics.worker_metrics.clone();
 
         let mut shutdown_receivers = tx_shutdown.subscribe_n(NUM_SHUTDOWN_RECEIVERS);
 
@@ -190,7 +184,7 @@ impl Worker {
                     .on_failure(DefaultOnFailure::new().level(tracing::Level::WARN)),
             )
             .layer(CallbackLayer::new(MetricsMakeCallbackHandler::new(
-                inbound_network_metrics,
+                metrics.inbound_network_metrics.clone(),
                 parameters.anemo.excessive_message_size(),
             )))
             .layer(CallbackLayer::new(FailpointsMakeCallbackHandler::new()))
@@ -207,7 +201,7 @@ impl Worker {
                     .on_failure(DefaultOnFailure::new().level(tracing::Level::WARN)),
             )
             .layer(CallbackLayer::new(MetricsMakeCallbackHandler::new(
-                outbound_network_metrics,
+                metrics.outbound_network_metrics.clone(),
                 parameters.anemo.excessive_message_size(),
             )))
             .layer(CallbackLayer::new(FailpointsMakeCallbackHandler::new()))
@@ -336,7 +330,7 @@ impl Worker {
         let (connection_monitor_handle, _) =
             narwhal_network::connectivity::ConnectionMonitor::spawn(
                 network.downgrade(),
-                network_connection_metrics,
+                metrics.network_connection_metrics.clone(),
                 peer_types,
                 Some(shutdown_receivers.pop().unwrap()),
             );

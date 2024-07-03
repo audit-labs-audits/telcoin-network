@@ -5,7 +5,6 @@
 use super::*;
 use crate::{consensus::LeaderSwapTable, NUM_SHUTDOWN_RECEIVERS};
 use indexmap::IndexMap;
-use prometheus::Registry;
 use tn_types::{
     test_utils::{fixture_payload, CommitteeFixture},
     PreSubscribedBroadcastSender,
@@ -27,7 +26,7 @@ async fn propose_empty() {
     let (tx_headers, mut rx_headers) = tn_types::test_channel!(1);
     let (tx_narwhal_round_updates, _rx_narwhal_round_updates) = watch::channel(0u64);
 
-    let metrics = Arc::new(PrimaryMetrics::new(&Registry::new()));
+    let metrics = Arc::new(PrimaryMetrics::default());
 
     // Spawn the proposer.
     let _proposer_handle = Proposer::spawn(
@@ -74,7 +73,7 @@ async fn propose_payload_and_repropose_after_n_seconds() {
     let (tx_headers, mut rx_headers) = tn_types::test_channel!(1);
     let (tx_narwhal_round_updates, _rx_narwhal_round_updates) = watch::channel(0u64);
 
-    let metrics = Arc::new(PrimaryMetrics::new(&Registry::new()));
+    let metrics = Arc::new(PrimaryMetrics::default());
 
     let max_num_of_batches = 10;
 
@@ -193,7 +192,7 @@ async fn equivocation_protection() {
     let (tx_headers, mut rx_headers) = tn_types::test_channel!(1);
     let (tx_narwhal_round_updates, _rx_narwhal_round_updates) = watch::channel(0u64);
     let (_tx_committed_own_headers, rx_committed_own_headers) = tn_types::test_channel!(1);
-    let metrics = Arc::new(PrimaryMetrics::new(&Registry::new()));
+    let metrics = Arc::new(PrimaryMetrics::default());
 
     // Spawn the proposer.
     let proposer_handle = Proposer::spawn(
@@ -261,7 +260,7 @@ async fn equivocation_protection() {
     let (tx_headers, mut rx_headers) = tn_types::test_channel!(1);
     let (tx_narwhal_round_updates, _rx_narwhal_round_updates) = watch::channel(0u64);
     let (_tx_committed_own_headers, rx_committed_own_headers) = tn_types::test_channel!(1);
-    let metrics = Arc::new(PrimaryMetrics::new(&Registry::new()));
+    let metrics = Arc::new(PrimaryMetrics::default());
 
     let _proposer_handle = Proposer::spawn(
         authority_id,

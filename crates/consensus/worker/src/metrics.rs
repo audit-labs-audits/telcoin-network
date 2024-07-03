@@ -8,7 +8,7 @@ use prometheus::{
     register_int_gauge_with_registry, Histogram, HistogramVec, IntCounter, IntCounterVec, IntGauge,
     Registry,
 };
-use std::time::Duration;
+use std::{sync::Arc, time::Duration};
 use tn_types::MetricsCallbackProvider;
 use tonic::Code;
 
@@ -20,31 +20,34 @@ const LATENCY_SEC_BUCKETS: &[f64] = &[
 
 #[derive(Clone)]
 pub struct Metrics {
-    pub worker_metrics: WorkerMetrics,
-    pub channel_metrics: WorkerChannelMetrics,
-    pub endpoint_metrics: WorkerEndpointMetrics,
-    pub inbound_network_metrics: NetworkMetrics,
-    pub outbound_network_metrics: NetworkMetrics,
-    pub network_connection_metrics: NetworkConnectionMetrics,
+    pub worker_metrics: Arc<WorkerMetrics>,
+    pub channel_metrics: Arc<WorkerChannelMetrics>,
+    pub endpoint_metrics: Arc<WorkerEndpointMetrics>,
+    pub inbound_network_metrics: Arc<NetworkMetrics>,
+    pub outbound_network_metrics: Arc<NetworkMetrics>,
+    pub network_connection_metrics: Arc<NetworkConnectionMetrics>,
 }
 
 impl Metrics {
     fn try_new(registry: &Registry) -> Result<Self, prometheus::Error> {
         // Essential/core metrics across the worker node
-        let worker_metrics = WorkerMetrics::try_new(registry)?;
+        let worker_metrics = Arc::new(WorkerMetrics::try_new(registry)?);
 
         // Channel metrics
-        let channel_metrics = WorkerChannelMetrics::try_new(registry)?;
+        let channel_metrics = Arc::new(WorkerChannelMetrics::try_new(registry)?);
 
         // Endpoint metrics
-        let endpoint_metrics = WorkerEndpointMetrics::try_new(registry)?;
+        let endpoint_metrics = Arc::new(WorkerEndpointMetrics::try_new(registry)?);
 
         // The metrics used for communicating over the network
-        let inbound_network_metrics = NetworkMetrics::try_new("worker", "inbound", registry)?;
-        let outbound_network_metrics = NetworkMetrics::try_new("worker", "outbound", registry)?;
+        let inbound_network_metrics =
+            Arc::new(NetworkMetrics::try_new("worker", "inbound", registry)?);
+        let outbound_network_metrics =
+            Arc::new(NetworkMetrics::try_new("worker", "outbound", registry)?);
 
         // Network metrics for the worker connection
-        let network_connection_metrics = NetworkConnectionMetrics::try_new("worker", registry)?;
+        let network_connection_metrics =
+            Arc::new(NetworkConnectionMetrics::try_new("worker", registry)?);
 
         Ok(Metrics {
             worker_metrics,

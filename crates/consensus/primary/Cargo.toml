@@ -46,6 +46,7 @@ telcoin-macros = { workspace = true }
 
 telcoin-sync = { workspace = true }
 consensus-metrics = { workspace = true }
+narwhal-primary-metrics = { workspace = true }
 
 anemo = { workspace = true }
 anemo-tower = { workspace = true }

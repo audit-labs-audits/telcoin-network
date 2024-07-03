@@ -2,6 +2,7 @@
 // Copyright (c) Mysten Labs, Inc.
 // SPDX-License-Identifier: Apache-2.0
 use narwhal_test_utils::cluster::Cluster;
+use prometheus::core::Metric;
 use reth::tasks::TaskManager;
 
 use std::time::Duration;
@@ -72,14 +73,7 @@ async fn test_restore_from_disk() {
     let primary = node.primary().await;
 
     let node_recovered_state =
-        if let Some(metric) = primary.metric("recovered_consensus_state").await {
-            let value = metric.get_counter().get_value();
-            info!("Found metric for recovered consensus state.");
-
-            value > 0.0
-        } else {
-            false
-        };
+        primary.consensus_metrics().await.recovered_consensus_state.get() > 0;
 
     assert!(node_recovered_state, "Node did not recover state from disk");
 }
@@ -87,8 +81,6 @@ async fn test_restore_from_disk() {
 #[ignore]
 #[tokio::test]
 async fn test_read_causal_signed_certificates() {
-    const CURRENT_ROUND_METRIC: &str = "current_round";
-
     // Enabled debug tracing so we can easily observe the
     // nodes logs.
     setup_test_tracing();
@@ -105,15 +97,20 @@ async fn test_read_causal_signed_certificates() {
 
     // Ensure all nodes advanced
     for authority in cluster.authorities().await {
-        if let Some(metric) = authority.primary().await.metric(CURRENT_ROUND_METRIC).await {
-            let value = metric.get_gauge().get_value();
-
-            info!("Metric -> {:?}", value);
-
-            // If the current round is increasing then it means that the
-            // node starts catching up and is proposing.
-            assert!(value > 1.0, "Node didn't progress further than the round 1");
-        }
+        let value = authority
+            .primary()
+            .await
+            .primary_metrics()
+            .await
+            .node_metrics
+            .current_round
+            .metric()
+            .get_gauge()
+            .get_value();
+        info!("Metric -> {:?}", value);
+        // If the current round is increasing then it means that the
+        // node starts catching up and is proposing.
+        assert!(value > 1.0, "Node didn't progress further than the round 1");
     }
 
     // Now stop node 0
@@ -134,16 +131,20 @@ async fn test_read_causal_signed_certificates() {
     for _ in 0..10 {
         tokio::time::sleep(Duration::from_secs(1)).await;
 
-        if let Some(metric) = node.metric(CURRENT_ROUND_METRIC).await {
-            let value = metric.get_gauge().get_value();
-            info!("Metric -> {:?}", value);
-
-            // If the current round is increasing then it means that the
-            // node starts catching up and is proposing.
-            if value > 1.0 {
-                node_made_progress = true;
-                break;
-            }
+        let value = node
+            .primary_metrics()
+            .await
+            .node_metrics
+            .current_round
+            .metric()
+            .get_gauge()
+            .get_value();
+        info!("Metric -> {:?}", value);
+        // If the current round is increasing then it means that the
+        // node starts catching up and is proposing.
+        if value > 1.0 {
+            node_made_progress = true;
+            break;
         }
     }
 

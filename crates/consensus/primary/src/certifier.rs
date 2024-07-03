@@ -2,12 +2,13 @@
 // Copyright (c) Telcoin, LLC
 // Copyright (c) Mysten Labs, Inc.
 // SPDX-License-Identifier: Apache-2.0
-use crate::{aggregators::VotesAggregator, metrics::PrimaryMetrics, synchronizer::Synchronizer};
+use crate::{aggregators::VotesAggregator, synchronizer::Synchronizer};
 
 use consensus_metrics::{metered_channel::Receiver, monitored_future, spawn_logged_monitored_task};
 use fastcrypto::signature_service::SignatureService;
 use futures::{stream::FuturesUnordered, StreamExt};
 use narwhal_network::anemo_ext::NetworkExt;
+use narwhal_primary_metrics::PrimaryMetrics;
 use narwhal_storage::CertificateStore;
 use std::{sync::Arc, time::Duration};
 use telcoin_macros::fail_point_async;

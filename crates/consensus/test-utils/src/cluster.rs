@@ -239,16 +239,13 @@ impl Cluster {
 
         for authority in self.authorities().await {
             let primary = authority.primary().await;
-            if let Some(metric) = primary.metric("last_committed_round").await {
-                let value = metric.get_gauge().get_value();
+            let value =
+                primary.consensus_metrics().await.last_committed_round.with_label_values(&[]).get()
+                    as f64;
 
-                authorities_latest_commit.insert(primary.id, value);
+            authorities_latest_commit.insert(primary.id, value);
 
-                info!(
-                    "[Node {}] Metric narwhal_primary_last_committed_round -> {value}",
-                    primary.id
-                );
-            }
+            info!("[Node {}] Metric narwhal_primary_last_committed_round -> {value}", primary.id);
         }
 
         authorities_latest_commit

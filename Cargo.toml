@@ -19,6 +19,7 @@ members = [
     "crates/consensus/typed-store",
     "crates/consensus/typed-store-derive",
     "crates/consensus/worker",
+    "crates/consensus/primary-metrics",
 
     # execution
     "crates/execution/batch-maker",
@@ -152,6 +153,7 @@ narwhal-primary = { path = "./crates/consensus/primary" }
 narwhal-test-utils = { path = "./crates/consensus/test-utils" }
 narwhal-network-types = { path = "./crates/consensus/network-types" }
 consensus-metrics = { path = "./crates/consensus/consensus-metrics" }
+narwhal-primary-metrics = { path = "./crates/consensus/primary-metrics" }
 telcoin-sync = { path = "./crates/consensus/telcoin-sync" }
 telcoin-macros = { path = "./crates/consensus/telcoin-macros" }
 mem-utils = { path = "./crates/consensus/mem-utils" }

@@ -56,37 +56,37 @@ pub struct ConsensusMetrics {
 }
 
 impl ConsensusMetrics {
-    pub fn new(registry: &Registry) -> Self {
-        Self {
+    fn try_new(registry: &Registry) -> Result<Self, prometheus::Error> {
+        Ok(Self {
             consensus_dag_rounds: register_int_gauge_vec_with_registry!(
                 "consensus_dag_rounds",
                 "The number of rounds for which the consensus Dag holds certificates",
                 &[],
                 registry
-            ).unwrap(),
+            )?,
             last_committed_round: register_int_gauge_vec_with_registry!(
                 "last_committed_round",
                 "The most recent round that has been committed from consensus",
                 &[],
                 registry
-            ).unwrap(),
+            )?,
             recovered_consensus_state: register_int_counter_with_registry!(
                 "recovered_consensus_state",
                 "The number of times the consensus state was restored from the consensus store following a node restart",
                 registry
-            ).unwrap(),
+            )?,
             recovered_consensus_output: register_int_counter_with_registry!(
                 "recovered_consensus_output",
                 "The number of certificates from consensus that were restored and sent to the executor following a node restart",
                 registry
-            ).unwrap(),
+            )?,
             commit_rounds_latency: register_histogram_with_registry!(
                 "consensus_commit_rounds_latency",
                 "The latency between two successful commit rounds (when we have successful leader election)",
                 // buckets in seconds
                 LATENCY_SEC_BUCKETS.to_vec(),
                 registry
-            ).unwrap(),
+            )?,
             committed_certificates: MystenHistogram::new_in_registry(
                 "committed_certificates",
                 "The number of certificates committed on a commit round",
@@ -97,37 +97,52 @@ impl ConsensusMetrics {
                 "The time it takes for a certificate from the moment it gets created up to the moment it gets committed.",
                 LATENCY_SEC_BUCKETS.to_vec(),
                 registry
-            ).unwrap(),
+            )?,
             leader_commit_accuracy: register_int_counter_vec_with_registry!(
                 "leader_commit_accuracy",
                 "Whether a leader commit has been triggered on time - meaning that network hasn't progress to the next even round before it got committed",
                 &["outcome", "authority"],
                 registry
-            ).unwrap(),
+            )?,
             leader_election: register_int_counter_vec_with_registry!(
                 "leader_election",
                 "The outcome of a leader election round",
                 &["outcome", "authority"],
                 registry
-            ).unwrap(),
+            )?,
             leader_commits: register_int_counter_vec_with_registry!(
                 "leader_commits",
                 "Count leader commits, broken down by strong vs weak support",
                 &["type"],
                 registry
-            ).unwrap(),
+            )?,
             num_of_bad_nodes: register_int_gauge_with_registry!(
                 "num_of_bad_nodes",
                 "The number of bad nodes in the new leader schedule",
                 registry
-            ).unwrap(),
+            )?,
+        })
+    }
+
+    pub fn new() -> Self {
+        match Self::try_new(default_registry()) {
+            Ok(metrics) => metrics,
+            Err(e) => {
+                tracing::warn!(target: "tn::metrics", ?e, "Executor::try_new metrics error");
+                // If we are in a test then don't panic on prometheus errors (usually an already
+                // registered error) but try again with a new Registry. This is not
+                // great for prod code, however should not happen, but will happen in tests do to
+                // how Rust runs them so lets just gloss over it. cfg(test) does not
+                // always work as expected.
+                Self::try_new(&Registry::new()).expect("Prometheus error, are you using it wrong?")
+            }
         }
     }
 }
 
 impl Default for ConsensusMetrics {
     fn default() -> Self {
-        Self::new(default_registry())
+        Self::new()
     }
 }
 
@@ -143,20 +158,34 @@ pub struct ChannelMetrics {
 }
 
 impl ChannelMetrics {
-    pub fn new(registry: &Registry) -> Self {
-        Self {
+    fn try_new(registry: &Registry) -> Result<Self, prometheus::Error> {
+        Ok(Self {
             tx_sequence: register_int_gauge_with_registry!(
                 "tx_sequence",
                 "occupancy of the channel from the `Consensus` to `SubscriberHandler`",
                 registry
-            )
-            .unwrap(),
+            )?,
+        })
+    }
+
+    pub fn new() -> Self {
+        match Self::try_new(default_registry()) {
+            Ok(metrics) => metrics,
+            Err(e) => {
+                tracing::warn!(target: "tn::metrics", ?e, "Executor::try_new metrics error");
+                // If we are in a test then don't panic on prometheus errors (usually an already
+                // registered error) but try again with a new Registry. This is not
+                // great for prod code, however should not happen, but will happen in tests do to
+                // how Rust runs them so lets just gloss over it. cfg(test) does not
+                // always work as expected.
+                Self::try_new(&Registry::new()).expect("Prometheus error, are you using it wrong?")
+            }
         }
     }
 }
 
 impl Default for ChannelMetrics {
     fn default() -> Self {
-        Self::new(default_registry())
+        Self::new()
     }
 }
