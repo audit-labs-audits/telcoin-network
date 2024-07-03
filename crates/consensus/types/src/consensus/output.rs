@@ -5,6 +5,7 @@ use crate::{
     ReputationScores, Round, SequenceNumber, TimestampSec,
 };
 use enum_dispatch::enum_dispatch;
+use eyre::OptionExt;
 use fastcrypto::hash::{Digest, Hash, HashFunction};
 
 use reth_primitives::{Address, B256};
@@ -56,6 +57,12 @@ impl ConsensusOutput {
     pub fn beneficiary(&self) -> Address {
         self.beneficiary
     }
+    /// Pop the next batch digest.
+    ///
+    /// This method is used when executing [Self].
+    pub fn next_batch_digest(&mut self) -> eyre::Result<BatchDigest> {
+        self.batch_digests.pop_front().ok_or_eyre("Next batch digest doesn't exist")
+    }
 }
 
 impl Hash<{ crypto::DIGEST_LENGTH }> for ConsensusOutput {
@@ -65,12 +72,18 @@ impl Hash<{ crypto::DIGEST_LENGTH }> for ConsensusOutput {
         let mut hasher = crypto::DefaultHashFunction::new();
         // hash subdag
         hasher.update(self.sub_dag.digest());
-        // hash batch in order
-        self.batches.iter().flatten().for_each(|b| {
-            hasher.update(b.digest());
+        // TODO: this hashes the batch digest as well
+        // wrong
+        // hash batches in order
+        self.batches.iter().flatten().for_each(|batch| {
+            hasher.update(batch.digest());
         });
         // hash beneficiary
         hasher.update(self.beneficiary);
+        // hash batch digests in order
+        self.batch_digests.iter().for_each(|digest| {
+            hasher.update(digest);
+        });
         // finalize
         ConsensusOutputDigest(hasher.finalize().into())
     }

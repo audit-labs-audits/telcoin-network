@@ -44,7 +44,7 @@ where
     EvmConfig: ConfigureEvm,
     Provider: StateProviderFactory,
 {
-    let BuildArguments { provider, output, mut parent_block, chain_spec } = args;
+    let BuildArguments { provider, mut output, mut parent_block, chain_spec } = args;
 
     // TODO: explore "batch-execution" concept in reth: BlockExecutorProvider trait
     //
@@ -63,10 +63,10 @@ where
     //      - ommers hash ensures all batches accounted for
     //      - ommers length used to get the last block in the output by nonce
 
+    // TODO: create "sealed consensus" type that contains hash and output
+    //
     // create ommers while converting Batch to SealedBlockWithSenders
     let output_digest = output.digest();
-    // let mut ommers = Vec::new();
-    // let mut batch_digests: VecDeque<BatchDigest> = VecDeque::new();
 
     // TODO: add this as a method on ConsensusOutput and parallelize
     let sealed_blocks_with_senders_result: Result<Vec<SealedBlockWithSenders>, _> = output
@@ -90,13 +90,6 @@ where
         })
         .collect();
 
-    // TODO: include batch digests when Subscriber fetches batches for ConsensusOutput
-    let mut batch_digests: VecDeque<BatchDigest> = output
-        .batches
-        .iter()
-        .flat_map(|batches| batches.iter().map(|batch| batch.digest()))
-        .collect();
-
     // calculate ommers hash
     let ommers_root = proofs::calculate_ommers_root(&ommers);
 
@@ -104,15 +97,16 @@ where
     let sealed_blocks_with_senders = sealed_blocks_with_senders_result?;
 
     // assert vecs match
-    assert_eq!(sealed_blocks_with_senders.len(), batch_digests.len());
+    assert_eq!(sealed_blocks_with_senders.len(), output.batch_digests.len());
 
     for (block_index, block) in sealed_blocks_with_senders.into_iter().enumerate() {
+        let batch_digest = output.next_batch_digest()?.into();
         let payload_attributes = TNPayloadAttributes::new(
             parent_block,
             ommers.clone(),
             ommers_root,
             block_index as u64,
-            batch_digests.pop_front().expect("batch digests assertion already passed").into(),
+            batch_digest,
             &output,
             output_digest.into(),
             block,

@@ -469,7 +469,7 @@ impl StorageInner {
         provider: Provider,
         chain_spec: Arc<ChainSpec>,
         executor: &Executor,
-    ) -> Result<(SealedBlockWithSenders, ExecutionOutcome), ExecutorError>
+    ) -> eyre::Result<(SealedBlockWithSenders, ExecutionOutcome)>
     where
         Executor: BlockExecutorProvider,
         Provider: StateProviderFactory + BlockReaderIdExt,
