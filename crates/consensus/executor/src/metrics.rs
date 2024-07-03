@@ -110,7 +110,8 @@ impl ExecutorMetrics {
     pub fn new() -> Self {
         match Self::try_new(default_registry()) {
             Ok(metrics) => metrics,
-            Err(_) => {
+            Err(e) => {
+                tracing::warn!(target: "tn::metrics", ?e, "Executor::try_new metrics error");
                 // If we are in a test then don't panic on prometheus errors (usually an already
                 // registered error) but try again with a new Registry. This is not
                 // great for prod code, however should not happen, but will happen in tests do to
