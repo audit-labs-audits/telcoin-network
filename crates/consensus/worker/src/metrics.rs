@@ -1,6 +1,7 @@
 // Copyright (c) Telcoin, LLC
 // Copyright (c) Mysten Labs, Inc.
 // SPDX-License-Identifier: Apache-2.0
+
 use narwhal_network::metrics::{NetworkConnectionMetrics, NetworkMetrics};
 use prometheus::{
     default_registry, register_histogram_vec_with_registry, register_histogram_with_registry,
@@ -58,11 +59,14 @@ impl Metrics {
             network_connection_metrics,
         })
     }
+
     pub fn new_with_registry(registry: &Registry) -> Self {
         Self::try_new(registry).expect("Prometheus error, are you using it wrong?")
     }
+}
 
-    pub fn new() -> Self {
+impl Default for Metrics {
+    fn default() -> Self {
         match Self::try_new(default_registry()) {
             Ok(metrics) => metrics,
             Err(_) => {
@@ -76,6 +80,7 @@ impl Metrics {
         }
     }
 }
+
 #[derive(Clone)]
 pub struct WorkerMetrics {
     /// Number of created batches from the batch_maker
@@ -164,14 +169,14 @@ impl WorkerMetrics {
             )?,
         })
     }
-    pub fn new_with_registry(registry: &Registry) -> Self {
-        Self::try_new(registry).expect("Prometheus error, are you using it wrong?")
-    }
+}
 
-    pub fn new() -> Self {
+impl Default for WorkerMetrics {
+    fn default() -> Self {
         match Self::try_new(default_registry()) {
             Ok(metrics) => metrics,
-            Err(_) => {
+            Err(e) => {
+                tracing::warn!(target: "tn::metrics", ?e, "Executor::try_new metrics error");
                 // If we are in a test then don't panic on prometheus errors (usually an already
                 // registered error) but try again with a new Registry. This is not
                 // great for prod code, however should not happen, but will happen in tests do to
@@ -180,12 +185,6 @@ impl WorkerMetrics {
                 Self::try_new(&Registry::new()).expect("Prometheus error, are you using it wrong?")
             }
         }
-    }
-}
-
-impl Default for WorkerMetrics {
-    fn default() -> Self {
-        Self::new()
     }
 }
 
@@ -256,20 +255,6 @@ impl WorkerEndpointMetrics {
             )?,
         })
     }
-
-    pub fn new() -> Self {
-        match Self::try_new(default_registry()) {
-            Ok(metrics) => metrics,
-            Err(_) => {
-                // If we are in a test then don't panic on prometheus errors (usually an already
-                // registered error) but try again with a new Registry. This is not
-                // great for prod code, however should not happen, but will happen in tests do to
-                // how Rust runs them so lets just gloss over it. cfg(test) does not
-                // always work as expected.
-                Self::try_new(&Registry::new()).expect("Prometheus error, are you using it wrong?")
-            }
-        }
-    }
 }
 
 impl MetricsCallbackProvider for WorkerEndpointMetrics {
@@ -285,11 +270,5 @@ impl MetricsCallbackProvider for WorkerEndpointMetrics {
 
         let req_latency_secs = latency.as_secs_f64();
         self.req_latency_by_route.with_label_values(&labels).observe(req_latency_secs);
-    }
-}
-
-impl Default for WorkerEndpointMetrics {
-    fn default() -> Self {
-        Self::new()
     }
 }

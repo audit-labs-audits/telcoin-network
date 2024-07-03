@@ -106,8 +106,10 @@ impl ExecutorMetrics {
             )?,
         })
     }
+}
 
-    pub fn new() -> Self {
+impl Default for ExecutorMetrics {
+    fn default() -> Self {
         match Self::try_new(default_registry()) {
             Ok(metrics) => metrics,
             Err(e) => {
@@ -120,11 +122,5 @@ impl ExecutorMetrics {
                 Self::try_new(&Registry::new()).expect("Prometheus error, are you using it wrong?")
             }
         }
-    }
-}
-
-impl Default for ExecutorMetrics {
-    fn default() -> Self {
-        Self::new()
     }
 }

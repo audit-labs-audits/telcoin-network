@@ -1,6 +1,7 @@
 // Copyright (c) Telcoin, LLC
 // Copyright (c) Mysten Labs, Inc.
 // SPDX-License-Identifier: Apache-2.0
+
 use anemo_tower::callback::{MakeCallbackHandler, ResponseHandler};
 use prometheus::{
     default_registry, register_histogram_vec_with_registry, register_int_counter_vec_with_registry,
@@ -290,9 +291,6 @@ impl NetworkMetrics {
             inflight_requests,
             errors,
         })
-    }
-    pub fn new(node: &'static str, direction: &'static str, registry: &Registry) -> Self {
-        Self::try_new(node, direction, registry).expect("Prometheus error, are you using it wrong?")
     }
 }
 

@@ -785,11 +785,10 @@ impl DBMetrics {
             write_perf_ctx_metrics: WritePerfContextMetrics::try_new(registry)?,
         })
     }
-    pub fn new_with_registry(registry: &Registry) -> Self {
-        Self::try_new(registry).expect("Prometheus error, are you using it wrong?")
-    }
+}
 
-    pub fn new() -> Self {
+impl Default for DBMetrics {
+    fn default() -> Self {
         match Self::try_new(default_registry()) {
             Ok(metrics) => metrics,
             Err(_) => {

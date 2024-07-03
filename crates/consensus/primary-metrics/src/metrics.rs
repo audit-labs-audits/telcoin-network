@@ -53,9 +53,11 @@ impl Metrics {
             network_connection_metrics,
         })
     }
+}
 
-    pub fn new_with_registry(registry: &Registry) -> Self {
-        match Self::try_new(registry) {
+impl Default for Metrics {
+    fn default() -> Self {
+        match Self::try_new(default_registry()) {
             Ok(metrics) => metrics,
             Err(e) => {
                 tracing::warn!(target: "tn::metrics", ?e, "Executor::try_new metrics error");
@@ -67,12 +69,6 @@ impl Metrics {
                 Self::try_new(&Registry::new()).expect("Prometheus error, are you using it wrong?")
             }
         }
-    }
-}
-
-impl Default for Metrics {
-    fn default() -> Self {
-        Self::new_with_registry(default_registry())
     }
 }
 
@@ -282,8 +278,10 @@ impl PrimaryChannelMetrics {
             )?,
         })
     }
+}
 
-    pub fn new() -> Self {
+impl Default for PrimaryChannelMetrics {
+    fn default() -> Self {
         match Self::try_new(default_registry()) {
             Ok(metrics) => metrics,
             Err(e) => {
@@ -296,12 +294,6 @@ impl PrimaryChannelMetrics {
                 Self::try_new(&Registry::new()).expect("Prometheus error, are you using it wrong?")
             }
         }
-    }
-}
-
-impl Default for PrimaryChannelMetrics {
-    fn default() -> Self {
-        Self::new()
     }
 }
 
@@ -374,7 +366,7 @@ pub struct PrimaryMetrics {
 }
 
 impl PrimaryMetrics {
-    pub fn try_new(registry: &Registry) -> Result<Self, prometheus::Error> {
+    fn try_new(registry: &Registry) -> Result<Self, prometheus::Error> {
         let parents_buckets = [
             linear_buckets(1.0, 1.0, 20).unwrap().as_slice(),
             linear_buckets(21.0, 2.0, 20).unwrap().as_slice(),
@@ -548,8 +540,10 @@ impl PrimaryMetrics {
             )?,
         })
     }
+}
 
-    pub fn new() -> Self {
+impl Default for PrimaryMetrics {
+    fn default() -> Self {
         match Self::try_new(default_registry()) {
             Ok(metrics) => metrics,
             Err(e) => {
@@ -562,11 +556,5 @@ impl PrimaryMetrics {
                 Self::try_new(&Registry::new()).expect("Prometheus error, are you using it wrong?")
             }
         }
-    }
-}
-
-impl Default for PrimaryMetrics {
-    fn default() -> Self {
-        Self::new()
     }
 }
