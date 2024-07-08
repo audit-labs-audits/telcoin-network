@@ -13,16 +13,18 @@
 
 mod error;
 mod handle;
+mod payload_builder;
 use error::EngineResult;
 use futures::{channel::mpsc::UnboundedSender, stream::BoxStream, Future, StreamExt};
 use futures_util::{future::BoxFuture, FutureExt};
 use handle::TNEngineHandle;
+pub use payload_builder::execute_consensus_output;
 use reth_blockchain_tree::BlockchainTreeEngine;
 use reth_chainspec::ChainSpec;
 use reth_db::database::Database;
 use reth_errors::RethError;
 use reth_evm::ConfigureEvm;
-use reth_primitives::{BlockNumber, B256};
+use reth_primitives::{BlockNumHash, BlockNumber, B256};
 use reth_provider::{
     BlockIdReader, BlockReader, BlockReaderIdExt, CanonChainTracker, CanonStateNotificationSender,
     Chain, ChainSpecProvider, StageCheckpointReader, StateProviderFactory,
@@ -37,7 +39,7 @@ use std::{
     sync::Arc,
     task::{Context, Poll},
 };
-use tn_types::ConsensusOutput;
+use tn_types::{BuildArguments, ConsensusOutput};
 use tokio::sync::{broadcast, mpsc};
 use tokio_stream::wrappers::BroadcastStream;
 use tracing::{debug, error, warn};
@@ -211,7 +213,9 @@ where
         + BlockIdReader
         + CanonChainTracker
         + StageCheckpointReader
+        + StateProviderFactory
         + ChainSpecProvider
+        + Clone
         + Unpin
         + 'static,
     CE: ConfigureEvm,
@@ -248,15 +252,16 @@ where
                 // ready to queue in new insert task
                 // let storage = this.storage.clone();
                 let output = this.queued.pop_front().expect("not empty");
+                let provider = this.blockchain.clone();
                 let evm_config = this.evm_config.clone();
 
-                // TODO: get this from storage efficiently
-                // - storage should store each round of consensus output as a Vec<SealedBlock>
-                // - also, only need parent num hash
+                // TODO: get this from engine?
+                // - engine stores each round of consensus output as a Vec<SealedBlock>?
+                // - only need parent num hash
                 //
                 // Does this need to verify the previous round of consensus was fully executed?
                 let parent_num_hash = BlockNumHash::new(self.best_block, self.best_hash);
-                let build_args = BuildArguments::new(provider, output, parent_num_hash, chain_spec);
+                let build_args = BuildArguments::new(provider, output, parent_num_hash);
                 // let blockchain = this.blockchain.clone();
                 // let to_engine = this.to_engine.clone();
                 // let provider = this.provider.clone();

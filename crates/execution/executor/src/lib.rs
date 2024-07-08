@@ -41,12 +41,10 @@ use tracing::{debug, error, trace, warn};
 
 mod client;
 mod error;
-mod payload_builder;
 mod task;
 
 pub use crate::client::AutoSealClient;
 use error::ExecutorError;
-pub use payload_builder::execute_consensus_output;
 pub use task::MiningTask;
 
 /// Builder type for configuring the setup
@@ -487,9 +485,9 @@ impl StorageInner {
         //
         // Does this need to verify the previous round of consensus was fully executed?
         let parent_num_hash = BlockNumHash::new(self.best_block, self.best_hash);
-        let build_args = BuildArguments::new(provider, output, parent_num_hash, chain_spec);
+        // let build_args = BuildArguments::new(provider, output, parent_num_hash, chain_spec);
 
-        execute_consensus_output(evm_config, build_args)?;
+        // execute_consensus_output(evm_config, build_args)?;
 
         // TODO:
         // - how to feed blocks to engine?
