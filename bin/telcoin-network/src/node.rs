@@ -50,16 +50,16 @@ pub struct NodeCommand<Ext: clap::Args + fmt::Debug = NoArgs> {
     )]
     pub chain: Arc<ChainSpec>,
 
-    /// Enable Prometheus metrics.
+    /// Enable Prometheus execution metrics.
     ///
     /// The metrics will be served at the given interface and port.
-    #[arg(long, value_name = "SOCKET", value_parser = parse_socket_address, help_heading = "Reth Metrics")]
+    #[arg(long, value_name = "SOCKET", value_parser = parse_socket_address, help_heading = "Execution Metrics")]
     pub metrics: Option<SocketAddr>,
 
     /// Enable Prometheus consensus metrics.
     ///
     /// The metrics will be served at the given interface and port.
-    #[arg(long, value_name = "CONSENSUS_SOCKET", value_parser = parse_socket_address, help_heading = "Consensus Metrics")]
+    #[arg(long, value_name = "SOCKET", value_parser = parse_socket_address, help_heading = "Consensus Metrics")]
     pub consensus_metrics: Option<SocketAddr>,
 
     /// Add a new instance of a node.
