@@ -24,7 +24,8 @@ members = [
     "crates/execution/batch-maker",
     "crates/execution/batch-validator",
     "crates/execution/executor",
-    "crates/execution/faucet", "crates/execution/engine",
+    "crates/execution/faucet",
+    "crates/execution/engine",
 ]
 
 # Explicitly set the resolver to version 2, which is the default for packages with edition >= 2021
@@ -83,6 +84,7 @@ reth-evm = { git = "https://github.com/paradigmxyz/reth", tag = "v1.0.0" }
 reth-execution-types = { git = "https://github.com/paradigmxyz/reth", tag = "v1.0.0" }
 reth-revm = { git = "https://github.com/paradigmxyz/reth", tag = "v1.0.0" }
 reth-exex = { git = "https://github.com/paradigmxyz/reth", tag = "v1.0.0" }
+reth-errors = { git = "https://github.com/paradigmxyz/reth", tag = "v1.0.0" }
 reth-rpc = { git = "https://github.com/paradigmxyz/reth", tag = "v1.0.0" }
 reth-rpc-types = { git = "https://github.com/paradigmxyz/reth", tag = "v1.0.0" }
 reth-payload-primitives = { git = "https://github.com/paradigmxyz/reth", tag = "v1.0.0" }
@@ -90,6 +92,7 @@ reth-rpc-engine-api = { git = "https://github.com/paradigmxyz/reth", tag = "v1.0
 reth-provider = { git = "https://github.com/paradigmxyz/reth", tag = "v1.0.0" }
 reth-snapshot = { git = "https://github.com/paradigmxyz/reth", tag = "v1.0.0" }
 reth-stages = { git = "https://github.com/paradigmxyz/reth", tag = "v1.0.0" }
+reth-stages-api = { git = "https://github.com/paradigmxyz/reth", tag = "v1.0.0" }
 reth-static-file = { git = "https://github.com/paradigmxyz/reth", tag = "v1.0.0" }
 reth-tasks = { git = "https://github.com/paradigmxyz/reth", tag = "v1.0.0" }
 reth-transaction-pool = { git = "https://github.com/paradigmxyz/reth", tag = "v1.0.0" }

@@ -10,6 +10,7 @@ repository.workspace = true
 [dependencies]
 futures = { workspace = true }
 futures-util = { workspace = true }
+thiserror = { workspace = true }
 tn-types = { workspace = true }
 tokio = { workspace = true, features = ["sync", "time"] }
 tokio-stream = { workspace = true, features = ["sync"] }
@@ -18,6 +19,11 @@ tracing = { workspace = true }
 # reth deps
 reth-blockchain-tree = { workspace = true }
 reth-chainspec = { workspace = true }
+reth-db = { workspace = true }
+reth-errors = { workspace = true }
+reth-primitives = { workspace = true }
 reth-provider = { workspace = true }
 reth-stages = { workspace = true }
+reth-stages-api = { workspace = true }
+reth-tasks = { workspace = true }
 reth-tokio-util = { workspace = true }
