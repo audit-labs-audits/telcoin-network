@@ -14,13 +14,14 @@
 mod error;
 mod handle;
 use error::EngineResult;
-use futures::{channel::mpsc::UnboundedSender, stream::BoxStream, StreamExt};
+use futures::{channel::mpsc::UnboundedSender, stream::BoxStream, Future, StreamExt};
 use futures_util::{future::BoxFuture, FutureExt};
 use handle::TNEngineHandle;
 use reth_blockchain_tree::BlockchainTreeEngine;
 use reth_chainspec::ChainSpec;
 use reth_db::database::Database;
 use reth_errors::RethError;
+use reth_evm::ConfigureEvm;
 use reth_primitives::{BlockNumber, B256};
 use reth_provider::{
     BlockIdReader, BlockReader, BlockReaderIdExt, CanonChainTracker, CanonStateNotificationSender,
@@ -30,21 +31,29 @@ use reth_stages::{Pipeline, PipelineEvent};
 use reth_stages_api::StageId;
 use reth_tasks::TaskSpawner;
 use reth_tokio_util::EventStream;
-use std::{collections::VecDeque, sync::Arc};
+use std::{
+    collections::VecDeque,
+    pin::Pin,
+    sync::Arc,
+    task::{Context, Poll},
+};
 use tn_types::ConsensusOutput;
 use tokio::sync::{broadcast, mpsc};
 use tokio_stream::wrappers::BroadcastStream;
 use tracing::{debug, error, warn};
 
 /// The TN consensus engine is responsible executing state that has reached consensus.
-#[derive(Debug)]
-pub struct ExecutorEngine<BT> {
+pub struct ExecutorEngine<BT, CE> {
     /// The backlog of output from consensus that's ready to be executed.
     queued: VecDeque<ConsensusOutput>,
+    /// Single active future that inserts a new block into `storage`
+    insert_task: Option<BoxFuture<'static, Option<EventStream<PipelineEvent>>>>,
     // /// Used to notify consumers of new blocks
     // canon_state_notification: CanonStateNotificationSender,
     /// The type used to query both the database and the blockchain tree.
     blockchain: BT,
+    /// EVM configuration for executing transactions and building blocks.
+    evm_config: CE,
     /// Optional round of consensus to finish executing before then returning. The value is used to track the subdag index from consensus output. The index is included in executed blocks as the `nonce` value.
     ///
     /// note: this is used for debugging and testing
@@ -56,7 +65,7 @@ pub struct ExecutorEngine<BT> {
     consensus_output_stream: BroadcastStream<ConsensusOutput>,
 }
 
-impl<BT> ExecutorEngine<BT>
+impl<BT, CE> ExecutorEngine<BT, CE>
 where
     BT: BlockchainTreeEngine
         + BlockReader
@@ -65,6 +74,7 @@ where
         + StageCheckpointReader
         + ChainSpecProvider
         + 'static,
+    CE: ConfigureEvm,
     // DB: Database + Unpin + 'static,
 {
     /// Create a new instance of the [`ExecutorEngine`] using the given channel to configure
@@ -84,6 +94,7 @@ where
     pub fn new(
         // pipeline: Pipeline<DB>,
         blockchain: BT,
+        evm_config: CE,
         task_spawner: Box<dyn TaskSpawner>,
         max_block: Option<BlockNumber>,
         target: Option<B256>,
@@ -104,7 +115,9 @@ where
 
         Ok(Self {
             queued: Default::default(),
+            insert_task: None,
             blockchain,
+            evm_config,
             max_block,
             pipeline_events: None,
             consensus_output_stream,
@@ -191,7 +204,8 @@ where
     }
 }
 
-impl<BT> Future for ExecutorEngine<BT> where
+impl<BT, CE> Future for ExecutorEngine<BT, CE>
+where
     BT: BlockchainTreeEngine
         + BlockReader
         + BlockIdReader
@@ -199,6 +213,79 @@ impl<BT> Future for ExecutorEngine<BT> where
         + StageCheckpointReader
         + ChainSpecProvider
         + Unpin
-        + 'static
+        + 'static,
+    CE: ConfigureEvm,
 {
+    type Output = ();
+
+    fn poll(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
+        let this = self.get_mut();
+
+        // this executes output from consensus
+        loop {
+            // check if output is available from consensus
+            match this.consensus_output_stream.poll_next_unpin(cx) {
+                Poll::Ready(Some(Ok(output))) => {
+                    // queue the output for local execution
+                    this.queued.push_back(output)
+                }
+                Poll::Ready(Some(Err(e))) => {
+                    error!(target: "execution::executor", ?e, "for consensus output stream");
+                }
+                Poll::Ready(None) => {
+                    // stream has ended
+                    return Poll::Ready(());
+                }
+                Poll::Pending => { /* nothing to do */ }
+            }
+
+            if this.insert_task.is_none() {
+                if this.queued.is_empty() {
+                    // nothing to insert
+                    break;
+                }
+
+                // ready to queue in new insert task
+                // let storage = this.storage.clone();
+                let output = this.queued.pop_front().expect("not empty");
+                let evm_config = this.evm_config.clone();
+
+                // TODO: get this from storage efficiently
+                // - storage should store each round of consensus output as a Vec<SealedBlock>
+                // - also, only need parent num hash
+                //
+                // Does this need to verify the previous round of consensus was fully executed?
+                let parent_num_hash = BlockNumHash::new(self.best_block, self.best_hash);
+                let build_args = BuildArguments::new(provider, output, parent_num_hash, chain_spec);
+                // let blockchain = this.blockchain.clone();
+                // let to_engine = this.to_engine.clone();
+                // let provider = this.provider.clone();
+                // let chain_spec = Arc::clone(&this.chain_spec);
+                // let events = this.pipeline_events.take();
+                // let canon_state_notification = this.canon_state_notification.clone();
+                // let block_executor = this.block_executor.clone();
+
+                // Create the mining future that creates a block, notifies the engine that drives
+                // the pipeline
+                this.insert_task = Some(Box::pin(async move {
+                    execute_consensus_output(evm_config, build_args)?;
+                    todo!()
+                }));
+            }
+
+            if let Some(mut fut) = this.insert_task.take() {
+                match fut.poll_unpin(cx) {
+                    Poll::Ready(events) => {
+                        this.pipeline_events = events;
+                    }
+                    Poll::Pending => {
+                        this.insert_task = Some(fut);
+                        break;
+                    }
+                }
+            }
+        }
+
+        Poll::Pending
+    }
 }

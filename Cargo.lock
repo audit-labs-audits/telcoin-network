@@ -10635,6 +10635,7 @@ dependencies = [
  "reth-chainspec",
  "reth-db",
  "reth-errors",
+ "reth-evm",
  "reth-primitives",
  "reth-provider",
  "reth-stages",
