@@ -46,7 +46,7 @@ Because blocks contain these fields, they are accessible to be re-purposed for T
 ##### Difficulty
 *Ethereum*: No longer used post-merge and must be 0.
 
-*TN*: Batch index? This could be used for documenting validator rewards? Leave it alone and consider using it for `randao` value CL needs this value from EL?
+*TN*: Batch index? This could be used for documenting validator rewards? Leave it alone and consider using it for `randao` value CL needs this value from EL? The reth impl for extending canonical chain requires this to be zero, but the logic should still return true if the `total` difficulty at the time of genesis is set to 0.
 
 *Logic*: [EIP-4399](https://eips.ethereum.org/EIPS/eip-4399) in favor of supplanting DIFFICULTY opcode with PREVRANDAO. If so, TN could use this for randao values.
 

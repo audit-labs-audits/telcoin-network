@@ -490,6 +490,19 @@ impl StorageInner {
         // - how to feed blocks to engine?
         // - review "batch-execution" concept in reth: BlockExecutorProvider trait
 
+        // use auto consensus
+        //
+        // blockchain_tree::insert_block(SealedBlockWithSenders,
+        // BlockValidationKind::SkipStateRootValidation)
+        // - should call `try_append_canonical_chain`
+        //   - I think the `.ttd_active_at(parent_ttd, U256::ZERO)` should still be valid, even if
+        //     we increase TTD per executed block to indicate batch index
+        //
+        // blockchain_tree::make_canonical() using last executed block hash
+        //
+        // not sure if there will be sync issues? lots of comments about pipeline has exclusive
+        // access to db in beacon engine code
+
         todo!()
     }
 }
