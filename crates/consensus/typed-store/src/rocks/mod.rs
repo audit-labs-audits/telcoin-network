@@ -658,7 +658,7 @@ unsafe impl<K: Send, V: Send> Send for DBMap<K, V> {}
 impl<K, V> DBMap<K, V> {
     pub(crate) fn new(db: Arc<RocksDB>, opts: &ReadWriteOptions, opt_cf: &str) -> Self {
         let db_cloned = db.clone();
-        let db_metrics = Arc::new(DBMetrics::new());
+        let db_metrics = Arc::new(DBMetrics::default());
         let db_metrics_cloned = db_metrics.clone();
         let cf = opt_cf.to_string();
         let (sender, mut recv) = tokio::sync::oneshot::channel();

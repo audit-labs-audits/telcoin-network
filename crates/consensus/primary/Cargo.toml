@@ -53,7 +53,6 @@ anemo-tower = { workspace = true }
 
 [dev-dependencies]
 dashmap = { workspace = true }
-arc-swap = { workspace = true }
 async-trait = { workspace = true }
 bincode = { workspace = true }
 criterion = { workspace = true }

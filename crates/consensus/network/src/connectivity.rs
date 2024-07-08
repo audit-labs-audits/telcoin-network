@@ -270,6 +270,12 @@ mod tests {
         // AND we connect to peer 2
         let peer_2 = network_1.connect(network_2.local_addr()).await.unwrap();
 
+        let mut labels = HashMap::new();
+        let peer_2_str = format!("{peer_2}");
+        labels.insert("peer_id", peer_2_str.as_str());
+        // Sanity check this metric is 0 since we use it for the test.
+        assert_eq!(metrics.network_peer_sent_packets.get_metric_with(&labels).unwrap().get(), 0);
+
         let mut peer_types = HashMap::new();
         peer_types.insert(network_2.peer_id(), "other_network".to_string());
         peer_types.insert(network_3.peer_id(), "other_network".to_string());
@@ -282,10 +288,7 @@ mod tests {
         assert_network_peers(&metrics, 1).await;
 
         // AND we should have collected connection stats
-        let mut labels = HashMap::new();
-        let peer_2_str = format!("{peer_2}");
-        labels.insert("peer_id", peer_2_str.as_str());
-        assert_ne!(metrics.network_peer_rtt.get_metric_with(&labels).unwrap().get(), 0);
+        assert_ne!(metrics.network_peer_sent_packets.get_metric_with(&labels).unwrap().get(), 0);
         assert_eq!(*statuses.get(&peer_2).unwrap().value(), ConnectionStatus::Connected);
 
         // WHEN connect to peer 3

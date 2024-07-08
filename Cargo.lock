@@ -5475,7 +5475,6 @@ version = "0.1.0"
 dependencies = [
  "anemo",
  "anemo-tower",
- "arc-swap",
  "async-trait",
  "backoff",
  "bcs",
@@ -5527,6 +5526,7 @@ dependencies = [
 name = "narwhal-primary-metrics"
 version = "0.1.0"
 dependencies = [
+ "consensus-metrics",
  "narwhal-network",
  "prometheus",
  "tracing",
@@ -10725,7 +10725,6 @@ name = "tn-node"
 version = "0.1.0"
 dependencies = [
  "anemo",
- "arc-swap",
  "assert_matches",
  "async-trait",
  "axum",

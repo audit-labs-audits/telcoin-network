@@ -41,7 +41,6 @@ anyhow = { workspace = true }
 tn-batch-validator = { workspace = true }
 
 [dev-dependencies]
-arc-swap = { workspace = true }
 rand = { workspace = true }
 tempfile = { workspace = true }
 narwhal-test-utils = { workspace = true }

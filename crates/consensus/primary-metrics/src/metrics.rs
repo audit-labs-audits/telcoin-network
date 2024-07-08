@@ -53,26 +53,26 @@ impl Metrics {
             network_connection_metrics,
         })
     }
+}
 
-    pub fn new_with_registry(registry: &Registry) -> Self {
-        match Self::try_new(registry) {
+impl Default for Metrics {
+    fn default() -> Self {
+        // try_new() should not fail except under certain conditions with testing (see comment
+        // below). This pushes the panic or retry decision lower and supporting try_new
+        // allways a user to deal with errors if desired (have a non-panic option).
+        // We always want do use default_registry() when not in test.
+        match Self::try_new(default_registry()) {
             Ok(metrics) => metrics,
             Err(e) => {
                 tracing::warn!(target: "tn::metrics", ?e, "Executor::try_new metrics error");
                 // If we are in a test then don't panic on prometheus errors (usually an already
                 // registered error) but try again with a new Registry. This is not
-                // great for prod code, however should not happen, but will happen in tests do to
+                // great for prod code, however should not happen, but will happen in tests due to
                 // how Rust runs them so lets just gloss over it. cfg(test) does not
                 // always work as expected.
                 Self::try_new(&Registry::new()).expect("Prometheus error, are you using it wrong?")
             }
         }
-    }
-}
-
-impl Default for Metrics {
-    fn default() -> Self {
-        Self::new_with_registry(default_registry())
     }
 }
 
@@ -282,8 +282,10 @@ impl PrimaryChannelMetrics {
             )?,
         })
     }
+}
 
-    pub fn new() -> Self {
+impl Default for PrimaryChannelMetrics {
+    fn default() -> Self {
         match Self::try_new(default_registry()) {
             Ok(metrics) => metrics,
             Err(e) => {
@@ -296,12 +298,6 @@ impl PrimaryChannelMetrics {
                 Self::try_new(&Registry::new()).expect("Prometheus error, are you using it wrong?")
             }
         }
-    }
-}
-
-impl Default for PrimaryChannelMetrics {
-    fn default() -> Self {
-        Self::new()
     }
 }
 
@@ -374,11 +370,17 @@ pub struct PrimaryMetrics {
 }
 
 impl PrimaryMetrics {
-    pub fn try_new(registry: &Registry) -> Result<Self, prometheus::Error> {
+    fn try_new(registry: &Registry) -> Result<Self, prometheus::Error> {
         let parents_buckets = [
-            linear_buckets(1.0, 1.0, 20).unwrap().as_slice(),
-            linear_buckets(21.0, 2.0, 20).unwrap().as_slice(),
-            linear_buckets(61.0, 3.0, 20).unwrap().as_slice(),
+            linear_buckets(1.0, 1.0, 20)
+                .expect("prometheus, invalid width or count on bucket create")
+                .as_slice(),
+            linear_buckets(21.0, 2.0, 20)
+                .expect("prometheus, invalid width or count on bucket create")
+                .as_slice(),
+            linear_buckets(61.0, 3.0, 20)
+                .expect("prometheus, invalid width or count on bucket create")
+                .as_slice(),
         ]
         .concat();
         Ok(Self {
@@ -548,8 +550,10 @@ impl PrimaryMetrics {
             )?,
         })
     }
+}
 
-    pub fn new() -> Self {
+impl Default for PrimaryMetrics {
+    fn default() -> Self {
         match Self::try_new(default_registry()) {
             Ok(metrics) => metrics,
             Err(e) => {
@@ -562,11 +566,5 @@ impl PrimaryMetrics {
                 Self::try_new(&Registry::new()).expect("Prometheus error, are you using it wrong?")
             }
         }
-    }
-}
-
-impl Default for PrimaryMetrics {
-    fn default() -> Self {
-        Self::new()
     }
 }

@@ -3,3 +3,6 @@
 
 pub mod metrics;
 pub use metrics::*;
+
+pub mod consensus;
+pub use consensus::*;

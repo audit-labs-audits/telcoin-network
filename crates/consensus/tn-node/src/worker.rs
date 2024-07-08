@@ -5,8 +5,7 @@
 //! Hierarchical type to hold tasks spawned for a worker in the network.
 use crate::{engine::ExecutionNode, error::NodeError, try_join_all, FuturesUnordered};
 use anemo::PeerId;
-use arc_swap::{ArcSwap, ArcSwapOption};
-use consensus_metrics::{metered_channel::channel_with_total, RegistryID, RegistryService};
+use consensus_metrics::metered_channel::channel_with_total;
 use fastcrypto::traits::KeyPair;
 use narwhal_network::client::NetworkClient;
 use narwhal_storage::NodeStorage;
@@ -19,7 +18,7 @@ use reth_db::{
     database_metrics::{DatabaseMetadata, DatabaseMetrics},
 };
 use reth_evm::execute::BlockExecutorProvider;
-use std::{collections::HashMap, sync::Arc, time::Instant};
+use std::{sync::Arc, time::Instant};
 use tn_types::{
     BlsPublicKey, Committee, NetworkKeypair, Parameters, PreSubscribedBroadcastSender, WorkerCache,
     WorkerId,
@@ -79,7 +78,7 @@ impl WorkerNodeInner {
             panic!("Our node with key {:?} should be in committee", primary_name)
         });
 
-        let metrics = Metrics::new();
+        let metrics = Metrics::default();
         // For EL batch maker
         let channel_metrics: Arc<WorkerChannelMetrics> = metrics.channel_metrics.clone();
         let (tx_batch_maker, rx_batch_maker) = channel_with_total(
@@ -222,122 +221,5 @@ impl WorkerNode {
     pub async fn wait(&self) {
         let mut guard = self.internal.write().await;
         guard.wait().await
-    }
-}
-
-pub struct WorkerNodes {
-    workers: ArcSwap<HashMap<WorkerId, WorkerNode>>,
-    registry_service: RegistryService,
-    registry_id: ArcSwapOption<RegistryID>,
-    parameters: Parameters,
-    client: ArcSwapOption<NetworkClient>,
-}
-
-impl WorkerNodes {
-    pub fn new(registry_service: RegistryService, parameters: Parameters) -> Self {
-        Self {
-            workers: ArcSwap::from(Arc::new(HashMap::default())),
-            registry_service,
-            registry_id: ArcSwapOption::empty(),
-            parameters,
-            client: ArcSwapOption::empty(),
-        }
-    }
-
-    #[allow(clippy::too_many_arguments)]
-    #[instrument(level = "info", skip_all)]
-    pub async fn start<DB, Evm>(
-        &self,
-        // The primary's public key of this authority.
-        primary_key: BlsPublicKey,
-        // The ids & keypairs of the workers to spawn.
-        ids_and_keypairs: Vec<(WorkerId, NetworkKeypair)>,
-        // The committee information.
-        committee: Committee,
-        // The worker information cache.
-        worker_cache: WorkerCache,
-        // Client for communications.
-        client: NetworkClient,
-        // The node's store
-        // TODO: replace this by a path so the method can open and independent storage
-        store: &NodeStorage,
-        // used to create the batch maker process
-        execution_node: &ExecutionNode<DB, Evm>,
-    ) -> eyre::Result<()>
-    where
-        DB: Database + DatabaseMetadata + DatabaseMetrics + Clone + Unpin + 'static,
-        Evm: BlockExecutorProvider + Clone + 'static,
-    {
-        let worker_ids_running = self.workers_running().await;
-        if !worker_ids_running.is_empty() {
-            return Err(NodeError::WorkerNodesAlreadyRunning(worker_ids_running).into());
-        }
-
-        self.client.store(Some(Arc::new(client.clone())));
-
-        // now clear the previous handles - we want to do that proactively
-        // as it's not guaranteed that shutdown has been called
-        self.workers.store(Arc::new(HashMap::default()));
-
-        let mut workers = HashMap::<WorkerId, WorkerNode>::new();
-        // start all the workers one by one
-        for (worker_id, key_pair) in ids_and_keypairs {
-            let worker = WorkerNode::new(worker_id, self.parameters.clone());
-
-            worker
-                .start(
-                    primary_key.clone(),
-                    key_pair,
-                    committee.clone(),
-                    worker_cache.clone(),
-                    client.clone(),
-                    store,
-                    execution_node,
-                )
-                .await?;
-
-            workers.insert(worker_id, worker);
-        }
-
-        // update the worker handles.
-        self.workers.store(Arc::new(workers));
-
-        Ok(())
-    }
-
-    /// Shuts down all the workers
-    #[instrument(level = "info", skip_all)]
-    pub async fn shutdown(&self) {
-        if let Some(client) = self.client.load_full() {
-            client.shutdown();
-        }
-
-        for (key, worker) in self.workers.load_full().as_ref() {
-            info!("Shutting down worker {}", key);
-            worker.shutdown().await;
-        }
-
-        // now remove the registry id
-        if let Some(old_registry_id) = self.registry_id.swap(None) {
-            // a little of defensive programming - ensure that we always clean up the previous
-            // registry
-            self.registry_service.remove(*old_registry_id.as_ref());
-        }
-
-        // now clean up the worker handles
-        self.workers.store(Arc::new(HashMap::default()));
-    }
-
-    /// returns the worker ids that are currently running
-    pub async fn workers_running(&self) -> Vec<WorkerId> {
-        let mut worker_ids = Vec::new();
-
-        for (id, worker) in self.workers.load_full().as_ref() {
-            if worker.is_running().await {
-                worker_ids.push(*id);
-            }
-        }
-
-        worker_ids
     }
 }
