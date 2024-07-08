@@ -1,0 +1,23 @@
+[package]
+name = "tn-engine"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+homepage.workspace = true
+repository.workspace = true
+
+[dependencies]
+futures = { workspace = true }
+futures-util = { workspace = true }
+tn-types = { workspace = true }
+tokio = { workspace = true, features = ["sync", "time"] }
+tokio-stream = { workspace = true, features = ["sync"] }
+tracing = { workspace = true }
+
+# reth deps
+reth-blockchain-tree = { workspace = true }
+reth-chainspec = { workspace = true }
+reth-provider = { workspace = true }
+reth-stages = { workspace = true }
+reth-tokio-util = { workspace = true }

@@ -10626,6 +10626,23 @@ dependencies = [
 ]
 
 [[package]]
+name = "tn-engine"
+version = "0.1.0"
+dependencies = [
+ "futures",
+ "futures-util",
+ "reth-blockchain-tree",
+ "reth-chainspec",
+ "reth-provider",
+ "reth-stages",
+ "reth-tokio-util",
+ "tn-types",
+ "tokio",
+ "tokio-stream",
+ "tracing",
+]
+
+[[package]]
 name = "tn-executor"
 version = "0.1.0"
 dependencies = [

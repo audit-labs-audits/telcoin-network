@@ -2,12 +2,14 @@ use crate::Storage;
 use futures::StreamExt;
 use futures_util::{future::BoxFuture, FutureExt};
 use reth_beacon_consensus::{BeaconEngineMessage, ForkchoiceStatus};
+use reth_blockchain_tree::BlockchainTreeEngine;
 use reth_chainspec::ChainSpec;
 use reth_evm::execute::BlockExecutorProvider;
 use reth_node_api::EngineTypes;
 use reth_primitives::Withdrawals;
 use reth_provider::{
-    BlockReaderIdExt, CanonChainTracker, CanonStateNotificationSender, Chain, StateProviderFactory,
+    BlockIdReader, BlockReader, BlockReaderIdExt, CanonChainTracker, CanonStateNotificationSender,
+    Chain, ChainSpecProvider, StageCheckpointReader, StateProviderFactory,
 };
 use reth_rpc_types::engine::ForkchoiceState;
 use reth_stages::PipelineEvent;
@@ -26,7 +28,7 @@ use tokio_stream::wrappers::BroadcastStream;
 use tracing::{debug, error, warn};
 
 /// A Future that listens for new ready transactions and puts new blocks into storage
-pub struct MiningTask<Provider, Engine: EngineTypes, BlockExecutor> {
+pub struct MiningTask<BT, Provider, Engine: EngineTypes, BlockExecutor> {
     /// The configured chain spec
     chain_spec: Arc<ChainSpec>,
     /// The client used to interact with the state
@@ -48,11 +50,13 @@ pub struct MiningTask<Provider, Engine: EngineTypes, BlockExecutor> {
     consensus_output_stream: BroadcastStream<ConsensusOutput>,
     /// The type used for block execution
     block_executor: BlockExecutor,
+    /// The type used to query both the database and the blockchain tree.
+    blockchain: BT,
 }
 
 // === impl MiningTask ===
 
-impl<Provider, Engine, BlockExecutor> MiningTask<Provider, Engine, BlockExecutor>
+impl<BT, Provider, Engine, BlockExecutor> MiningTask<BT, Provider, Engine, BlockExecutor>
 where
     Engine: EngineTypes,
 {
@@ -65,6 +69,7 @@ where
         provider: Provider,
         consensus_output_stream: BroadcastStream<ConsensusOutput>,
         block_executor: BlockExecutor,
+        blockchain: BT,
     ) -> Self {
         Self {
             chain_spec,
@@ -77,6 +82,7 @@ where
             pipeline_events: None,
             consensus_output_stream,
             block_executor,
+            blockchain,
         }
     }
 
@@ -86,11 +92,19 @@ where
     }
 }
 
-impl<Provider, Engine, BlockExecutor> Future for MiningTask<Provider, Engine, BlockExecutor>
+impl<BT, Provider, Engine, BlockExecutor> Future for MiningTask<BT, Provider, Engine, BlockExecutor>
 where
     Provider: StateProviderFactory + CanonChainTracker + BlockReaderIdExt + Clone + Unpin + 'static,
     Engine: EngineTypes + 'static,
     BlockExecutor: BlockExecutorProvider,
+    BT: BlockchainTreeEngine
+        + BlockReader
+        + BlockIdReader
+        + CanonChainTracker
+        + StageCheckpointReader
+        + ChainSpecProvider
+        + Unpin
+        + 'static,
 {
     type Output = ();
 

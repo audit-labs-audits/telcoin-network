@@ -51,7 +51,7 @@ pub use task::MiningTask;
 
 /// Builder type for configuring the setup
 #[derive(Debug)]
-pub struct Executor<Client, Engine: EngineTypes, EvmConfig> {
+pub struct Executor<BT, Client, Engine: EngineTypes, EvmConfig> {
     client: Client,
     consensus: AutoSealConsensus,
     storage: Storage,
@@ -59,11 +59,12 @@ pub struct Executor<Client, Engine: EngineTypes, EvmConfig> {
     to_engine: UnboundedSender<BeaconEngineMessage<Engine>>,
     canon_state_notification: CanonStateNotificationSender,
     evm_config: EvmConfig,
+    blockchain: BT,
 }
 
 // === impl AutoSealBuilder ===
 
-impl<Client, Engine, EvmConfig> Executor<Client, Engine, EvmConfig>
+impl<BT, Client, Engine, EvmConfig> Executor<BT, Client, Engine, EvmConfig>
 where
     Client: BlockReaderIdExt,
     Engine: EngineTypes,
@@ -76,6 +77,7 @@ where
         to_engine: UnboundedSender<BeaconEngineMessage<Engine>>,
         canon_state_notification: CanonStateNotificationSender,
         evm_config: EvmConfig,
+        blockchain: BT,
     ) -> Self {
         let latest_header = client
             .latest_header()
@@ -91,6 +93,7 @@ where
             to_engine,
             canon_state_notification,
             evm_config,
+            blockchain,
         }
     }
 
@@ -98,7 +101,7 @@ where
     #[track_caller]
     pub fn build(
         self,
-    ) -> (AutoSealConsensus, AutoSealClient, MiningTask<Client, Engine, EvmConfig>) {
+    ) -> (AutoSealConsensus, AutoSealClient, MiningTask<BT, Client, Engine, EvmConfig>) {
         let Self {
             client,
             consensus,
@@ -107,6 +110,7 @@ where
             to_engine,
             canon_state_notification,
             evm_config,
+            blockchain,
         } = self;
         let auto_client = AutoSealClient::new(storage.clone());
         // cast broadcast channel to stream for convenient iter methods
@@ -119,6 +123,7 @@ where
             client,
             consensus_output_stream,
             evm_config,
+            blockchain,
         );
         (consensus, auto_client, task)
     }

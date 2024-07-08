@@ -24,7 +24,7 @@ members = [
     "crates/execution/batch-maker",
     "crates/execution/batch-validator",
     "crates/execution/executor",
-    "crates/execution/faucet",
+    "crates/execution/faucet", "crates/execution/engine",
 ]
 
 # Explicitly set the resolver to version 2, which is the default for packages with edition >= 2021
