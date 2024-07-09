@@ -33,7 +33,7 @@ use reth_node_ethereum::{
 };
 use reth_primitives::{Address, Head};
 use reth_provider::{
-    providers::{BlockchainProvider, StaticFileProvider}, CanonStateNotificationSender, HeaderProvider, ProviderFactory, StaticFileProviderFactory as _
+    providers::{BlockchainProvider, StaticFileProvider}, CanonStateNotificationSender, HeaderProvider, ProviderFactory, StaticFileProviderFactory as _, FinalizedBlockReader
 };
 use reth_prune::PruneModes;
 use reth_rpc_types::engine::ForkchoiceState;
@@ -487,6 +487,7 @@ where
         //     .node_config
         //     .lookup_head(self.provider_factory.clone())
         //     .wrap_err("failed to lookup head: the block is missing")?;
+
         let num = self.blockchain_db.last_finalized_block_number()?;
         let final = self.blockchain_db.header_by_number(num)?.map(|opt| {
             match opt {
@@ -494,7 +495,7 @@ where
                 None => 0_u64,
             }
         });
-        Ok(head.number)
+        Ok(final)
     }
 
     /// Return an database provider.
