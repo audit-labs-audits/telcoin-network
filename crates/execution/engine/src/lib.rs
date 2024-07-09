@@ -65,6 +65,10 @@ pub struct ExecutorEngine<BT, CE> {
     /// Receiving end from CL's `Executor`. The `ConsensusOutput` is sent
     /// to the mining task here.
     consensus_output_stream: BroadcastStream<ConsensusOutput>,
+    /// The [BlockNumHash] of the last fully-executed block.
+    ///
+    /// This information is reflects the current canonical tip.
+    parent: BlockNumHash,
 }
 
 impl<BT, CE> ExecutorEngine<BT, CE>
@@ -94,27 +98,16 @@ where
     /// Propagates any database related error.
     #[allow(clippy::too_many_arguments)]
     pub fn new(
-        // pipeline: Pipeline<DB>,
         blockchain: BT,
         evm_config: CE,
         task_spawner: Box<dyn TaskSpawner>,
         max_block: Option<BlockNumber>,
-        target: Option<B256>,
-        pipeline_run_threshold: u64,
         consensus_output_stream: BroadcastStream<ConsensusOutput>,
+        parent: BlockNumHash,
         // hooks: EngineHooks,
     ) -> EngineResult<Self> {
         // let event_sender = EventSender::default();
         // let handle = BeaconConsensusEngineHandle::new(to_engine, event_sender.clone());
-        // let sync = EngineSyncController::new(
-        //     pipeline,
-        //     client,
-        //     task_spawner.clone(),
-        //     max_block,
-        //     blockchain.chain_spec(),
-        //     event_sender.clone(),
-        // );
-
         Ok(Self {
             queued: Default::default(),
             insert_task: None,
@@ -123,86 +116,8 @@ where
             max_block,
             pipeline_events: None,
             consensus_output_stream,
+            parent,
         })
-
-        // TODO: should pipeline consistency be checked here
-        // or inside `start_engine` method for tn node?
-
-        // let maybe_pipeline_target = match target {
-        //     // Provided target always takes precedence.
-        //     target @ Some(_) => target,
-        //     None => this.check_pipeline_consistency()?,
-        // };
-
-        // if let Some(target) = maybe_pipeline_target {
-        //     this.sync.set_pipeline_sync_target(target.into());
-        // }
-
-        // Ok((this, handle))
-    }
-
-    /// From: reth::consensus::beacon::engine::mod.rs
-    /// Check if the pipeline is consistent (all stages have the checkpoint block numbers no less
-    /// than the checkpoint of the first stage).
-    ///
-    /// This will return the pipeline target if:
-    ///  * the pipeline was interrupted during its previous run
-    ///  * a new stage was added
-    ///  * stage data was dropped manually through `reth stage drop ...`
-    ///
-    /// # Returns
-    ///
-    /// A target block hash if the pipeline is inconsistent, otherwise `None`.
-    ///
-    ///
-    ///
-    ///
-    /// TODO: pipeline consistency should check for completed consensus output, not single block.
-    ///  - what to do if node crashes in the middle of the pipeline?
-    ///  - ensure db would revert and request the consensus output from CL again using sub dag index
-    ///  - reth pipeline implementation would request block from peers and start download, but this is not what TN should do
-    fn check_pipeline_consistency(&self) -> EngineResult<Option<B256>> {
-        // !!!!!!!
-        //
-        // TODO: read todo above - !!!!!!!!!!
-        //
-        // obnoxious comment !!!!!
-        // do not merge until above is answered
-        //
-        // If no target was provided, check if the stages are congruent - check if the
-        // checkpoint of the last stage matches the checkpoint of the first.
-        let first_stage_checkpoint = self
-            .blockchain
-            .get_stage_checkpoint(*StageId::ALL.first().expect("first stage always set"))
-            .map_err(RethError::from)?
-            .unwrap_or_default()
-            .block_number;
-
-        // Skip the first stage since it's already retrieved and then compare all other checkpoints
-        // against it.
-        for stage_id in StageId::ALL.iter().skip(1) {
-            let stage_checkpoint = self
-                .blockchain
-                .get_stage_checkpoint(*stage_id)
-                .map_err(RethError::from)?
-                .unwrap_or_default()
-                .block_number;
-
-            // If the checkpoint of any stage is less than the checkpoint of the first stage,
-            // retrieve and return the block hash of the latest header and use it as the target.
-            if stage_checkpoint < first_stage_checkpoint {
-                debug!(
-                    target: "consensus::engine",
-                    first_stage_checkpoint,
-                    inconsistent_stage_id = %stage_id,
-                    inconsistent_stage_checkpoint = stage_checkpoint,
-                    "Pipeline sync progress is inconsistent"
-                );
-                return Ok(self.blockchain.block_hash(first_stage_checkpoint)?);
-            }
-        }
-
-        Ok(None)
     }
 }
 
@@ -254,14 +169,14 @@ where
                 let output = this.queued.pop_front().expect("not empty");
                 let provider = this.blockchain.clone();
                 let evm_config = this.evm_config.clone();
+                let parent = this.parent; // copy
 
                 // TODO: get this from engine?
                 // - engine stores each round of consensus output as a Vec<SealedBlock>?
                 // - only need parent num hash
                 //
                 // Does this need to verify the previous round of consensus was fully executed?
-                let parent_num_hash = BlockNumHash::new(self.best_block, self.best_hash);
-                let build_args = BuildArguments::new(provider, output, parent_num_hash);
+                let build_args = BuildArguments::new(provider, output, parent);
                 // let blockchain = this.blockchain.clone();
                 // let to_engine = this.to_engine.clone();
                 // let provider = this.provider.clone();
@@ -273,7 +188,10 @@ where
                 // Create the mining future that creates a block, notifies the engine that drives
                 // the pipeline
                 this.insert_task = Some(Box::pin(async move {
-                    execute_consensus_output(evm_config, build_args)?;
+                    match execute_consensus_output(evm_config, build_args) {
+                        Ok(_) => (),
+                        Err(_e) => (),
+                    }
                     todo!()
                 }));
             }

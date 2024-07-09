@@ -33,8 +33,7 @@ use reth_node_ethereum::{
 };
 use reth_primitives::{Address, Head};
 use reth_provider::{
-    providers::{BlockchainProvider, StaticFileProvider},
-    CanonStateNotificationSender, ProviderFactory, StaticFileProviderFactory as _,
+    providers::{BlockchainProvider, StaticFileProvider}, CanonStateNotificationSender, HeaderProvider, ProviderFactory, StaticFileProviderFactory as _
 };
 use reth_prune::PruneModes;
 use reth_rpc_types::engine::ForkchoiceState;
@@ -480,10 +479,21 @@ where
         // outcome: re-execute the entire consensus output?
         // - blockchain tree could keep the last block as part of the canonical tip
         //   which would prevent redundant rewrite to db
-        let head: Head = self
-            .node_config
-            .lookup_head(self.provider_factory.clone())
-            .wrap_err("failed to lookup head: the block is missing")?;
+        //      - blockchain tree loads last canonical hashes + finalized block number
+        //      - consensus output restores last finalized block's nonce (subdag index)
+        //      - finalize block is the last call after executing consensus output
+        //      - any blocks that are re-executed will already be in the tree and prevent db rewrites
+        // let head: Head = self
+        //     .node_config
+        //     .lookup_head(self.provider_factory.clone())
+        //     .wrap_err("failed to lookup head: the block is missing")?;
+        let num = self.blockchain_db.last_finalized_block_number()?;
+        let final = self.blockchain_db.header_by_number(num)?.map(|opt| {
+            match opt {
+                Some(header) => header.nonce,
+                None => 0_u64,
+            }
+        });
         Ok(head.number)
     }
 

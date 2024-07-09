@@ -8,6 +8,7 @@ homepage.workspace = true
 repository.workspace = true
 
 [dependencies]
+fastcrypto = { workspace = true }
 futures = { workspace = true }
 futures-util = { workspace = true }
 thiserror = { workspace = true }
@@ -22,6 +23,10 @@ reth-chainspec = { workspace = true }
 reth-db = { workspace = true }
 reth-errors = { workspace = true }
 reth-evm = { workspace = true }
+reth-execution-types = { workspace = true }
+reth-node-api = { workspace = true }
+reth-revm = { workspace = true }
+reth-payload-builder = { workspace = true }
 reth-primitives = { workspace = true }
 reth-provider = { workspace = true }
 reth-stages = { workspace = true }

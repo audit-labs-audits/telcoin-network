@@ -257,7 +257,8 @@ where
     }
 }
 
-impl<Provider, Engine, EvmConfig> std::fmt::Debug for MiningTask<Provider, Engine, EvmConfig>
+impl<BT, Provider, Engine, EvmConfig> std::fmt::Debug
+    for MiningTask<BT, Provider, Engine, EvmConfig>
 where
     Engine: EngineTypes,
 {

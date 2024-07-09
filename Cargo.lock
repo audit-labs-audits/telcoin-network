@@ -10641,6 +10641,7 @@ dependencies = [
 name = "tn-engine"
 version = "0.1.0"
 dependencies = [
+ "fastcrypto",
  "futures",
  "futures-util",
  "reth-blockchain-tree",
@@ -10648,8 +10649,12 @@ dependencies = [
  "reth-db",
  "reth-errors",
  "reth-evm",
+ "reth-execution-types",
+ "reth-node-api",
+ "reth-payload-builder",
  "reth-primitives",
  "reth-provider",
+ "reth-revm",
  "reth-stages",
  "reth-stages-api",
  "reth-tasks",

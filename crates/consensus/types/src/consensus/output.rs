@@ -59,8 +59,8 @@ impl ConsensusOutput {
     /// Pop the next batch digest.
     ///
     /// This method is used when executing [Self].
-    pub fn next_batch_digest(&mut self) -> eyre::Result<BatchDigest> {
-        self.batch_digests.pop_front().ok_or_eyre("Next batch digest doesn't exist")
+    pub fn next_batch_digest(&mut self) -> Option<BatchDigest> {
+        self.batch_digests.pop_front()
     }
 }
 

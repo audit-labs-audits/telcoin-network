@@ -15,7 +15,7 @@ use reth_primitives::{
     Block, Bytes, Header, Receipt, Receipts, SealedBlock, SealedBlockWithSenders,
     TransactionSigned, TransactionSignedEcRecovered, EMPTY_OMMER_ROOT_HASH, U256,
 };
-use reth_provider::StateProviderFactory;
+use reth_provider::{ChainSpecProvider, StateProviderFactory};
 use reth_revm::{
     database::StateProviderDatabase,
     db::states::bundle_state::BundleRetention,
@@ -28,7 +28,7 @@ use tn_types::{
 };
 use tracing::{debug, error, warn};
 
-use crate::error::ExecutorError;
+use crate::error::{EngineResult, TnEngineError};
 
 /// Constructs an Ethereum transaction payload using the best transactions from the pool.
 ///
@@ -36,15 +36,15 @@ use crate::error::ExecutorError;
 /// and configuration, this function creates a transaction payload. Returns
 /// a result indicating success with the payload or an error in case of failure.
 #[inline]
-pub fn execute_consensus_output<EvmConfig, Provider>(
+pub fn execute_consensus_output<EvmConfig, Provider, DBError>(
     evm_config: EvmConfig,
     args: BuildArguments<Provider>,
-) -> eyre::Result<()>
+) -> EngineResult<()>
 where
     EvmConfig: ConfigureEvm,
-    Provider: StateProviderFactory,
+    Provider: StateProviderFactory + ChainSpecProvider,
 {
-    let BuildArguments { provider, mut output, mut parent_block, chain_spec } = args;
+    let BuildArguments { provider, mut output, mut parent_block } = args;
 
     // TODO: explore "batch-execution" concept in reth: BlockExecutorProvider trait
     //
@@ -100,7 +100,8 @@ where
     assert_eq!(sealed_blocks_with_senders.len(), output.batch_digests.len());
 
     for (block_index, block) in sealed_blocks_with_senders.into_iter().enumerate() {
-        let batch_digest = output.next_batch_digest()?.into();
+        let batch_digest =
+            output.next_batch_digest().ok_or(TnEngineError::NextBatchDigestMissing)?.into();
         let payload_attributes = TNPayloadAttributes::new(
             parent_block,
             ommers.clone(),
@@ -111,10 +112,10 @@ where
             output_digest.into(),
             block,
         );
-        let payload = TNPayload::try_new(parent_block.hash, payload_attributes)?;
+        let payload = TNPayload::new(payload_attributes);
 
         let next_canonical_block =
-            build_block_from_batch_payload(&evm_config, payload, &provider, chain_spec.clone())?;
+            build_block_from_batch_payload(&evm_config, payload, &provider, provider.chain_spec())?;
 
         debug!(target: "execution::executor", ?next_canonical_block);
 
@@ -129,12 +130,12 @@ where
 }
 
 #[inline]
-fn build_block_from_batch_payload<'a, EvmConfig, Provider>(
+fn build_block_from_batch_payload<'a, EvmConfig, Provider, DBError>(
     evm_config: &EvmConfig,
     payload: TNPayload,
     provider: &Provider,
     chain_spec: Arc<ChainSpec>,
-) -> eyre::Result<SealedBlock>
+) -> EngineResult<SealedBlock>
 where
     EvmConfig: ConfigureEvm,
     Provider: StateProviderFactory,
