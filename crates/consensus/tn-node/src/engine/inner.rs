@@ -475,9 +475,11 @@ where
     /// The primary adds +1 to this value for recovering output
     /// since the execution layer is confirming the last executing block.
     pub(super) async fn last_executed_output(&self) -> eyre::Result<u64> {
-        // TODO: this might change depending on how output is executed
-        // this may need to change in the future, so leaving it a separate
-        // method for now.
+        // TODO: this needs to confirm the `ConsensusOutput` was fully executed
+        // scenario: output contains 3 blocks, only one block executed before crash
+        // outcome: re-execute the entire consensus output?
+        // - blockchain tree could keep the last block as part of the canonical tip
+        //   which would prevent redundant rewrite to db
         let head: Head = self
             .node_config
             .lookup_head(self.provider_factory.clone())

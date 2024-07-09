@@ -7,7 +7,6 @@ use crate::{
 use enum_dispatch::enum_dispatch;
 use eyre::OptionExt;
 use fastcrypto::hash::{Digest, Hash, HashFunction};
-
 use reth_primitives::{Address, B256};
 use serde::{Deserialize, Serialize};
 use std::{
