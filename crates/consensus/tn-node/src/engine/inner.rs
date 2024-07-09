@@ -1,7 +1,6 @@
 //! Inner-execution node components for both Worker and Primary execution.
 
 use consensus_metrics::metered_channel::Sender;
-use eyre::Context as _;
 use futures::{stream_select, StreamExt};
 use jsonrpsee::http_client::HttpClient;
 use reth::rpc::builder::{config::RethRpcServerConfig, RpcModuleBuilder, RpcServerHandle};

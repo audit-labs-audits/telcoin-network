@@ -135,8 +135,11 @@ where
     }
 
     // finalize the last block executed from consensus output
+    //
+    // this removes them from the tree
     provider.finalize_block(parent_block.number)?;
 
+    // TODO: return parent num hash
     Ok(())
 }
 
@@ -376,7 +379,13 @@ where
 
     // seal the block
     let withdrawals = Some(payload.withdrawals().clone());
-    let block = Block { header, body: executed_txs, ommers: vec![], withdrawals, requests: None };
+    let block = Block {
+        header,
+        body: executed_txs,
+        ommers: payload.attributes.ommers,
+        withdrawals,
+        requests: None,
+    };
 
     let sealed_block = block.seal_slow();
     debug!(target: "payload_builder", ?sealed_block, "sealed built block");
