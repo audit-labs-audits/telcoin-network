@@ -57,7 +57,9 @@ pub struct ExecutorEngine<BT, CE> {
     blockchain: BT,
     /// EVM configuration for executing transactions and building blocks.
     evm_config: CE,
-    /// Optional round of consensus to finish executing before then returning. The value is used to track the subdag index from consensus output. The index is included in executed blocks as the `nonce` value.
+    /// Optional round of consensus to finish executing before then returning. The value is used to
+    /// track the subdag index from consensus output. The index is included in executed blocks as
+    /// the `nonce` value.
     ///
     /// note: this is used for debugging and testing
     max_block: Option<u64>,

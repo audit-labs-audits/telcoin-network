@@ -479,12 +479,13 @@ where
         // TODO: this needs to confirm the `ConsensusOutput` was fully executed
         // scenario: output contains 3 blocks, only one block executed before crash
         // outcome: re-execute the entire consensus output?
-        // - blockchain tree could keep the last block as part of the canonical tip
-        //   which would prevent redundant rewrite to db
+        // - blockchain tree could keep the last block as part of the canonical tip which would
+        //   prevent redundant rewrite to db
         //      - blockchain tree loads last canonical hashes + finalized block number
         //      - consensus output restores last finalized block's nonce (subdag index)
         //      - finalize block is the last call after executing consensus output
-        //      - any blocks that are re-executed will already be in the tree and prevent db rewrites
+        //      - any blocks that are re-executed will already be in the tree and prevent db
+        //        rewrites
         //
         // recover finalized block's nonce: this is the last subdag index from consensus
         let last = match self.blockchain_db.finalized_block_number()? {
