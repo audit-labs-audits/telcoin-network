@@ -42,7 +42,7 @@ use std::{
 use tn_types::{BuildArguments, ConsensusOutput};
 use tokio::sync::{broadcast, mpsc};
 use tokio_stream::wrappers::BroadcastStream;
-use tracing::{debug, error, warn};
+use tracing::{debug, error, info, warn};
 
 /// The TN consensus engine is responsible executing state that has reached consensus.
 pub struct ExecutorEngine<BT, CE> {
@@ -50,7 +50,7 @@ pub struct ExecutorEngine<BT, CE> {
     queued: VecDeque<ConsensusOutput>,
     /// Single active future that inserts a new block into `storage`
     // insert_task: Option<BoxFuture<'static, Option<EventStream<PipelineEvent>>>>,
-    insert_task: Option<BoxFuture<'static, EngineResult<()>>>,
+    insert_task: Option<BoxFuture<'static, EngineResult<BlockNumHash>>>,
     // /// Used to notify consumers of new blocks
     // canon_state_notification: CanonStateNotificationSender,
     /// The type used to query both the database and the blockchain tree.
@@ -70,7 +70,7 @@ pub struct ExecutorEngine<BT, CE> {
     consensus_output_stream: BroadcastStream<ConsensusOutput>,
     /// The [BlockNumHash] of the last fully-executed block.
     ///
-    /// This information is reflects the current canonical tip.
+    /// This information is reflects the current finalized block number and hash.
     parent: BlockNumHash,
 }
 
@@ -144,7 +144,7 @@ where
         let this = self.get_mut();
 
         // this executes output from consensus
-        loop {
+        'main: loop {
             // check if output is available from consensus
             match this.consensus_output_stream.poll_next_unpin(cx) {
                 Poll::Ready(Some(Ok(output))) => {
@@ -156,64 +156,84 @@ where
                 }
                 Poll::Ready(None) => {
                     // stream has ended
+                    //
+                    // TODO: should this be an error?
+                    // Primary shuts down engine this way?
+                    info!(target: "tn::engine", "ConsensusOutput channel closed. Shutting down...");
+
+                    // if the engine received output before channel closed,
+                    // execute final output then return
+                    if let Some(mut fut) = this.insert_task.take() {
+                        info!(target: "tn::engine", "attempting to execute final output...");
+
+                        // TODO: test that this works as expected
+                        //
+                        // loop for executing the last output
+                        'last_output: loop {
+                            match fut.poll_unpin(cx) {
+                                Poll::Ready(final_num_hash) => {
+                                    info!(target: "tn::engine", ?final_num_hash, "engine completed execution");
+                                    // this.pipeline_events = events;
+                                    //
+                                    // TODO: broadcast tip?
+                                    //
+                                    // ensure no errors then continue
+                                    this.parent = final_num_hash?;
+
+                                    // break last_output loop to return Ok()
+                                    break 'last_output;
+                                }
+                                Poll::Pending => {
+                                    this.insert_task = Some(fut);
+                                    // break main loop to return Poll::Pending
+                                    break 'main;
+                                }
+                            }
+                        }
+                    }
+
+                    // TODO: try take insert_task to finish executing last output before returning
                     return Poll::Ready(Ok(()));
                 }
                 Poll::Pending => { /* nothing to do */ }
             }
 
+            // only insert task if there is none
+            //
+            // note: it's important that the previous consensus output finishes executing before inserting
+            // the next task to ensure the parent numhash is finalized
             if this.insert_task.is_none() {
                 if this.queued.is_empty() {
                     // nothing to insert
                     break;
                 }
 
-                // ready to queue in new insert task
-                // let storage = this.storage.clone();
+                // ready to queue executing next round of consensus
                 let output = this.queued.pop_front().expect("not empty");
                 let provider = this.blockchain.clone();
                 let evm_config = this.evm_config.clone();
-                let parent = this.parent; // copy
-
-                // TODO: get this from engine?
-                // - engine stores each round of consensus output as a Vec<SealedBlock>?
-                // - only need parent num hash
-                //
-                // Does this need to verify the previous round of consensus was fully executed?
+                let parent = this.parent; // Copy
                 let build_args = BuildArguments::new(provider, output, parent);
-                // let blockchain = this.blockchain.clone();
-                // let to_engine = this.to_engine.clone();
-                // let provider = this.provider.clone();
-                // let chain_spec = Arc::clone(&this.chain_spec);
-                // let events = this.pipeline_events.take();
-                // let canon_state_notification = this.canon_state_notification.clone();
-                // let block_executor = this.block_executor.clone();
 
                 // TODO: should this be on a blocking thread?
                 //
                 // execute the consensus output
                 this.insert_task = Some(Box::pin(async move {
-                    // match execute_consensus_output(evm_config, build_args) {
-                    //     Ok(_) => (),
-                    //     Err(_e) => {
-                    //         error!(target: "tn::engine", ?e);
-                    //         return Poll::Ready(());
-                    //     }
-                    // }
-                    execute_consensus_output(evm_config, build_args)
-                    // todo!()
+                    let finalized_block_num_hash = execute_consensus_output(evm_config, build_args);
+                    finalized_block_num_hash
                 }));
             }
 
             if let Some(mut fut) = this.insert_task.take() {
                 match fut.poll_unpin(cx) {
-                    Poll::Ready(res) => {
+                    Poll::Ready(final_num_hash) => {
                         // this.pipeline_events = events;
                         //
                         // TODO: broadcast tip?
                         //
                         // ensure no errors then continue
-                        res?;
-                        // loop again to execute the next output
+                        this.parent = final_num_hash?;
+                        // loop again to check for next output
                         continue;
                     }
                     Poll::Pending => {

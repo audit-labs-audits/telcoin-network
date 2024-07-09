@@ -40,7 +40,7 @@ use crate::error::{EngineResult, TnEngineError};
 pub fn execute_consensus_output<EvmConfig, Provider>(
     evm_config: EvmConfig,
     args: BuildArguments<Provider>,
-) -> EngineResult<()>
+) -> EngineResult<BlockNumHash>
 where
     EvmConfig: ConfigureEvm,
     Provider: StateProviderFactory + ChainSpecProvider + BlockchainTreeEngine,
@@ -140,7 +140,7 @@ where
     provider.finalize_block(parent_block.number)?;
 
     // TODO: return parent num hash
-    Ok(())
+    Ok(parent_block)
 }
 
 #[inline]
