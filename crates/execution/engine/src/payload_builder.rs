@@ -36,7 +36,7 @@ use crate::error::{EngineResult, TnEngineError};
 /// and configuration, this function creates a transaction payload. Returns
 /// a result indicating success with the payload or an error in case of failure.
 #[inline]
-pub fn execute_consensus_output<EvmConfig, Provider, DBError>(
+pub fn execute_consensus_output<EvmConfig, Provider>(
     evm_config: EvmConfig,
     args: BuildArguments<Provider>,
 ) -> EngineResult<()>
@@ -130,7 +130,7 @@ where
 }
 
 #[inline]
-fn build_block_from_batch_payload<'a, EvmConfig, Provider, DBError>(
+fn build_block_from_batch_payload<'a, EvmConfig, Provider>(
     evm_config: &EvmConfig,
     payload: TNPayload,
     provider: &Provider,

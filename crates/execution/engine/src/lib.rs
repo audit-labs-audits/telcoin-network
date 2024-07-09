@@ -49,7 +49,8 @@ pub struct ExecutorEngine<BT, CE> {
     /// The backlog of output from consensus that's ready to be executed.
     queued: VecDeque<ConsensusOutput>,
     /// Single active future that inserts a new block into `storage`
-    insert_task: Option<BoxFuture<'static, Option<EventStream<PipelineEvent>>>>,
+    // insert_task: Option<BoxFuture<'static, Option<EventStream<PipelineEvent>>>>,
+    insert_task: Option<BoxFuture<'static, EngineResult<()>>>,
     // /// Used to notify consumers of new blocks
     // canon_state_notification: CanonStateNotificationSender,
     /// The type used to query both the database and the blockchain tree.
@@ -135,7 +136,7 @@ where
         + 'static,
     CE: ConfigureEvm,
 {
-    type Output = ();
+    type Output = EngineResult<()>;
 
     fn poll(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
         let this = self.get_mut();
@@ -185,21 +186,30 @@ where
                 // let canon_state_notification = this.canon_state_notification.clone();
                 // let block_executor = this.block_executor.clone();
 
-                // Create the mining future that creates a block, notifies the engine that drives
-                // the pipeline
+                // TODO: should this be on a blocking thread?
+                //
+                // execute the consensus output
                 this.insert_task = Some(Box::pin(async move {
-                    match execute_consensus_output(evm_config, build_args) {
-                        Ok(_) => (),
-                        Err(_e) => (),
-                    }
-                    todo!()
+                    // match execute_consensus_output(evm_config, build_args) {
+                    //     Ok(_) => (),
+                    //     Err(_e) => {
+                    //         error!(target: "tn::engine", ?e);
+                    //         return Poll::Ready(());
+                    //     }
+                    // }
+                    execute_consensus_output(evm_config, build_args)
+                    // todo!()
                 }));
             }
 
             if let Some(mut fut) = this.insert_task.take() {
                 match fut.poll_unpin(cx) {
-                    Poll::Ready(events) => {
-                        this.pipeline_events = events;
+                    Poll::Ready(res) => {
+                        // this.pipeline_events = events;
+                        //
+                        // ensure no errors then continue
+                        res?;
+                        continue;
                     }
                     Poll::Pending => {
                         this.insert_task = Some(fut);
