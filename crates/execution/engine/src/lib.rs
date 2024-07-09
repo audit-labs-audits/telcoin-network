@@ -154,7 +154,7 @@ where
                 }
                 Poll::Ready(None) => {
                     // stream has ended
-                    return Poll::Ready(());
+                    return Poll::Ready(Ok(()));
                 }
                 Poll::Pending => { /* nothing to do */ }
             }
@@ -207,8 +207,11 @@ where
                     Poll::Ready(res) => {
                         // this.pipeline_events = events;
                         //
+                        // TODO: broadcast tip?
+                        //
                         // ensure no errors then continue
                         res?;
+                        // loop again to execute the next output
                         continue;
                     }
                     Poll::Pending => {
@@ -219,6 +222,7 @@ where
             }
         }
 
+        // all output executed, yield back to runtime
         Poll::Pending
     }
 }

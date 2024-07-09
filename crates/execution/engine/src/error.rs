@@ -25,4 +25,7 @@ pub enum TnEngineError {
     /// The next batch digest is missing.
     #[error("Missing next batch digest for recovered sealed block with senders.")]
     NextBatchDigestMissing,
+    /// The block body and senders lengths don't match.
+    #[error("Failed to seal block with senders - lengths don't match")]
+    SealBlockWithSenders,
 }

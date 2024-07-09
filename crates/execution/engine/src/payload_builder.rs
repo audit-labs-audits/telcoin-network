@@ -3,6 +3,7 @@
 //! This approach heavily inspired by reth's `default_ethereum_payload_builder`.
 
 use fastcrypto::hash::Hash as _;
+use reth_blockchain_tree::BlockchainTreeEngine;
 use reth_chainspec::ChainSpec;
 use reth_evm::ConfigureEvm;
 use reth_execution_types::ExecutionOutcome;
@@ -42,7 +43,7 @@ pub fn execute_consensus_output<EvmConfig, Provider>(
 ) -> EngineResult<()>
 where
     EvmConfig: ConfigureEvm,
-    Provider: StateProviderFactory + ChainSpecProvider,
+    Provider: StateProviderFactory + ChainSpecProvider + BlockchainTreeEngine,
 {
     let BuildArguments { provider, mut output, mut parent_block } = args;
 
@@ -124,6 +125,8 @@ where
         // - possible to reuse state to prevent extra call to db?
         // - set this block as parent_block
         // - handle end of loop
+
+        // provider.insert_block(block, validation_kind)
     }
 
     Ok(())
@@ -135,7 +138,7 @@ fn build_block_from_batch_payload<'a, EvmConfig, Provider>(
     payload: TNPayload,
     provider: &Provider,
     chain_spec: Arc<ChainSpec>,
-) -> EngineResult<SealedBlock>
+) -> EngineResult<SealedBlockWithSenders>
 where
     EvmConfig: ConfigureEvm,
     Provider: StateProviderFactory,
@@ -156,6 +159,7 @@ where
     let mut cumulative_gas_used = 0;
     let mut total_fees = U256::ZERO;
     let mut executed_txs = Vec::new();
+    let mut senders = Vec::new();
     let mut receipts = Vec::new();
     // let mut sum_blob_gas_used = 0;
 
@@ -280,7 +284,8 @@ where
             .expect("fee is always valid; execution succeeded");
         total_fees += U256::from(miner_fee) * U256::from(gas_used);
 
-        // append transaction to the list of executed transactions
+        // append transaction to the list of executed transactions and keep signers
+        senders.push(tx.signer());
         executed_txs.push(tx.into_signed());
     }
 
@@ -368,5 +373,8 @@ where
     let sealed_block = block.seal_slow();
     debug!(target: "payload_builder", ?sealed_block, "sealed built block");
 
-    Ok(sealed_block)
+    let sealed_block_with_senders = SealedBlockWithSenders::new(sealed_block, senders)
+        .ok_or(TnEngineError::SealBlockWithSenders)?;
+
+    Ok(sealed_block_with_senders)
 }
