@@ -33,7 +33,9 @@ use reth_node_ethereum::{
 };
 use reth_primitives::{Address, Head};
 use reth_provider::{
-    providers::{BlockchainProvider, StaticFileProvider}, CanonStateNotificationSender, HeaderProvider, ProviderFactory, StaticFileProviderFactory as _, FinalizedBlockReader
+    providers::{BlockchainProvider, StaticFileProvider},
+    BlockIdReader, CanonStateNotificationSender, DatabaseProviderFactory, FinalizedBlockReader,
+    HeaderProvider, ProviderFactory, StaticFileProviderFactory as _,
 };
 use reth_prune::PruneModes;
 use reth_rpc_types::engine::ForkchoiceState;
@@ -483,19 +485,16 @@ where
         //      - consensus output restores last finalized block's nonce (subdag index)
         //      - finalize block is the last call after executing consensus output
         //      - any blocks that are re-executed will already be in the tree and prevent db rewrites
-        // let head: Head = self
-        //     .node_config
-        //     .lookup_head(self.provider_factory.clone())
-        //     .wrap_err("failed to lookup head: the block is missing")?;
-
-        let num = self.blockchain_db.last_finalized_block_number()?;
-        let final = self.blockchain_db.header_by_number(num)?.map(|opt| {
-            match opt {
-                Some(header) => header.nonce,
-                None => 0_u64,
+        //
+        // recover finalized block's nonce: this is the last subdag index from consensus
+        let last = match self.blockchain_db.finalized_block_number()? {
+            Some(num) => {
+                self.blockchain_db.header_by_number(num)?.map(|opt| opt.nonce).unwrap_or(0)
             }
-        });
-        Ok(final)
+            None => 0, // genesis
+        };
+
+        Ok(last)
     }
 
     /// Return an database provider.
