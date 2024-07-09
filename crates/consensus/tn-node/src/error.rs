@@ -16,9 +16,6 @@ pub enum NodeError {
     #[error("Node is already running")]
     NodeAlreadyRunning,
 
-    #[error("Worker nodes with ids {0:?} already running")]
-    WorkerNodesAlreadyRunning(Vec<WorkerId>),
-
     /// Error when creating a new registry
     #[error(transparent)]
     Registry(#[from] prometheus::Error),

@@ -1,9 +1,10 @@
+use std::sync::Arc;
+
 // Copyright (c) Telcoin, LLC
 // Copyright (c) Mysten Labs, Inc.
 // SPDX-License-Identifier: Apache-2.0
 use narwhal_network::metrics::{NetworkConnectionMetrics, NetworkMetrics};
 use prometheus::{
-    core::{AtomicI64, GenericGauge},
     default_registry, linear_buckets, register_histogram_vec_with_registry,
     register_histogram_with_registry, register_int_counter_vec_with_registry,
     register_int_counter_with_registry, register_int_gauge_vec_with_registry,
@@ -18,35 +19,60 @@ const LATENCY_SEC_BUCKETS: &[f64] = &[
 ];
 
 #[derive(Clone)]
-pub(crate) struct Metrics {
-    pub(crate) inbound_network_metrics: Option<NetworkMetrics>,
-    pub(crate) outbound_network_metrics: Option<NetworkMetrics>,
-    pub(crate) primary_channel_metrics: Option<PrimaryChannelMetrics>,
-    pub(crate) node_metrics: Option<PrimaryMetrics>,
-    pub(crate) network_connection_metrics: Option<NetworkConnectionMetrics>,
+pub struct Metrics {
+    pub inbound_network_metrics: Arc<NetworkMetrics>,
+    pub outbound_network_metrics: Arc<NetworkMetrics>,
+    pub primary_channel_metrics: Arc<PrimaryChannelMetrics>,
+    pub node_metrics: Arc<PrimaryMetrics>,
+    pub network_connection_metrics: Arc<NetworkConnectionMetrics>,
 }
 
-/// Initialises the metrics
-pub(crate) fn initialise_metrics(metrics_registry: &Registry) -> Metrics {
-    // The metrics used for communicating over the network
-    let inbound_network_metrics = NetworkMetrics::new("primary", "inbound", metrics_registry);
-    let outbound_network_metrics = NetworkMetrics::new("primary", "outbound", metrics_registry);
+impl Metrics {
+    fn try_new(registry: &Registry) -> Result<Self, prometheus::Error> {
+        // The metrics used for communicating over the network
+        let inbound_network_metrics =
+            Arc::new(NetworkMetrics::try_new("primary", "inbound", registry)?);
+        let outbound_network_metrics =
+            Arc::new(NetworkMetrics::try_new("primary", "outbound", registry)?);
 
-    // The metrics used for measuring the occupancy of the channels in the primary
-    let primary_channel_metrics = PrimaryChannelMetrics::new(metrics_registry);
+        // The metrics used for measuring the occupancy of the channels in the primary
+        let primary_channel_metrics = Arc::new(PrimaryChannelMetrics::try_new(registry)?);
 
-    // Essential/core metrics across the primary node
-    let node_metrics = PrimaryMetrics::new(metrics_registry);
+        // Essential/core metrics across the primary node
+        let node_metrics = Arc::new(PrimaryMetrics::try_new(registry)?);
 
-    // Network metrics for the primary connection
-    let network_connection_metrics = NetworkConnectionMetrics::new("primary", metrics_registry);
+        // Network metrics for the primary connection
+        let network_connection_metrics =
+            Arc::new(NetworkConnectionMetrics::try_new("primary", registry)?);
 
-    Metrics {
-        node_metrics: Some(node_metrics),
-        primary_channel_metrics: Some(primary_channel_metrics),
-        inbound_network_metrics: Some(inbound_network_metrics),
-        outbound_network_metrics: Some(outbound_network_metrics),
-        network_connection_metrics: Some(network_connection_metrics),
+        Ok(Metrics {
+            node_metrics,
+            primary_channel_metrics,
+            inbound_network_metrics,
+            outbound_network_metrics,
+            network_connection_metrics,
+        })
+    }
+}
+
+impl Default for Metrics {
+    fn default() -> Self {
+        // try_new() should not fail except under certain conditions with testing (see comment
+        // below). This pushes the panic or retry decision lower and supporting try_new
+        // allways a user to deal with errors if desired (have a non-panic option).
+        // We always want do use default_registry() when not in test.
+        match Self::try_new(default_registry()) {
+            Ok(metrics) => metrics,
+            Err(e) => {
+                tracing::warn!(target: "tn::metrics", ?e, "Executor::try_new metrics error");
+                // If we are in a test then don't panic on prometheus errors (usually an already
+                // registered error) but try again with a new Registry. This is not
+                // great for prod code, however should not happen, but will happen in tests due to
+                // how Rust runs them so lets just gloss over it. cfg(test) does not
+                // always work as expected.
+                Self::try_new(&Registry::new()).expect("Prometheus error, are you using it wrong?")
+            }
+        }
     }
 }
 
@@ -134,152 +160,144 @@ impl PrimaryChannelMetrics {
     pub const DESC_NEW_CERTS_TOTAL: &'static str =
         "total received on channel from the `primary::Synchronizer` to the `Consensus`";
 
-    pub fn new(registry: &Registry) -> Self {
-        Self {
+    // Private so we can make sure to capture registry properly...
+    fn try_new(registry: &Registry) -> Result<Self, prometheus::Error> {
+        Ok(Self {
             tx_others_digests: register_int_gauge_with_registry!(
                 "tx_others_digests",
                 "occupancy of the channel from the `primary::WorkerReceiverHandler` to the `primary::PayloadReceiver`",
                 registry
-            ).unwrap(),
+            )?,
             tx_our_digests: register_int_gauge_with_registry!(
                 "tx_our_digests",
                 "occupancy of the channel from the `primary::WorkerReceiverHandler` to the `primary::Proposer`",
                 registry
-            ).unwrap(),
+            )?,
             tx_system_messages: register_int_gauge_with_registry!(
                 "tx_system_messages",
                 "occupancy of the channel from the `primary::StateHandler` to the `primary::Proposer`",
                 registry
-            ).unwrap(),
+            )?,
             tx_parents: register_int_gauge_with_registry!(
                 "tx_parents",
                 "occupancy of the channel from the `primary::Synchronizer` to the `primary::Proposer`",
                 registry
-            ).unwrap(),
+            )?,
             tx_headers: register_int_gauge_with_registry!(
                 "tx_headers",
                 "occupancy of the channel from the `primary::Proposer` to the `primary::Certifier`",
                 registry
-            ).unwrap(),
+            )?,
             tx_certificate_fetcher: register_int_gauge_with_registry!(
                 "tx_certificate_fetcher",
                 "occupancy of the channel from the `primary::Synchronizer` to the `primary::CertificaterWaiter`",
                 registry
-            ).unwrap(),
+            )?,
             tx_committed_certificates: register_int_gauge_with_registry!(
                 Self::NAME_COMMITTED_CERTS,
                 Self::DESC_COMMITTED_CERTS,
                 registry
-            ).unwrap(),
+            )?,
             tx_new_certificates: register_int_gauge_with_registry!(
                 Self::NAME_NEW_CERTS,
                 Self::DESC_NEW_CERTS,
                 registry
-            ).unwrap(),
+            )?,
             tx_committed_own_headers: register_int_gauge_with_registry!(
                 "tx_committed_own_headers",
                 "occupancy of the channel signaling own committed headers.",
                 registry
-            ).unwrap(),
+            )?,
             tx_certificate_acceptor: register_int_gauge_with_registry!(
                 "tx_certificate_acceptor",
                 "occupancy of the internal synchronizer channel that is accepting new certificates.",
                 registry
-            ).unwrap(),
+            )?,
             tx_batch_tasks: register_int_gauge_with_registry!(
                 "tx_batch_tasks",
                 "Occupancy of the channel synchronizing batches for provided headers & certificates",
                 registry
-            ).unwrap(),
+            )?,
 
             // totals
             tx_others_digests_total: register_int_counter_with_registry!(
                 "tx_others_digests_total",
                 "total received on channel from the `primary::WorkerReceiverHandler` to the `primary::PayloadReceiver`",
                 registry
-            ).unwrap(),
+            )?,
             tx_our_digests_total: register_int_counter_with_registry!(
                 "tx_our_digests_total",
                 "total received on channel from the `primary::WorkerReceiverHandler` to the `primary::Proposer`",
                 registry
-            ).unwrap(),
+            )?,
             tx_system_messages_total: register_int_counter_with_registry!(
                 "tx_system_messages_total",
                 "total received on channel from the `primary::StateHandler` to the `primary::Proposer`",
                 registry
-            ).unwrap(),
+            )?,
             tx_parents_total: register_int_counter_with_registry!(
                 "tx_parents_total",
                 "total received on channel from the `primary::Synchronizer` to the `primary::Proposer`",
                 registry
-            ).unwrap(),
+            )?,
             tx_headers_total: register_int_counter_with_registry!(
                 "tx_headers_total",
                 "total received on channel from the `primary::Proposer` to the `primary::Certifier`",
                 registry
-            ).unwrap(),
+            )?,
             tx_certificate_fetcher_total: register_int_counter_with_registry!(
                 "tx_certificate_fetcher_total",
                 "total received on channel from the `primary::Synchronizer` to the `primary::CertificaterWaiter`",
                 registry
-            ).unwrap(),
+            )?,
             tx_state_handler_total: register_int_counter_with_registry!(
                 "tx_state_handler_total",
                 "total received on channel from the `primary::WorkerReceiverHandler` to the `primary::StateHandler`",
                 registry
-            ).unwrap(),
+            )?,
             tx_committed_certificates_total: register_int_counter_with_registry!(
                 Self::NAME_COMMITTED_CERTS_TOTAL,
                 Self::DESC_COMMITTED_CERTS_TOTAL,
                 registry
-            ).unwrap(),
+            )?,
             tx_new_certificates_total: register_int_counter_with_registry!(
                 Self::NAME_NEW_CERTS_TOTAL,
                 Self::DESC_NEW_CERTS_TOTAL,
                 registry
-            ).unwrap(),
+            )?,
             tx_committed_own_headers_total: register_int_counter_with_registry!(
                 "tx_committed_own_headers_total",
                 "total received on channel signaling own committed headers.",
                 registry
-            ).unwrap(),
+            )?,
             tx_certificate_acceptor_total: register_int_counter_with_registry!(
                 "tx_certificate_acceptor_total",
                 "total received on the internal synchronizer channel that is accepting new certificates.",
                 registry
-            ).unwrap(),
+            )?,
             tx_batch_tasks_total: register_int_counter_with_registry!(
                 "tx_batch_tasks_total",
                 "total received on the channel synchronizing batches for provided headers & certificates",
                 registry
-            ).unwrap(),
+            )?,
+        })
+    }
+}
+
+impl Default for PrimaryChannelMetrics {
+    fn default() -> Self {
+        match Self::try_new(default_registry()) {
+            Ok(metrics) => metrics,
+            Err(e) => {
+                tracing::warn!(target: "tn::metrics", ?e, "Executor::try_new metrics error");
+                // If we are in a test then don't panic on prometheus errors (usually an already
+                // registered error) but try again with a new Registry. This is not
+                // great for prod code, however should not happen, but will happen in tests do to
+                // how Rust runs them so lets just gloss over it. cfg(test) does not
+                // always work as expected.
+                Self::try_new(&Registry::new()).expect("Prometheus error, are you using it wrong?")
+            }
         }
-    }
-
-    pub fn replace_registered_new_certificates_metric(
-        &mut self,
-        registry: &Registry,
-        collector: Box<GenericGauge<AtomicI64>>,
-    ) {
-        let new_certificates_counter =
-            IntGauge::new(Self::NAME_NEW_CERTS, Self::DESC_NEW_CERTS).unwrap();
-        // TODO: Sanity-check by hashing the descs against one another
-        registry.unregister(Box::new(new_certificates_counter.clone())).unwrap();
-        registry.register(collector).unwrap();
-        self.tx_new_certificates = new_certificates_counter;
-    }
-
-    pub fn replace_registered_committed_certificates_metric(
-        &mut self,
-        registry: &Registry,
-        collector: Box<GenericGauge<AtomicI64>>,
-    ) {
-        let committed_certificates_counter =
-            IntGauge::new(Self::NAME_COMMITTED_CERTS, Self::DESC_COMMITTED_CERTS).unwrap();
-        // TODO: Sanity-check by hashing the descs against one another
-        registry.unregister(Box::new(committed_certificates_counter.clone())).unwrap();
-        registry.register(collector).unwrap();
-        self.tx_committed_certificates = committed_certificates_counter;
     }
 }
 
@@ -352,136 +370,128 @@ pub struct PrimaryMetrics {
 }
 
 impl PrimaryMetrics {
-    pub fn new(registry: &Registry) -> Self {
+    fn try_new(registry: &Registry) -> Result<Self, prometheus::Error> {
         let parents_buckets = [
-            linear_buckets(1.0, 1.0, 20).unwrap().as_slice(),
-            linear_buckets(21.0, 2.0, 20).unwrap().as_slice(),
-            linear_buckets(61.0, 3.0, 20).unwrap().as_slice(),
+            linear_buckets(1.0, 1.0, 20)
+                .expect("prometheus, invalid width or count on bucket create")
+                .as_slice(),
+            linear_buckets(21.0, 2.0, 20)
+                .expect("prometheus, invalid width or count on bucket create")
+                .as_slice(),
+            linear_buckets(61.0, 3.0, 20)
+                .expect("prometheus, invalid width or count on bucket create")
+                .as_slice(),
         ]
         .concat();
-        Self {
+        Ok(Self {
             headers_proposed: register_int_counter_vec_with_registry!(
                 "headers_proposed",
                 "Number of headers that node proposed",
                 &["leader_support"],
                 registry
-            )
-            .unwrap(),
+            )?,
             header_parents: register_histogram_with_registry!(
                 "header_parents",
                 "Number of parents included in proposed headers",
                 parents_buckets,
                 registry
-            )
-            .unwrap(),
+            )?,
             proposed_header_round: register_int_gauge_with_registry!(
                 "proposed_header_round",
                 "The current proposed header round",
                 registry
-            ).unwrap(),
+            )?,
             votes_received_last_round: register_int_gauge_with_registry!(
                 "votes_received_last_round",
                 "The number of received votes for the proposed last round",
                 registry
-            ).unwrap(),
+            )?,
             certificates_in_votes: register_int_counter_with_registry!(
                 "certificates_in_votes",
                 "Total number of parent certificates included in votes.",
                 registry
-            ).unwrap(),
+            )?,
             certificate_created_round: register_int_gauge_with_registry!(
                 "certificate_created_round",
                 "The round of the latest created certificate by our node",
                 registry
-            ).unwrap(),
+            )?,
             certificates_created: register_int_counter_with_registry!(
                 "certificates_created",
                 "Number of certificates that node created",
                 registry
-            )
-            .unwrap(),
+            )?,
             certificates_processed: register_int_counter_vec_with_registry!(
                 "certificates_processed",
                 "Number of certificates that node processed (others + own)",
                 &["source"],
                 registry
-            )
-            .unwrap(),
+            )?,
             certificates_suspended: register_int_counter_vec_with_registry!(
                 "certificates_suspended",
                 "Number of certificates that node suspended processing of",
                 &["reason"],
                 registry
-            )
-            .unwrap(),
+            )?,
             certificates_currently_suspended: register_int_gauge_with_registry!(
                 "certificates_currently_suspended",
                 "Number of certificates that are suspended in memory",
                 registry
-            )
-            .unwrap(),
+            )?,
             duplicate_certificates_processed: register_int_counter_with_registry!(
                 "duplicate_certificates_processed",
                 "Number of certificates that node processed (others + own)",
                 registry
-            )
-            .unwrap(),
+            )?,
             current_round: register_int_gauge_with_registry!(
                 "current_round",
                 "Current round the node will propose",
                 registry
-            )
-            .unwrap(),
+            )?,
             proposal_latency: register_histogram_vec_with_registry!(
                 "proposal_latency",
                 "Time distribution between node proposals",
                 &["reason"],
                 LATENCY_SEC_BUCKETS.to_vec(),
                 registry
-            ).unwrap(),
+            )?,
             highest_received_round: register_int_gauge_vec_with_registry!(
                 "highest_received_round",
                 "Highest round received by the primary",
                 &["source"],
                 registry
-            )
-            .unwrap(),
+            )?,
             highest_processed_round: register_int_gauge_vec_with_registry!(
                 "highest_processed_round",
                 "Highest round processed (stored) by the primary",
                 &["source"],
                 registry
-            )
-            .unwrap(),
+            )?,
             certificate_fetcher_inflight_fetch: register_int_gauge_with_registry!(
                 "certificate_fetcher_inflight_fetch",
                 "0 if there is no inflight certificates fetching, 1 otherwise.",
                 registry
-            )
-            .unwrap(),
+            )?,
             certificate_fetcher_num_certificates_processed: register_int_counter_with_registry!(
                 "certificate_fetcher_num_certificates_processed",
                 "Number of fetched certificates successfully processed by core.",
                 registry
-            )
-            .unwrap(),
+            )?,
             certificate_fetcher_total_verification_us: register_int_counter_with_registry!(
                 "certificate_fetcher_total_verification_us",
                 "Total time spent in certificate verifications, in microseconds.",
                 registry
-            )
-            .unwrap(),
+            )?,
             votes_dropped_equivocation_protection: register_int_counter_with_registry!(
                 "votes_dropped_equivocation_protection",
                 "Number of votes that were requested but not sent due to previously having voted differently",
                 registry
-            )
-            .unwrap(),
+            )?,
             num_of_pending_batches_in_proposer: register_int_gauge_with_registry!(
                 "num_of_pending_batches_in_proposer",
                 "Number of batch digests pending in proposer for next header proposal",
                 registry
-            ).unwrap(),
+            )?,
             num_of_batch_digests_in_header: register_histogram_vec_with_registry!(
                 "num_of_batch_digests_in_header",
                 "The number of batch digests included in a proposed header. A reason label is included.",
@@ -489,61 +499,72 @@ impl PrimaryMetrics {
                 // buckets in number of digests
                 vec![0.0, 5.0, 10.0, 15.0, 32.0, 50.0, 100.0, 200.0, 500.0, 1000.0],
                 registry
-            ).unwrap(),
+            )?,
             proposer_ready_to_advance: register_int_counter_vec_with_registry!(
                 "proposer_ready_to_advance",
                 "The number of times where the proposer is ready/not ready to advance.",
                 &["ready", "round"],
                 registry
-            ).unwrap(),
+            )?,
             proposer_batch_latency: register_histogram_with_registry!(
                 "proposer_batch_latency",
                 "The latency of a batch between the time it has been created and until it has been included to a header proposal.",
                 LATENCY_SEC_BUCKETS.to_vec(),
                 registry
-            ).unwrap(),
+            )?,
             proposer_resend_headers: register_int_counter_with_registry!(
                 "proposer_resend_headers",
                 "The number of headers being resent because they will not get committed.",
                 registry
-            ).unwrap(),
+            )?,
             proposer_resend_batches: register_int_counter_with_registry!(
                 "proposer_resend_batches",
                 "The number of batches being resent because they will not get committed.",
                 registry
-            ).unwrap(),
+            )?,
             header_to_certificate_latency: register_histogram_with_registry!(
                 "header_to_certificate_latency",
                 "Time it takes for a header to be materialised to a certificate",
                 LATENCY_SEC_BUCKETS.to_vec(),
                 registry
-            ).unwrap(),
+            )?,
             header_max_parent_wait_ms: register_int_counter_with_registry!(
                 "header_max_parent_wait_ms",
                 "Millisecs taken to wait for max parent time, when proposing headers.",
                 registry
-            ).unwrap(),
+            )?,
             synchronizer_gc_timeout: register_int_counter_with_registry!(
                 "synchronizer_gc_timeout",
                 "Counts when the GC loop in synchronizer times out waiting for consensus commit.",
                 registry
-            ).unwrap(),
+            )?,
             fetched_certificates_verified_directly: register_int_counter_with_registry!(
                 "fetched_certificates_verified_directly",
                 "Total number of fetched certificates verified directly.",
                 registry
-            ).unwrap(),
+            )?,
             fetched_certificates_verified_indirectly: register_int_counter_with_registry!(
                 "fetched_certificates_verified_indirectly",
                 "Total number of fetched certificates verified indirectly.",
                 registry
-            ).unwrap(),
-        }
+            )?,
+        })
     }
 }
 
 impl Default for PrimaryMetrics {
     fn default() -> Self {
-        Self::new(default_registry())
+        match Self::try_new(default_registry()) {
+            Ok(metrics) => metrics,
+            Err(e) => {
+                tracing::warn!(target: "tn::metrics", ?e, "Executor::try_new metrics error");
+                // If we are in a test then don't panic on prometheus errors (usually an already
+                // registered error) but try again with a new Registry. This is not
+                // great for prod code, however should not happen, but will happen in tests do to
+                // how Rust runs them so lets just gloss over it. cfg(test) does not
+                // always work as expected.
+                Self::try_new(&Registry::new()).expect("Prometheus error, are you using it wrong?")
+            }
+        }
     }
 }

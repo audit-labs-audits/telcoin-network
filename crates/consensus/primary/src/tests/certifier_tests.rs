@@ -5,11 +5,11 @@
 use super::*;
 use crate::common::create_db_stores;
 
-use crate::{consensus::ConsensusRound, PrimaryChannelMetrics, NUM_SHUTDOWN_RECEIVERS};
+use crate::{consensus::ConsensusRound, NUM_SHUTDOWN_RECEIVERS};
 use fastcrypto::traits::KeyPair;
 use narwhal_network::client::NetworkClient;
 use narwhal_network_types::{MockPrimaryToPrimary, PrimaryToPrimaryServer, RequestVoteResponse};
-use prometheus::Registry;
+use narwhal_primary_metrics::PrimaryChannelMetrics;
 use rand::{rngs::StdRng, SeedableRng};
 use std::num::NonZeroUsize;
 use tn_types::{
@@ -149,8 +149,8 @@ async fn propose_header_and_form_certificate_v2() {
     let network_key = primary.network_keypair().copy().private().0.to_bytes();
     let id = primary.id();
     let signature_service = SignatureService::new(primary.keypair().copy());
-    let metrics = Arc::new(PrimaryMetrics::new(&Registry::new()));
-    let primary_channel_metrics = PrimaryChannelMetrics::new(&Registry::new());
+    let metrics = Arc::new(PrimaryMetrics::default());
+    let primary_channel_metrics = PrimaryChannelMetrics::default();
     let mut tx_shutdown = PreSubscribedBroadcastSender::new(NUM_SHUTDOWN_RECEIVERS);
     let (tx_certificate_fetcher, _rx_certificate_fetcher) = tn_types::test_channel!(1);
     let (tx_headers, rx_headers) = tn_types::test_channel!(1);
@@ -255,8 +255,8 @@ async fn propose_header_failure() {
     let network_key = primary.network_keypair().copy().private().0.to_bytes();
     let authority_id = primary.id();
     let signature_service = SignatureService::new(primary.keypair().copy());
-    let metrics = Arc::new(PrimaryMetrics::new(&Registry::new()));
-    let primary_channel_metrics = PrimaryChannelMetrics::new(&Registry::new());
+    let metrics = Arc::new(PrimaryMetrics::default());
+    let primary_channel_metrics = PrimaryChannelMetrics::default();
     let mut tx_shutdown = PreSubscribedBroadcastSender::new(NUM_SHUTDOWN_RECEIVERS);
     let (tx_certificate_fetcher, _rx_certificate_fetcher) = tn_types::test_channel!(1);
     let (tx_headers, rx_headers) = tn_types::test_channel!(1);
@@ -365,8 +365,8 @@ async fn run_vote_aggregator_with_param(
     let network_key = primary.network_keypair().copy().private().0.to_bytes();
     let id: AuthorityIdentifier = primary.id();
     let signature_service = SignatureService::new(primary.keypair().copy());
-    let metrics = Arc::new(PrimaryMetrics::new(&Registry::new()));
-    let primary_channel_metrics = PrimaryChannelMetrics::new(&Registry::new());
+    let metrics = Arc::new(PrimaryMetrics::default());
+    let primary_channel_metrics = PrimaryChannelMetrics::default();
     let mut tx_shutdown = PreSubscribedBroadcastSender::new(NUM_SHUTDOWN_RECEIVERS);
     let (tx_certificate_fetcher, _rx_certificate_fetcher) = tn_types::test_channel!(1);
     let (tx_headers, rx_headers) = tn_types::test_channel!(1);
@@ -472,8 +472,8 @@ async fn test_shutdown_core() {
     let network_key = primary.network_keypair().copy().private().0.to_bytes();
     let id: AuthorityIdentifier = primary.id();
     let signature_service = SignatureService::new(primary.keypair().copy());
-    let metrics = Arc::new(PrimaryMetrics::new(&Registry::new()));
-    let primary_channel_metrics = PrimaryChannelMetrics::new(&Registry::new());
+    let metrics = Arc::new(PrimaryMetrics::default());
+    let primary_channel_metrics = PrimaryChannelMetrics::default();
 
     let mut tx_shutdown = PreSubscribedBroadcastSender::new(NUM_SHUTDOWN_RECEIVERS);
     let (tx_certificate_fetcher, _rx_certificate_fetcher) = tn_types::test_channel!(1);
@@ -503,7 +503,7 @@ async fn test_shutdown_core() {
         &primary_channel_metrics,
     ));
 
-    let metrics = Arc::new(PrimaryMetrics::new(&Registry::new()));
+    let metrics = Arc::new(PrimaryMetrics::default());
 
     let own_address = committee.primary_by_id(&id).unwrap().to_anemo_address().unwrap();
     let network = anemo::Network::bind(own_address)

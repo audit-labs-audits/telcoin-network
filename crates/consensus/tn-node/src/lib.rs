@@ -1,11 +1,10 @@
-use consensus_metrics::RegistryService;
 // Copyright (c) Telcoin, LLC
 // SPDX-License-Identifier: Apache-2.0
+
 use engine::{ExecutionNode, TnBuilder};
 use futures::{future::try_join_all, stream::FuturesUnordered};
 use narwhal_network::client::NetworkClient;
 pub use narwhal_storage::{CertificateStoreCacheMetrics, NodeStorage};
-use prometheus::Registry;
 use reth_db::{
     database::Database,
     database_metrics::{DatabaseMetadata, DatabaseMetrics},
@@ -56,10 +55,9 @@ where
 
     info!(target: "telcoin::cli", "node storage open");
 
-    let registry_service = RegistryService::new(Registry::new());
     let network_client =
         NetworkClient::new_from_public_key(config.validator_info.primary_network_key());
-    let primary = PrimaryNode::new(config.parameters.clone(), registry_service.clone());
+    let primary = PrimaryNode::new(config.parameters.clone());
     let (worker_id, _worker_info) = config.workers().first_worker()?;
     let worker = WorkerNode::new(*worker_id, config.parameters.clone());
 

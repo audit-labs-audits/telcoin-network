@@ -46,72 +46,85 @@ pub struct ExecutorMetrics {
 }
 
 impl ExecutorMetrics {
-    pub fn new(registry: &Registry) -> Self {
-        Self {
+    fn try_new(registry: &Registry) -> Result<Self, prometheus::Error> {
+        Ok(Self {
             tx_notifier: register_int_gauge_with_registry!(
                 "tx_notifier",
                 "occupancy of the channel from the `Subscriber` to `Notifier`",
                 registry
-            )
-            .unwrap(),
+            )?,
             subscriber_recovered_certificates_count: register_int_counter_with_registry!(
                 "subscriber_recovered_certificates_count",
                 "The number of certificates processed by Subscriber during the recovery period to fetch their payloads",
                 registry
-            ).unwrap(),
+            )?,
             committed_subdag_batch_count: register_histogram_with_registry!(
                 "committed_subdag_batch_count",
                 "The number of batches per committed subdag to be fetched",
                 POSITIVE_INT_BUCKETS.to_vec(),
                 registry
-            ).unwrap(),
+            )?,
             batch_fetch_for_committed_subdag_total_latency: register_histogram_with_registry!(
                 "batch_fetch_for_committed_subdag_total_latency",
                 "Latency for time taken to fetch all batches for committed subdag either from local or remote worker",
                 LATENCY_SEC_BUCKETS.to_vec(),
                 registry
-            )
-            .unwrap(),
+            )?,
             subscriber_processed_batches: register_int_counter_with_registry!(
                 "subscriber_processed_batches",
                 "Number of batches processed by subscriber",
                 registry
-            ).unwrap(),
+            )?,
             subscriber_current_round: register_int_gauge_with_registry!(
                 "subscriber_current_round",
                 "Round of last certificate seen by subscriber",
                 registry
-            ).unwrap(),
+            )?,
             waiting_elements_subscriber: register_int_gauge_with_registry!(
                 "waiting_elements_subscriber",
                 "The number of pending payload downloads",
                 registry
-            ).unwrap(),
+            )?,
             batch_execution_latency: register_histogram_with_registry!(
                 "batch_execution_latency",
                 "Latency between the time when the batch has been created and when it has been fetched for execution",
                 LATENCY_SEC_BUCKETS.to_vec(),
                 registry
-            ).unwrap(),
+            )?,
             batch_execution_local_latency: register_histogram_vec_with_registry!(
                 "batch_execution_local_latency",
                 "This is similar to batch_execution_latency but without the latency of fetching batches from remote workers.",
                 &["source"],
                 LATENCY_SEC_BUCKETS.to_vec(),
                 registry
-            ).unwrap(),
+            )?,
             subscriber_certificate_latency: register_histogram_with_registry!(
                 "subscriber_certificate_latency",
                 "Latency between when the certificate has been created and when it reached the executor",
                 LATENCY_SEC_BUCKETS.to_vec(),
                 registry
-            ).unwrap(),
-        }
+            )?,
+        })
     }
 }
 
 impl Default for ExecutorMetrics {
     fn default() -> Self {
-        Self::new(default_registry())
+        // try_new() should not fail except under certain conditions with testing (see comment
+        // below). This pushes the panic or retry decision lower and supporting try_new
+        // allways a user to deal with errors if desired (have a non-panic option).
+        // We always want do use default_registry() when not in test.
+        match Self::try_new(default_registry()) {
+            Ok(metrics) => metrics,
+            Err(e) => {
+                tracing::warn!(target: "tn::metrics", ?e, "Executor::try_new metrics error");
+                // If we are in a test then don't panic on prometheus errors (usually an already
+                // registered error) but try again with a new Registry. This is not
+                // great for prod code, however should not happen, but will happen in tests due to
+                // how Rust runs them so lets just gloss over it. cfg(test) does not
+                // always work as expected.
+                Self::try_new(&Registry::new()).expect("Prometheus error, are you using it wrong?")
+            }
+        }
     }
 }

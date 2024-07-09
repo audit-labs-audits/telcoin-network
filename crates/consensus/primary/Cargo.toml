@@ -46,13 +46,13 @@ telcoin-macros = { workspace = true }
 
 telcoin-sync = { workspace = true }
 consensus-metrics = { workspace = true }
+narwhal-primary-metrics = { workspace = true }
 
 anemo = { workspace = true }
 anemo-tower = { workspace = true }
 
 [dev-dependencies]
 dashmap = { workspace = true }
-arc-swap = { workspace = true }
 async-trait = { workspace = true }
 bincode = { workspace = true }
 criterion = { workspace = true }

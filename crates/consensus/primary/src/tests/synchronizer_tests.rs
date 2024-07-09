@@ -6,15 +6,13 @@ use crate::{
     certificate_fetcher::CertificateFetcherCommand,
     common::create_db_stores,
     consensus::{gc_round, ConsensusRound},
-    metrics::PrimaryMetrics,
     synchronizer::Synchronizer,
-    PrimaryChannelMetrics,
 };
 use fastcrypto::{hash::Hash, traits::KeyPair};
 use futures::{stream::FuturesUnordered, StreamExt};
 use itertools::Itertools;
 use narwhal_network::client::NetworkClient;
-use prometheus::Registry;
+use narwhal_primary_metrics::{PrimaryChannelMetrics, PrimaryMetrics};
 use std::{
     collections::{BTreeSet, HashMap},
     num::NonZeroUsize,
@@ -37,8 +35,8 @@ async fn accept_certificates() {
     let primary = fixture.authorities().last().unwrap();
     let network_key = primary.network_keypair().copy().private().0.to_bytes();
     let authority_id = primary.id();
-    let metrics = Arc::new(PrimaryMetrics::new(&Registry::new()));
-    let primary_channel_metrics = PrimaryChannelMetrics::new(&Registry::new());
+    let metrics = Arc::new(PrimaryMetrics::default());
+    let primary_channel_metrics = PrimaryChannelMetrics::default();
     let client = NetworkClient::new_from_keypair(&primary.network_keypair());
 
     let (tx_certificate_fetcher, _rx_certificate_fetcher) = tn_types::test_channel!(1);
@@ -120,8 +118,8 @@ async fn accept_suspended_certificates() {
         .committee_size(NonZeroUsize::new(NUM_AUTHORITIES).unwrap())
         .build();
     let worker_cache = fixture.worker_cache();
-    let metrics = Arc::new(PrimaryMetrics::new(&Registry::new()));
-    let primary_channel_metrics = PrimaryChannelMetrics::new(&Registry::new());
+    let metrics = Arc::new(PrimaryMetrics::default());
+    let primary_channel_metrics = PrimaryChannelMetrics::default();
 
     let primary = fixture.authorities().next().unwrap();
     let authority_id = primary.id();
@@ -216,8 +214,8 @@ async fn synchronizer_recover_basic() {
     let client = NetworkClient::new_from_keypair(&primary.network_keypair());
     let network_key = primary.network_keypair().copy().private().0.to_bytes();
     let name = primary.id();
-    let metrics = Arc::new(PrimaryMetrics::new(&Registry::new()));
-    let primary_channel_metrics = PrimaryChannelMetrics::new(&Registry::new());
+    let metrics = Arc::new(PrimaryMetrics::default());
+    let primary_channel_metrics = PrimaryChannelMetrics::default();
 
     let (tx_certificate_fetcher, _rx_certificate_fetcher) = tn_types::test_channel!(1);
     let (tx_new_certificates, _rx_new_certificates) = tn_types::test_channel!(3);
@@ -316,8 +314,8 @@ async fn synchronizer_recover_partial_certs() {
     let client = NetworkClient::new_from_keypair(&primary.network_keypair());
     let network_key = primary.network_keypair().copy().private().0.to_bytes();
     let name = primary.id();
-    let metrics = Arc::new(PrimaryMetrics::new(&Registry::new()));
-    let primary_channel_metrics = PrimaryChannelMetrics::new(&Registry::new());
+    let metrics = Arc::new(PrimaryMetrics::default());
+    let primary_channel_metrics = PrimaryChannelMetrics::default();
 
     let (tx_certificate_fetcher, _rx_certificate_fetcher) = tn_types::test_channel!(1);
     let (tx_new_certificates, _rx_new_certificates) = tn_types::test_channel!(3);
@@ -414,8 +412,8 @@ async fn synchronizer_recover_previous_round() {
     let client = NetworkClient::new_from_keypair(&primary.network_keypair());
     let network_key = primary.network_keypair().copy().private().0.to_bytes();
     let name = primary.id();
-    let metrics = Arc::new(PrimaryMetrics::new(&Registry::new()));
-    let primary_channel_metrics = PrimaryChannelMetrics::new(&Registry::new());
+    let metrics = Arc::new(PrimaryMetrics::default());
+    let primary_channel_metrics = PrimaryChannelMetrics::default();
 
     let (tx_certificate_fetcher, _rx_certificate_fetcher) = tn_types::test_channel!(1);
     let (tx_new_certificates, _rx_new_certificates) = tn_types::test_channel!(6);
@@ -510,8 +508,8 @@ async fn deliver_certificate_using_store() {
     let name = primary.id();
     let committee = fixture.committee();
     let worker_cache = fixture.worker_cache();
-    let metrics = Arc::new(PrimaryMetrics::new(&Registry::new()));
-    let primary_channel_metrics = PrimaryChannelMetrics::new(&Registry::new());
+    let metrics = Arc::new(PrimaryMetrics::default());
+    let primary_channel_metrics = PrimaryChannelMetrics::default();
 
     let (certificates_store, payload_store) = create_db_stores();
     let (tx_certificate_fetcher, _rx_certificate_fetcher) = tn_types::test_channel!(1);
@@ -567,8 +565,8 @@ async fn deliver_certificate_not_found_parents() {
     let name = primary.id();
     let committee = fixture.committee();
     let worker_cache = fixture.worker_cache();
-    let metrics = Arc::new(PrimaryMetrics::new(&Registry::new()));
-    let primary_channel_metrics = PrimaryChannelMetrics::new(&Registry::new());
+    let metrics = Arc::new(PrimaryMetrics::default());
+    let primary_channel_metrics = PrimaryChannelMetrics::default();
 
     let (certificates_store, payload_store) = create_db_stores();
     let (tx_certificate_fetcher, mut rx_certificate_fetcher) = tn_types::test_channel!(1);
@@ -633,8 +631,8 @@ async fn sanitize_fetched_certificates() {
     let name = primary.id();
     let committee = fixture.committee();
     let worker_cache = fixture.worker_cache();
-    let metrics = Arc::new(PrimaryMetrics::new(&Registry::new()));
-    let primary_channel_metrics = PrimaryChannelMetrics::new(&Registry::new());
+    let metrics = Arc::new(PrimaryMetrics::default());
+    let primary_channel_metrics = PrimaryChannelMetrics::default();
 
     let (certificates_store, payload_store) = create_db_stores();
     let (tx_certificate_fetcher, _rx_certificate_fetcher) = tn_types::test_channel!(1);
@@ -741,7 +739,7 @@ async fn sync_batches_drops_old() {
         .committee_size(NonZeroUsize::new(4).unwrap())
         .build();
     let worker_cache = fixture.worker_cache();
-    let metrics = Arc::new(PrimaryMetrics::new(&Registry::new()));
+    let metrics = Arc::new(PrimaryMetrics::default());
     let primary = fixture.authorities().next().unwrap();
     let author = fixture.authorities().nth(2).unwrap();
     let client = NetworkClient::new_from_keypair(&primary.network_keypair());
@@ -752,7 +750,7 @@ async fn sync_batches_drops_old() {
     let (tx_parents, _rx_parents) = tn_types::test_channel!(100);
     let (tx_consensus_round_updates, rx_consensus_round_updates) =
         watch::channel(ConsensusRound::new(1, 0));
-    let primary_channel_metrics = PrimaryChannelMetrics::new(&Registry::new());
+    let primary_channel_metrics = PrimaryChannelMetrics::default();
 
     let synchronizer = Arc::new(Synchronizer::new(
         primary.id(),
@@ -820,7 +818,7 @@ async fn gc_suspended_certificates() {
         .committee_size(NonZeroUsize::new(NUM_AUTHORITIES).unwrap())
         .build();
     let worker_cache = fixture.worker_cache();
-    let metrics = Arc::new(PrimaryMetrics::new(&Registry::new()));
+    let metrics = Arc::new(PrimaryMetrics::default());
     let primary = fixture.authorities().next().unwrap();
     let client = NetworkClient::new_from_keypair(&primary.network_keypair());
 
@@ -830,7 +828,7 @@ async fn gc_suspended_certificates() {
     let (tx_parents, _rx_parents) = tn_types::test_channel!(100);
     let (tx_consensus_round_updates, rx_consensus_round_updates) =
         watch::channel(ConsensusRound::new(1, 0));
-    let primary_channel_metrics = PrimaryChannelMetrics::new(&Registry::new());
+    let primary_channel_metrics = PrimaryChannelMetrics::default();
 
     let synchronizer = Arc::new(Synchronizer::new(
         primary.id(),

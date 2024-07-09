@@ -5475,7 +5475,6 @@ version = "0.1.0"
 dependencies = [
  "anemo",
  "anemo-tower",
- "arc-swap",
  "async-trait",
  "backoff",
  "bcs",
@@ -5496,6 +5495,7 @@ dependencies = [
  "narwhal-executor",
  "narwhal-network",
  "narwhal-network-types",
+ "narwhal-primary-metrics",
  "narwhal-storage",
  "narwhal-test-utils",
  "narwhal-typed-store",
@@ -5519,6 +5519,16 @@ dependencies = [
  "tn-types",
  "tokio",
  "tower",
+ "tracing",
+]
+
+[[package]]
+name = "narwhal-primary-metrics"
+version = "0.1.0"
+dependencies = [
+ "consensus-metrics",
+ "narwhal-network",
+ "prometheus",
  "tracing",
 ]
 
@@ -5558,6 +5568,7 @@ dependencies = [
  "narwhal-network",
  "narwhal-network-types",
  "narwhal-primary",
+ "narwhal-primary-metrics",
  "narwhal-storage",
  "narwhal-typed-store",
  "narwhal-worker",
@@ -5650,6 +5661,7 @@ dependencies = [
  "narwhal-network",
  "narwhal-network-types",
  "narwhal-primary",
+ "narwhal-primary-metrics",
  "narwhal-storage",
  "narwhal-test-utils",
  "narwhal-typed-store",
@@ -10739,7 +10751,6 @@ name = "tn-node"
 version = "0.1.0"
 dependencies = [
  "anemo",
- "arc-swap",
  "assert_matches",
  "async-trait",
  "axum",
@@ -10757,6 +10768,7 @@ dependencies = [
  "narwhal-network",
  "narwhal-network-types",
  "narwhal-primary",
+ "narwhal-primary-metrics",
  "narwhal-storage",
  "narwhal-test-utils",
  "narwhal-worker",

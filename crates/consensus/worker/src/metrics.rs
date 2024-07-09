@@ -1,6 +1,7 @@
 // Copyright (c) Telcoin, LLC
 // Copyright (c) Mysten Labs, Inc.
 // SPDX-License-Identifier: Apache-2.0
+
 use narwhal_network::metrics::{NetworkConnectionMetrics, NetworkMetrics};
 use prometheus::{
     default_registry, register_histogram_vec_with_registry, register_histogram_with_registry,
@@ -8,7 +9,7 @@ use prometheus::{
     register_int_gauge_with_registry, Histogram, HistogramVec, IntCounter, IntCounterVec, IntGauge,
     Registry,
 };
-use std::time::Duration;
+use std::{sync::Arc, time::Duration};
 use tn_types::MetricsCallbackProvider;
 use tonic::Code;
 
@@ -20,31 +21,34 @@ const LATENCY_SEC_BUCKETS: &[f64] = &[
 
 #[derive(Clone)]
 pub struct Metrics {
-    pub worker_metrics: WorkerMetrics,
-    pub channel_metrics: WorkerChannelMetrics,
-    pub endpoint_metrics: WorkerEndpointMetrics,
-    pub inbound_network_metrics: NetworkMetrics,
-    pub outbound_network_metrics: NetworkMetrics,
-    pub network_connection_metrics: NetworkConnectionMetrics,
+    pub worker_metrics: Arc<WorkerMetrics>,
+    pub channel_metrics: Arc<WorkerChannelMetrics>,
+    pub endpoint_metrics: Arc<WorkerEndpointMetrics>,
+    pub inbound_network_metrics: Arc<NetworkMetrics>,
+    pub outbound_network_metrics: Arc<NetworkMetrics>,
+    pub network_connection_metrics: Arc<NetworkConnectionMetrics>,
 }
 
 impl Metrics {
     fn try_new(registry: &Registry) -> Result<Self, prometheus::Error> {
         // Essential/core metrics across the worker node
-        let worker_metrics = WorkerMetrics::try_new(registry)?;
+        let worker_metrics = Arc::new(WorkerMetrics::try_new(registry)?);
 
         // Channel metrics
-        let channel_metrics = WorkerChannelMetrics::try_new(registry)?;
+        let channel_metrics = Arc::new(WorkerChannelMetrics::try_new(registry)?);
 
         // Endpoint metrics
-        let endpoint_metrics = WorkerEndpointMetrics::try_new(registry)?;
+        let endpoint_metrics = Arc::new(WorkerEndpointMetrics::try_new(registry)?);
 
         // The metrics used for communicating over the network
-        let inbound_network_metrics = NetworkMetrics::try_new("worker", "inbound", registry)?;
-        let outbound_network_metrics = NetworkMetrics::try_new("worker", "outbound", registry)?;
+        let inbound_network_metrics =
+            Arc::new(NetworkMetrics::try_new("worker", "inbound", registry)?);
+        let outbound_network_metrics =
+            Arc::new(NetworkMetrics::try_new("worker", "outbound", registry)?);
 
         // Network metrics for the worker connection
-        let network_connection_metrics = NetworkConnectionMetrics::try_new("worker", registry)?;
+        let network_connection_metrics =
+            Arc::new(NetworkConnectionMetrics::try_new("worker", registry)?);
 
         Ok(Metrics {
             worker_metrics,
@@ -55,17 +59,24 @@ impl Metrics {
             network_connection_metrics,
         })
     }
+
     pub fn new_with_registry(registry: &Registry) -> Self {
         Self::try_new(registry).expect("Prometheus error, are you using it wrong?")
     }
+}
 
-    pub fn new() -> Self {
+impl Default for Metrics {
+    fn default() -> Self {
+        // try_new() should not fail except under certain conditions with testing (see comment
+        // below). This pushes the panic or retry decision lower and supporting try_new
+        // allways a user to deal with errors if desired (have a non-panic option).
+        // We always want do use default_registry() when not in test.
         match Self::try_new(default_registry()) {
             Ok(metrics) => metrics,
             Err(_) => {
                 // If we are in a test then don't panic on prometheus errors (usually an already
                 // registered error) but try again with a new Registry. This is not
-                // great for prod code, however should not happen, but will happen in tests do to
+                // great for prod code, however should not happen, but will happen in tests due to
                 // how Rust runs them so lets just gloss over it. cfg(test) does not
                 // always work as expected.
                 Self::try_new(&Registry::new()).expect("Prometheus error, are you using it wrong?")
@@ -73,6 +84,7 @@ impl Metrics {
         }
     }
 }
+
 #[derive(Clone)]
 pub struct WorkerMetrics {
     /// Number of created batches from the batch_maker
@@ -161,28 +173,26 @@ impl WorkerMetrics {
             )?,
         })
     }
-    pub fn new_with_registry(registry: &Registry) -> Self {
-        Self::try_new(registry).expect("Prometheus error, are you using it wrong?")
-    }
+}
 
-    pub fn new() -> Self {
+impl Default for WorkerMetrics {
+    fn default() -> Self {
+        // try_new() should not fail except under certain conditions with testing (see comment
+        // below). This pushes the panic or retry decision lower and supporting try_new
+        // allways a user to deal with errors if desired (have a non-panic option).
+        // We always want do use default_registry() when not in test.
         match Self::try_new(default_registry()) {
             Ok(metrics) => metrics,
-            Err(_) => {
+            Err(e) => {
+                tracing::warn!(target: "tn::metrics", ?e, "Executor::try_new metrics error");
                 // If we are in a test then don't panic on prometheus errors (usually an already
                 // registered error) but try again with a new Registry. This is not
-                // great for prod code, however should not happen, but will happen in tests do to
+                // great for prod code, however should not happen, but will happen in tests due to
                 // how Rust runs them so lets just gloss over it. cfg(test) does not
                 // always work as expected.
                 Self::try_new(&Registry::new()).expect("Prometheus error, are you using it wrong?")
             }
         }
-    }
-}
-
-impl Default for WorkerMetrics {
-    fn default() -> Self {
-        Self::new()
     }
 }
 
@@ -253,20 +263,6 @@ impl WorkerEndpointMetrics {
             )?,
         })
     }
-
-    pub fn new() -> Self {
-        match Self::try_new(default_registry()) {
-            Ok(metrics) => metrics,
-            Err(_) => {
-                // If we are in a test then don't panic on prometheus errors (usually an already
-                // registered error) but try again with a new Registry. This is not
-                // great for prod code, however should not happen, but will happen in tests do to
-                // how Rust runs them so lets just gloss over it. cfg(test) does not
-                // always work as expected.
-                Self::try_new(&Registry::new()).expect("Prometheus error, are you using it wrong?")
-            }
-        }
-    }
 }
 
 impl MetricsCallbackProvider for WorkerEndpointMetrics {
@@ -282,11 +278,5 @@ impl MetricsCallbackProvider for WorkerEndpointMetrics {
 
         let req_latency_secs = latency.as_secs_f64();
         self.req_latency_by_route.with_label_values(&labels).observe(req_latency_secs);
-    }
-}
-
-impl Default for WorkerEndpointMetrics {
-    fn default() -> Self {
-        Self::new()
     }
 }

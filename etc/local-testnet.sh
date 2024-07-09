@@ -76,6 +76,8 @@ for ((i=0; i<$LENGTH; i++)); do
     VALIDATOR="${VALIDATORS[$i]}"
     DATADIR="${ROOTDIR}/${VALIDATOR}"
     INSTANCE=$((i+1))
+    METRICS="127.0.0.1:909$i"
+    CONSENSUS_METRICS="127.0.0.1:910$i"
 
     # copy files
     cp "${COMMITTEE_PATH}" "${DATADIR}/genesis"
@@ -83,6 +85,11 @@ for ((i=0; i<$LENGTH; i++)); do
 
     if [ "$START" = true ]; then
         # start validator
-        target/${RELEASE}/telcoin-network node --datadir "${DATADIR}" --chain adiri --instance "${INSTANCE}" --http > "${ROOTDIR}/${VALIDATOR}.log" &
+        target/${RELEASE}/telcoin-network node --datadir "${DATADIR}" \
+           --chain adiri \
+           --instance "${INSTANCE}" \
+           --metrics "${METRICS}" \
+           --consensus-metrics "${CONSENSUS_METRICS}" \
+           --http > "${ROOTDIR}/${VALIDATOR}.log" &
     fi
 done

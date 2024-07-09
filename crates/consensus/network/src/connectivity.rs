@@ -22,7 +22,7 @@ pub enum ConnectionStatus {
 
 pub struct ConnectionMonitor {
     network: anemo::NetworkRef,
-    connection_metrics: NetworkConnectionMetrics,
+    connection_metrics: Arc<NetworkConnectionMetrics>,
     peer_id_types: HashMap<PeerId, String>,
     connection_statuses: Arc<DashMap<PeerId, ConnectionStatus>>,
     rx_shutdown: Option<ConditionalBroadcastReceiver>,
@@ -32,7 +32,7 @@ impl ConnectionMonitor {
     #[must_use]
     pub fn spawn(
         network: anemo::NetworkRef,
-        connection_metrics: NetworkConnectionMetrics,
+        connection_metrics: Arc<NetworkConnectionMetrics>,
         peer_id_types: HashMap<PeerId, String>,
         rx_shutdown: Option<ConditionalBroadcastReceiver>,
     ) -> (JoinHandle<()>, Arc<DashMap<PeerId, ConnectionStatus>>) {
@@ -254,8 +254,7 @@ mod tests {
     };
     use anemo::{Network, Request, Response};
     use bytes::Bytes;
-    use prometheus::Registry;
-    use std::{collections::HashMap, convert::Infallible, time::Duration};
+    use std::{collections::HashMap, convert::Infallible, sync::Arc, time::Duration};
     use tokio::time::{sleep, timeout};
     use tower::util::BoxCloneService;
 
@@ -266,11 +265,16 @@ mod tests {
         let network_2 = build_network().unwrap();
         let network_3 = build_network().unwrap();
 
-        let registry = Registry::new();
-        let metrics = NetworkConnectionMetrics::new("primary", &registry);
+        let metrics = Arc::new(NetworkConnectionMetrics::new("primary"));
 
         // AND we connect to peer 2
         let peer_2 = network_1.connect(network_2.local_addr()).await.unwrap();
+
+        let mut labels = HashMap::new();
+        let peer_2_str = format!("{peer_2}");
+        labels.insert("peer_id", peer_2_str.as_str());
+        // Sanity check this metric is 0 since we use it for the test.
+        assert_eq!(metrics.network_peer_sent_packets.get_metric_with(&labels).unwrap().get(), 0);
 
         let mut peer_types = HashMap::new();
         peer_types.insert(network_2.peer_id(), "other_network".to_string());
@@ -281,38 +285,35 @@ mod tests {
             ConnectionMonitor::spawn(network_1.downgrade(), metrics.clone(), peer_types, None);
 
         // THEN peer 2 should be already connected
-        assert_network_peers(metrics.clone(), 1).await;
+        assert_network_peers(&metrics, 1).await;
 
         // AND we should have collected connection stats
-        let mut labels = HashMap::new();
-        let peer_2_str = format!("{peer_2}");
-        labels.insert("peer_id", peer_2_str.as_str());
-        assert_ne!(metrics.network_peer_rtt.get_metric_with(&labels).unwrap().get(), 0);
+        assert_ne!(metrics.network_peer_sent_packets.get_metric_with(&labels).unwrap().get(), 0);
         assert_eq!(*statuses.get(&peer_2).unwrap().value(), ConnectionStatus::Connected);
 
         // WHEN connect to peer 3
         let peer_3 = network_1.connect(network_3.local_addr()).await.unwrap();
 
         // THEN
-        assert_network_peers(metrics.clone(), 2).await;
+        assert_network_peers(&metrics, 2).await;
         assert_eq!(*statuses.get(&peer_3).unwrap().value(), ConnectionStatus::Connected);
 
         // AND disconnect peer 2
         network_1.disconnect(peer_2).unwrap();
 
         // THEN
-        assert_network_peers(metrics.clone(), 1).await;
+        assert_network_peers(&metrics, 1).await;
         assert_eq!(*statuses.get(&peer_2).unwrap().value(), ConnectionStatus::Disconnected);
 
         // AND disconnect peer 3
         network_1.disconnect(peer_3).unwrap();
 
         // THEN
-        assert_network_peers(metrics.clone(), 0).await;
+        assert_network_peers(&metrics, 0).await;
         assert_eq!(*statuses.get(&peer_3).unwrap().value(), ConnectionStatus::Disconnected);
     }
 
-    async fn assert_network_peers(metrics: NetworkConnectionMetrics, value: i64) {
+    async fn assert_network_peers(metrics: &NetworkConnectionMetrics, value: i64) {
         let m = metrics.clone();
         timeout(Duration::from_secs(5), async move {
             while m.network_peers.get() != value {

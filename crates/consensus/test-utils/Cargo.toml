@@ -32,6 +32,7 @@ tn-faucet = { workspace = true }
 narwhal-worker = { workspace = true }
 narwhal-storage = { workspace = true }
 consensus-metrics = { workspace = true }
+narwhal-primary-metrics = { workspace = true }
 narwhal-typed-store = { workspace = true }
 reth-tracing = { workspace = true }
 reth-chainspec = { workspace = true }

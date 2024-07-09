@@ -1,9 +1,10 @@
 // Copyright (c) Telcoin, LLC
 // Copyright (c) Mysten Labs, Inc.
 // SPDX-License-Identifier: Apache-2.0
+
 use anemo_tower::callback::{MakeCallbackHandler, ResponseHandler};
 use prometheus::{
-    register_histogram_vec_with_registry, register_int_counter_vec_with_registry,
+    default_registry, register_histogram_vec_with_registry, register_int_counter_vec_with_registry,
     register_int_gauge_vec_with_registry, register_int_gauge_with_registry, HistogramTimer,
     HistogramVec, IntCounterVec, IntGauge, IntGaugeVec, Registry,
 };
@@ -164,8 +165,21 @@ impl NetworkConnectionMetrics {
             )?,
         })
     }
-    pub fn new(node: &'static str, registry: &Registry) -> Self {
-        Self::try_new(node, registry).expect("Prometheus error, are you using it wrong?")
+
+    pub fn new(node: &'static str) -> Self {
+        match Self::try_new(node, default_registry()) {
+            Ok(metrics) => metrics,
+            Err(e) => {
+                tracing::warn!(target: "tn::metrics", ?e, "Executor::try_new metrics error");
+                // If we are in a test then don't panic on prometheus errors (usually an already
+                // registered error) but try again with a new Registry. This is not
+                // great for prod code, however should not happen, but will happen in tests do to
+                // how Rust runs them so lets just gloss over it. cfg(test) does not
+                // always work as expected.
+                Self::try_new(node, &Registry::new())
+                    .expect("Prometheus error, are you using it wrong?")
+            }
+        }
     }
 }
 
@@ -277,9 +291,6 @@ impl NetworkMetrics {
             inflight_requests,
             errors,
         })
-    }
-    pub fn new(node: &'static str, direction: &'static str, registry: &Registry) -> Self {
-        Self::try_new(node, direction, registry).expect("Prometheus error, are you using it wrong?")
     }
 }
 

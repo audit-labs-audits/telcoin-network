@@ -3,8 +3,8 @@
 // Copyright (c) Mysten Labs, Inc.
 // SPDX-License-Identifier: Apache-2.0
 use crate::consensus::{
-    metrics::ConsensusMetrics, utils, ConsensusError, ConsensusState, Dag, LeaderSchedule,
-    LeaderSwapTable, Outcome,
+    utils, ConsensusError, ConsensusMetrics, ConsensusState, Dag, LeaderSchedule, LeaderSwapTable,
+    Outcome,
 };
 use fastcrypto::hash::Hash;
 use narwhal_storage::ConsensusStore;

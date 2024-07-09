@@ -3,6 +3,7 @@
 //! Starts the client
 use crate::{args::clap_genesis_parser, version::SHORT_VERSION};
 use clap::{value_parser, Parser};
+use consensus_metrics::start_prometheus_server;
 use core::fmt;
 use fdlimit::raise_fd_limit;
 use futures::Future;
@@ -49,11 +50,17 @@ pub struct NodeCommand<Ext: clap::Args + fmt::Debug = NoArgs> {
     )]
     pub chain: Arc<ChainSpec>,
 
-    /// Enable Prometheus metrics.
+    /// Enable Prometheus execution metrics.
     ///
     /// The metrics will be served at the given interface and port.
-    #[arg(long, value_name = "SOCKET", value_parser = parse_socket_address, help_heading = "Metrics")]
+    #[arg(long, value_name = "SOCKET", value_parser = parse_socket_address, help_heading = "Execution Metrics")]
     pub metrics: Option<SocketAddr>,
+
+    /// Enable Prometheus consensus metrics.
+    ///
+    /// The metrics will be served at the given interface and port.
+    #[arg(long, value_name = "SOCKET", value_parser = parse_socket_address, help_heading = "Consensus Metrics")]
+    pub consensus_metrics: Option<SocketAddr>,
 
     /// Add a new instance of a node.
     ///
@@ -226,6 +233,10 @@ impl<Ext: clap::Args + fmt::Debug> NodeCommand<Ext> {
             tn_config,
             opt_faucet_args: None,
         };
+
+        if let Some(metrics_socket) = self.consensus_metrics {
+            start_prometheus_server(metrics_socket);
+        }
 
         launcher(builder, ext, tn_datadir).await
     }

@@ -40,7 +40,7 @@ pub fn process_certificates(c: &mut Criterion) {
 
         let store_path = temp_dir();
         let store = NodeStorage::reopen(&store_path, None);
-        let metrics = Arc::new(ConsensusMetrics::new(&Registry::new()));
+        let metrics = Arc::new(ConsensusMetrics::default());
 
         let mut state = ConsensusState::new(metrics.clone(), gc_depth);
 

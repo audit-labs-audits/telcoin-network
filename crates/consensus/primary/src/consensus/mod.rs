@@ -7,7 +7,6 @@ mod bullshark;
 #[path = "tests/consensus_utils.rs"]
 mod consensus_utils;
 mod leader_schedule;
-mod metrics;
 mod state;
 mod utils;
 
@@ -18,10 +17,11 @@ pub use crate::consensus::consensus_utils::{
 pub use crate::consensus::{
     bullshark::Bullshark,
     leader_schedule::{LeaderSchedule, LeaderSwapTable},
-    metrics::{ChannelMetrics, ConsensusMetrics},
     state::{Consensus, ConsensusRound, ConsensusState, Dag},
     utils::gc_round,
 };
+
+pub use narwhal_primary_metrics::consensus::{ChannelMetrics, ConsensusMetrics};
 
 use narwhal_typed_store::StoreError;
 use thiserror::Error;

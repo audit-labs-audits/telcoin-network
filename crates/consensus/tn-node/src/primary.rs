@@ -3,11 +3,9 @@
 // SPDX-License-Identifier: Apache-2.0
 
 //! Hierarchical type to hold tasks spawned for a worker in the network.
-use crate::{
-    engine::ExecutionNode, error::NodeError, metrics::new_registry, try_join_all, FuturesUnordered,
-};
+use crate::{engine::ExecutionNode, error::NodeError, try_join_all, FuturesUnordered};
 use anemo::PeerId;
-use consensus_metrics::{metered_channel, RegistryID, RegistryService};
+use consensus_metrics::metered_channel;
 use fastcrypto::traits::{KeyPair as _, VerifyingKey};
 use narwhal_executor::{
     get_restored_consensus_output, Executor, ExecutorMetrics, SubscriberResult,
@@ -17,10 +15,10 @@ use narwhal_primary::{
     consensus::{
         Bullshark, ChannelMetrics, Consensus, ConsensusMetrics, ConsensusRound, LeaderSchedule,
     },
-    Primary, PrimaryChannelMetrics, CHANNEL_CAPACITY, NUM_SHUTDOWN_RECEIVERS,
+    Primary, CHANNEL_CAPACITY, NUM_SHUTDOWN_RECEIVERS,
 };
+use narwhal_primary_metrics::Metrics;
 use narwhal_storage::NodeStorage;
-use prometheus::{IntGauge, Registry};
 use reth_db::{
     database::Database,
     database_metrics::{DatabaseMetadata, DatabaseMetrics},
@@ -41,10 +39,6 @@ use tracing::{info, instrument};
 struct PrimaryNodeInner {
     /// The configuration parameters.
     parameters: Parameters,
-    /// A prometheus RegistryService to use for the metrics
-    registry_service: RegistryService,
-    /// The latest registry id & registry used for the node
-    registry: Option<(RegistryID, Registry)>,
     /// The task handles created from primary
     handles: FuturesUnordered<JoinHandle<()>>,
     /// Keeping NetworkClient here for quicker shutdown.
@@ -57,6 +51,10 @@ struct PrimaryNodeInner {
     ///
     /// NOTE: this broadcasts to all subscribers, but lagging receivers will lose messages
     consensus_output_notification_sender: broadcast::Sender<ConsensusOutput>,
+    /// Hold onto the consensus_metrics (mostly for testing)
+    consensus_metrics: Arc<ConsensusMetrics>,
+    /// Hold onto the primary metrics (allow early creation)
+    primary_metrics: Arc<Metrics>,
 }
 
 impl PrimaryNodeInner {
@@ -101,13 +99,10 @@ impl PrimaryNodeInner {
 
         self.own_peer_id = Some(PeerId(network_keypair.public().0.to_bytes()));
 
-        // create a new registry
-        let registry = new_registry()?;
-
         // create the channel to send the shutdown signal
         let mut tx_shutdown = PreSubscribedBroadcastSender::new(NUM_SHUTDOWN_RECEIVERS);
 
-        let executor_metrics = ExecutorMetrics::new(&registry);
+        let executor_metrics = ExecutorMetrics::default();
 
         // used to retrieve the last executed certificate in case of restarts
         let last_executed_sub_dag_index =
@@ -120,28 +115,24 @@ impl PrimaryNodeInner {
         let consensus_output_rx = self.subscribe_consensus_output();
 
         // spawn primary if not already running
-        let primary_handles = Self::spawn_primary(
-            keypair,
-            network_keypair,
-            committee,
-            worker_cache,
-            client,
-            store,
-            chain,
-            self.parameters.clone(),
-            &registry,
-            &mut tx_shutdown,
-            executor_metrics,
-            consensus_output_notification_sender,
-            last_executed_sub_dag_index,
-        )
-        .await?;
+        let primary_handles = self
+            .spawn_primary(
+                keypair,
+                network_keypair,
+                committee,
+                worker_cache,
+                client,
+                store,
+                chain,
+                &mut tx_shutdown,
+                executor_metrics,
+                consensus_output_notification_sender,
+                last_executed_sub_dag_index,
+            )
+            .await?;
 
         // start engine
         execution_components.start_engine(consensus_output_rx).await?;
-
-        // store the registry
-        self.swap_registry(Some(registry));
 
         // now keep the handlers
         self.handles.clear();
@@ -175,8 +166,6 @@ impl PrimaryNodeInner {
         // Now wait until handles have been completed
         try_join_all(&mut self.handles).await.unwrap();
 
-        self.swap_registry(None);
-
         info!(
             "Narwhal primary shutdown is complete - took {} seconds",
             now.elapsed().as_secs_f64()
@@ -194,26 +183,11 @@ impl PrimaryNodeInner {
         self.handles.iter().any(|h| !h.is_finished())
     }
 
-    /// Accepts an Option registry. If it's Some, then the new registry will be added in the
-    /// registry service and the registry_id will be updated. Also, any previous registry will
-    /// be removed. If None is passed, then the registry_id is updated to None and any old
-    /// registry is removed from the RegistryService.
-    fn swap_registry(&mut self, registry: Option<Registry>) {
-        if let Some((registry_id, _registry)) = self.registry.as_ref() {
-            self.registry_service.remove(*registry_id);
-        }
-
-        if let Some(registry) = registry {
-            self.registry = Some((self.registry_service.add(registry.clone()), registry));
-        } else {
-            self.registry = None
-        }
-    }
-
     /// Spawn a new primary. Optionally also spawn the consensus and a client executing
     /// transactions.
     #[allow(clippy::too_many_arguments)]
     pub async fn spawn_primary(
+        &self,
         // The private-public key pair of this authority.
         keypair: BlsKeypair,
         // The private-public network key pair of this authority.
@@ -227,12 +201,8 @@ impl PrimaryNodeInner {
         // The node's storage.
         store: &NodeStorage,
         chain: ChainIdentifier,
-        // The configuration parameters.
-        parameters: Parameters,
         // // The state used by the client to execute transactions.
         // execution_state: State,
-        // A prometheus exporter Registry to use for the metrics
-        registry: &Registry,
         // The channel to send the shutdown signal
         tx_shutdown: &mut PreSubscribedBroadcastSender,
         // The metrics for executor
@@ -246,25 +216,14 @@ impl PrimaryNodeInner {
 where
         // State: ExecutionState + Send + Sync + 'static,
     {
-        // These gauge is porcelain: do not modify it without also modifying
-        // `primary::metrics::PrimaryChannelMetrics::replace_registered_new_certificates_metric`
-        // This hack avoids a cyclic dependency in the initialization of consensus and primary
-        let new_certificates_counter = IntGauge::new(
-            PrimaryChannelMetrics::NAME_NEW_CERTS,
-            PrimaryChannelMetrics::DESC_NEW_CERTS,
-        )
-        .unwrap();
-        let (tx_new_certificates, rx_new_certificates) =
-            metered_channel::channel(narwhal_primary::CHANNEL_CAPACITY, &new_certificates_counter);
+        let (tx_new_certificates, rx_new_certificates) = metered_channel::channel(
+            narwhal_primary::CHANNEL_CAPACITY,
+            &self.primary_metrics.primary_channel_metrics.tx_new_certificates,
+        );
 
-        let committed_certificates_counter = IntGauge::new(
-            PrimaryChannelMetrics::NAME_COMMITTED_CERTS,
-            PrimaryChannelMetrics::DESC_COMMITTED_CERTS,
-        )
-        .unwrap();
         let (tx_committed_certificates, rx_committed_certificates) = metered_channel::channel(
             narwhal_primary::CHANNEL_CAPACITY,
-            &committed_certificates_counter,
+            &self.primary_metrics.primary_channel_metrics.tx_committed_certificates,
         );
 
         // Compute the public key of this authority.
@@ -279,24 +238,23 @@ where
         let (tx_consensus_round_updates, rx_consensus_round_updates) =
             watch::channel(ConsensusRound::new(0, 0));
 
-        let (consensus_handles, leader_schedule) = Self::spawn_consensus(
-            authority.id(),
-            worker_cache.clone(),
-            committee.clone(),
-            client.clone(),
-            store,
-            parameters.clone(),
-            tx_shutdown.subscribe_n(3),
-            rx_new_certificates,
-            tx_committed_certificates.clone(),
-            tx_consensus_round_updates,
-            registry,
-            executor_metrics,
-            consensus_output_notification_sender,
-            // in loo of sui's execution_state:
-            last_executed_sub_dag_index,
-        )
-        .await?;
+        let (consensus_handles, leader_schedule) = self
+            .spawn_consensus(
+                authority.id(),
+                worker_cache.clone(),
+                committee.clone(),
+                client.clone(),
+                store,
+                tx_shutdown.subscribe_n(3),
+                rx_new_certificates,
+                tx_committed_certificates.clone(),
+                tx_consensus_round_updates,
+                executor_metrics,
+                consensus_output_notification_sender,
+                // in loo of sui's execution_state:
+                last_executed_sub_dag_index,
+            )
+            .await?;
         handles.extend(consensus_handles);
 
         // TODO: the same set of variables are sent to primary, consensus and downstream
@@ -310,7 +268,7 @@ where
             committee.clone(),
             worker_cache.clone(),
             chain,
-            parameters.clone(),
+            self.parameters.clone(),
             client,
             store.certificate_store.clone(),
             store.proposer_store.clone(),
@@ -320,9 +278,8 @@ where
             rx_committed_certificates,
             rx_consensus_round_updates,
             tx_shutdown,
-            tx_committed_certificates,
-            registry,
             leader_schedule,
+            &self.primary_metrics,
         );
         handles.extend(primary_handles);
 
@@ -337,18 +294,16 @@ where
     /// could be done a better way, but bigger priorities right now.
     #[allow(clippy::too_many_arguments)]
     async fn spawn_consensus(
+        &self,
         authority_id: AuthorityIdentifier,
         worker_cache: WorkerCache,
         committee: Committee,
         client: NetworkClient,
         store: &NodeStorage,
-        parameters: Parameters,
-        // execution_state: State,
         mut shutdown_receivers: Vec<ConditionalBroadcastReceiver>,
         rx_new_certificates: metered_channel::Receiver<Certificate>,
         tx_committed_certificates: metered_channel::Sender<(Round, Vec<Certificate>)>,
         tx_consensus_round_updates: watch::Sender<ConsensusRound>,
-        registry: &Registry,
         executor_metrics: ExecutorMetrics,
         consensus_output_notification_sender: broadcast::Sender<ConsensusOutput>,
         last_executed_sub_dag_index: u64,
@@ -357,8 +312,7 @@ where
         BlsPublicKey: VerifyingKey,
         // State: ExecutionState + Send + Sync + 'static,
     {
-        let consensus_metrics = Arc::new(ConsensusMetrics::new(registry));
-        let channel_metrics = ChannelMetrics::new(registry);
+        let channel_metrics = ChannelMetrics::default();
 
         let (tx_sequence, rx_sequence) = metered_channel::channel(
             narwhal_primary::CHANNEL_CAPACITY,
@@ -399,7 +353,7 @@ where
                 "Consensus output on its way to the executor was restored for {num_sub_dags} sub-dags",
             );
         }
-        consensus_metrics.recovered_consensus_output.inc_by(num_sub_dags);
+        self.consensus_metrics.recovered_consensus_output.inc_by(num_sub_dags);
 
         let leader_schedule = LeaderSchedule::from_store(
             committee.clone(),
@@ -411,14 +365,14 @@ where
         let ordering_engine = Bullshark::new(
             committee.clone(),
             store.consensus_store.clone(),
-            consensus_metrics.clone(),
+            self.consensus_metrics.clone(),
             Self::CONSENSUS_SCHEDULE_CHANGE_SUB_DAGS,
             leader_schedule.clone(),
             DEFAULT_BAD_NODES_STAKE_THRESHOLD,
         );
         let consensus_handle = Consensus::spawn(
             committee.clone(),
-            parameters.gc_depth,
+            self.parameters.gc_depth,
             store.consensus_store.clone(),
             store.certificate_store.clone(),
             shutdown_receivers.pop().unwrap(),
@@ -427,7 +381,7 @@ where
             tx_consensus_round_updates,
             tx_sequence,
             ordering_engine,
-            consensus_metrics.clone(),
+            self.consensus_metrics.clone(),
         );
 
         // Spawn the client executing the transactions. It can also synchronize with the
@@ -463,21 +417,23 @@ pub struct PrimaryNode {
 }
 
 impl PrimaryNode {
-    pub fn new(parameters: Parameters, registry_service: RegistryService) -> PrimaryNode {
+    pub fn new(parameters: Parameters) -> PrimaryNode {
         // TODO: what is an appropriate channel capacity? CHANNEL_CAPACITY currently set to 10k
         // which seems really high but is consistent for now
         let (consensus_output_notification_sender, _receiver) =
             tokio::sync::broadcast::channel(CHANNEL_CAPACITY);
 
+        let consensus_metrics = Arc::new(ConsensusMetrics::default());
+        let primary_metrics = Arc::new(Metrics::default()); // Initialize the metrics
         let inner = PrimaryNodeInner {
             parameters,
-            registry_service,
-            registry: None,
             handles: FuturesUnordered::new(),
             client: None,
             tx_shutdown: None,
             own_peer_id: None,
             consensus_output_notification_sender,
+            consensus_metrics,
+            primary_metrics,
         };
 
         Self { internal: Arc::new(RwLock::new(inner)) }
@@ -541,13 +497,18 @@ impl PrimaryNode {
         guard.wait().await
     }
 
-    pub async fn registry(&self) -> Option<(RegistryID, Registry)> {
-        let guard = self.internal.read().await;
-        guard.registry.clone()
-    }
-
     pub async fn subscribe_consensus_output(&self) -> broadcast::Receiver<ConsensusOutput> {
         let guard = self.internal.read().await;
         guard.consensus_output_notification_sender.subscribe()
+    }
+
+    /// Return the consensus metrics.
+    pub async fn consensus_metrics(&self) -> Arc<ConsensusMetrics> {
+        self.internal.read().await.consensus_metrics.clone()
+    }
+
+    /// Return the primary metrics.
+    pub async fn primary_metrics(&self) -> Arc<Metrics> {
+        self.internal.read().await.primary_metrics.clone()
     }
 }

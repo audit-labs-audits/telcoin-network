@@ -366,7 +366,7 @@ async fn get_network_peers_from_admin_server() {
 
     let (tx_new_certificates, _rx_new_certificates) =
         tn_types::test_new_certificates_channel!(CHANNEL_CAPACITY);
-    let (tx_feedback, rx_feedback) = tn_types::test_channel!(CHANNEL_CAPACITY);
+    let (_tx_feedback, rx_feedback) = tn_types::test_channel!(CHANNEL_CAPACITY);
     let (_tx_consensus_round_updates, rx_consensus_round_updates) =
         watch::channel(ConsensusRound::default());
     let mut tx_shutdown = PreSubscribedBroadcastSender::new(NUM_SHUTDOWN_RECEIVERS);
@@ -389,9 +389,8 @@ async fn get_network_peers_from_admin_server() {
         rx_feedback,
         rx_consensus_round_updates,
         &mut tx_shutdown,
-        tx_feedback,
-        &Registry::new(),
         LeaderSchedule::new(committee.clone(), LeaderSwapTable::default()),
+        &narwhal_primary_metrics::Metrics::default(),
     );
 
     // Wait for tasks to start
@@ -407,7 +406,7 @@ async fn get_network_peers_from_admin_server() {
     };
 
     // For EL batch maker
-    let channel_metrics: Arc<WorkerChannelMetrics> = Arc::new(metrics_1.clone().channel_metrics);
+    let channel_metrics: Arc<WorkerChannelMetrics> = metrics_1.channel_metrics.clone();
     let (_tx_batch_maker, rx_batch_maker) = channel_with_total(
         CHANNEL_CAPACITY,
         &channel_metrics.tx_batch_maker,
@@ -482,7 +481,7 @@ async fn get_network_peers_from_admin_server() {
 
     let (tx_new_certificates_2, _rx_new_certificates_2) =
         tn_types::test_new_certificates_channel!(CHANNEL_CAPACITY);
-    let (tx_feedback_2, rx_feedback_2) = tn_types::test_channel!(CHANNEL_CAPACITY);
+    let (_tx_feedback_2, rx_feedback_2) = tn_types::test_channel!(CHANNEL_CAPACITY);
     let (_tx_consensus_round_updates, rx_consensus_round_updates) =
         watch::channel(ConsensusRound::default());
 
@@ -506,9 +505,8 @@ async fn get_network_peers_from_admin_server() {
         rx_feedback_2,
         rx_consensus_round_updates,
         &mut tx_shutdown_2,
-        tx_feedback_2,
-        &Registry::new(),
         LeaderSchedule::new(committee.clone(), LeaderSwapTable::default()),
+        &narwhal_primary_metrics::Metrics::default(),
     );
 
     // Wait for tasks to start
@@ -525,7 +523,7 @@ async fn get_network_peers_from_admin_server() {
     let mut tx_shutdown_worker = PreSubscribedBroadcastSender::new(NUM_SHUTDOWN_RECEIVERS);
 
     // For EL batch maker
-    let channel_metrics: Arc<WorkerChannelMetrics> = Arc::new(metrics_2.clone().channel_metrics);
+    let channel_metrics: Arc<WorkerChannelMetrics> = metrics_2.channel_metrics.clone();
     let (_tx_batch_maker, rx_batch_maker) = channel_with_total(
         CHANNEL_CAPACITY,
         &channel_metrics.tx_batch_maker,

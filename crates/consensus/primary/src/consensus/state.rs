@@ -5,9 +5,7 @@
 
 #![allow(clippy::mutable_key_type)]
 
-use crate::consensus::{
-    bullshark::Bullshark, metrics::ConsensusMetrics, utils::gc_round, ConsensusError,
-};
+use crate::consensus::{bullshark::Bullshark, utils::gc_round, ConsensusError, ConsensusMetrics};
 use consensus_metrics::{metered_channel, spawn_logged_monitored_task};
 use fastcrypto::hash::Hash;
 use narwhal_storage::{CertificateStore, ConsensusStore};

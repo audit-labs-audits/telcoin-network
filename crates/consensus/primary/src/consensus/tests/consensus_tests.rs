@@ -6,7 +6,6 @@ use std::{collections::BTreeSet, sync::Arc};
 
 use fastcrypto::hash::Hash;
 use narwhal_storage::NodeStorage;
-use prometheus::Registry;
 
 use tn_types::{
     test_utils::{temp_dir, CommitteeFixture},
@@ -64,7 +63,7 @@ async fn test_consensus_recovery_with_bullshark() {
     let mut tx_shutdown = PreSubscribedBroadcastSender::new(NUM_SHUTDOWN_RECEIVERS);
 
     let gc_depth = 50;
-    let metrics = Arc::new(ConsensusMetrics::new(&Registry::new()));
+    let metrics = Arc::new(ConsensusMetrics::default());
     let leader_schedule = LeaderSchedule::from_store(
         committee.clone(),
         consensus_store.clone(),
