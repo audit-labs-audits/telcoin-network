@@ -1,11 +1,12 @@
 //! Error types for Telcoin Network Engine.
 
+use reth_blockchain_tree::error::InsertBlockError;
 use reth_errors::{ProviderError, RethError};
 use reth_revm::primitives::EVMError;
 use tn_types::BatchConversionError;
 
 /// Result alias for [`TNEngineError`].
-pub type EngineResult<T> = Result<T, TnEngineError>;
+pub(crate) type EngineResult<T> = Result<T, TnEngineError>;
 
 /// Core error variants when executing the output from consensus and extending the canonical block.
 #[derive(Debug, thiserror::Error)]
@@ -28,4 +29,7 @@ pub enum TnEngineError {
     /// The block body and senders lengths don't match.
     #[error("Failed to seal block with senders - lengths don't match")]
     SealBlockWithSenders,
+    /// The block could not be inserted into the tree.
+    #[error(transparent)]
+    InsertNextCanonicalBlock(#[from] InsertBlockError),
 }

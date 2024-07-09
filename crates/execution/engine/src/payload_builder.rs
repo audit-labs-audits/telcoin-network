@@ -3,7 +3,7 @@
 //! This approach heavily inspired by reth's `default_ethereum_payload_builder`.
 
 use fastcrypto::hash::Hash as _;
-use reth_blockchain_tree::BlockchainTreeEngine;
+use reth_blockchain_tree::{BlockValidationKind, BlockchainTreeEngine};
 use reth_chainspec::ChainSpec;
 use reth_evm::ConfigureEvm;
 use reth_execution_types::ExecutionOutcome;
@@ -13,7 +13,7 @@ use reth_primitives::{
     constants::{eip4844::MAX_DATA_GAS_PER_BLOCK, EMPTY_WITHDRAWALS},
     proofs,
     revm::env::tx_env_with_recovered,
-    Block, Bytes, Header, Receipt, Receipts, SealedBlock, SealedBlockWithSenders,
+    Block, BlockNumHash, Bytes, Header, Receipt, Receipts, SealedBlock, SealedBlockWithSenders,
     TransactionSigned, TransactionSignedEcRecovered, EMPTY_OMMER_ROOT_HASH, U256,
 };
 use reth_provider::{ChainSpecProvider, StateProviderFactory};
@@ -126,8 +126,16 @@ where
         // - set this block as parent_block
         // - handle end of loop
 
-        // provider.insert_block(block, validation_kind)
+        // update parent for next block execution in loop
+        parent_block = BlockNumHash::new(next_canonical_block.number, next_canonical_block.hash());
+
+        // add block to the tree and skip state root validation
+        provider
+            .insert_block(next_canonical_block, BlockValidationKind::SkipStateRootValidation)?;
     }
+
+    // finalize the last block executed from consensus output
+    provider.finalize_block(parent_block.number)?;
 
     Ok(())
 }
