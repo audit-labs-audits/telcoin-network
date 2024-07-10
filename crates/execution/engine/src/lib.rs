@@ -108,10 +108,10 @@ where
         consensus_output_stream: BroadcastStream<ConsensusOutput>,
         parent: BlockNumHash,
         // hooks: EngineHooks,
-    ) -> EngineResult<Self> {
+    ) -> Self {
         // let event_sender = EventSender::default();
         // let handle = BeaconConsensusEngineHandle::new(to_engine, event_sender.clone());
-        Ok(Self {
+        Self {
             queued: Default::default(),
             insert_task: None,
             blockchain,
@@ -120,7 +120,7 @@ where
             pipeline_events: None,
             consensus_output_stream,
             parent,
-        })
+        }
     }
 }
 
@@ -251,25 +251,30 @@ where
 
 #[cfg(test)]
 mod tests {
-    use std::{str::FromStr as _, sync::Arc};
+    use std::{str::FromStr as _, sync::Arc, time::Duration};
 
     use fastcrypto::hash::Hash as _;
     use narwhal_test_utils::default_test_execution_node;
     use reth_chainspec::ChainSpec;
-    use reth_primitives::{Address, GenesisAccount, TransactionSigned, U256};
+    use reth_node_ethereum::EthEvmConfig;
+    use reth_primitives::{Address, BlockNumHash, GenesisAccount, TransactionSigned, U256};
     use reth_tasks::TaskManager;
     use reth_tracing::init_test_tracing;
     use tn_types::{
         adiri_genesis, BatchAPI as _, Certificate, CommittedSubDag, ConsensusOutput,
         ReputationScores,
     };
-    use tokio::sync::broadcast;
+    use tokio::{
+        sync::{broadcast, oneshot},
+        time::{timeout, Timeout},
+    };
+    use tokio_stream::wrappers::BroadcastStream;
     use tracing::debug;
 
     use crate::ExecutorEngine;
 
     #[tokio::test]
-    async fn test_insert_task_completes_after_sending_channel_closed() {
+    async fn test_insert_task_completes_after_sending_channel_closed() -> eyre::Result<()> {
         init_test_tracing();
         //=== Consensus
         //
@@ -339,11 +344,36 @@ mod tests {
         let manager = TaskManager::current();
         let executor = manager.executor();
         // execution node components
-        let execution_node = default_test_execution_node(Some(chain), None, executor)?;
+        let execution_node =
+            default_test_execution_node(Some(chain.clone()), None, executor.clone())?;
 
-        let (to_executor, from_consensus) = tokio::sync::broadcast::channel(1);
-        let blockchain = execution_node.blockchain_db();
+        let (to_engine, from_consensus) = tokio::sync::broadcast::channel(1);
+        let consensus_output_stream = BroadcastStream::from(from_consensus);
+        let blockchain = execution_node.get_provider().await;
+        let evm_config = EthEvmConfig::default();
+        let max_block = None;
+        let parent = BlockNumHash::new(0, chain.genesis_hash());
 
-        let engine = ExecutorEngine::new(blockchain, evm_config, max_block, from_consensus, parent);
+        let engine =
+            ExecutorEngine::new(blockchain, evm_config, max_block, consensus_output_stream, parent);
+
+        // send output
+        let broadcast_result = to_engine.send(consensus_output);
+        assert!(broadcast_result.is_ok());
+
+        // drop sending channel
+        drop(to_engine);
+
+        let (tx, rx) = oneshot::channel();
+
+        // spawn engine task
+        executor.spawn_blocking(async move {
+            let res = engine.await;
+            let _ = tx.send(res);
+        });
+
+        let engine_task = timeout(Duration::from_secs(10), rx).await?;
+        assert!(engine_task.is_ok());
+        Ok(())
     }
 }
