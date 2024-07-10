@@ -10,7 +10,8 @@ use reth_beacon_consensus::{
     BeaconConsensusEngine, EthBeaconConsensus, MIN_BLOCKS_FOR_PIPELINE_RUN,
 };
 use reth_blockchain_tree::{
-    BlockchainTree, BlockchainTreeConfig, ShareableBlockchainTree, TreeExternals,
+    BlockchainTree, BlockchainTreeConfig, BlockchainTreeViewer, ShareableBlockchainTree,
+    TreeExternals,
 };
 use reth_db::{
     database::Database,
@@ -33,8 +34,8 @@ use reth_node_ethereum::{
 use reth_primitives::{Address, Head};
 use reth_provider::{
     providers::{BlockchainProvider, StaticFileProvider},
-    BlockIdReader, CanonStateNotificationSender, DatabaseProviderFactory, FinalizedBlockReader,
-    HeaderProvider, ProviderFactory, StaticFileProviderFactory as _,
+    BlockIdReader, CanonChainTracker, CanonStateNotificationSender, DatabaseProviderFactory,
+    FinalizedBlockReader, HeaderProvider, ProviderFactory, StaticFileProviderFactory as _,
 };
 use reth_prune::PruneModes;
 use reth_rpc_types::engine::ForkchoiceState;

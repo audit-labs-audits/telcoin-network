@@ -255,9 +255,11 @@ mod tests {
 
     use fastcrypto::hash::Hash as _;
     use narwhal_test_utils::default_test_execution_node;
+    use reth_blockchain_tree::BlockchainTreeViewer;
     use reth_chainspec::ChainSpec;
     use reth_node_ethereum::EthEvmConfig;
     use reth_primitives::{Address, BlockNumHash, GenesisAccount, TransactionSigned, U256};
+    use reth_provider::{BlockIdReader, BlockNumReader};
     use reth_tasks::TaskManager;
     use reth_tracing::init_test_tracing;
     use tn_types::{
@@ -354,8 +356,13 @@ mod tests {
         let max_block = None;
         let parent = BlockNumHash::new(0, chain.genesis_hash());
 
-        let engine =
-            ExecutorEngine::new(blockchain, evm_config, max_block, consensus_output_stream, parent);
+        let engine = ExecutorEngine::new(
+            blockchain.clone(),
+            evm_config,
+            max_block,
+            consensus_output_stream,
+            parent,
+        );
 
         // send output
         let broadcast_result = to_engine.send(consensus_output);
@@ -374,6 +381,19 @@ mod tests {
 
         let engine_task = timeout(Duration::from_secs(10), rx).await?;
         assert!(engine_task.is_ok());
+
+        let last_block_num = blockchain.last_block_number()?;
+        let canonical_tip = blockchain.canonical_tip();
+        let final_block_num_hash = blockchain.finalized_block_num_hash()?;
+
+        debug!("last block num {last_block_num:?}");
+        debug!("canonical tip: {canonical_tip:?}");
+        debug!("final block num {final_block_num_hash:?}");
+
+        let chain_info = blockchain.chain_info()?;
+        debug!("chain info:\n{chain_info:?}");
+        // assert_eq!(canonical_tip, )
+
         Ok(())
     }
 }

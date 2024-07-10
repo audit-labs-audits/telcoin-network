@@ -1,7 +1,7 @@
 //! Error types for Telcoin Network Engine.
 
 use reth_blockchain_tree::error::InsertBlockError;
-use reth_errors::{ProviderError, RethError};
+use reth_errors::{CanonicalError, ProviderError, RethError};
 use reth_revm::primitives::EVMError;
 use tn_types::BatchConversionError;
 
@@ -32,4 +32,7 @@ pub enum TnEngineError {
     /// The block could not be inserted into the tree.
     #[error(transparent)]
     InsertNextCanonicalBlock(#[from] InsertBlockError),
+    /// The executed block failed to become part of the canonical chain.
+    #[error("Blockchain tree failed to make_canonical: {0}")]
+    Canonical(#[from] CanonicalError),
 }

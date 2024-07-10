@@ -14,9 +14,9 @@ use reth_primitives::{
     proofs,
     revm::env::tx_env_with_recovered,
     Block, BlockNumHash, Bytes, Header, Receipt, Receipts, SealedBlock, SealedBlockWithSenders,
-    TransactionSigned, TransactionSignedEcRecovered, EMPTY_OMMER_ROOT_HASH, U256,
+    SealedHeader, TransactionSigned, TransactionSignedEcRecovered, EMPTY_OMMER_ROOT_HASH, U256,
 };
-use reth_provider::{ChainSpecProvider, StateProviderFactory};
+use reth_provider::{CanonChainTracker, ChainSpecProvider, StateProviderFactory};
 use reth_revm::{
     database::StateProviderDatabase,
     db::states::bundle_state::BundleRetention,
@@ -43,7 +43,7 @@ pub fn execute_consensus_output<EvmConfig, Provider>(
 ) -> EngineResult<BlockNumHash>
 where
     EvmConfig: ConfigureEvm,
-    Provider: StateProviderFactory + ChainSpecProvider + BlockchainTreeEngine,
+    Provider: StateProviderFactory + ChainSpecProvider + BlockchainTreeEngine + CanonChainTracker,
 {
     let BuildArguments { provider, mut output, mut parent_block } = args;
 
@@ -100,6 +100,9 @@ where
     // assert vecs match
     assert_eq!(sealed_blocks_with_senders.len(), output.batch_digests.len());
 
+    // use default block - updated during loop - used to update chain info after loop
+    let mut next_canonical_header = SealedHeader::default();
+
     for (block_index, block) in sealed_blocks_with_senders.into_iter().enumerate() {
         let batch_digest =
             output.next_batch_digest().ok_or(TnEngineError::NextBatchDigestMissing)?.into();
@@ -115,6 +118,7 @@ where
         );
         let payload = TNPayload::new(payload_attributes);
 
+        // execute
         let next_canonical_block =
             build_block_from_batch_payload(&evm_config, payload, &provider, provider.chain_spec())?;
 
@@ -129,17 +133,35 @@ where
         // update parent for next block execution in loop
         parent_block = BlockNumHash::new(next_canonical_block.number, next_canonical_block.hash());
 
+        // update sealed canonical header
+        next_canonical_header = next_canonical_block.header.clone();
+
         // add block to the tree and skip state root validation
         provider
             .insert_block(next_canonical_block, BlockValidationKind::SkipStateRootValidation)?;
     }
 
-    // finalize the last block executed from consensus output
-    //
-    // this removes them from the tree
-    provider.finalize_block(parent_block.number)?;
+    // make all blocks canonical, commit them to the database, and broadcast on `canon_state_notification_sender`
+    provider.make_canonical(parent_block.hash)?;
 
-    // TODO: return parent num hash
+    //
+    // see: reth/crates/consensus/beacon/src/engine/mod.rs:update_canon_chain
+    //
+    // set last executed header as the tracked header
+    provider.set_canonical_head(next_canonical_header.clone());
+
+    // finalize the last block executed from consensus output and update chain info
+    //
+    // this removes canonical blocks from the tree
+    debug!("setting finalized block number...{:?}", parent_block.number);
+    provider.finalize_block(parent_block.number)?;
+    provider.set_finalized(next_canonical_header.clone());
+    debug!("finalized block successful: {:?}", provider.finalized_block_num_hash());
+
+    // update safe block
+    provider.set_safe(next_canonical_header);
+
+    // return parent num hash for next engine task
     Ok(parent_block)
 }
 
