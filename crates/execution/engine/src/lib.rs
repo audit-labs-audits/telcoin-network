@@ -103,7 +103,7 @@ where
     pub fn new(
         blockchain: BT,
         evm_config: CE,
-        task_spawner: Box<dyn TaskSpawner>,
+        // task_spawner: Box<dyn TaskSpawner>,
         max_block: Option<BlockNumber>,
         consensus_output_stream: BroadcastStream<ConsensusOutput>,
         parent: BlockNumHash,
@@ -143,7 +143,7 @@ where
     fn poll(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
         let this = self.get_mut();
 
-        // this executes output from consensus
+        // main executes output from consensus
         'main: loop {
             // check if output is available from consensus
             match this.consensus_output_stream.poll_next_unpin(cx) {
@@ -246,5 +246,104 @@ where
 
         // all output executed, yield back to runtime
         Poll::Pending
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use std::{str::FromStr as _, sync::Arc};
+
+    use fastcrypto::hash::Hash as _;
+    use narwhal_test_utils::default_test_execution_node;
+    use reth_chainspec::ChainSpec;
+    use reth_primitives::{Address, GenesisAccount, TransactionSigned, U256};
+    use reth_tasks::TaskManager;
+    use reth_tracing::init_test_tracing;
+    use tn_types::{
+        adiri_genesis, BatchAPI as _, Certificate, CommittedSubDag, ConsensusOutput,
+        ReputationScores,
+    };
+    use tokio::sync::broadcast;
+    use tracing::debug;
+
+    use crate::ExecutorEngine;
+
+    #[tokio::test]
+    async fn test_insert_task_completes_after_sending_channel_closed() {
+        init_test_tracing();
+        //=== Consensus
+        //
+        // create consensus output bc transactions in batches
+        // are randomly generated
+        //
+        // for each tx, seed address with funds in genesis
+        //
+        // TODO: this does not use a "real" `ConsensusOutput`
+        //
+        // refactor with valid data once test util helpers are in place
+        let leader = Certificate::default();
+        let sub_dag_index = 1;
+        let reputation_scores = ReputationScores::default();
+        let previous_sub_dag = None;
+        let batches = tn_types::test_utils::batches(4); // create 4 batches
+        let batch_digests = batches.iter().map(|b| b.digest()).collect();
+        let beneficiary = Address::from_str("0xdbdbdb2cbd23b783741e8d7fcf51e459b497e4a6")
+            .expect("beneficiary address from str");
+        let consensus_output = ConsensusOutput {
+            sub_dag: CommittedSubDag::new(
+                vec![Certificate::default()],
+                leader,
+                sub_dag_index,
+                reputation_scores,
+                previous_sub_dag,
+            )
+            .into(),
+            batches: vec![batches.clone()],
+            beneficiary,
+            batch_digests,
+        };
+
+        //=== Execution
+
+        let genesis = adiri_genesis();
+
+        // collect txs and addresses for later assertions
+        let mut txs_in_output = vec![];
+        let mut senders_in_output = vec![];
+
+        let mut accounts_to_seed = Vec::new();
+        for batch in batches.into_iter() {
+            for tx in batch.transactions_owned() {
+                let tx_signed = TransactionSigned::decode_enveloped(&mut tx.as_ref())
+                    .expect("decode tx signed");
+                let address = tx_signed.recover_signer().expect("signer recoverable");
+                txs_in_output.push(tx_signed);
+                senders_in_output.push(address);
+                // fund account with 99mil TEL
+                let account = (
+                    address,
+                    GenesisAccount::default().with_balance(
+                        U256::from_str("0x51E410C0F93FE543000000")
+                            .expect("account balance is parsed"),
+                    ),
+                );
+                accounts_to_seed.push(account);
+            }
+        }
+        debug!("accounts to seed: {accounts_to_seed:?}");
+
+        // genesis
+        let genesis = genesis.extend_accounts(accounts_to_seed);
+        let chain: Arc<ChainSpec> = Arc::new(genesis.into());
+
+        let manager = TaskManager::current();
+        let executor = manager.executor();
+        // execution node components
+        let execution_node = default_test_execution_node(Some(chain), None, executor)?;
+
+        let (to_executor, from_consensus) = tokio::sync::broadcast::channel(1);
+        let blockchain = execution_node.blockchain_db();
+
+        let engine = ExecutorEngine::new(blockchain, evm_config, max_block, from_consensus, parent);
     }
 }

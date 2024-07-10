@@ -222,123 +222,123 @@ where
         let max_block = self.node_config.debug.max_block;
 
         // engine channel
-        let (to_engine, from_engine) = unbounded_channel();
-        let beacon_engine_stream = UnboundedReceiverStream::from(from_engine);
+        // let (to_engine, from_engine) = unbounded_channel();
+        // let beacon_engine_stream = UnboundedReceiverStream::from(from_engine);
 
-        // build executor
-        let (_, client, mut task) = Executor::new(
-            Arc::clone(&self.node_config.chain),
-            self.blockchain_db.clone(),
-            from_consensus,
-            to_engine.clone(),
-            self.canon_state_notification_sender.clone(),
-            self.evm.clone(),
-        )
-        .build();
+        // // build executor
+        // let (_, client, mut task) = Executor::new(
+        //     Arc::clone(&self.node_config.chain),
+        //     self.blockchain_db.clone(),
+        //     from_consensus,
+        //     to_engine.clone(),
+        //     self.canon_state_notification_sender.clone(),
+        //     self.evm.clone(),
+        // )
+        // .build();
 
-        let reth_config = reth_config::Config::default();
-        let (sync_metrics_tx, _sync_metrics_rx) = unbounded_channel();
+        // let reth_config = reth_config::Config::default();
+        // let (sync_metrics_tx, _sync_metrics_rx) = unbounded_channel();
 
-        let auto_consensus: Arc<dyn Consensus> =
-            Arc::new(AutoSealConsensus::new(self.node_config.chain.clone()));
-        let mut hooks = EngineHooks::new();
+        // let auto_consensus: Arc<dyn Consensus> =
+        //     Arc::new(AutoSealConsensus::new(self.node_config.chain.clone()));
+        // let mut hooks = EngineHooks::new();
 
-        let static_file_producer =
-            StaticFileProducer::new(self.provider_factory.clone(), PruneModes::default());
+        // let static_file_producer =
+        //     StaticFileProducer::new(self.provider_factory.clone(), PruneModes::default());
 
+        // // let static_file_producer_events = static_file_producer.lock().events();
+
+        // hooks.add(StaticFileHook::new(
+        //     static_file_producer.clone(),
+        //     Box::new(self.task_executor.clone()),
+        // ));
+
+        // // capture static file events before passing ownership
         // let static_file_producer_events = static_file_producer.lock().events();
 
-        hooks.add(StaticFileHook::new(
-            static_file_producer.clone(),
-            Box::new(self.task_executor.clone()),
-        ));
+        // let pipeline = build_networked_pipeline(
+        //     &reth_config.stages,
+        //     client.clone(),
+        //     Arc::clone(&auto_consensus),
+        //     self.provider_factory.clone(),
+        //     &self.task_executor,
+        //     sync_metrics_tx,
+        //     None, // prune.node_config.clone(),
+        //     max_block,
+        //     static_file_producer,
+        //     self.evm.clone(),
+        //     ExExManagerHandle::empty(), // TODO: evaluate use for exex manager
+        // )
+        // .await?;
 
-        // capture static file events before passing ownership
-        let static_file_producer_events = static_file_producer.lock().events();
+        // let pipeline_events_for_task = pipeline.events();
+        // task.set_pipeline_events(pipeline_events_for_task);
 
-        let pipeline = build_networked_pipeline(
-            &reth_config.stages,
-            client.clone(),
-            Arc::clone(&auto_consensus),
-            self.provider_factory.clone(),
-            &self.task_executor,
-            sync_metrics_tx,
-            None, // prune.node_config.clone(),
-            max_block,
-            static_file_producer,
-            self.evm.clone(),
-            ExExManagerHandle::empty(), // TODO: evaluate use for exex manager
-        )
-        .await?;
+        // // capture pipeline events for events handler
+        // // TODO: EventStream<_> doesn't impl Clone yet
+        // let pipeline_events_for_events_handler = pipeline.events();
 
-        let pipeline_events_for_task = pipeline.events();
-        task.set_pipeline_events(pipeline_events_for_task);
+        // let (beacon_consensus_engine, beacon_engine_handle) = BeaconConsensusEngine::with_channel(
+        //     client.clone(),
+        //     pipeline,
+        //     self.blockchain_db.clone(),
+        //     Box::new(self.task_executor.clone()),
+        //     Box::new(network.clone()),
+        //     None, // max block
+        //     payload_builder,
+        //     None, // initial_target
+        //     MIN_BLOCKS_FOR_PIPELINE_RUN,
+        //     to_engine,
+        //     Box::pin(beacon_engine_stream), // unbounded stream
+        //     hooks,
+        // )?;
 
-        // capture pipeline events for events handler
-        // TODO: EventStream<_> doesn't impl Clone yet
-        let pipeline_events_for_events_handler = pipeline.events();
+        // // spawn task to execute consensus output
+        // self.task_executor.spawn_critical("Execution Engine Task", Box::pin(task));
 
-        let (beacon_consensus_engine, beacon_engine_handle) = BeaconConsensusEngine::with_channel(
-            client.clone(),
-            pipeline,
-            self.blockchain_db.clone(),
-            Box::new(self.task_executor.clone()),
-            Box::new(network.clone()),
-            None, // max block
-            payload_builder,
-            None, // initial_target
-            MIN_BLOCKS_FOR_PIPELINE_RUN,
-            to_engine,
-            Box::pin(beacon_engine_stream), // unbounded stream
-            hooks,
-        )?;
+        // debug!("awaiting beacon engine task...");
 
-        // spawn task to execute consensus output
-        self.task_executor.spawn_critical("Execution Engine Task", Box::pin(task));
+        // // spawn beacon engine
+        // self.task_executor.spawn_critical_blocking("consensus engine", async move {
+        //     let res = beacon_consensus_engine.await;
+        //     tracing::error!("beacon consensus engine: {res:?}");
+        //     // TODO: return oneshot channel here?
+        // });
 
-        debug!("awaiting beacon engine task...");
+        // let events = stream_select!(
+        //     network.event_listener().map(Into::into),
+        //     beacon_engine_handle.event_listener().map(Into::into),
+        //     pipeline_events_for_events_handler.map(Into::into),
+        //     // pruner_events.map(Into::into),
+        //     static_file_producer_events.map(Into::into),
+        // );
+        // ctx.task_executor().spawn_critical(
+        //     "events task",
+        //     reth_node_events::node::handle_events(
+        //         Some(network),
+        //         Some(head.number),
+        //         events,
+        //         self.provider_factory.db_ref().clone(),
+        //     ),
+        // );
 
-        // spawn beacon engine
-        self.task_executor.spawn_critical_blocking("consensus engine", async move {
-            let res = beacon_consensus_engine.await;
-            tracing::error!("beacon consensus engine: {res:?}");
-            // TODO: return oneshot channel here?
-        });
+        // // wait for engine to spawn
+        // tokio::task::yield_now().await;
 
-        let events = stream_select!(
-            network.event_listener().map(Into::into),
-            beacon_engine_handle.event_listener().map(Into::into),
-            pipeline_events_for_events_handler.map(Into::into),
-            // pruner_events.map(Into::into),
-            static_file_producer_events.map(Into::into),
-        );
-        ctx.task_executor().spawn_critical(
-            "events task",
-            reth_node_events::node::handle_events(
-                Some(network),
-                Some(head.number),
-                events,
-                self.provider_factory.db_ref().clone(),
-            ),
-        );
+        // // finalize genesis
+        // let genesis_hash = self.node_config.chain.genesis_hash();
+        // let genesis_state = ForkchoiceState {
+        //     head_block_hash: genesis_hash,
+        //     finalized_block_hash: genesis_hash,
+        //     safe_block_hash: genesis_hash,
+        // };
 
-        // wait for engine to spawn
-        tokio::task::yield_now().await;
+        // debug!("sending forkchoice update");
 
-        // finalize genesis
-        let genesis_hash = self.node_config.chain.genesis_hash();
-        let genesis_state = ForkchoiceState {
-            head_block_hash: genesis_hash,
-            finalized_block_hash: genesis_hash,
-            safe_block_hash: genesis_hash,
-        };
+        // // send forkchoice for genesis to finalize
+        // let res = beacon_engine_handle.fork_choice_updated(genesis_state, None).await?;
 
-        debug!("sending forkchoice update");
-
-        // send forkchoice for genesis to finalize
-        let res = beacon_engine_handle.fork_choice_updated(genesis_state, None).await?;
-
-        debug!("genesis finalized: {res:?}");
+        // debug!("genesis finalized: {res:?}");
 
         Ok(())
     }
