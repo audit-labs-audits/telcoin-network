@@ -94,6 +94,7 @@ where
     opt_faucet_args: Option<FaucetArgs>,
     /// Collection of execution components by worker.
     workers: HashMap<WorkerId, RpcServerHandle>,
+    // TODO: add Pool to self.workers for direct access (tests)
 }
 
 impl<DB, Evm> ExecutionNodeInner<DB, Evm>
