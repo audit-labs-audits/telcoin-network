@@ -53,7 +53,7 @@ Because blocks contain these fields, they are accessible to be re-purposed for T
 ##### Mixed Hash
 *Ethereum*: A 256-bit hash which, combined with the nonce, proves that a sufficient amount of computation has been carried out on this block (formally Hm). Post-merge, execution clients (reth and geth) use it to hold the prev randao value used to select the next quorum of validators by beacon chain. The block has `mixed_hash` and the beacon block has `prev_randao`. These values are converted when the execution payload is constructed from the built block and used by Beacon chain for validator shuffling.
 
-*TN*:
+*TN*: Should `ConsensusOutput` digest be used here? Reasonably sure it would be hard to predict and easy to verify. How would this be set on genesis - for first batches? What is the mechanism for sharing mixed hash from previous round? Need to review this further.
 
 *Logic*:  On-chain programs might rely on this value for randomness, and it must be consistent when the batch is made and the final block is executed. It's also important that the random value is verifiable yet unpredictable.
 

@@ -384,15 +384,16 @@ mod tests {
 
         let last_block_num = blockchain.last_block_number()?;
         let canonical_tip = blockchain.canonical_tip();
-        let final_block_num_hash = blockchain.finalized_block_num_hash()?;
+        let final_block = blockchain.finalized_block_num_hash()?.expect("finalized block");
 
         debug!("last block num {last_block_num:?}");
         debug!("canonical tip: {canonical_tip:?}");
-        debug!("final block num {final_block_num_hash:?}");
+        debug!("final block num {final_block:?}");
 
         let chain_info = blockchain.chain_info()?;
         debug!("chain info:\n{chain_info:?}");
-        // assert_eq!(canonical_tip, )
+
+        assert_eq!(canonical_tip, final_block);
 
         Ok(())
     }

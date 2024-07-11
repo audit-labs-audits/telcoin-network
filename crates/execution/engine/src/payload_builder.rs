@@ -152,7 +152,7 @@ where
 
     // finalize the last block executed from consensus output and update chain info
     //
-    // this removes canonical blocks from the tree
+    // this removes canonical blocks from the tree, but still need to set_finalized
     debug!("setting finalized block number...{:?}", parent_block.number);
     provider.finalize_block(parent_block.number)?;
     provider.set_finalized(next_canonical_header.clone());
