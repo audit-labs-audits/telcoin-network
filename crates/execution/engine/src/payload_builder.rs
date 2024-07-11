@@ -47,6 +47,8 @@ where
 {
     let BuildArguments { provider, mut output, mut parent_block } = args;
 
+    debug!(target: "tn::engine", ?output, "executing output");
+
     // TODO: explore "batch-execution" concept in reth: BlockExecutorProvider trait
     //
     // TODO: ensure this is called after the previous ConsensusOutput is complete.
@@ -100,8 +102,14 @@ where
     // assert vecs match
     assert_eq!(sealed_blocks_with_senders.len(), output.batch_digests.len());
 
-    // use default block - updated during loop - used to update chain info after loop
-    let mut next_canonical_header = SealedHeader::default();
+    // use default header and seal with parent hash
+    // this ensures that the values used after loop are always correct
+    // not strictly necessary, but ensures consistent data before/after loop
+    let default_header = Header::default();
+    // ensure canonical header number and hash are correct (only used after loop)
+    let mut canonical_header = default_header.seal(parent_block.hash);
+
+    debug!(?canonical_header, "default SealedHeader");
 
     for (block_index, block) in sealed_blocks_with_senders.into_iter().enumerate() {
         let batch_digest =
@@ -134,7 +142,7 @@ where
         parent_block = BlockNumHash::new(next_canonical_block.number, next_canonical_block.hash());
 
         // update sealed canonical header
-        next_canonical_header = next_canonical_block.header.clone();
+        canonical_header = next_canonical_block.header.clone();
 
         // add block to the tree and skip state root validation
         provider
@@ -148,18 +156,18 @@ where
     // see: reth/crates/consensus/beacon/src/engine/mod.rs:update_canon_chain
     //
     // set last executed header as the tracked header
-    provider.set_canonical_head(next_canonical_header.clone());
+    provider.set_canonical_head(canonical_header.clone());
 
     // finalize the last block executed from consensus output and update chain info
     //
     // this removes canonical blocks from the tree, but still need to set_finalized
     debug!("setting finalized block number...{:?}", parent_block.number);
     provider.finalize_block(parent_block.number)?;
-    provider.set_finalized(next_canonical_header.clone());
+    provider.set_finalized(canonical_header.clone());
     debug!("finalized block successful: {:?}", provider.finalized_block_num_hash());
 
     // update safe block
-    provider.set_safe(next_canonical_header);
+    provider.set_safe(canonical_header);
 
     // return parent num hash for next engine task
     Ok(parent_block)

@@ -263,8 +263,8 @@ mod tests {
     use reth_tasks::TaskManager;
     use reth_tracing::init_test_tracing;
     use tn_types::{
-        adiri_genesis, BatchAPI as _, Certificate, CommittedSubDag, ConsensusOutput,
-        ReputationScores,
+        adiri_chain_spec_arc, adiri_genesis, BatchAPI as _, Certificate, CommittedSubDag,
+        ConsensusOutput, ReputationScores,
     };
     use tokio::{
         sync::{broadcast, oneshot},
@@ -274,6 +274,96 @@ mod tests {
     use tracing::debug;
 
     use crate::ExecutorEngine;
+
+    #[tokio::test]
+    async fn test_empty_output_executes() -> eyre::Result<()> {
+        init_test_tracing();
+        //=== Consensus
+        //
+        // create consensus output bc transactions in batches
+        // are randomly generated
+        //
+        // for each tx, seed address with funds in genesis
+        //
+        // TODO: this does not use a "real" `ConsensusOutput`
+        //
+        // refactor with valid data once test util helpers are in place
+        let leader = Certificate::default();
+        let sub_dag_index = 1;
+        let reputation_scores = ReputationScores::default();
+        let previous_sub_dag = None;
+        let beneficiary = Address::from_str("0x0000002cbd23b783741e8d7fcf51e459b497e4a6")
+            .expect("beneficiary address from str");
+        let consensus_output = ConsensusOutput {
+            sub_dag: CommittedSubDag::new(
+                vec![Certificate::default()],
+                leader,
+                sub_dag_index,
+                reputation_scores,
+                previous_sub_dag,
+            )
+            .into(),
+            batches: Default::default(),
+            beneficiary,
+            batch_digests: Default::default(),
+        };
+
+        let chain = adiri_chain_spec_arc();
+
+        // execution node components
+        let manager = TaskManager::current();
+        let executor = manager.executor();
+        let execution_node =
+            default_test_execution_node(Some(chain.clone()), None, executor.clone())?;
+
+        let (to_engine, from_consensus) = tokio::sync::broadcast::channel(1);
+        let consensus_output_stream = BroadcastStream::from(from_consensus);
+        let blockchain = execution_node.get_provider().await;
+        let evm_config = EthEvmConfig::default();
+        let max_block = None;
+        let parent = BlockNumHash::new(0, chain.genesis_hash());
+
+        let engine = ExecutorEngine::new(
+            blockchain.clone(),
+            evm_config,
+            max_block,
+            consensus_output_stream,
+            parent,
+        );
+
+        // send output
+        let broadcast_result = to_engine.send(consensus_output);
+        assert!(broadcast_result.is_ok());
+
+        // drop sending channel
+        drop(to_engine);
+
+        let (tx, rx) = oneshot::channel();
+
+        // spawn engine task
+        executor.spawn_blocking(async move {
+            let res = engine.await;
+            let _ = tx.send(res);
+        });
+
+        let engine_task = timeout(Duration::from_secs(10), rx).await?;
+        assert!(engine_task.is_ok());
+
+        let last_block_num = blockchain.last_block_number()?;
+        let canonical_tip = blockchain.canonical_tip();
+        let final_block = blockchain.finalized_block_num_hash()?.expect("finalized block");
+
+        debug!("last block num {last_block_num:?}");
+        debug!("canonical tip: {canonical_tip:?}");
+        debug!("final block num {final_block:?}");
+
+        let chain_info = blockchain.chain_info()?;
+        debug!("chain info:\n{chain_info:?}");
+
+        assert_eq!(canonical_tip, final_block);
+
+        Ok(())
+    }
 
     #[tokio::test]
     async fn test_insert_task_completes_after_sending_channel_closed() -> eyre::Result<()> {
@@ -343,9 +433,9 @@ mod tests {
         let genesis = genesis.extend_accounts(accounts_to_seed);
         let chain: Arc<ChainSpec> = Arc::new(genesis.into());
 
+        // execution node components
         let manager = TaskManager::current();
         let executor = manager.executor();
-        // execution node components
         let execution_node =
             default_test_execution_node(Some(chain.clone()), None, executor.clone())?;
 
