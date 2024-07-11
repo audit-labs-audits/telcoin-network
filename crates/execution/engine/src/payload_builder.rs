@@ -102,52 +102,81 @@ where
     // assert vecs match
     assert_eq!(sealed_blocks_with_senders.len(), output.batch_digests.len());
 
+    // TODO: is it worth the db read to retrieve the sealed header from DB? This would allow:
+    // - use `parent_block` from args once to retrieve sealed header
+    // - use this sealed header everywhere instead of parent block
+    // - easier to maintain, less confusing, harder to mix/match values
+    //   - currently, using parent_block for number/hash but could also get this from sealed_block ref
+    //   - especially since executing empty output and output with batches must be different
+
     // use default header and seal with parent hash
     // this ensures that the values used after loop are always correct
     // not strictly necessary, but ensures consistent data before/after loop
-    let default_header = Header::default();
+    let mut default_header = Header::default();
+    default_header.number = parent_block.number;
     // ensure canonical header number and hash are correct (only used after loop)
     let mut canonical_header = default_header.seal(parent_block.hash);
 
     debug!(?canonical_header, "default SealedHeader");
 
-    for (block_index, block) in sealed_blocks_with_senders.into_iter().enumerate() {
-        let batch_digest =
-            output.next_batch_digest().ok_or(TnEngineError::NextBatchDigestMissing)?.into();
-        let payload_attributes = TNPayloadAttributes::new(
-            parent_block,
-            ommers.clone(),
-            ommers_root,
-            block_index as u64,
-            batch_digest,
-            &output,
-            output_digest.into(),
-            block,
+    // extend canonical tip if output contains batches with transactions
+    if sealed_blocks_with_senders.is_empty() {
+        // execute single block with no transactions
+        warn!(
+            "TODO: build block from empty payload (no transactions) and still apply block rewards"
         );
-        let payload = TNPayload::new(payload_attributes);
 
-        // execute
-        let next_canonical_block =
-            build_block_from_batch_payload(&evm_config, payload, &provider, provider.chain_spec())?;
+        // TODO: similar approach as loop
+        //
+        // // execute
+        // let next_canonical_block = build_block_from_empty_payload();
+        //
+        todo!()
+    } else {
+        // loop and construct blocks with transactions
+        for (block_index, block) in sealed_blocks_with_senders.into_iter().enumerate() {
+            let batch_digest =
+                output.next_batch_digest().ok_or(TnEngineError::NextBatchDigestMissing)?.into();
+            let payload_attributes = TNPayloadAttributes::new(
+                parent_block,
+                ommers.clone(),
+                ommers_root,
+                block_index as u64,
+                batch_digest,
+                &output,
+                output_digest.into(),
+                block,
+            );
+            let payload = TNPayload::new(payload_attributes);
 
-        debug!(target: "execution::executor", ?next_canonical_block);
+            // execute
+            let next_canonical_block = build_block_from_batch_payload(
+                &evm_config,
+                payload,
+                &provider,
+                provider.chain_spec(),
+            )?;
 
-        // next steps:
-        // - save block to db
-        // - possible to reuse state to prevent extra call to db?
-        // - set this block as parent_block
-        // - handle end of loop
+            debug!(target: "execution::executor", ?next_canonical_block);
 
-        // update parent for next block execution in loop
-        parent_block = BlockNumHash::new(next_canonical_block.number, next_canonical_block.hash());
+            // next steps:
+            // - save block to db
+            // - possible to reuse state to prevent extra call to db?
+            // - set this block as parent_block
+            // - handle end of loop
 
-        // update sealed canonical header
-        canonical_header = next_canonical_block.header.clone();
+            // update parent for next block execution in loop
+            parent_block =
+                BlockNumHash::new(next_canonical_block.number, next_canonical_block.hash());
 
-        // add block to the tree and skip state root validation
-        provider
-            .insert_block(next_canonical_block, BlockValidationKind::SkipStateRootValidation)?;
-    }
+            // update sealed canonical header
+            canonical_header = next_canonical_block.header.clone();
+
+            // add block to the tree and skip state root validation
+            provider
+                .insert_block(next_canonical_block, BlockValidationKind::SkipStateRootValidation)?;
+        }
+    } // end block execution
 
     // make all blocks canonical, commit them to the database, and broadcast on `canon_state_notification_sender`
     provider.make_canonical(parent_block.hash)?;
