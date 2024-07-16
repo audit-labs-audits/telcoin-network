@@ -132,6 +132,15 @@ where
         warn!(
             "TODO: build block from empty payload (no transactions) and still apply block rewards"
         );
+        // create sealed block with senders
+        //
+        // TODO: `block` is used by the payload for:
+        //  - mix hash
+        //  - withdrawals (but uses unwrap_or_default())
+        //
+        // SO, where does batch mix hash come from?
+        //  - parent block's consensus output digest?
+        let block = SealedBlockWithSenders::new(block, senders);
         let payload_attributes = TNPayloadAttributes::new(
             parent_block,
             ommers.clone(),
