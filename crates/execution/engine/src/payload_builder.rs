@@ -10,7 +10,9 @@ use reth_execution_types::ExecutionOutcome;
 use reth_node_api::PayloadBuilderAttributes as _;
 use reth_payload_builder::{database::CachedReads, error::PayloadBuilderError};
 use reth_primitives::{
-    constants::{eip4844::MAX_DATA_GAS_PER_BLOCK, EMPTY_WITHDRAWALS},
+    constants::{
+        eip4844::MAX_DATA_GAS_PER_BLOCK, EMPTY_RECEIPTS, EMPTY_TRANSACTIONS, EMPTY_WITHDRAWALS,
+    },
     proofs,
     revm::env::tx_env_with_recovered,
     Block, BlockNumHash, Bytes, Header, Receipt, Receipts, SealedBlock, SealedBlockWithSenders,
@@ -219,6 +221,8 @@ where
     // TODO: using same apprach as reth here bc I can't find the State::builder()'s methods
     // I'm not sure what `with_bundle_update` does, and using `CachedReads` is the only way
     // I can get the state root section below to compile
+    //
+    // TODO: create `CachedReads` during batch validation
     let mut cached_reads = CachedReads::default();
     let mut db =
         State::builder().with_database_ref(cached_reads.as_db(state)).with_bundle_update().build();
@@ -450,6 +454,94 @@ where
     debug!(target: "payload_builder", ?sealed_block, "sealed built block");
 
     let sealed_block_with_senders = SealedBlockWithSenders::new(sealed_block, senders)
+        .ok_or(TnEngineError::SealBlockWithSenders)?;
+
+    Ok(sealed_block_with_senders)
+}
+
+#[inline]
+fn build_block_from_empty_payload<'a, EvmConfig, Provider>(
+    evm_config: &EvmConfig,
+    payload: TNPayload,
+    provider: &Provider,
+    chain_spec: Arc<ChainSpec>,
+) -> EngineResult<SealedBlockWithSenders>
+where
+    EvmConfig: ConfigureEvm,
+    Provider: StateProviderFactory,
+{
+    let state =
+        provider.state_by_block_hash(payload.attributes.parent_block.hash).map_err(|err| {
+            warn!(target: "engine::payload_builder",
+                parent_hash=%payload.attributes.parent_block.hash,
+                %err,
+                "failed to get state for empty output",
+            );
+            err
+        })?;
+
+    let mut db = State::builder()
+        .with_database(StateProviderDatabase::new(state))
+        .with_bundle_update()
+        .build();
+
+    // use 0 for basefee bc there are no batches in this output
+    let base_fee = 0;
+    // initialize values for execution from block env
+    // note: use the parent's sealed header for values bc there are no batches
+    let (cfg, block_env) =
+        payload.cfg_and_block_env(chain_spec.as_ref(), payload.attributes.batch_block.header());
+    let block_gas_limit: u64 = block_env.gas_limit.try_into().unwrap_or(u64::MAX);
+    let base_fee = block_env.basefee.to::<u64>();
+    let block_number = block_env.number.to::<u64>();
+
+    // merge all transitions into bundle state, this would apply the withdrawal balance
+    // changes and 4788 contract call
+    db.merge_transitions(BundleRetention::PlainState);
+
+    // calculate the state root
+    let bundle_state = db.take_bundle();
+    let state_root = db.database.state_root(&bundle_state).map_err(|err| {
+        warn!(target: "engine::payload_builder",
+            parent_hash=%payload.attributes.parent_block.hash,
+            %err,
+            "failed to calculate state root for empty output"
+        );
+        err
+    })?;
+
+    let header = Header {
+        parent_hash: payload.parent(),
+        ommers_hash: payload.attributes.ommers_root,
+        beneficiary: block_env.coinbase,
+        state_root,
+        transactions_root: EMPTY_TRANSACTIONS,
+        receipts_root: EMPTY_RECEIPTS,
+        withdrawals_root: Some(EMPTY_WITHDRAWALS),
+        logs_bloom: Default::default(),
+        timestamp: payload.timestamp(),
+        mix_hash: payload.prev_randao(),
+        nonce: payload.attributes.batch_index,
+        base_fee_per_gas: Some(base_fee),
+        number: payload.attributes.parent_block.number + 1, // ensure this matches the block env
+        gas_limit: block_gas_limit,
+        difficulty: U256::ZERO,
+        gas_used: 0,
+        extra_data: payload.attributes.batch_digest.into(),
+        parent_beacon_block_root: payload.parent_beacon_block_root(),
+        blob_gas_used: None,   // TODO: support blobs
+        excess_blob_gas: None, // TODO: support blobs
+        requests_root: None,
+    };
+
+    // seal the block
+    let withdrawals = Some(payload.withdrawals().clone());
+    let block = Block { header, body: vec![], ommers: vec![], withdrawals, requests: None };
+
+    let sealed_block = block.seal_slow();
+    debug!(target: "payload_builder", ?sealed_block, "sealed built block");
+
+    let sealed_block_with_senders = SealedBlockWithSenders::new(sealed_block, vec![])
         .ok_or(TnEngineError::SealBlockWithSenders)?;
 
     Ok(sealed_block_with_senders)
