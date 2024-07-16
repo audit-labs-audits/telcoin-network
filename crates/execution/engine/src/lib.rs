@@ -251,8 +251,7 @@ where
 
 #[cfg(test)]
 mod tests {
-    use std::{str::FromStr as _, sync::Arc, time::Duration};
-
+    use crate::ExecutorEngine;
     use fastcrypto::hash::Hash as _;
     use narwhal_test_utils::default_test_execution_node;
     use reth_blockchain_tree::BlockchainTreeViewer;
@@ -262,6 +261,7 @@ mod tests {
     use reth_provider::{BlockIdReader, BlockNumReader};
     use reth_tasks::TaskManager;
     use reth_tracing::init_test_tracing;
+    use std::{str::FromStr as _, sync::Arc, time::Duration};
     use tn_types::{
         adiri_chain_spec_arc, adiri_genesis, BatchAPI as _, Certificate, CommittedSubDag,
         ConsensusOutput, ReputationScores,
@@ -272,8 +272,6 @@ mod tests {
     };
     use tokio_stream::wrappers::BroadcastStream;
     use tracing::debug;
-
-    use crate::ExecutorEngine;
 
     #[tokio::test]
     async fn test_empty_output_executes() -> eyre::Result<()> {

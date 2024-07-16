@@ -16,7 +16,8 @@ use reth_primitives::{
     proofs,
     revm::env::tx_env_with_recovered,
     Block, BlockNumHash, Bytes, Header, Receipt, Receipts, SealedBlock, SealedBlockWithSenders,
-    SealedHeader, TransactionSigned, TransactionSignedEcRecovered, EMPTY_OMMER_ROOT_HASH, U256,
+    SealedHeader, TransactionSigned, TransactionSignedEcRecovered, B256, EMPTY_OMMER_ROOT_HASH,
+    U256,
 };
 use reth_provider::{CanonChainTracker, ChainSpecProvider, StateProviderFactory};
 use reth_revm::{
@@ -95,8 +96,12 @@ where
         })
         .collect();
 
-    // calculate ommers hash
-    let ommers_root = proofs::calculate_ommers_root(&ommers);
+    // calculate ommers hash or use default if empty
+    let ommers_root = if ommers.is_empty() {
+        EMPTY_OMMER_ROOT_HASH
+    } else {
+        proofs::calculate_ommers_root(&ommers)
+    };
 
     // unwrap result
     let sealed_blocks_with_senders = sealed_blocks_with_senders_result?;
@@ -127,6 +132,17 @@ where
         warn!(
             "TODO: build block from empty payload (no transactions) and still apply block rewards"
         );
+        let payload_attributes = TNPayloadAttributes::new(
+            parent_block,
+            ommers.clone(),
+            ommers_root,
+            0,
+            B256::ZERO, // no batch to digest
+            &output,
+            output_digest.into(),
+            block,
+        );
+        let payload = TNPayload::new(payload_attributes);
 
         // TODO: similar approach as loop
         //
@@ -138,13 +154,13 @@ where
         // loop and construct blocks with transactions
         for (block_index, block) in sealed_blocks_with_senders.into_iter().enumerate() {
             let batch_digest =
-                output.next_batch_digest().ok_or(TnEngineError::NextBatchDigestMissing)?.into();
+                output.next_batch_digest().ok_or(TnEngineError::NextBatchDigestMissing)?;
             let payload_attributes = TNPayloadAttributes::new(
                 parent_block,
                 ommers.clone(),
                 ommers_root,
                 block_index as u64,
-                batch_digest,
+                batch_digest.into(),
                 &output,
                 output_digest.into(),
                 block,
@@ -176,7 +192,10 @@ where
 
             // add block to the tree and skip state root validation
             provider
-                .insert_block(next_canonical_block, BlockValidationKind::SkipStateRootValidation)?;
+                .insert_block(next_canonical_block, BlockValidationKind::SkipStateRootValidation).map_err(|err| {
+                    error!(target: "engine::payload_builder", block=?next_canonical_block, "failed to insert next canonical block");
+                    err
+                })?;
         }
     } // end block execution
 
@@ -525,7 +544,7 @@ where
         base_fee_per_gas: Some(base_fee),
         number: payload.attributes.parent_block.number + 1, // ensure this matches the block env
         gas_limit: block_gas_limit,
-        difficulty: U256::ZERO,
+        difficulty: U256::ZERO, // batch index
         gas_used: 0,
         extra_data: payload.attributes.batch_digest.into(),
         parent_beacon_block_root: payload.parent_beacon_block_root(),
