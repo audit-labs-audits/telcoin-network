@@ -112,7 +112,8 @@ where
     // - use `parent_header` from args once to retrieve sealed header
     // - use this sealed header everywhere instead of parent block
     // - easier to maintain, less confusing, harder to mix/match values
-    //   - currently, using parent_header for number/hash but could also get this from sealed_block ref
+    //   - currently, using parent_header for number/hash but could also get this from sealed_block
+    //     ref
     //   - especially since executing empty output and output with batches must be different
 
     // rename canonical header for clarity
@@ -216,7 +217,8 @@ where
         }
     } // end block execution
 
-    // make all blocks canonical, commit them to the database, and broadcast on `canon_state_notification_sender`
+    // make all blocks canonical, commit them to the database, and broadcast on
+    // `canon_state_notification_sender`
     provider.make_canonical(canonical_header.hash())?;
 
     //
@@ -523,7 +525,8 @@ where
         .build();
 
     // initialize values for execution from block env
-    // note: use the parent's sealed header for values bc there are no batches and the header arg is not used
+    // note: use the parent's sealed header for values bc there are no batches and the header arg is
+    // not used
     let (_cfg, block_env) =
         payload.cfg_and_block_env(chain_spec.as_ref(), &payload.attributes.parent_header);
 

@@ -280,8 +280,8 @@ where
         // // TODO: EventStream<_> doesn't impl Clone yet
         // let pipeline_events_for_events_handler = pipeline.events();
 
-        // let (beacon_consensus_engine, beacon_engine_handle) = BeaconConsensusEngine::with_channel(
-        //     client.clone(),
+        // let (beacon_consensus_engine, beacon_engine_handle) =
+        // BeaconConsensusEngine::with_channel(     client.clone(),
         //     pipeline,
         //     self.blockchain_db.clone(),
         //     Box::new(self.task_executor.clone()),

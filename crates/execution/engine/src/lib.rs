@@ -200,8 +200,8 @@ where
 
             // only insert task if there is none
             //
-            // note: it's important that the previous consensus output finishes executing before inserting
-            // the next task to ensure the parent numhash is finalized
+            // note: it's important that the previous consensus output finishes executing before
+            // inserting the next task to ensure the parent numhash is finalized
             if this.insert_task.is_none() {
                 if this.queued.is_empty() {
                     // nothing to insert
