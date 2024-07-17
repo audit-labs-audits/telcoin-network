@@ -57,7 +57,6 @@ where
     // TODO: ensure this is called after the previous ConsensusOutput is complete.
     // to avoid race condition of executing next round before previous round is complete.
     //
-    //
 
     // get the latest state from the last executed batch of the previous consensus output
     //
@@ -160,12 +159,9 @@ where
         );
         let payload = TNPayload::new(payload_attributes);
 
-        // TODO: similar approach as loop
-        //
-        // // execute
-        // let next_canonical_block = build_block_from_empty_payload();
-        //
-        todo!()
+        // execute
+        let next_canonical_block =
+            build_block_from_empty_payload(payload, &provider, provider.chain_spec());
     } else {
         // loop and construct blocks with transactions
         for (block_index, block) in sealed_blocks_with_senders.into_iter().enumerate() {
@@ -214,7 +210,7 @@ where
             // add block to the tree and skip state root validation
             provider
                 .insert_block(next_canonical_block, BlockValidationKind::SkipStateRootValidation).map_err(|err| {
-                    error!(target: "engine::payload_builder", block=?next_canonical_block, "failed to insert next canonical block");
+                    error!(target: "engine::payload_builder", header=?canonical_header, "failed to insert next canonical block");
                     err
                 })?;
         }
@@ -281,6 +277,9 @@ where
     // initialize values for execution from block env
     // note: use the batch's sealed header for "parent" values
     let (cfg, block_env) = payload.cfg_and_block_env(chain_spec.as_ref(), batch_block.header());
+
+    // TODO: better to get these from payload attributes?
+    // - more efficient, but harder to maintain?
     let block_gas_limit: u64 = block_env.gas_limit.try_into().unwrap_or(u64::MAX);
     let base_fee = block_env.basefee.to::<u64>();
     let block_number = block_env.number.to::<u64>();
@@ -500,14 +499,12 @@ where
 }
 
 #[inline]
-fn build_block_from_empty_payload<'a, EvmConfig, Provider>(
-    evm_config: &EvmConfig,
+fn build_block_from_empty_payload<'a, Provider>(
     payload: TNPayload,
     provider: &Provider,
     chain_spec: Arc<ChainSpec>,
 ) -> EngineResult<SealedBlockWithSenders>
 where
-    EvmConfig: ConfigureEvm,
     Provider: StateProviderFactory,
 {
     let state =
@@ -525,15 +522,10 @@ where
         .with_bundle_update()
         .build();
 
-    // use 0 for basefee bc there are no batches in this output
-    let base_fee = 0;
     // initialize values for execution from block env
-    // note: use the parent's sealed header for values bc there are no batches
-    let (cfg, block_env) =
-        payload.cfg_and_block_env(chain_spec.as_ref(), payload.attributes.batch_block.header());
-    let block_gas_limit: u64 = block_env.gas_limit.try_into().unwrap_or(u64::MAX);
-    let base_fee = block_env.basefee.to::<u64>();
-    let block_number = block_env.number.to::<u64>();
+    // note: use the parent's sealed header for values bc there are no batches and the header arg is not used
+    let (_cfg, block_env) =
+        payload.cfg_and_block_env(chain_spec.as_ref(), &payload.attributes.parent_header);
 
     // merge all transitions into bundle state, this would apply the withdrawal balance
     // changes and 4788 contract call
@@ -562,9 +554,9 @@ where
         timestamp: payload.timestamp(),
         mix_hash: payload.prev_randao(),
         nonce: payload.attributes.batch_index,
-        base_fee_per_gas: Some(base_fee),
+        base_fee_per_gas: Some(payload.attributes.base_fee_per_gas),
         number: payload.attributes.parent_header.number + 1, // ensure this matches the block env
-        gas_limit: block_gas_limit,
+        gas_limit: payload.attributes.gas_limit,
         difficulty: U256::ZERO, // batch index
         gas_used: 0,
         extra_data: payload.attributes.batch_digest.into(),
