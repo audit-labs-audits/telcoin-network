@@ -22,7 +22,8 @@ use reth_blockchain_tree::BlockchainTreeEngine;
 use reth_evm::ConfigureEvm;
 use reth_primitives::{BlockNumber, SealedHeader};
 use reth_provider::{
-    BlockIdReader, BlockReader, CanonChainTracker, ChainSpecProvider, StageCheckpointReader, StateProviderFactory,
+    BlockIdReader, BlockReader, CanonChainTracker, ChainSpecProvider, StageCheckpointReader,
+    StateProviderFactory,
 };
 use reth_stages::PipelineEvent;
 use reth_tokio_util::EventStream;
@@ -209,10 +210,8 @@ where
                 // TODO: should this be on a blocking thread?
                 //
                 // execute the consensus output
-                this.insert_task = Some(Box::pin(async move {
-                    
-                    execute_consensus_output(evm_config, build_args)
-                }));
+                this.insert_task =
+                    Some(Box::pin(async move { execute_consensus_output(evm_config, build_args) }));
             }
 
             if let Some(mut fut) = this.insert_task.take() {
@@ -310,7 +309,7 @@ mod tests {
         let blockchain = execution_node.get_provider().await;
         let evm_config = EthEvmConfig::default();
         let max_block = None;
-        let parent = BlockNumHash::new(0, chain.genesis_hash());
+        let parent = chain.sealed_genesis_header();
 
         let engine = ExecutorEngine::new(
             blockchain.clone(),
@@ -433,7 +432,7 @@ mod tests {
         let blockchain = execution_node.get_provider().await;
         let evm_config = EthEvmConfig::default();
         let max_block = None;
-        let parent = BlockNumHash::new(0, chain.genesis_hash());
+        let parent = chain.sealed_genesis_header();
 
         let engine = ExecutorEngine::new(
             blockchain.clone(),
