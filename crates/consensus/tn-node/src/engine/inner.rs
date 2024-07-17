@@ -4,7 +4,10 @@ use consensus_metrics::metered_channel::Sender;
 use eyre::Context as _;
 use futures::{stream_select, StreamExt};
 use jsonrpsee::http_client::HttpClient;
-use reth::rpc::builder::{config::RethRpcServerConfig, RpcModuleBuilder, RpcServerHandle};
+use reth::rpc::{
+    builder::{config::RethRpcServerConfig, RpcModuleBuilder, RpcServerHandle},
+    eth::EthApi,
+};
 use reth_auto_seal_consensus::AutoSealConsensus;
 use reth_beacon_consensus::{
     hooks::{EngineHooks, StaticFileHook},
@@ -143,7 +146,7 @@ where
         let tree = BlockchainTree::new(
             tree_externals,
             tree_config,
-            prune_config.map(|config| config.segments.clone()),
+            prune_config.map(|config| config.segments.clone()).unwrap_or_else(PruneModes::none),
         )?
         .with_sync_metrics_tx(sync_metrics_tx.clone());
 
@@ -268,8 +271,7 @@ where
             static_file_producer,
             self.evm.clone(),
             ExExManagerHandle::empty(), // TODO: evaluate use for exex manager
-        )
-        .await?;
+        )?;
 
         let pipeline_events_for_task = pipeline.events();
         task.set_pipeline_events(pipeline_events_for_task);
@@ -315,7 +317,7 @@ where
         ctx.task_executor().spawn_critical(
             "events task",
             reth_node_events::node::handle_events(
-                Some(network),
+                Some(Box::new(network)),
                 Some(head.number),
                 events,
                 self.provider_factory.db_ref().clone(),
@@ -425,7 +427,7 @@ where
 
         //.node_configure namespaces
         let modules_config = self.node_config.rpc.transport_rpc_module_config();
-        let mut server = rpc_builder.build(modules_config);
+        let mut server = rpc_builder.build(modules_config, Box::new(EthApi::with_spawner));
 
         // TODO: rpc hook here
         // server.merge.node_configured(rpc_ext)?;
@@ -445,7 +447,7 @@ where
 
         // start the server
         let server_config = self.node_config.rpc.rpc_server_config();
-        let rpc_handle = server_config.start(server).await?;
+        let rpc_handle = server_config.start(&server).await?;
 
         self.workers.insert(worker_id, rpc_handle);
         Ok(())

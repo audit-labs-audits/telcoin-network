@@ -4,9 +4,9 @@ use super::Faucet;
 use crate::FaucetConfig;
 use async_trait::async_trait;
 use jsonrpsee::proc_macros::rpc;
+use reth::rpc::server_types::eth::EthResult;
 use reth_primitives::{Address, TxHash};
 use reth_provider::{BlockReaderIdExt, StateProviderFactory};
-use reth_rpc::eth::error::EthResult;
 use reth_transaction_pool::TransactionPool;
 
 /// Faucet that disperses 1 TEL every 24hours per requesting address.

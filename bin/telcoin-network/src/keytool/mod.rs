@@ -199,7 +199,7 @@ impl KeyArgs {
 mod tests {
     use crate::cli::Cli;
     use clap::Parser;
-    use reth::commands::node::NoArgs;
+    use reth_cli_commands::node::NoArgs;
     use tempfile::tempdir;
     use tn_types::{Config, ConfigTrait};
 

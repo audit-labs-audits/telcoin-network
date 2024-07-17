@@ -8,8 +8,8 @@ use proc_macro::TokenStream;
 use proc_macro2::Ident;
 use quote::quote;
 use syn::{
-    parse_macro_input, AngleBracketedGenericArguments, Attribute, Generics, ItemStruct, Lit, Meta,
-    PathArguments,
+    parse_macro_input, AngleBracketedGenericArguments, Attribute, Expr, Generics, ItemStruct, Lit,
+    Meta, PathArguments,
     Type::{self},
 };
 
@@ -42,7 +42,7 @@ fn extract_struct_info(
 
     let info = input.fields.iter().map(|f| {
         let attrs: Vec<_> =
-            f.attrs.iter().filter(|a| a.path.is_ident(DB_OPTIONS_CUSTOM_FUNCTION)).collect();
+            f.attrs.iter().filter(|a| a.path().is_ident(DB_OPTIONS_CUSTOM_FUNCTION)).collect();
         let options = if attrs.is_empty() {
             GeneralTableOptions::default()
         } else {
@@ -94,7 +94,7 @@ fn extract_struct_info(
 /// Extracts the table options override function
 /// The function must take no args and return Options
 fn get_options_override_function(attr: &Attribute) -> syn::Result<String> {
-    let meta = attr.parse_meta()?;
+    let meta = attr.meta.clone();
 
     let val = match meta.clone() {
         Meta::NameValue(val) => val,
@@ -113,8 +113,14 @@ fn get_options_override_function(attr: &Attribute) -> syn::Result<String> {
         ));
     }
 
-    let fn_name = match val.lit {
-        Lit::Str(fn_name) => fn_name,
+    let fn_name = match val.value {
+        Expr::Lit(lit) => match lit.lit {
+            Lit::Str(fn_name) => fn_name,
+            _ => return Err(syn::Error::new_spanned(
+                meta,
+                format!("Expected function name in format `#[{DB_OPTIONS_CUSTOM_FUNCTION} = {{function_name}}]`"),
+            ))
+        }
         _ => return Err(syn::Error::new_spanned(
             meta,
             format!("Expected function name in format `#[{DB_OPTIONS_CUSTOM_FUNCTION} = {{function_name}}]`"),

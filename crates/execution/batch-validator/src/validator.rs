@@ -2,12 +2,13 @@
 
 use crate::error::BatchValidationError;
 use reth_blockchain_tree::error::BlockchainTreeError;
+use reth_chainspec::EthereumHardfork;
 use reth_consensus::PostExecutionInput;
 use reth_db::database::Database;
 use reth_evm::execute::{
     BlockExecutionOutput, BlockExecutorProvider, BlockValidationError, Executor,
 };
-use reth_primitives::{GotExpected, Hardfork, SealedBlockWithSenders, U256};
+use reth_primitives::{GotExpected, SealedBlockWithSenders, U256};
 use reth_provider::{
     providers::BlockchainProvider, ChainSpecProvider, DatabaseProviderFactory, HeaderProvider,
     StateRootProvider,
@@ -136,7 +137,7 @@ where
         if !self
             .blockchain_db
             .chain_spec()
-            .fork(Hardfork::Paris)
+            .fork(EthereumHardfork::Paris)
             .active_at_ttd(parent_td, U256::ZERO)
         {
             return Err(BlockValidationError::BlockPreMerge { hash: sealed_block.hash() })?;
@@ -258,6 +259,7 @@ mod tests {
         Bytes, GenesisAccount, Header, SealedHeader, B256, EMPTY_OMMER_ROOT_HASH,
     };
     use reth_provider::{providers::StaticFileProvider, ProviderFactory};
+    use reth_prune::PruneModes;
     use reth_tracing::init_test_tracing;
     use std::str::FromStr;
     use tn_types::{
@@ -351,12 +353,8 @@ mod tests {
             reth_node_ethereum::EthExecutorProvider::ethereum(chain.clone()),
         );
         let tree_config = BlockchainTreeConfig::default();
-        let tree = BlockchainTree::new(
-            tree_externals,
-            tree_config,
-            None, // prune config
-        )
-        .expect("blockchain tree is valid");
+        let tree = BlockchainTree::new(tree_externals, tree_config, PruneModes::none())
+            .expect("blockchain tree is valid");
 
         let blockchain_tree = Arc::new(ShareableBlockchainTree::new(tree));
 
@@ -467,12 +465,8 @@ mod tests {
             reth_node_ethereum::EthExecutorProvider::ethereum(chain.clone()),
         );
         let tree_config = BlockchainTreeConfig::default();
-        let tree = BlockchainTree::new(
-            tree_externals,
-            tree_config,
-            None, // prune config
-        )
-        .expect("blockchain tree is valid");
+        let tree = BlockchainTree::new(tree_externals, tree_config, PruneModes::none())
+            .expect("blockchain tree is valid");
 
         let blockchain_tree = Arc::new(ShareableBlockchainTree::new(tree));
 
@@ -579,12 +573,8 @@ mod tests {
             reth_node_ethereum::EthExecutorProvider::ethereum(chain.clone()),
         );
         let tree_config = BlockchainTreeConfig::default();
-        let tree = BlockchainTree::new(
-            tree_externals,
-            tree_config,
-            None, // prune config
-        )
-        .expect("blockchain tree is valid");
+        let tree = BlockchainTree::new(tree_externals, tree_config, PruneModes::none())
+            .expect("blockchain tree is valid");
 
         let blockchain_tree = Arc::new(ShareableBlockchainTree::new(tree));
 
@@ -692,12 +682,8 @@ mod tests {
             reth_node_ethereum::EthExecutorProvider::ethereum(chain.clone()),
         );
         let tree_config = BlockchainTreeConfig::default();
-        let tree = BlockchainTree::new(
-            tree_externals,
-            tree_config,
-            None, // prune config
-        )
-        .expect("blockchain tree is valid");
+        let tree = BlockchainTree::new(tree_externals, tree_config, PruneModes::none())
+            .expect("blockchain tree is valid");
 
         let blockchain_tree = Arc::new(ShareableBlockchainTree::new(tree));
 
@@ -847,12 +833,8 @@ mod tests {
             reth_node_ethereum::EthExecutorProvider::ethereum(chain.clone()),
         );
         let tree_config = BlockchainTreeConfig::default();
-        let tree = BlockchainTree::new(
-            tree_externals,
-            tree_config,
-            None, // prune config
-        )
-        .expect("blockchain tree is valid");
+        let tree = BlockchainTree::new(tree_externals, tree_config, PruneModes::none())
+            .expect("blockchain tree is valid");
 
         let blockchain_tree = Arc::new(ShareableBlockchainTree::new(tree));
 

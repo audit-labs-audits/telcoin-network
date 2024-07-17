@@ -90,6 +90,8 @@ for ((i=0; i<$LENGTH; i++)); do
            --instance "${INSTANCE}" \
            --metrics "${METRICS}" \
            --consensus-metrics "${CONSENSUS_METRICS}" \
+           --log.stdout.format log-fmt \
+           -vvvvv \
            --http > "${ROOTDIR}/${VALIDATOR}.log" &
     fi
 done

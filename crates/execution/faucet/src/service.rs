@@ -18,13 +18,13 @@ use gcloud_sdk::{
 };
 use humantime::format_duration;
 use lru_time_cache::LruCache;
+use reth::rpc::server_types::eth::{EthApiError, EthResult, RpcInvalidTransactionError};
 use reth_chainspec::BaseFeeParams;
 use reth_primitives::{
     Address, FromRecoveredPooledTransaction, Signature as EthSignature, Transaction,
     TransactionSigned, TxEip1559, TxHash, TxKind, B256, U256,
 };
 use reth_provider::{BlockReaderIdExt, StateProviderFactory};
-use reth_rpc::eth::error::{EthApiError, EthResult, RpcInvalidTransactionError};
 use reth_tasks::TaskSpawner;
 use reth_transaction_pool::{PoolTransaction, TransactionOrigin, TransactionPool};
 use secp256k1::{

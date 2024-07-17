@@ -6,8 +6,9 @@ use crate::{
 };
 use clap::{value_parser, Parser, Subcommand};
 use futures::Future;
-use reth::{commands::node::NoArgs, CliRunner};
+use reth::CliRunner;
 use reth_chainspec::ChainSpec;
+use reth_cli_commands::node::NoArgs;
 use reth_db::DatabaseEnv;
 use reth_node_core::args::LogArgs;
 use reth_tracing::FileWorkerGuard;

@@ -26,7 +26,7 @@ decl_derive!([MallocSizeOf, attributes(ignore_malloc_size_of)] => malloc_size_of
 
 fn malloc_size_of_derive(s: synstructure::Structure) -> proc_macro2::TokenStream {
     let match_body = s.each(|binding| {
-        let ignore = binding.ast().attrs.iter().any(|attr| match attr.parse_meta().unwrap() {
+        let ignore = binding.ast().attrs.iter().any(|attr| match attr.meta {
             syn::Meta::Path(ref path) | syn::Meta::List(syn::MetaList { ref path, .. })
                 if path.is_ident("ignore_malloc_size_of") =>
             {

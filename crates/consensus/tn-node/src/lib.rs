@@ -14,7 +14,7 @@ use tn_types::{
     read_validator_keypair_from_file, ChainIdentifier, Committee, Config, ConfigTrait, TelcoinDirs,
     WorkerCache, BLS_KEYFILE, PRIMARY_NETWORK_KEYFILE, WORKER_NETWORK_KEYFILE,
 };
-use tracing::info;
+use tracing::{info, instrument};
 
 use crate::{primary::PrimaryNode, worker::WorkerNode};
 
@@ -28,7 +28,8 @@ pub mod worker;
 /// Launch all components for the node.
 ///
 /// Worker, Primary, and Execution.
-pub async fn launch_node<DB, Evm, P: TelcoinDirs>(
+#[instrument(level = "info", skip_all)]
+pub async fn launch_node<DB, Evm, P>(
     mut builder: TnBuilder<DB>,
     evm_config: Evm,
     tn_datadir: &P,
@@ -36,6 +37,7 @@ pub async fn launch_node<DB, Evm, P: TelcoinDirs>(
 where
     DB: Database + DatabaseMetadata + DatabaseMetrics + Clone + Unpin + 'static,
     Evm: BlockExecutorProvider + Clone + 'static,
+    P: TelcoinDirs,
 {
     // config for validator keys
     let config = builder.tn_config.clone();
