@@ -34,7 +34,7 @@ use reth_provider::{
 use reth_revm::database::StateProviderDatabase;
 use reth_rpc_types::BlockNumHash;
 use std::{collections::HashMap, sync::Arc};
-use tn_types::{now, AutoSealConsensus, BatchAPI, BuildArguments, ConsensusOutput};
+use tn_types::{now, AutoSealConsensus, BatchAPI, ConsensusOutput};
 use tokio::sync::{broadcast, mpsc::UnboundedSender, RwLock, RwLockReadGuard, RwLockWriteGuard};
 use tokio_stream::wrappers::BroadcastStream;
 use tracing::{debug, error, trace, warn};
@@ -514,14 +514,12 @@ impl StorageInner {
 mod tests {
     use super::*;
     use assert_matches::assert_matches;
+    use fastcrypto::hash::Hash as _;
     use narwhal_test_utils::default_test_execution_node;
-
     use reth_primitives::GenesisAccount;
     use reth_provider::{CanonStateNotification, CanonStateSubscriptions};
-
     use reth_tasks::TaskManager;
     use reth_tracing::init_test_tracing;
-
     use std::{str::FromStr, time::Duration};
     use tn_types::{adiri_genesis, Certificate, CommittedSubDag, ReputationScores};
     use tokio::time::timeout;
@@ -551,6 +549,7 @@ mod tests {
         let batches = tn_types::test_utils::batches(4); // create 4 batches
         let beneficiary = Address::from_str("0xdbdbdb2cbd23b783741e8d7fcf51e459b497e4a6")
             .expect("beneficiary address from str");
+        let batch_digests = batches.iter().map(|b| b.digest()).collect();
         let consensus_output = ConsensusOutput {
             sub_dag: CommittedSubDag::new(
                 vec![Certificate::default()],
@@ -562,6 +561,7 @@ mod tests {
             .into(),
             batches: vec![batches.clone()],
             beneficiary,
+            batch_digests,
         };
 
         //=== Execution
@@ -692,6 +692,7 @@ mod tests {
         //
         // replace last batch with clone of the first - causes duplicate transaction
         batches[3] = batches[0].clone();
+        let batch_digests = batches.iter().map(|b| b.digest()).collect();
 
         let beneficiary = Address::from_str("0xdbdbdb2cbd23b783741e8d7fcf51e459b497e4a6")
             .expect("beneficiary address from str");
@@ -706,6 +707,7 @@ mod tests {
             .into(),
             batches: vec![batches.clone()],
             beneficiary,
+            batch_digests,
         };
 
         //=== Execution

@@ -8,15 +8,15 @@ use reth_chainspec::ChainSpec;
 use reth_evm::ConfigureEvm;
 use reth_execution_types::ExecutionOutcome;
 use reth_node_api::PayloadBuilderAttributes as _;
-use reth_payload_builder::{database::CachedReads, error::PayloadBuilderError};
+use reth_payload_builder::database::CachedReads;
 use reth_primitives::{
     constants::{
-        eip4844::MAX_DATA_GAS_PER_BLOCK, EMPTY_RECEIPTS, EMPTY_TRANSACTIONS, EMPTY_WITHDRAWALS,
+        EMPTY_RECEIPTS, EMPTY_TRANSACTIONS, EMPTY_WITHDRAWALS,
     },
     proofs,
     revm::env::tx_env_with_recovered,
-    Block, BlockNumHash, Bytes, Header, Receipt, Receipts, SealedBlock, SealedBlockWithSenders,
-    SealedHeader, TransactionSigned, TransactionSignedEcRecovered, Withdrawals, B256,
+    Block, Header, Receipt, SealedBlockWithSenders,
+    SealedHeader, Withdrawals, B256,
     EMPTY_OMMER_ROOT_HASH, U256,
 };
 use reth_provider::{CanonChainTracker, ChainSpecProvider, StateProviderFactory};
@@ -26,9 +26,9 @@ use reth_revm::{
     primitives::{EVMError, EnvWithHandlerCfg, ResultAndState},
     DatabaseCommit, State,
 };
-use std::{collections::VecDeque, sync::Arc};
+use std::sync::Arc;
 use tn_types::{
-    Batch, BatchAPI as _, BatchDigest, BuildArguments, MetadataAPI, TNPayload, TNPayloadAttributes,
+    BatchAPI as _, BuildArguments, MetadataAPI, TNPayload, TNPayloadAttributes,
 };
 use tracing::{debug, error, warn};
 
@@ -139,7 +139,7 @@ where
         //  - parent block's consensus output digest?
 
         // use parent values for next block
-        let base_fee_per_gas = canonical_header.base_fee_per_gas.clone().unwrap_or_default();
+        let base_fee_per_gas = canonical_header.base_fee_per_gas.unwrap_or_default();
         let gas_limit = canonical_header.gas_limit;
         // mix hash is the parent's consensus output digest
         let mix_hash = todo!();
@@ -169,7 +169,7 @@ where
             let batch_digest =
                 output.next_batch_digest().ok_or(TnEngineError::NextBatchDigestMissing)?;
             // use batch's base fee, gas limit, and withdrawals
-            let base_fee_per_gas = block.base_fee_per_gas.clone().unwrap_or_default();
+            let base_fee_per_gas = block.base_fee_per_gas.unwrap_or_default();
             let gas_limit = block.gas_limit;
             let mix_hash = block.mix_hash;
             let withdrawals = block.withdrawals.clone().unwrap_or_else(|| Withdrawals::new(vec![]));
@@ -268,7 +268,7 @@ where
 
     debug!(target: "payload_builder", parent_hash = ?payload.attributes.parent_header.hash(), parent_number = payload.attributes.parent_header.number, "building new payload");
     // collect these totals to report at the end
-    let mut total_gas_used = 0;
+    let total_gas_used = 0;
     let mut cumulative_gas_used = 0;
     let mut total_fees = U256::ZERO;
     let mut executed_txs = Vec::new();

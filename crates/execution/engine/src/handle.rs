@@ -3,7 +3,7 @@
 use tokio::sync::mpsc::UnboundedSender;
 
 #[derive(Debug, Clone)]
-pub struct TNEngineHandle {
+pub(crate) struct TNEngineHandle {
     pub(crate) to_engine: UnboundedSender<()>,
     // Broadcast channel for engine events
     // event_sender: todo!(),

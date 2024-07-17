@@ -1,16 +1,13 @@
 //! Inner-execution node components for both Worker and Primary execution.
 
 use consensus_metrics::metered_channel::Sender;
-use futures::{stream_select, StreamExt};
+use futures::StreamExt;
 use jsonrpsee::http_client::HttpClient;
 use reth::rpc::builder::{config::RethRpcServerConfig, RpcModuleBuilder, RpcServerHandle};
 use reth_auto_seal_consensus::AutoSealConsensus;
-use reth_beacon_consensus::{
-    hooks::{EngineHooks, StaticFileHook},
-    BeaconConsensusEngine, EthBeaconConsensus, MIN_BLOCKS_FOR_PIPELINE_RUN,
-};
+use reth_beacon_consensus::EthBeaconConsensus;
 use reth_blockchain_tree::{
-    BlockchainTree, BlockchainTreeConfig, BlockchainTreeViewer, ShareableBlockchainTree,
+    BlockchainTree, BlockchainTreeConfig, ShareableBlockchainTree,
     TreeExternals,
 };
 use reth_db::{
@@ -19,37 +16,28 @@ use reth_db::{
 };
 use reth_db_common::init::init_genesis;
 use reth_evm::execute::BlockExecutorProvider;
-use reth_exex::ExExManagerHandle;
-use reth_network::NetworkEvents;
 use reth_node_builder::{
     common::WithConfigs,
     components::{NetworkBuilder as _, PayloadServiceBuilder as _, PoolBuilder},
-    setup::build_networked_pipeline,
     BuilderContext, NodeConfig,
 };
 use reth_node_ethereum::{
     node::{EthereumNetworkBuilder, EthereumPayloadBuilder, EthereumPoolBuilder},
     EthEvmConfig,
 };
-use reth_primitives::{Address, Head};
+use reth_primitives::Address;
 use reth_provider::{
     providers::{BlockchainProvider, StaticFileProvider},
-    BlockIdReader, CanonChainTracker, CanonStateNotificationSender, DatabaseProviderFactory,
-    FinalizedBlockReader, HeaderProvider, ProviderFactory, StaticFileProviderFactory as _,
+    BlockIdReader, CanonStateNotificationSender, HeaderProvider, ProviderFactory, StaticFileProviderFactory as _,
 };
-use reth_prune::PruneModes;
-use reth_rpc_types::engine::ForkchoiceState;
-use reth_static_file::StaticFileProducer;
 use reth_tasks::TaskExecutor;
 use reth_transaction_pool::{noop::NoopTransactionPool, TransactionPool};
 use std::{collections::HashMap, sync::Arc};
 use tn_batch_maker::{BatchMakerBuilder, MiningMode};
 use tn_batch_validator::BatchValidator;
-use tn_executor::Executor;
 use tn_faucet::{FaucetArgs, FaucetRpcExtApiServer as _};
 use tn_types::{Consensus, ConsensusOutput, NewBatch, WorkerId};
 use tokio::sync::{broadcast, mpsc::unbounded_channel};
-use tokio_stream::wrappers::UnboundedReceiverStream;
 use tracing::{debug, error, info};
 
 use super::{PrimaryNode, TnBuilder};

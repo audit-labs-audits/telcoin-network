@@ -15,34 +15,25 @@ mod error;
 mod handle;
 mod payload_builder;
 use error::EngineResult;
-use futures::{channel::mpsc::UnboundedSender, stream::BoxStream, Future, StreamExt};
+use futures::{Future, StreamExt};
 use futures_util::{future::BoxFuture, FutureExt};
-use handle::TNEngineHandle;
 pub use payload_builder::execute_consensus_output;
 use reth_blockchain_tree::BlockchainTreeEngine;
-use reth_chainspec::ChainSpec;
-use reth_db::database::Database;
-use reth_errors::RethError;
 use reth_evm::ConfigureEvm;
-use reth_primitives::{BlockNumHash, BlockNumber, SealedHeader, B256};
+use reth_primitives::{BlockNumber, SealedHeader};
 use reth_provider::{
-    BlockIdReader, BlockReader, BlockReaderIdExt, CanonChainTracker, CanonStateNotificationSender,
-    Chain, ChainSpecProvider, StageCheckpointReader, StateProviderFactory,
+    BlockIdReader, BlockReader, CanonChainTracker, ChainSpecProvider, StageCheckpointReader, StateProviderFactory,
 };
-use reth_stages::{Pipeline, PipelineEvent};
-use reth_stages_api::StageId;
-use reth_tasks::TaskSpawner;
+use reth_stages::PipelineEvent;
 use reth_tokio_util::EventStream;
 use std::{
     collections::VecDeque,
     pin::Pin,
-    sync::Arc,
     task::{Context, Poll},
 };
 use tn_types::{BuildArguments, ConsensusOutput};
-use tokio::sync::{broadcast, mpsc};
 use tokio_stream::wrappers::BroadcastStream;
-use tracing::{debug, error, info, warn};
+use tracing::{error, info, warn};
 
 /// The TN consensus engine is responsible executing state that has reached consensus.
 pub struct ExecutorEngine<BT, CE> {
@@ -219,8 +210,8 @@ where
                 //
                 // execute the consensus output
                 this.insert_task = Some(Box::pin(async move {
-                    let finalized_block_num_hash = execute_consensus_output(evm_config, build_args);
-                    finalized_block_num_hash
+                    
+                    execute_consensus_output(evm_config, build_args)
                 }));
             }
 
