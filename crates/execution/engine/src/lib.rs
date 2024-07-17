@@ -247,7 +247,7 @@ mod tests {
     use reth_blockchain_tree::BlockchainTreeViewer;
     use reth_chainspec::ChainSpec;
     use reth_node_ethereum::EthEvmConfig;
-    use reth_primitives::{Address, BlockNumHash, GenesisAccount, TransactionSigned, U256};
+    use reth_primitives::{Address, GenesisAccount, TransactionSigned, U256};
     use reth_provider::{BlockIdReader, BlockNumReader};
     use reth_tasks::TaskManager;
     use reth_tracing::init_test_tracing;
@@ -257,8 +257,8 @@ mod tests {
         ConsensusOutput, ReputationScores,
     };
     use tokio::{
-        sync::{broadcast, oneshot},
-        time::{timeout, Timeout},
+        sync::oneshot,
+        time::timeout,
     };
     use tokio_stream::wrappers::BroadcastStream;
     use tracing::debug;
