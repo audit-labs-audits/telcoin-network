@@ -16,8 +16,8 @@ use reth_primitives::{
     proofs,
     revm::env::tx_env_with_recovered,
     Block, BlockNumHash, Bytes, Header, Receipt, Receipts, SealedBlock, SealedBlockWithSenders,
-    SealedHeader, TransactionSigned, TransactionSignedEcRecovered, B256, EMPTY_OMMER_ROOT_HASH,
-    U256,
+    SealedHeader, TransactionSigned, TransactionSignedEcRecovered, Withdrawals, B256,
+    EMPTY_OMMER_ROOT_HASH, U256,
 };
 use reth_provider::{CanonChainTracker, ChainSpecProvider, StateProviderFactory};
 use reth_revm::{
@@ -43,12 +43,12 @@ use crate::error::{EngineResult, TnEngineError};
 pub fn execute_consensus_output<EvmConfig, Provider>(
     evm_config: EvmConfig,
     args: BuildArguments<Provider>,
-) -> EngineResult<BlockNumHash>
+) -> EngineResult<SealedHeader>
 where
     EvmConfig: ConfigureEvm,
     Provider: StateProviderFactory + ChainSpecProvider + BlockchainTreeEngine + CanonChainTracker,
 {
-    let BuildArguments { provider, mut output, mut parent_block } = args;
+    let BuildArguments { provider, mut output, parent_header } = args;
 
     debug!(target: "tn::engine", ?output, "executing output");
 
@@ -110,19 +110,14 @@ where
     assert_eq!(sealed_blocks_with_senders.len(), output.batch_digests.len());
 
     // TODO: is it worth the db read to retrieve the sealed header from DB? This would allow:
-    // - use `parent_block` from args once to retrieve sealed header
+    // - use `parent_header` from args once to retrieve sealed header
     // - use this sealed header everywhere instead of parent block
     // - easier to maintain, less confusing, harder to mix/match values
-    //   - currently, using parent_block for number/hash but could also get this from sealed_block ref
+    //   - currently, using parent_header for number/hash but could also get this from sealed_block ref
     //   - especially since executing empty output and output with batches must be different
 
-    // use default header and seal with parent hash
-    // this ensures that the values used after loop are always correct
-    // not strictly necessary, but ensures consistent data before/after loop
-    let mut default_header = Header::default();
-    default_header.number = parent_block.number;
-    // ensure canonical header number and hash are correct (only used after loop)
-    let mut canonical_header = default_header.seal(parent_block.hash);
+    // rename canonical header for clarity
+    let mut canonical_header = parent_header;
 
     debug!(?canonical_header, "default SealedHeader");
 
@@ -137,19 +132,31 @@ where
         // TODO: `block` is used by the payload for:
         //  - mix hash
         //  - withdrawals (but uses unwrap_or_default())
+        //  - base fee per gas
+        //  - gas limit
         //
         // SO, where does batch mix hash come from?
         //  - parent block's consensus output digest?
-        let block = SealedBlockWithSenders::new(block, senders);
+
+        // use parent values for next block
+        let base_fee_per_gas = canonical_header.base_fee_per_gas.clone().unwrap_or_default();
+        let gas_limit = canonical_header.gas_limit;
+        // mix hash is the parent's consensus output digest
+        let mix_hash = todo!();
+        // empty withdrawals
+        let withdrawals = Withdrawals::new(vec![]);
         let payload_attributes = TNPayloadAttributes::new(
-            parent_block,
+            canonical_header,
             ommers.clone(),
             ommers_root,
             0,
             B256::ZERO, // no batch to digest
             &output,
             output_digest.into(),
-            block,
+            base_fee_per_gas,
+            gas_limit,
+            mix_hash,
+            withdrawals,
         );
         let payload = TNPayload::new(payload_attributes);
 
@@ -164,15 +171,23 @@ where
         for (block_index, block) in sealed_blocks_with_senders.into_iter().enumerate() {
             let batch_digest =
                 output.next_batch_digest().ok_or(TnEngineError::NextBatchDigestMissing)?;
+            // use batch's base fee, gas limit, and withdrawals
+            let base_fee_per_gas = block.base_fee_per_gas.clone().unwrap_or_default();
+            let gas_limit = block.gas_limit;
+            let mix_hash = block.mix_hash;
+            let withdrawals = block.withdrawals.clone().unwrap_or_else(|| Withdrawals::new(vec![]));
             let payload_attributes = TNPayloadAttributes::new(
-                parent_block,
+                canonical_header,
                 ommers.clone(),
                 ommers_root,
                 block_index as u64,
                 batch_digest.into(),
                 &output,
                 output_digest.into(),
-                block,
+                base_fee_per_gas,
+                gas_limit,
+                mix_hash,
+                withdrawals,
             );
             let payload = TNPayload::new(payload_attributes);
 
@@ -182,6 +197,7 @@ where
                 payload,
                 &provider,
                 provider.chain_spec(),
+                block,
             )?;
 
             debug!(target: "execution::executor", ?next_canonical_block);
@@ -189,14 +205,10 @@ where
             // next steps:
             // - save block to db
             // - possible to reuse state to prevent extra call to db?
-            // - set this block as parent_block
+            // - set this block as parent_header
             // - handle end of loop
 
-            // update parent for next block execution in loop
-            parent_block =
-                BlockNumHash::new(next_canonical_block.number, next_canonical_block.hash());
-
-            // update sealed canonical header
+            // update header for next block execution in loop
             canonical_header = next_canonical_block.header.clone();
 
             // add block to the tree and skip state root validation
@@ -209,7 +221,7 @@ where
     } // end block execution
 
     // make all blocks canonical, commit them to the database, and broadcast on `canon_state_notification_sender`
-    provider.make_canonical(parent_block.hash)?;
+    provider.make_canonical(canonical_header.hash())?;
 
     //
     // see: reth/crates/consensus/beacon/src/engine/mod.rs:update_canon_chain
@@ -220,16 +232,16 @@ where
     // finalize the last block executed from consensus output and update chain info
     //
     // this removes canonical blocks from the tree, but still need to set_finalized
-    debug!("setting finalized block number...{:?}", parent_block.number);
-    provider.finalize_block(parent_block.number)?;
+    debug!("setting finalized block number...{:?}", canonical_header.number);
+    provider.finalize_block(canonical_header.number)?;
     provider.set_finalized(canonical_header.clone());
     debug!("finalized block successful: {:?}", provider.finalized_block_num_hash());
 
     // update safe block
-    provider.set_safe(canonical_header);
+    provider.set_safe(canonical_header.clone());
 
-    // return parent num hash for next engine task
-    Ok(parent_block)
+    // return new canonical header for next engine task
+    Ok(canonical_header)
 }
 
 #[inline]
@@ -238,12 +250,13 @@ fn build_block_from_batch_payload<'a, EvmConfig, Provider>(
     payload: TNPayload,
     provider: &Provider,
     chain_spec: Arc<ChainSpec>,
+    batch_block: SealedBlockWithSenders,
 ) -> EngineResult<SealedBlockWithSenders>
 where
     EvmConfig: ConfigureEvm,
     Provider: StateProviderFactory,
 {
-    let state_provider = provider.state_by_block_hash(payload.attributes.parent_block.hash)?;
+    let state_provider = provider.state_by_block_hash(payload.attributes.parent_header.hash())?;
     let state = StateProviderDatabase::new(state_provider);
 
     // TODO: using same apprach as reth here bc I can't find the State::builder()'s methods
@@ -255,7 +268,7 @@ where
     let mut db =
         State::builder().with_database_ref(cached_reads.as_db(state)).with_bundle_update().build();
 
-    debug!(target: "payload_builder", parent_hash = ?payload.attributes.parent_block.hash, parent_number = payload.attributes.parent_block.number, "building new payload");
+    debug!(target: "payload_builder", parent_hash = ?payload.attributes.parent_header.hash(), parent_number = payload.attributes.parent_header.number, "building new payload");
     // collect these totals to report at the end
     let mut total_gas_used = 0;
     let mut cumulative_gas_used = 0;
@@ -267,8 +280,7 @@ where
 
     // initialize values for execution from block env
     // note: use the batch's sealed header for "parent" values
-    let (cfg, block_env) =
-        payload.cfg_and_block_env(chain_spec.as_ref(), payload.attributes.batch_block.header());
+    let (cfg, block_env) = payload.cfg_and_block_env(chain_spec.as_ref(), batch_block.header());
     let block_gas_limit: u64 = block_env.gas_limit.try_into().unwrap_or(u64::MAX);
     let base_fee = block_env.basefee.to::<u64>();
     let block_number = block_env.number.to::<u64>();
@@ -290,13 +302,13 @@ where
     //     &chain_spec,
     //     initialized_block_env.timestamp.to::<u64>(),
     //     block_number,
-    //     parent_block.hash(),
+    //     parent_header.hash(),
     // )
     // .map_err(|err| PayloadBuilderError::Internal(err.into()))?;
 
     // TODO: parallelize tx recovery when it's worth it (see TransactionSigned::recover_signers())
 
-    let txs = payload.attributes.batch_block.clone().into_transactions_ecrecovered();
+    let txs = batch_block.into_transactions_ecrecovered();
 
     for tx in txs {
         // // TODO: support blob gas with cancun genesis hardfork
@@ -431,9 +443,9 @@ where
     //         executed_txs.iter().filter(|tx| tx.is_eip4844()).map(|tx| tx.hash).collect(),
     //     )?;
 
-    //     excess_blob_gas = if chain_spec.is_cancun_active_at_timestamp(parent_block.timestamp) {
-    //         let parent_excess_blob_gas = parent_block.excess_blob_gas.unwrap_or_default();
-    //         let parent_blob_gas_used = parent_block.blob_gas_used.unwrap_or_default();
+    //     excess_blob_gas = if chain_spec.is_cancun_active_at_timestamp(parent_header.timestamp) {
+    //         let parent_excess_blob_gas = parent_header.excess_blob_gas.unwrap_or_default();
+    //         let parent_blob_gas_used = parent_header.blob_gas_used.unwrap_or_default();
     //         Some(calculate_excess_blob_gas(parent_excess_blob_gas, parent_blob_gas_used))
     //     } else {
     //         // for the first post-fork block, both parent.blob_gas_used and
@@ -457,7 +469,7 @@ where
         mix_hash: payload.prev_randao(),
         nonce: payload.attributes.batch_index,
         base_fee_per_gas: Some(base_fee),
-        number: payload.attributes.parent_block.number + 1, // ensure this matches the block env
+        number: payload.attributes.parent_header.number + 1, // ensure this matches the block env
         gas_limit: block_gas_limit,
         difficulty: U256::from(payload.attributes.batch_index),
         gas_used: cumulative_gas_used,
@@ -499,9 +511,9 @@ where
     Provider: StateProviderFactory,
 {
     let state =
-        provider.state_by_block_hash(payload.attributes.parent_block.hash).map_err(|err| {
+        provider.state_by_block_hash(payload.attributes.parent_header.hash()).map_err(|err| {
             warn!(target: "engine::payload_builder",
-                parent_hash=%payload.attributes.parent_block.hash,
+                parent_hash=%payload.attributes.parent_header.hash(),
                 %err,
                 "failed to get state for empty output",
             );
@@ -531,7 +543,7 @@ where
     let bundle_state = db.take_bundle();
     let state_root = db.database.state_root(&bundle_state).map_err(|err| {
         warn!(target: "engine::payload_builder",
-            parent_hash=%payload.attributes.parent_block.hash,
+            parent_hash=%payload.attributes.parent_header.hash(),
             %err,
             "failed to calculate state root for empty output"
         );
@@ -551,7 +563,7 @@ where
         mix_hash: payload.prev_randao(),
         nonce: payload.attributes.batch_index,
         base_fee_per_gas: Some(base_fee),
-        number: payload.attributes.parent_block.number + 1, // ensure this matches the block env
+        number: payload.attributes.parent_header.number + 1, // ensure this matches the block env
         gas_limit: block_gas_limit,
         difficulty: U256::ZERO, // batch index
         gas_used: 0,

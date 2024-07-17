@@ -24,7 +24,7 @@ use reth_chainspec::ChainSpec;
 use reth_db::database::Database;
 use reth_errors::RethError;
 use reth_evm::ConfigureEvm;
-use reth_primitives::{BlockNumHash, BlockNumber, B256};
+use reth_primitives::{BlockNumHash, BlockNumber, SealedHeader, B256};
 use reth_provider::{
     BlockIdReader, BlockReader, BlockReaderIdExt, CanonChainTracker, CanonStateNotificationSender,
     Chain, ChainSpecProvider, StageCheckpointReader, StateProviderFactory,
@@ -50,7 +50,7 @@ pub struct ExecutorEngine<BT, CE> {
     queued: VecDeque<ConsensusOutput>,
     /// Single active future that inserts a new block into `storage`
     // insert_task: Option<BoxFuture<'static, Option<EventStream<PipelineEvent>>>>,
-    insert_task: Option<BoxFuture<'static, EngineResult<BlockNumHash>>>,
+    insert_task: Option<BoxFuture<'static, EngineResult<SealedHeader>>>,
     // /// Used to notify consumers of new blocks
     // canon_state_notification: CanonStateNotificationSender,
     /// The type used to query both the database and the blockchain tree.
@@ -68,10 +68,10 @@ pub struct ExecutorEngine<BT, CE> {
     /// Receiving end from CL's `Executor`. The `ConsensusOutput` is sent
     /// to the mining task here.
     consensus_output_stream: BroadcastStream<ConsensusOutput>,
-    /// The [BlockNumHash] of the last fully-executed block.
+    /// The [SealedHeader] of the last fully-executed block.
     ///
     /// This information is reflects the current finalized block number and hash.
-    parent: BlockNumHash,
+    parent_header: SealedHeader,
 }
 
 impl<BT, CE> ExecutorEngine<BT, CE>
@@ -106,7 +106,7 @@ where
         // task_spawner: Box<dyn TaskSpawner>,
         max_block: Option<BlockNumber>,
         consensus_output_stream: BroadcastStream<ConsensusOutput>,
-        parent: BlockNumHash,
+        parent_header: SealedHeader,
         // hooks: EngineHooks,
     ) -> Self {
         // let event_sender = EventSender::default();
@@ -119,7 +119,7 @@ where
             max_block,
             pipeline_events: None,
             consensus_output_stream,
-            parent,
+            parent_header,
         }
     }
 }
@@ -178,7 +178,7 @@ where
                                     // TODO: broadcast tip?
                                     //
                                     // ensure no errors then continue
-                                    this.parent = final_num_hash?;
+                                    this.parent_header = final_num_hash?;
 
                                     // break last_output loop to return Ok()
                                     break 'last_output;
