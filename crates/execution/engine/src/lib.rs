@@ -212,7 +212,7 @@ where
                 let output = this.queued.pop_front().expect("not empty");
                 let provider = this.blockchain.clone();
                 let evm_config = this.evm_config.clone();
-                let parent = this.parent; // Copy
+                let parent = this.parent_header.clone();
                 let build_args = BuildArguments::new(provider, output, parent);
 
                 // TODO: should this be on a blocking thread?
@@ -226,13 +226,13 @@ where
 
             if let Some(mut fut) = this.insert_task.take() {
                 match fut.poll_unpin(cx) {
-                    Poll::Ready(final_num_hash) => {
+                    Poll::Ready(final_header) => {
                         // this.pipeline_events = events;
                         //
                         // TODO: broadcast tip?
                         //
                         // ensure no errors then continue
-                        this.parent = final_num_hash?;
+                        this.parent_header = final_header?;
                         // loop again to check for next output
                         continue;
                     }

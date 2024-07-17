@@ -150,7 +150,7 @@ pub struct TNPayloadAttributes {
     ///
     /// TODO: support withdrawals
     ///
-    /// This is currently always empty vec. This comes from the batch/block's withdrawals.
+    /// This is currently always empty vec. This comes from the batch block's withdrawals.
     pub withdrawals: Withdrawals,
     // TODO:
     // - indicate first batch in new output to process rewards?
