@@ -89,14 +89,7 @@ where
     /// Create a new instance of the [`ExecutorEngine`] using the given channel to configure
     /// the [`ConsensusOutput`] communication channel.
     ///
-    /// By default the engine is started with idle pipeline.
-    /// The pipeline can be launched immediately in one of the following ways descending in
-    /// priority:
-    /// - Explicit [`Option::Some`] target block hash provided via a constructor argument.
-    /// - The process was previously interrupted amidst the pipeline run. This is checked by
-    ///   comparing the checkpoints of the first ([`StageId::Headers`]) and last
-    ///   ([`StageId::Finish`]) stages. In this case, the latest available header in the database is
-    ///   used as the target.
+    /// The engine waits for CL to broadcast output then tries to execute.
     ///
     /// Propagates any database related error.
     #[allow(clippy::too_many_arguments)]
@@ -142,7 +135,6 @@ where
 
         // spawn blocking task and return oneshot receiver
         self.executor.spawn_blocking(Box::pin(async move {
-            // aa
             let result = execute_consensus_output(evm_config, build_args);
             match tx.send(result) {
                 Ok(()) => (),
@@ -162,10 +154,10 @@ where
             self.max_round.map(|target| progress >= target).unwrap_or_default();
         if has_reached_max_round {
             trace!(
-                target: "consensus::engine::sync",
+                target: "engine",
                 ?progress,
                 max_round = ?self.max_round,
-                "Consensus engine reached max block"
+                "Consensus engine reached max round for consensus"
             );
         }
         has_reached_max_round
@@ -173,10 +165,10 @@ where
 }
 
 /// The [ExecutorEngine] is a future that loops through the following:
-/// - first receive and add any messages from consensus to a queue
-/// - ensure the previous task is complete, then start executing the next output from queue
+/// - receive messages from consensus
+/// - add these messages to a queue
+/// - pull from queue to start next execution task if idle
 /// - poll any pending tasks that are currently being executed
-/// - return poll pending
 ///
 /// If a task completes, the loop continues to poll for any new output from consensus then begins executing the next task.
 ///
@@ -201,22 +193,21 @@ where
     fn poll(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
         let this = self.get_mut();
 
-        // main executes output from consensus
         loop {
-            // check if output is available from consensus
+            // check if output is available from consensus to keep broadcast stream from "lagging"
             match this.consensus_output_stream.poll_next_unpin(cx) {
                 Poll::Ready(Some(Ok(output))) => {
                     // queue the output for local execution
                     this.queued.push_back(output)
                 }
                 Poll::Ready(Some(Err(e))) => {
-                    error!(target: "execution::executor", ?e, "for consensus output stream");
+                    error!(target: "engine", ?e, "for consensus output stream");
                 }
                 Poll::Ready(None) => {
                     // the stream has ended
                     //
                     // this could indicate an error but it's also how the Primary signals engine to shutdown
-                    info!(target: "tn::engine", "ConsensusOutput channel closed. Shutting down...");
+                    info!(target: "engine", "ConsensusOutput channel closed. Shutting down...");
 
                     // only return if there are no current tasks and the queue is empty
                     // otherwise, let the loop continue so any remaining tasks and queued output is executed
@@ -240,7 +231,6 @@ where
 
                 // ready to begin executing next round of consensus
                 this.insert_task = Some(this.spawn_execution_task());
-                // Some(Box::pin(async move { execute_consensus_output(evm_config, build_args) }));
             }
 
             // poll receiver that returns output execution result
@@ -262,7 +252,6 @@ where
                         }
 
                         // continue loop to poll broadcast stream for next output
-                        continue; // redundant
                     }
                     Poll::Pending => {
                         this.insert_task = Some(receiver);
@@ -361,6 +350,7 @@ mod tests {
         let engine = ExecutorEngine::new(
             blockchain.clone(),
             evm_config,
+            executor.clone(),
             max_round,
             consensus_output_stream,
             parent,
@@ -484,6 +474,7 @@ mod tests {
         let engine = ExecutorEngine::new(
             blockchain.clone(),
             evm_config,
+            executor.clone(),
             max_round,
             consensus_output_stream,
             parent,
