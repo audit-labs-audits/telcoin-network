@@ -84,6 +84,7 @@ for ((i=0; i<$LENGTH; i++)); do
     cp "${WORKER_CACHE_PATH}" "${DATADIR}/genesis"
 
     if [ "$START" = true ]; then
+        # -vvv for INFO, -vvvvv for TRACE, etc
         # start validator
         target/${RELEASE}/telcoin-network node --datadir "${DATADIR}" \
            --chain adiri \
@@ -91,7 +92,7 @@ for ((i=0; i<$LENGTH; i++)); do
            --metrics "${METRICS}" \
            --consensus-metrics "${CONSENSUS_METRICS}" \
            --log.stdout.format log-fmt \
-           -vvvvv \
+           -vvv \
            --http > "${ROOTDIR}/${VALIDATOR}.log" &
     fi
 done
