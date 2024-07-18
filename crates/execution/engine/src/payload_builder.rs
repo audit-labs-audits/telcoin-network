@@ -10,13 +10,10 @@ use reth_execution_types::ExecutionOutcome;
 use reth_node_api::PayloadBuilderAttributes as _;
 use reth_payload_builder::database::CachedReads;
 use reth_primitives::{
-    constants::{
-        EMPTY_RECEIPTS, EMPTY_TRANSACTIONS, EMPTY_WITHDRAWALS,
-    },
-    proofs,
+    constants::{EMPTY_RECEIPTS, EMPTY_TRANSACTIONS, EMPTY_WITHDRAWALS},
+    keccak256, proofs,
     revm::env::tx_env_with_recovered,
-    Block, Header, Receipt, SealedBlockWithSenders,
-    SealedHeader, Withdrawals, B256,
+    Block, Header, Receipt, SealedBlockWithSenders, SealedHeader, Withdrawals, B256,
     EMPTY_OMMER_ROOT_HASH, U256,
 };
 use reth_provider::{CanonChainTracker, ChainSpecProvider, StateProviderFactory};
@@ -27,9 +24,7 @@ use reth_revm::{
     DatabaseCommit, State,
 };
 use std::sync::Arc;
-use tn_types::{
-    BatchAPI as _, BuildArguments, MetadataAPI, TNPayload, TNPayloadAttributes,
-};
+use tn_types::{BatchAPI as _, BuildArguments, MetadataAPI, TNPayload, TNPayloadAttributes};
 use tracing::{debug, error, warn};
 
 use crate::error::{EngineResult, TnEngineError};
@@ -142,7 +137,20 @@ where
         let base_fee_per_gas = canonical_header.base_fee_per_gas.unwrap_or_default();
         let gas_limit = canonical_header.gas_limit;
         // mix hash is the parent's consensus output digest
-        let mix_hash = todo!();
+        // TODO: this is easy to manipulate
+        //
+        // calculate mix hash as a source of randomness
+        // - consensus output digest from parent (beacon block root)
+        // - timestamp
+        //
+        // see https://eips.ethereum.org/EIPS/eip-4399
+        let mix_hash = match canonical_header.parent_beacon_block_root {
+            Some(root) => keccak256(
+                [root.as_slice(), output.committed_at().to_le_bytes().as_slice()].concat(),
+            ),
+            None => B256::ZERO,
+        };
+
         // empty withdrawals
         let withdrawals = Withdrawals::new(vec![]);
         let payload_attributes = TNPayloadAttributes::new(
@@ -162,7 +170,19 @@ where
 
         // execute
         let next_canonical_block =
-            build_block_from_empty_payload(payload, &provider, provider.chain_spec());
+            build_block_from_empty_payload(payload, &provider, provider.chain_spec())?;
+
+        debug!(target: "execution::executor", ?next_canonical_block);
+
+        // update header for next block execution in loop
+        canonical_header = next_canonical_block.header.clone();
+
+        // add block to the tree and skip state root validation
+        provider
+            .insert_block(next_canonical_block, BlockValidationKind::SkipStateRootValidation).map_err(|err| {
+                error!(target: "engine::payload_builder", header=?canonical_header, "failed to insert next canonical block");
+                err
+            })?;
     } else {
         // loop and construct blocks with transactions
         for (block_index, block) in sealed_blocks_with_senders.into_iter().enumerate() {

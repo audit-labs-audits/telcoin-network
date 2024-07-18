@@ -268,6 +268,8 @@ impl StorageInner {
             header.timestamp = parent.timestamp + 1;
         }
 
+        // TODO: this is easy to manipulate
+        //
         // calculate mix hash as a source of randomness
         // - consensus output digest from parent (beacon block root)
         // - timestamp
