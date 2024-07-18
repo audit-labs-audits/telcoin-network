@@ -156,42 +156,18 @@ where
                     error!(target: "execution::executor", ?e, "for consensus output stream");
                 }
                 Poll::Ready(None) => {
-                    // stream has ended
-                    //
-                    // TODO: should this be an error?
-                    // Primary shuts down engine this way?
-                    info!(target: "tn::engine", "ConsensusOutput channel closed. Shutting down...");
-
                     // the stream has ended
                     //
-                    // poll any unfinished tasks and try to execute all output that was queued before shutting down
-                    if let Some(mut fut) = this.insert_task.take() {
-                        info!(target: "tn::engine", "attempting to execute final output...");
+                    // this could indicate an error but it's also how the Primary signals engine to shutdown
+                    info!(target: "tn::engine", "ConsensusOutput channel closed. Shutting down...");
 
-                        // try to execute the remaining outputs received before exiting
-                        match fut.poll_unpin(cx) {
-                            Poll::Ready(final_num_hash) => {
-                                info!(target: "tn::engine", ?final_num_hash, "engine completed execution");
-                                // this.pipeline_events = events;
-                                //
-                                // TODO: broadcast tip?
-                                //
-                                // ensure no errors then continue
-                                this.parent_header = final_num_hash?;
-
-                                // return if last output executed
-                                if this.queued.is_empty() {
-                                    return Poll::Ready(Ok(()));
-                                }
-                            }
-                            Poll::Pending => {
-                                this.insert_task = Some(fut);
-                                // break loop to return Poll::Pending
-                                break;
-                            }
-                        }
+                    // only return if there are no current tasks and the queue is empty
+                    // otherwise, let the loop continue so any remaining tasks and queued output is executed
+                    if this.insert_task.is_none() && this.queued.is_empty() {
+                        return Poll::Ready(Ok(()));
                     }
                 }
+
                 Poll::Pending => { /* nothing to do */ }
             }
 
