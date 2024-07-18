@@ -290,10 +290,11 @@ mod tests {
     use reth_provider::{BlockIdReader, BlockNumReader};
     use reth_tasks::TaskManager;
     use reth_tracing::init_test_tracing;
-    use std::{str::FromStr as _, sync::Arc, time::Duration};
+    use std::{borrow::BorrowMut, str::FromStr as _, sync::Arc, time::Duration};
     use tn_types::{
-        adiri_chain_spec_arc, adiri_genesis, BatchAPI as _, Certificate, CommittedSubDag,
-        ConsensusOutput, ReputationScores,
+        adiri_chain_spec_arc, adiri_genesis, now, test_utils::seeded_genesis_from_random_batches,
+        BatchAPI as _, Certificate, CertificateAPI, CommittedSubDag, ConsensusOutput,
+        ReputationScores,
     };
     use tokio::{sync::oneshot, time::timeout};
     use tokio_stream::wrappers::BroadcastStream;
@@ -403,24 +404,53 @@ mod tests {
         // TODO: this does not use a "real" `ConsensusOutput`
         //
         // refactor with valid data once test util helpers are in place
-        let leader = Certificate::default();
+        let timestamp = now();
+        let mut leader_1 = Certificate::default();
+        // update timestamp
+        leader_1.update_created_at(timestamp);
         let sub_dag_index = 1;
         let reputation_scores = ReputationScores::default();
         let previous_sub_dag = None;
-        let batches = tn_types::test_utils::batches(4); // create 4 batches
-        let batch_digests = batches.iter().map(|b| b.digest()).collect();
-        let beneficiary = Address::from_str("0xdbdbdb2cbd23b783741e8d7fcf51e459b497e4a6")
+        let batches_1 = tn_types::test_utils::batches(4); // create 4 batches
+        let batch_digests = batches_1.iter().map(|b| b.digest()).collect();
+        let beneficiary = Address::from_str("0x1111111111111111111111111111111111111111")
             .expect("beneficiary address from str");
-        let consensus_output = ConsensusOutput {
-            sub_dag: CommittedSubDag::new(
-                vec![Certificate::default()],
-                leader,
-                sub_dag_index,
-                reputation_scores,
-                previous_sub_dag,
-            )
-            .into(),
-            batches: vec![batches.clone()],
+        let subdag_1 = Arc::new(CommittedSubDag::new(
+            vec![Certificate::default()],
+            leader_1,
+            sub_dag_index,
+            reputation_scores,
+            previous_sub_dag,
+        ));
+        let consensus_output_1 = ConsensusOutput {
+            sub_dag: subdag_1.clone(),
+            batches: vec![batches_1.clone()],
+            beneficiary,
+            batch_digests,
+        };
+
+        // create second output
+        let mut leader_2 = Certificate::default();
+        // update timestamp
+        leader_2.update_created_at(timestamp);
+        let sub_dag_index = 2;
+        let reputation_scores = ReputationScores::default();
+        let previous_sub_dag = Some(subdag_1.as_ref());
+        let batches_2 = tn_types::test_utils::batches(4); // create 4 batches
+        let batch_digests = batches_2.iter().map(|b| b.digest()).collect();
+        let beneficiary = Address::from_str("0x2222222222222222222222222222222222222222")
+            .expect("beneficiary address from str");
+        let subdag_2 = CommittedSubDag::new(
+            vec![Certificate::default()],
+            leader_2,
+            sub_dag_index,
+            reputation_scores,
+            previous_sub_dag,
+        )
+        .into();
+        let consensus_output_2 = ConsensusOutput {
+            sub_dag: subdag_2,
+            batches: vec![batches_2.clone()],
             beneficiary,
             batch_digests,
         };
@@ -429,33 +459,10 @@ mod tests {
 
         let genesis = adiri_genesis();
 
-        // collect txs and addresses for later assertions
-        let mut txs_in_output = vec![];
-        let mut senders_in_output = vec![];
-
-        let mut accounts_to_seed = Vec::new();
-        for batch in batches.into_iter() {
-            for tx in batch.transactions_owned() {
-                let tx_signed = TransactionSigned::decode_enveloped(&mut tx.as_ref())
-                    .expect("decode tx signed");
-                let address = tx_signed.recover_signer().expect("signer recoverable");
-                txs_in_output.push(tx_signed);
-                senders_in_output.push(address);
-                // fund account with 99mil TEL
-                let account = (
-                    address,
-                    GenesisAccount::default().with_balance(
-                        U256::from_str("0x51E410C0F93FE543000000")
-                            .expect("account balance is parsed"),
-                    ),
-                );
-                accounts_to_seed.push(account);
-            }
-        }
-        debug!("accounts to seed: {accounts_to_seed:?}");
-
         // genesis
-        let genesis = genesis.extend_accounts(accounts_to_seed);
+        let batches_for_seeding = [batches_1, batches_2].concat();
+        let (genesis, _txs, _signers) =
+            seeded_genesis_from_random_batches(genesis, batches_for_seeding.iter());
         let chain: Arc<ChainSpec> = Arc::new(genesis.into());
 
         // execution node components
@@ -471,7 +478,7 @@ mod tests {
         let max_round = None;
         let parent = chain.sealed_genesis_header();
 
-        let engine = ExecutorEngine::new(
+        let mut engine = ExecutorEngine::new(
             blockchain.clone(),
             evm_config,
             executor.clone(),
@@ -480,12 +487,16 @@ mod tests {
             parent,
         );
 
-        // send output
-        let broadcast_result = to_engine.send(consensus_output);
-        assert!(broadcast_result.is_ok());
+        // // send output
+        // let broadcast_result = to_engine.send(consensus_output_1);
+        // assert!(broadcast_result.is_ok());
 
         // drop sending channel
         drop(to_engine);
+
+        // add both outputs to queue
+        engine.queued.push_back(consensus_output_1);
+        engine.queued.push_back(consensus_output_2);
 
         let (tx, rx) = oneshot::channel();
 
@@ -509,6 +520,9 @@ mod tests {
         let chain_info = blockchain.chain_info()?;
         debug!("chain info:\n{chain_info:?}");
 
+        // assert all 4 batches were executed
+        assert_eq!(last_block_num, 8);
+        // assert canonical tip and finalized block are equal
         assert_eq!(canonical_tip, final_block);
 
         Ok(())
