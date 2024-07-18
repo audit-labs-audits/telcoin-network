@@ -193,7 +193,7 @@ where
             // only insert task if there is none
             //
             // note: it's important that the previous consensus output finishes executing before
-            // inserting the next task to ensure the parent numhash is finalized
+            // inserting the next task to ensure the parent sealed header is finalized
             if this.insert_task.is_none() {
                 if this.queued.is_empty() {
                     // nothing to insert
@@ -256,10 +256,7 @@ mod tests {
         adiri_chain_spec_arc, adiri_genesis, BatchAPI as _, Certificate, CommittedSubDag,
         ConsensusOutput, ReputationScores,
     };
-    use tokio::{
-        sync::oneshot,
-        time::timeout,
-    };
+    use tokio::{sync::oneshot, time::timeout};
     use tokio_stream::wrappers::BroadcastStream;
     use tracing::debug;
 
@@ -474,5 +471,16 @@ mod tests {
         assert_eq!(canonical_tip, final_block);
 
         Ok(())
+    }
+}
+
+impl<BT, CE> std::fmt::Debug for ExecutorEngine<BT, CE> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("ExecutorEngine")
+            .field("queued", &self.queued.len())
+            .field("insert_task", &self.insert_task.is_some())
+            .field("max_block", &self.max_block)
+            .field("parent_header", &self.parent_header)
+            .finish_non_exhaustive()
     }
 }
