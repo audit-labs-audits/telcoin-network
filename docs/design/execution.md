@@ -57,9 +57,13 @@ Because blocks contain these fields, they are accessible to be re-purposed for T
 
 Simply using the digest from consensus output is an insufficient source of randomness because batches can be built off historic parents. An attacker could theoretically know the next digest and anticipate the mix hash in the upcoming batch. The ability to predict upcoming mix hashes would undermine the security of on-chain programs that rely on PREVRANDAO as a source of randomness in the EVM.
 
-Instead, the digest of consensus output should be mixed with another value that the worker knows at the time of block construction (ie - number of transactions in the batch? timestamp? gas used? some value that can be used to reproduce the mix hash with extreme difficulty in predicting).
+Instead, the digest of consensus output should be mixed with another value that the worker knows at the time of block construction (ie - number of transactions in the batch? timestamp? some value that can be used to reproduce the mix hash with extreme difficulty in predicting).
 
-The mix hash for a worker's block is thus random, providing security for smart contracts relying on it. It's also verifiable. After consensus, this value is reused to ensure consistent execution results. During re-execution for finality, the mix hash can be known because no other transactions are possibly included. The only possibility is for them to be removed.
+Using values from the worker's own block requires trust in the node operator. Malicious operators could intentionally withhold transactions or force block production at a convenient time to ensure favorable execution environment. Using values such as timestamp or number of transactions provides an opportunity for manipulating the mix hash value.
+
+Is there a value peers can use? Might need to be signature-based. What is a value that node operators cannot manipulate without peers witnessing?
+
+The mix hash for a worker's block must be random, providing security for smart contracts relying on it. It also must be verifiable and impossible to manipulate. After consensus, the mix hash value is reused to ensure consistent execution results. During re-execution for finality, the mix hash can be known because no other transactions are possibly included. The only possibility is for them to be removed.
 
 *Logic*:  On-chain programs might rely on this value for randomness, and it must be consistent when the batch is made and the final block is executed. It's also important that the random value is verifiable yet unpredictable.
 

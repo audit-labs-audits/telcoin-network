@@ -24,11 +24,11 @@ use reth_evm::execute::{
 };
 use reth_primitives::{
     constants::{EMPTY_TRANSACTIONS, ETHEREUM_BLOCK_GAS_LIMIT},
-    proofs, Address, Block, BlockBody, BlockHash, BlockHashOrNumber, BlockNumber, Header,
-    SealedHeader, TransactionSigned, Withdrawals, B256, EMPTY_OMMER_ROOT_HASH, U256,
+    keccak256, proofs, Address, Block, BlockBody, BlockHash, BlockHashOrNumber, BlockNumber,
+    Header, SealedHeader, TransactionSigned, Withdrawals, B256, EMPTY_OMMER_ROOT_HASH, U256,
 };
 use reth_provider::{BlockReaderIdExt, ExecutionOutcome, StateProviderFactory};
-use reth_revm::database::StateProviderDatabase;
+use reth_revm::{database::StateProviderDatabase, primitives::bitvec::view::BitViewSized};
 use reth_transaction_pool::TransactionPool;
 use std::{
     collections::HashMap,
@@ -266,6 +266,16 @@ impl StorageInner {
         if header.timestamp == parent.timestamp {
             warn!(target: "execution::batch_maker", "header template timestamp same as parent");
             header.timestamp = parent.timestamp + 1;
+        }
+
+        // calculate mix hash as a source of randomness
+        // - consensus output digest from parent (beacon block root)
+        // - timestamp
+        //
+        // see https://eips.ethereum.org/EIPS/eip-4399
+        if let Some(root) = parent.parent_beacon_block_root {
+            header.mix_hash =
+                keccak256([root.as_slice(), header.timestamp.to_le_bytes().as_slice()].concat());
         }
 
         header
