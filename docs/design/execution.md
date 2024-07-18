@@ -55,6 +55,12 @@ Because blocks contain these fields, they are accessible to be re-purposed for T
 
 *TN*: Should `ConsensusOutput` digest be used here? Reasonably sure it would be hard to predict and easy to verify. How would this be set on genesis - for first batches? What is the mechanism for sharing mixed hash from previous round? Need to review this further.
 
+Simply using the digest from consensus output is an insufficient source of randomness because batches can be built off historic parents. An attacker could theoretically know the next digest and anticipate the mix hash in the upcoming batch. The ability to predict upcoming mix hashes would undermine the security of on-chain programs that rely on PREVRANDAO as a source of randomness in the EVM.
+
+Instead, the digest of consensus output should be mixed with another value that the worker knows at the time of block construction (ie - number of transactions in the batch? timestamp? gas used? some value that can be used to reproduce the mix hash with extreme difficulty in predicting).
+
+The mix hash for a worker's block is thus random, providing security for smart contracts relying on it. It's also verifiable. After consensus, this value is reused to ensure consistent execution results. During re-execution for finality, the mix hash can be known because no other transactions are possibly included. The only possibility is for them to be removed.
+
 *Logic*:  On-chain programs might rely on this value for randomness, and it must be consistent when the batch is made and the final block is executed. It's also important that the random value is verifiable yet unpredictable.
 
 ##### Extra Data
