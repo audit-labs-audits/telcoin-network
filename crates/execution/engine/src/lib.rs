@@ -26,6 +26,7 @@ use reth_provider::{
     StateProviderFactory,
 };
 use reth_stages::PipelineEvent;
+use reth_tasks::TaskSpawner;
 use reth_tokio_util::EventStream;
 use std::{
     collections::VecDeque,
@@ -37,7 +38,7 @@ use tokio_stream::wrappers::BroadcastStream;
 use tracing::{error, info, warn};
 
 /// The TN consensus engine is responsible executing state that has reached consensus.
-pub struct ExecutorEngine<BT, CE> {
+pub struct ExecutorEngine<BT, CE, Tasks> {
     /// The backlog of output from consensus that's ready to be executed.
     queued: VecDeque<ConsensusOutput>,
     /// Single active future that inserts a new block into `storage`
@@ -49,6 +50,8 @@ pub struct ExecutorEngine<BT, CE> {
     blockchain: BT,
     /// EVM configuration for executing transactions and building blocks.
     evm_config: CE,
+    /// The task executor to spawn new builds.
+    executor: Tasks,
     /// Optional round of consensus to finish executing before then returning. The value is used to
     /// track the subdag index from consensus output. The index is included in executed blocks as
     /// the `nonce` value.
@@ -66,7 +69,7 @@ pub struct ExecutorEngine<BT, CE> {
     parent_header: SealedHeader,
 }
 
-impl<BT, CE> ExecutorEngine<BT, CE>
+impl<BT, CE, Tasks> ExecutorEngine<BT, CE, Tasks>
 where
     BT: BlockchainTreeEngine
         + BlockReader
@@ -76,7 +79,7 @@ where
         + ChainSpecProvider
         + 'static,
     CE: ConfigureEvm,
-    // DB: Database + Unpin + 'static,
+    Tasks: TaskSpawner + Clone + Unpin + 'static,
 {
     /// Create a new instance of the [`ExecutorEngine`] using the given channel to configure
     /// the [`ConsensusOutput`] communication channel.
@@ -95,7 +98,7 @@ where
     pub fn new(
         blockchain: BT,
         evm_config: CE,
-        // task_spawner: Box<dyn TaskSpawner>,
+        executor: Tasks,
         max_block: Option<BlockNumber>,
         consensus_output_stream: BroadcastStream<ConsensusOutput>,
         parent_header: SealedHeader,
@@ -108,6 +111,7 @@ where
             insert_task: None,
             blockchain,
             evm_config,
+            executor,
             max_block,
             pipeline_events: None,
             consensus_output_stream,
@@ -125,7 +129,7 @@ where
 /// If a task completes, the loop continues to poll for any new output from consensus then begins executing the next task.
 ///
 /// If the broadcast stream is closed, the engine will attempt to execute all remaining tasks and output that is queued.
-impl<BT, CE> Future for ExecutorEngine<BT, CE>
+impl<BT, CE, Tasks> Future for ExecutorEngine<BT, CE, Tasks>
 where
     BT: BlockchainTreeEngine
         + BlockReader
@@ -138,6 +142,7 @@ where
         + Unpin
         + 'static,
     CE: ConfigureEvm,
+    Tasks: TaskSpawner + Clone + Unpin + 'static,
 {
     type Output = EngineResult<()>;
 
@@ -226,7 +231,7 @@ where
     }
 }
 
-impl<BT, CE> std::fmt::Debug for ExecutorEngine<BT, CE> {
+impl<BT, CE, Tasks> std::fmt::Debug for ExecutorEngine<BT, CE, Tasks> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("ExecutorEngine")
             .field("queued", &self.queued.len())
