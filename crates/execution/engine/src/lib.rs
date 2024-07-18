@@ -116,6 +116,15 @@ where
     }
 }
 
+/// The [ExecutorEngine] is a future that loops through the following:
+/// - first receive and add any messages from consensus to a queue
+/// - ensure the previous task is complete, then start executing the next output from queue
+/// - poll any pending tasks that are currently being executed
+/// - return poll pending
+///
+/// If a task completes, the loop continues to poll for any new output from consensus then begins executing the next task.
+///
+/// If the broadcast stream is closed, the engine will attempt to execute all remaining tasks and output that is queued.
 impl<BT, CE> Future for ExecutorEngine<BT, CE>
 where
     BT: BlockchainTreeEngine
@@ -136,7 +145,7 @@ where
         let this = self.get_mut();
 
         // main executes output from consensus
-        'main: loop {
+        loop {
             // check if output is available from consensus
             match this.consensus_output_stream.poll_next_unpin(cx) {
                 Poll::Ready(Some(Ok(output))) => {
@@ -153,39 +162,35 @@ where
                     // Primary shuts down engine this way?
                     info!(target: "tn::engine", "ConsensusOutput channel closed. Shutting down...");
 
-                    // if the engine received output before channel closed,
-                    // execute final output then return
+                    // the stream has ended
+                    //
+                    // poll any unfinished tasks and try to execute all output that was queued before shutting down
                     if let Some(mut fut) = this.insert_task.take() {
                         info!(target: "tn::engine", "attempting to execute final output...");
 
-                        // TODO: test that this works as expected
-                        //
-                        // loop for executing the last output
-                        'last_output: loop {
-                            match fut.poll_unpin(cx) {
-                                Poll::Ready(final_num_hash) => {
-                                    info!(target: "tn::engine", ?final_num_hash, "engine completed execution");
-                                    // this.pipeline_events = events;
-                                    //
-                                    // TODO: broadcast tip?
-                                    //
-                                    // ensure no errors then continue
-                                    this.parent_header = final_num_hash?;
+                        // try to execute the remaining outputs received before exiting
+                        match fut.poll_unpin(cx) {
+                            Poll::Ready(final_num_hash) => {
+                                info!(target: "tn::engine", ?final_num_hash, "engine completed execution");
+                                // this.pipeline_events = events;
+                                //
+                                // TODO: broadcast tip?
+                                //
+                                // ensure no errors then continue
+                                this.parent_header = final_num_hash?;
 
-                                    // break last_output loop to return Ok()
-                                    break 'last_output;
+                                // return if last output executed
+                                if this.queued.is_empty() {
+                                    return Poll::Ready(Ok(()));
                                 }
-                                Poll::Pending => {
-                                    this.insert_task = Some(fut);
-                                    // break main loop to return Poll::Pending
-                                    break 'main;
-                                }
+                            }
+                            Poll::Pending => {
+                                this.insert_task = Some(fut);
+                                // break loop to return Poll::Pending
+                                break;
                             }
                         }
                     }
-
-                    // TODO: try take insert_task to finish executing last output before returning
-                    return Poll::Ready(Ok(()));
                 }
                 Poll::Pending => { /* nothing to do */ }
             }
@@ -200,7 +205,7 @@ where
                     break;
                 }
 
-                // ready to queue executing next round of consensus
+                // ready to begin executing next round of consensus
                 let output = this.queued.pop_front().expect("not empty");
                 let provider = this.blockchain.clone();
                 let evm_config = this.evm_config.clone();
@@ -208,12 +213,14 @@ where
                 let build_args = BuildArguments::new(provider, output, parent);
 
                 // TODO: should this be on a blocking thread?
+                //      YES it should
                 //
                 // execute the consensus output
                 this.insert_task =
                     Some(Box::pin(async move { execute_consensus_output(evm_config, build_args) }));
             }
 
+            // poll pending task that is executing output
             if let Some(mut fut) = this.insert_task.take() {
                 match fut.poll_unpin(cx) {
                     Poll::Ready(final_header) => {
@@ -223,11 +230,15 @@ where
                         //
                         // ensure no errors then continue
                         this.parent_header = final_header?;
-                        // loop again to check for next output
+
+                        // TODO: check max_block/max_round
+
+                        // poll broadcast stream for next output
                         continue;
                     }
                     Poll::Pending => {
                         this.insert_task = Some(fut);
+                        // break loop and return Poll::Pending
                         break;
                     }
                 }
