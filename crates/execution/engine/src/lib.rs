@@ -36,7 +36,7 @@ use std::{
 use tn_types::{BuildArguments, ConsensusOutput};
 use tokio::sync::oneshot;
 use tokio_stream::wrappers::BroadcastStream;
-use tracing::{error, info, warn};
+use tracing::{error, info, trace, warn};
 
 /// Type alias for the blocking task that executes consensus output and returns the finalized `SealedHeader`.
 type PendingExecutionTask = oneshot::Receiver<EngineResult<SealedHeader>>;
@@ -62,7 +62,7 @@ pub struct ExecutorEngine<BT, CE, Tasks> {
     /// the `nonce` value.
     ///
     /// note: this is used for debugging and testing
-    max_block: Option<u64>,
+    max_round: Option<u64>,
     /// The pipeline events to listen on
     pipeline_events: Option<EventStream<PipelineEvent>>,
     /// Receiving end from CL's `Executor`. The `ConsensusOutput` is sent
@@ -104,7 +104,7 @@ where
         blockchain: BT,
         evm_config: CE,
         executor: Tasks,
-        max_block: Option<BlockNumber>,
+        max_round: Option<u64>,
         consensus_output_stream: BroadcastStream<ConsensusOutput>,
         parent_header: SealedHeader,
         // hooks: EngineHooks,
@@ -117,7 +117,7 @@ where
             blockchain,
             evm_config,
             executor,
-            max_block,
+            max_round,
             pipeline_events: None,
             consensus_output_stream,
             parent_header,
@@ -150,8 +150,25 @@ where
             }
         }));
 
-        // oneshot receiver for successful build
+        // oneshot receiver for execution result
         rx
+    }
+
+    /// Check if the engine has reached max round of consensus as specified by `max_round` parameter.
+    ///
+    /// Note: this is mainly for debugging purposes.
+    fn has_reached_max_round(&self, progress: u64) -> bool {
+        let has_reached_max_round =
+            self.max_round.map(|target| progress >= target).unwrap_or_default();
+        if has_reached_max_round {
+            trace!(
+                target: "consensus::engine::sync",
+                ?progress,
+                max_round = ?self.max_round,
+                "Consensus engine reached max block"
+            );
+        }
+        has_reached_max_round
     }
 }
 
@@ -235,12 +252,16 @@ where
                         //
                         // TODO: broadcast tip?
                         //
-                        // ensure no errors then continue
+                        // ensure no errors and store last executed header
                         this.parent_header = finalized_header?;
 
-                        // TODO: check max_block/max_round
+                        // check max_round
+                        if this.has_reached_max_round(this.parent_header.nonce) {
+                            // terminate early if the specified max consensus round is reached
+                            return Poll::Ready(Ok(()));
+                        }
 
-                        // loop to poll broadcast stream for next output
+                        // continue loop to poll broadcast stream for next output
                         continue; // redundant
                     }
                     Poll::Pending => {
@@ -262,7 +283,7 @@ impl<BT, CE, Tasks> std::fmt::Debug for ExecutorEngine<BT, CE, Tasks> {
         f.debug_struct("ExecutorEngine")
             .field("queued", &self.queued.len())
             .field("insert_task", &self.insert_task.is_some())
-            .field("max_block", &self.max_block)
+            .field("max_round", &self.max_round)
             .field("parent_header", &self.parent_header)
             .finish_non_exhaustive()
     }
@@ -334,13 +355,13 @@ mod tests {
         let consensus_output_stream = BroadcastStream::from(from_consensus);
         let blockchain = execution_node.get_provider().await;
         let evm_config = EthEvmConfig::default();
-        let max_block = None;
+        let max_round = None;
         let parent = chain.sealed_genesis_header();
 
         let engine = ExecutorEngine::new(
             blockchain.clone(),
             evm_config,
-            max_block,
+            max_round,
             consensus_output_stream,
             parent,
         );
@@ -457,13 +478,13 @@ mod tests {
         let consensus_output_stream = BroadcastStream::from(from_consensus);
         let blockchain = execution_node.get_provider().await;
         let evm_config = EthEvmConfig::default();
-        let max_block = None;
+        let max_round = None;
         let parent = chain.sealed_genesis_header();
 
         let engine = ExecutorEngine::new(
             blockchain.clone(),
             evm_config,
-            max_block,
+            max_round,
             consensus_output_stream,
             parent,
         );
