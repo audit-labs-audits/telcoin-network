@@ -239,6 +239,17 @@ where
     }
 }
 
+impl<BT, CE> std::fmt::Debug for ExecutorEngine<BT, CE> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("ExecutorEngine")
+            .field("queued", &self.queued.len())
+            .field("insert_task", &self.insert_task.is_some())
+            .field("max_block", &self.max_block)
+            .field("parent_header", &self.parent_header)
+            .finish_non_exhaustive()
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use crate::ExecutorEngine;
@@ -471,16 +482,5 @@ mod tests {
         assert_eq!(canonical_tip, final_block);
 
         Ok(())
-    }
-}
-
-impl<BT, CE> std::fmt::Debug for ExecutorEngine<BT, CE> {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.debug_struct("ExecutorEngine")
-            .field("queued", &self.queued.len())
-            .field("insert_task", &self.insert_task.is_some())
-            .field("max_block", &self.max_block)
-            .field("parent_header", &self.parent_header)
-            .finish_non_exhaustive()
     }
 }
