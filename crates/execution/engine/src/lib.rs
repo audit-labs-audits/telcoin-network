@@ -34,8 +34,12 @@ use std::{
     task::{Context, Poll},
 };
 use tn_types::{BuildArguments, ConsensusOutput};
+use tokio::sync::oneshot;
 use tokio_stream::wrappers::BroadcastStream;
 use tracing::{error, info, warn};
+
+/// Type alias for the blocking task that executes consensus output and returns the finalized `SealedHeader`.
+type PendingExecutionTask = oneshot::Receiver<EngineResult<SealedHeader>>;
 
 /// The TN consensus engine is responsible executing state that has reached consensus.
 pub struct ExecutorEngine<BT, CE, Tasks> {
@@ -43,7 +47,8 @@ pub struct ExecutorEngine<BT, CE, Tasks> {
     queued: VecDeque<ConsensusOutput>,
     /// Single active future that inserts a new block into `storage`
     // insert_task: Option<BoxFuture<'static, Option<EventStream<PipelineEvent>>>>,
-    insert_task: Option<BoxFuture<'static, EngineResult<SealedHeader>>>,
+    // insert_task: Option<BoxFuture<'static, EngineResult<SealedHeader>>>,
+    insert_task: Option<PendingExecutionTask>,
     // /// Used to notify consumers of new blocks
     // canon_state_notification: CanonStateNotificationSender,
     /// The type used to query both the database and the blockchain tree.
@@ -118,6 +123,36 @@ where
             parent_header,
         }
     }
+
+    /// Spawns a blocking task to execute consensus output.
+    fn spawn_execution_task(&mut self) -> PendingExecutionTask
+    where
+        BT: StateProviderFactory
+            + ChainSpecProvider
+            + BlockchainTreeEngine
+            + CanonChainTracker
+            + Clone,
+    {
+        let output = self.queued.pop_front().expect("not empty");
+        let provider = self.blockchain.clone();
+        let evm_config = self.evm_config.clone();
+        let parent = self.parent_header.clone();
+        let build_args = BuildArguments::new(provider, output, parent);
+        let (tx, rx) = oneshot::channel();
+
+        // spawn blocking task and return oneshot receiver
+        self.executor.spawn_blocking(Box::pin(async move {
+            // aa
+            let result = execute_consensus_output(evm_config, build_args);
+            match tx.send(result) {
+                Ok(()) => (),
+                Err(e) => error!(target: "engine", ?e, "error sending result from execute_consensus_output"),
+            }
+        }));
+
+        // oneshot receiver for successful build
+        rx
+    }
 }
 
 /// The [ExecutorEngine] is a future that loops through the following:
@@ -187,38 +222,29 @@ where
                 }
 
                 // ready to begin executing next round of consensus
-                let output = this.queued.pop_front().expect("not empty");
-                let provider = this.blockchain.clone();
-                let evm_config = this.evm_config.clone();
-                let parent = this.parent_header.clone();
-                let build_args = BuildArguments::new(provider, output, parent);
-
-                // TODO: should this be on a blocking thread?
-                //      YES it should
-                //
-                // execute the consensus output
-                this.insert_task =
-                    Some(Box::pin(async move { execute_consensus_output(evm_config, build_args) }));
+                this.insert_task = Some(this.spawn_execution_task());
+                // Some(Box::pin(async move { execute_consensus_output(evm_config, build_args) }));
             }
 
-            // poll pending task that is executing output
-            if let Some(mut fut) = this.insert_task.take() {
-                match fut.poll_unpin(cx) {
-                    Poll::Ready(final_header) => {
+            // poll receiver that returns output execution result
+            if let Some(mut receiver) = this.insert_task.take() {
+                match receiver.poll_unpin(cx) {
+                    Poll::Ready(res) => {
+                        let finalized_header = res.map_err(Into::into).and_then(|res| res);
                         // this.pipeline_events = events;
                         //
                         // TODO: broadcast tip?
                         //
                         // ensure no errors then continue
-                        this.parent_header = final_header?;
+                        this.parent_header = finalized_header?;
 
                         // TODO: check max_block/max_round
 
-                        // poll broadcast stream for next output
-                        continue;
+                        // loop to poll broadcast stream for next output
+                        continue; // redundant
                     }
                     Poll::Pending => {
-                        this.insert_task = Some(fut);
+                        this.insert_task = Some(receiver);
                         // break loop and return Poll::Pending
                         break;
                     }

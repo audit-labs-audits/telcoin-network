@@ -4,6 +4,7 @@ use reth_blockchain_tree::error::InsertBlockError;
 use reth_errors::{CanonicalError, ProviderError, RethError};
 use reth_revm::primitives::EVMError;
 use tn_types::BatchConversionError;
+use tokio::sync::oneshot;
 
 /// Result alias for [`TNEngineError`].
 pub(crate) type EngineResult<T> = Result<T, TnEngineError>;
@@ -35,4 +36,13 @@ pub enum TnEngineError {
     /// The executed block failed to become part of the canonical chain.
     #[error("Blockchain tree failed to make_canonical: {0}")]
     Canonical(#[from] CanonicalError),
+    /// The oneshot channel that receives the result from executing output on a blocking thread.
+    #[error("The oneshot channel sender inside blocking task dropped during output execution.")]
+    ChannelClosed,
+}
+
+impl From<oneshot::error::RecvError> for TnEngineError {
+    fn from(_: oneshot::error::RecvError) -> Self {
+        Self::ChannelClosed
+    }
 }
