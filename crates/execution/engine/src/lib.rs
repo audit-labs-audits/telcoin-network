@@ -288,18 +288,20 @@ mod tests {
     use reth_node_ethereum::{EthEvmConfig, EthExecutorProvider};
     use reth_primitives::{
         constants::MIN_PROTOCOL_BASE_FEE, proofs, Address, GenesisAccount, Header,
-        TransactionSigned, U256,
+        TransactionSigned, B256, U256,
     };
     use reth_provider::{BlockIdReader, BlockNumReader, BlockReader, BlockReaderIdExt};
     use reth_tasks::TaskManager;
     use reth_tracing::init_test_tracing;
-    use std::{borrow::BorrowMut, str::FromStr as _, sync::Arc, time::Duration};
+    use std::{
+        borrow::BorrowMut, collections::VecDeque, str::FromStr as _, sync::Arc, time::Duration,
+    };
     use tn_types::{
         adiri_chain_spec_arc, adiri_genesis, now,
         test_utils::{
             execute_test_batch, seeded_genesis_from_random_batches, OptionalTestBatchParams,
         },
-        BatchAPI as _, Certificate, CertificateAPI, CommittedSubDag, ConsensusOutput,
+        BatchAPI as _, BatchDigest, Certificate, CertificateAPI, CommittedSubDag, ConsensusOutput,
         MetadataAPI as _, ReputationScores,
     };
     use tokio::{sync::oneshot, time::timeout};
@@ -407,6 +409,8 @@ mod tests {
     /// - engine processes queued output first
     /// - engine processes last broadcast second
     /// - engine has no more output in queue and gracefully shuts down
+    ///
+    /// NOTE: all batches are built with genesis as the parent.
     #[tokio::test]
     async fn test_queued_output_executes_after_sending_channel_closed() -> eyre::Result<()> {
         init_test_tracing();
@@ -438,11 +442,16 @@ mod tests {
         // execute batches to update headers with valid data
         let mut inc_base_fee = MIN_PROTOCOL_BASE_FEE;
 
+        // capture values from updated batches for assertions later
+        let mut batch_headers = vec![];
+
+        // updated batches separately because they are mutated in-place
+        // and need to be passed to different outputs
+        //
         // update first round
         for (idx, batch) in batches_1.iter_mut().enumerate() {
             // increase basefee
             inc_base_fee += idx as u64;
-            println!("base_fee_1: {inc_base_fee:?}");
 
             let optional_params = OptionalTestBatchParams {
                 beneficiary_opt: None, // ensure random for assertions
@@ -453,6 +462,10 @@ mod tests {
             };
             execute_test_batch(batch, &parent, optional_params, &provider, &block_executor);
             debug!("{idx}\n{:?}\n", batch);
+
+            // store values for assertions later
+            let header = batch.versioned_metadata().sealed_header().clone();
+            batch_headers.push(header);
         }
 
         // update second round
@@ -461,7 +474,6 @@ mod tests {
             // add 4 to continue where previous round left off
             // this makes assertions easier at the end
             inc_base_fee += 4 + idx as u64;
-            println!("base_fee_2: {inc_base_fee:?}");
 
             let optional_params = OptionalTestBatchParams {
                 beneficiary_opt: None, // ensure random for assertions
@@ -472,6 +484,10 @@ mod tests {
             };
             execute_test_batch(batch, &parent, optional_params, &provider, &block_executor);
             debug!("{idx}\n{:?}\n", batch);
+
+            // store values for assertions later
+            let header = batch.versioned_metadata().sealed_header().clone();
+            batch_headers.push(header);
         }
 
         //=== Consensus
@@ -489,7 +505,8 @@ mod tests {
         let sub_dag_index_1 = 1;
         let reputation_scores = ReputationScores::default();
         let previous_sub_dag = None;
-        let batch_digests = batches_1.iter().map(|b| b.digest()).collect();
+        let mut batch_digests_1: VecDeque<BatchDigest> =
+            batches_1.iter().map(|b| b.digest()).collect();
         let subdag_1 = Arc::new(CommittedSubDag::new(
             vec![Certificate::default()],
             leader_1,
@@ -503,7 +520,7 @@ mod tests {
             sub_dag: subdag_1.clone(),
             batches: vec![batches_1],
             beneficiary: beneficiary_1,
-            batch_digests,
+            batch_digests: batch_digests_1.clone(),
         };
 
         // create second output
@@ -513,7 +530,7 @@ mod tests {
         let sub_dag_index_2 = 2;
         let reputation_scores = ReputationScores::default();
         let previous_sub_dag = Some(subdag_1.as_ref());
-        let batch_digests = batches_2.iter().map(|b| b.digest()).collect();
+        let batch_digests_2: VecDeque<BatchDigest> = batches_2.iter().map(|b| b.digest()).collect();
         let subdag_2 = CommittedSubDag::new(
             vec![Certificate::default()],
             leader_2,
@@ -528,8 +545,13 @@ mod tests {
             sub_dag: subdag_2,
             batches: vec![batches_2],
             beneficiary: beneficiary_2,
-            batch_digests,
+            batch_digests: batch_digests_2.clone(),
         };
+
+        // combine VecDeque and convert to Vec for assertions later
+        batch_digests_1.extend(batch_digests_2);
+        let all_batch_digests: Vec<BatchDigest> = batch_digests_1.into();
+        // [batch_digests_1.as_slices(), batch_digests_2.as_slices()].concat();
 
         //=== Execution
 
@@ -605,6 +627,8 @@ mod tests {
 
         // basefee intentionally increased with loop
         let mut expected_base_fee = MIN_PROTOCOL_BASE_FEE;
+        let output_digest_1: B256 = consensus_output_1.digest().into();
+        let output_digest_2: B256 = consensus_output_2.digest().into();
 
         // assert blocks are executed as expected
         for (idx, txs) in txs_by_block.iter().enumerate() {
@@ -622,6 +646,8 @@ mod tests {
             let mut expected_output = &consensus_output_1;
             let mut expected_beneficiary = &beneficiary_1;
             let mut expected_subdag_index = &sub_dag_index_1;
+            let mut expected_parent_beacon_block_root = &output_digest_1;
+            let mut expected_batch_index = idx;
 
             // update values based on index for all assertions below
             if idx >= 4 {
@@ -629,18 +655,71 @@ mod tests {
                 expected_output = &consensus_output_2;
                 expected_beneficiary = &beneficiary_2;
                 expected_subdag_index = &sub_dag_index_2;
+                expected_parent_beacon_block_root = &output_digest_2;
+                expected_batch_index = idx - 4;
             }
 
             // beneficiary overwritten
             assert_eq!(&block.beneficiary, expected_beneficiary);
-            // nonce matches subdag index
+            // nonce matches subdag index and method all match
             assert_eq!(&block.nonce, expected_subdag_index);
+            assert_eq!(block.nonce, expected_output.nonce());
 
             // ommers contains headers from all batches from consensus output
             let expected_ommers = expected_output.ommers();
             assert_eq!(block.ommers, expected_ommers);
             // ommers root
             assert_eq!(block.header.ommers_hash, proofs::calculate_ommers_root(&expected_ommers));
+            // timestamp
+            assert_eq!(block.timestamp, expected_output.committed_at());
+            // parent beacon block root is output digest
+            assert_eq!(block.parent_beacon_block_root, Some(*expected_parent_beacon_block_root));
+
+            // assert information from batch headers
+            let expected_header = &batch_headers[idx];
+
+            if idx == 0 {
+                // first block's parent is expected to be genesis
+                assert_eq!(block.parent_hash, chain.genesis_hash());
+                // expect state roots to be the same as batch's bc of genesis
+                assert_eq!(block.state_root, expected_header.state_root);
+                // expect header number +1 for batch bc of genesis
+                assert_eq!(block.number, expected_header.number);
+            } else {
+                assert_ne!(block.parent_hash, expected_header.parent_hash);
+                // TODO: this is inefficient
+                //
+                // assert parents executed in order (sanity check)
+                let expected_parent = expected_blocks[idx - 1].header.hash_slow();
+                assert_eq!(block.parent_hash, expected_parent);
+                // expect state roots NOT to be the same as batch's since genesis is parent for all batches
+                assert_ne!(block.state_root, expected_header.state_root);
+                // expect block numbers NOT the same as batch's headers
+                assert_ne!(block.number, expected_header.number);
+            }
+
+            // mix hash should always come from batch
+            assert_eq!(block.mix_hash, expected_header.mix_hash);
+            // bloom expected to be the same bc all proposed transactions should be good
+            // ie) no duplicates, etc.
+            //
+            // TODO: randomly generate contract transactions as well!!!
+            assert_eq!(block.logs_bloom, expected_header.logs_bloom);
+            println!("logs bloom: {:?}", expected_header.logs_bloom);
+            // gas limit should come from batch
+            //
+            // TODO: ensure batch validation prevents peer workers from changing this value
+            assert_eq!(block.gas_limit, expected_header.gas_limit);
+            // gas used should be the same bc every transaction is expected to pass
+            assert_eq!(block.gas_used, expected_header.gas_used);
+            // difficulty should match the batch's index within consensus output
+            assert_eq!(block.difficulty, U256::from(expected_batch_index));
+            // assert batch digest match extra data
+            assert_eq!(&block.extra_data, all_batch_digests[idx].as_ref());
+            // assert batch's withdrawals match
+            //
+            // TODO: this is currently always empty
+            assert_eq!(block.withdrawals_root, expected_header.withdrawals_root);
         }
 
         Ok(())
