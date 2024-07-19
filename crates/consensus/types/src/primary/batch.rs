@@ -124,7 +124,7 @@ impl Hash<{ crypto::DIGEST_LENGTH }> for Batch {
 /// TODO: update comments once EL data is finalized between Batch and VersionedMetadata
 #[enum_dispatch]
 pub trait BatchAPI {
-    /// TODO
+    /// Pass a reference to a Vec<Transaction>;
     fn transactions(&self) -> &Vec<Transaction>;
     /// TODO
     fn transactions_mut(&mut self) -> &mut Vec<Transaction>;

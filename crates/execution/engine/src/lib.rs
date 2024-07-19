@@ -471,6 +471,9 @@ mod tests {
         let execution_node =
             default_test_execution_node(Some(chain.clone()), None, executor.clone())?;
 
+        // update batches for validity
+        let batch_maker = execution_node.start_batch_maker(to_worker, worker_id);
+
         let (to_engine, from_consensus) = tokio::sync::broadcast::channel(1);
         let consensus_output_stream = BroadcastStream::from(from_consensus);
         let blockchain = execution_node.get_provider().await;

@@ -2,15 +2,20 @@
 // SPDX-License-Identifier: Apache-2.0
 
 //! Specific test utils for execution layer
-use crate::{adiri_genesis, Batch, BatchAPI as _, ExecutionKeypair};
+use crate::{adiri_genesis, now, Batch, BatchAPI as _, ExecutionKeypair, TimestampSec};
 use rand::{rngs::StdRng, SeedableRng};
 use reth_chainspec::{BaseFeeParams, ChainSpec};
+use reth_evm::execute::BlockExecutorProvider;
 use reth_primitives::{
-    public_key_to_address, sign_message, Address, FromRecoveredPooledTransaction, Genesis,
-    GenesisAccount, PooledTransactionsElement, Signature, Transaction, TransactionSigned,
-    TxEip1559, TxHash, TxKind, B256, U256,
+    constants::{
+        EMPTY_TRANSACTIONS, EMPTY_WITHDRAWALS, ETHEREUM_BLOCK_GAS_LIMIT, MIN_PROTOCOL_BASE_FEE,
+    },
+    proofs, public_key_to_address, sign_message, Address, FromRecoveredPooledTransaction, Genesis,
+    GenesisAccount, Header, PooledTransactionsElement, SealedHeader, Signature, Transaction,
+    TransactionSigned, TxEip1559, TxHash, TxKind, Withdrawals, B256, EMPTY_OMMER_ROOT_HASH, U256,
 };
-use reth_provider::BlockReaderIdExt;
+use reth_provider::{BlockReaderIdExt, StateProviderFactory};
+use reth_rpc_types::beacon::withdrawals;
 use reth_transaction_pool::{TransactionOrigin, TransactionPool};
 use secp256k1::Secp256k1;
 use std::{str::FromStr as _, sync::Arc};
@@ -54,6 +59,101 @@ pub fn seeded_genesis_from_random_batches<'a>(
         }
     }
     (genesis.extend_accounts(accounts_to_seed), txs, senders)
+}
+
+/// Optional parameters to pass to the `execute_test_batch` function.
+///
+/// These optional parameters are used to replace default in the batch's header if included.
+pub struct OptionalTestBatchParams {
+    /// Optional beneficiary address.
+    ///
+    /// Default is `Address::random()`.
+    pub beneficiary_opt: Option<Address>,
+    /// Optional withdrawals.
+    ///
+    /// Default is `Withdrawals<vec![]>` (empty).
+    pub withdrawals_opt: Option<Withdrawals>,
+    /// Optional timestamp.
+    ///
+    /// Default is `now()`.
+    pub timestamp_opt: Option<TimestampSec>,
+    /// Optional mix_hash.
+    ///
+    /// Default is `B256::random()`.
+    pub mix_hash_opt: Option<B256>,
+    /// Optional base_fee_per_gas.
+    ///
+    /// Default is [MIN_PROTOCOL_BASE_FEE], which is 7 wei.
+    pub base_fee_per_gas_opt: Option<u64>,
+}
+
+/// Attempt to update batch with accurate header information.
+///
+/// NOTE: this is loosely based on reth's auto-seal consensus
+pub fn execute_test_batch<P, E>(
+    batch: &mut Batch,
+    parent: &SealedHeader,
+    chain_spec: Arc<ChainSpec>,
+    optional_params: OptionalTestBatchParams,
+    provider: &P,
+    executor: &E,
+) where
+    P: StateProviderFactory + BlockReaderIdExt,
+    E: BlockExecutorProvider,
+{
+    let OptionalTestBatchParams {
+        beneficiary_opt,
+        withdrawals_opt,
+        timestamp_opt,
+        mix_hash_opt,
+        base_fee_per_gas_opt,
+    } = optional_params;
+
+    // let withdrawals = withdrawals_opt.unwrap_or_else(|| Withdrawals::new(vec![]));
+    // let withdrawals = withdrawals_opt.map(|w| {
+    //     if w.is_none() {
+    //         Withdrawals::new(vec![])
+    //     }
+    // });
+    // let withdrawals = Some(withdrawals);
+
+    let mut header = Header {
+        parent_hash: parent.hash(),
+        ommers_hash: EMPTY_OMMER_ROOT_HASH,
+        beneficiary: beneficiary_opt.unwrap_or_else(|| Address::random()),
+        state_root: Default::default(),
+        transactions_root: Default::default(),
+        receipts_root: Default::default(),
+        withdrawals_root: Some(
+            withdrawals_opt.map_or(EMPTY_WITHDRAWALS, |w| proofs::calculate_withdrawals_root(&w)),
+        ),
+        logs_bloom: Default::default(),
+        difficulty: U256::ZERO,
+        number: parent.number + 1,
+        gas_limit: ETHEREUM_BLOCK_GAS_LIMIT,
+        gas_used: 0,
+        timestamp: timestamp_opt.unwrap_or_else(|| now()),
+        mix_hash: mix_hash_opt.unwrap_or_else(|| B256::random()),
+        nonce: 0,
+        base_fee_per_gas: base_fee_per_gas_opt.or(Some(MIN_PROTOCOL_BASE_FEE)),
+        blob_gas_used: None,
+        excess_blob_gas: None,
+        extra_data: Default::default(),
+        parent_beacon_block_root: None,
+        requests_root: None,
+    };
+
+    header.transactions_root = if batch.transactions().is_empty() {
+        EMPTY_TRANSACTIONS
+    } else {
+        let mut txs = vec![];
+        for tx in batch.transactions_owned() {
+            let tx_signed =
+                TransactionSigned::decode_enveloped(&mut tx.as_ref()).expect("decode tx signed");
+            txs.push(tx_signed);
+        }
+        proofs::calculate_transaction_root(&txs)
+    };
 }
 
 /// Transaction factory

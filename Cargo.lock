@@ -10859,6 +10859,7 @@ dependencies = [
  "reth-chainspec",
  "reth-consensus",
  "reth-db",
+ "reth-evm",
  "reth-payload-primitives",
  "reth-primitives",
  "reth-provider",
