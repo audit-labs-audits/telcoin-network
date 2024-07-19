@@ -69,26 +69,9 @@ where
     let output_digest = output.digest();
 
     // TODO: add this as a method on ConsensusOutput and parallelize
-    let sealed_blocks_with_senders_result: Result<Vec<SealedBlockWithSenders>, _> = output
-        .batches
-        .iter()
-        .flat_map(|batches| {
-            batches.iter().map(|batch| {
-                // create sealed block from batch for execution this should never fail since batches
-                // are validated
-                SealedBlockWithSenders::try_from(batch)
-            })
-        })
-        .collect();
+    let sealed_blocks_with_senders = output.sealed_blocks_from_batches()?;
 
-    // TODO: include this information when parallelizing?
-    let ommers: Vec<Header> = output
-        .batches
-        .iter()
-        .flat_map(|batches| {
-            batches.iter().map(|batch| batch.versioned_metadata().sealed_header().header().clone())
-        })
-        .collect();
+    let ommers = output.ommers();
 
     // calculate ommers hash or use default if empty
     let ommers_root = if ommers.is_empty() {
@@ -96,9 +79,6 @@ where
     } else {
         proofs::calculate_ommers_root(&ommers)
     };
-
-    // unwrap result
-    let sealed_blocks_with_senders = sealed_blocks_with_senders_result?;
 
     // assert vecs match
     assert_eq!(sealed_blocks_with_senders.len(), output.batch_digests.len());

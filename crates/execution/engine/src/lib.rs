@@ -615,54 +615,32 @@ mod tests {
 
             // basefee was increased for each batch
             expected_base_fee += idx as u64;
-            println!("expected_base_fee: {expected_base_fee:?}");
             // assert basefee is same as worker's block
             assert_eq!(block.base_fee_per_gas, Some(expected_base_fee));
 
-            // assert first 4 batches
-            if idx < 4 {
-                // beneficiary overwritten
-                assert_eq!(block.beneficiary, beneficiary_1);
-                // nonce matches subdag index
-                assert_eq!(block.nonce, sub_dag_index_1);
-                // ommers contains all batches from consensus output
-                let expected_ommers: Vec<Header> = consensus_output_1
-                    .batches
-                    .iter()
-                    .flat_map(|batches| {
-                        batches.iter().map(|batch| {
-                            batch.versioned_metadata().sealed_header().header().clone()
-                        })
-                    })
-                    .collect();
-                assert_eq!(block.ommers, expected_ommers);
-                // ommers root
-                assert_eq!(
-                    block.header.ommers_hash,
-                    proofs::calculate_ommers_root(&expected_ommers)
-                );
-            } else {
-                // beneficiary overwritten
-                assert_eq!(block.beneficiary, beneficiary_2);
-                // nonce matches subdag index
-                assert_eq!(block.nonce, sub_dag_index_2);
-                // ommers contains all batches from consensus output
-                let expected_ommers: Vec<Header> = consensus_output_2
-                    .batches
-                    .iter()
-                    .flat_map(|batches| {
-                        batches.iter().map(|batch| {
-                            batch.versioned_metadata().sealed_header().header().clone()
-                        })
-                    })
-                    .collect();
-                assert_eq!(block.ommers, expected_ommers);
-                // ommers root
-                assert_eq!(
-                    block.header.ommers_hash,
-                    proofs::calculate_ommers_root(&expected_ommers)
-                );
+            // define re-usable variable here for asserting all values against expected output
+            let mut expected_output = &consensus_output_1;
+            let mut expected_beneficiary = &beneficiary_1;
+            let mut expected_subdag_index = &sub_dag_index_1;
+
+            // update values based on index for all assertions below
+            if idx >= 4 {
+                // use different output for last 4 blocks
+                expected_output = &consensus_output_2;
+                expected_beneficiary = &beneficiary_2;
+                expected_subdag_index = &sub_dag_index_2;
             }
+
+            // beneficiary overwritten
+            assert_eq!(&block.beneficiary, expected_beneficiary);
+            // nonce matches subdag index
+            assert_eq!(&block.nonce, expected_subdag_index);
+
+            // ommers contains headers from all batches from consensus output
+            let expected_ommers = expected_output.ommers();
+            assert_eq!(block.ommers, expected_ommers);
+            // ommers root
+            assert_eq!(block.header.ommers_hash, proofs::calculate_ommers_root(&expected_ommers));
         }
 
         Ok(())

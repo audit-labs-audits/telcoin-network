@@ -1,12 +1,13 @@
 //! The ouput from consensus (bullshark)
 
 use crate::{
-    crypto, Batch, BatchDigest, Certificate, CertificateAPI, CertificateDigest, HeaderAPI,
-    ReputationScores, Round, SequenceNumber, TimestampSec,
+    crypto, Batch, BatchAPI as _, BatchConversionError, BatchDigest, Certificate, CertificateAPI,
+    CertificateDigest, HeaderAPI, MetadataAPI as _, ReputationScores, Round, SequenceNumber,
+    TimestampSec,
 };
 use enum_dispatch::enum_dispatch;
 use fastcrypto::hash::{Digest, Hash, HashFunction};
-use reth_primitives::{Address, B256};
+use reth_primitives::{Address, Header, SealedBlockWithSenders, B256};
 use serde::{Deserialize, Serialize};
 use std::{
     collections::VecDeque,
@@ -60,6 +61,36 @@ impl ConsensusOutput {
     /// This method is used when executing [Self].
     pub fn next_batch_digest(&mut self) -> Option<BatchDigest> {
         self.batch_digests.pop_front()
+    }
+    /// Ommers to use for the executed blocks.
+    ///
+    /// TODO: parallelize this when output contains enough batches.
+    pub fn ommers(&self) -> Vec<Header> {
+        self.batches
+            .iter()
+            .flat_map(|batches| {
+                batches
+                    .iter()
+                    .map(|batch| batch.versioned_metadata().sealed_header().header().clone())
+            })
+            .collect()
+    }
+    /// Recover the sealed blocks with senders for all batches in output.
+    ///
+    /// TODO: parallelize this when output contains enough batches.
+    pub fn sealed_blocks_from_batches(
+        &self,
+    ) -> Result<Vec<SealedBlockWithSenders>, BatchConversionError> {
+        self.batches
+            .iter()
+            .flat_map(|batches| {
+                batches.iter().map(|batch| {
+                    // create sealed block from batch for execution this should never fail since batches
+                    // are validated
+                    SealedBlockWithSenders::try_from(batch)
+                })
+            })
+            .collect()
     }
 }
 
