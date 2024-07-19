@@ -2,19 +2,21 @@
 // SPDX-License-Identifier: Apache-2.0
 
 //! Specific test utils for execution layer
-use crate::{adiri_genesis, now, Batch, BatchAPI as _, ExecutionKeypair, TimestampSec};
+use crate::{adiri_genesis, now, Batch, BatchAPI, ExecutionKeypair, MetadataAPI, TimestampSec};
 use rand::{rngs::StdRng, SeedableRng};
 use reth_chainspec::{BaseFeeParams, ChainSpec};
-use reth_evm::execute::BlockExecutorProvider;
+use reth_evm::execute::{BlockExecutionOutput, BlockExecutorProvider, Executor as _};
 use reth_primitives::{
     constants::{
         EMPTY_TRANSACTIONS, EMPTY_WITHDRAWALS, ETHEREUM_BLOCK_GAS_LIMIT, MIN_PROTOCOL_BASE_FEE,
     },
-    proofs, public_key_to_address, sign_message, Address, FromRecoveredPooledTransaction, Genesis,
-    GenesisAccount, Header, PooledTransactionsElement, SealedHeader, Signature, Transaction,
-    TransactionSigned, TxEip1559, TxHash, TxKind, Withdrawals, B256, EMPTY_OMMER_ROOT_HASH, U256,
+    proofs, public_key_to_address, sign_message, Address, Block, BlockBody,
+    FromRecoveredPooledTransaction, Genesis, GenesisAccount, Header, PooledTransactionsElement,
+    SealedHeader, Signature, Transaction, TransactionSigned, TxEip1559, TxHash, TxKind,
+    Withdrawals, B256, EMPTY_OMMER_ROOT_HASH, U256,
 };
-use reth_provider::{BlockReaderIdExt, StateProviderFactory};
+use reth_provider::{BlockReaderIdExt, ExecutionOutcome, StateProviderFactory};
+use reth_revm::database::StateProviderDatabase;
 use reth_rpc_types::beacon::withdrawals;
 use reth_transaction_pool::{TransactionOrigin, TransactionPool};
 use secp256k1::Secp256k1;
@@ -101,6 +103,7 @@ pub fn execute_test_batch<P, E>(
     P: StateProviderFactory + BlockReaderIdExt,
     E: BlockExecutorProvider,
 {
+    // deconstruct optional parameters for header
     let OptionalTestBatchParams {
         beneficiary_opt,
         withdrawals_opt,
@@ -109,14 +112,7 @@ pub fn execute_test_batch<P, E>(
         base_fee_per_gas_opt,
     } = optional_params;
 
-    // let withdrawals = withdrawals_opt.unwrap_or_else(|| Withdrawals::new(vec![]));
-    // let withdrawals = withdrawals_opt.map(|w| {
-    //     if w.is_none() {
-    //         Withdrawals::new(vec![])
-    //     }
-    // });
-    // let withdrawals = Some(withdrawals);
-
+    // create "empty" header with default values
     let mut header = Header {
         parent_hash: parent.hash(),
         ommers_hash: EMPTY_OMMER_ROOT_HASH,
@@ -125,7 +121,9 @@ pub fn execute_test_batch<P, E>(
         transactions_root: Default::default(),
         receipts_root: Default::default(),
         withdrawals_root: Some(
-            withdrawals_opt.map_or(EMPTY_WITHDRAWALS, |w| proofs::calculate_withdrawals_root(&w)),
+            withdrawals_opt
+                .clone()
+                .map_or(EMPTY_WITHDRAWALS, |w| proofs::calculate_withdrawals_root(&w)),
         ),
         logs_bloom: Default::default(),
         difficulty: U256::ZERO,
@@ -143,17 +141,72 @@ pub fn execute_test_batch<P, E>(
         requests_root: None,
     };
 
+    // decode batch transactions
+    let mut txs = vec![];
+    for tx in batch.transactions_owned() {
+        let tx_signed =
+            TransactionSigned::decode_enveloped(&mut tx.as_ref()).expect("decode tx signed");
+        txs.push(tx_signed);
+    }
+
+    // update header's transactions root
     header.transactions_root = if batch.transactions().is_empty() {
         EMPTY_TRANSACTIONS
     } else {
-        let mut txs = vec![];
-        for tx in batch.transactions_owned() {
-            let tx_signed =
-                TransactionSigned::decode_enveloped(&mut tx.as_ref()).expect("decode tx signed");
-            txs.push(tx_signed);
-        }
         proofs::calculate_transaction_root(&txs)
     };
+
+    // recover senders from block
+    let block = Block {
+        header,
+        body: txs,
+        ommers: vec![],
+        withdrawals: withdrawals_opt.clone(),
+        requests: None,
+    }
+    .with_recovered_senders()
+    .expect("unable to recover senders while executing test batch");
+
+    // create execution db
+    let mut db = StateProviderDatabase::new(
+        provider.latest().expect("provider retrieves latest during test batch execution"),
+    );
+
+    // convenience
+    let block_number = block.number;
+
+    // execute the block
+    let BlockExecutionOutput { state, receipts, gas_used, .. } = executor
+        .executor(&mut db)
+        .execute((&block, U256::ZERO).into())
+        .expect("executor can execute test batch transactions");
+    let bundle_state = ExecutionOutcome::new(state, receipts.into(), block_number, vec![]);
+
+    // retrieve header to update values post-execution
+    let Block { mut header, body, .. } = block.block;
+    let body = BlockBody {
+        transactions: body,
+        ommers: vec![],
+        withdrawals: withdrawals_opt,
+        requests: None,
+    };
+
+    // update header
+    header.gas_used = gas_used;
+    header.state_root = db
+        .state_root(bundle_state.state())
+        .expect("state root calculation during test batch execution");
+    header.receipts_root = bundle_state
+        .receipts_root_slow(block_number)
+        .expect("receipts root calculation during test batch execution");
+    header.logs_bloom = bundle_state
+        .block_logs_bloom(block_number)
+        .expect("logs bloom calculation during test batch execution");
+
+    // seal header
+    let sealed_header = header.seal_slow();
+    let md = batch.versioned_metadata_mut();
+    md.update_header(sealed_header);
 }
 
 /// Transaction factory

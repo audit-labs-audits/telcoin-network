@@ -126,15 +126,15 @@ impl Hash<{ crypto::DIGEST_LENGTH }> for Batch {
 pub trait BatchAPI {
     /// Pass a reference to a Vec<Transaction>;
     fn transactions(&self) -> &Vec<Transaction>;
-    /// TODO
+    /// Returns a mutable reference to a Vec<Transaction>.
     fn transactions_mut(&mut self) -> &mut Vec<Transaction>;
-    /// TODO
+    /// Returns a reference to the batch's [VersionedMetadata].
     fn versioned_metadata(&self) -> &VersionedMetadata;
-    /// TODO
+    /// Returns a mutable reference to the batch's [VersionedMetadata].
     fn versioned_metadata_mut(&mut self) -> &mut VersionedMetadata;
-    /// TODO
+    /// Returns an owned [VersionedMetadata].
     fn owned_metadata(self) -> VersionedMetadata;
-    /// Return an owned iteration of transactions.
+    /// Return an owned iteration of the batch's encoded transactions.
     fn transactions_owned(&self) -> std::vec::IntoIter<Vec<u8>>;
 }
 
