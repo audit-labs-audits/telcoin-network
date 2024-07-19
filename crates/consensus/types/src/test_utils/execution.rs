@@ -31,36 +31,52 @@ pub fn test_genesis() -> Genesis {
     genesis.extend_accounts(default_factory_account)
 }
 
-/// Helper function to seed an instance of Genesis with random batches.
-///
-/// The transactions in the randomly generated batches are decoded and their signers are recovered.
-///
-/// The function returns the new Genesis, the signed transactions, and the addresses for further use it testing.
-pub fn seeded_genesis_from_random_batches<'a>(
+/// Helper function to seed an instance of Genesis with accounts from a random batch.
+pub fn seeded_genesis_from_random_batch<'a>(
     genesis: Genesis,
-    batches: impl IntoIterator<Item = &'a Batch>,
+    batch: &'a Batch,
 ) -> (Genesis, Vec<TransactionSigned>, Vec<Address>) {
     let mut txs = vec![];
     let mut senders = vec![];
     let mut accounts_to_seed = Vec::new();
-    for batch in batches {
-        for tx in batch.transactions_owned() {
-            let tx_signed =
-                TransactionSigned::decode_enveloped(&mut tx.as_ref()).expect("decode tx signed");
-            let address = tx_signed.recover_signer().expect("signer recoverable");
-            txs.push(tx_signed);
-            senders.push(address);
-            // fund account with 99mil TEL
-            let account = (
-                address,
-                GenesisAccount::default().with_balance(
-                    U256::from_str("0x51E410C0F93FE543000000").expect("account balance is parsed"),
-                ),
-            );
-            accounts_to_seed.push(account);
-        }
+
+    // loop through the transactions
+    for tx in batch.transactions_owned() {
+        let tx_signed =
+            TransactionSigned::decode_enveloped(&mut tx.as_ref()).expect("decode tx signed");
+        let address = tx_signed.recover_signer().expect("signer recoverable");
+        txs.push(tx_signed);
+        senders.push(address);
+        // fund account with 99mil TEL
+        let account = (
+            address,
+            GenesisAccount::default().with_balance(
+                U256::from_str("0x51E410C0F93FE543000000").expect("account balance is parsed"),
+            ),
+        );
+        accounts_to_seed.push(account);
     }
     (genesis.extend_accounts(accounts_to_seed), txs, senders)
+}
+
+/// Helper function to seed an instance of Genesis with random batches.
+///
+/// The transactions in the randomly generated batches are decoded and their signers are recovered.
+///
+/// The function returns the new Genesis, the signed transactions by batch, and the addresses for further use it testing.
+pub fn seeded_genesis_from_random_batches<'a>(
+    mut genesis: Genesis,
+    batches: impl IntoIterator<Item = &'a Batch>,
+) -> (Genesis, Vec<Vec<TransactionSigned>>, Vec<Vec<Address>>) {
+    let mut txs = vec![];
+    let mut senders = vec![];
+    for batch in batches {
+        let (g, t, s) = seeded_genesis_from_random_batch(genesis, batch);
+        genesis = g;
+        txs.push(t);
+        senders.push(s);
+    }
+    (genesis, txs, senders)
 }
 
 /// Optional parameters to pass to the `execute_test_batch` function.
@@ -95,7 +111,6 @@ pub struct OptionalTestBatchParams {
 pub fn execute_test_batch<P, E>(
     batch: &mut Batch,
     parent: &SealedHeader,
-    chain_spec: Arc<ChainSpec>,
     optional_params: OptionalTestBatchParams,
     provider: &P,
     executor: &E,

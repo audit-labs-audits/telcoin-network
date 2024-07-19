@@ -392,7 +392,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn test_insert_task_completes_after_sending_channel_closed() -> eyre::Result<()> {
+    async fn test_queued_output_executes_after_sending_channel_closed() -> eyre::Result<()> {
         init_test_tracing();
         //=== Consensus
         //
@@ -402,8 +402,6 @@ mod tests {
         // for each tx, seed address with funds in genesis
         //
         // TODO: this does not use a "real" `ConsensusOutput`
-        //
-        // refactor with valid data once test util helpers are in place
         let timestamp = now();
         let mut leader_1 = Certificate::default();
         // update timestamp
@@ -432,7 +430,7 @@ mod tests {
         // create second output
         let mut leader_2 = Certificate::default();
         // update timestamp
-        leader_2.update_created_at(timestamp);
+        leader_2.update_created_at(timestamp + 2);
         let sub_dag_index = 2;
         let reputation_scores = ReputationScores::default();
         let previous_sub_dag = Some(subdag_1.as_ref());
@@ -460,9 +458,12 @@ mod tests {
         let genesis = adiri_genesis();
 
         // genesis
-        let batches_for_seeding = [batches_1, batches_2].concat();
-        let (genesis, _txs, _signers) =
-            seeded_genesis_from_random_batches(genesis, batches_for_seeding.iter());
+        //
+        // seed genesis for batches and track txs/signers for each group
+        let (genesis, txs_1, signers_1) =
+            seeded_genesis_from_random_batches(genesis, batches_1.iter());
+        let (genesis, txs_2, signers_2) =
+            seeded_genesis_from_random_batches(genesis, batches_2.iter());
         let chain: Arc<ChainSpec> = Arc::new(genesis.into());
 
         // execution node components
@@ -470,9 +471,6 @@ mod tests {
         let executor = manager.executor();
         let execution_node =
             default_test_execution_node(Some(chain.clone()), None, executor.clone())?;
-
-        // update batches for validity
-        let batch_maker = execution_node.start_batch_maker(to_worker, worker_id);
 
         let (to_engine, from_consensus) = tokio::sync::broadcast::channel(1);
         let consensus_output_stream = BroadcastStream::from(from_consensus);
@@ -490,20 +488,25 @@ mod tests {
             parent,
         );
 
-        // // send output
-        // let broadcast_result = to_engine.send(consensus_output_1);
-        // assert!(broadcast_result.is_ok());
+        // queue the first output - simulate already received from channel
+        engine.queued.push_back(consensus_output_1);
 
-        // drop sending channel
+        // send second output
+        let broadcast_result = to_engine.send(consensus_output_2);
+        assert!(broadcast_result.is_ok());
+
+        // drop sending channel before received
         drop(to_engine);
 
-        // add both outputs to queue
-        engine.queued.push_back(consensus_output_1);
-        engine.queued.push_back(consensus_output_2);
+        // // add both outputs to queue
+        // engine.queued.push_back(consensus_output_1);
+        // engine.queued.push_back(consensus_output_2);
 
         let (tx, rx) = oneshot::channel();
 
         // spawn engine task
+        //
+        // one output already queued up, one output waiting in broadcast stream
         executor.spawn_blocking(async move {
             let res = engine.await;
             let _ = tx.send(res);
