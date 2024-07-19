@@ -551,7 +551,6 @@ mod tests {
         // combine VecDeque and convert to Vec for assertions later
         batch_digests_1.extend(batch_digests_2);
         let all_batch_digests: Vec<BatchDigest> = batch_digests_1.into();
-        // [batch_digests_1.as_slices(), batch_digests_2.as_slices()].concat();
 
         //=== Execution
 
@@ -705,7 +704,6 @@ mod tests {
             //
             // TODO: randomly generate contract transactions as well!!!
             assert_eq!(block.logs_bloom, expected_header.logs_bloom);
-            println!("logs bloom: {:?}", expected_header.logs_bloom);
             // gas limit should come from batch
             //
             // TODO: ensure batch validation prevents peer workers from changing this value
