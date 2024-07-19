@@ -285,14 +285,19 @@ mod tests {
     use narwhal_test_utils::default_test_execution_node;
     use reth_blockchain_tree::BlockchainTreeViewer;
     use reth_chainspec::ChainSpec;
-    use reth_node_ethereum::EthEvmConfig;
-    use reth_primitives::{Address, GenesisAccount, TransactionSigned, U256};
-    use reth_provider::{BlockIdReader, BlockNumReader};
+    use reth_node_ethereum::{EthEvmConfig, EthExecutorProvider};
+    use reth_primitives::{
+        constants::MIN_PROTOCOL_BASE_FEE, Address, GenesisAccount, TransactionSigned, U256,
+    };
+    use reth_provider::{BlockIdReader, BlockNumReader, BlockReader};
     use reth_tasks::TaskManager;
     use reth_tracing::init_test_tracing;
     use std::{borrow::BorrowMut, str::FromStr as _, sync::Arc, time::Duration};
     use tn_types::{
-        adiri_chain_spec_arc, adiri_genesis, now, test_utils::seeded_genesis_from_random_batches,
+        adiri_chain_spec_arc, adiri_genesis, now,
+        test_utils::{
+            execute_test_batch, seeded_genesis_from_random_batches, OptionalTestBatchParams,
+        },
         BatchAPI as _, Certificate, CertificateAPI, CommittedSubDag, ConsensusOutput,
         ReputationScores,
     };
@@ -391,9 +396,79 @@ mod tests {
         Ok(())
     }
 
+    /// Test the engine shuts down after the sending half of the broadcast channel is closed.
+    ///
+    /// One output is queued (simulating already received) in the engine and another is sent on the channel.
+    /// Then, the sender is dropped and the engine task is started.
+    ///
+    /// Expected result:
+    /// - engine receives last broadcast
+    /// - engine processes queued output first
+    /// - engine processes last broadcast second
+    /// - engine has no more output in queue and gracefully shuts down
     #[tokio::test]
     async fn test_queued_output_executes_after_sending_channel_closed() -> eyre::Result<()> {
         init_test_tracing();
+        // create batches for consensus output
+        let mut batches_1 = tn_types::test_utils::batches(4); // create 4 batches
+        let mut batches_2 = tn_types::test_utils::batches(4); // create 4 batches
+
+        // use default genesis and seed accounts to execute batches
+        let genesis = adiri_genesis();
+        // seed genesis for batches and track txs/signers for each group
+        // let (genesis, txs_1, signers_1) =
+        //     seeded_genesis_from_random_batches(genesis, batches_1.iter());
+        // let (genesis, txs_2, signers_2) =
+        //     seeded_genesis_from_random_batches(genesis, batches_2.iter());
+        let all_batches = [batches_1.clone(), batches_2.clone()].concat();
+        let (genesis, txs_by_block, signers_by_block) =
+            seeded_genesis_from_random_batches(genesis, all_batches.iter());
+        let chain: Arc<ChainSpec> = Arc::new(genesis.into());
+
+        // create execution node components
+        let manager = TaskManager::current();
+        let executor = manager.executor();
+        let execution_node =
+            default_test_execution_node(Some(chain.clone()), None, executor.clone())?;
+        let provider = execution_node.get_provider().await;
+        let block_executor = EthExecutorProvider::new(Arc::clone(&chain), EthEvmConfig::default());
+        let parent = chain.sealed_genesis_header();
+
+        // node authorities
+        let beneficiary_1 = Address::from_str("0x1111111111111111111111111111111111111111")
+            .expect("beneficiary address from str");
+        let beneficiary_2 = Address::from_str("0x2222222222222222222222222222222222222222")
+            .expect("beneficiary address from str");
+
+        // execute batches to update headers with valid data
+        let initial_base_fee = MIN_PROTOCOL_BASE_FEE;
+
+        // update first round
+        for (idx, batch) in batches_1.iter_mut().enumerate() {
+            let optional_params = OptionalTestBatchParams {
+                beneficiary_opt: Some(beneficiary_1.clone()),
+                withdrawals_opt: None,
+                timestamp_opt: None,
+                mix_hash_opt: None,
+                base_fee_per_gas_opt: Some(initial_base_fee + idx as u64),
+            };
+            execute_test_batch(batch, &parent, optional_params, &provider, &block_executor);
+            debug!("{idx}\n{:?}\n", batch);
+        }
+
+        // update second round
+        for (idx, batch) in batches_2.iter_mut().enumerate() {
+            let optional_params = OptionalTestBatchParams {
+                beneficiary_opt: Some(beneficiary_2.clone()),
+                withdrawals_opt: None,
+                timestamp_opt: None,
+                mix_hash_opt: None,
+                base_fee_per_gas_opt: Some(initial_base_fee + idx as u64),
+            };
+            execute_test_batch(batch, &parent, optional_params, &provider, &block_executor);
+            debug!("{idx}\n{:?}\n", batch);
+        }
+
         //=== Consensus
         //
         // create consensus output bc transactions in batches
@@ -409,10 +484,7 @@ mod tests {
         let sub_dag_index = 1;
         let reputation_scores = ReputationScores::default();
         let previous_sub_dag = None;
-        let batches_1 = tn_types::test_utils::batches(4); // create 4 batches
         let batch_digests = batches_1.iter().map(|b| b.digest()).collect();
-        let beneficiary = Address::from_str("0x1111111111111111111111111111111111111111")
-            .expect("beneficiary address from str");
         let subdag_1 = Arc::new(CommittedSubDag::new(
             vec![Certificate::default()],
             leader_1,
@@ -422,8 +494,8 @@ mod tests {
         ));
         let consensus_output_1 = ConsensusOutput {
             sub_dag: subdag_1.clone(),
-            batches: vec![batches_1.clone()],
-            beneficiary,
+            batches: vec![batches_1],
+            beneficiary: beneficiary_1,
             batch_digests,
         };
 
@@ -434,10 +506,7 @@ mod tests {
         let sub_dag_index = 2;
         let reputation_scores = ReputationScores::default();
         let previous_sub_dag = Some(subdag_1.as_ref());
-        let batches_2 = tn_types::test_utils::batches(4); // create 4 batches
         let batch_digests = batches_2.iter().map(|b| b.digest()).collect();
-        let beneficiary = Address::from_str("0x2222222222222222222222222222222222222222")
-            .expect("beneficiary address from str");
         let subdag_2 = CommittedSubDag::new(
             vec![Certificate::default()],
             leader_2,
@@ -448,29 +517,12 @@ mod tests {
         .into();
         let consensus_output_2 = ConsensusOutput {
             sub_dag: subdag_2,
-            batches: vec![batches_2.clone()],
-            beneficiary,
+            batches: vec![batches_2],
+            beneficiary: beneficiary_2,
             batch_digests,
         };
 
         //=== Execution
-
-        let genesis = adiri_genesis();
-
-        // genesis
-        //
-        // seed genesis for batches and track txs/signers for each group
-        let (genesis, txs_1, signers_1) =
-            seeded_genesis_from_random_batches(genesis, batches_1.iter());
-        let (genesis, txs_2, signers_2) =
-            seeded_genesis_from_random_batches(genesis, batches_2.iter());
-        let chain: Arc<ChainSpec> = Arc::new(genesis.into());
-
-        // execution node components
-        let manager = TaskManager::current();
-        let executor = manager.executor();
-        let execution_node =
-            default_test_execution_node(Some(chain.clone()), None, executor.clone())?;
 
         let (to_engine, from_consensus) = tokio::sync::broadcast::channel(1);
         let consensus_output_stream = BroadcastStream::from(from_consensus);
@@ -498,10 +550,7 @@ mod tests {
         // drop sending channel before received
         drop(to_engine);
 
-        // // add both outputs to queue
-        // engine.queued.push_back(consensus_output_1);
-        // engine.queued.push_back(consensus_output_2);
-
+        // channels for engine shutting down
         let (tx, rx) = oneshot::channel();
 
         // spawn engine task
@@ -530,6 +579,12 @@ mod tests {
         assert_eq!(last_block_num, 8);
         // assert canonical tip and finalized block are equal
         assert_eq!(canonical_tip, final_block);
+
+        // assert blocks are executed as expected
+        for (idx, txs) in txs_by_block.iter().enumerate() {
+            let signers = &signers_by_block[idx];
+            let corresponding_canonical_block = provider.block_by_number(1 + idx as u64);
+        }
 
         Ok(())
     }

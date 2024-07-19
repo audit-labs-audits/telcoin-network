@@ -488,7 +488,7 @@ where
         logs_bloom,
         timestamp: payload.timestamp(),
         mix_hash: payload.prev_randao(),
-        nonce: payload.attributes.batch_index,
+        nonce: payload.attributes.nonce,
         base_fee_per_gas: Some(base_fee),
         number: payload.attributes.parent_header.number + 1, // ensure this matches the block env
         gas_limit: block_gas_limit,
@@ -576,7 +576,7 @@ where
         logs_bloom: Default::default(),
         timestamp: payload.timestamp(),
         mix_hash: payload.prev_randao(),
-        nonce: payload.attributes.batch_index,
+        nonce: payload.attributes.nonce,
         base_fee_per_gas: Some(payload.attributes.base_fee_per_gas),
         number: payload.attributes.parent_header.number + 1, // ensure this matches the block env
         gas_limit: payload.attributes.gas_limit,
