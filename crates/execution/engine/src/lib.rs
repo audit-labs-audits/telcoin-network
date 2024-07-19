@@ -287,9 +287,10 @@ mod tests {
     use reth_chainspec::ChainSpec;
     use reth_node_ethereum::{EthEvmConfig, EthExecutorProvider};
     use reth_primitives::{
-        constants::MIN_PROTOCOL_BASE_FEE, Address, GenesisAccount, TransactionSigned, U256,
+        constants::MIN_PROTOCOL_BASE_FEE, proofs, Address, GenesisAccount, Header,
+        TransactionSigned, U256,
     };
-    use reth_provider::{BlockIdReader, BlockNumReader, BlockReader};
+    use reth_provider::{BlockIdReader, BlockNumReader, BlockReader, BlockReaderIdExt};
     use reth_tasks::TaskManager;
     use reth_tracing::init_test_tracing;
     use std::{borrow::BorrowMut, str::FromStr as _, sync::Arc, time::Duration};
@@ -299,7 +300,7 @@ mod tests {
             execute_test_batch, seeded_genesis_from_random_batches, OptionalTestBatchParams,
         },
         BatchAPI as _, Certificate, CertificateAPI, CommittedSubDag, ConsensusOutput,
-        ReputationScores,
+        MetadataAPI as _, ReputationScores,
     };
     use tokio::{sync::oneshot, time::timeout};
     use tokio_stream::wrappers::BroadcastStream;
@@ -434,23 +435,21 @@ mod tests {
         let block_executor = EthExecutorProvider::new(Arc::clone(&chain), EthEvmConfig::default());
         let parent = chain.sealed_genesis_header();
 
-        // node authorities
-        let beneficiary_1 = Address::from_str("0x1111111111111111111111111111111111111111")
-            .expect("beneficiary address from str");
-        let beneficiary_2 = Address::from_str("0x2222222222222222222222222222222222222222")
-            .expect("beneficiary address from str");
-
         // execute batches to update headers with valid data
-        let initial_base_fee = MIN_PROTOCOL_BASE_FEE;
+        let mut inc_base_fee = MIN_PROTOCOL_BASE_FEE;
 
         // update first round
         for (idx, batch) in batches_1.iter_mut().enumerate() {
+            // increase basefee
+            inc_base_fee += idx as u64;
+            println!("base_fee_1: {inc_base_fee:?}");
+
             let optional_params = OptionalTestBatchParams {
-                beneficiary_opt: Some(beneficiary_1.clone()),
+                beneficiary_opt: None, // ensure random for assertions
                 withdrawals_opt: None,
                 timestamp_opt: None,
                 mix_hash_opt: None,
-                base_fee_per_gas_opt: Some(initial_base_fee + idx as u64),
+                base_fee_per_gas_opt: Some(inc_base_fee),
             };
             execute_test_batch(batch, &parent, optional_params, &provider, &block_executor);
             debug!("{idx}\n{:?}\n", batch);
@@ -458,12 +457,18 @@ mod tests {
 
         // update second round
         for (idx, batch) in batches_2.iter_mut().enumerate() {
+            // continue increasing basefee
+            // add 4 to continue where previous round left off
+            // this makes assertions easier at the end
+            inc_base_fee += 4 + idx as u64;
+            println!("base_fee_2: {inc_base_fee:?}");
+
             let optional_params = OptionalTestBatchParams {
-                beneficiary_opt: Some(beneficiary_2.clone()),
+                beneficiary_opt: None, // ensure random for assertions
                 withdrawals_opt: None,
                 timestamp_opt: None,
                 mix_hash_opt: None,
-                base_fee_per_gas_opt: Some(initial_base_fee + idx as u64),
+                base_fee_per_gas_opt: Some(inc_base_fee),
             };
             execute_test_batch(batch, &parent, optional_params, &provider, &block_executor);
             debug!("{idx}\n{:?}\n", batch);
@@ -481,17 +486,19 @@ mod tests {
         let mut leader_1 = Certificate::default();
         // update timestamp
         leader_1.update_created_at(timestamp);
-        let sub_dag_index = 1;
+        let sub_dag_index_1 = 1;
         let reputation_scores = ReputationScores::default();
         let previous_sub_dag = None;
         let batch_digests = batches_1.iter().map(|b| b.digest()).collect();
         let subdag_1 = Arc::new(CommittedSubDag::new(
             vec![Certificate::default()],
             leader_1,
-            sub_dag_index,
+            sub_dag_index_1,
             reputation_scores,
             previous_sub_dag,
         ));
+        let beneficiary_1 = Address::from_str("0x1111111111111111111111111111111111111111")
+            .expect("beneficiary address from str");
         let consensus_output_1 = ConsensusOutput {
             sub_dag: subdag_1.clone(),
             batches: vec![batches_1],
@@ -503,18 +510,20 @@ mod tests {
         let mut leader_2 = Certificate::default();
         // update timestamp
         leader_2.update_created_at(timestamp + 2);
-        let sub_dag_index = 2;
+        let sub_dag_index_2 = 2;
         let reputation_scores = ReputationScores::default();
         let previous_sub_dag = Some(subdag_1.as_ref());
         let batch_digests = batches_2.iter().map(|b| b.digest()).collect();
         let subdag_2 = CommittedSubDag::new(
             vec![Certificate::default()],
             leader_2,
-            sub_dag_index,
+            sub_dag_index_2,
             reputation_scores,
             previous_sub_dag,
         )
         .into();
+        let beneficiary_2 = Address::from_str("0x2222222222222222222222222222222222222222")
+            .expect("beneficiary address from str");
         let consensus_output_2 = ConsensusOutput {
             sub_dag: subdag_2,
             batches: vec![batches_2],
@@ -541,10 +550,10 @@ mod tests {
         );
 
         // queue the first output - simulate already received from channel
-        engine.queued.push_back(consensus_output_1);
+        engine.queued.push_back(consensus_output_1.clone());
 
         // send second output
-        let broadcast_result = to_engine.send(consensus_output_2);
+        let broadcast_result = to_engine.send(consensus_output_2.clone());
         assert!(broadcast_result.is_ok());
 
         // drop sending channel before received
@@ -575,15 +584,85 @@ mod tests {
         let chain_info = blockchain.chain_info()?;
         debug!("chain info:\n{chain_info:?}");
 
-        // assert all 4 batches were executed
-        assert_eq!(last_block_num, 8);
+        let expected_block_height = 8;
+        // assert all 8 batches were executed
+        assert_eq!(last_block_num, expected_block_height);
         // assert canonical tip and finalized block are equal
         assert_eq!(canonical_tip, final_block);
 
+        // pull newly executed blocks from database (skip genesis)
+        //
+        // Uses the provided `headers_range` to get the headers for the range, and `assemble_block` to
+        // construct blocks from the following inputs:
+        //     – Header
+        //     - Transactions
+        //     – Ommers
+        //     – Withdrawals
+        //     – Requests
+        //     – Senders
+        let expected_blocks = provider.block_with_senders_range(1..=expected_block_height)?;
+        assert_eq!(expected_block_height, expected_blocks.len() as u64);
+
+        // basefee intentionally increased with loop
+        let mut expected_base_fee = MIN_PROTOCOL_BASE_FEE;
+
         // assert blocks are executed as expected
         for (idx, txs) in txs_by_block.iter().enumerate() {
+            let block = &expected_blocks[idx];
             let signers = &signers_by_block[idx];
-            let corresponding_canonical_block = provider.block_by_number(1 + idx as u64);
+            assert_eq!(&block.senders, signers);
+            assert_eq!(&block.body, txs);
+
+            // basefee was increased for each batch
+            expected_base_fee += idx as u64;
+            println!("expected_base_fee: {expected_base_fee:?}");
+            // assert basefee is same as worker's block
+            assert_eq!(block.base_fee_per_gas, Some(expected_base_fee));
+
+            // assert first 4 batches
+            if idx < 4 {
+                // beneficiary overwritten
+                assert_eq!(block.beneficiary, beneficiary_1);
+                // nonce matches subdag index
+                assert_eq!(block.nonce, sub_dag_index_1);
+                // ommers contains all batches from consensus output
+                let expected_ommers: Vec<Header> = consensus_output_1
+                    .batches
+                    .iter()
+                    .flat_map(|batches| {
+                        batches.iter().map(|batch| {
+                            batch.versioned_metadata().sealed_header().header().clone()
+                        })
+                    })
+                    .collect();
+                assert_eq!(block.ommers, expected_ommers);
+                // ommers root
+                assert_eq!(
+                    block.header.ommers_hash,
+                    proofs::calculate_ommers_root(&expected_ommers)
+                );
+            } else {
+                // beneficiary overwritten
+                assert_eq!(block.beneficiary, beneficiary_2);
+                // nonce matches subdag index
+                assert_eq!(block.nonce, sub_dag_index_2);
+                // ommers contains all batches from consensus output
+                let expected_ommers: Vec<Header> = consensus_output_2
+                    .batches
+                    .iter()
+                    .flat_map(|batches| {
+                        batches.iter().map(|batch| {
+                            batch.versioned_metadata().sealed_header().header().clone()
+                        })
+                    })
+                    .collect();
+                assert_eq!(block.ommers, expected_ommers);
+                // ommers root
+                assert_eq!(
+                    block.header.ommers_hash,
+                    proofs::calculate_ommers_root(&expected_ommers)
+                );
+            }
         }
 
         Ok(())
