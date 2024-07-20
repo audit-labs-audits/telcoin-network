@@ -159,8 +159,8 @@ where
 
         // add block to the tree and skip state root validation
         provider
-            .insert_block(next_canonical_block, BlockValidationKind::SkipStateRootValidation).inspect_err(|err| {
-                error!(target: "engine::payload_builder", header=?canonical_header, "failed to insert next canonical block");
+            .insert_block(next_canonical_block, BlockValidationKind::SkipStateRootValidation).inspect_err(|e| {
+                error!(target: "engine::payload_builder", header=?canonical_header, ?e, "failed to insert next canonical block");
             })?;
     } else {
         // loop and construct blocks with transactions
@@ -209,8 +209,8 @@ where
 
             // add block to the tree and skip state root validation
             provider
-                .insert_block(next_canonical_block, BlockValidationKind::SkipStateRootValidation).inspect_err(|err| {
-                    error!(target: "engine::payload_builder", header=?canonical_header, "failed to insert next canonical block");
+                .insert_block(next_canonical_block, BlockValidationKind::SkipStateRootValidation).inspect_err(|e| {
+                    error!(target: "engine::payload_builder", header=?canonical_header, ?e, "failed to insert next canonical block");
                 })?;
         }
     } // end block execution

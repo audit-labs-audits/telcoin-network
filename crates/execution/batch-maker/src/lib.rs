@@ -28,7 +28,7 @@ use reth_primitives::{
     Header, SealedHeader, TransactionSigned, Withdrawals, B256, EMPTY_OMMER_ROOT_HASH, U256,
 };
 use reth_provider::{BlockReaderIdExt, ExecutionOutcome, StateProviderFactory};
-use reth_revm::{database::StateProviderDatabase, primitives::bitvec::view::BitViewSized};
+use reth_revm::database::StateProviderDatabase;
 use reth_transaction_pool::TransactionPool;
 use std::{
     collections::HashMap,
