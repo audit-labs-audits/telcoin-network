@@ -24,7 +24,6 @@ members = [
     # execution
     "crates/execution/batch-maker",
     "crates/execution/batch-validator",
-    "crates/execution/executor",
     "crates/execution/faucet",
     "crates/execution/engine",
 ]
@@ -128,7 +127,7 @@ alloy-sol-types = "0.7.2"
 # matches Cargo.lock
 
 tn-batch-validator = { path = "crates/execution/batch-validator" }
-tn-executor = { path = "crates/execution/executor" }
+tn-engine = { path = "crates/execution/engine" }
 
 # batch maker
 tn-batch-maker = { path = "crates/execution/batch-maker" }

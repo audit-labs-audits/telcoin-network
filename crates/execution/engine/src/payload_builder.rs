@@ -210,10 +210,16 @@ where
                     error!(target: "engine::payload_builder", header=?canonical_header, ?e, "failed to insert next canonical block");
                 })?;
         }
-    } // end block execution
+    } // end block execution for round
 
-    // make all blocks canonical, commit them to the database, and broadcast on
-    // `canon_state_notification_sender`
+    // TODO: should this be called in loop?
+    // - batch maker relies on this tip to produce next block
+    // - tx pool will update, rpc, etc.
+    //
+    // for now: only make canonical after entire execution
+    //
+    // NOTE: this makes all blocks canonical, commits them to the database,
+    // and broadcasts new tip on `canon_state_notification_sender`
     provider.make_canonical(canonical_header.hash())?;
 
     //
@@ -230,7 +236,7 @@ where
     provider.set_finalized(canonical_header.clone());
     debug!("finalized block successful: {:?}", provider.finalized_block_num_hash());
 
-    // update safe block
+    // update safe block last because this is less time sensitive
     provider.set_safe(canonical_header.clone());
 
     // return new canonical header for next engine task

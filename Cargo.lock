@@ -5586,7 +5586,7 @@ dependencies = [
  "tempfile",
  "tn-batch-maker",
  "tn-batch-validator",
- "tn-executor",
+ "tn-engine",
  "tn-faucet",
  "tn-node",
  "tn-types",
@@ -10671,56 +10671,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "tn-executor"
-version = "0.1.0"
-dependencies = [
- "alloy-rlp",
- "anemo",
- "assert_matches",
- "async-trait",
- "consensus-metrics",
- "eyre",
- "fastcrypto",
- "futures",
- "futures-util",
- "narwhal-executor",
- "narwhal-network",
- "narwhal-network-types",
- "narwhal-primary",
- "narwhal-test-utils",
- "narwhal-typed-store",
- "prometheus",
- "reth-beacon-consensus",
- "reth-blockchain-tree",
- "reth-chainspec",
- "reth-config",
- "reth-db",
- "reth-evm",
- "reth-evm-ethereum",
- "reth-execution-types",
- "reth-network",
- "reth-network-p2p",
- "reth-network-peers",
- "reth-node-api",
- "reth-payload-builder",
- "reth-primitives",
- "reth-provider",
- "reth-revm",
- "reth-rpc-types",
- "reth-stages",
- "reth-tasks",
- "reth-tokio-util",
- "reth-tracing",
- "reth-transaction-pool",
- "tempfile",
- "thiserror",
- "tn-types",
- "tokio",
- "tokio-stream",
- "tracing",
-]
-
-[[package]]
 name = "tn-faucet"
 version = "0.1.0"
 dependencies = [
@@ -10820,7 +10770,7 @@ dependencies = [
  "thiserror",
  "tn-batch-maker",
  "tn-batch-validator",
- "tn-executor",
+ "tn-engine",
  "tn-faucet",
  "tn-types",
  "tokio",

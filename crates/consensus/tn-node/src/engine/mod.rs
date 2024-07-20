@@ -9,7 +9,7 @@ use reth_db::{
     database::Database,
     database_metrics::{DatabaseMetadata, DatabaseMetrics},
 };
-use reth_evm::execute::BlockExecutorProvider;
+use reth_evm::{execute::BlockExecutorProvider, ConfigureEvm};
 use reth_node_builder::NodeConfig;
 mod inner;
 mod primary;
@@ -49,22 +49,24 @@ pub struct TnBuilder<DB> {
 
 /// Wrapper for the inner execution node components.
 #[derive(Clone)]
-pub struct ExecutionNode<DB, Evm>
+pub struct ExecutionNode<DB, Evm, CE>
 where
     DB: Database + DatabaseMetrics + Clone + Unpin + 'static,
     Evm: BlockExecutorProvider + Clone + 'static,
+    CE: ConfigureEvm,
 {
-    internal: Arc<RwLock<ExecutionNodeInner<DB, Evm>>>,
+    internal: Arc<RwLock<ExecutionNodeInner<DB, Evm, CE>>>,
 }
 
-impl<DB, Evm> ExecutionNode<DB, Evm>
+impl<DB, Evm, CE> ExecutionNode<DB, Evm, CE>
 where
     DB: Database + DatabaseMetadata + DatabaseMetrics + Clone + Unpin + 'static,
     Evm: BlockExecutorProvider + Clone + 'static,
+    CE: ConfigureEvm,
 {
     /// Create a new instance of `Self`.
-    pub fn new(tn_builder: TnBuilder<DB>, evm: Evm) -> eyre::Result<Self> {
-        let inner = ExecutionNodeInner::new(tn_builder, evm)?;
+    pub fn new(tn_builder: TnBuilder<DB>, evm: Evm, evm_config: CE) -> eyre::Result<Self> {
+        let inner = ExecutionNodeInner::new(tn_builder, evm, evm_config)?;
 
         Ok(ExecutionNode { internal: Arc::new(RwLock::new(inner)) })
     }
@@ -104,6 +106,12 @@ where
     pub async fn get_provider(&self) -> BlockchainProvider<DB> {
         let guard = self.internal.read().await;
         guard.get_provider()
+    }
+
+    /// Return the node's EVM config.
+    pub async fn get_evm_config(&self) -> CE {
+        let guard = self.internal.read().await;
+        guard.get_evm_config()
     }
 
     /// Return an HTTP client for submitting transactions to the RPC.

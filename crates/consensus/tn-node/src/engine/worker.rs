@@ -110,6 +110,9 @@ impl NetworkInfo for WorkerNetwork {
             eth_protocol_info: EthProtocolInfo {
                 difficulty: Default::default(),
                 network: 2017,
+                // TODO: update chain spec with genesis hash so this doesn't `hash_slow()` everytime
+                //
+                // genesis.into() explicitly sets this to `None` for some reason
                 genesis: chain_spec.genesis_hash(),
                 head: Default::default(),
                 config: chain_spec.genesis().config.clone(),

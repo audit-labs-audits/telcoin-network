@@ -257,7 +257,7 @@ where
                             return Poll::Ready(Ok(()));
                         }
 
-                        // continue loop to poll broadcast stream for next output
+                        // allow loop to continue: poll broadcast stream for next output
                     }
                     Poll::Pending => {
                         this.insert_task = Some(receiver);
@@ -1179,5 +1179,11 @@ mod tests {
         }
 
         Ok(())
+    }
+
+    #[tokio::test]
+    async fn test_max_round_terminates_early() {
+        // TODO: also test that canon state notifications are broadcast
+        todo!()
     }
 }
