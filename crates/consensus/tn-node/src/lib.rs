@@ -1,6 +1,7 @@
 // Copyright (c) Telcoin, LLC
 // SPDX-License-Identifier: Apache-2.0
 
+use crate::{primary::PrimaryNode, worker::WorkerNode};
 use engine::{ExecutionNode, TnBuilder};
 use futures::{future::try_join_all, stream::FuturesUnordered};
 use narwhal_network::client::NetworkClient;
@@ -9,14 +10,12 @@ use reth_db::{
     database::Database,
     database_metrics::{DatabaseMetadata, DatabaseMetrics},
 };
-use reth_evm::execute::BlockExecutorProvider;
+use reth_evm::{execute::BlockExecutorProvider, ConfigureEvm};
 use tn_types::{
     read_validator_keypair_from_file, ChainIdentifier, Committee, Config, ConfigTrait, TelcoinDirs,
     WorkerCache, BLS_KEYFILE, PRIMARY_NETWORK_KEYFILE, WORKER_NETWORK_KEYFILE,
 };
 use tracing::info;
-
-use crate::{primary::PrimaryNode, worker::WorkerNode};
 
 pub mod dirs;
 pub mod engine;
@@ -28,20 +27,23 @@ pub mod worker;
 /// Launch all components for the node.
 ///
 /// Worker, Primary, and Execution.
-pub async fn launch_node<DB, Evm, P: TelcoinDirs>(
+pub async fn launch_node<DB, Evm, CE, P>(
     mut builder: TnBuilder<DB>,
-    evm_config: Evm,
+    executor: Evm,
+    evm_config: CE,
     tn_datadir: &P,
 ) -> eyre::Result<()>
 where
     DB: Database + DatabaseMetadata + DatabaseMetrics + Clone + Unpin + 'static,
     Evm: BlockExecutorProvider + Clone + 'static,
+    CE: ConfigureEvm,
+    P: TelcoinDirs,
 {
     // config for validator keys
     let config = builder.tn_config.clone();
     // adjust rpc instance ports
     builder.node_config.adjust_instance_ports();
-    let engine = ExecutionNode::new(builder, evm_config)?;
+    let engine = ExecutionNode::new(builder, executor, evm_config)?;
 
     info!(target: "telcoin::node", "execution engine created");
 

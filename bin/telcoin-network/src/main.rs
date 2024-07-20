@@ -31,11 +31,12 @@ fn main() {
     if let Err(err) = telcoin_network::cli::Cli::<FaucetArgs>::parse().run(
         |mut builder, faucet, tn_datadir| async move {
             builder.opt_faucet_args = Some(faucet);
+            let evm_config = EthEvmConfig::default();
             let executor = EthExecutorProvider::new(
                 Arc::clone(&builder.node_config.chain),
-                EthEvmConfig::default(),
+                evm_config.clone(),
             );
-            launch_node(builder, executor, &tn_datadir).await
+            launch_node(builder, executor, evm_config, &tn_datadir).await
         },
     ) {
         eprintln!("Error: {err:?}");
