@@ -24,7 +24,7 @@ use reth_revm::{
     DatabaseCommit, State,
 };
 use std::sync::Arc;
-use tn_types::{BatchAPI as _, BuildArguments, MetadataAPI, TNPayload, TNPayloadAttributes};
+use tn_types::{BuildArguments, TNPayload, TNPayloadAttributes};
 use tracing::{debug, error, warn};
 
 use crate::error::{EngineResult, TnEngineError};
@@ -159,9 +159,8 @@ where
 
         // add block to the tree and skip state root validation
         provider
-            .insert_block(next_canonical_block, BlockValidationKind::SkipStateRootValidation).map_err(|err| {
+            .insert_block(next_canonical_block, BlockValidationKind::SkipStateRootValidation).inspect_err(|err| {
                 error!(target: "engine::payload_builder", header=?canonical_header, "failed to insert next canonical block");
-                err
             })?;
     } else {
         // loop and construct blocks with transactions
@@ -210,9 +209,8 @@ where
 
             // add block to the tree and skip state root validation
             provider
-                .insert_block(next_canonical_block, BlockValidationKind::SkipStateRootValidation).map_err(|err| {
+                .insert_block(next_canonical_block, BlockValidationKind::SkipStateRootValidation).inspect_err(|err| {
                     error!(target: "engine::payload_builder", header=?canonical_header, "failed to insert next canonical block");
-                    err
                 })?;
         }
     } // end block execution

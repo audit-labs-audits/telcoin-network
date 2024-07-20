@@ -17,7 +17,6 @@ use reth_primitives::{
 };
 use reth_provider::{BlockReaderIdExt, ExecutionOutcome, StateProviderFactory};
 use reth_revm::database::StateProviderDatabase;
-use reth_rpc_types::beacon::withdrawals;
 use reth_transaction_pool::{TransactionOrigin, TransactionPool};
 use secp256k1::Secp256k1;
 use std::{str::FromStr as _, sync::Arc};
@@ -32,9 +31,9 @@ pub fn test_genesis() -> Genesis {
 }
 
 /// Helper function to seed an instance of Genesis with accounts from a random batch.
-pub fn seeded_genesis_from_random_batch<'a>(
+pub fn seeded_genesis_from_random_batch(
     genesis: Genesis,
-    batch: &'a Batch,
+    batch: &Batch,
 ) -> (Genesis, Vec<TransactionSigned>, Vec<Address>) {
     let mut txs = vec![];
     let mut senders = vec![];
@@ -146,7 +145,7 @@ pub fn execute_test_batch<P, E>(
         number: parent.number + 1,
         gas_limit: ETHEREUM_BLOCK_GAS_LIMIT,
         gas_used: 0,
-        timestamp: timestamp_opt.unwrap_or_else(|| now()),
+        timestamp: timestamp_opt.unwrap_or_else(now),
         mix_hash: mix_hash_opt.unwrap_or_else(|| B256::random()),
         nonce: 0,
         base_fee_per_gas: base_fee_per_gas_opt.or(Some(MIN_PROTOCOL_BASE_FEE)),

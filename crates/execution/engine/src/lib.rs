@@ -16,11 +16,11 @@ mod handle;
 mod payload_builder;
 use error::EngineResult;
 use futures::{Future, StreamExt};
-use futures_util::{future::BoxFuture, FutureExt};
+use futures_util::FutureExt;
 pub use payload_builder::execute_consensus_output;
 use reth_blockchain_tree::BlockchainTreeEngine;
 use reth_evm::ConfigureEvm;
-use reth_primitives::{BlockNumber, SealedHeader};
+use reth_primitives::SealedHeader;
 use reth_provider::{
     BlockIdReader, BlockReader, CanonChainTracker, ChainSpecProvider, StageCheckpointReader,
     StateProviderFactory,
@@ -293,14 +293,13 @@ mod tests {
     use reth_chainspec::ChainSpec;
     use reth_node_ethereum::{EthEvmConfig, EthExecutorProvider};
     use reth_primitives::{
-        constants::MIN_PROTOCOL_BASE_FEE, proofs, Address, GenesisAccount, Header,
-        TransactionSigned, B256, U256,
+        constants::MIN_PROTOCOL_BASE_FEE, proofs, Address, B256, U256,
     };
-    use reth_provider::{BlockIdReader, BlockNumReader, BlockReader, BlockReaderIdExt};
+    use reth_provider::{BlockIdReader, BlockNumReader, BlockReader};
     use reth_tasks::TaskManager;
     use reth_tracing::init_test_tracing;
     use std::{
-        borrow::BorrowMut, collections::VecDeque, str::FromStr as _, sync::Arc, time::Duration,
+        collections::VecDeque, str::FromStr as _, sync::Arc, time::Duration,
     };
     use tn_types::{
         adiri_chain_spec_arc, adiri_genesis, now,
