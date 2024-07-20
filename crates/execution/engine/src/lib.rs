@@ -347,7 +347,6 @@ mod tests {
 
         let chain = adiri_chain_spec_arc();
         debug!("chain spec:\n{:#?}", chain);
-        panic!("tada");
 
         // execution node components
         let manager = TaskManager::current();
