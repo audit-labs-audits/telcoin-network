@@ -63,7 +63,8 @@ pub fn seeded_genesis_from_random_batch<'a>(
 ///
 /// The transactions in the randomly generated batches are decoded and their signers are recovered.
 ///
-/// The function returns the new Genesis, the signed transactions by batch, and the addresses for further use it testing.
+/// The function returns the new Genesis, the signed transactions by batch, and the addresses for
+/// further use it testing.
 pub fn seeded_genesis_from_random_batches<'a>(
     mut genesis: Genesis,
     batches: impl IntoIterator<Item = &'a Batch>,

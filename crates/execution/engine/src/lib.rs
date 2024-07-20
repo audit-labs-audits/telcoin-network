@@ -38,7 +38,8 @@ use tokio::sync::oneshot;
 use tokio_stream::wrappers::BroadcastStream;
 use tracing::{error, info, trace, warn};
 
-/// Type alias for the blocking task that executes consensus output and returns the finalized `SealedHeader`.
+/// Type alias for the blocking task that executes consensus output and returns the finalized
+/// `SealedHeader`.
 type PendingExecutionTask = oneshot::Receiver<EngineResult<SealedHeader>>;
 
 /// The TN consensus engine is responsible executing state that has reached consensus.
@@ -146,7 +147,8 @@ where
         rx
     }
 
-    /// Check if the engine has reached max round of consensus as specified by `max_round` parameter.
+    /// Check if the engine has reached max round of consensus as specified by `max_round`
+    /// parameter.
     ///
     /// Note: this is mainly for debugging purposes.
     fn has_reached_max_round(&self, progress: u64) -> bool {
@@ -170,9 +172,11 @@ where
 /// - pull from queue to start next execution task if idle
 /// - poll any pending tasks that are currently being executed
 ///
-/// If a task completes, the loop continues to poll for any new output from consensus then begins executing the next task.
+/// If a task completes, the loop continues to poll for any new output from consensus then begins
+/// executing the next task.
 ///
-/// If the broadcast stream is closed, the engine will attempt to execute all remaining tasks and output that is queued.
+/// If the broadcast stream is closed, the engine will attempt to execute all remaining tasks and
+/// output that is queued.
 impl<BT, CE, Tasks> Future for ExecutorEngine<BT, CE, Tasks>
 where
     BT: BlockchainTreeEngine
@@ -206,11 +210,13 @@ where
                 Poll::Ready(None) => {
                     // the stream has ended
                     //
-                    // this could indicate an error but it's also how the Primary signals engine to shutdown
+                    // this could indicate an error but it's also how the Primary signals engine to
+                    // shutdown
                     info!(target: "engine", "ConsensusOutput channel closed. Shutting down...");
 
                     // only return if there are no current tasks and the queue is empty
-                    // otherwise, let the loop continue so any remaining tasks and queued output is executed
+                    // otherwise, let the loop continue so any remaining tasks and queued output is
+                    // executed
                     if this.insert_task.is_none() && this.queued.is_empty() {
                         return Poll::Ready(Ok(()));
                     }
@@ -401,8 +407,8 @@ mod tests {
 
     /// Test the engine shuts down after the sending half of the broadcast channel is closed.
     ///
-    /// One output is queued (simulating already received) in the engine and another is sent on the channel.
-    /// Then, the sender is dropped and the engine task is started.
+    /// One output is queued (simulating already received) in the engine and another is sent on the
+    /// channel. Then, the sender is dropped and the engine task is started.
     ///
     /// Expected result:
     /// - engine receives last broadcast
@@ -613,8 +619,8 @@ mod tests {
 
         // pull newly executed blocks from database (skip genesis)
         //
-        // Uses the provided `headers_range` to get the headers for the range, and `assemble_block` to
-        // construct blocks from the following inputs:
+        // Uses the provided `headers_range` to get the headers for the range, and `assemble_block`
+        // to construct blocks from the following inputs:
         //     – Header
         //     - Transactions
         //     – Ommers
@@ -691,7 +697,8 @@ mod tests {
                 // assert parents executed in order (sanity check)
                 let expected_parent = expected_blocks[idx - 1].header.hash_slow();
                 assert_eq!(block.parent_hash, expected_parent);
-                // expect state roots NOT to be the same as batch's since genesis is parent for all batches
+                // expect state roots NOT to be the same as batch's since genesis is parent for all
+                // batches
                 assert_ne!(block.state_root, expected_header.state_root);
                 // expect block numbers NOT the same as batch's headers
                 assert_ne!(block.number, expected_header.number);

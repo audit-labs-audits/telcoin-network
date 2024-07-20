@@ -7,9 +7,8 @@ use reth_chainspec::ChainSpec;
 use reth_consensus::PostExecutionInput;
 use reth_payload_primitives::PayloadBuilderAttributes;
 use reth_primitives::{
-    revm::config::revm_spec_by_timestamp_after_merge, Address,
-    BlockWithSenders, Header, SealedBlock, SealedHeader, Withdrawals, B256,
-    U256,
+    revm::config::revm_spec_by_timestamp_after_merge, Address, BlockWithSenders, Header,
+    SealedBlock, SealedHeader, Withdrawals, B256, U256,
 };
 use reth_revm::primitives::{BlobExcessGasAndPrice, BlockEnv, CfgEnv, CfgEnvWithHandlerCfg};
 use reth_rpc_types::engine::PayloadId;

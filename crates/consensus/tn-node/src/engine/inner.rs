@@ -7,8 +7,7 @@ use reth::rpc::builder::{config::RethRpcServerConfig, RpcModuleBuilder, RpcServe
 use reth_auto_seal_consensus::AutoSealConsensus;
 use reth_beacon_consensus::EthBeaconConsensus;
 use reth_blockchain_tree::{
-    BlockchainTree, BlockchainTreeConfig, ShareableBlockchainTree,
-    TreeExternals,
+    BlockchainTree, BlockchainTreeConfig, ShareableBlockchainTree, TreeExternals,
 };
 use reth_db::{
     database::Database,
@@ -28,7 +27,8 @@ use reth_node_ethereum::{
 use reth_primitives::Address;
 use reth_provider::{
     providers::{BlockchainProvider, StaticFileProvider},
-    BlockIdReader, CanonStateNotificationSender, HeaderProvider, ProviderFactory, StaticFileProviderFactory as _,
+    BlockIdReader, CanonStateNotificationSender, HeaderProvider, ProviderFactory,
+    StaticFileProviderFactory as _,
 };
 use reth_tasks::TaskExecutor;
 use reth_transaction_pool::{noop::NoopTransactionPool, TransactionPool};
