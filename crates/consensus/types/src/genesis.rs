@@ -74,6 +74,7 @@ fn adiri_genesis_raw() -> &'static str {
     "difficulty": "0x0",
     "mixHash": "0x0000000000000000000000000000000000000000000000000000000000000000",
     "coinbase": "0x0000000000000000000000000000000000000000",
+    "base_fee_per_gas": "0x8",
     "alloc": {
         "0x781e3f2014d83dB831df4cAA3BA78aEc57396B50": {
             "balance": "0x4a47e3c12448f4ad000000"
@@ -170,8 +171,8 @@ impl NetworkGenesis {
             let path = entry.path();
 
             // Check if it's a file and has the .yaml extension and does not start with '.'
-            if path.is_file() &&
-                path.file_name().and_then(OsStr::to_str).map_or(true, |s| !s.starts_with('.'))
+            if path.is_file()
+                && path.file_name().and_then(OsStr::to_str).map_or(true, |s| !s.starts_with('.'))
             {
                 // TODO: checking this is probably more trouble than it's worth
                 // && path.extension().and_then(OsStr::to_str) == Some("yaml")

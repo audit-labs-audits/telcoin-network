@@ -292,8 +292,11 @@ mod tests {
     use reth_blockchain_tree::BlockchainTreeViewer;
     use reth_chainspec::ChainSpec;
     use reth_node_ethereum::{EthEvmConfig, EthExecutorProvider};
-    use reth_primitives::{constants::MIN_PROTOCOL_BASE_FEE, proofs, Address, B256, U256};
-    use reth_provider::{BlockIdReader, BlockNumReader, BlockReader};
+    use reth_primitives::{
+        constants::MIN_PROTOCOL_BASE_FEE, keccak256, proofs, Address, BlockHashOrNumber, Bytes,
+        B256, EMPTY_OMMER_ROOT_HASH, U256,
+    };
+    use reth_provider::{BlockIdReader, BlockNumReader, BlockReader, TransactionVariant};
     use reth_tasks::TaskManager;
     use reth_tracing::init_test_tracing;
     use std::{collections::VecDeque, str::FromStr as _, sync::Arc, time::Duration};
@@ -326,7 +329,7 @@ mod tests {
         let sub_dag_index = 1;
         let reputation_scores = ReputationScores::default();
         let previous_sub_dag = None;
-        let beneficiary = Address::from_str("0x0000002cbd23b783741e8d7fcf51e459b497e4a6")
+        let beneficiary = Address::from_str("0x5555555555555555555555555555555555555555")
             .expect("beneficiary address from str");
         let consensus_output = ConsensusOutput {
             sub_dag: CommittedSubDag::new(
@@ -337,12 +340,14 @@ mod tests {
                 previous_sub_dag,
             )
             .into(),
-            batches: Default::default(),
+            batches: Default::default(), // empty
             beneficiary,
-            batch_digests: Default::default(),
+            batch_digests: Default::default(), // empty
         };
 
         let chain = adiri_chain_spec_arc();
+        debug!("chain spec:\n{:#?}", chain);
+        panic!("tada");
 
         // execution node components
         let manager = TaskManager::current();
@@ -352,25 +357,25 @@ mod tests {
 
         let (to_engine, from_consensus) = tokio::sync::broadcast::channel(1);
         let consensus_output_stream = BroadcastStream::from(from_consensus);
-        let blockchain = execution_node.get_provider().await;
+        let provider = execution_node.get_provider().await;
         let evm_config = EthEvmConfig::default();
         let max_round = None;
-        let parent = chain.sealed_genesis_header();
+        let genesis_header = chain.sealed_genesis_header();
 
         let engine = ExecutorEngine::new(
-            blockchain.clone(),
+            provider.clone(),
             evm_config,
             executor.clone(),
             max_round,
             consensus_output_stream,
-            parent,
+            genesis_header.clone(),
         );
 
         // send output
-        let broadcast_result = to_engine.send(consensus_output);
+        let broadcast_result = to_engine.send(consensus_output.clone());
         assert!(broadcast_result.is_ok());
 
-        // drop sending channel
+        // drop sending channel to shut engine down
         drop(to_engine);
 
         let (tx, rx) = oneshot::channel();
@@ -384,18 +389,108 @@ mod tests {
         let engine_task = timeout(Duration::from_secs(10), rx).await?;
         assert!(engine_task.is_ok());
 
-        let last_block_num = blockchain.last_block_number()?;
-        let canonical_tip = blockchain.canonical_tip();
-        let final_block = blockchain.finalized_block_num_hash()?.expect("finalized block");
+        let last_block_num = provider.last_block_number()?;
+        let canonical_tip = provider.canonical_tip();
+        let final_block = provider.finalized_block_num_hash()?.expect("finalized block");
 
         debug!("last block num {last_block_num:?}");
         debug!("canonical tip: {canonical_tip:?}");
         debug!("final block num {final_block:?}");
 
-        let chain_info = blockchain.chain_info()?;
+        let chain_info = provider.chain_info()?;
         debug!("chain info:\n{chain_info:?}");
 
         assert_eq!(canonical_tip, final_block);
+        assert_eq!(last_block_num, final_block.number);
+
+        let expected_block_height = 1;
+        // assert 1 empty block was executed for consensus
+        assert_eq!(last_block_num, expected_block_height);
+        // assert canonical tip and finalized block are equal
+        assert_eq!(canonical_tip, final_block);
+
+        // pull newly executed blocks from database (skip genesis)
+        //
+        // Uses the provided `headers_range` to get the headers for the range, and `assemble_block`
+        // to construct blocks from the following inputs:
+        //     – Header
+        //     - Transactions
+        //     – Ommers
+        //     – Withdrawals
+        //     – Requests
+        //     – Senders
+        let expected_block = provider
+            .block_with_senders(BlockHashOrNumber::Number(1), TransactionVariant::NoHash)?
+            .expect("block 1 successfully executed");
+        assert_eq!(expected_block_height, expected_block.number);
+
+        // min basefee in genesis
+        let expected_base_fee = MIN_PROTOCOL_BASE_FEE;
+        let output_digest: B256 = consensus_output.digest().into();
+
+        assert_eq!(genesis_header.base_fee_per_gas, Some(expected_base_fee));
+        // basefee comes from workers - if no batches, then use parent's basefee
+        assert_eq!(expected_block.base_fee_per_gas, Some(expected_base_fee));
+
+        // assert blocks are executed as expected
+        assert!(expected_block.senders.is_empty());
+        assert!(expected_block.body.is_empty());
+
+        // assert basefee is same as worker's block
+        assert_eq!(expected_block.base_fee_per_gas, Some(expected_base_fee));
+        // beneficiary overwritten
+        assert_eq!(expected_block.beneficiary, beneficiary);
+        // nonce matches subdag index and method all match
+        assert_eq!(expected_block.nonce, sub_dag_index);
+        assert_eq!(expected_block.nonce, consensus_output.nonce());
+
+        // ommers contains headers from all batches from consensus output
+        let expected_ommers = consensus_output.ommers();
+        assert_eq!(expected_block.ommers, expected_ommers);
+        // ommers root
+        assert_eq!(expected_block.header.ommers_hash, EMPTY_OMMER_ROOT_HASH,);
+        // timestamp
+        assert_eq!(expected_block.timestamp, consensus_output.committed_at());
+        // parent beacon block root is output digest
+        assert_eq!(expected_block.parent_beacon_block_root, Some(output_digest));
+        // first block's parent is expected to be genesis
+        assert_eq!(expected_block.parent_hash, chain.genesis_hash());
+        // expect state roots to be the same as genesis bc no txs
+        assert_eq!(expected_block.state_root, genesis_header.state_root);
+        // expect header number genesis + 1
+        assert_eq!(expected_block.number, expected_block_height);
+
+        // mix hash is calculated from parent blocks parent_beacon_block_root and output's timestamp
+        let expected_mix_hash =
+            consensus_output.mix_hash_for_empty_payload(&genesis_header.mix_hash);
+        assert_eq!(expected_block.mix_hash, expected_mix_hash);
+        let manual_mix_hash = keccak256(
+            [
+                genesis_header.mix_hash.as_slice(),
+                consensus_output.committed_at().to_le_bytes().as_slice(),
+            ]
+            .concat(),
+        );
+        assert_eq!(expected_block.mix_hash, manual_mix_hash);
+        // bloom expected to be the same bc all proposed transactions should be good
+        // ie) no duplicates, etc.
+        //
+        // TODO: randomly generate contract transactions as well!!!
+        assert_eq!(expected_block.logs_bloom, genesis_header.logs_bloom);
+        // gas limit should come from parent for empty execution
+        //
+        // TODO: ensure batch validation prevents peer workers from changing this value
+        assert_eq!(expected_block.gas_limit, genesis_header.gas_limit);
+        // no gas should be used - no txs
+        assert_eq!(expected_block.gas_used, 0);
+        // difficulty should be 0 to indicate first (and only) block from round
+        assert_eq!(expected_block.difficulty, U256::ZERO);
+        // assert extra data is empty 32-bytes (B256::ZERO)
+        assert_eq!(expected_block.extra_data.as_ref(), &[0; 32]);
+        // assert withdrawals are empty
+        //
+        // TODO: this is currently always empty
+        assert_eq!(expected_block.withdrawals_root, genesis_header.withdrawals_root);
 
         Ok(())
     }
@@ -575,7 +670,7 @@ mod tests {
         let broadcast_result = to_engine.send(consensus_output_2.clone());
         assert!(broadcast_result.is_ok());
 
-        // drop sending channel before received
+        // drop sending channel before receiver has a chance to process message
         drop(to_engine);
 
         // channels for engine shutting down
@@ -653,6 +748,7 @@ mod tests {
                 expected_beneficiary = &beneficiary_2;
                 expected_subdag_index = &sub_dag_index_2;
                 expected_parent_beacon_block_root = &output_digest_2;
+                // takeaway 4 to compensate for independent loops for executing batches
                 expected_batch_index = idx - 4;
             }
 

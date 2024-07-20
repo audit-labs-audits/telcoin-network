@@ -2,6 +2,7 @@
 //!
 //! This approach heavily inspired by reth's `default_ethereum_payload_builder`.
 
+use crate::error::{EngineResult, TnEngineError};
 use fastcrypto::hash::Hash as _;
 use reth_blockchain_tree::{BlockValidationKind, BlockchainTreeEngine};
 use reth_chainspec::ChainSpec;
@@ -26,8 +27,6 @@ use reth_revm::{
 use std::sync::Arc;
 use tn_types::{BuildArguments, TNPayload, TNPayloadAttributes};
 use tracing::{debug, error, warn};
-
-use crate::error::{EngineResult, TnEngineError};
 
 /// Constructs an Ethereum transaction payload using the best transactions from the pool.
 ///
@@ -97,6 +96,7 @@ where
     debug!(?canonical_header, "default SealedHeader");
 
     // extend canonical tip if output contains batches with transactions
+    // otherwise execute an empty block to extend canonical tip
     if sealed_blocks_with_senders.is_empty() {
         // execute single block with no transactions
         warn!(
@@ -124,12 +124,9 @@ where
         // - timestamp
         //
         // see https://eips.ethereum.org/EIPS/eip-4399
-        let mix_hash = match canonical_header.parent_beacon_block_root {
-            Some(root) => keccak256(
-                [root.as_slice(), output.committed_at().to_le_bytes().as_slice()].concat(),
-            ),
-            None => B256::ZERO,
-        };
+        let mix_hash = output.mix_hash_for_empty_payload(
+            &canonical_header.parent_beacon_block_root.unwrap_or_default(),
+        );
 
         // empty withdrawals
         let withdrawals = Withdrawals::new(vec![]);
