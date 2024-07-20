@@ -292,15 +292,11 @@ mod tests {
     use reth_blockchain_tree::BlockchainTreeViewer;
     use reth_chainspec::ChainSpec;
     use reth_node_ethereum::{EthEvmConfig, EthExecutorProvider};
-    use reth_primitives::{
-        constants::MIN_PROTOCOL_BASE_FEE, proofs, Address, B256, U256,
-    };
+    use reth_primitives::{constants::MIN_PROTOCOL_BASE_FEE, proofs, Address, B256, U256};
     use reth_provider::{BlockIdReader, BlockNumReader, BlockReader};
     use reth_tasks::TaskManager;
     use reth_tracing::init_test_tracing;
-    use std::{
-        collections::VecDeque, str::FromStr as _, sync::Arc, time::Duration,
-    };
+    use std::{collections::VecDeque, str::FromStr as _, sync::Arc, time::Duration};
     use tn_types::{
         adiri_chain_spec_arc, adiri_genesis, now,
         test_utils::{
@@ -423,14 +419,11 @@ mod tests {
         let mut batches_1 = tn_types::test_utils::batches(4); // create 4 batches
         let mut batches_2 = tn_types::test_utils::batches(4); // create 4 batches
 
+        // okay to clone these because they are only used to seed genesis, decode transactions, and recover signers
+        let all_batches = [batches_1.clone(), batches_2.clone()].concat();
+
         // use default genesis and seed accounts to execute batches
         let genesis = adiri_genesis();
-        // seed genesis for batches and track txs/signers for each group
-        // let (genesis, txs_1, signers_1) =
-        //     seeded_genesis_from_random_batches(genesis, batches_1.iter());
-        // let (genesis, txs_2, signers_2) =
-        //     seeded_genesis_from_random_batches(genesis, batches_2.iter());
-        let all_batches = [batches_1.clone(), batches_2.clone()].concat();
         let (genesis, txs_by_block, signers_by_block) =
             seeded_genesis_from_random_batches(genesis, all_batches.iter());
         let chain: Arc<ChainSpec> = Arc::new(genesis.into());
