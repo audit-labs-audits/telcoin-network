@@ -16,11 +16,12 @@ fn main() {
     #[cfg(not(feature = "faucet"))]
     if let Err(err) =
         telcoin_network::cli::Cli::<NoArgs>::parse().run(|builder, _, tn_datadir| async move {
+            let evm_config = EthEvmConfig::default();
             let executor = EthExecutorProvider::new(
                 Arc::clone(&builder.node_config.chain),
-                EthEvmConfig::default(),
+                evm_config.clone(),
             );
-            launch_node(builder, executor, &tn_datadir).await
+            launch_node(builder, executor, evm_config, &tn_datadir).await
         })
     {
         eprintln!("Error: {err:?}");
