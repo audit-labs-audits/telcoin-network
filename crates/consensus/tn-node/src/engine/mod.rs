@@ -114,6 +114,12 @@ where
         guard.get_evm_config()
     }
 
+    /// Return the node's evm-based block executor.
+    pub async fn get_block_executor(&self) -> Evm {
+        let guard = self.internal.read().await;
+        guard.get_block_executor()
+    }
+
     /// Return an HTTP client for submitting transactions to the RPC.
     pub async fn worker_http_client(
         &self,

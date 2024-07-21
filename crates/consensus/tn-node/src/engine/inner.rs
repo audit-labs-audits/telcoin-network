@@ -398,6 +398,11 @@ where
         self.evm_config.clone()
     }
 
+    /// Return the node's evm-based block executor
+    pub(super) fn get_block_executor(&self) -> Evm {
+        self.evm_executor.clone()
+    }
+
     /// Return a worker's HttpClient if the RpcServer exists.
     pub(super) fn worker_http_client(
         &self,
