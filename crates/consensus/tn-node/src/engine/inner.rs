@@ -74,7 +74,7 @@ where
     /// The type to configure the EVM for execution.
     evm_config: CE,
     /// The Evm configuration type.
-    evm: Evm,
+    evm_executor: Evm,
     /// Broadcasting channel for canonical state changes.
     canon_state_notification_sender: CanonStateNotificationSender,
     /// The task executor is responsible for executing
@@ -97,7 +97,11 @@ where
     CE: ConfigureEvm,
 {
     /// Create a new instance of `Self`.
-    pub(super) fn new(tn_builder: TnBuilder<DB>, evm: Evm, evm_config: CE) -> eyre::Result<Self> {
+    pub(super) fn new(
+        tn_builder: TnBuilder<DB>,
+        evm_executor: Evm,
+        evm_config: CE,
+    ) -> eyre::Result<Self> {
         // deconstruct the builder
         let TnBuilder { database, node_config, task_executor, tn_config, opt_faucet_args } =
             tn_builder;
@@ -134,8 +138,11 @@ where
         // get config from file
         let prune_config = node_config.prune_config(); //.or(reth_config.prune.clone());
         let tree_config = BlockchainTreeConfig::default();
-        let tree_externals =
-            TreeExternals::new(provider_factory.clone(), auto_consensus.clone(), evm.clone());
+        let tree_externals = TreeExternals::new(
+            provider_factory.clone(),
+            auto_consensus.clone(),
+            evm_executor.clone(),
+        );
         let tree = BlockchainTree::new(
             tree_externals,
             tree_config,
@@ -157,7 +164,7 @@ where
             blockchain_db,
             provider_factory,
             evm_config,
-            evm,
+            evm_executor,
             canon_state_notification_sender,
             task_executor,
             opt_faucet_args,
@@ -271,7 +278,7 @@ where
             to_worker,
             mining_mode,
             self.address,
-            self.evm.clone(),
+            self.evm_executor.clone(),
         )
         .build();
 
@@ -339,7 +346,11 @@ where
             Arc::new(EthBeaconConsensus::new(self.node_config.chain.clone()));
 
         // batch validator
-        BatchValidator::<DB, Evm>::new(consensus, self.blockchain_db.clone(), self.evm.clone())
+        BatchValidator::<DB, Evm>::new(
+            consensus,
+            self.blockchain_db.clone(),
+            self.evm_executor.clone(),
+        )
     }
 
     /// Fetch the last executed stated from the database.
