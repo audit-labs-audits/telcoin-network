@@ -308,8 +308,6 @@ async fn fetch_certificates_v1_basic() {
     };
     tx_fetch_resp.try_send(first_batch_resp.clone()).unwrap();
 
-    println!("\n\n\n!!!!!\nTURTLES!!!!!!\n\n\n");
-
     // The certificates up to index 66 (4 + 62) should be written to store eventually by core.
     verify_certificates_in_store(
         &certificate_store,
@@ -356,8 +354,6 @@ async fn fetch_certificates_v1_basic() {
             .collect_vec(),
     };
     tx_fetch_resp.try_send(second_batch_resp.clone()).unwrap();
-
-    println!("\n\n\n!!!!!\nTURTLES 2\n!!!!!!\n\n\n");
 
     // The certificates up to index 124 (4 + 62 + 58) should become available in store eventually.
     verify_certificates_in_store(
@@ -412,6 +408,9 @@ async fn fetch_certificates_v1_basic() {
     certs.push(cert);
     // Add cert with incorrect digest.
     let mut cert = certificates[num_written].clone();
+
+    // NOTE: original approach for creating legitimate V1 headers for V2 certificates
+    //
     // // This is a bit tedious to craft
     // let cloned_header = cert.header().clone();
     // let Header::V1(inner) = cloned_header;
@@ -419,7 +418,7 @@ async fn fetch_certificates_v1_basic() {
     // let wrong_header = BadHeader { ..cert_header };
     // let wolf_header = unsafe { std::mem::transmute::<BadHeader, HeaderV1>(wrong_header) };
 
-    // use dummy, default header for bad data
+    // instead: use dummy, default header for bad data
     let wolf_header = Header::default();
     cert.update_header(Header::from(wolf_header));
     certs.push(cert);
@@ -456,12 +455,9 @@ async fn fetch_certificates_v1_basic() {
     // }
     // tx_fetch_resp.try_send(FetchCertificatesResponse { certificates: certs }).unwrap();
 
-    // println!("\n\n\n!!!!!\nTURTLES 3\n!!!!!!\n\n\n");
-
     // sleep(Duration::from_secs(1)).await;
-    // verify_certificates_not_in_store(&certificate_store, &certificates[num_written..target_index]);
-
-    println!("\n\n\n!!!!!\nTURTLES 4\n!!!!!!\n\n\n");
+    // verify_certificates_not_in_store(&certificate_store,
+    // &certificates[num_written..target_index]);
 
     // Send out a batch of certificates with good signatures.
     // The certificates 4 + 62 + 58 + 204 = 328 should become available in store eventually.let mut
@@ -471,8 +467,6 @@ async fn fetch_certificates_v1_basic() {
         certs.push(cert.clone());
     }
     tx_fetch_resp.try_send(FetchCertificatesResponse { certificates: certs }).unwrap();
-
-    println!("\n\n\n!!!!!\nTURTLES 5\n!!!!!!\n\n\n");
 
     verify_certificates_in_store(
         &certificate_store,
