@@ -81,7 +81,7 @@ impl PrimaryNodeInner {
         // Client for communications.
         client: NetworkClient,
         // The node's store
-        // TODO: replace this by a path so the method can open and independent storage
+        // TODO: replace this by a path so the method can open independent storage
         store: &NodeStorage,
         // // The state used by the client to execute transactions.
         // execution_state: State,

@@ -99,7 +99,7 @@ where
     /// Retrieve the last executed block from the database to restore consensus.
     pub async fn last_executed_output(&self) -> eyre::Result<u64> {
         let guard = self.internal.read().await;
-        guard.last_executed_output().await
+        guard.last_executed_output()
     }
 
     /// Return an database provider.

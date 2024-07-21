@@ -10,8 +10,7 @@ use reth_blockchain_tree::{
     BlockchainTree, BlockchainTreeConfig, ShareableBlockchainTree, TreeExternals,
 };
 use reth_db::{
-    database::Database,
-    database_metrics::{DatabaseMetadata, DatabaseMetrics},
+    cursor::DbCursorRO, database::Database, database_metrics::{DatabaseMetadata, DatabaseMetrics}, tables, transaction::DbTx
 };
 use reth_db_common::init::init_genesis;
 use reth_evm::{execute::BlockExecutorProvider, ConfigureEvm};
@@ -24,12 +23,11 @@ use reth_node_ethereum::{
     node::{EthereumNetworkBuilder, EthereumPayloadBuilder, EthereumPoolBuilder},
     EthEvmConfig,
 };
-use reth_primitives::Address;
+use reth_primitives::{Address, U256};
 use reth_provider::{
-    providers::{BlockchainProvider, StaticFileProvider},
-    BlockIdReader, CanonStateNotificationSender, HeaderProvider, ProviderFactory,
-    StaticFileProviderFactory as _,
+    providers::{BlockchainProvider, StaticFileProvider}, BlockIdReader, BlockReader, CanonStateNotificationSender, DatabaseProviderFactory, HeaderProvider, ProviderFactory, StaticFileProviderFactory as _, TransactionVariant
 };
+use reth_rpc_types::BlockHashOrNumber;
 use reth_tasks::TaskExecutor;
 use reth_transaction_pool::{noop::NoopTransactionPool, TransactionPool};
 use std::{collections::HashMap, sync::Arc};
@@ -353,19 +351,15 @@ where
         )
     }
 
-    /// Fetch the last executed stated from the database.
+    /// Fetch the last executed state from the database.
     ///
     /// This method is called when the primary spawns to retrieve
     /// the last committed sub dag from it's database in the case
     /// of the node restarting.
     ///
-    /// TODO: there is some consideration about executing batches as blocks
-    /// for scalability, but for now all output is one block,
-    /// so just use the head's number.
-    ///
     /// The primary adds +1 to this value for recovering output
     /// since the execution layer is confirming the last executing block.
-    pub(super) async fn last_executed_output(&self) -> eyre::Result<u64> {
+    pub(super) fn last_executed_output(&self) -> eyre::Result<u64> {
         // TODO: this needs to confirm the `ConsensusOutput` was fully executed
         // scenario: output contains 3 blocks, only one block executed before crash
         // outcome: re-execute the entire consensus output?
@@ -378,15 +372,58 @@ where
         //        rewrites
         //
         // recover finalized block's nonce: this is the last subdag index from consensus
-        let last = match self.blockchain_db.finalized_block_number()? {
+        let finalized_block_num = match self.blockchain_db.finalized_block_number()? {
             Some(num) => {
-                self.blockchain_db.header_by_number(num)?.map(|opt| opt.nonce).unwrap_or(0)
+                // self.blockchain_db.header_by_number(num)?.map(|opt| opt.nonce).unwrap_or(0)
+
+                // use finalized block num to retrieve full block from db without recovering txs
+                let full_block = self.blockchain_db.block_with_senders(BlockHashOrNumber::Number(num), TransactionVariant::NoHash)?.unwrap_or_else(|| {
+                    //
+                    // TODO: better to recursively call block with senders on numbers until one comes up?
+
+
+                    // inspired by methods in: reth/crates/storage/provider/src/providers/database/provider.rs
+                    //
+                    // if the full block cannot be retrieved, walk the db to find the next header where nonce -1
+                    // this indicates the previous round and should be complete
+                    //
+                    // scenario:
+                    // - output contains 4 batches for round 5
+                    // - node crashes after executing first 2 batches of round 5
+                    // - need to walk back until header.nonce is 4
+                    // - this would trigger consensus to re-send output for round 5
+                    //
+                    // retrieve missing block's header, otherwise give up and start at genesis
+                    let missing_block_header_nonce = self.blockchain_db.header_by_number(num).expect("missing block's header in db").map(|opt| opt.nonce).unwrap_or(0);
+
+                    // cursor for db access
+                    let mut db_cursor = self.blockchain_db.database_provider_ro().expect("database provider available to find last executed output").tx_ref().cursor_read::<tables::CanonicalHeaders>().expect("cursor available to read from table");
+                    // read db in reverse order (start with last db entry)
+                    let mut db_walker = db_cursor.walk_back(None).expect("db walker created");
+                    // let tx = provider.tx_ref().cursor_read::<reth_db::tables::Transactions>();
+                    while let Some(Ok((key, header))) = db_walker.next() {
+                        todo!()
+                    }
+                    todo!()
+                });
+
+                // ensure the full block's ommers length and difficulty match
+                let ommers_256 = U256::from(full_block.ommers.len());
+                if ommers_256 == full_block.difficulty {
+                    full_block.nonce
+                } else {
+                    // assume previous round finished before next round began
+                    full_block.nonce - 1
+                }
             }
             None => 0, // genesis
         };
 
-        Ok(last)
+
+        Ok(finalized_block_num)
     }
+
+    fn
 
     /// Return an database provider.
     pub(super) fn get_provider(&self) -> BlockchainProvider<DB> {
