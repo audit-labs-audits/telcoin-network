@@ -3,7 +3,7 @@
 
 //! Specific test utils for execution layer
 use crate::{adiri_genesis, now, Batch, BatchAPI, ExecutionKeypair, MetadataAPI, TimestampSec};
-use rand::{rngs::StdRng, SeedableRng};
+use rand::{rngs::StdRng, Rng, SeedableRng};
 use reth_chainspec::{BaseFeeParams, ChainSpec};
 use reth_evm::execute::{BlockExecutionOutput, BlockExecutorProvider, Executor as _};
 use reth_primitives::{
@@ -251,7 +251,15 @@ impl TransactionFactory {
         Self { keypair, nonce: 0 }
     }
 
-    /// Create a new instance of self from a random seed.
+    /// create a new instance of self from a provided seed.
+    pub fn new_random_from_seed<R: Rng + ?Sized>(rand: &mut R) -> Self {
+        let secp = Secp256k1::new();
+        let (secret_key, _public_key) = secp.generate_keypair(rand);
+        let keypair = ExecutionKeypair::from_secret_key(&secp, &secret_key);
+        Self { keypair, nonce: 0 }
+    }
+
+    /// create a new instance of self from a random seed.
     pub fn new_random() -> Self {
         let secp = Secp256k1::new();
         let (secret_key, _public_key) = secp.generate_keypair(&mut rand::thread_rng());

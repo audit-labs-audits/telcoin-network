@@ -513,7 +513,8 @@ mod tests {
         let mut batches_1 = tn_types::test_utils::batches(4); // create 4 batches
         let mut batches_2 = tn_types::test_utils::batches(4); // create 4 batches
 
-        // okay to clone these because they are only used to seed genesis, decode transactions, and recover signers
+        // okay to clone these because they are only used to seed genesis, decode transactions, and
+        // recover signers
         let all_batches = [batches_1.clone(), batches_2.clone()].concat();
 
         // use default genesis and seed accounts to execute batches
@@ -840,7 +841,8 @@ mod tests {
         batches_1[3] = batches_1[0].clone();
         batches_2[3] = batches_1[1].clone();
 
-        // okay to clone these because they are only used to seed genesis, decode transactions, and recover signers
+        // okay to clone these because they are only used to seed genesis, decode transactions, and
+        // recover signers
         let all_batches = [batches_1.clone(), batches_2.clone()].concat();
 
         // use default genesis and seed accounts to execute batches
@@ -1045,7 +1047,8 @@ mod tests {
         let chain_info = blockchain.chain_info()?;
         debug!("chain info:\n{chain_info:?}");
 
-        // expect 1 block per batch still, but 2 blocks will be empty becuase they contained duplicate transactions
+        // expect 1 block per batch still, but 2 blocks will be empty becuase they contained
+        // duplicate transactions
         let expected_block_height = 8;
         let expected_duplicate_block_num_round_1 = 4;
         let expected_duplicate_block_num_round_2 = 8;
@@ -1081,8 +1084,8 @@ mod tests {
 
             // expect blocks 4 and 8 to be empty (no txs bc they are duplicates)
             // sub 1 to account for loop idx starting at 0
-            if idx == expected_duplicate_block_num_round_1 - 1
-                || idx == expected_duplicate_block_num_round_2 - 1
+            if idx == expected_duplicate_block_num_round_1 - 1 ||
+                idx == expected_duplicate_block_num_round_2 - 1
             {
                 assert!(block.senders.is_empty());
                 assert!(block.body.is_empty());
@@ -1188,7 +1191,8 @@ mod tests {
         let mut batches_1 = tn_types::test_utils::batches(4); // create 4 batches
         let mut batches_2 = tn_types::test_utils::batches(4); // create 4 batches
 
-        // okay to clone these because they are only used to seed genesis, decode transactions, and recover signers
+        // okay to clone these because they are only used to seed genesis, decode transactions, and
+        // recover signers
         let all_batches = [batches_1.clone(), batches_2.clone()].concat();
 
         // use default genesis and seed accounts to execute batches
@@ -1337,7 +1341,8 @@ mod tests {
         engine.queued.push_back(consensus_output_1);
         engine.queued.push_back(consensus_output_2);
 
-        // NOTE: sending channel is not dropped, so engine will continue listening until max block reached
+        // NOTE: sending channel is not dropped, so engine will continue listening until max block
+        // reached
 
         // channels for engine shutting down
         let (tx, rx) = oneshot::channel();

@@ -215,7 +215,8 @@ async fn bullshark_randomised_tests() {
 
 /// Ensures that the methods to generate the DAGs and the execution plans are random but can be
 /// reproduced by providing the same seed number - so practically they behave deterministically.
-/// If that test breaks then we have no reassurance that we can reproduce the tests in case of
+///
+/// NOTE: If this test breaks then we have no reassurance that we can reproduce the tests in case of
 /// failure.
 #[test]
 fn test_determinism() {
