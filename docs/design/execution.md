@@ -25,9 +25,9 @@ Because blocks contain these fields, they are accessible to be re-purposed for T
 ##### Ommers
 *Ethereum*: A collection of uncle headers. Considered a "constant value" (empty vec) in PoS.
 
-*TN*: The ordered list of batch hashes (flattened) in the ConsensusOutput.
+*TN*: The ordered list of all headers that reached consensus in the current round. Worker's propose blocks that validators reach consensus on, and this value contains all headers for the round.
 
-*Logic*: Batches are proposed in parallel. This could be used to guarantee a complete ConsensusOutput included all batches. Batch validation ensures parent hash matches. TN can include this data without any cascading consequences using the current default `EthBeaconConsensus` logic from reth because batches don't have ommers, only final execution blocks.
+*Logic*: Batches are proposed in parallel. This is used to guarantee a complete ConsensusOutput included all batches. Peers ensure the worker's proposed block is based off a canonical header. Proposed blocks do not contain ommers. Ommers is only included after consensus is reached.
 
 ##### Ommers Hash
 *Ethereum*: Considered a "constant value" (EMPTY_OMMER_ROOT_HASH) post-merge.
@@ -39,21 +39,21 @@ Because blocks contain these fields, they are accessible to be re-purposed for T
 ##### Nonce
 *Ethereum*: Considered a "constant value" (0x0).
 
-*TN*: The sub dag index's `SequenceNumber` (also u64). The "nonce" for consensus.
+*TN*: The sub dag index's `SequenceNumber` (also u64). The "nonce" or "round" for consensus.
 
-*Logic*: Is this redundant? Could help with block explorers. Could help with ensuring all batches in ConsensusOutput are executed. What happens during recovery? Need to ensure all batches were executed correctly. Block number cannot apply to batches or rounds since they are executed in multiples.
+*Logic*: This value is used to track the round of consensus.
 
 ##### Difficulty
 *Ethereum*: No longer used post-merge and must be 0.
 
-*TN*: Batch index? This could be used for documenting validator rewards? Leave it alone and consider using it for `randao` value CL needs this value from EL? The reth impl for extending canonical chain requires this to be zero, but the logic should still return true if the `total` difficulty at the time of genesis is set to 0.
+*TN*: Consensus output contains multiple blocks in order. The index of the block is tracked in the block's difficulty. Difficulty is already set as an unsigned integer, so this value is used in favor of other options (32 fixed byte hash).
 
-*Logic*: [EIP-4399](https://eips.ethereum.org/EIPS/eip-4399) in favor of supplanting DIFFICULTY opcode with PREVRANDAO. If so, TN could use this for randao values.
+*Logic*: This value is used to verify correct execution order of blocks in consensus output.
 
 ##### Mixed Hash
 *Ethereum*: A 256-bit hash which, combined with the nonce, proves that a sufficient amount of computation has been carried out on this block (formally Hm). Post-merge, execution clients (reth and geth) use it to hold the prev randao value used to select the next quorum of validators by beacon chain. The block has `mixed_hash` and the beacon block has `prev_randao`. These values are converted when the execution payload is constructed from the built block and used by Beacon chain for validator shuffling.
 
-*TN*: Should `ConsensusOutput` digest be used here? Reasonably sure it would be hard to predict and easy to verify. How would this be set on genesis - for first batches? What is the mechanism for sharing mixed hash from previous round? Need to review this further.
+*TN*: WIP. Validators are shuffled with a separate mechanism, however sufficient randomness is passed to the execution layer through this value. The mix hash is used as a source of randomness on-chain.
 
 Simply using the digest from consensus output is an insufficient source of randomness because batches can be built off historic parents. An attacker could theoretically know the next digest and anticipate the mix hash in the upcoming batch. The ability to predict upcoming mix hashes would undermine the security of on-chain programs that rely on PREVRANDAO as a source of randomness in the EVM.
 
@@ -65,21 +65,21 @@ Is there a value peers can use? Might need to be signature-based. What is a valu
 
 The mix hash for a worker's block must be random, providing security for smart contracts relying on it. It also must be verifiable and impossible to manipulate. After consensus, the mix hash value is reused to ensure consistent execution results. During re-execution for finality, the mix hash can be known because no other transactions are possibly included. The only possibility is for them to be removed.
 
-*Logic*:  On-chain programs might rely on this value for randomness, and it must be consistent when the batch is made and the final block is executed. It's also important that the random value is verifiable yet unpredictable.
+*Logic*:  On-chain programs might rely on this value for randomness, and it must be consistent when the batch is made and the final block is executed. It's also important that the random value is verifiable yet unpredictable and difficult to manipulate. Further consideration is needed to guarantee this value.
 
 ##### Extra Data
 *Ethereum*: Anything a validator wants to use - 32 bytes.
 
-*TN*: Batch Hash. The index of the batch? Better to use `difficulty` because U256 type? Also consider: The priority fee rewards for validator? The hash of the batch that was used to execute this block? This could also be used for the `ConsensusOutput` hash? Can't use ms timestamp because execution times could vary between validators. Is it valuable to include the leader's round?
+*TN*: The digest of the worker's proposed block batch. This value is used to validate correct execution results.
 
-*Logic*: It's unclear exactly what data is most useful for indexing blocks down the road. Extra data needs to be consistent amongst all validators to ensure correct hash of executed block, but using extra data now prevents TN from ever using it again. While other "unused" block fields are in place, prefer to use these instead.
+*Logic*: It's unclear exactly what data is most useful for indexing blocks down the road. Extra data needs to be consistent amongst all validators to ensure correct hash of executed block, but using extra data now prevents TN from ever using it again.
 
 ##### Parent beacon block root
 *Ethereum*: the hash of the parent beacon block's root to support minimal trust for accessing consensus state.
 
-*TN*: `ConsensusOutput` hash. Or should this be used for managing rewards/validator sets on chain?
+*TN*: The `ConsensusOutput` hash. The hash is constructed from the output's sub-dag digest, the beneficiary, and the worker's proposed block (batch) digests.
 
-*Logic*: The parent beacon block root is mostly helpful for supporting staking pools like Lido and isn't really relevant to TN directly. However, it could be useful for calculating epoch shuffles. IMPORTANT: ensure implementation wouldn't violate EVM expectations.
+*Logic*: The parent beacon block root is mostly helpful for supporting staking pools like Lido and isn't really relevant to TN directly. However, it could be useful for calculating epoch shuffles.
 
 ## System Calls
 At times, the protocol needs to manage state directly. System calls provide a secure, gaselss approach to previewing state changes. The protocol can then use this "preview" of the state change to update the database directly, which avoids the need for gas entirely.
