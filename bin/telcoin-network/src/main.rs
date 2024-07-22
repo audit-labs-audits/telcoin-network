@@ -33,10 +33,8 @@ fn main() {
         |mut builder, faucet, tn_datadir| async move {
             builder.opt_faucet_args = Some(faucet);
             let evm_config = EthEvmConfig::default();
-            let executor = EthExecutorProvider::new(
-                Arc::clone(&builder.node_config.chain),
-                evm_config,
-            );
+            let executor =
+                EthExecutorProvider::new(Arc::clone(&builder.node_config.chain), evm_config);
             launch_node(builder, executor, evm_config, &tn_datadir).await
         },
     ) {

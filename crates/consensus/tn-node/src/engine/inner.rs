@@ -17,20 +17,13 @@ use reth_db::{
 };
 use reth_db_common::init::init_genesis;
 use reth_evm::{execute::BlockExecutorProvider, ConfigureEvm};
-use reth_node_builder::{
-    common::WithConfigs,
-    components::PoolBuilder,
-    BuilderContext, NodeConfig,
-};
-use reth_node_ethereum::{
-    node::EthereumPoolBuilder,
-    EthEvmConfig,
-};
+use reth_node_builder::{common::WithConfigs, components::PoolBuilder, BuilderContext, NodeConfig};
+use reth_node_ethereum::{node::EthereumPoolBuilder, EthEvmConfig};
 use reth_primitives::Address;
 use reth_provider::{
     providers::{BlockchainProvider, StaticFileProvider},
-    BlockIdReader, CanonStateNotificationSender,
-    HeaderProvider, ProviderFactory, StaticFileProviderFactory as _,
+    BlockIdReader, CanonStateNotificationSender, HeaderProvider, ProviderFactory,
+    StaticFileProviderFactory as _,
 };
 use reth_tasks::TaskExecutor;
 use reth_transaction_pool::TransactionPool;

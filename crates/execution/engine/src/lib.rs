@@ -25,9 +25,7 @@ use reth_provider::{
     BlockIdReader, BlockReader, CanonChainTracker, ChainSpecProvider, StageCheckpointReader,
     StateProviderFactory,
 };
-use reth_stages::PipelineEvent;
 use reth_tasks::TaskSpawner;
-use reth_tokio_util::EventStream;
 use std::{
     collections::VecDeque,
     pin::Pin,
@@ -54,12 +52,9 @@ type PendingExecutionTask = oneshot::Receiver<EngineResult<SealedHeader>>;
 pub struct ExecutorEngine<BT, CE, Tasks> {
     /// The backlog of output from consensus that's ready to be executed.
     queued: VecDeque<ConsensusOutput>,
-    /// Single active future that inserts a new block into `storage`
-    // insert_task: Option<BoxFuture<'static, Option<EventStream<PipelineEvent>>>>,
-    // insert_task: Option<BoxFuture<'static, EngineResult<SealedHeader>>>,
+    /// Single active future that executes consensus output on a blocking thread and then returns
+    /// the result through a oneshot channel.
     insert_task: Option<PendingExecutionTask>,
-    // /// Used to notify consumers of new blocks
-    // canon_state_notification: CanonStateNotificationSender,
     /// The type used to query both the database and the blockchain tree.
     blockchain: BT,
     /// EVM configuration for executing transactions and building blocks.
@@ -72,8 +67,6 @@ pub struct ExecutorEngine<BT, CE, Tasks> {
     ///
     /// note: this is primarily useful for debugging and testing
     max_round: Option<u64>,
-    /// The pipeline events to listen on
-    pipeline_events: Option<EventStream<PipelineEvent>>,
     /// Receiving end from CL's `Executor`. The `ConsensusOutput` is sent
     /// to the mining task here.
     consensus_output_stream: BroadcastStream<ConsensusOutput>,
@@ -301,8 +294,8 @@ mod tests {
     use reth_blockchain_tree::BlockchainTreeViewer;
     use reth_chainspec::ChainSpec;
     use reth_primitives::{
-        constants::MIN_PROTOCOL_BASE_FEE, keccak256, proofs, Address, BlockHashOrNumber,
-        B256, EMPTY_OMMER_ROOT_HASH, U256,
+        constants::MIN_PROTOCOL_BASE_FEE, keccak256, proofs, Address, BlockHashOrNumber, B256,
+        EMPTY_OMMER_ROOT_HASH, U256,
     };
     use reth_provider::{BlockIdReader, BlockNumReader, BlockReader, TransactionVariant};
     use reth_tasks::TaskManager;

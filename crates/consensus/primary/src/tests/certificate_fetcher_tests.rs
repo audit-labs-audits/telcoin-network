@@ -24,9 +24,8 @@ use std::{collections::BTreeSet, sync::Arc, time::Duration};
 use tn_types::{
     test_utils::{temp_dir, CommitteeFixture},
     AuthorityIdentifier, BatchDigest, BlsAggregateSignatureBytes, Certificate, CertificateAPI,
-    CertificateDigest, Epoch, Header, HeaderAPI, HeaderDigest,
-    PreSubscribedBroadcastSender, Round, SignatureVerificationState, SystemMessage, TimestampSec,
-    WorkerId,
+    CertificateDigest, Epoch, Header, HeaderAPI, HeaderDigest, PreSubscribedBroadcastSender, Round,
+    SignatureVerificationState, SystemMessage, TimestampSec, WorkerId,
 };
 use tokio::{
     sync::{

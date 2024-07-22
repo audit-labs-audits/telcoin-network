@@ -198,13 +198,7 @@ pub fn execute_test_batch<P, E>(
     let bundle_state = ExecutionOutcome::new(state, receipts.into(), block_number, vec![]);
 
     // retrieve header to update values post-execution
-    let Block { mut header, body, .. } = block.block;
-    let body = BlockBody {
-        transactions: body,
-        ommers: vec![],
-        withdrawals: withdrawals_opt,
-        requests: None,
-    };
+    let Block { mut header, .. } = block.block;
 
     // update header
     header.gas_used = gas_used;
@@ -218,7 +212,7 @@ pub fn execute_test_batch<P, E>(
         .block_logs_bloom(block_number)
         .expect("logs bloom calculation during test batch execution");
 
-    // seal header
+    // seal header and update batch's metadata
     let sealed_header = header.seal_slow();
     let md = batch.versioned_metadata_mut();
     md.update_header(sealed_header);
