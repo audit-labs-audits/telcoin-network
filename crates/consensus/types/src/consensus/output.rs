@@ -23,10 +23,15 @@ use tracing::warn;
 pub struct ConsensusOutput {
     pub sub_dag: Arc<CommittedSubDag>,
     /// Matches certificates in the `sub_dag` one-to-one.
+    ///
+    /// This field is not included in [Self] digest. To validate,
+    /// hash these batches and compare to [Self::batch_digests].
     pub batches: Vec<Vec<Batch>>,
     /// The beneficiary for block rewards.
     pub beneficiary: Address,
     /// The ordered set of [BatchDigests].
+    ///
+    /// This value is included in [Self] digest.
     pub batch_digests: VecDeque<BatchDigest>,
 }
 
@@ -100,9 +105,8 @@ impl ConsensusOutput {
     /// - timestamp from consensus
     ///
     /// TODO: this should be consistent-ish with how workers calculate their
-    /// mix hashes for batches. However, this approach is easily to manipulate
-    /// by node operators. Need to figure out a better approach for workers, then
-    /// replicate similar approach here.
+    /// mix hashes for proposed blocks. However, this approach is easy to manipulate.
+    /// Need to figure out a better approach for workers, then replicate similar approach here.
     ///
     /// See https://eips.ethereum.org/EIPS/eip-4399
     pub fn mix_hash_for_empty_payload(&self, parent_mix_hash: &B256) -> B256 {
@@ -119,12 +123,6 @@ impl Hash<{ crypto::DIGEST_LENGTH }> for ConsensusOutput {
         let mut hasher = crypto::DefaultHashFunction::new();
         // hash subdag
         hasher.update(self.sub_dag.digest());
-        // TODO: this hashes the batch digest as well
-        // wrong
-        // hash batches in order
-        self.batches.iter().flatten().for_each(|batch| {
-            hasher.update(batch.digest());
-        });
         // hash beneficiary
         hasher.update(self.beneficiary);
         // hash batch digests in order
