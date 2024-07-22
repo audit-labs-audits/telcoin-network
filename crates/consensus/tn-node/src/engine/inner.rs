@@ -1,4 +1,6 @@
 //! Inner-execution node components for both Worker and Primary execution.
+//!
+//! This module contains the logic for execution.
 
 use consensus_metrics::metered_channel::Sender;
 use futures::StreamExt;
@@ -357,73 +359,18 @@ where
     /// The primary adds +1 to this value for recovering output
     /// since the execution layer is confirming the last executing block.
     pub(super) fn last_executed_output(&self) -> eyre::Result<u64> {
-        // TODO: this needs to confirm the `ConsensusOutput` was fully executed
-        // scenario: output contains 3 blocks, only one block executed before crash
-        // outcome: re-execute the entire consensus output?
-        // - blockchain tree could keep the last block as part of the canonical tip which would
-        //   prevent redundant rewrite to db
-        //      - blockchain tree loads last canonical hashes + finalized block number
-        //      - consensus output restores last finalized block's nonce (subdag index)
-        //      - finalize block is the last call after executing consensus output
-        //      - any blocks that are re-executed will already be in the tree and prevent db
-        //        rewrites
+        // NOTE: The payload_builder only extends canonical tip and sets finalized after
+        // entire output is successfully executed. This ensures consistent recovery state.
         //
-        // recover finalized block's nonce: this is the last subdag index from consensus
+        // For example: consensus round 8 sends an output with 5 blocks, but only 2 blocks are
+        // executed before the node restarts. The provider never finalized the round, so the
+        // `finalized_block_number` would point to the last block of round 7. The primary
+        // would then re-send consensus output for round 8.
+        //
+        // recover finalized block's nonce: this is the last subdag index from consensus (round)
         let finalized_block_num = match self.blockchain_db.finalized_block_number()? {
             Some(num) => {
-                // TODO: need test for this
-                //
-                // the payload_builder only extends canonical tip and updates finalized value after
-                // entire output is executed
                 self.blockchain_db.header_by_number(num)?.map(|opt| opt.nonce).unwrap_or(0)
-
-                // // use finalized block num to retrieve full block from db without recovering txs
-                // let full_block =
-                // self.blockchain_db.block_with_senders(BlockHashOrNumber::Number(num),
-                // TransactionVariant::NoHash)?.unwrap_or_else(|| {     //
-                //     // TODO: better to recursively call block with senders on numbers until one
-                // comes up?
-
-                //     // inspired by methods in:
-                // reth/crates/storage/provider/src/providers/database/provider.rs
-                //     //
-                //     // if the full block cannot be retrieved, walk the db to find the next header
-                // where nonce -1     // this indicates the previous round and
-                // should be complete     //
-                //     // scenario:
-                //     // - output contains 4 batches for round 5
-                //     // - node crashes after executing first 2 batches of round 5
-                //     // - need to walk back until header.nonce is 4
-                //     // - this would trigger consensus to re-send output for round 5
-                //     //
-                //     // retrieve missing block's header, otherwise give up and start at genesis
-                //     let missing_block_header_nonce =
-                // self.blockchain_db.header_by_number(num).expect("missing block's header in
-                // db").map(|opt| opt.nonce).unwrap_or(0);
-
-                //     // cursor for db access
-                //     let mut db_cursor =
-                // self.blockchain_db.database_provider_ro().expect("database provider available to
-                // find last executed
-                // output").tx_ref().cursor_read::<tables::CanonicalHeaders>().expect("cursor
-                // available to read from table");     // read db in reverse order
-                // (start with last db entry)     let mut db_walker =
-                // db_cursor.walk_back(None).expect("db walker created");     // let
-                // tx = provider.tx_ref().cursor_read::<reth_db::tables::Transactions>();
-                //     while let Some(Ok((key, header))) = db_walker.next() {
-                //         todo!()
-                //     }
-                //     todo!()
-                // });
-
-                // // ensure the full block's ommers length and difficulty match
-                // let ommers_256 = U256::from(full_block.ommers.len());
-                // if ommers_256 == full_block.difficulty {
-                //     full_block.nonce
-                // } else {
-                //     // assume previous round finished before next round began
-                //     full_block.nonce - 1
-                // }
             }
             None => 0, // genesis
         };

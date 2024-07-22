@@ -1,8 +1,12 @@
 //! Engine mod for TN Node
 //!
-//! WIP
-
-use std::sync::Arc;
+//! This module contains all execution layer implementations for worker and primary nodes.
+//!
+//! The worker's execution components track the canonical tip to construct blocks for the worker to propose. The execution state is also used to validate proposed blocks from other peers.
+//!
+//! The engine for the primary executes consensus output, extends the canonical tip, and updates the final state of the chain.
+//!
+//! The methods in this module are thread-safe wrappers for the inner type that contains logic.
 
 use consensus_metrics::metered_channel::Sender;
 use reth_db::{
@@ -11,12 +15,11 @@ use reth_db::{
 };
 use reth_evm::{execute::BlockExecutorProvider, ConfigureEvm};
 use reth_node_builder::NodeConfig;
+use std::sync::Arc;
 mod inner;
-mod primary;
 mod worker;
 
 use self::inner::ExecutionNodeInner;
-pub use primary::*;
 use reth_provider::providers::BlockchainProvider;
 use reth_tasks::TaskExecutor;
 use tn_batch_validator::BatchValidator;

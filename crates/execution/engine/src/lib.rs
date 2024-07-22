@@ -102,7 +102,6 @@ where
         max_round: Option<u64>,
         consensus_output_stream: BroadcastStream<ConsensusOutput>,
         parent_header: SealedHeader,
-        // hooks: EngineHooks,
     ) -> Self {
         Self {
             queued: Default::default(),
@@ -111,7 +110,6 @@ where
             evm_config,
             executor,
             max_round,
-            pipeline_events: None,
             consensus_output_stream,
             parent_header,
         }

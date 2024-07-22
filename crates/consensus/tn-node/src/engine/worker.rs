@@ -2,7 +2,7 @@
 //!
 //! Inspired by reth_node_ethereum crate.
 //!
-//! A network implementation for worker RPC
+//! A network implementation for worker RPC.
 //!
 //! This is useful for wiring components together that don't require network but still need to be
 //! generic over it.
@@ -36,7 +36,7 @@ use std::{
 };
 use tn_types::adiri_chain_spec;
 
-/// Type configuration for a regular Telcoin node.
+/// Type configuration for a regular worker node.
 #[derive(Debug, Default, Clone, Copy)]
 #[non_exhaustive]
 pub struct WorkerNode<DB, Evm> {
