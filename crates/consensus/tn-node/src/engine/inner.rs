@@ -13,29 +13,27 @@ use reth_db::{
     cursor::DbCursorRO,
     database::Database,
     database_metrics::{DatabaseMetadata, DatabaseMetrics},
-    tables,
     transaction::DbTx,
 };
 use reth_db_common::init::init_genesis;
 use reth_evm::{execute::BlockExecutorProvider, ConfigureEvm};
 use reth_node_builder::{
     common::WithConfigs,
-    components::{NetworkBuilder as _, PayloadServiceBuilder as _, PoolBuilder},
+    components::PoolBuilder,
     BuilderContext, NodeConfig,
 };
 use reth_node_ethereum::{
-    node::{EthereumNetworkBuilder, EthereumPayloadBuilder, EthereumPoolBuilder},
+    node::EthereumPoolBuilder,
     EthEvmConfig,
 };
-use reth_primitives::{Address, U256};
+use reth_primitives::Address;
 use reth_provider::{
     providers::{BlockchainProvider, StaticFileProvider},
-    BlockIdReader, BlockReader, CanonStateNotificationSender, DatabaseProviderFactory,
-    HeaderProvider, ProviderFactory, StaticFileProviderFactory as _, TransactionVariant,
+    BlockIdReader, CanonStateNotificationSender,
+    HeaderProvider, ProviderFactory, StaticFileProviderFactory as _,
 };
-use reth_rpc_types::BlockHashOrNumber;
 use reth_tasks::TaskExecutor;
-use reth_transaction_pool::{noop::NoopTransactionPool, TransactionPool};
+use reth_transaction_pool::TransactionPool;
 use std::{collections::HashMap, sync::Arc};
 use tn_batch_maker::{BatchMakerBuilder, MiningMode};
 use tn_batch_validator::BatchValidator;
@@ -46,7 +44,7 @@ use tokio::sync::{broadcast, mpsc::unbounded_channel};
 use tokio_stream::wrappers::BroadcastStream;
 use tracing::{debug, error, info};
 
-use super::{PrimaryNode, TnBuilder};
+use super::TnBuilder;
 use crate::{
     engine::{WorkerNetwork, WorkerNode},
     error::ExecutionError,

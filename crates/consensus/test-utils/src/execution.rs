@@ -50,7 +50,7 @@ pub fn default_test_execution_node(
     let evm_config = EthEvmConfig::default();
 
     let block_executor =
-        EthExecutorProvider::new(Arc::clone(&builder.node_config.chain), evm_config.clone());
+        EthExecutorProvider::new(Arc::clone(&builder.node_config.chain), evm_config);
 
     // create engine node
     let engine = ExecutionNode::new(builder, block_executor, evm_config)?;
@@ -173,7 +173,7 @@ pub fn faucet_test_execution_node(
     let evm_config = EthEvmConfig::default();
 
     let block_executor =
-        EthExecutorProvider::new(Arc::clone(&builder.node_config.chain), evm_config.clone());
+        EthExecutorProvider::new(Arc::clone(&builder.node_config.chain), evm_config);
 
     // create engine node
     let engine = ExecutionNode::new(builder, block_executor, evm_config)?;

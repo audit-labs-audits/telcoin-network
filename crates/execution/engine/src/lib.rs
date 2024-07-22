@@ -301,7 +301,7 @@ mod tests {
     use reth_blockchain_tree::BlockchainTreeViewer;
     use reth_chainspec::ChainSpec;
     use reth_primitives::{
-        constants::MIN_PROTOCOL_BASE_FEE, keccak256, proofs, Address, BlockHashOrNumber, Bytes,
+        constants::MIN_PROTOCOL_BASE_FEE, keccak256, proofs, Address, BlockHashOrNumber,
         B256, EMPTY_OMMER_ROOT_HASH, U256,
     };
     use reth_provider::{BlockIdReader, BlockNumReader, BlockReader, TransactionVariant};

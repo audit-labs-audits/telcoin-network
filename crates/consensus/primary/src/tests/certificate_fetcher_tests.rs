@@ -24,7 +24,7 @@ use std::{collections::BTreeSet, sync::Arc, time::Duration};
 use tn_types::{
     test_utils::{temp_dir, CommitteeFixture},
     AuthorityIdentifier, BatchDigest, BlsAggregateSignatureBytes, Certificate, CertificateAPI,
-    CertificateDigest, Epoch, Header, HeaderAPI, HeaderDigest, HeaderV1,
+    CertificateDigest, Epoch, Header, HeaderAPI, HeaderDigest,
     PreSubscribedBroadcastSender, Round, SignatureVerificationState, SystemMessage, TimestampSec,
     WorkerId,
 };
@@ -420,7 +420,7 @@ async fn fetch_certificates_v1_basic() {
 
     // instead: use dummy, default header for bad data
     let wolf_header = Header::default();
-    cert.update_header(Header::from(wolf_header));
+    cert.update_header(wolf_header);
     certs.push(cert);
     // Add cert without all parents in storage.
     certs.push(certificates[num_written + 1].clone());

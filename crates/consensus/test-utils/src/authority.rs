@@ -7,10 +7,7 @@ use crate::{primary::PrimaryNodeDetails, worker::WorkerNodeDetails, TestExecutio
 use fastcrypto::traits::KeyPair as _;
 use jsonrpsee::http_client::HttpClient;
 use narwhal_network::client::NetworkClient;
-use reth_db::{test_utils::TempDatabase, DatabaseEnv};
-use reth_node_ethereum::{EthEvmConfig, EthExecutorProvider};
 use std::{collections::HashMap, sync::Arc, time::Duration};
-use tn_node::engine::ExecutionNode;
 use tn_types::{
     AuthorityIdentifier, BlsKeypair, BlsPublicKey, Committee, ConsensusOutput, Multiaddr,
     NetworkKeypair, Parameters, WorkerCache, WorkerId,

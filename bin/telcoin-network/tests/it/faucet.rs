@@ -285,7 +285,7 @@ async fn spawn_local_testnet(
                             let evm_config = EthEvmConfig::default();
                             let executor = EthExecutorProvider::new(
                                 std::sync::Arc::clone(&builder.node_config.chain),
-                                evm_config.clone(),
+                                evm_config,
                             );
                             launch_node(builder, executor, evm_config, &tn_datadir).await
                         },

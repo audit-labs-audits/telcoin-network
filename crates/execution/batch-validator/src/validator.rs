@@ -246,7 +246,7 @@ impl BatchValidation for NoopBatchValidator {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use reth::tasks::TaskManager;
+    
     use reth_beacon_consensus::EthBeaconConsensus;
     use reth_blockchain_tree::{
         BlockchainTree, BlockchainTreeConfig, ShareableBlockchainTree, TreeExternals,

@@ -11,8 +11,7 @@ use reth_execution_types::ExecutionOutcome;
 use reth_node_api::PayloadBuilderAttributes as _;
 use reth_payload_builder::database::CachedReads;
 use reth_primitives::{
-    constants::{EMPTY_RECEIPTS, EMPTY_TRANSACTIONS, EMPTY_WITHDRAWALS},
-    keccak256, proofs,
+    constants::{EMPTY_RECEIPTS, EMPTY_TRANSACTIONS, EMPTY_WITHDRAWALS}, proofs,
     revm::env::tx_env_with_recovered,
     Block, Header, Receipt, SealedBlockWithSenders, SealedHeader, Withdrawals, B256,
     EMPTY_OMMER_ROOT_HASH, U256,
