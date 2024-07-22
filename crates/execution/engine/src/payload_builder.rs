@@ -43,33 +43,14 @@ where
     Provider: StateProviderFactory + ChainSpecProvider + BlockchainTreeEngine + CanonChainTracker,
 {
     let BuildArguments { provider, mut output, parent_header } = args;
-
     debug!(target: "tn::engine", ?output, "executing output");
-
-    // TODO: explore "batch-execution" concept in reth: BlockExecutorProvider trait
-    //
-    // TODO: ensure this is called after the previous ConsensusOutput is complete.
-    // to avoid race condition of executing next round before previous round is complete.
-    //
-
-    // get the latest state from the last executed batch of the previous consensus output
-    //
-    // TODO: in order to absolutely ensure execution completed:
-    // - search provider for all blocks with previous consensus output hash
-    //      - use timestamp?
-    // - ensure ommers and nonce match up
-    //      - ommers includes all other batches
-    //      - ommers hash ensures all batches accounted for
-    //      - ommers length used to get the last block in the output by nonce
-
     // TODO: create "sealed consensus" type that contains hash and output
     //
     // create ommers while converting Batch to SealedBlockWithSenders
+
+    // capture values from consensus output for full execution
     let output_digest = output.digest();
-
-    // TODO: add this as a method on ConsensusOutput and parallelize
     let sealed_blocks_with_senders = output.sealed_blocks_from_batches()?;
-
     let ommers = output.ommers();
 
     // calculate ommers hash or use default if empty
@@ -80,44 +61,26 @@ where
     };
 
     // assert vecs match
-    assert_eq!(sealed_blocks_with_senders.len(), output.batch_digests.len());
-
-    // TODO: is it worth the db read to retrieve the sealed header from DB? This would allow:
-    // - use `parent_header` from args once to retrieve sealed header
-    // - use this sealed header everywhere instead of parent block
-    // - easier to maintain, less confusing, harder to mix/match values
-    //   - currently, using parent_header for number/hash but could also get this from sealed_block
-    //     ref
-    //   - especially since executing empty output and output with batches must be different
+    debug_assert_eq!(
+        sealed_blocks_with_senders.len(),
+        output.batch_digests.len(),
+        "uneven number of sealed blocks from batches and batch digests"
+    );
 
     // rename canonical header for clarity
     let mut canonical_header = parent_header;
-
-    debug!(?canonical_header, "default SealedHeader");
 
     // extend canonical tip if output contains batches with transactions
     // otherwise execute an empty block to extend canonical tip
     if sealed_blocks_with_senders.is_empty() {
         // execute single block with no transactions
-        warn!(
-            "TODO: build block from empty payload (no transactions) and still apply block rewards"
-        );
-        // create sealed block with senders
         //
-        // TODO: `block` is used by the payload for:
-        //  - mix hash
-        //  - withdrawals (but uses unwrap_or_default())
-        //  - base fee per gas
-        //  - gas limit
-        //
-        // SO, where does batch mix hash come from?
-        //  - parent block's consensus output digest?
-
-        // use parent values for next block
+        // use parent values for next block (these values would come from the worker's block)
         let base_fee_per_gas = canonical_header.base_fee_per_gas.unwrap_or_default();
         let gas_limit = canonical_header.gas_limit;
+
         // mix hash is the parent's consensus output digest
-        // TODO: this is easy to manipulate
+        // TODO: this needs to stay consistent with initial block construction but is easy to manipulate for workers. For now, this should provide sufficient randomness for on-chain security in the next round.
         //
         // calculate mix hash as a source of randomness
         // - consensus output digest from parent (beacon block root)
@@ -149,7 +112,7 @@ where
         let next_canonical_block =
             build_block_from_empty_payload(payload, &provider, provider.chain_spec())?;
 
-        debug!(target: "execution::executor", ?next_canonical_block);
+        debug!(target: "execution::executor", ?next_canonical_block, "empty block");
 
         // update header for next block execution in loop
         canonical_header = next_canonical_block.header.clone();
@@ -193,13 +156,7 @@ where
                 block,
             )?;
 
-            debug!(target: "execution::executor", ?next_canonical_block);
-
-            // next steps:
-            // - save block to db
-            // - possible to reuse state to prevent extra call to db?
-            // - set this block as parent_header
-            // - handle end of loop
+            debug!(target: "engine::payload_builder", ?next_canonical_block, "worker's block executed");
 
             // update header for next block execution in loop
             canonical_header = next_canonical_block.header.clone();
@@ -216,27 +173,27 @@ where
     // - batch maker relies on this tip to produce next block
     // - tx pool will update, rpc, etc.
     //
-    // for now: only make canonical after entire execution
+    // for now: only make canonical after entire output executed
+    // - more efficient
+    // - guarantees consistent state after node restarts
     //
     // NOTE: this makes all blocks canonical, commits them to the database,
     // and broadcasts new tip on `canon_state_notification_sender`
     provider.make_canonical(canonical_header.hash())?;
 
+    // set last executed header as the tracked header
     //
     // see: reth/crates/consensus/beacon/src/engine/mod.rs:update_canon_chain
-    //
-    // set last executed header as the tracked header
     provider.set_canonical_head(canonical_header.clone());
 
     // finalize the last block executed from consensus output and update chain info
     //
     // this removes canonical blocks from the tree, but still need to set_finalized
-    debug!("setting finalized block number...{:?}", canonical_header.number);
     provider.finalize_block(canonical_header.number)?;
     provider.set_finalized(canonical_header.clone());
-    debug!("finalized block successful: {:?}", provider.finalized_block_num_hash());
+    debug!(target: "engine::payload", "setting finalized block number...{:?}", canonical_header.number);
 
-    // update safe block last because this is less time sensitive
+    // update safe block last because this is less time sensitive but still needs to happen
     provider.set_safe(canonical_header.clone());
 
     // return new canonical header for next engine task
@@ -260,25 +217,25 @@ where
 
     // TODO: using same apprach as reth here bc I can't find the State::builder()'s methods
     // I'm not sure what `with_bundle_update` does, and using `CachedReads` is the only way
-    // I can get the state root section below to compile
+    // I can get the state root section below to compile using `db.commit(state)`.
     //
-    // TODO: create `CachedReads` during batch validation
+    // TODO: create `CachedReads` during batch validation?
     let mut cached_reads = CachedReads::default();
     let mut db =
         State::builder().with_database_ref(cached_reads.as_db(state)).with_bundle_update().build();
 
     debug!(target: "payload_builder", parent_hash = ?payload.attributes.parent_header.hash(), parent_number = payload.attributes.parent_header.number, "building new payload");
     // collect these totals to report at the end
-    let total_gas_used = 0;
+    let _total_gas_used = 0; // TODO: include blobs
     let mut cumulative_gas_used = 0;
     let mut total_fees = U256::ZERO;
     let mut executed_txs = Vec::new();
     let mut senders = Vec::new();
     let mut receipts = Vec::new();
-    // let mut sum_blob_gas_used = 0;
 
     // initialize values for execution from block env
-    // note: use the batch's sealed header for "parent" values
+    //
+    // note: uses the worker's sealed header for "parent" values
     let (cfg, block_env) = payload.cfg_and_block_env(chain_spec.as_ref(), batch_block.header());
 
     // TODO: better to get these from payload attributes?
@@ -493,8 +450,6 @@ where
     };
 
     let sealed_block = block.seal_slow();
-    debug!(target: "payload_builder", ?sealed_block, "sealed built block");
-
     let sealed_block_with_senders = SealedBlockWithSenders::new(sealed_block, senders)
         .ok_or(TnEngineError::SealBlockWithSenders)?;
 
@@ -526,8 +481,8 @@ where
         .build();
 
     // initialize values for execution from block env
-    // note: use the parent's sealed header for values bc there are no batches and the header arg is
-    // not used
+    //
+    // use the parent's header bc there are no batches and the header arg is not used
     let (_cfg, block_env) =
         payload.cfg_and_block_env(chain_spec.as_ref(), &payload.attributes.parent_header);
 
@@ -575,7 +530,6 @@ where
     let block = Block { header, body: vec![], ommers: vec![], withdrawals, requests: None };
 
     let sealed_block = block.seal_slow();
-    debug!(target: "payload_builder", ?sealed_block, "sealed built block");
 
     let sealed_block_with_senders = SealedBlockWithSenders::new(sealed_block, vec![])
         .ok_or(TnEngineError::SealBlockWithSenders)?;
