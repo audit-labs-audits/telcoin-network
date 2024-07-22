@@ -382,19 +382,23 @@ where
             Some(num) => {
                 // TODO: need test for this
                 //
-                // the payload_builder only extends canonical tip and updates finalized value after entire output is executed
+                // the payload_builder only extends canonical tip and updates finalized value after
+                // entire output is executed
                 self.blockchain_db.header_by_number(num)?.map(|opt| opt.nonce).unwrap_or(0)
 
                 // // use finalized block num to retrieve full block from db without recovering txs
-                // let full_block = self.blockchain_db.block_with_senders(BlockHashOrNumber::Number(num), TransactionVariant::NoHash)?.unwrap_or_else(|| {
-                //     //
-                //     // TODO: better to recursively call block with senders on numbers until one comes up?
+                // let full_block =
+                // self.blockchain_db.block_with_senders(BlockHashOrNumber::Number(num),
+                // TransactionVariant::NoHash)?.unwrap_or_else(|| {     //
+                //     // TODO: better to recursively call block with senders on numbers until one
+                // comes up?
 
-                //     // inspired by methods in: reth/crates/storage/provider/src/providers/database/provider.rs
+                //     // inspired by methods in:
+                // reth/crates/storage/provider/src/providers/database/provider.rs
                 //     //
-                //     // if the full block cannot be retrieved, walk the db to find the next header where nonce -1
-                //     // this indicates the previous round and should be complete
-                //     //
+                //     // if the full block cannot be retrieved, walk the db to find the next header
+                // where nonce -1     // this indicates the previous round and
+                // should be complete     //
                 //     // scenario:
                 //     // - output contains 4 batches for round 5
                 //     // - node crashes after executing first 2 batches of round 5
@@ -402,13 +406,19 @@ where
                 //     // - this would trigger consensus to re-send output for round 5
                 //     //
                 //     // retrieve missing block's header, otherwise give up and start at genesis
-                //     let missing_block_header_nonce = self.blockchain_db.header_by_number(num).expect("missing block's header in db").map(|opt| opt.nonce).unwrap_or(0);
+                //     let missing_block_header_nonce =
+                // self.blockchain_db.header_by_number(num).expect("missing block's header in
+                // db").map(|opt| opt.nonce).unwrap_or(0);
 
                 //     // cursor for db access
-                //     let mut db_cursor = self.blockchain_db.database_provider_ro().expect("database provider available to find last executed output").tx_ref().cursor_read::<tables::CanonicalHeaders>().expect("cursor available to read from table");
-                //     // read db in reverse order (start with last db entry)
-                //     let mut db_walker = db_cursor.walk_back(None).expect("db walker created");
-                //     // let tx = provider.tx_ref().cursor_read::<reth_db::tables::Transactions>();
+                //     let mut db_cursor =
+                // self.blockchain_db.database_provider_ro().expect("database provider available to
+                // find last executed
+                // output").tx_ref().cursor_read::<tables::CanonicalHeaders>().expect("cursor
+                // available to read from table");     // read db in reverse order
+                // (start with last db entry)     let mut db_walker =
+                // db_cursor.walk_back(None).expect("db walker created");     // let
+                // tx = provider.tx_ref().cursor_read::<reth_db::tables::Transactions>();
                 //     while let Some(Ok((key, header))) = db_walker.next() {
                 //         todo!()
                 //     }

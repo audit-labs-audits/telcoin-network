@@ -43,6 +43,14 @@ use tracing::{error, info, trace, warn};
 type PendingExecutionTask = oneshot::Receiver<EngineResult<SealedHeader>>;
 
 /// The TN consensus engine is responsible executing state that has reached consensus.
+///
+/// The engine makes no attempt to track consensus. It's only purpose is to receive output from
+/// consensus then try to execute it.
+///
+/// The engine runs until either the maximum round of consensus is reached OR the sending broadcast
+/// channel is dropped. If the sending channel is dropped, the engine attempts to execute any
+/// remaining output that is queued up before shutting itself down gracefully. If the maximum round
+/// is reached, the engine shuts down immediately.
 pub struct ExecutorEngine<BT, CE, Tasks> {
     /// The backlog of output from consensus that's ready to be executed.
     queued: VecDeque<ConsensusOutput>,
@@ -59,10 +67,10 @@ pub struct ExecutorEngine<BT, CE, Tasks> {
     /// The task executor to spawn new builds.
     executor: Tasks,
     /// Optional round of consensus to finish executing before then returning. The value is used to
-    /// track the subdag index from consensus output. The index is included in executed blocks as
-    /// the `nonce` value.
+    /// track the subdag index from consensus output. The index is also considered the "round" of
+    /// consensus and is included in executed blocks as  the block's `nonce` value.
     ///
-    /// note: this is used for debugging and testing
+    /// note: this is primarily useful for debugging and testing
     max_round: Option<u64>,
     /// The pipeline events to listen on
     pipeline_events: Option<EventStream<PipelineEvent>>,
@@ -103,8 +111,6 @@ where
         parent_header: SealedHeader,
         // hooks: EngineHooks,
     ) -> Self {
-        // let event_sender = EventSender::default();
-        // let handle = BeaconConsensusEngineHandle::new(to_engine, event_sender.clone());
         Self {
             queued: Default::default(),
             insert_task: None,
@@ -119,6 +125,8 @@ where
     }
 
     /// Spawns a blocking task to execute consensus output.
+    ///
+    /// This approach allows the engine to yield back to the runtime while executing blocks. Executing blocks is cpu intensive, so a blocking task is used.
     fn spawn_execution_task(&mut self) -> PendingExecutionTask
     where
         BT: StateProviderFactory
@@ -147,10 +155,10 @@ where
         rx
     }
 
-    /// Check if the engine has reached max round of consensus as specified by `max_round`
+    /// Check if the engine has reached the maximum round of consensus as specified by `max_round`
     /// parameter.
     ///
-    /// Note: this is mainly for debugging purposes.
+    /// Note: this is mainly for testing and debugging purposes.
     fn has_reached_max_round(&self, progress: u64) -> bool {
         let has_reached_max_round =
             self.max_round.map(|target| progress >= target).unwrap_or_default();
@@ -176,7 +184,7 @@ where
 /// executing the next task.
 ///
 /// If the broadcast stream is closed, the engine will attempt to execute all remaining tasks and
-/// output that is queued.
+/// any output that is queued.
 impl<BT, CE, Tasks> Future for ExecutorEngine<BT, CE, Tasks>
 where
     BT: BlockchainTreeEngine
@@ -244,16 +252,15 @@ where
                 match receiver.poll_unpin(cx) {
                     Poll::Ready(res) => {
                         let finalized_header = res.map_err(Into::into).and_then(|res| res);
+                        // TODO: broadcast engine event
                         // this.pipeline_events = events;
                         //
-                        // TODO: broadcast tip?
-                        //
-                        // ensure no errors and store last executed header
+                        // ensure no errors then store last executed header in memory
                         this.parent_header = finalized_header?;
 
                         // check max_round
                         if this.has_reached_max_round(this.parent_header.nonce) {
-                            // terminate early if the specified max consensus round is reached
+                            // immediately terminate if the specified max consensus round is reached
                             return Poll::Ready(Ok(()));
                         }
 
@@ -261,6 +268,7 @@ where
                     }
                     Poll::Pending => {
                         this.insert_task = Some(receiver);
+
                         // break loop and return Poll::Pending
                         break;
                     }
@@ -291,7 +299,6 @@ mod tests {
     use narwhal_test_utils::default_test_execution_node;
     use reth_blockchain_tree::BlockchainTreeViewer;
     use reth_chainspec::ChainSpec;
-    use reth_node_ethereum::{EthEvmConfig, EthExecutorProvider};
     use reth_primitives::{
         constants::MIN_PROTOCOL_BASE_FEE, keccak256, proofs, Address, BlockHashOrNumber, Bytes,
         B256, EMPTY_OMMER_ROOT_HASH, U256,
@@ -312,6 +319,7 @@ mod tests {
     use tokio_stream::wrappers::BroadcastStream;
     use tracing::debug;
 
+    /// This tests that a single block is executed if the output from consensus contains no transactions.
     #[tokio::test]
     async fn test_empty_output_executes() -> eyre::Result<()> {
         init_test_tracing();
@@ -322,7 +330,7 @@ mod tests {
         //
         // for each tx, seed address with funds in genesis
         //
-        // TODO: this does not use a "real" `ConsensusOutput`
+        // TODO: this does not use a "real" `ConsensusOutput` certificate
         //
         // refactor with valid data once test util helpers are in place
         let leader = Certificate::default();
@@ -346,7 +354,6 @@ mod tests {
         };
 
         let chain = adiri_chain_spec_arc();
-        debug!("chain spec:\n{:#?}", chain);
 
         // execution node components
         let manager = TaskManager::current();
@@ -357,7 +364,7 @@ mod tests {
         let (to_engine, from_consensus) = tokio::sync::broadcast::channel(1);
         let consensus_output_stream = BroadcastStream::from(from_consensus);
         let provider = execution_node.get_provider().await;
-        let evm_config = EthEvmConfig::default();
+        let evm_config = execution_node.get_evm_config().await;
         let max_round = None;
         let genesis_header = chain.sealed_genesis_header();
 
@@ -392,13 +399,6 @@ mod tests {
         let canonical_tip = provider.canonical_tip();
         let final_block = provider.finalized_block_num_hash()?.expect("finalized block");
 
-        debug!("last block num {last_block_num:?}");
-        debug!("canonical tip: {canonical_tip:?}");
-        debug!("final block num {final_block:?}");
-
-        let chain_info = provider.chain_info()?;
-        debug!("chain info:\n{chain_info:?}");
-
         assert_eq!(canonical_tip, final_block);
         assert_eq!(last_block_num, final_block.number);
 
@@ -408,16 +408,7 @@ mod tests {
         // assert canonical tip and finalized block are equal
         assert_eq!(canonical_tip, final_block);
 
-        // pull newly executed blocks from database (skip genesis)
-        //
-        // Uses the provided `headers_range` to get the headers for the range, and `assemble_block`
-        // to construct blocks from the following inputs:
-        //     – Header
-        //     - Transactions
-        //     – Ommers
-        //     – Withdrawals
-        //     – Requests
-        //     – Senders
+        // pull newly executed block from database (skip genesis)
         let expected_block = provider
             .block_with_senders(BlockHashOrNumber::Number(1), TransactionVariant::NoHash)?
             .expect("block 1 successfully executed");
@@ -426,7 +417,7 @@ mod tests {
         // min basefee in genesis
         let expected_base_fee = MIN_PROTOCOL_BASE_FEE;
         let output_digest: B256 = consensus_output.digest().into();
-
+        // assert expected basefee
         assert_eq!(genesis_header.base_fee_per_gas, Some(expected_base_fee));
         // basefee comes from workers - if no batches, then use parent's basefee
         assert_eq!(expected_block.base_fee_per_gas, Some(expected_base_fee));
@@ -496,7 +487,7 @@ mod tests {
 
     /// Test the engine shuts down after the sending half of the broadcast channel is closed.
     ///
-    /// One output is queued (simulating already received) in the engine and another is sent on the
+    /// One output is queued (simulating output already received) in the engine and another is sent on the
     /// channel. Then, the sender is dropped and the engine task is started.
     ///
     /// Expected result:
@@ -505,7 +496,7 @@ mod tests {
     /// - engine processes last broadcast second
     /// - engine has no more output in queue and gracefully shuts down
     ///
-    /// NOTE: all batches are built with genesis as the parent.
+    /// NOTE: all batches are built with genesis as the parent. Building blocks from historic parents is currently valid.
     #[tokio::test]
     async fn test_queued_output_executes_after_sending_channel_closed() -> eyre::Result<()> {
         init_test_tracing();
@@ -590,7 +581,7 @@ mod tests {
         //
         // for each tx, seed address with funds in genesis
         //
-        // TODO: this does not use a "real" `ConsensusOutput`
+        // TODO: this does not use a "real" `ConsensusOutput` certificate
         let timestamp = now();
         let mut leader_1 = Certificate::default();
         // update timestamp
@@ -650,7 +641,7 @@ mod tests {
         let (to_engine, from_consensus) = tokio::sync::broadcast::channel(1);
         let consensus_output_stream = BroadcastStream::from(from_consensus);
         let blockchain = execution_node.get_provider().await;
-        let evm_config = EthEvmConfig::default();
+        let evm_config = execution_node.get_evm_config().await;
         let max_round = None;
         let parent = chain.sealed_genesis_header();
 
@@ -822,10 +813,10 @@ mod tests {
     ///
     /// Expected result:
     /// - engine receives output with duplicate transactions
-    /// - engine output and produces empty block for duplicate batch
+    /// - engine produces empty block for duplicate batch
     /// - engine has no more output in queue and gracefully shuts down
     ///
-    /// NOTE: all batches are built with genesis as the parent.
+    /// NOTE: all batches are built with genesis as the parent. Building blocks from historic parents is currently valid.
     #[tokio::test]
     async fn test_execution_succeeds_with_duplicate_transactions() -> eyre::Result<()> {
         init_test_tracing();
@@ -999,7 +990,7 @@ mod tests {
         let (to_engine, from_consensus) = tokio::sync::broadcast::channel(1);
         let consensus_output_stream = BroadcastStream::from(from_consensus);
         let blockchain = execution_node.get_provider().await;
-        let evm_config = EthEvmConfig::default();
+        let evm_config = execution_node.get_evm_config().await;
         let max_round = None;
         let parent = chain.sealed_genesis_header();
 
@@ -1047,7 +1038,7 @@ mod tests {
         let chain_info = blockchain.chain_info()?;
         debug!("chain info:\n{chain_info:?}");
 
-        // expect 1 block per batch still, but 2 blocks will be empty becuase they contained
+        // expect 1 block per batch still, but 2 blocks will be empty because they contained
         // duplicate transactions
         let expected_block_height = 8;
         let expected_duplicate_block_num_round_1 = 4;
@@ -1084,8 +1075,8 @@ mod tests {
 
             // expect blocks 4 and 8 to be empty (no txs bc they are duplicates)
             // sub 1 to account for loop idx starting at 0
-            if idx == expected_duplicate_block_num_round_1 - 1 ||
-                idx == expected_duplicate_block_num_round_2 - 1
+            if idx == expected_duplicate_block_num_round_1 - 1
+                || idx == expected_duplicate_block_num_round_2 - 1
             {
                 assert!(block.senders.is_empty());
                 assert!(block.body.is_empty());
@@ -1268,7 +1259,7 @@ mod tests {
         //
         // for each tx, seed address with funds in genesis
         //
-        // TODO: this does not use a "real" `ConsensusOutput`
+        // TODO: this does not use a "real" `ConsensusOutput` certificate
         let timestamp = now();
         let mut leader_1 = Certificate::default();
         // update timestamp
@@ -1320,10 +1311,10 @@ mod tests {
 
         //=== Execution
 
-        let (to_engine, from_consensus) = tokio::sync::broadcast::channel(1);
+        let (_to_engine, from_consensus) = tokio::sync::broadcast::channel(1);
         let consensus_output_stream = BroadcastStream::from(from_consensus);
         let blockchain = execution_node.get_provider().await;
-        let evm_config = EthEvmConfig::default();
+        let evm_config = execution_node.get_evm_config().await;
         // set max round to "1" - this should receive both digests, but stop after the first round
         let max_round = Some(1);
         let parent = chain.sealed_genesis_header();
@@ -1341,7 +1332,7 @@ mod tests {
         engine.queued.push_back(consensus_output_1);
         engine.queued.push_back(consensus_output_2);
 
-        // NOTE: sending channel is not dropped, so engine will continue listening until max block
+        // NOTE: sending channel is NOT dropped in this test, so engine should continue listening until max block
         // reached
 
         // channels for engine shutting down
