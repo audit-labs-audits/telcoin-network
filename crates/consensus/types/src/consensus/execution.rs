@@ -141,18 +141,15 @@ pub struct TNPayloadAttributes {
     /// The value comes from the proposed batch.
     pub base_fee_per_gas: u64,
     /// The gas limit for the constructed block.
-    /// The value comes from the proposed batch.
+    ///
+    /// The value comes from the worker's block.
     pub gas_limit: u64,
     /// The mix hash used for prev_randao.
     pub mix_hash: B256,
-    ///
     /// TODO: support withdrawals
     ///
     /// This is currently always empty vec. This comes from the batch block's withdrawals.
     pub withdrawals: Withdrawals,
-    // TODO:
-    // - indicate first batch in new output to process rewards?
-    // - or is it better to have a special "rewards" block at each epoch?
 }
 
 impl TNPayloadAttributes {
@@ -231,7 +228,7 @@ impl PayloadBuilderAttributes for TNPayload {
         self.attributes.mix_hash
     }
 
-    /// Taken from batch, but currently always empty.
+    /// Taken from worker's block, but currently always empty.
     fn withdrawals(&self) -> &Withdrawals {
         &self.attributes.withdrawals
     }
@@ -239,7 +236,7 @@ impl PayloadBuilderAttributes for TNPayload {
     fn cfg_and_block_env(
         &self,
         chain_spec: &ChainSpec,
-        _batch: &Header, // use `self`
+        _worker: &Header, // use `self`
     ) -> (CfgEnvWithHandlerCfg, BlockEnv) {
         // configure evm env based on parent block
         let cfg = CfgEnv::default().with_chain_id(chain_spec.chain().id());
@@ -256,14 +253,14 @@ impl PayloadBuilderAttributes for TNPayload {
         // ensure gas_limit enforced during block validation
         let gas_limit = U256::from(self.attributes.gas_limit);
 
-        // create block environment to re-execute batch
+        // create block environment to re-execute worker's block
         let block_env = BlockEnv {
-            // the block's number should come from the canonical tip, NOT the batch block's number
+            // the block's number should come from the canonical tip, NOT the worker block's number
             number: U256::from(self.attributes.parent_header.number + 1),
             coinbase: self.suggested_fee_recipient(),
             timestamp: U256::from(self.timestamp()),
             // leave difficulty zero
-            // this value is useful for post-execution, but batch is created with this value
+            // this value is useful for post-execution, but worker's block is created with this value
             difficulty: U256::ZERO,
             prevrandao: Some(self.prev_randao()),
             gas_limit,
