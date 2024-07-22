@@ -17,7 +17,7 @@ use reth_db::{
     database::Database,
     database_metrics::{DatabaseMetadata, DatabaseMetrics},
 };
-use reth_evm::execute::BlockExecutorProvider;
+use reth_evm::{execute::BlockExecutorProvider, ConfigureEvm};
 use std::{sync::Arc, time::Instant};
 use tn_types::{
     BlsPublicKey, Committee, NetworkKeypair, Parameters, PreSubscribedBroadcastSender, WorkerCache,
@@ -44,7 +44,7 @@ impl WorkerNodeInner {
     /// method will return an error instead.
     #[allow(clippy::too_many_arguments)]
     #[instrument(name = "worker", skip_all)]
-    async fn start<DB, Evm>(
+    async fn start<DB, Evm, CE>(
         &mut self,
         // The primary's id
         primary_name: BlsPublicKey,
@@ -60,11 +60,12 @@ impl WorkerNodeInner {
         // TODO: replace this by a path so the method can open and independent storage
         store: &NodeStorage,
         // used to create the batch maker process
-        execution_node: &ExecutionNode<DB, Evm>,
+        execution_node: &ExecutionNode<DB, Evm, CE>,
     ) -> eyre::Result<()>
     where
         DB: Database + DatabaseMetadata + DatabaseMetrics + Clone + Unpin + 'static,
         Evm: BlockExecutorProvider + Clone + 'static,
+        CE: ConfigureEvm,
     {
         if self.is_running().await {
             return Err(NodeError::NodeAlreadyRunning.into());
@@ -172,7 +173,7 @@ impl WorkerNode {
     }
 
     #[allow(clippy::too_many_arguments)]
-    pub async fn start<DB, Evm>(
+    pub async fn start<DB, Evm, CE>(
         &self,
         // The primary's public key of this authority.
         primary_key: BlsPublicKey,
@@ -188,11 +189,12 @@ impl WorkerNode {
         // TODO: replace this by a path so the method can open and independent storage
         store: &NodeStorage,
         // used to create the batch maker process
-        execution_node: &ExecutionNode<DB, Evm>,
+        execution_node: &ExecutionNode<DB, Evm, CE>,
     ) -> eyre::Result<()>
     where
         DB: Database + DatabaseMetadata + DatabaseMetrics + Clone + Unpin + 'static,
         Evm: BlockExecutorProvider + Clone + 'static,
+        CE: ConfigureEvm,
     {
         let mut guard = self.internal.write().await;
         guard

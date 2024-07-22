@@ -176,14 +176,10 @@ pub fn fixture_payload_with_rand<R: Rng + ?Sized>(
 }
 
 /// Create a transaction with a randomly generated keypair.
-pub fn transaction_with_rand<R: Rng + ?Sized>(_rand: &mut R) -> Transaction {
-    // generate random value transactions, but the length will be always 100 bytes
-    // gas price for adiri genesis: 875000000
-    //
-    // very inefficient, but less refactoring => quicker release
-
-    let mut tx_factory = TransactionFactory::new_random();
+pub fn transaction_with_rand<R: Rng + ?Sized>(rand: &mut R) -> Transaction {
+    let mut tx_factory = TransactionFactory::new_random_from_seed(rand);
     let chain = adiri_chain_spec_arc();
+    // TODO: this is excessively high, but very unlikely to ever fail
     let gas_price = 875000000;
     let value = U256::from(10).checked_pow(U256::from(18)).expect("1e18 doesn't overflow U256");
 

@@ -13,7 +13,7 @@ use crate::{
 use eyre::Context;
 use fastcrypto::traits::{InsecureDefault, Signer};
 use reth_chainspec::ChainSpec;
-use reth_primitives::{keccak256, Address, Genesis};
+use reth_primitives::{constants::MIN_PROTOCOL_BASE_FEE, keccak256, Address, Genesis};
 use serde::{Deserialize, Serialize};
 use std::{
     collections::BTreeMap,
@@ -27,10 +27,18 @@ use tracing::{info, warn};
 /// The validators directory used to create genesis.
 pub const GENESIS_VALIDATORS_DIR: &str = "validators";
 
-/// adiri parsed Genesis.
+/// adiri genesis
+///
+/// NOTE: reth does not support deserializing certain fields, including base_fee_per_gas.
+///
+/// After deserializing from string, update genesis with TN-specific values.
 pub fn adiri_genesis() -> Genesis {
     let yaml = adiri_genesis_string();
-    serde_json::from_str(&yaml).expect("serde parse valid adiri yaml")
+    let genesis: Genesis = serde_json::from_str(&yaml).expect("serde parse valid adiri yaml");
+    // set min base fee for genesis
+    //
+    // TODO: set blob gas here
+    genesis.with_base_fee(Some(MIN_PROTOCOL_BASE_FEE as u128))
 }
 
 /// adiri chain spec parsed from genesis.
@@ -69,7 +77,6 @@ fn adiri_genesis_raw() -> &'static str {
 {
     "nonce": "0x0",
     "timestamp": "0x6553A8CC",
-    "extraData": "0x21",
     "gasLimit": "0x1c9c380",
     "difficulty": "0x0",
     "mixHash": "0x0000000000000000000000000000000000000000000000000000000000000000",
@@ -95,7 +102,6 @@ fn adiri_genesis_raw() -> &'static str {
     "gasUsed": "0x0",
     "parentHash": "0x0000000000000000000000000000000000000000000000000000000000000000",
     "config": {
-        "ethash": {},
         "chainId": 2017,
         "homesteadBlock": 0,
         "eip150Block": 0,

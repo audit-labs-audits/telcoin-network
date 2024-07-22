@@ -2,18 +2,24 @@
 // SPDX-License-Identifier: Apache-2.0
 
 //! Specific test utils for execution layer
-use crate::{adiri_genesis, ExecutionKeypair};
-use rand::{rngs::StdRng, SeedableRng};
+use crate::{adiri_genesis, now, Batch, BatchAPI, ExecutionKeypair, MetadataAPI, TimestampSec};
+use rand::{rngs::StdRng, Rng, SeedableRng};
 use reth_chainspec::{BaseFeeParams, ChainSpec};
+use reth_evm::execute::{BlockExecutionOutput, BlockExecutorProvider, Executor as _};
 use reth_primitives::{
-    public_key_to_address, sign_message, Address, FromRecoveredPooledTransaction, Genesis,
-    GenesisAccount, PooledTransactionsElement, Signature, Transaction, TransactionSigned,
-    TxEip1559, TxHash, TxKind, B256, U256,
+    constants::{
+        EMPTY_TRANSACTIONS, EMPTY_WITHDRAWALS, ETHEREUM_BLOCK_GAS_LIMIT, MIN_PROTOCOL_BASE_FEE,
+    },
+    proofs, public_key_to_address, sign_message, Address, Block, FromRecoveredPooledTransaction,
+    Genesis, GenesisAccount, Header, PooledTransactionsElement, SealedHeader, Signature,
+    Transaction, TransactionSigned, TxEip1559, TxHash, TxKind, Withdrawals, B256,
+    EMPTY_OMMER_ROOT_HASH, U256,
 };
-use reth_provider::BlockReaderIdExt;
+use reth_provider::{BlockReaderIdExt, ExecutionOutcome, StateProviderFactory};
+use reth_revm::database::StateProviderDatabase;
 use reth_transaction_pool::{TransactionOrigin, TransactionPool};
 use secp256k1::Secp256k1;
-use std::sync::Arc;
+use std::{str::FromStr as _, sync::Arc};
 
 /// Adiri genesis with funded [TransactionFactory] default account.
 pub fn test_genesis() -> Genesis {
@@ -22,6 +28,194 @@ pub fn test_genesis() -> Genesis {
     let default_factory_account =
         vec![(default_address, GenesisAccount::default().with_balance(U256::MAX))];
     genesis.extend_accounts(default_factory_account)
+}
+
+/// Helper function to seed an instance of Genesis with accounts from a random batch.
+pub fn seeded_genesis_from_random_batch(
+    genesis: Genesis,
+    batch: &Batch,
+) -> (Genesis, Vec<TransactionSigned>, Vec<Address>) {
+    let mut txs = vec![];
+    let mut senders = vec![];
+    let mut accounts_to_seed = Vec::new();
+
+    // loop through the transactions
+    for tx in batch.transactions_owned() {
+        let tx_signed =
+            TransactionSigned::decode_enveloped(&mut tx.as_ref()).expect("decode tx signed");
+        let address = tx_signed.recover_signer().expect("signer recoverable");
+        txs.push(tx_signed);
+        senders.push(address);
+        // fund account with 99mil TEL
+        let account = (
+            address,
+            GenesisAccount::default().with_balance(
+                U256::from_str("0x51E410C0F93FE543000000").expect("account balance is parsed"),
+            ),
+        );
+        accounts_to_seed.push(account);
+    }
+    (genesis.extend_accounts(accounts_to_seed), txs, senders)
+}
+
+/// Helper function to seed an instance of Genesis with random batches.
+///
+/// The transactions in the randomly generated batches are decoded and their signers are recovered.
+///
+/// The function returns the new Genesis, the signed transactions by batch, and the addresses for
+/// further use it testing.
+pub fn seeded_genesis_from_random_batches<'a>(
+    mut genesis: Genesis,
+    batches: impl IntoIterator<Item = &'a Batch>,
+) -> (Genesis, Vec<Vec<TransactionSigned>>, Vec<Vec<Address>>) {
+    let mut txs = vec![];
+    let mut senders = vec![];
+    for batch in batches {
+        let (g, t, s) = seeded_genesis_from_random_batch(genesis, batch);
+        genesis = g;
+        txs.push(t);
+        senders.push(s);
+    }
+    (genesis, txs, senders)
+}
+
+/// Optional parameters to pass to the `execute_test_batch` function.
+///
+/// These optional parameters are used to replace default in the batch's header if included.
+pub struct OptionalTestBatchParams {
+    /// Optional beneficiary address.
+    ///
+    /// Default is `Address::random()`.
+    pub beneficiary_opt: Option<Address>,
+    /// Optional withdrawals.
+    ///
+    /// Default is `Withdrawals<vec![]>` (empty).
+    pub withdrawals_opt: Option<Withdrawals>,
+    /// Optional timestamp.
+    ///
+    /// Default is `now()`.
+    pub timestamp_opt: Option<TimestampSec>,
+    /// Optional mix_hash.
+    ///
+    /// Default is `B256::random()`.
+    pub mix_hash_opt: Option<B256>,
+    /// Optional base_fee_per_gas.
+    ///
+    /// Default is [MIN_PROTOCOL_BASE_FEE], which is 7 wei.
+    pub base_fee_per_gas_opt: Option<u64>,
+}
+
+/// Attempt to update batch with accurate header information.
+///
+/// NOTE: this is loosely based on reth's auto-seal consensus
+pub fn execute_test_batch<P, E>(
+    batch: &mut Batch,
+    parent: &SealedHeader,
+    optional_params: OptionalTestBatchParams,
+    provider: &P,
+    executor: &E,
+) where
+    P: StateProviderFactory + BlockReaderIdExt,
+    E: BlockExecutorProvider,
+{
+    // deconstruct optional parameters for header
+    let OptionalTestBatchParams {
+        beneficiary_opt,
+        withdrawals_opt,
+        timestamp_opt,
+        mix_hash_opt,
+        base_fee_per_gas_opt,
+    } = optional_params;
+
+    // create "empty" header with default values
+    let mut header = Header {
+        parent_hash: parent.hash(),
+        ommers_hash: EMPTY_OMMER_ROOT_HASH,
+        beneficiary: beneficiary_opt.unwrap_or_else(|| Address::random()),
+        state_root: Default::default(),
+        transactions_root: Default::default(),
+        receipts_root: Default::default(),
+        withdrawals_root: Some(
+            withdrawals_opt
+                .clone()
+                .map_or(EMPTY_WITHDRAWALS, |w| proofs::calculate_withdrawals_root(&w)),
+        ),
+        logs_bloom: Default::default(),
+        difficulty: U256::ZERO,
+        number: parent.number + 1,
+        gas_limit: ETHEREUM_BLOCK_GAS_LIMIT,
+        gas_used: 0,
+        timestamp: timestamp_opt.unwrap_or_else(now),
+        mix_hash: mix_hash_opt.unwrap_or_else(|| B256::random()),
+        nonce: 0,
+        base_fee_per_gas: base_fee_per_gas_opt.or(Some(MIN_PROTOCOL_BASE_FEE)),
+        blob_gas_used: None,
+        excess_blob_gas: None,
+        extra_data: Default::default(),
+        parent_beacon_block_root: None,
+        requests_root: None,
+    };
+
+    // decode batch transactions
+    let mut txs = vec![];
+    for tx in batch.transactions_owned() {
+        let tx_signed =
+            TransactionSigned::decode_enveloped(&mut tx.as_ref()).expect("decode tx signed");
+        txs.push(tx_signed);
+    }
+
+    // update header's transactions root
+    header.transactions_root = if batch.transactions().is_empty() {
+        EMPTY_TRANSACTIONS
+    } else {
+        proofs::calculate_transaction_root(&txs)
+    };
+
+    // recover senders from block
+    let block = Block {
+        header,
+        body: txs,
+        ommers: vec![],
+        withdrawals: withdrawals_opt.clone(),
+        requests: None,
+    }
+    .with_recovered_senders()
+    .expect("unable to recover senders while executing test batch");
+
+    // create execution db
+    let mut db = StateProviderDatabase::new(
+        provider.latest().expect("provider retrieves latest during test batch execution"),
+    );
+
+    // convenience
+    let block_number = block.number;
+
+    // execute the block
+    let BlockExecutionOutput { state, receipts, gas_used, .. } = executor
+        .executor(&mut db)
+        .execute((&block, U256::ZERO).into())
+        .expect("executor can execute test batch transactions");
+    let bundle_state = ExecutionOutcome::new(state, receipts.into(), block_number, vec![]);
+
+    // retrieve header to update values post-execution
+    let Block { mut header, .. } = block.block;
+
+    // update header
+    header.gas_used = gas_used;
+    header.state_root = db
+        .state_root(bundle_state.state())
+        .expect("state root calculation during test batch execution");
+    header.receipts_root = bundle_state
+        .receipts_root_slow(block_number)
+        .expect("receipts root calculation during test batch execution");
+    header.logs_bloom = bundle_state
+        .block_logs_bloom(block_number)
+        .expect("logs bloom calculation during test batch execution");
+
+    // seal header and update batch's metadata
+    let sealed_header = header.seal_slow();
+    let md = batch.versioned_metadata_mut();
+    md.update_header(sealed_header);
 }
 
 /// Transaction factory
@@ -51,7 +245,15 @@ impl TransactionFactory {
         Self { keypair, nonce: 0 }
     }
 
-    /// Create a new instance of self from a random seed.
+    /// create a new instance of self from a provided seed.
+    pub fn new_random_from_seed<R: Rng + ?Sized>(rand: &mut R) -> Self {
+        let secp = Secp256k1::new();
+        let (secret_key, _public_key) = secp.generate_keypair(rand);
+        let keypair = ExecutionKeypair::from_secret_key(&secp, &secret_key);
+        Self { keypair, nonce: 0 }
+    }
+
+    /// create a new instance of self from a random seed.
     pub fn new_random() -> Self {
         let secp = Secp256k1::new();
         let (secret_key, _public_key) = secp.generate_keypair(&mut rand::thread_rng());

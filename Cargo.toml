@@ -24,8 +24,8 @@ members = [
     # execution
     "crates/execution/batch-maker",
     "crates/execution/batch-validator",
-    "crates/execution/executor",
     "crates/execution/faucet",
+    "crates/execution/engine",
 ]
 
 # Explicitly set the resolver to version 2, which is the default for packages with edition >= 2021
@@ -116,6 +116,7 @@ secp256k1 = { version = "0.29", default-features = false, features = [
 #reth-cli-commands = { path = "../reth/crates/cli/commands" }
 #reth-payload-builder = { path = "../reth/crates/payload/builder" }
 #reth-basic-payload-builder = { path = "../reth/crates/payload/basic" }
+#reth-errors = { git = "https://github.com/paradigmxyz/reth", tag = "v1.0.3" }
 
 reth = { git = "https://github.com/paradigmxyz/reth", tag = "v1.0.3" }
 reth-primitives = { git = "https://github.com/paradigmxyz/reth", tag = "v1.0.3" }
@@ -165,6 +166,7 @@ reth-cli-util = { git = "https://github.com/paradigmxyz/reth", tag = "v1.0.3" }
 reth-cli-commands = { git = "https://github.com/paradigmxyz/reth", tag = "v1.0.3" }
 reth-payload-builder = { git = "https://github.com/paradigmxyz/reth", tag = "v1.0.3" }
 reth-basic-payload-builder = { git = "https://github.com/paradigmxyz/reth", tag = "v1.0.3" }
+reth-errors = { git = "https://github.com/paradigmxyz/reth", tag = "v1.0.3" }
 
 alloy-rlp = "0.3.7"
 
@@ -196,7 +198,7 @@ alloy-sol-types = "0.7.7"
 # matches Cargo.lock
 
 tn-batch-validator = { path = "crates/execution/batch-validator" }
-tn-executor = { path = "crates/execution/executor" }
+tn-engine = { path = "crates/execution/engine" }
 
 # batch maker
 tn-batch-maker = { path = "crates/execution/batch-maker" }
