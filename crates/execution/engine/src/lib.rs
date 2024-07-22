@@ -126,7 +126,8 @@ where
 
     /// Spawns a blocking task to execute consensus output.
     ///
-    /// This approach allows the engine to yield back to the runtime while executing blocks. Executing blocks is cpu intensive, so a blocking task is used.
+    /// This approach allows the engine to yield back to the runtime while executing blocks.
+    /// Executing blocks is cpu intensive, so a blocking task is used.
     fn spawn_execution_task(&mut self) -> PendingExecutionTask
     where
         BT: StateProviderFactory
@@ -319,7 +320,8 @@ mod tests {
     use tokio_stream::wrappers::BroadcastStream;
     use tracing::debug;
 
-    /// This tests that a single block is executed if the output from consensus contains no transactions.
+    /// This tests that a single block is executed if the output from consensus contains no
+    /// transactions.
     #[tokio::test]
     async fn test_empty_output_executes() -> eyre::Result<()> {
         init_test_tracing();
@@ -487,8 +489,8 @@ mod tests {
 
     /// Test the engine shuts down after the sending half of the broadcast channel is closed.
     ///
-    /// One output is queued (simulating output already received) in the engine and another is sent on the
-    /// channel. Then, the sender is dropped and the engine task is started.
+    /// One output is queued (simulating output already received) in the engine and another is sent
+    /// on the channel. Then, the sender is dropped and the engine task is started.
     ///
     /// Expected result:
     /// - engine receives last broadcast
@@ -496,7 +498,8 @@ mod tests {
     /// - engine processes last broadcast second
     /// - engine has no more output in queue and gracefully shuts down
     ///
-    /// NOTE: all batches are built with genesis as the parent. Building blocks from historic parents is currently valid.
+    /// NOTE: all batches are built with genesis as the parent. Building blocks from historic
+    /// parents is currently valid.
     #[tokio::test]
     async fn test_queued_output_executes_after_sending_channel_closed() -> eyre::Result<()> {
         init_test_tracing();
@@ -816,7 +819,8 @@ mod tests {
     /// - engine produces empty block for duplicate batch
     /// - engine has no more output in queue and gracefully shuts down
     ///
-    /// NOTE: all batches are built with genesis as the parent. Building blocks from historic parents is currently valid.
+    /// NOTE: all batches are built with genesis as the parent. Building blocks from historic
+    /// parents is currently valid.
     #[tokio::test]
     async fn test_execution_succeeds_with_duplicate_transactions() -> eyre::Result<()> {
         init_test_tracing();
@@ -1075,8 +1079,8 @@ mod tests {
 
             // expect blocks 4 and 8 to be empty (no txs bc they are duplicates)
             // sub 1 to account for loop idx starting at 0
-            if idx == expected_duplicate_block_num_round_1 - 1
-                || idx == expected_duplicate_block_num_round_2 - 1
+            if idx == expected_duplicate_block_num_round_1 - 1 ||
+                idx == expected_duplicate_block_num_round_2 - 1
             {
                 assert!(block.senders.is_empty());
                 assert!(block.body.is_empty());
@@ -1332,8 +1336,8 @@ mod tests {
         engine.queued.push_back(consensus_output_1);
         engine.queued.push_back(consensus_output_2);
 
-        // NOTE: sending channel is NOT dropped in this test, so engine should continue listening until max block
-        // reached
+        // NOTE: sending channel is NOT dropped in this test, so engine should continue listening
+        // until max block reached
 
         // channels for engine shutting down
         let (tx, rx) = oneshot::channel();

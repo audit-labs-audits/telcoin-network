@@ -80,7 +80,9 @@ where
         let gas_limit = canonical_header.gas_limit;
 
         // mix hash is the parent's consensus output digest
-        // TODO: this needs to stay consistent with initial block construction but is easy to manipulate for workers. For now, this should provide sufficient randomness for on-chain security in the next round.
+        // TODO: this needs to stay consistent with initial block construction but is easy to
+        // manipulate for workers. For now, this should provide sufficient randomness for on-chain
+        // security in the next round.
         //
         // calculate mix hash as a source of randomness
         // - consensus output digest from parent (beacon block root)
