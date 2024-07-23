@@ -20,10 +20,8 @@ tracing = { workspace = true }
 # reth deps
 reth-blockchain-tree = { workspace = true }
 reth-chainspec = { workspace = true }
-reth-db = { workspace = true }
 reth-errors = { workspace = true }
 reth-evm = { workspace = true }
-reth-evm-ethereum = { workspace = true }
 reth-execution-types = { workspace = true }
 reth-node-api = { workspace = true }
 reth-payload-builder = { workspace = true }
