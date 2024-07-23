@@ -7,12 +7,17 @@
     html_favicon_url = "https://www.telco.in/logos/TEL.svg",
     issue_tracker_base_url = "https://github.com/telcoin-association/telcoin-network/issues/"
 )]
-#![warn(missing_debug_implementations, missing_docs, unreachable_pub, rustdoc::all)]
+#![warn(
+    missing_debug_implementations,
+    missing_docs,
+    unreachable_pub,
+    rustdoc::all,
+    unused_crate_dependencies
+)]
 #![deny(unused_must_use, rust_2018_idioms)]
 #![cfg_attr(docsrs, feature(doc_cfg, doc_auto_cfg))]
 
 mod error;
-mod handle;
 mod payload_builder;
 use error::EngineResult;
 use futures::{Future, StreamExt};
@@ -25,7 +30,6 @@ use reth_provider::{
     BlockIdReader, BlockReader, CanonChainTracker, ChainSpecProvider, StageCheckpointReader,
     StateProviderFactory,
 };
-use reth_tasks::TaskSpawner;
 use std::{
     collections::VecDeque,
     pin::Pin,
@@ -49,34 +53,32 @@ type PendingExecutionTask = oneshot::Receiver<EngineResult<SealedHeader>>;
 /// channel is dropped. If the sending channel is dropped, the engine attempts to execute any
 /// remaining output that is queued up before shutting itself down gracefully. If the maximum round
 /// is reached, the engine shuts down immediately.
-pub struct ExecutorEngine<BT, CE, Tasks> {
+pub struct ExecutorEngine<BT, CE> {
     /// The backlog of output from consensus that's ready to be executed.
     queued: VecDeque<ConsensusOutput>,
     /// Single active future that executes consensus output on a blocking thread and then returns
     /// the result through a oneshot channel.
-    insert_task: Option<PendingExecutionTask>,
+    pending_task: Option<PendingExecutionTask>,
     /// The type used to query both the database and the blockchain tree.
     blockchain: BT,
     /// EVM configuration for executing transactions and building blocks.
     evm_config: CE,
-    /// The task executor to spawn new builds.
-    executor: Tasks,
     /// Optional round of consensus to finish executing before then returning. The value is used to
     /// track the subdag index from consensus output. The index is also considered the "round" of
     /// consensus and is included in executed blocks as  the block's `nonce` value.
     ///
-    /// note: this is primarily useful for debugging and testing
+    /// NOTE: this is primarily useful for debugging and testing
     max_round: Option<u64>,
     /// Receiving end from CL's `Executor`. The `ConsensusOutput` is sent
     /// to the mining task here.
     consensus_output_stream: BroadcastStream<ConsensusOutput>,
     /// The [SealedHeader] of the last fully-executed block.
     ///
-    /// This information is reflects the current finalized block number and hash.
+    /// This information reflects the current finalized block number and hash.
     parent_header: SealedHeader,
 }
 
-impl<BT, CE, Tasks> ExecutorEngine<BT, CE, Tasks>
+impl<BT, CE> ExecutorEngine<BT, CE>
 where
     BT: BlockchainTreeEngine
         + BlockReader
@@ -86,7 +88,6 @@ where
         + ChainSpecProvider
         + 'static,
     CE: ConfigureEvm,
-    Tasks: TaskSpawner + Clone + Unpin + 'static,
 {
     /// Create a new instance of the [`ExecutorEngine`] using the given channel to configure
     /// the [`ConsensusOutput`] communication channel.
@@ -98,17 +99,15 @@ where
     pub fn new(
         blockchain: BT,
         evm_config: CE,
-        executor: Tasks,
         max_round: Option<u64>,
         consensus_output_stream: BroadcastStream<ConsensusOutput>,
         parent_header: SealedHeader,
     ) -> Self {
         Self {
             queued: Default::default(),
-            insert_task: None,
+            pending_task: None,
             blockchain,
             evm_config,
-            executor,
             max_round,
             consensus_output_stream,
             parent_header,
@@ -134,14 +133,18 @@ where
         let build_args = BuildArguments::new(provider, output, parent);
         let (tx, rx) = oneshot::channel();
 
-        // spawn blocking task and return oneshot receiver
-        self.executor.spawn_blocking(Box::pin(async move {
+        // spawn blocking task and return future
+        tokio::task::spawn_blocking(|| {
+            // this is safe to call on blocking thread without a semaphore bc it's held in
+            // Self::pending_tesk as a single `Option`
             let result = execute_consensus_output(evm_config, build_args);
             match tx.send(result) {
                 Ok(()) => (),
-                Err(e) => error!(target: "engine", ?e, "error sending result from execute_consensus_output"),
+                Err(e) => {
+                    error!(target: "engine", ?e, "error sending result from execute_consensus_output")
+                }
             }
-        }));
+        });
 
         // oneshot receiver for execution result
         rx
@@ -177,7 +180,7 @@ where
 ///
 /// If the broadcast stream is closed, the engine will attempt to execute all remaining tasks and
 /// any output that is queued.
-impl<BT, CE, Tasks> Future for ExecutorEngine<BT, CE, Tasks>
+impl<BT, CE> Future for ExecutorEngine<BT, CE>
 where
     BT: BlockchainTreeEngine
         + BlockReader
@@ -190,7 +193,6 @@ where
         + Unpin
         + 'static,
     CE: ConfigureEvm,
-    Tasks: TaskSpawner + Clone + Unpin + 'static,
 {
     type Output = EngineResult<()>;
 
@@ -217,7 +219,7 @@ where
                     // only return if there are no current tasks and the queue is empty
                     // otherwise, let the loop continue so any remaining tasks and queued output is
                     // executed
-                    if this.insert_task.is_none() && this.queued.is_empty() {
+                    if this.pending_task.is_none() && this.queued.is_empty() {
                         return Poll::Ready(Ok(()));
                     }
                 }
@@ -229,18 +231,18 @@ where
             //
             // note: it's important that the previous consensus output finishes executing before
             // inserting the next task to ensure the parent sealed header is finalized
-            if this.insert_task.is_none() {
+            if this.pending_task.is_none() {
                 if this.queued.is_empty() {
                     // nothing to insert
                     break;
                 }
 
                 // ready to begin executing next round of consensus
-                this.insert_task = Some(this.spawn_execution_task());
+                this.pending_task = Some(this.spawn_execution_task());
             }
 
             // poll receiver that returns output execution result
-            if let Some(mut receiver) = this.insert_task.take() {
+            if let Some(mut receiver) = this.pending_task.take() {
                 match receiver.poll_unpin(cx) {
                     Poll::Ready(res) => {
                         let finalized_header = res.map_err(Into::into).and_then(|res| res);
@@ -259,7 +261,7 @@ where
                         // allow loop to continue: poll broadcast stream for next output
                     }
                     Poll::Pending => {
-                        this.insert_task = Some(receiver);
+                        this.pending_task = Some(receiver);
 
                         // break loop and return Poll::Pending
                         break;
@@ -273,11 +275,11 @@ where
     }
 }
 
-impl<BT, CE, Tasks> std::fmt::Debug for ExecutorEngine<BT, CE, Tasks> {
+impl<BT, CE> std::fmt::Debug for ExecutorEngine<BT, CE> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("ExecutorEngine")
             .field("queued", &self.queued.len())
-            .field("insert_task", &self.insert_task.is_some())
+            .field("pending_task", &self.pending_task.is_some())
             .field("max_round", &self.max_round)
             .field("parent_header", &self.parent_header)
             .finish_non_exhaustive()
@@ -364,7 +366,6 @@ mod tests {
         let engine = ExecutorEngine::new(
             provider.clone(),
             evm_config,
-            executor.clone(),
             max_round,
             consensus_output_stream,
             genesis_header.clone(),
@@ -642,7 +643,6 @@ mod tests {
         let mut engine = ExecutorEngine::new(
             blockchain.clone(),
             evm_config,
-            executor.clone(),
             max_round,
             consensus_output_stream,
             parent,
@@ -992,7 +992,6 @@ mod tests {
         let mut engine = ExecutorEngine::new(
             blockchain.clone(),
             evm_config,
-            executor.clone(),
             max_round,
             consensus_output_stream,
             parent,
@@ -1317,7 +1316,6 @@ mod tests {
         let mut engine = ExecutorEngine::new(
             blockchain.clone(),
             evm_config,
-            executor.clone(),
             max_round,
             consensus_output_stream,
             parent,

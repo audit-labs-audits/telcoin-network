@@ -30,11 +30,11 @@ reth-payload-builder = { workspace = true }
 reth-primitives = { workspace = true }
 reth-provider = { workspace = true }
 reth-revm = { workspace = true }
-reth-tasks = { workspace = true }
-reth-tracing = { workspace = true }
 
 [dev-dependencies]
 # unit tests
 eyre = { workspace = true }
 narwhal-test-utils = { workspace = true }
+reth-tracing = { workspace = true }
+reth-tasks = { workspace = true }
 tn-types = { workspace = true, features = ["test-utils"] }
