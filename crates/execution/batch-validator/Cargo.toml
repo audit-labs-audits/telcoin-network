@@ -17,6 +17,7 @@ reth-db = { workspace = true }
 reth-revm = { workspace = true }
 reth-blockchain-tree = { workspace = true }
 reth-evm = { workspace = true }
+reth-prune = { workspace = true }
 alloy-rlp = { workspace = true }
 async-trait = { workspace = true }
 thiserror = { workspace = true }

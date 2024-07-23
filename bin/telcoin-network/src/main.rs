@@ -1,6 +1,6 @@
 use clap::Parser as _;
 #[cfg(not(feature = "faucet"))]
-use reth::commands::node::NoArgs;
+use reth_cli_commands::node::NoArgs;
 use reth_node_ethereum::{EthEvmConfig, EthExecutorProvider};
 use std::sync::Arc;
 #[cfg(feature = "faucet")]

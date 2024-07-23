@@ -12,9 +12,7 @@ use reth_node_api::PayloadBuilderAttributes as _;
 use reth_payload_builder::database::CachedReads;
 use reth_primitives::{
     constants::{EMPTY_RECEIPTS, EMPTY_TRANSACTIONS, EMPTY_WITHDRAWALS},
-    proofs,
-    revm::env::tx_env_with_recovered,
-    Block, Header, Receipt, SealedBlockWithSenders, SealedHeader, Withdrawals, B256,
+    proofs, Block, Header, Receipt, SealedBlockWithSenders, SealedHeader, Withdrawals, B256,
     EMPTY_OMMER_ROOT_HASH, U256,
 };
 use reth_provider::{CanonChainTracker, ChainSpecProvider, StateProviderFactory};
@@ -291,7 +289,7 @@ where
         let env = EnvWithHandlerCfg::new_with_cfg_env(
             cfg.clone(),
             block_env.clone(),
-            tx_env_with_recovered(&tx),
+            evm_config.tx_env(&tx),
         );
 
         // Configure the environment for the block.

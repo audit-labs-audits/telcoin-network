@@ -1,17 +1,14 @@
 //! The mode the auto seal miner is operating in.
 
-use futures_util::{stream::Fuse, StreamExt};
 use reth_primitives::TxHash;
 use reth_transaction_pool::{TransactionPool, ValidPoolTransaction};
 use std::{
     fmt,
-    pin::Pin,
     sync::Arc,
     task::{Context, Poll},
     time::Duration,
 };
 use tokio::{sync::mpsc::Receiver, time::Interval};
-use tokio_stream::{wrappers::ReceiverStream, Stream};
 
 /// Mode of operations for the `Miner`
 #[derive(Debug)]
@@ -36,7 +33,7 @@ impl MiningMode {
         MiningMode::Auto(ReadyTransactionMiner {
             max_transactions,
             has_pending_txs: None,
-            rx: ReceiverStream::new(listener).fuse(),
+            rx: listener,
         })
     }
 
@@ -110,7 +107,7 @@ pub struct ReadyTransactionMiner {
     /// stores whether there are pending transactions (if known)
     has_pending_txs: Option<bool>,
     /// Receives hashes of transactions that are ready
-    rx: Fuse<ReceiverStream<TxHash>>,
+    rx: Receiver<TxHash>,
 }
 
 // === impl ReadyTransactionMiner ===
@@ -125,7 +122,7 @@ impl ReadyTransactionMiner {
         Pool: TransactionPool,
     {
         // drain the notification stream
-        while let Poll::Ready(Some(_hash)) = Pin::new(&mut self.rx).poll_next(cx) {
+        while let Poll::Ready(Some(_hash)) = self.rx.poll_recv(cx) {
             self.has_pending_txs = Some(true);
         }
 

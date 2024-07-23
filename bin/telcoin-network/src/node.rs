@@ -9,15 +9,16 @@ use fdlimit::raise_fd_limit;
 use futures::Future;
 use reth::{
     args::{
-        utils::parse_socket_address, DatabaseArgs, DatadirArgs, DebugArgs, DevArgs, NetworkArgs,
-        PayloadBuilderArgs, PruningArgs, RpcServerArgs, TxPoolArgs,
+        DatabaseArgs, DatadirArgs, DebugArgs, DevArgs, NetworkArgs, PayloadBuilderArgs,
+        PruningArgs, RpcServerArgs, TxPoolArgs,
     },
     builder::NodeConfig,
-    commands::node::NoArgs,
     dirs::MaybePlatformPath,
     CliContext,
 };
 use reth_chainspec::ChainSpec;
+use reth_cli_commands::node::NoArgs;
+use reth_cli_util::parse_socket_address;
 use reth_db::{init_db, DatabaseEnv};
 use std::{net::SocketAddr, path::PathBuf, sync::Arc};
 use tn_node::{
@@ -136,6 +137,7 @@ pub struct NodeCommand<Ext: clap::Args + fmt::Debug = NoArgs> {
 
 impl<Ext: clap::Args + fmt::Debug> NodeCommand<Ext> {
     /// Execute `node` command
+    #[instrument(level = "info", skip_all)]
     pub async fn execute<L, Fut>(
         mut self,
         ctx: CliContext,

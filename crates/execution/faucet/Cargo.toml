@@ -19,6 +19,7 @@ reth-provider = { workspace = true }
 reth-rpc = { workspace = true }
 reth-tasks = { workspace = true }
 reth-transaction-pool = { workspace = true }
+reth-cli-util = { workspace = true }
 async-trait = { workspace = true }
 clap = { workspace = true, features = ["env"] }
 eyre = { workspace = true }

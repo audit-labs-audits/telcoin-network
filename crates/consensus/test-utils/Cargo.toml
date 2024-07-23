@@ -36,6 +36,7 @@ narwhal-primary-metrics = { workspace = true }
 narwhal-typed-store = { workspace = true }
 reth-tracing = { workspace = true }
 reth-chainspec = { workspace = true }
+reth-cli-commands = { workspace = true }
 
 
 anemo = { workspace = true }

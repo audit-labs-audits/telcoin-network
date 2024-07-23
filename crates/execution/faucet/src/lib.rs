@@ -14,9 +14,9 @@ use gcloud_sdk::{
     GoogleAuthMiddleware,
 };
 use lru_time_cache::LruCache;
+use reth::rpc::server_types::eth::{EthApiError, EthResult};
 use reth_primitives::{hex, Address, TxHash, U256};
 use reth_provider::{BlockReaderIdExt, StateProviderFactory};
-use reth_rpc::eth::error::{EthApiError, EthResult};
 use reth_tasks::{TaskSpawner, TokioTaskExecutor};
 use reth_transaction_pool::TransactionPool;
 use secp256k1::constants::PUBLIC_KEY_SIZE;

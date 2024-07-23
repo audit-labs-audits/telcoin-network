@@ -15,7 +15,7 @@ use tn_types::{
     read_validator_keypair_from_file, ChainIdentifier, Committee, Config, ConfigTrait, TelcoinDirs,
     WorkerCache, BLS_KEYFILE, PRIMARY_NETWORK_KEYFILE, WORKER_NETWORK_KEYFILE,
 };
-use tracing::info;
+use tracing::{info, instrument};
 
 pub mod dirs;
 pub mod engine;
@@ -27,6 +27,7 @@ pub mod worker;
 /// Launch all components for the node.
 ///
 /// Worker, Primary, and Execution.
+#[instrument(level = "info", skip_all)]
 pub async fn launch_node<DB, Evm, CE, P>(
     mut builder: TnBuilder<DB>,
     executor: Evm,

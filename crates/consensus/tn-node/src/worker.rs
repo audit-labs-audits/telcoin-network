@@ -43,7 +43,7 @@ impl WorkerNodeInner {
     /// Starts the worker node with the provided info. If the node is already running then this
     /// method will return an error instead.
     #[allow(clippy::too_many_arguments)]
-    #[instrument(level = "info", skip_all)]
+    #[instrument(name = "worker", skip_all)]
     async fn start<DB, Evm, CE>(
         &mut self,
         // The primary's id

@@ -9,7 +9,10 @@ use crate::{
 };
 use consensus_metrics::metered_channel::Sender;
 use jsonrpsee::http_client::HttpClient;
-use reth::rpc::builder::{config::RethRpcServerConfig, RpcModuleBuilder, RpcServerHandle};
+use reth::rpc::{
+    builder::{config::RethRpcServerConfig, RpcModuleBuilder, RpcServerHandle},
+    eth::EthApi,
+};
 use reth_auto_seal_consensus::AutoSealConsensus;
 use reth_beacon_consensus::EthBeaconConsensus;
 use reth_blockchain_tree::{
@@ -28,6 +31,7 @@ use reth_provider::{
     providers::{BlockchainProvider, StaticFileProvider},
     BlockIdReader, HeaderProvider, ProviderFactory, StaticFileProviderFactory as _,
 };
+use reth_prune::PruneModes;
 use reth_tasks::TaskExecutor;
 use reth_transaction_pool::TransactionPool;
 use std::{collections::HashMap, sync::Arc};
@@ -136,7 +140,7 @@ where
         let tree = BlockchainTree::new(
             tree_externals,
             tree_config,
-            prune_config.map(|config| config.segments.clone()),
+            prune_config.map(|config| config.segments.clone()).unwrap_or_else(PruneModes::none),
         )?
         .with_sync_metrics_tx(sync_metrics_tx.clone());
 
@@ -299,7 +303,7 @@ where
 
         //.node_configure namespaces
         let modules_config = self.node_config.rpc.transport_rpc_module_config();
-        let mut server = rpc_builder.build(modules_config);
+        let mut server = rpc_builder.build(modules_config, Box::new(EthApi::with_spawner));
 
         // TODO: rpc hook here
         // server.merge.node_configured(rpc_ext)?;
@@ -319,7 +323,7 @@ where
 
         // start the server
         let server_config = self.node_config.rpc.rpc_server_config();
-        let rpc_handle = server_config.start(server).await?;
+        let rpc_handle = server_config.start(&server).await?;
 
         self.workers.insert(worker_id, rpc_handle);
         Ok(())

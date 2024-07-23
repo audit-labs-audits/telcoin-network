@@ -2,11 +2,9 @@
 
 use clap::{Args, Parser};
 use core::fmt;
-use reth::{
-    args::DatadirArgs, builder::NodeConfig, commands::node::NoArgs, primitives::Address,
-    tasks::TaskExecutor,
-};
+use reth::{args::DatadirArgs, builder::NodeConfig, primitives::Address, tasks::TaskExecutor};
 use reth_chainspec::ChainSpec;
+use reth_cli_commands::node::NoArgs;
 use reth_db::{
     test_utils::{create_test_rw_db, TempDatabase},
     DatabaseEnv,
