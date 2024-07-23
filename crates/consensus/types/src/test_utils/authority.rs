@@ -150,7 +150,7 @@ impl AuthorityFixture {
         let host = "127.0.0.1";
         let network_address: Multiaddr =
             format!("/ip4/{}/udp/{}", host, get_port(host)).parse().unwrap();
-        let execution_address = Address::random();
+        let execution_address = Address::random_with(&mut rng);
 
         let workers = (0..number_of_workers.get())
             .map(|idx| {

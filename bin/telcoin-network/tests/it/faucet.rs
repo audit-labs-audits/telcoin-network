@@ -282,11 +282,12 @@ async fn spawn_local_testnet(
                         false, // don't overwrite chain with the default
                         |mut builder, faucet_args, tn_datadir| async move {
                             builder.opt_faucet_args = Some(faucet_args);
+                            let evm_config = EthEvmConfig::default();
                             let executor = EthExecutorProvider::new(
                                 std::sync::Arc::clone(&builder.node_config.chain),
-                                EthEvmConfig::default(),
+                                evm_config,
                             );
-                            launch_node(builder, executor, &tn_datadir).await
+                            launch_node(builder, executor, evm_config, &tn_datadir).await
                         },
                     )
                     .await;

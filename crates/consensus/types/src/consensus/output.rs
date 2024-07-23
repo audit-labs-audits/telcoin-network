@@ -1,17 +1,17 @@
 //! The ouput from consensus (bullshark)
 
 use crate::{
-    crypto, Batch, Certificate, CertificateAPI, CertificateDigest, HeaderAPI, ReputationScores,
-    Round, SequenceNumber, TimestampSec,
+    crypto, Batch, BatchAPI as _, BatchConversionError, BatchDigest, Certificate, CertificateAPI,
+    CertificateDigest, HeaderAPI, MetadataAPI as _, ReputationScores, Round, SequenceNumber,
+    TimestampSec,
 };
 use enum_dispatch::enum_dispatch;
 use fastcrypto::hash::{Digest, Hash, HashFunction};
-
-use reth_primitives::{Address, B256};
+use reth_primitives::{keccak256, Address, Header, SealedBlockWithSenders, B256};
 use serde::{Deserialize, Serialize};
 use std::{
-    fmt,
-    fmt::{Display, Formatter},
+    collections::VecDeque,
+    fmt::{self, Display, Formatter},
     sync::Arc,
 };
 use tokio::sync::mpsc;
@@ -23,9 +23,16 @@ use tracing::warn;
 pub struct ConsensusOutput {
     pub sub_dag: Arc<CommittedSubDag>,
     /// Matches certificates in the `sub_dag` one-to-one.
+    ///
+    /// This field is not included in [Self] digest. To validate,
+    /// hash these batches and compare to [Self::batch_digests].
     pub batches: Vec<Vec<Batch>>,
     /// The beneficiary for block rewards.
     pub beneficiary: Address,
+    /// The ordered set of [BatchDigests].
+    ///
+    /// This value is included in [Self] digest.
+    pub batch_digests: VecDeque<BatchDigest>,
 }
 
 impl ConsensusOutput {
@@ -54,6 +61,59 @@ impl ConsensusOutput {
     pub fn beneficiary(&self) -> Address {
         self.beneficiary
     }
+    /// Pop the next batch digest.
+    ///
+    /// This method is used when executing [Self].
+    pub fn next_batch_digest(&mut self) -> Option<BatchDigest> {
+        self.batch_digests.pop_front()
+    }
+    /// Ommers to use for the executed blocks.
+    ///
+    /// TODO: parallelize this when output contains enough batches.
+    pub fn ommers(&self) -> Vec<Header> {
+        self.batches
+            .iter()
+            .flat_map(|batches| {
+                batches
+                    .iter()
+                    .map(|batch| batch.versioned_metadata().sealed_header().header().clone())
+            })
+            .collect()
+    }
+    /// Recover the sealed blocks with senders for all batches in output.
+    ///
+    /// TODO: parallelize this when output contains enough batches.
+    pub fn sealed_blocks_from_batches(
+        &self,
+    ) -> Result<Vec<SealedBlockWithSenders>, BatchConversionError> {
+        self.batches
+            .iter()
+            .flat_map(|batches| {
+                batches.iter().map(|batch| {
+                    // create sealed block from batch for execution this should never fail since
+                    // batches are validated
+                    SealedBlockWithSenders::try_from(batch)
+                })
+            })
+            .collect()
+    }
+    /// Calculate the mix hash for a round with no batches.
+    ///
+    /// Calculates mix hash as a source of randomness on-chain.
+    /// - keccak256
+    /// - consensus output digest from parent (beacon block root)
+    /// - timestamp from consensus
+    ///
+    /// TODO: this should be consistent-ish with how workers calculate their
+    /// mix hashes for proposed blocks. However, this approach is easy to manipulate.
+    /// Need to figure out a better approach for workers, then replicate similar approach here.
+    ///
+    /// See https://eips.ethereum.org/EIPS/eip-4399
+    pub fn mix_hash_for_empty_payload(&self, parent_mix_hash: &B256) -> B256 {
+        keccak256(
+            [parent_mix_hash.as_slice(), self.committed_at().to_le_bytes().as_slice()].concat(),
+        )
+    }
 }
 
 impl Hash<{ crypto::DIGEST_LENGTH }> for ConsensusOutput {
@@ -63,12 +123,12 @@ impl Hash<{ crypto::DIGEST_LENGTH }> for ConsensusOutput {
         let mut hasher = crypto::DefaultHashFunction::new();
         // hash subdag
         hasher.update(self.sub_dag.digest());
-        // hash batch in order
-        self.batches.iter().flatten().for_each(|b| {
-            hasher.update(b.digest());
-        });
         // hash beneficiary
         hasher.update(self.beneficiary);
+        // hash batch digests in order
+        self.batch_digests.iter().for_each(|digest| {
+            hasher.update(digest);
+        });
         // finalize
         ConsensusOutputDigest(hasher.finalize().into())
     }

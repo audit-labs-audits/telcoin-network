@@ -75,9 +75,13 @@ pub trait MetadataAPI {
     fn received_at(&self) -> Option<TimestampSec>;
     /// Update the time the [Batch] was received.
     fn set_received_at(&mut self, ts: TimestampSec);
-
     /// The [SealedHeader] from executing the [Batch].
     fn sealed_header(&self) -> &SealedHeader;
+    /// Change the sealed header.
+    ///
+    /// Only Used for testing.
+    #[cfg(any(test, feature = "test-utils"))]
+    fn update_header(&mut self, header: SealedHeader);
 }
 
 /// Metadata for batches.
@@ -113,5 +117,12 @@ impl MetadataAPI for MetadataV1 {
 
     fn sealed_header(&self) -> &SealedHeader {
         &self.sealed_header
+    }
+
+    // Used for testing.
+
+    #[cfg(any(test, feature = "test-utils"))]
+    fn update_header(&mut self, header: SealedHeader) {
+        self.sealed_header = header;
     }
 }

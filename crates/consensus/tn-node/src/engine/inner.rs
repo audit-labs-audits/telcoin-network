@@ -1,15 +1,17 @@
 //! Inner-execution node components for both Worker and Primary execution.
+//!
+//! This module contains the logic for execution.
 
+use super::TnBuilder;
+use crate::{
+    engine::{WorkerNetwork, WorkerNode},
+    error::ExecutionError,
+};
 use consensus_metrics::metered_channel::Sender;
-use eyre::Context as _;
-use futures::{stream_select, StreamExt};
 use jsonrpsee::http_client::HttpClient;
 use reth::rpc::builder::{config::RethRpcServerConfig, RpcModuleBuilder, RpcServerHandle};
 use reth_auto_seal_consensus::AutoSealConsensus;
-use reth_beacon_consensus::{
-    hooks::{EngineHooks, StaticFileHook},
-    BeaconConsensusEngine, EthBeaconConsensus, MIN_BLOCKS_FOR_PIPELINE_RUN,
-};
+use reth_beacon_consensus::EthBeaconConsensus;
 use reth_blockchain_tree::{
     BlockchainTree, BlockchainTreeConfig, ShareableBlockchainTree, TreeExternals,
 };
@@ -18,50 +20,32 @@ use reth_db::{
     database_metrics::{DatabaseMetadata, DatabaseMetrics},
 };
 use reth_db_common::init::init_genesis;
-use reth_evm::execute::BlockExecutorProvider;
-use reth_exex::ExExManagerHandle;
-use reth_network::NetworkEvents;
-use reth_node_builder::{
-    common::WithConfigs,
-    components::{NetworkBuilder as _, PayloadServiceBuilder as _, PoolBuilder},
-    setup::build_networked_pipeline,
-    BuilderContext, NodeConfig,
-};
-use reth_node_ethereum::{
-    node::{EthereumNetworkBuilder, EthereumPayloadBuilder, EthereumPoolBuilder},
-    EthEvmConfig,
-};
-use reth_primitives::{Address, Head};
+use reth_evm::{execute::BlockExecutorProvider, ConfigureEvm};
+use reth_node_builder::{common::WithConfigs, components::PoolBuilder, BuilderContext, NodeConfig};
+use reth_node_ethereum::{node::EthereumPoolBuilder, EthEvmConfig};
+use reth_primitives::Address;
 use reth_provider::{
     providers::{BlockchainProvider, StaticFileProvider},
-    CanonStateNotificationSender, ProviderFactory, StaticFileProviderFactory as _,
+    BlockIdReader, HeaderProvider, ProviderFactory, StaticFileProviderFactory as _,
 };
-use reth_prune::PruneModes;
-use reth_rpc_types::engine::ForkchoiceState;
-use reth_static_file::StaticFileProducer;
 use reth_tasks::TaskExecutor;
-use reth_transaction_pool::{noop::NoopTransactionPool, TransactionPool};
+use reth_transaction_pool::TransactionPool;
 use std::{collections::HashMap, sync::Arc};
 use tn_batch_maker::{BatchMakerBuilder, MiningMode};
 use tn_batch_validator::BatchValidator;
-use tn_executor::Executor;
+use tn_engine::ExecutorEngine;
 use tn_faucet::{FaucetArgs, FaucetRpcExtApiServer as _};
 use tn_types::{Consensus, ConsensusOutput, NewBatch, WorkerId};
 use tokio::sync::{broadcast, mpsc::unbounded_channel};
-use tokio_stream::wrappers::UnboundedReceiverStream;
+use tokio_stream::wrappers::BroadcastStream;
 use tracing::{debug, error, info};
 
-use super::{PrimaryNode, TnBuilder};
-use crate::{
-    engine::{WorkerNetwork, WorkerNode},
-    error::ExecutionError,
-};
-
 /// Inner type for holding execution layer types.
-pub(super) struct ExecutionNodeInner<DB, Evm>
+pub(super) struct ExecutionNodeInner<DB, Evm, CE>
 where
     DB: Database + Clone + Unpin + 'static,
     Evm: BlockExecutorProvider + 'static,
+    CE: ConfigureEvm,
 {
     /// The [Address] for the authority used as the suggested beneficiary.
     ///
@@ -79,10 +63,10 @@ where
     /// available way to get a cloned copy.
     /// TODO: add a method to `BlockchainProvider` in upstream reth
     provider_factory: ProviderFactory<DB>,
+    /// The type to configure the EVM for execution.
+    evm_config: CE,
     /// The Evm configuration type.
-    evm: Evm,
-    /// Broadcasting channel for canonical state changes.
-    canon_state_notification_sender: CanonStateNotificationSender,
+    evm_executor: Evm,
     /// The task executor is responsible for executing
     /// and spawning tasks to the runtime.
     ///
@@ -93,15 +77,21 @@ where
     opt_faucet_args: Option<FaucetArgs>,
     /// Collection of execution components by worker.
     workers: HashMap<WorkerId, RpcServerHandle>,
+    // TODO: add Pool to self.workers for direct access (tests)
 }
 
-impl<DB, Evm> ExecutionNodeInner<DB, Evm>
+impl<DB, Evm, CE> ExecutionNodeInner<DB, Evm, CE>
 where
     DB: Database + DatabaseMetadata + DatabaseMetrics + Clone + Unpin + 'static,
     Evm: BlockExecutorProvider + 'static,
+    CE: ConfigureEvm,
 {
     /// Create a new instance of `Self`.
-    pub(super) fn new(tn_builder: TnBuilder<DB>, evm: Evm) -> eyre::Result<Self> {
+    pub(super) fn new(
+        tn_builder: TnBuilder<DB>,
+        evm_executor: Evm,
+        evm_config: CE,
+    ) -> eyre::Result<Self> {
         // deconstruct the builder
         let TnBuilder { database, node_config, task_executor, tn_config, opt_faucet_args } =
             tn_builder;
@@ -138,8 +128,11 @@ where
         // get config from file
         let prune_config = node_config.prune_config(); //.or(reth_config.prune.clone());
         let tree_config = BlockchainTreeConfig::default();
-        let tree_externals =
-            TreeExternals::new(provider_factory.clone(), auto_consensus.clone(), evm.clone());
+        let tree_externals = TreeExternals::new(
+            provider_factory.clone(),
+            auto_consensus.clone(),
+            evm_executor.clone(),
+        );
         let tree = BlockchainTree::new(
             tree_externals,
             tree_config,
@@ -147,7 +140,6 @@ where
         )?
         .with_sync_metrics_tx(sync_metrics_tx.clone());
 
-        let canon_state_notification_sender = tree.canon_state_notification_sender();
         let blockchain_tree = Arc::new(ShareableBlockchainTree::new(tree));
         debug!(target: "tn::execution", "configured blockchain tree");
 
@@ -160,8 +152,8 @@ where
             node_config,
             blockchain_db,
             provider_factory,
-            evm,
-            canon_state_notification_sender,
+            evm_config,
+            evm_executor,
             task_executor,
             opt_faucet_args,
             workers: HashMap::default(),
@@ -176,9 +168,7 @@ where
         &self,
         from_consensus: broadcast::Receiver<ConsensusOutput>,
     ) -> eyre::Result<()> {
-        // TODO: start metrics endpoint - need to update Generics
-        //
-        // // start metrics endpoint -
+        // start metrics
         let prometheus_handle = self.node_config.install_prometheus_recorder()?;
         self.node_config
             .start_metrics_endpoint(
@@ -189,156 +179,51 @@ where
             )
             .await?;
 
-        // TODO: both start_engine and start_batch_maker lookup head
         let head = self.node_config.lookup_head(self.provider_factory.clone())?;
-
-        let ctx = BuilderContext::<PrimaryNode<_, _>>::new(
-            head,
-            self.blockchain_db.clone(),
-            self.task_executor.clone(),
-            WithConfigs {
-                config: self.node_config.clone(),
-                toml_config: reth_config::Config::default(),
-            },
-        );
-
-        // let components_builder = PrimaryNode::<DB, _>::components();
-        // let NodeComponents { network, payload_builder, .. } =
-        //     components_builder.build_components(&ctx).await?;
-        // let pool = EthereumPoolBuilder::default().build_pool(&ctx).await?;
-        let pool = NoopTransactionPool::default();
-        let network = EthereumNetworkBuilder::default().build_network(&ctx, pool.clone()).await?;
-        let payload_builder =
-            EthereumPayloadBuilder::default().spawn_payload_service(&ctx, pool.clone()).await?;
 
         // TODO: call hooks?
 
-        // let network_client = network.fetch_client().await?;
+        let parent_header = self.blockchain_db.sealed_header(head.number)?.expect("Failed to retrieve sealed header from head's block number while starting executor engine");
 
-        // TODO: support tip? only max_block should work with NoopNetwork
-        // - tip results in an infinite loop
-        // let max_block = self.node_config.max_block(&network_client,
-        // self.provider_factory.clone()).await?;
-        let max_block = self.node_config.debug.max_block;
-
-        // engine channel
-        let (to_engine, from_engine) = unbounded_channel();
-        let beacon_engine_stream = UnboundedReceiverStream::from(from_engine);
-
-        // build executor
-        let (_, client, mut task) = Executor::new(
-            Arc::clone(&self.node_config.chain),
+        // spawn execution engine to extend canonical tip
+        let tn_engine = ExecutorEngine::new(
             self.blockchain_db.clone(),
-            from_consensus,
-            to_engine.clone(),
-            self.canon_state_notification_sender.clone(),
-            self.evm.clone(),
-        )
-        .build();
+            self.evm_config.clone(),
+            self.node_config.debug.max_block,
+            BroadcastStream::new(from_consensus),
+            parent_header,
+        );
 
-        let reth_config = reth_config::Config::default();
-        let (sync_metrics_tx, _sync_metrics_rx) = unbounded_channel();
-
-        let auto_consensus: Arc<dyn Consensus> =
-            Arc::new(AutoSealConsensus::new(self.node_config.chain.clone()));
-        let mut hooks = EngineHooks::new();
-
-        let static_file_producer =
-            StaticFileProducer::new(self.provider_factory.clone(), PruneModes::default());
-
-        // let static_file_producer_events = static_file_producer.lock().events();
-
-        hooks.add(StaticFileHook::new(
-            static_file_producer.clone(),
-            Box::new(self.task_executor.clone()),
-        ));
-
-        // capture static file events before passing ownership
-        let static_file_producer_events = static_file_producer.lock().events();
-
-        let pipeline = build_networked_pipeline(
-            &reth_config.stages,
-            client.clone(),
-            Arc::clone(&auto_consensus),
-            self.provider_factory.clone(),
-            &self.task_executor,
-            sync_metrics_tx,
-            None, // prune.node_config.clone(),
-            max_block,
-            static_file_producer,
-            self.evm.clone(),
-            ExExManagerHandle::empty(), // TODO: evaluate use for exex manager
-        )
-        .await?;
-
-        let pipeline_events_for_task = pipeline.events();
-        task.set_pipeline_events(pipeline_events_for_task);
-
-        // capture pipeline events for events handler
-        // TODO: EventStream<_> doesn't impl Clone yet
-        let pipeline_events_for_events_handler = pipeline.events();
-
-        let (beacon_consensus_engine, beacon_engine_handle) = BeaconConsensusEngine::with_channel(
-            client.clone(),
-            pipeline,
-            self.blockchain_db.clone(),
-            Box::new(self.task_executor.clone()),
-            Box::new(network.clone()),
-            None, // max block
-            payload_builder,
-            None, // initial_target
-            MIN_BLOCKS_FOR_PIPELINE_RUN,
-            to_engine,
-            Box::pin(beacon_engine_stream), // unbounded stream
-            hooks,
-        )?;
-
-        // spawn task to execute consensus output
-        self.task_executor.spawn_critical("Execution Engine Task", Box::pin(task));
-
-        debug!("awaiting beacon engine task...");
-
-        // spawn beacon engine
+        // spawn tn engine
         self.task_executor.spawn_critical_blocking("consensus engine", async move {
-            let res = beacon_consensus_engine.await;
-            tracing::error!("beacon consensus engine: {res:?}");
+            let res = tn_engine.await;
+            match res {
+                Ok(_) => info!(target: "engine", "TN Engine exited gracefully"),
+                Err(e) => error!(target: "engine", ?e, "TN Engine error"),
+            }
             // TODO: return oneshot channel here?
         });
 
-        let events = stream_select!(
-            network.event_listener().map(Into::into),
-            beacon_engine_handle.event_listener().map(Into::into),
-            pipeline_events_for_events_handler.map(Into::into),
-            // pruner_events.map(Into::into),
-            static_file_producer_events.map(Into::into),
-        );
-        ctx.task_executor().spawn_critical(
-            "events task",
-            reth_node_events::node::handle_events(
-                Some(network),
-                Some(head.number),
-                events,
-                self.provider_factory.db_ref().clone(),
-            ),
-        );
+        // // TODO: TN needs to support event streams
+        // // leaving this here as a reminder of possible events to stream
+        // // with the understanding TN solution should be independent of reth
+        // let events = stream_select!(
+        //     network.event_listener().map(Into::into),
+        //     beacon_engine_handle.event_listener().map(Into::into),
+        //     pipeline_events_for_events_handler.map(Into::into),
+        //     pruner_events.map(Into::into),
+        //     static_file_producer_events.map(Into::into),
+        // );
 
-        // wait for engine to spawn
-        tokio::task::yield_now().await;
-
-        // finalize genesis
-        let genesis_hash = self.node_config.chain.genesis_hash();
-        let genesis_state = ForkchoiceState {
-            head_block_hash: genesis_hash,
-            finalized_block_hash: genesis_hash,
-            safe_block_hash: genesis_hash,
-        };
-
-        debug!("sending forkchoice update");
-
-        // send forkchoice for genesis to finalize
-        let res = beacon_engine_handle.fork_choice_updated(genesis_state, None).await?;
-
-        debug!("genesis finalized: {res:?}");
+        // self.task_executor().spawn_critical(
+        //     "events task",
+        //     reth_node_events::node::handle_events(
+        //         None, // network handle
+        //         Some(head.number), // latest block
+        //         events,
+        //         self.provider_factory.db_ref().clone(),
+        //     ),
+        // );
 
         Ok(())
     }
@@ -369,17 +254,6 @@ where
         // TODO: this is basically noop and missing some functionality
         let network = WorkerNetwork::default();
 
-        // TODO: call hooks?
-
-        // let network_client = network.fetch_client().await?;
-
-        // TODO: support tip? only max_block should work with NoopNetwork
-        // - tip results in an infinite loop
-        // let max_block = self.node_config.max_block(&network_client,
-        // self.provider_factory.clone()).await?;
-
-        // let max_block = self.node_config.debug.max_block;
-
         // build batch maker
         let max_transactions = 10;
         let mining_mode =
@@ -391,7 +265,7 @@ where
             to_worker,
             mining_mode,
             self.address,
-            self.evm.clone(),
+            self.evm_executor.clone(),
         )
         .build();
 
@@ -459,35 +333,54 @@ where
             Arc::new(EthBeaconConsensus::new(self.node_config.chain.clone()));
 
         // batch validator
-        BatchValidator::<DB, Evm>::new(consensus, self.blockchain_db.clone(), self.evm.clone())
+        BatchValidator::<DB, Evm>::new(
+            consensus,
+            self.blockchain_db.clone(),
+            self.evm_executor.clone(),
+        )
     }
 
-    /// Fetch the last executed stated from the database.
+    /// Fetch the last executed state from the database.
     ///
     /// This method is called when the primary spawns to retrieve
     /// the last committed sub dag from it's database in the case
     /// of the node restarting.
     ///
-    /// TODO: there is some consideration about executing batches as blocks
-    /// for scalability, but for now all output is one block,
-    /// so just use the head's number.
-    ///
     /// The primary adds +1 to this value for recovering output
     /// since the execution layer is confirming the last executing block.
-    pub(super) async fn last_executed_output(&self) -> eyre::Result<u64> {
-        // TODO: this might change depending on how output is executed
-        // this may need to change in the future, so leaving it a separate
-        // method for now.
-        let head: Head = self
-            .node_config
-            .lookup_head(self.provider_factory.clone())
-            .wrap_err("failed to lookup head: the block is missing")?;
-        Ok(head.number)
+    pub(super) fn last_executed_output(&self) -> eyre::Result<u64> {
+        // NOTE: The payload_builder only extends canonical tip and sets finalized after
+        // entire output is successfully executed. This ensures consistent recovery state.
+        //
+        // For example: consensus round 8 sends an output with 5 blocks, but only 2 blocks are
+        // executed before the node restarts. The provider never finalized the round, so the
+        // `finalized_block_number` would point to the last block of round 7. The primary
+        // would then re-send consensus output for round 8.
+        //
+        // recover finalized block's nonce: this is the last subdag index from consensus (round)
+        let finalized_block_num = match self.blockchain_db.finalized_block_number()? {
+            Some(num) => {
+                self.blockchain_db.header_by_number(num)?.map(|opt| opt.nonce).unwrap_or(0)
+            }
+            None => 0, // genesis
+        };
+
+        Ok(finalized_block_num)
     }
 
     /// Return an database provider.
     pub(super) fn get_provider(&self) -> BlockchainProvider<DB> {
         self.blockchain_db.clone()
+    }
+
+    /// Return the node's EVM config.
+    pub(super) fn get_evm_config(&self) -> CE {
+        self.evm_config.clone()
+    }
+
+    /// Return the node's evm-based block executor
+    pub(super) fn get_block_executor(&self) -> Evm {
+        self.evm_executor.clone()
     }
 
     /// Return a worker's HttpClient if the RpcServer exists.

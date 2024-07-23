@@ -7,14 +7,12 @@ use reth_chainspec::ChainSpec;
 use reth_consensus::PostExecutionInput;
 use reth_payload_primitives::PayloadBuilderAttributes;
 use reth_primitives::{
-    constants::EIP1559_INITIAL_BASE_FEE, revm::config::revm_spec_by_timestamp_after_merge, Address,
-    BlockWithSenders, Header, SealedBlock, SealedBlockWithSenders, SealedHeader, Withdrawals, B256,
-    U256,
+    revm::config::revm_spec_by_timestamp_after_merge, Address, BlockWithSenders, Header,
+    SealedBlock, SealedHeader, Withdrawals, B256, U256,
 };
 use reth_revm::primitives::{BlobExcessGasAndPrice, BlockEnv, CfgEnv, CfgEnvWithHandlerCfg};
-use reth_rpc_types::{engine::PayloadId, BlockNumHash};
+use reth_rpc_types::engine::PayloadId;
 use std::{convert::Infallible, sync::Arc};
-use tracing::warn;
 
 /// A consensus implementation that validates everything.
 ///
@@ -80,20 +78,13 @@ pub struct BuildArguments<Provider> {
     /// Output from consensus that contains all the transactions to execute.
     pub output: ConsensusOutput,
     /// Last executed block from the previous consensus output.
-    pub parent_block: BlockNumHash,
-    /// The chain spec.
-    pub chain_spec: Arc<ChainSpec>,
+    pub parent_header: SealedHeader,
 }
 
 impl<P> BuildArguments<P> {
     /// Initialize new instance of [Self].
-    pub fn new(
-        provider: P,
-        output: ConsensusOutput,
-        parent_block: BlockNumHash,
-        chain_spec: Arc<ChainSpec>,
-    ) -> Self {
-        Self { provider, output, parent_block, chain_spec }
+    pub fn new(provider: P, output: ConsensusOutput, parent_header: SealedHeader) -> Self {
+        Self { provider, output, parent_header }
     }
 }
 
@@ -122,7 +113,7 @@ impl TNPayload {
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct TNPayloadAttributes {
     /// The previous canonical block's number and hash.
-    pub parent_block: BlockNumHash,
+    pub parent_header: SealedHeader,
     /// Ommers on TN are all the hashes of batches.
     pub ommers: Vec<Header>,
     /// Hash of all ommers in this output from consensus.
@@ -139,10 +130,6 @@ pub struct TNPayloadAttributes {
     pub batch_index: u64,
     /// Value for the `timestamp` field of the new payload
     pub timestamp: u64,
-    /// TODO: support withdrawals
-    ///
-    /// This is currently always empty vec.
-    pub withdrawals: Withdrawals,
     /// Value for the `extra_data` field in the new block.
     pub batch_digest: B256,
     /// Hash value for [ConsensusOutput]. Used as the executed block's "parent_beacon_block_root".
@@ -150,45 +137,51 @@ pub struct TNPayloadAttributes {
     /// TODO: ensure optimized hashing of output:
     /// - don't rehash batches, just hash their hashes?
     pub consensus_output_digest: B256,
-    /// The block from this batch that's used to build this payload from.
+    /// The base fee per gas used to construct this block.
+    /// The value comes from the proposed batch.
+    pub base_fee_per_gas: u64,
+    /// The gas limit for the constructed block.
     ///
-    /// Ensures transaction senders are recovered for execution.
+    /// The value comes from the worker's block.
+    pub gas_limit: u64,
+    /// The mix hash used for prev_randao.
+    pub mix_hash: B256,
+    /// TODO: support withdrawals
     ///
-    /// TODO: this is where Withdrawals should come from, but currently always empty.
-    pub batch_block: SealedBlockWithSenders,
-    // TODO:
-    // - indicate first batch in new output to process rewards?
-    // - or is it better to have a special "rewards" block at each epoch?
+    /// This is currently always empty vec. This comes from the batch block's withdrawals.
+    pub withdrawals: Withdrawals,
 }
 
 impl TNPayloadAttributes {
     /// Create a new instance of [Self].
     #[allow(clippy::too_many_arguments)]
     pub fn new(
-        parent_block: BlockNumHash,
+        parent_header: SealedHeader,
         ommers: Vec<Header>,
         ommers_root: B256,
         batch_index: u64,
         batch_digest: B256,
         output: &ConsensusOutput,
         consensus_output_digest: B256,
-        batch_block: SealedBlockWithSenders,
+        base_fee_per_gas: u64,
+        gas_limit: u64,
+        mix_hash: B256,
+        withdrawals: Withdrawals,
     ) -> Self {
-        // TODO: support withdrawals
-        let withdrawals = batch_block.withdrawals.clone().unwrap_or_default();
-
         Self {
-            parent_block,
+            parent_header,
             ommers,
             ommers_root,
             beneficiary: output.beneficiary(),
             nonce: output.nonce(),
             batch_index,
             timestamp: output.committed_at(),
-            withdrawals,
             batch_digest,
             consensus_output_digest,
-            batch_block,
+            base_fee_per_gas,
+            gas_limit,
+            mix_hash,
+            withdrawals,
         }
     }
 }
@@ -212,7 +205,7 @@ impl PayloadBuilderAttributes for TNPayload {
     }
 
     fn parent(&self) -> B256 {
-        self.attributes.parent_block.hash
+        self.attributes.parent_header.hash()
     }
 
     fn timestamp(&self) -> u64 {
@@ -232,10 +225,10 @@ impl PayloadBuilderAttributes for TNPayload {
     /// This is used as the executed block's "mix_hash".
     /// [EIP-4399]: https://eips.ethereum.org/EIPS/eip-4399
     fn prev_randao(&self) -> B256 {
-        self.attributes.batch_block.mix_hash
+        self.attributes.mix_hash
     }
 
-    /// Taken from batch, but currently always empty.
+    /// Taken from worker's block, but currently always empty.
     fn withdrawals(&self) -> &Withdrawals {
         &self.attributes.withdrawals
     }
@@ -243,7 +236,7 @@ impl PayloadBuilderAttributes for TNPayload {
     fn cfg_and_block_env(
         &self,
         chain_spec: &ChainSpec,
-        batch: &Header,
+        _worker: &Header, // use `self`
     ) -> (CfgEnvWithHandlerCfg, BlockEnv) {
         // configure evm env based on parent block
         let cfg = CfgEnv::default().with_chain_id(chain_spec.chain().id());
@@ -255,28 +248,20 @@ impl PayloadBuilderAttributes for TNPayload {
         let blob_excess_gas_and_price = Some(BlobExcessGasAndPrice::new(0));
 
         // use the basefee set by the worker during batch creation
-        let worker_basefee = match batch.base_fee_per_gas {
-            Some(fee) => fee,
-            None => {
-                warn!(target: "executor::payload", "missing worker's basefee - using default");
-                EIP1559_INITIAL_BASE_FEE
-            }
-        };
-
-        // cast to U256
-        let basefee = U256::from(worker_basefee);
+        let basefee = U256::from(self.attributes.base_fee_per_gas);
 
         // ensure gas_limit enforced during block validation
-        let gas_limit = U256::from(batch.gas_limit);
+        let gas_limit = U256::from(self.attributes.gas_limit);
 
-        // create block environment to re-execute batch
+        // create block environment to re-execute worker's block
         let block_env = BlockEnv {
-            // the block's number should come from the canonical tip, NOT the batch block's number
-            number: U256::from(self.attributes.parent_block.number + 1),
+            // the block's number should come from the canonical tip, NOT the worker block's number
+            number: U256::from(self.attributes.parent_header.number + 1),
             coinbase: self.suggested_fee_recipient(),
             timestamp: U256::from(self.timestamp()),
             // leave difficulty zero
-            // this value is useful for post-execution, but batch is created with this value
+            // this value is useful for post-execution, but worker's block is created with this
+            // value
             difficulty: U256::ZERO,
             prevrandao: Some(self.prev_randao()),
             gas_limit,

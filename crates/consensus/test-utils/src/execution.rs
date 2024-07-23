@@ -20,7 +20,8 @@ use tn_node::engine::{ExecutionNode, TnBuilder};
 use tn_types::Config;
 
 /// Convnenience type for testing Execution Node.
-pub type TestExecutionNode = ExecutionNode<Arc<TempDatabase<DatabaseEnv>>, EthExecutorProvider>;
+pub type TestExecutionNode =
+    ExecutionNode<Arc<TempDatabase<DatabaseEnv>>, EthExecutorProvider, EthEvmConfig>;
 
 /// A helper type to parse Args more easily.
 #[derive(Parser, Debug)]
@@ -46,11 +47,13 @@ pub fn default_test_execution_node(
         None, // optional args
     )?;
 
+    let evm_config = EthEvmConfig::default();
+
     let block_executor =
-        EthExecutorProvider::new(Arc::clone(&builder.node_config.chain), EthEvmConfig::default());
+        EthExecutorProvider::new(Arc::clone(&builder.node_config.chain), evm_config);
 
     // create engine node
-    let engine = ExecutionNode::new(builder, block_executor)?;
+    let engine = ExecutionNode::new(builder, block_executor, evm_config)?;
 
     Ok(engine)
 }
@@ -167,11 +170,13 @@ pub fn faucet_test_execution_node(
         opt_faucet_args: Some(faucet),
     };
 
+    let evm_config = EthEvmConfig::default();
+
     let block_executor =
-        EthExecutorProvider::new(Arc::clone(&builder.node_config.chain), EthEvmConfig::default());
+        EthExecutorProvider::new(Arc::clone(&builder.node_config.chain), evm_config);
 
     // create engine node
-    let engine = ExecutionNode::new(builder, block_executor)?;
+    let engine = ExecutionNode::new(builder, block_executor, evm_config)?;
 
     Ok(engine)
 }

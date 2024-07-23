@@ -165,6 +165,12 @@ pub trait CertificateAPI {
     /// Only Used for testing.
     #[cfg(any(test, feature = "test-utils"))]
     fn header_mut(&mut self) -> &mut Header;
+
+    /// Change the certificate's created_at timestamp.
+    ///
+    /// Only Used for testing.
+    #[cfg(any(test, feature = "test-utils"))]
+    fn update_created_at(&mut self, timestamp: TimestampSec);
 }
 
 // Holds BlsAggregateSignatureBytes but with the added layer to specify the
@@ -254,6 +260,11 @@ impl CertificateAPI for CertificateV1 {
     #[cfg(any(test, feature = "test-utils"))]
     fn header_mut(&mut self) -> &mut Header {
         &mut self.header
+    }
+
+    #[cfg(any(test, feature = "test-utils"))]
+    fn update_created_at(&mut self, timestamp: TimestampSec) {
+        self.created_at = timestamp;
     }
 }
 

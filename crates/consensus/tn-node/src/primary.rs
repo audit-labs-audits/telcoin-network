@@ -23,7 +23,7 @@ use reth_db::{
     database::Database,
     database_metrics::{DatabaseMetadata, DatabaseMetrics},
 };
-use reth_evm::execute::BlockExecutorProvider;
+use reth_evm::{execute::BlockExecutorProvider, ConfigureEvm};
 use std::{sync::Arc, time::Instant};
 use tn_types::{
     AuthorityIdentifier, BlsKeypair, BlsPublicKey, Certificate, ChainIdentifier, Committee,
@@ -67,7 +67,7 @@ impl PrimaryNodeInner {
     /// method will return an error instead.
     #[allow(clippy::too_many_arguments)]
     #[instrument(level = "info", skip_all)]
-    async fn start<DB, Evm>(
+    async fn start<DB, Evm, CE>(
         &mut self,
         // The private-public key pair of this authority.
         keypair: BlsKeypair,
@@ -81,17 +81,18 @@ impl PrimaryNodeInner {
         // Client for communications.
         client: NetworkClient,
         // The node's store
-        // TODO: replace this by a path so the method can open and independent storage
+        // TODO: replace this by a path so the method can open independent storage
         store: &NodeStorage,
         // // The state used by the client to execute transactions.
         // execution_state: State,
 
         // Execution components needed to spawn the EL Executor
-        execution_components: &ExecutionNode<DB, Evm>,
+        execution_components: &ExecutionNode<DB, Evm, CE>,
     ) -> eyre::Result<()>
     where
         DB: Database + DatabaseMetadata + DatabaseMetrics + Clone + Unpin + 'static,
         Evm: BlockExecutorProvider + Clone + 'static,
+        CE: ConfigureEvm,
     {
         if self.is_running().await {
             return Err(NodeError::NodeAlreadyRunning.into());
@@ -440,7 +441,7 @@ impl PrimaryNode {
     }
 
     #[allow(clippy::too_many_arguments)]
-    pub async fn start<DB, Evm>(
+    pub async fn start<DB, Evm, CE>(
         &self,
         // The private-public key pair of this authority.
         keypair: BlsKeypair,
@@ -459,11 +460,12 @@ impl PrimaryNode {
         // // The state used by the client to execute transactions.
         // execution_state: State,
         // Execution components needed to spawn the EL Executor
-        execution_components: &ExecutionNode<DB, Evm>,
+        execution_components: &ExecutionNode<DB, Evm, CE>,
     ) -> eyre::Result<()>
     where
         DB: Database + DatabaseMetadata + DatabaseMetrics + Clone + Unpin + 'static,
         Evm: BlockExecutorProvider + Clone + 'static,
+        CE: ConfigureEvm,
     {
         let mut guard = self.internal.write().await;
         guard.client = Some(client.clone());

@@ -2,7 +2,7 @@
 //!
 //! Inspired by reth_node_ethereum crate.
 //!
-//! A network implementation for worker RPC
+//! A network implementation for worker RPC.
 //!
 //! This is useful for wiring components together that don't require network but still need to be
 //! generic over it.
@@ -36,7 +36,7 @@ use std::{
 };
 use tn_types::adiri_chain_spec;
 
-/// Type configuration for a regular Telcoin node.
+/// Type configuration for a regular worker node.
 #[derive(Debug, Default, Clone, Copy)]
 #[non_exhaustive]
 pub struct WorkerNode<DB, Evm> {
@@ -110,6 +110,9 @@ impl NetworkInfo for WorkerNetwork {
             eth_protocol_info: EthProtocolInfo {
                 difficulty: Default::default(),
                 network: 2017,
+                // TODO: update chain spec with genesis hash so this doesn't `hash_slow()` everytime
+                //
+                // genesis.into() explicitly sets this to `None` for some reason
                 genesis: chain_spec.genesis_hash(),
                 head: Default::default(),
                 config: chain_spec.genesis().config.clone(),

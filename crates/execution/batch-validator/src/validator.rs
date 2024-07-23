@@ -246,6 +246,7 @@ impl BatchValidation for NoopBatchValidator {
 #[cfg(test)]
 mod tests {
     use super::*;
+
     use reth_beacon_consensus::EthBeaconConsensus;
     use reth_blockchain_tree::{
         BlockchainTree, BlockchainTreeConfig, ShareableBlockchainTree, TreeExternals,
@@ -274,17 +275,17 @@ mod tests {
         SealedHeader::new(
             Header {
                 parent_hash: hex!(
-                    "9ca9e62a3599c89955a93e0c76130973221f6056af2afd738d8514a66a900ebb"
+                    "ba38f8818e0e269baf7db26a4d26b834c00b5236a4304bfa1372d2860b3b51d0"
                 )
                 .into(),
                 ommers_hash: EMPTY_OMMER_ROOT_HASH,
                 beneficiary: hex!("0000000000000000000000000000000000000000").into(),
                 state_root: hex!(
-                    "1e6751bd30803af71e305b61cf2da9bb3fa1a6841bc333f49c7422e1f8b0d013"
+                    "9d3625e9ee3fb54d6a31350a77e8412c49b2df5e2e4c4513d7f7e1cfe8a2575e"
                 )
                 .into(),
                 transactions_root: hex!(
-                    "a0cb6aaf543a2b8c457c17d926f26af5ddf9df0511d0fac140e6051b370d333d"
+                    "3facac570ec391ef164bce1757035e1a8f03d5731640879b17b7da24a027c718"
                 )
                 .into(),
                 receipts_root: hex!(
@@ -300,7 +301,7 @@ mod tests {
                 timestamp: 1701790139,
                 mix_hash: B256::ZERO,
                 nonce: 0,
-                base_fee_per_gas: Some(875000000),
+                base_fee_per_gas: Some(7),
                 blob_gas_used: None,
                 excess_blob_gas: None,
                 parent_beacon_block_root: None,
