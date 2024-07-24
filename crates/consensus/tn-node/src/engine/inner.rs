@@ -29,7 +29,8 @@ use reth_node_ethereum::{node::EthereumPoolBuilder, EthEvmConfig};
 use reth_primitives::Address;
 use reth_provider::{
     providers::{BlockchainProvider, StaticFileProvider},
-    BlockIdReader, HeaderProvider, ProviderFactory, StaticFileProviderFactory as _,
+    DatabaseProviderFactory, FinalizedBlockReader, HeaderProvider, ProviderFactory,
+    StaticFileProviderFactory as _,
 };
 use reth_prune::PruneModes;
 use reth_tasks::TaskExecutor;
@@ -362,12 +363,8 @@ where
         // would then re-send consensus output for round 8.
         //
         // recover finalized block's nonce: this is the last subdag index from consensus (round)
-        let finalized_block_num = match self.blockchain_db.finalized_block_number()? {
-            Some(num) => {
-                self.blockchain_db.header_by_number(num)?.map(|opt| opt.nonce).unwrap_or(0)
-            }
-            None => 0, // genesis
-        };
+        let finalized_block_num =
+            self.blockchain_db.database_provider_ro()?.last_finalized_block_number()?;
 
         Ok(finalized_block_num)
     }
