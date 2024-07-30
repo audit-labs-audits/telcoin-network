@@ -10,6 +10,7 @@ use rand::{rngs::StdRng, SeedableRng};
 use reth_primitives::{alloy_primitives, keccak256, Address};
 use secp256k1::{Keypair, Secp256k1, SecretKey};
 use serde_json::value::RawValue;
+use tn_types::utils::get_available_tcp_port;
 use tokio::runtime::Runtime;
 
 use crate::util::config_local_testnet;
@@ -18,40 +19,42 @@ const WEI_PER_TEL: u128 = 1_000_000_000_000_000_000;
 
 /// Run the first part tests, broken up like this to allow more robust node shutdown.
 fn run_restart_tests1(
-    client_urls: &[&str; 4],
+    client_urls: &[String; 4],
     mut child2: Child,
     exe_path: &Path,
     temp_path: &Path,
+    rpc_port2: u16,
 ) -> eyre::Result<Child> {
     let key = get_key("test-source");
     let to_account = address_from_word("testing");
-    send_tel(client_urls[1], &key, to_account, 10 * WEI_PER_TEL, 250, 21000, 0)?;
+    send_tel(&client_urls[1], &key, to_account, 10 * WEI_PER_TEL, 250, 21000, 0)?;
     std::thread::sleep(Duration::from_millis(1000));
-    let bal = get_positive_balance_with_retry(client_urls[2], &to_account.to_string())?;
+    let bal = get_positive_balance_with_retry(&client_urls[2], &to_account.to_string())?;
     assert_eq!(10 * WEI_PER_TEL, bal);
     child2.kill()?;
+    child2.wait()?;
     std::thread::sleep(Duration::from_millis(3000));
     // This validator should be down now, confirm.
-    assert!(get_balance(client_urls[2], &to_account.to_string(), 5).is_err());
+    assert!(get_balance(&client_urls[2], &to_account.to_string(), 5).is_err());
     // Restart
-    let child2 = start_validator(2, &exe_path, &temp_path);
-    let bal = get_positive_balance_with_retry(client_urls[2], &to_account.to_string())?;
+    let child2 = start_validator(2, &exe_path, &temp_path, rpc_port2);
+    let bal = get_positive_balance_with_retry(&client_urls[2], &to_account.to_string())?;
     assert_eq!(10 * WEI_PER_TEL, bal);
-    send_tel(client_urls[0], &key, to_account, 10 * WEI_PER_TEL, 250, 21000, 1)?;
-    let bal = get_balance_above_with_retry(client_urls[2], &to_account.to_string(), bal)?;
+    send_tel(&client_urls[0], &key, to_account, 10 * WEI_PER_TEL, 250, 21000, 1)?;
+    let bal = get_balance_above_with_retry(&client_urls[2], &to_account.to_string(), bal)?;
     assert_eq!(20 * WEI_PER_TEL, bal);
     Ok(child2)
 }
 
 /// Run the second part of tests, broken up like this to allow more robust node shutdown.
-fn run_restart_tests2(client_urls: &[&str; 4]) -> eyre::Result<()> {
+fn run_restart_tests2(client_urls: &[String; 4]) -> eyre::Result<()> {
     let key = get_key("test-source");
     let to_account = address_from_word("testing");
     let bal =
-        get_balance_above_with_retry(client_urls[2], &to_account.to_string(), 20 * WEI_PER_TEL)?;
+        get_balance_above_with_retry(&client_urls[2], &to_account.to_string(), 20 * WEI_PER_TEL)?;
     assert_eq!(20 * WEI_PER_TEL, bal);
-    send_tel(client_urls[0], &key, to_account, 10 * WEI_PER_TEL, 250, 21000, 2)?;
-    let bal = get_balance_above_with_retry(client_urls[3], &to_account.to_string(), bal)?;
+    send_tel(&client_urls[0], &key, to_account, 10 * WEI_PER_TEL, 250, 21000, 2)?;
+    let bal = get_balance_above_with_retry(&client_urls[3], &to_account.to_string(), bal)?;
     assert_eq!(30 * WEI_PER_TEL, bal);
     Ok(())
 }
@@ -68,27 +71,33 @@ fn test_restarts() {
         PathBuf::from(std::env::var("CARGO_MANIFEST_DIR").expect("Missing CARGO_MANIFEST_DIR!"));
     exe_path.push("../../target/debug/telcoin-network");
     let mut children: [Option<Child>; 4] = [None, None, None, None];
-    for i in 0..4 {
-        children[i] = Some(start_validator(i, &exe_path, &temp_path));
-    }
-
-    let client_urls = [
-        "http://127.0.0.1:8545",
-        "http://127.0.0.1:8544",
-        "http://127.0.0.1:8543",
-        "http://127.0.0.1:8542",
+    let mut client_urls = [
+        "http://127.0.0.1".to_string(),
+        "http://127.0.0.1".to_string(),
+        "http://127.0.0.1".to_string(),
+        "http://127.0.0.1".to_string(),
     ];
+    let mut rpc_ports: [u16; 4] = [0, 0, 0, 0];
+    for i in 0..4 {
+        let rpc_port = get_available_tcp_port("127.0.0.1")
+            .expect("Failed to get an ephemeral rpc port for child {i}!");
+        rpc_ports[i] = rpc_port;
+        client_urls[i].push_str(&format!(":{rpc_port}"));
+        children[i] = Some(start_validator(i, &exe_path, &temp_path, rpc_port));
+    }
 
     let res1 = run_restart_tests1(
         &client_urls,
         children[2].take().expect("missing child 2"),
         &exe_path,
         &temp_path,
+        rpc_ports[2],
     );
     let is_ok = res1.is_ok();
     match res1 {
         Ok(mut child2) => {
             let _ = child2.kill();
+            let _ = child2.wait();
         }
         Err(err) => {
             println!("Got error: {err}");
@@ -97,33 +106,39 @@ fn test_restarts() {
     for i in 0..4 {
         // Best effort to kill all the nodes.
         if i != 2 {
-            let _ = children[i].as_mut().expect("missing a child").kill();
+            let child = children[i].as_mut().expect("missing a child");
+            let _ = child.kill();
+            let _ = child.wait();
         }
     }
     // Make sure we shutdown nodes even if an error in first testing.
     assert!(is_ok);
     let to_account = address_from_word("testing");
     // The validators should be down now, confirm.
-    assert!(get_balance(client_urls[0], &to_account.to_string(), 5).is_err());
-    assert!(get_balance(client_urls[1], &to_account.to_string(), 5).is_err());
-    assert!(get_balance(client_urls[2], &to_account.to_string(), 5).is_err());
-    assert!(get_balance(client_urls[3], &to_account.to_string(), 5).is_err());
+    assert!(get_balance(&client_urls[0], &to_account.to_string(), 5).is_err());
+    assert!(get_balance(&client_urls[1], &to_account.to_string(), 5).is_err());
+    assert!(get_balance(&client_urls[2], &to_account.to_string(), 5).is_err());
+    assert!(get_balance(&client_urls[3], &to_account.to_string(), 5).is_err());
     // Restart network
     for i in 0..4 {
-        children[i] = Some(start_validator(i, &exe_path, &temp_path));
+        children[i] = Some(start_validator(i, &exe_path, &temp_path, rpc_ports[i]));
     }
 
     let res2 = run_restart_tests2(&client_urls);
 
     for i in 0..4 {
-        let _ = children[i].as_mut().expect("missing a child").kill();
+        let child = children[i].as_mut().expect("missing a child");
+        let _ = child.kill();
+        let _ = child.wait();
     }
     assert!(res2.is_ok());
 }
 
 /// Start a process running a validator node.
-fn start_validator(instance: usize, exe_path: &Path, base_dir: &Path) -> Child {
+fn start_validator(instance: usize, exe_path: &Path, base_dir: &Path, mut rpc_port: u16) -> Child {
     let data_dir = base_dir.join(format!("validator-{}", instance + 1));
+    // The instance option will still change a set port so account for that.
+    rpc_port += instance as u16;
     Command::new(exe_path)
         .arg("node")
         .arg("--datadir")
@@ -134,6 +149,10 @@ fn start_validator(instance: usize, exe_path: &Path, base_dir: &Path) -> Child {
         .arg("--instance")
         .arg(format!("{}", instance + 1))
         .arg("--http")
+        .arg("--http.port")
+        .arg(&format!("{rpc_port}"))
+        .arg("--public-key") // If the binary is built with the faucet need this to start...
+        .arg("0223382261d641424b8d8b63497a811c56f85ee89574f9853474c3e9ab0d690d99")
         .spawn()
         .expect("failed to execute")
 }
@@ -156,12 +175,12 @@ fn get_positive_balance_with_retry(node: &str, address: &str) -> eyre::Result<u1
 
 /// Retry up to 10 times to retrieve an account balance > above.
 fn get_balance_above_with_retry(node: &str, address: &str, above: u128) -> eyre::Result<u128> {
-    let mut bal = get_balance(node, address, 5)?;
+    let mut bal = get_balance(node, address, 5).unwrap_or(0);
     let mut i = 0;
     while i < 10 && bal <= above {
         std::thread::sleep(Duration::from_millis(1000));
         i += 1;
-        bal = get_balance(node, address, 5)?;
+        bal = get_balance(node, address, 5).unwrap_or(0);
     }
     Ok(bal)
 }
