@@ -50,8 +50,7 @@ fn run_restart_tests1(
 fn run_restart_tests2(client_urls: &[String; 4]) -> eyre::Result<()> {
     let key = get_key("test-source");
     let to_account = address_from_word("testing");
-    let bal =
-        get_balance_above_with_retry(&client_urls[2], &to_account.to_string(), 20 * WEI_PER_TEL)?;
+    let bal = get_positive_balance_with_retry(&client_urls[2], &to_account.to_string())?;
     assert_eq!(20 * WEI_PER_TEL, bal);
     send_tel(&client_urls[0], &key, to_account, 10 * WEI_PER_TEL, 250, 21000, 2)?;
     let bal = get_balance_above_with_retry(&client_urls[3], &to_account.to_string(), bal)?;
@@ -131,7 +130,7 @@ fn test_restarts() {
         let _ = child.kill();
         let _ = child.wait();
     }
-    assert!(res2.is_ok());
+    res2.expect("Failed restart test");
 }
 
 /// Start a process running a validator node.
@@ -139,7 +138,8 @@ fn start_validator(instance: usize, exe_path: &Path, base_dir: &Path, mut rpc_po
     let data_dir = base_dir.join(format!("validator-{}", instance + 1));
     // The instance option will still change a set port so account for that.
     rpc_port += instance as u16;
-    Command::new(exe_path)
+    let mut command = Command::new(exe_path);
+    command
         .arg("node")
         .arg("--datadir")
         .arg(&*data_dir.to_string_lossy())
@@ -150,11 +150,14 @@ fn start_validator(instance: usize, exe_path: &Path, base_dir: &Path, mut rpc_po
         .arg(format!("{}", instance + 1))
         .arg("--http")
         .arg("--http.port")
-        .arg(&format!("{rpc_port}"))
+        .arg(&format!("{rpc_port}"));
+
+    #[cfg(feature = "faucet")]
+    command
         .arg("--public-key") // If the binary is built with the faucet need this to start...
-        .arg("0223382261d641424b8d8b63497a811c56f85ee89574f9853474c3e9ab0d690d99")
-        .spawn()
-        .expect("failed to execute")
+        .arg("0223382261d641424b8d8b63497a811c56f85ee89574f9853474c3e9ab0d690d99");
+
+    command.spawn().expect("failed to execute")
 }
 
 /// Send an RPC call to node to get the latest balance for address.
@@ -177,12 +180,16 @@ fn get_positive_balance_with_retry(node: &str, address: &str) -> eyre::Result<u1
 fn get_balance_above_with_retry(node: &str, address: &str, above: u128) -> eyre::Result<u128> {
     let mut bal = get_balance(node, address, 5).unwrap_or(0);
     let mut i = 0;
-    while i < 10 && bal <= above {
+    while i < 20 && bal <= above {
         std::thread::sleep(Duration::from_millis(1000));
         i += 1;
         bal = get_balance(node, address, 5).unwrap_or(0);
     }
-    Ok(bal)
+    if i == 20 && bal <= above {
+        Err(Report::msg(format!("Failed to get a balance {bal} for {address} above {above}")))
+    } else {
+        Ok(bal)
+    }
 }
 
 /// If key starts with 0x then return it otherwise generate the key from the key string.
