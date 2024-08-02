@@ -1,6 +1,7 @@
 // Copyright (c) Telcoin, LLC
 // Copyright (c) Mysten Labs, Inc.
 // SPDX-License-Identifier: Apache-2.0
+
 pub mod errors;
 pub(crate) mod iter;
 pub(crate) mod keys;
@@ -10,11 +11,10 @@ pub(crate) mod values;
 
 use crate::{
     metrics::{DBMetrics, RocksDBPerfContext, SamplingInterval},
-    traits::{Map, TableSummary},
+    traits::Map,
 };
 use bincode::Options;
 use collectable::TryExtend;
-use itertools::Itertools;
 use rocksdb::{
     checkpoint::Checkpoint, properties, AsColumnFamilyRef, BlockBasedOptions,
     BottommostLevelCompaction, CStrLike, Cache, ColumnFamilyDescriptor, CompactOptions,
@@ -29,7 +29,6 @@ use std::{
     env,
     ffi::CStr,
     marker::PhantomData,
-    ops::RangeBounds,
     path::{Path, PathBuf},
     sync::Arc,
     time::Duration,
@@ -41,7 +40,6 @@ use tracing::{debug, error, info, instrument, warn};
 use self::{iter::Iter, keys::Keys, values::Values};
 use crate::rocks::safe_iter::SafeIter;
 pub use errors::TypedStoreError;
-use std::ops::Bound;
 use telcoin_macros::{fail_point, nondeterministic};
 
 // Write buffer size per RocksDB instance can be set via the env var below.
@@ -647,7 +645,7 @@ pub struct DBMap<K, V> {
     pub opts: ReadWriteOptions,
     db_metrics: Arc<DBMetrics>,
     get_sample_interval: SamplingInterval,
-    multiget_sample_interval: SamplingInterval,
+    _multiget_sample_interval: SamplingInterval,
     write_sample_interval: SamplingInterval,
     iter_sample_interval: SamplingInterval,
     _metrics_task_cancel_handle: Arc<oneshot::Sender<()>>,
@@ -655,7 +653,11 @@ pub struct DBMap<K, V> {
 
 unsafe impl<K: Send, V: Send> Send for DBMap<K, V> {}
 
-impl<K, V> DBMap<K, V> {
+impl<K, V> DBMap<K, V>
+where
+    K: Serialize + DeserializeOwned,
+    V: Serialize + DeserializeOwned,
+{
     pub(crate) fn new(db: Arc<RocksDB>, opts: &ReadWriteOptions, opt_cf: &str) -> Self {
         let db_cloned = db.clone();
         let db_metrics = Arc::new(DBMetrics::default());
@@ -690,7 +692,7 @@ impl<K, V> DBMap<K, V> {
             db_metrics: db_metrics_cloned,
             _metrics_task_cancel_handle: Arc::new(sender),
             get_sample_interval: db.get_sampling_interval(),
-            multiget_sample_interval: db.multiget_sampling_interval(),
+            _multiget_sample_interval: db.multiget_sampling_interval(),
             write_sample_interval: db.write_sampling_interval(),
             iter_sample_interval: db.iter_sampling_interval(),
         }
@@ -768,54 +770,22 @@ impl<K, V> DBMap<K, V> {
         )
     }
 
-    pub fn compact_range<J: Serialize>(&self, start: &J, end: &J) -> Result<(), TypedStoreError> {
-        let from_buf = be_fix_int_ser(start)?;
-        let to_buf = be_fix_int_ser(end)?;
-        self.rocksdb.compact_range_cf(&self.cf(), Some(from_buf), Some(to_buf));
-        Ok(())
-    }
-
-    pub fn compact_range_raw(
-        &self,
-        cf_name: &str,
-        start: Vec<u8>,
-        end: Vec<u8>,
-    ) -> Result<(), TypedStoreError> {
-        let cf =
-            self.rocksdb.cf_handle(cf_name).expect("compact range: column family does not exist");
-        self.rocksdb.compact_range_cf(&cf, Some(start), Some(end));
-        Ok(())
-    }
-
-    pub fn compact_range_to_bottom<J: Serialize>(
+    #[cfg(test)]
+    pub(crate) fn compact_range<J: Serialize>(
         &self,
         start: &J,
         end: &J,
     ) -> Result<(), TypedStoreError> {
         let from_buf = be_fix_int_ser(start)?;
         let to_buf = be_fix_int_ser(end)?;
-        self.rocksdb.compact_range_to_bottom(&self.cf(), Some(from_buf), Some(to_buf));
+        self.rocksdb.compact_range_cf(&self.cf(), Some(from_buf), Some(to_buf));
         Ok(())
     }
 
-    pub fn cf(&self) -> Arc<rocksdb::BoundColumnFamily<'_>> {
+    fn cf(&self) -> Arc<rocksdb::BoundColumnFamily<'_>> {
         self.rocksdb
             .cf_handle(&self.cf)
             .expect("Map-keying column family should have been checked at DB creation")
-    }
-
-    pub fn iterator_cf(&self) -> RocksDBIter<'_> {
-        self.rocksdb.iterator_cf(&self.cf(), self.opts.readopts(), IteratorMode::Start)
-    }
-
-    pub fn flush(&self) -> Result<(), TypedStoreError> {
-        self.rocksdb
-            .flush_cf(&self.cf())
-            .map_err(|e| TypedStoreError::RocksDBError(e.into_string()))
-    }
-
-    pub fn set_options(&self, opts: &[(&str, &str)]) -> Result<(), rocksdb::Error> {
-        self.rocksdb.set_options_cf(&self.cf(), opts)
     }
 
     fn get_int_property(
@@ -846,7 +816,7 @@ impl<K, V> DBMap<K, V> {
             .with_label_values(&[&self.cf])
             .start_timer();
         let perf_ctx =
-            if self.multiget_sample_interval.sample() { Some(RocksDBPerfContext) } else { None };
+            if self._multiget_sample_interval.sample() { Some(RocksDBPerfContext) } else { None };
         let keys_bytes: Result<Vec<_>, TypedStoreError> =
             keys.into_iter().map(|k| be_fix_int_ser(k.borrow())).collect();
         let results: Result<Vec<_>, TypedStoreError> = self
@@ -949,37 +919,51 @@ impl<K, V> DBMap<K, V> {
         );
     }
 
+    #[cfg(test)]
     pub fn transaction(&self) -> Result<DBTransaction<'_>, TypedStoreError> {
         DBTransaction::new(&self.rocksdb)
     }
 
+    #[cfg(test)]
     pub fn transaction_without_snapshot(&self) -> Result<DBTransaction<'_>, TypedStoreError> {
         DBTransaction::new_without_snapshot(&self.rocksdb)
     }
 
-    pub fn checkpoint_db(&self, path: &Path) -> Result<(), TypedStoreError> {
-        self.rocksdb.checkpoint(path)
-    }
-
-    pub fn snapshot(&self) -> Result<RocksDBSnapshot<'_>, TypedStoreError> {
+    fn snapshot(&self) -> Result<RocksDBSnapshot<'_>, TypedStoreError> {
         Ok(self.rocksdb.snapshot())
     }
 
-    pub fn table_summary(&self) -> eyre::Result<TableSummary> {
-        let mut num_keys = 0;
-        let mut key_bytes_total = 0;
-        let mut value_bytes_total = 0;
-        let mut key_hist = hdrhistogram::Histogram::<u64>::new_with_max(100000, 2).unwrap();
-        let mut value_hist = hdrhistogram::Histogram::<u64>::new_with_max(100000, 2).unwrap();
-        let iter = self.iterator_cf().map(Result::unwrap);
-        for (key, value) in iter {
-            num_keys += 1;
-            key_bytes_total += key.len();
-            value_bytes_total += value.len();
-            key_hist.record(key.len() as u64)?;
-            value_hist.record(value.len() as u64)?;
-        }
-        Ok(TableSummary { num_keys, key_bytes_total, value_bytes_total, key_hist, value_hist })
+    /// Returns an unbounded iterator visiting each key-value pair in the map.
+    /// This is potentially unsafe as it can perform a full table scan
+    fn unbounded_iter_inner(&self) -> Iter<'_, K, V> {
+        let _timer = self
+            .db_metrics
+            .op_metrics
+            .rocksdb_iter_latency_seconds
+            .with_label_values(&[&self.cf])
+            .start_timer();
+        let bytes_scanned =
+            self.db_metrics.op_metrics.rocksdb_iter_bytes.with_label_values(&[&self.cf]);
+        let keys_scanned =
+            self.db_metrics.op_metrics.rocksdb_iter_keys.with_label_values(&[&self.cf]);
+        let _perf_ctx =
+            if self.iter_sample_interval.sample() { Some(RocksDBPerfContext) } else { None };
+        let db_iter = self.rocksdb.raw_iterator_cf(&self.cf(), self.opts.readopts());
+        Iter::new(
+            self.cf.clone(),
+            db_iter,
+            Some(_timer),
+            _perf_ctx,
+            Some(bytes_scanned),
+            Some(keys_scanned),
+            Some(self.db_metrics.clone()),
+        )
+    }
+
+    /// Try to catch up with primary when running as secondary
+    #[instrument(level = "trace", skip_all, err)]
+    fn try_catch_up_with_primary(&self) -> Result<(), TypedStoreError> {
+        Ok(self.rocksdb.try_catch_up_with_primary()?)
     }
 }
 
@@ -1099,7 +1083,11 @@ impl DBBatch {
         &mut self,
         db: &DBMap<K, V>,
         purged_vals: impl IntoIterator<Item = J>,
-    ) -> Result<(), TypedStoreError> {
+    ) -> Result<(), TypedStoreError>
+    where
+        K: Serialize + DeserializeOwned,
+        V: Serialize + DeserializeOwned,
+    {
         if !Arc::ptr_eq(&db.rocksdb, &self.rocksdb) {
             return Err(TypedStoreError::CrossDBBatch);
         }
@@ -1122,12 +1110,16 @@ impl DBBatch {
     /// compaction actually deletes them which will happen sometime after. By
     /// default ignore_range_deletions is set to true on a DBMap (unless it is
     /// overriden in the config), so please use this function with caution
-    pub fn schedule_delete_range<K: Serialize, V>(
+    pub fn schedule_delete_range<K, V>(
         &mut self,
         db: &DBMap<K, V>,
         from: &K,
         to: &K,
-    ) -> Result<(), TypedStoreError> {
+    ) -> Result<(), TypedStoreError>
+    where
+        K: Serialize + DeserializeOwned,
+        V: Serialize + DeserializeOwned,
+    {
         if !Arc::ptr_eq(&db.rocksdb, &self.rocksdb) {
             return Err(TypedStoreError::CrossDBBatch);
         }
@@ -1140,11 +1132,15 @@ impl DBBatch {
     }
 
     /// inserts a range of (key, value) pairs given as an iterator
-    pub fn insert_batch<J: Borrow<K>, K: Serialize, U: Borrow<V>, V: Serialize>(
+    pub fn insert_batch<J: Borrow<K>, K, U: Borrow<V>, V>(
         &mut self,
         db: &DBMap<K, V>,
         new_vals: impl IntoIterator<Item = (J, U)>,
-    ) -> Result<&mut Self, TypedStoreError> {
+    ) -> Result<&mut Self, TypedStoreError>
+    where
+        K: Serialize + DeserializeOwned,
+        V: Serialize + DeserializeOwned,
+    {
         if !Arc::ptr_eq(&db.rocksdb, &self.rocksdb) {
             return Err(TypedStoreError::CrossDBBatch);
         }
@@ -1159,11 +1155,15 @@ impl DBBatch {
     }
 
     /// merges a range of (key, value) pairs given as an iterator
-    pub fn merge_batch<J: Borrow<K>, K: Serialize, U: Borrow<V>, V: Serialize>(
+    pub fn merge_batch<J: Borrow<K>, K, U: Borrow<V>, V>(
         &mut self,
         db: &DBMap<K, V>,
         new_vals: impl IntoIterator<Item = (J, U)>,
-    ) -> Result<&mut Self, TypedStoreError> {
+    ) -> Result<&mut Self, TypedStoreError>
+    where
+        K: Serialize + DeserializeOwned,
+        V: Serialize + DeserializeOwned,
+    {
         if !Arc::ptr_eq(&db.rocksdb, &self.rocksdb) {
             return Err(TypedStoreError::CrossDBBatch);
         }
@@ -1178,11 +1178,15 @@ impl DBBatch {
     }
 
     /// similar to `merge_batch` but allows merge with partial values
-    pub fn partial_merge_batch<J: Borrow<K>, K: Serialize, V: Serialize, B: AsRef<[u8]>>(
+    pub fn partial_merge_batch<J: Borrow<K>, K, V, B: AsRef<[u8]>>(
         &mut self,
         db: &DBMap<K, V>,
         new_vals: impl IntoIterator<Item = (J, B)>,
-    ) -> Result<&mut Self, TypedStoreError> {
+    ) -> Result<&mut Self, TypedStoreError>
+    where
+        K: Serialize + DeserializeOwned,
+        V: Serialize + DeserializeOwned,
+    {
         if !Arc::ptr_eq(&db.rocksdb, &self.rocksdb) {
             return Err(TypedStoreError::CrossDBBatch);
         }
@@ -1209,11 +1213,15 @@ impl<'a> DBTransaction<'a> {
         Ok(Self { rocksdb: db.clone(), transaction: db.transaction_without_snapshot()? })
     }
 
-    pub fn insert_batch<J: Borrow<K>, K: Serialize, U: Borrow<V>, V: Serialize>(
+    pub fn insert_batch<J: Borrow<K>, K, U: Borrow<V>, V>(
         &mut self,
         db: &DBMap<K, V>,
         new_vals: impl IntoIterator<Item = (J, U)>,
-    ) -> Result<&mut Self, TypedStoreError> {
+    ) -> Result<&mut Self, TypedStoreError>
+    where
+        K: Serialize + DeserializeOwned,
+        V: Serialize + DeserializeOwned,
+    {
         if !Arc::ptr_eq(&db.rocksdb, &self.rocksdb) {
             return Err(TypedStoreError::CrossDBBatch);
         }
@@ -1228,11 +1236,15 @@ impl<'a> DBTransaction<'a> {
     }
 
     /// Deletes a set of keys given as an iterator
-    pub fn delete_batch<J: Borrow<K>, K: Serialize, V>(
+    pub fn delete_batch<J: Borrow<K>, K, V>(
         &mut self,
         db: &DBMap<K, V>,
         purged_vals: impl IntoIterator<Item = J>,
-    ) -> Result<&mut Self, TypedStoreError> {
+    ) -> Result<&mut Self, TypedStoreError>
+    where
+        K: Serialize + DeserializeOwned,
+        V: Serialize + DeserializeOwned,
+    {
         if !Arc::ptr_eq(&db.rocksdb, &self.rocksdb) {
             return Err(TypedStoreError::CrossDBBatch);
         }
@@ -1251,11 +1263,15 @@ impl<'a> DBTransaction<'a> {
         self.transaction.snapshot()
     }
 
-    pub fn get_for_update<K: Serialize, V: DeserializeOwned>(
+    pub fn get_for_update<K, V>(
         &self,
         db: &DBMap<K, V>,
         key: &K,
-    ) -> Result<Option<V>, TypedStoreError> {
+    ) -> Result<Option<V>, TypedStoreError>
+    where
+        K: Serialize + DeserializeOwned,
+        V: Serialize + DeserializeOwned,
+    {
         if !Arc::ptr_eq(&db.rocksdb, &self.rocksdb) {
             return Err(TypedStoreError::CrossDBBatch);
         }
@@ -1278,11 +1294,15 @@ impl<'a> DBTransaction<'a> {
             .map(|res| res.and_then(|bytes| bcs::from_bytes::<V>(&bytes).ok()))
     }
 
-    pub fn multi_get<J: Borrow<K>, K: Serialize + DeserializeOwned, V: DeserializeOwned>(
+    pub fn multi_get<J: Borrow<K>, K, V>(
         &self,
         db: &DBMap<K, V>,
         keys: impl IntoIterator<Item = J>,
-    ) -> Result<Vec<Option<V>>, TypedStoreError> {
+    ) -> Result<Vec<Option<V>>, TypedStoreError>
+    where
+        K: Serialize + DeserializeOwned,
+        V: Serialize + DeserializeOwned,
+    {
         let cf = db.cf();
         let keys_bytes: Result<Vec<_>, TypedStoreError> =
             keys.into_iter().map(|k| Ok((&cf, be_fix_int_ser(k.borrow())?))).collect();
@@ -1300,10 +1320,11 @@ impl<'a> DBTransaction<'a> {
         values_parsed
     }
 
-    pub fn iter<K: DeserializeOwned, V: DeserializeOwned>(
-        &'a self,
-        db: &DBMap<K, V>,
-    ) -> Iter<'a, K, V> {
+    pub fn iter<K, V>(&'a self, db: &DBMap<K, V>) -> Iter<'a, K, V>
+    where
+        K: Serialize + DeserializeOwned,
+        V: Serialize + DeserializeOwned,
+    {
         let db_iter = self.transaction.raw_iterator_cf_opt(&db.cf(), db.opts.readopts());
         Iter::new(
             db.cf.clone(),
@@ -1316,10 +1337,11 @@ impl<'a> DBTransaction<'a> {
         )
     }
 
-    pub fn keys<K: DeserializeOwned, V: DeserializeOwned>(
-        &'a self,
-        db: &DBMap<K, V>,
-    ) -> Keys<'a, K> {
+    pub fn keys<K: DeserializeOwned, V: DeserializeOwned>(&'a self, db: &DBMap<K, V>) -> Keys<'a, K>
+    where
+        K: Serialize + DeserializeOwned,
+        V: Serialize + DeserializeOwned,
+    {
         let mut db_iter = RocksDBRawIter::OptimisticTransaction(
             self.transaction.raw_iterator_cf_opt(&db.cf(), db.opts.readopts()),
         );
@@ -1328,10 +1350,11 @@ impl<'a> DBTransaction<'a> {
         Keys::new(db_iter)
     }
 
-    pub fn values<K: DeserializeOwned, V: DeserializeOwned>(
-        &'a self,
-        db: &DBMap<K, V>,
-    ) -> Values<'a, V> {
+    pub fn values<K, V>(&'a self, db: &DBMap<K, V>) -> Values<'a, V>
+    where
+        K: Serialize + DeserializeOwned,
+        V: Serialize + DeserializeOwned,
+    {
         let mut db_iter = RocksDBRawIter::OptimisticTransaction(
             self.transaction.raw_iterator_cf_opt(&db.cf(), db.opts.readopts()),
         );
@@ -1425,37 +1448,19 @@ impl<'a> Iterator for RocksDBIter<'a> {
     }
 }
 
-impl<'a, K, V> Map<'a, K, V> for DBMap<K, V>
+impl<K, V> Map<K, V> for DBMap<K, V>
 where
-    K: Serialize + DeserializeOwned,
-    V: Serialize + DeserializeOwned,
+    K: Serialize + DeserializeOwned + Send + Sync,
+    V: Serialize + DeserializeOwned + Send + Sync,
 {
-    type Error = TypedStoreError;
-    type Iterator = Iter<'a, K, V>;
-    type SafeIterator = SafeIter<'a, K, V>;
-    type Keys = Keys<'a, K>;
-    type Values = Values<'a, V>;
-
     #[instrument(level = "trace", skip_all, err)]
     fn contains_key(&self, key: &K) -> Result<bool, TypedStoreError> {
         let key_buf = be_fix_int_ser(key)?;
         // [`rocksdb::DBWithThreadMode::key_may_exist_cf`] can have false positives,
         // but no false negatives. We use it to short-circuit the absent case
         let readopts = self.opts.readopts();
-        Ok(self.rocksdb.key_may_exist_cf(&self.cf(), &key_buf, &readopts) &&
-            self.rocksdb.get_pinned_cf_opt(&self.cf(), &key_buf, &readopts)?.is_some())
-    }
-
-    #[instrument(level = "trace", skip_all, err)]
-    fn multi_contains_keys<J>(
-        &self,
-        keys: impl IntoIterator<Item = J>,
-    ) -> Result<Vec<bool>, Self::Error>
-    where
-        J: Borrow<K>,
-    {
-        let values = self.multi_get_pinned(keys)?;
-        Ok(values.into_iter().map(|v| v.is_some()).collect())
+        Ok(self.rocksdb.key_may_exist_cf(&self.cf(), &key_buf, &readopts)
+            && self.rocksdb.get_pinned_cf_opt(&self.cf(), &key_buf, &readopts)?.is_some())
     }
 
     #[instrument(level = "trace", skip_all, err)]
@@ -1574,7 +1579,7 @@ where
     /// overriden in the config), so please use this function with caution
     #[instrument(level = "trace", skip_all, err)]
     fn schedule_delete_all(&self) -> Result<(), TypedStoreError> {
-        let mut iter = self.unbounded_iter().seek_to_first();
+        let mut iter = self.unbounded_iter_inner().seek_to_first();
         let first_key = iter.next().map(|(k, _v)| k);
         let last_key = iter.skip_to_last().next().map(|(k, _v)| k);
         if let Some((first_key, last_key)) = first_key.zip(last_key) {
@@ -1591,32 +1596,11 @@ where
 
     /// Returns an unbounded iterator visiting each key-value pair in the map.
     /// This is potentially unsafe as it can perform a full table scan
-    fn unbounded_iter(&'a self) -> Self::Iterator {
-        let _timer = self
-            .db_metrics
-            .op_metrics
-            .rocksdb_iter_latency_seconds
-            .with_label_values(&[&self.cf])
-            .start_timer();
-        let bytes_scanned =
-            self.db_metrics.op_metrics.rocksdb_iter_bytes.with_label_values(&[&self.cf]);
-        let keys_scanned =
-            self.db_metrics.op_metrics.rocksdb_iter_keys.with_label_values(&[&self.cf]);
-        let _perf_ctx =
-            if self.iter_sample_interval.sample() { Some(RocksDBPerfContext) } else { None };
-        let db_iter = self.rocksdb.raw_iterator_cf(&self.cf(), self.opts.readopts());
-        Iter::new(
-            self.cf.clone(),
-            db_iter,
-            Some(_timer),
-            _perf_ctx,
-            Some(bytes_scanned),
-            Some(keys_scanned),
-            Some(self.db_metrics.clone()),
-        )
+    fn unbounded_iter(&self) -> Box<dyn Iterator<Item = (K, V)> + '_> {
+        Box::new(self.unbounded_iter_inner())
     }
 
-    fn safe_iter(&'a self) -> Self::SafeIterator {
+    fn safe_iter(&self) -> Box<dyn Iterator<Item = Result<(K, V), TypedStoreError>> + '_> {
         let _timer = self
             .db_metrics
             .op_metrics
@@ -1631,7 +1615,7 @@ where
             self.db_metrics.op_metrics.rocksdb_iter_keys.with_label_values(&[&self.cf]);
         let mut db_iter = self.rocksdb.raw_iterator_cf(&self.cf(), self.opts.readopts());
         db_iter.seek_to_first();
-        SafeIter::new(
+        Box::new(SafeIter::new(
             self.cf.clone(),
             db_iter,
             Some(_timer),
@@ -1639,151 +1623,13 @@ where
             Some(bytes_scanned),
             Some(keys_scanned),
             Some(self.db_metrics.clone()),
-        )
+        ))
     }
 
-    /// Returns an iterator visiting each key-value pair in the map. By proving bounds of the
-    /// scan range, RocksDB scan avoid unnecessary scans.
-    /// Lower bound is inclusive, while upper bound is exclusive.
-    fn iter_with_bounds(
-        &'a self,
-        lower_bound: Option<K>,
-        upper_bound: Option<K>,
-    ) -> Self::Iterator {
-        let _timer = self
-            .db_metrics
-            .op_metrics
-            .rocksdb_iter_latency_seconds
-            .with_label_values(&[&self.cf])
-            .start_timer();
-        let bytes_scanned =
-            self.db_metrics.op_metrics.rocksdb_iter_bytes.with_label_values(&[&self.cf]);
-        let keys_scanned =
-            self.db_metrics.op_metrics.rocksdb_iter_keys.with_label_values(&[&self.cf]);
-        let _perf_ctx =
-            if self.iter_sample_interval.sample() { Some(RocksDBPerfContext) } else { None };
-        let mut readopts = self.opts.readopts();
-        if let Some(lower_bound) = lower_bound {
-            let key_buf = be_fix_int_ser(&lower_bound).unwrap();
-            readopts.set_iterate_lower_bound(key_buf);
-        }
-        if let Some(upper_bound) = upper_bound {
-            let key_buf = be_fix_int_ser(&upper_bound).unwrap();
-            readopts.set_iterate_upper_bound(key_buf);
-        }
-        let db_iter = self.rocksdb.raw_iterator_cf(&self.cf(), readopts);
-        Iter::new(
-            self.cf.clone(),
-            db_iter,
-            Some(_timer),
-            _perf_ctx,
-            Some(bytes_scanned),
-            Some(keys_scanned),
-            Some(self.db_metrics.clone()),
-        )
-    }
-
-    /// Similar to `iter_with_bounds` but allows specifying inclusivity/exclusivity of ranges
-    /// explicitly. TODO: find better name
-    fn range_iter(&'a self, range: impl RangeBounds<K>) -> Self::Iterator {
-        // TODO: Change the metrics?
-        let _timer = self
-            .db_metrics
-            .op_metrics
-            .rocksdb_iter_latency_seconds
-            .with_label_values(&[&self.cf])
-            .start_timer();
-        let bytes_scanned =
-            self.db_metrics.op_metrics.rocksdb_iter_bytes.with_label_values(&[&self.cf]);
-        let keys_scanned =
-            self.db_metrics.op_metrics.rocksdb_iter_keys.with_label_values(&[&self.cf]);
-        let _perf_ctx =
-            if self.iter_sample_interval.sample() { Some(RocksDBPerfContext) } else { None };
-        let mut readopts = self.opts.readopts();
-
-        let lower_bound = range.start_bound();
-        let upper_bound = range.end_bound();
-
-        match lower_bound {
-            Bound::Included(lower_bound) => {
-                // Rocksdb lower bound is inclusive by default so nothing to do
-                let key_buf = be_fix_int_ser(&lower_bound).expect("Serialization must not fail");
-                readopts.set_iterate_lower_bound(key_buf);
-            }
-            Bound::Excluded(lower_bound) => {
-                let mut key_buf =
-                    be_fix_int_ser(&lower_bound).expect("Serialization must not fail");
-
-                // Since we want exclusive, we need to increment the key to exclude the previous
-                big_endian_saturating_add_one(&mut key_buf);
-                readopts.set_iterate_lower_bound(key_buf);
-            }
-            Bound::Unbounded => (),
-        };
-
-        match upper_bound {
-            Bound::Included(upper_bound) => {
-                let mut key_buf =
-                    be_fix_int_ser(&upper_bound).expect("Serialization must not fail");
-
-                // If the key is already at the limit, there's nowhere else to go, so no upper bound
-                if !is_max(&key_buf) {
-                    // Since we want exclusive, we need to increment the key to get the upper bound
-                    big_endian_saturating_add_one(&mut key_buf);
-                    readopts.set_iterate_upper_bound(key_buf);
-                }
-            }
-            Bound::Excluded(upper_bound) => {
-                // Rocksdb upper bound is inclusive by default so nothing to do
-                let key_buf = be_fix_int_ser(&upper_bound).expect("Serialization must not fail");
-                readopts.set_iterate_upper_bound(key_buf);
-            }
-            Bound::Unbounded => (),
-        };
-
-        let db_iter = self.rocksdb.raw_iterator_cf(&self.cf(), readopts);
-        Iter::new(
-            self.cf.clone(),
-            db_iter,
-            Some(_timer),
-            _perf_ctx,
-            Some(bytes_scanned),
-            Some(keys_scanned),
-            Some(self.db_metrics.clone()),
-        )
-    }
-
-    fn keys(&'a self) -> Self::Keys {
-        let mut db_iter = self.rocksdb.raw_iterator_cf(&self.cf(), self.opts.readopts());
-        db_iter.seek_to_first();
-
-        Keys::new(db_iter)
-    }
-
-    fn values(&'a self) -> Self::Values {
-        let mut db_iter = self.rocksdb.raw_iterator_cf(&self.cf(), self.opts.readopts());
-        db_iter.seek_to_first();
-
-        Values::new(db_iter)
-    }
-
-    /// Returns a vector of raw values corresponding to the keys provided.
-    #[instrument(level = "trace", skip_all, err)]
-    fn multi_get_raw_bytes<J>(
-        &self,
-        keys: impl IntoIterator<Item = J>,
-    ) -> Result<Vec<Option<Vec<u8>>>, TypedStoreError>
-    where
-        J: Borrow<K>,
-    {
-        let results =
-            self.multi_get_pinned(keys)?.into_iter().map(|val| val.map(|v| v.to_vec())).collect();
-        Ok(results)
-    }
-
+    /*
     /// Returns a vector of values corresponding to the keys provided.
     #[instrument(level = "trace", skip_all, err)]
-    fn multi_get<J>(
+    fn multi_get(
         &self,
         keys: impl IntoIterator<Item = J>,
     ) -> Result<Vec<Option<V>>, TypedStoreError>
@@ -1802,44 +1648,12 @@ where
         values_parsed
     }
 
-    /// Returns a vector of values corresponding to the keys provided.
-    #[instrument(level = "trace", skip_all, err)]
-    fn chunked_multi_get<J>(
-        &self,
-        keys: impl IntoIterator<Item = J>,
-        chunk_size: usize,
-    ) -> Result<Vec<Option<V>>, TypedStoreError>
-    where
-        J: Borrow<K>,
-    {
-        let cf = self.cf();
-        let keys_bytes = keys.into_iter().map(|k| (&cf, be_fix_int_ser(k.borrow()).unwrap()));
-        let chunked_keys = keys_bytes.into_iter().chunks(chunk_size);
-        let snapshot = self.snapshot()?;
-        let mut results = vec![];
-        for chunk in chunked_keys.into_iter() {
-            let chunk_result = snapshot.multi_get_cf(chunk);
-            let values_parsed: Result<Vec<_>, TypedStoreError> = chunk_result
-                .into_iter()
-                .map(|value_byte| {
-                    let value_byte = value_byte?;
-                    match value_byte {
-                        Some(data) => Ok(Some(bcs::from_bytes(&data)?)),
-                        None => Ok(None),
-                    }
-                })
-                .collect();
-            results.extend(values_parsed?);
-        }
-        Ok(results)
-    }
-
     /// Convenience method for batch insertion
     #[instrument(level = "trace", skip_all, err)]
     fn multi_insert<J, U>(
         &self,
         key_val_pairs: impl IntoIterator<Item = (J, U)>,
-    ) -> Result<(), Self::Error>
+    ) -> Result<(), TypedStoreError>
     where
         J: Borrow<K>,
         U: Borrow<V>,
@@ -1851,7 +1665,7 @@ where
 
     /// Convenience method for batch removal
     #[instrument(level = "trace", skip_all, err)]
-    fn multi_remove<J>(&self, keys: impl IntoIterator<Item = J>) -> Result<(), Self::Error>
+    fn multi_remove<J>(&self, keys: impl IntoIterator<Item = J>) -> Result<(), TypedStoreError>
     where
         J: Borrow<K>,
     {
@@ -1859,11 +1673,22 @@ where
         batch.delete_batch(self, keys)?;
         batch.write()
     }
+    */
 
-    /// Try to catch up with primary when running as secondary
-    #[instrument(level = "trace", skip_all, err)]
-    fn try_catch_up_with_primary(&self) -> Result<(), Self::Error> {
-        Ok(self.rocksdb.try_catch_up_with_primary()?)
+    fn skip_to(&self, key: &K) -> Result<Box<dyn Iterator<Item = (K, V)> + '_>, TypedStoreError> {
+        Ok(Box::new(self.unbounded_iter_inner().skip_to(key)?))
+    }
+
+    fn record_prior_to(&self, key: &K) -> Option<(K, V)> {
+        self.unbounded_iter_inner().skip_prior_to(key).map(|mut r| r.next()).unwrap_or(None)
+    }
+
+    fn last_record(&self) -> Option<(K, V)> {
+        self.unbounded_iter_inner().skip_to_last().next()
+    }
+
+    fn reverse_iter(&self) -> Box<dyn Iterator<Item = (K, V)> + '_> {
+        Box::new(self.unbounded_iter_inner().skip_to_last().reverse())
     }
 }
 
@@ -1871,8 +1696,8 @@ impl<J, K, U, V> TryExtend<(J, U)> for DBMap<K, V>
 where
     J: Borrow<K>,
     U: Borrow<V>,
-    K: Serialize,
-    V: Serialize,
+    K: Serialize + DeserializeOwned,
+    V: Serialize + DeserializeOwned,
 {
     type Error = TypedStoreError;
 
@@ -1972,9 +1797,9 @@ impl DBOptions {
 
         // Increase write buffer size to 256MiB.
         let write_buffer_size = read_size_from_env(ENV_VAR_MAX_WRITE_BUFFER_SIZE_MB)
-            .unwrap_or(DEFAULT_MAX_WRITE_BUFFER_SIZE_MB) *
-            1024 *
-            1024;
+            .unwrap_or(DEFAULT_MAX_WRITE_BUFFER_SIZE_MB)
+            * 1024
+            * 1024;
         self.options.set_write_buffer_size(write_buffer_size);
         // Since large blobs are not in sst files, reduce the target file size and base level
         // target size.
@@ -2006,9 +1831,9 @@ impl DBOptions {
     pub fn optimize_for_write_throughput(mut self) -> DBOptions {
         // Increase write buffer size to 256MiB.
         let write_buffer_size = read_size_from_env(ENV_VAR_MAX_WRITE_BUFFER_SIZE_MB)
-            .unwrap_or(DEFAULT_MAX_WRITE_BUFFER_SIZE_MB) *
-            1024 *
-            1024;
+            .unwrap_or(DEFAULT_MAX_WRITE_BUFFER_SIZE_MB)
+            * 1024
+            * 1024;
         self.options.set_write_buffer_size(write_buffer_size);
         // Increase write buffers to keep to 6 before slowing down writes.
         let max_write_buffer_number = read_size_from_env(ENV_VAR_MAX_WRITE_BUFFER_NUMBER)
@@ -2032,9 +1857,9 @@ impl DBOptions {
         // Increase sst file size to 128MiB.
         self.options.set_target_file_size_base(
             read_size_from_env(ENV_VAR_TARGET_FILE_SIZE_BASE_MB)
-                .unwrap_or(DEFAULT_TARGET_FILE_SIZE_BASE_MB) as u64 *
-                1024 *
-                1024,
+                .unwrap_or(DEFAULT_TARGET_FILE_SIZE_BASE_MB) as u64
+                * 1024
+                * 1024,
         );
 
         // Increase level 1 target size to 256MiB * 6 ~ 1.5GiB.
@@ -2094,9 +1919,9 @@ pub fn default_db_options() -> DBOptions {
     // future. If you need to modify an option, either update the default value, or override the
     // option in Sui / Narwhal.
     opt.set_db_write_buffer_size(
-        read_size_from_env(ENV_VAR_DB_WRITE_BUFFER_SIZE).unwrap_or(DEFAULT_DB_WRITE_BUFFER_SIZE) *
-            1024 *
-            1024,
+        read_size_from_env(ENV_VAR_DB_WRITE_BUFFER_SIZE).unwrap_or(DEFAULT_DB_WRITE_BUFFER_SIZE)
+            * 1024
+            * 1024,
     );
     opt.set_max_total_wal_size(
         read_size_from_env(ENV_VAR_DB_WAL_SIZE).unwrap_or(DEFAULT_DB_WAL_SIZE) as u64 * 1024 * 1024,
@@ -2358,6 +2183,7 @@ fn populate_missing_cfs(
 /// Given a vec<u8>, find the value which is one more than the vector
 /// if the vector was a big endian number.
 /// If the vector is already minimum, don't change it.
+#[cfg(test)]
 fn big_endian_saturating_add_one(v: &mut [u8]) {
     if is_max(v) {
         return;
@@ -2373,6 +2199,7 @@ fn big_endian_saturating_add_one(v: &mut [u8]) {
 }
 
 /// Check if all the bytes in the vector are 0xFF
+#[cfg(test)]
 fn is_max(v: &[u8]) -> bool {
     v.iter().all(|&x| x == u8::MAX)
 }

@@ -5736,7 +5736,6 @@ dependencies = [
  "fdlimit",
  "hdrhistogram",
  "itertools 0.10.5",
- "narwhal-typed-store-derive",
  "once_cell",
  "ouroboros",
  "proc-macro2",
@@ -5754,20 +5753,6 @@ dependencies = [
  "tokio",
  "tracing",
  "uint",
-]
-
-[[package]]
-name = "narwhal-typed-store-derive"
-version = "0.1.0"
-dependencies = [
- "eyre",
- "narwhal-typed-store",
- "proc-macro2",
- "quote",
- "rocksdb",
- "syn 2.0.72",
- "tempfile",
- "tokio",
 ]
 
 [[package]]

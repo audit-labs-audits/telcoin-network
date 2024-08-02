@@ -1,13 +1,13 @@
 // Copyright (c) Telcoin, LLC
 // Copyright (c) Mysten Labs, Inc.
 // SPDX-License-Identifier: Apache-2.0
+
 #![allow(clippy::await_holding_lock)]
 
 use std::{
     borrow::Borrow,
     collections::{btree_map::Iter, BTreeMap, HashMap, VecDeque},
     marker::PhantomData,
-    ops::RangeBounds,
     sync::{Arc, RwLock},
 };
 
@@ -40,8 +40,19 @@ impl<K, V> TestDB<K, V> {
             _phantom: PhantomData,
         }
     }
-    pub fn batch(&self) -> TestDBWriteBatch {
+
+    fn batch(&self) -> TestDBWriteBatch {
         TestDBWriteBatch::default()
+    }
+
+    fn unbounded_iter_inner(&self) -> TestDBIter<'_, K, V> {
+        TestDBIterBuilder {
+            rows: self.rows.read().unwrap(),
+            iter_builder: |rows: &mut RwLockReadGuard<'_, BTreeMap<Vec<u8>, Vec<u8>>>| rows.iter(),
+            phantom: PhantomData,
+            direction: Direction::Forward,
+        }
+        .build()
     }
 }
 
@@ -82,7 +93,7 @@ impl<'a, K: DeserializeOwned, V: DeserializeOwned> Iterator for TestDBIter<'a, K
         self.with_mut(|fields| {
             let resp = match fields.direction {
                 Direction::Forward => fields.iter.next(),
-                Direction::Reverse => panic!("Reverse iteration not supported in test db"),
+                Direction::Reverse => fields.iter.next_back(),
             };
             if let Some((raw_key, raw_value)) = resp {
                 let key: K = config.deserialize(raw_key).ok().unwrap();
@@ -210,38 +221,32 @@ impl<'a, V: DeserializeOwned> Iterator for TestDBValues<'a, V> {
     }
 }
 
-impl<'a, K, V> Map<'a, K, V> for TestDB<K, V>
+impl<K, V> Map<K, V> for TestDB<K, V>
 where
-    K: Serialize + DeserializeOwned,
-    V: Serialize + DeserializeOwned,
+    K: Serialize + DeserializeOwned + Send + Sync,
+    V: Serialize + DeserializeOwned + Send + Sync,
 {
-    type Error = TypedStoreError;
-    type Iterator = std::iter::Empty<(K, V)>;
-    type SafeIterator = TestDBIter<'a, K, V>;
-    type Keys = TestDBKeys<'a, K>;
-    type Values = TestDBValues<'a, V>;
-
-    fn contains_key(&self, key: &K) -> Result<bool, Self::Error> {
+    fn contains_key(&self, key: &K) -> Result<bool, TypedStoreError> {
         let raw_key = be_fix_int_ser(key)?;
         let locked = self.rows.read().unwrap();
         Ok(locked.contains_key(&raw_key))
     }
 
-    fn get(&self, key: &K) -> Result<Option<V>, Self::Error> {
+    fn get(&self, key: &K) -> Result<Option<V>, TypedStoreError> {
         let raw_key = be_fix_int_ser(key)?;
         let locked = self.rows.read().unwrap();
         let res = locked.get(&raw_key);
         Ok(res.map(|raw_value| bcs::from_bytes(raw_value).ok().unwrap()))
     }
 
-    fn get_raw_bytes(&self, key: &K) -> Result<Option<Vec<u8>>, Self::Error> {
+    fn get_raw_bytes(&self, key: &K) -> Result<Option<Vec<u8>>, TypedStoreError> {
         let raw_key = be_fix_int_ser(key)?;
         let locked = self.rows.read().unwrap();
         let res = locked.get(&raw_key);
         Ok(res.cloned())
     }
 
-    fn insert(&self, key: &K, value: &V) -> Result<(), Self::Error> {
+    fn insert(&self, key: &K, value: &V) -> Result<(), TypedStoreError> {
         let raw_key = be_fix_int_ser(key)?;
         let raw_value = bcs::to_bytes(value)?;
         let mut locked = self.rows.write().unwrap();
@@ -249,14 +254,14 @@ where
         Ok(())
     }
 
-    fn remove(&self, key: &K) -> Result<(), Self::Error> {
+    fn remove(&self, key: &K) -> Result<(), TypedStoreError> {
         let raw_key = be_fix_int_ser(key)?;
         let mut locked = self.rows.write().unwrap();
         locked.remove(&raw_key);
         Ok(())
     }
 
-    fn unsafe_clear(&self) -> Result<(), Self::Error> {
+    fn unsafe_clear(&self) -> Result<(), TypedStoreError> {
         let mut locked = self.rows.write().unwrap();
         locked.clear();
         Ok(())
@@ -273,52 +278,56 @@ where
         locked.is_empty()
     }
 
-    fn unbounded_iter(&'a self) -> Self::Iterator {
-        unimplemented!("umplemented API");
+    fn unbounded_iter(&self) -> Box<dyn Iterator<Item = (K, V)> + '_> {
+        let iter = self.unbounded_iter_inner();
+        Box::new(iter.filter(|v| v.is_ok()).map(|v| v.unwrap()))
     }
 
-    fn iter_with_bounds(
-        &'a self,
-        _lower_bound: Option<K>,
-        _upper_bound: Option<K>,
-    ) -> Self::Iterator {
-        unimplemented!("umplemented API");
+    fn safe_iter(&self) -> Box<dyn Iterator<Item = Result<(K, V), TypedStoreError>> + '_> {
+        Box::new(
+            TestDBIterBuilder {
+                rows: self.rows.read().unwrap(),
+                iter_builder: |rows: &mut RwLockReadGuard<'_, BTreeMap<Vec<u8>, Vec<u8>>>| {
+                    rows.iter()
+                },
+                phantom: PhantomData,
+                direction: Direction::Forward,
+            }
+            .build(),
+        )
     }
 
-    fn range_iter(&'a self, _range: impl RangeBounds<K>) -> Self::Iterator {
-        unimplemented!("umplemented API");
+    fn skip_to(&self, key: &K) -> Result<Box<dyn Iterator<Item = (K, V)> + '_>, TypedStoreError> {
+        Ok(Box::new(
+            self.unbounded_iter_inner().skip_to(key)?.filter(|v| v.is_ok()).map(|v| v.unwrap()),
+        ))
     }
 
-    fn safe_iter(&'a self) -> Self::SafeIterator {
-        TestDBIterBuilder {
-            rows: self.rows.read().unwrap(),
-            iter_builder: |rows: &mut RwLockReadGuard<'a, BTreeMap<Vec<u8>, Vec<u8>>>| rows.iter(),
-            phantom: PhantomData,
-            direction: Direction::Forward,
+    fn record_prior_to(&self, key: &K) -> Option<(K, V)> {
+        match self.unbounded_iter_inner().skip_prior_to(key) {
+            Ok(mut i) => match i.next() {
+                Some(r) => match r {
+                    Ok(r) => Some(r),
+                    Err(_) => None,
+                },
+                None => None,
+            },
+            Err(_) => None,
         }
-        .build()
     }
 
-    fn keys(&'a self) -> Self::Keys {
-        TestDBKeysBuilder {
-            rows: self.rows.read().unwrap(),
-            iter_builder: |rows: &mut RwLockReadGuard<'a, BTreeMap<Vec<u8>, Vec<u8>>>| rows.iter(),
-            phantom: PhantomData,
+    fn last_record(&self) -> Option<(K, V)> {
+        match self.unbounded_iter_inner().skip_to_last().next() {
+            Some(r) => match r {
+                Ok(r) => Some(r),
+                Err(_) => None,
+            },
+            None => None,
         }
-        .build()
     }
 
-    fn values(&'a self) -> Self::Values {
-        TestDBValuesBuilder {
-            rows: self.rows.read().unwrap(),
-            iter_builder: |rows: &mut RwLockReadGuard<'a, BTreeMap<Vec<u8>, Vec<u8>>>| rows.iter(),
-            phantom: PhantomData,
-        }
-        .build()
-    }
-
-    fn try_catch_up_with_primary(&self) -> Result<(), Self::Error> {
-        Ok(())
+    fn reverse_iter(&self) -> Box<dyn Iterator<Item = (K, V)> + '_> {
+        Box::new(self.unbounded_iter_inner().reverse().filter(|v| v.is_ok()).map(|v| v.unwrap()))
     }
 }
 
@@ -488,7 +497,11 @@ impl TestDBWriteBatch {
 
 #[cfg(test)]
 mod test {
-    use crate::{test_db::TestDB, Map};
+    use crate::{
+        test_db::TestDB,
+        traits::{multi_get, multi_insert, multi_remove},
+        Map,
+    };
 
     #[test]
     fn test_contains_key() {
@@ -523,7 +536,7 @@ mod test {
         db.insert(&123, &"123".to_string()).expect("Failed to insert");
         db.insert(&456, &"456".to_string()).expect("Failed to insert");
 
-        let result = db.multi_get([123, 456, 789]).expect("Failed to multi get");
+        let result = multi_get(&db, [123, 456, 789]).expect("Failed to multi get");
 
         assert_eq!(result.len(), 3);
         assert_eq!(result[0], Some("123".to_string()));
@@ -563,28 +576,6 @@ mod test {
         assert_eq!(Some(Ok((2, "2".to_string()))), iter.next());
         assert_eq!(Some(Ok((3, "3".to_string()))), iter.next());
         assert_eq!(None, iter.next());
-    }
-
-    #[test]
-    fn test_keys() {
-        let db = TestDB::open();
-
-        db.insert(&123456789, &"123456789".to_string()).expect("Failed to insert");
-
-        let mut keys = db.keys();
-        assert_eq!(Some(Ok(123456789)), keys.next());
-        assert_eq!(None, keys.next());
-    }
-
-    #[test]
-    fn test_values() {
-        let db = TestDB::open();
-
-        db.insert(&123456789, &"123456789".to_string()).expect("Failed to insert");
-
-        let mut values = db.values();
-        assert_eq!(Some(Ok("123456789".to_string())), values.next());
-        assert_eq!(None, values.next());
     }
 
     #[test]
@@ -637,8 +628,8 @@ mod test {
 
         wb.write().expect("Failed to execute batch");
 
-        for k in db.keys() {
-            assert_eq!(k.unwrap() % 2, 0);
+        for (k, _v) in db.unbounded_iter() {
+            assert_eq!(k % 2, 0);
         }
     }
 
@@ -726,7 +717,7 @@ mod test {
         // Create kv pairs
         let keys_vals = (0..101).map(|i| (i, i.to_string()));
 
-        db.multi_insert(keys_vals.clone()).expect("Failed to multi-insert");
+        multi_insert(&db, keys_vals.clone()).expect("Failed to multi-insert");
 
         for (k, v) in keys_vals {
             let val = db.get(&k).expect("Failed to get inserted key");
@@ -742,7 +733,7 @@ mod test {
         // Create kv pairs
         let keys_vals = (0..101).map(|i| (i, i.to_string()));
 
-        db.multi_insert(keys_vals.clone()).expect("Failed to multi-insert");
+        multi_insert(&db, keys_vals.clone()).expect("Failed to multi-insert");
 
         // Check insertion
         for (k, v) in keys_vals.clone() {
@@ -751,7 +742,8 @@ mod test {
         }
 
         // Remove 50 items
-        db.multi_remove(keys_vals.clone().map(|kv| kv.0).take(50)).expect("Failed to multi-remove");
+        multi_remove(&db, keys_vals.clone().map(|kv| kv.0).take(50))
+            .expect("Failed to multi-remove");
         assert_eq!(db.safe_iter().count(), 101 - 50);
 
         // Check that the remaining are present

@@ -40,7 +40,6 @@ quote = { workspace = true }
 rstest = { workspace = true }
 rand = { workspace = true }
 syn = { workspace = true }
-narwhal-typed-store-derive = { workspace = true }
 uint = { workspace = true }
 
 # Most packages should depend on sui-simulator instead of directly on msim, but for typed-store

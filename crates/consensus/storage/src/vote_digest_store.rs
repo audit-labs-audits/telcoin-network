@@ -2,36 +2,25 @@
 // Copyright (c) Mysten Labs, Inc.
 // SPDX-License-Identifier: Apache-2.0
 
-use crate::NodeStorage;
-use narwhal_typed_store::{
-    reopen,
-    rocks::{open_cf, DBMap, MetricConf, ReadWriteOptions},
-    Map, TypedStoreError,
-};
+use std::sync::Arc;
+
+use narwhal_typed_store::{test_db::TestDB, Map, TypedStoreError};
 use telcoin_macros::fail_point;
 use tn_types::{AuthorityIdentifier, Vote, VoteAPI, VoteInfo};
 
 /// The storage for the last votes digests per authority
 #[derive(Clone)]
 pub struct VoteDigestStore {
-    store: DBMap<AuthorityIdentifier, VoteInfo>,
+    store: Arc<dyn Map<AuthorityIdentifier, VoteInfo>>,
 }
 
 impl VoteDigestStore {
-    pub fn new(vote_digest_store: DBMap<AuthorityIdentifier, VoteInfo>) -> VoteDigestStore {
-        Self { store: vote_digest_store }
+    pub fn new(store: Arc<dyn Map<AuthorityIdentifier, VoteInfo>>) -> VoteDigestStore {
+        Self { store }
     }
 
     pub fn new_for_tests() -> VoteDigestStore {
-        let rocksdb = open_cf(
-            tempfile::tempdir().unwrap(),
-            None,
-            MetricConf::default(),
-            &[NodeStorage::VOTES_CF],
-        )
-        .expect("Cannot open database");
-        let map = reopen!(&rocksdb, NodeStorage::VOTES_CF;<AuthorityIdentifier, VoteInfo>);
-        VoteDigestStore::new(map)
+        VoteDigestStore::new(Arc::new(TestDB::open()))
     }
 
     /// Insert the vote's basic details into the database for the corresponding

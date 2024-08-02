@@ -9,7 +9,6 @@ pub use traits::Map;
 pub mod metrics;
 pub mod rocks;
 pub use rocks::TypedStoreError;
-pub mod sally;
 pub mod test_db;
 pub use metrics::DBMetrics;
 

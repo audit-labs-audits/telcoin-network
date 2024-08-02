@@ -11,6 +11,7 @@ use narwhal_typed_store::{
     metrics::SamplingInterval,
     reopen,
     rocks::{default_db_options, open_cf_opts, DBMap, MetricConf, ReadWriteOptions},
+    Map,
 };
 use std::{num::NonZeroUsize, sync::Arc, time::Duration};
 use tn_types::{
@@ -29,7 +30,7 @@ pub struct NodeStorage {
     pub vote_digest_store: VoteDigestStore,
     pub certificate_store: CertificateStore<CertificateStoreCache>,
     pub payload_store: PayloadStore,
-    pub batch_store: DBMap<BatchDigest, Batch>,
+    pub batch_store: Arc<dyn Map<BatchDigest, Batch>>,
     pub consensus_store: Arc<ConsensusStore>,
 }
 
@@ -120,23 +121,25 @@ impl NodeStorage {
             Self::COMMITTED_SUB_DAG_INDEX_CF;<SequenceNumber, ConsensusCommit>
         );
 
-        let proposer_store = ProposerStore::new(last_proposed_map);
-        let vote_digest_store = VoteDigestStore::new(votes_map);
+        let proposer_store = ProposerStore::new(Arc::new(last_proposed_map));
+        let vote_digest_store = VoteDigestStore::new(Arc::new(votes_map));
 
         let certificate_store_cache = CertificateStoreCache::new(
             NonZeroUsize::new(Self::CERTIFICATE_STORE_CACHE_SIZE).unwrap(),
             certificate_store_cache_metrics,
         );
         let certificate_store = CertificateStore::<CertificateStoreCache>::new(
-            certificate_map,
-            certificate_digest_by_round_map,
-            certificate_digest_by_origin_map,
+            Arc::new(certificate_map),
+            Arc::new(certificate_digest_by_round_map),
+            Arc::new(certificate_digest_by_origin_map),
             certificate_store_cache,
         );
-        let payload_store = PayloadStore::new(payload_map);
-        let batch_store = batch_map;
-        let consensus_store =
-            Arc::new(ConsensusStore::new(last_committed_map, committed_sub_dag_map));
+        let payload_store = PayloadStore::new(Arc::new(payload_map));
+        let batch_store = Arc::new(batch_map);
+        let consensus_store = Arc::new(ConsensusStore::new(
+            Arc::new(last_committed_map),
+            Arc::new(committed_sub_dag_map),
+        ));
 
         Self {
             proposer_store,

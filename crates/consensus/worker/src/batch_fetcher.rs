@@ -14,7 +14,10 @@ use fastcrypto::hash::Hash;
 use futures::{stream::FuturesUnordered, FutureExt, StreamExt};
 use itertools::Itertools;
 use narwhal_network::WorkerRpc;
-use narwhal_typed_store::{rocks::DBMap, Map};
+use narwhal_typed_store::{
+    traits::{multi_get, multi_insert},
+    Map,
+};
 use prometheus::IntGauge;
 use rand::{rngs::ThreadRng, seq::SliceRandom};
 use tn_types::NetworkPublicKey;
@@ -35,7 +38,7 @@ const WORKER_RETRY_INTERVAL: Duration = Duration::from_secs(1);
 pub struct BatchFetcher {
     name: NetworkPublicKey,
     network: Arc<dyn RequestBatchesNetwork>,
-    batch_store: DBMap<BatchDigest, Batch>,
+    batch_store: Arc<dyn Map<BatchDigest, Batch>>,
     metrics: Arc<WorkerMetrics>,
 }
 
@@ -43,7 +46,7 @@ impl BatchFetcher {
     pub fn new(
         name: NetworkPublicKey,
         network: Network,
-        batch_store: DBMap<BatchDigest, Batch>,
+        batch_store: Arc<dyn Map<BatchDigest, Batch>>,
         metrics: Arc<WorkerMetrics>,
     ) -> Self {
         Self {
@@ -112,8 +115,6 @@ impl BatchFetcher {
                     result = futures.next() => {
                         if let Some(remote_batches) = result {
                             let new_batches: HashMap<_, _> = remote_batches.iter().filter(|(d, _)| remaining_digests.remove(d)).collect();
-                            // Also persist the batches, so they are available after restarts.
-                            let mut write_batch = self.batch_store.batch();
 
                             // Set received_at timestamp for remote batches.
                             let mut updated_new_batches = HashMap::new();
@@ -123,10 +124,13 @@ impl BatchFetcher {
                                 updated_new_batches.insert(*digest, batch.clone());
                             }
                             fetched_batches.extend(updated_new_batches.iter().map(|(d, b)| (*d, (*b).clone())));
-                            write_batch.insert_batch(&self.batch_store, updated_new_batches).unwrap();
+                            // Also persist the batches, so they are available after restarts.
+                            if let Err(e) = multi_insert(&*self.batch_store, updated_new_batches) {
+                                // TODO, this is real bad should maybe shutdown...
+                                tracing::error!("failed to insert batch! {e}");
+                            }
 
 
-                            write_batch.write().unwrap();
                             if remaining_digests.is_empty() {
                                 return fetched_batches;
                             }
@@ -152,8 +156,8 @@ impl BatchFetcher {
         // Continue to bulk request from local worker until no remaining digests
         // are available.
         debug!("Local attempt to fetch {} digests", digests.len());
-        let local_batches =
-            self.batch_store.multi_get(digests.clone().into_iter()).expect("Failed to get batches");
+        let local_batches = multi_get(&*self.batch_store, digests.clone().into_iter())
+            .expect("Failed to get batches");
         for (digest, batch) in digests.into_iter().zip(local_batches.into_iter()) {
             if let Some(batch) = batch {
                 self.metrics.worker_batch_fetch.with_label_values(&["local", "success"]).inc();

@@ -32,7 +32,7 @@ use narwhal_network::{
     failpoints::FailpointsMakeCallbackHandler,
     metrics::MetricsMakeCallbackHandler,
 };
-use narwhal_typed_store::rocks::DBMap;
+use narwhal_typed_store::Map;
 use std::{collections::HashMap, net::Ipv4Addr, sync::Arc, thread::sleep, time::Duration};
 use tn_batch_validator::BatchValidation;
 use tn_types::{
@@ -71,7 +71,7 @@ pub struct Worker {
     /// The configuration parameters
     parameters: Parameters,
     /// The persistent storage.
-    store: DBMap<BatchDigest, Batch>,
+    store: Arc<dyn Map<BatchDigest, Batch>>,
 }
 
 impl Worker {
@@ -85,7 +85,7 @@ impl Worker {
         parameters: Parameters,
         validator: impl BatchValidation,
         client: NetworkClient,
-        store: DBMap<BatchDigest, Batch>,
+        store: Arc<dyn Map<BatchDigest, Batch>>,
         metrics: Metrics,
         tx_shutdown: &mut PreSubscribedBroadcastSender,
         // for EL batch maker

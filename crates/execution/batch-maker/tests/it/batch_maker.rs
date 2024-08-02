@@ -8,7 +8,6 @@ use assert_matches::assert_matches;
 use fastcrypto::hash::Hash;
 use narwhal_network::client::NetworkClient;
 use narwhal_network_types::MockWorkerToPrimary;
-use narwhal_typed_store::Map;
 use narwhal_worker::{metrics::WorkerMetrics, BatchMaker, NUM_SHUTDOWN_RECEIVERS};
 use reth::{beacon_consensus::EthBeaconConsensus, tasks::TaskManager};
 use reth_blockchain_tree::noop::NoopBlockchainTree;

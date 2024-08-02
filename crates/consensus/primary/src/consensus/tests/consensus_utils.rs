@@ -31,7 +31,7 @@ pub fn make_consensus_store(store_path: &std::path::Path) -> Arc<ConsensusStore>
         COMMITTED_SUB_DAG_CF;<SequenceNumber, ConsensusCommit>
     );
 
-    Arc::new(ConsensusStore::new(last_committed_map, committed_sub_dag_map))
+    Arc::new(ConsensusStore::new(Arc::new(last_committed_map), Arc::new(committed_sub_dag_map)))
 }
 
 pub fn make_certificate_store(store_path: &std::path::Path) -> CertificateStore {
@@ -53,9 +53,9 @@ pub fn make_certificate_store(store_path: &std::path::Path) -> CertificateStore 
         CERTIFICATE_DIGEST_BY_ORIGIN_CF;<(AuthorityIdentifier, Round), CertificateDigest>);
 
     CertificateStore::new(
-        certificate_map,
-        certificate_digest_by_round_map,
-        certificate_digest_by_origin_map,
+        Arc::new(certificate_map),
+        Arc::new(certificate_digest_by_round_map),
+        Arc::new(certificate_digest_by_origin_map),
         CertificateStoreCache::new(NonZeroUsize::new(100).unwrap(), None),
     )
 }

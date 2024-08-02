@@ -15,8 +15,11 @@ use narwhal_network_types::{
     RequestBatchesResponse, WorkerBatchMessage, WorkerOthersBatchMessage, WorkerSynchronizeMessage,
     WorkerToWorker, WorkerToWorkerClient,
 };
-use narwhal_typed_store::{rocks::DBMap, Map};
-use std::{collections::HashSet, time::Duration};
+use narwhal_typed_store::{
+    traits::{multi_get, multi_insert},
+    Map,
+};
+use std::{collections::HashSet, sync::Arc, time::Duration};
 use tn_batch_validator::BatchValidation;
 use tn_types::{now, Batch, BatchAPI, BatchDigest, Committee, MetadataAPI, WorkerCache, WorkerId};
 use tracing::{debug, trace};
@@ -30,7 +33,7 @@ pub mod handlers_tests;
 pub struct WorkerReceiverHandler<V> {
     pub id: WorkerId,
     pub client: NetworkClient,
-    pub store: DBMap<BatchDigest, Batch>,
+    pub store: Arc<dyn Map<BatchDigest, Batch>>,
     pub validator: V,
 }
 
@@ -87,7 +90,7 @@ impl<V: BatchValidation> WorkerToWorker for WorkerReceiverHandler<V> {
         let mut is_size_limit_reached = false;
 
         for digests_chunks in digests_chunks {
-            let stored_batches = self.store.multi_get(digests_chunks).map_err(|e| {
+            let stored_batches = multi_get(&*self.store, digests_chunks).map_err(|e| {
                 anemo::rpc::Status::internal(format!("failed to read from batch store: {e:?}"))
             })?;
 
@@ -116,7 +119,7 @@ pub struct PrimaryReceiverHandler<V> {
     // The worker information cache.
     pub worker_cache: WorkerCache,
     // The batch store
-    pub store: DBMap<BatchDigest, Batch>,
+    pub store: Arc<dyn Map<BatchDigest, Batch>>,
     // Timeout on RequestBatches RPC.
     pub request_batches_timeout: Duration,
     // Synchronize header payloads from other workers.
@@ -192,7 +195,6 @@ impl<V: BatchValidation> PrimaryToWorker for PrimaryReceiverHandler<V> {
             .await?
             .into_inner();
 
-        let mut write_batch = self.store.batch();
         for batch in response.batches.iter_mut() {
             if !message.is_certified {
                 // This batch is not part of a certificate, so we need to validate it.
@@ -208,16 +210,13 @@ impl<V: BatchValidation> PrimaryToWorker for PrimaryReceiverHandler<V> {
             if missing.remove(&digest) {
                 // Set received_at timestamp for remote batch.
                 batch.versioned_metadata_mut().set_received_at(now());
-                write_batch.insert_batch(&self.store, [(digest, batch)]).map_err(|e| {
+                multi_insert(&*self.store, [(digest, batch)]).map_err(|e| {
                     anemo::rpc::Status::internal(format!(
                         "failed to batch transaction to commit: {e:?}"
                     ))
                 })?;
             }
         }
-        write_batch.write().map_err(|e| {
-            anemo::rpc::Status::internal(format!("failed to commit to batch store: {e:?}"))
-        })?;
 
         if missing.is_empty() {
             return Ok(anemo::Response::new(()));

@@ -2,10 +2,10 @@
 // Copyright (c) Mysten Labs, Inc.
 // SPDX-License-Identifier: Apache-2.0
 
-use crate::{NodeStorage, PayloadToken};
+use crate::PayloadToken;
 use narwhal_typed_store::{
-    reopen,
-    rocks::{open_cf, DBMap, MetricConf, ReadWriteOptions},
+    test_db::TestDB,
+    traits::{multi_get, multi_insert, multi_remove},
     Map, TypedStoreError,
 };
 use std::sync::Arc;
@@ -16,28 +16,19 @@ use tn_types::{BatchDigest, WorkerId};
 /// Store of the batch digests for the primary node for the own created batches.
 #[derive(Clone)]
 pub struct PayloadStore {
-    store: DBMap<(BatchDigest, WorkerId), PayloadToken>,
+    store: Arc<dyn Map<(BatchDigest, WorkerId), PayloadToken>>,
 
     /// Senders to notify for a write that happened for the specified batch digest and worker id
     notify_subscribers: Arc<NotifyRead<(BatchDigest, WorkerId), ()>>,
 }
 
 impl PayloadStore {
-    pub fn new(payload_store: DBMap<(BatchDigest, WorkerId), PayloadToken>) -> Self {
-        Self { store: payload_store, notify_subscribers: Arc::new(NotifyRead::new()) }
+    pub fn new(store: Arc<dyn Map<(BatchDigest, WorkerId), PayloadToken>>) -> Self {
+        Self { store, notify_subscribers: Arc::new(NotifyRead::new()) }
     }
 
     pub fn new_for_tests() -> Self {
-        let rocksdb = open_cf(
-            tempfile::tempdir().unwrap(),
-            None,
-            MetricConf::default(),
-            &[NodeStorage::PAYLOAD_CF],
-        )
-        .expect("Cannot open database");
-        let map =
-            reopen!(&rocksdb, NodeStorage::PAYLOAD_CF;<(BatchDigest, WorkerId), PayloadToken>);
-        PayloadStore::new(map)
+        PayloadStore::new(Arc::new(TestDB::open()))
     }
 
     pub fn write(&self, digest: &BatchDigest, worker_id: &WorkerId) -> Result<(), TypedStoreError> {
@@ -58,7 +49,7 @@ impl PayloadStore {
     ) -> Result<(), TypedStoreError> {
         fail_point!("narwhal-store-before-write");
 
-        self.store.multi_insert(keys.clone().into_iter().map(|e| (e, 0u8)))?;
+        multi_insert(&*self.store, keys.clone().into_iter().map(|e| (e, 0u8)))?;
 
         keys.into_iter().for_each(|(digest, worker_id)| {
             self.notify_subscribers.notify(&(digest, worker_id), &());
@@ -107,7 +98,7 @@ impl PayloadStore {
         &self,
         keys: impl IntoIterator<Item = (BatchDigest, WorkerId)>,
     ) -> Result<Vec<Option<PayloadToken>>, TypedStoreError> {
-        self.store.multi_get(keys)
+        multi_get(&*self.store, keys)
     }
 
     #[allow(clippy::let_and_return)]
@@ -117,7 +108,7 @@ impl PayloadStore {
     ) -> Result<(), TypedStoreError> {
         fail_point!("narwhal-store-before-write");
 
-        let result = self.store.multi_remove(keys);
+        let result = multi_remove(&*self.store, keys);
 
         fail_point!("narwhal-store-after-write");
         result
