@@ -4,7 +4,7 @@
 
 use std::sync::Arc;
 
-use narwhal_typed_store::{test_db::TestDB, Map, TypedStoreError};
+use narwhal_typed_store::{mem_db::MemDB, Map, TypedStoreError};
 use telcoin_macros::fail_point;
 use tn_types::{AuthorityIdentifier, Vote, VoteAPI, VoteInfo};
 
@@ -20,7 +20,7 @@ impl VoteDigestStore {
     }
 
     pub fn new_for_tests() -> VoteDigestStore {
-        VoteDigestStore::new(Arc::new(TestDB::open()))
+        VoteDigestStore::new(Arc::new(MemDB::open()))
     }
 
     /// Insert the vote's basic details into the database for the corresponding

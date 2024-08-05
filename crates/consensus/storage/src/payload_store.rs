@@ -4,7 +4,7 @@
 
 use crate::PayloadToken;
 use narwhal_typed_store::{
-    test_db::TestDB,
+    mem_db::MemDB,
     traits::{multi_get, multi_insert, multi_remove},
     Map, TypedStoreError,
 };
@@ -28,7 +28,7 @@ impl PayloadStore {
     }
 
     pub fn new_for_tests() -> Self {
-        PayloadStore::new(Arc::new(TestDB::open()))
+        PayloadStore::new(Arc::new(MemDB::open()))
     }
 
     pub fn write(&self, digest: &BatchDigest, worker_id: &WorkerId) -> Result<(), TypedStoreError> {

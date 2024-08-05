@@ -19,9 +19,6 @@ where
     /// Returns the value for the given key from the map, if it exists.
     fn get(&self, key: &K) -> Result<Option<V>, TypedStoreError>;
 
-    /// Returns the raw value (serialized bytes) for the given key from the map, if it exists.
-    fn get_raw_bytes(&self, key: &K) -> Result<Option<Vec<u8>>, TypedStoreError>;
-
     /// Inserts the given key-value pair into the map.
     fn insert(&self, key: &K, value: &V) -> Result<(), TypedStoreError>;
 
@@ -29,20 +26,14 @@ where
     fn remove(&self, key: &K) -> Result<(), TypedStoreError>;
 
     /// Removes every key-value pair from the map.
-    fn unsafe_clear(&self) -> Result<(), TypedStoreError>;
-
-    /// Uses delete range on the entire key range
-    fn schedule_delete_all(&self) -> Result<(), TypedStoreError>;
+    fn clear(&self) -> Result<(), TypedStoreError>;
 
     /// Returns true if the map is empty, otherwise false.
     fn is_empty(&self) -> bool;
 
     /// Returns an unbounded iterator visiting each key-value pair in the map.
-    /// This is potentially unsafe as it can perform a full table scan
-    fn unbounded_iter(&self) -> Box<dyn Iterator<Item = (K, V)> + '_>;
-
-    /// Same as `iter` but performs status check
-    fn safe_iter(&self) -> Box<dyn Iterator<Item = Result<(K, V), TypedStoreError>> + '_>;
+    /// If this is backed by storage an underlying error will most likely end the iterator early.
+    fn iter(&self) -> Box<dyn Iterator<Item = (K, V)> + '_>;
 
     /// Skips all the elements that are smaller than the given key,
     /// and either lands on the key or the first one greater than
@@ -52,15 +43,17 @@ where
     /// Iterates over all the keys in reverse.
     fn reverse_iter(&self) -> Box<dyn Iterator<Item = (K, V)> + '_>;
 
-    /// Returns the record prior to key if it exists.
+    /// Returns the record prior to key if it exists or the first record that is sorted before if it
+    /// does not exist.
     fn record_prior_to(&self, key: &K) -> Option<(K, V)>;
 
     /// Returns the last (key, value) in the database.
     fn last_record(&self) -> Option<(K, V)>;
 }
 
-// These multi-operations are functions so they can have their own generics without severly limiting how Map can be used.
-// TODO: Will need to add some hints/optional functions to Map at some point to make these more efficient (i.e. use native DB batching/transactions).
+// These multi-operations are functions so they can have their own generics without severly limiting
+// how Map can be used. TODO: Will need to add some hints/optional functions to Map at some point to
+// make these more efficient (i.e. use native DB batching/transactions).
 
 /// Inserts key-value pairs, non-atomically.
 pub fn multi_insert<K, V, J, U>(

@@ -10,7 +10,7 @@ use crate::{
 };
 use fastcrypto::{hash::Hash, traits::KeyPair as _};
 use indexmap::IndexMap;
-use narwhal_typed_store::{test_db::TestDB, Map};
+use narwhal_typed_store::{mem_db::MemDB, Map};
 use rand::{
     distributions::Bernoulli,
     prelude::Distribution,
@@ -92,7 +92,7 @@ macro_rules! test_new_certificates_channel {
 }
 
 pub fn create_batch_store() -> Arc<dyn Map<BatchDigest, Batch>> {
-    Arc::new(TestDB::open())
+    Arc::new(MemDB::open())
 }
 
 pub fn temp_dir() -> std::path::PathBuf {
@@ -444,8 +444,8 @@ pub fn make_certificates_with_leader_configuration(
                             // check whether anyone from the current round already included it
                             // if yes, then we should remove it and not vote again.
                             if certificates.iter().any(|c| {
-                                c.round() == round
-                                    && c.header().parents().contains(&leader_certificate.digest())
+                                c.round() == round &&
+                                    c.header().parents().contains(&leader_certificate.digest())
                             }) {
                                 let mut p = parents.clone();
                                 p.remove(&leader_certificate.digest());

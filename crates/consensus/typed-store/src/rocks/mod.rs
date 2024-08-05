@@ -5,7 +5,6 @@
 pub mod errors;
 pub(crate) mod iter;
 pub(crate) mod keys;
-pub(crate) mod safe_iter;
 pub mod util;
 pub(crate) mod values;
 
@@ -38,7 +37,6 @@ use tokio::sync::oneshot;
 use tracing::{debug, error, info, instrument, warn};
 
 use self::{iter::Iter, keys::Keys, values::Values};
-use crate::rocks::safe_iter::SafeIter;
 pub use errors::TypedStoreError;
 use telcoin_macros::{fail_point, nondeterministic};
 
@@ -800,49 +798,6 @@ where
         }
     }
 
-    /// Returns a vector of raw values corresponding to the keys provided.
-    fn multi_get_pinned<J>(
-        &self,
-        keys: impl IntoIterator<Item = J>,
-    ) -> Result<Vec<Option<DBPinnableSlice<'_>>>, TypedStoreError>
-    where
-        J: Borrow<K>,
-        K: Serialize,
-    {
-        let _timer = self
-            .db_metrics
-            .op_metrics
-            .rocksdb_multiget_latency_seconds
-            .with_label_values(&[&self.cf])
-            .start_timer();
-        let perf_ctx =
-            if self._multiget_sample_interval.sample() { Some(RocksDBPerfContext) } else { None };
-        let keys_bytes: Result<Vec<_>, TypedStoreError> =
-            keys.into_iter().map(|k| be_fix_int_ser(k.borrow())).collect();
-        let results: Result<Vec<_>, TypedStoreError> = self
-            .rocksdb
-            .batched_multi_get_cf_opt(
-                &self.cf(),
-                &keys_bytes?,
-                /* sorted_keys= */ false,
-                &self.opts.readopts(),
-            )
-            .into_iter()
-            .map(|r| r.map_err(|e| TypedStoreError::RocksDBError(e.into_string())))
-            .collect();
-        let entries = results?;
-        let entry_size = entries.iter().flatten().map(|entry| entry.len()).sum::<usize>();
-        self.db_metrics
-            .op_metrics
-            .rocksdb_multiget_bytes
-            .with_label_values(&[&self.cf])
-            .observe(entry_size as f64);
-        if perf_ctx.is_some() {
-            self.db_metrics.read_perf_ctx_metrics.report_metrics(&self.cf);
-        }
-        Ok(entries)
-    }
-
     fn report_metrics(rocksdb: &Arc<RocksDB>, cf_name: &str, db_metrics: &Arc<DBMetrics>) {
         let cf = rocksdb.cf_handle(cf_name).expect("Failed to get cf");
         db_metrics.cf_metrics.rocksdb_total_sst_files_size.with_label_values(&[cf_name]).set(
@@ -929,10 +884,6 @@ where
         DBTransaction::new_without_snapshot(&self.rocksdb)
     }
 
-    fn snapshot(&self) -> Result<RocksDBSnapshot<'_>, TypedStoreError> {
-        Ok(self.rocksdb.snapshot())
-    }
-
     /// Returns an unbounded iterator visiting each key-value pair in the map.
     /// This is potentially unsafe as it can perform a full table scan
     fn unbounded_iter_inner(&self) -> Iter<'_, K, V> {
@@ -964,6 +915,32 @@ where
     #[instrument(level = "trace", skip_all, err)]
     fn try_catch_up_with_primary(&self) -> Result<(), TypedStoreError> {
         Ok(self.rocksdb.try_catch_up_with_primary()?)
+    }
+
+    #[instrument(level = "trace", skip_all, err)]
+    fn get_raw_bytes(&self, key: &K) -> Result<Option<Vec<u8>>, TypedStoreError> {
+        let _timer = self
+            .db_metrics
+            .op_metrics
+            .rocksdb_get_latency_seconds
+            .with_label_values(&[&self.cf])
+            .start_timer();
+        let perf_ctx =
+            if self.get_sample_interval.sample() { Some(RocksDBPerfContext) } else { None };
+        let key_buf = be_fix_int_ser(key)?;
+        let res = self.rocksdb.get_pinned_cf_opt(&self.cf(), &key_buf, &self.opts.readopts())?;
+        self.db_metrics
+            .op_metrics
+            .rocksdb_get_bytes
+            .with_label_values(&[&self.cf])
+            .observe(res.as_ref().map_or(0.0, |v| v.len() as f64));
+        if perf_ctx.is_some() {
+            self.db_metrics.read_perf_ctx_metrics.report_metrics(&self.cf);
+        }
+        match res {
+            Some(data) => Ok(Some(data.to_vec())),
+            None => Ok(None),
+        }
     }
 }
 
@@ -1079,7 +1056,7 @@ impl DBBatch {
 
 // TODO: Remove this entire implementation once we switch to sally
 impl DBBatch {
-    pub fn delete_batch<J: Borrow<K>, K: Serialize, V>(
+    pub fn delete_batch<J: Borrow<K>, K, V>(
         &mut self,
         db: &DBMap<K, V>,
         purged_vals: impl IntoIterator<Item = J>,
@@ -1337,7 +1314,7 @@ impl<'a> DBTransaction<'a> {
         )
     }
 
-    pub fn keys<K: DeserializeOwned, V: DeserializeOwned>(&'a self, db: &DBMap<K, V>) -> Keys<'a, K>
+    pub fn keys<K, V>(&'a self, db: &DBMap<K, V>) -> Keys<'a, K>
     where
         K: Serialize + DeserializeOwned,
         V: Serialize + DeserializeOwned,
@@ -1459,8 +1436,8 @@ where
         // [`rocksdb::DBWithThreadMode::key_may_exist_cf`] can have false positives,
         // but no false negatives. We use it to short-circuit the absent case
         let readopts = self.opts.readopts();
-        Ok(self.rocksdb.key_may_exist_cf(&self.cf(), &key_buf, &readopts)
-            && self.rocksdb.get_pinned_cf_opt(&self.cf(), &key_buf, &readopts)?.is_some())
+        Ok(self.rocksdb.key_may_exist_cf(&self.cf(), &key_buf, &readopts) &&
+            self.rocksdb.get_pinned_cf_opt(&self.cf(), &key_buf, &readopts)?.is_some())
     }
 
     #[instrument(level = "trace", skip_all, err)]
@@ -1485,32 +1462,6 @@ where
         }
         match res {
             Some(data) => Ok(Some(bcs::from_bytes(&data)?)),
-            None => Ok(None),
-        }
-    }
-
-    #[instrument(level = "trace", skip_all, err)]
-    fn get_raw_bytes(&self, key: &K) -> Result<Option<Vec<u8>>, TypedStoreError> {
-        let _timer = self
-            .db_metrics
-            .op_metrics
-            .rocksdb_get_latency_seconds
-            .with_label_values(&[&self.cf])
-            .start_timer();
-        let perf_ctx =
-            if self.get_sample_interval.sample() { Some(RocksDBPerfContext) } else { None };
-        let key_buf = be_fix_int_ser(key)?;
-        let res = self.rocksdb.get_pinned_cf_opt(&self.cf(), &key_buf, &self.opts.readopts())?;
-        self.db_metrics
-            .op_metrics
-            .rocksdb_get_bytes
-            .with_label_values(&[&self.cf])
-            .observe(res.as_ref().map_or(0.0, |v| v.len() as f64));
-        if perf_ctx.is_some() {
-            self.db_metrics.read_perf_ctx_metrics.report_metrics(&self.cf);
-        }
-        match res {
-            Some(data) => Ok(Some(data.to_vec())),
             None => Ok(None),
         }
     }
@@ -1563,117 +1514,21 @@ where
     /// to get into a race condition where the column family has been dropped but new
     /// one is not created yet
     #[instrument(level = "trace", skip_all, err)]
-    fn unsafe_clear(&self) -> Result<(), TypedStoreError> {
+    fn clear(&self) -> Result<(), TypedStoreError> {
         let _ = self.rocksdb.drop_cf(&self.cf);
         self.rocksdb.create_cf(self.cf.clone(), &default_db_options().options)?;
         Ok(())
     }
 
-    /// Writes a range delete tombstone to delete all entries in the db map
-    /// If the DBMap is configured with ignore_range_deletions set to false,
-    /// the effect of this write will be visible immediately i.e. you won't
-    /// see old values when you do a lookup or scan. But if it is configured
-    /// with ignore_range_deletions set to true, the old value are visible until
-    /// compaction actually deletes them which will happen sometime after. By
-    /// default ignore_range_deletions is set to true on a DBMap (unless it is
-    /// overriden in the config), so please use this function with caution
-    #[instrument(level = "trace", skip_all, err)]
-    fn schedule_delete_all(&self) -> Result<(), TypedStoreError> {
-        let mut iter = self.unbounded_iter_inner().seek_to_first();
-        let first_key = iter.next().map(|(k, _v)| k);
-        let last_key = iter.skip_to_last().next().map(|(k, _v)| k);
-        if let Some((first_key, last_key)) = first_key.zip(last_key) {
-            let mut batch = self.batch();
-            batch.schedule_delete_range(self, &first_key, &last_key)?;
-            batch.write()?;
-        }
-        Ok(())
-    }
-
     fn is_empty(&self) -> bool {
-        self.safe_iter().next().is_none()
+        self.iter().next().is_none()
     }
 
     /// Returns an unbounded iterator visiting each key-value pair in the map.
     /// This is potentially unsafe as it can perform a full table scan
-    fn unbounded_iter(&self) -> Box<dyn Iterator<Item = (K, V)> + '_> {
+    fn iter(&self) -> Box<dyn Iterator<Item = (K, V)> + '_> {
         Box::new(self.unbounded_iter_inner())
     }
-
-    fn safe_iter(&self) -> Box<dyn Iterator<Item = Result<(K, V), TypedStoreError>> + '_> {
-        let _timer = self
-            .db_metrics
-            .op_metrics
-            .rocksdb_iter_latency_seconds
-            .with_label_values(&[&self.cf])
-            .start_timer();
-        let _perf_ctx =
-            if self.iter_sample_interval.sample() { Some(RocksDBPerfContext) } else { None };
-        let bytes_scanned =
-            self.db_metrics.op_metrics.rocksdb_iter_bytes.with_label_values(&[&self.cf]);
-        let keys_scanned =
-            self.db_metrics.op_metrics.rocksdb_iter_keys.with_label_values(&[&self.cf]);
-        let mut db_iter = self.rocksdb.raw_iterator_cf(&self.cf(), self.opts.readopts());
-        db_iter.seek_to_first();
-        Box::new(SafeIter::new(
-            self.cf.clone(),
-            db_iter,
-            Some(_timer),
-            _perf_ctx,
-            Some(bytes_scanned),
-            Some(keys_scanned),
-            Some(self.db_metrics.clone()),
-        ))
-    }
-
-    /*
-    /// Returns a vector of values corresponding to the keys provided.
-    #[instrument(level = "trace", skip_all, err)]
-    fn multi_get(
-        &self,
-        keys: impl IntoIterator<Item = J>,
-    ) -> Result<Vec<Option<V>>, TypedStoreError>
-    where
-        J: Borrow<K>,
-    {
-        let results = self.multi_get_pinned(keys)?;
-        let values_parsed: Result<Vec<_>, TypedStoreError> = results
-            .into_iter()
-            .map(|value_byte| match value_byte {
-                Some(data) => Ok(Some(bcs::from_bytes(&data)?)),
-                None => Ok(None),
-            })
-            .collect();
-
-        values_parsed
-    }
-
-    /// Convenience method for batch insertion
-    #[instrument(level = "trace", skip_all, err)]
-    fn multi_insert<J, U>(
-        &self,
-        key_val_pairs: impl IntoIterator<Item = (J, U)>,
-    ) -> Result<(), TypedStoreError>
-    where
-        J: Borrow<K>,
-        U: Borrow<V>,
-    {
-        let mut batch = self.batch();
-        batch.insert_batch(self, key_val_pairs)?;
-        batch.write()
-    }
-
-    /// Convenience method for batch removal
-    #[instrument(level = "trace", skip_all, err)]
-    fn multi_remove<J>(&self, keys: impl IntoIterator<Item = J>) -> Result<(), TypedStoreError>
-    where
-        J: Borrow<K>,
-    {
-        let mut batch = self.batch();
-        batch.delete_batch(self, keys)?;
-        batch.write()
-    }
-    */
 
     fn skip_to(&self, key: &K) -> Result<Box<dyn Iterator<Item = (K, V)> + '_>, TypedStoreError> {
         Ok(Box::new(self.unbounded_iter_inner().skip_to(key)?))
@@ -1797,9 +1652,9 @@ impl DBOptions {
 
         // Increase write buffer size to 256MiB.
         let write_buffer_size = read_size_from_env(ENV_VAR_MAX_WRITE_BUFFER_SIZE_MB)
-            .unwrap_or(DEFAULT_MAX_WRITE_BUFFER_SIZE_MB)
-            * 1024
-            * 1024;
+            .unwrap_or(DEFAULT_MAX_WRITE_BUFFER_SIZE_MB) *
+            1024 *
+            1024;
         self.options.set_write_buffer_size(write_buffer_size);
         // Since large blobs are not in sst files, reduce the target file size and base level
         // target size.
@@ -1831,9 +1686,9 @@ impl DBOptions {
     pub fn optimize_for_write_throughput(mut self) -> DBOptions {
         // Increase write buffer size to 256MiB.
         let write_buffer_size = read_size_from_env(ENV_VAR_MAX_WRITE_BUFFER_SIZE_MB)
-            .unwrap_or(DEFAULT_MAX_WRITE_BUFFER_SIZE_MB)
-            * 1024
-            * 1024;
+            .unwrap_or(DEFAULT_MAX_WRITE_BUFFER_SIZE_MB) *
+            1024 *
+            1024;
         self.options.set_write_buffer_size(write_buffer_size);
         // Increase write buffers to keep to 6 before slowing down writes.
         let max_write_buffer_number = read_size_from_env(ENV_VAR_MAX_WRITE_BUFFER_NUMBER)
@@ -1857,9 +1712,9 @@ impl DBOptions {
         // Increase sst file size to 128MiB.
         self.options.set_target_file_size_base(
             read_size_from_env(ENV_VAR_TARGET_FILE_SIZE_BASE_MB)
-                .unwrap_or(DEFAULT_TARGET_FILE_SIZE_BASE_MB) as u64
-                * 1024
-                * 1024,
+                .unwrap_or(DEFAULT_TARGET_FILE_SIZE_BASE_MB) as u64 *
+                1024 *
+                1024,
         );
 
         // Increase level 1 target size to 256MiB * 6 ~ 1.5GiB.
@@ -1919,9 +1774,9 @@ pub fn default_db_options() -> DBOptions {
     // future. If you need to modify an option, either update the default value, or override the
     // option in Sui / Narwhal.
     opt.set_db_write_buffer_size(
-        read_size_from_env(ENV_VAR_DB_WRITE_BUFFER_SIZE).unwrap_or(DEFAULT_DB_WRITE_BUFFER_SIZE)
-            * 1024
-            * 1024,
+        read_size_from_env(ENV_VAR_DB_WRITE_BUFFER_SIZE).unwrap_or(DEFAULT_DB_WRITE_BUFFER_SIZE) *
+            1024 *
+            1024,
     );
     opt.set_max_total_wal_size(
         read_size_from_env(ENV_VAR_DB_WAL_SIZE).unwrap_or(DEFAULT_DB_WAL_SIZE) as u64 * 1024 * 1024,

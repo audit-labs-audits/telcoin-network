@@ -3,7 +3,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 use crate::StoreResult;
-use narwhal_typed_store::{test_db::TestDB, traits::multi_insert, Map, TypedStoreError};
+use narwhal_typed_store::{mem_db::MemDB, traits::multi_insert, Map, TypedStoreError};
 use std::{collections::HashMap, sync::Arc};
 use tn_types::{
     AuthorityIdentifier, CommittedSubDag, ConsensusCommit, ConsensusCommitV1, Round, SequenceNumber,
@@ -28,13 +28,13 @@ impl ConsensusStore {
     }
 
     pub fn new_for_tests() -> Self {
-        Self::new(Arc::new(TestDB::open()), Arc::new(TestDB::open()))
+        Self::new(Arc::new(MemDB::open()), Arc::new(MemDB::open()))
     }
 
     /// Clear the store.
     pub fn clear(&self) -> StoreResult<()> {
-        self.last_committed.unsafe_clear()?;
-        self.committed_sub_dags_by_index_v1.unsafe_clear()?;
+        self.last_committed.clear()?;
+        self.committed_sub_dags_by_index_v1.clear()?;
         Ok(())
     }
 
@@ -57,7 +57,7 @@ impl ConsensusStore {
 
     /// Load the last committed round of each validator.
     pub fn read_last_committed(&self) -> HashMap<AuthorityIdentifier, Round> {
-        self.last_committed.unbounded_iter().collect()
+        self.last_committed.iter().collect()
     }
 
     /// Gets the latest sub dag index from the store

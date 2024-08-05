@@ -9,7 +9,7 @@ pub use traits::Map;
 pub mod metrics;
 pub mod rocks;
 pub use rocks::TypedStoreError;
-pub mod test_db;
+pub mod mem_db;
 pub use metrics::DBMetrics;
 
 pub type StoreError = rocks::TypedStoreError;

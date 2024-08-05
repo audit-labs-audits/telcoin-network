@@ -252,7 +252,8 @@ impl<T: Cache> CertificateStore<T> {
 
     /// Inserts a certificate to the store
     pub fn write(&self, certificate: Certificate) -> StoreResult<()> {
-        // TODO- the batch used to enforce atomicity on this write, we need to restore that (possibly with a single DB to write to).
+        // TODO- the batch used to enforce atomicity on this write, we need to restore that
+        // (possibly with a single DB to write to).
         fail_point!("narwhal-store-before-write");
 
         let id = certificate.digest();
@@ -493,7 +494,7 @@ impl<T: Cache> CertificateStore<T> {
         let iter = if round > 0 {
             self.certificate_id_by_round.skip_to(&(round - 1, AuthorityIdentifier::default()))?
         } else {
-            self.certificate_id_by_round.unbounded_iter()
+            self.certificate_id_by_round.iter()
         };
 
         let mut digests = Vec::new();
@@ -533,7 +534,7 @@ impl<T: Cache> CertificateStore<T> {
         let iter = if round > 0 {
             self.certificate_id_by_round.skip_to(&(round - 1, AuthorityIdentifier::default()))?
         } else {
-            self.certificate_id_by_round.unbounded_iter()
+            self.certificate_id_by_round.iter()
         };
 
         let mut result = BTreeMap::<Round, Vec<AuthorityIdentifier>>::new();
@@ -634,9 +635,9 @@ impl<T: Cache> CertificateStore<T> {
     pub fn clear(&self) -> StoreResult<()> {
         fail_point!("narwhal-store-before-write");
 
-        self.certificates_by_id.unsafe_clear()?;
-        self.certificate_id_by_round.unsafe_clear()?;
-        self.certificate_id_by_origin.unsafe_clear()?;
+        self.certificates_by_id.clear()?;
+        self.certificate_id_by_round.clear()?;
+        self.certificate_id_by_origin.clear()?;
 
         fail_point!("narwhal-store-after-write");
         Ok(())
@@ -657,7 +658,7 @@ mod test {
     };
     use fastcrypto::hash::Hash;
     use futures::future::join_all;
-    use narwhal_typed_store::{test_db::TestDB, Map};
+    use narwhal_typed_store::{mem_db::MemDB, Map};
     use std::{
         collections::{BTreeSet, HashSet},
         num::NonZeroUsize,
@@ -703,7 +704,7 @@ mod test {
         Arc<dyn Map<(Round, AuthorityIdentifier), CertificateDigest>>,
         Arc<dyn Map<(AuthorityIdentifier, Round), CertificateDigest>>,
     ) {
-        (Arc::new(TestDB::open()), Arc::new(TestDB::open()), Arc::new(TestDB::open()))
+        (Arc::new(MemDB::open()), Arc::new(MemDB::open()), Arc::new(MemDB::open()))
     }
 
     // helper method that creates certificates for the provided
@@ -861,8 +862,8 @@ mod test {
         assert_eq!(highest_round_number, 50);
         for certificate in result {
             assert!(
-                (certificate.round() == last_round_number)
-                    || (certificate.round() == last_round_number - 1)
+                (certificate.round() == last_round_number) ||
+                    (certificate.round() == last_round_number - 1)
             );
         }
         assert!(last_round_number_not_exist.is_none());

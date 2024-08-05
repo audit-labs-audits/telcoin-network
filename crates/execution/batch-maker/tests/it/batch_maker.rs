@@ -215,7 +215,7 @@ async fn test_make_batch_el_to_cl() {
 
     // ensure enough time passes for store to pass
     let _ = tokio::time::sleep(std::time::Duration::from_secs(1)).await;
-    let first_batch = store.safe_iter().next();
+    let first_batch = store.iter().next();
     debug!("first batch? {:?}", first_batch);
 
     // Ensure the batch is stored

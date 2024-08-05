@@ -47,7 +47,7 @@ mod test {
     use std::sync::Arc;
 
     use crate::LAST_PROPOSAL_KEY;
-    use narwhal_typed_store::test_db::TestDB;
+    use narwhal_typed_store::mem_db::MemDB;
     use tn_types::{
         test_utils::{fixture_batch_with_transactions, CommitteeFixture},
         CertificateDigest, Header, HeaderV1Builder, Round,
@@ -56,7 +56,7 @@ mod test {
     use super::ProposerStore;
 
     pub fn new_proposer_for_tests() -> ProposerStore {
-        let db = TestDB::open();
+        let db = MemDB::open();
         ProposerStore::new(Arc::new(db))
     }
 

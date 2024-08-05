@@ -221,8 +221,8 @@ async fn test_iter(#[values(true, false)] is_transactional: bool) {
     let db = open_map(temp_dir(), None, is_transactional);
     db.insert(&123456789, &"123456789".to_string()).expect("Failed to insert");
 
-    let mut iter = db.safe_iter();
-    assert_eq!(Some(Ok((123456789, "123456789".to_string()))), iter.next());
+    let mut iter = db.iter();
+    assert_eq!(Some((123456789, "123456789".to_string())), iter.next());
     assert_eq!(None, iter.next());
 }
 
@@ -344,7 +344,7 @@ async fn test_delete_batch() {
 
     batch.write().expect("Failed to execute batch");
 
-    for (k, _v) in db.unbounded_iter() {
+    for (k, _v) in db.iter() {
         assert_eq!(k % 2, 0);
     }
 }
@@ -391,7 +391,7 @@ async fn test_clear() {
     )
     .expect("Failed to open storage");
     // Test clear of empty map
-    let _ = db.unsafe_clear();
+    let _ = db.clear();
 
     let keys_vals = (0..101).map(|i| (i, i.to_string()));
     let mut insert_batch = db.batch();
@@ -400,17 +400,17 @@ async fn test_clear() {
     insert_batch.write().expect("Failed to execute batch");
 
     // Check we have multiple entries
-    assert!(db.safe_iter().count() > 1);
-    let _ = db.unsafe_clear();
-    assert_eq!(db.safe_iter().count(), 0);
+    assert!(db.iter().count() > 1);
+    let _ = db.clear();
+    assert_eq!(db.iter().count(), 0);
     // Clear again to ensure safety when clearing empty map
-    let _ = db.unsafe_clear();
-    assert_eq!(db.safe_iter().count(), 0);
+    let _ = db.clear();
+    assert_eq!(db.iter().count(), 0);
     // Clear with one item
     let _ = db.insert(&1, &"e".to_string());
-    assert_eq!(db.safe_iter().count(), 1);
-    let _ = db.unsafe_clear();
-    assert_eq!(db.safe_iter().count(), 0);
+    assert_eq!(db.iter().count(), 1);
+    let _ = db.clear();
+    assert_eq!(db.iter().count(), 0);
 }
 
 #[tokio::test]
@@ -426,7 +426,7 @@ async fn test_is_empty() {
 
     // Test empty map is truly empty
     assert!(db.is_empty());
-    let _ = db.unsafe_clear();
+    let _ = db.clear();
     assert!(db.is_empty());
 
     let keys_vals = (0..101).map(|i| (i, i.to_string()));
@@ -436,12 +436,12 @@ async fn test_is_empty() {
     insert_batch.write().expect("Failed to execute batch");
 
     // Check we have multiple entries and not empty
-    assert!(db.safe_iter().count() > 1);
+    assert!(db.iter().count() > 1);
     assert!(!db.is_empty());
 
     // Clear again to ensure empty works after clearing
-    let _ = db.unsafe_clear();
-    assert_eq!(db.safe_iter().count(), 0);
+    let _ = db.clear();
+    assert_eq!(db.iter().count(), 0);
     assert!(db.is_empty());
 }
 
@@ -517,7 +517,7 @@ async fn test_multi_remove(#[values(true, false)] is_transactional: bool) {
 
     // Remove 50 items
     multi_remove(&db, keys_vals.clone().map(|kv| kv.0).take(50)).expect("Failed to multi-remove");
-    assert_eq!(db.safe_iter().count(), 101 - 50);
+    assert_eq!(db.iter().count(), 101 - 50);
 
     // Check that the remaining are present
     for (k, v) in keys_vals.skip(50) {
