@@ -52,6 +52,8 @@ impl ConsensusStore {
             &*self.committed_sub_dags_by_index_v1,
             std::iter::once((sub_dag.sub_dag_index, commit)),
         )?;
+        let _ = self.last_committed.commit();
+        let _ = self.committed_sub_dags_by_index_v1.commit();
         Ok(())
     }
 

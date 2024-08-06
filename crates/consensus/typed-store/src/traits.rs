@@ -5,8 +5,8 @@
 use serde::{de::DeserializeOwned, Serialize};
 use std::borrow::Borrow;
 
-// TODO- need to expose some sort of transaction interface.
-
+/// Interface that defines a consesus DB.
+/// Properly implemented this will allow something to be used as a store for consensus.
 pub trait Map<K, V>: Send + Sync
 where
     K: Serialize + DeserializeOwned + Send + Sync,
@@ -48,6 +48,9 @@ where
 
     /// Returns the last (key, value) in the database.
     fn last_record(&self) -> Option<(K, V)>;
+
+    /// Commit data to durable storage.
+    fn commit(&self) -> eyre::Result<()>;
 }
 
 // These multi-operations are functions so they can have their own generics without severly limiting

@@ -276,6 +276,9 @@ impl<T: Cache> CertificateStore<T> {
         // insert in cache
         self.cache.write(certificate);
 
+        let _ = self.certificates_by_id.commit();
+        let _ = self.certificate_id_by_round.commit();
+        let _ = self.certificate_id_by_origin.commit();
         fail_point!("narwhal-store-after-write");
         Ok(())
     }
@@ -321,6 +324,9 @@ impl<T: Cache> CertificateStore<T> {
         self.cache
             .write_all(certificates.into_iter().map(|(_, certificate)| certificate).collect());
 
+        let _ = self.certificates_by_id.commit();
+        let _ = self.certificate_id_by_round.commit();
+        let _ = self.certificate_id_by_origin.commit();
         fail_point!("narwhal-store-after-write");
         Ok(())
     }
@@ -454,6 +460,8 @@ impl<T: Cache> CertificateStore<T> {
 
         self.cache.remove(&id);
 
+        let _ = self.certificates_by_id.commit();
+        let _ = self.certificate_id_by_round.commit();
         fail_point!("narwhal-store-after-write");
         Ok(())
     }
@@ -482,6 +490,8 @@ impl<T: Cache> CertificateStore<T> {
 
         self.cache.remove_all(ids);
 
+        let _ = self.certificates_by_id.commit();
+        let _ = self.certificate_id_by_round.commit();
         fail_point!("narwhal-store-after-write");
         Ok(())
     }

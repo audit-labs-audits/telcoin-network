@@ -32,6 +32,7 @@ impl ProposerStore {
 
         let result = self.last_proposed.insert(&LAST_PROPOSAL_KEY, header);
 
+        let _ = self.last_proposed.commit();
         fail_point!("narwhal-store-after-write");
         result
     }

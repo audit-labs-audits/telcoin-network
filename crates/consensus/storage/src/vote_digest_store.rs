@@ -31,6 +31,7 @@ impl VoteDigestStore {
 
         let result = self.store.insert(&vote.origin(), &vote.into());
 
+        let _ = self.store.commit();
         fail_point!("narwhal-store-after-write");
         result
     }

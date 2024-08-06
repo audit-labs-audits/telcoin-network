@@ -37,6 +37,7 @@ impl PayloadStore {
         self.store.insert(&(*digest, *worker_id), &0u8)?;
         self.notify_subscribers.notify(&(*digest, *worker_id), &());
 
+        let _ = self.store.commit();
         fail_point!("narwhal-store-after-write");
         Ok(())
     }
@@ -55,6 +56,7 @@ impl PayloadStore {
             self.notify_subscribers.notify(&(digest, worker_id), &());
         });
 
+        let _ = self.store.commit();
         fail_point!("narwhal-store-after-write");
         Ok(())
     }
@@ -106,6 +108,7 @@ impl PayloadStore {
 
         let result = multi_remove(&*self.store, keys);
 
+        let _ = self.store.commit();
         fail_point!("narwhal-store-after-write");
         result
     }

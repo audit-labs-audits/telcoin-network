@@ -1545,6 +1545,11 @@ where
     fn reverse_iter(&self) -> Box<dyn Iterator<Item = (K, V)> + '_> {
         Box::new(self.unbounded_iter_inner().skip_to_last().reverse())
     }
+
+    fn commit(&self) -> eyre::Result<()> {
+        self.rocksdb.flush_cf(&self.cf())?;
+        Ok(())
+    }
 }
 
 impl<J, K, U, V> TryExtend<(J, U)> for DBMap<K, V>

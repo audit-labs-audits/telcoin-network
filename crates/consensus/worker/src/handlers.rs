@@ -215,6 +215,7 @@ impl<V: BatchValidation> PrimaryToWorker for PrimaryReceiverHandler<V> {
                         "failed to batch transaction to commit: {e:?}"
                     ))
                 })?;
+                let _ = self.store.commit();
             }
         }
 

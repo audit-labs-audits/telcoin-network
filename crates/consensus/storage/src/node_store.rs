@@ -8,6 +8,7 @@ use crate::{
     ProposerStore,
 };
 use narwhal_typed_store::{
+    mem_db::MemDB,
     metrics::SamplingInterval,
     reopen,
     rocks::{default_db_options, open_cf_opts, DBMap, MetricConf, ReadWriteOptions},
@@ -58,6 +59,14 @@ impl NodeStorage {
 
     /// Open or reopen all the storage of the node.
     pub fn reopen<Path: AsRef<std::path::Path> + Send>(
+        store_path: Path,
+        certificate_store_cache_metrics: Option<CertificateStoreCacheMetrics>,
+    ) -> Self {
+        NodeStorage::reopen_rocks(store_path, certificate_store_cache_metrics)
+    }
+
+    /// Open or reopen all the storage of the node backed by rocks DB.
+    fn reopen_rocks<Path: AsRef<std::path::Path> + Send>(
         store_path: Path,
         certificate_store_cache_metrics: Option<CertificateStoreCacheMetrics>,
     ) -> Self {
@@ -119,6 +128,66 @@ impl NodeStorage {
             Self::BATCHES_CF;<BatchDigest, Batch>,
             Self::LAST_COMMITTED_CF;<AuthorityIdentifier, Round>,
             Self::COMMITTED_SUB_DAG_INDEX_CF;<SequenceNumber, ConsensusCommit>
+        );
+
+        let proposer_store = ProposerStore::new(Arc::new(last_proposed_map));
+        let vote_digest_store = VoteDigestStore::new(Arc::new(votes_map));
+
+        let certificate_store_cache = CertificateStoreCache::new(
+            NonZeroUsize::new(Self::CERTIFICATE_STORE_CACHE_SIZE).unwrap(),
+            certificate_store_cache_metrics,
+        );
+        let certificate_store = CertificateStore::<CertificateStoreCache>::new(
+            Arc::new(certificate_map),
+            Arc::new(certificate_digest_by_round_map),
+            Arc::new(certificate_digest_by_origin_map),
+            certificate_store_cache,
+        );
+        let payload_store = PayloadStore::new(Arc::new(payload_map));
+        let batch_store = Arc::new(batch_map);
+        let consensus_store = Arc::new(ConsensusStore::new(
+            Arc::new(last_committed_map),
+            Arc::new(committed_sub_dag_map),
+        ));
+
+        Self {
+            proposer_store,
+            vote_digest_store,
+            certificate_store,
+            payload_store,
+            batch_store,
+            consensus_store,
+        }
+    }
+
+    /// Open or reopen all the storage of the node backed by a memory DB
+    fn _reopen_mem<Path: AsRef<std::path::Path> + Send>(
+        _store_path: Path,
+        certificate_store_cache_metrics: Option<CertificateStoreCacheMetrics>,
+    ) -> Self {
+        let (
+            last_proposed_map,
+            votes_map,
+            certificate_map,
+            certificate_digest_by_round_map,
+            certificate_digest_by_origin_map,
+            payload_map,
+            batch_map,
+            last_committed_map,
+            // table `sub_dag` is deprecated in favor of `committed_sub_dag`.
+            // This can be removed when DBMap supports removing tables.
+            // _sub_dag_index_map,
+            committed_sub_dag_map,
+        ) = (
+            MemDB::<ProposerKey, Header>::open(),
+            MemDB::<AuthorityIdentifier, VoteInfo>::open(),
+            MemDB::<CertificateDigest, Certificate>::open(),
+            MemDB::<(Round, AuthorityIdentifier), CertificateDigest>::open(),
+            MemDB::<(AuthorityIdentifier, Round), CertificateDigest>::open(),
+            MemDB::<(BatchDigest, WorkerId), PayloadToken>::open(),
+            MemDB::<BatchDigest, Batch>::open(),
+            MemDB::<AuthorityIdentifier, Round>::open(),
+            MemDB::<SequenceNumber, ConsensusCommit>::open(),
         );
 
         let proposer_store = ProposerStore::new(Arc::new(last_proposed_map));

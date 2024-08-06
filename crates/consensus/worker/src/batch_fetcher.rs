@@ -131,6 +131,7 @@ impl BatchFetcher {
                             }
 
 
+                            let _ = self.batch_store.commit();
                             if remaining_digests.is_empty() {
                                 return fetched_batches;
                             }

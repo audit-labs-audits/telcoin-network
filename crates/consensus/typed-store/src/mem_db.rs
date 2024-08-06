@@ -13,7 +13,8 @@ use serde::{de::DeserializeOwned, Serialize};
 use crate::Map;
 
 /// An interface to a btree map database. This is mainly intended
-/// for tests and performing benchmark comparisons or anywhere where an ephemeral database is useful.
+/// for tests and performing benchmark comparisons or anywhere where an ephemeral database is
+/// useful.
 #[derive(Clone, Debug)]
 pub struct MemDB<K, V> {
     pub db: Arc<RwLock<BTreeMap<K, V>>>,
@@ -121,6 +122,10 @@ where
             .expect("Poisoned read lock")
             .last_key_value()
             .map(|(k, v)| (k.clone(), v.clone()))
+    }
+
+    fn commit(&self) -> eyre::Result<()> {
+        Ok(())
     }
 }
 
