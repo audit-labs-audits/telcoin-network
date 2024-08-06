@@ -30,7 +30,7 @@ pub type DagResult<T> = Result<T, DagError>;
 // Notification for certificate accepted.
 pub type AcceptNotification = Arc<NotifyOnce>;
 
-#[derive(Clone, Debug, Error)]
+#[derive(Debug, Error)]
 pub enum DagError {
     #[error("Channel {0} has closed unexpectedly")]
     ClosedChannel(String),

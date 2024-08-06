@@ -1,6 +1,7 @@
 // Copyright (c) Telcoin, LLC
 // Copyright (c) Mysten Labs, Inc.
 // SPDX-License-Identifier: Apache-2.0
+
 use fastcrypto::hash::Hash;
 use lru::LruCache;
 use parking_lot::Mutex;
@@ -17,7 +18,6 @@ use telcoin_macros::fail_point;
 
 use crate::StoreResult;
 use narwhal_typed_store::{
-    rocks::TypedStoreError::RocksDBError,
     traits::{multi_get, multi_insert, multi_remove},
     Map,
 };
@@ -515,7 +515,7 @@ impl<T: Cache> CertificateStore<T> {
             .into_iter()
             .map(|opt_cert| {
                 opt_cert.ok_or_else(|| {
-                    RocksDBError(format!(
+                    eyre::Report::msg(format!(
                         "Certificate with some digests not found, CertificateStore invariant violation: {:?}",
                         digests
                     ))
@@ -570,7 +570,7 @@ impl<T: Cache> CertificateStore<T> {
             }
 
             let certificate = self.certificates_by_id.get(&digest)?.ok_or_else(|| {
-                RocksDBError(format!(
+                eyre::Report::msg(format!(
                     "Certificate with id {} not found in main storage although it should",
                     digest
                 ))

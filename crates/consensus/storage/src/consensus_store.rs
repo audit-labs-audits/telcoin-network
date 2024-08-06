@@ -3,7 +3,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 use crate::StoreResult;
-use narwhal_typed_store::{mem_db::MemDB, traits::multi_insert, Map, TypedStoreError};
+use narwhal_typed_store::{mem_db::MemDB, traits::multi_insert, Map};
 use std::{collections::HashMap, sync::Arc};
 use tn_types::{
     AuthorityIdentifier, CommittedSubDag, ConsensusCommit, ConsensusCommitV1, Round, SequenceNumber,
@@ -43,7 +43,7 @@ impl ConsensusStore {
         &self,
         last_committed: &HashMap<AuthorityIdentifier, Round>,
         sub_dag: &CommittedSubDag,
-    ) -> Result<(), TypedStoreError> {
+    ) -> eyre::Result<()> {
         // TODO- we lost atomicity here.  Can we even continue in the face of a storage failure?
         let commit = ConsensusCommit::V1(ConsensusCommitV1::from_sub_dag(sub_dag));
 

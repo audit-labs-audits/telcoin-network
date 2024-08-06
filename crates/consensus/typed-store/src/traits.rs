@@ -2,9 +2,8 @@
 // Copyright (c) Mysten Labs, Inc.
 // SPDX-License-Identifier: Apache-2.0
 
-use crate::TypedStoreError;
 use serde::{de::DeserializeOwned, Serialize};
-use std::{borrow::Borrow, collections::BTreeMap};
+use std::borrow::Borrow;
 
 // TODO- need to expose some sort of transaction interface.
 
@@ -14,19 +13,19 @@ where
     V: Serialize + DeserializeOwned + Send + Sync,
 {
     /// Returns true if the map contains a value for the specified key.
-    fn contains_key(&self, key: &K) -> Result<bool, TypedStoreError>;
+    fn contains_key(&self, key: &K) -> eyre::Result<bool>;
 
     /// Returns the value for the given key from the map, if it exists.
-    fn get(&self, key: &K) -> Result<Option<V>, TypedStoreError>;
+    fn get(&self, key: &K) -> eyre::Result<Option<V>>;
 
     /// Inserts the given key-value pair into the map.
-    fn insert(&self, key: &K, value: &V) -> Result<(), TypedStoreError>;
+    fn insert(&self, key: &K, value: &V) -> eyre::Result<()>;
 
     /// Removes the entry for the given key from the map.
-    fn remove(&self, key: &K) -> Result<(), TypedStoreError>;
+    fn remove(&self, key: &K) -> eyre::Result<()>;
 
     /// Removes every key-value pair from the map.
-    fn clear(&self) -> Result<(), TypedStoreError>;
+    fn clear(&self) -> eyre::Result<()>;
 
     /// Returns true if the map is empty, otherwise false.
     fn is_empty(&self) -> bool;
@@ -38,7 +37,7 @@ where
     /// Skips all the elements that are smaller than the given key,
     /// and either lands on the key or the first one greater than
     /// the key.
-    fn skip_to(&self, key: &K) -> Result<Box<dyn Iterator<Item = (K, V)> + '_>, TypedStoreError>;
+    fn skip_to(&self, key: &K) -> eyre::Result<Box<dyn Iterator<Item = (K, V)> + '_>>;
 
     /// Iterates over all the keys in reverse.
     fn reverse_iter(&self) -> Box<dyn Iterator<Item = (K, V)> + '_>;
@@ -59,7 +58,7 @@ where
 pub fn multi_insert<K, V, J, U>(
     db: &dyn Map<K, V>,
     key_val_pairs: impl IntoIterator<Item = (J, U)>,
-) -> Result<(), TypedStoreError>
+) -> eyre::Result<()>
 where
     K: Serialize + DeserializeOwned + Send + Sync,
     V: Serialize + DeserializeOwned + Send + Sync,
@@ -73,7 +72,7 @@ where
 pub fn multi_remove<K, V, J>(
     db: &dyn Map<K, V>,
     keys: impl IntoIterator<Item = J>,
-) -> Result<(), TypedStoreError>
+) -> eyre::Result<()>
 where
     K: Serialize + DeserializeOwned + Send + Sync,
     V: Serialize + DeserializeOwned + Send + Sync,
@@ -86,41 +85,11 @@ where
 pub fn multi_get<K, V, J>(
     db: &dyn Map<K, V>,
     keys: impl IntoIterator<Item = J>,
-) -> Result<Vec<Option<V>>, TypedStoreError>
+) -> eyre::Result<Vec<Option<V>>>
 where
     K: Serialize + DeserializeOwned + Send + Sync,
     V: Serialize + DeserializeOwned + Send + Sync,
     J: Borrow<K>,
 {
     keys.into_iter().map(|key| db.get(key.borrow())).collect()
-}
-
-pub struct TableSummary {
-    pub num_keys: u64,
-    pub key_bytes_total: usize,
-    pub value_bytes_total: usize,
-    pub key_hist: hdrhistogram::Histogram<u64>,
-    pub value_hist: hdrhistogram::Histogram<u64>,
-}
-
-pub trait TypedStoreDebug {
-    /// Dump a DB table with pagination
-    fn dump_table(
-        &self,
-        table_name: String,
-        page_size: u16,
-        page_number: usize,
-    ) -> eyre::Result<BTreeMap<String, String>>;
-
-    /// Get the name of the DB. This is simply the name of the struct
-    fn primary_db_name(&self) -> String;
-
-    /// Get a map of table names to key-value types
-    fn describe_all_tables(&self) -> BTreeMap<String, (String, String)>;
-
-    /// Count the entries in the table
-    fn count_table_keys(&self, table_name: String) -> eyre::Result<usize>;
-
-    /// Return table summary of the input table
-    fn table_summary(&self, table_name: String) -> eyre::Result<TableSummary>;
 }

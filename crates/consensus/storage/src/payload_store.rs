@@ -6,7 +6,7 @@ use crate::PayloadToken;
 use narwhal_typed_store::{
     mem_db::MemDB,
     traits::{multi_get, multi_insert, multi_remove},
-    Map, TypedStoreError,
+    Map,
 };
 use std::sync::Arc;
 use telcoin_macros::fail_point;
@@ -31,7 +31,7 @@ impl PayloadStore {
         PayloadStore::new(Arc::new(MemDB::open()))
     }
 
-    pub fn write(&self, digest: &BatchDigest, worker_id: &WorkerId) -> Result<(), TypedStoreError> {
+    pub fn write(&self, digest: &BatchDigest, worker_id: &WorkerId) -> eyre::Result<()> {
         fail_point!("narwhal-store-before-write");
 
         self.store.insert(&(*digest, *worker_id), &0u8)?;
@@ -46,7 +46,7 @@ impl PayloadStore {
     pub fn write_all(
         &self,
         keys: impl IntoIterator<Item = (BatchDigest, WorkerId)> + Clone,
-    ) -> Result<(), TypedStoreError> {
+    ) -> eyre::Result<()> {
         fail_point!("narwhal-store-before-write");
 
         multi_insert(&*self.store, keys.clone().into_iter().map(|e| (e, 0u8)))?;
@@ -61,11 +61,7 @@ impl PayloadStore {
 
     /// Queries the store whether the batch with provided `digest` and `worker_id` exists. It
     /// returns `true` if exists, `false` otherwise.
-    pub fn contains(
-        &self,
-        digest: BatchDigest,
-        worker_id: WorkerId,
-    ) -> Result<bool, TypedStoreError> {
+    pub fn contains(&self, digest: BatchDigest, worker_id: WorkerId) -> eyre::Result<bool> {
         self.store.get(&(digest, worker_id)).map(|result| result.is_some())
     }
 
@@ -75,7 +71,7 @@ impl PayloadStore {
         &self,
         digest: BatchDigest,
         worker_id: WorkerId,
-    ) -> Result<(), TypedStoreError> {
+    ) -> eyre::Result<()> {
         let receiver = self.notify_subscribers.register_one(&(digest, worker_id));
 
         // let's read the value because we might have missed the opportunity
@@ -97,7 +93,7 @@ impl PayloadStore {
     pub fn read_all(
         &self,
         keys: impl IntoIterator<Item = (BatchDigest, WorkerId)>,
-    ) -> Result<Vec<Option<PayloadToken>>, TypedStoreError> {
+    ) -> eyre::Result<Vec<Option<PayloadToken>>> {
         multi_get(&*self.store, keys)
     }
 
@@ -105,7 +101,7 @@ impl PayloadStore {
     pub fn remove_all(
         &self,
         keys: impl IntoIterator<Item = (BatchDigest, WorkerId)>,
-    ) -> Result<(), TypedStoreError> {
+    ) -> eyre::Result<()> {
         fail_point!("narwhal-store-before-write");
 
         let result = multi_remove(&*self.store, keys);

@@ -4,7 +4,7 @@
 
 use std::sync::Arc;
 
-use narwhal_typed_store::{mem_db::MemDB, Map, TypedStoreError};
+use narwhal_typed_store::{mem_db::MemDB, Map};
 use telcoin_macros::fail_point;
 use tn_types::{AuthorityIdentifier, Vote, VoteAPI, VoteInfo};
 
@@ -26,7 +26,7 @@ impl VoteDigestStore {
     /// Insert the vote's basic details into the database for the corresponding
     /// header author key.
     #[allow(clippy::let_and_return)]
-    pub fn write(&self, vote: &Vote) -> Result<(), TypedStoreError> {
+    pub fn write(&self, vote: &Vote) -> eyre::Result<()> {
         fail_point!("narwhal-store-before-write");
 
         let result = self.store.insert(&vote.origin(), &vote.into());
@@ -36,10 +36,7 @@ impl VoteDigestStore {
     }
 
     /// Read the vote info based on the provided corresponding header author key
-    pub fn read(
-        &self,
-        header_author: &AuthorityIdentifier,
-    ) -> Result<Option<VoteInfo>, TypedStoreError> {
+    pub fn read(&self, header_author: &AuthorityIdentifier) -> eyre::Result<Option<VoteInfo>> {
         self.store.get(header_author)
     }
 }

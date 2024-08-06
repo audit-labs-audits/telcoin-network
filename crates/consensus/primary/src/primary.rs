@@ -533,7 +533,7 @@ impl PrimaryReceiverHandler {
         while let Some(round) = self
             .certificate_store
             .next_round_number(origin, current_round)
-            .map_err(|e| anemo::rpc::Status::from_error(Box::new(e)))?
+            .map_err(|e| anemo::rpc::Status::unknown(format!("unknown error: {e}")))?
         {
             if !skip_rounds.contains(&round) {
                 return Ok(Some(round));
@@ -909,7 +909,7 @@ impl PrimaryToPrimary for PrimaryReceiverHandler {
             match self
                 .certificate_store
                 .read_by_index(*origin, round)
-                .map_err(|e| anemo::rpc::Status::from_error(Box::new(e)))?
+                .map_err(|e| anemo::rpc::Status::unknown(format!("unknown error: {e}")))?
             {
                 Some(cert) => {
                     response.certificates.push(cert);

@@ -1431,7 +1431,7 @@ where
     V: Serialize + DeserializeOwned + Send + Sync,
 {
     #[instrument(level = "trace", skip_all, err)]
-    fn contains_key(&self, key: &K) -> Result<bool, TypedStoreError> {
+    fn contains_key(&self, key: &K) -> eyre::Result<bool> {
         let key_buf = be_fix_int_ser(key)?;
         // [`rocksdb::DBWithThreadMode::key_may_exist_cf`] can have false positives,
         // but no false negatives. We use it to short-circuit the absent case
@@ -1441,7 +1441,7 @@ where
     }
 
     #[instrument(level = "trace", skip_all, err)]
-    fn get(&self, key: &K) -> Result<Option<V>, TypedStoreError> {
+    fn get(&self, key: &K) -> eyre::Result<Option<V>> {
         let _timer = self
             .db_metrics
             .op_metrics
@@ -1467,7 +1467,7 @@ where
     }
 
     #[instrument(level = "trace", skip_all, err)]
-    fn insert(&self, key: &K, value: &V) -> Result<(), TypedStoreError> {
+    fn insert(&self, key: &K, value: &V) -> eyre::Result<()> {
         let _timer = self
             .db_metrics
             .op_metrics
@@ -1491,7 +1491,7 @@ where
     }
 
     #[instrument(level = "trace", skip_all, err)]
-    fn remove(&self, key: &K) -> Result<(), TypedStoreError> {
+    fn remove(&self, key: &K) -> eyre::Result<()> {
         let _timer = self
             .db_metrics
             .op_metrics
@@ -1514,7 +1514,7 @@ where
     /// to get into a race condition where the column family has been dropped but new
     /// one is not created yet
     #[instrument(level = "trace", skip_all, err)]
-    fn clear(&self) -> Result<(), TypedStoreError> {
+    fn clear(&self) -> eyre::Result<()> {
         let _ = self.rocksdb.drop_cf(&self.cf);
         self.rocksdb.create_cf(self.cf.clone(), &default_db_options().options)?;
         Ok(())
@@ -1530,7 +1530,7 @@ where
         Box::new(self.unbounded_iter_inner())
     }
 
-    fn skip_to(&self, key: &K) -> Result<Box<dyn Iterator<Item = (K, V)> + '_>, TypedStoreError> {
+    fn skip_to(&self, key: &K) -> eyre::Result<Box<dyn Iterator<Item = (K, V)> + '_>> {
         Ok(Box::new(self.unbounded_iter_inner().skip_to(key)?))
     }
 

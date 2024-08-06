@@ -6,10 +6,9 @@
 
 pub mod traits;
 pub use traits::Map;
+pub mod mem_db;
 pub mod metrics;
 pub mod rocks;
-pub use rocks::TypedStoreError;
-pub mod mem_db;
 pub use metrics::DBMetrics;
 
-pub type StoreError = rocks::TypedStoreError;
+pub type StoreError = eyre::Report;

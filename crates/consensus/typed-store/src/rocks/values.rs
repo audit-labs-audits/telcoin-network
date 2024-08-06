@@ -3,7 +3,7 @@
 // SPDX-License-Identifier: Apache-2.0
 use std::marker::PhantomData;
 
-use crate::TypedStoreError;
+use crate::rocks::errors::TypedStoreError;
 use serde::de::DeserializeOwned;
 
 use super::RocksDBRawIter;

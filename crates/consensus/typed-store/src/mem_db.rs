@@ -10,10 +10,10 @@ use ouroboros::self_referencing;
 use rand::distributions::{Alphanumeric, DistString};
 use serde::{de::DeserializeOwned, Serialize};
 
-use crate::{Map, TypedStoreError};
+use crate::Map;
 
-/// An interface to a btree map backed sally database. This is mainly intended
-/// for tests and performing benchmark comparisons
+/// An interface to a btree map database. This is mainly intended
+/// for tests and performing benchmark comparisons or anywhere where an ephemeral database is useful.
 #[derive(Clone, Debug)]
 pub struct MemDB<K, V> {
     pub db: Arc<RwLock<BTreeMap<K, V>>>,
@@ -34,25 +34,25 @@ where
     K: Serialize + DeserializeOwned + Ord + Clone + Send + Sync,
     V: Serialize + DeserializeOwned + Clone + Send + Sync,
 {
-    fn contains_key(&self, key: &K) -> Result<bool, TypedStoreError> {
+    fn contains_key(&self, key: &K) -> eyre::Result<bool> {
         Ok(self.db.read().expect("Poisoned read lock!").contains_key(key))
     }
 
-    fn get(&self, key: &K) -> Result<Option<V>, crate::TypedStoreError> {
+    fn get(&self, key: &K) -> eyre::Result<Option<V>> {
         Ok(self.db.read().expect("Poisoned read lock!").get(key).cloned())
     }
 
-    fn insert(&self, key: &K, value: &V) -> Result<(), TypedStoreError> {
+    fn insert(&self, key: &K, value: &V) -> eyre::Result<()> {
         self.db.write().expect("Poisoned write lock!").insert(key.clone(), value.clone());
         Ok(())
     }
 
-    fn remove(&self, key: &K) -> Result<(), TypedStoreError> {
+    fn remove(&self, key: &K) -> eyre::Result<()> {
         self.db.write().expect("Poisoned write lock!").remove(key);
         Ok(())
     }
 
-    fn clear(&self) -> Result<(), TypedStoreError> {
+    fn clear(&self) -> eyre::Result<()> {
         self.db.write().expect("Poisoned write lock!").clear();
         Ok(())
     }
@@ -73,7 +73,7 @@ where
         )
     }
 
-    fn skip_to(&self, key: &K) -> Result<Box<dyn Iterator<Item = (K, V)> + '_>, TypedStoreError> {
+    fn skip_to(&self, key: &K) -> eyre::Result<Box<dyn Iterator<Item = (K, V)> + '_>> {
         let key = key.clone();
         Ok(Box::new(
             MemDBIterBuilder {
