@@ -5,7 +5,7 @@
 use std::sync::Arc;
 
 use crate::StoreResult;
-use narwhal_typed_store::Map;
+use narwhal_typed_store::DBMap;
 use telcoin_macros::fail_point;
 use tn_types::Header;
 
@@ -17,11 +17,11 @@ pub const LAST_PROPOSAL_KEY: ProposerKey = 0;
 #[derive(Clone)]
 pub struct ProposerStore {
     /// Holds the Last Header that was proposed by the Proposer.
-    last_proposed: Arc<dyn Map<ProposerKey, Header>>,
+    last_proposed: Arc<dyn DBMap<ProposerKey, Header>>,
 }
 
 impl ProposerStore {
-    pub fn new(last_proposed: Arc<dyn Map<ProposerKey, Header>>) -> ProposerStore {
+    pub fn new(last_proposed: Arc<dyn DBMap<ProposerKey, Header>>) -> ProposerStore {
         Self { last_proposed }
     }
 

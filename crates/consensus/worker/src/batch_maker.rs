@@ -14,7 +14,7 @@ use consensus_metrics::{
 use fastcrypto::hash::Hash;
 use futures::{future::BoxFuture, stream::FuturesUnordered, StreamExt};
 use narwhal_network::{client::NetworkClient, WorkerToPrimaryClient};
-use narwhal_typed_store::Map;
+use narwhal_typed_store::DBMap;
 use std::sync::Arc;
 use tn_types::{NewBatch, WorkerId};
 
@@ -64,7 +64,7 @@ pub struct BatchMaker {
     /// The network client to send our batches to the primary.
     client: NetworkClient,
     /// The batch store to store our own batches.
-    store: Arc<dyn Map<BatchDigest, Batch>>,
+    store: Arc<dyn DBMap<BatchDigest, Batch>>,
 }
 
 impl BatchMaker {
@@ -79,7 +79,7 @@ impl BatchMaker {
         tx_quorum_waiter: Sender<(Batch, tokio::sync::oneshot::Sender<()>)>,
         node_metrics: Arc<WorkerMetrics>,
         client: NetworkClient,
-        store: Arc<dyn Map<BatchDigest, Batch>>,
+        store: Arc<dyn DBMap<BatchDigest, Batch>>,
     ) -> JoinHandle<()> {
         spawn_logged_monitored_task!(
             async move {

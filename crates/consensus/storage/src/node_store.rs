@@ -11,8 +11,8 @@ use narwhal_typed_store::{
     mem_db::MemDB,
     metrics::SamplingInterval,
     reopen,
-    rocks::{default_db_options, open_cf_opts, DBMap, MetricConf, ReadWriteOptions},
-    Map,
+    rocks::{default_db_options, open_cf_opts, MetricConf, ReadWriteOptions, RocksDBMap},
+    DBMap,
 };
 use std::{num::NonZeroUsize, sync::Arc, time::Duration};
 use tn_types::{
@@ -31,7 +31,7 @@ pub struct NodeStorage {
     pub vote_digest_store: VoteDigestStore,
     pub certificate_store: CertificateStore<CertificateStoreCache>,
     pub payload_store: PayloadStore,
-    pub batch_store: Arc<dyn Map<BatchDigest, Batch>>,
+    pub batch_store: Arc<dyn DBMap<BatchDigest, Batch>>,
     pub consensus_store: Arc<ConsensusStore>,
 }
 
@@ -115,7 +115,7 @@ impl NodeStorage {
             batch_map,
             last_committed_map,
             // table `sub_dag` is deprecated in favor of `committed_sub_dag`.
-            // This can be removed when DBMap supports removing tables.
+            // This can be removed when RocksDBMap supports removing tables.
             // _sub_dag_index_map,
             committed_sub_dag_map,
         ) = reopen!(&rocksdb,

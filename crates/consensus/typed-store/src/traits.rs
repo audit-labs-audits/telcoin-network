@@ -7,7 +7,7 @@ use std::borrow::Borrow;
 
 /// Interface that defines a consesus DB.
 /// Properly implemented this will allow something to be used as a store for consensus.
-pub trait Map<K, V>: Send + Sync
+pub trait DBMap<K, V>: Send + Sync
 where
     K: Serialize + DeserializeOwned + Send + Sync,
     V: Serialize + DeserializeOwned + Send + Sync,
@@ -59,7 +59,7 @@ where
 
 /// Inserts key-value pairs, non-atomically.
 pub fn multi_insert<K, V, J, U>(
-    db: &dyn Map<K, V>,
+    db: &dyn DBMap<K, V>,
     key_val_pairs: impl IntoIterator<Item = (J, U)>,
 ) -> eyre::Result<()>
 where
@@ -73,7 +73,7 @@ where
 
 /// Removes keys, non-atomically.
 pub fn multi_remove<K, V, J>(
-    db: &dyn Map<K, V>,
+    db: &dyn DBMap<K, V>,
     keys: impl IntoIterator<Item = J>,
 ) -> eyre::Result<()>
 where
@@ -86,7 +86,7 @@ where
 
 /// Returns a vector of values corresponding to the keys provided, non-atomically.
 pub fn multi_get<K, V, J>(
-    db: &dyn Map<K, V>,
+    db: &dyn DBMap<K, V>,
     keys: impl IntoIterator<Item = J>,
 ) -> eyre::Result<Vec<Option<V>>>
 where

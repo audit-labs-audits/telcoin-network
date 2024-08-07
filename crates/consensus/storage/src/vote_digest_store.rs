@@ -4,18 +4,18 @@
 
 use std::sync::Arc;
 
-use narwhal_typed_store::{mem_db::MemDB, Map};
+use narwhal_typed_store::{mem_db::MemDB, DBMap};
 use telcoin_macros::fail_point;
 use tn_types::{AuthorityIdentifier, Vote, VoteAPI, VoteInfo};
 
 /// The storage for the last votes digests per authority
 #[derive(Clone)]
 pub struct VoteDigestStore {
-    store: Arc<dyn Map<AuthorityIdentifier, VoteInfo>>,
+    store: Arc<dyn DBMap<AuthorityIdentifier, VoteInfo>>,
 }
 
 impl VoteDigestStore {
-    pub fn new(store: Arc<dyn Map<AuthorityIdentifier, VoteInfo>>) -> VoteDigestStore {
+    pub fn new(store: Arc<dyn DBMap<AuthorityIdentifier, VoteInfo>>) -> VoteDigestStore {
         Self { store }
     }
 

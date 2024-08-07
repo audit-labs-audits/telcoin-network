@@ -3,7 +3,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 use crate::StoreResult;
-use narwhal_typed_store::{mem_db::MemDB, traits::multi_insert, Map};
+use narwhal_typed_store::{mem_db::MemDB, traits::multi_insert, DBMap};
 use std::{collections::HashMap, sync::Arc};
 use tn_types::{
     AuthorityIdentifier, CommittedSubDag, ConsensusCommit, ConsensusCommitV1, Round, SequenceNumber,
@@ -13,16 +13,16 @@ use tracing::debug;
 /// The persistent storage of the sequencer.
 pub struct ConsensusStore {
     /// The latest committed round of each validator.
-    last_committed: Arc<dyn Map<AuthorityIdentifier, Round>>,
+    last_committed: Arc<dyn DBMap<AuthorityIdentifier, Round>>,
     /// The global consensus sequence
-    committed_sub_dags_by_index_v1: Arc<dyn Map<SequenceNumber, ConsensusCommit>>,
+    committed_sub_dags_by_index_v1: Arc<dyn DBMap<SequenceNumber, ConsensusCommit>>,
 }
 
 impl ConsensusStore {
     /// Create a new consensus store structure by using already loaded maps.
     pub fn new(
-        last_committed: Arc<dyn Map<AuthorityIdentifier, Round>>,
-        committed_sub_dags_map: Arc<dyn Map<SequenceNumber, ConsensusCommit>>,
+        last_committed: Arc<dyn DBMap<AuthorityIdentifier, Round>>,
+        committed_sub_dags_map: Arc<dyn DBMap<SequenceNumber, ConsensusCommit>>,
     ) -> Self {
         Self { last_committed, committed_sub_dags_by_index_v1: committed_sub_dags_map }
     }

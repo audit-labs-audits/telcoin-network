@@ -5,7 +5,7 @@
 #![warn(future_incompatible, nonstandard_style, rust_2018_idioms, rust_2021_compatibility)]
 
 pub mod traits;
-pub use traits::Map;
+pub use traits::DBMap;
 pub mod mem_db;
 pub mod metrics;
 pub mod rocks;

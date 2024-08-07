@@ -6,7 +6,7 @@ use crate::PayloadToken;
 use narwhal_typed_store::{
     mem_db::MemDB,
     traits::{multi_get, multi_insert, multi_remove},
-    Map,
+    DBMap,
 };
 use std::sync::Arc;
 use telcoin_macros::fail_point;
@@ -16,14 +16,14 @@ use tn_types::{BatchDigest, WorkerId};
 /// Store of the batch digests for the primary node for the own created batches.
 #[derive(Clone)]
 pub struct PayloadStore {
-    store: Arc<dyn Map<(BatchDigest, WorkerId), PayloadToken>>,
+    store: Arc<dyn DBMap<(BatchDigest, WorkerId), PayloadToken>>,
 
     /// Senders to notify for a write that happened for the specified batch digest and worker id
     notify_subscribers: Arc<NotifyRead<(BatchDigest, WorkerId), ()>>,
 }
 
 impl PayloadStore {
-    pub fn new(store: Arc<dyn Map<(BatchDigest, WorkerId), PayloadToken>>) -> Self {
+    pub fn new(store: Arc<dyn DBMap<(BatchDigest, WorkerId), PayloadToken>>) -> Self {
         Self { store, notify_subscribers: Arc::new(NotifyRead::new()) }
     }
 

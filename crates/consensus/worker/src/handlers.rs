@@ -17,7 +17,7 @@ use narwhal_network_types::{
 };
 use narwhal_typed_store::{
     traits::{multi_get, multi_insert},
-    Map,
+    DBMap,
 };
 use std::{collections::HashSet, sync::Arc, time::Duration};
 use tn_batch_validator::BatchValidation;
@@ -33,7 +33,7 @@ pub mod handlers_tests;
 pub struct WorkerReceiverHandler<V> {
     pub id: WorkerId,
     pub client: NetworkClient,
-    pub store: Arc<dyn Map<BatchDigest, Batch>>,
+    pub store: Arc<dyn DBMap<BatchDigest, Batch>>,
     pub validator: V,
 }
 
@@ -119,7 +119,7 @@ pub struct PrimaryReceiverHandler<V> {
     // The worker information cache.
     pub worker_cache: WorkerCache,
     // The batch store
-    pub store: Arc<dyn Map<BatchDigest, Batch>>,
+    pub store: Arc<dyn DBMap<BatchDigest, Batch>>,
     // Timeout on RequestBatches RPC.
     pub request_batches_timeout: Duration,
     // Synchronize header payloads from other workers.

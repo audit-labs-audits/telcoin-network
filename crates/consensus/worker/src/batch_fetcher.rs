@@ -16,7 +16,7 @@ use itertools::Itertools;
 use narwhal_network::WorkerRpc;
 use narwhal_typed_store::{
     traits::{multi_get, multi_insert},
-    Map,
+    DBMap,
 };
 use prometheus::IntGauge;
 use rand::{rngs::ThreadRng, seq::SliceRandom};
@@ -38,7 +38,7 @@ const WORKER_RETRY_INTERVAL: Duration = Duration::from_secs(1);
 pub struct BatchFetcher {
     name: NetworkPublicKey,
     network: Arc<dyn RequestBatchesNetwork>,
-    batch_store: Arc<dyn Map<BatchDigest, Batch>>,
+    batch_store: Arc<dyn DBMap<BatchDigest, Batch>>,
     metrics: Arc<WorkerMetrics>,
 }
 
@@ -46,7 +46,7 @@ impl BatchFetcher {
     pub fn new(
         name: NetworkPublicKey,
         network: Network,
-        batch_store: Arc<dyn Map<BatchDigest, Batch>>,
+        batch_store: Arc<dyn DBMap<BatchDigest, Batch>>,
         metrics: Arc<WorkerMetrics>,
     ) -> Self {
         Self {

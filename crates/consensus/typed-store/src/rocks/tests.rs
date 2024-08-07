@@ -60,7 +60,7 @@ async fn test_reopen(#[values(true, false)] is_transactional: bool) {
         db.insert(&123456789, &"123456789".to_string()).expect("Failed to insert");
         db
     };
-    let db = DBMap::<u32, String>::reopen(&arc.rocksdb, None, &ReadWriteOptions::default())
+    let db = RocksDBMap::<u32, String>::reopen(&arc.rocksdb, None, &ReadWriteOptions::default())
         .expect("Failed to re-open storage");
     assert!(db.contains_key(&123456789).expect("Failed to retrieve item in storage"));
 }
@@ -88,7 +88,7 @@ async fn test_reopen_macro() {
 #[tokio::test]
 async fn test_wrong_reopen(#[values(true, false)] is_transactional: bool) {
     let rocks = open_rocksdb(temp_dir(), &["foo", "bar", "baz"], is_transactional);
-    let db = DBMap::<u8, u8>::reopen(&rocks, Some("quux"), &ReadWriteOptions::default());
+    let db = RocksDBMap::<u8, u8>::reopen(&rocks, Some("quux"), &ReadWriteOptions::default());
     assert!(db.is_err());
 }
 
@@ -272,11 +272,11 @@ async fn test_insert_batch(#[values(true, false)] is_transactional: bool) {
 async fn test_insert_batch_across_cf(#[values(true, false)] is_transactional: bool) {
     let rocks = open_rocksdb(temp_dir(), &["First_CF", "Second_CF"], is_transactional);
 
-    let db_cf_1 = DBMap::reopen(&rocks, Some("First_CF"), &ReadWriteOptions::default())
+    let db_cf_1 = RocksDBMap::reopen(&rocks, Some("First_CF"), &ReadWriteOptions::default())
         .expect("Failed to open storage");
     let keys_vals_1 = (1..100).map(|i| (i, i.to_string()));
 
-    let db_cf_2 = DBMap::reopen(&rocks, Some("Second_CF"), &ReadWriteOptions::default())
+    let db_cf_2 = RocksDBMap::reopen(&rocks, Some("Second_CF"), &ReadWriteOptions::default())
         .expect("Failed to open storage");
     let keys_vals_2 = (1000..1100).map(|i| (i, i.to_string()));
 
@@ -305,13 +305,13 @@ async fn test_insert_batch_across_different_db(#[values(true, false)] is_transac
     let rocks = open_rocksdb(temp_dir(), &["First_CF", "Second_CF"], is_transactional);
     let rocks2 = open_rocksdb(temp_dir(), &["First_CF", "Second_CF"], is_transactional);
 
-    let db_cf_1: DBMap<i32, String> =
-        DBMap::reopen(&rocks, Some("First_CF"), &ReadWriteOptions::default())
+    let db_cf_1: RocksDBMap<i32, String> =
+        RocksDBMap::reopen(&rocks, Some("First_CF"), &ReadWriteOptions::default())
             .expect("Failed to open storage");
     let keys_vals_1 = (1..100).map(|i| (i, i.to_string()));
 
-    let db_cf_2: DBMap<i32, String> =
-        DBMap::reopen(&rocks2, Some("Second_CF"), &ReadWriteOptions::default())
+    let db_cf_2: RocksDBMap<i32, String> =
+        RocksDBMap::reopen(&rocks2, Some("Second_CF"), &ReadWriteOptions::default())
             .expect("Failed to open storage");
     let keys_vals_2 = (1000..1100).map(|i| (i, i.to_string()));
 
@@ -325,7 +325,7 @@ async fn test_insert_batch_across_different_db(#[values(true, false)] is_transac
 
 #[tokio::test]
 async fn test_delete_batch() {
-    let db = DBMap::<i32, String>::open(
+    let db = RocksDBMap::<i32, String>::open(
         temp_dir(),
         MetricConf::default(),
         None,
@@ -351,7 +351,7 @@ async fn test_delete_batch() {
 
 #[tokio::test]
 async fn test_delete_range() {
-    let db: DBMap<i32, String> = DBMap::open(
+    let db: RocksDBMap<i32, String> = RocksDBMap::open(
         temp_dir(),
         MetricConf::default(),
         None,
@@ -382,7 +382,7 @@ async fn test_delete_range() {
 
 #[tokio::test]
 async fn test_clear() {
-    let db = DBMap::<i32, String>::open(
+    let db = RocksDBMap::<i32, String>::open(
         temp_dir(),
         MetricConf::default(),
         None,
@@ -415,7 +415,7 @@ async fn test_clear() {
 
 #[tokio::test]
 async fn test_is_empty() {
-    let db = DBMap::<i32, String>::open(
+    let db = RocksDBMap::<i32, String>::open(
         temp_dir(),
         MetricConf::default(),
         None,
@@ -449,7 +449,7 @@ async fn test_is_empty() {
 #[tokio::test]
 async fn test_multi_insert(#[values(true, false)] is_transactional: bool) {
     // Init a DB
-    let db: DBMap<i32, String> = open_map(temp_dir(), Some("table"), is_transactional);
+    let db: RocksDBMap<i32, String> = open_map(temp_dir(), Some("table"), is_transactional);
     // Create kv pairs
     let keys_vals = (0..101).map(|i| (i, i.to_string()));
 
@@ -466,7 +466,7 @@ async fn test_multi_insert(#[values(true, false)] is_transactional: bool) {
 async fn test_checkpoint(#[values(true, false)] is_transactional: bool) {
     let path_prefix = temp_dir();
     let db_path = path_prefix.join("db");
-    let db: DBMap<i32, String> = open_map(db_path, Some("table"), is_transactional);
+    let db: RocksDBMap<i32, String> = open_map(db_path, Some("table"), is_transactional);
     // Create kv pairs
     let keys_vals = (0..101).map(|i| (i, i.to_string()));
 
@@ -477,7 +477,7 @@ async fn test_checkpoint(#[values(true, false)] is_transactional: bool) {
     let new_keys_vals = (101..201).map(|i| (i, i.to_string()));
     multi_insert(&db, new_keys_vals.clone()).expect("Failed to multi-insert");
     // Verify checkpoint
-    let checkpointed_db: DBMap<i32, String> =
+    let checkpointed_db: RocksDBMap<i32, String> =
         open_map(checkpointed_path, Some("table"), is_transactional);
     // Ensure keys inserted before checkpoint are present in original and checkpointed db
     for (k, v) in keys_vals {
@@ -502,7 +502,7 @@ async fn test_multi_remove(#[values(true, false)] is_transactional: bool) {
     // Init a DB
 
     use crate::traits::{multi_insert, multi_remove};
-    let db: DBMap<i32, String> = open_map(temp_dir(), Some("table"), is_transactional);
+    let db: RocksDBMap<i32, String> = open_map(temp_dir(), Some("table"), is_transactional);
 
     // Create kv pairs
     let keys_vals = (0..101).map(|i| (i, i.to_string()));
@@ -533,7 +533,7 @@ async fn test_transactional() {
     let opt = rocksdb::Options::default();
     let rocksdb =
         open_cf_opts_transactional(path, None, MetricConf::default(), &[("cf", opt)]).unwrap();
-    let db = DBMap::<String, String>::reopen(&rocksdb, None, &ReadWriteOptions::default())
+    let db = RocksDBMap::<String, String>::reopen(&rocksdb, None, &ReadWriteOptions::default())
         .expect("Failed to re-open storage");
 
     // transaction is used instead
@@ -555,7 +555,7 @@ async fn test_transaction_snapshot() {
     let opt = rocksdb::Options::default();
     let rocksdb =
         open_cf_opts_transactional(path, None, MetricConf::default(), &[("cf", opt)]).unwrap();
-    let db = DBMap::<String, String>::reopen(&rocksdb, None, &ReadWriteOptions::default())
+    let db = RocksDBMap::<String, String>::reopen(&rocksdb, None, &ReadWriteOptions::default())
         .expect("Failed to re-open storage");
 
     // transaction without set_snapshot succeeds when extraneous write occurs before transaction
@@ -614,7 +614,7 @@ async fn test_retry_transaction() {
     let opt = rocksdb::Options::default();
     let rocksdb =
         open_cf_opts_transactional(path, None, MetricConf::default(), &[("cf", opt)]).unwrap();
-    let db = DBMap::<String, String>::reopen(&rocksdb, None, &ReadWriteOptions::default())
+    let db = RocksDBMap::<String, String>::reopen(&rocksdb, None, &ReadWriteOptions::default())
         .expect("Failed to re-open storage");
 
     let mut conflicts = 0;
@@ -666,7 +666,7 @@ async fn test_transaction_read_your_write() {
     let opt = rocksdb::Options::default();
     let rocksdb =
         open_cf_opts_transactional(path, None, MetricConf::default(), &[("cf", opt)]).unwrap();
-    let db = DBMap::<String, String>::reopen(&rocksdb, None, &ReadWriteOptions::default())
+    let db = RocksDBMap::<String, String>::reopen(&rocksdb, None, &ReadWriteOptions::default())
         .expect("Failed to re-open storage");
     db.insert(&key1.to_string(), &"1".to_string()).unwrap();
     let mut tx = db.transaction().expect("failed to initiate transaction");
@@ -699,7 +699,7 @@ async fn open_as_secondary_test() {
     let primary_path = temp_dir();
 
     // Init a DB
-    let primary_db = DBMap::<i32, String>::open(
+    let primary_db = RocksDBMap::<i32, String>::open(
         primary_path.clone(),
         MetricConf::default(),
         None,
@@ -716,9 +716,12 @@ async fn open_as_secondary_test() {
     let secondary_store =
         open_cf_opts_secondary(primary_path, None, None, MetricConf::default(), &[("table", opt)])
             .unwrap();
-    let secondary_db =
-        DBMap::<i32, String>::reopen(&secondary_store, Some("table"), &ReadWriteOptions::default())
-            .unwrap();
+    let secondary_db = RocksDBMap::<i32, String>::reopen(
+        &secondary_store,
+        Some("table"),
+        &ReadWriteOptions::default(),
+    )
+    .unwrap();
 
     secondary_db.try_catch_up_with_primary().unwrap();
     // Check secondary
@@ -745,7 +748,7 @@ struct ObjectWithRefCount {
     ref_count: i64,
 }
 
-fn increment_counter(db: &DBMap<String, ObjectWithRefCount>, key: &str, value: i64) {
+fn increment_counter(db: &RocksDBMap<String, ObjectWithRefCount>, key: &str, value: i64) {
     let mut batch = db.batch();
     batch.partial_merge_batch(db, [(key.to_string(), value.to_le_bytes())]).unwrap();
     batch.write().unwrap();
@@ -760,7 +763,7 @@ async fn refcount_test() {
         reference_count_merge_operator,
         reference_count_merge_operator,
     );
-    let db = DBMap::<String, ObjectWithRefCount>::open(
+    let db = RocksDBMap::<String, ObjectWithRefCount>::open(
         temp_dir(),
         MetricConf::default(),
         Some(options),
@@ -796,7 +799,7 @@ async fn refcount_with_compaction_test() {
         reference_count_merge_operator,
         reference_count_merge_operator,
     );
-    let db = DBMap::<String, ObjectWithRefCount>::open(
+    let db = RocksDBMap::<String, ObjectWithRefCount>::open(
         temp_dir(),
         MetricConf::default(),
         Some(options),
@@ -837,7 +840,7 @@ fn open_map<P: AsRef<Path>, K, V>(
     path: P,
     opt_cf: Option<&str>,
     is_transactional: bool,
-) -> DBMap<K, V>
+) -> RocksDBMap<K, V>
 where
     K: Serialize + DeserializeOwned,
     V: Serialize + DeserializeOwned,
@@ -850,11 +853,17 @@ where
             MetricConf::default(),
             &[(cf, default_db_options().options)],
         )
-        .map(|db| DBMap::new(db, &ReadWriteOptions::default(), cf))
+        .map(|db| RocksDBMap::new(db, &ReadWriteOptions::default(), cf))
         .expect("failed to open rocksdb")
     } else {
-        DBMap::<K, V>::open(path, MetricConf::default(), None, opt_cf, &ReadWriteOptions::default())
-            .expect("failed to open rocksdb")
+        RocksDBMap::<K, V>::open(
+            path,
+            MetricConf::default(),
+            None,
+            opt_cf,
+            &ReadWriteOptions::default(),
+        )
+        .expect("failed to open rocksdb")
     }
 }
 

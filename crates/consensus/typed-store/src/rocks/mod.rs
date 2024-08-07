@@ -10,7 +10,7 @@ pub(crate) mod values;
 
 use crate::{
     metrics::{DBMetrics, RocksDBPerfContext, SamplingInterval},
-    traits::Map,
+    traits::DBMap,
 };
 use bincode::Options;
 use collectable::TryExtend;
@@ -114,7 +114,7 @@ macro_rules! reopen {
     ( $db:expr, $($cf:expr;<$K:ty, $V:ty>),*) => {
         (
             $(
-                DBMap::<$K, $V>::reopen($db, Some($cf), &ReadWriteOptions::default()).expect(&format!("Cannot open {} CF.", $cf)[..])
+                RocksDBMap::<$K, $V>::reopen($db, Some($cf), &ReadWriteOptions::default()).expect(&format!("Cannot open {} CF.", $cf)[..])
             ),*
         )
     };
@@ -635,7 +635,7 @@ const METRICS_ERROR: i64 = -1;
 
 /// An interface to a rocksDB database, keyed by a columnfamily
 #[derive(Clone, Debug)]
-pub struct DBMap<K, V> {
+pub struct RocksDBMap<K, V> {
     pub rocksdb: Arc<RocksDB>,
     _phantom: PhantomData<fn(K) -> V>,
     // the rocksDB ColumnFamily under which the map is stored
@@ -649,9 +649,9 @@ pub struct DBMap<K, V> {
     _metrics_task_cancel_handle: Arc<oneshot::Sender<()>>,
 }
 
-unsafe impl<K: Send, V: Send> Send for DBMap<K, V> {}
+unsafe impl<K: Send, V: Send> Send for RocksDBMap<K, V> {}
 
-impl<K, V> DBMap<K, V>
+impl<K, V> RocksDBMap<K, V>
 where
     K: Serialize + DeserializeOwned,
     V: Serialize + DeserializeOwned,
@@ -682,7 +682,7 @@ where
             }
             debug!("Returning the cf metric logging task for DBMap: {}", &cf);
         });
-        DBMap {
+        RocksDBMap {
             rocksdb: db.clone(),
             opts: opts.clone(),
             _phantom: PhantomData,
@@ -711,7 +711,7 @@ where
         let cf_key = opt_cf.unwrap_or(rocksdb::DEFAULT_COLUMN_FAMILY_NAME);
         let cfs = vec![cf_key];
         let rocksdb = open_cf(path, db_options, metric_conf, &cfs)?;
-        Ok(DBMap::new(rocksdb, rw_options, cf_key))
+        Ok(RocksDBMap::new(rocksdb, rw_options, cf_key))
     }
 
     /// Reopens an open database as a typed map operating under a specific column family.
@@ -731,10 +731,10 @@ where
     ///             .unwrap();
     ///     /// Attach the column families to specific maps.
     ///     let db_cf_1 =
-    ///         DBMap::<u32, u32>::reopen(&rocks, Some("First_CF"), &ReadWriteOptions::default())
+    ///         RocksDBMap::<u32, u32>::reopen(&rocks, Some("First_CF"), &ReadWriteOptions::default())
     ///             .expect("Failed to open storage");
     ///     let db_cf_2 =
-    ///         DBMap::<u32, u32>::reopen(&rocks, Some("Second_CF"), &ReadWriteOptions::default())
+    ///         RocksDBMap::<u32, u32>::reopen(&rocks, Some("Second_CF"), &ReadWriteOptions::default())
     ///             .expect("Failed to open storage");
     ///     Ok(())
     /// }
@@ -749,7 +749,7 @@ where
 
         db.cf_handle(&cf_key).ok_or_else(|| TypedStoreError::UnregisteredColumn(cf_key.clone()))?;
 
-        Ok(DBMap::new(db.clone(), rw_options, &cf_key))
+        Ok(RocksDBMap::new(db.clone(), rw_options, &cf_key))
     }
 
     pub fn batch(&self) -> DBBatch {
@@ -955,7 +955,7 @@ where
 ///
 /// ```
 /// use core::fmt::Error;
-/// use narwhal_typed_store::{metrics::DBMetrics, rocks::*, Map};
+/// use narwhal_typed_store::{metrics::DBMetrics, rocks::*, DBMap};
 /// use prometheus::Registry;
 /// use std::sync::Arc;
 /// use tempfile::tempdir;
@@ -970,11 +970,11 @@ where
 ///     )
 ///     .unwrap();
 ///
-///     let db_cf_1 = DBMap::reopen(&rocks, Some("First_CF"), &ReadWriteOptions::default())
+///     let db_cf_1 = RocksDBMap::reopen(&rocks, Some("First_CF"), &ReadWriteOptions::default())
 ///         .expect("Failed to open storage");
 ///     let keys_vals_1 = (1..100).map(|i| (i, i.to_string()));
 ///
-///     let db_cf_2 = DBMap::reopen(&rocks, Some("Second_CF"), &ReadWriteOptions::default())
+///     let db_cf_2 = RocksDBMap::reopen(&rocks, Some("Second_CF"), &ReadWriteOptions::default())
 ///         .expect("Failed to open storage");
 ///     let keys_vals_2 = (1000..1100).map(|i| (i, i.to_string()));
 ///
@@ -1058,7 +1058,7 @@ impl DBBatch {
 impl DBBatch {
     pub fn delete_batch<J: Borrow<K>, K, V>(
         &mut self,
-        db: &DBMap<K, V>,
+        db: &RocksDBMap<K, V>,
         purged_vals: impl IntoIterator<Item = J>,
     ) -> Result<(), TypedStoreError>
     where
@@ -1089,7 +1089,7 @@ impl DBBatch {
     /// overriden in the config), so please use this function with caution
     pub fn schedule_delete_range<K, V>(
         &mut self,
-        db: &DBMap<K, V>,
+        db: &RocksDBMap<K, V>,
         from: &K,
         to: &K,
     ) -> Result<(), TypedStoreError>
@@ -1111,7 +1111,7 @@ impl DBBatch {
     /// inserts a range of (key, value) pairs given as an iterator
     pub fn insert_batch<J: Borrow<K>, K, U: Borrow<V>, V>(
         &mut self,
-        db: &DBMap<K, V>,
+        db: &RocksDBMap<K, V>,
         new_vals: impl IntoIterator<Item = (J, U)>,
     ) -> Result<&mut Self, TypedStoreError>
     where
@@ -1134,7 +1134,7 @@ impl DBBatch {
     /// merges a range of (key, value) pairs given as an iterator
     pub fn merge_batch<J: Borrow<K>, K, U: Borrow<V>, V>(
         &mut self,
-        db: &DBMap<K, V>,
+        db: &RocksDBMap<K, V>,
         new_vals: impl IntoIterator<Item = (J, U)>,
     ) -> Result<&mut Self, TypedStoreError>
     where
@@ -1157,7 +1157,7 @@ impl DBBatch {
     /// similar to `merge_batch` but allows merge with partial values
     pub fn partial_merge_batch<J: Borrow<K>, K, V, B: AsRef<[u8]>>(
         &mut self,
-        db: &DBMap<K, V>,
+        db: &RocksDBMap<K, V>,
         new_vals: impl IntoIterator<Item = (J, B)>,
     ) -> Result<&mut Self, TypedStoreError>
     where
@@ -1192,7 +1192,7 @@ impl<'a> DBTransaction<'a> {
 
     pub fn insert_batch<J: Borrow<K>, K, U: Borrow<V>, V>(
         &mut self,
-        db: &DBMap<K, V>,
+        db: &RocksDBMap<K, V>,
         new_vals: impl IntoIterator<Item = (J, U)>,
     ) -> Result<&mut Self, TypedStoreError>
     where
@@ -1215,7 +1215,7 @@ impl<'a> DBTransaction<'a> {
     /// Deletes a set of keys given as an iterator
     pub fn delete_batch<J: Borrow<K>, K, V>(
         &mut self,
-        db: &DBMap<K, V>,
+        db: &RocksDBMap<K, V>,
         purged_vals: impl IntoIterator<Item = J>,
     ) -> Result<&mut Self, TypedStoreError>
     where
@@ -1242,7 +1242,7 @@ impl<'a> DBTransaction<'a> {
 
     pub fn get_for_update<K, V>(
         &self,
-        db: &DBMap<K, V>,
+        db: &RocksDBMap<K, V>,
         key: &K,
     ) -> Result<Option<V>, TypedStoreError>
     where
@@ -1261,7 +1261,7 @@ impl<'a> DBTransaction<'a> {
 
     pub fn get<K: Serialize + DeserializeOwned, V: Serialize + DeserializeOwned>(
         &self,
-        db: &DBMap<K, V>,
+        db: &RocksDBMap<K, V>,
         key: &K,
     ) -> Result<Option<V>, TypedStoreError> {
         let key_buf = be_fix_int_ser(key)?;
@@ -1273,7 +1273,7 @@ impl<'a> DBTransaction<'a> {
 
     pub fn multi_get<J: Borrow<K>, K, V>(
         &self,
-        db: &DBMap<K, V>,
+        db: &RocksDBMap<K, V>,
         keys: impl IntoIterator<Item = J>,
     ) -> Result<Vec<Option<V>>, TypedStoreError>
     where
@@ -1297,7 +1297,7 @@ impl<'a> DBTransaction<'a> {
         values_parsed
     }
 
-    pub fn iter<K, V>(&'a self, db: &DBMap<K, V>) -> Iter<'a, K, V>
+    pub fn iter<K, V>(&'a self, db: &RocksDBMap<K, V>) -> Iter<'a, K, V>
     where
         K: Serialize + DeserializeOwned,
         V: Serialize + DeserializeOwned,
@@ -1314,7 +1314,7 @@ impl<'a> DBTransaction<'a> {
         )
     }
 
-    pub fn keys<K, V>(&'a self, db: &DBMap<K, V>) -> Keys<'a, K>
+    pub fn keys<K, V>(&'a self, db: &RocksDBMap<K, V>) -> Keys<'a, K>
     where
         K: Serialize + DeserializeOwned,
         V: Serialize + DeserializeOwned,
@@ -1327,7 +1327,7 @@ impl<'a> DBTransaction<'a> {
         Keys::new(db_iter)
     }
 
-    pub fn values<K, V>(&'a self, db: &DBMap<K, V>) -> Values<'a, V>
+    pub fn values<K, V>(&'a self, db: &RocksDBMap<K, V>) -> Values<'a, V>
     where
         K: Serialize + DeserializeOwned,
         V: Serialize + DeserializeOwned,
@@ -1425,7 +1425,7 @@ impl<'a> Iterator for RocksDBIter<'a> {
     }
 }
 
-impl<K, V> Map<K, V> for DBMap<K, V>
+impl<K, V> DBMap<K, V> for RocksDBMap<K, V>
 where
     K: Serialize + DeserializeOwned + Send + Sync,
     V: Serialize + DeserializeOwned + Send + Sync,
@@ -1552,7 +1552,7 @@ where
     }
 }
 
-impl<J, K, U, V> TryExtend<(J, U)> for DBMap<K, V>
+impl<J, K, U, V> TryExtend<(J, U)> for RocksDBMap<K, V>
 where
     J: Borrow<K>,
     U: Borrow<V>,

@@ -19,7 +19,7 @@ use telcoin_macros::fail_point;
 use crate::StoreResult;
 use narwhal_typed_store::{
     traits::{multi_get, multi_insert, multi_remove},
-    Map,
+    DBMap,
 };
 use telcoin_sync::sync::notify_read::NotifyRead;
 use tn_types::{AuthorityIdentifier, Certificate, CertificateDigest, Round};
@@ -50,7 +50,7 @@ impl CertificateStoreCacheMetrics {
 }
 
 /// A cache trait to be used as temporary in-memory store when accessing the underlying
-/// certificate_store. Using the cache allows to skip rocksdb access giving us benefits
+/// certificate_store. Using the cache allows to skip db access giving us benefits
 /// both on less disk access (when value not in db's cache) and also avoiding any additional
 /// deserialization costs.
 pub trait Cache {
@@ -217,17 +217,17 @@ impl Cache for NoCache {
 #[derive(Clone)]
 pub struct CertificateStore<T: Cache = CertificateStoreCache> {
     /// Holds the certificates by their digest id
-    certificates_by_id: Arc<dyn Map<CertificateDigest, Certificate>>,
+    certificates_by_id: Arc<dyn DBMap<CertificateDigest, Certificate>>,
     /// A secondary index that keeps the certificate digest ids
     /// by the certificate rounds. Certificate origin is used to produce unique keys.
     /// This helps us to perform range requests based on rounds. We avoid storing again the
     /// certificate here to not waste space. To dereference we use the certificates_by_id storage.
-    certificate_id_by_round: Arc<dyn Map<(Round, AuthorityIdentifier), CertificateDigest>>,
+    certificate_id_by_round: Arc<dyn DBMap<(Round, AuthorityIdentifier), CertificateDigest>>,
     /// A secondary index that keeps the certificate digest ids
     /// by the certificate origins. Certificate rounds are used to produce unique keys.
     /// This helps us to perform range requests based on rounds. We avoid storing again the
     /// certificate here to not waste space. To dereference we use the certificates_by_id storage.
-    certificate_id_by_origin: Arc<dyn Map<(AuthorityIdentifier, Round), CertificateDigest>>,
+    certificate_id_by_origin: Arc<dyn DBMap<(AuthorityIdentifier, Round), CertificateDigest>>,
     /// The pub/sub to notify for a write that happened for a certificate digest id
     notify_subscribers: Arc<NotifyRead<CertificateDigest, Certificate>>,
     /// An LRU cache to keep recent certificates
@@ -236,9 +236,9 @@ pub struct CertificateStore<T: Cache = CertificateStoreCache> {
 
 impl<T: Cache> CertificateStore<T> {
     pub fn new(
-        certificates_by_id: Arc<dyn Map<CertificateDigest, Certificate>>,
-        certificate_id_by_round: Arc<dyn Map<(Round, AuthorityIdentifier), CertificateDigest>>,
-        certificate_id_by_origin: Arc<dyn Map<(AuthorityIdentifier, Round), CertificateDigest>>,
+        certificates_by_id: Arc<dyn DBMap<CertificateDigest, Certificate>>,
+        certificate_id_by_round: Arc<dyn DBMap<(Round, AuthorityIdentifier), CertificateDigest>>,
+        certificate_id_by_origin: Arc<dyn DBMap<(AuthorityIdentifier, Round), CertificateDigest>>,
         certificate_store_cache: T,
     ) -> CertificateStore<T> {
         Self {
@@ -668,7 +668,7 @@ mod test {
     };
     use fastcrypto::hash::Hash;
     use futures::future::join_all;
-    use narwhal_typed_store::{mem_db::MemDB, Map};
+    use narwhal_typed_store::{mem_db::MemDB, DBMap};
     use std::{
         collections::{BTreeSet, HashSet},
         num::NonZeroUsize,
@@ -710,9 +710,9 @@ mod test {
     fn create_db_maps(
         _path: std::path::PathBuf,
     ) -> (
-        Arc<dyn Map<CertificateDigest, Certificate>>,
-        Arc<dyn Map<(Round, AuthorityIdentifier), CertificateDigest>>,
-        Arc<dyn Map<(AuthorityIdentifier, Round), CertificateDigest>>,
+        Arc<dyn DBMap<CertificateDigest, Certificate>>,
+        Arc<dyn DBMap<(Round, AuthorityIdentifier), CertificateDigest>>,
+        Arc<dyn DBMap<(AuthorityIdentifier, Round), CertificateDigest>>,
     ) {
         (Arc::new(MemDB::open()), Arc::new(MemDB::open()), Arc::new(MemDB::open()))
     }

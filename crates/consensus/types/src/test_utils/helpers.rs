@@ -10,7 +10,7 @@ use crate::{
 };
 use fastcrypto::{hash::Hash, traits::KeyPair as _};
 use indexmap::IndexMap;
-use narwhal_typed_store::{mem_db::MemDB, Map};
+use narwhal_typed_store::{mem_db::MemDB, DBMap};
 use rand::{
     distributions::Bernoulli,
     prelude::Distribution,
@@ -91,7 +91,7 @@ macro_rules! test_new_certificates_channel {
     };
 }
 
-pub fn create_batch_store() -> Arc<dyn Map<BatchDigest, Batch>> {
+pub fn create_batch_store() -> Arc<dyn DBMap<BatchDigest, Batch>> {
     Arc::new(MemDB::open())
 }
 

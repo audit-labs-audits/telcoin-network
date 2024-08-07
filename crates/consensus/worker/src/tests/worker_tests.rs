@@ -50,14 +50,7 @@ impl BatchValidation for NilBatchValidator {
 //     };
 
 //     // Create a new test store.
-//     let batch_store = rocks::DBMap::<BatchDigest, Batch>::open(
-//         temp_dir(),
-//         MetricConf::default(),
-//         None,
-//         Some("batches"),
-//         &ReadWriteOptions::default(),
-//     )
-//     .unwrap();
+//     let batch_store = MemDB::<BatchDigest, Batch>::open().unwrap();
 
 //     let registry = Registry::new();
 //     let metrics = Metrics::new_with_registry(&registry);
@@ -130,14 +123,7 @@ impl BatchValidation for NilBatchValidator {
 //     };
 
 //     // Create a new test store.
-//     let batch_store = rocks::DBMap::<BatchDigest, Batch>::open(
-//         temp_dir(),
-//         MetricConf::default(),
-//         None,
-//         Some("batches"),
-//         &ReadWriteOptions::default(),
-//     )
-//     .unwrap();
+//     let batch_store = MemDB::<BatchDigest, Batch>::open().unwrap();
 
 //     let registry = Registry::new();
 //     let metrics = Metrics::new_with_registry(&registry);
@@ -245,14 +231,7 @@ impl BatchValidation for NilBatchValidator {
 //     };
 
 //     // Create a new test store.
-//     let batch_store = rocks::DBMap::<BatchDigest, Batch>::open(
-//         temp_dir(),
-//         MetricConf::default(),
-//         None,
-//         Some("batches"),
-//         &ReadWriteOptions::default(),
-//     )
-//     .unwrap();
+//     let batch_store = MemDB::<BatchDigest, Batch>::open().unwrap();
 
 //     let registry = Registry::new();
 //     let metrics = Metrics::new_with_registry(&registry);

@@ -10,7 +10,7 @@ use ouroboros::self_referencing;
 use rand::distributions::{Alphanumeric, DistString};
 use serde::{de::DeserializeOwned, Serialize};
 
-use crate::Map;
+use crate::DBMap;
 
 /// An interface to a btree map database. This is mainly intended
 /// for tests and performing benchmark comparisons or anywhere where an ephemeral database is
@@ -30,7 +30,7 @@ impl<K, V> MemDB<K, V> {
     }
 }
 
-impl<K, V> Map<K, V> for MemDB<K, V>
+impl<K, V> DBMap<K, V> for MemDB<K, V>
 where
     K: Serialize + DeserializeOwned + Ord + Clone + Send + Sync,
     V: Serialize + DeserializeOwned + Clone + Send + Sync,
@@ -159,7 +159,7 @@ mod test {
     use crate::{
         mem_db::MemDB,
         traits::{multi_get, multi_insert, multi_remove},
-        Map,
+        DBMap,
     };
 
     #[test]
