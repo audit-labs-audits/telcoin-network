@@ -9,9 +9,11 @@ use crate::{
 };
 use narwhal_typed_store::{
     mem_db::MemDB,
-    metrics::SamplingInterval,
     reopen,
-    rocks::{default_db_options, open_cf_opts, MetricConf, ReadWriteOptions, RocksDBMap},
+    rocks::{
+        default_db_options, metrics::SamplingInterval, open_cf_opts, MetricConf, ReadWriteOptions,
+        RocksDBMap,
+    },
     DBMap,
 };
 use std::{num::NonZeroUsize, sync::Arc, time::Duration};

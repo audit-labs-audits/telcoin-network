@@ -5,15 +5,14 @@
 pub mod errors;
 pub(crate) mod iter;
 pub(crate) mod keys;
+pub mod metrics;
 pub mod util;
 pub(crate) mod values;
 
-use crate::{
-    metrics::{DBMetrics, RocksDBPerfContext, SamplingInterval},
-    traits::DBMap,
-};
+use crate::traits::DBMap;
 use bincode::Options;
 use collectable::TryExtend;
+use metrics::{DBMetrics, RocksDBPerfContext, SamplingInterval};
 use rocksdb::{
     checkpoint::Checkpoint, properties, AsColumnFamilyRef, BlockBasedOptions,
     BottommostLevelCompaction, CStrLike, Cache, ColumnFamilyDescriptor, CompactOptions,
@@ -92,7 +91,7 @@ mod tests;
 /// use tempfile::tempdir;
 /// use prometheus::Registry;
 /// use std::sync::Arc;
-/// use narwhal_typed_store::metrics::DBMetrics;
+/// use narwhal_typed_store::rocks::metrics::DBMetrics;
 /// use core::fmt::Error;
 ///
 /// #[tokio::main]
@@ -719,7 +718,7 @@ where
     ///
     /// ```
     /// use core::fmt::Error;
-    /// use narwhal_typed_store::{metrics::DBMetrics, rocks::*};
+    /// use narwhal_typed_store::rocks::{metrics::DBMetrics, *};
     /// use prometheus::Registry;
     /// use std::sync::Arc;
     /// use tempfile::tempdir;
@@ -955,7 +954,10 @@ where
 ///
 /// ```
 /// use core::fmt::Error;
-/// use narwhal_typed_store::{metrics::DBMetrics, rocks::*, DBMap};
+/// use narwhal_typed_store::{
+///     rocks::{metrics::DBMetrics, *},
+///     DBMap,
+/// };
 /// use prometheus::Registry;
 /// use std::sync::Arc;
 /// use tempfile::tempdir;
