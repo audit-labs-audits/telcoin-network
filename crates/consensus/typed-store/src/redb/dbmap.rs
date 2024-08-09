@@ -128,15 +128,19 @@ where
                 table_builder: |guard: &mut RwLockReadGuard<'_, Database>| {
                     guard
                         .begin_read()
-                        .expect("XXXX ")
+                        .expect("Failed to get read txn, DB broken")
                         .open_table(self.table_def)
-                        .expect("XXXX No read table")
+                        .expect("Missing table, DB not configured/opened correctly")
                 },
                 iter_builder: |table: &ReadOnlyTable<KeyWrap<K>, ValWrap<V>>| {
-                    Box::new(table.iter().expect("XXXX no iter").filter(|r| r.is_ok()).map(|r| {
-                        let (k, v) = r.unwrap();
-                        (k.value().clone(), v.value().clone())
-                    }))
+                    Box::new(
+                        table.iter().expect("Unable to get a DB iter").filter(|r| r.is_ok()).map(
+                            |r| {
+                                let (k, v) = r.unwrap();
+                                (k.value().clone(), v.value().clone())
+                            },
+                        ),
+                    )
                 },
             }
             .build(),
@@ -152,15 +156,15 @@ where
                 table_builder: |guard: &mut RwLockReadGuard<'_, Database>| {
                     guard
                         .begin_read()
-                        .expect("XXXX ")
+                        .expect("Failed to get read txn, DB broken")
                         .open_table(self.table_def)
-                        .expect("XXXX No read table")
+                        .expect("Missing table, DB not configured/opened correctly")
                 },
                 iter_builder: |table: &ReadOnlyTable<KeyWrap<K>, ValWrap<V>>| {
                     Box::new(
                         table
                             .iter()
-                            .expect("XXXX no iter")
+                            .expect("Unable to get a DB iter")
                             .filter(|r| r.is_ok())
                             .map(|r| {
                                 let (k, v) = r.unwrap();
@@ -182,17 +186,22 @@ where
                 table_builder: |guard: &mut RwLockReadGuard<'_, Database>| {
                     guard
                         .begin_read()
-                        .expect("XXXX ")
+                        .expect("Failed to get read txn, DB broken")
                         .open_table(self.table_def)
-                        .expect("XXXX No read table")
+                        .expect("Missing table, DB not configured/opened correctly")
                 },
                 iter_builder: |table: &ReadOnlyTable<KeyWrap<K>, ValWrap<V>>| {
-                    Box::new(table.iter().expect("XXXX no iter").rev().filter(|r| r.is_ok()).map(
-                        |r| {
-                            let (k, v) = r.unwrap();
-                            (k.value().clone(), v.value().clone())
-                        },
-                    ))
+                    Box::new(
+                        table
+                            .iter()
+                            .expect("Unable to get a DB iter")
+                            .rev()
+                            .filter(|r| r.is_ok())
+                            .map(|r| {
+                                let (k, v) = r.unwrap();
+                                (k.value().clone(), v.value().clone())
+                            }),
+                    )
                 },
             }
             .build(),
@@ -246,5 +255,241 @@ where
 
     fn next(&mut self) -> Option<Self::Item> {
         self.with_mut(|fields| fields.iter.next())
+    }
+}
+
+#[cfg(test)]
+mod test {
+    use std::{path::Path, sync::Arc};
+
+    use tempfile::tempdir;
+
+    use crate::{
+        traits::{multi_get, multi_insert, multi_remove},
+        DBMap,
+    };
+
+    use super::open_redb;
+
+    fn open_db(path: &Path) -> Arc<dyn DBMap<u64, String>> {
+        let redb = open_redb(path).expect("Cannot open database");
+
+        reopen_redb!(redb,
+            "test_table";<u64, String>
+        )
+    }
+
+    #[test]
+    fn test_redb_contains_key() {
+        let temp_dir = tempdir().expect("failed to create temp dir");
+        let db = open_db(temp_dir.path());
+
+        db.insert(&123456789, &"123456789".to_string()).expect("Failed to insert");
+        assert!(db.contains_key(&123456789).expect("Failed to call contains key"));
+        assert!(!db.contains_key(&000000000).expect("Failed to call contains key"));
+    }
+
+    #[test]
+    fn test_redb_get() {
+        let temp_dir = tempdir().expect("failed to create temp dir");
+        let db = open_db(temp_dir.path());
+
+        db.insert(&123456789, &"123456789".to_string()).expect("Failed to insert");
+        assert_eq!(Some("123456789".to_string()), db.get(&123456789).expect("Failed to get"));
+        assert_eq!(None, db.get(&000000000).expect("Failed to get"));
+    }
+
+    #[test]
+    fn test_redb_multi_get() {
+        let temp_dir = tempdir().expect("failed to create temp dir");
+        let db = open_db(temp_dir.path());
+
+        db.insert(&123, &"123".to_string()).expect("Failed to insert");
+        db.insert(&456, &"456".to_string()).expect("Failed to insert");
+
+        let result = multi_get(&*db, [123, 456, 789]).expect("Failed to multi get");
+
+        assert_eq!(result.len(), 3);
+        assert_eq!(result[0], Some("123".to_string()));
+        assert_eq!(result[1], Some("456".to_string()));
+        assert_eq!(result[2], None);
+    }
+
+    #[test]
+    fn test_redb_skip() {
+        let temp_dir = tempdir().expect("failed to create temp dir");
+        let db = open_db(temp_dir.path());
+
+        db.insert(&123, &"123".to_string()).expect("Failed to insert");
+        db.insert(&456, &"456".to_string()).expect("Failed to insert");
+        db.insert(&789, &"789".to_string()).expect("Failed to insert");
+
+        // Skip all smaller
+        let key_vals: Vec<_> = db.skip_to(&456).expect("Seek failed").collect();
+        assert_eq!(key_vals.len(), 2);
+        assert_eq!(key_vals[0], (456, "456".to_string()));
+        assert_eq!(key_vals[1], (789, "789".to_string()));
+
+        // Skip to the end
+        assert_eq!(db.skip_to(&999).expect("Seek failed").count(), 0);
+
+        // Skip to last
+        assert_eq!(db.last_record(), Some((789, "789".to_string())));
+
+        // Skip to successor of first value
+        assert_eq!(db.skip_to(&000).expect("Skip failed").count(), 3);
+    }
+
+    #[test]
+    fn test_redb_skip_to_previous_simple() {
+        let temp_dir = tempdir().expect("failed to create temp dir");
+        let db = open_db(temp_dir.path());
+
+        db.insert(&123, &"123".to_string()).expect("Failed to insert");
+        db.insert(&456, &"456".to_string()).expect("Failed to insert");
+        db.insert(&789, &"789".to_string()).expect("Failed to insert");
+
+        // Skip to the one before the end
+        let key_val = db.record_prior_to(&999).expect("Seek failed");
+        assert_eq!(key_val, (789, "789".to_string()));
+
+        // Skip to prior of first value
+        // Note: returns an empty iterator!
+        assert!(db.record_prior_to(&000).is_none());
+    }
+
+    #[test]
+    fn test_redb_iter_skip_to_previous_gap() {
+        let temp_dir = tempdir().expect("failed to create temp dir");
+        let db = open_db(temp_dir.path());
+
+        for i in 1..100 {
+            if i != 50 {
+                db.insert(&i, &i.to_string()).unwrap();
+            }
+        }
+
+        // Skip prior to will return an iterator starting with an "unexpected" key if the sought one
+        // is not in the table
+        let val = db.record_prior_to(&50).map(|(k, _)| k).unwrap();
+        assert_eq!(49, val);
+    }
+
+    #[test]
+    fn test_redb_remove() {
+        let temp_dir = tempdir().expect("failed to create temp dir");
+        let db = open_db(temp_dir.path());
+
+        db.insert(&123456789, &"123456789".to_string()).expect("Failed to insert");
+        assert!(db.get(&123456789).expect("Failed to get").is_some());
+
+        db.remove(&123456789).expect("Failed to remove");
+        assert!(db.get(&123456789).expect("Failed to get").is_none());
+    }
+
+    #[test]
+    fn test_redb_iter() {
+        let temp_dir = tempdir().expect("failed to create temp dir");
+        let db = open_db(temp_dir.path());
+
+        db.insert(&123456789, &"123456789".to_string()).expect("Failed to insert");
+
+        let mut iter = db.iter();
+        assert_eq!(Some((123456789, "123456789".to_string())), iter.next());
+        assert_eq!(None, iter.next());
+    }
+
+    #[test]
+    fn test_redb_clear() {
+        let temp_dir = tempdir().expect("failed to create temp dir");
+        let db = open_db(temp_dir.path());
+
+        // Test clear of empty map
+        let _ = db.clear();
+
+        let keys_vals = (0..101).map(|i| (i, i.to_string()));
+        multi_insert(&*db, keys_vals).expect("Failed to batch insert");
+
+        // Check we have multiple entries
+        assert!(db.iter().count() > 1);
+        let _ = db.clear();
+        assert_eq!(db.iter().count(), 0);
+        // Clear again to ensure safety when clearing empty map
+        let _ = db.clear();
+        assert_eq!(db.iter().count(), 0);
+        // Clear with one item
+        let _ = db.insert(&1, &"e".to_string());
+        assert_eq!(db.iter().count(), 1);
+        let _ = db.clear();
+        assert_eq!(db.iter().count(), 0);
+    }
+
+    #[test]
+    fn test_redb_is_empty() {
+        let temp_dir = tempdir().expect("failed to create temp dir");
+        let db = open_db(temp_dir.path());
+
+        // Test empty map is truly empty
+        assert!(db.is_empty());
+        let _ = db.clear();
+        assert!(db.is_empty());
+
+        let keys_vals = (0..101).map(|i| (i, i.to_string()));
+        multi_insert(&*db, keys_vals).expect("Failed to batch insert");
+
+        // Check we have multiple entries and not empty
+        assert!(db.iter().count() > 1);
+        assert!(!db.is_empty());
+
+        // Clear again to ensure empty works after clearing
+        let _ = db.clear();
+        assert_eq!(db.iter().count(), 0);
+        assert!(db.is_empty());
+    }
+
+    #[test]
+    fn test_redb_multi_insert() {
+        // Init a DB
+        let temp_dir = tempdir().expect("failed to create temp dir");
+        let db = open_db(temp_dir.path());
+
+        // Create kv pairs
+        let keys_vals = (0..101).map(|i| (i, i.to_string()));
+
+        multi_insert(&*db, keys_vals.clone()).expect("Failed to multi-insert");
+
+        for (k, v) in keys_vals {
+            let val = db.get(&k).expect("Failed to get inserted key");
+            assert_eq!(Some(v), val);
+        }
+    }
+
+    #[test]
+    fn test_redb_multi_remove() {
+        // Init a DB
+        let temp_dir = tempdir().expect("failed to create temp dir");
+        let db = open_db(temp_dir.path());
+
+        // Create kv pairs
+        let keys_vals = (0..101).map(|i| (i, i.to_string()));
+
+        multi_insert(&*db, keys_vals.clone()).expect("Failed to multi-insert");
+
+        // Check insertion
+        for (k, v) in keys_vals.clone() {
+            let val = db.get(&k).expect("Failed to get inserted key");
+            assert_eq!(Some(v), val);
+        }
+
+        // Remove 50 items
+        multi_remove(&*db, keys_vals.clone().map(|kv| kv.0).take(50))
+            .expect("Failed to multi-remove");
+        assert_eq!(db.iter().count(), 101 - 50);
+
+        // Check that the remaining are present
+        for (k, v) in keys_vals.skip(50) {
+            let val = db.get(&k).expect("Failed to get inserted key");
+            assert_eq!(Some(v), val);
+        }
     }
 }
