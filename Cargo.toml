@@ -296,14 +296,6 @@ reqwest = { version = "0.12", default-features = false, features = [
     "rustls-tls",
 ] }
 
-#rocksdb = { version = "0.22.0", features = [
-#    "snappy",
-#    "lz4",
-#    "zstd",
-#    "zlib",
-#    "multi-threaded-cf",
-#], default-features = false }
-
 axum = { version = "0.6.6", default-features = false, features = [
     "headers",
     "tokio",

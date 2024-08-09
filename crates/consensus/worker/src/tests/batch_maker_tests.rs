@@ -6,15 +6,13 @@ use super::*;
 
 use crate::NUM_SHUTDOWN_RECEIVERS;
 use narwhal_network_types::MockWorkerToPrimary;
-use tn_types::{
-    test_utils::{create_batch_store, transaction},
-    PreSubscribedBroadcastSender,
-};
+use narwhal_typed_store::mem_db::MemDB;
+use tn_types::{test_utils::transaction, PreSubscribedBroadcastSender};
 
 #[tokio::test]
 async fn make_batch() {
     let client = NetworkClient::new_with_empty_id();
-    let store = create_batch_store();
+    let store: Arc<dyn DBMap<BatchDigest, Batch>> = Arc::new(MemDB::open());
     let mut tx_shutdown = PreSubscribedBroadcastSender::new(NUM_SHUTDOWN_RECEIVERS);
     let (tx_batch_maker, rx_batch_maker) = tn_types::test_channel!(1);
     let (tx_quorum_waiter, mut rx_quorum_waiter) = tn_types::test_channel!(1);
@@ -66,7 +64,7 @@ async fn make_batch() {
 // #[tokio::test]
 // async fn batch_timeout() {
 //     let client = create_network_client();
-//     let store = create_batch_store();
+//     let store: Arc<dyn DBMap<BatchDigest, Batch>> = Arc::new(MemDB::open());
 //     let mut tx_shutdown = PreSubscribedBroadcastSender::new(NUM_SHUTDOWN_RECEIVERS);
 //     let (tx_batch_maker, rx_batch_maker) = tn_types::test_channel!(1);
 //     let (tx_quorum_waiter, mut rx_quorum_waiter) = tn_types::test_channel!(1);

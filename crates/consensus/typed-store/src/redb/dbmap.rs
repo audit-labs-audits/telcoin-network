@@ -23,7 +23,7 @@ macro_rules! reopen_redb {
     ( $db:expr, $($cf:expr;<$K:ty, $V:ty>),*) => {
         (
             $(
-                ReDBMap::<$K, $V>::reopen($db.clone(), narwhal_typed_store::redb::TableDefinition::<narwhal_typed_store::redb::wraps::KeyWrap<$K>, narwhal_typed_store::redb::wraps::ValWrap<$V>>::new($cf)).expect("can not open database")
+                Arc::new($crate::redb::dbmap::ReDBMap::<$K, $V>::reopen($db.clone(), $crate::redb::TableDefinition::<$crate::redb::wraps::KeyWrap<$K>, $crate::redb::wraps::ValWrap<$V>>::new($cf)).expect("can not open database"))
             ),*
         )
     };

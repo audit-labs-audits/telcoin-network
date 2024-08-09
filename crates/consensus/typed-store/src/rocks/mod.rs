@@ -113,7 +113,7 @@ macro_rules! reopen {
     ( $db:expr, $($cf:expr;<$K:ty, $V:ty>),*) => {
         (
             $(
-                RocksDBMap::<$K, $V>::reopen($db, Some($cf), &ReadWriteOptions::default()).expect(&format!("Cannot open {} CF.", $cf)[..])
+                Arc::new($crate::rocks::RocksDBMap::<$K, $V>::reopen($db, Some($cf), &$crate::rocks::ReadWriteOptions::default()).expect(&format!("Cannot open {} CF.", $cf)[..]))
             ),*
         )
     };

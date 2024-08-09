@@ -10,7 +10,6 @@ use crate::{
 };
 use fastcrypto::{hash::Hash, traits::KeyPair as _};
 use indexmap::IndexMap;
-use narwhal_typed_store::{mem_db::MemDB, DBMap};
 use rand::{
     distributions::Bernoulli,
     prelude::Distribution,
@@ -22,7 +21,6 @@ use reth_tracing::tracing_subscriber::EnvFilter;
 use std::{
     collections::{BTreeSet, HashMap, VecDeque},
     ops::RangeInclusive,
-    sync::Arc,
 };
 
 use super::TransactionFactory;
@@ -89,10 +87,6 @@ macro_rules! test_new_certificates_channel {
             .unwrap(),
         );
     };
-}
-
-pub fn create_batch_store() -> Arc<dyn DBMap<BatchDigest, Batch>> {
-    Arc::new(MemDB::open())
 }
 
 pub fn temp_dir() -> std::path::PathBuf {

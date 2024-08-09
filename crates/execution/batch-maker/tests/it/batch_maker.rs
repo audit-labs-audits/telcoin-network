@@ -8,6 +8,7 @@ use assert_matches::assert_matches;
 use fastcrypto::hash::Hash;
 use narwhal_network::client::NetworkClient;
 use narwhal_network_types::MockWorkerToPrimary;
+use narwhal_typed_store::{mem_db::MemDB, DBMap};
 use narwhal_worker::{metrics::WorkerMetrics, BatchMaker, NUM_SHUTDOWN_RECEIVERS};
 use reth::{beacon_consensus::EthBeaconConsensus, tasks::TaskManager};
 use reth_blockchain_tree::noop::NoopBlockchainTree;
@@ -28,8 +29,8 @@ use std::{sync::Arc, time::Duration};
 use tn_batch_maker::{BatchMakerBuilder, MiningMode};
 use tn_batch_validator::{BatchValidation, BatchValidator};
 use tn_types::{
-    test_utils::{create_batch_store, get_gas_price, test_genesis, TransactionFactory},
-    Batch, BatchAPI, Consensus, MetadataAPI, PreSubscribedBroadcastSender,
+    test_utils::{get_gas_price, test_genesis, TransactionFactory},
+    Batch, BatchAPI, BatchDigest, Consensus, MetadataAPI, PreSubscribedBroadcastSender,
 };
 use tokio::time::timeout;
 use tracing::debug;
@@ -46,7 +47,7 @@ async fn test_make_batch_el_to_cl() {
     //
 
     let network_client = NetworkClient::new_with_empty_id();
-    let store = create_batch_store();
+    let store: Arc<dyn DBMap<BatchDigest, Batch>> = Arc::new(MemDB::open());
     let mut tx_shutdown = PreSubscribedBroadcastSender::new(NUM_SHUTDOWN_RECEIVERS);
     let (tx_quorum_waiter, mut rx_quorum_waiter) = tn_types::test_channel!(1);
     let node_metrics = WorkerMetrics::default();

@@ -9,7 +9,7 @@ use narwhal_typed_store::DBMap;
 use telcoin_macros::fail_point;
 use tn_types::Header;
 
-pub type ProposerKey = u32;
+pub use narwhal_typed_store::ProposerKey;
 
 pub const LAST_PROPOSAL_KEY: ProposerKey = 0;
 

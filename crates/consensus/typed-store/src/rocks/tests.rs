@@ -80,8 +80,8 @@ async fn test_reopen_macro() {
     assert_eq!(db_map_1.cf, FIRST_CF);
     assert_eq!(db_map_2.cf, SECOND_CF);
 
-    assert!(multi_insert(&db_map_1, keys_vals_cf1).is_ok());
-    assert!(multi_insert(&db_map_2, keys_vals_cf2).is_ok());
+    assert!(multi_insert(&*db_map_1, keys_vals_cf1).is_ok());
+    assert!(multi_insert(&*db_map_2, keys_vals_cf2).is_ok());
 }
 
 #[rstest]
