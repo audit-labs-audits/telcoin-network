@@ -15,7 +15,7 @@ use gcloud_sdk::{
 };
 use lru_time_cache::LruCache;
 use reth::rpc::server_types::eth::{EthApiError, EthResult};
-use reth_primitives::{hex, Address, TxHash, U256};
+use reth_primitives::{Address, TxHash, U256};
 use reth_provider::{BlockReaderIdExt, StateProviderFactory};
 use reth_tasks::{TaskSpawner, TokioTaskExecutor};
 use reth_transaction_pool::TransactionPool;
@@ -37,11 +37,11 @@ pub(crate) use service::FaucetService;
 pub type GoogleKMSClient = GoogleApi<KeyManagementServiceClient<GoogleAuthMiddleware>>;
 /// Serialized public key in bytes: `[u8; 33]`
 pub type Secp256k1PubKeyBytes = [u8; PUBLIC_KEY_SIZE];
-/// The abi encoded type parameters for the drip method
-/// of the faucet contract deployed at contract address.
+/// The abi encoded type parameters for the mintTo method
+/// of the stablecoin contract deployed at contract address.
 ///
 /// pub for integration test
-pub type Drip = alloy_sol_types::sol! { (address, address) };
+pub type MintTo = alloy_sol_types::sol! { (address, uint256) };
 
 /// Configure the faucet with a wait period between transfers and the amount of TEL to transfer.
 pub struct FaucetConfig {
@@ -119,11 +119,11 @@ impl Faucet {
 
         // TODO: take this from CLI
         //
-        // This value is hardcoded for now after deploying contract to adiri testnet
-        let faucet_contract = hex!("c1CCc28BB47290aab2f87D4AF81CEfE6626EE878").into();
+        // This value is hardcoded for now after deploying contract to adiri testnet //todo
+        // let faucet_contract = hex!("c1CCc28BB47290aab2f87D4AF81CEfE6626EE878").into();
 
         let service = FaucetService {
-            faucet_contract,
+            // faucet_contract,//todo
             request_rx: UnboundedReceiverStream::new(rx),
             provider,
             pool,

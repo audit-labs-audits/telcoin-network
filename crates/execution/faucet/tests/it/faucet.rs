@@ -7,7 +7,7 @@
 //! signature to be EVM compatible. The faucet service does all of this and
 //! then submits the transaction to the RPC Transaction Pool for the next batch.
 
-use alloy_sol_types::SolType;
+use alloy_sol_types::{sol_data::Uint, SolType};
 use gcloud_sdk::{
     google::cloud::kms::v1::{
         key_management_service_client::KeyManagementServiceClient, GetPublicKeyRequest,
@@ -25,7 +25,7 @@ use reth_tasks::TaskManager;
 use reth_tracing::init_test_tracing;
 use secp256k1::PublicKey;
 use std::{str::FromStr, sync::Arc, time::Duration};
-use tn_faucet::Drip;
+use tn_faucet::MintTo;
 use tn_types::{adiri_genesis, test_channel, BatchAPI, NewBatch};
 use tokio::time::timeout;
 
@@ -169,17 +169,16 @@ async fn test_faucet_transfers_stablecoin_with_google_kms() -> eyre::Result<()> 
     let tx = batch_txs.first().expect("first batch tx from faucet");
     let recovered = TransactionSigned::decode_enveloped(&mut tx.as_ref())?;
 
-    // TODO: this is hardcoded in the faucet after contract is deployed
-    let faucet_contract = hex!("c1CCc28BB47290aab2f87D4AF81CEfE6626EE878").into();
-    let contract_params: Vec<u8> = Drip::abi_encode_params(&(&contract_address, &user_address));
+    let amount: U256 = U256::from(1); // defaults to 1 as "TRANSFER_AMOUNT" set by clap
+    let contract_params: Vec<u8> = MintTo::abi_encode_params(&(&user_address, amount));
 
-    // keccak256("drip(address,address)")[0..4]
-    let selector = [235, 56, 57, 167];
+    // keccak256("mintTo(address,uint256)")[0..4]
+    let selector = [68, 154, 82, 248];
     let expected_input = [&selector, &contract_params[..]].concat();
 
     // assert recovered transaction
     assert_eq!(tx_hash, recovered.hash_ref().to_string());
-    assert_eq!(recovered.transaction.to(), Some(faucet_contract));
+    assert_eq!(recovered.transaction.to(), Some(contract_address));
     assert_eq!(recovered.transaction.input(), &expected_input);
 
     // ensure duplicate request is error

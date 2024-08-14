@@ -6,7 +6,7 @@
 //! address if the address hasn't received from the faucet
 //! wallet within the time period.
 
-use crate::{Drip, FaucetWallet, GoogleKMSClient, Secp256k1PubKeyBytes};
+use crate::{MintTo, FaucetWallet, GoogleKMSClient, Secp256k1PubKeyBytes};
 use alloy_sol_types::SolType;
 use futures::StreamExt;
 use gcloud_sdk::{
@@ -53,7 +53,7 @@ pub(crate) struct FaucetService<Provider, Pool, Tasks> {
     /// The faucet contract's address.
     ///
     /// The value is used to send call data to the contract that mints stablecoins.
-    pub(crate) faucet_contract: Address,
+    // pub(crate) faucet_contract: Address, //todo
     /// The channel between the RPC and the faucet.
     ///
     /// The channel contains:
@@ -182,10 +182,10 @@ where
                 access_list: Default::default(),
             })
         } else {
-            // hardcoded selector: keccak256("drip(address,address)")[0..4]
-            let selector = [235, 56, 57, 167];
+            // hardcoded selector: keccak256("mintTo(address,uint256)")[0..4] == 0x449a52f8
+            let selector = [68, 154, 82, 248];
             // encode params
-            let params: Vec<u8> = Drip::abi_encode_params(&(&contract, &to));
+            let params: Vec<u8> = MintTo::abi_encode_params(&(&to, self.transfer_amount));
             // combine params with selector to create input for contract call
             let input = [&selector, &params[..]].concat().into();
 
@@ -196,7 +196,7 @@ where
                 max_priority_fee_per_gas: gas_price,
                 max_fee_per_gas: gas_price,
                 gas_limit: 1_000_000,
-                to: TxKind::Call(self.faucet_contract),
+                to: TxKind::Call(contract),
                 value: U256::ZERO,
                 input,
                 access_list: Default::default(),
