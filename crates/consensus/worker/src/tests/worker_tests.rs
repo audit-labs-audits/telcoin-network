@@ -2,6 +2,7 @@
 // Copyright (c) Telcoin, LLC
 // Copyright (c) Mysten Labs, Inc.
 // SPDX-License-Identifier: Apache-2.0
+
 use super::*;
 use async_trait::async_trait;
 use fastcrypto::encoding::{Encoding, Hex};
@@ -15,7 +16,7 @@ use prometheus::Registry;
 use tn_batch_validator::NoopBatchValidator;
 use tn_types::{
     test_utils::{temp_dir, CommitteeFixture},
-    ChainIdentifier,
+    Batch, ChainIdentifier,
 };
 use tokio::sync::watch;
 

@@ -2,25 +2,19 @@
 // Copyright (c) Mysten Labs, Inc.
 // SPDX-License-Identifier: Apache-2.0
 
-use std::sync::Arc;
-
-use narwhal_typed_store::{mem_db::MemDB, DBMap};
+use narwhal_typed_store::{tables::Votes, traits::Database};
 use telcoin_macros::fail_point;
 use tn_types::{AuthorityIdentifier, Vote, VoteAPI, VoteInfo};
 
 /// The storage for the last votes digests per authority
 #[derive(Clone)]
-pub struct VoteDigestStore {
-    store: Arc<dyn DBMap<AuthorityIdentifier, VoteInfo>>,
+pub struct VoteDigestStore<DB: Database> {
+    store: DB,
 }
 
-impl VoteDigestStore {
-    pub fn new(store: Arc<dyn DBMap<AuthorityIdentifier, VoteInfo>>) -> VoteDigestStore {
+impl<DB: Database> VoteDigestStore<DB> {
+    pub fn new(store: DB) -> VoteDigestStore<DB> {
         Self { store }
-    }
-
-    pub fn new_for_tests() -> VoteDigestStore {
-        VoteDigestStore::new(Arc::new(MemDB::open()))
     }
 
     /// Insert the vote's basic details into the database for the corresponding
@@ -29,15 +23,14 @@ impl VoteDigestStore {
     pub fn write(&self, vote: &Vote) -> eyre::Result<()> {
         fail_point!("narwhal-store-before-write");
 
-        let result = self.store.insert(&vote.origin(), &vote.into());
+        let result = self.store.insert::<Votes>(&vote.origin(), &vote.into());
 
-        let _ = self.store.commit();
         fail_point!("narwhal-store-after-write");
         result
     }
 
     /// Read the vote info based on the provided corresponding header author key
     pub fn read(&self, header_author: &AuthorityIdentifier) -> eyre::Result<Option<VoteInfo>> {
-        self.store.get(header_author)
+        self.store.get::<Votes>(header_author)
     }
 }

@@ -9,12 +9,15 @@ use std::{
 
 use ouroboros::self_referencing;
 use redb::{
-    Database, ReadOnlyTable, ReadTransaction, ReadableTable, ReadableTableMetadata,
+    Database as ReDatabase, ReadOnlyTable, ReadTransaction, ReadableTable, ReadableTableMetadata,
     TableDefinition, WriteTransaction,
 };
 use serde::{de::DeserializeOwned, Serialize};
 
-use crate::DBMap;
+use crate::{
+    traits::{Database, DbTx, DbTxMut, Table},
+    DBMap,
+};
 
 use super::wraps::{KeyWrap, ValWrap};
 
@@ -23,26 +26,294 @@ macro_rules! reopen_redb {
     ( $db:expr, $($cf:expr;<$K:ty, $V:ty>),*) => {
         (
             $(
-                Arc::new($crate::redb::dbmap::ReDBMap::<$K, $V>::reopen($db.clone(), $crate::redb::TableDefinition::<$crate::redb::wraps::KeyWrap<$K>, $crate::redb::wraps::ValWrap<$V>>::new($cf)).expect("can not open database"))
+                $crate::redb::dbmap::ReDBMap::<$K, $V>::reopen($db.clone(), $crate::redb::TableDefinition::<$crate::redb::wraps::KeyWrap<$K>, $crate::redb::wraps::ValWrap<$V>>::new($cf)).expect("can not open database")
             ),*
         )
     };
 }
 
+#[derive(Debug)]
+pub struct ReDbTx {
+    tx: ReadTransaction,
+}
+
+impl DbTx for ReDbTx {
+    fn get<T: crate::traits::Table>(&self, key: &T::Key) -> eyre::Result<Option<T::Value>> {
+        let td = TableDefinition::<KeyWrap<T::Key>, ValWrap<T::Value>>::new(T::NAME);
+        Ok(self.tx.open_table(td)?.get(key)?.map(|v| v.value().clone()))
+    }
+
+    fn contains_key<T: crate::traits::Table>(&self, key: &T::Key) -> eyre::Result<bool> {
+        let td = TableDefinition::<KeyWrap<T::Key>, ValWrap<T::Value>>::new(T::NAME);
+        Ok(self.tx.open_table(td)?.get(key)?.map(|_| true).unwrap_or_default())
+    }
+
+    fn is_empty<T: crate::traits::Table>(&self) -> eyre::Result<bool> {
+        let td = TableDefinition::<KeyWrap<T::Key>, ValWrap<T::Value>>::new(T::NAME);
+        Ok(self.tx.open_table(td)?.is_empty()?)
+    }
+}
+
+pub struct ReDbTxMut {
+    tx: WriteTransaction,
+}
+
+impl Debug for ReDbTxMut {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "ReDbTxMut")
+    }
+}
+
+impl DbTx for ReDbTxMut {
+    fn get<T: crate::traits::Table>(&self, key: &T::Key) -> eyre::Result<Option<T::Value>> {
+        let td = TableDefinition::<KeyWrap<T::Key>, ValWrap<T::Value>>::new(T::NAME);
+        Ok(self.tx.open_table(td)?.get(key)?.map(|v| v.value().clone()))
+    }
+
+    fn contains_key<T: crate::traits::Table>(&self, key: &T::Key) -> eyre::Result<bool> {
+        let td = TableDefinition::<KeyWrap<T::Key>, ValWrap<T::Value>>::new(T::NAME);
+        Ok(self.tx.open_table(td)?.get(key)?.map(|_| true).unwrap_or_default())
+    }
+
+    fn is_empty<T: crate::traits::Table>(&self) -> eyre::Result<bool> {
+        let td = TableDefinition::<KeyWrap<T::Key>, ValWrap<T::Value>>::new(T::NAME);
+        Ok(self.tx.open_table(td)?.is_empty()?)
+    }
+}
+
+impl DbTxMut for ReDbTxMut {
+    fn insert<T: crate::traits::Table>(
+        &mut self,
+        key: &T::Key,
+        value: &T::Value,
+    ) -> eyre::Result<()> {
+        let td = TableDefinition::<KeyWrap<T::Key>, ValWrap<T::Value>>::new(T::NAME);
+        self.tx.open_table(td)?.insert(key, value)?;
+        Ok(())
+    }
+
+    fn remove<T: crate::traits::Table>(&mut self, key: &T::Key) -> eyre::Result<()> {
+        let td = TableDefinition::<KeyWrap<T::Key>, ValWrap<T::Value>>::new(T::NAME);
+        self.tx.open_table(td)?.remove(key)?;
+        Ok(())
+    }
+
+    fn clear_table<T: crate::traits::Table>(&mut self) -> eyre::Result<()> {
+        let td = TableDefinition::<KeyWrap<T::Key>, ValWrap<T::Value>>::new(T::NAME);
+        self.tx.open_table(td)?.retain(|_, _| false)?;
+        Ok(())
+    }
+
+    fn commit(self) -> eyre::Result<()> {
+        self.tx.commit()?;
+        Ok(())
+    }
+}
+
 /// An interface to a btree map database. This is mainly intended
 /// for tests and performing benchmark comparisons or anywhere where an ephemeral database is
 /// useful.
+#[derive(Clone)]
+pub struct ReDB {
+    db: Arc<RwLock<ReDatabase>>,
+}
+
+impl ReDB {
+    pub fn open_table<T: Table>(&self) -> eyre::Result<()> {
+        let txn = self.db.read().expect("poisoned lock").begin_write()?;
+        let td = TableDefinition::<KeyWrap<T::Key>, ValWrap<T::Value>>::new(T::NAME);
+        txn.open_table(td)?;
+        txn.commit()?;
+        Ok(())
+    }
+}
+
+impl Database for ReDB {
+    type TX = ReDbTx;
+
+    type TXMut = ReDbTxMut;
+
+    fn read_txn(&self) -> eyre::Result<Self::TX> {
+        let tx = self.db.read().expect("Poisoned lock!").begin_read()?;
+        Ok(ReDbTx { tx })
+    }
+
+    fn write_txn(&self) -> eyre::Result<Self::TXMut> {
+        let tx = self.db.read().expect("Poisoned lock!").begin_write()?;
+        Ok(ReDbTxMut { tx })
+    }
+
+    fn contains_key<T: crate::traits::Table>(&self, key: &T::Key) -> eyre::Result<bool> {
+        self.read_txn()?.contains_key::<T>(key)
+    }
+
+    fn get<T: crate::traits::Table>(&self, key: &T::Key) -> eyre::Result<Option<T::Value>> {
+        self.read_txn()?.get::<T>(key)
+    }
+
+    fn insert<T: crate::traits::Table>(&self, key: &T::Key, value: &T::Value) -> eyre::Result<()> {
+        let mut tx = self.write_txn()?;
+        tx.insert::<T>(key, value)?;
+        tx.commit()
+    }
+
+    fn remove<T: crate::traits::Table>(&self, key: &T::Key) -> eyre::Result<()> {
+        let mut tx = self.write_txn()?;
+        tx.remove::<T>(key)?;
+        tx.commit()
+    }
+
+    fn clear_table<T: crate::traits::Table>(&self) -> eyre::Result<()> {
+        let mut tx = self.write_txn()?;
+        tx.clear_table::<T>()?;
+        tx.commit()
+    }
+
+    fn is_empty<T: crate::traits::Table>(&self) -> bool {
+        self.read_txn().map(|txn| txn.is_empty::<T>().unwrap_or_default()).unwrap_or_default()
+    }
+
+    fn iter<T: crate::traits::Table>(&self) -> Box<dyn Iterator<Item = (T::Key, T::Value)> + '_> {
+        let guard = self.db.read().expect("Poisoned lock!");
+        let td = TableDefinition::<KeyWrap<T::Key>, ValWrap<T::Value>>::new(T::NAME);
+        Box::new(
+            ReDBIterBuilder {
+                guard,
+                table_builder: |guard: &mut RwLockReadGuard<'_, ReDatabase>| {
+                    guard
+                        .begin_read()
+                        .expect("Failed to get read txn, DB broken")
+                        .open_table(td)
+                        .expect("Missing table, DB not configured/opened correctly")
+                },
+                iter_builder: |table: &ReadOnlyTable<KeyWrap<T::Key>, ValWrap<T::Value>>| {
+                    Box::new(
+                        table.iter().expect("Unable to get a DB iter").filter(|r| r.is_ok()).map(
+                            |r| {
+                                let (k, v) = r.unwrap();
+                                (k.value().clone(), v.value().clone())
+                            },
+                        ),
+                    )
+                },
+            }
+            .build(),
+        )
+    }
+
+    fn skip_to<T: crate::traits::Table>(
+        &self,
+        key: &T::Key,
+    ) -> eyre::Result<Box<dyn Iterator<Item = (T::Key, T::Value)> + '_>> {
+        let td = TableDefinition::<KeyWrap<T::Key>, ValWrap<T::Value>>::new(T::NAME);
+        let guard = self.db.read().expect("Poisoned lock!");
+        let key = key.clone();
+        Ok(Box::new(
+            ReDBIterBuilder {
+                guard,
+                table_builder: |guard: &mut RwLockReadGuard<'_, ReDatabase>| {
+                    guard
+                        .begin_read()
+                        .expect("Failed to get read txn, DB broken")
+                        .open_table(td)
+                        .expect("Missing table, DB not configured/opened correctly")
+                },
+                iter_builder: |table: &ReadOnlyTable<KeyWrap<T::Key>, ValWrap<T::Value>>| {
+                    Box::new(
+                        table
+                            .iter()
+                            .expect("Unable to get a DB iter")
+                            .filter(|r| r.is_ok())
+                            .map(|r| {
+                                let (k, v) = r.unwrap();
+                                (k.value().clone(), v.value().clone())
+                            })
+                            .skip_while(move |(k, _)| k < &key),
+                    )
+                },
+            }
+            .build(),
+        ))
+    }
+
+    fn reverse_iter<T: crate::traits::Table>(
+        &self,
+    ) -> Box<dyn Iterator<Item = (T::Key, T::Value)> + '_> {
+        let td = TableDefinition::<KeyWrap<T::Key>, ValWrap<T::Value>>::new(T::NAME);
+        let guard = self.db.read().expect("Poisoned lock!");
+        Box::new(
+            ReDBIterBuilder {
+                guard,
+                table_builder: |guard: &mut RwLockReadGuard<'_, ReDatabase>| {
+                    guard
+                        .begin_read()
+                        .expect("Failed to get read txn, DB broken")
+                        .open_table(td)
+                        .expect("Missing table, DB not configured/opened correctly")
+                },
+                iter_builder: |table: &ReadOnlyTable<KeyWrap<T::Key>, ValWrap<T::Value>>| {
+                    Box::new(
+                        table
+                            .iter()
+                            .expect("Unable to get a DB iter")
+                            .rev()
+                            .filter(|r| r.is_ok())
+                            .map(|r| {
+                                let (k, v) = r.unwrap();
+                                (k.value().clone(), v.value().clone())
+                            }),
+                    )
+                },
+            }
+            .build(),
+        )
+    }
+
+    fn record_prior_to<T: crate::traits::Table>(&self, key: &T::Key) -> Option<(T::Key, T::Value)> {
+        let td = TableDefinition::<KeyWrap<T::Key>, ValWrap<T::Value>>::new(T::NAME);
+        let read_table =
+            self.db.read().expect("Poisoned lock!").begin_read().ok()?.open_table(td).ok()?;
+        let mut last = None;
+        for (k, v) in read_table.iter().ok()?.flatten() {
+            let (k, v) = (k.value().clone(), v.value().clone());
+            if &k >= key {
+                break;
+            }
+            last = Some((k, v));
+        }
+        last.map(|(k, v)| (k.clone(), v.clone()))
+    }
+
+    fn last_record<T: crate::traits::Table>(&self) -> Option<(T::Key, T::Value)> {
+        let td = TableDefinition::<KeyWrap<T::Key>, ValWrap<T::Value>>::new(T::NAME);
+        let read_table =
+            self.db.read().expect("Poisoned lock!").begin_read().ok()?.open_table(td).ok()?;
+        read_table.last().ok().flatten().map(|(k, v)| (k.value().clone(), v.value().clone()))
+        //.map(|t| t.last().ok().flatten().map(|(k, v)| (k.value().clone(), v.value().clone())))
+        //.ok()
+        //.flatten()
+    }
+}
+
+/// An interface to a btree map database. This is mainly intended
+/// for tests and performing benchmark comparisons or anywhere where an ephemeral database is
+/// useful.
+#[derive(Clone)]
 pub struct ReDBMap<'a, K, V>
 where
     K: Serialize + DeserializeOwned + Ord + Clone + Send + Sync + Debug + 'static,
     V: Serialize + DeserializeOwned + Clone + Send + Sync + Debug + 'static,
 {
-    db: Arc<RwLock<Database>>,
+    db: Arc<RwLock<ReDatabase>>,
     table_def: TableDefinition<'a, KeyWrap<K>, ValWrap<V>>,
 }
 
-pub fn open_redb<P: AsRef<Path>>(path: P) -> eyre::Result<Arc<RwLock<Database>>> {
-    Ok(Arc::new(RwLock::new(Database::create(path.as_ref().join("redb"))?)))
+pub fn open_redb<P: AsRef<Path>>(path: P) -> eyre::Result<Arc<RwLock<ReDatabase>>> {
+    Ok(Arc::new(RwLock::new(ReDatabase::create(path.as_ref().join("redb"))?)))
+}
+
+pub fn open_redatabase<P: AsRef<Path>>(path: P) -> eyre::Result<ReDB> {
+    Ok(ReDB { db: Arc::new(RwLock::new(ReDatabase::create(path.as_ref().join("redb"))?)) })
 }
 
 impl<'a, K, V> ReDBMap<'a, K, V>
@@ -51,7 +322,7 @@ where
     V: Serialize + DeserializeOwned + Clone + Send + Sync + Debug,
 {
     pub fn reopen(
-        db: Arc<RwLock<Database>>,
+        db: Arc<RwLock<ReDatabase>>,
         table_def: TableDefinition<'a, KeyWrap<K>, ValWrap<V>>,
     ) -> eyre::Result<Self> {
         let txn = db.read().expect("poisoned lock").begin_write()?;
@@ -60,12 +331,8 @@ where
         Ok(Self { db, table_def })
     }
 
-    fn read_txn(&self) -> eyre::Result<ReadTransaction> {
-        Ok(self.db.read().expect("Poisoned lock!").begin_read()?)
-    }
-
     fn read_table(&self) -> eyre::Result<ReadOnlyTable<KeyWrap<K>, ValWrap<V>>> {
-        Ok(self.read_txn()?.open_table(self.table_def)?)
+        Ok(self.db.read().expect("Poisoned lock!").begin_read()?.open_table(self.table_def)?)
     }
 
     fn write_txn(&self) -> eyre::Result<WriteTransaction> {
@@ -78,6 +345,25 @@ where
     K: Serialize + DeserializeOwned + Ord + Clone + Send + Sync + Debug,
     V: Serialize + DeserializeOwned + Clone + Send + Sync + Debug,
 {
+    /*fn read_txn<'txn>(&'txn self) -> eyre::Result<Box<dyn DBTx<'txn, K, V>>> {
+        Ok(Box::new(ReDBTx {
+            tx: self.db.read().expect("Poisoned lock!").begin_read()?.open_table(self.table_def)?,
+        }))
+    }
+
+    fn write_txn<'txn>(&'txn self) -> eyre::Result<Box<dyn DBTxMut<'txn, K, V>>> {
+        let txn = self.db.write().expect("Poisoned lock!").begin_write()?;
+        let table_def = self.table_def;
+        let tx = ReDBTxMutBuilder {
+            txn,
+            table_builder: |txn: &WriteTransaction| {
+                txn.open_table(table_def).expect("failed to open table")
+            },
+        }
+        .build();
+        Ok(Box::new(tx))
+    }*/
+
     fn contains_key(&self, key: &K) -> eyre::Result<bool> {
         Ok(self.read_table()?.get(key)?.map(|_| true).unwrap_or_default())
     }
@@ -125,7 +411,7 @@ where
         Box::new(
             ReDBIterBuilder {
                 guard,
-                table_builder: |guard: &mut RwLockReadGuard<'_, Database>| {
+                table_builder: |guard: &mut RwLockReadGuard<'_, ReDatabase>| {
                     guard
                         .begin_read()
                         .expect("Failed to get read txn, DB broken")
@@ -153,7 +439,7 @@ where
         Ok(Box::new(
             ReDBIterBuilder {
                 guard,
-                table_builder: |guard: &mut RwLockReadGuard<'_, Database>| {
+                table_builder: |guard: &mut RwLockReadGuard<'_, ReDatabase>| {
                     guard
                         .begin_read()
                         .expect("Failed to get read txn, DB broken")
@@ -183,7 +469,7 @@ where
         Box::new(
             ReDBIterBuilder {
                 guard,
-                table_builder: |guard: &mut RwLockReadGuard<'_, Database>| {
+                table_builder: |guard: &mut RwLockReadGuard<'_, ReDatabase>| {
                     guard
                         .begin_read()
                         .expect("Failed to get read txn, DB broken")
@@ -238,7 +524,7 @@ where
     K: Serialize + DeserializeOwned + Ord + Clone + Send + Sync + Debug + 'static,
     V: Serialize + DeserializeOwned + Clone + Send + Sync + Debug + 'static,
 {
-    guard: RwLockReadGuard<'a, Database>,
+    guard: RwLockReadGuard<'a, ReDatabase>,
     #[borrows(mut guard)]
     table: ReadOnlyTable<KeyWrap<K>, ValWrap<V>>,
     #[borrows(table)]
@@ -260,7 +546,7 @@ where
 
 #[cfg(test)]
 mod test {
-    use std::{path::Path, sync::Arc};
+    use std::path::Path;
 
     use tempfile::tempdir;
 
@@ -269,9 +555,9 @@ mod test {
         DBMap,
     };
 
-    use super::open_redb;
+    use super::{open_redb, ReDBMap};
 
-    fn open_db(path: &Path) -> Arc<dyn DBMap<u64, String>> {
+    fn open_db(path: &Path) -> ReDBMap<'static, u64, String> {
         let redb = open_redb(path).expect("Cannot open database");
 
         reopen_redb!(redb,
@@ -307,7 +593,7 @@ mod test {
         db.insert(&123, &"123".to_string()).expect("Failed to insert");
         db.insert(&456, &"456".to_string()).expect("Failed to insert");
 
-        let result = multi_get(&*db, [123, 456, 789]).expect("Failed to multi get");
+        let result = multi_get(&db, [123, 456, 789]).expect("Failed to multi get");
 
         assert_eq!(result.len(), 3);
         assert_eq!(result[0], Some("123".to_string()));
@@ -408,7 +694,7 @@ mod test {
         let _ = db.clear();
 
         let keys_vals = (0..101).map(|i| (i, i.to_string()));
-        multi_insert(&*db, keys_vals).expect("Failed to batch insert");
+        multi_insert(&db, keys_vals).expect("Failed to batch insert");
 
         // Check we have multiple entries
         assert!(db.iter().count() > 1);
@@ -435,7 +721,7 @@ mod test {
         assert!(db.is_empty());
 
         let keys_vals = (0..101).map(|i| (i, i.to_string()));
-        multi_insert(&*db, keys_vals).expect("Failed to batch insert");
+        multi_insert(&db, keys_vals).expect("Failed to batch insert");
 
         // Check we have multiple entries and not empty
         assert!(db.iter().count() > 1);
@@ -456,7 +742,7 @@ mod test {
         // Create kv pairs
         let keys_vals = (0..101).map(|i| (i, i.to_string()));
 
-        multi_insert(&*db, keys_vals.clone()).expect("Failed to multi-insert");
+        multi_insert(&db, keys_vals.clone()).expect("Failed to multi-insert");
 
         for (k, v) in keys_vals {
             let val = db.get(&k).expect("Failed to get inserted key");
@@ -473,7 +759,7 @@ mod test {
         // Create kv pairs
         let keys_vals = (0..101).map(|i| (i, i.to_string()));
 
-        multi_insert(&*db, keys_vals.clone()).expect("Failed to multi-insert");
+        multi_insert(&db, keys_vals.clone()).expect("Failed to multi-insert");
 
         // Check insertion
         for (k, v) in keys_vals.clone() {
@@ -482,7 +768,7 @@ mod test {
         }
 
         // Remove 50 items
-        multi_remove(&*db, keys_vals.clone().map(|kv| kv.0).take(50))
+        multi_remove(&db, keys_vals.clone().map(|kv| kv.0).take(50))
             .expect("Failed to multi-remove");
         assert_eq!(db.iter().count(), 101 - 50);
 

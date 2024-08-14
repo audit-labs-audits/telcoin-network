@@ -4,9 +4,8 @@
 
 use crate::PayloadToken;
 use narwhal_typed_store::{
-    mem_db::MemDB,
-    traits::{multi_get, multi_insert, multi_remove},
-    DBMap,
+    tables::Payload,
+    traits::{Database, DbTx, DbTxMut},
 };
 use std::sync::Arc;
 use telcoin_macros::fail_point;
@@ -15,29 +14,24 @@ use tn_types::{BatchDigest, WorkerId};
 
 /// Store of the batch digests for the primary node for the own created batches.
 #[derive(Clone)]
-pub struct PayloadStore {
-    store: Arc<dyn DBMap<(BatchDigest, WorkerId), PayloadToken>>,
+pub struct PayloadStore<DB: Database> {
+    store: DB, // Payload
 
     /// Senders to notify for a write that happened for the specified batch digest and worker id
     notify_subscribers: Arc<NotifyRead<(BatchDigest, WorkerId), ()>>,
 }
 
-impl PayloadStore {
-    pub fn new(store: Arc<dyn DBMap<(BatchDigest, WorkerId), PayloadToken>>) -> Self {
+impl<DB: Database> PayloadStore<DB> {
+    pub fn new(store: DB) -> Self {
         Self { store, notify_subscribers: Arc::new(NotifyRead::new()) }
-    }
-
-    pub fn new_for_tests() -> Self {
-        PayloadStore::new(Arc::new(MemDB::open()))
     }
 
     pub fn write(&self, digest: &BatchDigest, worker_id: &WorkerId) -> eyre::Result<()> {
         fail_point!("narwhal-store-before-write");
 
-        self.store.insert(&(*digest, *worker_id), &0u8)?;
+        self.store.insert::<Payload>(&(*digest, *worker_id), &0u8)?;
         self.notify_subscribers.notify(&(*digest, *worker_id), &());
 
-        let _ = self.store.commit();
         fail_point!("narwhal-store-after-write");
         Ok(())
     }
@@ -49,14 +43,13 @@ impl PayloadStore {
         keys: impl IntoIterator<Item = (BatchDigest, WorkerId)> + Clone,
     ) -> eyre::Result<()> {
         fail_point!("narwhal-store-before-write");
-
-        multi_insert(&*self.store, keys.clone().into_iter().map(|e| (e, 0u8)))?;
-
-        keys.into_iter().for_each(|(digest, worker_id)| {
+        let mut txn = self.store.write_txn()?;
+        for (digest, worker_id) in keys {
+            txn.insert::<Payload>(&(digest, worker_id), &0u8)?;
             self.notify_subscribers.notify(&(digest, worker_id), &());
-        });
+        }
 
-        let _ = self.store.commit();
+        txn.commit()?;
         fail_point!("narwhal-store-after-write");
         Ok(())
     }
@@ -64,7 +57,7 @@ impl PayloadStore {
     /// Queries the store whether the batch with provided `digest` and `worker_id` exists. It
     /// returns `true` if exists, `false` otherwise.
     pub fn contains(&self, digest: BatchDigest, worker_id: WorkerId) -> eyre::Result<bool> {
-        self.store.get(&(digest, worker_id)).map(|result| result.is_some())
+        self.store.contains_key::<Payload>(&(digest, worker_id))
     }
 
     /// When called the method will wait until the entry of batch with `digest` and `worker_id`
@@ -96,7 +89,8 @@ impl PayloadStore {
         &self,
         keys: impl IntoIterator<Item = (BatchDigest, WorkerId)>,
     ) -> eyre::Result<Vec<Option<PayloadToken>>> {
-        multi_get(&*self.store, keys)
+        let txn = self.store.read_txn()?;
+        keys.into_iter().map(|key| txn.get::<Payload>(&key)).collect()
     }
 
     #[allow(clippy::let_and_return)]
@@ -105,12 +99,15 @@ impl PayloadStore {
         keys: impl IntoIterator<Item = (BatchDigest, WorkerId)>,
     ) -> eyre::Result<()> {
         fail_point!("narwhal-store-before-write");
+        let mut txn = self.store.write_txn()?;
 
-        let result = multi_remove(&*self.store, keys);
+        for key in keys.into_iter() {
+            txn.remove::<Payload>(&key)?;
+        }
 
-        let _ = self.store.commit();
+        txn.commit()?;
         fail_point!("narwhal-store-after-write");
-        result
+        Ok(())
     }
 }
 
@@ -119,11 +116,15 @@ mod tests {
     use crate::PayloadStore;
     use fastcrypto::hash::Hash;
     use futures::future::join_all;
+    use narwhal_typed_store::open_db;
+    use tempfile::TempDir;
     use tn_types::Batch;
 
     #[tokio::test]
     async fn test_notify_read() {
-        let store = PayloadStore::new_for_tests();
+        let temp_dir = TempDir::new().unwrap();
+        let db = open_db(temp_dir.path());
+        let store = PayloadStore::new(db);
 
         // run the tests a few times
         let batch: Batch = tn_types::test_utils::fixture_batch_with_transactions(10);

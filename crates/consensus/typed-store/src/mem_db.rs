@@ -11,6 +11,158 @@ use rand::distributions::{Alphanumeric, DistString};
 use serde::{de::DeserializeOwned, Serialize};
 
 use crate::DBMap;
+/*
+#[derive(Debug)]
+pub struct MemTx<K, V> {
+    pub db: Arc<RwLock<BTreeMap<K, V>>>,
+}
+
+impl<K: KeyT, V: ValueT> Table for MemTx<K, V> {
+    type Key = K;
+    type Value = V;
+
+    const NAME: &'static str = "mem_db";
+}
+
+impl<K, V> DbTx for MemTx<K, V> {
+    fn contains_key<T: Table>(&self, key: &T::Key) -> eyre::Result<bool> {
+        todo!()
+    }
+
+    fn get<T: Table>(&self, key: &T::Key) -> eyre::Result<Option<T::Value>> {
+        Ok(self.db.read().expect("Poisoned read lock!").get(Self::Key).cloned())
+    }
+    /*    fn get(&self, key: &K) -> eyre::Result<Option<V>> {
+        Ok(self.db.read().expect("Poisoned read lock!").get(key).cloned())
+    }
+    */
+}
+
+pub struct MemTxMut<T: Table> {
+    pub db: Arc<RwLock<BTreeMap<T::Key, T::Value>>>,
+}
+
+impl<T: Table> DbTx for MemTxMut<T> {
+    fn contains_key<T: Table>(&self, key: &T::Key) -> eyre::Result<bool> {
+        todo!()
+    }
+
+    fn get<T: Table>(&self, key: &T::Key) -> eyre::Result<Option<T::Value>> {
+        todo!()
+    }
+}
+
+impl<T: Table> DbTxMut for MemTxMut<T> {
+    fn insert<T: Table>(&mut self, key: &T::Key, value: &T::Value) -> eyre::Result<()> {
+        todo!()
+    }
+
+    fn remove<T: Table>(&mut self, key: &T::Key) -> eyre::Result<()> {
+        todo!()
+    }
+
+    fn clear_table<T: Table>(&mut self) -> eyre::Result<()> {
+        todo!()
+    }
+
+    fn commit(self) -> eyre::Result<()> {
+        todo!()
+    }
+    /*fn insert(&mut self, key: &K, value: &V) -> eyre::Result<()> {
+        self.db.write().expect("Poisoned write lock!").insert(key.clone(), value.clone());
+        Ok(())
+    }
+
+    fn remove(&mut self, key: &K) -> eyre::Result<()> {
+        self.db.write().expect("Poisoned write lock!").remove(key);
+        Ok(())
+    }
+
+    fn clear(&mut self) -> eyre::Result<()> {
+        self.db.write().expect("Poisoned write lock!").clear();
+        Ok(())
+    }
+
+    fn commit(self) -> eyre::Result<()> {
+        Ok(())
+    }*/
+}
+
+/// An interface to a btree map database. This is mainly intended
+/// for tests and performing benchmark comparisons or anywhere where an ephemeral database is
+/// useful.
+#[derive(Clone, Debug)]
+pub struct MemDatabase<T: Table> {
+    db: Arc<RwLock<BTreeMap<T::Key, T::Value>>>,
+}
+
+impl<T: Table> MemDatabase<T> {
+    pub fn open() -> MemDatabase<T> {
+        MemDatabase { db: Arc::new(RwLock::new(BTreeMap::new())) }
+    }
+}
+
+impl<T: Table> Database for MemDatabase<T> {
+    type TX;
+
+    type TXMut;
+
+    fn read_txn(&self) -> eyre::Result<Self::TX> {
+        todo!()
+    }
+
+    fn write_txn(&self) -> eyre::Result<Self::TXMut> {
+        todo!()
+    }
+
+    fn contains_key<T: Table>(&self, key: &T::Key) -> eyre::Result<bool> {
+        todo!()
+    }
+
+    fn get<T: Table>(&self, key: &T::Key) -> eyre::Result<Option<T::Value>> {
+        todo!()
+    }
+
+    fn insert<T: Table>(&self, key: &T::Key, value: &T::Value) -> eyre::Result<()> {
+        todo!()
+    }
+
+    fn remove<T: Table>(&self, key: &T::Key) -> eyre::Result<()> {
+        todo!()
+    }
+
+    fn clear_table<T: Table>(&self) -> eyre::Result<()> {
+        todo!()
+    }
+
+    fn is_empty<T: Table>(&self) -> bool {
+        todo!()
+    }
+
+    fn iter<T: Table>(&self) -> Box<dyn Iterator<Item = (T::Key, T::Value)> + '_> {
+        todo!()
+    }
+
+    fn skip_to<T: Table>(
+        &self,
+        key: &T::Key,
+    ) -> eyre::Result<Box<dyn Iterator<Item = (T::Key, T::Value)> + '_>> {
+        todo!()
+    }
+
+    fn reverse_iter<T: Table>(&self) -> Box<dyn Iterator<Item = (T::Key, T::Value)> + '_> {
+        todo!()
+    }
+
+    fn record_prior_to<T: Table>(&self, key: &T::Key) -> Option<(T::Key, T::Value)> {
+        todo!()
+    }
+
+    fn last_record<T: Table>(&self) -> Option<(T::Key, T::Value)> {
+        todo!()
+    }
+}
+*/
 
 /// An interface to a btree map database. This is mainly intended
 /// for tests and performing benchmark comparisons or anywhere where an ephemeral database is

@@ -11062,6 +11062,7 @@ dependencies = [
  "reth-stages",
  "reth-tracing",
  "reth-transaction-pool",
+ "tempfile",
  "tn-batch-validator",
  "tn-types",
  "tokio",

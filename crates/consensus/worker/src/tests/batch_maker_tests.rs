@@ -6,13 +6,15 @@ use super::*;
 
 use crate::NUM_SHUTDOWN_RECEIVERS;
 use narwhal_network_types::MockWorkerToPrimary;
-use narwhal_typed_store::mem_db::MemDB;
+use narwhal_typed_store::open_db;
+use tempfile::TempDir;
 use tn_types::{test_utils::transaction, PreSubscribedBroadcastSender};
 
 #[tokio::test]
 async fn make_batch() {
     let client = NetworkClient::new_with_empty_id();
-    let store: Arc<dyn DBMap<BatchDigest, Batch>> = Arc::new(MemDB::open());
+    let temp_dir = TempDir::new().unwrap();
+    let store = open_db(temp_dir.path());
     let mut tx_shutdown = PreSubscribedBroadcastSender::new(NUM_SHUTDOWN_RECEIVERS);
     let (tx_batch_maker, rx_batch_maker) = tn_types::test_channel!(1);
     let (tx_quorum_waiter, mut rx_quorum_waiter) = tn_types::test_channel!(1);
@@ -58,7 +60,7 @@ async fn make_batch() {
     assert!(batch1_rx.await.is_ok());
 
     // Ensure the batch is stored
-    assert!(store.get(&expected_batch.digest()).unwrap().is_some());
+    assert!(store.get::<Batches>(&expected_batch.digest()).unwrap().is_some());
 }
 
 // #[tokio::test]

@@ -7,14 +7,16 @@
 
 pub mod traits;
 
-use std::sync::Arc;
 #[cfg(feature = "rocksdb")]
 use std::time::Duration;
 
-use mem_db::MemDB;
-use redb::dbmap::open_redb;
+use redb::dbmap::{open_redatabase, open_redb, ReDB, ReDBMap};
 #[cfg(feature = "rocksdb")]
 use rocks::{default_db_options, metrics::SamplingInterval, open_cf_opts, MetricConf};
+use tables::{
+    Batches, CertificateDigestByOrigin, CertificateDigestByRound, Certificates, CommittedSubDag,
+    LastCommitted, LastProposed, Payload, Votes,
+};
 use tn_types::{
     AuthorityIdentifier, Batch, BatchDigest, Certificate, CertificateDigest, ConsensusCommit,
     Header, Round, SequenceNumber, VoteInfo, WorkerId,
@@ -43,17 +45,61 @@ const BATCHES_CF: &str = "batches";
 const LAST_COMMITTED_CF: &str = "last_committed";
 const COMMITTED_SUB_DAG_INDEX_CF: &str = "committed_sub_dag";
 
-type ArcMap<K, V> = Arc<dyn DBMap<K, V>>;
+macro_rules! tables {
+    ( $($table:ident;<$K:ty, $V:ty>),*) => {
+            $(
+                #[derive(Debug)]
+                pub struct $table {}
+                impl $crate::traits::Table for $table {
+                    type Key = $K;
+                    type Value = $V;
+
+                    const NAME: &'static str = stringify!($table);
+                }
+            )*
+    };
+}
+
+pub mod tables {
+    use super::{PayloadToken, ProposerKey};
+    use tn_types::{
+        AuthorityIdentifier, Batch, BatchDigest, Certificate, CertificateDigest, ConsensusCommit,
+        Header, Round, SequenceNumber, VoteInfo, WorkerId,
+    };
+
+    tables!(
+        LastProposed;<ProposerKey, Header>,
+        Votes;<AuthorityIdentifier, VoteInfo>,
+        Certificates;<CertificateDigest, Certificate>,
+        CertificateDigestByRound;<(Round, AuthorityIdentifier), CertificateDigest>,
+        CertificateDigestByOrigin;<(AuthorityIdentifier, Round), CertificateDigest>,
+        Payload;<(BatchDigest, WorkerId), PayloadToken>,
+        Batches;<BatchDigest, Batch>,
+        LastCommitted;<AuthorityIdentifier, Round>,
+        CommittedSubDag;<SequenceNumber, ConsensusCommit>
+    );
+}
+
+//#[cfg(feature = "rocksdb")]
+//pub type DatabaseType = ReDB;
+#[cfg(feature = "redb")]
+pub type DatabaseType = ReDB;
+
+//#[cfg(feature = "rocksdb")]
+//pub type DBType<K, V> = ReDBMap<'static, K, V>;
+#[cfg(feature = "redb")]
+pub type DBType<K, V> = ReDBMap<'static, K, V>;
+
 type NodeDBs = (
-    ArcMap<ProposerKey, Header>,
-    ArcMap<AuthorityIdentifier, VoteInfo>,
-    ArcMap<CertificateDigest, Certificate>,
-    ArcMap<(Round, AuthorityIdentifier), CertificateDigest>,
-    ArcMap<(AuthorityIdentifier, Round), CertificateDigest>,
-    ArcMap<(BatchDigest, WorkerId), PayloadToken>,
-    ArcMap<BatchDigest, Batch>,
-    ArcMap<AuthorityIdentifier, Round>,
-    ArcMap<SequenceNumber, ConsensusCommit>,
+    DBType<ProposerKey, Header>,
+    DBType<AuthorityIdentifier, VoteInfo>,
+    DBType<CertificateDigest, Certificate>,
+    DBType<(Round, AuthorityIdentifier), CertificateDigest>,
+    DBType<(AuthorityIdentifier, Round), CertificateDigest>,
+    DBType<(BatchDigest, WorkerId), PayloadToken>,
+    DBType<BatchDigest, Batch>,
+    DBType<AuthorityIdentifier, Round>,
+    DBType<SequenceNumber, ConsensusCommit>,
 );
 
 /// Open the DBs for node store.  Will use redb unless the rocksdb feature flag is set, then will
@@ -64,6 +110,20 @@ pub fn open_node_dbs<P: AsRef<std::path::Path> + Send>(store_path: P) -> NodeDBs
     } else {
         reopen_redb(store_path)
     }
+}
+
+pub fn open_db<Path: AsRef<std::path::Path> + Send>(store_path: Path) -> DatabaseType {
+    let db = open_redatabase(store_path).expect("Cannot open database");
+    db.open_table::<LastProposed>().expect("failed to open table!");
+    db.open_table::<Votes>().expect("failed to open table!");
+    db.open_table::<Certificates>().expect("failed to open table!");
+    db.open_table::<CertificateDigestByRound>().expect("failed to open table!");
+    db.open_table::<CertificateDigestByOrigin>().expect("failed to open table!");
+    db.open_table::<Payload>().expect("failed to open table!");
+    db.open_table::<Batches>().expect("failed to open table!");
+    db.open_table::<LastCommitted>().expect("failed to open table!");
+    db.open_table::<CommittedSubDag>().expect("failed to open table!");
+    db
 }
 
 /// Open or reopen all the storage of the node backed by redb.
@@ -138,10 +198,12 @@ fn reopen_rocks<P: AsRef<std::path::Path> + Send>(_store_path: P) -> NodeDBs {
     panic!("Can't use rocks with the rocksdb feature!");
 }
 
+/*
 /// Opens the DBs for node store but uses in memory DBs.  Can use for some testing.
 pub fn open_node_mem_dbs() -> NodeDBs {
     (
-        Arc::new(MemDB::<ProposerKey, Header>::open()),
+        //Arc::new(MemDB::<ProposerKey, Header>::open()),
+        MemDB::<ProposerKey, Header>::open(),
         Arc::new(MemDB::<AuthorityIdentifier, VoteInfo>::open()),
         Arc::new(MemDB::<CertificateDigest, Certificate>::open()),
         Arc::new(MemDB::<(Round, AuthorityIdentifier), CertificateDigest>::open()),
@@ -152,3 +214,4 @@ pub fn open_node_mem_dbs() -> NodeDBs {
         Arc::new(MemDB::<SequenceNumber, ConsensusCommit>::open()),
     )
 }
+*/
