@@ -50,10 +50,6 @@ use tracing::{debug, error};
 /// and then submits a transaction (or returns an error). The faucet is a
 /// direct address -> address transfer. The faucet address is seeded in genesis.
 pub(crate) struct FaucetService<Provider, Pool, Tasks> {
-    /// The faucet contract's address.
-    ///
-    /// The value is used to send call data to the contract that mints stablecoins.
-    // pub(crate) faucet_contract: Address, //todo
     /// The channel between the RPC and the faucet.
     ///
     /// The channel contains:
