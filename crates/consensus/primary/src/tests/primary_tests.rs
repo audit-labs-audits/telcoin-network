@@ -168,7 +168,7 @@ async fn test_get_network_peers_from_admin_server() {
     .unwrap();
 
     let mut i = 0;
-    while i < 10 && resp.len() < 1 {
+    while i < 10 && resp.is_empty() {
         i += 1;
         std::thread::sleep(Duration::from_millis(1000));
         resp = reqwest::get(format!(

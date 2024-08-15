@@ -37,7 +37,7 @@ fn run_restart_tests1(
     // This validator should be down now, confirm.
     assert!(get_balance(&client_urls[2], &to_account.to_string(), 5).is_err());
     // Restart
-    let child2 = start_validator(2, &exe_path, &temp_path, rpc_port2);
+    let child2 = start_validator(2, exe_path, temp_path, rpc_port2);
     let bal = get_positive_balance_with_retry(&client_urls[2], &to_account.to_string())?;
     assert_eq!(10 * WEI_PER_TEL, bal);
     send_tel(&client_urls[0], &key, to_account, 10 * WEI_PER_TEL, 250, 21000, 1)?;
@@ -77,12 +77,12 @@ fn test_restarts() {
         "http://127.0.0.1".to_string(),
     ];
     let mut rpc_ports: [u16; 4] = [0, 0, 0, 0];
-    for i in 0..4 {
+    for (i, child) in children.iter_mut().enumerate() {
         let rpc_port = get_available_tcp_port("127.0.0.1")
             .expect("Failed to get an ephemeral rpc port for child {i}!");
         rpc_ports[i] = rpc_port;
         client_urls[i].push_str(&format!(":{rpc_port}"));
-        children[i] = Some(start_validator(i, &exe_path, &temp_path, rpc_port));
+        *child = Some(start_validator(i, &exe_path, &temp_path, rpc_port));
     }
 
     let res1 = run_restart_tests1(
@@ -102,10 +102,10 @@ fn test_restarts() {
             println!("Got error: {err}");
         }
     }
-    for i in 0..4 {
+    for (i, child) in children.iter_mut().enumerate() {
         // Best effort to kill all the nodes.
         if i != 2 {
-            let child = children[i].as_mut().expect("missing a child");
+            let child = child.as_mut().expect("missing a child");
             let _ = child.kill();
             let _ = child.wait();
         }
@@ -119,14 +119,14 @@ fn test_restarts() {
     assert!(get_balance(&client_urls[2], &to_account.to_string(), 5).is_err());
     assert!(get_balance(&client_urls[3], &to_account.to_string(), 5).is_err());
     // Restart network
-    for i in 0..4 {
-        children[i] = Some(start_validator(i, &exe_path, &temp_path, rpc_ports[i]));
+    for (i, child) in children.iter_mut().enumerate() {
+        *child = Some(start_validator(i, &exe_path, &temp_path, rpc_ports[i]));
     }
 
     let res2 = run_restart_tests2(&client_urls);
 
-    for i in 0..4 {
-        let child = children[i].as_mut().expect("missing a child");
+    for child in children.iter_mut() {
+        let child = child.as_mut().expect("missing a child");
         let _ = child.kill();
         let _ = child.wait();
     }
@@ -150,7 +150,7 @@ fn start_validator(instance: usize, exe_path: &Path, base_dir: &Path, mut rpc_po
         .arg(format!("{}", instance + 1))
         .arg("--http")
         .arg("--http.port")
-        .arg(&format!("{rpc_port}"));
+        .arg(format!("{rpc_port}"));
 
     #[cfg(feature = "faucet")]
     command
