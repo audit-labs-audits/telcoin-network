@@ -6,7 +6,7 @@
 //! address if the address hasn't received from the faucet
 //! wallet within the time period.
 
-use crate::{MintTo, FaucetWallet, GoogleKMSClient, Secp256k1PubKeyBytes};
+use crate::{FaucetWallet, GoogleKMSClient, MintTo, Secp256k1PubKeyBytes};
 use alloy_sol_types::SolType;
 use futures::StreamExt;
 use gcloud_sdk::{

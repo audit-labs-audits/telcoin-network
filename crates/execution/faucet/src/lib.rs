@@ -117,13 +117,7 @@ impl Faucet {
         let lru_cache = LruCache::with_expiry_duration(wait_period);
         let (add_to_cache_tx, update_cache_rx) = tokio::sync::mpsc::unbounded_channel();
 
-        // TODO: take this from CLI
-        //
-        // This value is hardcoded for now after deploying contract to adiri testnet //todo
-        // let faucet_contract = hex!("c1CCc28BB47290aab2f87D4AF81CEfE6626EE878").into();
-
         let service = FaucetService {
-            // faucet_contract,//todo
             request_rx: UnboundedReceiverStream::new(rx),
             provider,
             pool,

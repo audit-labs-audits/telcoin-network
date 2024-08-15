@@ -25,7 +25,7 @@ use reth_tasks::TaskManager;
 use reth_tracing::init_test_tracing;
 use secp256k1::PublicKey;
 use std::{str::FromStr, sync::Arc, time::Duration};
-use tn_faucet::MintTo;
+use tn_faucet::{parse_u256_from_decimal_value, MintTo};
 use tn_types::{adiri_genesis, test_channel, BatchAPI, NewBatch};
 use tokio::time::timeout;
 
@@ -169,7 +169,8 @@ async fn test_faucet_transfers_stablecoin_with_google_kms() -> eyre::Result<()> 
     let tx = batch_txs.first().expect("first batch tx from faucet");
     let recovered = TransactionSigned::decode_enveloped(&mut tx.as_ref())?;
 
-    let amount: U256 = U256::from(1); // defaults to 1 as "TRANSFER_AMOUNT" set by clap
+    // faucet defaults to 1 TEL as "TRANSFER_AMOUNT" set by clap via `parse_u256_from_decimal_value`
+    let amount: U256 = parse_u256_from_decimal_value("1").unwrap();
     let contract_params: Vec<u8> = MintTo::abi_encode_params(&(&user_address, amount));
 
     // keccak256("mintTo(address,uint256)")[0..4]
