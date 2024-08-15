@@ -10,19 +10,13 @@ pub mod traits;
 #[cfg(feature = "rocksdb")]
 use std::time::Duration;
 
-use redb::dbmap::{open_redatabase, open_redb, ReDB, ReDBMap};
+use redb::dbmap::{open_redatabase, ReDB};
 #[cfg(feature = "rocksdb")]
 use rocks::{default_db_options, metrics::SamplingInterval, open_cf_opts, MetricConf};
 use tables::{
     Batches, CertificateDigestByOrigin, CertificateDigestByRound, Certificates, CommittedSubDag,
     LastCommitted, LastProposed, Payload, Votes,
 };
-use tn_types::{
-    AuthorityIdentifier, Batch, BatchDigest, Certificate, CertificateDigest, ConsensusCommit,
-    Header, Round, SequenceNumber, VoteInfo, WorkerId,
-};
-pub use traits::DBMap;
-pub mod mem_db;
 pub mod redb;
 #[cfg(feature = "rocksdb")]
 pub mod rocks;
@@ -46,7 +40,7 @@ const LAST_COMMITTED_CF: &str = "last_committed";
 const COMMITTED_SUB_DAG_INDEX_CF: &str = "committed_sub_dag";
 
 macro_rules! tables {
-    ( $($table:ident;<$K:ty, $V:ty>),*) => {
+    ( $($table:ident;$name:expr;<$K:ty, $V:ty>),*) => {
             $(
                 #[derive(Debug)]
                 pub struct $table {}
@@ -54,7 +48,7 @@ macro_rules! tables {
                     type Key = $K;
                     type Value = $V;
 
-                    const NAME: &'static str = stringify!($table);
+                    const NAME: &'static str = $name;
                 }
             )*
     };
@@ -68,15 +62,15 @@ pub mod tables {
     };
 
     tables!(
-        LastProposed;<ProposerKey, Header>,
-        Votes;<AuthorityIdentifier, VoteInfo>,
-        Certificates;<CertificateDigest, Certificate>,
-        CertificateDigestByRound;<(Round, AuthorityIdentifier), CertificateDigest>,
-        CertificateDigestByOrigin;<(AuthorityIdentifier, Round), CertificateDigest>,
-        Payload;<(BatchDigest, WorkerId), PayloadToken>,
-        Batches;<BatchDigest, Batch>,
-        LastCommitted;<AuthorityIdentifier, Round>,
-        CommittedSubDag;<SequenceNumber, ConsensusCommit>
+        LastProposed;crate::LAST_PROPOSED_CF;<ProposerKey, Header>,
+        Votes;crate::VOTES_CF;<AuthorityIdentifier, VoteInfo>,
+        Certificates;crate::CERTIFICATES_CF;<CertificateDigest, Certificate>,
+        CertificateDigestByRound;crate::CERTIFICATE_DIGEST_BY_ROUND_CF;<(Round, AuthorityIdentifier), CertificateDigest>,
+        CertificateDigestByOrigin;crate::CERTIFICATE_DIGEST_BY_ORIGIN_CF;<(AuthorityIdentifier, Round), CertificateDigest>,
+        Payload;crate::PAYLOAD_CF;<(BatchDigest, WorkerId), PayloadToken>,
+        Batches;crate::BATCHES_CF;<BatchDigest, Batch>,
+        LastCommitted;crate::LAST_COMMITTED_CF;<AuthorityIdentifier, Round>,
+        CommittedSubDag;crate::COMMITTED_SUB_DAG_INDEX_CF;<SequenceNumber, ConsensusCommit>
     );
 }
 
@@ -85,33 +79,7 @@ pub mod tables {
 #[cfg(feature = "redb")]
 pub type DatabaseType = ReDB;
 
-//#[cfg(feature = "rocksdb")]
-//pub type DBType<K, V> = ReDBMap<'static, K, V>;
-#[cfg(feature = "redb")]
-pub type DBType<K, V> = ReDBMap<'static, K, V>;
-
-type NodeDBs = (
-    DBType<ProposerKey, Header>,
-    DBType<AuthorityIdentifier, VoteInfo>,
-    DBType<CertificateDigest, Certificate>,
-    DBType<(Round, AuthorityIdentifier), CertificateDigest>,
-    DBType<(AuthorityIdentifier, Round), CertificateDigest>,
-    DBType<(BatchDigest, WorkerId), PayloadToken>,
-    DBType<BatchDigest, Batch>,
-    DBType<AuthorityIdentifier, Round>,
-    DBType<SequenceNumber, ConsensusCommit>,
-);
-
-/// Open the DBs for node store.  Will use redb unless the rocksdb feature flag is set, then will
-/// use rocks.
-pub fn open_node_dbs<P: AsRef<std::path::Path> + Send>(store_path: P) -> NodeDBs {
-    if cfg!(feature = "rocksdb") {
-        reopen_rocks(store_path)
-    } else {
-        reopen_redb(store_path)
-    }
-}
-
+/// Open the configured DB with the required tables.
 pub fn open_db<Path: AsRef<std::path::Path> + Send>(store_path: Path) -> DatabaseType {
     let db = open_redatabase(store_path).expect("Cannot open database");
     db.open_table::<LastProposed>().expect("failed to open table!");
@@ -125,24 +93,7 @@ pub fn open_db<Path: AsRef<std::path::Path> + Send>(store_path: Path) -> Databas
     db.open_table::<CommittedSubDag>().expect("failed to open table!");
     db
 }
-
-/// Open or reopen all the storage of the node backed by redb.
-fn reopen_redb<Path: AsRef<std::path::Path> + Send>(store_path: Path) -> NodeDBs {
-    let redb = open_redb(store_path).expect("Cannot open database");
-
-    reopen_redb!(redb,
-        LAST_PROPOSED_CF;<ProposerKey, Header>,
-        VOTES_CF;<AuthorityIdentifier, VoteInfo>,
-        CERTIFICATES_CF;<CertificateDigest, Certificate>,
-        CERTIFICATE_DIGEST_BY_ROUND_CF;<(Round, AuthorityIdentifier), CertificateDigest>,
-        CERTIFICATE_DIGEST_BY_ORIGIN_CF;<(AuthorityIdentifier, Round), CertificateDigest>,
-        PAYLOAD_CF;<(BatchDigest, WorkerId), PayloadToken>,
-        BATCHES_CF;<BatchDigest, Batch>,
-        LAST_COMMITTED_CF;<AuthorityIdentifier, Round>,
-        COMMITTED_SUB_DAG_INDEX_CF;<SequenceNumber, ConsensusCommit>
-    )
-}
-
+/*
 /// Open or reopen all the storage of the node backed by rocks DB.
 #[allow(unreachable_code)]
 fn reopen_rocks<P: AsRef<std::path::Path> + Send>(_store_path: P) -> NodeDBs {
@@ -196,22 +147,5 @@ fn reopen_rocks<P: AsRef<std::path::Path> + Send>(_store_path: P) -> NodeDBs {
         )
     };
     panic!("Can't use rocks with the rocksdb feature!");
-}
-
-/*
-/// Opens the DBs for node store but uses in memory DBs.  Can use for some testing.
-pub fn open_node_mem_dbs() -> NodeDBs {
-    (
-        //Arc::new(MemDB::<ProposerKey, Header>::open()),
-        MemDB::<ProposerKey, Header>::open(),
-        Arc::new(MemDB::<AuthorityIdentifier, VoteInfo>::open()),
-        Arc::new(MemDB::<CertificateDigest, Certificate>::open()),
-        Arc::new(MemDB::<(Round, AuthorityIdentifier), CertificateDigest>::open()),
-        Arc::new(MemDB::<(AuthorityIdentifier, Round), CertificateDigest>::open()),
-        Arc::new(MemDB::<(BatchDigest, WorkerId), PayloadToken>::open()),
-        Arc::new(MemDB::<BatchDigest, Batch>::open()),
-        Arc::new(MemDB::<AuthorityIdentifier, Round>::open()),
-        Arc::new(MemDB::<SequenceNumber, ConsensusCommit>::open()),
-    )
 }
 */

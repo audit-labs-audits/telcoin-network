@@ -3,4 +3,6 @@
 
 pub mod dbmap;
 pub mod wraps;
+
+pub use dbmap::ReDB;
 pub use redb::TableDefinition;
