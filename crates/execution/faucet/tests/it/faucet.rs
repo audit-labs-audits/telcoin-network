@@ -7,7 +7,7 @@
 //! signature to be EVM compatible. The faucet service does all of this and
 //! then submits the transaction to the RPC Transaction Pool for the next batch.
 
-use alloy_sol_types::{sol_data::Uint, SolType};
+use alloy_sol_types::SolType;
 use gcloud_sdk::{
     google::cloud::kms::v1::{
         key_management_service_client::KeyManagementServiceClient, GetPublicKeyRequest,
@@ -18,7 +18,7 @@ use jsonrpsee::{core::client::ClientT, rpc_params};
 use k256::{elliptic_curve::sec1::ToEncodedPoint, pkcs8::DecodePublicKey, PublicKey as PubKey};
 use narwhal_test_utils::faucet_test_execution_node;
 use reth_primitives::{
-    alloy_primitives::U160, hex, public_key_to_address, Address, GenesisAccount, TransactionSigned,
+    alloy_primitives::U160, public_key_to_address, Address, GenesisAccount, TransactionSigned,
     U256,
 };
 use reth_tasks::TaskManager;
