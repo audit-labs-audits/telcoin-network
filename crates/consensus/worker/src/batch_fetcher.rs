@@ -15,8 +15,9 @@ use futures::{stream::FuturesUnordered, FutureExt, StreamExt};
 use itertools::Itertools;
 use narwhal_network::WorkerRpc;
 use narwhal_typed_store::{
-    traits::{multi_get, multi_insert},
-    DBMap,
+    tables::Batches,
+    traits::{Database, DbTxMut},
+    DatabaseType,
 };
 use prometheus::IntGauge;
 use rand::{rngs::ThreadRng, seq::SliceRandom};
@@ -38,7 +39,7 @@ const WORKER_RETRY_INTERVAL: Duration = Duration::from_secs(1);
 pub struct BatchFetcher {
     name: NetworkPublicKey,
     network: Arc<dyn RequestBatchesNetwork>,
-    batch_store: Arc<dyn DBMap<BatchDigest, Batch>>,
+    batch_store: DatabaseType,
     metrics: Arc<WorkerMetrics>,
 }
 
@@ -46,7 +47,7 @@ impl BatchFetcher {
     pub fn new(
         name: NetworkPublicKey,
         network: Network,
-        batch_store: Arc<dyn DBMap<BatchDigest, Batch>>,
+        batch_store: DatabaseType,
         metrics: Arc<WorkerMetrics>,
     ) -> Self {
         Self {
@@ -118,20 +119,23 @@ impl BatchFetcher {
 
                             // Set received_at timestamp for remote batches.
                             let mut updated_new_batches = HashMap::new();
+                            let mut txn = self.batch_store.write_txn().expect("unable to create DB transaction!");
                             for (digest, batch) in new_batches {
                                 let mut batch = (*batch).clone();
                                 batch.versioned_metadata_mut().set_received_at(now());
                                 updated_new_batches.insert(*digest, batch.clone());
+                                // Also persist the batches, so they are available after restarts.
+                                if let Err(e) = txn.insert::<Batches>(digest, &batch) {
+                                    tracing::error!("failed to insert batch! We can not continue.. {e}");
+                                    panic!("failed to insert batch! We can not continue.. {e}");
+                                }
+                            }
+                            if let Err(e) = txn.commit() {
+                                tracing::error!("failed to commit batch! We can not continue.. {e}");
+                                panic!("failed to commit batch! We can not continue.. {e}");
                             }
                             fetched_batches.extend(updated_new_batches.iter().map(|(d, b)| (*d, (*b).clone())));
-                            // Also persist the batches, so they are available after restarts.
-                            if let Err(e) = multi_insert(&*self.batch_store, updated_new_batches) {
-                                // TODO, this is real bad should maybe shutdown...
-                                tracing::error!("failed to insert batch! {e}");
-                            }
 
-
-                            let _ = self.batch_store.commit();
                             if remaining_digests.is_empty() {
                                 return fetched_batches;
                             }
@@ -157,8 +161,8 @@ impl BatchFetcher {
         // Continue to bulk request from local worker until no remaining digests
         // are available.
         debug!("Local attempt to fetch {} digests", digests.len());
-        let local_batches = multi_get(&*self.batch_store, digests.clone().into_iter())
-            .expect("Failed to get batches");
+        let local_batches =
+            self.batch_store.multi_get::<Batches>(digests.iter()).expect("Failed to get batches");
         for (digest, batch) in digests.into_iter().zip(local_batches.into_iter()) {
             if let Some(batch) = batch {
                 self.metrics.worker_batch_fetch.with_label_values(&["local", "success"]).inc();
@@ -318,13 +322,10 @@ impl RequestBatchesNetwork for RequestBatchesNetworkImpl {
 mod tests {
     use super::*;
     use fastcrypto::traits::KeyPair;
-    use narwhal_typed_store::mem_db::MemDB;
+    use narwhal_typed_store::open_db;
     use rand::rngs::StdRng;
+    use tempfile::TempDir;
     use tn_types::NetworkKeypair;
-
-    fn create_batch_store() -> Arc<dyn DBMap<BatchDigest, Batch>> {
-        Arc::new(MemDB::open())
-    }
 
     // // TODO: Remove once we have removed BatchV1 from the codebase.
     // // Case #1: Receive BatchV1 but network is upgraded past v11 so we fail because we expect
@@ -332,7 +333,8 @@ mod tests {
     // pub async fn test_fetcher_with_batch_v1_and_network_v12() {
     //     reth_tracing::init_test_tracing();
     //     let mut network = TestRequestBatchesNetwork::new();
-    //     let batch_store = create_batch_store();
+    //     let temp_dir = TempDir::new().unwrap();
+    //     let batch_store = open_db(temp_dir.path());
     //     let batchv1_1 = Batch::V1(BatchV1::new(vec![vec![1]]));
     //     let batchv1_2 = Batch::V1(BatchV1::new(vec![vec![2]]));
     //     let (digests, known_workers) = (
@@ -360,7 +362,8 @@ mod tests {
     // #[tokio::test]
     // pub async fn test_fetcher_with_batch_v2_and_network_v12() {
     //     let mut network = TestRequestBatchesNetwork::new();
-    //     let batch_store = create_batch_store();
+    //     let temp_dir = TempDir::new().unwrap();
+    //     let batch_store = open_db(temp_dir.path());
     //     let batchv2_1 = Batch::new(vec![vec![1]]);
     //     let batchv2_2 = Batch::new(vec![vec![2]]);
     //     let (digests, known_workers) = (
@@ -411,7 +414,8 @@ mod tests {
     #[tokio::test]
     pub async fn test_fetcher() {
         let mut network = TestRequestBatchesNetwork::new();
-        let batch_store = create_batch_store();
+        let temp_dir = TempDir::new().unwrap();
+        let batch_store = open_db(temp_dir.path());
         let batch1 = Batch::new(vec![vec![1]]);
         let batch2 = Batch::new(vec![vec![2]]);
         let (digests, known_workers) = (
@@ -441,8 +445,14 @@ mod tests {
             batch.versioned_metadata_mut().set_received_at(0);
         }
         assert_eq!(fetched_batches, expected_batches);
-        assert_eq!(batch_store.get(&batch1.digest()).unwrap().unwrap().digest(), batch1.digest());
-        assert_eq!(batch_store.get(&batch2.digest()).unwrap().unwrap().digest(), batch2.digest());
+        assert_eq!(
+            batch_store.get::<Batches>(&batch1.digest()).unwrap().unwrap().digest(),
+            batch1.digest()
+        );
+        assert_eq!(
+            batch_store.get::<Batches>(&batch2.digest()).unwrap().unwrap().digest(),
+            batch2.digest()
+        );
     }
 
     #[tokio::test]
@@ -450,7 +460,8 @@ mod tests {
         // Limit is set to two batches in test request_batches(). Request 3 batches
         // and ensure another request is sent to get the remaining batches.
         let mut network = TestRequestBatchesNetwork::new();
-        let batch_store = create_batch_store();
+        let temp_dir = TempDir::new().unwrap();
+        let batch_store = open_db(temp_dir.path());
         let batch1 = Batch::new(vec![vec![1]]);
         let batch2 = Batch::new(vec![vec![2]]);
         let batch3 = Batch::new(vec![vec![3]]);
@@ -459,7 +470,7 @@ mod tests {
             HashSet::from_iter(test_pks(&[1, 2, 3])),
         );
         for batch in &[&batch1, &batch2, &batch3] {
-            batch_store.insert(&batch.digest(), batch).unwrap();
+            batch_store.insert::<Batches>(&batch.digest(), batch).unwrap();
         }
         network.put(&[1, 2], batch1.clone());
         network.put(&[2, 3], batch2.clone());
@@ -484,7 +495,8 @@ mod tests {
         // Limit is set to two batches in test request_batches(). Request 3 batches
         // and ensure another request is sent to get the remaining batches.
         let mut network = TestRequestBatchesNetwork::new();
-        let batch_store = create_batch_store();
+        let temp_dir = TempDir::new().unwrap();
+        let batch_store = open_db(temp_dir.path());
         let batch1 = Batch::new(vec![vec![1]]);
         let batch2 = Batch::new(vec![vec![2]]);
         let batch3 = Batch::new(vec![vec![3]]);
@@ -524,7 +536,8 @@ mod tests {
     #[tokio::test]
     pub async fn test_fetcher_local_and_remote() {
         let mut network = TestRequestBatchesNetwork::new();
-        let batch_store = create_batch_store();
+        let temp_dir = TempDir::new().unwrap();
+        let batch_store = open_db(temp_dir.path());
         let batch1 = Batch::new(vec![vec![1]]);
         let batch2 = Batch::new(vec![vec![2]]);
         let batch3 = Batch::new(vec![vec![3]]);
@@ -532,7 +545,7 @@ mod tests {
             HashSet::from_iter(vec![batch1.digest(), batch2.digest(), batch3.digest()]),
             HashSet::from_iter(test_pks(&[1, 2, 3, 4])),
         );
-        batch_store.insert(&batch1.digest(), &batch1).unwrap();
+        batch_store.insert::<Batches>(&batch1.digest(), &batch1).unwrap();
         network.put(&[1, 2, 3], batch1.clone());
         network.put(&[2, 3, 4], batch2.clone());
         network.put(&[1, 4], batch3.clone());
@@ -569,7 +582,8 @@ mod tests {
     #[tokio::test]
     pub async fn test_fetcher_response_size_limit() {
         let mut network = TestRequestBatchesNetwork::new();
-        let batch_store = create_batch_store();
+        let temp_dir = TempDir::new().unwrap();
+        let batch_store = open_db(temp_dir.path());
         let num_digests = 12;
         let mut expected_batches = Vec::new();
         let mut local_digests = Vec::new();
@@ -577,7 +591,7 @@ mod tests {
         for i in 0..num_digests / 2 {
             let batch = Batch::new(vec![vec![i]]);
             local_digests.push(batch.digest());
-            batch_store.insert(&batch.digest(), &batch).unwrap();
+            batch_store.insert::<Batches>(&batch.digest(), &batch).unwrap();
             network.put(&[1, 2, 3], batch.clone());
             expected_batches.push(batch);
         }

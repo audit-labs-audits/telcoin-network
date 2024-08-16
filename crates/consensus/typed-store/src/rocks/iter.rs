@@ -131,7 +131,7 @@ impl<'a, K: Serialize, V> Iter<'a, K, V> {
     }
 
     /// Seeks to the first key in the database (at this column family).
-    pub fn seek_to_first(mut self) -> Self {
+    pub fn _seek_to_first(mut self) -> Self {
         self.is_initialized = true;
         self.db_iter.seek_to_first();
         self

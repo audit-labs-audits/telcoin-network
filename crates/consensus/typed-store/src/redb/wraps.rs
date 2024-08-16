@@ -70,7 +70,7 @@ where
     }
 
     fn type_name() -> TypeName {
-        TypeName::new("type_name")
+        TypeName::new(std::any::type_name::<K>())
     }
 }
 
@@ -118,6 +118,6 @@ where
     }
 
     fn type_name() -> redb::TypeName {
-        TypeName::new("type_name")
+        TypeName::new(std::any::type_name::<V>())
     }
 }

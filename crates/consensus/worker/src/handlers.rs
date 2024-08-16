@@ -16,12 +16,13 @@ use narwhal_network_types::{
     WorkerToWorker, WorkerToWorkerClient,
 };
 use narwhal_typed_store::{
-    traits::{multi_get, multi_insert},
-    DBMap,
+    tables::Batches,
+    traits::{Database, DbTxMut},
+    DatabaseType,
 };
-use std::{collections::HashSet, sync::Arc, time::Duration};
+use std::{collections::HashSet, time::Duration};
 use tn_batch_validator::BatchValidation;
-use tn_types::{now, Batch, BatchAPI, BatchDigest, Committee, MetadataAPI, WorkerCache, WorkerId};
+use tn_types::{now, BatchAPI, Committee, MetadataAPI, WorkerCache, WorkerId};
 use tracing::{debug, trace};
 
 #[cfg(test)]
@@ -33,7 +34,7 @@ pub mod handlers_tests;
 pub struct WorkerReceiverHandler<V> {
     pub id: WorkerId,
     pub client: NetworkClient,
-    pub store: Arc<dyn DBMap<BatchDigest, Batch>>,
+    pub store: DatabaseType,
     pub validator: V,
 }
 
@@ -63,7 +64,7 @@ impl<V: BatchValidation> WorkerToWorker for WorkerReceiverHandler<V> {
 
         // Set received_at timestamp for remote batch.
         batch.versioned_metadata_mut().set_received_at(now());
-        self.store.insert(&digest, &batch).map_err(|e| {
+        self.store.insert::<Batches>(&digest, &batch).map_err(|e| {
             anemo::rpc::Status::internal(format!("failed to write to batch store: {e:?}"))
         })?;
         self.client
@@ -90,9 +91,10 @@ impl<V: BatchValidation> WorkerToWorker for WorkerReceiverHandler<V> {
         let mut is_size_limit_reached = false;
 
         for digests_chunks in digests_chunks {
-            let stored_batches = multi_get(&*self.store, digests_chunks).map_err(|e| {
-                anemo::rpc::Status::internal(format!("failed to read from batch store: {e:?}"))
-            })?;
+            let stored_batches =
+                self.store.multi_get::<Batches>(digests_chunks.iter()).map_err(|e| {
+                    anemo::rpc::Status::internal(format!("failed to read from batch store: {e:?}"))
+                })?;
 
             for stored_batch in stored_batches.into_iter().flatten() {
                 let batch_size = stored_batch.size();
@@ -119,7 +121,7 @@ pub struct PrimaryReceiverHandler<V> {
     // The worker information cache.
     pub worker_cache: WorkerCache,
     // The batch store
-    pub store: Arc<dyn DBMap<BatchDigest, Batch>>,
+    pub store: DatabaseType,
     // Timeout on RequestBatches RPC.
     pub request_batches_timeout: Duration,
     // Synchronize header payloads from other workers.
@@ -146,7 +148,7 @@ impl<V: BatchValidation> PrimaryToWorker for PrimaryReceiverHandler<V> {
         let mut missing = HashSet::new();
         for digest in message.digests.iter() {
             // Check if we already have the batch.
-            match self.store.get(digest) {
+            match self.store.get::<Batches>(digest) {
                 Ok(None) => {
                     missing.insert(*digest);
                     debug!("Requesting sync for batch {digest}");
@@ -210,12 +212,19 @@ impl<V: BatchValidation> PrimaryToWorker for PrimaryReceiverHandler<V> {
             if missing.remove(&digest) {
                 // Set received_at timestamp for remote batch.
                 batch.versioned_metadata_mut().set_received_at(now());
-                multi_insert(&*self.store, [(digest, batch)]).map_err(|e| {
+                let mut tx = self.store.write_txn().map_err(|e| {
+                    anemo::rpc::Status::internal(format!(
+                        "failed to create batch transaction to commit: {e:?}"
+                    ))
+                })?;
+                tx.insert::<Batches>(&digest, batch).map_err(|e| {
                     anemo::rpc::Status::internal(format!(
                         "failed to batch transaction to commit: {e:?}"
                     ))
                 })?;
-                let _ = self.store.commit();
+                tx.commit().map_err(|e| {
+                    anemo::rpc::Status::internal(format!("failed to commit batch: {e:?}"))
+                })?;
             }
         }
 

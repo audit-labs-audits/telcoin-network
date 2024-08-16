@@ -17,7 +17,6 @@ members = [
     "crates/consensus/telcoin-sync",
     "crates/consensus/test-utils",
     "crates/consensus/typed-store",
-    #"crates/consensus/typed-store-derive",
     "crates/consensus/worker",
     "crates/consensus/primary-metrics",
 

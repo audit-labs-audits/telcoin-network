@@ -31,7 +31,6 @@ pub const CERTIFICATES_CF: &str = "certificates";
 pub const CERTIFICATE_DIGEST_BY_ROUND_CF: &str = "certificate_digest_by_round";
 pub const CERTIFICATE_DIGEST_BY_ORIGIN_CF: &str = "certificate_digest_by_origin";
 pub const PAYLOAD_CF: &str = "payload";
-//const BATCHES_CF: &str = "batches";
 
 #[macro_export]
 macro_rules! test_channel {
