@@ -8,7 +8,7 @@
 pub mod traits;
 
 #[cfg(all(feature = "redb", not(feature = "rocksdb")))]
-use redb::dbmap::{open_redatabase, ReDB};
+use redb::database::{open_redatabase, ReDB};
 #[cfg(feature = "rocksdb")]
 use rocks::database::RocksDatabase;
 #[cfg(all(feature = "redb", not(feature = "rocksdb")))]

@@ -1,8 +1,8 @@
 // Copyright (c) Telcoin, LLC
 // SPDX-License-Identifier: Apache-2.0
 
-pub mod dbmap;
+pub mod database;
 pub mod wraps;
 
-pub use dbmap::ReDB;
+pub use database::ReDB;
 pub use redb::TableDefinition;

@@ -298,7 +298,7 @@ mod test {
     use tempfile::tempdir;
 
     use crate::{
-        redb::dbmap::open_redatabase,
+        redb::database::open_redatabase,
         traits::{Database, DbTxMut, Table},
     };
 
