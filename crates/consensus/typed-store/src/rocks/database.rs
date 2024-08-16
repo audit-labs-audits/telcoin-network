@@ -7,7 +7,7 @@ use tracing::error;
 
 use crate::{
     rocks::CF_METRICS_REPORT_PERIOD_MILLIS,
-    traits::{Database, DbTx, DbTxMut, Table},
+    traits::{DBIter, Database, DbTx, DbTxMut, Table},
     BATCHES_CF, CERTIFICATES_CF, CERTIFICATE_DIGEST_BY_ORIGIN_CF, CERTIFICATE_DIGEST_BY_ROUND_CF,
     COMMITTED_SUB_DAG_INDEX_CF, LAST_COMMITTED_CF, LAST_PROPOSED_CF, PAYLOAD_CF, VOTES_CF,
 };
@@ -34,7 +34,11 @@ impl<'txn> Debug for RocksDbTxMut<'txn> {
 
 impl<'txn> DbTx for RocksDbTxMut<'txn> {
     fn get<T: crate::traits::Table>(&self, key: &T::Key) -> eyre::Result<Option<T::Value>> {
-        let cf = self.db.rocksdb.cf_handle(T::NAME).expect(&format!("invalid table {}", T::NAME));
+        let cf = self
+            .db
+            .rocksdb
+            .cf_handle(T::NAME)
+            .unwrap_or_else(|| panic!("invalid table {}", T::NAME));
         let key_buf = be_fix_int_ser(key)?;
         Ok(self
             .txn
@@ -49,7 +53,11 @@ impl<'txn> DbTxMut for RocksDbTxMut<'txn> {
         key: &T::Key,
         value: &T::Value,
     ) -> eyre::Result<()> {
-        let cf = self.db.rocksdb.cf_handle(T::NAME).expect(&format!("invalid table {}", T::NAME));
+        let cf = self
+            .db
+            .rocksdb
+            .cf_handle(T::NAME)
+            .unwrap_or_else(|| panic!("invalid table {}", T::NAME));
         let _timer = self
             .db
             .db_metrics
@@ -75,7 +83,11 @@ impl<'txn> DbTxMut for RocksDbTxMut<'txn> {
     }
 
     fn remove<T: crate::traits::Table>(&mut self, key: &T::Key) -> eyre::Result<()> {
-        let cf = self.db.rocksdb.cf_handle(T::NAME).expect(&format!("invalid table {}", T::NAME));
+        let cf = self
+            .db
+            .rocksdb
+            .cf_handle(T::NAME)
+            .unwrap_or_else(|| panic!("invalid table {}", T::NAME));
         let _timer = self
             .db
             .db_metrics
@@ -318,7 +330,8 @@ impl RocksDatabase {
     /// Returns an unbounded iterator visiting each key-value pair in the map.
     /// This is potentially unsafe as it can perform a full table scan
     fn unbounded_iter_inner<T: Table>(&self) -> Iter<'_, T::Key, T::Value> {
-        let cf = self.rocksdb.cf_handle(T::NAME).expect(&format!("invalid table {}", T::NAME));
+        let cf =
+            self.rocksdb.cf_handle(T::NAME).unwrap_or_else(|| panic!("invalid table {}", T::NAME));
         let _timer = self
             .db_metrics
             .op_metrics
@@ -360,7 +373,8 @@ impl Database for RocksDatabase {
     }
 
     fn contains_key<T: Table>(&self, key: &T::Key) -> eyre::Result<bool> {
-        let cf = self.rocksdb.cf_handle(T::NAME).expect(&format!("invalid table {}", T::NAME));
+        let cf =
+            self.rocksdb.cf_handle(T::NAME).unwrap_or_else(|| panic!("invalid table {}", T::NAME));
         let key_buf = be_fix_int_ser(key)?;
         // [`rocksdb::DBWithThreadMode::key_may_exist_cf`] can have false positives,
         // but no false negatives. We use it to short-circuit the absent case
@@ -370,7 +384,8 @@ impl Database for RocksDatabase {
     }
 
     fn get<T: Table>(&self, key: &T::Key) -> eyre::Result<Option<T::Value>> {
-        let cf = self.rocksdb.cf_handle(T::NAME).expect(&format!("invalid table {}", T::NAME));
+        let cf =
+            self.rocksdb.cf_handle(T::NAME).unwrap_or_else(|| panic!("invalid table {}", T::NAME));
         let _timer = self
             .db_metrics
             .op_metrics
@@ -396,7 +411,8 @@ impl Database for RocksDatabase {
     }
 
     fn insert<T: Table>(&self, key: &T::Key, value: &T::Value) -> eyre::Result<()> {
-        let cf = self.rocksdb.cf_handle(T::NAME).expect(&format!("invalid table {}", T::NAME));
+        let cf =
+            self.rocksdb.cf_handle(T::NAME).unwrap_or_else(|| panic!("invalid table {}", T::NAME));
         let _timer = self
             .db_metrics
             .op_metrics
@@ -420,7 +436,8 @@ impl Database for RocksDatabase {
     }
 
     fn remove<T: Table>(&self, key: &T::Key) -> eyre::Result<()> {
-        let cf = self.rocksdb.cf_handle(T::NAME).expect(&format!("invalid table {}", T::NAME));
+        let cf =
+            self.rocksdb.cf_handle(T::NAME).unwrap_or_else(|| panic!("invalid table {}", T::NAME));
         let _timer = self
             .db_metrics
             .op_metrics
@@ -448,18 +465,15 @@ impl Database for RocksDatabase {
         self.iter::<T>().next().is_none()
     }
 
-    fn iter<T: Table>(&self) -> Box<dyn Iterator<Item = (T::Key, T::Value)> + '_> {
+    fn iter<T: Table>(&self) -> DBIter<'_, T> {
         Box::new(self.unbounded_iter_inner::<T>())
     }
 
-    fn skip_to<T: Table>(
-        &self,
-        key: &T::Key,
-    ) -> eyre::Result<Box<dyn Iterator<Item = (T::Key, T::Value)> + '_>> {
+    fn skip_to<T: Table>(&self, key: &T::Key) -> eyre::Result<DBIter<'_, T>> {
         Ok(Box::new(self.unbounded_iter_inner::<T>().skip_to(key)?))
     }
 
-    fn reverse_iter<T: Table>(&self) -> Box<dyn Iterator<Item = (T::Key, T::Value)> + '_> {
+    fn reverse_iter<T: Table>(&self) -> DBIter<'_, T> {
         Box::new(self.unbounded_iter_inner::<T>().skip_to_last().reverse())
     }
 

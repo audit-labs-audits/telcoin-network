@@ -44,6 +44,8 @@ pub trait DbTxMut {
     fn commit(self) -> eyre::Result<()>;
 }
 
+pub type DBIter<'i, T> = Box<dyn Iterator<Item = (<T as Table>::Key, <T as Table>::Value)> + 'i>;
+
 pub trait Database: Send + Sync {
     type TX<'txn>: DbTx + Send + Debug + 'txn
     where
@@ -84,18 +86,16 @@ pub trait Database: Send + Sync {
 
     /// Returns an unbounded iterator visiting each key-value pair in the map.
     /// If this is backed by storage an underlying error will most likely end the iterator early.
-    fn iter<T: Table>(&self) -> Box<dyn Iterator<Item = (T::Key, T::Value)> + '_>;
+    fn iter<T: Table>(&self) -> DBIter<'_, T>;
 
     /// Skips all the elements that are smaller than the given key,
     /// and either lands on the key or the first one greater than
     /// the key.
-    fn skip_to<T: Table>(
-        &self,
-        key: &T::Key,
-    ) -> eyre::Result<Box<dyn Iterator<Item = (T::Key, T::Value)> + '_>>;
+    fn skip_to<T: Table>(&self, key: &T::Key) -> eyre::Result<DBIter<'_, T>>;
+    //) -> eyre::Result<Box<dyn Iterator<Item = (T::Key, T::Value)> + '_>>;
 
     /// Iterates over all the keys in reverse.
-    fn reverse_iter<T: Table>(&self) -> Box<dyn Iterator<Item = (T::Key, T::Value)> + '_>;
+    fn reverse_iter<T: Table>(&self) -> DBIter<'_, T>;
 
     /// Returns the record prior to key if it exists or the first record that is sorted before if it
     /// does not exist.

@@ -14,7 +14,7 @@ use redb::{
 };
 use serde::{de::DeserializeOwned, Serialize};
 
-use crate::traits::{Database, DbTx, DbTxMut, Table};
+use crate::traits::{DBIter, Database, DbTx, DbTxMut, Table};
 
 use super::wraps::{KeyWrap, ValWrap};
 
@@ -148,7 +148,7 @@ impl Database for ReDB {
         false
     }
 
-    fn iter<T: crate::traits::Table>(&self) -> Box<dyn Iterator<Item = (T::Key, T::Value)> + '_> {
+    fn iter<T: crate::traits::Table>(&self) -> DBIter<'_, T> {
         let guard = self.db.read().expect("Poisoned lock!");
         let td = TableDefinition::<KeyWrap<T::Key>, ValWrap<T::Value>>::new(T::NAME);
         Box::new(
@@ -176,10 +176,7 @@ impl Database for ReDB {
         )
     }
 
-    fn skip_to<T: crate::traits::Table>(
-        &self,
-        key: &T::Key,
-    ) -> eyre::Result<Box<dyn Iterator<Item = (T::Key, T::Value)> + '_>> {
+    fn skip_to<T: crate::traits::Table>(&self, key: &T::Key) -> eyre::Result<DBIter<'_, T>> {
         let td = TableDefinition::<KeyWrap<T::Key>, ValWrap<T::Value>>::new(T::NAME);
         let guard = self.db.read().expect("Poisoned lock!");
         let key = key.clone();
@@ -211,9 +208,7 @@ impl Database for ReDB {
         ))
     }
 
-    fn reverse_iter<T: crate::traits::Table>(
-        &self,
-    ) -> Box<dyn Iterator<Item = (T::Key, T::Value)> + '_> {
+    fn reverse_iter<T: crate::traits::Table>(&self) -> DBIter<'_, T> {
         let td = TableDefinition::<KeyWrap<T::Key>, ValWrap<T::Value>>::new(T::NAME);
         let guard = self.db.read().expect("Poisoned lock!");
         Box::new(
