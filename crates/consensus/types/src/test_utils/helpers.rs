@@ -31,7 +31,6 @@ pub const CERTIFICATES_CF: &str = "certificates";
 pub const CERTIFICATE_DIGEST_BY_ROUND_CF: &str = "certificate_digest_by_round";
 pub const CERTIFICATE_DIGEST_BY_ORIGIN_CF: &str = "certificate_digest_by_origin";
 pub const PAYLOAD_CF: &str = "payload";
-//const BATCHES_CF: &str = "batches";
 
 #[macro_export]
 macro_rules! test_channel {
@@ -438,8 +437,8 @@ pub fn make_certificates_with_leader_configuration(
                             // check whether anyone from the current round already included it
                             // if yes, then we should remove it and not vote again.
                             if certificates.iter().any(|c| {
-                                c.round() == round &&
-                                    c.header().parents().contains(&leader_certificate.digest())
+                                c.round() == round
+                                    && c.header().parents().contains(&leader_certificate.digest())
                             }) {
                                 let mut p = parents.clone();
                                 p.remove(&leader_certificate.digest());

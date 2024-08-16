@@ -7,11 +7,16 @@
 
 pub mod traits;
 
+#[cfg(all(feature = "redb", not(feature = "rocksdb")))]
 use redb::dbmap::{open_redatabase, ReDB};
+#[cfg(feature = "rocksdb")]
+use rocks::database::RocksDatabase;
+#[cfg(all(feature = "redb", not(feature = "rocksdb")))]
 use tables::{
     Batches, CertificateDigestByOrigin, CertificateDigestByRound, Certificates, CommittedSubDag,
     LastCommitted, LastProposed, Payload, Votes,
 };
+#[cfg(all(feature = "redb", not(feature = "rocksdb")))]
 pub mod redb;
 #[cfg(feature = "rocksdb")]
 pub mod rocks;
@@ -69,78 +74,51 @@ pub mod tables {
     );
 }
 
-//#[cfg(feature = "rocksdb")]
-//pub type DatabaseType = ReDB;
-#[cfg(feature = "redb")]
+#[cfg(feature = "rocksdb")]
+pub type DatabaseType = RocksDatabase;
+#[cfg(all(feature = "redb", not(feature = "rocksdb")))]
 pub type DatabaseType = ReDB;
 
 /// Open the configured DB with the required tables.
 pub fn open_db<Path: AsRef<std::path::Path> + Send>(store_path: Path) -> DatabaseType {
-    let db = open_redatabase(store_path).expect("Cannot open database");
-    db.open_table::<LastProposed>().expect("failed to open table!");
-    db.open_table::<Votes>().expect("failed to open table!");
-    db.open_table::<Certificates>().expect("failed to open table!");
-    db.open_table::<CertificateDigestByRound>().expect("failed to open table!");
-    db.open_table::<CertificateDigestByOrigin>().expect("failed to open table!");
-    db.open_table::<Payload>().expect("failed to open table!");
-    db.open_table::<Batches>().expect("failed to open table!");
-    db.open_table::<LastCommitted>().expect("failed to open table!");
-    db.open_table::<CommittedSubDag>().expect("failed to open table!");
-    db
+    // Open the right DB based on feature flags.  The default is ReDB unless the rocksdb flag is set.
+    if cfg!(feature = "rocksdb") {
+        open_rocks(store_path)
+    } else {
+        open_redb(store_path)
+    }
 }
-/*
-/// Open or reopen all the storage of the node backed by rocks DB.
-#[allow(unreachable_code)]
-fn reopen_rocks<P: AsRef<std::path::Path> + Send>(_store_path: P) -> NodeDBs {
-    #[cfg(feature = "rocksdb")]
-    return {
-        let db_options = default_db_options().optimize_db_for_write_throughput(2);
-        let mut metrics_conf = MetricConf::with_db_name("consensus_epoch");
-        metrics_conf.read_sample_interval = SamplingInterval::new(Duration::from_secs(60), 0);
-        let cf_options = db_options.options.clone();
-        let column_family_options = vec![
-            (LAST_PROPOSED_CF, cf_options.clone()),
-            (VOTES_CF, cf_options.clone()),
-            (
-                CERTIFICATES_CF,
-                default_db_options()
-                    .optimize_for_write_throughput()
-                    .optimize_for_large_values_no_scan(1 << 10)
-                    .options,
-            ),
-            (CERTIFICATE_DIGEST_BY_ROUND_CF, cf_options.clone()),
-            (CERTIFICATE_DIGEST_BY_ORIGIN_CF, cf_options.clone()),
-            (PAYLOAD_CF, cf_options.clone()),
-            (
-                BATCHES_CF,
-                default_db_options()
-                    .optimize_for_write_throughput()
-                    .optimize_for_large_values_no_scan(1 << 10)
-                    .options,
-            ),
-            (LAST_COMMITTED_CF, cf_options.clone()),
-            (COMMITTED_SUB_DAG_INDEX_CF, cf_options),
-        ];
-        let rocksdb = open_cf_opts(
-            _store_path,
-            Some(db_options.options),
-            metrics_conf,
-            &column_family_options,
-        )
-        .expect("Cannot open database");
 
-        reopen!(&rocksdb,
-            LAST_PROPOSED_CF;<ProposerKey, Header>,
-            VOTES_CF;<AuthorityIdentifier, VoteInfo>,
-            CERTIFICATES_CF;<CertificateDigest, Certificate>,
-            CERTIFICATE_DIGEST_BY_ROUND_CF;<(Round, AuthorityIdentifier), CertificateDigest>,
-            CERTIFICATE_DIGEST_BY_ORIGIN_CF;<(AuthorityIdentifier, Round), CertificateDigest>,
-            PAYLOAD_CF;<(BatchDigest, WorkerId), PayloadToken>,
-            BATCHES_CF;<BatchDigest, Batch>,
-            LAST_COMMITTED_CF;<AuthorityIdentifier, Round>,
-            COMMITTED_SUB_DAG_INDEX_CF;<SequenceNumber, ConsensusCommit>
-        )
-    };
+// The open functions below are the way they are so we can use if cfg!... on open_db.
+
+/// Open or reopen all the storage of the node backed by rocks DB.
+#[allow(unreachable_code)] // Need this so it compiles cleanly with or either redb or rocks.
+fn open_rocks<P: AsRef<std::path::Path> + Send>(_store_path: P) -> DatabaseType {
+    // Note the _ on _store_path is because depending on feature flags it may not be used.
+    #[cfg(feature = "rocksdb")]
+    return RocksDatabase::open_db(_store_path).expect("Can not open database.");
+    // If the rocksdb feature flag is not set then calling this will panic.
     panic!("Can't use rocks with the rocksdb feature!");
 }
-*/
+
+/// Open or reopen all the storage of the node backed by ReDB.
+#[allow(unreachable_code)] // Need this so it compiles cleanly with or either redb or rocks.
+fn open_redb<P: AsRef<std::path::Path> + Send>(_store_path: P) -> DatabaseType {
+    // Note the _ on _store_path is because depending on feature flags it may not be used.
+    #[cfg(all(feature = "redb", not(feature = "rocksdb")))]
+    {
+        let db = open_redatabase(_store_path).expect("Cannot open database");
+        db.open_table::<LastProposed>().expect("failed to open table!");
+        db.open_table::<Votes>().expect("failed to open table!");
+        db.open_table::<Certificates>().expect("failed to open table!");
+        db.open_table::<CertificateDigestByRound>().expect("failed to open table!");
+        db.open_table::<CertificateDigestByOrigin>().expect("failed to open table!");
+        db.open_table::<Payload>().expect("failed to open table!");
+        db.open_table::<Batches>().expect("failed to open table!");
+        db.open_table::<LastCommitted>().expect("failed to open table!");
+        db.open_table::<CommittedSubDag>().expect("failed to open table!");
+        return db;
+    }
+    // If the rocksdb feature flag is not set then calling this will panic.
+    panic!("Can't use redb with the redb feature (OR with the rocksdb feature)!");
+}

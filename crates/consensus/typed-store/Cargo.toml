@@ -57,4 +57,6 @@ uint = { workspace = true }
 #msim = { workspace = true }
 
 [features]
+redb = ["dep:redb"]
+rocksdb = ["dep:rocksdb"]
 default = ["redb"]

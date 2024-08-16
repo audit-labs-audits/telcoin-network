@@ -126,8 +126,8 @@ impl BatchFetcher {
                                 updated_new_batches.insert(*digest, batch.clone());
                                 // Also persist the batches, so they are available after restarts.
                                 if let Err(e) = txn.insert::<Batches>(digest, &batch) {
-                                    // TODO, this is real bad should maybe shutdown...
-                                    tracing::error!("failed to insert batch! {e}");
+                                    tracing::error!("failed to insert batch! We can not continue.. {e}");
+                                    panic!("failed to insert batch! We can not continue.. {e}");
                                 }
                             }
                             let _ = txn.commit();
