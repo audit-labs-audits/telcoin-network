@@ -7,12 +7,7 @@
 
 pub mod traits;
 
-#[cfg(feature = "rocksdb")]
-use std::time::Duration;
-
 use redb::dbmap::{open_redatabase, ReDB};
-#[cfg(feature = "rocksdb")]
-use rocks::{default_db_options, metrics::SamplingInterval, open_cf_opts, MetricConf};
 use tables::{
     Batches, CertificateDigestByOrigin, CertificateDigestByRound, Certificates, CommittedSubDag,
     LastCommitted, LastProposed, Payload, Votes,

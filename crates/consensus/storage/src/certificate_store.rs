@@ -291,7 +291,7 @@ impl<T: Cache, DB: Database> CertificateStore<T, DB> {
             digest: CertificateDigest,
             certificate: &Certificate,
         ) -> StoreResult<()> {
-            txn.insert::<Certificates>(&digest, &certificate)?;
+            txn.insert::<Certificates>(&digest, certificate)?;
 
             // write the certificates id by their rounds
             let key = (certificate.round(), certificate.origin());

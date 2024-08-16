@@ -20,14 +20,13 @@ pub trait Table: Send + Sync + Debug + 'static {
 
 /// Interface to a DB read transaction.
 pub trait DbTx {
-    /// Returns true if the map contains a value for the specified key.
-    fn contains_key<T: Table>(&self, key: &T::Key) -> eyre::Result<bool>;
-
     /// Returns the value for the given key from the map, if it exists.
     fn get<T: Table>(&self, key: &T::Key) -> eyre::Result<Option<T::Value>>;
 
-    /// Is the this table empty?
-    fn is_empty<T: crate::traits::Table>(&self) -> eyre::Result<bool>;
+    /// Returns true if the map contains a value for the specified key.
+    fn contains_key<T: Table>(&self, key: &T::Key) -> eyre::Result<bool> {
+        Ok(self.get::<T>(key)?.is_some())
+    }
 }
 
 /// Interface to a DB write transaction.
@@ -46,14 +45,18 @@ pub trait DbTxMut {
 }
 
 pub trait Database: Send + Sync {
-    type TX: DbTx + Send + Sync + Debug + 'static;
-    type TXMut: DbTxMut + Send + Sync + Debug + 'static;
+    type TX<'txn>: DbTx + Send + Debug + 'txn
+    where
+        Self: 'txn;
+    type TXMut<'txn>: DbTxMut + Send + Debug + 'txn
+    where
+        Self: 'txn;
 
     /// Return a read txn object.
-    fn read_txn(&self) -> eyre::Result<Self::TX>;
+    fn read_txn(&self) -> eyre::Result<Self::TX<'_>>;
 
     /// Return a write txn object.
-    fn write_txn(&self) -> eyre::Result<Self::TXMut>;
+    fn write_txn(&self) -> eyre::Result<Self::TXMut<'_>>;
 
     /// Returns true if the map contains a value for the specified key.
     fn contains_key<T: Table>(&self, key: &T::Key) -> eyre::Result<bool>;
@@ -62,15 +65,18 @@ pub trait Database: Send + Sync {
     fn get<T: Table>(&self, key: &T::Key) -> eyre::Result<Option<T::Value>>;
 
     /// Inserts the given key-value pair into the map.
-    /// This will create and commit a TXN, useful for one-offs but use a transaction for multiple inserts.
+    /// This will create and commit a TXN, useful for one-offs but use a transaction for multiple
+    /// inserts.
     fn insert<T: Table>(&self, key: &T::Key, value: &T::Value) -> eyre::Result<()>;
 
     /// Removes the entry for the given key from the map.
-    /// This will create and commit a TXN, useful for one-offs but use a transaction for multiple removes.
+    /// This will create and commit a TXN, useful for one-offs but use a transaction for multiple
+    /// removes.
     fn remove<T: Table>(&self, key: &T::Key) -> eyre::Result<()>;
 
     /// Removes every key-value pair from the map.
-    /// This will create and commit a TXN, useful for one-offs but use a transaction for multiple table clears.
+    /// This will create and commit a TXN, useful for one-offs but use a transaction for multiple
+    /// table clears.
     fn clear_table<T: Table>(&self) -> eyre::Result<()>;
 
     /// Returns true if the map is empty, otherwise false.

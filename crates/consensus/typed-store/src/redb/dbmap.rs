@@ -32,16 +32,6 @@ impl DbTx for ReDbTx {
         let td = TableDefinition::<KeyWrap<T::Key>, ValWrap<T::Value>>::new(T::NAME);
         Ok(self.tx.open_table(td)?.get(key)?.map(|v| v.value().clone()))
     }
-
-    fn contains_key<T: crate::traits::Table>(&self, key: &T::Key) -> eyre::Result<bool> {
-        let td = TableDefinition::<KeyWrap<T::Key>, ValWrap<T::Value>>::new(T::NAME);
-        Ok(self.tx.open_table(td)?.get(key)?.map(|_| true).unwrap_or_default())
-    }
-
-    fn is_empty<T: crate::traits::Table>(&self) -> eyre::Result<bool> {
-        let td = TableDefinition::<KeyWrap<T::Key>, ValWrap<T::Value>>::new(T::NAME);
-        Ok(self.tx.open_table(td)?.is_empty()?)
-    }
 }
 
 pub struct ReDbTxMut {
@@ -58,16 +48,6 @@ impl DbTx for ReDbTxMut {
     fn get<T: crate::traits::Table>(&self, key: &T::Key) -> eyre::Result<Option<T::Value>> {
         let td = TableDefinition::<KeyWrap<T::Key>, ValWrap<T::Value>>::new(T::NAME);
         Ok(self.tx.open_table(td)?.get(key)?.map(|v| v.value().clone()))
-    }
-
-    fn contains_key<T: crate::traits::Table>(&self, key: &T::Key) -> eyre::Result<bool> {
-        let td = TableDefinition::<KeyWrap<T::Key>, ValWrap<T::Value>>::new(T::NAME);
-        Ok(self.tx.open_table(td)?.get(key)?.map(|_| true).unwrap_or_default())
-    }
-
-    fn is_empty<T: crate::traits::Table>(&self) -> eyre::Result<bool> {
-        let td = TableDefinition::<KeyWrap<T::Key>, ValWrap<T::Value>>::new(T::NAME);
-        Ok(self.tx.open_table(td)?.is_empty()?)
     }
 }
 
@@ -119,16 +99,15 @@ impl ReDB {
 }
 
 impl Database for ReDB {
-    type TX = ReDbTx;
+    type TX<'txn> = ReDbTx;
+    type TXMut<'txn> = ReDbTxMut;
 
-    type TXMut = ReDbTxMut;
-
-    fn read_txn(&self) -> eyre::Result<Self::TX> {
+    fn read_txn(&self) -> eyre::Result<Self::TX<'_>> {
         let tx = self.db.read().expect("Poisoned lock!").begin_read()?;
         Ok(ReDbTx { tx })
     }
 
-    fn write_txn(&self) -> eyre::Result<Self::TXMut> {
+    fn write_txn(&self) -> eyre::Result<Self::TXMut<'_>> {
         let tx = self.db.read().expect("Poisoned lock!").begin_write()?;
         Ok(ReDbTxMut { tx })
     }
@@ -160,7 +139,13 @@ impl Database for ReDB {
     }
 
     fn is_empty<T: crate::traits::Table>(&self) -> bool {
-        self.read_txn().map(|txn| txn.is_empty::<T>().unwrap_or_default()).unwrap_or_default()
+        let td = TableDefinition::<KeyWrap<T::Key>, ValWrap<T::Value>>::new(T::NAME);
+        if let Ok(txn) = self.read_txn() {
+            if let Ok(table) = txn.tx.open_table(td) {
+                return table.is_empty().unwrap_or_default();
+            }
+        }
+        false
     }
 
     fn iter<T: crate::traits::Table>(&self) -> Box<dyn Iterator<Item = (T::Key, T::Value)> + '_> {
