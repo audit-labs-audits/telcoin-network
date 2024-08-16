@@ -130,7 +130,10 @@ impl BatchFetcher {
                                     panic!("failed to insert batch! We can not continue.. {e}");
                                 }
                             }
-                            let _ = txn.commit();
+                            if let Err(e) = txn.commit() {
+                                tracing::error!("failed to commit batch! We can not continue.. {e}");
+                                panic!("failed to commit batch! We can not continue.. {e}");
+                            }
                             fetched_batches.extend(updated_new_batches.iter().map(|(d, b)| (*d, (*b).clone())));
 
                             if remaining_digests.is_empty() {

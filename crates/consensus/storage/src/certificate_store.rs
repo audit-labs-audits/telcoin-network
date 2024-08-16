@@ -214,20 +214,20 @@ impl Cache for NoCache {
 /// It also offers pub/sub capabilities in write events. By using the
 /// `notify_read` someone can wait to hear until a certificate by a specific
 /// id has been written in storage.
+/// This uses the following tables in the DB:
+/// - Certificates: The basic digest to certificate store.
+/// - CertificateDigestByRound: A secondary index that keeps the certificate digest ids by the
+///   certificate rounds. Certificate origin is used to produce unique keys. This helps us to
+///   perform range requests based on rounds. We avoid storing again the certificate here to not
+///   waste space. To dereference we use the certificates_by_id storage.
+/// - CertificateDigestByOrigin: A secondary index that keeps the certificate digest ids by the
+///   certificate origins. Certificate rounds are used to produce unique keys. This helps us to
+///   perform range requests based on rounds. We avoid storing again the certificate here to not
+///   waste space. To dereference we use the certificates_by_id storage.
 #[derive(Clone)]
 pub struct CertificateStore<T: Cache = CertificateStoreCache, DB: Database = DatabaseType> {
     /// The storage DB
     db: DB,
-    /// A secondary index that keeps the certificate digest ids
-    /// by the certificate rounds. Certificate origin is used to produce unique keys.
-    /// This helps us to perform range requests based on rounds. We avoid storing again the
-    /// certificate here to not waste space. To dereference we use the certificates_by_id storage.
-    //certificate_id_by_round: Arc<dyn DBMap<(Round, AuthorityIdentifier), CertificateDigest>>,
-    /// A secondary index that keeps the certificate digest ids
-    /// by the certificate origins. Certificate rounds are used to produce unique keys.
-    /// This helps us to perform range requests based on rounds. We avoid storing again the
-    /// certificate here to not waste space. To dereference we use the certificates_by_id storage.
-    //certificate_id_by_origin: Arc<dyn DBMap<(AuthorityIdentifier, Round), CertificateDigest>>,
     /// The pub/sub to notify for a write that happened for a certificate digest id
     notify_subscribers: Arc<NotifyRead<CertificateDigest, Certificate>>,
     /// An LRU cache to keep recent certificates
@@ -254,8 +254,6 @@ impl<T: Cache, DB: Database> CertificateStore<T, DB> {
 
     /// Inserts a certificate to the store
     pub fn write(&self, certificate: Certificate) -> StoreResult<()> {
-        // TODO- the batch used to enforce atomicity on this write, we need to restore that
-        // (possibly with a single DB to write to).
         fail_point!("narwhal-store-before-write");
         let mut txn = self.db.write_txn()?;
 
@@ -316,40 +314,6 @@ impl<T: Cache, DB: Database> CertificateStore<T, DB> {
                 self.cache.write(certificate);
             }
         }
-        /*
-        let certificates: Vec<_> = certificates
-            .into_iter()
-            .map(|certificate| (certificate.digest(), certificate))
-            .collect();
-
-        // write the certificates by their ids
-        self.db.multi_insert::<Certificates, Certificates::Key, Certificates::Value>(
-            certificates.iter(),
-        )?;
-
-        // write the certificates id by their rounds
-        let values = certificates.iter().map(|(digest, c)| {
-            let key = (c.round(), c.origin());
-            let value = *digest;
-            (key, value)
-        });
-        self.db.multi_insert::<CertificateDigestByRound>(values)?;
-
-        // write the certificates id by their origins
-        let values = certificates.iter().map(|(digest, c)| {
-            let key = (c.origin(), c.round());
-            let value = *digest;
-            (key, value)
-        });
-        self.db.multi_insert::<CertificateDigestByOrigin>(values)?;
-
-        for (_id, certificate) in &certificates {
-            self.notify_subscribers.notify(&certificate.digest(), certificate);
-        }
-
-        self.cache
-            .write_all(certificates.into_iter().map(|(_, certificate)| certificate).collect());
-            */
 
         txn.commit()?;
         fail_point!("narwhal-store-after-write");
@@ -491,7 +455,6 @@ impl<T: Cache, DB: Database> CertificateStore<T, DB> {
 
     /// Deletes multiple certificates in an atomic way.
     pub fn delete_all(&self, ids: impl IntoIterator<Item = CertificateDigest>) -> StoreResult<()> {
-        // TODO- we lost atomicity here.  Can we even continue in the face of a storage failure?
         fail_point!("narwhal-store-before-write");
         let mut txn = self.db.write_txn()?;
 
@@ -510,27 +473,6 @@ impl<T: Cache, DB: Database> CertificateStore<T, DB> {
             // delete the certificates by its ids
             txn.remove::<Certificates>(&id)?;
         }
-        /*
-        // first read the certificates to get their rounds - we'll need in order
-        // to delete the secondary index
-        let ids: Vec<CertificateDigest> = ids.into_iter().collect();
-        let certs = self.read_all(ids.clone())?;
-        let keys_by_round = certs
-            .into_iter()
-            .filter_map(|c| c.map(|cert| (cert.round(), cert.origin())))
-            .collect::<Vec<_>>();
-        if keys_by_round.is_empty() {
-            return Ok(());
-        }
-
-        // delete the certificates from the secondary index
-        self.db.multi_remove::<CertificateDigestByRound>(keys_by_round)?;
-
-        // delete the certificates by its ids
-        self.db.multi_remove::<Certificates>(ids.clone())?;
-
-        self.cache.remove_all(ids);
-        */
 
         txn.commit()?;
         fail_point!("narwhal-store-after-write");
