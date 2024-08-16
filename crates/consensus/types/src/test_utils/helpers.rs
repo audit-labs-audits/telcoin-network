@@ -10,7 +10,6 @@ use crate::{
 };
 use fastcrypto::{hash::Hash, traits::KeyPair as _};
 use indexmap::IndexMap;
-use narwhal_typed_store::{mem_db::MemDB, DBMap};
 use rand::{
     distributions::Bernoulli,
     prelude::Distribution,
@@ -22,7 +21,6 @@ use reth_tracing::tracing_subscriber::EnvFilter;
 use std::{
     collections::{BTreeSet, HashMap, VecDeque},
     ops::RangeInclusive,
-    sync::Arc,
 };
 
 use super::TransactionFactory;
@@ -33,7 +31,6 @@ pub const CERTIFICATES_CF: &str = "certificates";
 pub const CERTIFICATE_DIGEST_BY_ROUND_CF: &str = "certificate_digest_by_round";
 pub const CERTIFICATE_DIGEST_BY_ORIGIN_CF: &str = "certificate_digest_by_origin";
 pub const PAYLOAD_CF: &str = "payload";
-//const BATCHES_CF: &str = "batches";
 
 #[macro_export]
 macro_rules! test_channel {
@@ -89,10 +86,6 @@ macro_rules! test_new_certificates_channel {
             .unwrap(),
         );
     };
-}
-
-pub fn create_batch_store() -> Arc<dyn DBMap<BatchDigest, Batch>> {
-    Arc::new(MemDB::open())
 }
 
 pub fn temp_dir() -> std::path::PathBuf {

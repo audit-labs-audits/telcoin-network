@@ -5,7 +5,8 @@
 use super::*;
 use crate::{consensus::LeaderSwapTable, NUM_SHUTDOWN_RECEIVERS};
 use indexmap::IndexMap;
-use narwhal_typed_store::mem_db::MemDB;
+use narwhal_typed_store::open_db;
+use tempfile::TempDir;
 use tn_types::{
     test_utils::{fixture_payload, CommitteeFixture},
     PreSubscribedBroadcastSender,
@@ -28,9 +29,11 @@ async fn propose_empty() {
     let (tx_narwhal_round_updates, _rx_narwhal_round_updates) = watch::channel(0u64);
 
     let metrics = Arc::new(PrimaryMetrics::default());
+    let temp_dir = TempDir::new().unwrap();
+    let db = open_db(temp_dir.path());
 
     // Spawn the proposer.
-    let proposer_store = ProposerStore::new(Arc::new(MemDB::open()));
+    let proposer_store = ProposerStore::new(db);
     let _proposer_handle = Proposer::spawn(
         name,
         committee.clone(),
@@ -80,7 +83,8 @@ async fn propose_payload_and_repropose_after_n_seconds() {
     let max_num_of_batches = 10;
 
     // Spawn the proposer.
-    let proposer_store = ProposerStore::new(Arc::new(MemDB::open()));
+    let temp_dir = TempDir::new().unwrap();
+    let proposer_store = ProposerStore::new(open_db(temp_dir.path()));
     let _proposer_handle = Proposer::spawn(
         name,
         committee.clone(),
@@ -186,7 +190,8 @@ async fn equivocation_protection() {
     let worker_cache = fixture.worker_cache();
     let primary = fixture.authorities().next().unwrap();
     let authority_id = primary.id();
-    let proposer_store = ProposerStore::new(Arc::new(MemDB::open()));
+    let temp_dir = TempDir::new().unwrap();
+    let proposer_store = ProposerStore::new(open_db(temp_dir.path()));
 
     let mut tx_shutdown = PreSubscribedBroadcastSender::new(NUM_SHUTDOWN_RECEIVERS);
     let (tx_parents, rx_parents) = tn_types::test_channel!(1);

@@ -3,38 +3,40 @@
 // SPDX-License-Identifier: Apache-2.0
 
 use crate::StoreResult;
-use narwhal_typed_store::{mem_db::MemDB, traits::multi_insert, DBMap};
-use std::{collections::HashMap, sync::Arc};
+use narwhal_typed_store::{
+    tables::{CommittedSubDag as CommittedSubDagTable, LastCommitted},
+    traits::{Database, DbTxMut},
+};
+use std::collections::HashMap;
 use tn_types::{
     AuthorityIdentifier, CommittedSubDag, ConsensusCommit, ConsensusCommitV1, Round, SequenceNumber,
 };
 use tracing::debug;
 
 /// The persistent storage of the sequencer.
-pub struct ConsensusStore {
-    /// The latest committed round of each validator.
-    last_committed: Arc<dyn DBMap<AuthorityIdentifier, Round>>,
-    /// The global consensus sequence
-    committed_sub_dags_by_index_v1: Arc<dyn DBMap<SequenceNumber, ConsensusCommit>>,
+pub struct ConsensusStore<DB: Database> {
+    /// The Consensus DB store.
+    db: DB,
+    // The latest committed round of each validator.
+    // LastCommitted
+    //last_committed: Arc<dyn DBMap<AuthorityIdentifier, Round>>,
+    // The global consensus sequence
+    // CommittedSubDag
+    //committed_sub_dags_by_index_v1: Arc<dyn DBMap<SequenceNumber, ConsensusCommit>>,
 }
 
-impl ConsensusStore {
+impl<DB: Database> ConsensusStore<DB> {
     /// Create a new consensus store structure by using already loaded maps.
-    pub fn new(
-        last_committed: Arc<dyn DBMap<AuthorityIdentifier, Round>>,
-        committed_sub_dags_map: Arc<dyn DBMap<SequenceNumber, ConsensusCommit>>,
-    ) -> Self {
-        Self { last_committed, committed_sub_dags_by_index_v1: committed_sub_dags_map }
-    }
-
-    pub fn new_for_tests() -> Self {
-        Self::new(Arc::new(MemDB::open()), Arc::new(MemDB::open()))
+    pub fn new(db: DB) -> Self {
+        Self { db }
     }
 
     /// Clear the store.
     pub fn clear(&self) -> StoreResult<()> {
-        self.last_committed.clear()?;
-        self.committed_sub_dags_by_index_v1.clear()?;
+        let mut txn = self.db.write_txn()?;
+        txn.clear_table::<CommittedSubDagTable>()?;
+        txn.clear_table::<CommittedSubDagTable>()?;
+        txn.commit()?;
         Ok(())
     }
 
@@ -44,33 +46,31 @@ impl ConsensusStore {
         last_committed: &HashMap<AuthorityIdentifier, Round>,
         sub_dag: &CommittedSubDag,
     ) -> eyre::Result<()> {
-        // TODO- we lost atomicity here.  Can we even continue in the face of a storage failure?
+        let mut txn = self.db.write_txn()?;
         let commit = ConsensusCommit::V1(ConsensusCommitV1::from_sub_dag(sub_dag));
 
-        multi_insert(&*self.last_committed, last_committed.iter())?;
-        multi_insert(
-            &*self.committed_sub_dags_by_index_v1,
-            std::iter::once((sub_dag.sub_dag_index, commit)),
-        )?;
-        let _ = self.last_committed.commit();
-        let _ = self.committed_sub_dags_by_index_v1.commit();
+        for (id, round) in last_committed.iter() {
+            txn.insert::<LastCommitted>(id, round)?;
+        }
+        txn.insert::<CommittedSubDagTable>(&sub_dag.sub_dag_index, &commit)?;
+        txn.commit()?;
         Ok(())
     }
 
     /// Load the last committed round of each validator.
     pub fn read_last_committed(&self) -> HashMap<AuthorityIdentifier, Round> {
-        self.last_committed.iter().collect()
+        self.db.iter::<LastCommitted>().collect()
     }
 
     /// Gets the latest sub dag index from the store
     pub fn get_latest_sub_dag_index(&self) -> SequenceNumber {
-        self.committed_sub_dags_by_index_v1.last_record().map(|(seq, _)| seq).unwrap_or_default()
+        self.db.last_record::<CommittedSubDagTable>().map(|(seq, _)| seq).unwrap_or_default()
     }
 
     /// Returns thet latest subdag committed. If none is committed yet, then
     /// None is returned instead.
     pub fn get_latest_sub_dag(&self) -> Option<ConsensusCommit> {
-        self.committed_sub_dags_by_index_v1.last_record().map(|(_, sub_dag)| sub_dag)
+        self.db.last_record::<CommittedSubDagTable>().map(|(_, sub_dag)| sub_dag)
     }
 
     /// Load all the sub dags committed with sequence number of at least `from`.
@@ -79,8 +79,8 @@ impl ConsensusStore {
         from: &SequenceNumber,
     ) -> StoreResult<Vec<ConsensusCommit>> {
         Ok(self
-            .committed_sub_dags_by_index_v1
-            .skip_to(from)?
+            .db
+            .skip_to::<CommittedSubDagTable>(from)?
             .map(|(_, sub_dag)| sub_dag)
             .collect::<Vec<ConsensusCommit>>())
     }
@@ -90,14 +90,13 @@ impl ConsensusStore {
         &self,
         seq: &SequenceNumber,
     ) -> StoreResult<Option<ConsensusCommit>> {
-        self.committed_sub_dags_by_index_v1.get(seq)
+        self.db.get::<CommittedSubDagTable>(seq)
     }
 
     /// Reads from storage the latest commit sub dag where its ReputationScores are marked as
     /// "final". If none exists yet then this method will return None.
     pub fn read_latest_commit_with_final_reputation_scores(&self) -> Option<ConsensusCommit> {
-        for commit in self.committed_sub_dags_by_index_v1.reverse_iter().map(|(_, sub_dag)| sub_dag)
-        {
+        for commit in self.db.reverse_iter::<CommittedSubDagTable>().map(|(_, sub_dag)| sub_dag) {
             // found a final of schedule score, so we'll return that
             if commit.reputation_score().final_of_schedule {
                 debug!(
@@ -116,13 +115,17 @@ impl ConsensusStore {
 #[cfg(test)]
 mod test {
     use crate::ConsensusStore;
+    use narwhal_typed_store::open_db;
     use std::collections::HashMap;
+    use tempfile::TempDir;
     use tn_types::{test_utils::CommitteeFixture, Certificate, CommittedSubDag, ReputationScores};
 
     #[tokio::test]
     async fn test_read_latest_final_reputation_scores() {
         // GIVEN
-        let store = ConsensusStore::new_for_tests();
+        let temp_dir = TempDir::new().unwrap();
+        let db = open_db(temp_dir.path());
+        let store = ConsensusStore::new(db);
         let fixture = CommitteeFixture::builder().build();
         let committee = fixture.committee();
 
