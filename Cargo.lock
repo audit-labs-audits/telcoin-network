@@ -5739,6 +5739,7 @@ dependencies = [
  "itertools 0.10.5",
  "once_cell",
  "ouroboros",
+ "parking_lot 0.12.3",
  "proc-macro2",
  "prometheus",
  "quote",
