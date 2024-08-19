@@ -18,7 +18,6 @@ use narwhal_network_types::{
 use narwhal_typed_store::{
     tables::Batches,
     traits::{Database, DbTxMut},
-    DatabaseType,
 };
 use std::{collections::HashSet, time::Duration};
 use tn_batch_validator::BatchValidation;
@@ -31,15 +30,15 @@ pub mod handlers_tests;
 
 /// Defines how the network receiver handles incoming workers messages.
 #[derive(Clone)]
-pub struct WorkerReceiverHandler<V> {
+pub struct WorkerReceiverHandler<V, DB: Database> {
     pub id: WorkerId,
     pub client: NetworkClient,
-    pub store: DatabaseType,
+    pub store: DB,
     pub validator: V,
 }
 
 #[async_trait]
-impl<V: BatchValidation> WorkerToWorker for WorkerReceiverHandler<V> {
+impl<V: BatchValidation, DB: Database> WorkerToWorker for WorkerReceiverHandler<V, DB> {
     async fn report_batch(
         &self,
         request: anemo::Request<WorkerBatchMessage>,
@@ -113,7 +112,7 @@ impl<V: BatchValidation> WorkerToWorker for WorkerReceiverHandler<V> {
 }
 
 /// Defines how the network receiver handles incoming primary messages.
-pub struct PrimaryReceiverHandler<V> {
+pub struct PrimaryReceiverHandler<V, DB: Database> {
     // The id of this worker.
     pub id: WorkerId,
     // The committee information.
@@ -121,19 +120,19 @@ pub struct PrimaryReceiverHandler<V> {
     // The worker information cache.
     pub worker_cache: WorkerCache,
     // The batch store
-    pub store: DatabaseType,
+    pub store: DB,
     // Timeout on RequestBatches RPC.
     pub request_batches_timeout: Duration,
     // Synchronize header payloads from other workers.
     pub network: Option<Network>,
     // Fetch certificate payloads from other workers.
-    pub batch_fetcher: Option<BatchFetcher>,
+    pub batch_fetcher: Option<BatchFetcher<DB>>,
     // Validate incoming batches
     pub validator: V,
 }
 
 #[async_trait]
-impl<V: BatchValidation> PrimaryToWorker for PrimaryReceiverHandler<V> {
+impl<V: BatchValidation, DB: Database> PrimaryToWorker for PrimaryReceiverHandler<V, DB> {
     async fn synchronize(
         &self,
         request: anemo::Request<WorkerSynchronizeMessage>,

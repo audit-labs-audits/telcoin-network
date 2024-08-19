@@ -40,7 +40,7 @@ use tempfile::TempDir;
 use tn_batch_validator::NoopBatchValidator;
 use tn_types::{
     now,
-    test_utils::{make_optimal_signed_certificates, temp_dir, CommitteeFixture},
+    test_utils::{make_optimal_signed_certificates, CommitteeFixture},
     AuthorityIdentifier, Certificate, CertificateAPI, ChainIdentifier, Committee, Header,
     HeaderAPI, Parameters, PreSubscribedBroadcastSender, SignatureVerificationState,
 };
@@ -62,7 +62,11 @@ async fn test_get_network_peers_from_admin_server() {
     let worker_1_keypair = authority_1.worker(worker_id).keypair().copy();
 
     // Make the data store.
-    let store = NodeStorage::reopen(temp_dir(), None);
+    // In case the DB dir does not yet exist.
+    let temp_dir = TempDir::new().unwrap();
+    let _ = std::fs::create_dir_all(temp_dir.path());
+    let db = open_db(temp_dir.path());
+    let store = NodeStorage::reopen(db, None);
     let client_1 = NetworkClient::new_from_keypair(&authority_1.network_keypair());
 
     let (tx_new_certificates, _rx_new_certificates) = consensus_metrics::metered_channel::channel(
@@ -306,7 +310,8 @@ async fn test_request_vote_has_missing_parents() {
     let client = NetworkClient::new_from_keypair(&target.network_keypair());
 
     let temp_dir = TempDir::new().unwrap();
-    let (certificate_store, payload_store, vote_digest_store) = create_db_stores(temp_dir.path());
+    let db = open_db(temp_dir.path());
+    let (certificate_store, payload_store, vote_digest_store) = create_db_stores(db);
     let (tx_certificate_fetcher, _rx_certificate_fetcher) = tn_types::test_channel!(1);
     let (tx_new_certificates, _rx_new_certificates) = tn_types::test_channel!(100);
     let (tx_parents, _rx_parents) = tn_types::test_channel!(100);
@@ -589,7 +594,8 @@ async fn test_request_vote_missing_batches() {
     let client = NetworkClient::new_from_keypair(&primary.network_keypair());
 
     let temp_dir = TempDir::new().unwrap();
-    let (certificate_store, payload_store, vote_digest_store) = create_db_stores(temp_dir.path());
+    let db = open_db(temp_dir.path());
+    let (certificate_store, payload_store, vote_digest_store) = create_db_stores(db);
     let (tx_certificate_fetcher, _rx_certificate_fetcher) = tn_types::test_channel!(1);
     let (tx_new_certificates, _rx_new_certificates) = tn_types::test_channel!(100);
     let (tx_parents, _rx_parents) = tn_types::test_channel!(100);
@@ -712,7 +718,8 @@ async fn test_request_vote_already_voted() {
     let client = NetworkClient::new_from_keypair(&primary.network_keypair());
 
     let temp_dir = TempDir::new().unwrap();
-    let (certificate_store, payload_store, vote_digest_store) = create_db_stores(temp_dir.path());
+    let db = open_db(temp_dir.path());
+    let (certificate_store, payload_store, vote_digest_store) = create_db_stores(db);
     let (tx_certificate_fetcher, _rx_certificate_fetcher) = tn_types::test_channel!(1);
     let (tx_new_certificates, _rx_new_certificates) = tn_types::test_channel!(100);
     let (tx_parents, _rx_parents) = tn_types::test_channel!(100);

@@ -8,7 +8,7 @@ mod subscriber;
 mod metrics;
 
 pub use errors::{SubscriberError, SubscriberResult};
-use narwhal_typed_store::DatabaseType;
+use narwhal_typed_store::traits::Database;
 pub use state::ExecutionIndices;
 
 pub use crate::metrics::ExecutorMetrics;
@@ -94,9 +94,9 @@ impl Executor {
     }
 }
 
-pub async fn get_restored_consensus_output(
-    consensus_store: Arc<ConsensusStore<DatabaseType>>,
-    certificate_store: CertificateStore,
+pub async fn get_restored_consensus_output<DB: Database>(
+    consensus_store: Arc<ConsensusStore<DB>>,
+    certificate_store: CertificateStore<DB>,
     // execution_state: &State,
 
     // TODO: assume DB looks up finalized block num hash here

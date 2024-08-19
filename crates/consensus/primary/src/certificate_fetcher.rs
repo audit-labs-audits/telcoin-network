@@ -11,6 +11,7 @@ use futures::{stream::FuturesUnordered, StreamExt};
 use narwhal_network::PrimaryToPrimaryRpc;
 use narwhal_primary_metrics::PrimaryMetrics;
 use narwhal_storage::CertificateStore;
+use narwhal_typed_store::traits::Database;
 use rand::{rngs::ThreadRng, seq::SliceRandom};
 use std::{
     collections::{BTreeMap, BTreeSet},
@@ -60,13 +61,13 @@ pub enum CertificateFetcherCommand {
 /// this information to a random peer. The peer would reply with the missing certificates that can
 /// be accepted by this primary. After a fetch completes, another one will start immediately if
 /// there are more certificates missing ancestors.
-pub(crate) struct CertificateFetcher {
+pub(crate) struct CertificateFetcher<DB: Database> {
     /// Internal state of CertificateFetcher.
-    state: Arc<CertificateFetcherState>,
+    state: Arc<CertificateFetcherState<DB>>,
     /// The committee information.
     committee: Committee,
     /// Persistent storage for certificates. Read-only usage.
-    certificate_store: CertificateStore,
+    certificate_store: CertificateStore<DB>,
     /// Receiver for signal of round changes.
     rx_consensus_round_updates: watch::Receiver<ConsensusRound>,
     /// Receiver for shutdown.
@@ -85,29 +86,29 @@ pub(crate) struct CertificateFetcher {
 }
 
 /// Thread-safe internal state of CertificateFetcher shared with its fetch task.
-struct CertificateFetcherState {
+struct CertificateFetcherState<DB: Database> {
     /// Identity of the current authority.
     authority_id: AuthorityIdentifier,
     /// Network client to fetch certificates from other primaries.
     network: anemo::Network,
     /// Accepts Certificates into local storage.
-    synchronizer: Arc<Synchronizer>,
+    synchronizer: Arc<Synchronizer<DB>>,
     /// The metrics handler
     metrics: Arc<PrimaryMetrics>,
 }
 
-impl CertificateFetcher {
+impl<DB: Database> CertificateFetcher<DB> {
     #[allow(clippy::too_many_arguments)]
     #[must_use]
     pub fn spawn(
         authority_id: AuthorityIdentifier,
         committee: Committee,
         network: anemo::Network,
-        certificate_store: CertificateStore,
+        certificate_store: CertificateStore<DB>,
         rx_consensus_round_updates: watch::Receiver<ConsensusRound>,
         rx_shutdown: ConditionalBroadcastReceiver,
         rx_certificate_fetcher: Receiver<CertificateFetcherCommand>,
-        synchronizer: Arc<Synchronizer>,
+        synchronizer: Arc<Synchronizer<DB>>,
         metrics: Arc<PrimaryMetrics>,
     ) -> JoinHandle<()> {
         let state =
@@ -305,8 +306,8 @@ impl CertificateFetcher {
 
 #[allow(clippy::mutable_key_type)]
 #[instrument(level = "debug", skip_all)]
-async fn run_fetch_task(
-    state: Arc<CertificateFetcherState>,
+async fn run_fetch_task<DB: Database>(
+    state: Arc<CertificateFetcherState<DB>>,
     committee: Committee,
     gc_round: Round,
     written_rounds: BTreeMap<AuthorityIdentifier, BTreeSet<Round>>,
@@ -408,9 +409,9 @@ async fn fetch_certificates_helper(
 }
 
 #[instrument(level = "debug", skip_all)]
-async fn process_certificates_helper(
+async fn process_certificates_helper<DB: Database>(
     response: FetchCertificatesResponse,
-    synchronizer: &Synchronizer,
+    synchronizer: &Synchronizer<DB>,
     _metrics: Arc<PrimaryMetrics>,
 ) -> DagResult<()> {
     trace!("Start sending fetched certificates to processing");

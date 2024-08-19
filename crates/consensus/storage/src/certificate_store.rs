@@ -19,7 +19,6 @@ use crate::StoreResult;
 use narwhal_typed_store::{
     tables::{CertificateDigestByOrigin, CertificateDigestByRound, Certificates},
     traits::{Database, DbTx, DbTxMut},
-    DatabaseType,
 };
 use telcoin_sync::sync::notify_read::NotifyRead;
 use tn_types::{AuthorityIdentifier, Certificate, CertificateDigest, Round};
@@ -225,7 +224,7 @@ impl Cache for NoCache {
 ///   perform range requests based on rounds. We avoid storing again the certificate here to not
 ///   waste space. To dereference we use the certificates_by_id storage.
 #[derive(Clone)]
-pub struct CertificateStore<T: Cache = CertificateStoreCache, DB: Database = DatabaseType> {
+pub struct CertificateStore<DB: Database, T: Cache + Clone = CertificateStoreCache> {
     /// The storage DB
     db: DB,
     /// The pub/sub to notify for a write that happened for a certificate digest id
@@ -234,7 +233,7 @@ pub struct CertificateStore<T: Cache = CertificateStoreCache, DB: Database = Dat
     cache: Arc<T>,
 }
 
-impl<T: Cache, DB: Database> CertificateStore<T, DB> {
+impl<DB: Database, T: Cache + Clone> CertificateStore<DB, T> {
     pub fn new(
         db: DB,
         //certificate_id_by_round: Arc<dyn DBMap<(Round, AuthorityIdentifier),
@@ -242,11 +241,9 @@ impl<T: Cache, DB: Database> CertificateStore<T, DB> {
         // Arc<dyn DBMap<(AuthorityIdentifier, Round), CertificateDigest>>, //
         // CertificateDigestByOrigin
         certificate_store_cache: T,
-    ) -> CertificateStore<T, DB> {
+    ) -> CertificateStore<DB, T> {
         Self {
             db,
-            //certificate_id_by_round,
-            //certificate_id_by_origin,
             notify_subscribers: Arc::new(NotifyRead::new()),
             cache: Arc::new(certificate_store_cache),
         }
@@ -669,7 +666,7 @@ mod test {
     };
     use fastcrypto::hash::Hash;
     use futures::future::join_all;
-    use narwhal_typed_store::open_db;
+    use narwhal_typed_store::{open_db, traits::Database};
     use std::{
         collections::{BTreeSet, HashSet},
         num::NonZeroUsize,
@@ -680,31 +677,15 @@ mod test {
         AuthorityIdentifier, Certificate, CertificateAPI, CertificateDigest, HeaderAPI,
     };
 
-    fn new_store(path: std::path::PathBuf) -> CertificateStore {
-        let db = open_db(path);
+    fn new_store<DB: Database>(db: DB) -> CertificateStore<DB> {
         let store_cache = CertificateStoreCache::new(NonZeroUsize::new(100).unwrap(), None);
 
         CertificateStore::new(db, store_cache)
     }
 
-    fn new_store_no_cache(path: std::path::PathBuf) -> CertificateStore<NoCache> {
-        let db = open_db(path);
-
+    fn new_store_no_cache<DB: Database>(db: DB) -> CertificateStore<DB, NoCache> {
         CertificateStore::new(db, NoCache {})
     }
-
-    /* XXXX
-    #[allow(clippy::type_complexity)]
-    fn create_db_maps(
-        _path: std::path::PathBuf,
-    ) -> (
-        Arc<dyn DBMap<CertificateDigest, Certificate>>,
-        Arc<dyn DBMap<(Round, AuthorityIdentifier), CertificateDigest>>,
-        Arc<dyn DBMap<(AuthorityIdentifier, Round), CertificateDigest>>,
-    ) {
-        (Arc::new(MemDB::open()), Arc::new(MemDB::open()), Arc::new(MemDB::open()))
-    }
-    */
 
     // helper method that creates certificates for the provided
     // number of rounds.
@@ -732,11 +713,15 @@ mod test {
 
     #[tokio::test]
     async fn test_write_and_read() {
-        test_write_and_read_by_store_type(new_store(temp_dir())).await;
-        test_write_and_read_by_store_type(new_store_no_cache(temp_dir())).await;
+        let db = open_db(temp_dir());
+        test_write_and_read_by_store_type(new_store(db)).await;
+        let db = open_db(temp_dir());
+        test_write_and_read_by_store_type(new_store_no_cache(db)).await;
     }
 
-    async fn test_write_and_read_by_store_type<T: Cache>(store: CertificateStore<T>) {
+    async fn test_write_and_read_by_store_type<DB: Database, T: Cache + Clone>(
+        store: CertificateStore<DB, T>,
+    ) {
         // GIVEN
         // create certificates for 10 rounds
         let certs = certificates(10);
@@ -774,11 +759,15 @@ mod test {
 
     #[tokio::test]
     async fn test_write_all_and_read_all() {
-        test_write_all_and_read_all_by_store_type(new_store(temp_dir())).await;
-        test_write_all_and_read_all_by_store_type(new_store_no_cache(temp_dir())).await;
+        let db = open_db(temp_dir());
+        test_write_all_and_read_all_by_store_type(new_store(db)).await;
+        let db = open_db(temp_dir());
+        test_write_all_and_read_all_by_store_type(new_store_no_cache(db)).await;
     }
 
-    async fn test_write_all_and_read_all_by_store_type<T: Cache>(store: CertificateStore<T>) {
+    async fn test_write_all_and_read_all_by_store_type<DB: Database, T: Cache + Clone>(
+        store: CertificateStore<DB, T>,
+    ) {
         // GIVEN
         // create certificates for 10 rounds
         let certs = certificates(10);
@@ -809,7 +798,8 @@ mod test {
     #[tokio::test]
     async fn test_next_round_number() {
         // GIVEN
-        let store = new_store(temp_dir());
+        let db = open_db(temp_dir());
+        let store = new_store(db);
 
         // Create certificates for round 1, 2, 4, 6, 9, 10.
         let cert = certificates(1).first().unwrap().clone();
@@ -837,7 +827,8 @@ mod test {
     #[tokio::test]
     async fn test_last_two_rounds() {
         // GIVEN
-        let store = new_store(temp_dir());
+        let db = open_db(temp_dir());
+        let store = new_store(db);
 
         // create certificates for 50 rounds
         let certs = certificates(50);
@@ -871,7 +862,8 @@ mod test {
     #[tokio::test]
     async fn test_last_round_in_empty_store() {
         // GIVEN
-        let store = new_store(temp_dir());
+        let db = open_db(temp_dir());
+        let store = new_store(db);
 
         // WHEN
         let result = store.last_two_rounds_certs().unwrap();
@@ -889,7 +881,8 @@ mod test {
     #[tokio::test]
     async fn test_after_round() {
         // GIVEN
-        let store = new_store(temp_dir());
+        let db = open_db(temp_dir());
+        let store = new_store(db);
         let total_rounds = 100;
 
         // create certificates for 50 rounds
@@ -953,7 +946,8 @@ mod test {
 
     #[tokio::test]
     async fn test_notify_read() {
-        let store = new_store(temp_dir());
+        let db = open_db(temp_dir());
+        let store = new_store(db);
 
         // run the tests a few times
         for _ in 0..10 {
@@ -1006,7 +1000,8 @@ mod test {
 
     #[tokio::test]
     async fn test_write_all_and_clear() {
-        let store = new_store(temp_dir());
+        let db = open_db(temp_dir());
+        let store = new_store(db);
 
         // create certificates for 10 rounds
         let certs = certificates(10);
@@ -1034,7 +1029,8 @@ mod test {
     /// ```
     #[tokio::test]
     async fn test_delete_cache_store() {
-        let store = new_store(temp_dir());
+        let db = open_db(temp_dir());
+        let store = new_store(db);
         // GIVEN
         // create certificates for 10 rounds
         let certs = certificates(10);
@@ -1062,7 +1058,8 @@ mod test {
     /// ```
     #[tokio::test]
     async fn test_delete_no_cache_store() {
-        let store = new_store_no_cache(temp_dir());
+        let db = open_db(temp_dir());
+        let store = new_store_no_cache(db);
         // GIVEN
         // create certificates for 10 rounds
         let certs = certificates(10);
@@ -1083,7 +1080,8 @@ mod test {
 
     #[tokio::test]
     async fn test_delete_all_cache_store() {
-        let store = new_store(temp_dir());
+        let db = open_db(temp_dir());
+        let store = new_store(db);
         // GIVEN
         // create certificates for 10 rounds
         let certs = certificates(10);
@@ -1103,7 +1101,8 @@ mod test {
 
     #[tokio::test]
     async fn test_delete_all_no_cache_store() {
-        let store = new_store_no_cache(temp_dir());
+        let db = open_db(temp_dir());
+        let store = new_store_no_cache(db);
         // GIVEN
         // create certificates for 10 rounds
         let certs = certificates(10);

@@ -6,6 +6,7 @@ use engine::{ExecutionNode, TnBuilder};
 use futures::{future::try_join_all, stream::FuturesUnordered};
 use narwhal_network::client::NetworkClient;
 pub use narwhal_storage::{CertificateStoreCacheMetrics, NodeStorage};
+use narwhal_typed_store::open_db;
 use reth_db::{
     database::Database,
     database_metrics::{DatabaseMetadata, DatabaseMetrics},
@@ -54,7 +55,10 @@ where
 
     // open storage for consensus - no metrics passed
     // TODO: pass metrics here?
-    let node_storage = NodeStorage::reopen(narwhal_db_path, None);
+    // In case the DB dir does not yet exist.
+    let _ = std::fs::create_dir_all(&narwhal_db_path);
+    let db = open_db(&narwhal_db_path);
+    let node_storage = NodeStorage::reopen(db, None);
 
     info!(target: "telcoin::cli", "node storage open");
 

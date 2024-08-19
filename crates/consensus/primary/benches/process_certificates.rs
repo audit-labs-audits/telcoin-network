@@ -38,7 +38,10 @@ pub fn process_certificates(c: &mut Criterion) {
             make_optimal_certificates(&committee, 1..=rounds, &genesis, &keys);
 
         let store_path = temp_dir();
-        let store = NodeStorage::reopen(&store_path, None);
+        // In case the DB dir does not yet exist.
+        let _ = std::fs::create_dir_all(&store_path);
+        let db = open_db(store_path);
+        let store = NodeStorage::reopen(db, None);
         let metrics = Arc::new(ConsensusMetrics::default());
 
         let mut state = ConsensusState::new(metrics.clone(), gc_depth);

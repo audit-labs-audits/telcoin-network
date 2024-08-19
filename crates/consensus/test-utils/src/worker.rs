@@ -5,6 +5,7 @@
 
 use narwhal_network::client::NetworkClient;
 use narwhal_storage::NodeStorage;
+use narwhal_typed_store::open_db;
 use std::path::PathBuf;
 use tn_node::worker::WorkerNode;
 use tn_types::{
@@ -67,7 +68,10 @@ where {
         // Make the data store.
         let store_path = if preserve_store { self.store_path.clone() } else { temp_dir() };
 
-        let worker_store = NodeStorage::reopen(store_path.clone(), None);
+        // In case the DB dir does not yet exist.
+        let _ = std::fs::create_dir_all(&store_path);
+        let db = open_db(&store_path);
+        let worker_store = NodeStorage::reopen(db, None);
 
         info!(target: "cluster::worker", "starting worker-{} for authority {}", self.id, self.name);
 
