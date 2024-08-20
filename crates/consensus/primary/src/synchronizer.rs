@@ -18,7 +18,7 @@ use narwhal_network::{
 };
 use narwhal_primary_metrics::{PrimaryChannelMetrics, PrimaryMetrics};
 use narwhal_storage::{CertificateStore, PayloadStore};
-use narwhal_typed_store::DatabaseType;
+use narwhal_typed_store::traits::Database;
 use parking_lot::Mutex;
 use std::{
     cmp::min,
@@ -64,7 +64,7 @@ pub mod synchronizer_tests;
 /// 330MB.
 const NEW_CERTIFICATE_ROUND_LIMIT: Round = 1000;
 
-struct Inner {
+struct Inner<DB> {
     // The id of this primary.
     authority_id: AuthorityIdentifier,
     // Committee of the current epoch.
@@ -82,10 +82,10 @@ struct Inner {
     // Client for fetching payloads.
     client: NetworkClient,
     // The persistent storage tables.
-    certificate_store: CertificateStore,
+    certificate_store: CertificateStore<DB>,
     // The persistent store of the available batch digests produced either via our own workers
     // or others workers.
-    payload_store: PayloadStore<DatabaseType>,
+    payload_store: PayloadStore<DB>,
     // Send missing certificates to the `CertificateFetcher`.
     tx_certificate_fetcher: Sender<CertificateFetcherCommand>,
     // Send certificates to be accepted into a separate task that runs
@@ -119,7 +119,7 @@ struct Inner {
     state: tokio::sync::Mutex<State>,
 }
 
-impl Inner {
+impl<DB: Database> Inner<DB> {
     /// Checks if the certificate is valid and can potentially be accepted into the DAG.
     fn sanitize_certificate(&self, certificate: Certificate) -> DagResult<Certificate> {
         ensure!(
@@ -323,12 +323,12 @@ impl Inner {
 ///
 /// `Synchronizer` contains most of the certificate processing logic in Narwhal.
 #[derive(Clone)]
-pub struct Synchronizer {
+pub struct Synchronizer<DB> {
     /// Internal data that are thread safe.
-    inner: Arc<Inner>,
+    inner: Arc<Inner<DB>>,
 }
 
-impl Synchronizer {
+impl<DB: Database> Synchronizer<DB> {
     #[allow(clippy::too_many_arguments)]
     pub fn new(
         authority_id: AuthorityIdentifier,
@@ -336,8 +336,8 @@ impl Synchronizer {
         worker_cache: WorkerCache,
         gc_depth: Round,
         client: NetworkClient,
-        certificate_store: CertificateStore,
-        payload_store: PayloadStore<DatabaseType>,
+        certificate_store: CertificateStore<DB>,
+        payload_store: PayloadStore<DB>,
         tx_certificate_fetcher: Sender<CertificateFetcherCommand>,
         tx_new_certificates: Sender<Certificate>,
         tx_parents: Sender<(Vec<Certificate>, Round)>,
@@ -938,7 +938,7 @@ impl Synchronizer {
     /// So it is run in a loop inside a separate task, connected to `Synchronizer` via a channel.
     #[instrument(level = "debug", skip_all)]
     async fn process_certificates_with_lock(
-        inner: &Inner,
+        inner: &Inner<DB>,
         certificates: Vec<Certificate>,
         early_suspend: bool,
     ) -> DagResult<()> {
@@ -1130,7 +1130,7 @@ impl Synchronizer {
     // }
 
     async fn sync_batches_internal(
-        inner: Arc<Inner>,
+        inner: Arc<Inner<DB>>,
         header: &Header,
         max_age: Round,
         is_certified: bool,

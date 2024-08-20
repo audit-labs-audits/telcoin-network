@@ -42,7 +42,7 @@ use narwhal_network::{
 };
 use narwhal_primary_metrics::{Metrics, PrimaryMetrics};
 use narwhal_storage::{CertificateStore, PayloadStore, ProposerStore, VoteDigestStore};
-use narwhal_typed_store::{traits::Database, DatabaseType};
+use narwhal_typed_store::traits::Database;
 use parking_lot::Mutex;
 use std::{
     cmp::Reverse,
@@ -96,7 +96,7 @@ impl Primary {
     /// Spawns the primary and returns the JoinHandles of its tasks, as well as a metered receiver
     /// for the Consensus.
     #[allow(clippy::too_many_arguments)]
-    pub fn spawn(
+    pub fn spawn<DB: Database>(
         authority: Authority,
         signer: BlsKeypair,
         network_signer: NetworkKeypair,
@@ -105,10 +105,10 @@ impl Primary {
         chain_identifier: ChainIdentifier,
         parameters: Parameters,
         client: NetworkClient,
-        certificate_store: CertificateStore,
-        proposer_store: ProposerStore<DatabaseType>,
-        payload_store: PayloadStore<DatabaseType>,
-        vote_digest_store: VoteDigestStore<DatabaseType>,
+        certificate_store: CertificateStore<DB>,
+        proposer_store: ProposerStore<DB>,
+        payload_store: PayloadStore<DB>,
+        vote_digest_store: VoteDigestStore<DB>,
         tx_new_certificates: Sender<Certificate>,
         rx_committed_certificates: Receiver<(Round, Vec<Certificate>)>,
         rx_consensus_round_updates: watch::Receiver<ConsensusRound>,
@@ -501,15 +501,15 @@ impl Primary {
 
 /// Defines how the network receiver handles incoming primary messages.
 #[derive(Clone)]
-struct PrimaryReceiverHandler<DB: Database> {
+struct PrimaryReceiverHandler<DB> {
     /// The id of this primary.
     authority_id: AuthorityIdentifier,
     committee: Committee,
     worker_cache: WorkerCache,
-    synchronizer: Arc<Synchronizer>,
+    synchronizer: Arc<Synchronizer<DB>>,
     /// Service to sign headers.
     signature_service: SignatureService<BlsSignature, { tn_types::INTENT_MESSAGE_LENGTH }>,
-    certificate_store: CertificateStore,
+    certificate_store: CertificateStore<DB>,
     /// The store to persist the last voted round per authority, used to ensure idempotence.
     vote_digest_store: VoteDigestStore<DB>,
     /// Get a signal when the round changes.
@@ -804,7 +804,7 @@ impl<DB: Database> PrimaryReceiverHandler<DB> {
 }
 
 #[async_trait]
-impl<DB: Database + 'static> PrimaryToPrimary for PrimaryReceiverHandler<DB> {
+impl<DB: Database> PrimaryToPrimary for PrimaryReceiverHandler<DB> {
     async fn send_certificate(
         &self,
         request: anemo::Request<SendCertificateRequest>,
@@ -949,13 +949,13 @@ impl<DB: Database + 'static> PrimaryToPrimary for PrimaryReceiverHandler<DB> {
 
 /// Defines how the network receiver handles incoming workers messages.
 #[derive(Clone)]
-struct WorkerReceiverHandler {
+struct WorkerReceiverHandler<DB> {
     tx_our_digests: Sender<OurDigestMessage>,
-    payload_store: PayloadStore<DatabaseType>,
+    payload_store: PayloadStore<DB>,
 }
 
 #[async_trait]
-impl WorkerToPrimary for WorkerReceiverHandler {
+impl<DB: Database> WorkerToPrimary for WorkerReceiverHandler<DB> {
     async fn report_own_batch(
         &self,
         request: anemo::Request<WorkerOwnBatchMessage>,

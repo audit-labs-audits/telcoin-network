@@ -12,12 +12,11 @@ use narwhal_primary::{
 };
 use narwhal_storage::NodeStorage;
 
+use narwhal_typed_store::open_db;
 use prometheus::Registry;
+use tempfile::TempDir;
 use tn_batch_validator::NoopBatchValidator;
-use tn_types::{
-    test_utils::{temp_dir, CommitteeFixture},
-    Batch, ChainIdentifier,
-};
+use tn_types::{test_utils::CommitteeFixture, Batch, ChainIdentifier};
 use tokio::sync::watch;
 
 // A test validator that rejects every batch
@@ -342,7 +341,11 @@ async fn get_network_peers_from_admin_server() {
     let worker_1_keypair = authority_1.worker(worker_id).keypair().copy();
 
     // Make the data store.
-    let store = NodeStorage::reopen(temp_dir(), None);
+    // In case the DB dir does not yet exist.
+    let temp_dir = TempDir::new().unwrap();
+    let _ = std::fs::create_dir_all(temp_dir.path());
+    let db = open_db(temp_dir.path());
+    let store = NodeStorage::reopen(db, None);
 
     let (tx_new_certificates, _rx_new_certificates) =
         tn_types::test_new_certificates_channel!(CHANNEL_CAPACITY);

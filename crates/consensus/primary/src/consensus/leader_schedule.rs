@@ -3,7 +3,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 use narwhal_storage::ConsensusStore;
-use narwhal_typed_store::DatabaseType;
+use narwhal_typed_store::traits::Database;
 use parking_lot::RwLock;
 use rand::{rngs::StdRng, seq::SliceRandom, SeedableRng};
 use std::{
@@ -186,9 +186,9 @@ impl LeaderSchedule {
     /// Restores the LeaderSchedule by using the storage. It will attempt to retrieve the last
     /// committed "final" ReputationScores and use them to create build a LeaderSwapTable to use
     /// for the LeaderSchedule.
-    pub fn from_store(
+    pub fn from_store<DB: Database>(
         committee: Committee,
-        store: Arc<ConsensusStore<DatabaseType>>,
+        store: Arc<ConsensusStore<DB>>,
         bad_nodes_stake_threshold: u64,
     ) -> Self {
         let table = store.read_latest_commit_with_final_reputation_scores().map_or(

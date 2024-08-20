@@ -9,6 +9,7 @@ use consensus_metrics::metered_channel::channel_with_total;
 use fastcrypto::traits::KeyPair;
 use narwhal_network::client::NetworkClient;
 use narwhal_storage::NodeStorage;
+use narwhal_typed_store::traits::Database as ConsensusDatabase;
 use narwhal_worker::{
     metrics::{Metrics, WorkerChannelMetrics},
     Worker, CHANNEL_CAPACITY, NUM_SHUTDOWN_RECEIVERS,
@@ -44,7 +45,7 @@ impl WorkerNodeInner {
     /// method will return an error instead.
     #[allow(clippy::too_many_arguments)]
     #[instrument(name = "worker", skip_all)]
-    async fn start<DB, Evm, CE>(
+    async fn start<DB, Evm, CE, CDB>(
         &mut self,
         // The primary's id
         primary_name: BlsPublicKey,
@@ -58,7 +59,7 @@ impl WorkerNodeInner {
         client: NetworkClient,
         // The node's store
         // TODO: replace this by a path so the method can open and independent storage
-        store: &NodeStorage,
+        store: &NodeStorage<CDB>,
         // used to create the batch maker process
         execution_node: &ExecutionNode<DB, Evm, CE>,
     ) -> eyre::Result<()>
@@ -66,6 +67,7 @@ impl WorkerNodeInner {
         DB: Database + DatabaseMetadata + DatabaseMetrics + Clone + Unpin + 'static,
         Evm: BlockExecutorProvider + Clone + 'static,
         CE: ConfigureEvm,
+        CDB: ConsensusDatabase,
     {
         if self.is_running().await {
             return Err(NodeError::NodeAlreadyRunning.into());
@@ -173,7 +175,7 @@ impl WorkerNode {
     }
 
     #[allow(clippy::too_many_arguments)]
-    pub async fn start<DB, Evm, CE>(
+    pub async fn start<DB, Evm, CE, CDB>(
         &self,
         // The primary's public key of this authority.
         primary_key: BlsPublicKey,
@@ -187,7 +189,7 @@ impl WorkerNode {
         client: NetworkClient,
         // The node's store
         // TODO: replace this by a path so the method can open and independent storage
-        store: &NodeStorage,
+        store: &NodeStorage<CDB>,
         // used to create the batch maker process
         execution_node: &ExecutionNode<DB, Evm, CE>,
     ) -> eyre::Result<()>
@@ -195,6 +197,7 @@ impl WorkerNode {
         DB: Database + DatabaseMetadata + DatabaseMetrics + Clone + Unpin + 'static,
         Evm: BlockExecutorProvider + Clone + 'static,
         CE: ConfigureEvm,
+        CDB: ConsensusDatabase,
     {
         let mut guard = self.internal.write().await;
         guard

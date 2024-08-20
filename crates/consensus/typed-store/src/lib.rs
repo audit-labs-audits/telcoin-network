@@ -80,6 +80,7 @@ pub type DatabaseType = RocksDatabase;
 pub type DatabaseType = ReDB;
 
 /// Open the configured DB with the required tables.
+/// This will return a concrete type for the currently configured Database.
 pub fn open_db<Path: AsRef<std::path::Path> + Send>(store_path: Path) -> DatabaseType {
     // Open the right DB based on feature flags.  The default is ReDB unless the rocksdb flag is
     // set.

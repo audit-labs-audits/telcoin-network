@@ -14,15 +14,12 @@ use tn_types::{
 use tracing::debug;
 
 /// The persistent storage of the sequencer.
-pub struct ConsensusStore<DB: Database> {
+/// Uses DB tables:
+///   - LastCommitted<AuthorityIdentifier, Round>: The latest committed round of each validator.
+///   - CommittedSubDag<SequenceNumber, ConsensusCommit>: The global consensus sequence
+pub struct ConsensusStore<DB> {
     /// The Consensus DB store.
     db: DB,
-    // The latest committed round of each validator.
-    // LastCommitted
-    //last_committed: Arc<dyn DBMap<AuthorityIdentifier, Round>>,
-    // The global consensus sequence
-    // CommittedSubDag
-    //committed_sub_dags_by_index_v1: Arc<dyn DBMap<SequenceNumber, ConsensusCommit>>,
 }
 
 impl<DB: Database> ConsensusStore<DB> {
@@ -34,7 +31,7 @@ impl<DB: Database> ConsensusStore<DB> {
     /// Clear the store.
     pub fn clear(&self) -> StoreResult<()> {
         let mut txn = self.db.write_txn()?;
-        txn.clear_table::<CommittedSubDagTable>()?;
+        txn.clear_table::<LastCommitted>()?;
         txn.clear_table::<CommittedSubDagTable>()?;
         txn.commit()?;
         Ok(())

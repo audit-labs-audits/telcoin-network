@@ -18,14 +18,16 @@ use narwhal_network_types::{
 };
 use narwhal_primary_metrics::{PrimaryChannelMetrics, PrimaryMetrics};
 use narwhal_storage::{CertificateStore, NodeStorage};
+use narwhal_typed_store::{open_db, traits::Database};
 use once_cell::sync::OnceCell;
 use reth_tracing::init_test_tracing;
 use std::{collections::BTreeSet, sync::Arc, time::Duration};
+use tempfile::TempDir;
 use tn_types::{
-    test_utils::{temp_dir, CommitteeFixture},
-    AuthorityIdentifier, BatchDigest, BlsAggregateSignatureBytes, Certificate, CertificateAPI,
-    CertificateDigest, Epoch, Header, HeaderAPI, HeaderDigest, PreSubscribedBroadcastSender, Round,
-    SignatureVerificationState, SystemMessage, TimestampSec, WorkerId,
+    test_utils::CommitteeFixture, AuthorityIdentifier, BatchDigest, BlsAggregateSignatureBytes,
+    Certificate, CertificateAPI, CertificateDigest, Epoch, Header, HeaderAPI, HeaderDigest,
+    PreSubscribedBroadcastSender, Round, SignatureVerificationState, SystemMessage, TimestampSec,
+    WorkerId,
 };
 use tokio::{
     sync::{
@@ -71,8 +73,8 @@ impl PrimaryToPrimary for NetworkProxy {
     }
 }
 
-async fn verify_certificates_in_store(
-    certificate_store: &CertificateStore,
+async fn verify_certificates_in_store<DB: Database>(
+    certificate_store: &CertificateStore<DB>,
     certificates: &[Certificate],
     expected_verified_directly_count: u64,
     expected_verified_indirectly_count: u64,
@@ -123,8 +125,8 @@ async fn verify_certificates_in_store(
     );
 }
 
-fn verify_certificates_not_in_store(
-    certificate_store: &CertificateStore,
+fn verify_certificates_not_in_store<DB: Database>(
+    certificate_store: &CertificateStore<DB>,
     certificates: &[Certificate],
 ) {
     let found_certificates =
@@ -180,7 +182,11 @@ async fn fetch_certificates_v1_basic() {
     let (tx_fetch_resp, rx_fetch_resp) = mpsc::channel(1000);
 
     // Create test stores.
-    let store = NodeStorage::reopen(temp_dir(), None);
+    // In case the DB dir does not yet exist.
+    let temp_dir = TempDir::new().unwrap();
+    let _ = std::fs::create_dir_all(temp_dir.path());
+    let db = open_db(temp_dir.path());
+    let store = NodeStorage::reopen(db, None);
     let certificate_store = store.certificate_store.clone();
     let payload_store = store.payload_store.clone();
 

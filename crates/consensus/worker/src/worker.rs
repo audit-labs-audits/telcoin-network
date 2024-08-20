@@ -32,7 +32,7 @@ use narwhal_network::{
     failpoints::FailpointsMakeCallbackHandler,
     metrics::MetricsMakeCallbackHandler,
 };
-use narwhal_typed_store::DatabaseType;
+use narwhal_typed_store::traits::Database;
 use std::{collections::HashMap, net::Ipv4Addr, sync::Arc, thread::sleep, time::Duration};
 use tn_batch_validator::BatchValidation;
 use tn_types::{
@@ -57,7 +57,7 @@ pub const CHANNEL_CAPACITY: usize = 1_000;
 use crate::metrics::{Metrics, WorkerMetrics};
 // use crate::transactions_server::TxServer;
 
-pub struct Worker {
+pub struct Worker<DB> {
     /// This authority.
     authority: Authority,
     // The private-public key pair of this worker.
@@ -71,10 +71,10 @@ pub struct Worker {
     /// The configuration parameters
     parameters: Parameters,
     /// The persistent storage.
-    store: DatabaseType,
+    store: DB,
 }
 
-impl Worker {
+impl<DB: Database> Worker<DB> {
     #[allow(clippy::too_many_arguments)]
     pub fn spawn(
         authority: Authority,
@@ -85,7 +85,7 @@ impl Worker {
         parameters: Parameters,
         validator: impl BatchValidation,
         client: NetworkClient,
-        store: DatabaseType,
+        store: DB,
         metrics: Metrics,
         tx_shutdown: &mut PreSubscribedBroadcastSender,
         // for EL batch maker

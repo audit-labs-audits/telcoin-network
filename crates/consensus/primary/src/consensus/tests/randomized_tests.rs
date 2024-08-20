@@ -9,7 +9,7 @@ use crate::consensus::{
 use fastcrypto::hash::{Hash, HashFunction};
 use futures::{stream::FuturesUnordered, StreamExt};
 use narwhal_storage::ConsensusStore;
-use narwhal_typed_store::DatabaseType;
+use narwhal_typed_store::{open_db, traits::Database};
 use rand::{
     distributions::{Bernoulli, Distribution},
     prelude::SliceRandom,
@@ -163,7 +163,7 @@ async fn bullshark_randomised_tests() {
 
     // Create a single store to be re-used across Bullshark instances to avoid hitting
     // a "too many files open" issue.
-    let store = make_consensus_store(&tn_types::test_utils::temp_dir());
+    let store = make_consensus_store(open_db(&tn_types::test_utils::temp_dir()));
 
     // Run the actual tests via separate tasks
     loop {
@@ -465,7 +465,7 @@ pub fn make_certificates_with_parameters(
 /// Creates various execution plans (`test_iterations` in total) by permuting the order we feed the
 /// DAG certificates to consensus and compare the output to ensure is the same.
 #[allow(clippy::too_many_arguments)]
-fn generate_and_run_execution_plans(
+fn generate_and_run_execution_plans<DB: Database>(
     original_certificates: VecDeque<Certificate>,
     test_iterations: u64,
     committee: Committee,
@@ -473,7 +473,7 @@ fn generate_and_run_execution_plans(
     dag_rounds: Round,
     run_id: u64,
     modes: FailureModes,
-    store: Arc<ConsensusStore<DatabaseType>>,
+    store: Arc<ConsensusStore<DB>>,
 ) {
     println!(
         "Running execution plans for run_id {} for rounds={}, committee={}, gc_depth={}, modes={:?}",

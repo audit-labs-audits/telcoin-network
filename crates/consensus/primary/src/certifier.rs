@@ -10,6 +10,7 @@ use futures::{stream::FuturesUnordered, StreamExt};
 use narwhal_network::anemo_ext::NetworkExt;
 use narwhal_primary_metrics::PrimaryMetrics;
 use narwhal_storage::CertificateStore;
+use narwhal_typed_store::traits::Database;
 use std::{sync::Arc, time::Duration};
 use telcoin_macros::fail_point_async;
 use tn_types::{AuthorityIdentifier, Committee};
@@ -36,15 +37,15 @@ pub mod certifier_tests;
 ///
 /// It receives headers to propose from Proposer via `rx_headers`, and sends out certificates to be
 /// broadcasted by calling `Synchronizer::accept_own_certificate()`.
-pub struct Certifier {
+pub struct Certifier<DB> {
     /// The identifier of this primary.
     authority_id: AuthorityIdentifier,
     /// The committee information.
     committee: Committee,
     /// The persistent storage keyed to certificates.
-    certificate_store: CertificateStore,
+    certificate_store: CertificateStore<DB>,
     /// Handles synchronization with other nodes and our workers.
-    synchronizer: Arc<Synchronizer>,
+    synchronizer: Arc<Synchronizer<DB>>,
     /// Service to sign headers.
     signature_service: SignatureService<BlsSignature, { tn_types::INTENT_MESSAGE_LENGTH }>,
     /// Receiver for shutdown.
@@ -65,14 +66,14 @@ pub struct Certifier {
     metrics: Arc<PrimaryMetrics>,
 }
 
-impl Certifier {
+impl<DB: Database> Certifier<DB> {
     #[allow(clippy::too_many_arguments)]
     #[must_use]
     pub fn spawn(
         authority_id: AuthorityIdentifier,
         committee: Committee,
-        certificate_store: CertificateStore,
-        synchronizer: Arc<Synchronizer>,
+        certificate_store: CertificateStore<DB>,
+        synchronizer: Arc<Synchronizer<DB>>,
         signature_service: SignatureService<BlsSignature, { tn_types::INTENT_MESSAGE_LENGTH }>,
         rx_shutdown: ConditionalBroadcastReceiver,
         rx_headers: Receiver<Header>,
@@ -118,7 +119,7 @@ impl Certifier {
     async fn request_vote(
         network: anemo::Network,
         committee: Committee,
-        certificate_store: CertificateStore,
+        certificate_store: CertificateStore<DB>,
         authority: AuthorityIdentifier,
         target: NetworkPublicKey,
         header: Header,
@@ -227,7 +228,7 @@ impl Certifier {
     async fn propose_header(
         authority_id: AuthorityIdentifier,
         committee: Committee,
-        certificate_store: CertificateStore,
+        certificate_store: CertificateStore<DB>,
         signature_service: SignatureService<BlsSignature, { tn_types::INTENT_MESSAGE_LENGTH }>,
         metrics: Arc<PrimaryMetrics>,
         network: anemo::Network,

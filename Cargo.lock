@@ -11186,6 +11186,7 @@ dependencies = [
  "narwhal-primary-metrics",
  "narwhal-storage",
  "narwhal-test-utils",
+ "narwhal-typed-store",
  "narwhal-worker",
  "prometheus",
  "rand 0.8.5",

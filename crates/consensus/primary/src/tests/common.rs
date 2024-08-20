@@ -3,13 +3,12 @@
 // SPDX-License-Identifier: Apache-2.0
 
 use narwhal_storage::{CertificateStore, CertificateStoreCache, PayloadStore, VoteDigestStore};
-use narwhal_typed_store::{open_db, DatabaseType};
+use narwhal_typed_store::traits::Database;
 use std::num::NonZeroUsize;
 
-pub fn create_db_stores<P: AsRef<std::path::Path> + Send>(
-    path: P,
-) -> (CertificateStore, PayloadStore<DatabaseType>, VoteDigestStore<DatabaseType>) {
-    let db = open_db(path);
+pub fn create_db_stores<DB: Database>(
+    db: DB,
+) -> (CertificateStore<DB>, PayloadStore<DB>, VoteDigestStore<DB>) {
     (
         CertificateStore::new(
             db.clone(),

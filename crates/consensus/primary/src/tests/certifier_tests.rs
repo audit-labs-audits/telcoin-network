@@ -10,6 +10,7 @@ use fastcrypto::traits::KeyPair;
 use narwhal_network::client::NetworkClient;
 use narwhal_network_types::{MockPrimaryToPrimary, PrimaryToPrimaryServer, RequestVoteResponse};
 use narwhal_primary_metrics::PrimaryChannelMetrics;
+use narwhal_typed_store::open_db;
 use rand::{rngs::StdRng, SeedableRng};
 use std::num::NonZeroUsize;
 use tempfile::TempDir;
@@ -160,7 +161,8 @@ async fn propose_header_and_form_certificate_v2() {
     let (tx_parents, _rx_parents) = tn_types::test_channel!(1);
     let (_tx_consensus_round_updates, rx_consensus_round_updates) =
         watch::channel(ConsensusRound::new(0, 0));
-    let (certificate_store, payload_store, _) = create_db_stores(temp_dir.path());
+    let db = open_db(temp_dir.path());
+    let (certificate_store, payload_store, _) = create_db_stores(db);
 
     // Create a fake header.
     let proposed_header = primary.header(&committee);
@@ -267,7 +269,8 @@ async fn propose_header_failure() {
     let (tx_parents, _rx_parents) = tn_types::test_channel!(1);
     let (_tx_consensus_round_updates, rx_consensus_round_updates) =
         watch::channel(ConsensusRound::default());
-    let (certificate_store, payload_store, _) = create_db_stores(temp_dir.path());
+    let db = open_db(temp_dir.path());
+    let (certificate_store, payload_store, _) = create_db_stores(db);
 
     // Create a fake header.
     let proposed_header = primary.header(&committee);
@@ -378,7 +381,8 @@ async fn run_vote_aggregator_with_param(
     let (_tx_consensus_round_updates, rx_consensus_round_updates) =
         watch::channel(ConsensusRound::new(0, 0));
     let temp_dir = TempDir::new().unwrap();
-    let (certificate_store, payload_store, _) = create_db_stores(temp_dir.path());
+    let db = open_db(temp_dir.path());
+    let (certificate_store, payload_store, _) = create_db_stores(db);
 
     // Create a fake header.
     let proposed_header = primary.header(&committee);
@@ -489,7 +493,8 @@ async fn test_shutdown_core() {
 
     // Create test stores.
     let temp_dir = TempDir::new().unwrap();
-    let (certificate_store, payload_store, _) = create_db_stores(temp_dir.path());
+    let db = open_db(temp_dir.path());
+    let (certificate_store, payload_store, _) = create_db_stores(db);
 
     // Make a synchronizer for the core.
     let synchronizer = Arc::new(Synchronizer::new(

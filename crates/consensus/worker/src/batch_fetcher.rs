@@ -17,7 +17,6 @@ use narwhal_network::WorkerRpc;
 use narwhal_typed_store::{
     tables::Batches,
     traits::{Database, DbTxMut},
-    DatabaseType,
 };
 use prometheus::IntGauge;
 use rand::{rngs::ThreadRng, seq::SliceRandom};
@@ -36,18 +35,18 @@ use crate::metrics::WorkerMetrics;
 const REMOTE_PARALLEL_FETCH_INTERVAL: Duration = Duration::from_secs(2);
 const WORKER_RETRY_INTERVAL: Duration = Duration::from_secs(1);
 
-pub struct BatchFetcher {
+pub struct BatchFetcher<DB> {
     name: NetworkPublicKey,
     network: Arc<dyn RequestBatchesNetwork>,
-    batch_store: DatabaseType,
+    batch_store: DB,
     metrics: Arc<WorkerMetrics>,
 }
 
-impl BatchFetcher {
+impl<DB: Database> BatchFetcher<DB> {
     pub fn new(
         name: NetworkPublicKey,
         network: Network,
-        batch_store: DatabaseType,
+        batch_store: DB,
         metrics: Arc<WorkerMetrics>,
     ) -> Self {
         Self {

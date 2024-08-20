@@ -9,7 +9,7 @@ use crate::consensus::{bullshark::Bullshark, utils::gc_round, ConsensusError, Co
 use consensus_metrics::{metered_channel, spawn_logged_monitored_task};
 use fastcrypto::hash::Hash;
 use narwhal_storage::{CertificateStore, ConsensusStore};
-use narwhal_typed_store::DatabaseType;
+use narwhal_typed_store::traits::Database;
 use std::{
     cmp::{max, Ordering},
     collections::{BTreeMap, BTreeSet, HashMap},
@@ -62,13 +62,13 @@ impl ConsensusState {
         }
     }
 
-    pub fn new_from_store(
+    pub fn new_from_store<DB: Database>(
         metrics: Arc<ConsensusMetrics>,
         last_committed_round: Round,
         gc_depth: Round,
         recovered_last_committed: HashMap<AuthorityIdentifier, Round>,
         latest_sub_dag: Option<ConsensusCommit>,
-        cert_store: CertificateStore,
+        cert_store: CertificateStore<DB>,
     ) -> Self {
         let last_round = ConsensusRound::new_with_gc_depth(last_committed_round, gc_depth);
 
@@ -110,8 +110,8 @@ impl ConsensusState {
     }
 
     #[instrument(level = "info", skip_all)]
-    pub fn construct_dag_from_cert_store(
-        cert_store: &CertificateStore,
+    pub fn construct_dag_from_cert_store<DB: Database>(
+        cert_store: &CertificateStore<DB>,
         last_committed: &HashMap<AuthorityIdentifier, Round>,
         gc_round: Round,
     ) -> Result<Dag, ConsensusError> {
@@ -267,7 +267,7 @@ impl ConsensusRound {
     }
 }
 
-pub struct Consensus {
+pub struct Consensus<DB> {
     /// The committee information.
     committee: Committee,
 
@@ -284,7 +284,7 @@ pub struct Consensus {
     tx_sequence: metered_channel::Sender<CommittedSubDag>,
 
     /// The consensus protocol to run.
-    protocol: Bullshark,
+    protocol: Bullshark<DB>,
 
     /// Metrics handler
     metrics: Arc<ConsensusMetrics>,
@@ -293,20 +293,20 @@ pub struct Consensus {
     state: ConsensusState,
 }
 
-impl Consensus {
+impl<DB: Database> Consensus<DB> {
     #[allow(clippy::too_many_arguments)]
     #[must_use]
     pub fn spawn(
         committee: Committee,
         gc_depth: Round,
-        store: Arc<ConsensusStore<DatabaseType>>,
-        cert_store: CertificateStore,
+        store: Arc<ConsensusStore<DB>>,
+        cert_store: CertificateStore<DB>,
         rx_shutdown: ConditionalBroadcastReceiver,
         rx_new_certificates: metered_channel::Receiver<Certificate>,
         tx_committed_certificates: metered_channel::Sender<(Round, Vec<Certificate>)>,
         tx_consensus_round_updates: watch::Sender<ConsensusRound>,
         tx_sequence: metered_channel::Sender<CommittedSubDag>,
-        protocol: Bullshark,
+        protocol: Bullshark<DB>,
         metrics: Arc<ConsensusMetrics>,
     ) -> JoinHandle<()> {
         // The consensus state (everything else is immutable).

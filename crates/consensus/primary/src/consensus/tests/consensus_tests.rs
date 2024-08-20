@@ -7,10 +7,11 @@ use std::{collections::BTreeSet, sync::Arc};
 use fastcrypto::hash::Hash;
 use narwhal_storage::NodeStorage;
 
+use narwhal_typed_store::open_db;
+use tempfile::TempDir;
 use tn_types::{
-    test_utils::{temp_dir, CommitteeFixture},
-    Certificate, CertificateAPI, HeaderAPI, PreSubscribedBroadcastSender, ReputationScores,
-    DEFAULT_BAD_NODES_STAKE_THRESHOLD,
+    test_utils::CommitteeFixture, Certificate, CertificateAPI, HeaderAPI,
+    PreSubscribedBroadcastSender, ReputationScores, DEFAULT_BAD_NODES_STAKE_THRESHOLD,
 };
 use tokio::sync::watch;
 
@@ -35,7 +36,11 @@ use crate::{
 async fn test_consensus_recovery_with_bullshark() {
     // GIVEN
     let num_sub_dags_per_schedule = 3;
-    let storage = NodeStorage::reopen(temp_dir(), None);
+    // In case the DB dir does not yet exist.
+    let temp_dir = TempDir::new().unwrap();
+    let _ = std::fs::create_dir_all(temp_dir.path());
+    let db = open_db(temp_dir.path());
+    let storage = NodeStorage::reopen(db, None);
 
     let consensus_store = storage.consensus_store;
     let certificate_store = storage.certificate_store;
@@ -161,7 +166,11 @@ async fn test_consensus_recovery_with_bullshark() {
     let (tx_consensus_round_updates, _rx_consensus_round_updates) =
         watch::channel(ConsensusRound::default());
 
-    let storage = NodeStorage::reopen(temp_dir(), None);
+    // In case the DB dir does not yet exist.
+    let temp_dir = TempDir::new().unwrap();
+    let _ = std::fs::create_dir_all(temp_dir.path());
+    let db = open_db(temp_dir.path());
+    let storage = NodeStorage::reopen(db, None);
 
     let consensus_store = storage.consensus_store;
     let certificate_store = storage.certificate_store;

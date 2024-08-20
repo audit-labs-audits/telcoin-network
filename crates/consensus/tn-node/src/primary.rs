@@ -19,6 +19,7 @@ use narwhal_primary::{
 };
 use narwhal_primary_metrics::Metrics;
 use narwhal_storage::NodeStorage;
+use narwhal_typed_store::traits::Database as ConsensusDatabase;
 use reth_db::{
     database::Database,
     database_metrics::{DatabaseMetadata, DatabaseMetrics},
@@ -67,7 +68,7 @@ impl PrimaryNodeInner {
     /// method will return an error instead.
     #[allow(clippy::too_many_arguments)]
     #[instrument(name = "primary_node", skip_all)]
-    async fn start<DB, Evm, CE>(
+    async fn start<DB, Evm, CE, CDB>(
         &mut self,
         // The private-public key pair of this authority.
         keypair: BlsKeypair,
@@ -82,7 +83,7 @@ impl PrimaryNodeInner {
         client: NetworkClient,
         // The node's store
         // TODO: replace this by a path so the method can open independent storage
-        store: &NodeStorage,
+        store: &NodeStorage<CDB>,
         // // The state used by the client to execute transactions.
         // execution_state: State,
 
@@ -93,6 +94,7 @@ impl PrimaryNodeInner {
         DB: Database + DatabaseMetadata + DatabaseMetrics + Clone + Unpin + 'static,
         Evm: BlockExecutorProvider + Clone + 'static,
         CE: ConfigureEvm,
+        CDB: ConsensusDatabase,
     {
         if self.is_running().await {
             return Err(NodeError::NodeAlreadyRunning.into());
@@ -187,7 +189,7 @@ impl PrimaryNodeInner {
     /// Spawn a new primary. Optionally also spawn the consensus and a client executing
     /// transactions.
     #[allow(clippy::too_many_arguments)]
-    pub async fn spawn_primary(
+    pub async fn spawn_primary<CDB: ConsensusDatabase>(
         &self,
         // The private-public key pair of this authority.
         keypair: BlsKeypair,
@@ -200,7 +202,7 @@ impl PrimaryNodeInner {
         // Client for communications.
         client: NetworkClient,
         // The node's storage.
-        store: &NodeStorage,
+        store: &NodeStorage<CDB>,
         chain: ChainIdentifier,
         // // The state used by the client to execute transactions.
         // execution_state: State,
@@ -294,13 +296,13 @@ where
     /// TODO: Executor metrics is needed to create the metered channel. This
     /// could be done a better way, but bigger priorities right now.
     #[allow(clippy::too_many_arguments)]
-    async fn spawn_consensus(
+    async fn spawn_consensus<CDB: ConsensusDatabase>(
         &self,
         authority_id: AuthorityIdentifier,
         worker_cache: WorkerCache,
         committee: Committee,
         client: NetworkClient,
-        store: &NodeStorage,
+        store: &NodeStorage<CDB>,
         mut shutdown_receivers: Vec<ConditionalBroadcastReceiver>,
         rx_new_certificates: metered_channel::Receiver<Certificate>,
         tx_committed_certificates: metered_channel::Sender<(Round, Vec<Certificate>)>,
@@ -441,7 +443,7 @@ impl PrimaryNode {
     }
 
     #[allow(clippy::too_many_arguments)]
-    pub async fn start<DB, Evm, CE>(
+    pub async fn start<DB, Evm, CE, CDB>(
         &self,
         // The private-public key pair of this authority.
         keypair: BlsKeypair,
@@ -456,7 +458,7 @@ impl PrimaryNode {
         client: NetworkClient,
         // The node's store
         // TODO: replace this by a path so the method can open and independent storage
-        store: &NodeStorage,
+        store: &NodeStorage<CDB>,
         // // The state used by the client to execute transactions.
         // execution_state: State,
         // Execution components needed to spawn the EL Executor
@@ -466,6 +468,7 @@ impl PrimaryNode {
         DB: Database + DatabaseMetadata + DatabaseMetrics + Clone + Unpin + 'static,
         Evm: BlockExecutorProvider + Clone + 'static,
         CE: ConfigureEvm,
+        CDB: ConsensusDatabase,
     {
         let mut guard = self.internal.write().await;
         guard.client = Some(client.clone());

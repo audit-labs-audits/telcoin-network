@@ -11,10 +11,9 @@ use narwhal_primary::{
 };
 use narwhal_storage::NodeStorage;
 
-use tn_types::{
-    test_utils::{temp_dir, CommitteeFixture},
-    DEFAULT_BAD_NODES_STAKE_THRESHOLD,
-};
+use narwhal_typed_store::open_db;
+use tempfile::TempDir;
+use tn_types::{test_utils::CommitteeFixture, DEFAULT_BAD_NODES_STAKE_THRESHOLD};
 
 use std::{collections::BTreeSet, sync::Arc};
 use tokio::sync::watch;
@@ -24,7 +23,11 @@ use tn_types::{Certificate, PreSubscribedBroadcastSender, Round};
 #[tokio::test]
 async fn test_recovery() {
     // Create storage
-    let storage = NodeStorage::reopen(temp_dir(), None);
+    // In case the DB dir does not yet exist.
+    let temp_dir = TempDir::new().unwrap();
+    let _ = std::fs::create_dir_all(temp_dir.path());
+    let db = open_db(temp_dir.path());
+    let storage = NodeStorage::reopen(db, None);
 
     let consensus_store = storage.consensus_store;
     let certificate_store = storage.certificate_store;

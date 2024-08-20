@@ -6,7 +6,7 @@ use crate::{
     payload_store::PayloadStore, vote_digest_store::VoteDigestStore, CertificateStore,
     CertificateStoreCache, CertificateStoreCacheMetrics, ConsensusStore, ProposerStore,
 };
-use narwhal_typed_store::{open_db, DatabaseType};
+use narwhal_typed_store::traits::Database;
 use std::{num::NonZeroUsize, sync::Arc};
 
 // A type alias marking the "payload" tokens sent by workers to their primary as batch
@@ -15,16 +15,16 @@ pub use narwhal_typed_store::PayloadToken;
 
 /// All the data stores of the node.
 #[derive(Clone)]
-pub struct NodeStorage {
-    pub proposer_store: ProposerStore<DatabaseType>,
-    pub vote_digest_store: VoteDigestStore<DatabaseType>,
-    pub certificate_store: CertificateStore<CertificateStoreCache>,
-    pub payload_store: PayloadStore<DatabaseType>,
-    pub batch_store: DatabaseType,
-    pub consensus_store: Arc<ConsensusStore<DatabaseType>>,
+pub struct NodeStorage<DB> {
+    pub proposer_store: ProposerStore<DB>,
+    pub vote_digest_store: VoteDigestStore<DB>,
+    pub certificate_store: CertificateStore<DB>,
+    pub payload_store: PayloadStore<DB>,
+    pub batch_store: DB,
+    pub consensus_store: Arc<ConsensusStore<DB>>,
 }
 
-impl NodeStorage {
+impl<DB: Database> NodeStorage<DB> {
     /// Cache size for certificate store.
     ///
     /// Reasoning: 100 nodes * 60 rounds (assuming 1 round/sec)
@@ -36,14 +36,10 @@ impl NodeStorage {
     pub(crate) const CERTIFICATE_STORE_CACHE_SIZE: usize = 100 * 60;
 
     /// Open or reopen all the storage of the node.
-    pub fn reopen<P: AsRef<std::path::Path> + Send + 'static>(
-        store_path: P,
+    pub fn reopen(
+        db: DB,
         certificate_store_cache_metrics: Option<CertificateStoreCacheMetrics>,
-    ) -> Self {
-        // In case the DB dir does not yet exist.
-        let _ = std::fs::create_dir_all(&store_path);
-        let db = open_db(store_path);
-
+    ) -> NodeStorage<DB> {
         let proposer_store = ProposerStore::new(db.clone());
         let vote_digest_store = VoteDigestStore::new(db.clone());
 
@@ -51,13 +47,12 @@ impl NodeStorage {
             NonZeroUsize::new(Self::CERTIFICATE_STORE_CACHE_SIZE).unwrap(),
             certificate_store_cache_metrics,
         );
-        let certificate_store =
-            CertificateStore::<CertificateStoreCache>::new(db.clone(), certificate_store_cache);
+        let certificate_store = CertificateStore::<DB>::new(db.clone(), certificate_store_cache);
         let payload_store = PayloadStore::new(db.clone());
         let batch_store = db.clone();
         let consensus_store = Arc::new(ConsensusStore::new(db));
 
-        Self {
+        NodeStorage {
             proposer_store,
             vote_digest_store,
             certificate_store,
