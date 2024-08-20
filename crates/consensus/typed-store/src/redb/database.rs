@@ -1,13 +1,10 @@
 // Copyright (c) Telcoin, LLC
 // SPDX-License-Identifier: Apache-2.0
 
-use std::{
-    fmt::Debug,
-    path::Path,
-    sync::{Arc, RwLock, RwLockReadGuard},
-};
+use std::{fmt::Debug, path::Path, sync::Arc};
 
 use ouroboros::self_referencing;
+use parking_lot::{RwLock, RwLockReadGuard};
 use redb::{
     Database as ReDatabase, ReadOnlyTable, ReadTransaction, ReadableTable, ReadableTableMetadata,
     TableDefinition, WriteTransaction,
@@ -90,7 +87,7 @@ pub struct ReDB {
 
 impl ReDB {
     pub fn open_table<T: Table>(&self) -> eyre::Result<()> {
-        let txn = self.db.read().expect("poisoned lock").begin_write()?;
+        let txn = self.db.read().begin_write()?;
         let td = TableDefinition::<KeyWrap<T::Key>, ValWrap<T::Value>>::new(T::NAME);
         txn.open_table(td)?;
         txn.commit()?;
@@ -103,12 +100,12 @@ impl Database for ReDB {
     type TXMut<'txn> = ReDbTxMut;
 
     fn read_txn(&self) -> eyre::Result<Self::TX<'_>> {
-        let tx = self.db.read().expect("Poisoned lock!").begin_read()?;
+        let tx = self.db.read().begin_read()?;
         Ok(ReDbTx { tx })
     }
 
     fn write_txn(&self) -> eyre::Result<Self::TXMut<'_>> {
-        let tx = self.db.read().expect("Poisoned lock!").begin_write()?;
+        let tx = self.db.read().begin_write()?;
         Ok(ReDbTxMut { tx })
     }
 
@@ -149,7 +146,7 @@ impl Database for ReDB {
     }
 
     fn iter<T: crate::traits::Table>(&self) -> DBIter<'_, T> {
-        let guard = self.db.read().expect("Poisoned lock!");
+        let guard = self.db.read();
         let td = TableDefinition::<KeyWrap<T::Key>, ValWrap<T::Value>>::new(T::NAME);
         Box::new(
             ReDBIterBuilder {
@@ -178,7 +175,7 @@ impl Database for ReDB {
 
     fn skip_to<T: crate::traits::Table>(&self, key: &T::Key) -> eyre::Result<DBIter<'_, T>> {
         let td = TableDefinition::<KeyWrap<T::Key>, ValWrap<T::Value>>::new(T::NAME);
-        let guard = self.db.read().expect("Poisoned lock!");
+        let guard = self.db.read();
         let key = key.clone();
         Ok(Box::new(
             ReDBIterBuilder {
@@ -210,7 +207,7 @@ impl Database for ReDB {
 
     fn reverse_iter<T: crate::traits::Table>(&self) -> DBIter<'_, T> {
         let td = TableDefinition::<KeyWrap<T::Key>, ValWrap<T::Value>>::new(T::NAME);
-        let guard = self.db.read().expect("Poisoned lock!");
+        let guard = self.db.read();
         Box::new(
             ReDBIterBuilder {
                 guard,
@@ -241,8 +238,7 @@ impl Database for ReDB {
 
     fn record_prior_to<T: crate::traits::Table>(&self, key: &T::Key) -> Option<(T::Key, T::Value)> {
         let td = TableDefinition::<KeyWrap<T::Key>, ValWrap<T::Value>>::new(T::NAME);
-        let read_table =
-            self.db.read().expect("Poisoned lock!").begin_read().ok()?.open_table(td).ok()?;
+        let read_table = self.db.read().begin_read().ok()?.open_table(td).ok()?;
         let mut last = None;
         for (k, v) in read_table.iter().ok()?.flatten() {
             let (k, v) = (k.value().clone(), v.value().clone());
@@ -256,12 +252,8 @@ impl Database for ReDB {
 
     fn last_record<T: crate::traits::Table>(&self) -> Option<(T::Key, T::Value)> {
         let td = TableDefinition::<KeyWrap<T::Key>, ValWrap<T::Value>>::new(T::NAME);
-        let read_table =
-            self.db.read().expect("Poisoned lock!").begin_read().ok()?.open_table(td).ok()?;
+        let read_table = self.db.read().begin_read().ok()?.open_table(td).ok()?;
         read_table.last().ok().flatten().map(|(k, v)| (k.value().clone(), v.value().clone()))
-        //.map(|t| t.last().ok().flatten().map(|(k, v)| (k.value().clone(), v.value().clone())))
-        //.ok()
-        //.flatten()
     }
 }
 

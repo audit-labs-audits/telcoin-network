@@ -250,7 +250,7 @@ prometheus = "0.13.3"
 tonic = { version = "0.10", features = ["transport", "tls"] }
 async-trait = "0.1.61"
 dashmap = "5.4.0"
-parking_lot = "0.12.1"
+parking_lot = "0.12.3"
 scopeguard = "1.1"
 tap = "1.0.1"
 uuid = { version = "1.1.2", features = ["v4", "fast-rng"] }
