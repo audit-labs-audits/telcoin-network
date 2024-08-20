@@ -7,6 +7,7 @@
 
 pub mod traits;
 
+use mem_db::MemDatabase;
 #[cfg(all(feature = "redb", not(feature = "rocksdb")))]
 use redb::database::{open_redatabase, ReDB};
 #[cfg(feature = "rocksdb")]
@@ -20,6 +21,8 @@ use tables::{
 pub mod redb;
 #[cfg(feature = "rocksdb")]
 pub mod rocks;
+
+pub mod mem_db;
 
 pub use tn_types::error::StoreError;
 
@@ -89,6 +92,21 @@ pub fn open_db<Path: AsRef<std::path::Path> + Send>(store_path: Path) -> Databas
     } else {
         open_redb(store_path)
     }
+}
+
+/// Open an in-memory DB with all the tables.
+pub fn open_memory_db() -> MemDatabase {
+    let db = MemDatabase::new();
+    db.open_table::<LastProposed>();
+    db.open_table::<Votes>();
+    db.open_table::<Certificates>();
+    db.open_table::<CertificateDigestByRound>();
+    db.open_table::<CertificateDigestByOrigin>();
+    db.open_table::<Payload>();
+    db.open_table::<Batches>();
+    db.open_table::<LastCommitted>();
+    db.open_table::<CommittedSubDag>();
+    db
 }
 
 // The open functions below are the way they are so we can use if cfg!... on open_db.
