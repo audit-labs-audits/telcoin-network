@@ -254,9 +254,6 @@ impl Database for ReDB {
         let td = TableDefinition::<KeyWrap<T::Key>, ValWrap<T::Value>>::new(T::NAME);
         let read_table = self.db.read().begin_read().ok()?.open_table(td).ok()?;
         read_table.last().ok().flatten().map(|(k, v)| (k.value().clone(), v.value().clone()))
-        //.map(|t| t.last().ok().flatten().map(|(k, v)| (k.value().clone(), v.value().clone())))
-        //.ok()
-        //.flatten()
     }
 }
 
