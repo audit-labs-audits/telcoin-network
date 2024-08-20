@@ -501,7 +501,7 @@ impl Primary {
 
 /// Defines how the network receiver handles incoming primary messages.
 #[derive(Clone)]
-struct PrimaryReceiverHandler<DB: Database> {
+struct PrimaryReceiverHandler<DB> {
     /// The id of this primary.
     authority_id: AuthorityIdentifier,
     committee: Committee,
@@ -949,7 +949,7 @@ impl<DB: Database> PrimaryToPrimary for PrimaryReceiverHandler<DB> {
 
 /// Defines how the network receiver handles incoming workers messages.
 #[derive(Clone)]
-struct WorkerReceiverHandler<DB: Database> {
+struct WorkerReceiverHandler<DB> {
     tx_our_digests: Sender<OurDigestMessage>,
     payload_store: PayloadStore<DB>,
 }

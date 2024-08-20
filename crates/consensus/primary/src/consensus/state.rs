@@ -267,7 +267,7 @@ impl ConsensusRound {
     }
 }
 
-pub struct Consensus<DB: Database> {
+pub struct Consensus<DB> {
     /// The committee information.
     committee: Committee,
 

@@ -64,7 +64,7 @@ pub mod synchronizer_tests;
 /// 330MB.
 const NEW_CERTIFICATE_ROUND_LIMIT: Round = 1000;
 
-struct Inner<DB: Database> {
+struct Inner<DB> {
     // The id of this primary.
     authority_id: AuthorityIdentifier,
     // Committee of the current epoch.
@@ -323,7 +323,7 @@ impl<DB: Database> Inner<DB> {
 ///
 /// `Synchronizer` contains most of the certificate processing logic in Narwhal.
 #[derive(Clone)]
-pub struct Synchronizer<DB: Database> {
+pub struct Synchronizer<DB> {
     /// Internal data that are thread safe.
     inner: Arc<Inner<DB>>,
 }

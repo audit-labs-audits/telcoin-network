@@ -15,7 +15,7 @@ pub use narwhal_typed_store::PayloadToken;
 
 /// All the data stores of the node.
 #[derive(Clone)]
-pub struct NodeStorage<DB: Database> {
+pub struct NodeStorage<DB> {
     pub proposer_store: ProposerStore<DB>,
     pub vote_digest_store: VoteDigestStore<DB>,
     pub certificate_store: CertificateStore<DB>,

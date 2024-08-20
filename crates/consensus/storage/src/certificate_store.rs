@@ -224,7 +224,7 @@ impl Cache for NoCache {
 ///   perform range requests based on rounds. We avoid storing again the certificate here to not
 ///   waste space. To dereference we use the certificates_by_id storage.
 #[derive(Clone)]
-pub struct CertificateStore<DB: Database, T: Cache + Clone = CertificateStoreCache> {
+pub struct CertificateStore<DB, T: Cache + Clone = CertificateStoreCache> {
     /// The storage DB
     db: DB,
     /// The pub/sub to notify for a write that happened for a certificate digest id

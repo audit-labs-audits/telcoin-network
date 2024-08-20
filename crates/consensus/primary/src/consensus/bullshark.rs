@@ -24,7 +24,7 @@ pub mod bullshark_tests;
 #[path = "tests/randomized_tests.rs"]
 pub mod randomized_tests;
 
-pub struct Bullshark<DB: Database> {
+pub struct Bullshark<DB> {
     /// The committee information.
     pub committee: Committee,
     /// Persistent storage to safe ensure crash-recovery.

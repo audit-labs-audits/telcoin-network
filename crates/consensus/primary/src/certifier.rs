@@ -37,7 +37,7 @@ pub mod certifier_tests;
 ///
 /// It receives headers to propose from Proposer via `rx_headers`, and sends out certificates to be
 /// broadcasted by calling `Synchronizer::accept_own_certificate()`.
-pub struct Certifier<DB: Database> {
+pub struct Certifier<DB> {
     /// The identifier of this primary.
     authority_id: AuthorityIdentifier,
     /// The committee information.
