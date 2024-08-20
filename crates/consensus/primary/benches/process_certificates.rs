@@ -38,7 +38,7 @@ pub fn process_certificates(c: &mut Criterion) {
             make_optimal_certificates(&committee, 1..=rounds, &genesis, &keys);
 
         let store_path = temp_dir();
-        let store = NodeStorage::reopen(store_path, None);
+        let store = NodeStorage::reopen(&store_path, None);
         let metrics = Arc::new(ConsensusMetrics::default());
 
         let mut state = ConsensusState::new(metrics.clone(), gc_depth);
