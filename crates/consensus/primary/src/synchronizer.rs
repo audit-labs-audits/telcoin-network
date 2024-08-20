@@ -64,7 +64,7 @@ pub mod synchronizer_tests;
 /// 330MB.
 const NEW_CERTIFICATE_ROUND_LIMIT: Round = 1000;
 
-struct Inner<DB: Database> {
+struct Inner<DB> {
     // The id of this primary.
     authority_id: AuthorityIdentifier,
     // Committee of the current epoch.
@@ -197,9 +197,9 @@ impl<DB: Database> Inner<DB> {
 
         if !matches!(
             certificate.signature_verification_state(),
-            SignatureVerificationState::VerifiedDirectly(_) |
-                SignatureVerificationState::VerifiedIndirectly(_) |
-                SignatureVerificationState::Genesis
+            SignatureVerificationState::VerifiedDirectly(_)
+                | SignatureVerificationState::VerifiedIndirectly(_)
+                | SignatureVerificationState::Genesis
         ) {
             panic!(
                 "Attempting to write cert {:?} with invalid signature state {:?} to store",
@@ -323,7 +323,7 @@ impl<DB: Database> Inner<DB> {
 ///
 /// `Synchronizer` contains most of the certificate processing logic in Narwhal.
 #[derive(Clone)]
-pub struct Synchronizer<DB: Database> {
+pub struct Synchronizer<DB> {
     /// Internal data that are thread safe.
     inner: Arc<Inner<DB>>,
 }
@@ -774,8 +774,8 @@ impl<DB: Database> Synchronizer<DB> {
         // fail verification will cancel processing for all fetched certs.
         let mut direct_verification_certs = Vec::new();
         for (idx, c) in certificates.iter_mut().enumerate() {
-            if !all_parents.contains(&c.digest()) ||
-                c.header().round() % CERTIFICATE_VERIFICATION_ROUND_INTERVAL == 0
+            if !all_parents.contains(&c.digest())
+                || c.header().round() % CERTIFICATE_VERIFICATION_ROUND_INTERVAL == 0
             {
                 direct_verification_certs.push((idx, c.clone()));
                 continue;

@@ -501,7 +501,7 @@ impl Primary {
 
 /// Defines how the network receiver handles incoming primary messages.
 #[derive(Clone)]
-struct PrimaryReceiverHandler<DB: Database> {
+struct PrimaryReceiverHandler<DB> {
     /// The id of this primary.
     authority_id: AuthorityIdentifier,
     committee: Committee,
@@ -835,16 +835,16 @@ impl<DB: Database> PrimaryToPrimary for PrimaryReceiverHandler<DB> {
             anemo::rpc::Status::new_with_message(
                 match e {
                     // Report unretriable errors as 400 Bad Request.
-                    DagError::InvalidSignature |
-                    DagError::InvalidEpoch { .. } |
-                    DagError::InvalidHeaderDigest |
-                    DagError::HeaderHasBadWorkerIds(_) |
-                    DagError::HeaderHasInvalidParentRoundNumbers(_) |
-                    DagError::HeaderHasDuplicateParentAuthorities(_) |
-                    DagError::AlreadyVoted(_, _, _) |
-                    DagError::AlreadyVotedNewerHeader(_, _, _) |
-                    DagError::HeaderRequiresQuorum(_) |
-                    DagError::TooOld(_, _, _) => anemo::types::response::StatusCode::BadRequest,
+                    DagError::InvalidSignature
+                    | DagError::InvalidEpoch { .. }
+                    | DagError::InvalidHeaderDigest
+                    | DagError::HeaderHasBadWorkerIds(_)
+                    | DagError::HeaderHasInvalidParentRoundNumbers(_)
+                    | DagError::HeaderHasDuplicateParentAuthorities(_)
+                    | DagError::AlreadyVoted(_, _, _)
+                    | DagError::AlreadyVotedNewerHeader(_, _, _)
+                    | DagError::HeaderRequiresQuorum(_)
+                    | DagError::TooOld(_, _, _) => anemo::types::response::StatusCode::BadRequest,
                     // All other errors are retriable.
                     _ => anemo::types::response::StatusCode::Unknown,
                 },
@@ -949,7 +949,7 @@ impl<DB: Database> PrimaryToPrimary for PrimaryReceiverHandler<DB> {
 
 /// Defines how the network receiver handles incoming workers messages.
 #[derive(Clone)]
-struct WorkerReceiverHandler<DB: Database> {
+struct WorkerReceiverHandler<DB> {
     tx_our_digests: Sender<OurDigestMessage>,
     payload_store: PayloadStore<DB>,
 }

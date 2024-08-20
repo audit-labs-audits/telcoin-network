@@ -61,7 +61,7 @@ pub enum CertificateFetcherCommand {
 /// this information to a random peer. The peer would reply with the missing certificates that can
 /// be accepted by this primary. After a fetch completes, another one will start immediately if
 /// there are more certificates missing ancestors.
-pub(crate) struct CertificateFetcher<DB: Database> {
+pub(crate) struct CertificateFetcher<DB> {
     /// Internal state of CertificateFetcher.
     state: Arc<CertificateFetcherState<DB>>,
     /// The committee information.
@@ -86,7 +86,7 @@ pub(crate) struct CertificateFetcher<DB: Database> {
 }
 
 /// Thread-safe internal state of CertificateFetcher shared with its fetch task.
-struct CertificateFetcherState<DB: Database> {
+struct CertificateFetcherState<DB> {
     /// Identity of the current authority.
     authority_id: AuthorityIdentifier,
     /// Network client to fetch certificates from other primaries.
@@ -350,8 +350,8 @@ async fn fetch_certificates_helper(
         .map(|(_, _, network_key)| network_key)
         .collect();
     peers.shuffle(&mut ThreadRng::default());
-    let fetch_timeout = PARALLEL_FETCH_REQUEST_INTERVAL_SECS * peers.len().try_into().unwrap() +
-        PARALLEL_FETCH_REQUEST_ADDITIONAL_TIMEOUT;
+    let fetch_timeout = PARALLEL_FETCH_REQUEST_INTERVAL_SECS * peers.len().try_into().unwrap()
+        + PARALLEL_FETCH_REQUEST_ADDITIONAL_TIMEOUT;
     let fetch_callback = async move {
         debug!("Starting to fetch certificates");
         let mut fut = FuturesUnordered::new();

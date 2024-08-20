@@ -8,7 +8,7 @@ use tn_types::{AuthorityIdentifier, Vote, VoteAPI, VoteInfo};
 
 /// The storage for the last votes digests per authority
 #[derive(Clone)]
-pub struct VoteDigestStore<DB: Database> {
+pub struct VoteDigestStore<DB> {
     store: DB,
 }
 

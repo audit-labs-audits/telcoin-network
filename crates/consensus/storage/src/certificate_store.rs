@@ -224,7 +224,7 @@ impl Cache for NoCache {
 ///   perform range requests based on rounds. We avoid storing again the certificate here to not
 ///   waste space. To dereference we use the certificates_by_id storage.
 #[derive(Clone)]
-pub struct CertificateStore<DB: Database, T: Cache + Clone = CertificateStoreCache> {
+pub struct CertificateStore<DB, T: Cache + Clone = CertificateStoreCache> {
     /// The storage DB
     db: DB,
     /// The pub/sub to notify for a write that happened for a certificate digest id
@@ -852,8 +852,8 @@ mod test {
         assert_eq!(highest_round_number, 50);
         for certificate in result {
             assert!(
-                (certificate.round() == last_round_number) ||
-                    (certificate.round() == last_round_number - 1)
+                (certificate.round() == last_round_number)
+                    || (certificate.round() == last_round_number - 1)
             );
         }
         assert!(last_round_number_not_exist.is_none());

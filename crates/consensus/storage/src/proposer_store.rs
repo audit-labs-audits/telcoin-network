@@ -13,7 +13,7 @@ pub const LAST_PROPOSAL_KEY: ProposerKey = 0;
 
 /// The storage for the proposer
 #[derive(Clone)]
-pub struct ProposerStore<DB: Database> {
+pub struct ProposerStore<DB> {
     /// Holds the Last Header that was proposed by the Proposer.
     last_proposed: DB,
 }

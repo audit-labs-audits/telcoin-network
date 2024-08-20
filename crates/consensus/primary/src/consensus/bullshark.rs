@@ -24,7 +24,7 @@ pub mod bullshark_tests;
 #[path = "tests/randomized_tests.rs"]
 pub mod randomized_tests;
 
-pub struct Bullshark<DB: Database> {
+pub struct Bullshark<DB> {
     /// The committee information.
     pub committee: Committee,
     /// Persistent storage to safe ensure crash-recovery.
@@ -394,9 +394,9 @@ impl<DB: Database> Bullshark<DB> {
     }
 
     fn report_leader_on_time_metrics(&mut self, certificate_round: Round, state: &ConsensusState) {
-        if certificate_round > self.max_inserted_certificate_round &&
-            certificate_round % 2 == 0 &&
-            certificate_round > 2
+        if certificate_round > self.max_inserted_certificate_round
+            && certificate_round % 2 == 0
+            && certificate_round > 2
         {
             let previous_leader_round = certificate_round - 2;
 

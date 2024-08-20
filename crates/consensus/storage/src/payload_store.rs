@@ -14,7 +14,7 @@ use tn_types::{BatchDigest, WorkerId};
 
 /// Store of the batch digests for the primary node for the own created batches.
 #[derive(Clone)]
-pub struct PayloadStore<DB: Database> {
+pub struct PayloadStore<DB> {
     store: DB, // Payload
 
     /// Senders to notify for a write that happened for the specified batch digest and worker id

@@ -30,7 +30,7 @@ pub mod handlers_tests;
 
 /// Defines how the network receiver handles incoming workers messages.
 #[derive(Clone)]
-pub struct WorkerReceiverHandler<V, DB: Database> {
+pub struct WorkerReceiverHandler<V, DB> {
     pub id: WorkerId,
     pub client: NetworkClient,
     pub store: DB,
@@ -112,7 +112,7 @@ impl<V: BatchValidation, DB: Database> WorkerToWorker for WorkerReceiverHandler<
 }
 
 /// Defines how the network receiver handles incoming primary messages.
-pub struct PrimaryReceiverHandler<V, DB: Database> {
+pub struct PrimaryReceiverHandler<V, DB> {
     // The id of this worker.
     pub id: WorkerId,
     // The committee information.

@@ -35,7 +35,7 @@ use crate::metrics::WorkerMetrics;
 const REMOTE_PARALLEL_FETCH_INTERVAL: Duration = Duration::from_secs(2);
 const WORKER_RETRY_INTERVAL: Duration = Duration::from_secs(1);
 
-pub struct BatchFetcher<DB: Database> {
+pub struct BatchFetcher<DB> {
     name: NetworkPublicKey,
     network: Arc<dyn RequestBatchesNetwork>,
     batch_store: DB,

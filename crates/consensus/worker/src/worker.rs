@@ -57,7 +57,7 @@ pub const CHANNEL_CAPACITY: usize = 1_000;
 use crate::metrics::{Metrics, WorkerMetrics};
 // use crate::transactions_server::TxServer;
 
-pub struct Worker<DB: Database> {
+pub struct Worker<DB> {
     /// This authority.
     authority: Authority,
     // The private-public key pair of this worker.

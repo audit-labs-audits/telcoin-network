@@ -37,7 +37,7 @@ pub mod certifier_tests;
 ///
 /// It receives headers to propose from Proposer via `rx_headers`, and sends out certificates to be
 /// broadcasted by calling `Synchronizer::accept_own_certificate()`.
-pub struct Certifier<DB: Database> {
+pub struct Certifier<DB> {
     /// The identifier of this primary.
     authority_id: AuthorityIdentifier,
     /// The committee information.
@@ -193,9 +193,9 @@ impl<DB: Database> Certifier<DB> {
 
         // Verify the vote. Note that only the header digest is signed by the vote.
         ensure!(
-            vote.header_digest() == header.digest() &&
-                vote.origin() == header.author() &&
-                vote.author() == authority,
+            vote.header_digest() == header.digest()
+                && vote.origin() == header.author()
+                && vote.author() == authority,
             DagError::UnexpectedVote(vote.header_digest())
         );
         // Possible equivocations.
@@ -334,9 +334,9 @@ impl<DB: Database> Certifier<DB> {
                 panic!("Storage failure: killing node.");
             }
             Err(
-                e @ DagError::TooOld(..) |
-                e @ DagError::VoteTooOld(..) |
-                e @ DagError::InvalidEpoch { .. },
+                e @ DagError::TooOld(..)
+                | e @ DagError::VoteTooOld(..)
+                | e @ DagError::InvalidEpoch { .. },
             ) => debug!("{e}"),
             Err(e) => warn!("{e}"),
         }
