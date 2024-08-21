@@ -21,6 +21,8 @@ pub mod redb;
 #[cfg(feature = "rocksdb")]
 pub mod rocks;
 
+pub mod mem_db;
+
 pub use tn_types::error::StoreError;
 
 pub type ProposerKey = u32;
