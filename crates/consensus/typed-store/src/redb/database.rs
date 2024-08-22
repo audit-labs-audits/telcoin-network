@@ -1,7 +1,15 @@
 // Copyright (c) Telcoin, LLC
 // SPDX-License-Identifier: Apache-2.0
 
-use std::{fmt::Debug, path::Path, sync::Arc};
+use std::{
+    fmt::Debug,
+    path::Path,
+    sync::{
+        mpsc::{self, SyncSender},
+        Arc,
+    },
+    time::Duration,
+};
 
 use ouroboros::self_referencing;
 use parking_lot::{RwLock, RwLockReadGuard};
@@ -13,11 +21,10 @@ use serde::{de::DeserializeOwned, Serialize};
 
 use crate::traits::{DBIter, Database, DbTx, DbTxMut, Table};
 
-use super::wraps::{KeyWrap, ValWrap};
-
-pub fn open_redatabase<P: AsRef<Path>>(path: P) -> eyre::Result<ReDB> {
-    Ok(ReDB { db: Arc::new(RwLock::new(ReDatabase::create(path.as_ref().join("redb"))?)) })
-}
+use super::{
+    metrics::ReDbMetrics,
+    wraps::{KeyWrap, ValWrap},
+};
 
 #[derive(Debug)]
 pub struct ReDbTx {
@@ -83,9 +90,72 @@ impl DbTxMut for ReDbTxMut {
 #[derive(Clone)]
 pub struct ReDB {
     db: Arc<RwLock<ReDatabase>>,
+    shutdown_tx: SyncSender<bool>,
+}
+
+impl Drop for ReDB {
+    fn drop(&mut self) {
+        if Arc::strong_count(&self.db) <= 2 {
+            tracing::error!("ReDb Dropping");
+            // shutdown_tx is a sync sender with no buffer so this should block until the thread
+            // reads it and shutsdown.
+            if let Err(e) = self.shutdown_tx.send(true) {
+                tracing::error!("Error while trying to send shutdown to redb metrics thread {e}");
+            }
+        }
+    }
 }
 
 impl ReDB {
+    pub fn open<P: AsRef<Path>>(path: P) -> eyre::Result<ReDB> {
+        let db = Arc::new(RwLock::new(ReDatabase::create(path.as_ref().join("redb"))?));
+        let db_cloned = Arc::clone(&db);
+        let (shutdown_tx, rx) = mpsc::sync_channel::<bool>(0);
+
+        // Spawn thread to update metrics from ReDB stats every 2 seconds.
+        std::thread::spawn(move || {
+            tracing::info!("Starting ReDb metrics thread");
+            let metrics = ReDbMetrics::default();
+            while let Err(mpsc::RecvTimeoutError::Timeout) = rx.recv_timeout(Duration::from_secs(2))
+            {
+                match db_cloned.read().begin_write() {
+                    Ok(txn) => match txn.stats() {
+                        Ok(status) => {
+                            tracing::trace!("ReDb metrics thread {status:?}");
+                            metrics.tree_height.set(status.tree_height() as i64);
+                            metrics
+                                .allocated_pages
+                                .set(status.allocated_pages().try_into().unwrap_or(-1));
+                            metrics.leaf_pages.set(status.leaf_pages().try_into().unwrap_or(-1));
+                            metrics
+                                .branch_pages
+                                .set(status.branch_pages().try_into().unwrap_or(-1));
+                            metrics
+                                .stored_bytes
+                                .set(status.stored_bytes().try_into().unwrap_or(-1));
+                            metrics
+                                .metadata_bytes
+                                .set(status.metadata_bytes().try_into().unwrap_or(-1));
+                            metrics
+                                .fragmented_bytes
+                                .set(status.fragmented_bytes().try_into().unwrap_or(-1));
+                            metrics.page_size.set(status.page_size().try_into().unwrap_or(-1));
+                        }
+                        Err(e) => {
+                            tracing::error!("Error while trying to get redb status: {e}");
+                        }
+                    },
+                    Err(e) => {
+                        tracing::error!("Error while trying to get redb status: {e}");
+                    }
+                }
+            }
+            tracing::info!("Ending ReDb metrics thread");
+        });
+
+        Ok(ReDB { db, shutdown_tx })
+    }
+
     pub fn open_table<T: Table>(&self) -> eyre::Result<()> {
         let txn = self.db.read().begin_write()?;
         let td = TableDefinition::<KeyWrap<T::Key>, ValWrap<T::Value>>::new(T::NAME);
@@ -289,10 +359,7 @@ mod test {
 
     use tempfile::tempdir;
 
-    use crate::{
-        redb::database::open_redatabase,
-        traits::{Database, DbTxMut, Table},
-    };
+    use crate::traits::{Database, DbTxMut, Table};
 
     use super::ReDB;
 
@@ -306,7 +373,7 @@ mod test {
     }
 
     fn open_db(path: &Path) -> ReDB {
-        let db = open_redatabase(path).expect("Cannot open database");
+        let db = ReDB::open(path).expect("Cannot open database");
         db.open_table::<TestTable>().expect("failed to open table!");
         db
     }

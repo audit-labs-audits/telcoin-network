@@ -8,7 +8,7 @@
 pub mod traits;
 
 #[cfg(all(feature = "redb", not(feature = "rocksdb")))]
-use redb::database::{open_redatabase, ReDB};
+use redb::database::ReDB;
 #[cfg(feature = "rocksdb")]
 use rocks::database::RocksDatabase;
 #[cfg(all(feature = "redb", not(feature = "rocksdb")))]
@@ -111,7 +111,7 @@ fn open_redb<P: AsRef<std::path::Path> + Send>(_store_path: P) -> DatabaseType {
     // Note the _ on _store_path is because depending on feature flags it may not be used.
     #[cfg(all(feature = "redb", not(feature = "rocksdb")))]
     {
-        let db = open_redatabase(_store_path).expect("Cannot open database");
+        let db = ReDB::open(_store_path).expect("Cannot open database");
         db.open_table::<LastProposed>().expect("failed to open table!");
         db.open_table::<Votes>().expect("failed to open table!");
         db.open_table::<Certificates>().expect("failed to open table!");
