@@ -12,7 +12,6 @@ use layered_db::LayeredDatabase;
 use redb::database::ReDB;
 #[cfg(feature = "rocksdb")]
 use rocks::database::RocksDatabase;
-#[cfg(all(feature = "redb", not(feature = "rocksdb")))]
 use tables::{
     Batches, CertificateDigestByOrigin, CertificateDigestByRound, Certificates, CommittedSubDag,
     LastCommitted, LastProposed, Payload, Votes,
