@@ -7,6 +7,7 @@
 
 pub mod traits;
 
+use layered_db::LayeredDatabase;
 #[cfg(all(feature = "redb", not(feature = "rocksdb")))]
 use redb::database::ReDB;
 #[cfg(feature = "rocksdb")]
@@ -16,11 +17,12 @@ use tables::{
     Batches, CertificateDigestByOrigin, CertificateDigestByRound, Certificates, CommittedSubDag,
     LastCommitted, LastProposed, Payload, Votes,
 };
-#[cfg(all(feature = "redb", not(feature = "rocksdb")))]
+//#[cfg(all(feature = "redb", not(feature = "rocksdb")))]
 pub mod redb;
 #[cfg(feature = "rocksdb")]
 pub mod rocks;
 
+pub mod layered_db;
 pub mod mem_db;
 
 pub use tn_types::error::StoreError;
@@ -77,9 +79,9 @@ pub mod tables {
 }
 
 #[cfg(feature = "rocksdb")]
-pub type DatabaseType = RocksDatabase;
+pub type DatabaseType = LayeredDatabase<RocksDatabase>;
 #[cfg(all(feature = "redb", not(feature = "rocksdb")))]
-pub type DatabaseType = ReDB;
+pub type DatabaseType = LayeredDatabase<ReDB>;
 
 /// Open the configured DB with the required tables.
 /// This will return a concrete type for the currently configured Database.
@@ -100,7 +102,20 @@ pub fn open_db<Path: AsRef<std::path::Path> + Send>(store_path: Path) -> Databas
 fn open_rocks<P: AsRef<std::path::Path> + Send>(_store_path: P) -> DatabaseType {
     // Note the _ on _store_path is because depending on feature flags it may not be used.
     #[cfg(feature = "rocksdb")]
-    return RocksDatabase::open_db(_store_path).expect("Can not open database.");
+    {
+        let db = RocksDatabase::open_db(_store_path).expect("Can not open database.");
+        let db = LayeredDatabase::open(db);
+        db.open_table::<LastProposed>();
+        db.open_table::<Votes>();
+        db.open_table::<Certificates>();
+        db.open_table::<CertificateDigestByRound>();
+        db.open_table::<CertificateDigestByOrigin>();
+        db.open_table::<Payload>();
+        db.open_table::<Batches>();
+        db.open_table::<LastCommitted>();
+        db.open_table::<CommittedSubDag>();
+        return db;
+    }
     // If the rocksdb feature flag is not set then calling this will panic.
     panic!("Can't use rocks with the rocksdb feature!");
 }
@@ -121,6 +136,17 @@ fn open_redb<P: AsRef<std::path::Path> + Send>(_store_path: P) -> DatabaseType {
         db.open_table::<Batches>().expect("failed to open table!");
         db.open_table::<LastCommitted>().expect("failed to open table!");
         db.open_table::<CommittedSubDag>().expect("failed to open table!");
+
+        let db = LayeredDatabase::open(db);
+        db.open_table::<LastProposed>();
+        db.open_table::<Votes>();
+        db.open_table::<Certificates>();
+        db.open_table::<CertificateDigestByRound>();
+        db.open_table::<CertificateDigestByOrigin>();
+        db.open_table::<Payload>();
+        db.open_table::<Batches>();
+        db.open_table::<LastCommitted>();
+        db.open_table::<CommittedSubDag>();
         return db;
     }
     // If the rocksdb feature flag is not set then calling this will panic.

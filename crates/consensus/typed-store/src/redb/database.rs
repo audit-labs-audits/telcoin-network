@@ -96,7 +96,7 @@ pub struct ReDB {
 impl Drop for ReDB {
     fn drop(&mut self) {
         if Arc::strong_count(&self.db) <= 2 {
-            tracing::error!("ReDb Dropping");
+            tracing::info!("ReDb Dropping, shutting down metrics thread");
             // shutdown_tx is a sync sender with no buffer so this should block until the thread
             // reads it and shutsdown.
             if let Err(e) = self.shutdown_tx.send(true) {
