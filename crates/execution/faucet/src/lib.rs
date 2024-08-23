@@ -15,7 +15,7 @@ use gcloud_sdk::{
 };
 use lru_time_cache::LruCache;
 use reth::rpc::server_types::eth::{EthApiError, EthResult};
-use reth_primitives::{hex, Address, TxHash, U256};
+use reth_primitives::{hex, Address, TxHash};
 use reth_provider::{BlockReaderIdExt, StateProviderFactory};
 use reth_tasks::{TaskSpawner, TokioTaskExecutor};
 use reth_transaction_pool::TransactionPool;
@@ -48,8 +48,6 @@ pub struct FaucetConfig {
     /// The amount of time recipients must wait between transfers
     /// specified in seconds.
     pub wait_period: Duration,
-    /// The amount of TEL to transfer to each recipient.
-    pub transfer_amount: U256,
     /// The chain id
     pub chain_id: u64,
     /// Sensitive information regarding the wallet hot-signing transactions
@@ -111,7 +109,7 @@ impl Faucet {
         config: FaucetConfig,
     ) -> (Self, FaucetService<Provider, Pool, Tasks>) {
         let (to_service, rx) = unbounded_channel();
-        let FaucetConfig { wait_period, transfer_amount, chain_id, wallet } = config;
+        let FaucetConfig { wait_period, chain_id, wallet } = config;
 
         // Construct an `LruCache` of `<String, SystemTime>`s, limited by 24hr expiry time
         let lru_cache = LruCache::with_expiry_duration(wait_period);
@@ -125,7 +123,6 @@ impl Faucet {
             pool,
             lru_cache,
             chain_id,
-            transfer_amount,
             wait_period,
             executor,
             wallet,

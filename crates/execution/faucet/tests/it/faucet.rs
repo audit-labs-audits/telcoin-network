@@ -74,14 +74,15 @@ async fn test_faucet_transfers_tel_with_google_kms() -> eyre::Result<()> {
 
     let client = execution_node.worker_http_client(&worker_id).await?.expect("worker rpc client");
 
-    let address = Address::from(U160::from(8991));
+    let faucet_contract = hex!("0e26ade1f5a99bd6b5d40f870a87bfe143db68b6").into();
 
     // assert starting balance is 0
-    let starting_balance: String = client.request("eth_getBalance", rpc_params!(address)).await?;
+    let starting_balance: String =
+        client.request("eth_getBalance", rpc_params!(faucet_contract)).await?;
     assert_eq!(U256::from_str(&starting_balance)?, U256::ZERO);
 
     // note: response is different each time bc KMS
-    let tx_hash: String = client.request("faucet_transfer", rpc_params![address]).await?;
+    let tx_hash: String = client.request("faucet_transfer", rpc_params![faucet_contract]).await?;
 
     // more than enough time for the next block
     let duration = Duration::from_secs(15);
@@ -95,10 +96,11 @@ async fn test_faucet_transfers_tel_with_google_kms() -> eyre::Result<()> {
 
     // assert recovered transaction
     assert_eq!(tx_hash, recovered.hash_ref().to_string());
-    assert_eq!(recovered.transaction.to(), Some(address));
+    assert_eq!(recovered.transaction.to(), Some(faucet_contract));
 
     // ensure duplicate request is error
-    let response = client.request::<String, _>("faucet_transfer", rpc_params![address]).await;
+    let response =
+        client.request::<String, _>("faucet_transfer", rpc_params![faucet_contract]).await;
     Ok(assert!(response.is_err()))
 }
 
