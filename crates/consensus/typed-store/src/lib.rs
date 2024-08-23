@@ -16,7 +16,6 @@ use tables::{
     Batches, CertificateDigestByOrigin, CertificateDigestByRound, Certificates, CommittedSubDag,
     LastCommitted, LastProposed, Payload, Votes,
 };
-//#[cfg(all(feature = "redb", not(feature = "rocksdb")))]
 pub mod redb;
 #[cfg(feature = "rocksdb")]
 pub mod rocks;
