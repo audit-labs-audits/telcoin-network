@@ -20,6 +20,7 @@ use reth_revm::database::StateProviderDatabase;
 use reth_transaction_pool::{TransactionOrigin, TransactionPool};
 use secp256k1::Secp256k1;
 use std::{str::FromStr as _, sync::Arc};
+use alloy::{providers::{Provider, ProviderBuilder}, sol, sol_types::sol_data::Bytes};
 
 /// Adiri genesis with funded [TransactionFactory] default account.
 pub fn test_genesis() -> Genesis {
@@ -369,6 +370,50 @@ where
         .expect("latest header from provider for gas price")
         .expect("latest header is some for gas price");
     header.next_block_base_fee(BaseFeeParams::ethereum()).unwrap_or_default().into()
+}
+
+/// Helper to deploy the canonical Telcoin faucet which handles both native and stablecoin drips
+async fn deploy_contract_stablecoin_and_faucet(rpc_url: String) -> eyre::Result<()> {
+    // stablecoin abi
+    sol!(
+        #[allow(missing_docs)]
+        #[sol(rpc)]
+        Stablecoin,
+        "src/test_utils/abi/Stablecoin.json"
+    );
+
+    // faucet abi
+    sol!(
+        #[allow(missing_docs)]
+        #[sol(rpc)]
+        StablecoinManager,
+        "src/test_utils/abi/StablecoinManager.json"
+    );
+
+    // let signer: PrivateKeySigner = todo
+    // todo: return contracts as tuple?
+    let provider = ProviderBuilder::new().on_http(rpc_url.parse()?);
+    let stablecoin_contract = Stablecoin::deploy(provider);
+    let faucet_contract = StablecoinManager::deploy(provider);
+
+    Ok(())
+} 
+
+async fn deploy_contract_proxy(rpc_url: String, implementation: Address) -> eyre::Result<()> {
+    // Stablecoins and StablecoinManager must be used as a proxy
+    sol!(
+        #[allow(missing_docs)]
+        #[sol(rpc)]
+        ERC1967Proxy,
+        "src/test_utils/abi/ERC1967Proxy.json"
+    );
+
+    // let signer: PrivateKeySigner = todo
+    // todo: return contract address
+    let provider = ProviderBuilder::new().on_http(rpc_url.parse()?);
+    let proxy_contract = ERC1967Proxy::deploy(provider, implementation, Bytes::from(""));
+
+    Ok(())
 }
 
 #[cfg(test)]

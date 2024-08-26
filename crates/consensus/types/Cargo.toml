@@ -70,6 +70,7 @@ reth-tracing = { workspace = true, optional = true }
 reth-transaction-pool = { workspace = true, optional = true }
 reth-provider = { workspace = true, optional = true }
 reth-evm = { workspace = true, optional = true }
+alloy = { version = "0.2.1", features = ["full"] }
 
 [dev-dependencies]
 criterion = { workspace = true }
