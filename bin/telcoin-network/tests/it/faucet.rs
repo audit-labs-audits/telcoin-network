@@ -20,7 +20,8 @@ use jsonrpsee::{
     http_client::{HttpClient, HttpClientBuilder},
     rpc_params,
 };
-use k256::{elliptic_curve::sec1::ToEncodedPoint, pkcs8::DecodePublicKey, PublicKey as PubKey};
+use k256::{elliptic_curve::sec1::ToEncodedPoint, pkcs8::DecodePublicKey, ecdsa::SigningKey, FieldBytes, PublicKey as PubKey};
+use secp256k1::Secp256k1;
 use narwhal_test_utils::CommandParser;
 use reth::{
     tasks::{TaskExecutor, TaskManager},
@@ -38,20 +39,14 @@ use alloy::{hex, providers::{Provider, ProviderBuilder}, network::{EthereumWalle
 use telcoin_network::{genesis::GenesisArgs, node::NodeCommand};
 use tn_faucet::FaucetArgs;
 use tn_node::launch_node;
-use tn_types::{adiri_genesis, test_utils::{deploy_contract_faucet_initialize, deploy_contract_stablecoin, deploy_contract_proxy}};
+use tn_types::{adiri_genesis, test_utils::{TransactionFactory, deploy_contract_faucet_initialize, deploy_contract_stablecoin, deploy_contract_proxy}};
 use tokio::{runtime::Handle, task::JoinHandle, time::timeout};
 use tracing::{error, info};
+use rand::{SeedableRng, rngs::StdRng};
 
 #[tokio::test]
 async fn test_faucet_transfers_tel_with_google_kms_e2e() -> eyre::Result<()> {
     init_test_tracing();
-
-    std::env::set_var(
-        "SHARED_PRIVATE_KEY",
-        "../../../../.env",
-    );
-    let shared_private_key: String = std::env::var("SHARED_PRIVATE_KEY")?.parse();
-    println!("SHARED_PRIVATE_KEY: {:?}", shared_private_key);
 
     // task manager
     let manager = TaskManager::new(Handle::current());
@@ -76,12 +71,23 @@ async fn test_faucet_transfers_tel_with_google_kms_e2e() -> eyre::Result<()> {
     println!("starting balance: {starting_balance:?}");
     assert_eq!(U256::from_str(&starting_balance)?, U256::ZERO);
 
-    // use alloy provider for simplicity (todo: write fn -> FillProvider to reduce code duplication)
-    let signer: PrivateKeySigner = shared_private_key.parse().expect("Failed to parse private key");
-    let wallet = EthereumWallet::from(signer);
+    // derive account and seed with funds
+    let default_address = TransactionFactory::default().address();
+    let default_account = vec![(default_address, GenesisAccount::default().with_balance(U256::MAX))];
+    chain.genesis.clone().extend_accounts(default_account);
+
+    // get values for default (insecure) account
+    let mut rng = StdRng::from_seed([0; 32]);
+    let (private_key, _) = Secp256k1::new().generate_keypair(&mut rng);
+    // circumvent Secp256k1 <> k256 type incompatibility via FieldBytes intermediary
+    let binding = private_key.secret_bytes();
+    let secret_bytes_array = FieldBytes::from_slice(&binding);
+    let signer = PrivateKeySigner::from_field_bytes(secret_bytes_array).expect("Error constructing signer from private key");
+    let wallet = EthereumWallet::from(signer.clone());
     let provider = ProviderBuilder::new().with_recommended_fillers().wallet(wallet).on_http(rpc_url.parse()?);
 
     // deploy stablecoin contracts and initialize(create2 not needed)
+    // println!("provider balance: {}", provider.get_balance(signer.address()).await?);
     let stablecoin_impl = deploy_contract_stablecoin(&rpc_url).await?;
     // keccak256("initialize(string,string,uint8)"") = 0x1624f6c6
     let stablecoin_init_selector = [22, 36, 246, 198];
@@ -90,6 +96,7 @@ async fn test_faucet_transfers_tel_with_google_kms_e2e() -> eyre::Result<()> {
     let stablecoin_contract = deploy_contract_proxy(&rpc_url, stablecoin_impl, stablecoin_init_data).await?;
 
     // deploy faucet contracts and initialize- 
+    println!("PRE FAUCET DEPLOY");
     let faucet_contract = deploy_contract_faucet_initialize(&rpc_url).await?;
 
     // keccak256("UpdateXYZ(address,bool,uint256,uint256)") = 0xe9aea396
