@@ -15,8 +15,8 @@ use reth_provider::{BlockReaderIdExt, ExecutionOutcome, StateProviderFactory};
 use reth_revm::database::StateProviderDatabase;
 use reth_transaction_pool::{TransactionOrigin, TransactionPool};
 use secp256k1::Secp256k1;
-use std::{env, str::FromStr as _, sync::Arc};
-use alloy::{hex, network::{EthereumWallet, TransactionBuilder}, providers::{Provider, ProviderBuilder}, signers::local::PrivateKeySigner, sol, sol_types::SolValue};
+use std::{str::FromStr as _, sync::Arc};
+use alloy::{hex, network::{EthereumWallet, TransactionBuilder}, providers::{Provider, ProviderBuilder}, signers::{k256::FieldBytes, local::PrivateKeySigner}, sol, sol_types::SolValue};
 
 /// Adiri genesis with funded [TransactionFactory] default account.
 pub fn test_genesis() -> Genesis {
@@ -315,6 +315,18 @@ impl TransactionFactory {
         signature.expect("failed to sign transaction")
     }
 
+    /// Helper to instantiate an `alloy::PrivateKeySigner` wrapping the default account
+    pub fn get_default_signer() -> eyre::Result<PrivateKeySigner> {
+        let mut rng = StdRng::from_seed([0; 32]);
+        let (private_key, _) = Secp256k1::new().generate_keypair(&mut rng);
+        // circumvent Secp256k1 <> k256 type incompatibility via FieldBytes intermediary
+        let binding = private_key.secret_bytes();
+        let secret_bytes_array = FieldBytes::from_slice(&binding);
+        let signer = PrivateKeySigner::from_field_bytes(secret_bytes_array).expect("Error constructing signer from private key");
+
+        Ok(signer)
+    }
+
     /// Create and submit the next transaction to the provided [TransactionPool].
     pub async fn create_and_submit_eip1559_pool_tx<Pool>(
         &mut self,
@@ -369,7 +381,7 @@ where
 }
 
 /// Helper to deploy implementation contract for an eXYZ
-pub async fn deploy_contract_stablecoin(rpc_url: &str) -> eyre::Result<Address> {
+pub async fn deploy_contract_stablecoin(rpc_url: &str, opt_wallet: Option<&EthereumWallet>) -> eyre::Result<Address> {
     // stablecoin abi
     sol!(
         #[sol(rpc)]
@@ -377,8 +389,13 @@ pub async fn deploy_contract_stablecoin(rpc_url: &str) -> eyre::Result<Address> 
         "src/test_utils/abi/Stablecoin.json"
     );
 
-    let signer: PrivateKeySigner = env::var("SHARED_PRIVATE_KEY")?.parse().expect("Failure parsing private key");
-    let wallet = EthereumWallet::from(signer);
+    let wallet = match opt_wallet {
+        Some(wallet) => wallet.clone(),
+        None => {
+            let signer: PrivateKeySigner = TransactionFactory::get_default_signer().unwrap().into();
+            EthereumWallet::from(signer)
+        }   
+    };
     let provider = ProviderBuilder::new().with_recommended_fillers().wallet(wallet).on_http(rpc_url.parse()?);
     let stablecoin_contract = Stablecoin::deploy(&provider).await?;
     println!("Stablecoin implementation deployed");
@@ -388,7 +405,7 @@ pub async fn deploy_contract_stablecoin(rpc_url: &str) -> eyre::Result<Address> 
 
 /// Helper to deploy implementation contract for the canonical Telcoin faucet
 /// Since Alloy doesn't yet offer utilities for the `CREATE2`, we rebuild and submit deploy and upgrade transactions to derive the expected faucet proxy address
-pub async fn deploy_contract_faucet_initialize(rpc_url: &str) -> eyre::Result<Address> {
+pub async fn deploy_contract_faucet_initialize(rpc_url: &str, opt_wallet: Option<&EthereumWallet>) -> eyre::Result<Address> {
     // faucet abi
     sol!(
         #[sol(rpc)]
@@ -396,9 +413,14 @@ pub async fn deploy_contract_faucet_initialize(rpc_url: &str) -> eyre::Result<Ad
         "src/test_utils/abi/StablecoinManager.json"
     );
 
-    let signer: PrivateKeySigner = env::var("SHARED_PRIVATE_KEY")?.parse().expect("Failure parsing private key");
-    let wallet = EthereumWallet::from(signer);
-    let provider = ProviderBuilder::new().with_recommended_fillers().wallet(wallet).on_http(rpc_url.parse()?);
+    let wallet = match opt_wallet {
+        Some(wallet) => wallet.clone(),
+        None => {
+            let signer: PrivateKeySigner = TransactionFactory::get_default_signer().unwrap().into();
+            EthereumWallet::from(signer)
+        }
+    };
+    let provider = ProviderBuilder::new().with_recommended_fillers().wallet(wallet.clone()).on_http(rpc_url.parse()?);
     
     // deploy Arachnid Deterministic Deployment proxy
     // submit create2 transaction to Arachnid Deterministic Deployment proxy
@@ -433,7 +455,7 @@ pub async fn deploy_contract_faucet_initialize(rpc_url: &str) -> eyre::Result<Ad
     let init_bytes = [&init_selector, &params[..]].concat().into();
 
     // deploy proxy with initcall
-    let faucet_contract = deploy_contract_proxy(rpc_url, initial_faucet_implementation, init_bytes).await?;
+    let faucet_contract = deploy_contract_proxy(rpc_url, initial_faucet_implementation, init_bytes, Some(&wallet)).await?;
 
     // deploy new implementation and upgrade
     let new_faucet_implementation = StablecoinManager::deploy(&provider).await?;
@@ -454,7 +476,7 @@ pub async fn deploy_contract_faucet_initialize(rpc_url: &str) -> eyre::Result<Ad
 }
 
 /// Helper function to deploy an ERC1967 proxy contract
-pub async fn deploy_contract_proxy(rpc_url: &str, implementation: Address, init_bytes: Bytes) -> eyre::Result<Address> {
+pub async fn deploy_contract_proxy(rpc_url: &str, implementation: Address, init_bytes: Bytes, opt_wallet: Option<&EthereumWallet>) -> eyre::Result<Address> {
     // ERC1967Proxy abi
     sol!(
         #[sol(rpc)]
@@ -462,8 +484,13 @@ pub async fn deploy_contract_proxy(rpc_url: &str, implementation: Address, init_
         "src/test_utils/abi/ERC1967Proxy.json"
     );
 
-    let signer: PrivateKeySigner = env::var("SHARED_PRIVATE_KEY")?.parse().expect("Failure parsing private key");
-    let wallet = EthereumWallet::from(signer);
+    let wallet = match opt_wallet {
+        Some(wallet) => wallet.clone(),
+        None => {
+            let signer: PrivateKeySigner = TransactionFactory::get_default_signer().unwrap().into();
+            EthereumWallet::from(signer)
+        }
+    };
     let provider = ProviderBuilder::new().with_recommended_fillers().wallet(wallet).on_http(rpc_url.parse()?);
     let proxy_contract = ERC1967Proxy::deploy(provider, implementation, init_bytes).await?; 
     

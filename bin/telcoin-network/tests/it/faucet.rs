@@ -20,7 +20,7 @@ use jsonrpsee::{
     http_client::{HttpClient, HttpClientBuilder},
     rpc_params,
 };
-use k256::{elliptic_curve::sec1::ToEncodedPoint, pkcs8::DecodePublicKey, ecdsa::SigningKey, FieldBytes, PublicKey as PubKey};
+use k256::{elliptic_curve::sec1::ToEncodedPoint, pkcs8::DecodePublicKey, FieldBytes, PublicKey as PubKey};
 use secp256k1::Secp256k1;
 use narwhal_test_utils::CommandParser;
 use reth::{
@@ -55,6 +55,11 @@ async fn test_faucet_transfers_tel_with_google_kms_e2e() -> eyre::Result<()> {
     // create google env and chain spec
     let chain = prepare_google_kms_env().await?;
 
+    // // derive default deployer account and seed with funds
+    // let default_address = TransactionFactory::default().address();
+    // let default_account = vec![(default_address, GenesisAccount::default().with_balance(U256::MAX))];
+    // chain.genesis.clone().extend_accounts(default_account);
+
     // create and launch validator nodes on local network
     spawn_local_testnet(&task_executor, chain.clone()).await?;
 
@@ -70,11 +75,12 @@ async fn test_faucet_transfers_tel_with_google_kms_e2e() -> eyre::Result<()> {
     let starting_balance: String = client.request("eth_getBalance", rpc_params!(address)).await?;
     println!("starting balance: {starting_balance:?}");
     assert_eq!(U256::from_str(&starting_balance)?, U256::ZERO);
-
-    // derive account and seed with funds
-    let default_address = TransactionFactory::default().address();
-    let default_account = vec![(default_address, GenesisAccount::default().with_balance(U256::MAX))];
-    chain.genesis.clone().extend_accounts(default_account);
+    
+    // assert deployer starting balance is properly seeded
+    let default_deployer_address = TransactionFactory::default().address();
+    let deployer_balance: String = client.request("eth_getBalance", rpc_params!(default_deployer_address)).await?;
+    println!("Deployer starting balance: {deployer_balance:?}");
+    assert_eq!(U256::from_str(&deployer_balance)?, U256::MAX);
 
     // get values for default (insecure) account
     let mut rng = StdRng::from_seed([0; 32]);
@@ -84,20 +90,18 @@ async fn test_faucet_transfers_tel_with_google_kms_e2e() -> eyre::Result<()> {
     let secret_bytes_array = FieldBytes::from_slice(&binding);
     let signer = PrivateKeySigner::from_field_bytes(secret_bytes_array).expect("Error constructing signer from private key");
     let wallet = EthereumWallet::from(signer.clone());
-    let provider = ProviderBuilder::new().with_recommended_fillers().wallet(wallet).on_http(rpc_url.parse()?);
+    let provider = ProviderBuilder::new().with_recommended_fillers().wallet(wallet.clone()).on_http(rpc_url.parse()?);
 
     // deploy stablecoin contracts and initialize(create2 not needed)
-    // println!("provider balance: {}", provider.get_balance(signer.address()).await?);
-    let stablecoin_impl = deploy_contract_stablecoin(&rpc_url).await?;
+    let stablecoin_impl = deploy_contract_stablecoin(&rpc_url, Some(&wallet)).await?;
     // keccak256("initialize(string,string,uint8)"") = 0x1624f6c6
     let stablecoin_init_selector = [22, 36, 246, 198];
     let stablecoin_init_params = ("Telcoin NOK", "eNOK", 6).abi_encode_params();
     let stablecoin_init_data = [&stablecoin_init_selector, &stablecoin_init_params[..]].concat().into();
-    let stablecoin_contract = deploy_contract_proxy(&rpc_url, stablecoin_impl, stablecoin_init_data).await?;
+    let stablecoin_contract = deploy_contract_proxy(&rpc_url, stablecoin_impl, stablecoin_init_data, Some(&wallet)).await?;
 
     // deploy faucet contracts and initialize- 
-    println!("PRE FAUCET DEPLOY");
-    let faucet_contract = deploy_contract_faucet_initialize(&rpc_url).await?;
+    let faucet_contract = deploy_contract_faucet_initialize(&rpc_url, Some(&wallet)).await?;
 
     // keccak256("UpdateXYZ(address,bool,uint256,uint256)") = 0xe9aea396
     let update_xyz_selector = [233, 174, 163, 150];
@@ -219,11 +223,15 @@ async fn prepare_google_kms_env() -> eyre::Result<Arc<ChainSpec>> {
     // calculate address from uncompressed public key
     let wallet_address = public_key_to_address(public_key);
 
-    // create genesis and fund account
+    // create genesis and fund relevant accounts
     let genesis = adiri_genesis();
     let faucet_account = vec![(wallet_address, GenesisAccount::default().with_balance(U256::MAX))];
-    let genesis = genesis.extend_accounts(faucet_account.into_iter());
+    let default_deployer_address = TransactionFactory::default().address();
+    let default_deployer_account = vec![(default_deployer_address, GenesisAccount::default().with_balance(U256::MAX))];
 
+    let accounts_to_fund = faucet_account.into_iter().chain(default_deployer_account.into_iter());
+    let genesis = genesis.extend_accounts(accounts_to_fund);
+    
     Ok(Arc::new(genesis.into()))
 }
 
