@@ -34,7 +34,7 @@ use reth_primitives::{
 };
 use reth_tracing::init_test_tracing;
 use secp256k1::PublicKey;
-use std::{str::FromStr, sync::Arc, time::Duration};
+use std::{env, str::FromStr, sync::Arc, time::Duration};
 use alloy::{hex, providers::{Provider, ProviderBuilder}, network::{EthereumWallet, TransactionBuilder}, sol_types::SolValue, signers::local::PrivateKeySigner};
 use telcoin_network::{genesis::GenesisArgs, node::NodeCommand};
 use tn_faucet::FaucetArgs;
@@ -43,6 +43,7 @@ use tn_types::{adiri_genesis, test_utils::{TransactionFactory, deploy_contract_f
 use tokio::{runtime::Handle, task::JoinHandle, time::timeout};
 use tracing::{error, info};
 use rand::{SeedableRng, rngs::StdRng};
+use dotenvy::dotenv;
 
 #[tokio::test]
 async fn test_faucet_transfers_tel_with_google_kms_e2e() -> eyre::Result<()> {
@@ -55,10 +56,11 @@ async fn test_faucet_transfers_tel_with_google_kms_e2e() -> eyre::Result<()> {
     // create google env and chain spec
     let chain = prepare_google_kms_env().await?;
 
-    // // derive default deployer account and seed with funds
-    // let default_address = TransactionFactory::default().address();
-    // let default_account = vec![(default_address, GenesisAccount::default().with_balance(U256::MAX))];
-    // chain.genesis.clone().extend_accounts(default_account);
+    // setup env for `transfer_admin_role()` which is necessary to reproduce counterfactual faucet 
+    dotenv().ok();
+    let init_admin_key = env::var("SHARED_PRIVATE_KEY").expect("SHARED_PRIVATE_KEY not found");
+    let init_admin_signer = PrivateKeySigner::from_str(&init_admin_key).expect("Unable to parse env string");
+    let init_admin_wallet = EthereumWallet::from(init_admin_signer);
 
     // create and launch validator nodes on local network
     spawn_local_testnet(&task_executor, chain.clone()).await?;
@@ -101,7 +103,7 @@ async fn test_faucet_transfers_tel_with_google_kms_e2e() -> eyre::Result<()> {
     let stablecoin_contract = deploy_contract_proxy(&rpc_url, stablecoin_impl, stablecoin_init_data, Some(&wallet)).await?;
 
     // deploy faucet contracts and initialize + upgrade to recreate create2 address with current impl version
-    let faucet_contract = deploy_contract_faucet_initialize(&rpc_url, Some(&wallet)).await?;
+    let faucet_contract = deploy_contract_faucet_initialize(&rpc_url, init_admin_wallet, Some(&wallet)).await?;
 
     // keccak256("UpdateXYZ(address,bool,uint256,uint256)") = 0xe9aea396
     let update_xyz_selector = [233, 174, 163, 150];
