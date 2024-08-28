@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 //! Specific test utils for execution layer
-use crate::{adiri_genesis, now, Batch, BatchAPI, ExecutionKeypair, MetadataAPI, TimestampSec, test_utils::artifacts};
+use crate::{now, Batch, BatchAPI, ExecutionKeypair, MetadataAPI, TimestampSec, test_utils::artifacts};
 use rand::{rngs::StdRng, Rng, SeedableRng};
 use reth_chainspec::{BaseFeeParams, ChainSpec};
 use reth_evm::execute::{BlockExecutionOutput, BlockExecutorProvider, Executor as _};
@@ -454,10 +454,13 @@ pub async fn deploy_contract_faucet_initialize(rpc_url: &str, init_admin_wallet:
         .with_to(arachnid_address)
         .with_input(faucet_deploy_data);
     let pending_canonical_faucet_tx= provider.send_transaction(create2_faucet_proxy_tx).await?;
-    pending_canonical_faucet_tx.get_receipt().await?;
+    let _ = pending_canonical_faucet_tx.get_receipt().await?;
     // alloy doesn't detect or support create2 deployments so log it counterfactually
     let faucet_contract: Address = Address::from(hex!("0e26ade1f5a99bd6b5d40f870a87bfe143db68b6"));
     println!("Successfully deployed canonical faucet to: {}", faucet_contract);
+
+    let default_deployer = Address::from(hex!("b14d3c4f5fbfbcfb98af2d330000d49c95b93aa7"));
+    transfer_roles(rpc_url, faucet_contract, default_deployer, init_admin_wallet).await;
 
     #[derive(Deserialize)]
     struct BytecodeObject {
@@ -476,7 +479,6 @@ pub async fn deploy_contract_faucet_initialize(rpc_url: &str, init_admin_wallet:
     let bytecode_bytes = Bytes::from(hex::decode(artifact_content.bytecode.object)?);
     
     // manually manage nonces due to bug in `Alloy::NonceFiller`
-    let default_deployer = Address::from(hex!("b14d3c4f5fbfbcfb98af2d330000d49c95b93aa7"));
     let mut current_nonce = provider.get_transaction_count(default_deployer).await?;
     let tx = TransactionRequest::default().with_deploy_code(bytecode_bytes).with_nonce(current_nonce);
     let receipt = provider.send_transaction(tx).await?.get_receipt().await?;
@@ -484,12 +486,15 @@ pub async fn deploy_contract_faucet_initialize(rpc_url: &str, init_admin_wallet:
     let new_faucet_implementation = receipt.contract_address().expect("New faucet impl deployment failed");
     println!("Successfully deployed new faucet impl to: {}", new_faucet_implementation);
 
-    transfer_admin_role(rpc_url, faucet_contract, default_deployer, init_admin_wallet).await;
+    let set_native_drip_selector: [u8; 4] = [149, 144, 66, 162];
+    let native_drip_amount = U256::from(1_000_000_000_000_000_000u128); // 1 $TEL
+    let params = native_drip_amount.abi_encode();
+    let set_native_drip_bytes:Bytes = [&set_native_drip_selector, &params[..]].concat().into();
 
     // keccak256("upgradeToAndCall(address,bytes)") = 0x4f1ef286
     let upgrade_selector = [79, 30, 242, 134];
     // dereferencing `new_faucet_implementation` resulted in malformed abi-encoded calldata, weird rust thing?
-    let upgrade_params = (new_faucet_implementation, Bytes::new()).abi_encode_params();
+    let upgrade_params = (new_faucet_implementation, set_native_drip_bytes).abi_encode_params();
     let upgrade_data: Bytes = [&upgrade_selector, &upgrade_params[..]].concat().into();
     let upgrade_tx = provider.transaction_request()
         .with_to(faucet_contract)
@@ -500,25 +505,15 @@ pub async fn deploy_contract_faucet_initialize(rpc_url: &str, init_admin_wallet:
     let pending_upgrade_tx = provider.send_transaction(upgrade_tx).await?;
     current_nonce += 1;
     let upgrade_tx_receipt = pending_upgrade_tx.get_receipt().await?;
-    println!("Faucet contract successfully upgraded in tx: {}", upgrade_tx_receipt.transaction_hash);
+    println!("Faucet contract successfully updated with native drip config call in tx: {}", upgrade_tx_receipt.transaction_hash);
 
-    // keccak256("setNativeDripAmount(uint256)") = 0x959042a2
-    let init_selector: [u8; 4] = [149, 144, 66, 162];
-    // let drip_amount = U256::from(100_000_000); // 100 $XYZ == 100e6
-    let native_drip_amount = U256::from(1_000_000_000_000_000_000u128); // 1 $TEL
-    let params = native_drip_amount.abi_encode();
-    let set_native_drip_bytes:Bytes = [&init_selector, &params[..]].concat().into();
-
-    let set_native_drip_tx = TransactionRequest::default()
+    // fund faucet with some tel
+    let fund_faucet_tx = TransactionRequest::default()
         .with_to(faucet_contract)
-        .with_input(set_native_drip_bytes)
+        .with_value(U256::from(10_000_000_000_000_000_000u128))
         .with_nonce(current_nonce);
-
-    let set_native_drip = provider.send_transaction(set_native_drip_tx)
-        .await?
-        .watch()
-        .await?;
-    println!("Faucet contract configuration successfully up to date. Tx: {}", set_native_drip);
+    let tx_hash = provider.send_transaction(fund_faucet_tx).await.?.watch().await?;
+    println!("Faucet contract successfully brought up to date and funded in tx: {}", tx_hash);
 
     Ok(faucet_contract)
 }
@@ -526,20 +521,26 @@ pub async fn deploy_contract_faucet_initialize(rpc_url: &str, init_admin_wallet:
 /// Helper function to transfer the admin role from the faucet's initial admin one better suited for testing
 /// This is unfortunately required for the deterministic faucet contract address because it was included
 /// in the `initData` portion of its `ERC1967::constructor()` arguments
-pub async fn transfer_admin_role(rpc_url: &str, faucet_contract: Address, default_deployer: Address, init_admin_wallet: EthereumWallet) {
-    // keccak256("grantRole(bytes32,address)") = 0x2f2ff15d
-    let grant_role_selector = [47, 242, 241, 93];
-    let grant_role_params = (B256::ZERO, default_deployer).abi_encode_params();
-    let grant_role_data: Bytes = [&grant_role_selector, &grant_role_params[..]].concat().into();
-
+pub async fn transfer_roles(rpc_url: &str, faucet_contract: Address, default_deployer: Address, init_admin_wallet: EthereumWallet) {
     let provider = ProviderBuilder::new().with_recommended_fillers().wallet(init_admin_wallet).on_http(rpc_url.parse().expect("Invalid url"));
-    let grant_role_tx = provider.transaction_request()
-        .with_to(faucet_contract)
-        .with_input(grant_role_data);
 
-    println!("Pending transfer of admin role...");
-    let _ = provider.send_transaction(grant_role_tx).await;
-    println!("Admin role transferred");
+    sol!(
+        #[sol(rpc)]
+        StablecoinManager,
+        "src/test_utils/artifacts/StablecoinManager.json"
+    );
+
+    let manager = StablecoinManager::new(faucet_contract, provider);
+
+    println!("Pending transfer of roles...");
+    let grant_maintainer_config = manager.grantRole(B256::from_str("0x339759585899103d2ace64958e37e18ccb0504652c81d4a1b8aa80fe2126ab95").unwrap(), default_deployer);
+    let grant_maintainer_tx = grant_maintainer_config.send().await.expect("Failed to grant maintainer role");
+    let maintainer_hash = grant_maintainer_tx.get_receipt().await;
+
+    let grant_admin_config = manager.grantRole(B256::ZERO, default_deployer);
+    let grant_admin_tx = grant_admin_config.send().await.expect("Failed to grant admin role");
+    let admin_hash = grant_admin_tx.get_receipt().await;
+    println!("Roles transferred in txs: {} and {}", maintainer_hash.unwrap().transaction_hash, admin_hash.unwrap().transaction_hash);
 }
 
 /// Helper function to deploy an ERC1967 proxy contract

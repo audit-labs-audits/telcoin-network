@@ -35,7 +35,7 @@ use reth_primitives::{
 use reth_tracing::init_test_tracing;
 use secp256k1::PublicKey;
 use std::{env, str::FromStr, sync::Arc, time::Duration};
-use alloy::{hex, providers::{Provider, ProviderBuilder}, network::{EthereumWallet, TransactionBuilder}, sol_types::SolValue, signers::local::PrivateKeySigner};
+use alloy::{hex, sol, providers::{Provider, ProviderBuilder}, network::{EthereumWallet, TransactionBuilder}, sol_types::SolValue, signers::local::PrivateKeySigner};
 use telcoin_network::{genesis::GenesisArgs, node::NodeCommand};
 use tn_faucet::FaucetArgs;
 use tn_node::launch_node;
@@ -45,9 +45,18 @@ use tracing::{error, info};
 use rand::{SeedableRng, rngs::StdRng};
 use dotenvy::dotenv;
 
+use std::fs::File;
+use simplelog::*;
+
 #[tokio::test]
 async fn test_faucet_transfers_tel_with_google_kms_e2e() -> eyre::Result<()> {
     init_test_tracing();
+
+    let _ = WriteLogger::init(
+        LevelFilter::Info,
+        Config::default(),
+        File::create("test.log").unwrap(),
+    );
 
     // task manager
     let manager = TaskManager::new(Handle::current());
@@ -120,7 +129,7 @@ async fn test_faucet_transfers_tel_with_google_kms_e2e() -> eyre::Result<()> {
 
     // keccak256("grantRole(bytes32,address)")= 0x2f2ff15d
     let grant_role_selector = [47, 47, 241, 93];
-    // role can be fetched with `Stablecoin::MINTER_ROLE()`
+    // role is derived from `keccak256("MINTER_ROLE")` and can be fetched from the Stablecoin contract
     let grant_role_params = (hex!("9f2df0fed2c77648de5860a4cc508cd0818c85b8b8a1ab4ceeef8d981c8956a6"), faucet_contract).abi_encode_params();
     let grant_role_data: Bytes = [&grant_role_selector, &grant_role_params[..]].concat().into();
     let grant_role_tx = provider.transaction_request()
@@ -146,6 +155,16 @@ async fn test_faucet_transfers_tel_with_google_kms_e2e() -> eyre::Result<()> {
         .expect("balance timeout");
     let expected_balance = U256::from_str("0xde0b6b3a7640000")?; // 1*10^18 (1 TEL)
     assert_eq!(balance, expected_balance);
+
+    sol!(
+        #[sol(rpc)]
+        Stablecoin,
+        "../../crates/consensus/types/src/test_utils/artifacts/Stablecoin.json"
+    );
+    let xyz_instance = Stablecoin::new(stablecoin_contract, provider);
+    let xyz_balance = xyz_instance.balanceOf(address).call().await?._0;
+    let expected_xyz_balance = U256::from(100_000_000); // 100e6 (100 XYZ)
+    assert_eq!(xyz_balance, expected_xyz_balance);
 
     // duplicate request is err
     assert!(client.request::<String, _>("faucet_transfer", rpc_params![address]).await.is_err());
