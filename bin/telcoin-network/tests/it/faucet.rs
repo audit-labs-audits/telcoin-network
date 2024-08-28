@@ -75,7 +75,7 @@ async fn test_faucet_transfers_tel_with_google_kms_e2e() -> eyre::Result<()> {
     let starting_balance: String = client.request("eth_getBalance", rpc_params!(address)).await?;
     println!("starting balance: {starting_balance:?}");
     assert_eq!(U256::from_str(&starting_balance)?, U256::ZERO);
-    
+
     // assert deployer starting balance is properly seeded
     let default_deployer_address = TransactionFactory::default().address();
     let deployer_balance: String = client.request("eth_getBalance", rpc_params!(default_deployer_address)).await?;
@@ -100,7 +100,7 @@ async fn test_faucet_transfers_tel_with_google_kms_e2e() -> eyre::Result<()> {
     let stablecoin_init_data = [&stablecoin_init_selector, &stablecoin_init_params[..]].concat().into();
     let stablecoin_contract = deploy_contract_proxy(&rpc_url, stablecoin_impl, stablecoin_init_data, Some(&wallet)).await?;
 
-    // deploy faucet contracts and initialize- 
+    // deploy faucet contracts and initialize + upgrade to recreate create2 address with current impl version
     let faucet_contract = deploy_contract_faucet_initialize(&rpc_url, Some(&wallet)).await?;
 
     // keccak256("UpdateXYZ(address,bool,uint256,uint256)") = 0xe9aea396

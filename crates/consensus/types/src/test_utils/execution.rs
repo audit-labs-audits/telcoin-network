@@ -13,8 +13,10 @@ use reth_primitives::{
 };
 use reth_provider::{BlockReaderIdExt, ExecutionOutcome, StateProviderFactory};
 use reth_revm::database::StateProviderDatabase;
+use reth_rpc_types::TransactionRequest;
 use reth_transaction_pool::{TransactionOrigin, TransactionPool};
 use secp256k1::Secp256k1;
+use tokio::time::{sleep, Duration};
 use std::{str::FromStr as _, sync::Arc};
 use alloy::{hex, network::{EthereumWallet, TransactionBuilder}, providers::{Provider, ProviderBuilder}, signers::{k256::FieldBytes, local::PrivateKeySigner}, sol, sol_types::SolValue};
 
@@ -397,6 +399,7 @@ pub async fn deploy_contract_stablecoin(rpc_url: &str, opt_wallet: Option<&Ether
         }   
     };
     let provider = ProviderBuilder::new().with_recommended_fillers().wallet(wallet).on_http(rpc_url.parse()?);
+    println!("Deploying Stablecoin implementation...");
     let stablecoin_contract = Stablecoin::deploy(&provider).await?;
     println!("Stablecoin implementation deployed");
 
@@ -406,13 +409,6 @@ pub async fn deploy_contract_stablecoin(rpc_url: &str, opt_wallet: Option<&Ether
 /// Helper to deploy implementation contract for the canonical Telcoin faucet
 /// Since Alloy doesn't yet offer utilities for the `CREATE2`, we rebuild and submit deploy and upgrade transactions to derive the expected faucet proxy address
 pub async fn deploy_contract_faucet_initialize(rpc_url: &str, opt_wallet: Option<&EthereumWallet>) -> eyre::Result<Address> {
-    // faucet abi
-    sol!(
-        #[sol(rpc)]
-        StablecoinManager,
-        "src/test_utils/artifacts/StablecoinManager.json"
-    );
-
     let wallet = match opt_wallet {
         Some(wallet) => wallet.clone(),
         None => {
@@ -422,12 +418,21 @@ pub async fn deploy_contract_faucet_initialize(rpc_url: &str, opt_wallet: Option
     };
     let provider = ProviderBuilder::new().with_recommended_fillers().wallet(wallet.clone()).on_http(rpc_url.parse()?);
     
-    // deploy Arachnid Deterministic Deployment proxy
+    // fund single-use address and deploy Arachnid Deterministic Deployment proxy
+    let single_use_arachnid_signer = Address::from(hex!("3fab184622dc19b6109349b94811493bf2a45362"));
+    let fund_arachnid_signer_tx = TransactionRequest::default().with_to(single_use_arachnid_signer).with_value(U256::from(1e18));
+    let fund_tx_hash = provider.send_transaction(fund_arachnid_signer_tx).await?.watch().await?;
+    println!("Arachnid single-use signer funded at tx hash: {}", fund_tx_hash);
+
+    println!("HELLO NONCE: {}", provider.get_transaction_count(Address::from(hex!("b14d3c4f5fbfbcfb98af2d330000d49c95b93aa7"))).await?);//TODO
+
     let arachnid_presigned_raw_tx = artifacts::transaction_artifacts::ARACHNID_DETERMINISTIC_FACTORY_CREATE_TX;
     let pending_arachnid_creation = provider.send_raw_transaction(arachnid_presigned_raw_tx).await?;
     println!("Pending arachnid factory deployment... {}", pending_arachnid_creation.tx_hash());
     let arachnid_creation_receipt = pending_arachnid_creation.get_receipt().await?;
     println!("Arachnid factory deployed to: {}", arachnid_creation_receipt.contract_address.expect("Arachnid create2 factory deployment failed"));
+
+    println!("HELLO NONCE: {}", provider.get_transaction_count(Address::from(hex!("b14d3c4f5fbfbcfb98af2d330000d49c95b93aa7"))).await?);//TODO
 
     // submit create2 transaction to Arachnid Deterministic Deployment proxy
     let arachnid_address = Address::from(hex!("4e59b44847b379578588920ca78fbf26c0b4956c"));
@@ -436,13 +441,50 @@ pub async fn deploy_contract_faucet_initialize(rpc_url: &str, opt_wallet: Option
         .with_to(arachnid_address)
         .with_input(deterministic_deploy_data);
 
-    let pending_deterministic_impl_tx: alloy::providers::PendingTransactionBuilder<alloy::transports::http::Http<alloy::transports::http::Client>, alloy::network::Ethereum> = provider.send_transaction(create2_faucet_impl_tx).await?;
-    println!("Pending deterministic impl deployment... {}", pending_deterministic_impl_tx.tx_hash());
-    let initial_impl_tx_receipt = pending_deterministic_impl_tx.get_receipt().await?;
+    println!("HELLO NONCE: {}", provider.get_transaction_count(Address::from(hex!("b14d3c4f5fbfbcfb98af2d330000d49c95b93aa7"))).await?);//TODO
 
-    let initial_faucet_implementation = initial_impl_tx_receipt.contract_address.expect("Initial faucet implementation deployment failed");
+    let pending_deterministic_impl_tx = provider.send_transaction(create2_faucet_impl_tx).await?;
+    println!("Pending deterministic impl deployment... {}", pending_deterministic_impl_tx.tx_hash());
+    pending_deterministic_impl_tx.get_receipt().await?;
+    // alloy doesn't detect or support create2 deployments so log it counterfactually
+    let initial_faucet_implementation = Address::from(hex!("857721c881fc26e4664a9685d8650c0505997672")); 
     println!("Initial deterministic faucet implementation deployed to: {}", initial_faucet_implementation);
-    
+
+    println!("HELLO NONCE: {}", provider.get_transaction_count(Address::from(hex!("b14d3c4f5fbfbcfb98af2d330000d49c95b93aa7"))).await?);//TODO
+
+    // deploy proxy with initcall
+    println!("Pending canonical faucet proxy deployment...");//TODO REMOVE COMMENTED INITDATA
+    let faucet_contract = deploy_contract_proxy(rpc_url, initial_faucet_implementation, Bytes::new() /*init_bytes*/, Some(&wallet)).await?;
+    println!("Successfully deployed new faucet impl deployment to: {}", faucet_contract);
+
+    println!("HELLO NONCE: {}", provider.get_transaction_count(Address::from(hex!("b14d3c4f5fbfbcfb98af2d330000d49c95b93aa7"))).await?);//TODO
+
+    // faucet abi
+    sol!(
+        #[sol(rpc)]
+        StablecoinManager,
+        "src/test_utils/artifacts/StablecoinManager.json"
+    );
+
+    // deploy new implementation and upgrade
+    sleep(Duration::from_secs(8)).await;
+    println!("Pending new faucet impl deployment...");
+    let new_faucet_implementation = StablecoinManager::deploy(&provider).await?;
+    println!("Successfully deployed new faucet impl to: {}", new_faucet_implementation.address());
+    // keccak256("upgradeToAndCall(address,bytes)") = 0x4f1ef286
+    let upgrade_selector = [79, 30, 242, 134];
+    let upgrade_params = (*new_faucet_implementation.address(), Bytes::new()).abi_encode_params();
+    let upgrade_data: Bytes = [&upgrade_selector, &upgrade_params[..]].concat().into();
+    let tx = provider.transaction_request()
+        .with_to(faucet_contract)
+        .with_input(upgrade_data);
+
+    let pending_new_impl_tx = provider.send_transaction(tx).await?;
+    println!("Pending faucet upgrade transaction... {}", pending_new_impl_tx.tx_hash());
+    let upgrade_tx_receipt = pending_new_impl_tx.get_receipt().await?;
+    println!("Faucet contract successfully upgraded in block: {}", upgrade_tx_receipt.block_number.expect("Faucet upgrade transaction failed"));
+
+
     // keccak256("initialize((address,address,address[],uint256,uint256,address[],uint256,uint256))") = 0x16ada6b1
     let init_selector: [u8; 4] = [22, 173, 166, 177];
     let admin = hex!("c1612C97537c2CC62a11FC4516367AB6F62d4B23");
@@ -458,25 +500,17 @@ pub async fn deploy_contract_faucet_initialize(rpc_url: &str, opt_wallet: Option
     let drip_amount = U256::from(100_000_000); // 100 $XYZ == 100e6
     let native_drip_amount = U256::from(1_000_000_000_000_000_000u128); // 1 $TEL
     let params = (admin, admin, stables, max_limit, min_limit, authorized_faucets, drip_amount, native_drip_amount).abi_encode_params();
-    let init_bytes = [&init_selector, &params[..]].concat().into();
+    let init_bytes:Bytes = [&init_selector, &params[..]].concat().into();
 
-    // deploy proxy with initcall
-    let faucet_contract = deploy_contract_proxy(rpc_url, initial_faucet_implementation, init_bytes, Some(&wallet)).await?;
-
-    // deploy new implementation and upgrade
-    let new_faucet_implementation = StablecoinManager::deploy(&provider).await?;
-    // keccak256("upgradeToAndCall(address,bytes)") = 0x4f1ef286
-    let upgrade_selector = [79, 30, 242, 134];
-    let upgrade_params = (*new_faucet_implementation.address(), Bytes::new()).abi_encode_params();
-    let upgrade_data: Bytes = [&upgrade_selector, &upgrade_params[..]].concat().into();
-    let tx = provider.transaction_request()
+    let faucet_init_tx = TransactionRequest::default()
         .with_to(faucet_contract)
-        .with_input(upgrade_data);
-
-    let pending_new_impl_tx = provider.send_transaction(tx).await?;
-    println!("Pending faucet upgrade transaction... {}", pending_new_impl_tx.tx_hash());
-    let upgrade_tx_receipt = pending_new_impl_tx.get_receipt().await?;
-    println!("Faucet contract successfully upgraded in block: {}", upgrade_tx_receipt.block_number.expect("Faucet upgrade transaction failed"));
+        .with_input(init_bytes);
+        
+    let initialize_faucet = provider.send_transaction(faucet_init_tx)
+        .await?
+        .watch()
+        .await?;
+    println!("Faucet contract successfully initialized in tx: {}", initialize_faucet);
 
     Ok(faucet_contract)
 }
@@ -499,7 +533,7 @@ pub async fn deploy_contract_proxy(rpc_url: &str, implementation: Address, init_
     };
     let provider = ProviderBuilder::new().with_recommended_fillers().wallet(wallet).on_http(rpc_url.parse()?);
     let proxy_contract = ERC1967Proxy::deploy(provider, implementation, init_bytes).await?; 
-    
+
     Ok(*proxy_contract.address())
 }
 
