@@ -13,8 +13,8 @@ use std::str::FromStr;
 pub const INTENT_PREFIX_LENGTH: usize = 3;
 
 /// The version here is to distinguish between signing different versions of the struct
-/// or enum. 
-/// 
+/// or enum.
+///
 /// Serialized output between two different versions of the same struct/enum
 /// might accidentally (or maliciously on purpose) match.
 #[derive(Serialize_repr, Deserialize_repr, Copy, Clone, PartialEq, Eq, Debug, Hash)]
@@ -30,8 +30,8 @@ impl TryFrom<u8> for IntentVersion {
     }
 }
 
-/// This enums specifies the application ID. 
-/// 
+/// This enums specifies the application ID.
+///
 /// Two intents in two different applications
 /// (i.e., Narwhal, Telcoin, Ethereum, Polygon etc) should never collide, so that even when a
 /// signing key is reused, nobody can take a signature designated for app_1 and present it as a
@@ -57,8 +57,8 @@ impl Default for AppId {
     }
 }
 
-/// This enums specifies the intent scope. 
-/// 
+/// This enums specifies the intent scope.
+///
 /// Two intents for different scope should
 /// never collide, so no signature provided for one intent scope can be used for
 /// another, even when the serialized data itself may be the same.
@@ -83,8 +83,8 @@ impl TryFrom<u8> for IntentScope {
 }
 
 /// An intent is a compact struct serves as the domain separator for a message that a signature
-/// commits to. 
-/// 
+/// commits to.
+///
 /// It consists of three parts: [enum IntentScope] (what the type of the message is),
 /// [enum IntentVersion], [enum AppId] (what application that the signature refers to). It is used
 /// to construct [struct IntentMessage] that what a signature commits to.
@@ -118,10 +118,10 @@ impl Intent {
     }
 }
 
-/// Intent Message is a wrapper around a message with its intent. 
-/// 
-/// The message can be any type that implements [trait Serialize]. *ALL* signatures in Sui must commits
-/// to the intent message, not the message itself. This guarantees any intent
+/// Intent Message is a wrapper around a message with its intent.
+///
+/// The message can be any type that implements [trait Serialize]. *ALL* signatures in Sui must
+/// commits to the intent message, not the message itself. This guarantees any intent
 /// message signed in the system cannot collide with another since they are domain
 /// separated by intent.
 ///

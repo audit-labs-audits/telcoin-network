@@ -5,8 +5,8 @@
 use tokio::sync::{broadcast, broadcast::error::SendError};
 
 /// PreSubscribedBroadcastSender is a wrapped Broadcast channel that limits
-/// subscription to initialization time. 
-/// 
+/// subscription to initialization time.
+///
 /// This is designed to be used for cancellation
 /// signal to all the components, and the limitation is intended to prevent a component missing
 /// the shutdown signal due to a subscription that happens after the shutdown signal was sent.

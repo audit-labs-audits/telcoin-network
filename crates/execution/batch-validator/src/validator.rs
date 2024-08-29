@@ -39,8 +39,8 @@ where
 }
 
 /// Defines the validation procedure for receiving either a new single transaction (from a client)
-/// of a batch of transactions (from another validator). 
-/// 
+/// of a batch of transactions (from another validator).
+///
 /// Invalid transactions will not receive further processing.
 #[async_trait::async_trait]
 pub trait BatchValidation: Clone + Send + Sync + 'static {

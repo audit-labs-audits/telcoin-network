@@ -236,8 +236,8 @@ impl ConsensusState {
     }
 }
 
-/// Holds information about a committed round in consensus. 
-/// 
+/// Holds information about a committed round in consensus.
+///
 /// When a certificate gets committed then
 /// the corresponding certificate's round is considered a "committed" round. It bears both the
 /// committed round and the corresponding garbage collection round.

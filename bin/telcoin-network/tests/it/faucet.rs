@@ -8,10 +8,7 @@
 //! then submits the transaction to the RPC Transaction Pool for the next batch.
 
 use crate::util::create_validator_info;
-use alloy::{
-    providers::Provider,
-    sol,
-};
+use alloy::sol;
 use clap::Parser;
 use gcloud_sdk::{
     google::cloud::kms::v1::{
@@ -43,10 +40,7 @@ use tn_faucet::FaucetArgs;
 use tn_node::launch_node;
 use tn_types::{
     adiri_genesis,
-    test_utils::{
-        deploy_contract_faucet_initialize,
-        TransactionFactory,
-    },
+    test_utils::{deploy_contract_faucet_initialize, TransactionFactory},
 };
 use tokio::{runtime::Handle, task::JoinHandle, time::timeout};
 use tracing::{debug, error, info};

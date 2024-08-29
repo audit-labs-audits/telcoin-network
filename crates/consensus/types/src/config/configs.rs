@@ -119,8 +119,8 @@ impl Config {
     }
 }
 
-/// Holds all the node properties. 
-/// 
+/// Holds all the node properties.
+///
 /// An example is provided to
 /// showcase the usage and deserialization from a json file.
 /// To define a Duration on the property file can use either
