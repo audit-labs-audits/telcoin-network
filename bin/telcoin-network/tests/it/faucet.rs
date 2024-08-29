@@ -74,8 +74,9 @@ async fn test_faucet_transfers_tel_with_google_kms_e2e() -> eyre::Result<()> {
     // create google env and chain spec
     let (chain, kms_address) = prepare_google_kms_env().await?;
 
-    // create and launch validator nodes on local network
-    spawn_local_testnet(&task_executor, chain.clone()).await?;
+    // create and launch validator nodes on local network, 
+    // use expected faucet contract address from `TransactionFactory::default` with nonce == 0
+    spawn_local_testnet(&task_executor, chain.clone(), "0x8a345995579C09F45a5288b4858467920Af27301").await?;
 
     info!("nodes started");
 
@@ -87,14 +88,14 @@ async fn test_faucet_transfers_tel_with_google_kms_e2e() -> eyre::Result<()> {
 
     // assert starting balance is 0
     let starting_balance: String = client.request("eth_getBalance", rpc_params!(address)).await?;
-    println!("starting balance: {starting_balance:?}");
+    debug!("starting balance: {starting_balance:?}");
     assert_eq!(U256::from_str(&starting_balance)?, U256::ZERO);
 
     // assert deployer starting balance is properly seeded
     let default_deployer_address = TransactionFactory::default().address();
     let deployer_balance: String =
         client.request("eth_getBalance", rpc_params!(default_deployer_address)).await?;
-    println!("Deployer starting balance: {deployer_balance:?}");
+    debug!("Deployer starting balance: {deployer_balance:?}");
     assert_eq!(U256::from_str(&deployer_balance)?, U256::MAX);
 
     // deploy faucet contracts and initialize
@@ -211,6 +212,7 @@ async fn prepare_google_kms_env() -> eyre::Result<(Arc<ChainSpec>, Address)> {
 async fn spawn_local_testnet(
     task_executor: &TaskExecutor,
     chain: Arc<ChainSpec>,
+    contract_address: &str
 ) -> eyre::Result<Vec<JoinHandle<()>>> {
     // create temp path for test
     let temp_path = tempfile::TempDir::new().expect("tempdir is okay").into_path();
@@ -279,6 +281,8 @@ async fn spawn_local_testnet(
             "--instance",
             &instance,
             "--google-kms",
+            "--contract-address",
+            contract_address,
         ]);
 
         let cli_ctx = CliContext { task_executor: task_executor.clone() };
@@ -318,7 +322,7 @@ async fn spawn_local_testnet(
 /// Warning: this should only be called with a timeout - could result in infinite loop otherwise.
 async fn ensure_account_balance(client: &HttpClient, address: Address) -> eyre::Result<U256> {
     while let Ok(bal) = client.request::<String, _>("eth_getBalance", rpc_params!(address)).await {
-        println!("bal: {bal:?}");
+        debug!("bal: {bal:?}");
         let balance = U256::from_str(&bal)?;
         if balance > U256::ZERO {
             return Ok(balance);

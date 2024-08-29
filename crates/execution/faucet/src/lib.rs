@@ -42,16 +42,6 @@ pub type Secp256k1PubKeyBytes = [u8; PUBLIC_KEY_SIZE];
 
 /// pub for integration test
 pub type Drip = alloy_sol_types::sol! { (address, address) };
-pub type StablecoinManagerInitParams = alloy_sol_types::sol! {(
-    address,
-    address,
-    address[],
-    uint256,
-    uint256,
-    address[],
-    uint256,
-    uint256,
-)};
 
 /// Configure the faucet with a wait period between transfers and the amount of TEL to transfer.
 pub struct FaucetConfig {
@@ -62,6 +52,8 @@ pub struct FaucetConfig {
     pub chain_id: u64,
     /// Sensitive information regarding the wallet hot-signing transactions
     pub wallet: FaucetWallet,
+    /// Onchain faucet contract address for testing
+    pub contract_address: Address,
 }
 
 /// The account details used by the faucet to create and sign transactions.
@@ -119,15 +111,14 @@ impl Faucet {
         config: FaucetConfig,
     ) -> (Self, FaucetService<Provider, Pool, Tasks>) {
         let (to_service, rx) = unbounded_channel();
-        let FaucetConfig { wait_period, chain_id, wallet } = config;
+        let FaucetConfig { wait_period, chain_id, wallet, contract_address } = config;
 
         // Construct an `LruCache` of `<String, SystemTime>`s, limited by 24hr expiry time
         let lru_cache = LruCache::with_expiry_duration(wait_period);
         let (add_to_cache_tx, update_cache_rx) = tokio::sync::mpsc::unbounded_channel();
 
-        let faucet_contract = hex!("0e26ade1f5a99bd6b5d40f870a87bfe143db68b6").into();
         let service = FaucetService {
-            faucet_contract,
+            faucet_contract: contract_address,
             request_rx: UnboundedReceiverStream::new(rx),
             provider,
             pool,
@@ -428,7 +419,7 @@ mod tests {
             .into_inner()
             .signature;
 
-        println!("kms response:\n {:?}", signed_data);
+        debug!("kms response:\n {:?}", signed_data);
 
         let pem_pubkey = kms_client
             .get()
@@ -438,6 +429,6 @@ mod tests {
             .into_inner()
             .pem;
 
-        println!("public key:\n {:?}", pem_pubkey);
+        debug!("public key:\n {:?}", pem_pubkey);
     }
 }

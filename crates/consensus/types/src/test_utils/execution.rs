@@ -26,19 +26,8 @@ use reth_provider::{BlockReaderIdExt, ExecutionOutcome, StateProviderFactory};
 use reth_revm::database::StateProviderDatabase;
 use reth_transaction_pool::{TransactionOrigin, TransactionPool};
 use secp256k1::Secp256k1;
-// use StablecoinManager::StablecoinManagerInitParams;
+use tracing::debug;
 use std::{str::FromStr as _, sync::Arc};
-
-// pub type StablecoinManagerInitParams = alloy_sol_types::sol! {(
-//     address,
-//     address,
-//     address[],
-//     uint256,
-//     uint256,
-//     address[],
-//     uint256,
-//     uint256,
-// )};
 
 /// Adiri genesis with funded [TransactionFactory] default account.
 pub fn test_genesis() -> Genesis {
@@ -379,7 +368,7 @@ impl TransactionFactory {
         let recovered = pooled_tx.try_into_ecrecovered().expect("tx is recovered");
         let transaction = <Pool::Transaction>::from_recovered_pooled_transaction(recovered);
 
-        println!("transaction: \n{transaction:?}\n");
+        debug!("transaction: \n{transaction:?}\n");
 
         pool.add_transaction(TransactionOrigin::Local, transaction)
             .await
@@ -415,9 +404,7 @@ pub async fn deploy_contract_stablecoin(
     let wallet = EthereumWallet::from(signer);
     let provider =
         ProviderBuilder::new().with_recommended_fillers().wallet(wallet).on_http(rpc_url.parse()?);
-    println!("Deploying Stablecoin implementation...");
     let stablecoin_contract = Stablecoin::deploy(&provider).await?;
-    println!("Stablecoin implementation deployed");
 
     Ok(*stablecoin_contract.address())
 }
@@ -448,14 +435,12 @@ pub async fn deploy_contract_faucet_initialize(
     // manually increment nonce
     tx_factory.inc_nonce();
     let faucet_impl = initial_faucet_implementation.address().clone();
-    println!(
+    debug!(
         "Faucet implementation deployed to: {}",
         faucet_impl
     );
 
     // deploy canonical faucet (proxy)
-    println!("Pending canonical faucet proxy deployment...");
-
     // keccak256(initialize((address,address,address[],uint256,uint256,address[],uint256,uint256))
     // == 0x16ada6b1
     let faucet_init_selector = [22, 173, 166, 177];
@@ -480,7 +465,7 @@ pub async fn deploy_contract_faucet_initialize(
     let init_call = [&faucet_init_selector, &init_params[..]].concat().into();
     
     let faucet_contract = deploy_contract_proxy(&rpc_url, faucet_impl, init_call, tx_factory).await?;
-    println!("Successfully deployed canonical faucet to: {}", faucet_contract);
+    debug!("Successfully deployed canonical faucet to: {}", faucet_contract);
     
     // grant faucet role to kms address
     // 0x2f2ff15d
@@ -490,14 +475,13 @@ pub async fn deploy_contract_faucet_initialize(
     let grant_role_call = [&grant_role_selector, &grant_role_params[..]].concat().into();
     let grant_role_tx = tx_factory.create_eip1559(chain.clone(), gas_price, faucet_contract, U256::ZERO, grant_role_call).envelope_encoded();
     let _tx_hash = provider.send_raw_transaction(grant_role_tx.as_ref()).await?;
-    println!("Granted faucet role to kms address");
 
     // fund faucet with some tel
     let value = U256::from(10_000_000_000_000_000_000u128);
     let fund_faucet_tx =
         tx_factory.create_eip1559(chain, gas_price, faucet_contract, value, Bytes::new()).envelope_encoded();
     let tx_hash = provider.send_raw_transaction(fund_faucet_tx.as_ref()).await?.watch().await?;
-    println!("Faucet contract successfully brought up to date and funded in tx: {}", tx_hash);
+    debug!("Faucet contract successfully brought up to date and funded in tx: {}", tx_hash);
 
     Ok(faucet_contract)
 }
@@ -543,9 +527,9 @@ mod tests {
 
         // let private = base64::encode(keypair.secret.as_bytes());
         let secret = keypair.secret_bytes();
-        println!("secret: {:?}", hex::encode(secret));
+        // println!("secret: {:?}", hex::encode(secret));
         let pubkey = keypair.public_key().serialize();
-        println!("public: {:?}", hex::encode(pubkey));
+        // println!("public: {:?}", hex::encode(pubkey));
 
         // 9bf49a6a0755f953811fce125f2683d50429c3bb49e074147e0089a52eae155f
         // println!("{:?}", hex::encode(bytes));
