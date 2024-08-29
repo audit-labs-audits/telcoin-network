@@ -202,6 +202,7 @@ mod tests {
         Message, PublicKey, SECP256K1,
     };
     use tokio::sync::oneshot;
+    use tracing::debug;
 
     /// Test the response from the following request to Google Cloud KMS
     /// ```rust
