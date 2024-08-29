@@ -388,7 +388,7 @@ mod tests {
             gas_price,
             Address::ZERO,
             value, // 1 TEL
-            Bytes::new()
+            Bytes::new(),
         );
         debug!("transaction 1: {transaction1:?}");
 
@@ -397,7 +397,7 @@ mod tests {
             gas_price,
             Address::ZERO,
             value, // 1 TEL
-            Bytes::new()
+            Bytes::new(),
         );
         debug!("transaction 2: {transaction2:?}");
 
@@ -406,7 +406,7 @@ mod tests {
             gas_price,
             Address::ZERO,
             value, // 1 TEL
-            Bytes::new()
+            Bytes::new(),
         );
         debug!("transaction 3: {transaction3:?}");
 
@@ -495,7 +495,7 @@ mod tests {
             gas_price,
             Address::ZERO,
             value, // 1 TEL
-            Bytes::new()
+            Bytes::new(),
         );
         debug!("transaction 1: {transaction1:?}");
 
@@ -504,7 +504,7 @@ mod tests {
             gas_price,
             Address::ZERO,
             value, // 1 TEL
-            Bytes::new()
+            Bytes::new(),
         );
         debug!("transaction 2: {transaction2:?}");
 
@@ -513,7 +513,7 @@ mod tests {
             gas_price,
             Address::ZERO,
             value, // 1 TEL
-            Bytes::new()
+            Bytes::new(),
         );
         debug!("transaction 3: {transaction3:?}");
 
@@ -606,7 +606,7 @@ mod tests {
             gas_price,
             Address::ZERO,
             value, // 1 TEL
-            Bytes::new()
+            Bytes::new(),
         );
         debug!("transaction 1: {transaction1:?}");
 
@@ -615,7 +615,7 @@ mod tests {
             gas_price,
             Address::ZERO,
             value, // 1 TEL
-            Bytes::new()
+            Bytes::new(),
         );
         debug!("transaction 2: {transaction2:?}");
 
@@ -624,7 +624,7 @@ mod tests {
             gas_price,
             Address::ZERO,
             value, // 1 TEL
-            Bytes::new()
+            Bytes::new(),
         );
         debug!("transaction 3: {transaction3:?}");
 
@@ -718,7 +718,7 @@ mod tests {
             gas_price,
             Address::ZERO,
             value, // 1 TEL
-            Bytes::new()
+            Bytes::new(),
         );
         debug!("transaction 1: {transaction1:?}");
 
@@ -727,7 +727,7 @@ mod tests {
             gas_price,
             Address::ZERO,
             value, // 1 TEL
-            Bytes::new()
+            Bytes::new(),
         );
         debug!("transaction 2: {transaction2:?}");
 
@@ -736,7 +736,7 @@ mod tests {
             gas_price,
             Address::ZERO,
             value, // 1 TEL
-            Bytes::new()
+            Bytes::new(),
         );
         debug!("transaction 3: {transaction3:?}");
 
@@ -872,7 +872,7 @@ mod tests {
             gas_price,
             Address::ZERO,
             value, // 1 TEL
-            Bytes::new()
+            Bytes::new(),
         );
         debug!("transaction 1: {transaction1:?}");
 
@@ -881,7 +881,7 @@ mod tests {
             gas_price,
             Address::ZERO,
             value, // 1 TEL
-            Bytes::new()
+            Bytes::new(),
         );
         debug!("transaction 2: {transaction2:?}");
 
@@ -890,7 +890,7 @@ mod tests {
             gas_price,
             Address::ZERO,
             value, // 1 TEL
-            Bytes::new()
+            Bytes::new(),
         );
         debug!("transaction 3: {transaction3:?}");
 

@@ -519,7 +519,7 @@ pub async fn deploy_contract_proxy(
 
 #[cfg(test)]
 mod tests {
-    
+
     // use std::str::FromStr;
 
     use super::*;

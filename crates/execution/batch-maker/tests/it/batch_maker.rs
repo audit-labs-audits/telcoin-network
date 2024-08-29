@@ -148,6 +148,7 @@ async fn test_make_batch_el_to_cl() {
         gas_price,
         Address::ZERO,
         value, // 1 TEL
+        Bytes::new(),
     );
     debug!("transaction 1: {transaction1:?}");
 
@@ -156,6 +157,7 @@ async fn test_make_batch_el_to_cl() {
         gas_price,
         Address::ZERO,
         value, // 1 TEL
+        Bytes::new(),
     );
     debug!("transaction 2: {transaction2:?}");
 
@@ -164,6 +166,7 @@ async fn test_make_batch_el_to_cl() {
         gas_price,
         Address::ZERO,
         value, // 1 TEL
+        Bytes::new(),
     );
     debug!("transaction 3: {transaction3:?}");
 

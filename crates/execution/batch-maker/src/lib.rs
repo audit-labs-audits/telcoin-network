@@ -387,7 +387,7 @@ mod tests {
     use reth_db::test_utils::{create_test_rw_db, tempdir_path};
     use reth_db_common::init::init_genesis;
     use reth_node_ethereum::{EthEvmConfig, EthExecutorProvider};
-    use reth_primitives::{alloy_primitives::U160, GenesisAccount};
+    use reth_primitives::{alloy_primitives::U160, Bytes, GenesisAccount};
     use reth_provider::{
         providers::{BlockchainProvider, StaticFileProvider},
         ProviderFactory,
@@ -488,6 +488,7 @@ mod tests {
             gas_price,
             Address::ZERO,
             value, // 1 TEL
+            Bytes::new(),
         );
         debug!("transaction 1: {transaction1:?}");
         debug!("transaction 1 encoded: {:?}", transaction1.clone().envelope_encoded());
@@ -497,6 +498,7 @@ mod tests {
             gas_price,
             Address::ZERO,
             value, // 1 TEL
+            Bytes::new(),
         );
         debug!("transaction 2: {transaction2:?}");
         debug!("transaction 2 encoded: {:?}", transaction2.clone().envelope_encoded());
@@ -506,6 +508,7 @@ mod tests {
             gas_price,
             Address::ZERO,
             value, // 1 TEL
+            Bytes::new(),
         );
         debug!("transaction 3: {transaction3:?}");
         debug!("transaction 3 encoded: {:?}", transaction3.clone().envelope_encoded());
