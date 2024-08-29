@@ -395,12 +395,13 @@ pub async fn deploy_contract_stablecoin(
 ) -> eyre::Result<Address> {
     // stablecoin abi
     sol!(
+        #[allow(clippy::too_many_arguments)]
         #[sol(rpc)]
         Stablecoin,
         "src/test_utils/artifacts/Stablecoin.json"
     );
 
-    let signer: PrivateKeySigner = tx_factory.get_default_signer()?.into();
+    let signer: PrivateKeySigner = tx_factory.get_default_signer()?;
     let wallet = EthereumWallet::from(signer);
     let provider =
         ProviderBuilder::new().with_recommended_fillers().wallet(wallet).on_http(rpc_url.parse()?);
@@ -419,7 +420,7 @@ pub async fn deploy_contract_faucet_initialize(
     deployed_token_bytes: Vec<Address>,
     tx_factory: &mut TransactionFactory,
 ) -> eyre::Result<Address> {
-    let signer: PrivateKeySigner = tx_factory.get_default_signer()?.into();
+    let signer: PrivateKeySigner = tx_factory.get_default_signer()?;
     let wallet = EthereumWallet::from(signer);
     let provider =
         ProviderBuilder::new().with_recommended_fillers().wallet(wallet).on_http(rpc_url.parse()?);
@@ -434,7 +435,7 @@ pub async fn deploy_contract_faucet_initialize(
     let initial_faucet_implementation = StablecoinManager::deploy(&provider).await?;
     // manually increment nonce
     tx_factory.inc_nonce();
-    let faucet_impl = initial_faucet_implementation.address().clone();
+    let faucet_impl = *initial_faucet_implementation.address();
     debug!("Faucet implementation deployed to: {}", faucet_impl);
 
     // deploy canonical faucet (proxy)
@@ -463,7 +464,7 @@ pub async fn deploy_contract_faucet_initialize(
     let init_call = [&faucet_init_selector, &init_params[..]].concat().into();
 
     let faucet_contract =
-        deploy_contract_proxy(&rpc_url, faucet_impl, init_call, tx_factory).await?;
+        deploy_contract_proxy(rpc_url, faucet_impl, init_call, tx_factory).await?;
     debug!("Successfully deployed canonical faucet to: {}", faucet_contract);
 
     // grant faucet role to kms address
@@ -506,7 +507,7 @@ pub async fn deploy_contract_proxy(
         "src/test_utils/artifacts/ERC1967Proxy.json"
     );
 
-    let signer: PrivateKeySigner = tx_factory.get_default_signer()?.into();
+    let signer: PrivateKeySigner = tx_factory.get_default_signer()?;
     let wallet = EthereumWallet::from(signer);
     let provider =
         ProviderBuilder::new().with_recommended_fillers().wallet(wallet).on_http(rpc_url.parse()?);
@@ -518,7 +519,7 @@ pub async fn deploy_contract_proxy(
 
 #[cfg(test)]
 mod tests {
-    use reth_primitives::hex;
+    
     // use std::str::FromStr;
 
     use super::*;

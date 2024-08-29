@@ -327,6 +327,7 @@ pub fn make_certificates(
 }
 
 /// Creates certificates for the provided rounds but also having slow nodes.
+///
 /// `range`: the rounds for which we intend to create the certificates for
 /// `initial_parents`: the parents to use when start creating the certificates
 /// `keys`: the authorities for which it will create certificates for
@@ -490,6 +491,7 @@ pub fn make_certificates_with_leader_configuration(
 }
 
 /// Returns the parents that should be used as part of a newly created certificate.
+///
 /// The `slow_nodes` parameter is used to dictate which parents to exclude and not use. The slow
 /// node will not be used under some probability which is provided as part of the tuple.
 /// If probability to use it is 0.0, then the parent node will NEVER be used.

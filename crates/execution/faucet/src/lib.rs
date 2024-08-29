@@ -15,7 +15,7 @@ use gcloud_sdk::{
 };
 use lru_time_cache::LruCache;
 use reth::rpc::server_types::eth::{EthApiError, EthResult};
-use reth_primitives::{hex, Address, TxHash};
+use reth_primitives::{Address, TxHash};
 use reth_provider::{BlockReaderIdExt, StateProviderFactory};
 use reth_tasks::{TaskSpawner, TokioTaskExecutor};
 use reth_transaction_pool::TransactionPool;
