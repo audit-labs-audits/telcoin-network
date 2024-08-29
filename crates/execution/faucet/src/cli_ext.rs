@@ -10,7 +10,7 @@ use eyre::ContextCompat;
 use k256::PublicKey as PubKey;
 use reth::rpc::builder::TransportRpcModules;
 use reth_cli_util::parse_duration_from_secs;
-use reth_primitives::{public_key_to_address, U256};
+use reth_primitives::{public_key_to_address, Address, U256};
 use reth_provider::{BlockReaderIdExt, StateProviderFactory};
 use reth_transaction_pool::TransactionPool;
 use secp256k1::PublicKey;
@@ -28,9 +28,10 @@ pub struct FaucetArgs {
     #[clap(long, default_value = "86400", value_parser = parse_duration_from_secs, value_name = "WAIT_PERIOD")]
     pub(crate) wait_period: Duration,
 
-    /// The amount of TEL to transfer to each recipient.
-    #[clap(long, default_value = "1", value_parser = parse_u256_from_decimal_value, value_name = "TRANSFER_AMOUNT")]
-    pub(crate) transfer_amount: U256,
+    /// The address for the Telcoin-Network Faucet which handles TEL and XYZ transfers to each
+    /// recipient.
+    #[clap(long, default_value_t = Address::ZERO, value_parser = Address::from_str, value_name = "FAUCET_CONTRACT_ADDRESS")]
+    pub(crate) contract_address: Address,
 
     /// The chain id for the faucet to use when creating transactions.
     #[clap(long, default_value_t = 2017, value_name = "CHAIN_ID")]

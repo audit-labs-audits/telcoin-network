@@ -2,24 +2,43 @@
 // SPDX-License-Identifier: Apache-2.0
 
 //! Specific test utils for execution layer
-use crate::{adiri_genesis, now, Batch, BatchAPI, ExecutionKeypair, MetadataAPI, TimestampSec, test_utils::artifacts};
+use crate::{adiri_genesis, now, Batch, BatchAPI, ExecutionKeypair, MetadataAPI, TimestampSec};
+use alloy::{
+    network::EthereumWallet,
+    providers::{Provider, ProviderBuilder},
+    signers::{k256::FieldBytes, local::PrivateKeySigner},
+    sol,
+    sol_types::SolValue,
+};
 use rand::{rngs::StdRng, Rng, SeedableRng};
 use reth_chainspec::{BaseFeeParams, ChainSpec};
 use reth_evm::execute::{BlockExecutionOutput, BlockExecutorProvider, Executor as _};
 use reth_primitives::{
     constants::{
         EMPTY_TRANSACTIONS, EMPTY_WITHDRAWALS, ETHEREUM_BLOCK_GAS_LIMIT, MIN_PROTOCOL_BASE_FEE,
-    }, hex, proofs, public_key_to_address, sign_message, Address, Block, Bytes, FromRecoveredPooledTransaction, Genesis, GenesisAccount, Header, PooledTransactionsElement, SealedHeader, Signature, Transaction, TransactionSigned, TxEip1559, TxHash, TxKind, Withdrawals, B256, EMPTY_OMMER_ROOT_HASH, U256
+    },
+    proofs, public_key_to_address, sign_message, Address, Block, Bytes,
+    FromRecoveredPooledTransaction, Genesis, GenesisAccount, Header, PooledTransactionsElement,
+    SealedHeader, Signature, Transaction, TransactionSigned, TxEip1559, TxHash, TxKind,
+    Withdrawals, B256, EMPTY_OMMER_ROOT_HASH, U256,
 };
 use reth_provider::{BlockReaderIdExt, ExecutionOutcome, StateProviderFactory};
 use reth_revm::database::StateProviderDatabase;
-use reth_rpc_types::TransactionRequest;
 use reth_transaction_pool::{TransactionOrigin, TransactionPool};
 use secp256k1::Secp256k1;
-use serde::Deserialize;
-use tokio::fs::read_to_string;
+// use StablecoinManager::StablecoinManagerInitParams;
 use std::{str::FromStr as _, sync::Arc};
-use alloy::{sol, providers::{Provider, ProviderBuilder}, network::{EthereumWallet, TransactionBuilder, ReceiptResponse}, sol_types::SolValue, signers::{k256::FieldBytes, local::PrivateKeySigner}};
+
+// pub type StablecoinManagerInitParams = alloy_sol_types::sol! {(
+//     address,
+//     address,
+//     address[],
+//     uint256,
+//     uint256,
+//     address[],
+//     uint256,
+//     uint256,
+// )};
 
 /// Adiri genesis with funded [TransactionFactory] default account.
 pub fn test_genesis() -> Genesis {
@@ -284,6 +303,7 @@ impl TransactionFactory {
         gas_price: u128,
         to: Address,
         value: U256,
+        input: Bytes,
     ) -> TransactionSigned {
         // Eip1559
         let transaction = Transaction::Eip1559(TxEip1559 {
@@ -294,7 +314,7 @@ impl TransactionFactory {
             gas_limit: 1_000_000,
             to: TxKind::Call(to),
             value,
-            input: Default::default(),
+            input,
             access_list: Default::default(),
         });
 
@@ -319,15 +339,11 @@ impl TransactionFactory {
     }
 
     /// Helper to instantiate an `alloy-signer-local::PrivateKeySigner` wrapping the default account
-    pub fn get_default_signer() -> eyre::Result<PrivateKeySigner> {
-        let mut rng = StdRng::from_seed([0; 32]);
-        let (private_key, _) = Secp256k1::new().generate_keypair(&mut rng);
+    pub fn get_default_signer(&self) -> eyre::Result<PrivateKeySigner> {
         // circumvent Secp256k1 <> k256 type incompatibility via FieldBytes intermediary
-        let binding = private_key.secret_bytes();
+        let binding = self.keypair.secret_key().secret_bytes();
         let secret_bytes_array = FieldBytes::from_slice(&binding);
-        let signer = PrivateKeySigner::from_field_bytes(secret_bytes_array).expect("Error constructing signer from private key");
-
-        Ok(signer)
+        Ok(PrivateKeySigner::from_field_bytes(secret_bytes_array)?)
     }
 
     /// Create and submit the next transaction to the provided [TransactionPool].
@@ -342,7 +358,7 @@ impl TransactionFactory {
     where
         Pool: TransactionPool,
     {
-        let tx = self.create_eip1559(chain, gas_price, to, value);
+        let tx = self.create_eip1559(chain, gas_price, to, value, Bytes::new());
         let pooled_tx =
             PooledTransactionsElement::try_from_broadcast(tx).expect("tx valid for pool");
         let recovered = pooled_tx.try_into_ecrecovered().expect("tx is recovered");
@@ -384,7 +400,10 @@ where
 }
 
 /// Helper to deploy implementation contract for an eXYZ
-pub async fn deploy_contract_stablecoin(rpc_url: &str, opt_wallet: Option<&EthereumWallet>) -> eyre::Result<Address> {
+pub async fn deploy_contract_stablecoin(
+    rpc_url: &str,
+    tx_factory: &TransactionFactory,
+) -> eyre::Result<Address> {
     // stablecoin abi
     sol!(
         #[sol(rpc)]
@@ -392,152 +411,31 @@ pub async fn deploy_contract_stablecoin(rpc_url: &str, opt_wallet: Option<&Ether
         "src/test_utils/artifacts/Stablecoin.json"
     );
 
-    let wallet = match opt_wallet {
-        Some(wallet) => wallet.clone(),
-        None => {
-            let signer: PrivateKeySigner = TransactionFactory::get_default_signer().unwrap().into();
-            EthereumWallet::from(signer)
-        }   
-    };
-    let provider = ProviderBuilder::new().with_recommended_fillers().wallet(wallet).on_http(rpc_url.parse()?);
+    let signer: PrivateKeySigner = tx_factory.get_default_signer()?.into();
+    let wallet = EthereumWallet::from(signer);
+    let provider =
+        ProviderBuilder::new().with_recommended_fillers().wallet(wallet).on_http(rpc_url.parse()?);
     println!("Deploying Stablecoin implementation...");
     let stablecoin_contract = Stablecoin::deploy(&provider).await?;
     println!("Stablecoin implementation deployed");
 
     Ok(*stablecoin_contract.address())
-} 
-
-/// Helper to deploy implementation contract for the canonical Telcoin faucet
-/// Since Alloy doesn't yet offer utilities for the `CREATE2`, we rebuild and submit deploy and upgrade transactions to derive the expected faucet proxy address
-pub async fn deploy_contract_faucet_initialize(rpc_url: &str, init_admin_wallet: EthereumWallet, opt_wallet: Option<&EthereumWallet>) -> eyre::Result<Address> {
-    let wallet = match opt_wallet {
-        Some(wallet) => wallet.clone(),
-        None => {
-            let signer: PrivateKeySigner = TransactionFactory::get_default_signer().unwrap().into();
-            EthereumWallet::from(signer)
-        }
-    };
-    let provider = ProviderBuilder::new().with_recommended_fillers().wallet(wallet.clone()).on_http(rpc_url.parse()?);
-    
-    // fund single-use address and deploy Arachnid Deterministic Deployment proxy
-    let single_use_arachnid_signer = Address::from(hex!("3fab184622dc19b6109349b94811493bf2a45362"));
-    let fund_arachnid_signer_tx = TransactionRequest::default().with_to(single_use_arachnid_signer).with_value(U256::from(1e18));
-    let fund_tx_hash = provider.send_transaction(fund_arachnid_signer_tx).await?.watch().await?;
-    println!("Arachnid single-use signer funded at tx hash: {}", fund_tx_hash);
-
-    let arachnid_presigned_raw_tx = artifacts::transaction_artifacts::ARACHNID_DETERMINISTIC_FACTORY_CREATE_TX;
-    let pending_arachnid_creation = provider.send_raw_transaction(&arachnid_presigned_raw_tx).await?;
-    println!("Pending arachnid factory deployment... {}", pending_arachnid_creation.tx_hash());
-    let arachnid_creation_receipt = pending_arachnid_creation.get_receipt().await?;
-    println!("Arachnid factory deployed to: {}", arachnid_creation_receipt.contract_address.expect("Arachnid create2 factory deployment failed"));
-
-    // submit create2 transaction to Arachnid Deterministic Deployment proxy
-    let arachnid_address = Address::from(hex!("4e59b44847b379578588920ca78fbf26c0b4956c"));
-    let deterministic_deploy_data = artifacts::transaction_artifacts::DETERMINISTIC_FAUCET_DEPLOY_DATA;
-    let create2_faucet_impl_tx = provider.transaction_request()
-        .with_to(arachnid_address)
-        .with_input(deterministic_deploy_data);
-
-    let pending_deterministic_impl_tx = provider.send_transaction(create2_faucet_impl_tx).await?;
-    println!("Pending deterministic impl deployment... {}", pending_deterministic_impl_tx.tx_hash());
-    pending_deterministic_impl_tx.get_receipt().await?;
-    // alloy doesn't detect or support create2 deployments so log it counterfactually
-    let initial_faucet_implementation = Address::from(hex!("857721c881fc26e4664a9685d8650c0505997672")); 
-    println!("Initial deterministic faucet implementation deployed to: {}", initial_faucet_implementation);
-
-    // deploy proxy with empty `initCall` to defer initialization for convenience 
-    println!("Pending canonical faucet proxy deployment...");
-    let faucet_deploy_data = artifacts::transaction_artifacts::CANONICAL_FAUCET_DEPLOY_DATA;
-    let create2_faucet_proxy_tx = provider.transaction_request()
-        .with_to(arachnid_address)
-        .with_input(faucet_deploy_data);
-    let pending_canonical_faucet_tx= provider.send_transaction(create2_faucet_proxy_tx).await?;
-    let _ = pending_canonical_faucet_tx.get_receipt().await?;
-    // alloy doesn't detect or support create2 deployments so log it counterfactually
-    let faucet_contract: Address = Address::from(hex!("0e26ade1f5a99bd6b5d40f870a87bfe143db68b6"));
-    println!("Successfully deployed canonical faucet to: {}", faucet_contract);
-
-    // configure proper roles (admin, maintainer, faucet) once deterministic faucet is deployed
-    let default_deployer = Address::from(hex!("b14d3c4f5fbfbcfb98af2d330000d49c95b93aa7"));
-    transfer_roles(rpc_url, faucet_contract, default_deployer, init_admin_wallet).await;    
-
-    #[derive(Deserialize)]
-    struct BytecodeObject {
-        object: String,
-    }
-
-    #[derive(Deserialize)]
-    struct ContractBytecode {
-        bytecode: BytecodeObject,
-    }
-
-    // deploy new implementation
-    println!("Pending new faucet impl deployment...");
-    let file = read_to_string("../../crates/consensus/types/src/test_utils/artifacts/StablecoinManager.json").await?;
-    let artifact_content: ContractBytecode = serde_json::from_str(&file)?;
-    let bytecode_bytes = Bytes::from(hex::decode(artifact_content.bytecode.object)?);
-    
-    // manually manage nonces due to bug in `Alloy::NonceFiller`
-    let mut current_nonce = provider.get_transaction_count(default_deployer).await?;
-    let tx = TransactionRequest::default().with_deploy_code(bytecode_bytes).with_nonce(current_nonce);
-    let receipt = provider.send_transaction(tx).await?.get_receipt().await?;
-    current_nonce += 1;
-    let new_faucet_implementation = receipt.contract_address().expect("New faucet impl deployment failed");
-    println!("Successfully deployed new faucet impl to: {}", new_faucet_implementation);
-
-    let set_native_drip_selector: [u8; 4] = [149, 144, 66, 162];
-    let native_drip_amount = U256::from(1_000_000_000_000_000_000u128); // 1 $TEL
-    let params = native_drip_amount.abi_encode();
-    let set_native_drip_bytes:Bytes = [&set_native_drip_selector, &params[..]].concat().into();
-
-    // keccak256("upgradeToAndCall(address,bytes)") = 0x4f1ef286
-    let upgrade_selector = [79, 30, 242, 134];
-    // dereferencing `new_faucet_implementation` resulted in malformed abi-encoded calldata, weird rust thing?
-    let upgrade_params = (new_faucet_implementation, set_native_drip_bytes).abi_encode_params();
-    let upgrade_data: Bytes = [&upgrade_selector, &upgrade_params[..]].concat().into();
-    let upgrade_tx = provider.transaction_request()
-        .with_to(faucet_contract)
-        .with_input(upgrade_data)
-        .with_nonce(current_nonce);
-
-    println!("Pending faucet upgrade transaction...");
-    let pending_upgrade_tx = provider.send_transaction(upgrade_tx).await?;
-    current_nonce += 1;
-    let upgrade_tx_receipt = pending_upgrade_tx.get_receipt().await?;
-    println!("Faucet contract successfully updated with native drip amount config in tx: {}", upgrade_tx_receipt.transaction_hash);
-
-    // keccak256("UpdateXYZ(address,bool,uint256,uint256)") = 0xe9aea396
-    let update_xyz_selector = [233, 174, 163, 150];
-    let update_xyz_params = (Address::ZERO, true, U256::MAX, U256::from(1000)).abi_encode_params();
-    let update_xyz_data: Bytes = [&update_xyz_selector, &update_xyz_params[..]].concat().into();
-    let update_xyz_tx = provider.transaction_request()
-        .with_to(faucet_contract)
-        .with_input(update_xyz_data)
-        .with_nonce(current_nonce);
-    
-    // enable native currency pointer token on faucet
-    let pending_update_xyz_tx = provider.send_transaction(update_xyz_tx.clone()).await?;
-    current_nonce += 1;
-    println!("Turning on faucet's native currency drip in tx hash: {}", pending_update_xyz_tx.tx_hash());
-    let _ = pending_update_xyz_tx.get_receipt().await?;
-    println!("Native currency enabed");
-    
-    // fund faucet with some tel
-    let fund_faucet_tx = TransactionRequest::default()
-        .with_to(faucet_contract)
-        .with_value(U256::from(10_000_000_000_000_000_000u128))
-        .with_nonce(current_nonce);
-    let tx_hash = provider.send_transaction(fund_faucet_tx).await?.watch().await?;
-    println!("Faucet contract successfully brought up to date and funded in tx: {}", tx_hash);
-
-    Ok(faucet_contract)
 }
 
-/// Helper function to transfer the admin role from the faucet's initial admin one better suited for testing
-/// This is unfortunately required for the deterministic faucet contract address because it was included
-/// in the `initData` portion of its `ERC1967::constructor()` arguments
-pub async fn transfer_roles(rpc_url: &str, faucet_contract: Address, default_deployer: Address, init_admin_wallet: EthereumWallet) {
-    let provider = ProviderBuilder::new().with_recommended_fillers().wallet(init_admin_wallet).on_http(rpc_url.parse().expect("Invalid url"));
+/// Helper to deploy implementation contract for the canonical Telcoin faucet
+/// Since Alloy doesn't yet offer utilities for the `CREATE2`, we rebuild and submit deploy and
+/// upgrade transactions to derive the expected faucet proxy address
+pub async fn deploy_contract_faucet_initialize(
+    chain: Arc<ChainSpec>,
+    rpc_url: &str,
+    kms_address: Address,
+    deployed_token_bytes: Vec<Address>,
+    tx_factory: &mut TransactionFactory,
+) -> eyre::Result<Address> {
+    let signer: PrivateKeySigner = tx_factory.get_default_signer()?.into();
+    let wallet = EthereumWallet::from(signer);
+    let provider =
+        ProviderBuilder::new().with_recommended_fillers().wallet(wallet).on_http(rpc_url.parse()?);
 
     sol!(
         #[sol(rpc)]
@@ -545,26 +443,72 @@ pub async fn transfer_roles(rpc_url: &str, faucet_contract: Address, default_dep
         "src/test_utils/artifacts/StablecoinManager.json"
     );
 
-    let manager = StablecoinManager::new(faucet_contract, provider);
+    // deploy faucet implementation contract
+    let initial_faucet_implementation = StablecoinManager::deploy(&provider).await?;
+    // manually increment nonce
+    tx_factory.inc_nonce();
+    let faucet_impl = initial_faucet_implementation.address().clone();
+    println!(
+        "Faucet implementation deployed to: {}",
+        faucet_impl
+    );
 
-    println!("Pending transfer of roles...");
-    let testing_faucet = Address::from(hex!("6af9941928152dccf1d6a943553f00445d113325"));
-    let grant_faucet_config = manager.grantRole(B256::from_str("0xaecf5761d3ba769b4631978eb26cb84eae66bcaca9c3f0f4ecde3feb2f4cf144").unwrap(), testing_faucet);
-    let grant_faucet_tx = grant_faucet_config.send().await.expect("Failed to grant faucet role");
-    let _ = grant_faucet_tx.get_receipt().await;
+    // deploy canonical faucet (proxy)
+    println!("Pending canonical faucet proxy deployment...");
 
-    let grant_maintainer_config = manager.grantRole(B256::from_str("0x339759585899103d2ace64958e37e18ccb0504652c81d4a1b8aa80fe2126ab95").unwrap(), default_deployer);
-    let grant_maintainer_tx = grant_maintainer_config.send().await.expect("Failed to grant maintainer role");
-    let maintainer_hash = grant_maintainer_tx.get_receipt().await;
+    // keccak256(initialize((address,address,address[],uint256,uint256,address[],uint256,uint256))
+    // == 0x16ada6b1
+    let faucet_init_selector = [22, 173, 166, 177];
+    let admin: Address = tx_factory.address();
+    let init_max_limit = U256::MAX;
+    let init_min_limit = U256::from(1_000);
+    let kms_faucets = vec![kms_address];
+    let xyz_amount = U256::from(10).checked_pow(U256::from(6)).expect("1e18 doesn't overflow U256"); // 100 $XYZ
+    let tel_amount =
+        U256::from(10).checked_pow(U256::from(18)).expect("1e18 doesn't overflow U256"); // 1 $TEL
+    
+    let init_params = StablecoinManager::StablecoinManagerInitParams{
+        admin_: admin, 
+        maintainer_: admin,
+        tokens_: deployed_token_bytes, 
+        initMaxLimit: init_max_limit, 
+        initMinLimit: init_min_limit, 
+        authorizedFaucets_: kms_faucets, 
+        dripAmount_: xyz_amount, 
+        nativeDripAmount_: tel_amount
+    }.abi_encode();
+    let init_call = [&faucet_init_selector, &init_params[..]].concat().into();
+    
+    let faucet_contract = deploy_contract_proxy(&rpc_url, faucet_impl, init_call, tx_factory).await?;
+    println!("Successfully deployed canonical faucet to: {}", faucet_contract);
+    
+    // grant faucet role to kms address
+    // 0x2f2ff15d
+    let gas_price = provider.get_gas_price().await?;
+    let grant_role_selector = [47, 47, 241, 93];
+    let grant_role_params = (B256::from_str("0xaecf5761d3ba769b4631978eb26cb84eae66bcaca9c3f0f4ecde3feb2f4cf144")?, kms_address).abi_encode_params();
+    let grant_role_call = [&grant_role_selector, &grant_role_params[..]].concat().into();
+    let grant_role_tx = tx_factory.create_eip1559(chain.clone(), gas_price, faucet_contract, U256::ZERO, grant_role_call).envelope_encoded();
+    let _tx_hash = provider.send_raw_transaction(grant_role_tx.as_ref()).await?;
+    println!("Granted faucet role to kms address");
 
-    let grant_admin_config = manager.grantRole(B256::ZERO, default_deployer);
-    let grant_admin_tx = grant_admin_config.send().await.expect("Failed to grant admin role");
-    let admin_hash = grant_admin_tx.get_receipt().await;
-    println!("Roles transferred in txs: {} and {}", maintainer_hash.unwrap().transaction_hash, admin_hash.unwrap().transaction_hash);
+    // fund faucet with some tel
+    let value = U256::from(10_000_000_000_000_000_000u128);
+    let fund_faucet_tx =
+        tx_factory.create_eip1559(chain, gas_price, faucet_contract, value, Bytes::new()).envelope_encoded();
+    let tx_hash = provider.send_raw_transaction(fund_faucet_tx.as_ref()).await?.watch().await?;
+    println!("Faucet contract successfully brought up to date and funded in tx: {}", tx_hash);
+
+    Ok(faucet_contract)
 }
 
 /// Helper function to deploy an ERC1967 proxy contract
-pub async fn deploy_contract_proxy(rpc_url: &str, implementation: Address, init_bytes: Bytes, opt_wallet: Option<&EthereumWallet>) -> eyre::Result<Address> {
+pub async fn deploy_contract_proxy(
+    rpc_url: &str,
+    implementation: Address,
+    init_bytes: Bytes,
+    tx_factory: &mut TransactionFactory,
+) -> eyre::Result<Address> {
     // ERC1967Proxy abi
     sol!(
         #[sol(rpc)]
@@ -572,15 +516,12 @@ pub async fn deploy_contract_proxy(rpc_url: &str, implementation: Address, init_
         "src/test_utils/artifacts/ERC1967Proxy.json"
     );
 
-    let wallet = match opt_wallet {
-        Some(wallet) => wallet.clone(),
-        None => {
-            let signer: PrivateKeySigner = TransactionFactory::get_default_signer().unwrap().into();
-            EthereumWallet::from(signer)
-        }
-    };
-    let provider = ProviderBuilder::new().with_recommended_fillers().wallet(wallet).on_http(rpc_url.parse()?);
-    let proxy_contract = ERC1967Proxy::deploy(provider, implementation, init_bytes).await?; 
+    let signer: PrivateKeySigner = tx_factory.get_default_signer()?.into();
+    let wallet = EthereumWallet::from(signer);
+    let provider =
+        ProviderBuilder::new().with_recommended_fillers().wallet(wallet).on_http(rpc_url.parse()?);
+    let proxy_contract = ERC1967Proxy::deploy(provider, implementation, init_bytes).await?;
+    tx_factory.inc_nonce();
 
     Ok(*proxy_contract.address())
 }

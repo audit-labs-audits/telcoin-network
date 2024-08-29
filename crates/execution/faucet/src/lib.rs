@@ -39,9 +39,19 @@ pub type GoogleKMSClient = GoogleApi<KeyManagementServiceClient<GoogleAuthMiddle
 pub type Secp256k1PubKeyBytes = [u8; PUBLIC_KEY_SIZE];
 /// The abi encoded type parameters for the drip method
 /// of the faucet contract deployed at contract address.
-///
+
 /// pub for integration test
 pub type Drip = alloy_sol_types::sol! { (address, address) };
+pub type StablecoinManagerInitParams = alloy_sol_types::sol! {(
+    address,
+    address,
+    address[],
+    uint256,
+    uint256,
+    address[],
+    uint256,
+    uint256,
+)};
 
 /// Configure the faucet with a wait period between transfers and the amount of TEL to transfer.
 pub struct FaucetConfig {

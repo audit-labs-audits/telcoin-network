@@ -8,6 +8,13 @@
 //! then submits the transaction to the RPC Transaction Pool for the next batch.
 
 use crate::util::create_validator_info;
+use alloy::{
+    network::EthereumWallet,
+    providers::{Provider, ProviderBuilder},
+    signers::{k256::FieldBytes, local::PrivateKeySigner},
+    sol,
+    sol_types::SolValue,
+};
 use clap::Parser;
 use gcloud_sdk::{
     google::cloud::kms::v1::{
@@ -20,9 +27,11 @@ use jsonrpsee::{
     http_client::{HttpClient, HttpClientBuilder},
     rpc_params,
 };
-use k256::{elliptic_curve::sec1::ToEncodedPoint, pkcs8::DecodePublicKey, FieldBytes, PublicKey as PubKey};
-use secp256k1::Secp256k1;
+use k256::{
+    elliptic_curve::sec1::ToEncodedPoint, pkcs8::DecodePublicKey, PublicKey as PubKey,
+};
 use narwhal_test_utils::CommandParser;
+use rand::{rngs::StdRng, SeedableRng};
 use reth::{
     tasks::{TaskExecutor, TaskManager},
     CliContext,
@@ -30,23 +39,23 @@ use reth::{
 use reth_chainspec::ChainSpec;
 use reth_node_ethereum::{EthEvmConfig, EthExecutorProvider};
 use reth_primitives::{
-    alloy_primitives::U160, public_key_to_address, Address, Bytes, GenesisAccount, U256, B256
+    alloy_primitives::U160, public_key_to_address, Address, Bytes, GenesisAccount, B256, U256,
 };
 use reth_tracing::init_test_tracing;
-use secp256k1::PublicKey;
+use secp256k1::{PublicKey, Secp256k1};
 use std::{env, str::FromStr, sync::Arc, time::Duration};
-use alloy_network::{EthereumWallet, ReceiptResponse, TransactionBuilder};
-use alloy_signer::{k256::FieldBytes, local::PrivateKeySigner};
-use alloy_provider::{Provider, ProviderBuilder};
-use alloy_sol_types::{sol, SolValue};
 use telcoin_network::{genesis::GenesisArgs, node::NodeCommand};
 use tn_faucet::FaucetArgs;
 use tn_node::launch_node;
-use tn_types::{adiri_genesis, test_utils::{TransactionFactory, deploy_contract_faucet_initialize, deploy_contract_stablecoin, deploy_contract_proxy}};
+use tn_types::{
+    adiri_genesis,
+    test_utils::{
+        deploy_contract_faucet_initialize, deploy_contract_proxy, deploy_contract_stablecoin,
+        TransactionFactory,
+    },
+};
 use tokio::{runtime::Handle, task::JoinHandle, time::timeout};
 use tracing::{error, info};
-use rand::{SeedableRng, rngs::StdRng};
-use dotenvy::dotenv;
 
 sol!(
     #[sol(rpc)]
@@ -63,13 +72,7 @@ async fn test_faucet_transfers_tel_with_google_kms_e2e() -> eyre::Result<()> {
     let task_executor = manager.executor();
 
     // create google env and chain spec
-    let chain = prepare_google_kms_env().await?;
-
-    // setup env for `transfer_admin_role()` which is necessary to reproduce counterfactual faucet 
-    dotenv().ok();
-    let init_admin_key = env::var("SHARED_PRIVATE_KEY").expect("SHARED_PRIVATE_KEY not found");
-    let init_admin_signer = PrivateKeySigner::from_str(&init_admin_key).expect("Unable to parse env string");
-    let init_admin_wallet = EthereumWallet::from(init_admin_signer);
+    let (chain, kms_address) = prepare_google_kms_env().await?;
 
     // create and launch validator nodes on local network
     spawn_local_testnet(&task_executor, chain.clone()).await?;
@@ -89,21 +92,15 @@ async fn test_faucet_transfers_tel_with_google_kms_e2e() -> eyre::Result<()> {
 
     // assert deployer starting balance is properly seeded
     let default_deployer_address = TransactionFactory::default().address();
-    let deployer_balance: String = client.request("eth_getBalance", rpc_params!(default_deployer_address)).await?;
+    let deployer_balance: String =
+        client.request("eth_getBalance", rpc_params!(default_deployer_address)).await?;
     println!("Deployer starting balance: {deployer_balance:?}");
     assert_eq!(U256::from_str(&deployer_balance)?, U256::MAX);
 
-    // get values for default (insecure) account
-    let mut rng = StdRng::from_seed([0; 32]);
-    let (private_key, _) = Secp256k1::new().generate_keypair(&mut rng);
-    // circumvent Secp256k1 <> k256 type incompatibility via FieldBytes intermediary
-    let binding = private_key.secret_bytes();
-    let secret_bytes_array = FieldBytes::from_slice(&binding);
-    let signer = PrivateKeySigner::from_field_bytes(secret_bytes_array).expect("Error constructing signer from private key");
-    let wallet = EthereumWallet::from(signer.clone());
-
-    // deploy faucet contracts and initialize + upgrade to recreate create2 address with current impl version
-    let _faucet_contract = deploy_contract_faucet_initialize(&rpc_url, init_admin_wallet, Some(&wallet)).await?;
+    // deploy faucet contracts and initialize
+    let mut tx_factory = TransactionFactory::new();
+    let empty_tokens_array = vec![];
+    let _faucet_contract = deploy_contract_faucet_initialize(chain, &rpc_url, kms_address, empty_tokens_array, &mut tx_factory).await?;
 
     // note: response is different each time bc KMS
     let tx_hash: String = client.request("faucet_transfer", rpc_params![address]).await?;
@@ -173,7 +170,7 @@ async fn set_google_kms_public_key_env_var() -> eyre::Result<()> {
 
 /// Use Google KMS credentials json to fetch public key, seed account at genesis, and set env vars
 /// for faucet signature requests.
-async fn prepare_google_kms_env() -> eyre::Result<Arc<ChainSpec>> {
+async fn prepare_google_kms_env() -> eyre::Result<(Arc<ChainSpec>, Address)> {
     // set application credentials for accessing Google KMS API
     std::env::set_var(
         "GOOGLE_APPLICATION_CREDENTIALS",
@@ -201,12 +198,13 @@ async fn prepare_google_kms_env() -> eyre::Result<Arc<ChainSpec>> {
     let genesis = adiri_genesis();
     let faucet_account = vec![(wallet_address, GenesisAccount::default().with_balance(U256::MAX))];
     let default_deployer_address = TransactionFactory::default().address();
-    let default_deployer_account = vec![(default_deployer_address, GenesisAccount::default().with_balance(U256::MAX))];
+    let default_deployer_account =
+        vec![(default_deployer_address, GenesisAccount::default().with_balance(U256::MAX))];
 
     let accounts_to_fund = faucet_account.into_iter().chain(default_deployer_account.into_iter());
     let genesis = genesis.extend_accounts(accounts_to_fund);
-    
-    Ok(Arc::new(genesis.into()))
+
+    Ok((Arc::new(genesis.into()), wallet_address))
 }
 
 /// Create validator info, genesis ceremony, and spawn node command with faucet active.
