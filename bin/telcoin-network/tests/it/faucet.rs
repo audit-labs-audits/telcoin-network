@@ -53,7 +53,7 @@ use tn_types::{
     },
 };
 use tokio::{runtime::Handle, task::JoinHandle, time::timeout};
-use tracing::{error, info};
+use tracing::{debug, error, info};
 
 sol!(
     #[sol(rpc)]
