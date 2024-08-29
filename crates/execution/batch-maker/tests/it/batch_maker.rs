@@ -16,7 +16,7 @@ use reth_chainspec::ChainSpec;
 use reth_db::test_utils::{create_test_rw_db, tempdir_path};
 use reth_db_common::init::init_genesis;
 use reth_node_ethereum::{EthEvmConfig, EthExecutorProvider};
-use reth_primitives::{alloy_primitives::U160, Address, TransactionSigned, U256};
+use reth_primitives::{alloy_primitives::U160, Address, Bytes, TransactionSigned, U256};
 use reth_provider::{
     providers::{BlockchainProvider, StaticFileProvider},
     ProviderFactory,

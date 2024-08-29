@@ -533,9 +533,9 @@ mod tests {
         let keypair = ExecutionKeypair::from_secret_key(&secp, &secret_key);
 
         // let private = base64::encode(keypair.secret.as_bytes());
-        let secret = keypair.secret_bytes();
+        let _secret = keypair.secret_bytes();
         // println!("secret: {:?}", hex::encode(secret));
-        let pubkey = keypair.public_key().serialize();
+        let _pubkey = keypair.public_key().serialize();
         // println!("public: {:?}", hex::encode(pubkey));
 
         // 9bf49a6a0755f953811fce125f2683d50429c3bb49e074147e0089a52eae155f
