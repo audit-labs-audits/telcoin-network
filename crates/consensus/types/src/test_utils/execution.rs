@@ -21,8 +21,6 @@ use tokio::fs::read_to_string;
 use std::{str::FromStr as _, sync::Arc};
 use alloy::{sol, providers::{Provider, ProviderBuilder}, network::{EthereumWallet, TransactionBuilder, ReceiptResponse}, sol_types::SolValue, signers::{k256::FieldBytes, local::PrivateKeySigner}};
 
-#[cfg(test)]
-
 /// Adiri genesis with funded [TransactionFactory] default account.
 pub fn test_genesis() -> Genesis {
     let genesis = adiri_genesis();
@@ -428,7 +426,7 @@ pub async fn deploy_contract_faucet_initialize(rpc_url: &str, init_admin_wallet:
     println!("Arachnid single-use signer funded at tx hash: {}", fund_tx_hash);
 
     let arachnid_presigned_raw_tx = artifacts::transaction_artifacts::ARACHNID_DETERMINISTIC_FACTORY_CREATE_TX;
-    let pending_arachnid_creation = provider.send_raw_transaction(arachnid_presigned_raw_tx).await?;
+    let pending_arachnid_creation = provider.send_raw_transaction(&arachnid_presigned_raw_tx).await?;
     println!("Pending arachnid factory deployment... {}", pending_arachnid_creation.tx_hash());
     let arachnid_creation_receipt = pending_arachnid_creation.get_receipt().await?;
     println!("Arachnid factory deployed to: {}", arachnid_creation_receipt.contract_address.expect("Arachnid create2 factory deployment failed"));
