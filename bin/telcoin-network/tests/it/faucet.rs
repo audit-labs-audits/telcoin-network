@@ -9,11 +9,8 @@
 
 use crate::util::create_validator_info;
 use alloy::{
-    network::EthereumWallet,
-    providers::{Provider, ProviderBuilder},
-    signers::{k256::FieldBytes, local::PrivateKeySigner},
+    providers::Provider,
     sol,
-    sol_types::SolValue,
 };
 use clap::Parser;
 use gcloud_sdk::{
@@ -29,7 +26,6 @@ use jsonrpsee::{
 };
 use k256::{elliptic_curve::sec1::ToEncodedPoint, pkcs8::DecodePublicKey, PublicKey as PubKey};
 use narwhal_test_utils::CommandParser;
-use rand::{rngs::StdRng, SeedableRng};
 use reth::{
     tasks::{TaskExecutor, TaskManager},
     CliContext,
@@ -37,18 +33,18 @@ use reth::{
 use reth_chainspec::ChainSpec;
 use reth_node_ethereum::{EthEvmConfig, EthExecutorProvider};
 use reth_primitives::{
-    alloy_primitives::U160, public_key_to_address, Address, Bytes, GenesisAccount, B256, U256,
+    alloy_primitives::U160, public_key_to_address, Address, GenesisAccount, U256,
 };
 use reth_tracing::init_test_tracing;
-use secp256k1::{PublicKey, Secp256k1};
-use std::{env, str::FromStr, sync::Arc, time::Duration};
+use secp256k1::PublicKey;
+use std::{str::FromStr, sync::Arc, time::Duration};
 use telcoin_network::{genesis::GenesisArgs, node::NodeCommand};
 use tn_faucet::FaucetArgs;
 use tn_node::launch_node;
 use tn_types::{
     adiri_genesis,
     test_utils::{
-        deploy_contract_faucet_initialize, deploy_contract_proxy, deploy_contract_stablecoin,
+        deploy_contract_faucet_initialize,
         TransactionFactory,
     },
 };
@@ -56,6 +52,7 @@ use tokio::{runtime::Handle, task::JoinHandle, time::timeout};
 use tracing::{debug, error, info};
 
 sol!(
+    #[allow(clippy::too_many_arguments)]
     #[sol(rpc)]
     Stablecoin,
     "../../crates/consensus/types/src/test_utils/artifacts/Stablecoin.json"

@@ -396,7 +396,9 @@ pub struct TestLeaderConfiguration {
 }
 
 /// Creates fully connected DAG for the dictated rounds but with specific conditions for the
-/// leaders. By providing the `leader_configuration` we can dictate the setup for specific leaders
+/// leaders. 
+/// 
+/// By providing the `leader_configuration` we can dictate the setup for specific leaders
 /// of specific rounds. For a leader the following can be configured:
 /// * whether a leader will exist or not for a round
 /// * whether a leader will receive enough support from the next round

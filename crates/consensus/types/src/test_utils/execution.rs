@@ -411,6 +411,7 @@ pub async fn deploy_contract_stablecoin(
 }
 
 /// Helper to deploy implementation contract for the canonical Telcoin faucet
+/// 
 /// Since Alloy doesn't yet offer utilities for the `CREATE2`, we rebuild and submit deploy and
 /// upgrade transactions to derive the expected faucet proxy address
 pub async fn deploy_contract_faucet_initialize(

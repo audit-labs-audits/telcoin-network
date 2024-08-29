@@ -169,8 +169,9 @@ impl LeaderSwapTable {
     }
 }
 
-/// The LeaderSchedule is responsible for producing the leader schedule across an epoch. It provides
-/// methods to derive the leader of a round based on the provided leader swap table. This struct can
+/// The LeaderSchedule is responsible for producing the leader schedule across an epoch. 
+/// 
+/// It provides methods to derive the leader of a round based on the provided leader swap table. This struct can
 /// be cloned and shared freely as the internal parts are atomically updated.
 #[derive(Clone)]
 pub struct LeaderSchedule {
