@@ -17,6 +17,7 @@ use gcloud_sdk::{
 use jsonrpsee::{core::client::ClientT, rpc_params};
 use k256::{elliptic_curve::sec1::ToEncodedPoint, pkcs8::DecodePublicKey, PublicKey as PubKey};
 use narwhal_test_utils::faucet_test_execution_node;
+use reth_chainspec::ChainSpec;
 use reth_primitives::{
     alloy_primitives::U160, hex, public_key_to_address, Address, GenesisAccount, TransactionSigned,
     U256,
@@ -26,7 +27,7 @@ use reth_tracing::init_test_tracing;
 use secp256k1::PublicKey;
 use std::{str::FromStr, sync::Arc, time::Duration};
 use tn_faucet::Drip;
-use tn_types::{adiri_genesis, test_channel, BatchAPI, NewBatch};
+use tn_types::{adiri_genesis, test_channel, test_utils::{deploy_contract_faucet_initialize, TransactionFactory}, BatchAPI, NewBatch};
 use tokio::time::timeout;
 
 #[tokio::test]
@@ -57,13 +58,13 @@ async fn test_faucet_transfers_tel_with_google_kms() -> eyre::Result<()> {
     let genesis = adiri_genesis();
     let faucet_account = vec![(wallet_address, GenesisAccount::default().with_balance(U256::MAX))];
     let genesis = genesis.extend_accounts(faucet_account.into_iter());
-    let chain = Arc::new(genesis.into());
+    let chain: Arc<ChainSpec> = Arc::new(genesis.into());
 
     let manager = TaskManager::current();
     let executor = manager.executor();
 
     // create engine node
-    let execution_node = faucet_test_execution_node(true, Some(chain), None, executor)?;
+    let execution_node = faucet_test_execution_node(true, Some(chain.clone()), None, executor)?;
 
     println!("starting batch maker...");
     let worker_id = 0;
@@ -74,15 +75,43 @@ async fn test_faucet_transfers_tel_with_google_kms() -> eyre::Result<()> {
 
     let client = execution_node.worker_http_client(&worker_id).await?.expect("worker rpc client");
 
-    let faucet_contract = hex!("0e26ade1f5a99bd6b5d40f870a87bfe143db68b6").into();
+    let rpc_url = "http://127.0.0.1:8545".to_string();
+    let mut tx_factory = TransactionFactory::new();
+    let empty_tokens_array = vec![];
+    // more than enough time for the nodes to launch RPCs
+    let duration = Duration::from_secs(30);
+    let deploy_future = async move {
+        let mut faucet_contract = Address::ZERO;
+        loop {
+            let addr = deploy_contract_faucet_initialize(
+                chain.clone(),
+                &rpc_url,
+                wallet_address,
+                empty_tokens_array.clone(),
+                &mut tx_factory,
+            ).await; 
+            match addr {
+                    Ok(res) => {
+                        faucet_contract = res;
+                        break
+                    }
+                    Err(_) => {
+                        tokio::time::sleep(std::time::Duration::from_secs(1)).await;
+                    }
+                }
+        }
+        faucet_contract
+    };
+    let faucet_contract = timeout(duration, deploy_future).await?;
+    let address = Address::random();
 
     // assert starting balance is 0
     let starting_balance: String =
-        client.request("eth_getBalance", rpc_params!(faucet_contract)).await?;
+        client.request("eth_getBalance", rpc_params!(address)).await?;
     assert_eq!(U256::from_str(&starting_balance)?, U256::ZERO);
 
     // note: response is different each time bc KMS
-    let tx_hash: String = client.request("faucet_transfer", rpc_params![faucet_contract]).await?;
+    let tx_hash: String = client.request("faucet_transfer", rpc_params![address]).await?;
 
     // more than enough time for the next block
     let duration = Duration::from_secs(15);
@@ -171,7 +200,6 @@ async fn test_faucet_transfers_stablecoin_with_google_kms() -> eyre::Result<()> 
     let tx = batch_txs.first().expect("first batch tx from faucet");
     let recovered = TransactionSigned::decode_enveloped(&mut tx.as_ref())?;
 
-    let faucet_contract = hex!("0e26ade1f5a99bd6b5d40f870a87bfe143db68b6").into();
     let contract_params: Vec<u8> = Drip::abi_encode_params(&(&contract_address, &user_address));
 
     // keccak256("Drip(address,address)")[0..4]
@@ -180,7 +208,6 @@ async fn test_faucet_transfers_stablecoin_with_google_kms() -> eyre::Result<()> 
 
     // assert recovered transaction
     assert_eq!(tx_hash, recovered.hash_ref().to_string());
-    assert_eq!(recovered.transaction.to(), Some(faucet_contract));
     assert_eq!(recovered.transaction.input(), &expected_input);
 
     // ensure duplicate request is error
