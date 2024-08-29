@@ -30,12 +30,12 @@ use reth::{
 use reth_chainspec::ChainSpec;
 use reth_node_ethereum::{EthEvmConfig, EthExecutorProvider};
 use reth_primitives::{
-    alloy_primitives::U160, public_key_to_address, Address, Bytes, GenesisAccount, U256,
+    alloy_primitives::U160, public_key_to_address, Address, Bytes, GenesisAccount, U256, B256
 };
 use reth_tracing::init_test_tracing;
 use secp256k1::PublicKey;
 use std::{env, str::FromStr, sync::Arc, time::Duration};
-use alloy::{hex, sol, providers::{Provider, ProviderBuilder}, network::{EthereumWallet, TransactionBuilder}, sol_types::SolValue, signers::local::PrivateKeySigner};
+use alloy::{sol, providers::{Provider, ProviderBuilder}, network::{EthereumWallet, TransactionBuilder}, sol_types::SolValue, signers::local::PrivateKeySigner};
 use telcoin_network::{genesis::GenesisArgs, node::NodeCommand};
 use tn_faucet::FaucetArgs;
 use tn_node::launch_node;
@@ -45,18 +45,15 @@ use tracing::{error, info};
 use rand::{SeedableRng, rngs::StdRng};
 use dotenvy::dotenv;
 
-use std::fs::File;
-use simplelog::*;
+sol!(
+    #[sol(rpc)]
+    Stablecoin,
+    "../../crates/consensus/types/src/test_utils/artifacts/Stablecoin.json"
+);
 
 #[tokio::test]
 async fn test_faucet_transfers_tel_with_google_kms_e2e() -> eyre::Result<()> {
     init_test_tracing();
-
-    let _ = WriteLogger::init(
-        LevelFilter::Info,
-        Config::default(),
-        File::create("test.log").unwrap(),
-    );
 
     // task manager
     let manager = TaskManager::new(Handle::current());
@@ -101,49 +98,12 @@ async fn test_faucet_transfers_tel_with_google_kms_e2e() -> eyre::Result<()> {
     let secret_bytes_array = FieldBytes::from_slice(&binding);
     let signer = PrivateKeySigner::from_field_bytes(secret_bytes_array).expect("Error constructing signer from private key");
     let wallet = EthereumWallet::from(signer.clone());
-    let provider = ProviderBuilder::new().with_recommended_fillers().wallet(wallet.clone()).on_http(rpc_url.parse()?);
-
-    // deploy stablecoin contracts and initialize(create2 not needed)
-    let stablecoin_impl = deploy_contract_stablecoin(&rpc_url, Some(&wallet)).await?;
-    // keccak256("initialize(string,string,uint8)"") = 0x1624f6c6
-    let stablecoin_init_selector = [22, 36, 246, 198];
-    let stablecoin_init_params = ("Telcoin NOK", "eNOK", 6).abi_encode_params();
-    let stablecoin_init_data = [&stablecoin_init_selector, &stablecoin_init_params[..]].concat().into();
-    let stablecoin_contract = deploy_contract_proxy(&rpc_url, stablecoin_impl, stablecoin_init_data, Some(&wallet)).await?;
 
     // deploy faucet contracts and initialize + upgrade to recreate create2 address with current impl version
-    let faucet_contract = deploy_contract_faucet_initialize(&rpc_url, init_admin_wallet, Some(&wallet)).await?;
-
-    // keccak256("UpdateXYZ(address,bool,uint256,uint256)") = 0xe9aea396
-    let update_xyz_selector = [233, 174, 163, 150];
-    let update_xyz_params = (stablecoin_contract, true, U256::MAX, U256::from(1000)).abi_encode_params();
-    let update_xyz_data: Bytes = [&update_xyz_selector, &update_xyz_params[..]].concat().into();
-    let update_xyz_tx = provider.transaction_request()
-        .with_to(faucet_contract)
-        .with_input(update_xyz_data);
-    // register stablecoin in faucet
-    let pending_update_xyz_tx = provider.send_transaction(update_xyz_tx).await?;
-    println!("Pending registration of XYZ with StablecoinManager in tx hash: {}", pending_update_xyz_tx.tx_hash());
-    let update_xyz_receipt = pending_update_xyz_tx.get_receipt().await?;
-    println!("Registration transaction confirmed in block: {}", update_xyz_receipt.block_number.expect("XYZ registration failed"));
-
-    // keccak256("grantRole(bytes32,address)")= 0x2f2ff15d
-    let grant_role_selector = [47, 47, 241, 93];
-    // role is derived from `keccak256("MINTER_ROLE")` and can be fetched from the Stablecoin contract
-    let grant_role_params = (hex!("9f2df0fed2c77648de5860a4cc508cd0818c85b8b8a1ab4ceeef8d981c8956a6"), faucet_contract).abi_encode_params();
-    let grant_role_data: Bytes = [&grant_role_selector, &grant_role_params[..]].concat().into();
-    let grant_role_tx = provider.transaction_request()
-        .with_to(stablecoin_contract)
-        .with_input(grant_role_data);
-    // grant `MINTER_ROLE` to faucet
-    let pending_grant_role_tx = provider.send_transaction(grant_role_tx).await?;
-    println!("Pending minter role granting to faucet on XYZ contract in tx hash: {}", pending_grant_role_tx.tx_hash());
-    let grant_role_receipt = pending_grant_role_tx.get_receipt().await?;
-    println!("Granted minter role to faucet in block: {}", grant_role_receipt.block_number.expect("Failed to grant minter role to faucet"));
+    let _faucet_contract = deploy_contract_faucet_initialize(&rpc_url, init_admin_wallet, Some(&wallet)).await?;
 
     // note: response is different each time bc KMS
-    let zero_address = Address::from(U160::ZERO);
-    let tx_hash: String = client.request("faucet_transfer", rpc_params![address, zero_address]).await?;
+    let tx_hash: String = client.request("faucet_transfer", rpc_params![address]).await?;
     info!(target: "faucet-transaction", ?tx_hash);
 
     // more than enough time for the nodes to launch RPCs
@@ -156,15 +116,147 @@ async fn test_faucet_transfers_tel_with_google_kms_e2e() -> eyre::Result<()> {
     let expected_balance = U256::from_str("0xde0b6b3a7640000")?; // 1*10^18 (1 TEL)
     assert_eq!(balance, expected_balance);
 
+    // duplicate request is err
+    assert!(client.request::<String, _>("faucet_transfer", rpc_params![address]).await.is_err());
+
+    Ok(())
+}
+
+#[tokio::test]
+async fn test_faucet_transfers_stablecoin_with_google_kms_e2e() -> eyre::Result<(), Box<dyn std::error::Error>> {
+    init_test_tracing();
+
+    // task manager
+    let manager = TaskManager::new(Handle::current());
+    let task_executor = manager.executor();
+
+    // create google env and chain spec
+    let chain = prepare_google_kms_env().await?;
+
+    // setup env for `transfer_admin_role()` which is necessary to reproduce counterfactual faucet 
+    dotenv().ok();
+    let init_admin_key = env::var("SHARED_PRIVATE_KEY").expect("SHARED_PRIVATE_KEY not found");
+    let init_admin_signer = PrivateKeySigner::from_str(&init_admin_key).expect("Unable to parse env string");
+    let init_admin_wallet = EthereumWallet::from(init_admin_signer);
+
+    // create and launch validator nodes on local network
+    spawn_local_testnet(&task_executor, chain.clone()).await?;
+
+    info!("nodes started");
+
+    tokio::time::sleep(Duration::from_secs(10)).await;
+
+    let address = Address::from(U160::from(8991));
+    let rpc_url = "http://127.0.0.1:8545".to_string();
+    let client = HttpClientBuilder::default().build(&rpc_url)?;
+
+    // assert deployer starting balance is properly seeded
+    let default_deployer_address = TransactionFactory::default().address();
+    let deployer_balance: String = client.request("eth_getBalance", rpc_params!(default_deployer_address)).await?;
+    println!("Deployer starting balance: {deployer_balance:?}");
+    assert_eq!(U256::from_str(&deployer_balance)?, U256::MAX);
+
+    // get values for default (insecure) account
+    let mut rng = StdRng::from_seed([0; 32]);
+    let (private_key, _) = Secp256k1::new().generate_keypair(&mut rng);
+    // circumvent Secp256k1 <> k256 type incompatibility via FieldBytes intermediary
+    let binding = private_key.secret_bytes();
+    let secret_bytes_array = FieldBytes::from_slice(&binding);
+    let signer = PrivateKeySigner::from_field_bytes(secret_bytes_array).expect("Error constructing signer from private key");
+    let wallet = EthereumWallet::from(signer.clone());
+    let provider = ProviderBuilder::new().with_recommended_fillers().wallet(wallet.clone()).on_http(rpc_url.parse()?);
+
+    // deploy stablecoin contracts and initialize(create2 not needed)
+    let stablecoin_impl = deploy_contract_stablecoin(&rpc_url, Some(&wallet)).await?;
+    // keccak256("initialize(string,string,uint8)"") = 0x1624f6c6
+    let stablecoin_init_selector = [22, 36, 246, 198];
+    let stablecoin_init_params = ("Telcoin NOK", "eNOK", 6).abi_encode_params();
+    let stablecoin_init_data = [&stablecoin_init_selector, &stablecoin_init_params[..]].concat().into();
+    let stablecoin_contract = deploy_contract_proxy(&rpc_url, stablecoin_impl, stablecoin_init_data, Some(&wallet)).await?;
+
+    // assert starting balance is 0
+    let xyz_instance = Stablecoin::new(stablecoin_contract, provider.clone());
+    let starting_xyz_balance = xyz_instance.balanceOf(address).call().await?._0;
+    let expected_balance = U256::ZERO;
+    assert_eq!(starting_xyz_balance, expected_balance);
+
+    // deploy faucet contracts and initialize + upgrade to recreate create2 address with current impl version
+    let faucet_contract = deploy_contract_faucet_initialize(&rpc_url, init_admin_wallet, Some(&wallet)).await?;
+
+    // keccak256("UpdateXYZ(address,bool,uint256,uint256)") = 0xe9aea396
+    let update_xyz_selector = [233, 174, 163, 150];
+    let update_xyz_params = (stablecoin_contract, true, U256::MAX, U256::from(1000)).abi_encode_params();
+    let update_xyz_data: Bytes = [&update_xyz_selector, &update_xyz_params[..]].concat().into();
+    let update_xyz_tx = provider.transaction_request()
+        .with_to(faucet_contract)
+        .with_input(update_xyz_data);
+    // register stablecoin in faucet using `UpdateXYZ`
+    let pending_update_xyz_tx = provider.send_transaction(update_xyz_tx).await?;
+    println!("Pending registration of XYZ with StablecoinManager in tx hash: {}", pending_update_xyz_tx.tx_hash());
+    let update_xyz_receipt = pending_update_xyz_tx.get_receipt().await?;
+    println!("Registration transaction confirmed in block: {}", update_xyz_receipt.block_number.expect("XYZ registration failed"));
+
+    // keccak256("grantRole(bytes32,address)")= 0x2f2ff15d
+    let grant_role_selector = [47, 47, 241, 93];
+    // role is derived from `keccak256("MINTER_ROLE")` and can be fetched from the Stablecoin contract
+    let grant_role_params = (B256::from_str("0x9f2df0fed2c77648de5860a4cc508cd0818c85b8b8a1ab4ceeef8d981c8956a6").unwrap(), faucet_contract).abi_encode_params();
+    let grant_role_data: Bytes = [&grant_role_selector, &grant_role_params[..]].concat().into();
+    let grant_role_tx = provider.transaction_request()
+        .with_to(stablecoin_contract)
+        .with_input(grant_role_data);
+    // grant `MINTER_ROLE` to faucet
+    let pending_grant_role_tx = provider.send_transaction(grant_role_tx).await?;
+    println!("Pending minter role granting to faucet on XYZ contract in tx hash: {}", pending_grant_role_tx.tx_hash());
+    let grant_role_receipt = pending_grant_role_tx.get_receipt().await?;
+    println!("Granted minter role to faucet in block: {}", grant_role_receipt.block_number.expect("Failed to grant minter role to faucet"));
+
     sol!(
         #[sol(rpc)]
         Stablecoin,
         "../../crates/consensus/types/src/test_utils/artifacts/Stablecoin.json"
     );
-    let xyz_instance = Stablecoin::new(stablecoin_contract, provider);
-    let xyz_balance = xyz_instance.balanceOf(address).call().await?._0;
+    sol!(
+        #[sol(rpc)]
+        StablecoinManager,
+        "../../crates/consensus/types/src/test_utils/artifacts/StablecoinManager.json"
+    );
+    let stab_instance = Stablecoin::new(stablecoin_contract, provider.clone());
+    let a = stab_instance.hasRole(B256::from_str("0x9f2df0fed2c77648de5860a4cc508cd0818c85b8b8a1ab4ceeef8d981c8956a6").unwrap(), faucet_contract).call().await?;
+    println!("{}", a._0);
+    let faucet_instance = StablecoinManager::new(faucet_contract, provider);
+    let b = faucet_instance.isEnabledXYZ(stablecoin_contract).call().await.expect("omg");
+    println!("{:?}", b.isEnabled);
+
+    // note: response is different each time bc KMS
+    let tx_hash: String = client.request("faucet_transfer", rpc_params![address, stablecoin_contract]).await?;
+    info!(target: "faucet-transaction", ?tx_hash);
+
+    // ensure account balance increased
     let expected_xyz_balance = U256::from(100_000_000); // 100e6 (100 XYZ)
-    assert_eq!(xyz_balance, expected_xyz_balance);
+    let mut updated_xyz_balance = U256::ZERO;
+    // more than enough time for the nodes to launch RPCs
+    let duration = Duration::from_secs(30);
+    // todo: should be its own error passed to timeout but couldn't figure out how to pass provider types
+    let result = timeout(duration, async {
+        loop {
+            let balance = xyz_instance.balanceOf(address).call().await?._0;
+            if balance == expected_xyz_balance {
+                updated_xyz_balance = balance;
+                break;
+            }
+            println!("bal: {balance:?}");
+
+            // Sleep for a second before checking again
+            tokio::time::sleep(Duration::from_secs(1)).await;
+        }
+        Ok::<(), Box<dyn std::error::Error>>(())
+    }).await;
+
+    if result.is_err() {
+        return Err(Box::<dyn std::error::Error>::from("balance timeout"));
+    }
+
+    assert_eq!(updated_xyz_balance, expected_xyz_balance);
 
     // duplicate request is err
     assert!(client.request::<String, _>("faucet_transfer", rpc_params![address]).await.is_err());

@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 //! Specific test utils for execution layer
-use crate::{now, Batch, BatchAPI, ExecutionKeypair, MetadataAPI, TimestampSec, test_utils::artifacts};
+use crate::{adiri_genesis, now, Batch, BatchAPI, ExecutionKeypair, MetadataAPI, TimestampSec, test_utils::artifacts};
 use rand::{rngs::StdRng, Rng, SeedableRng};
 use reth_chainspec::{BaseFeeParams, ChainSpec};
 use reth_evm::execute::{BlockExecutionOutput, BlockExecutorProvider, Executor as _};
@@ -459,8 +459,9 @@ pub async fn deploy_contract_faucet_initialize(rpc_url: &str, init_admin_wallet:
     let faucet_contract: Address = Address::from(hex!("0e26ade1f5a99bd6b5d40f870a87bfe143db68b6"));
     println!("Successfully deployed canonical faucet to: {}", faucet_contract);
 
+    // configure proper roles (admin, maintainer, faucet) once deterministic faucet is deployed
     let default_deployer = Address::from(hex!("b14d3c4f5fbfbcfb98af2d330000d49c95b93aa7"));
-    transfer_roles(rpc_url, faucet_contract, default_deployer, init_admin_wallet).await;
+    transfer_roles(rpc_url, faucet_contract, default_deployer, init_admin_wallet).await;    
 
     #[derive(Deserialize)]
     struct BytecodeObject {
@@ -505,14 +506,30 @@ pub async fn deploy_contract_faucet_initialize(rpc_url: &str, init_admin_wallet:
     let pending_upgrade_tx = provider.send_transaction(upgrade_tx).await?;
     current_nonce += 1;
     let upgrade_tx_receipt = pending_upgrade_tx.get_receipt().await?;
-    println!("Faucet contract successfully updated with native drip config call in tx: {}", upgrade_tx_receipt.transaction_hash);
+    println!("Faucet contract successfully updated with native drip amount config in tx: {}", upgrade_tx_receipt.transaction_hash);
 
+    // keccak256("UpdateXYZ(address,bool,uint256,uint256)") = 0xe9aea396
+    let update_xyz_selector = [233, 174, 163, 150];
+    let update_xyz_params = (Address::ZERO, true, U256::MAX, U256::from(1000)).abi_encode_params();
+    let update_xyz_data: Bytes = [&update_xyz_selector, &update_xyz_params[..]].concat().into();
+    let update_xyz_tx = provider.transaction_request()
+        .with_to(faucet_contract)
+        .with_input(update_xyz_data)
+        .with_nonce(current_nonce);
+    
+    // enable native currency pointer token on faucet
+    let pending_update_xyz_tx = provider.send_transaction(update_xyz_tx.clone()).await?;
+    current_nonce += 1;
+    println!("Turning on faucet's native currency drip in tx hash: {}", pending_update_xyz_tx.tx_hash());
+    let _ = pending_update_xyz_tx.get_receipt().await?;
+    println!("Native currency enabed");
+    
     // fund faucet with some tel
     let fund_faucet_tx = TransactionRequest::default()
         .with_to(faucet_contract)
         .with_value(U256::from(10_000_000_000_000_000_000u128))
         .with_nonce(current_nonce);
-    let tx_hash = provider.send_transaction(fund_faucet_tx).await.?.watch().await?;
+    let tx_hash = provider.send_transaction(fund_faucet_tx).await?.watch().await?;
     println!("Faucet contract successfully brought up to date and funded in tx: {}", tx_hash);
 
     Ok(faucet_contract)
@@ -533,6 +550,11 @@ pub async fn transfer_roles(rpc_url: &str, faucet_contract: Address, default_dep
     let manager = StablecoinManager::new(faucet_contract, provider);
 
     println!("Pending transfer of roles...");
+    let testing_faucet = Address::from(hex!("6af9941928152dccf1d6a943553f00445d113325"));
+    let grant_faucet_config = manager.grantRole(B256::from_str("0xaecf5761d3ba769b4631978eb26cb84eae66bcaca9c3f0f4ecde3feb2f4cf144").unwrap(), testing_faucet);
+    let grant_faucet_tx = grant_faucet_config.send().await.expect("Failed to grant faucet role");
+    let _ = grant_faucet_tx.get_receipt().await;
+
     let grant_maintainer_config = manager.grantRole(B256::from_str("0x339759585899103d2ace64958e37e18ccb0504652c81d4a1b8aa80fe2126ab95").unwrap(), default_deployer);
     let grant_maintainer_tx = grant_maintainer_config.send().await.expect("Failed to grant maintainer role");
     let maintainer_hash = grant_maintainer_tx.get_receipt().await;
