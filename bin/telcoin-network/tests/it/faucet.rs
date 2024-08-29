@@ -27,9 +27,7 @@ use jsonrpsee::{
     http_client::{HttpClient, HttpClientBuilder},
     rpc_params,
 };
-use k256::{
-    elliptic_curve::sec1::ToEncodedPoint, pkcs8::DecodePublicKey, PublicKey as PubKey,
-};
+use k256::{elliptic_curve::sec1::ToEncodedPoint, pkcs8::DecodePublicKey, PublicKey as PubKey};
 use narwhal_test_utils::CommandParser;
 use rand::{rngs::StdRng, SeedableRng};
 use reth::{
@@ -74,9 +72,14 @@ async fn test_faucet_transfers_tel_with_google_kms_e2e() -> eyre::Result<()> {
     // create google env and chain spec
     let (chain, kms_address) = prepare_google_kms_env().await?;
 
-    // create and launch validator nodes on local network, 
+    // create and launch validator nodes on local network,
     // use expected faucet contract address from `TransactionFactory::default` with nonce == 0
-    spawn_local_testnet(&task_executor, chain.clone(), "0x8a345995579C09F45a5288b4858467920Af27301").await?;
+    spawn_local_testnet(
+        &task_executor,
+        chain.clone(),
+        "0x8a345995579C09F45a5288b4858467920Af27301",
+    )
+    .await?;
 
     info!("nodes started");
 
@@ -101,7 +104,14 @@ async fn test_faucet_transfers_tel_with_google_kms_e2e() -> eyre::Result<()> {
     // deploy faucet contracts and initialize
     let mut tx_factory = TransactionFactory::new();
     let empty_tokens_array = vec![];
-    let _faucet_contract = deploy_contract_faucet_initialize(chain, &rpc_url, kms_address, empty_tokens_array, &mut tx_factory).await?;
+    let _faucet_contract = deploy_contract_faucet_initialize(
+        chain,
+        &rpc_url,
+        kms_address,
+        empty_tokens_array,
+        &mut tx_factory,
+    )
+    .await?;
 
     // note: response is different each time bc KMS
     let tx_hash: String = client.request("faucet_transfer", rpc_params![address]).await?;
@@ -212,7 +222,7 @@ async fn prepare_google_kms_env() -> eyre::Result<(Arc<ChainSpec>, Address)> {
 async fn spawn_local_testnet(
     task_executor: &TaskExecutor,
     chain: Arc<ChainSpec>,
-    contract_address: &str
+    contract_address: &str,
 ) -> eyre::Result<Vec<JoinHandle<()>>> {
     // create temp path for test
     let temp_path = tempfile::TempDir::new().expect("tempdir is okay").into_path();

@@ -136,8 +136,12 @@ impl FaucetArgs {
             );
 
             let wallet = FaucetWallet { address, public_key_bytes, name };
-            let config =
-                FaucetConfig { wait_period: self.wait_period, chain_id: self.chain_id, wallet, contract_address: self.contract_address };
+            let config = FaucetConfig {
+                wait_period: self.wait_period,
+                chain_id: self.chain_id,
+                wallet,
+                contract_address: self.contract_address,
+            };
 
             let ext = FaucetRpcExt::new(provider, pool, config);
 

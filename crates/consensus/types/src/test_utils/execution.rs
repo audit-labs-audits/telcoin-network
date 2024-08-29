@@ -26,8 +26,8 @@ use reth_provider::{BlockReaderIdExt, ExecutionOutcome, StateProviderFactory};
 use reth_revm::database::StateProviderDatabase;
 use reth_transaction_pool::{TransactionOrigin, TransactionPool};
 use secp256k1::Secp256k1;
-use tracing::debug;
 use std::{str::FromStr as _, sync::Arc};
+use tracing::debug;
 
 /// Adiri genesis with funded [TransactionFactory] default account.
 pub fn test_genesis() -> Genesis {
@@ -435,10 +435,7 @@ pub async fn deploy_contract_faucet_initialize(
     // manually increment nonce
     tx_factory.inc_nonce();
     let faucet_impl = initial_faucet_implementation.address().clone();
-    debug!(
-        "Faucet implementation deployed to: {}",
-        faucet_impl
-    );
+    debug!("Faucet implementation deployed to: {}", faucet_impl);
 
     // deploy canonical faucet (proxy)
     // keccak256(initialize((address,address,address[],uint256,uint256,address[],uint256,uint256))
@@ -451,35 +448,44 @@ pub async fn deploy_contract_faucet_initialize(
     let xyz_amount = U256::from(10).checked_pow(U256::from(6)).expect("1e18 doesn't overflow U256"); // 100 $XYZ
     let tel_amount =
         U256::from(10).checked_pow(U256::from(18)).expect("1e18 doesn't overflow U256"); // 1 $TEL
-    
-    let init_params = StablecoinManager::StablecoinManagerInitParams{
-        admin_: admin, 
+
+    let init_params = StablecoinManager::StablecoinManagerInitParams {
+        admin_: admin,
         maintainer_: admin,
-        tokens_: deployed_token_bytes, 
-        initMaxLimit: init_max_limit, 
-        initMinLimit: init_min_limit, 
-        authorizedFaucets_: kms_faucets, 
-        dripAmount_: xyz_amount, 
-        nativeDripAmount_: tel_amount
-    }.abi_encode();
+        tokens_: deployed_token_bytes,
+        initMaxLimit: init_max_limit,
+        initMinLimit: init_min_limit,
+        authorizedFaucets_: kms_faucets,
+        dripAmount_: xyz_amount,
+        nativeDripAmount_: tel_amount,
+    }
+    .abi_encode();
     let init_call = [&faucet_init_selector, &init_params[..]].concat().into();
-    
-    let faucet_contract = deploy_contract_proxy(&rpc_url, faucet_impl, init_call, tx_factory).await?;
+
+    let faucet_contract =
+        deploy_contract_proxy(&rpc_url, faucet_impl, init_call, tx_factory).await?;
     debug!("Successfully deployed canonical faucet to: {}", faucet_contract);
-    
+
     // grant faucet role to kms address
     // 0x2f2ff15d
     let gas_price = provider.get_gas_price().await?;
     let grant_role_selector = [47, 47, 241, 93];
-    let grant_role_params = (B256::from_str("0xaecf5761d3ba769b4631978eb26cb84eae66bcaca9c3f0f4ecde3feb2f4cf144")?, kms_address).abi_encode_params();
+    let grant_role_params = (
+        B256::from_str("0xaecf5761d3ba769b4631978eb26cb84eae66bcaca9c3f0f4ecde3feb2f4cf144")?,
+        kms_address,
+    )
+        .abi_encode_params();
     let grant_role_call = [&grant_role_selector, &grant_role_params[..]].concat().into();
-    let grant_role_tx = tx_factory.create_eip1559(chain.clone(), gas_price, faucet_contract, U256::ZERO, grant_role_call).envelope_encoded();
+    let grant_role_tx = tx_factory
+        .create_eip1559(chain.clone(), gas_price, faucet_contract, U256::ZERO, grant_role_call)
+        .envelope_encoded();
     let _tx_hash = provider.send_raw_transaction(grant_role_tx.as_ref()).await?;
 
     // fund faucet with some tel
     let value = U256::from(10_000_000_000_000_000_000u128);
-    let fund_faucet_tx =
-        tx_factory.create_eip1559(chain, gas_price, faucet_contract, value, Bytes::new()).envelope_encoded();
+    let fund_faucet_tx = tx_factory
+        .create_eip1559(chain, gas_price, faucet_contract, value, Bytes::new())
+        .envelope_encoded();
     let tx_hash = provider.send_raw_transaction(fund_faucet_tx.as_ref()).await?.watch().await?;
     debug!("Faucet contract successfully brought up to date and funded in tx: {}", tx_hash);
 
