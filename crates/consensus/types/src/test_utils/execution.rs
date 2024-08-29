@@ -9,7 +9,7 @@ use reth_evm::execute::{BlockExecutionOutput, BlockExecutorProvider, Executor as
 use reth_primitives::{
     constants::{
         EMPTY_TRANSACTIONS, EMPTY_WITHDRAWALS, ETHEREUM_BLOCK_GAS_LIMIT, MIN_PROTOCOL_BASE_FEE,
-    }, proofs, public_key_to_address, sign_message, Address, Block, Bytes, FromRecoveredPooledTransaction, Genesis, GenesisAccount, Header, PooledTransactionsElement, SealedHeader, Signature, Transaction, TransactionSigned, TxEip1559, TxHash, TxKind, Withdrawals, B256, EMPTY_OMMER_ROOT_HASH, U256
+    }, hex, proofs, public_key_to_address, sign_message, Address, Block, Bytes, FromRecoveredPooledTransaction, Genesis, GenesisAccount, Header, PooledTransactionsElement, SealedHeader, Signature, Transaction, TransactionSigned, TxEip1559, TxHash, TxKind, Withdrawals, B256, EMPTY_OMMER_ROOT_HASH, U256
 };
 use reth_provider::{BlockReaderIdExt, ExecutionOutcome, StateProviderFactory};
 use reth_revm::database::StateProviderDatabase;
@@ -19,7 +19,7 @@ use secp256k1::Secp256k1;
 use serde::Deserialize;
 use tokio::fs::read_to_string;
 use std::{str::FromStr as _, sync::Arc};
-use alloy::{hex, network::{EthereumWallet, ReceiptResponse, TransactionBuilder}, providers::{Provider, ProviderBuilder}, signers::{k256::FieldBytes, local::PrivateKeySigner}, sol, sol_types::SolValue};
+use alloy::{sol, providers::{Provider, ProviderBuilder}, network::{EthereumWallet, TransactionBuilder, ReceiptResponse}, sol_types::SolValue, signers::{k256::FieldBytes, local::PrivateKeySigner}};
 
 #[cfg(test)]
 
@@ -320,7 +320,7 @@ impl TransactionFactory {
         signature.expect("failed to sign transaction")
     }
 
-    /// Helper to instantiate an `alloy::PrivateKeySigner` wrapping the default account
+    /// Helper to instantiate an `alloy-signer-local::PrivateKeySigner` wrapping the default account
     pub fn get_default_signer() -> eyre::Result<PrivateKeySigner> {
         let mut rng = StdRng::from_seed([0; 32]);
         let (private_key, _) = Secp256k1::new().generate_keypair(&mut rng);
