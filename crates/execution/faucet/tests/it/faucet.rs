@@ -7,10 +7,11 @@
 //! signature to be EVM compatible. The faucet service does all of this and
 //! then submits the transaction to the RPC Transaction Pool for the next batch.
 
-use alloy_sol_types::SolType;
+use alloy_sol_types::{sol, SolType};
 use gcloud_sdk::{
-    google::cloud::kms::v1::{
-        key_management_service_client::KeyManagementServiceClient, GetPublicKeyRequest,
+    google::cloud::{
+        deploy,
+        kms::v1::{key_management_service_client::KeyManagementServiceClient, GetPublicKeyRequest},
     },
     GoogleApi, GoogleAuthMiddleware, GoogleEnvironment,
 };
@@ -27,7 +28,11 @@ use reth_tracing::init_test_tracing;
 use secp256k1::PublicKey;
 use std::{str::FromStr, sync::Arc, time::Duration};
 use tn_faucet::Drip;
-use tn_types::{adiri_genesis, test_channel, test_utils::{deploy_contract_faucet_initialize, TransactionFactory}, BatchAPI, NewBatch};
+use tn_types::{
+    adiri_genesis, test_channel,
+    test_utils::{deploy_contract_faucet_initialize, TransactionFactory},
+    BatchAPI, NewBatch,
+};
 use tokio::time::timeout;
 
 #[tokio::test]
@@ -56,8 +61,22 @@ async fn test_faucet_transfers_tel_with_google_kms() -> eyre::Result<()> {
 
     // create genesis and fund account
     let genesis = adiri_genesis();
-    let faucet_account = vec![(wallet_address, GenesisAccount::default().with_balance(U256::MAX))];
-    let genesis = genesis.extend_accounts(faucet_account.into_iter());
+    let mut tx_factory = TransactionFactory::new();
+    let default_deployer_address = tx_factory.address();
+    sol!(
+        #[allow(clippy::too_many_arguments)]
+        StablecoinManager,
+        "../../consensus/types/src/test_utils/artifacts/StablecoinManager.json"
+    );
+    let faucet_contract_address = Address::random();
+    let faucet_bytecode = StablecoinManager::DEPLOYED_BYTECODE.clone();
+
+    let genesis_accounts = vec![
+        // (default_deployer_address, GenesisAccount::default().with_balance(U256::MAX)),
+        (wallet_address, GenesisAccount::default().with_balance(U256::MAX)),
+        (faucet_contract_address, GenesisAccount::default().with_code(Some(faucet_bytecode))),
+    ];
+    let genesis = genesis.extend_accounts(genesis_accounts.into_iter());
     let chain: Arc<ChainSpec> = Arc::new(genesis.into());
 
     let manager = TaskManager::current();
@@ -72,42 +91,51 @@ async fn test_faucet_transfers_tel_with_google_kms() -> eyre::Result<()> {
 
     // start batch maker
     execution_node.start_batch_maker(to_worker, worker_id).await?;
+    tracing::info!("getting local address...");
+    let unformatted_rpc_url = execution_node
+        .worker_http_local_address(&worker_id)
+        .await?
+        .expect("worker local http address")
+        .to_string();
+    let rpc_url = format!("http://{}", unformatted_rpc_url);
+    tracing::info!("got local address...");
 
     let client = execution_node.worker_http_client(&worker_id).await?.expect("worker rpc client");
+    tracing::info!("got client: {:?}", client);
 
-    let rpc_url = "http://127.0.0.1:8545".to_string();
-    let mut tx_factory = TransactionFactory::new();
     let empty_tokens_array = vec![];
     // more than enough time for the nodes to launch RPCs
     let duration = Duration::from_secs(30);
     let deploy_future = async move {
-        let mut faucet_contract = Address::ZERO;
         loop {
-            let addr = deploy_contract_faucet_initialize(
+            match deploy_contract_faucet_initialize(
                 chain.clone(),
                 &rpc_url,
                 wallet_address,
                 empty_tokens_array.clone(),
                 &mut tx_factory,
-            ).await; 
-            match addr {
-                    Ok(res) => {
-                        faucet_contract = res;
-                        break
-                    }
-                    Err(_) => {
-                        tokio::time::sleep(std::time::Duration::from_secs(1)).await;
-                    }
+            )
+            .await
+            {
+                Ok(res) => {
+                    tracing::info!(?res);
+                    return res;
                 }
+                Err(e) => {
+                    tracing::error!("{:?}", e);
+                    tokio::time::sleep(std::time::Duration::from_secs(1)).await;
+                }
+            }
         }
-        faucet_contract
     };
     let faucet_contract = timeout(duration, deploy_future).await?;
+
+    // let faucet_contract = deploy_contract_faucet_initialize(chain, &rpc_url, wallet_address,
+    // empty_tokens_array.clone(), &mut tx_factory).await?;
     let address = Address::random();
 
     // assert starting balance is 0
-    let starting_balance: String =
-        client.request("eth_getBalance", rpc_params!(address)).await?;
+    let starting_balance: String = client.request("eth_getBalance", rpc_params!(address)).await?;
     assert_eq!(U256::from_str(&starting_balance)?, U256::ZERO);
 
     // note: response is different each time bc KMS
@@ -175,8 +203,10 @@ async fn test_faucet_transfers_stablecoin_with_google_kms() -> eyre::Result<()> 
 
     // start batch maker
     execution_node.start_batch_maker(to_worker, worker_id).await?;
+    let unformatted_rpc_url = execution_node.worker_http_local_address(&worker_id);
+    // let rpc_url = format!("http://{}", unformatted_rpc_url);
 
-    let user_address = Address::from(U160::from(8991));
+    let user_address = Address::random();
     let client = execution_node.worker_http_client(&worker_id).await?.expect("worker rpc client");
 
     // assert starting balance is 0
@@ -185,6 +215,8 @@ async fn test_faucet_transfers_stablecoin_with_google_kms() -> eyre::Result<()> 
     assert_eq!(U256::from_str(&starting_balance)?, U256::ZERO);
 
     let contract_address = Address::from(U160::from(12345678));
+    // let faucet = deploy_contract_faucet_initialize(chain, &rpc_url, kms_address,
+    // deployed_token_bytes, &mut tx_factory);
 
     // note: response is different each time bc KMS
     let tx_hash: String =

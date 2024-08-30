@@ -482,6 +482,7 @@ pub async fn deploy_contract_faucet_initialize(
         .create_eip1559(chain.clone(), gas_price, faucet_contract, U256::ZERO, grant_role_call)
         .envelope_encoded();
     let _tx_hash = provider.send_raw_transaction(grant_role_tx.as_ref()).await?;
+    debug!("Successfully granted faucet fole to: {}", faucet_contract);
 
     // fund faucet with some tel
     let value = U256::from(10_000_000_000_000_000_000u128);
