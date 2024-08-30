@@ -8,6 +8,7 @@
 //! then submits the transaction to the RPC Transaction Pool for the next batch.
 
 use alloy_sol_types::{sol, SolType};
+use alloy::{self, contract::SolCallBuilder};
 use gcloud_sdk::{
     google::cloud::{
         deploy,
@@ -17,11 +18,10 @@ use gcloud_sdk::{
 };
 use jsonrpsee::{core::client::ClientT, rpc_params};
 use k256::{elliptic_curve::sec1::ToEncodedPoint, pkcs8::DecodePublicKey, PublicKey as PubKey};
-use narwhal_test_utils::faucet_test_execution_node;
+use narwhal_test_utils::{default_test_execution_node, faucet_test_execution_node};
 use reth_chainspec::ChainSpec;
 use reth_primitives::{
-    alloy_primitives::U160, hex, public_key_to_address, Address, GenesisAccount, TransactionSigned,
-    U256,
+    alloy_primitives::U160, hex, public_key_to_address, Address, GenesisAccount, TransactionSigned, B256, U256
 };
 use reth_tasks::TaskManager;
 use reth_tracing::init_test_tracing;
@@ -29,9 +29,7 @@ use secp256k1::PublicKey;
 use std::{str::FromStr, sync::Arc, time::Duration};
 use tn_faucet::Drip;
 use tn_types::{
-    adiri_genesis, test_channel,
-    test_utils::{deploy_contract_faucet_initialize, TransactionFactory},
-    BatchAPI, NewBatch,
+    adiri_genesis, test_channel, test_utils::{deploy_contract_faucet_initialize, execution_outcome_from_test_batch_, TransactionFactory}, Batch, BatchAPI, NewBatch
 };
 use tokio::time::timeout;
 
@@ -62,7 +60,7 @@ async fn test_faucet_transfers_tel_with_google_kms() -> eyre::Result<()> {
     // create genesis and fund account
     let genesis = adiri_genesis();
     let mut tx_factory = TransactionFactory::new();
-    let default_deployer_address = tx_factory.address();
+    // let default_deployer_address = tx_factory.address();
     sol!(
         #[allow(clippy::too_many_arguments)]
         StablecoinManager,
@@ -367,6 +365,86 @@ async fn set_google_kms_public_key_env_var() -> eyre::Result<()> {
     let kms_pem_pubkey = kms_pubkey_response.into_inner().pem;
     // store to env
     std::env::set_var("FAUCET_PUBLIC_KEY", kms_pem_pubkey);
+
+    Ok(())
+}
+
+async fn get_contract_state_for_genesis() -> eyre::Result<()> {
+    let genesis = adiri_genesis();
+    let mut tx_factory = TransactionFactory::new();
+    sol!(
+        #[allow(clippy::too_many_arguments)]
+        #[sol(rpc)]
+        StablecoinManager,
+        "../../consensus/types/src/test_utils/artifacts/StablecoinManager.json"
+    );
+    let factory_address = tx_factory.address();
+
+    let genesis_accounts = vec![
+        (factory_address, GenesisAccount::default().with_balance(U256::MAX)),
+    ];
+    let genesis = genesis.extend_accounts(genesis_accounts.into_iter());
+    let chain: Arc<ChainSpec> = Arc::new(genesis.into());
+
+    let manager = TaskManager::current();
+    let executor = manager.executor();
+
+    let execution_node = default_test_execution_node(Some(chain), None, executor)?;
+    let provider = execution_node.get_provider().await;
+    let block_executor = execution_node.get_block_executor().await;
+
+    // get data for faucet implementation deployment
+    let faucet_tx_builder = StablecoinManager::deploy_builder(&provider);
+    let faucet_impl = faucet_tx_builder.calculate_create_address();
+    let impl_tx_raw = faucet_tx_builder.into_transaction_request().serialize();
+
+    // get data for faucet proxy  deployment w/ initdata
+    sol!(
+        #[allow(clippy::too_many_arguments)]
+        #[sol(rpc)]
+        ERC1967Proxy,
+        "../../consensus/types/src/test_utils/artifacts/ERC1967Proxy.json"
+    );
+    let faucet_init_selector = [22, 173, 166, 177];
+    let admin: Address = tx_factory.address();
+    let deployed_token_bytes = vec![];
+    let init_max_limit = U256::MAX;
+    let init_min_limit = U256::from(1_000);
+    let kms_faucets = vec![kms_address];
+    let xyz_amount = U256::from(10).checked_pow(U256::from(6)).expect("1e18 doesn't overflow U256"); // 100 $XYZ
+    let tel_amount =
+        U256::from(10).checked_pow(U256::from(18)).expect("1e18 doesn't overflow U256"); // 1 $TEL
+
+    let init_params = StablecoinManager::StablecoinManagerInitParams {
+        admin_: admin,
+        maintainer_: admin,
+        tokens_: deployed_token_bytes,
+        initMaxLimit: init_max_limit,
+        initMinLimit: init_min_limit,
+        authorizedFaucets_: kms_faucets,
+        dripAmount_: xyz_amount,
+        nativeDripAmount_: tel_amount,
+    }
+    .abi_encode();
+    let init_call = [&faucet_init_selector, &init_params[..]].concat().into();
+    let faucet_tx_builder = ERC1967Proxy::deploy_builder(&provider, faucet_impl, init_call);
+    let faucet_address =  faucet_tx_builder.calculate_create_address();
+    let faucet_tx_raw = faucet_tx_builder.into_transaction_request().input(init_call).serialize();
+    let faucet_instance = StablecoinManager::new(faucet_address, &provider);
+    
+    // grant faucet role
+    let role_tx_builder: SolCallBuilder<_, _, StablecoinManager::grantRoleCall, _> = 
+        faucet_instance.grantRole(
+            B256::from_str("0xaecf5761d3ba769b4631978eb26cb84eae66bcaca9c3f0f4ecde3feb2f4cf144")?,
+            kms_address,
+        );
+    let role_tx_raw = role_tx_builder.into_transaction_request().serialize();
+
+    let gas_price = provider.get_gas_price().await?;
+    let raw_txs = vec![impl_tx_raw, faucet_tx_raw, role_tx_raw];
+    let batch = Batch::new(raw_txs);
+    let parent = chain.sealed_genesis_header();
+    execution_outcome_from_test_batch_(&batch, &parent, Default::default(), &provider, &block_executor);
 
     Ok(())
 }

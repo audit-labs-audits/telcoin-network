@@ -90,6 +90,7 @@ pub fn seeded_genesis_from_random_batches<'a>(
 /// Optional parameters to pass to the `execute_test_batch` function.
 ///
 /// These optional parameters are used to replace default in the batch's header if included.
+#[derive(Debug, Default)]
 pub struct OptionalTestBatchParams {
     /// Optional beneficiary address.
     ///
@@ -224,6 +225,100 @@ pub fn execute_test_batch<P, E>(
     let sealed_header = header.seal_slow();
     let md = batch.versioned_metadata_mut();
     md.update_header(sealed_header);
+}
+
+/// Test utility to execute batch and return execution outcome.
+///
+/// NOTE: this is loosely based on reth's auto-seal consensus
+pub fn execution_outcome_from_test_batch_<P, E>(
+    batch: &Batch,
+    parent: &SealedHeader,
+    optional_params: OptionalTestBatchParams,
+    provider: &P,
+    executor: &E,
+) -> ExecutionOutcome 
+where
+    P: StateProviderFactory + BlockReaderIdExt,
+    E: BlockExecutorProvider,
+{
+    // deconstruct optional parameters for header
+    let OptionalTestBatchParams {
+        beneficiary_opt,
+        withdrawals_opt,
+        timestamp_opt,
+        mix_hash_opt,
+        base_fee_per_gas_opt,
+    } = optional_params;
+
+    // create "empty" header with default values
+    let mut header = Header {
+        parent_hash: parent.hash(),
+        ommers_hash: EMPTY_OMMER_ROOT_HASH,
+        beneficiary: beneficiary_opt.unwrap_or_else(|| Address::random()),
+        state_root: Default::default(),
+        transactions_root: Default::default(),
+        receipts_root: Default::default(),
+        withdrawals_root: Some(
+            withdrawals_opt
+                .clone()
+                .map_or(EMPTY_WITHDRAWALS, |w| proofs::calculate_withdrawals_root(&w)),
+        ),
+        logs_bloom: Default::default(),
+        difficulty: U256::ZERO,
+        number: parent.number + 1,
+        gas_limit: ETHEREUM_BLOCK_GAS_LIMIT,
+        gas_used: 0,
+        timestamp: timestamp_opt.unwrap_or_else(now),
+        mix_hash: mix_hash_opt.unwrap_or_else(|| B256::random()),
+        nonce: 0,
+        base_fee_per_gas: base_fee_per_gas_opt.or(Some(MIN_PROTOCOL_BASE_FEE)),
+        blob_gas_used: None,
+        excess_blob_gas: None,
+        extra_data: Default::default(),
+        parent_beacon_block_root: None,
+        requests_root: None,
+    };
+
+    // decode batch transactions
+    let mut txs = vec![];
+    for tx in batch.transactions_owned() {
+        let tx_signed =
+            TransactionSigned::decode_enveloped(&mut tx.as_ref()).expect("decode tx signed");
+        txs.push(tx_signed);
+    }
+
+    // update header's transactions root
+    header.transactions_root = if batch.transactions().is_empty() {
+        EMPTY_TRANSACTIONS
+    } else {
+        proofs::calculate_transaction_root(&txs)
+    };
+
+    // recover senders from block
+    let block = Block {
+        header,
+        body: txs,
+        ommers: vec![],
+        withdrawals: withdrawals_opt.clone(),
+        requests: None,
+    }
+    .with_recovered_senders()
+    .expect("unable to recover senders while executing test batch");
+
+    // create execution db
+    let mut db = StateProviderDatabase::new(
+        provider.latest().expect("provider retrieves latest during test batch execution"),
+    );
+
+    // convenience
+    let block_number = block.number;
+
+    // execute the block
+    let BlockExecutionOutput { state, receipts, .. } = executor
+        .executor(&mut db)
+        .execute((&block, U256::ZERO).into())
+        .expect("executor can execute test batch transactions");
+    ExecutionOutcome::new(state, receipts.into(), block_number, vec![])
 }
 
 /// Transaction factory
