@@ -78,10 +78,6 @@ async fn test_faucet_transfers_tel_with_google_kms() -> eyre::Result<()> {
         (faucet_impl_address, GenesisAccount::default().with_code(Some(faucet_bytecode.clone())))
     ].into_iter());
 
-    // get data for faucet implementation deployment using fake rpc_url
-    // let fake_rpc_url = "http://127.0.0.1:8545";
-    // let alloy_provider = ProviderBuilder::new().on_http(fake_rpc_url.parse()?); //omg
-
     // get data for faucet proxy deployment w/ initdata
     sol!(
         #[allow(clippy::too_many_arguments)]
@@ -110,13 +106,15 @@ async fn test_faucet_transfers_tel_with_google_kms() -> eyre::Result<()> {
     }
     .abi_encode();
     let init_call = [&faucet_init_selector, &init_params[..]].concat();
+    println!("{:x?}", init_call);
 
     // construct create data for faucet proxy address
-    let faucet_init_code= &ERC1967Proxy::BYTECODE.to_vec();
-    let constructor_args = [faucet_impl_address.as_slice(), &init_call[..]].concat();
+    let faucet_init_code = &ERC1967Proxy::BYTECODE.to_vec();
+    let constructor_args = [faucet_impl_address.into_word().as_slice(), &init_call[..]].concat();
+    println!("{:?}", constructor_args);
     let faucet_create_data = [faucet_init_code.as_slice(), &constructor_args[..]].concat();
 
-    // construct `grantRole(faucet)`` data
+    // construct `grantRole(faucet)` data
     let grant_role_selector = [47, 47, 241, 93];
     let grant_role_params = (
         B256::from_str("0xaecf5761d3ba769b4631978eb26cb84eae66bcaca9c3f0f4ecde3feb2f4cf144")?,
