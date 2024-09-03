@@ -385,10 +385,15 @@ impl TransactionFactory {
         &mut self,
         chain: Arc<ChainSpec>,
         gas_price: u128,
-        to: Address,
+        to: Option<Address>,
         value: U256,
         input: Bytes,
     ) -> TransactionSigned {
+        let tx_kind = match to {
+            Some(address) => TxKind::Call(address),
+            None => TxKind::Create,
+        };
+
         // Eip1559
         let transaction = Transaction::Eip1559(TxEip1559 {
             chain_id: chain.chain.id(),
@@ -396,7 +401,7 @@ impl TransactionFactory {
             max_priority_fee_per_gas: 0,
             max_fee_per_gas: gas_price,
             gas_limit: 1_000_000,
-            to: TxKind::Call(to),
+            to: tx_kind,
             value,
             input,
             access_list: Default::default(),
@@ -442,7 +447,7 @@ impl TransactionFactory {
     where
         Pool: TransactionPool,
     {
-        let tx = self.create_eip1559(chain, gas_price, to, value, Bytes::new());
+        let tx = self.create_eip1559(chain, gas_price, Some(to), value, Bytes::new());
         let pooled_tx =
             PooledTransactionsElement::try_from_broadcast(tx).expect("tx valid for pool");
         let recovered = pooled_tx.try_into_ecrecovered().expect("tx is recovered");
@@ -574,7 +579,7 @@ pub async fn deploy_contract_faucet_initialize(
         .abi_encode_params();
     let grant_role_call = [&grant_role_selector, &grant_role_params[..]].concat().into();
     let grant_role_tx = tx_factory
-        .create_eip1559(chain.clone(), gas_price, faucet_contract, U256::ZERO, grant_role_call)
+        .create_eip1559(chain.clone(), gas_price, Some(faucet_contract), U256::ZERO, grant_role_call)
         .envelope_encoded();
     let _tx_hash = provider.send_raw_transaction(grant_role_tx.as_ref()).await?;
     debug!("Successfully granted faucet fole to: {}", faucet_contract);
@@ -582,7 +587,7 @@ pub async fn deploy_contract_faucet_initialize(
     // fund faucet with some tel
     let value = U256::from(10_000_000_000_000_000_000u128);
     let fund_faucet_tx = tx_factory
-        .create_eip1559(chain, gas_price, faucet_contract, value, Bytes::new())
+        .create_eip1559(chain, gas_price, Some(faucet_contract), value, Bytes::new())
         .envelope_encoded();
     let tx_hash = provider.send_raw_transaction(fund_faucet_tx.as_ref()).await?.watch().await?;
     debug!("Faucet contract successfully brought up to date and funded in tx: {}", tx_hash);

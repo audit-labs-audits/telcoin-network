@@ -172,7 +172,7 @@ pub fn transaction_with_rand<R: Rng + ?Sized>(rand: &mut R) -> Transaction {
 
     // random transaction
     tx_factory
-        .create_eip1559(chain, gas_price, Address::ZERO, value, Bytes::new())
+        .create_eip1559(chain, gas_price, Some(Address::ZERO), value, Bytes::new())
         .envelope_encoded()
         .into()
 }
@@ -200,7 +200,7 @@ pub fn transaction() -> Transaction {
 
     // random transaction
     tx_factory
-        .create_eip1559(chain, gas_price, Address::ZERO, value, Bytes::new())
+        .create_eip1559(chain, gas_price, Some(Address::ZERO), value, Bytes::new())
         .envelope_encoded()
         .into()
 
