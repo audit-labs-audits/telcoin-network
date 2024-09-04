@@ -36,4 +36,3 @@ narwhal-test-utils = { workspace = true }
 reth-tracing = { workspace = true }
 reth-tasks = { workspace = true }
 tn-types = { workspace = true, features = ["test-utils"] }
-alloy = { workspace = true, features = ["contract"] }
