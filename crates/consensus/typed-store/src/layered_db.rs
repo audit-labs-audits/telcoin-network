@@ -193,6 +193,9 @@ impl<DB: Database> Database for LayeredDatabase<DB> {
         Ok(LayeredDbTx { mem_db: self.mem_db.clone() })
     }
 
+    /// Note that write transactions for the layerd DB will be "overlapped" and committed when the
+    /// last commit happens. Also, all write operations are saved in memory then passed to
+    /// thread for persistance in the background so operations will return quickly.
     fn write_txn(&self) -> eyre::Result<Self::TXMut<'_>> {
         self.tx.send(DBMessage::StartTxn).map_err(|_| eyre::eyre!("DB thread gone, FATAL!"))?;
         Ok(LayeredDbTxMut { mem_db: self.mem_db.clone(), tx: self.tx.clone() })
