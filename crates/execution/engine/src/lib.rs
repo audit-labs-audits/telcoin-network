@@ -289,14 +289,13 @@ impl<BT, CE> std::fmt::Debug for ExecutorEngine<BT, CE> {
 #[cfg(test)]
 mod tests {
     use crate::ExecutorEngine;
-    use alloy::sol;
+    
     use fastcrypto::hash::Hash as _;
     use narwhal_test_utils::default_test_execution_node;
     use reth_blockchain_tree::BlockchainTreeViewer;
     use reth_chainspec::ChainSpec;
     use reth_primitives::{
-        constants::MIN_PROTOCOL_BASE_FEE, keccak256, proofs, Address, BlockHashOrNumber,
-        GenesisAccount, B256, EMPTY_OMMER_ROOT_HASH, U256,
+        constants::MIN_PROTOCOL_BASE_FEE, keccak256, proofs, Address, BlockHashOrNumber, B256, EMPTY_OMMER_ROOT_HASH, U256,
     };
     use reth_provider::{BlockIdReader, BlockNumReader, BlockReader, TransactionVariant};
     use reth_tasks::TaskManager;
@@ -306,7 +305,6 @@ mod tests {
         adiri_chain_spec_arc, adiri_genesis, now,
         test_utils::{
             execute_test_batch, seeded_genesis_from_random_batches, OptionalTestBatchParams,
-            TransactionFactory,
         },
         BatchAPI as _, BatchDigest, Certificate, CertificateAPI, CommittedSubDag, ConsensusOutput,
         MetadataAPI as _, ReputationScores,
