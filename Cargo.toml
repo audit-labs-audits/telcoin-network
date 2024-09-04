@@ -168,8 +168,6 @@ reth-basic-payload-builder = { git = "https://github.com/paradigmxyz/reth", tag 
 reth-errors = { git = "https://github.com/paradigmxyz/reth", tag = "v1.0.3" }
 reth-libmdbx = { git = "https://github.com/paradigmxyz/reth", tag = "v1.0.3" }
 
-alloy-rlp = "0.3.7"
-
 revm = { version = "12.1.0", features = [
     "std",
     "secp256k1",
@@ -179,7 +177,8 @@ revm-primitives = { version = "7.1", features = [
     "std",
 ], default-features = false }
 
-
+alloy = "0.2"
+alloy-rlp = "0.3.7"
 alloy-rpc-types = { version = "0.2", default-features = false, features = [
     "eth",
 ] }

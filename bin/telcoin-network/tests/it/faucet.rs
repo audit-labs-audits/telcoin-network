@@ -8,6 +8,7 @@
 //! then submits the transaction to the RPC Transaction Pool for the next batch.
 
 use crate::util::create_validator_info;
+use alloy::sol;
 use clap::Parser;
 use gcloud_sdk::{
     google::cloud::kms::v1::{
@@ -37,12 +38,20 @@ use std::{str::FromStr, sync::Arc, time::Duration};
 use telcoin_network::{genesis::GenesisArgs, node::NodeCommand};
 use tn_faucet::FaucetArgs;
 use tn_node::launch_node;
-use tn_types::adiri_genesis;
+use tn_types::{
+    adiri_genesis,
+    test_utils::{deploy_contract_faucet_initialize, TransactionFactory},
+};
 use tokio::{runtime::Handle, task::JoinHandle, time::timeout};
-use tracing::{error, info};
+use tracing::{debug, error, info};
 
-// TODO: need to test stablecoin requests for faucet
-// but not sure how to compile/deploy contracts.
+sol!(
+    #[allow(clippy::too_many_arguments)]
+    #[sol(rpc)]
+    Stablecoin,
+    "../../crates/consensus/types/src/test_utils/artifacts/Stablecoin.json"
+);
+
 #[tokio::test]
 async fn test_faucet_transfers_tel_with_google_kms_e2e() -> eyre::Result<()> {
     init_test_tracing();
@@ -52,22 +61,48 @@ async fn test_faucet_transfers_tel_with_google_kms_e2e() -> eyre::Result<()> {
     let task_executor = manager.executor();
 
     // create google env and chain spec
-    let chain = prepare_google_kms_env().await?;
+    let (chain, kms_address) = prepare_google_kms_env().await?;
 
-    // create and launch validator nodes on local network
-    spawn_local_testnet(&task_executor, chain.clone()).await?;
+    // create and launch validator nodes on local network,
+    // use expected faucet contract address from `TransactionFactory::default` with nonce == 0
+    spawn_local_testnet(
+        &task_executor,
+        chain.clone(),
+        "0x8a345995579C09F45a5288b4858467920Af27301",
+    )
+    .await?;
 
     info!("nodes started");
 
     tokio::time::sleep(Duration::from_secs(10)).await;
 
     let address = Address::from(U160::from(8991));
-    let client = HttpClientBuilder::default().build("http://127.0.0.1:8545")?;
+    let rpc_url = "http://127.0.0.1:8545".to_string();
+    let client = HttpClientBuilder::default().build(&rpc_url)?;
 
     // assert starting balance is 0
     let starting_balance: String = client.request("eth_getBalance", rpc_params!(address)).await?;
-    println!("starting balance: {starting_balance:?}");
+    debug!("starting balance: {starting_balance:?}");
     assert_eq!(U256::from_str(&starting_balance)?, U256::ZERO);
+
+    // assert deployer starting balance is properly seeded
+    let default_deployer_address = TransactionFactory::default().address();
+    let deployer_balance: String =
+        client.request("eth_getBalance", rpc_params!(default_deployer_address)).await?;
+    debug!("Deployer starting balance: {deployer_balance:?}");
+    assert_eq!(U256::from_str(&deployer_balance)?, U256::MAX);
+
+    // deploy faucet contracts and initialize
+    let mut tx_factory = TransactionFactory::new();
+    let empty_tokens_array = vec![];
+    let _faucet_contract = deploy_contract_faucet_initialize(
+        chain,
+        &rpc_url,
+        kms_address,
+        empty_tokens_array,
+        &mut tx_factory,
+    )
+    .await?;
 
     // note: response is different each time bc KMS
     let tx_hash: String = client.request("faucet_transfer", rpc_params![address]).await?;
@@ -137,7 +172,7 @@ async fn set_google_kms_public_key_env_var() -> eyre::Result<()> {
 
 /// Use Google KMS credentials json to fetch public key, seed account at genesis, and set env vars
 /// for faucet signature requests.
-async fn prepare_google_kms_env() -> eyre::Result<Arc<ChainSpec>> {
+async fn prepare_google_kms_env() -> eyre::Result<(Arc<ChainSpec>, Address)> {
     // set application credentials for accessing Google KMS API
     std::env::set_var(
         "GOOGLE_APPLICATION_CREDENTIALS",
@@ -161,18 +196,24 @@ async fn prepare_google_kms_env() -> eyre::Result<Arc<ChainSpec>> {
     // calculate address from uncompressed public key
     let wallet_address = public_key_to_address(public_key);
 
-    // create genesis and fund account
+    // create genesis and fund relevant accounts
     let genesis = adiri_genesis();
     let faucet_account = vec![(wallet_address, GenesisAccount::default().with_balance(U256::MAX))];
-    let genesis = genesis.extend_accounts(faucet_account.into_iter());
+    let default_deployer_address = TransactionFactory::default().address();
+    let default_deployer_account =
+        vec![(default_deployer_address, GenesisAccount::default().with_balance(U256::MAX))];
 
-    Ok(Arc::new(genesis.into()))
+    let accounts_to_fund = faucet_account.into_iter().chain(default_deployer_account.into_iter());
+    let genesis = genesis.extend_accounts(accounts_to_fund);
+
+    Ok((Arc::new(genesis.into()), wallet_address))
 }
 
 /// Create validator info, genesis ceremony, and spawn node command with faucet active.
 async fn spawn_local_testnet(
     task_executor: &TaskExecutor,
     chain: Arc<ChainSpec>,
+    contract_address: &str,
 ) -> eyre::Result<Vec<JoinHandle<()>>> {
     // create temp path for test
     let temp_path = tempfile::TempDir::new().expect("tempdir is okay").into_path();
@@ -241,6 +282,8 @@ async fn spawn_local_testnet(
             "--instance",
             &instance,
             "--google-kms",
+            "--contract-address",
+            contract_address,
         ]);
 
         let cli_ctx = CliContext { task_executor: task_executor.clone() };
@@ -280,7 +323,7 @@ async fn spawn_local_testnet(
 /// Warning: this should only be called with a timeout - could result in infinite loop otherwise.
 async fn ensure_account_balance(client: &HttpClient, address: Address) -> eyre::Result<U256> {
     while let Ok(bal) = client.request::<String, _>("eth_getBalance", rpc_params!(address)).await {
-        println!("bal: {bal:?}");
+        debug!("bal: {bal:?}");
         let balance = U256::from_str(&bal)?;
         if balance > U256::ZERO {
             return Ok(balance);

@@ -17,7 +17,7 @@ use reth_db::{
 };
 use reth_evm::{execute::BlockExecutorProvider, ConfigureEvm};
 use reth_node_builder::NodeConfig;
-use std::sync::Arc;
+use std::{net::SocketAddr, sync::Arc};
 mod inner;
 mod worker;
 
@@ -132,5 +132,14 @@ where
     ) -> eyre::Result<Option<jsonrpsee::http_client::HttpClient>> {
         let guard = self.internal.read().await;
         guard.worker_http_client(worker_id)
+    }
+
+    /// Return an HTTP local address for submitting transactions to the RPC.
+    pub async fn worker_http_local_address(
+        &self,
+        worker_id: &WorkerId,
+    ) -> eyre::Result<Option<SocketAddr>> {
+        let guard = self.internal.read().await;
+        guard.worker_http_local_address(worker_id)
     }
 }
