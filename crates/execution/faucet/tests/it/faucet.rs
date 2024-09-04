@@ -9,33 +9,22 @@
 
 use alloy::{
     self,
-    consensus::{self, TxEnvelope},
-    contract::SolCallBuilder,
-    network::{EthereumWallet, TransactionBuilder},
-    primitives::{FixedBytes, Keccak256},
-    providers::{Provider, ProviderBuilder},
-    signers::local::PrivateKeySigner,
-    sol,
 };
-use alloy_sol_types::{SolType, SolValue};
+use alloy_sol_types::SolType;
 use gcloud_sdk::{
-    google::cloud::{
-        deploy,
-        kms::v1::{key_management_service_client::KeyManagementServiceClient, GetPublicKeyRequest},
-    },
+    google::cloud::kms::v1::{key_management_service_client::KeyManagementServiceClient, GetPublicKeyRequest},
     GoogleApi, GoogleAuthMiddleware, GoogleEnvironment,
 };
 use jsonrpsee::{
-    core::{client::ClientT, Serialize},
+    core::client::ClientT,
     rpc_params,
 };
 use k256::{elliptic_curve::sec1::ToEncodedPoint, pkcs8::DecodePublicKey, PublicKey as PubKey};
 use narwhal_test_utils::{default_test_execution_node, faucet_test_execution_node};
-use reth::rpc::types::TransactionRequest;
 use reth_chainspec::ChainSpec;
 use reth_primitives::{
-    alloy_primitives::U160, hex, keccak256, public_key_to_address, Address, Bytes, Genesis,
-    GenesisAccount, TransactionSigned, B256, U256,
+    alloy_primitives::U160, public_key_to_address, Address,
+    GenesisAccount, TransactionSigned, U256,
 };
 use reth_provider::ExecutionOutcome;
 use reth_tasks::TaskManager;
@@ -45,7 +34,7 @@ use std::{str::FromStr, sync::Arc, time::Duration};
 use tn_faucet::Drip;
 use tn_types::{
     adiri_genesis, test_channel,
-    test_utils::{execution_outcome_from_test_batch_, TransactionFactory},
+    test_utils::execution_outcome_from_test_batch_,
     Batch, BatchAPI, NewBatch,
 };
 use tokio::time::timeout;
@@ -494,27 +483,27 @@ async fn set_google_kms_public_key_env_var() -> eyre::Result<()> {
     Ok(())
 }
 
-async fn get_contract_state_for_genesis(
-    chain: Arc<ChainSpec>,
-    raw_txs_to_execute: Vec<Vec<u8>>,
-) -> eyre::Result<ExecutionOutcome> {
-    // create execution components
-    let manager = TaskManager::current();
-    let executor = manager.executor();
-    let execution_node = default_test_execution_node(Some(chain.clone()), None, executor)?;
-    let provider = execution_node.get_provider().await;
-    let block_executor = execution_node.get_block_executor().await;
+// async fn get_contract_state_for_genesis(
+//     chain: Arc<ChainSpec>,
+//     raw_txs_to_execute: Vec<Vec<u8>>,
+// ) -> eyre::Result<ExecutionOutcome> {
+//     // create execution components
+//     let manager = TaskManager::current();
+//     let executor = manager.executor();
+//     let execution_node = default_test_execution_node(Some(chain.clone()), None, executor)?;
+//     let provider = execution_node.get_provider().await;
+//     let block_executor = execution_node.get_block_executor().await;
 
-    // execute batch
-    let batch = Batch::new(raw_txs_to_execute);
-    let parent = chain.sealed_genesis_header();
-    let execution_outcome = execution_outcome_from_test_batch_(
-        &batch,
-        &parent,
-        Default::default(),
-        &provider,
-        &block_executor,
-    );
+//     // execute batch
+//     let batch = Batch::new(raw_txs_to_execute);
+//     let parent = chain.sealed_genesis_header();
+//     let execution_outcome = execution_outcome_from_test_batch_(
+//         &batch,
+//         &parent,
+//         Default::default(),
+//         &provider,
+//         &block_executor,
+//     );
 
-    Ok(execution_outcome)
-}
+//     Ok(execution_outcome)
+// }
