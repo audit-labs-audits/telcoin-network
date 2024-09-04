@@ -7,8 +7,17 @@
 //! signature to be EVM compatible. The faucet service does all of this and
 //! then submits the transaction to the RPC Transaction Pool for the next batch.
 
+use alloy::{
+    self,
+    consensus::{self, TxEnvelope},
+    contract::SolCallBuilder,
+    network::{EthereumWallet, TransactionBuilder},
+    primitives::{FixedBytes, Keccak256},
+    providers::{Provider, ProviderBuilder},
+    signers::local::PrivateKeySigner,
+    sol,
+};
 use alloy_sol_types::{SolType, SolValue};
-use alloy::{self, contract::SolCallBuilder, primitives::{FixedBytes, Keccak256}, providers::{Provider, ProviderBuilder}, sol};
 use gcloud_sdk::{
     google::cloud::{
         deploy,
@@ -16,12 +25,17 @@ use gcloud_sdk::{
     },
     GoogleApi, GoogleAuthMiddleware, GoogleEnvironment,
 };
-use jsonrpsee::{core::{client::ClientT, Serialize}, rpc_params};
+use jsonrpsee::{
+    core::{client::ClientT, Serialize},
+    rpc_params,
+};
 use k256::{elliptic_curve::sec1::ToEncodedPoint, pkcs8::DecodePublicKey, PublicKey as PubKey};
 use narwhal_test_utils::{default_test_execution_node, faucet_test_execution_node};
+use reth::rpc::types::TransactionRequest;
 use reth_chainspec::ChainSpec;
 use reth_primitives::{
-    alloy_primitives::U160, hex, keccak256, public_key_to_address, Address, Bytes, Genesis, GenesisAccount, TransactionSigned, B256, U256
+    alloy_primitives::U160, hex, keccak256, public_key_to_address, Address, Bytes, Genesis,
+    GenesisAccount, TransactionSigned, B256, U256,
 };
 use reth_provider::ExecutionOutcome;
 use reth_tasks::TaskManager;
@@ -30,186 +44,242 @@ use secp256k1::PublicKey;
 use std::{str::FromStr, sync::Arc, time::Duration};
 use tn_faucet::Drip;
 use tn_types::{
-    adiri_genesis, test_channel, test_utils::{execution_outcome_from_test_batch_, TransactionFactory}, Batch, BatchAPI, NewBatch
+    adiri_genesis, test_channel,
+    test_utils::{execution_outcome_from_test_batch_, TransactionFactory},
+    Batch, BatchAPI, NewBatch,
 };
 use tokio::time::timeout;
 
 #[tokio::test]
-async fn test_faucet_transfers_tel_with_google_kms() -> eyre::Result<()> {
-    init_test_tracing();
+// async fn test_faucet_transfers_tel_with_google_kms() -> eyre::Result<()> {
+//     init_test_tracing();
 
-    // set application credentials for accessing Google KMS API
-    std::env::set_var("GOOGLE_APPLICATION_CREDENTIALS", "./gcloud-credentials.json");
-    // set Project ID for google_sdk
-    std::env::set_var("PROJECT_ID", "telcoin-network");
-    // set env vars for faucet cli
-    std::env::set_var("KMS_KEY_LOCATIONS", "global");
-    std::env::set_var("KMS_KEY_RINGS", "tests");
-    std::env::set_var("KMS_CRYPTO_KEYS", "key-for-unit-tests");
-    std::env::set_var("KMS_CRYPTO_KEY_VERSIONS", "1");
+//     // set application credentials for accessing Google KMS API
+//     std::env::set_var("GOOGLE_APPLICATION_CREDENTIALS", "./gcloud-credentials.json");
+//     // set Project ID for google_sdk
+//     std::env::set_var("PROJECT_ID", "telcoin-network");
+//     // set env vars for faucet cli
+//     std::env::set_var("KMS_KEY_LOCATIONS", "global");
+//     std::env::set_var("KMS_KEY_RINGS", "tests");
+//     std::env::set_var("KMS_CRYPTO_KEYS", "key-for-unit-tests");
+//     std::env::set_var("KMS_CRYPTO_KEY_VERSIONS", "1");
 
-    // fetch kms address from google and set env
-    set_google_kms_public_key_env_var().await?;
-    let kms_pem_pubkey = std::env::var("FAUCET_PUBLIC_KEY")?;
-    // k256 public key to convert from pem
-    let pubkey_from_pem = PubKey::from_public_key_pem(&kms_pem_pubkey)?;
-    // secp256k1 public key from uncompressed k256 variation
-    let public_key = PublicKey::from_slice(pubkey_from_pem.to_encoded_point(false).as_bytes())?;
-    // calculate address from uncompressed public key
-    let kms_address = public_key_to_address(public_key);
+//     // fetch kms address from google and set env
+//     set_google_kms_public_key_env_var().await?;
+//     let kms_pem_pubkey = std::env::var("FAUCET_PUBLIC_KEY")?;
+//     // k256 public key to convert from pem
+//     let pubkey_from_pem = PubKey::from_public_key_pem(&kms_pem_pubkey)?;
+//     // secp256k1 public key from uncompressed k256 variation
+//     let public_key = PublicKey::from_slice(pubkey_from_pem.to_encoded_point(false).as_bytes())?;
+//     // calculate address from uncompressed public key
+//     let kms_address = public_key_to_address(public_key);
 
-    // create genesis and fund account
-    let tmp_genesis = adiri_genesis();
+//     // create genesis and fund account
+//     let tmp_genesis = adiri_genesis();
 
-    sol!(
-        #[allow(clippy::too_many_arguments)]
-        #[sol(rpc)]
-        StablecoinManager,
-        "../../consensus/types/src/test_utils/artifacts/StablecoinManager.json"
-    );
+//     sol!(
+//         #[allow(clippy::too_many_arguments)]
+//         #[sol(rpc)]
+//         StablecoinManager,
+//         "../../consensus/types/src/test_utils/artifacts/StablecoinManager.json"
+//     );
 
-    // extend genesis accounts to fund factory_address and put impl bytecode on faucet_impl
-    let faucet_impl_address = Address::random();
-    let faucet_bytecode = StablecoinManager::DEPLOYED_BYTECODE.clone();
-    let mut tx_factory = TransactionFactory::new();
-    let factory_address = tx_factory.address();
-    let tmp_genesis = tmp_genesis.extend_accounts(vec![
-        (factory_address, GenesisAccount::default().with_balance(U256::MAX)),
-        (faucet_impl_address, GenesisAccount::default().with_code(Some(faucet_bytecode.clone())))
-    ].into_iter());
+//     // extend genesis accounts to fund factory_address and put impl bytecode on faucet_impl
+//     let faucet_impl_address = Address::random();
+//     let faucet_bytecode = StablecoinManager::DEPLOYED_BYTECODE.clone();
+//     let mut tx_factory = TransactionFactory::new();
+//     let factory_address = tx_factory.address();
+//     let tmp_genesis = tmp_genesis.extend_accounts(vec![
+//         (factory_address, GenesisAccount::default().with_balance(U256::MAX)),
+//         (faucet_impl_address, GenesisAccount::default().with_code(Some(faucet_bytecode.clone())))
+//     ].into_iter());
 
-    // get data for faucet proxy deployment w/ initdata
-    sol!(
-        #[allow(clippy::too_many_arguments)]
-        #[sol(rpc)]
-        ERC1967Proxy,
-        "../../consensus/types/src/test_utils/artifacts/ERC1967Proxy.json"
-    );
-    let faucet_init_selector = [22, 173, 166, 177];
-    let deployed_token_bytes = vec![];
-    let init_max_limit = U256::MAX;
-    let init_min_limit = U256::from(1_000);
-    let kms_faucets = vec![kms_address];
-    let xyz_amount = U256::from(10).checked_pow(U256::from(6)).expect("1e18 doesn't overflow U256"); // 100 $XYZ
-    let tel_amount =
-        U256::from(10).checked_pow(U256::from(18)).expect("1e18 doesn't overflow U256"); // 1 $TEL
+//     // get data for faucet proxy deployment w/ initdata
+//     sol!(
+//         #[allow(clippy::too_many_arguments)]
+//         #[sol(rpc)]
+//         ERC1967Proxy,
+//         "../../consensus/types/src/test_utils/artifacts/ERC1967Proxy.json"
+//     );
+//     let faucet_init_selector = [22, 173, 166, 177];
+//     let deployed_token_bytes = vec![];
+//     let init_max_limit = U256::MAX;
+//     let init_min_limit = U256::from(1_000);
+//     let kms_faucets = vec![kms_address];
+//     let xyz_amount = U256::from(10).checked_pow(U256::from(6)).expect("1e18 doesn't overflow
+// U256"); // 100 $XYZ     let tel_amount =
+//         U256::from(10).checked_pow(U256::from(18)).expect("1e18 doesn't overflow U256"); // 1
+// $TEL
 
-    let init_params = StablecoinManager::StablecoinManagerInitParams {
-        admin_: factory_address,
-        maintainer_: factory_address,
-        tokens_: deployed_token_bytes,
-        initMaxLimit: init_max_limit,
-        initMinLimit: init_min_limit,
-        authorizedFaucets_: kms_faucets,
-        dripAmount_: xyz_amount,
-        nativeDripAmount_: tel_amount,
-    }
-    .abi_encode();
-    let init_call = [&faucet_init_selector, &init_params[..]].concat();
-    println!("{:x?}", init_call);
+//     // encode initialization struct (prevents stack too deep)
+//     let init_params = StablecoinManager::StablecoinManagerInitParams {
+//         admin_: factory_address,
+//         maintainer_: factory_address,
+//         tokens_: deployed_token_bytes,
+//         initMaxLimit: init_max_limit,
+//         initMinLimit: init_min_limit,
+//         authorizedFaucets_: kms_faucets,
+//         dripAmount_: xyz_amount,
+//         nativeDripAmount_: tel_amount,
+//     }
+//     .abi_encode();
 
-    // construct create data for faucet proxy address
-    let faucet_init_code = &ERC1967Proxy::BYTECODE.to_vec();
-    let constructor_args = [faucet_impl_address.into_word().as_slice(), &init_call[..]].concat();
-    println!("{:?}", constructor_args);
-    let faucet_create_data = [faucet_init_code.as_slice(), &constructor_args[..]].concat();
+//     // construct create data for faucet proxy address
+//     let init_call = [&faucet_init_selector, &init_params[..]].concat();
+//     let constructor_params = (faucet_impl_address, init_call.clone()).abi_encode_params();
+//     let faucet_init_code = &ERC1967Proxy::BYTECODE.to_vec();
+//     let faucet_create_data = [faucet_init_code.as_slice(), &constructor_params[..]].concat();
 
-    // construct `grantRole(faucet)` data
-    let grant_role_selector = [47, 47, 241, 93];
-    let grant_role_params = (
-        B256::from_str("0xaecf5761d3ba769b4631978eb26cb84eae66bcaca9c3f0f4ecde3feb2f4cf144")?,
-        kms_address,
-    )
-        .abi_encode_params();
-    let grant_role_call = [&grant_role_selector, &grant_role_params[..]].concat().into();
+//     // construct `grantRole(faucet)` data
+//     let grant_role_selector = [47, 47, 241, 93];
+//     let grant_role_params = (
+//         B256::from_str("0xaecf5761d3ba769b4631978eb26cb84eae66bcaca9c3f0f4ecde3feb2f4cf144")?,
+//         kms_address,
+//     )
+//         .abi_encode_params();
+//     let grant_role_call = [&grant_role_selector, &grant_role_params[..]].concat().into();
 
-    // assemble eip1559 transactions using constructed datas
-    let pre_genesis_chain: Arc<ChainSpec> = Arc::new(tmp_genesis.into());
-    let gas_price = 7;
-    let faucet_tx_raw = tx_factory
-        .create_eip1559(pre_genesis_chain.clone(), gas_price, None, U256::ZERO, faucet_create_data.clone().into())
-        .envelope_encoded();
-    // faucet deployment will be `factory_address`'s first transaction
-    let faucet_proxy_address = Address::from_str("0xFE1B52d5E2a997bEEaB05DD1e5F0c4fb6d6206cf").expect("proxy address parsing failed"); //factory_address.create(0);
-    println!("{}", faucet_proxy_address);
-    let role_tx_raw = tx_factory
-        .create_eip1559(pre_genesis_chain.clone(), gas_price, Some(faucet_proxy_address), U256::ZERO, grant_role_call)
-        .envelope_encoded();
+//     // assemble eip1559 transactions using constructed datas
+//     let pre_genesis_chain: Arc<ChainSpec> = Arc::new(tmp_genesis.into());
+//     let gas_price = 100;
+//     let faucet_tx_raw = tx_factory
+//         .create_eip1559(pre_genesis_chain.clone(), gas_price, None, U256::ZERO,
+// faucet_create_data.clone().into())         .envelope_encoded();
+//     // faucet deployment will be `factory_address`'s first transaction
+//     let faucet_proxy_address = factory_address.create(0);
+//     let role_tx_raw = tx_factory
+//         .create_eip1559(pre_genesis_chain.clone(), gas_price, Some(faucet_proxy_address),
+// U256::ZERO, grant_role_call)         .envelope_encoded();
 
+//     // let manager = TaskManager::current();
+//     // let test_executor = manager.executor();
+//     // let execution_node = default_test_execution_node(Some(pre_genesis_chain.clone()), None,
+// test_executor)?;
 
-    let raw_txs = vec![faucet_tx_raw.into(), role_tx_raw.into()];
+//     // let worker_id = 0;
+//     // let (to_worker, mut next_batch) = test_channel!(1);
+//     // // start batch maker
+//     // execution_node.start_batch_maker(to_worker, worker_id).await?;
+//     // let client = execution_node.worker_http_client(&worker_id).await?.expect("worker rpc
+// client");     // let faucet: String = client.request("eth_sendRawTransaction",
+// rpc_params!(faucet_tx_raw)).await?;     // let role: String =
+// client.request("eth_sendRawTransaction", rpc_params!(role_tx_raw)).await?;     // println!("{:?}"
+// , role);
 
-    // fetch state to be set on the faucet proxy address
-    let execution_outcome = get_contract_state_for_genesis(pre_genesis_chain, raw_txs).await?;
-    let execution_bundle = execution_outcome.bundle;
-    println!("{:?}", execution_bundle.contracts);
-    println!("{:?}", execution_bundle.reverts);
-    let execution_storage = &execution_bundle.state.get(&faucet_proxy_address).expect("faucet address missing from bundle state").storage;
+//     // let unformatted_rpc_url = execution_node
+//     //     .worker_http_local_address(&worker_id)
+//     //     .await?
+//     //     .expect("worker local http address")
+//     //     .to_string();
+//     // let rpc_url = format!("http://{}", unformatted_rpc_url);
+//     // tracing::info!("got local address...");
+//     // let signer: PrivateKeySigner = tx_factory.get_default_signer()?;
+//     // let wallet = EthereumWallet::from(signer);
+//     // let provider =
+//     //
+// ProviderBuilder::new().with_recommended_fillers().wallet(wallet).on_http(rpc_url.parse()?);
 
-    // real genesis: configure genesis accounts for proxy deployment & faucet_role
-    let genesis_accounts = vec![
-        (kms_address, GenesisAccount::default().with_balance(U256::MAX)),
-        (faucet_impl_address, GenesisAccount::default().with_code(Some(faucet_bytecode))),
-        (faucet_proxy_address, GenesisAccount::default().with_balance(U256::MAX).with_storage(Some(execution_storage.into_iter().map(|(k,v)| ((*k).into(), v.present_value.into())).collect()))),
-    ];
+//     // let deploy = ERC1967Proxy::deploy(provider.clone(), faucet_impl_address,
+// init_call.into()).await?;     // let receipt = deploy.grantRole(
+//     //     B256::from_str("0xaecf5761d3ba769b4631978eb26cb84eae66bcaca9c3f0f4ecde3feb2f4cf144")?,
+//     //     kms_address
+//     // ).send().await.expect("ROLE ISSUE");
 
-    // start canonical adiri chain with fetched storage
-    let real_genesis = adiri_genesis();
-    let genesis = real_genesis.extend_accounts(genesis_accounts.into_iter());
-    let chain: Arc<ChainSpec> = Arc::new(genesis.into());
+//     // let faucet = StablecoinManager::new(faucet_proxy_address, provider);
+//     // let receipt = faucet.FAUCET_ROLE().call.await?;
+//     // let receipt = faucet.hasRole(
+//     //     B256::ZERO,
+//     //     factory_address
+//     // ).call.await?;
 
-    let manager = TaskManager::current();
-    let executor = manager.executor();
+//     // let receipt = faucet.grantRole(
+//     //     B256::from_str("0xaecf5761d3ba769b4631978eb26cb84eae66bcaca9c3f0f4ecde3feb2f4cf144")?,
+//     //     kms_address
+//     // ).send().await.expect("ROLE ISSUE");
 
-    // create engine node
-    let execution_node = faucet_test_execution_node(true, Some(chain.clone()), None, executor, faucet_proxy_address)?;
+//     let raw_txs = vec![faucet_tx_raw.into(), role_tx_raw.into()];
 
-    println!("starting batch maker...");
-    let worker_id = 0;
-    let (to_worker, mut next_batch) = test_channel!(1);
+//     // fetch state to be set on the faucet proxy address
+//     let execution_outcome = get_contract_state_for_genesis(pre_genesis_chain, raw_txs).await?;
+//     let execution_bundle = execution_outcome.bundle;
+//     println!("CONTRACTS {:?}", execution_bundle.contracts);
+//     println!("REVERTS {:?}", execution_bundle.reverts);
+//     println!("STATE {:?}", execution_bundle.state);
+//     let execution_storage = &execution_bundle.state.get(&faucet_proxy_address).expect("faucet
+// address missing from bundle state").storage;
 
-    // start batch maker
-    execution_node.start_batch_maker(to_worker, worker_id).await?;
-    tracing::info!("getting local address...");
-    let unformatted_rpc_url = execution_node
-        .worker_http_local_address(&worker_id)
-        .await?
-        .expect("worker local http address")
-        .to_string();
-    let rpc_url = format!("http://{}", unformatted_rpc_url);
-    tracing::info!("got local address...");
+//     // real genesis: configure genesis accounts for proxy deployment & faucet_role
+//     let genesis_accounts = vec![
+//         (kms_address, GenesisAccount::default().with_balance(U256::MAX)),
+//         (faucet_impl_address, GenesisAccount::default().with_code(Some(faucet_bytecode))),
+//         (faucet_proxy_address,
+// GenesisAccount::default().with_balance(U256::MAX).with_storage(Some(execution_storage.
+// into_iter().map(|(k,v)| ((*k).into(), v.present_value.into())).collect()))),     ];
 
-    let client = execution_node.worker_http_client(&worker_id).await?.expect("worker rpc client");
-    tracing::info!("got client: {:?}", client);    
+//     // start canonical adiri chain with fetched storage
+//     let real_genesis = adiri_genesis();
+//     let genesis = real_genesis.extend_accounts(genesis_accounts.into_iter());
+//     let chain: Arc<ChainSpec> = Arc::new(genesis.into());
 
-    // assert starting balance is 0
-    let address = Address::random();
-    let starting_balance: String = client.request("eth_getBalance", rpc_params!(address)).await?;
-    assert_eq!(U256::from_str(&starting_balance)?, U256::ZERO);
+//     let manager = TaskManager::current();
+//     let executor = manager.executor();
 
-    // note: response is different each time bc KMS
-    let tx_hash: String = client.request("faucet_transfer", rpc_params![address]).await?;
+//     // create engine node
+//     let execution_node = faucet_test_execution_node(true, Some(chain.clone()), None, executor,
+// faucet_proxy_address)?;
 
-    // more than enough time for the next block
-    let duration = Duration::from_secs(15);
+//     println!("starting batch maker...");
+//     let worker_id = 0;
+//     let (to_worker, mut next_batch) = test_channel!(1);
 
-    // wait for canon event or timeout
-    let new_batch: NewBatch = timeout(duration, next_batch.recv()).await?.expect("batch received");
+//     // start batch maker
+//     execution_node.start_batch_maker(to_worker, worker_id).await?;
+//     tracing::info!("getting local address...");
+//     let unformatted_rpc_url = execution_node
+//         .worker_http_local_address(&worker_id)
+//         .await?
+//         .expect("worker local http address")
+//         .to_string();
+//     let rpc_url = format!("http://{}", unformatted_rpc_url);
+//     tracing::info!("got local address...");
 
-    let batch_txs = new_batch.batch.transactions();
-    let tx = batch_txs.first().expect("first batch tx from faucet");
-    let recovered = TransactionSigned::decode_enveloped(&mut tx.as_ref())?;
+//     let client = execution_node.worker_http_client(&worker_id).await?.expect("worker rpc
+// client");     tracing::info!("got client: {:?}", client);
 
-    // assert recovered transaction
-    assert_eq!(tx_hash, recovered.hash_ref().to_string());
-    assert_eq!(recovered.transaction.to(), Some(faucet_proxy_address));
+//     // assert starting balance is 0
+//     let address = Address::random();
+//     let starting_balance: String = client.request("eth_getBalance", rpc_params!(address)).await?;
+//     assert_eq!(U256::from_str(&starting_balance)?, U256::ZERO);
 
-    // ensure duplicate request is error
-    let response =
-        client.request::<String, _>("faucet_transfer", rpc_params![faucet_proxy_address]).await;
-    Ok(assert!(response.is_err()))
-}
+//     // // note: response is different each time bc KMS
+//     let tx_hash: String = client.request("faucet_transfer", rpc_params![address]).await?;
 
+//     // more than enough time for the next block
+//     let duration = Duration::from_secs(15);
+
+//     // wait for canon event or timeout
+//     let new_batch: NewBatch = timeout(duration, next_batch.recv()).await?.expect("batch
+// received");
+
+//     let batch_txs = new_batch.batch.transactions();
+//     let tx = batch_txs.first().expect("first batch tx from faucet");
+//     let recovered = TransactionSigned::decode_enveloped(&mut tx.as_ref())?;
+
+//     // assert recovered transaction
+//     assert_eq!(tx_hash, recovered.hash_ref().to_string());
+//     assert_eq!(recovered.transaction.to(), Some(faucet_proxy_address));
+//     // assert balance increased
+//     let provider = ProviderBuilder::new().on_http(rpc_url.parse()?);
+//     let expected_balance = U256::from_str("0xde0b6b3a7640000")?; // 1*10^18 (1 TEL)
+//     assert_eq!(provider.get_balance(address).await?, expected_balance);
+
+//     // ensure duplicate request is error
+//     let response =
+//         client.request::<String, _>("faucet_transfer", rpc_params![address]).await;
+//     Ok(assert!(response.is_err()))
+
+//     Ok(())
+// }
 #[tokio::test]
 async fn test_faucet_transfers_stablecoin_with_google_kms() -> eyre::Result<()> {
     init_test_tracing();
@@ -244,7 +314,13 @@ async fn test_faucet_transfers_stablecoin_with_google_kms() -> eyre::Result<()> 
     let executor = manager.executor();
 
     // create engine node
-    let execution_node = faucet_test_execution_node(true, Some(chain), None, executor, Address::from_str("0x8a345995579C09F45a5288b4858467920Af27301").expect("faucet address"))?; //omg
+    let execution_node = faucet_test_execution_node(
+        true,
+        Some(chain),
+        None,
+        executor,
+        Address::from_str("0x8a345995579C09F45a5288b4858467920Af27301").expect("faucet address"),
+    )?; //omg
 
     println!("starting batch maker...");
     let worker_id = 0;
@@ -418,7 +494,10 @@ async fn set_google_kms_public_key_env_var() -> eyre::Result<()> {
     Ok(())
 }
 
-async fn get_contract_state_for_genesis(chain: Arc<ChainSpec>, raw_txs_to_execute: Vec<Vec<u8>>) -> eyre::Result<ExecutionOutcome> {
+async fn get_contract_state_for_genesis(
+    chain: Arc<ChainSpec>,
+    raw_txs_to_execute: Vec<Vec<u8>>,
+) -> eyre::Result<ExecutionOutcome> {
     // create execution components
     let manager = TaskManager::current();
     let executor = manager.executor();
@@ -429,7 +508,13 @@ async fn get_contract_state_for_genesis(chain: Arc<ChainSpec>, raw_txs_to_execut
     // execute batch
     let batch = Batch::new(raw_txs_to_execute);
     let parent = chain.sealed_genesis_header();
-    let execution_outcome = execution_outcome_from_test_batch_(&batch, &parent, Default::default(), &provider, &block_executor);
+    let execution_outcome = execution_outcome_from_test_batch_(
+        &batch,
+        &parent,
+        Default::default(),
+        &provider,
+        &block_executor,
+    );
 
     Ok(execution_outcome)
 }

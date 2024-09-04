@@ -1400,7 +1400,6 @@ mod tests {
         let manager = TaskManager::current();
         let executor = manager.executor();
 
-
         // create batches for consensus output
         let mut batches_1 = tn_types::test_utils::batches(4); // create 4 batches
         let mut batches_2 = tn_types::test_utils::batches(4); // create 4 batches

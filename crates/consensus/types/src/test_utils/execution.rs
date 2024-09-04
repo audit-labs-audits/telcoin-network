@@ -236,7 +236,7 @@ pub fn execution_outcome_from_test_batch_<P, E>(
     optional_params: OptionalTestBatchParams,
     provider: &P,
     executor: &E,
-) -> ExecutionOutcome 
+) -> ExecutionOutcome
 where
     P: StateProviderFactory + BlockReaderIdExt,
     E: BlockExecutorProvider,
@@ -376,7 +376,7 @@ impl TransactionFactory {
     }
 
     /// Increment nonce after a transaction was created and signed.
-    fn inc_nonce(&mut self) {
+    pub fn inc_nonce(&mut self) {
         self.nonce += 1;
     }
 
@@ -579,7 +579,13 @@ pub async fn deploy_contract_faucet_initialize(
         .abi_encode_params();
     let grant_role_call = [&grant_role_selector, &grant_role_params[..]].concat().into();
     let grant_role_tx = tx_factory
-        .create_eip1559(chain.clone(), gas_price, Some(faucet_contract), U256::ZERO, grant_role_call)
+        .create_eip1559(
+            chain.clone(),
+            gas_price,
+            Some(faucet_contract),
+            U256::ZERO,
+            grant_role_call,
+        )
         .envelope_encoded();
     let _tx_hash = provider.send_raw_transaction(grant_role_tx.as_ref()).await?;
     debug!("Successfully granted faucet fole to: {}", faucet_contract);

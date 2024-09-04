@@ -146,7 +146,7 @@ async fn test_make_batch_el_to_cl() {
     let transaction1 = tx_factory.create_eip1559(
         chain.clone(),
         gas_price,
-        Address::ZERO,
+        Some(Address::ZERO),
         value, // 1 TEL
         Bytes::new(),
     );
@@ -155,7 +155,7 @@ async fn test_make_batch_el_to_cl() {
     let transaction2 = tx_factory.create_eip1559(
         chain.clone(),
         gas_price,
-        Address::ZERO,
+        Some(Address::ZERO),
         value, // 1 TEL
         Bytes::new(),
     );
@@ -164,7 +164,7 @@ async fn test_make_batch_el_to_cl() {
     let transaction3 = tx_factory.create_eip1559(
         chain.clone(),
         gas_price,
-        Address::ZERO,
+        Some(Address::ZERO),
         value, // 1 TEL
         Bytes::new(),
     );
