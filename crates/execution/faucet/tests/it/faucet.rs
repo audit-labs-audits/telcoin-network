@@ -9,27 +9,23 @@
 
 use alloy_sol_types::SolType;
 use gcloud_sdk::{
-    google::cloud::kms::v1::{key_management_service_client::KeyManagementServiceClient, GetPublicKeyRequest},
+    google::cloud::kms::v1::{
+        key_management_service_client::KeyManagementServiceClient, GetPublicKeyRequest,
+    },
     GoogleApi, GoogleAuthMiddleware, GoogleEnvironment,
 };
-use jsonrpsee::{
-    core::client::ClientT,
-    rpc_params,
-};
+use jsonrpsee::{core::client::ClientT, rpc_params};
 use k256::{elliptic_curve::sec1::ToEncodedPoint, pkcs8::DecodePublicKey, PublicKey as PubKey};
 use narwhal_test_utils::faucet_test_execution_node;
 use reth_primitives::{
-    alloy_primitives::U160, public_key_to_address, Address,
-    GenesisAccount, TransactionSigned, U256,
+    alloy_primitives::U160, public_key_to_address, Address, GenesisAccount, TransactionSigned, U256,
 };
 use reth_tasks::TaskManager;
 use reth_tracing::init_test_tracing;
 use secp256k1::PublicKey;
 use std::{str::FromStr, sync::Arc, time::Duration};
 use tn_faucet::Drip;
-use tn_types::{
-    adiri_genesis, test_channel, BatchAPI, NewBatch,
-};
+use tn_types::{adiri_genesis, test_channel, BatchAPI, NewBatch};
 use tokio::time::timeout;
 
 // #[tokio::test]
