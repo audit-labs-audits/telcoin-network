@@ -50,7 +50,7 @@ use tn_types::{
 };
 use tokio::time::timeout;
 
-#[tokio::test]
+// #[tokio::test]
 // async fn test_faucet_transfers_tel_with_google_kms() -> eyre::Result<()> {
 //     init_test_tracing();
 
