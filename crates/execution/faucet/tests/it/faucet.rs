@@ -8,9 +8,6 @@
 //! then submits the transaction to the RPC Transaction Pool for the next batch.
 
 use alloy::{
-    network::EthereumWallet,
-    providers::{Provider, ProviderBuilder},
-    signers::local::PrivateKeySigner,
     sol,
 };
 use alloy_sol_types::{SolType, SolValue};
@@ -185,7 +182,7 @@ async fn test_faucet_transfers_tel_with_google_kms() -> eyre::Result<()> {
                 .with_balance(U256::MAX)
                 .with_storage(Some(
                     execution_storage
-                        .into_iter()
+                        .iter()
                         .map(|(k, v)| ((*k).into(), v.present_value.into()))
                         .collect(),
                 )),
