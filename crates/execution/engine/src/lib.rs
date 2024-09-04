@@ -1380,7 +1380,7 @@ mod tests {
         init_test_tracing();
 
         let genesis = adiri_genesis();
-        let mut tx_factory = TransactionFactory::new();
+        let tx_factory = TransactionFactory::new();
         // let default_deployer_address = tx_factory.address();
         sol!(
             #[allow(clippy::too_many_arguments)]
@@ -1396,10 +1396,10 @@ mod tests {
             (faucet_contract_address, GenesisAccount::default().with_code(Some(faucet_bytecode))),
         ];
         let genesis = genesis.extend_accounts(genesis_accounts.into_iter());
-        let chain: Arc<ChainSpec> = Arc::new(genesis.into());
+        let _chain: Arc<ChainSpec> = Arc::new(genesis.into());
 
         let manager = TaskManager::current();
-        let executor = manager.executor();
+        let _executor = manager.executor();
 
         // create batches for consensus output
         let mut batches_1 = tn_types::test_utils::batches(4); // create 4 batches
