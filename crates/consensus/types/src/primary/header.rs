@@ -1,3 +1,4 @@
+use alloy_rlp::MaxEncodedLenAssoc;
 use base64::{engine::general_purpose, Engine};
 use derive_builder::Builder;
 use enum_dispatch::enum_dispatch;
@@ -6,6 +7,7 @@ use fastcrypto_tbls::{tbls::ThresholdBls, types::ThresholdBls12381MinSig};
 use indexmap::IndexMap;
 use mem_utils::MallocSizeOf;
 use once_cell::sync::OnceCell;
+use reth_primitives::BlockHash;
 use serde::{Deserialize, Serialize};
 use std::{collections::BTreeSet, fmt};
 
@@ -13,7 +15,7 @@ use crate::{
     config::{AuthorityIdentifier, Committee, Epoch, WorkerCache, WorkerId},
     crypto,
     error::{DagError, DagResult},
-    now, Batch, BatchDigest, CertificateDigest, Round, TimestampSec, VoteDigest,
+    now, CertificateDigest, Round, TimestampSec, VoteDigest, WorkerBlock,
 };
 
 /// Messages generated internally by Narwhal that are included in headers for sequencing.
@@ -36,7 +38,7 @@ pub enum SystemMessage {
 }
 
 /// Versioned `Header` type for consensus layer.
-#[derive(Clone, Deserialize, Serialize, MallocSizeOf)]
+#[derive(Clone, Deserialize, Serialize)]
 #[enum_dispatch(HeaderAPI)]
 pub enum Header {
     /// Version 1 - based on sui's V2
@@ -95,7 +97,7 @@ pub trait HeaderAPI {
     /// The [TimestampSec] for the header.
     fn created_at(&self) -> &TimestampSec;
     /// The payload for the header.
-    fn payload(&self) -> &IndexMap<BatchDigest, (WorkerId, TimestampSec)>;
+    fn payload(&self) -> &IndexMap<BlockHash, (WorkerId, TimestampSec)>;
     /// The [SystemMessage]s included with the header.
     fn system_messages(&self) -> &[SystemMessage];
     /// The parents for the header.
@@ -104,7 +106,7 @@ pub trait HeaderAPI {
     ///
     /// Only used for testing.
     #[cfg(any(test, feature = "test-utils"))]
-    fn update_payload(&mut self, new_payload: IndexMap<BatchDigest, (WorkerId, TimestampSec)>);
+    fn update_payload(&mut self, new_payload: IndexMap<BlockHash, (WorkerId, TimestampSec)>);
     /// Replace the header's round with a new one.
     ///
     /// Only used for testing.
@@ -118,7 +120,7 @@ pub trait HeaderAPI {
 }
 
 /// Header version 1
-#[derive(Builder, Clone, Default, Deserialize, Serialize, MallocSizeOf)]
+#[derive(Builder, Clone, Default, Deserialize, Serialize)]
 #[builder(pattern = "owned", build_fn(skip))]
 pub struct HeaderV1 {
     /// Primary that created the header. Must be the same primary that broadcasted the header.
@@ -132,7 +134,7 @@ pub struct HeaderV1 {
     pub created_at: TimestampSec,
     /// IndexMap of the [BatchDigest] to the [WorkerId] and [TimestampSec]
     #[serde(with = "indexmap::serde_seq")]
-    pub payload: IndexMap<BatchDigest, (WorkerId, TimestampSec)>,
+    pub payload: IndexMap<BlockHash, (WorkerId, TimestampSec)>,
     /// Collection of [SystemMessage]s.
     pub system_messages: Vec<SystemMessage>,
     /// Parent certificates for this Header.
@@ -155,7 +157,7 @@ impl HeaderAPI for HeaderV1 {
     fn created_at(&self) -> &TimestampSec {
         &self.created_at
     }
-    fn payload(&self) -> &IndexMap<BatchDigest, (WorkerId, TimestampSec)> {
+    fn payload(&self) -> &IndexMap<BlockHash, (WorkerId, TimestampSec)> {
         &self.payload
     }
     fn system_messages(&self) -> &[SystemMessage] {
@@ -168,7 +170,7 @@ impl HeaderAPI for HeaderV1 {
     // Used for testing.
 
     #[cfg(any(test, feature = "test-utils"))]
-    fn update_payload(&mut self, new_payload: IndexMap<BatchDigest, (WorkerId, TimestampSec)>) {
+    fn update_payload(&mut self, new_payload: IndexMap<BlockHash, (WorkerId, TimestampSec)>) {
         self.payload = new_payload;
     }
 
@@ -206,7 +208,7 @@ impl HeaderV1Builder {
     /// Helper method to directly set values of the payload
     pub fn with_payload_batch(
         mut self,
-        batch: Batch,
+        worker_block: WorkerBlock,
         worker_id: WorkerId,
         created_at: TimestampSec,
     ) -> Self {
@@ -215,7 +217,7 @@ impl HeaderV1Builder {
         }
         let payload = self.payload.as_mut().unwrap();
 
-        payload.insert(batch.digest(), (worker_id, created_at));
+        payload.insert(worker_block.digest(), (worker_id, created_at));
 
         self
     }
@@ -227,7 +229,7 @@ impl HeaderV1 {
         author: AuthorityIdentifier,
         round: Round,
         epoch: Epoch,
-        payload: IndexMap<BatchDigest, (WorkerId, TimestampSec)>,
+        payload: IndexMap<BlockHash, (WorkerId, TimestampSec)>,
         system_messages: Vec<SystemMessage>,
         parents: BTreeSet<CertificateDigest>,
     ) -> Self {
@@ -361,7 +363,7 @@ impl fmt::Debug for Header {
             self.round(),
             self.author(),
             self.epoch(),
-            self.payload().keys().map(|x| Digest::from(*x).size()).sum::<usize>(),
+            self.payload().len() * BlockHash::LEN,
         )
     }
 }

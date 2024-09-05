@@ -18,15 +18,14 @@ use jsonrpsee::{core::client::ClientT, rpc_params};
 use k256::{elliptic_curve::sec1::ToEncodedPoint, pkcs8::DecodePublicKey, PublicKey as PubKey};
 use narwhal_test_utils::faucet_test_execution_node;
 use reth_primitives::{
-    alloy_primitives::U160, hex, public_key_to_address, Address, GenesisAccount, TransactionSigned,
-    U256,
+    alloy_primitives::U160, hex, public_key_to_address, Address, GenesisAccount, U256,
 };
 use reth_tasks::TaskManager;
 use reth_tracing::init_test_tracing;
 use secp256k1::PublicKey;
 use std::{str::FromStr, sync::Arc, time::Duration};
 use tn_faucet::Drip;
-use tn_types::{adiri_genesis, test_channel, BatchAPI, NewBatch};
+use tn_types::{adiri_genesis, test_channel, NewWorkerBlock};
 use tokio::time::timeout;
 
 #[tokio::test]
@@ -87,15 +86,15 @@ async fn test_faucet_transfers_tel_with_google_kms() -> eyre::Result<()> {
     let duration = Duration::from_secs(15);
 
     // wait for canon event or timeout
-    let new_batch: NewBatch = timeout(duration, next_batch.recv()).await?.expect("batch received");
+    let new_batch: NewWorkerBlock =
+        timeout(duration, next_batch.recv()).await?.expect("batch received");
 
-    let batch_txs = new_batch.batch.transactions();
+    let batch_txs = new_batch.block.transactions();
     let tx = batch_txs.first().expect("first batch tx from faucet");
-    let recovered = TransactionSigned::decode_enveloped(&mut tx.as_ref())?;
 
     // assert recovered transaction
-    assert_eq!(tx_hash, recovered.hash_ref().to_string());
-    assert_eq!(recovered.transaction.to(), Some(address));
+    assert_eq!(tx_hash, tx.hash_ref().to_string());
+    assert_eq!(tx.transaction.to(), Some(address));
 
     // ensure duplicate request is error
     let response = client.request::<String, _>("faucet_transfer", rpc_params![address]).await;
@@ -163,11 +162,11 @@ async fn test_faucet_transfers_stablecoin_with_google_kms() -> eyre::Result<()> 
     let duration = Duration::from_secs(15);
 
     // wait for canon event or timeout
-    let new_batch: NewBatch = timeout(duration, next_batch.recv()).await?.expect("batch received");
+    let new_batch: NewWorkerBlock =
+        timeout(duration, next_batch.recv()).await?.expect("batch received");
 
-    let batch_txs = new_batch.batch.transactions();
+    let batch_txs = new_batch.block.transactions();
     let tx = batch_txs.first().expect("first batch tx from faucet");
-    let recovered = TransactionSigned::decode_enveloped(&mut tx.as_ref())?;
 
     let faucet_contract = hex!("0e26ade1f5a99bd6b5d40f870a87bfe143db68b6").into();
     let contract_params: Vec<u8> = Drip::abi_encode_params(&(&contract_address, &user_address));
@@ -177,9 +176,9 @@ async fn test_faucet_transfers_stablecoin_with_google_kms() -> eyre::Result<()> 
     let expected_input = [&selector, &contract_params[..]].concat();
 
     // assert recovered transaction
-    assert_eq!(tx_hash, recovered.hash_ref().to_string());
-    assert_eq!(recovered.transaction.to(), Some(faucet_contract));
-    assert_eq!(recovered.transaction.input(), &expected_input);
+    assert_eq!(tx_hash, tx.hash_ref().to_string());
+    assert_eq!(tx.transaction.to(), Some(faucet_contract));
+    assert_eq!(tx.transaction.input(), &expected_input);
 
     // ensure duplicate request is error
     let response = client

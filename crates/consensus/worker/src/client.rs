@@ -11,7 +11,7 @@ use std::{
 use arc_swap::ArcSwap;
 use consensus_metrics::metered_channel::Sender;
 use thiserror::Error;
-use tn_types::{Multiaddr, NewBatch, Protocol, Transaction};
+use tn_types::{Multiaddr, NewWorkerBlock, Protocol, Transaction};
 use tracing::info;
 
 /// Uses a map to allow running multiple Narwhal instances in the same process.
@@ -41,11 +41,11 @@ pub enum NarwhalError {
 #[derive(Clone)]
 pub struct LocalNarwhalClient {
     /// TODO: maybe use tx_batch_maker for load schedding.
-    _tx_batch_maker: Sender<NewBatch>,
+    _tx_batch_maker: Sender<NewWorkerBlock>,
 }
 
 impl LocalNarwhalClient {
-    pub fn new(_tx_batch_maker: Sender<NewBatch>) -> Arc<Self> {
+    pub fn new(_tx_batch_maker: Sender<NewWorkerBlock>) -> Arc<Self> {
         Arc::new(Self { _tx_batch_maker })
     }
 

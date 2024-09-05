@@ -1,13 +1,12 @@
 //! The ouput from consensus (bullshark)
 
 use crate::{
-    crypto, Batch, BatchAPI as _, BatchConversionError, BatchDigest, Certificate, CertificateAPI,
-    CertificateDigest, HeaderAPI, MetadataAPI as _, ReputationScores, Round, SequenceNumber,
-    TimestampSec,
+    crypto, Certificate, CertificateAPI, CertificateDigest, HeaderAPI, ReputationScores, Round,
+    SequenceNumber, TimestampSec, WorkerBlock, WorkerBlockConversionError,
 };
 use enum_dispatch::enum_dispatch;
 use fastcrypto::hash::{Digest, Hash, HashFunction};
-use reth_primitives::{keccak256, Address, Header, SealedBlockWithSenders, B256};
+use reth_primitives::{keccak256, Address, BlockHash, Header, SealedBlockWithSenders, B256};
 use serde::{Deserialize, Serialize};
 use std::{
     collections::VecDeque,
@@ -26,13 +25,13 @@ pub struct ConsensusOutput {
     ///
     /// This field is not included in [Self] digest. To validate,
     /// hash these batches and compare to [Self::batch_digests].
-    pub batches: Vec<Vec<Batch>>,
+    pub batches: Vec<Vec<WorkerBlock>>,
     /// The beneficiary for block rewards.
     pub beneficiary: Address,
     /// The ordered set of [BatchDigests].
     ///
     /// This value is included in [Self] digest.
-    pub batch_digests: VecDeque<BatchDigest>,
+    pub batch_digests: VecDeque<BlockHash>,
 }
 
 impl ConsensusOutput {
@@ -64,7 +63,7 @@ impl ConsensusOutput {
     /// Pop the next batch digest.
     ///
     /// This method is used when executing [Self].
-    pub fn next_batch_digest(&mut self) -> Option<BatchDigest> {
+    pub fn next_batch_digest(&mut self) -> Option<BlockHash> {
         self.batch_digests.pop_front()
     }
     /// Ommers to use for the executed blocks.
@@ -73,11 +72,7 @@ impl ConsensusOutput {
     pub fn ommers(&self) -> Vec<Header> {
         self.batches
             .iter()
-            .flat_map(|batches| {
-                batches
-                    .iter()
-                    .map(|batch| batch.versioned_metadata().sealed_header().header().clone())
-            })
+            .flat_map(|batches| batches.iter().map(|batch| batch.sealed_header().header().clone()))
             .collect()
     }
     /// Recover the sealed blocks with senders for all batches in output.
@@ -85,7 +80,7 @@ impl ConsensusOutput {
     /// TODO: parallelize this when output contains enough batches.
     pub fn sealed_blocks_from_batches(
         &self,
-    ) -> Result<Vec<SealedBlockWithSenders>, BatchConversionError> {
+    ) -> Result<Vec<SealedBlockWithSenders>, WorkerBlockConversionError> {
         self.batches
             .iter()
             .flat_map(|batches| {

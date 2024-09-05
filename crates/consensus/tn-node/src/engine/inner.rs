@@ -40,7 +40,7 @@ use tn_batch_maker::{BatchMakerBuilder, MiningMode};
 use tn_batch_validator::BatchValidator;
 use tn_engine::ExecutorEngine;
 use tn_faucet::{FaucetArgs, FaucetRpcExtApiServer as _};
-use tn_types::{Consensus, ConsensusOutput, NewBatch, WorkerId};
+use tn_types::{Consensus, ConsensusOutput, NewWorkerBlock, WorkerId};
 use tokio::sync::{broadcast, mpsc::unbounded_channel};
 use tokio_stream::wrappers::BroadcastStream;
 use tracing::{debug, error, info};
@@ -235,7 +235,7 @@ where
 
     pub(super) async fn start_batch_maker(
         &mut self,
-        to_worker: Sender<NewBatch>,
+        to_worker: Sender<NewWorkerBlock>,
         worker_id: WorkerId,
     ) -> eyre::Result<()> {
         // TODO: both start_engine and start_batch_maker lookup head

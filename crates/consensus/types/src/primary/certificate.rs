@@ -22,7 +22,7 @@ use crate::{
 };
 
 /// Versioned certificate. Certificates are the output of consensus.
-#[derive(Clone, Serialize, Deserialize, MallocSizeOf)]
+#[derive(Clone, Serialize, Deserialize)]
 #[enum_dispatch(CertificateAPI)]
 pub enum Certificate {
     /// V1 - based on sui's V2
@@ -206,7 +206,7 @@ impl Default for SignatureVerificationState {
 
 /// The certificate issued after a successful round of consensus.
 #[serde_as]
-#[derive(Clone, Serialize, Deserialize, Default, Debug, MallocSizeOf)]
+#[derive(Clone, Serialize, Deserialize, Default, Debug)]
 pub struct CertificateV1 {
     /// Certificate's header.
     pub header: Header,

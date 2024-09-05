@@ -3,10 +3,10 @@
 
 //! Helper methods for creating useful structs during tests.
 use crate::{
-    adiri_chain_spec_arc, to_intent_message, AuthorityIdentifier, Batch, BatchDigest, BlsKeypair,
-    BlsSignature, Certificate, CertificateAPI, CertificateDigest, Committee, Epoch, Header,
-    HeaderAPI, HeaderV1Builder, Multiaddr, NetworkKeypair, Round, Stake, TimestampSec, Transaction,
-    ValidatorSignature, WorkerId,
+    adiri_chain_spec_arc, to_intent_message, AuthorityIdentifier, BlsKeypair, BlsSignature,
+    Certificate, CertificateAPI, CertificateDigest, Committee, Epoch, Header, HeaderAPI,
+    HeaderV1Builder, Multiaddr, NetworkKeypair, Round, Stake, TimestampSec, ValidatorSignature,
+    WorkerBlock, WorkerId,
 };
 use fastcrypto::{hash::Hash, traits::KeyPair as _};
 use indexmap::IndexMap;
@@ -16,7 +16,7 @@ use rand::{
     rngs::{OsRng, StdRng},
     thread_rng, Rng, RngCore, SeedableRng,
 };
-use reth_primitives::{Address, U256};
+use reth_primitives::{Address, BlockHash, SealedHeader, TransactionSigned, U256};
 use reth_tracing::tracing_subscriber::EnvFilter;
 use std::{
     collections::{BTreeSet, HashMap, VecDeque},
@@ -127,8 +127,8 @@ pub fn random_key() -> BlsKeypair {
 ////////////////////////////////////////////////////////////////
 /// Headers, Votes, Certificates
 ////////////////////////////////////////////////////////////////
-pub fn fixture_payload(number_of_batches: u8) -> IndexMap<BatchDigest, (WorkerId, TimestampSec)> {
-    let mut payload: IndexMap<BatchDigest, (WorkerId, TimestampSec)> = IndexMap::new();
+pub fn fixture_payload(number_of_batches: u8) -> IndexMap<BlockHash, (WorkerId, TimestampSec)> {
+    let mut payload: IndexMap<BlockHash, (WorkerId, TimestampSec)> = IndexMap::new();
 
     for _ in 0..number_of_batches {
         let batch_digest = batch().digest();
@@ -141,17 +141,24 @@ pub fn fixture_payload(number_of_batches: u8) -> IndexMap<BatchDigest, (WorkerId
 
 /// will create a batch with randomly formed transactions
 /// dictated by the parameter number_of_transactions
-pub fn fixture_batch_with_transactions(number_of_transactions: u32) -> Batch {
+pub fn fixture_batch_with_transactions(number_of_transactions: u32) -> WorkerBlock {
     let transactions = (0..number_of_transactions).map(|_v| transaction()).collect();
 
-    Batch::new(transactions)
+    // Put some random bytes in the header so that tests will have unique headers.
+    let r: Vec<u8> = (0..32).map(|_v| rand::random::<u8>()).collect();
+    let header = reth_primitives::Header {
+        nonce: rand::random::<u64>(),
+        extra_data: r.into(),
+        ..Default::default()
+    };
+    WorkerBlock::new(transactions, header.seal_slow())
 }
 
 pub fn fixture_payload_with_rand<R: Rng + ?Sized>(
     number_of_batches: u8,
     rand: &mut R,
-) -> IndexMap<BatchDigest, (WorkerId, TimestampSec)> {
-    let mut payload: IndexMap<BatchDigest, (WorkerId, TimestampSec)> = IndexMap::new();
+) -> IndexMap<BlockHash, (WorkerId, TimestampSec)> {
+    let mut payload: IndexMap<BlockHash, (WorkerId, TimestampSec)> = IndexMap::new();
 
     for _ in 0..number_of_batches {
         let batch_digest = batch_with_rand(rand).digest();
@@ -163,7 +170,7 @@ pub fn fixture_payload_with_rand<R: Rng + ?Sized>(
 }
 
 /// Create a transaction with a randomly generated keypair.
-pub fn transaction_with_rand<R: Rng + ?Sized>(rand: &mut R) -> Transaction {
+pub fn transaction_with_rand<R: Rng + ?Sized>(rand: &mut R) -> TransactionSigned {
     let mut tx_factory = TransactionFactory::new_random_from_seed(rand);
     let chain = adiri_chain_spec_arc();
     // TODO: this is excessively high, but very unlikely to ever fail
@@ -171,15 +178,18 @@ pub fn transaction_with_rand<R: Rng + ?Sized>(rand: &mut R) -> Transaction {
     let value = U256::from(10).checked_pow(U256::from(18)).expect("1e18 doesn't overflow U256");
 
     // random transaction
-    tx_factory.create_eip1559(chain, gas_price, Address::ZERO, value).envelope_encoded().into()
+    tx_factory.create_eip1559(chain, gas_price, Address::ZERO, value)
 }
 
-pub fn batch_with_rand<R: Rng + ?Sized>(rand: &mut R) -> Batch {
-    Batch::new(vec![transaction_with_rand(rand), transaction_with_rand(rand)])
+pub fn batch_with_rand<R: Rng + ?Sized>(rand: &mut R) -> WorkerBlock {
+    WorkerBlock::new(
+        vec![transaction_with_rand(rand), transaction_with_rand(rand)],
+        SealedHeader::default(),
+    )
 }
 
 // Fixture
-pub fn transaction() -> Transaction {
+pub fn transaction() -> TransactionSigned {
     // TODO: make this better
     //
     // The fn is complicated bc everything boils down to this fn
@@ -196,7 +206,7 @@ pub fn transaction() -> Transaction {
     let value = U256::from(10).checked_pow(U256::from(18)).expect("1e18 doesn't overflow U256");
 
     // random transaction
-    tx_factory.create_eip1559(chain, gas_price, Address::ZERO, value).envelope_encoded().into()
+    tx_factory.create_eip1559(chain, gas_price, Address::ZERO, value)
 
     // // generate random value transactions, but the length will be always 100 bytes
     // (0..100).map(|_v| rand::random::<u8>()).collect()
@@ -207,14 +217,21 @@ pub fn transaction() -> Transaction {
 ////////////////////////////////////////////////////////////////
 
 // Fixture
-pub fn batch() -> Batch {
+pub fn batch() -> WorkerBlock {
     let transactions = vec![transaction(), transaction()];
-    Batch::new(transactions)
+    // Put some random bytes in the header so that tests will have unique headers.
+    let r: Vec<u8> = (0..32).map(|_v| rand::random::<u8>()).collect();
+    let header = reth_primitives::Header {
+        nonce: rand::random::<u64>(),
+        extra_data: r.into(),
+        ..Default::default()
+    };
+    WorkerBlock::new(transactions, header.seal_slow())
 }
 
 /// generate multiple fixture batches. The number of generated batches
 /// are dictated by the parameter num_of_batches.
-pub fn batches(num_of_batches: usize) -> Vec<Batch> {
+pub fn batches(num_of_batches: usize) -> Vec<WorkerBlock> {
     let mut batches = Vec::new();
 
     for i in 1..num_of_batches + 1 {
@@ -224,14 +241,14 @@ pub fn batches(num_of_batches: usize) -> Vec<Batch> {
     batches
 }
 
-pub fn batch_with_transactions(num_of_transactions: usize) -> Batch {
+pub fn batch_with_transactions(num_of_transactions: usize) -> WorkerBlock {
     let mut transactions = Vec::new();
 
     for _ in 0..num_of_transactions {
         transactions.push(transaction());
     }
 
-    Batch::new(transactions)
+    WorkerBlock::new(transactions, SealedHeader::default())
 }
 
 /// Creates one certificate per authority starting and finishing at the specified rounds

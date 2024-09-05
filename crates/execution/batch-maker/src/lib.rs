@@ -35,7 +35,7 @@ use std::{
     sync::Arc,
     time::{SystemTime, UNIX_EPOCH},
 };
-use tn_types::{now, AutoSealConsensus, NewBatch};
+use tn_types::{now, AutoSealConsensus, NewWorkerBlock};
 use tokio::sync::{RwLock, RwLockReadGuard, RwLockWriteGuard};
 use tracing::{debug, error, trace, warn};
 
@@ -55,7 +55,7 @@ pub struct BatchMakerBuilder<Client, Pool, EvmConfig> {
     pool: Pool,
     mode: MiningMode,
     storage: Storage,
-    to_worker: Sender<NewBatch>,
+    to_worker: Sender<NewWorkerBlock>,
     evm_config: EvmConfig,
 }
 
@@ -71,7 +71,7 @@ where
         chain_spec: Arc<ChainSpec>,
         client: Client,
         pool: Pool,
-        to_worker: Sender<NewBatch>,
+        to_worker: Sender<NewWorkerBlock>,
         mode: MiningMode,
         address: Address,
         evm_config: EvmConfig,
@@ -381,7 +381,6 @@ impl StorageInner {
 mod tests {
     use super::*;
     use assert_matches::assert_matches;
-    use fastcrypto::hash::Hash;
     use reth::tasks::TaskManager;
     use reth_blockchain_tree::noop::NoopBlockchainTree;
     use reth_db::test_utils::{create_test_rw_db, tempdir_path};
@@ -400,7 +399,6 @@ mod tests {
     use tn_types::{
         adiri_chain_spec_arc, adiri_genesis,
         test_utils::{get_gas_price, TransactionFactory},
-        BatchAPI,
     };
     use tokio::time::timeout;
 
@@ -536,20 +534,18 @@ mod tests {
 
         debug!("new batch: {new_batch:?}");
         // number of transactions in the batch
-        let batch_txs = new_batch.batch.transactions();
+        let batch_txs = new_batch.block.transactions();
 
         // check max tx for task matches num of transactions in batch
         let num_batch_txs = batch_txs.len();
         assert_eq!(max_transactions, num_batch_txs);
 
         // ensure decoded batch transaction is transaction1
-        let batch_tx_bytes = batch_txs.first().cloned().expect("one tx in batch");
-        let decoded_batch_tx = TransactionSigned::decode_enveloped(&mut batch_tx_bytes.as_ref())
-            .expect("tx bytes are uncorrupted");
-        assert_eq!(decoded_batch_tx, transaction1);
+        let batch_tx = batch_txs.first().cloned().expect("one tx in batch");
+        assert_eq!(batch_tx, transaction1);
 
         // send the worker's ack to task
-        let digest = new_batch.batch.digest();
+        let digest = new_batch.block.digest();
         let _ack = new_batch.ack.send(digest);
 
         // // retrieve block number 1 from storage

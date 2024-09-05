@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 //! Specific test utils for execution layer
-use crate::{adiri_genesis, now, Batch, BatchAPI, ExecutionKeypair, MetadataAPI, TimestampSec};
+use crate::{adiri_genesis, now, ExecutionKeypair, TimestampSec, WorkerBlock};
 use rand::{rngs::StdRng, Rng, SeedableRng};
 use reth_chainspec::{BaseFeeParams, ChainSpec};
 use reth_evm::execute::{BlockExecutionOutput, BlockExecutorProvider, Executor as _};
@@ -33,18 +33,14 @@ pub fn test_genesis() -> Genesis {
 /// Helper function to seed an instance of Genesis with accounts from a random batch.
 pub fn seeded_genesis_from_random_batch(
     genesis: Genesis,
-    batch: &Batch,
+    batch: &WorkerBlock,
 ) -> (Genesis, Vec<TransactionSigned>, Vec<Address>) {
-    let mut txs = vec![];
     let mut senders = vec![];
     let mut accounts_to_seed = Vec::new();
 
     // loop through the transactions
-    for tx in batch.transactions_owned() {
-        let tx_signed =
-            TransactionSigned::decode_enveloped(&mut tx.as_ref()).expect("decode tx signed");
+    for tx_signed in batch.transactions() {
         let address = tx_signed.recover_signer().expect("signer recoverable");
-        txs.push(tx_signed);
         senders.push(address);
         // fund account with 99mil TEL
         let account = (
@@ -55,7 +51,7 @@ pub fn seeded_genesis_from_random_batch(
         );
         accounts_to_seed.push(account);
     }
-    (genesis.extend_accounts(accounts_to_seed), txs, senders)
+    (genesis.extend_accounts(accounts_to_seed), batch.transactions().clone(), senders)
 }
 
 /// Helper function to seed an instance of Genesis with random batches.
@@ -66,7 +62,7 @@ pub fn seeded_genesis_from_random_batch(
 /// further use it testing.
 pub fn seeded_genesis_from_random_batches<'a>(
     mut genesis: Genesis,
-    batches: impl IntoIterator<Item = &'a Batch>,
+    batches: impl IntoIterator<Item = &'a WorkerBlock>,
 ) -> (Genesis, Vec<Vec<TransactionSigned>>, Vec<Vec<Address>>) {
     let mut txs = vec![];
     let mut senders = vec![];
@@ -109,7 +105,7 @@ pub struct OptionalTestBatchParams {
 ///
 /// NOTE: this is loosely based on reth's auto-seal consensus
 pub fn execute_test_batch<P, E>(
-    batch: &mut Batch,
+    worker_block: &mut WorkerBlock,
     parent: &SealedHeader,
     optional_params: OptionalTestBatchParams,
     provider: &P,
@@ -156,25 +152,17 @@ pub fn execute_test_batch<P, E>(
         requests_root: None,
     };
 
-    // decode batch transactions
-    let mut txs = vec![];
-    for tx in batch.transactions_owned() {
-        let tx_signed =
-            TransactionSigned::decode_enveloped(&mut tx.as_ref()).expect("decode tx signed");
-        txs.push(tx_signed);
-    }
-
     // update header's transactions root
-    header.transactions_root = if batch.transactions().is_empty() {
+    header.transactions_root = if worker_block.transactions().is_empty() {
         EMPTY_TRANSACTIONS
     } else {
-        proofs::calculate_transaction_root(&txs)
+        proofs::calculate_transaction_root(worker_block.transactions())
     };
 
     // recover senders from block
     let block = Block {
         header,
-        body: txs,
+        body: worker_block.transactions().clone(),
         ommers: vec![],
         withdrawals: withdrawals_opt.clone(),
         requests: None,
@@ -214,8 +202,7 @@ pub fn execute_test_batch<P, E>(
 
     // seal header and update batch's metadata
     let sealed_header = header.seal_slow();
-    let md = batch.versioned_metadata_mut();
-    md.update_header(sealed_header);
+    worker_block.update_header(sealed_header);
 }
 
 /// Transaction factory

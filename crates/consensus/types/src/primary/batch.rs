@@ -2,29 +2,28 @@
 //!
 //! Batches hold transactions and other data needed to
 // Copyright (c) Telcoin, LLC
-use crate::{crypto, MetadataAPI, VersionedMetadata};
-use base64::{engine::general_purpose, Engine};
-use enum_dispatch::enum_dispatch;
-use fastcrypto::hash::{Digest, Hash, HashFunction};
-use mem_utils::MallocSizeOf;
-use reth_primitives::{SealedBlock, SealedBlockWithSenders, TransactionSigned, Withdrawals, B256};
+
+use reth_primitives::{
+    BlockHash, SealedBlock, SealedBlockWithSenders, SealedHeader, TransactionSigned, Withdrawals,
+};
 use serde::{Deserialize, Serialize};
-use std::fmt;
 use thiserror::Error;
 use tokio::sync::oneshot;
+
+use super::TimestampSec;
 
 /// Type that batches contain.
 pub type Transaction = Vec<u8>;
 
 /// Type for sending ack back to EL once a batch is sealed.
 /// TODO: support propagating errors from the worker to the primary.
-pub type BatchResponse = oneshot::Sender<BatchDigest>;
+pub type WorkerBlockResponse = oneshot::Sender<BlockHash>;
 
 /// Convenince error type for casting batches into SealedBlocks with senders.
 
 /// Batch validation error types
 #[derive(Error, Debug, Clone)]
-pub enum BatchConversionError {
+pub enum WorkerBlockConversionError {
     /// Errors from BlockExecution
     #[error("Failed to recover signers for sealed block:\n{0:?}\n")]
     RecoverSigners(SealedBlock),
@@ -35,11 +34,11 @@ pub enum BatchConversionError {
 
 /// The message type for EL to CL when a new batch is made.
 #[derive(Debug)]
-pub struct NewBatch {
+pub struct NewWorkerBlock {
     /// A batch that was constructed by the EL.
-    pub batch: Batch,
+    pub block: WorkerBlock,
     /// Reply to the EL once the batch is stored.
-    pub ack: BatchResponse,
+    pub ack: WorkerBlockResponse,
     // TODO: add reason for sealing batch here
     // for metrics: `timeout`, 'gas', or 'bytes/size'
 }
@@ -49,48 +48,80 @@ pub struct NewBatch {
 /// TODO: Batch is just another term for `SealedBlock` in Ethereum.
 /// I think it would better to use `SealedBlock` instead of a redundant type.
 #[derive(Clone, Serialize, Deserialize, Debug, PartialEq, Eq)]
-#[enum_dispatch(BatchAPI)]
-pub enum Batch {
-    /// Version 1 - based on sui V2
-    V1(BatchV1),
+pub struct WorkerBlock {
+    /// The collection of transactions executed in this block.
+    pub transactions: Vec<TransactionSigned>,
+    /// The sealed header for this block.
+    pub sealed_header: SealedHeader,
+    /// Timestamp of when the entity was received by another node. This will help
+    /// calculate latencies that are not affected by clock drift or network
+    /// delays. This field is not set for own batches.
+    ///
+    /// Artifact from `MetadataV1`.
+    pub received_at: Option<TimestampSec>,
 }
-impl Batch {
+
+impl WorkerBlock {
     /// Create a new batch for testing only!
     ///
     /// This is not a valid batch for consensus. Metadata uses defaults.
-    pub fn new(transactions: Vec<Transaction>) -> Self {
-        Self::V1(BatchV1::new(transactions, VersionedMetadata::default()))
-    }
-
-    /// Create a new batch with versioned metadata.
-    ///
-    /// This should be used when the batch was fully executed.
-    pub fn new_with_metadata(
-        transactions: Vec<Transaction>,
-        versioned_metadata: VersionedMetadata,
-    ) -> Self {
-        Self::V1(BatchV1::new(transactions, versioned_metadata))
+    pub fn new(transactions: Vec<TransactionSigned>, sealed_header: SealedHeader) -> Self {
+        Self { transactions, sealed_header, received_at: None }
     }
 
     /// Size of the batch variant's inner data.
     pub fn size(&self) -> usize {
-        match self {
-            Batch::V1(data) => data.size(),
-        }
+        size_of::<Self>()
+    }
+
+    /// Digest for this block (the hash of the sealed header).
+    pub fn digest(&self) -> BlockHash {
+        self.sealed_header.hash()
+    }
+
+    /// Replace the sealed header.
+    pub fn update_header(&mut self, sealed_header: SealedHeader) {
+        self.sealed_header = sealed_header;
+    }
+
+    /// Timestamp of this block header.
+    pub fn created_at(&self) -> TimestampSec {
+        self.sealed_header.header().timestamp
+    }
+
+    /// Pass a reference to a Vec<Transaction>;
+    pub fn transactions(&self) -> &Vec<TransactionSigned> {
+        &self.transactions
+    }
+
+    /// Returns a mutable reference to a Vec<Transaction>.
+    pub fn transactions_mut(&mut self) -> &mut Vec<TransactionSigned> {
+        &mut self.transactions
+    }
+
+    /// Returns the sealed header.
+    pub fn sealed_header(&self) -> &SealedHeader {
+        &self.sealed_header
+    }
+
+    /// Returns the received at time if available.
+    pub fn received_at(&self) -> Option<TimestampSec> {
+        self.received_at
+    }
+
+    /// Sets the recieved at field.
+    pub fn set_received_at(&mut self, time: TimestampSec) {
+        self.received_at = Some(time)
     }
 }
 
-impl TryFrom<&Batch> for SealedBlockWithSenders {
-    type Error = BatchConversionError;
+impl TryFrom<&WorkerBlock> for SealedBlockWithSenders {
+    type Error = WorkerBlockConversionError;
 
-    fn try_from(batch: &Batch) -> Result<Self, Self::Error> {
-        let header = batch.versioned_metadata().sealed_header().clone();
+    fn try_from(block: &WorkerBlock) -> Result<Self, Self::Error> {
+        let header = block.sealed_header.clone();
         // decode transactions
-        let tx_signed: Result<Vec<TransactionSigned>, alloy_rlp::Error> = batch
-            .transactions_owned()
-            .map(|tx| TransactionSigned::decode_enveloped(&mut tx.as_ref()))
-            .collect();
-        let body = tx_signed?;
+        let body = block.transactions.clone();
         // seal block
         let block = SealedBlock {
             header,
@@ -100,158 +131,5 @@ impl TryFrom<&Batch> for SealedBlockWithSenders {
             requests: None,
         };
         block.try_seal_with_senders().map_err(Self::Error::RecoverSigners)
-    }
-}
-
-impl From<Vec<Vec<u8>>> for Batch {
-    fn from(value: Vec<Vec<u8>>) -> Self {
-        Batch::new(value)
-    }
-}
-
-impl Hash<{ crypto::DIGEST_LENGTH }> for Batch {
-    type TypedDigest = BatchDigest;
-
-    fn digest(&self) -> BatchDigest {
-        match self {
-            Batch::V1(data) => data.digest(),
-        }
-    }
-}
-
-/// API for access data from versioned Batch variants.
-///
-/// TODO: update comments once EL data is finalized between Batch and VersionedMetadata
-#[enum_dispatch]
-pub trait BatchAPI {
-    /// Pass a reference to a Vec<Transaction>;
-    fn transactions(&self) -> &Vec<Transaction>;
-    /// Returns a mutable reference to a Vec<Transaction>.
-    fn transactions_mut(&mut self) -> &mut Vec<Transaction>;
-    /// Returns a reference to the batch's [VersionedMetadata].
-    fn versioned_metadata(&self) -> &VersionedMetadata;
-    /// Returns a mutable reference to the batch's [VersionedMetadata].
-    fn versioned_metadata_mut(&mut self) -> &mut VersionedMetadata;
-    /// Returns an owned [VersionedMetadata].
-    fn owned_metadata(self) -> VersionedMetadata;
-    /// Return an owned iteration of the batch's encoded transactions.
-    fn transactions_owned(&self) -> std::vec::IntoIter<Vec<u8>>;
-}
-
-/// The batch version.
-///
-/// akin to BatchV2 in sui
-#[derive(Clone, Serialize, Deserialize, Debug, PartialEq, Eq)]
-pub struct BatchV1 {
-    /// List of transactions.
-    ///
-    /// A batch `Transaction` is an encoded `TransactionSigned` from the EL.
-    /// Recovering senders is CPU intensive, but so it network bandwidth. For this
-    /// protocol, network bandwidth is more costly so only the signed version is sent.
-    /// It is the responsibility of peers to recover signers and verify transactions.
-    pub transactions: Vec<Transaction>,
-
-    /// Metadata for batch.
-    ///
-    /// This field is not included as part of the batch digest
-    pub versioned_metadata: VersionedMetadata,
-}
-
-impl BatchAPI for BatchV1 {
-    fn transactions(&self) -> &Vec<Transaction> {
-        &self.transactions
-    }
-
-    fn transactions_mut(&mut self) -> &mut Vec<Transaction> {
-        &mut self.transactions
-    }
-
-    fn versioned_metadata(&self) -> &VersionedMetadata {
-        &self.versioned_metadata
-    }
-
-    fn versioned_metadata_mut(&mut self) -> &mut VersionedMetadata {
-        &mut self.versioned_metadata
-    }
-
-    fn owned_metadata(self) -> VersionedMetadata {
-        self.versioned_metadata
-    }
-
-    fn transactions_owned(&self) -> std::vec::IntoIter<Vec<u8>> {
-        self.transactions.clone().into_iter()
-    }
-}
-
-impl BatchV1 {
-    /// Create a new BatchV1
-    pub fn new(transactions: Vec<Transaction>, versioned_metadata: VersionedMetadata) -> Self {
-        Self {
-            transactions,
-            // Default metadata uses defaults for ExecutionPayload
-            versioned_metadata,
-        }
-    }
-
-    /// The size of the BatchV1 transactions body and sealed header.
-    pub fn size(&self) -> usize {
-        let tx_size: usize = self.transactions.iter().map(|t| t.len()).sum();
-        let header_size = self.versioned_metadata.size();
-        tx_size + header_size
-    }
-}
-
-/// Digest of the batch.
-#[derive(
-    Clone, Copy, Serialize, Deserialize, Default, PartialEq, Eq, Hash, PartialOrd, Ord, MallocSizeOf,
-)]
-pub struct BatchDigest(pub [u8; crypto::DIGEST_LENGTH]);
-
-impl fmt::Debug for BatchDigest {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> Result<(), fmt::Error> {
-        write!(f, "{}", general_purpose::STANDARD.encode(self.0))
-    }
-}
-
-impl fmt::Display for BatchDigest {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> Result<(), fmt::Error> {
-        write!(f, "{}", general_purpose::STANDARD.encode(self.0).get(0..16).ok_or(fmt::Error)?)
-    }
-}
-
-impl AsRef<[u8]> for BatchDigest {
-    fn as_ref(&self) -> &[u8] {
-        &self.0
-    }
-}
-
-impl From<BatchDigest> for Digest<{ crypto::DIGEST_LENGTH }> {
-    fn from(digest: BatchDigest) -> Self {
-        Digest::new(digest.0)
-    }
-}
-
-impl BatchDigest {
-    /// New BatchDigest
-    pub fn new(val: [u8; crypto::DIGEST_LENGTH]) -> BatchDigest {
-        BatchDigest(val)
-    }
-}
-
-impl Hash<{ crypto::DIGEST_LENGTH }> for BatchV1 {
-    type TypedDigest = BatchDigest;
-
-    fn digest(&self) -> Self::TypedDigest {
-        BatchDigest::new(
-            crypto::DefaultHashFunction::digest_iterator(self.transactions.iter()).into(),
-        )
-    }
-}
-
-// Convenience function for casting `BatchDigest` into EL B256.
-// note: these are both 32-bytes
-impl From<BatchDigest> for B256 {
-    fn from(value: BatchDigest) -> Self {
-        B256::from_slice(value.as_ref())
     }
 }

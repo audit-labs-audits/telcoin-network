@@ -21,7 +21,7 @@ use tn_types::{AuthorityIdentifier, Committee, WorkerId};
 
 use tn_types::{
     error::{DagError, DagResult},
-    now, BatchDigest, Certificate, CertificateAPI, ConditionalBroadcastReceiver, Header, HeaderAPI,
+    now, BlockHash, Certificate, CertificateAPI, ConditionalBroadcastReceiver, Header, HeaderAPI,
     HeaderV1, Round, SystemMessage, TimestampSec,
 };
 use tokio::{
@@ -34,7 +34,7 @@ use tracing::{debug, enabled, error, info, trace};
 /// Messages sent to the proposer about our own batch digests
 #[derive(Debug)]
 pub struct OurDigestMessage {
-    pub digest: BatchDigest,
+    pub digest: BlockHash,
     pub worker_id: WorkerId,
     pub timestamp: TimestampSec,
     /// A channel to send an () as an ack after this digest is processed by the primary.

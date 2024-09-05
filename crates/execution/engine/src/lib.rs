@@ -306,8 +306,7 @@ mod tests {
         test_utils::{
             execute_test_batch, seeded_genesis_from_random_batches, OptionalTestBatchParams,
         },
-        BatchAPI as _, BatchDigest, Certificate, CertificateAPI, CommittedSubDag, ConsensusOutput,
-        MetadataAPI as _, ReputationScores,
+        BlockHash, Certificate, CertificateAPI, CommittedSubDag, ConsensusOutput, ReputationScores,
     };
     use tokio::{sync::oneshot, time::timeout};
     use tokio_stream::wrappers::BroadcastStream;
@@ -546,7 +545,7 @@ mod tests {
             debug!("{idx}\n{:?}\n", batch);
 
             // store values for assertions later
-            let header = batch.versioned_metadata().sealed_header().clone();
+            let header = batch.sealed_header().clone();
             batch_headers.push(header);
         }
 
@@ -568,7 +567,7 @@ mod tests {
             debug!("{idx}\n{:?}\n", batch);
 
             // store values for assertions later
-            let header = batch.versioned_metadata().sealed_header().clone();
+            let header = batch.sealed_header().clone();
             batch_headers.push(header);
         }
 
@@ -587,7 +586,7 @@ mod tests {
         let sub_dag_index_1 = 1;
         let reputation_scores = ReputationScores::default();
         let previous_sub_dag = None;
-        let mut batch_digests_1: VecDeque<BatchDigest> =
+        let mut batch_digests_1: VecDeque<BlockHash> =
             batches_1.iter().map(|b| b.digest()).collect();
         let subdag_1 = Arc::new(CommittedSubDag::new(
             vec![Certificate::default()],
@@ -612,7 +611,7 @@ mod tests {
         let sub_dag_index_2 = 2;
         let reputation_scores = ReputationScores::default();
         let previous_sub_dag = Some(subdag_1.as_ref());
-        let batch_digests_2: VecDeque<BatchDigest> = batches_2.iter().map(|b| b.digest()).collect();
+        let batch_digests_2: VecDeque<BlockHash> = batches_2.iter().map(|b| b.digest()).collect();
         let subdag_2 = CommittedSubDag::new(
             vec![Certificate::default()],
             leader_2,
@@ -632,7 +631,7 @@ mod tests {
 
         // combine VecDeque and convert to Vec for assertions later
         batch_digests_1.extend(batch_digests_2);
-        let all_batch_digests: Vec<BatchDigest> = batch_digests_1.into();
+        let all_batch_digests: Vec<BlockHash> = batch_digests_1.into();
 
         //=== Execution
 
@@ -749,11 +748,11 @@ mod tests {
             assert_eq!(&block.nonce, expected_subdag_index);
             assert_eq!(block.nonce, expected_output.nonce());
 
-            // ommers contains headers from all batches from consensus output
-            let expected_ommers = expected_output.ommers();
-            assert_eq!(block.ommers, expected_ommers);
             // ommers root
-            assert_eq!(block.header.ommers_hash, proofs::calculate_ommers_root(&expected_ommers));
+            assert_eq!(
+                block.header.ommers_hash,
+                proofs::calculate_ommers_root(&expected_output.ommers())
+            );
             // timestamp
             assert_eq!(block.timestamp, expected_output.committed_at());
             // parent beacon block root is output digest
@@ -799,7 +798,7 @@ mod tests {
             // difficulty should match the batch's index within consensus output
             assert_eq!(block.difficulty, U256::from(expected_batch_index));
             // assert batch digest match extra data
-            assert_eq!(&block.extra_data, all_batch_digests[idx].as_ref());
+            assert_eq!(&block.extra_data, all_batch_digests[idx].as_slice());
             // assert batch's withdrawals match
             //
             // TODO: this is currently always empty
@@ -877,7 +876,7 @@ mod tests {
             debug!("{idx}\n{:?}\n", batch);
 
             // store values for assertions later
-            let header = batch.versioned_metadata().sealed_header().clone();
+            let header = batch.sealed_header().clone();
             batch_headers.push(header);
         }
 
@@ -899,7 +898,7 @@ mod tests {
             debug!("{idx}\n{:?}\n", batch);
 
             // store values for assertions later
-            let header = batch.versioned_metadata().sealed_header().clone();
+            let header = batch.sealed_header().clone();
             batch_headers.push(header);
         }
 
@@ -939,7 +938,7 @@ mod tests {
         let sub_dag_index_1 = 1;
         let reputation_scores = ReputationScores::default();
         let previous_sub_dag = None;
-        let mut batch_digests_1: VecDeque<BatchDigest> =
+        let mut batch_digests_1: VecDeque<BlockHash> =
             batches_1.iter().map(|b| b.digest()).collect();
         let subdag_1 = Arc::new(CommittedSubDag::new(
             vec![Certificate::default()],
@@ -964,7 +963,7 @@ mod tests {
         let sub_dag_index_2 = 2;
         let reputation_scores = ReputationScores::default();
         let previous_sub_dag = Some(subdag_1.as_ref());
-        let batch_digests_2: VecDeque<BatchDigest> = batches_2.iter().map(|b| b.digest()).collect();
+        let batch_digests_2: VecDeque<BlockHash> = batches_2.iter().map(|b| b.digest()).collect();
         let subdag_2 = CommittedSubDag::new(
             vec![Certificate::default()],
             leader_2,
@@ -984,7 +983,7 @@ mod tests {
 
         // combine VecDeque and convert to Vec for assertions later
         batch_digests_1.extend(batch_digests_2);
-        let all_batch_digests: Vec<BatchDigest> = batch_digests_1.into();
+        let all_batch_digests: Vec<BlockHash> = batch_digests_1.into();
 
         //=== Execution
 
@@ -1123,11 +1122,11 @@ mod tests {
             assert_eq!(&block.nonce, expected_subdag_index);
             assert_eq!(block.nonce, expected_output.nonce());
 
-            // ommers contains headers from all batches from consensus output
-            let expected_ommers = expected_output.ommers();
-            assert_eq!(block.ommers, expected_ommers);
             // ommers root
-            assert_eq!(block.header.ommers_hash, proofs::calculate_ommers_root(&expected_ommers));
+            assert_eq!(
+                block.header.ommers_hash,
+                proofs::calculate_ommers_root(&expected_output.ommers())
+            );
             // timestamp
             assert_eq!(block.timestamp, expected_output.committed_at());
             // parent beacon block root is output digest
@@ -1168,7 +1167,7 @@ mod tests {
             // difficulty should match the batch's index within consensus output
             assert_eq!(block.difficulty, U256::from(expected_batch_index));
             // assert batch digest match extra data
-            assert_eq!(&block.extra_data, all_batch_digests[idx].as_ref());
+            assert_eq!(&block.extra_data, all_batch_digests[idx].as_slice());
             // assert batch's withdrawals match
             //
             // TODO: this is currently always empty
@@ -1229,7 +1228,7 @@ mod tests {
             debug!("{idx}\n{:?}\n", batch);
 
             // store values for assertions later
-            let header = batch.versioned_metadata().sealed_header().clone();
+            let header = batch.sealed_header().clone();
             batch_headers.push(header);
         }
 
@@ -1251,7 +1250,7 @@ mod tests {
             debug!("{idx}\n{:?}\n", batch);
 
             // store values for assertions later
-            let header = batch.versioned_metadata().sealed_header().clone();
+            let header = batch.sealed_header().clone();
             batch_headers.push(header);
         }
 
@@ -1270,7 +1269,7 @@ mod tests {
         let sub_dag_index_1 = 1;
         let reputation_scores = ReputationScores::default();
         let previous_sub_dag = None;
-        let batch_digests_1: VecDeque<BatchDigest> = batches_1.iter().map(|b| b.digest()).collect();
+        let batch_digests_1: VecDeque<BlockHash> = batches_1.iter().map(|b| b.digest()).collect();
         let subdag_1 = Arc::new(CommittedSubDag::new(
             vec![Certificate::default()],
             leader_1,
@@ -1294,7 +1293,7 @@ mod tests {
         let sub_dag_index_2 = 2;
         let reputation_scores = ReputationScores::default();
         let previous_sub_dag = Some(subdag_1.as_ref());
-        let batch_digests_2: VecDeque<BatchDigest> = batches_2.iter().map(|b| b.digest()).collect();
+        let batch_digests_2: VecDeque<BlockHash> = batches_2.iter().map(|b| b.digest()).collect();
         let subdag_2 = CommittedSubDag::new(
             vec![Certificate::default()],
             leader_2,
