@@ -1,15 +1,15 @@
 //! Primary types used for consensus.
 
 use std::time::{Duration, SystemTime};
-mod batch;
 mod certificate;
 mod header;
 mod vote;
+mod worker_block;
 
-pub use batch::*;
 pub use certificate::*;
 pub use header::*;
 pub use vote::*;
+pub use worker_block::*;
 
 /// For now, use 0 to prevent any removal of bad nodes since validator sets
 /// are static.
