@@ -7,7 +7,7 @@
 //! wallet within the time period.
 
 use crate::{Drip, FaucetWallet, GoogleKMSClient, Secp256k1PubKeyBytes};
-use alloy_sol_types::SolType;
+use alloy::sol_types::SolType;
 use futures::StreamExt;
 use gcloud_sdk::{
     google::cloud::kms::v1::{
@@ -21,8 +21,8 @@ use lru_time_cache::LruCache;
 use reth::rpc::server_types::eth::{EthApiError, EthResult, RpcInvalidTransactionError};
 use reth_chainspec::BaseFeeParams;
 use reth_primitives::{
-    Address, FromRecoveredPooledTransaction, Signature as EthSignature, Transaction,
-    TransactionSigned, TxEip1559, TxHash, TxKind, B256, U256,
+    Address, Signature as EthSignature, Transaction, TransactionSigned, TxEip1559, TxHash, TxKind,
+    B256, U256,
 };
 use reth_provider::{BlockReaderIdExt, StateProviderFactory};
 use reth_tasks::TaskSpawner;
@@ -37,9 +37,10 @@ use std::{
     task::{ready, Context, Poll},
     time::{Duration, SystemTime},
 };
+use tn_types::PendingWorkerBlock;
 use tokio::sync::{
     mpsc::{UnboundedReceiver, UnboundedSender},
-    oneshot,
+    oneshot, watch,
 };
 use tokio_stream::wrappers::UnboundedReceiverStream;
 use tracing::{debug, error};
@@ -90,6 +91,10 @@ pub(crate) struct FaucetService<Provider, Pool, Tasks> {
     ///
     /// Addresses received on this channel are added to the LRU cache.
     pub(crate) update_cache_rx: UnboundedReceiver<(Address, Address)>,
+    /// The watch channel for tracking the worker's latest pending block.
+    ///
+    /// The pending block is updated right before transactions are removed from the tx pool.
+    pub(crate) watch_rx: watch::Receiver<PendingWorkerBlock>,
 }
 
 impl<Provider, Pool, Tasks> FaucetService<Provider, Pool, Tasks>
@@ -223,9 +228,13 @@ where
             return Ok(tx_count);
         }
 
-        // lookup account nonce in db
+        // lookup account nonce in db and compare it to pending worker block
         let state = self.provider.latest()?;
-        Ok(state.account_nonce(address)?.unwrap_or_default())
+        let latest_nonce = state.account_nonce(address)?.unwrap_or_default();
+        let pending_nonce = self.watch_rx.borrow().account_nonce(&address).unwrap_or_default();
+        debug!(target: "faucet", ?latest_nonce, ?pending_nonce, "comparing faucet nonces");
+
+        Ok(std::cmp::max(latest_nonce, pending_nonce))
     }
 
     /// Taken from rpc/src/eth/api/fees.rs
@@ -436,7 +445,7 @@ where
     let recovered = tx.try_into_ecrecovered().or(Err(EthApiError::InvalidTransactionSignature))?;
 
     let pool_transaction = match recovered.try_into() {
-        Ok(converted) => <Pool::Transaction>::from_recovered_pooled_transaction(converted),
+        Ok(converted) => <Pool::Transaction>::from_pooled(converted),
         Err(_) => return Err(EthApiError::TransactionConversionError),
     };
 

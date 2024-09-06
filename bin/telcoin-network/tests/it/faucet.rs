@@ -28,9 +28,7 @@ use reth::{
 };
 use reth_chainspec::ChainSpec;
 use reth_node_ethereum::{EthEvmConfig, EthExecutorProvider};
-use reth_primitives::{
-    alloy_primitives::U160, public_key_to_address, Address, GenesisAccount, U256,
-};
+use reth_primitives::{public_key_to_address, Address, GenesisAccount, U256};
 use reth_tracing::init_test_tracing;
 use secp256k1::PublicKey;
 use std::{str::FromStr, sync::Arc, time::Duration};
@@ -64,55 +62,126 @@ async fn test_faucet_transfers_tel_with_google_kms_e2e() -> eyre::Result<()> {
     )
     .await?;
 
-    info!("nodes started");
+    info!(target: "faucet-test", "nodes started - sleeping for 10s...");
 
     tokio::time::sleep(Duration::from_secs(10)).await;
 
-    let address = Address::from(U160::from(8991));
     let rpc_url = "http://127.0.0.1:8545".to_string();
     let client = HttpClientBuilder::default().build(&rpc_url)?;
 
-    // assert starting balance is 0
-    let starting_balance: String = client.request("eth_getBalance", rpc_params!(address)).await?;
-    debug!("starting balance: {starting_balance:?}");
-    assert_eq!(U256::from_str(&starting_balance)?, U256::ZERO);
-
     // assert deployer starting balance is properly seeded
-    let default_deployer_address = TransactionFactory::default().address();
+    let mut tx_factory = TransactionFactory::new();
+    let default_deployer_address = tx_factory.address();
     let deployer_balance: String =
         client.request("eth_getBalance", rpc_params!(default_deployer_address)).await?;
-    debug!("Deployer starting balance: {deployer_balance:?}");
+
+    debug!(target: "faucet-test", "Deployer starting balance: {deployer_balance:?}");
     assert_eq!(U256::from_str(&deployer_balance)?, U256::MAX);
+    info!(target: "faucet-test", "deploying contract and initializing faucet...");
 
     // deploy faucet contracts and initialize
-    let mut tx_factory = TransactionFactory::new();
     let empty_tokens_array = vec![];
     let _faucet_contract = deploy_contract_faucet_initialize(
-        chain,
+        chain.clone(),
         &rpc_url,
         kms_address,
         empty_tokens_array,
         &mut tx_factory,
     )
     .await?;
+    info!(target: "faucet-test", "faucet initialization complete!");
 
     // note: response is different each time bc KMS
-    let tx_hash: String = client.request("faucet_transfer", rpc_params![address]).await?;
-    info!(target: "faucet-transaction", ?tx_hash);
+    //
+    // assert starting balance is 0
+    let mut random_tx_factory = TransactionFactory::new_random();
+    let random_address = random_tx_factory.address();
+    let starting_balance: String =
+        client.request("eth_getBalance", rpc_params!(random_address)).await?;
+    debug!(target: "faucet-test", "starting balance: {starting_balance:?}");
+    assert_eq!(U256::from_str(&starting_balance)?, U256::ZERO);
+
+    let tx_hash: String = client.request("faucet_transfer", rpc_params![random_address]).await?;
+    info!(target: "faucet-test", ?tx_hash, "valid faucet transfer tx hash");
 
     // more than enough time for the nodes to launch RPCs
     let duration = Duration::from_secs(30);
 
     // ensure account balance increased
-    let balance = timeout(duration, ensure_account_balance(&client, address))
-        .await?
-        .expect("balance timeout");
     let expected_balance = U256::from_str("0xde0b6b3a7640000")?; // 1*10^18 (1 TEL)
-    assert_eq!(balance, expected_balance);
+    let _ = timeout(
+        duration,
+        ensure_account_balance_infinite_loop(&client, random_address, expected_balance),
+    )
+    .await?
+    .expect("expected balance timeout");
 
     // duplicate request is err
-    assert!(client.request::<String, _>("faucet_transfer", rpc_params![address]).await.is_err());
+    assert!(client
+        .request::<String, _>("faucet_transfer", rpc_params![random_address])
+        .await
+        .is_err());
 
+    // NOW:
+    // submit another tx from the account that just got dripped
+    // so the the worker's watch channel updates to a new block that doesn't have
+    // the faucet's address in the state
+    //
+    // this creates scenario for faucet to rely on provider.latest() for accuracy
+    let tx = random_tx_factory.create_eip1559(
+        chain,
+        1_000_000_000,
+        Some(Address::random()),
+        U256::from_str("0xaffffffffffffff").expect("U256 from str for tx factory"),
+        Default::default(),
+    );
+
+    info!(target: "faucet-test", ?tx, "submitting new tx to clear worker's watch channel...");
+
+    // submit tx through rpc
+    let tx_bytes = tx.envelope_encoded();
+    let tx_hash: String = client.request("eth_sendRawTransaction", rpc_params![tx_bytes]).await?;
+    info!(target: "faucet-test", ?tx_hash, "tx submitted :D");
+
+    // ensure account balance decreased
+    let expected_balance = U256::from_str("0x2e0b6b3a761c1c9")?;
+    let _ = timeout(
+        duration,
+        ensure_account_balance_infinite_loop(&client, random_address, expected_balance),
+    )
+    .await?
+    .expect("expected balance timeout");
+
+    // request another faucet drip for random address
+    //
+    // assert starting balance is 0
+    info!(target: "faucet-test", ?expected_balance, "account balance decreased. requesting from faucet again...");
+    let random_address = Address::random();
+    let starting_balance: String =
+        client.request("eth_getBalance", rpc_params!(random_address)).await?;
+    assert_eq!(U256::from_str(&starting_balance)?, U256::ZERO);
+
+    let tx_hash: String = client.request("faucet_transfer", rpc_params![random_address]).await?;
+    info!(target: "faucet-test", ?tx_hash, "new random faucet request success. waiting for balance increase...");
+
+    // ensure account balance increased
+    //
+    // account balance is only updates on final execution
+    // finding the expected balance in time means the faucet successfully used the correct nonce
+    let expected_balance = U256::from_str("0xde0b6b3a7640000")?; // 1*10^18 (1 TEL)
+    let _ = timeout(
+        duration,
+        ensure_account_balance_infinite_loop(&client, random_address, expected_balance),
+    )
+    .await?
+    .expect("expected balance random account timeout");
+
+    // duplicate request is err
+    info!(target: "faucet-test", "account balance updated. submitting duplicate request and shutting down...");
+    assert!(client
+        .request::<String, _>("faucet_transfer", rpc_params![random_address])
+        .await
+        .is_err());
     Ok(())
 }
 
@@ -313,11 +382,17 @@ async fn spawn_local_testnet(
 /// RPC request to continually check until an account balance is above 0.
 ///
 /// Warning: this should only be called with a timeout - could result in infinite loop otherwise.
-async fn ensure_account_balance(client: &HttpClient, address: Address) -> eyre::Result<U256> {
+async fn ensure_account_balance_infinite_loop(
+    client: &HttpClient,
+    address: Address,
+    expected_bal: U256,
+) -> eyre::Result<U256> {
     while let Ok(bal) = client.request::<String, _>("eth_getBalance", rpc_params!(address)).await {
-        debug!("bal: {bal:?}");
+        debug!(target: "faucet-test", "bal: {bal:?}");
         let balance = U256::from_str(&bal)?;
-        if balance > U256::ZERO {
+
+        // return Ok if expected bal
+        if balance == expected_bal {
             return Ok(balance);
         }
 

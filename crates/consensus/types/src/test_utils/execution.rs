@@ -21,15 +21,15 @@ use reth_primitives::{
     constants::{
         EMPTY_TRANSACTIONS, EMPTY_WITHDRAWALS, ETHEREUM_BLOCK_GAS_LIMIT, MIN_PROTOCOL_BASE_FEE,
     },
-    proofs, public_key_to_address, sign_message, Address, Block, Bytes,
-    FromRecoveredPooledTransaction, Genesis, GenesisAccount, Header, PooledTransactionsElement,
-    SealedHeader, Signature, Transaction, TransactionSigned, TxEip1559, TxHash, TxKind,
-    Withdrawals, B256, EMPTY_OMMER_ROOT_HASH, U256,
+    proofs, public_key_to_address, sign_message, Address, Block, Bytes, Genesis, GenesisAccount,
+    Header, PooledTransactionsElement, SealedHeader, Signature, Transaction, TransactionSigned,
+    TxEip1559, TxHash, TxKind, Withdrawals, B256, EMPTY_OMMER_ROOT_HASH, U256,
 };
 use reth_provider::{BlockReaderIdExt, ExecutionOutcome, StateProviderFactory};
 use reth_revm::database::StateProviderDatabase;
 use reth_rpc_types::TransactionRequest;
-use reth_transaction_pool::{TransactionOrigin, TransactionPool};
+use reth_transaction_pool::{PoolTransaction, TransactionOrigin, TransactionPool};
+use reth_trie::HashedPostState;
 use secp256k1::Secp256k1;
 use std::{str::FromStr as _, sync::Arc};
 use tracing::debug;
@@ -209,20 +209,20 @@ pub fn execute_test_batch<P, E>(
         .executor(&mut db)
         .execute((&block, U256::ZERO).into())
         .expect("executor can execute test batch transactions");
-    let bundle_state = ExecutionOutcome::new(state, receipts.into(), block_number, vec![]);
+    let execution_outcome = ExecutionOutcome::new(state, receipts.into(), block_number, vec![]);
+    let hashed_state = HashedPostState::from_bundle_state(&execution_outcome.state().state);
 
     // retrieve header to update values post-execution
     let Block { mut header, .. } = block.block;
 
     // update header
     header.gas_used = gas_used;
-    header.state_root = db
-        .state_root(bundle_state.state())
-        .expect("state root calculation during test batch execution");
-    header.receipts_root = bundle_state
+    header.state_root =
+        db.state_root(hashed_state).expect("state root calculation during test batch execution");
+    header.receipts_root = execution_outcome
         .receipts_root_slow(block_number)
         .expect("receipts root calculation during test batch execution");
-    header.logs_bloom = bundle_state
+    header.logs_bloom = execution_outcome
         .block_logs_bloom(block_number)
         .expect("logs bloom calculation during test batch execution");
 
@@ -456,7 +456,7 @@ impl TransactionFactory {
         let pooled_tx =
             PooledTransactionsElement::try_from_broadcast(tx).expect("tx valid for pool");
         let recovered = pooled_tx.try_into_ecrecovered().expect("tx is recovered");
-        let transaction = <Pool::Transaction>::from_recovered_pooled_transaction(recovered);
+        let transaction = <Pool::Transaction>::from_pooled(recovered);
 
         pool.add_transaction(TransactionOrigin::Local, transaction)
             .await
@@ -471,7 +471,7 @@ impl TransactionFactory {
         let pooled_tx =
             PooledTransactionsElement::try_from_broadcast(tx).expect("tx valid for pool");
         let recovered = pooled_tx.try_into_ecrecovered().expect("tx is recovered");
-        let transaction = <Pool::Transaction>::from_recovered_pooled_transaction(recovered);
+        let transaction = <Pool::Transaction>::from_pooled(recovered);
 
         debug!("transaction: \n{transaction:?}\n");
 
