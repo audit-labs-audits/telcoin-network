@@ -7,8 +7,11 @@
 //! signature to be EVM compatible. The faucet service does all of this and
 //! then submits the transaction to the RPC Transaction Pool for the next batch.
 
-use alloy::sol;
-use alloy_sol_types::{SolType, SolValue};
+use alloy::{
+    sol,
+    sol_types::{SolType, SolValue},
+};
+use fastcrypto::hash::Hash;
 use gcloud_sdk::{
     google::cloud::kms::v1::{
         key_management_service_client::KeyManagementServiceClient, GetPublicKeyRequest,
@@ -26,6 +29,7 @@ use reth_primitives::{
 use reth_provider::ExecutionOutcome;
 use reth_tasks::TaskManager;
 use reth_tracing::init_test_tracing;
+use reth_transaction_pool::TransactionPool;
 use secp256k1::PublicKey;
 use std::{str::FromStr, sync::Arc, time::Duration};
 use tn_faucet::Drip;
@@ -41,8 +45,7 @@ use tn_types::{
     Batch, BatchAPI, NewBatch,
 };
 use tokio::time::timeout;
-// use artifacts::contract_artifacts::{STABLECOIN_INITCODE, STABLECOIN_MANAGER_INITCODE,
-// ERC1967_PROXY_INITCODE};
+use tracing::debug;
 
 #[tokio::test]
 async fn test_faucet_transfers_tel_with_google_kms() -> eyre::Result<()> {
@@ -151,6 +154,7 @@ async fn test_faucet_transfers_tel_with_google_kms() -> eyre::Result<()> {
         kms_address,
     )
         .abi_encode_params();
+
     let grant_role_call = [&grant_role_selector, &grant_role_params[..]].concat().into();
 
     // assemble eip1559 transactions using constructed datas
@@ -165,6 +169,7 @@ async fn test_faucet_transfers_tel_with_google_kms() -> eyre::Result<()> {
             faucet_create_data.clone().into(),
         )
         .envelope_encoded();
+
     // faucet deployment will be `factory_address`'s first transaction
     let faucet_proxy_address = factory_address.create(0);
     let role_tx_raw = tx_factory
@@ -227,12 +232,12 @@ async fn test_faucet_transfers_tel_with_google_kms() -> eyre::Result<()> {
         faucet_proxy_address,
     )?;
 
-    println!("starting batch maker...");
     let worker_id = 0;
     let (to_worker, mut next_batch) = test_channel!(1);
 
     // start batch maker
     execution_node.start_batch_maker(to_worker, worker_id).await?;
+
     // create client
     let client = execution_node.worker_http_client(&worker_id).await?.expect("worker rpc client");
     tracing::info!("got client: {:?}", client);
@@ -250,6 +255,10 @@ async fn test_faucet_transfers_tel_with_google_kms() -> eyre::Result<()> {
 
     // wait for canon event or timeout
     let new_batch: NewBatch = timeout(duration, next_batch.recv()).await?.expect("batch received");
+    let digest = new_batch.batch.digest();
+
+    // send ack to worker
+    let _ = new_batch.ack.send(digest);
 
     let batch_txs = new_batch.batch.transactions();
     let tx = batch_txs.first().expect("first batch tx from faucet");
@@ -261,7 +270,29 @@ async fn test_faucet_transfers_tel_with_google_kms() -> eyre::Result<()> {
 
     // ensure duplicate request is error
     let response = client.request::<String, _>("faucet_transfer", rpc_params![address]).await;
-    Ok(assert!(response.is_err()))
+    assert!(response.is_err());
+
+    debug!("requesting second valid transaction....");
+    let random_address = Address::random();
+    let tx_str =
+        client.request::<String, _>("faucet_transfer", rpc_params![random_address]).await?;
+    let tx_hash = B256::from_str(&tx_str)?;
+
+    // try to submit another valid request
+    //
+    // at this point:
+    // - no pending txs in pool
+    // - batch is not final (stored in db)
+    // - faucet must obtain correct nonce from worker's pending block watch channel
+    //
+    // NOTE: new batch won't come bc tx is not in pending pool due to nonce gap
+    // so query the tx pool directly
+    let tx_pool = execution_node.get_worker_transaction_pool(&worker_id).await?;
+    let pool_tx = tx_pool.get(&tx_hash).expect("tx in pool");
+    let recovered = pool_tx.transaction.transaction();
+    assert_eq!(&tx_hash, recovered.hash_ref());
+    assert_eq!(recovered.transaction.to(), Some(faucet_proxy_address));
+    Ok(assert_eq!(recovered.transaction.nonce(), 1))
 }
 
 #[tokio::test]

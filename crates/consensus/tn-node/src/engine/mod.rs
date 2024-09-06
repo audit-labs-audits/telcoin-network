@@ -22,12 +22,12 @@ mod inner;
 mod worker;
 
 use self::inner::ExecutionNodeInner;
-use reth_provider::providers::BlockchainProvider;
+use reth_provider::{providers::BlockchainProvider, ExecutionOutcome};
 use reth_tasks::TaskExecutor;
 use tn_batch_validator::BatchValidator;
 use tn_faucet::FaucetArgs;
-use tn_types::{Config, ConsensusOutput, NewBatch, WorkerId};
-use tokio::sync::{broadcast, RwLock};
+use tn_types::{Config, ConsensusOutput, NewBatch, PendingWorkerBlock, WorkerId};
+use tokio::sync::{broadcast, watch, RwLock};
 pub use worker::*;
 
 /// The struct used to build the execution nodes.
@@ -132,6 +132,33 @@ where
     ) -> eyre::Result<Option<jsonrpsee::http_client::HttpClient>> {
         let guard = self.internal.read().await;
         guard.worker_http_client(worker_id)
+    }
+
+    /// Return an owned instance of the worker's transaction pool.
+    pub async fn get_worker_transaction_pool(
+        &self,
+        worker_id: &WorkerId,
+    ) -> eyre::Result<WorkerTxPool<DB>> {
+        let guard = self.internal.read().await;
+        guard.get_worker_transaction_pool(worker_id)
+    }
+
+    /// Return the worker's current pending block state.
+    pub async fn worker_pending_block(
+        &self,
+        worker_id: &WorkerId,
+    ) -> eyre::Result<Option<ExecutionOutcome>> {
+        let guard = self.internal.read().await;
+        guard.worker_pending_block(worker_id)
+    }
+
+    /// Return a worker's sending channel for pending block updates.
+    pub async fn worker_pending_block_sender(
+        &self,
+        worker_id: &WorkerId,
+    ) -> eyre::Result<watch::Sender<PendingWorkerBlock>> {
+        let guard = self.internal.read().await;
+        guard.worker_pending_block_sender(worker_id)
     }
 
     /// Return an HTTP local address for submitting transactions to the RPC.

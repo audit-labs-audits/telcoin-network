@@ -41,12 +41,7 @@ tn-node = { workspace = true }
 narwhal-network = { workspace = true }
 consensus-metrics = { workspace = true }
 tn-faucet = { workspace = true, optional = true }
-alloy = { workspace = true, features = [
-    "contract",
-    "signers",
-    "signer-local",
-    "network",
-] }
+alloy = { workspace = true }
 
 # config
 serde_yaml = { workspace = true }

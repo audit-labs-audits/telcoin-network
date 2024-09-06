@@ -3,19 +3,20 @@
 //! CLI supports adding extensions to the main components for the node.
 //! The only extension supported right now is the `faucet` for testnet.
 
-use crate::{FaucetConfig, FaucetRpcExt, FaucetRpcExtApiServer, FaucetWallet};
+use crate::{FaucetConfig, FaucetRpcExt, FaucetWallet};
 use clap::Args;
 use ecdsa::elliptic_curve::{pkcs8::DecodePublicKey as _, sec1::ToEncodedPoint};
 use eyre::ContextCompat;
 use k256::PublicKey as PubKey;
-use reth::rpc::builder::TransportRpcModules;
 use reth_cli_util::parse_duration_from_secs;
 use reth_primitives::{public_key_to_address, Address, U256};
 use reth_provider::{BlockReaderIdExt, StateProviderFactory};
 use reth_transaction_pool::TransactionPool;
 use secp256k1::PublicKey;
 use std::{str::FromStr, time::Duration};
-use tracing::{error, info, warn};
+use tn_types::PendingWorkerBlock;
+use tokio::sync::watch;
+use tracing::{info, warn};
 
 /// Args for running the faucet.
 /// Used to build the faucet config.
@@ -100,6 +101,7 @@ impl FaucetArgs {
         &self,
         provider: Provider,
         pool: Pool,
+        watch_rx: watch::Receiver<PendingWorkerBlock>,
     ) -> eyre::Result<FaucetRpcExt>
     where
         Provider: BlockReaderIdExt + StateProviderFactory + Unpin + Clone + 'static,
@@ -143,7 +145,7 @@ impl FaucetArgs {
                 contract_address: self.contract_address,
             };
 
-            let ext = FaucetRpcExt::new(provider, pool, config);
+            let ext = FaucetRpcExt::new(provider, pool, config, watch_rx);
 
             info!(target: "faucet", "Google KMS active - merging faucet extension.");
             return Ok(ext);
@@ -153,41 +155,6 @@ impl FaucetArgs {
         warn!(target: "faucet", "Google KMS inactive - skipping faucet extension.");
         Err(eyre::Report::msg("Google KMS inactive - skipping faucet extension."))
         //todo!("Only Google KMS supported right now.")
-    }
-}
-
-/// Installs the "faucet" rpc namespace.
-impl FaucetArgs {
-    /// Allows for registering additional RPC modules for the transports.
-    ///
-    /// This is expected to call the merge functions of [reth_rpc_builder::TransportRpcModules], for
-    /// example [reth_rpc_builder::TransportRpcModules::merge_configured]
-    fn _extend_rpc_modules<Provider, Pool>(
-        &mut self,
-        provider: Provider,
-        pool: Pool,
-        modules: &mut TransportRpcModules,
-    ) -> eyre::Result<()>
-    where
-        Provider: BlockReaderIdExt + StateProviderFactory + Unpin + Clone + 'static,
-        Pool: TransactionPool + Unpin + Clone + 'static,
-    {
-        // only support google kms for now
-        if self.google_kms {
-            // create faucet rpc namespace
-            let ext = self.create_rpc_extension(provider, pool)?;
-
-            // add faucet module
-            if let Err(e) = modules.merge_configured(ext.into_rpc()) {
-                error!(target: "faucet", "Error merging faucet rpc module: {e:?}");
-            }
-
-            info!(target: "faucet", "Google KMS active - faucet extension merged.");
-        } else {
-            warn!(target: "faucet", "Google KMS inactive - skipping faucet extension.");
-        };
-
-        Ok(())
     }
 }
 
