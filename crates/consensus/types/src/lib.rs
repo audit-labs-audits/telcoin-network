@@ -2,8 +2,6 @@
 // Copyright (c) Mysten Labs, Inc.
 // SPDX-License-Identifier: Apache-2.0
 
-#![forbid(unsafe_code)]
-
 // Error types
 #[macro_use]
 pub mod error;
@@ -30,6 +28,8 @@ mod multiaddr;
 pub use multiaddr::*;
 mod genesis;
 pub use genesis::*;
+mod worker;
+pub use worker::*;
 
 pub use reth_primitives::{BlockHash, TransactionSigned};
 
