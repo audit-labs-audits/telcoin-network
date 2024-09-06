@@ -3,8 +3,8 @@ use roaring::RoaringBitmap;
 use serde::{Deserialize, Serialize};
 use std::collections::{BTreeMap, BTreeSet, HashSet};
 use tn_types::{
-    AuthorityIdentifier, BlockHash, Certificate, Header, MetadataAPI, NetworkPublicKey, Round,
-    TransactionSigned, VersionedMetadata, WorkerBlock, WorkerId,
+    AuthorityIdentifier, BlockHash, Certificate, Header, NetworkPublicKey, Round,
+    TransactionSigned, WorkerBlock, WorkerId,
 };
 use tracing::warn;
 
@@ -149,7 +149,7 @@ pub struct SealBatchRequest {
     /// Collection of transactions encoded as bytes.
     pub payload: Vec<TransactionSigned>,
     /// Execution data for validation.
-    pub metadata: VersionedMetadata,
+    pub worker_block: WorkerBlock,
 }
 
 /// Used by workers to validate a peer's batch using EL.
@@ -167,6 +167,6 @@ pub struct ValidateBatchRequest {
 
 impl From<SealBatchRequest> for WorkerBlock {
     fn from(value: SealBatchRequest) -> Self {
-        WorkerBlock::new(value.payload, value.metadata.sealed_header().clone())
+        WorkerBlock::new(value.payload, value.worker_block.sealed_header.clone())
     }
 }

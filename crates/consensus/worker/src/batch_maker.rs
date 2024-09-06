@@ -26,7 +26,7 @@ use tokio::{
 use tracing::{error, warn};
 
 #[cfg(feature = "trace_transaction")]
-use byteorder::BigEndian;
+use byteorder::{BigEndian, ReadBytesExt};
 
 // The number of batches to store / transmit in parallel.
 pub const MAX_PARALLEL_BATCH: usize = 100;
@@ -158,8 +158,8 @@ impl<DB: Database + Clone + 'static> BatchMaker<DB> {
                 .block
                 .transactions()
                 .iter()
-                .filter(|tx| tx[0] == 0u8 && tx.len() > 8)
-                .filter_map(|tx| tx[1..9].try_into().ok())
+                .filter(|tx| tx.hash[0] == 0u8 && tx.hash.len() > 8)
+                .filter_map(|tx| tx.hash[1..9].try_into().ok())
                 .collect();
 
             let size = tx_ids.len();
@@ -179,9 +179,9 @@ impl<DB: Database + Clone + 'static> BatchMaker<DB> {
                     .transactions()
                     .iter()
                     .map(|tx| {
-                        let len = tx.len();
+                        let len = tx.hash.len();
                         if len >= 8 {
-                            (&tx[0..8]).read_u64::<BigEndian>().unwrap_or_default()
+                            (&tx.hash[0..8]).read_u64::<BigEndian>().unwrap_or_default()
                         } else {
                             0
                         }

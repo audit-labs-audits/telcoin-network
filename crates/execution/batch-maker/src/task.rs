@@ -206,7 +206,7 @@ where
                             //
                             // clear all transactions from pool once batch is sealed
                             pool.remove_transactions(
-                                transactions.iter().map(|tx| tx.hash().clone()).collect(),
+                                transactions.iter().map(|tx| *(tx.hash())).collect(),
                             );
 
                             drop(storage);
