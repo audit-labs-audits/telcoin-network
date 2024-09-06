@@ -24,7 +24,7 @@ use narwhal_network_types::{FetchCertificatesRequest, FetchCertificatesResponse}
 use tn_types::{
     error::{DagError, DagResult},
     validate_received_certificate_version, Certificate, CertificateAPI,
-    ConditionalBroadcastReceiver, HeaderAPI, Round,
+    ConditionalBroadcastReceiver, Round,
 };
 use tokio::{
     sync::watch,

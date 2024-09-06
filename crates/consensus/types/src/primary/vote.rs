@@ -14,7 +14,7 @@ use crate::{
     crypto::{
         self, to_intent_message, BlsPublicKey, BlsSignature, IntentMessage, ValidatorSignature,
     },
-    Header, HeaderAPI, HeaderDigest, Round,
+    Header, HeaderDigest, Round,
 };
 
 /// A Vote on a Header is a claim by the voting authority that all payloads and the full history

@@ -19,7 +19,7 @@ use narwhal_network_types::{PrimaryToPrimaryClient, RequestVoteRequest};
 use tn_types::{
     ensure,
     error::{DagError, DagResult},
-    BlsSignature, Certificate, CertificateDigest, ConditionalBroadcastReceiver, Header, HeaderAPI,
+    BlsSignature, Certificate, CertificateDigest, ConditionalBroadcastReceiver, Header,
     NetworkPublicKey, Vote, VoteAPI,
 };
 use tokio::{

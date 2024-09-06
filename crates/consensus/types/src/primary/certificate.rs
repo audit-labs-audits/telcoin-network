@@ -18,7 +18,7 @@ use crate::{
     error::{DagError, DagResult},
     now,
     serde::NarwhalBitmap,
-    Header, HeaderAPI, HeaderV1, Round, TimestampSec,
+    Header, Round, TimestampSec,
 };
 
 /// Versioned certificate. Certificates are the output of consensus.
@@ -274,11 +274,11 @@ impl CertificateV1 {
         committee
             .authorities()
             .map(|authority| Self {
-                header: Header::V1(HeaderV1 {
+                header: Header {
                     author: authority.id(),
                     epoch: committee.epoch(),
                     ..Default::default()
-                }),
+                },
                 ..Self::default()
             })
             .collect()

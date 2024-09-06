@@ -18,8 +18,7 @@ use std::{
 };
 use tn_types::{
     AuthorityIdentifier, Certificate, CertificateAPI, CertificateDigest, CommittedSubDag,
-    Committee, ConditionalBroadcastReceiver, ConsensusCommit, HeaderAPI, Round, SequenceNumber,
-    Timestamp,
+    Committee, ConditionalBroadcastReceiver, ConsensusCommit, Round, SequenceNumber, Timestamp,
 };
 use tokio::{sync::watch, task::JoinHandle};
 use tracing::{debug, info, instrument};

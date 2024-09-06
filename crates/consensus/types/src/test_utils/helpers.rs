@@ -4,9 +4,8 @@
 //! Helper methods for creating useful structs during tests.
 use crate::{
     adiri_chain_spec_arc, to_intent_message, AuthorityIdentifier, BlsKeypair, BlsSignature,
-    Certificate, CertificateAPI, CertificateDigest, Committee, Epoch, Header, HeaderAPI,
-    HeaderV1Builder, Multiaddr, NetworkKeypair, Round, Stake, TimestampSec, ValidatorSignature,
-    WorkerBlock, WorkerId,
+    Certificate, CertificateAPI, CertificateDigest, Committee, Epoch, HeaderBuilder, Multiaddr,
+    NetworkKeypair, Round, Stake, TimestampSec, ValidatorSignature, WorkerBlock, WorkerId,
 };
 use fastcrypto::{hash::Hash, traits::KeyPair as _};
 use indexmap::IndexMap;
@@ -610,7 +609,7 @@ pub fn mock_certificate_with_rand<R: RngCore + ?Sized>(
     parents: BTreeSet<CertificateDigest>,
     rand: &mut R,
 ) -> (CertificateDigest, Certificate) {
-    let header_builder = HeaderV1Builder::default();
+    let header_builder = HeaderBuilder::default();
     let header = header_builder
         .author(origin)
         .round(round)
@@ -619,7 +618,7 @@ pub fn mock_certificate_with_rand<R: RngCore + ?Sized>(
         .payload(fixture_payload_with_rand(1, rand))
         .build()
         .unwrap();
-    let certificate = Certificate::new_unsigned(committee, Header::V1(header), Vec::new()).unwrap();
+    let certificate = Certificate::new_unsigned(committee, header, Vec::new()).unwrap();
     (certificate.digest(), certificate)
 }
 
@@ -643,7 +642,7 @@ pub fn mock_certificate_with_epoch(
     epoch: Epoch,
     parents: BTreeSet<CertificateDigest>,
 ) -> (CertificateDigest, Certificate) {
-    let header_builder = HeaderV1Builder::default();
+    let header_builder = HeaderBuilder::default();
     let header = header_builder
         .author(origin)
         .round(round)
@@ -652,7 +651,7 @@ pub fn mock_certificate_with_epoch(
         .payload(fixture_payload(1))
         .build()
         .unwrap();
-    let certificate = Certificate::new_unsigned(committee, Header::V1(header), Vec::new()).unwrap();
+    let certificate = Certificate::new_unsigned(committee, header, Vec::new()).unwrap();
     (certificate.digest(), certificate)
 }
 
@@ -664,7 +663,7 @@ pub fn mock_signed_certificate(
     parents: BTreeSet<CertificateDigest>,
     committee: &Committee,
 ) -> (CertificateDigest, Certificate) {
-    let header_builder = HeaderV1Builder::default()
+    let header_builder = HeaderBuilder::default()
         .author(origin)
         .payload(fixture_payload(1))
         .round(round)
@@ -673,15 +672,14 @@ pub fn mock_signed_certificate(
 
     let header = header_builder.build().unwrap();
 
-    let cert =
-        Certificate::new_unsigned(committee, Header::V1(header.clone()), Vec::new()).unwrap();
+    let cert = Certificate::new_unsigned(committee, header.clone(), Vec::new()).unwrap();
 
     let mut votes = Vec::new();
     for (name, signer) in signers {
         let sig = BlsSignature::new_secure(&to_intent_message(cert.header().digest()), signer);
         votes.push((*name, sig))
     }
-    let cert = Certificate::new_unverified(committee, Header::V1(header), votes).unwrap();
+    let cert = Certificate::new_unverified(committee, header, votes).unwrap();
     (cert.digest(), cert)
 }
 
