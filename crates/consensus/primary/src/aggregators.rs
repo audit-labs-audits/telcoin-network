@@ -11,7 +11,7 @@ use tn_types::{AuthorityIdentifier, Committee, Stake};
 use tn_types::{
     ensure,
     error::{DagError, DagResult},
-    to_intent_message, BlsAggregateSignature, BlsSignature, Certificate, CertificateAPI, Header,
+    to_intent_message, BlsAggregateSignature, BlsSignature, Certificate, Header,
     SignatureVerificationState, ValidatorAggregateSignature, ValidatorSignature, Vote, VoteAPI,
 };
 use tracing::warn;

@@ -41,7 +41,7 @@ use tn_batch_validator::NoopBatchValidator;
 use tn_types::{
     now,
     test_utils::{make_optimal_signed_certificates, CommitteeFixture},
-    AuthorityIdentifier, Certificate, CertificateAPI, ChainIdentifier, Committee, Parameters,
+    AuthorityIdentifier, Certificate, ChainIdentifier, Committee, Parameters,
     PreSubscribedBroadcastSender, SignatureVerificationState,
 };
 use tokio::{sync::watch, time::timeout};

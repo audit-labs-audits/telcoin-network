@@ -4,8 +4,8 @@
 //! Helper methods for creating useful structs during tests.
 use crate::{
     adiri_chain_spec_arc, to_intent_message, AuthorityIdentifier, BlsKeypair, BlsSignature,
-    Certificate, CertificateAPI, CertificateDigest, Committee, Epoch, HeaderBuilder, Multiaddr,
-    NetworkKeypair, Round, Stake, TimestampSec, ValidatorSignature, WorkerBlock, WorkerId,
+    Certificate, CertificateDigest, Committee, Epoch, HeaderBuilder, Multiaddr, NetworkKeypair,
+    Round, Stake, TimestampSec, ValidatorSignature, WorkerBlock, WorkerId,
 };
 use fastcrypto::{hash::Hash, traits::KeyPair as _};
 use indexmap::IndexMap;

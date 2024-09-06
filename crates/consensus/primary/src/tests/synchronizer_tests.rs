@@ -24,8 +24,7 @@ use tempfile::TempDir;
 use tn_types::{
     error::DagError,
     test_utils::{make_optimal_signed_certificates, mock_signed_certificate, CommitteeFixture},
-    BlsAggregateSignatureBytes, Certificate, CertificateAPI, Committee, Round,
-    SignatureVerificationState,
+    BlsAggregateSignatureBytes, Certificate, Committee, Round, SignatureVerificationState,
 };
 use tokio::sync::watch;
 

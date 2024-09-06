@@ -1,8 +1,8 @@
 //! The ouput from consensus (bullshark)
 
 use crate::{
-    crypto, Certificate, CertificateAPI, CertificateDigest, ReputationScores, Round,
-    SequenceNumber, TimestampSec, WorkerBlock, WorkerBlockConversionError,
+    crypto, Certificate, CertificateDigest, ReputationScores, Round, SequenceNumber, TimestampSec,
+    WorkerBlock, WorkerBlockConversionError,
 };
 use enum_dispatch::enum_dispatch;
 use fastcrypto::hash::{Digest, Hash, HashFunction};

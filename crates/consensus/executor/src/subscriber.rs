@@ -15,7 +15,7 @@ use std::{
     vec,
 };
 use tn_types::{
-    AuthorityIdentifier, BlockHash, Certificate, CertificateAPI, CommittedSubDag, Committee,
+    AuthorityIdentifier, BlockHash, Certificate, CommittedSubDag, Committee,
     ConditionalBroadcastReceiver, ConsensusOutput, NetworkPublicKey, Timestamp, WorkerBlock,
     WorkerCache, WorkerId,
 };
@@ -293,7 +293,7 @@ impl Subscriber {
     ) -> Vec<NetworkPublicKey> {
         // Can include own authority and worker, but worker will always check local storage when
         // fetching paylods.
-        let authorities = certificate.signed_authorities(&inner.committee);
+        let authorities = certificate.signed_authorities_with_committee(&inner.committee);
         authorities
             .into_iter()
             .filter_map(|authority| {

@@ -306,7 +306,7 @@ mod tests {
         test_utils::{
             execute_test_batch, seeded_genesis_from_random_batches, OptionalTestBatchParams,
         },
-        BlockHash, Certificate, CertificateAPI, CommittedSubDag, ConsensusOutput, ReputationScores,
+        BlockHash, Certificate, CommittedSubDag, ConsensusOutput, ReputationScores,
     };
     use tokio::{sync::oneshot, time::timeout};
     use tokio_stream::wrappers::BroadcastStream;

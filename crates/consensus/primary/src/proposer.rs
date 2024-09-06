@@ -21,8 +21,8 @@ use tn_types::{AuthorityIdentifier, Committee, WorkerId};
 
 use tn_types::{
     error::{DagError, DagResult},
-    now, BlockHash, Certificate, CertificateAPI, ConditionalBroadcastReceiver, Header, Round,
-    SystemMessage, TimestampSec,
+    now, BlockHash, Certificate, ConditionalBroadcastReceiver, Header, Round, SystemMessage,
+    TimestampSec,
 };
 use tokio::{
     sync::{oneshot, watch},
