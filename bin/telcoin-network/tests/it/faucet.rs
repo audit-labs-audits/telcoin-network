@@ -8,7 +8,6 @@
 //! then submits the transaction to the RPC Transaction Pool for the next batch.
 
 use crate::util::create_validator_info;
-use alloy::sol;
 use clap::Parser;
 use gcloud_sdk::{
     google::cloud::kms::v1::{
@@ -44,13 +43,6 @@ use tn_types::{
 };
 use tokio::{runtime::Handle, task::JoinHandle, time::timeout};
 use tracing::{debug, error, info};
-
-sol!(
-    #[allow(clippy::too_many_arguments)]
-    #[sol(rpc)]
-    Stablecoin,
-    "../../crates/consensus/types/src/test_utils/artifacts/Stablecoin.json"
-);
 
 #[tokio::test]
 async fn test_faucet_transfers_tel_with_google_kms_e2e() -> eyre::Result<()> {
