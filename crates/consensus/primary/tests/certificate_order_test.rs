@@ -8,7 +8,6 @@ use std::{collections::BTreeSet, num::NonZeroUsize};
 use tn_types::{
     test_utils::{AuthorityFixture, CommitteeFixture},
     AuthorityIdentifier, BlsPublicKey, BlsSignature, Certificate, Committee, Header, Stake, Vote,
-    VoteAPI,
 };
 
 #[tokio::test]

@@ -67,7 +67,7 @@ use tn_types::{
     ensure,
     error::{DagError, DagResult},
     now, validate_received_certificate_version, Certificate, CertificateDigest, Header,
-    PreSubscribedBroadcastSender, Round, Vote, VoteInfoAPI,
+    PreSubscribedBroadcastSender, Round, Vote,
 };
 use tokio::{
     sync::{oneshot, watch},

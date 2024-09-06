@@ -20,7 +20,7 @@ use tn_types::{
     ensure,
     error::{DagError, DagResult},
     BlsSignature, Certificate, CertificateDigest, ConditionalBroadcastReceiver, Header,
-    NetworkPublicKey, Vote, VoteAPI,
+    NetworkPublicKey, Vote,
 };
 use tokio::{
     sync::oneshot,

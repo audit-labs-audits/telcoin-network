@@ -6,7 +6,7 @@
 //! Committe fixture for all authorities and their workers within a committee for a specific epoch.
 use super::{fixture_batch_with_transactions, AuthorityFixture, Builder};
 use crate::{
-    Certificate, CertificateDigest, Committee, Epoch, Header, HeaderBuilder, Round, Vote, VoteAPI,
+    Certificate, CertificateDigest, Committee, Epoch, Header, HeaderBuilder, Round, Vote,
     WorkerCache,
 };
 use std::collections::BTreeSet;
