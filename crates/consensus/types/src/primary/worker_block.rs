@@ -1,6 +1,6 @@
-//! Batch implementation for consensus.
+//! Block implementation for consensus.
 //!
-//! Batches hold transactions and other data needed to
+//! Blocks hold transactions and other data.
 // Copyright (c) Telcoin, LLC
 
 use reth_primitives::{
@@ -12,16 +12,11 @@ use tokio::sync::oneshot;
 
 use super::TimestampSec;
 
-/// Type that batches contain.
-pub type Transaction = Vec<u8>;
-
-/// Type for sending ack back to EL once a batch is sealed.
+/// Type for sending ack back to EL once a block is sealed.
 /// TODO: support propagating errors from the worker to the primary.
 pub type WorkerBlockResponse = oneshot::Sender<BlockHash>;
 
-/// Convenince error type for casting batches into SealedBlocks with senders.
-
-/// Batch validation error types
+/// Worker Block validation error types
 #[derive(Error, Debug, Clone)]
 pub enum WorkerBlockConversionError {
     /// Errors from BlockExecution
@@ -32,21 +27,18 @@ pub enum WorkerBlockConversionError {
     DecodeTransaction(#[from] alloy_rlp::Error),
 }
 
-/// The message type for EL to CL when a new batch is made.
+/// The message type for EL to CL when a new worker block is made.
 #[derive(Debug)]
 pub struct NewWorkerBlock {
-    /// A batch that was constructed by the EL.
+    /// A block that was constructed by the EL.
     pub block: WorkerBlock,
-    /// Reply to the EL once the batch is stored.
+    /// Reply to the EL once the block is stored.
     pub ack: WorkerBlockResponse,
-    // TODO: add reason for sealing batch here
+    // TODO: add reason for sealing block here
     // for metrics: `timeout`, 'gas', or 'bytes/size'
 }
 
-/// The batch for workers to communicate for consensus.
-///
-/// TODO: Batch is just another term for `SealedBlock` in Ethereum.
-/// I think it would better to use `SealedBlock` instead of a redundant type.
+/// The block for workers to communicate for consensus.
 #[derive(Clone, Serialize, Deserialize, Debug, PartialEq, Eq)]
 pub struct WorkerBlock {
     /// The collection of transactions executed in this block.
@@ -55,21 +47,19 @@ pub struct WorkerBlock {
     pub sealed_header: SealedHeader,
     /// Timestamp of when the entity was received by another node. This will help
     /// calculate latencies that are not affected by clock drift or network
-    /// delays. This field is not set for own batches.
-    ///
-    /// Artifact from `MetadataV1`.
+    /// delays. This field is not set for own blocks.
     pub received_at: Option<TimestampSec>,
 }
 
 impl WorkerBlock {
-    /// Create a new batch for testing only!
+    /// Create a new block for testing only!
     ///
-    /// This is not a valid batch for consensus. Metadata uses defaults.
+    /// This is NOT a valid block for consensus.
     pub fn new(transactions: Vec<TransactionSigned>, sealed_header: SealedHeader) -> Self {
         Self { transactions, sealed_header, received_at: None }
     }
 
-    /// Size of the batch variant's inner data.
+    /// Size of the block.
     pub fn size(&self) -> usize {
         size_of::<Self>()
     }
