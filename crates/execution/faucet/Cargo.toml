@@ -41,7 +41,8 @@ cfg-if = { workspace = true }
 
 [dev-dependencies]
 reth-tracing = { workspace = true }
-tn-types = { workspace = true }
+tn-types = { workspace = true, features = ["test-utils"] }
 consensus-metrics = { workspace = true }
 narwhal-test-utils = { workspace = true }
 prometheus = { workspace = true }
+alloy = { workspace = true, features = ["contract", "consensus"] }
