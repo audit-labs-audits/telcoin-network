@@ -261,7 +261,7 @@ async fn test_faucet_transfers_tel_with_google_kms() -> eyre::Result<()> {
 
     // assert recovered transaction
     assert_eq!(tx_hash, tx.hash_ref().to_string());
-    assert_eq!(tx.transaction.to(), Some(address));
+    assert_eq!(tx.transaction.to(), Some(faucet_proxy_address));
 
     // ensure duplicate request is error
     let response = client.request::<String, _>("faucet_transfer", rpc_params![address]).await;
