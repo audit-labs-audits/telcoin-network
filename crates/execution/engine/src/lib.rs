@@ -344,9 +344,9 @@ mod tests {
                 previous_sub_dag,
             )
             .into(),
-            batches: Default::default(), // empty
+            blocks: Default::default(), // empty
             beneficiary,
-            batch_digests: Default::default(), // empty
+            block_digests: Default::default(), // empty
         };
 
         let chain = adiri_chain_spec_arc();
@@ -601,9 +601,9 @@ mod tests {
             .expect("beneficiary address from str");
         let consensus_output_1 = ConsensusOutput {
             sub_dag: subdag_1.clone(),
-            batches: vec![batches_1],
+            blocks: vec![batches_1],
             beneficiary: beneficiary_1,
-            batch_digests: batch_digests_1.clone(),
+            block_digests: batch_digests_1.clone(),
         };
 
         // create second output
@@ -626,9 +626,9 @@ mod tests {
             .expect("beneficiary address from str");
         let consensus_output_2 = ConsensusOutput {
             sub_dag: subdag_2,
-            batches: vec![batches_2],
+            blocks: vec![batches_2],
             beneficiary: beneficiary_2,
-            batch_digests: batch_digests_2.clone(),
+            block_digests: batch_digests_2.clone(),
         };
 
         // combine VecDeque and convert to Vec for assertions later
@@ -953,9 +953,9 @@ mod tests {
             .expect("beneficiary address from str");
         let consensus_output_1 = ConsensusOutput {
             sub_dag: subdag_1.clone(),
-            batches: vec![batches_1],
+            blocks: vec![batches_1],
             beneficiary: beneficiary_1,
-            batch_digests: batch_digests_1.clone(),
+            block_digests: batch_digests_1.clone(),
         };
 
         // create second output
@@ -978,9 +978,9 @@ mod tests {
             .expect("beneficiary address from str");
         let consensus_output_2 = ConsensusOutput {
             sub_dag: subdag_2,
-            batches: vec![batches_2],
+            blocks: vec![batches_2],
             beneficiary: beneficiary_2,
-            batch_digests: batch_digests_2.clone(),
+            block_digests: batch_digests_2.clone(),
         };
 
         // combine VecDeque and convert to Vec for assertions later
@@ -1283,9 +1283,9 @@ mod tests {
             .expect("beneficiary address from str");
         let consensus_output_1 = ConsensusOutput {
             sub_dag: subdag_1.clone(),
-            batches: vec![batches_1],
+            blocks: vec![batches_1],
             beneficiary: beneficiary_1,
-            batch_digests: batch_digests_1,
+            block_digests: batch_digests_1,
         };
 
         // create second output
@@ -1308,9 +1308,9 @@ mod tests {
             .expect("beneficiary address from str");
         let consensus_output_2 = ConsensusOutput {
             sub_dag: subdag_2,
-            batches: vec![batches_2],
+            blocks: vec![batches_2],
             beneficiary: beneficiary_2,
-            batch_digests: batch_digests_2,
+            block_digests: batch_digests_2,
         };
 
         //=== Execution

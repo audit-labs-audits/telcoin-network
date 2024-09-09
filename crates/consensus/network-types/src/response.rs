@@ -29,11 +29,11 @@ pub struct FetchCertificatesResponse {
     pub certificates: Vec<Certificate>,
 }
 
-/// All batches requested by the primary.
+/// All blocks requested by the primary.
 #[derive(Clone, Debug, Serialize, Deserialize)]
-pub struct FetchBatchesResponse {
-    /// The missing batches fetched from peers.
-    pub batches: HashMap<BlockHash, WorkerBlock>,
+pub struct FetchBlocksResponse {
+    /// The missing blocks fetched from peers.
+    pub blocks: HashMap<BlockHash, WorkerBlock>,
 }
 
 /// Information for the workers.
@@ -46,20 +46,20 @@ pub struct WorkerInfoResponse {
 //=== Worker
 
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
-pub struct RequestBatchesResponse {
-    /// Requested batches.
-    pub batches: Vec<WorkerBlock>,
-    /// If true, the primary should request the batches from the workers again.
+pub struct RequestBlocksResponse {
+    /// Requested blocks.
+    pub blocks: Vec<WorkerBlock>,
+    /// If true, the primary should request the blocks from the workers again.
     /// This may not be something that can be trusted from a remote worker.
     pub is_size_limit_reached: bool,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
-pub struct SealedBatchResponse {
-    /// The batch.
-    pub batch: WorkerBlock,
-    /// The digest of the sealed batch.
+pub struct SealedBlockResponse {
+    /// The block.
+    pub block: WorkerBlock,
+    /// The digest of the sealed block.
     pub digest: BlockHash,
-    /// Worker id who broadcast the batch
+    /// Worker id who broadcast the block
     pub worker_id: WorkerId,
 }

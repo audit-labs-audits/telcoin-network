@@ -21,12 +21,12 @@ pub enum TnEngineError {
     /// Error during EVM execution.
     #[error("evm execution error: {0}")]
     EvmExecution(#[from] EVMError<ProviderError>),
-    /// Error converting batch to `SealedBlockWithSenders`.
+    /// Error converting block to `SealedBlockWithSenders`.
     #[error(transparent)]
-    Batch(#[from] WorkerBlockConversionError),
-    /// The next batch digest is missing.
-    #[error("Missing next batch digest for recovered sealed block with senders.")]
-    NextBatchDigestMissing,
+    Block(#[from] WorkerBlockConversionError),
+    /// The next block digest is missing.
+    #[error("Missing next block digest for recovered sealed block with senders.")]
+    NextBlockDigestMissing,
     /// The block body and senders lengths don't match.
     #[error("Failed to seal block with senders - lengths don't match")]
     SealBlockWithSenders,

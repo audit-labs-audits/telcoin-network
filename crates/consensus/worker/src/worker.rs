@@ -3,8 +3,8 @@
 // Copyright (c) Mysten Labs, Inc.
 // SPDX-License-Identifier: Apache-2.0
 use crate::{
-    batch_fetcher::BatchFetcher,
-    batch_maker::BatchMaker,
+    block_fetcher::WorkerBlockFetcher,
+    block_provider::BlockProvider,
     handlers::{PrimaryReceiverHandler, WorkerReceiverHandler},
     metrics::WorkerChannelMetrics,
     quorum_waiter::QuorumWaiter,
@@ -34,7 +34,7 @@ use narwhal_network::{
 };
 use narwhal_typed_store::traits::Database;
 use std::{collections::HashMap, net::Ipv4Addr, sync::Arc, thread::sleep, time::Duration};
-use tn_batch_validator::BatchValidation;
+use tn_block_validator::BlockValidation;
 use tn_types::{
     traits::KeyPair as _, Authority, AuthorityIdentifier, Committee, Multiaddr, NetworkKeypair,
     NetworkPublicKey, NewWorkerBlock, Parameters, Protocol, WorkerCache, WorkerId,
@@ -83,7 +83,7 @@ impl<DB: Database> Worker<DB> {
         committee: Committee,
         worker_cache: WorkerCache,
         parameters: Parameters,
-        validator: impl BatchValidation,
+        validator: impl BlockValidation,
         client: NetworkClient,
         store: DB,
         metrics: Metrics,
@@ -119,7 +119,7 @@ impl<DB: Database> Worker<DB> {
         });
         // Apply rate limits from configuration as needed.
         if let Some(limit) = parameters.anemo.report_batch_rate_limit {
-            worker_service = worker_service.add_layer_for_report_batch(InboundRequestLayer::new(
+            worker_service = worker_service.add_layer_for_report_block(InboundRequestLayer::new(
                 rate_limit::RateLimitLayer::new(
                     governor::Quota::per_second(limit),
                     rate_limit::WaitMode::Block,
@@ -127,12 +127,12 @@ impl<DB: Database> Worker<DB> {
             ));
         }
         if let Some(limit) = parameters.anemo.request_batches_rate_limit {
-            worker_service = worker_service.add_layer_for_request_batches(
-                InboundRequestLayer::new(rate_limit::RateLimitLayer::new(
+            worker_service = worker_service.add_layer_for_request_blocks(InboundRequestLayer::new(
+                rate_limit::RateLimitLayer::new(
                     governor::Quota::per_second(limit),
                     rate_limit::WaitMode::Block,
-                )),
-            );
+                ),
+            ));
         }
 
         // Legacy RPC interface, only used by delete_batches() for external consensus.
@@ -275,7 +275,7 @@ impl<DB: Database> Worker<DB> {
 
         info!("Worker {} listening to worker messages on {}", id, address);
 
-        let batch_fetcher = BatchFetcher::new(
+        let batch_fetcher = WorkerBlockFetcher::new(
             worker_name,
             network.clone(),
             worker.store.clone(),
@@ -469,7 +469,7 @@ impl<DB: Database> Worker<DB> {
         // broadcasts (in a reliable manner) the batches to all other workers that share the
         // same `id` as us. Finally, it gathers the 'cancel handlers' of the messages and
         // send them to the `QuorumWaiter`.
-        let batch_maker_handle = BatchMaker::spawn(
+        let batch_maker_handle = BlockProvider::spawn(
             self.id,
             self.parameters.batch_size,
             self.parameters.max_batch_delay,

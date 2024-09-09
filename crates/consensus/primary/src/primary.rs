@@ -61,7 +61,7 @@ use tn_types::{
 use narwhal_network_types::{
     FetchCertificatesRequest, FetchCertificatesResponse, PrimaryToPrimary, PrimaryToPrimaryServer,
     RequestVoteRequest, RequestVoteResponse, SendCertificateRequest, SendCertificateResponse,
-    WorkerOthersBatchMessage, WorkerOwnBatchMessage, WorkerToPrimary, WorkerToPrimaryServer,
+    WorkerOthersBlockMessage, WorkerOwnBlockMessage, WorkerToPrimary, WorkerToPrimaryServer,
 };
 use tn_types::{
     ensure,
@@ -956,9 +956,9 @@ struct WorkerReceiverHandler<DB> {
 
 #[async_trait]
 impl<DB: Database> WorkerToPrimary for WorkerReceiverHandler<DB> {
-    async fn report_own_batch(
+    async fn report_own_block(
         &self,
-        request: anemo::Request<WorkerOwnBatchMessage>,
+        request: anemo::Request<WorkerOwnBlockMessage>,
     ) -> Result<anemo::Response<()>, anemo::rpc::Status> {
         let message = request.into_body();
 
@@ -981,9 +981,9 @@ impl<DB: Database> WorkerToPrimary for WorkerReceiverHandler<DB> {
         Ok(response)
     }
 
-    async fn report_others_batch(
+    async fn report_others_block(
         &self,
-        request: anemo::Request<WorkerOthersBatchMessage>,
+        request: anemo::Request<WorkerOthersBlockMessage>,
     ) -> Result<anemo::Response<()>, anemo::rpc::Status> {
         let message = request.into_body();
         self.payload_store

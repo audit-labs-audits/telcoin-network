@@ -41,7 +41,6 @@ use tn_types::{now, AutoSealConsensus, NewWorkerBlock, PendingWorkerBlock};
 use tokio::sync::{watch, RwLock, RwLockReadGuard, RwLockWriteGuard};
 use tracing::{debug, error, trace, warn};
 
-// mod client;
 mod mode;
 mod task;
 
@@ -51,7 +50,7 @@ pub use task::MiningTask;
 
 /// Builder type for configuring the setup
 #[derive(Debug)]
-pub struct BatchMakerBuilder<Client, Pool, EvmConfig> {
+pub struct BlockProposerBuilder<Client, Pool, EvmConfig> {
     client: Client,
     consensus: AutoSealConsensus,
     pool: Pool,
@@ -64,7 +63,7 @@ pub struct BatchMakerBuilder<Client, Pool, EvmConfig> {
 
 // === impl AutoSealBuilder ===
 
-impl<Client, Pool, EvmConfig> BatchMakerBuilder<Client, Pool, EvmConfig>
+impl<Client, Pool, EvmConfig> BlockProposerBuilder<Client, Pool, EvmConfig>
 where
     Client: BlockReaderIdExt,
     Pool: TransactionPool,
@@ -80,7 +79,7 @@ where
         address: Address,
         evm_config: EvmConfig,
         watch_tx: watch::Sender<PendingWorkerBlock>,
-        // TODO: pass max_block here to shut down batch maker?
+        // TODO: pass max_block here to shut down block maker?
     ) -> Self {
         let latest_header = client
             .latest_header()
@@ -175,7 +174,7 @@ pub(crate) struct StorageInner {
     pub(crate) best_hash: B256,
     /// The total difficulty of the chain until this block
     pub(crate) total_difficulty: U256,
-    /// The address for batch beneficiary.
+    /// The address for block beneficiary.
     pub(crate) address: Address,
 }
 
@@ -208,11 +207,11 @@ impl StorageInner {
         self.best_block = header.number;
         self.total_difficulty += header.difficulty;
 
-        trace!(target: "execution::batch_maker", num=self.best_block, hash=?self.best_hash, "inserting new block");
+        trace!(target: "execution::block_proposer", num=self.best_block, hash=?self.best_hash, "inserting new block");
         self.headers.insert(header.number, header);
         self.bodies.insert(self.best_hash, body);
         self.hash_to_number.insert(self.best_hash, self.best_block);
-        tracing::debug!(target: "execution::batch_maker", storage_size=?self.bodies.len());
+        tracing::debug!(target: "execution::block_proposer", storage_size=?self.bodies.len());
     }
 
     /// Fills in pre-execution header fields based on the current best block and given
@@ -230,9 +229,9 @@ impl StorageInner {
         //     .get(&self.best_block)
         //     .and_then(|parent| parent.next_block_base_fee(chain_spec.base_fee_params));
 
-        // use finalized parent for this batch base fee
+        // use finalized parent for this block base fee
         //
-        // TODO: use this worker's previous batch for base fee instead?
+        // TODO: use this worker's previous block for base fee instead?
         let base_fee_per_gas =
             parent.next_block_base_fee(chain_spec.base_fee_params_at_timestamp(now()));
 
@@ -268,10 +267,10 @@ impl StorageInner {
 
         // TODO: is there a better way?
         //
-        // sometimes batches are produced too quickly
-        // resulting in batch timestamp == parent timestamp
+        // sometimes blocks are produced too quickly
+        // resulting in block timestamp == parent timestamp
         if header.timestamp == parent.timestamp {
-            warn!(target: "execution::batch_maker", "header template timestamp same as parent");
+            warn!(target: "execution::block_proposer", "header template timestamp same as parent");
             header.timestamp = parent.timestamp + 1;
         }
 
@@ -305,18 +304,18 @@ impl StorageInner {
         Executor: BlockExecutorProvider,
         Provider: StateProviderFactory + BlockReaderIdExt,
     {
-        // use the last canonical block for next batch
+        // use the last canonical block for next block
         let parent = provider.latest_header()
             .map_err(|e| {
-                error!(target: "execution::batch_maker", "error retrieving client.latest_header() {e}");
+                error!(target: "execution::block_proposer", "error retrieving client.latest_header() {e}");
                 BlockExecutionError::Internal(InternalBlockExecutionError::LatestBlock(e))
             })?
             .ok_or_else(|| {
-                error!(target: "execution::batch_maker", "error retrieving client.latest_header() returned `None`");
+                error!(target: "execution::block_proposer", "error retrieving client.latest_header() returned `None`");
                 BlockExecutionError::Internal(InternalBlockExecutionError::LatestBlock(reth_provider::ProviderError::FinalizedBlockNotFound))
             })?;
 
-        debug!(target: "execution::batch_maker", latest=?parent);
+        debug!(target: "execution::block_proposer", latest=?parent);
 
         let header = self.build_header_template(
             &transactions,
@@ -335,9 +334,9 @@ impl StorageInner {
         .with_recovered_senders()
         .ok_or(BlockExecutionError::Validation(BlockValidationError::SenderRecoveryError))?;
 
-        trace!(target: "execution::batch_maker", transactions=?&block.body, "executing transactions");
+        trace!(target: "execution::block_proposer", transactions=?&block.body, "executing transactions");
 
-        // TODO: should this use the latest or finalized for next batch?
+        // TODO: should this use the latest or finalized for next block?
         //
         // for now, keep it consistent with latest block retrieved for header template
         let mut db = StateProviderDatabase::new(provider.latest().map_err(|e| {
@@ -354,7 +353,7 @@ impl StorageInner {
         let Block { mut header, body, .. } = block.block;
         let body = BlockBody { transactions: body, ommers: vec![], withdrawals, requests: None };
 
-        trace!(target: "execution::batch_maker", ?bundle_state, ?header, ?body, "executed block, calculating state root and completing header");
+        trace!(target: "execution::block_proposer", ?bundle_state, ?header, ?body, "executed block, calculating state root and completing header");
 
         // set header's gas used
         header.gas_used = gas_used;
@@ -366,12 +365,12 @@ impl StorageInner {
         header.state_root = db.state_root(hashed_state)?;
         header.receipts_root = bundle_state.receipts_root_slow(block_number)
             .ok_or_else(|| {
-                error!(target: "execution::batch_maker", "error calculating receipts root from bundle state");
+                error!(target: "execution::block_proposer", "error calculating receipts root from bundle state");
                 BlockExecutionError::msg("Failed to create receipts root from bundle state".to_string())
             })?;
         header.logs_bloom = bundle_state.block_logs_bloom(block_number)
             .ok_or_else(|| {
-                error!(target: "execution::batch_maker", "error calculating logs bloom from bundle state");
+                error!(target: "execution::block_proposer", "error calculating logs bloom from bundle state");
                 BlockExecutionError::msg("Failed to calculate logs bloom from bundle state".to_string())
             })?;
 
@@ -411,7 +410,7 @@ mod tests {
     use tokio::{sync::watch, time::timeout};
 
     #[tokio::test]
-    async fn test_make_batch() {
+    async fn test_make_block() {
         init_test_tracing();
         let genesis = adiri_genesis();
         let mut tx_factory = TransactionFactory::new();
@@ -473,8 +472,8 @@ mod tests {
         let block_executor = EthExecutorProvider::new(chain.clone(), evm_config);
         let (tx, _rx) = watch::channel(PendingWorkerBlock::default());
 
-        // build batch maker
-        let task = BatchMakerBuilder::new(
+        // build block proposer
+        let task = BlockProposerBuilder::new(
             Arc::clone(&chain),
             blockchain_db.clone(),
             txpool.clone(),
@@ -538,28 +537,28 @@ mod tests {
         // spawn mining task
         let _mining_task = tokio::spawn(Box::pin(task));
 
-        // wait for new batch
+        // wait for new block
         let too_long = Duration::from_secs(5);
-        let new_batch = timeout(too_long, worker_rx.recv())
+        let new_block = timeout(too_long, worker_rx.recv())
             .await
-            .expect("new batch created within time")
-            .expect("new batch is Some()");
+            .expect("new block created within time")
+            .expect("new block is Some()");
 
-        debug!("new batch: {new_batch:?}");
-        // number of transactions in the batch
-        let batch_txs = new_batch.block.transactions();
+        debug!("new block: {new_block:?}");
+        // number of transactions in the block
+        let block_txs = new_block.block.transactions();
 
-        // check max tx for task matches num of transactions in batch
-        let num_batch_txs = batch_txs.len();
-        assert_eq!(max_transactions, num_batch_txs);
+        // check max tx for task matches num of transactions in block
+        let num_block_txs = block_txs.len();
+        assert_eq!(max_transactions, num_block_txs);
 
-        // ensure decoded batch transaction is transaction1
-        let batch_tx = batch_txs.first().cloned().expect("one tx in batch");
-        assert_eq!(batch_tx, transaction1);
+        // ensure decoded block transaction is transaction1
+        let block_tx = block_txs.first().cloned().expect("one tx in block");
+        assert_eq!(block_tx, transaction1);
 
         // send the worker's ack to task
-        let digest = new_batch.block.digest();
-        let _ack = new_batch.ack.send(digest);
+        let digest = new_block.block.digest();
+        let _ack = new_block.ack.send(digest);
 
         // // retrieve block number 1 from storage
         // //
@@ -586,7 +585,7 @@ mod tests {
 
         // // TODO: this isn't the right thing to test bc storage should be removed
         // //
-        // assert_eq!(new_batch.batch.versioned_metadata().sealed_header(), &storage_sealed_header);
+        // assert_eq!(new_block.block.versioned_metadata().sealed_header(), &storage_sealed_header);
         // assert_eq!(storage_sealed_header.beneficiary, address);
 
         // yield to try and give pool a chance to update
@@ -614,7 +613,7 @@ mod tests {
         // actual error from adiri:
         // WARN request{route=/narwhal.WorkerToWorker/ReportBatch remote_peer_id=0599b3e5
         // direction=outbound}: anemo_tower::trace::on_failure: response failed error=Status code:
-        // 400 Bad Request Invalid batch: block timestamp 1707774238 is in the past compared to the
+        // 400 Bad Request Invalid block: block timestamp 1707774238 is in the past compared to the
         // parent timestamp 1707774238 latency=0 ms
         let address = Address::from(U160::from(100));
         // let mut sealed_header = SealedHeader::default();

@@ -24,7 +24,7 @@ mod worker;
 use self::inner::ExecutionNodeInner;
 use reth_provider::{providers::BlockchainProvider, ExecutionOutcome};
 use reth_tasks::TaskExecutor;
-use tn_batch_validator::BatchValidator;
+use tn_block_validator::BlockValidator;
 use tn_faucet::FaucetArgs;
 use tn_types::{Config, ConsensusOutput, NewWorkerBlock, PendingWorkerBlock, WorkerId};
 use tokio::sync::{broadcast, watch, RwLock};
@@ -96,7 +96,7 @@ where
     }
 
     /// Batch validator
-    pub async fn new_batch_validator(&self) -> BatchValidator<DB, Evm> {
+    pub async fn new_batch_validator(&self) -> BlockValidator<DB, Evm> {
         let guard = self.internal.read().await;
         guard.new_batch_validator()
     }

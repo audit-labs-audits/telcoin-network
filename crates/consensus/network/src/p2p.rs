@@ -11,7 +11,7 @@ use async_trait::async_trait;
 use eyre::{format_err, Result};
 use narwhal_network_types::{
     FetchCertificatesRequest, FetchCertificatesResponse, PrimaryToPrimaryClient,
-    RequestBatchesRequest, RequestBatchesResponse, WorkerBatchMessage, WorkerToWorkerClient,
+    RequestBlocksRequest, RequestBlocksResponse, WorkerBlockMessage, WorkerToWorkerClient,
 };
 use std::time::Duration;
 use tn_types::NetworkPublicKey;
@@ -79,18 +79,18 @@ impl PrimaryToPrimaryRpc for anemo::Network {
     }
 }
 
-impl ReliableNetwork<WorkerBatchMessage> for anemo::Network {
+impl ReliableNetwork<WorkerBlockMessage> for anemo::Network {
     type Response = ();
     fn send(
         &self,
         peer: NetworkPublicKey,
-        message: &WorkerBatchMessage,
+        message: &WorkerBlockMessage,
     ) -> CancelOnDropHandler<Result<anemo::Response<()>>> {
         let message = message.to_owned();
         let f = move |peer| {
             // Timeout will be retried in send().
             let req = anemo::Request::new(message.clone()).with_timeout(Duration::from_secs(15));
-            async move { WorkerToWorkerClient::new(peer).report_batch(req).await }
+            async move { WorkerToWorkerClient::new(peer).report_block(req).await }
         };
 
         send(self.clone(), peer, f)
@@ -99,17 +99,17 @@ impl ReliableNetwork<WorkerBatchMessage> for anemo::Network {
 
 #[async_trait]
 impl WorkerRpc for anemo::Network {
-    async fn request_batches(
+    async fn request_blocks(
         &self,
         peer: &NetworkPublicKey,
-        request: impl anemo::types::request::IntoRequest<RequestBatchesRequest> + Send,
-    ) -> Result<RequestBatchesResponse> {
+        request: impl anemo::types::request::IntoRequest<RequestBlocksRequest> + Send,
+    ) -> Result<RequestBlocksResponse> {
         let peer_id = PeerId(peer.0.to_bytes());
         let peer = self
             .peer(peer_id)
             .ok_or_else(|| format_err!("Network has no connection with peer {peer_id}"))?;
         let response = WorkerToWorkerClient::new(peer)
-            .request_batches(request)
+            .request_blocks(request)
             .await
             .map_err(|e| format_err!("Network error {:?}", e))?;
         Ok(response.into_body())

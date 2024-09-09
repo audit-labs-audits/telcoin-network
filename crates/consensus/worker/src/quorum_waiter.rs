@@ -3,11 +3,11 @@
 // Copyright (c) Mysten Labs, Inc.
 // SPDX-License-Identifier: Apache-2.0
 
-use crate::{batch_maker::MAX_PARALLEL_BATCH, metrics::WorkerMetrics};
+use crate::{block_provider::MAX_PARALLEL_BLOCK, metrics::WorkerMetrics};
 use consensus_metrics::{metered_channel::Receiver, monitored_future, spawn_logged_monitored_task};
 use futures::stream::{futures_unordered::FuturesUnordered, StreamExt as _};
 use narwhal_network::{CancelOnDropHandler, ReliableNetwork};
-use narwhal_network_types::WorkerBatchMessage;
+use narwhal_network_types::WorkerBlockMessage;
 use std::{sync::Arc, time::Duration};
 use tn_types::{
     Authority, Committee, ConditionalBroadcastReceiver, Stake, WorkerBlock, WorkerCache, WorkerId,
@@ -93,7 +93,7 @@ impl QuorumWaiter {
                 // task to the pipeline to send this batch to workers.
                 //
                 // TODO: make the constant a config parameter.
-                Some((batch, channel)) = self.rx_quorum_waiter.recv(), if pipeline.len() < MAX_PARALLEL_BATCH => {
+                Some((batch, channel)) = self.rx_quorum_waiter.recv(), if pipeline.len() < MAX_PARALLEL_BLOCK => {
                     // Broadcast the batch to the other workers.
                     let workers: Vec<_> = self
                         .worker_cache
@@ -102,9 +102,9 @@ impl QuorumWaiter {
                         .map(|(name, info)| (name, info.name))
                         .collect();
                     let (primary_names, worker_names): (Vec<_>, _) = workers.into_iter().unzip();
-                    let message  = WorkerBatchMessage{worker_block: batch.clone()};
+                    let message  = WorkerBlockMessage{worker_block: batch.clone()};
                     let handlers = self.network.broadcast(worker_names, &message);
-                    let timer = self.metrics.batch_broadcast_quorum_latency.start_timer();
+                    let timer = self.metrics.block_broadcast_quorum_latency.start_timer();
 
                     // Collect all the handlers to receive acknowledgements.
                     let mut wait_for_quorum: FuturesUnordered<_> = primary_names

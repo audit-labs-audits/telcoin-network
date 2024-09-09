@@ -20,8 +20,8 @@ const POSITIVE_INT_BUCKETS: &[f64] =
 pub struct ExecutorMetrics {
     /// occupancy of the channel from the `Subscriber` to `Notifier`
     pub tx_notifier: IntGauge,
-    /// Number of batches processed by subscriber
-    pub subscriber_processed_batches: IntCounter,
+    /// Number of blocks processed by subscriber
+    pub subscriber_processed_blocks: IntCounter,
     /// Round of last certificate seen by subscriber
     pub subscriber_current_round: IntGauge,
     /// Latency between when the certificate has been
@@ -32,17 +32,17 @@ pub struct ExecutorMetrics {
     pub subscriber_recovered_certificates_count: IntCounter,
     /// The number of pending payload downloads
     pub waiting_elements_subscriber: IntGauge,
-    /// Latency between the time when the batch has been
+    /// Latency between the time when the block has been
     /// created and when it has been fetched for execution
-    pub batch_execution_latency: Histogram,
-    /// This is similar to batch_execution_latency but without the latency of
-    /// fetching batches from remote workers.
-    pub batch_execution_local_latency: HistogramVec,
-    /// The number of batches per committed subdag to be fetched
-    pub committed_subdag_batch_count: Histogram,
-    /// Latency for time taken to fetch all batches for committed subdag
+    pub block_execution_latency: Histogram,
+    /// This is similar to block_execution_latency but without the latency of
+    /// fetching blocks from remote workers.
+    pub block_execution_local_latency: HistogramVec,
+    /// The number of blocks per committed subdag to be fetched
+    pub committed_subdag_block_count: Histogram,
+    /// Latency for time taken to fetch all blocks for committed subdag
     /// either from local or remote worker.
-    pub batch_fetch_for_committed_subdag_total_latency: Histogram,
+    pub block_fetch_for_committed_subdag_total_latency: Histogram,
 }
 
 impl ExecutorMetrics {
@@ -58,21 +58,21 @@ impl ExecutorMetrics {
                 "The number of certificates processed by Subscriber during the recovery period to fetch their payloads",
                 registry
             )?,
-            committed_subdag_batch_count: register_histogram_with_registry!(
-                "committed_subdag_batch_count",
-                "The number of batches per committed subdag to be fetched",
+            committed_subdag_block_count: register_histogram_with_registry!(
+                "committed_subdag_block_count",
+                "The number of blocks per committed subdag to be fetched",
                 POSITIVE_INT_BUCKETS.to_vec(),
                 registry
             )?,
-            batch_fetch_for_committed_subdag_total_latency: register_histogram_with_registry!(
-                "batch_fetch_for_committed_subdag_total_latency",
-                "Latency for time taken to fetch all batches for committed subdag either from local or remote worker",
+            block_fetch_for_committed_subdag_total_latency: register_histogram_with_registry!(
+                "block_fetch_for_committed_subdag_total_latency",
+                "Latency for time taken to fetch all blocks for committed subdag either from local or remote worker",
                 LATENCY_SEC_BUCKETS.to_vec(),
                 registry
             )?,
-            subscriber_processed_batches: register_int_counter_with_registry!(
-                "subscriber_processed_batches",
-                "Number of batches processed by subscriber",
+            subscriber_processed_blocks: register_int_counter_with_registry!(
+                "subscriber_processed_blocks",
+                "Number of blocks processed by subscriber",
                 registry
             )?,
             subscriber_current_round: register_int_gauge_with_registry!(
@@ -85,15 +85,15 @@ impl ExecutorMetrics {
                 "The number of pending payload downloads",
                 registry
             )?,
-            batch_execution_latency: register_histogram_with_registry!(
-                "batch_execution_latency",
-                "Latency between the time when the batch has been created and when it has been fetched for execution",
+            block_execution_latency: register_histogram_with_registry!(
+                "block_execution_latency",
+                "Latency between the time when the block has been created and when it has been fetched for execution",
                 LATENCY_SEC_BUCKETS.to_vec(),
                 registry
             )?,
-            batch_execution_local_latency: register_histogram_vec_with_registry!(
-                "batch_execution_local_latency",
-                "This is similar to batch_execution_latency but without the latency of fetching batches from remote workers.",
+            block_execution_local_latency: register_histogram_vec_with_registry!(
+                "block_execution_local_latency",
+                "This is similar to block_execution_latency but without the latency of fetching blocks from remote workers.",
                 &["source"],
                 LATENCY_SEC_BUCKETS.to_vec(),
                 registry

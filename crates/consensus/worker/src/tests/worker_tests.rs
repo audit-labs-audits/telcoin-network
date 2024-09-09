@@ -15,7 +15,7 @@ use narwhal_storage::NodeStorage;
 use narwhal_typed_store::open_db;
 use prometheus::Registry;
 use tempfile::TempDir;
-use tn_batch_validator::NoopBatchValidator;
+use tn_block_validator::NoopBlockValidator;
 use tn_types::{test_utils::CommitteeFixture, ChainIdentifier, WorkerBlock};
 use tokio::sync::watch;
 
@@ -24,10 +24,10 @@ use tokio::sync::watch;
 #[allow(dead_code)]
 struct NilBatchValidator;
 #[async_trait]
-impl BatchValidation for NilBatchValidator {
+impl BlockValidation for NilBatchValidator {
     type Error = eyre::Report;
 
-    async fn validate_batch(&self, _txs: &WorkerBlock) -> Result<(), Self::Error> {
+    async fn validate_block(&self, _txs: &WorkerBlock) -> Result<(), Self::Error> {
         eyre::bail!("Invalid batch");
     }
 }
@@ -392,8 +392,8 @@ async fn get_network_peers_from_admin_server() {
     let channel_metrics: Arc<WorkerChannelMetrics> = metrics_1.channel_metrics.clone();
     let (_tx_batch_maker, rx_batch_maker) = channel_with_total(
         CHANNEL_CAPACITY,
-        &channel_metrics.tx_batch_maker,
-        &channel_metrics.tx_batch_maker_total,
+        &channel_metrics.tx_block_maker,
+        &channel_metrics.tx_block_maker_total,
     );
 
     // Spawn a `Worker` instance for primary 1.
@@ -404,7 +404,7 @@ async fn get_network_peers_from_admin_server() {
         committee.clone(),
         worker_cache.clone(),
         worker_1_parameters.clone(),
-        NoopBatchValidator,
+        NoopBlockValidator,
         client_1.clone(),
         store.batch_store.clone(),
         metrics_1.clone(),
@@ -509,8 +509,8 @@ async fn get_network_peers_from_admin_server() {
     let channel_metrics: Arc<WorkerChannelMetrics> = metrics_2.channel_metrics.clone();
     let (_tx_batch_maker, rx_batch_maker) = channel_with_total(
         CHANNEL_CAPACITY,
-        &channel_metrics.tx_batch_maker,
-        &channel_metrics.tx_batch_maker_total,
+        &channel_metrics.tx_block_maker,
+        &channel_metrics.tx_block_maker_total,
     );
 
     // Spawn a `Worker` instance for primary 2.
@@ -521,7 +521,7 @@ async fn get_network_peers_from_admin_server() {
         committee.clone(),
         worker_cache.clone(),
         worker_2_parameters.clone(),
-        NoopBatchValidator,
+        NoopBlockValidator,
         client_2,
         store.batch_store,
         metrics_2.clone(),
