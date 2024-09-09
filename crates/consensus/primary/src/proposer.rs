@@ -21,8 +21,8 @@ use tn_types::{AuthorityIdentifier, Committee, WorkerId};
 
 use tn_types::{
     error::{DagError, DagResult},
-    now, BatchDigest, Certificate, CertificateAPI, ConditionalBroadcastReceiver, Header, HeaderAPI,
-    HeaderV1, Round, SystemMessage, TimestampSec,
+    now, BlockHash, Certificate, ConditionalBroadcastReceiver, Header, Round, SystemMessage,
+    TimestampSec,
 };
 use tokio::{
     sync::{oneshot, watch},
@@ -34,7 +34,7 @@ use tracing::{debug, enabled, error, info, trace};
 /// Messages sent to the proposer about our own batch digests
 #[derive(Debug)]
 pub struct OurDigestMessage {
-    pub digest: BatchDigest,
+    pub digest: BlockHash,
     pub worker_id: WorkerId,
     pub timestamp: TimestampSec,
     /// A channel to send an () as an ack after this digest is processed by the primary.
@@ -235,15 +235,14 @@ impl<DB: Database + 'static> Proposer<DB> {
             sleep(Duration::from_millis(drift_ms)).await;
         }
 
-        let header: Header = HeaderV1::new(
+        let header = Header::new(
             self.authority_id,
             this_round,
             this_epoch,
             header_digests.iter().map(|m| (m.digest, (m.worker_id, m.timestamp))).collect(),
             system_messages.clone(),
             parents.iter().map(|x| x.digest()).collect(),
-        )
-        .into();
+        );
 
         let leader_and_support = if this_round % 2 == 0 {
             let authority = self.leader_schedule.leader(this_round);
