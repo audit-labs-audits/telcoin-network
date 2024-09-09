@@ -25,9 +25,8 @@ use std::{collections::BTreeSet, sync::Arc, time::Duration};
 use tempfile::TempDir;
 use tn_types::{
     test_utils::CommitteeFixture, AuthorityIdentifier, BlockHash, BlsAggregateSignatureBytes,
-    Certificate, CertificateAPI, CertificateDigest, Epoch, Header, HeaderAPI, HeaderDigest,
-    PreSubscribedBroadcastSender, Round, SignatureVerificationState, SystemMessage, TimestampSec,
-    WorkerId,
+    Certificate, CertificateDigest, Epoch, Header, HeaderDigest, PreSubscribedBroadcastSender,
+    Round, SignatureVerificationState, SystemMessage, TimestampSec, WorkerId,
 };
 use tokio::{
     sync::{

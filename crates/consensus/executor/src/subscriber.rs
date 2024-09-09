@@ -15,9 +15,9 @@ use std::{
     vec,
 };
 use tn_types::{
-    AuthorityIdentifier, BlockHash, Certificate, CertificateAPI, CommittedSubDag, Committee,
-    ConditionalBroadcastReceiver, ConsensusOutput, HeaderAPI, NetworkPublicKey, Timestamp,
-    WorkerBlock, WorkerCache, WorkerId,
+    AuthorityIdentifier, BlockHash, Certificate, CommittedSubDag, Committee,
+    ConditionalBroadcastReceiver, ConsensusOutput, NetworkPublicKey, Timestamp, WorkerBlock,
+    WorkerCache, WorkerId,
 };
 use tokio::{sync::broadcast, task::JoinHandle};
 use tracing::{debug, error, info, warn};
@@ -293,7 +293,7 @@ impl Subscriber {
     ) -> Vec<NetworkPublicKey> {
         // Can include own authority and worker, but worker will always check local storage when
         // fetching paylods.
-        let authorities = certificate.signed_authorities(&inner.committee);
+        let authorities = certificate.signed_authorities_with_committee(&inner.committee);
         authorities
             .into_iter()
             .filter_map(|authority| {

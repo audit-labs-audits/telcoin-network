@@ -1,8 +1,8 @@
 //! The ouput from consensus (bullshark)
 
 use crate::{
-    crypto, Certificate, CertificateAPI, CertificateDigest, HeaderAPI, ReputationScores, Round,
-    SequenceNumber, TimestampSec, WorkerBlock, WorkerBlockConversionError,
+    crypto, Certificate, CertificateDigest, ReputationScores, Round, SequenceNumber, TimestampSec,
+    WorkerBlock, WorkerBlockConversionError,
 };
 use enum_dispatch::enum_dispatch;
 use fastcrypto::hash::{Digest, Hash, HashFunction};
@@ -411,8 +411,8 @@ impl fmt::Display for ConsensusOutputDigest {
 #[cfg(test)]
 mod tests {
     use crate::{
-        test_utils::CommitteeFixture, AuthorityIdentifier, Certificate, CommittedSubDag, Header,
-        HeaderV1Builder, ReputationScores,
+        test_utils::CommitteeFixture, AuthorityIdentifier, Certificate, CommittedSubDag,
+        HeaderBuilder, ReputationScores,
     };
     use indexmap::IndexMap;
     use std::{collections::BTreeSet, num::NonZeroUsize};
@@ -422,7 +422,7 @@ mod tests {
         let fixture = CommitteeFixture::builder().build();
         let committee = fixture.committee();
 
-        let header_builder = HeaderV1Builder::default();
+        let header_builder = HeaderBuilder::default();
         let header = header_builder
             .author(AuthorityIdentifier(1u16))
             .round(2)
@@ -433,8 +433,7 @@ mod tests {
             .build()
             .unwrap();
 
-        let certificate =
-            Certificate::new_unsigned(&committee, Header::V1(header), Vec::new()).unwrap();
+        let certificate = Certificate::new_unsigned(&committee, header, Vec::new()).unwrap();
 
         // AND we initialise the sub dag via the "restore" way
         let sub_dag_round = CommittedSubDag {
@@ -458,7 +457,7 @@ mod tests {
         let fixture = CommitteeFixture::builder().build();
         let committee = fixture.committee();
 
-        let header_builder = HeaderV1Builder::default();
+        let header_builder = HeaderBuilder::default();
         let header = header_builder
             .author(AuthorityIdentifier(1u16))
             .round(2)
@@ -469,8 +468,7 @@ mod tests {
             .build()
             .unwrap();
 
-        let certificate =
-            Certificate::new_unsigned(&committee, Header::V1(header), Vec::new()).unwrap();
+        let certificate = Certificate::new_unsigned(&committee, header, Vec::new()).unwrap();
 
         // AND
         let sub_dag_round_2 = CommittedSubDag::new(
@@ -485,7 +483,7 @@ mod tests {
         assert_eq!(sub_dag_round_2.commit_timestamp, newer_timestamp);
 
         // Now create the leader of round 4 with the older timestamp
-        let header_builder = HeaderV1Builder::default();
+        let header_builder = HeaderBuilder::default();
         let header = header_builder
             .author(AuthorityIdentifier(1u16))
             .round(4)
@@ -496,8 +494,7 @@ mod tests {
             .build()
             .unwrap();
 
-        let certificate =
-            Certificate::new_unsigned(&committee, Header::V1(header), Vec::new()).unwrap();
+        let certificate = Certificate::new_unsigned(&committee, header, Vec::new()).unwrap();
 
         // WHEN create the sub dag based on the "previously committed" sub dag.
         let sub_dag_round_4 = CommittedSubDag::new(

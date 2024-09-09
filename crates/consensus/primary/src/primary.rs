@@ -66,8 +66,8 @@ use narwhal_network_types::{
 use tn_types::{
     ensure,
     error::{DagError, DagResult},
-    now, validate_received_certificate_version, Certificate, CertificateAPI, CertificateDigest,
-    Header, HeaderAPI, PreSubscribedBroadcastSender, Round, Vote, VoteInfoAPI,
+    now, validate_received_certificate_version, Certificate, CertificateDigest, Header,
+    PreSubscribedBroadcastSender, Round, Vote,
 };
 use tokio::{
     sync::{oneshot, watch},
