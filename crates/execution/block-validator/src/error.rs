@@ -1,19 +1,19 @@
 //! Error types for building and executing output from consensus.
 
 use reth_blockchain_tree::error::BlockchainTreeError;
-use reth_evm::execute::{BlockExecutionError, BlockValidationError};
+use reth_evm::execute::{BlockExecutionError, BlockValidationError as RethBlockValidationError};
 use reth_primitives::{GotExpected, B256};
 use reth_provider::ProviderError;
 use thiserror::Error;
 use tn_types::{ConsensusError, WorkerBlockConversionError};
 
-/// Batch validation error types
+/// Block validation error types
 #[derive(Error, Debug)]
-pub enum BatchValidationError {
+pub enum BlockValidationError {
     /// Errors from BlockExecution
     #[error("Block execution error: {0}")]
     Execution(#[from] BlockExecutionError),
-    /// Errors for converting batch into sealed block
+    /// Errors for converting block into sealed block
     #[error(transparent)]
     IntoSealedBlock(#[from] WorkerBlockConversionError),
     /// Provider error.
@@ -24,7 +24,7 @@ pub enum BatchValidationError {
     Tree(#[from] BlockchainTreeError),
     /// Tree error
     #[error(transparent)]
-    BlockValidation(#[from] BlockValidationError),
+    BlockValidation(#[from] RethBlockValidationError),
     /// State root is invalid
     #[error(transparent)]
     BodyStateRootDiff(GotExpected<B256>),

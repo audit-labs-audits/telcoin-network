@@ -2,7 +2,7 @@ use std::collections::HashMap;
 
 use async_trait::async_trait;
 use narwhal_network_types::{
-    FetchBatchesRequest, FetchBatchesResponse, FetchCertificatesRequest, FetchCertificatesResponse,
+    FetchBlocksRequest, FetchBlocksResponse, FetchCertificatesRequest, FetchCertificatesResponse,
     PrimaryToPrimary, PrimaryToPrimaryServer, PrimaryToWorker, PrimaryToWorkerServer,
     RequestVoteRequest, RequestVoteResponse, SendCertificateRequest, SendCertificateResponse,
     WorkerSynchronizeMessage,
@@ -101,10 +101,10 @@ impl PrimaryToWorker for PrimaryToWorkerMockServer {
         Ok(anemo::Response::new(()))
     }
 
-    async fn fetch_batches(
+    async fn fetch_blocks(
         &self,
-        _request: anemo::Request<FetchBatchesRequest>,
-    ) -> Result<anemo::Response<FetchBatchesResponse>, anemo::rpc::Status> {
-        Ok(anemo::Response::new(FetchBatchesResponse { batches: HashMap::new() }))
+        _request: anemo::Request<FetchBlocksRequest>,
+    ) -> Result<anemo::Response<FetchBlocksResponse>, anemo::rpc::Status> {
+        Ok(anemo::Response::new(FetchBlocksResponse { blocks: HashMap::new() }))
     }
 }

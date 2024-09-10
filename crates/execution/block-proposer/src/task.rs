@@ -37,7 +37,7 @@ pub struct MiningTask<Client, Pool: TransactionPool, BlockExecutor> {
     queued: VecDeque<Vec<Arc<ValidPoolTransaction<<Pool as TransactionPool>::Transaction>>>>,
     /// Sending half of channel to worker.
     ///
-    /// Worker recieves batch and forwards to `quorum_waiter`.
+    /// Worker recieves block and forwards to `quorum_waiter`.
     to_worker: Sender<NewWorkerBlock>,
     // /// Used to notify consumers of new blocks
     // ///
@@ -100,7 +100,7 @@ where
     fn poll(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
         let this = self.get_mut();
 
-        // loop to poll the tx miner and send the next batch to Worker's `BatchMaker`
+        // loop to poll the tx miner and send the next block to Worker's `BlockProvider`
         loop {
             if let Poll::Ready(transactions) = this.miner.poll(&this.pool, cx) {
                 // miner returned a set of transaction that we feed to the producer
@@ -125,7 +125,7 @@ where
                 let block_executor = this.block_executor.clone();
                 let worker_update = this.watch_tx.clone();
 
-                // Create the mining future that creates a batch and sends it to the CL
+                // Create the mining future that creates a block and sends it to the CL
                 this.insert_task = Some(Box::pin(async move {
                     let mut storage = storage.write().await;
 
@@ -153,9 +153,9 @@ where
                             let _ = to_worker
                                 .send(NewWorkerBlock {
                                     block: WorkerBlock::new(
-                                        // TODO: make batch `TransactionSigned` then convert to
+                                        // TODO: make block `TransactionSigned` then convert to
                                         // bytes in `.digest` impl
-                                        // NOTE: a `Batch` is a `SealedBlock`
+                                        // NOTE: a `WorkerBlock` is a `SealedBlock`
                                         // convert txs to bytes
                                         txns,
                                         // versioned metadata for peer validation
@@ -167,15 +167,15 @@ where
 
                             match rx.await {
                                 Ok(digest) => {
-                                    debug!(target: "execution::batch_maker", ?digest, "Batch sealed:");
+                                    debug!(target: "execution::block_provider", ?digest, "Block sealed:");
                                 }
                                 Err(err) => {
-                                    error!(target: "execution::batch_maker", ?err, "Execution's BatchMaker Ack Failed:");
+                                    error!(target: "execution::block_provider", ?err, "Execution's BlockProvider Ack Failed:");
                                     return None;
                                 }
                             }
 
-                            // TODO: leaving this here in case `Batch` -> `SealedBlock`
+                            // TODO: leaving this here in case `WorkerBlock` -> `SealedBlock`
 
                             // // seal the block
                             // let block = Block {
@@ -190,7 +190,7 @@ where
                             //     SealedBlockWithSenders::new(sealed_block, senders)
                             //         .expect("senders are valid");
 
-                            // debug!(target: "execution::batch_maker",
+                            // debug!(target: "execution::block_provider",
                             // header=?sealed_block_with_senders.hash(), "sending block
                             // notification");
 
@@ -212,7 +212,7 @@ where
                             // TODO: this comment says dependent txs are also removed?
                             // might need to extend the trait onto another pool impl
                             //
-                            // clear all transactions from pool once batch is sealed
+                            // clear all transactions from pool once block is sealed
                             pool.remove_transactions(
                                 transactions.iter().map(|tx| *(tx.hash())).collect(),
                             );
@@ -220,7 +220,7 @@ where
                             drop(storage);
                         }
                         Err(err) => {
-                            warn!(target: "execution::batch_maker", ?err, "failed to execute block")
+                            warn!(target: "execution::block_provider", ?err, "failed to execute block")
                         }
                     }
 

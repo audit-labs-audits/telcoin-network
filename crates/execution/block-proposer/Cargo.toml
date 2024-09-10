@@ -1,5 +1,5 @@
 [package]
-name = "tn-batch-maker"
+name = "tn-block-proposer"
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
@@ -49,4 +49,4 @@ narwhal-worker = { workspace = true }
 narwhal-network = { workspace = true }
 narwhal-network-types = { workspace = true }
 narwhal-typed-store = { workspace = true }
-tn-batch-validator = { workspace = true }
+tn-block-validator = { workspace = true }

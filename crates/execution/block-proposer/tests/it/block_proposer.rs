@@ -1,14 +1,14 @@
-//! Batch maker (EL) collects transactions
-//! and creates a batch.
+//! Block provider (EL) collects transactions
+//! and creates a block.
 //!
-//! Batch maker (CL) receives the batch from EL
+//! Block provider (CL) receives the block from EL
 //! and forwards it to the Quorum Waiter.
 
 use assert_matches::assert_matches;
 use narwhal_network::client::NetworkClient;
 use narwhal_network_types::MockWorkerToPrimary;
-use narwhal_typed_store::{open_db, tables::Batches, traits::Database};
-use narwhal_worker::{metrics::WorkerMetrics, BatchMaker, NUM_SHUTDOWN_RECEIVERS};
+use narwhal_typed_store::{open_db, tables::WorkerBlocks, traits::Database};
+use narwhal_worker::{metrics::WorkerMetrics, BlockProvider, NUM_SHUTDOWN_RECEIVERS};
 use reth::{beacon_consensus::EthBeaconConsensus, tasks::TaskManager};
 use reth_blockchain_tree::noop::NoopBlockchainTree;
 use reth_chainspec::ChainSpec;
@@ -26,8 +26,8 @@ use reth_transaction_pool::{
 };
 use std::{sync::Arc, time::Duration};
 use tempfile::TempDir;
-use tn_batch_maker::{BatchMakerBuilder, MiningMode};
-use tn_batch_validator::{BatchValidation, BatchValidator};
+use tn_block_proposer::{BlockProposerBuilder, MiningMode};
+use tn_block_validator::{BlockValidation, BlockValidator};
 use tn_types::{
     test_utils::{get_gas_price, test_genesis, TransactionFactory},
     Consensus, PendingWorkerBlock, PreSubscribedBroadcastSender, WorkerBlock,
@@ -36,11 +36,11 @@ use tokio::{sync::watch, time::timeout};
 use tracing::debug;
 
 #[tokio::test]
-async fn test_make_batch_el_to_cl() {
+async fn test_make_block_el_to_cl() {
     init_test_tracing();
 
     // worker channel
-    let (to_worker, rx_batch_maker) = tn_types::test_channel!(1);
+    let (to_worker, rx_block_maker) = tn_types::test_channel!(1);
 
     //
     //=== Consensus Layer
@@ -55,25 +55,25 @@ async fn test_make_batch_el_to_cl() {
 
     // Mock the primary client to always succeed.
     let mut mock_server = MockWorkerToPrimary::new();
-    mock_server.expect_report_own_batch().returning(|_| Ok(anemo::Response::new(())));
+    mock_server.expect_report_own_block().returning(|_| Ok(anemo::Response::new(())));
     network_client.set_worker_to_primary_local_handler(Arc::new(mock_server));
 
     // Spawn a `BatchMaker` instance.
     let id = 0;
-    let _batch_maker_handle = BatchMaker::spawn(
+    let _block_provider_handle = BlockProvider::spawn(
         id,
-        /* max_batch_size */ 200,
-        /* max_batch_delay */
+        /* max_block_size */ 200,
+        /* max_block_delay */
         Duration::from_millis(1_000_000), // Ensure the timer is not triggered.
         tx_shutdown.subscribe(),
-        rx_batch_maker,
+        rx_block_maker,
         tx_quorum_waiter,
         Arc::new(node_metrics),
         network_client,
         store.clone(),
     );
 
-    // worker's batch maker takes a long time to start
+    // worker's block provider takes a long time to start
     tokio::task::yield_now().await;
 
     //
@@ -125,8 +125,8 @@ async fn test_make_batch_el_to_cl() {
     let block_executor = EthExecutorProvider::new(chain.clone(), evm_config);
     let (tx, _rx) = watch::channel(PendingWorkerBlock::default());
 
-    // build execution batch maker
-    let task = BatchMakerBuilder::new(
+    // build execution block proposer
+    let task = BlockProposerBuilder::new(
         Arc::clone(&chain),
         blockchain_db.clone(),
         txpool.clone(),
@@ -189,40 +189,40 @@ async fn test_make_batch_el_to_cl() {
     let _mining_task = tokio::spawn(Box::pin(task));
 
     //
-    //=== Test batch flow
+    //=== Test block flow
     //
 
-    // wait for quorum waiter's channel to recv batch
+    // wait for quorum waiter's channel to recv block
     let too_long = Duration::from_secs(5);
-    let (batch, resp) = timeout(too_long, rx_quorum_waiter.recv())
+    let (block, resp) = timeout(too_long, rx_quorum_waiter.recv())
         .await
-        .expect("new batch created within time")
-        .expect("new batch is Some()");
+        .expect("new block created within time")
+        .expect("new block is Some()");
 
-    // ensure batch validator succeeds
+    // ensure block validator succeeds
     let consensus: Arc<dyn Consensus> = Arc::new(EthBeaconConsensus::new(chain.clone()));
-    let batch_validator = BatchValidator::new(consensus, blockchain_db.clone(), block_executor);
+    let block_validator = BlockValidator::new(consensus, blockchain_db.clone(), block_executor);
 
-    let valid_batch_result = batch_validator.validate_batch(&batch).await;
-    assert!(valid_batch_result.is_ok());
+    let valid_block_result = block_validator.validate_block(&block).await;
+    assert!(valid_block_result.is_ok());
 
-    // ensure expected transaction is in batch
-    let expected_batch =
-        WorkerBlock::new(vec![transaction1.clone()], batch.sealed_header().clone());
-    let batch_txs = batch.transactions();
-    assert_eq!(batch_txs, expected_batch.transactions());
+    // ensure expected transaction is in block
+    let expected_block =
+        WorkerBlock::new(vec![transaction1.clone()], block.sealed_header().clone());
+    let block_txs = block.transactions();
+    assert_eq!(block_txs, expected_block.transactions());
 
-    // ack to CL batch maker
+    // ack to CL block provider
     assert!(resp.send(()).is_ok());
 
     // ensure enough time passes for store to pass
     let _ = tokio::time::sleep(std::time::Duration::from_secs(1)).await;
-    let first_batch = store.iter::<Batches>().next();
+    let first_batch = store.iter::<WorkerBlocks>().next();
     debug!("first batch? {:?}", first_batch);
 
     // Ensure the batch is stored
     let batch_from_store = store
-        .get::<Batches>(&expected_batch.digest())
+        .get::<WorkerBlocks>(&expected_block.digest())
         .expect("store searched for batch")
         .expect("batch in store");
     let sealed_header_from_batch_store = batch_from_store.sealed_header();

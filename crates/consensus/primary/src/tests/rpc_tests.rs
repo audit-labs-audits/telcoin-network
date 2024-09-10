@@ -6,7 +6,7 @@ use std::time::Duration;
 
 use anemo::PeerId;
 use narwhal_network::{PrimaryToPrimaryRpc, WorkerRpc};
-use narwhal_network_types::{FetchCertificatesRequest, RequestBatchesRequest};
+use narwhal_network_types::{FetchCertificatesRequest, RequestBlocksRequest};
 use narwhal_test_utils::cluster::Cluster;
 use reth::tasks::TaskManager;
 use reth_tracing::init_test_tracing;
@@ -47,9 +47,9 @@ async fn test_server_authorizations() {
             .unwrap()
             .name
             .clone();
-        let request = anemo::Request::new(RequestBatchesRequest::default())
+        let request = anemo::Request::new(RequestBlocksRequest::default())
             .with_timeout(Duration::from_secs(5));
-        worker_network.request_batches(&worker_target_name, request).await.unwrap();
+        worker_network.request_blocks(&worker_target_name, request).await.unwrap();
     }
 
     // Set up primaries and workers with a another committee.
@@ -89,9 +89,9 @@ async fn test_server_authorizations() {
             .unwrap()
             .name
             .clone();
-        let request = anemo::Request::new(RequestBatchesRequest::default())
+        let request = anemo::Request::new(RequestBlocksRequest::default())
             .with_timeout(Duration::from_secs(5));
         // Removing the AllowedPeers RequireAuthorizationLayer for workers should make this succeed.
-        assert!(worker_network.request_batches(&worker_target_name, request).await.is_err());
+        assert!(worker_network.request_blocks(&worker_target_name, request).await.is_err());
     }
 }

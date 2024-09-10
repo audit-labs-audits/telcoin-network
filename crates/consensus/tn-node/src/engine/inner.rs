@@ -36,8 +36,8 @@ use reth_prune::PruneModes;
 use reth_tasks::TaskExecutor;
 use reth_transaction_pool::TransactionPool;
 use std::{collections::HashMap, net::SocketAddr, sync::Arc};
-use tn_batch_maker::{BatchMakerBuilder, MiningMode};
-use tn_batch_validator::BatchValidator;
+use tn_block_proposer::{BlockProposerBuilder, MiningMode};
+use tn_block_validator::BlockValidator;
 use tn_engine::ExecutorEngine;
 use tn_faucet::{FaucetArgs, FaucetRpcExtApiServer as _};
 use tn_types::{Consensus, ConsensusOutput, NewWorkerBlock, PendingWorkerBlock, WorkerId};
@@ -256,7 +256,7 @@ where
         let max_transactions = 10;
         let mining_mode =
             MiningMode::instant(max_transactions, transaction_pool.pending_transactions_listener());
-        let task = BatchMakerBuilder::new(
+        let task = BlockProposerBuilder::new(
             Arc::clone(&self.node_config.chain),
             self.blockchain_db.clone(),
             transaction_pool.clone(),
@@ -339,14 +339,14 @@ where
     }
 
     /// Create a new batch validator.
-    pub(super) fn new_batch_validator(&self) -> BatchValidator<DB, Evm> {
+    pub(super) fn new_batch_validator(&self) -> BlockValidator<DB, Evm> {
         // validate batches using beaacon consensus
         // to ensure inner-chain compatibility
         let consensus: Arc<dyn Consensus> =
             Arc::new(EthBeaconConsensus::new(self.node_config.chain.clone()));
 
         // batch validator
-        BatchValidator::<DB, Evm>::new(
+        BlockValidator::<DB, Evm>::new(
             consensus,
             self.blockchain_db.clone(),
             self.evm_executor.clone(),

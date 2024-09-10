@@ -96,11 +96,11 @@ impl FetchCertificatesRequest {
     }
 }
 
-/// Used by the primary to request that the worker fetch the missing batches and reply
+/// Used by the primary to request that the worker fetch the missing blocks and reply
 /// with all of the content.
 #[derive(Clone, Debug, Serialize, Deserialize)]
-pub struct FetchBatchesRequest {
-    /// Missing batch digests to fetch from peers.
+pub struct FetchBlocksRequest {
+    /// Missing block digests to fetch from peers.
     pub digests: HashSet<BlockHash>,
     /// The network public key of the peers.
     pub known_workers: HashSet<NetworkPublicKey>,
@@ -108,14 +108,14 @@ pub struct FetchBatchesRequest {
 
 /// TODO: probably delete this
 ///
-/// Used by the Engine to request missing batches from the worker's store
+/// Used by the Engine to request missing blocks from the worker's store
 #[derive(Clone, Debug, Serialize, Deserialize)]
-pub struct MissingBatchesRequest {
-    /// Missing batches
+pub struct MissingBlocksRequest {
+    /// Missing blocks
     pub digests: HashSet<BlockHash>,
 }
 
-impl From<HashSet<BlockHash>> for MissingBatchesRequest {
+impl From<HashSet<BlockHash>> for MissingBlocksRequest {
     fn from(digests: HashSet<BlockHash>) -> Self {
         Self { digests }
     }
@@ -123,40 +123,40 @@ impl From<HashSet<BlockHash>> for MissingBatchesRequest {
 
 //=== Workers
 
-/// Used by primary to bulk request batches from workers local store.
+/// Used by primary to bulk request blocks from workers local store.
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq, Default)]
-pub struct RequestBatchesRequest {
-    /// Vec of requested batches' digests
-    pub batch_digests: Vec<BlockHash>,
+pub struct RequestBlocksRequest {
+    /// Vec of requested blocks' digests
+    pub block_digests: Vec<BlockHash>,
 }
 
-/// Worker's batch maker request to EL after timer goes off.
+/// Worker's block provider request to EL after timer goes off.
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
-pub struct BuildBatchRequest {
-    /// The worker_id for the batch.
+pub struct BuildBlockRequest {
+    /// The worker_id for the block.
     pub worker_id: WorkerId,
 }
 
-impl From<WorkerId> for BuildBatchRequest {
+impl From<WorkerId> for BuildBlockRequest {
     fn from(worker_id: WorkerId) -> Self {
         Self { worker_id }
     }
 }
 
-/// Engine to worker after a batch is built.
+/// Engine to worker after a block is built.
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
-pub struct SealBatchRequest {
+pub struct SealBlockRequest {
     /// Collection of transactions encoded as bytes.
     pub payload: Vec<TransactionSigned>,
     /// Execution data for validation.
     pub worker_block: WorkerBlock,
 }
 
-/// Used by workers to validate a peer's batch using EL.
+/// Used by workers to validate a peer's block using EL.
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
-pub struct ValidateBatchRequest {
-    /// The peer's batch to validate.
-    pub batch: WorkerBlock,
+pub struct ValidateBlockRequest {
+    /// The peer's block to validate.
+    pub block: WorkerBlock,
     /// The worker's id.
     ///
     /// TODO: this is redundant because
@@ -165,8 +165,8 @@ pub struct ValidateBatchRequest {
     pub worker_id: WorkerId,
 }
 
-impl From<SealBatchRequest> for WorkerBlock {
-    fn from(value: SealBatchRequest) -> Self {
+impl From<SealBlockRequest> for WorkerBlock {
+    fn from(value: SealBlockRequest) -> Self {
         WorkerBlock::new(value.payload, value.worker_block.sealed_header.clone())
     }
 }

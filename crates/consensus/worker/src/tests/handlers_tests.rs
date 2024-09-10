@@ -10,7 +10,7 @@ use tempfile::TempDir;
 use tn_types::test_utils::{batch, random_network, CommitteeFixture};
 
 use super::*;
-use tn_batch_validator::NoopBatchValidator;
+use tn_block_validator::NoopBlockValidator;
 
 #[tokio::test]
 async fn synchronize() {
@@ -38,11 +38,11 @@ async fn synchronize() {
     let mut mock_server = MockWorkerToWorker::new();
     let mock_batch_response = batch.clone();
     mock_server
-        .expect_request_batches()
-        .withf(move |request| request.body().batch_digests == vec![digest])
+        .expect_request_blocks()
+        .withf(move |request| request.body().block_digests == vec![digest])
         .return_once(move |_| {
-            Ok(anemo::Response::new(RequestBatchesResponse {
-                batches: vec![mock_batch_response],
+            Ok(anemo::Response::new(RequestBlocksResponse {
+                blocks: vec![mock_batch_response],
                 is_size_limit_reached: false,
             }))
         });
@@ -66,18 +66,18 @@ async fn synchronize() {
         request_batches_timeout: Duration::from_secs(999),
         network: Some(send_network),
         batch_fetcher: None,
-        validator: NoopBatchValidator,
+        validator: NoopBlockValidator,
     };
 
     // Verify the batch is not in store
-    assert!(store.get::<Batches>(&digest).unwrap().is_none());
+    assert!(store.get::<WorkerBlocks>(&digest).unwrap().is_none());
 
     // Send a sync request.
     let request = anemo::Request::new(message);
     handler.synchronize(request).await.unwrap();
 
     // Verify it is now stored
-    assert!(store.get::<Batches>(&digest).unwrap().is_some());
+    assert!(store.get::<WorkerBlocks>(&digest).unwrap().is_some());
 }
 
 #[tokio::test]
@@ -104,14 +104,14 @@ async fn synchronize_when_batch_exists() {
         request_batches_timeout: Duration::from_secs(999),
         network: Some(send_network),
         batch_fetcher: None,
-        validator: NoopBatchValidator,
+        validator: NoopBlockValidator,
     };
 
     // Store the batch.
     let batch = batch();
     let batch_id = batch.digest();
     let missing = vec![batch_id];
-    store.insert::<Batches>(&batch_id, &batch).unwrap();
+    store.insert::<WorkerBlocks>(&batch_id, &batch).unwrap();
 
     // Send a sync request.
     let target_primary = fixture.authorities().nth(1).unwrap();

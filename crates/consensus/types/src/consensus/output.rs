@@ -17,21 +17,21 @@ use tokio::sync::mpsc;
 use tracing::warn;
 
 #[derive(Clone, Debug)]
-/// The output of Consensus, which includes all the batches for each certificate in the sub dag
+/// The output of Consensus, which includes all the blocks for each certificate in the sub dag
 /// It is sent to the the ExecutionState handle_consensus_transaction
 pub struct ConsensusOutput {
     pub sub_dag: Arc<CommittedSubDag>,
     /// Matches certificates in the `sub_dag` one-to-one.
     ///
     /// This field is not included in [Self] digest. To validate,
-    /// hash these batches and compare to [Self::batch_digests].
-    pub batches: Vec<Vec<WorkerBlock>>,
+    /// hash these blocks and compare to [Self::block_digests].
+    pub blocks: Vec<Vec<WorkerBlock>>,
     /// The beneficiary for block rewards.
     pub beneficiary: Address,
-    /// The ordered set of [BatchDigests].
+    /// The ordered set of [BlockHash].
     ///
     /// This value is included in [Self] digest.
-    pub batch_digests: VecDeque<BlockHash>,
+    pub block_digests: VecDeque<BlockHash>,
 }
 
 impl ConsensusOutput {
@@ -60,39 +60,39 @@ impl ConsensusOutput {
     pub fn beneficiary(&self) -> Address {
         self.beneficiary
     }
-    /// Pop the next batch digest.
+    /// Pop the next block digest.
     ///
     /// This method is used when executing [Self].
-    pub fn next_batch_digest(&mut self) -> Option<BlockHash> {
-        self.batch_digests.pop_front()
+    pub fn next_block_digest(&mut self) -> Option<BlockHash> {
+        self.block_digests.pop_front()
     }
     /// Ommers to use for the executed blocks.
     ///
-    /// TODO: parallelize this when output contains enough batches.
+    /// TODO: parallelize this when output contains enough blocks.
     pub fn ommers(&self) -> Vec<Header> {
-        self.batches
+        self.blocks
             .iter()
-            .flat_map(|batches| batches.iter().map(|batch| batch.sealed_header().header().clone()))
+            .flat_map(|blocks| blocks.iter().map(|block| block.sealed_header().header().clone()))
             .collect()
     }
-    /// Recover the sealed blocks with senders for all batches in output.
+    /// Recover the sealed blocks with senders for all blocks in output.
     ///
-    /// TODO: parallelize this when output contains enough batches.
-    pub fn sealed_blocks_from_batches(
+    /// TODO: parallelize this when output contains enough blocks.
+    pub fn sealed_blocks_from_blocks(
         &self,
     ) -> Result<Vec<SealedBlockWithSenders>, WorkerBlockConversionError> {
-        self.batches
+        self.blocks
             .iter()
-            .flat_map(|batches| {
-                batches.iter().map(|batch| {
-                    // create sealed block from batch for execution this should never fail since
-                    // batches are validated
-                    SealedBlockWithSenders::try_from(batch)
+            .flat_map(|blocks| {
+                blocks.iter().map(|block| {
+                    // create sealed block from block for execution this should never fail since
+                    // blocks are validated
+                    SealedBlockWithSenders::try_from(block)
                 })
             })
             .collect()
     }
-    /// Calculate the mix hash for a round with no batches.
+    /// Calculate the mix hash for a round with no blocks.
     ///
     /// Calculates mix hash as a source of randomness on-chain.
     /// - keccak256
@@ -120,8 +120,8 @@ impl Hash<{ crypto::DIGEST_LENGTH }> for ConsensusOutput {
         hasher.update(self.sub_dag.digest());
         // hash beneficiary
         hasher.update(self.beneficiary);
-        // hash batch digests in order
-        self.batch_digests.iter().for_each(|digest| {
+        // hash block digests in order
+        self.block_digests.iter().for_each(|digest| {
             hasher.update(digest);
         });
         // finalize
@@ -203,7 +203,7 @@ impl CommittedSubDag {
         self.len() == 0
     }
 
-    pub fn num_batches(&self) -> usize {
+    pub fn num_blocks(&self) -> usize {
         self.certificates.iter().map(|x| x.header().payload().len()).sum()
     }
 

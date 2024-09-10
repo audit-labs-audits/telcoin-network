@@ -15,8 +15,8 @@ use redb::database::ReDB;
 #[cfg(feature = "rocksdb")]
 use rocks::database::RocksDatabase;
 use tables::{
-    Batches, CertificateDigestByOrigin, CertificateDigestByRound, Certificates, CommittedSubDag,
-    LastCommitted, LastProposed, Payload, Votes,
+    CertificateDigestByOrigin, CertificateDigestByRound, Certificates, CommittedSubDag,
+    LastCommitted, LastProposed, Payload, Votes, WorkerBlocks,
 };
 #[cfg(feature = "redb")]
 pub mod redb;
@@ -75,7 +75,7 @@ pub mod tables {
         CertificateDigestByRound;crate::CERTIFICATE_DIGEST_BY_ROUND_CF;<(Round, AuthorityIdentifier), CertificateDigest>,
         CertificateDigestByOrigin;crate::CERTIFICATE_DIGEST_BY_ORIGIN_CF;<(AuthorityIdentifier, Round), CertificateDigest>,
         Payload;crate::PAYLOAD_CF;<(BlockHash, WorkerId), PayloadToken>,
-        Batches;crate::BATCHES_CF;<BlockHash, WorkerBlock>,
+        WorkerBlocks;crate::BATCHES_CF;<BlockHash, WorkerBlock>,
         LastCommitted;crate::LAST_COMMITTED_CF;<AuthorityIdentifier, Round>,
         CommittedSubDag;crate::COMMITTED_SUB_DAG_INDEX_CF;<SequenceNumber, ConsensusCommit>
     );
@@ -117,7 +117,7 @@ fn _open_mdbx<P: AsRef<std::path::Path> + Send>(store_path: P) -> LayeredDatabas
     db.open_table::<CertificateDigestByRound>().expect("failed to open table!");
     db.open_table::<CertificateDigestByOrigin>().expect("failed to open table!");
     db.open_table::<Payload>().expect("failed to open table!");
-    db.open_table::<Batches>().expect("failed to open table!");
+    db.open_table::<WorkerBlocks>().expect("failed to open table!");
     db.open_table::<LastCommitted>().expect("failed to open table!");
     db.open_table::<CommittedSubDag>().expect("failed to open table!");
 
@@ -128,7 +128,7 @@ fn _open_mdbx<P: AsRef<std::path::Path> + Send>(store_path: P) -> LayeredDatabas
     db.open_table::<CertificateDigestByRound>();
     db.open_table::<CertificateDigestByOrigin>();
     db.open_table::<Payload>();
-    db.open_table::<Batches>();
+    db.open_table::<WorkerBlocks>();
     db.open_table::<LastCommitted>();
     db.open_table::<CommittedSubDag>();
     db
@@ -145,7 +145,7 @@ fn _open_rocks<P: AsRef<std::path::Path> + Send>(store_path: P) -> LayeredDataba
     db.open_table::<CertificateDigestByRound>();
     db.open_table::<CertificateDigestByOrigin>();
     db.open_table::<Payload>();
-    db.open_table::<Batches>();
+    db.open_table::<WorkerBlocks>();
     db.open_table::<LastCommitted>();
     db.open_table::<CommittedSubDag>();
     db
@@ -161,7 +161,7 @@ fn _open_redb<P: AsRef<std::path::Path> + Send>(store_path: P) -> LayeredDatabas
     db.open_table::<CertificateDigestByRound>().expect("failed to open table!");
     db.open_table::<CertificateDigestByOrigin>().expect("failed to open table!");
     db.open_table::<Payload>().expect("failed to open table!");
-    db.open_table::<Batches>().expect("failed to open table!");
+    db.open_table::<WorkerBlocks>().expect("failed to open table!");
     db.open_table::<LastCommitted>().expect("failed to open table!");
     db.open_table::<CommittedSubDag>().expect("failed to open table!");
 
@@ -172,7 +172,7 @@ fn _open_redb<P: AsRef<std::path::Path> + Send>(store_path: P) -> LayeredDatabas
     db.open_table::<CertificateDigestByRound>();
     db.open_table::<CertificateDigestByOrigin>();
     db.open_table::<Payload>();
-    db.open_table::<Batches>();
+    db.open_table::<WorkerBlocks>();
     db.open_table::<LastCommitted>();
     db.open_table::<CommittedSubDag>();
     db

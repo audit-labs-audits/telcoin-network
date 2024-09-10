@@ -86,8 +86,8 @@ impl WorkerNodeInner {
         let channel_metrics: Arc<WorkerChannelMetrics> = metrics.channel_metrics.clone();
         let (tx_batch_maker, rx_batch_maker) = channel_with_total(
             CHANNEL_CAPACITY,
-            &channel_metrics.tx_batch_maker,
-            &channel_metrics.tx_batch_maker_total,
+            &channel_metrics.tx_block_maker,
+            &channel_metrics.tx_block_maker_total,
         );
 
         let batch_validator = execution_node.new_batch_validator().await;

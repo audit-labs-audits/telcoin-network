@@ -50,7 +50,7 @@ where
 
     // capture values from consensus output for full execution
     let output_digest = output.digest();
-    let sealed_blocks_with_senders = output.sealed_blocks_from_batches()?;
+    let sealed_blocks_with_senders = output.sealed_blocks_from_blocks()?;
     let ommers = output.ommers();
 
     // calculate ommers hash or use default if empty
@@ -63,7 +63,7 @@ where
     // assert vecs match
     debug_assert_eq!(
         sealed_blocks_with_senders.len(),
-        output.batch_digests.len(),
+        output.block_digests.len(),
         "uneven number of sealed blocks from batches and batch digests"
     );
 
@@ -128,7 +128,7 @@ where
         // loop and construct blocks with transactions
         for (block_index, block) in sealed_blocks_with_senders.into_iter().enumerate() {
             let batch_digest =
-                output.next_batch_digest().ok_or(TnEngineError::NextBatchDigestMissing)?;
+                output.next_block_digest().ok_or(TnEngineError::NextBlockDigestMissing)?;
             // use batch's base fee, gas limit, and withdrawals
             let base_fee_per_gas = block.base_fee_per_gas.unwrap_or_default();
             let gas_limit = block.gas_limit;

@@ -6,7 +6,7 @@ use consensus_metrics::{metered_channel, spawn_logged_monitored_task};
 use fastcrypto::hash::Hash;
 use futures::{stream::FuturesOrdered, StreamExt};
 use narwhal_network::{client::NetworkClient, PrimaryToWorkerClient};
-use narwhal_network_types::FetchBatchesRequest;
+use narwhal_network_types::FetchBlocksRequest;
 use reth_primitives::Address;
 use std::{
     collections::{HashMap, HashSet, VecDeque},
@@ -145,7 +145,7 @@ impl Subscriber {
         // It's important to have the futures in ordered fashion as we want
         // to guarantee that will deliver to the executor the certificates
         // in the same order we received from rx_sequence. So it doesn't
-        // matter if we somehow managed to fetch the batches from a later
+        // matter if we somehow managed to fetch the blocks from a later
         // certificate. Unless the earlier certificate's payload has been
         // fetched, no later certificate will be delivered.
         let mut waiting = FuturesOrdered::new();
@@ -154,7 +154,7 @@ impl Subscriber {
         // This needs to happen before we start listening on rx_sequence and receive messages
         // sequenced after these.
         for message in restored_consensus_output {
-            let future = Self::fetch_batches(self.inner.clone(), message);
+            let future = Self::fetch_blocks(self.inner.clone(), message);
             waiting.push_back(future);
 
             self.inner.metrics.subscriber_recovered_certificates_count.inc();
@@ -168,7 +168,7 @@ impl Subscriber {
                     // We can schedule more then MAX_PENDING_PAYLOADS payloads but
                     // don't process more consensus messages when more
                     // then MAX_PENDING_PAYLOADS is pending
-                    waiting.push_back(Self::fetch_batches(self.inner.clone(), sub_dag));
+                    waiting.push_back(Self::fetch_blocks(self.inner.clone(), sub_dag));
                 },
 
                 // Receive consensus messages after all transaction data is downloaded
@@ -194,9 +194,9 @@ impl Subscriber {
 
     /// Returns ordered vector of futures for downloading batches for certificates
     /// Order of futures returned follows order of batches in the certificates.
-    /// See BatchFetcher for more details.
-    async fn fetch_batches(inner: Arc<Inner>, deliver: CommittedSubDag) -> ConsensusOutput {
-        let num_batches = deliver.num_batches();
+    /// See BlockFetcher for more details.
+    async fn fetch_blocks(inner: Arc<Inner>, deliver: CommittedSubDag) -> ConsensusOutput {
+        let num_blocks = deliver.num_blocks();
         let num_certs = deliver.len();
 
         // get the execution address of the authority or use zero address
@@ -208,22 +208,22 @@ impl Subscriber {
             Address::ZERO
         };
 
-        if num_batches == 0 {
-            debug!("No batches to fetch, payload is empty");
+        if num_blocks == 0 {
+            debug!("No blocks to fetch, payload is empty");
             return ConsensusOutput {
                 sub_dag: Arc::new(deliver),
-                batches: vec![],
+                blocks: vec![],
                 beneficiary: address,
-                batch_digests: VecDeque::new(),
+                block_digests: VecDeque::new(),
             };
         }
 
         let sub_dag = Arc::new(deliver);
         let mut subscriber_output = ConsensusOutput {
             sub_dag: sub_dag.clone(),
-            batches: Vec::with_capacity(num_certs),
+            blocks: Vec::with_capacity(num_certs),
             beneficiary: address,
-            batch_digests: VecDeque::new(),
+            block_digests: VecDeque::new(),
         };
 
         let mut batch_digests_and_workers: HashMap<
@@ -245,16 +245,16 @@ impl Subscriber {
                 let (batch_set, worker_set) =
                     batch_digests_and_workers.entry(own_worker_name).or_default();
                 batch_set.insert(*digest);
-                subscriber_output.batch_digests.push_back(*digest);
+                subscriber_output.block_digests.push_back(*digest);
                 worker_set.extend(workers);
             }
         }
 
         let fetched_batches_timer =
-            inner.metrics.batch_fetch_for_committed_subdag_total_latency.start_timer();
-        inner.metrics.committed_subdag_batch_count.observe(num_batches as f64);
+            inner.metrics.block_fetch_for_committed_subdag_total_latency.start_timer();
+        inner.metrics.committed_subdag_block_count.observe(num_blocks as f64);
         let fetched_batches =
-            Self::fetch_batches_from_workers(&inner, batch_digests_and_workers).await;
+            Self::fetch_blocks_from_workers(&inner, batch_digests_and_workers).await;
         drop(fetched_batches_timer);
 
         // Map all fetched batches to their respective certificates and submit as
@@ -270,7 +270,7 @@ impl Subscriber {
                 .observe(cert.created_at().elapsed().as_secs_f64());
 
             for (digest, (_, _)) in cert.header().payload().iter() {
-                inner.metrics.subscriber_processed_batches.inc();
+                inner.metrics.subscriber_processed_blocks.inc();
                 let batch = fetched_batches
                     .get(digest)
                     .expect("[Protocol violation] Batch not found in fetched batches from workers of certificate signers");
@@ -281,7 +281,7 @@ impl Subscriber {
                 );
                 output_batches.push(batch.clone());
             }
-            subscriber_output.batches.push(output_batches);
+            subscriber_output.blocks.push(output_batches);
         }
         subscriber_output
     }
@@ -312,16 +312,16 @@ impl Subscriber {
             .collect()
     }
 
-    async fn fetch_batches_from_workers(
+    async fn fetch_blocks_from_workers(
         inner: &Inner,
-        batch_digests_and_workers: HashMap<
+        block_digests_and_workers: HashMap<
             NetworkPublicKey,
             (HashSet<BlockHash>, HashSet<NetworkPublicKey>),
         >,
     ) -> HashMap<BlockHash, WorkerBlock> {
-        let mut fetched_batches = HashMap::new();
+        let mut fetched_blocks = HashMap::new();
 
-        for (worker_name, (digests, known_workers)) in batch_digests_and_workers {
+        for (worker_name, (digests, known_workers)) in block_digests_and_workers {
             debug!(
                 "Attempting to fetch {} digests from {} known workers, {worker_name}'s",
                 digests.len(),
@@ -331,29 +331,29 @@ impl Subscriber {
             // to NetworkClient.
             // Only have one worker for now so will leave this for a future
             // optimization.
-            let request = FetchBatchesRequest { digests, known_workers };
-            let batches = loop {
+            let request = FetchBlocksRequest { digests, known_workers };
+            let blocks = loop {
                 match inner.client.fetch_batches(worker_name.clone(), request.clone()).await {
-                    Ok(resp) => break resp.batches,
+                    Ok(resp) => break resp.blocks,
                     Err(e) => {
-                        error!("Failed to fetch batches from worker {worker_name}: {e:?}");
+                        error!("Failed to fetch blocks from worker {worker_name}: {e:?}");
                         // Loop forever on failure. During shutdown, this should get cancelled.
                         tokio::time::sleep(Duration::from_secs(1)).await;
                         continue;
                     }
                 }
             };
-            for (digest, batch) in batches {
-                Self::record_fetched_batch_metrics(inner, &batch, &digest);
-                fetched_batches.insert(digest, batch);
+            for (digest, block) in blocks {
+                Self::record_fetched_block_metrics(inner, &block, &digest);
+                fetched_blocks.insert(digest, block);
             }
         }
 
-        fetched_batches
+        fetched_blocks
     }
 
-    fn record_fetched_batch_metrics(inner: &Inner, batch: &WorkerBlock, digest: &BlockHash) {
-        if let Some(received_at) = batch.received_at() {
+    fn record_fetched_block_metrics(inner: &Inner, block: &WorkerBlock, digest: &BlockHash) {
+        if let Some(received_at) = block.received_at() {
             let remote_duration = received_at.elapsed().as_secs_f64();
             debug!(
                 "Batch was fetched for execution after being received from another worker {}s ago.",
@@ -361,28 +361,28 @@ impl Subscriber {
             );
             inner
                 .metrics
-                .batch_execution_local_latency
+                .block_execution_local_latency
                 .with_label_values(&["other"])
                 .observe(remote_duration);
         } else {
-            let local_duration = batch.created_at().elapsed().as_secs_f64();
+            let local_duration = block.created_at().elapsed().as_secs_f64();
             debug!(
                 "Batch was fetched for execution after being created locally {}s ago.",
                 local_duration
             );
             inner
                 .metrics
-                .batch_execution_local_latency
+                .block_execution_local_latency
                 .with_label_values(&["own"])
                 .observe(local_duration);
         };
 
-        let batch_fetch_duration = batch.created_at().elapsed().as_secs_f64();
-        inner.metrics.batch_execution_latency.observe(batch_fetch_duration);
+        let block_fetch_duration = block.created_at().elapsed().as_secs_f64();
+        inner.metrics.block_execution_latency.observe(block_fetch_duration);
         debug!(
-            "Batch {:?} took {} seconds since it has been created to when it has been fetched for execution",
+            "Block {:?} took {} seconds since it has been created to when it has been fetched for execution",
             digest,
-            batch_fetch_duration,
+            block_fetch_duration,
         );
     }
 }

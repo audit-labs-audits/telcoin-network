@@ -20,7 +20,7 @@ pub struct WorkerSynchronizeMessage {
 
 /// Used by worker to inform primary it sealed a new batch.
 #[derive(Clone, Serialize, Deserialize, Eq, PartialEq, Debug)]
-pub struct WorkerOwnBatchMessage {
+pub struct WorkerOwnBlockMessage {
     /// The worker's batch digest.
     pub digest: BlockHash,
     /// The worker's id.
@@ -31,7 +31,7 @@ pub struct WorkerOwnBatchMessage {
 
 /// Used by worker to inform primary it received a batch from another authority.
 #[derive(Clone, Serialize, Deserialize, Eq, PartialEq, Debug)]
-pub struct WorkerOthersBatchMessage {
+pub struct WorkerOthersBlockMessage {
     /// The peer worker's batch digest.
     pub digest: BlockHash,
     /// The worker's id.
@@ -40,7 +40,7 @@ pub struct WorkerOthersBatchMessage {
 
 /// Used by workers to send a new batch to peers.
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
-pub struct WorkerBatchMessage {
+pub struct WorkerBlockMessage {
     /// The sending worker's batch.
     pub worker_block: WorkerBlock,
 }

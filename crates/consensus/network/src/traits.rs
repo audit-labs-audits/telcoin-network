@@ -5,8 +5,8 @@ use crate::{error::LocalClientError, CancelOnDropHandler};
 use async_trait::async_trait;
 use eyre::Result;
 use narwhal_network_types::{
-    FetchBatchesRequest, FetchBatchesResponse, FetchCertificatesRequest, FetchCertificatesResponse,
-    RequestBatchesRequest, RequestBatchesResponse, WorkerOthersBatchMessage, WorkerOwnBatchMessage,
+    FetchBlocksRequest, FetchBlocksResponse, FetchCertificatesRequest, FetchCertificatesResponse,
+    RequestBlocksRequest, RequestBlocksResponse, WorkerOthersBlockMessage, WorkerOwnBlockMessage,
     WorkerSynchronizeMessage,
 };
 use tn_types::NetworkPublicKey;
@@ -54,28 +54,28 @@ pub trait PrimaryToWorkerClient {
     async fn fetch_batches(
         &self,
         worker_name: NetworkPublicKey,
-        request: FetchBatchesRequest,
-    ) -> Result<FetchBatchesResponse, LocalClientError>;
+        request: FetchBlocksRequest,
+    ) -> Result<FetchBlocksResponse, LocalClientError>;
 }
 
 #[async_trait]
 pub trait WorkerToPrimaryClient {
-    async fn report_own_batch(
+    async fn report_own_block(
         &self,
-        request: WorkerOwnBatchMessage,
+        request: WorkerOwnBlockMessage,
     ) -> Result<(), LocalClientError>;
 
-    async fn report_others_batch(
+    async fn report_others_block(
         &self,
-        request: WorkerOthersBatchMessage,
+        request: WorkerOthersBlockMessage,
     ) -> Result<(), LocalClientError>;
 }
 
 #[async_trait]
 pub trait WorkerRpc {
-    async fn request_batches(
+    async fn request_blocks(
         &self,
         peer: &NetworkPublicKey,
-        request: impl anemo::types::request::IntoRequest<RequestBatchesRequest> + Send,
-    ) -> Result<RequestBatchesResponse>;
+        request: impl anemo::types::request::IntoRequest<RequestBlocksRequest> + Send,
+    ) -> Result<RequestBlocksResponse>;
 }

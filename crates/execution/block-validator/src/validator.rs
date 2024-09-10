@@ -1,12 +1,13 @@
-//! Batch validator
+//! Block validator
 
-use crate::error::BatchValidationError;
+use crate::error::BlockValidationError;
 use reth_blockchain_tree::error::BlockchainTreeError;
 use reth_chainspec::EthereumHardfork;
 use reth_consensus::PostExecutionInput;
 use reth_db::database::Database;
 use reth_evm::execute::{
-    BlockExecutionOutput, BlockExecutorProvider, BlockValidationError, Executor,
+    BlockExecutionOutput, BlockExecutorProvider, BlockValidationError as RethBlockValidationError,
+    Executor,
 };
 use reth_primitives::{GotExpected, SealedBlockWithSenders, U256};
 use reth_provider::{
@@ -22,9 +23,9 @@ use std::{
 use tn_types::{Consensus, WorkerBlock};
 use tracing::{debug, error};
 
-/// Batch validator
+/// Block validator
 #[derive(Clone)]
-pub struct BatchValidator<DB, Evm>
+pub struct BlockValidator<DB, Evm>
 where
     DB: Database + Clone + 'static,
     Evm: BlockExecutorProvider + 'static,
@@ -40,38 +41,38 @@ where
 }
 
 /// Defines the validation procedure for receiving either a new single transaction (from a client)
-/// of a batch of transactions (from another validator).
+/// of a block of transactions (from another validator).
 ///
 /// Invalid transactions will not receive further processing.
 #[async_trait::async_trait]
-pub trait BatchValidation: Clone + Send + Sync + 'static {
+pub trait BlockValidation: Clone + Send + Sync + 'static {
     type Error: Display + Debug + Send + Sync + 'static;
-    /// Determines if this batch can be voted on
-    async fn validate_batch(&self, b: &WorkerBlock) -> Result<(), Self::Error>;
+    /// Determines if this block can be voted on
+    async fn validate_block(&self, b: &WorkerBlock) -> Result<(), Self::Error>;
 }
 
 #[async_trait::async_trait]
-impl<DB, Evm> BatchValidation for BatchValidator<DB, Evm>
+impl<DB, Evm> BlockValidation for BlockValidator<DB, Evm>
 where
     DB: Database + Sized + Clone + 'static,
     Evm: BlockExecutorProvider + Clone + 'static,
 {
-    /// Error type for batch validation
-    type Error = BatchValidationError;
+    /// Error type for block validation
+    type Error = BlockValidationError;
 
-    /// Execute the transactions within the batch
+    /// Execute the transactions within the block
     ///
     /// akin to `on_new_payload()` for `BeaconEngine`.
     ///
     /// BlockchainTree has several useful methods, but they are private. The publicly exposed
-    /// methods would result in canonicalizing batches, which is undesireable. It is possible to
-    /// append then revert the batch, but this is also very inefficient.
+    /// methods would result in canonicalizing blocks, which is undesireable. It is possible to
+    /// append then revert the block, but this is also very inefficient.
     ///
     /// The validator flow follows: `reth::blockchain_tree::blockchain_tree::validate_block` method.
-    async fn validate_batch(&self, batch: &WorkerBlock) -> Result<(), Self::Error> {
+    async fn validate_block(&self, block: &WorkerBlock) -> Result<(), Self::Error> {
         // check sui + reth
         //
-        // ensure well-formed batch
+        // ensure well-formed block
         // verify receipts
         // ensure timestamps are valid
         // parent
@@ -81,11 +82,11 @@ where
         // create sealed block with senders
         // BT: try_insert_validated_block
         // beacon consensus checks - timestamps, forks, etc.
-        // ensure parent number +1 is batch's sealed header number
+        // ensure parent number +1 is block's sealed header number
         // parent should be canonical - lookup in db
 
         // try to recover signed transactions
-        let sealed_block: SealedBlockWithSenders = batch.try_into()?;
+        let sealed_block: SealedBlockWithSenders = block.try_into()?;
 
         // first, ensure valid block
         // taken from blockchain_tree::validate_block
@@ -112,22 +113,22 @@ where
 
         // the following is taken from BlockchainTree::try_append_canonical_chain()
 
-        // the main reason for porting this code is bc batches may or may not
+        // the main reason for porting this code is bc blocks may or may not
         // extend the canonical tip, but state root still needs to be validated
 
         // in reth, this is only done when canonical head is extended
-        // but batches may be behind canonical tip, which should still
+        // but blocks may be behind canonical tip, which should still
         // be considered potentially valid
 
         // moving this code here prevents having to revert the tree after
-        // validating the batch because `on_new_payload` results in appending
+        // validating the block because `on_new_payload` results in appending
         // the execution payload to either a fork or the canonical tree
 
         // all other methods are private
 
         let parent = sealed_block.parent_num_hash();
         let block_num_hash = sealed_block.num_hash();
-        debug!(target: "batch_validator", head = ?block_num_hash.hash, ?parent, "Appending block to canonical chain");
+        debug!(target: "block_validator", head = ?block_num_hash.hash, ?parent, "Appending block to canonical chain");
 
         // Validate that the block is post merge
         let parent_td = self
@@ -142,7 +143,7 @@ where
             .fork(EthereumHardfork::Paris)
             .active_at_ttd(parent_td, U256::ZERO)
         {
-            return Err(BlockValidationError::BlockPreMerge { hash: sealed_block.hash() })?;
+            return Err(RethBlockValidationError::BlockPreMerge { hash: sealed_block.hash() })?;
         }
 
         // retrieve parent header from provider
@@ -162,10 +163,10 @@ where
 
         // NOTE: this diverges from reth-beta approach
         // but is still valid within the context of our consensus
-        // because of async network conditions, workers can suggest batches
+        // because of async network conditions, workers can suggest blocks
         // behind the canonical tip
         //
-        // TODO: validate base fee based on parent batch
+        // TODO: validate base fee based on parent block
 
         // // capture current state
         // let provider = BundleStateProvider::new(state_provider, bundle_state_data_provider);
@@ -178,7 +179,7 @@ where
         // doesn't match the one recorded during the db view's initialization.
         // TN expected to write several blocks at a time, so tip potentially always changing
         //
-        // create state provider based on batch's parent
+        // create state provider based on block's parent
         let db = StateProviderDatabase::new(
             self.blockchain_db
                 .database_provider_ro()?
@@ -207,7 +208,7 @@ where
         let hashed_state = HashedPostState::from_bundle_state(&state.state);
         let state_root = db.state_root(hashed_state)?;
         if block_with_senders.state_root != state_root {
-            return Err(BatchValidationError::BodyStateRootDiff(GotExpected {
+            return Err(BlockValidationError::BodyStateRootDiff(GotExpected {
                 got: state_root,
                 expected: block_with_senders.state_root,
             }));
@@ -217,7 +218,7 @@ where
     }
 }
 
-impl<DB, Evm> BatchValidator<DB, Evm>
+impl<DB, Evm> BlockValidator<DB, Evm>
 where
     DB: Database + Clone,
     Evm: BlockExecutorProvider,
@@ -233,16 +234,16 @@ where
 }
 
 #[cfg(any(test, feature = "test-utils"))]
-/// Noop validation struct that validates any batch.
+/// Noop validation struct that validates any block.
 #[derive(Default, Clone)]
-pub struct NoopBatchValidator;
+pub struct NoopBlockValidator;
 
 #[cfg(any(test, feature = "test-utils"))]
 #[async_trait::async_trait]
-impl BatchValidation for NoopBatchValidator {
-    type Error = BatchValidationError;
+impl BlockValidation for NoopBlockValidator {
+    type Error = BlockValidationError;
 
-    async fn validate_batch(&self, _batch: &WorkerBlock) -> Result<(), Self::Error> {
+    async fn validate_block(&self, _block: &WorkerBlock) -> Result<(), Self::Error> {
         Ok(())
     }
 }
@@ -271,7 +272,7 @@ mod tests {
         test_utils::{get_gas_price, TransactionFactory},
     };
 
-    /// Return the next valid batch
+    /// Return the next valid block
     fn next_valid_sealed_header() -> SealedHeader {
         // sealed header
         //
@@ -317,7 +318,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn test_valid_batch() {
+    async fn test_valid_block() {
         init_test_tracing();
         let genesis = adiri_genesis();
         let mut tx_factory = TransactionFactory::new();
@@ -369,8 +370,8 @@ mod tests {
         // get gas price before passing db
         let gas_price = get_gas_price(&blockchain_db);
 
-        // batch validator
-        let batch_validator = BatchValidator::new(
+        // block validator
+        let block_validator = BlockValidator::new(
             Arc::clone(&consensus),
             blockchain_db,
             reth_node_ethereum::EthExecutorProvider::ethereum(chain.clone()),
@@ -413,9 +414,9 @@ mod tests {
         debug!("transaction 3: {transaction3:?}");
 
         let transactions = vec![transaction1, transaction2, transaction3];
-        let batch = WorkerBlock::new(transactions, sealed_header.clone());
+        let block = WorkerBlock::new(transactions, sealed_header.clone());
 
-        let result = batch_validator.validate_batch(&batch).await;
+        let result = block_validator.validate_block(&block).await;
 
         println!("result: {result:?}");
 
@@ -423,7 +424,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn test_invalid_batch_wrong_parent_hash() {
+    async fn test_invalid_block_wrong_parent_hash() {
         init_test_tracing();
         let genesis = adiri_genesis();
         let mut tx_factory = TransactionFactory::new();
@@ -472,8 +473,8 @@ mod tests {
             BlockchainProvider::new(provider_factory.clone(), blockchain_tree.clone())
                 .expect("blockchain db valid");
 
-        // batch validator
-        let batch_validator = BatchValidator::new(
+        // block validator
+        let block_validator = BlockValidator::new(
             Arc::clone(&consensus),
             blockchain_db.clone(),
             reth_node_ethereum::EthExecutorProvider::ethereum(chain.clone()),
@@ -521,15 +522,15 @@ mod tests {
         sealed_header.set_parent_hash(wrong_parent_hash);
 
         let transactions = vec![transaction1, transaction2, transaction3];
-        let batch = WorkerBlock::new(transactions, sealed_header.clone());
+        let block = WorkerBlock::new(transactions, sealed_header.clone());
 
-        let result = batch_validator.validate_batch(&batch).await;
+        let result = block_validator.validate_block(&block).await;
 
         assert!(result.is_err())
     }
 
     #[tokio::test]
-    async fn test_invalid_batch_wrong_state_root() {
+    async fn test_invalid_block_wrong_state_root() {
         init_test_tracing();
         let genesis = adiri_genesis();
         let mut tx_factory = TransactionFactory::new();
@@ -578,8 +579,8 @@ mod tests {
             BlockchainProvider::new(provider_factory.clone(), blockchain_tree.clone())
                 .expect("blockchain db valid");
 
-        // batch validator
-        let batch_validator = BatchValidator::new(
+        // block validator
+        let block_validator = BlockValidator::new(
             Arc::clone(&consensus),
             blockchain_db.clone(),
             reth_node_ethereum::EthExecutorProvider::ethereum(chain.clone()),
@@ -628,15 +629,15 @@ mod tests {
         sealed_header.set_state_root(wrong_state_root);
 
         let transactions = vec![transaction1, transaction2, transaction3];
-        let batch = WorkerBlock::new(transactions, sealed_header.clone());
+        let block = WorkerBlock::new(transactions, sealed_header.clone());
 
-        let result = batch_validator.validate_batch(&batch).await;
+        let result = block_validator.validate_block(&block).await;
 
         assert!(result.is_err())
     }
 
     #[tokio::test]
-    async fn test_invalid_batch_wrong_tx_root() {
+    async fn test_invalid_block_wrong_tx_root() {
         init_test_tracing();
         let genesis = adiri_genesis();
         let mut tx_factory = TransactionFactory::new();
@@ -685,8 +686,8 @@ mod tests {
             BlockchainProvider::new(provider_factory.clone(), blockchain_tree.clone())
                 .expect("blockchain db valid");
 
-        // batch validator
-        let batch_validator = BatchValidator::new(
+        // block validator
+        let block_validator = BlockValidator::new(
             Arc::clone(&consensus),
             blockchain_db.clone(),
             reth_node_ethereum::EthExecutorProvider::ethereum(chain.clone()),
@@ -777,15 +778,15 @@ mod tests {
         // );
 
         let transactions = vec![transaction1, transaction2, transaction3];
-        let batch = WorkerBlock::new(transactions, sealed_header.clone());
+        let block = WorkerBlock::new(transactions, sealed_header.clone());
 
-        let result = batch_validator.validate_batch(&batch).await;
+        let result = block_validator.validate_block(&block).await;
 
         assert!(result.is_err())
     }
 
     #[tokio::test]
-    async fn test_invalid_batch_wrong_receipts_root() {
+    async fn test_invalid_block_wrong_receipts_root() {
         init_test_tracing();
         let genesis = adiri_genesis();
         let mut tx_factory = TransactionFactory::new();
@@ -834,8 +835,8 @@ mod tests {
             BlockchainProvider::new(provider_factory.clone(), blockchain_tree.clone())
                 .expect("blockchain db valid");
 
-        // batch validator
-        let batch_validator = BatchValidator::new(
+        // block validator
+        let block_validator = BlockValidator::new(
             Arc::clone(&consensus),
             blockchain_db.clone(),
             reth_node_ethereum::EthExecutorProvider::ethereum(chain.clone()),
@@ -922,15 +923,15 @@ mod tests {
         // );
 
         let transactions = vec![transaction1, transaction2, transaction3];
-        let batch = WorkerBlock::new(transactions, sealed_header.clone());
+        let block = WorkerBlock::new(transactions, sealed_header.clone());
 
-        let result = batch_validator.validate_batch(&batch).await;
+        let result = block_validator.validate_block(&block).await;
 
         assert!(result.is_err())
     }
 
     // TODO:
-    // invalid batch types for the rest of the sealed header:
+    // invalid block types for the rest of the sealed header:
     // - logs bloom
     // - sealed block number
     // - BlockGasUsed

@@ -2,9 +2,9 @@
 // Copyright (c) Telcoin, LLC
 // Copyright (c) Mysten Labs, Inc.
 // SPDX-License-Identifier: Apache-2.0
-//! The receiving side of the execution layer's `BatchMaker`.
+//! The receiving side of the execution layer's `BlockProvider`.
 //!
-//! Consensus `BatchMaker` takes a batch from the EL, stores it,
+//! Consensus `BlockProvider` takes a block from the EL, stores it,
 //! and sends it to the quorum waiter for broadcasting to peers.
 use crate::metrics::WorkerMetrics;
 use consensus_metrics::{
@@ -13,11 +13,11 @@ use consensus_metrics::{
 };
 use futures::{future::BoxFuture, stream::FuturesUnordered, StreamExt};
 use narwhal_network::{client::NetworkClient, WorkerToPrimaryClient};
-use narwhal_typed_store::{tables::Batches, traits::Database};
+use narwhal_typed_store::{tables::WorkerBlocks, traits::Database};
 use std::sync::Arc;
 use tn_types::{NewWorkerBlock, WorkerId};
 
-use narwhal_network_types::WorkerOwnBatchMessage;
+use narwhal_network_types::WorkerOwnBlockMessage;
 use tn_types::{error::DagError, ConditionalBroadcastReceiver, WorkerBlock};
 use tokio::{
     task::JoinHandle,
@@ -28,51 +28,51 @@ use tracing::{error, warn};
 #[cfg(feature = "trace_transaction")]
 use byteorder::{BigEndian, ReadBytesExt};
 
-// The number of batches to store / transmit in parallel.
-pub const MAX_PARALLEL_BATCH: usize = 100;
+// The number of blocks to store / transmit in parallel.
+pub const MAX_PARALLEL_BLOCK: usize = 100;
 
 #[cfg(test)]
-#[path = "tests/batch_maker_tests.rs"]
-pub mod batch_maker_tests;
+#[path = "tests/block_provider_tests.rs"]
+pub mod block_provider_tests;
 
-/// Process batches from EL into sealed batches for CL.
-pub struct BatchMaker<DB: Database> {
+/// Process blocks from EL into sealed blocks for CL.
+pub struct BlockProvider<DB: Database> {
     /// Our worker's id.
     id: WorkerId,
     /// TODO: remove this
     ///
-    /// The preferred batch size (in bytes).
-    _batch_size_limit: usize,
+    /// The preferred block size (in bytes).
+    _block_size_limit: usize,
     /// TODO: remove this
     ///
-    /// The maximum delay after which to seal the batch.
-    _max_batch_delay: Duration,
+    /// The maximum delay after which to seal the block.
+    _max_block_delay: Duration,
     /// Receiver for shutdown.
     rx_shutdown: ConditionalBroadcastReceiver,
     /// Channel to receive transactions from the network.
-    rx_batch_maker: Receiver<NewWorkerBlock>,
-    /// Output channel to deliver sealed batches to the `QuorumWaiter`.
+    rx_block_maker: Receiver<NewWorkerBlock>,
+    /// Output channel to deliver sealed blocks to the `QuorumWaiter`.
     tx_quorum_waiter: Sender<(WorkerBlock, tokio::sync::oneshot::Sender<()>)>,
     /// Metrics handler
     node_metrics: Arc<WorkerMetrics>,
-    /// The timestamp of the batch creation.
-    /// Average resident time in the batch would be ~ (batch seal time - creation time) / 2
-    batch_start_timestamp: Instant,
-    /// The network client to send our batches to the primary.
+    /// The timestamp of the block creation.
+    /// Average resident time in the block would be ~ (block seal time - creation time) / 2
+    block_start_timestamp: Instant,
+    /// The network client to send our blocks to the primary.
     client: NetworkClient,
-    /// The batch store to store our own batches.
+    /// The block store to store our own blocks.
     store: DB,
 }
 
-impl<DB: Database + Clone + 'static> BatchMaker<DB> {
+impl<DB: Database + Clone + 'static> BlockProvider<DB> {
     #[allow(clippy::too_many_arguments)]
     #[must_use]
     pub fn spawn(
         id: WorkerId,
-        _batch_size_limit: usize,
-        _max_batch_delay: Duration,
+        _block_size_limit: usize,
+        _max_block_delay: Duration,
         rx_shutdown: ConditionalBroadcastReceiver,
-        rx_batch_maker: Receiver<NewWorkerBlock>,
+        rx_block_maker: Receiver<NewWorkerBlock>,
         tx_quorum_waiter: Sender<(WorkerBlock, tokio::sync::oneshot::Sender<()>)>,
         node_metrics: Arc<WorkerMetrics>,
         client: NetworkClient,
@@ -82,12 +82,12 @@ impl<DB: Database + Clone + 'static> BatchMaker<DB> {
             async move {
                 Self {
                     id,
-                    _batch_size_limit,
-                    _max_batch_delay,
+                    _block_size_limit,
+                    _max_block_delay,
                     rx_shutdown,
-                    rx_batch_maker,
+                    rx_block_maker,
                     tx_quorum_waiter,
-                    batch_start_timestamp: Instant::now(),
+                    block_start_timestamp: Instant::now(),
                     node_metrics,
                     client,
                     store,
@@ -95,31 +95,31 @@ impl<DB: Database + Clone + 'static> BatchMaker<DB> {
                 .run()
                 .await;
             },
-            "BatchMakerTask"
+            "BlockProviderTask"
         )
     }
 
-    /// Main loop receiving incoming transactions and creating batches.
+    /// Main loop receiving incoming transactions and creating blocks.
     async fn run(&mut self) {
-        // collection of future sealed batches
-        let mut batch_pipeline = FuturesUnordered::new();
+        // collection of future sealed blocks
+        let mut block_pipeline = FuturesUnordered::new();
 
         loop {
             tokio::select! {
-                // Wait for the next batch from the EL.
+                // Wait for the next block from the EL.
                 //
-                // Note that transactions are only consumed when the number of batches
-                // 'in-flight' are below a certain number (MAX_PARALLEL_BATCH). This
+                // Note that transactions are only consumed when the number of blocks
+                // 'in-flight' are below a certain number (MAX_PARALLEL_BLOCK). This
                 // condition will be met eventually if the store and network are functioning.
-                Some(new_batch) = self.rx_batch_maker.recv(), if batch_pipeline.len() < MAX_PARALLEL_BATCH => {
-                    let _scope = monitored_scope("BatchMaker::recv");
-                    // try seal the batch
-                    if let Some(seal) = self.seal(new_batch).await {
-                        batch_pipeline.push(seal);
+                Some(new_block) = self.rx_block_maker.recv(), if block_pipeline.len() < MAX_PARALLEL_BLOCK => {
+                    let _scope = monitored_scope("BlockProvider::recv");
+                    // try seal the block
+                    if let Some(seal) = self.seal(new_block).await {
+                        block_pipeline.push(seal);
                     }
 
-                    self.node_metrics.parallel_worker_batches.set(batch_pipeline.len() as i64);
-                    self.batch_start_timestamp = Instant::now();
+                    self.node_metrics.parallel_worker_blocks.set(block_pipeline.len() as i64);
+                    self.block_start_timestamp = Instant::now();
 
                     // Yield once per size threshold to allow other tasks to run.
                     tokio::task::yield_now().await;
@@ -129,32 +129,26 @@ impl<DB: Database + Clone + 'static> BatchMaker<DB> {
                     return
                 }
 
-                // Process the pipeline of batches, this consumes items in the `batch_pipeline`
+                // Process the pipeline of blocks, this consumes items in the `block_pipeline`
                 // list, and ensures the main loop in run will always be able to make progress
-                // by lowering it until condition batch_pipeline.len() < MAX_PARALLEL_BATCH is met.
-                _ = batch_pipeline.next(), if !batch_pipeline.is_empty() => {
-                    self.node_metrics.parallel_worker_batches.set(batch_pipeline.len() as i64);
+                // by lowering it until condition block_pipeline.len() < MAX_PARALLEL_BLOCK is met.
+                _ = block_pipeline.next(), if !block_pipeline.is_empty() => {
+                    self.node_metrics.parallel_worker_blocks.set(block_pipeline.len() as i64);
                 }
 
             }
         }
     }
 
-    /// Seal and broadcast the current batch.
-    async fn seal<'a>(
-        &self,
-        // timeout: bool,
-        new_batch: NewWorkerBlock,
-        // size: usize,
-        // response: BatchResponse,
-    ) -> Option<BoxFuture<'a, ()>> {
+    /// Seal and broadcast the current block.
+    async fn seal<'a>(&self, new_block: NewWorkerBlock) -> Option<BoxFuture<'a, ()>> {
         #[cfg(feature = "benchmark")]
         {
-            let digest = new_batch.block.digest();
+            let digest = new_block.block.digest();
 
             // Look for sample txs (they all start with 0) and gather their txs id (the next 8
             // bytes).
-            let tx_ids: Vec<_> = new_batch
+            let tx_ids: Vec<_> = new_block
                 .block
                 .transactions()
                 .iter()
@@ -166,7 +160,7 @@ impl<DB: Database + Clone + 'static> BatchMaker<DB> {
 
             for id in tx_ids {
                 // NOTE: This log entry is used to compute performance.
-                tracing::info!("Batch {:?} contains sample tx {}", digest, u64::from_be_bytes(id));
+                tracing::info!("Block {:?} contains sample tx {}", digest, u64::from_be_bytes(id));
             }
 
             #[cfg(feature = "trace_transaction")]
@@ -174,7 +168,7 @@ impl<DB: Database + Clone + 'static> BatchMaker<DB> {
                 // The first 8 bytes of each transaction message is reserved for an identifier
                 // that's useful for debugging and tracking the lifetime of messages between
                 // Narwhal and clients.
-                let tracking_ids: Vec<_> = new_batch
+                let tracking_ids: Vec<_> = new_block
                     .block
                     .transactions()
                     .iter()
@@ -188,48 +182,48 @@ impl<DB: Database + Clone + 'static> BatchMaker<DB> {
                     })
                     .collect();
                 tracing::debug!(
-                    "Tracking IDs of transactions in the Batch {:?}: {:?}",
+                    "Tracking IDs of transactions in the Block {:?}: {:?}",
                     digest,
                     tracking_ids
                 );
             }
 
             // NOTE: This log entry is used to compute performance.
-            tracing::info!("Batch {:?} contains {} B", digest, size);
+            tracing::info!("Block {:?} contains {} B", digest, size);
         }
 
-        let NewWorkerBlock { block, ack } = new_batch;
+        let NewWorkerBlock { block, ack } = new_block;
         let size = block.size();
 
-        // TODO: include timeout vs size_reached in `NewBatch`
+        // TODO: include timeout vs size_reached in `NewWorkerBlock`
         // let reason = if timeout { "timeout" } else { "size_reached" };
         let reason = "timeout";
 
-        self.node_metrics.created_batch_size.with_label_values(&[reason]).observe(size as f64);
+        self.node_metrics.created_block_size.with_label_values(&[reason]).observe(size as f64);
 
-        // Send the batch through the deliver channel for further processing.
+        // Send the block through the deliver channel for further processing.
         let (notify_done, broadcasted_to_quorum) = tokio::sync::oneshot::channel();
         if self.tx_quorum_waiter.send((block.clone(), notify_done)).await.is_err() {
             tracing::debug!("{}", DagError::ShuttingDown);
             return None;
         }
 
-        let batch_creation_duration = self.batch_start_timestamp.elapsed().as_secs_f64();
+        let block_creation_duration = self.block_start_timestamp.elapsed().as_secs_f64();
 
         tracing::debug!(
-            "Batch {:?} took {} seconds to create due to {}",
+            "Block {:?} took {} seconds to create due to {}",
             block.digest(),
-            batch_creation_duration,
+            block_creation_duration,
             reason
         );
 
         // we are deliberately measuring this after the sending to the downstream
         // channel tx_quorum_waiter as the operation is blocking and affects any further
-        // batch creation.
+        // block creation.
         self.node_metrics
-            .created_batch_latency
+            .created_block_latency
             .with_label_values(&[reason])
-            .observe(batch_creation_duration);
+            .observe(block_creation_duration);
 
         // Clone things to not capture self
         let client = self.client.clone();
@@ -250,24 +244,24 @@ impl<DB: Database + Clone + 'static> BatchMaker<DB> {
             // Now save it to disk
             let digest = block.digest();
 
-            if let Err(e) = store.insert::<Batches>(&digest, &block) {
+            if let Err(e) = store.insert::<WorkerBlocks>(&digest, &block) {
                 error!("Store failed with error: {:?}", e);
                 return;
             }
 
-            // Send the batch to the primary.
-            let message = WorkerOwnBatchMessage { digest, worker_id, worker_block: block.clone() };
-            if let Err(e) = client.report_own_batch(message).await {
-                warn!("Failed to report our batch: {}", e);
+            // Send the block to the primary.
+            let message = WorkerOwnBlockMessage { digest, worker_id, worker_block: block.clone() };
+            if let Err(e) = client.report_own_block(message).await {
+                warn!("Failed to report our block: {}", e);
                 // Drop all response handlers to signal error, since we
                 // cannot ensure the primary has actually signaled the
-                // batch will eventually be sent.
+                // block will eventually be sent.
                 // The transaction submitter will see the error and retry.
                 return;
             }
 
-            // We now signal back to the execution layer's batch maker
-            // that the batch is sealed.
+            // We now signal back to the execution layer's block provider
+            // that the block is sealed.
             let _ = ack.send(digest);
         }))
     }
