@@ -11059,7 +11059,6 @@ dependencies = [
  "rand 0.8.5",
  "reth-chainspec",
  "reth-consensus",
- "reth-db",
  "reth-evm",
  "reth-evm-ethereum",
  "reth-payload-primitives",
