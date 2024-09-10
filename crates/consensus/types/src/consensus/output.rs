@@ -4,7 +4,6 @@ use crate::{
     crypto, Certificate, CertificateDigest, ReputationScores, Round, SequenceNumber, TimestampSec,
     WorkerBlock, WorkerBlockConversionError,
 };
-use enum_dispatch::enum_dispatch;
 use fastcrypto::hash::{Digest, Hash, HashFunction};
 use reth_primitives::{keccak256, Address, BlockHash, Header, SealedBlockWithSenders, B256};
 use serde::{Deserialize, Serialize};
@@ -261,18 +260,8 @@ impl From<ConsensusOutputDigest> for B256 {
     }
 }
 
-#[enum_dispatch(ConsensusCommitAPI)]
-trait ConsensusCommitAPI {
-    fn certificates(&self) -> Vec<CertificateDigest>;
-    fn leader(&self) -> CertificateDigest;
-    fn leader_round(&self) -> Round;
-    fn sub_dag_index(&self) -> SequenceNumber;
-    fn reputation_score(&self) -> ReputationScores;
-    fn commit_timestamp(&self) -> TimestampSec;
-}
-
 #[derive(Serialize, Deserialize, Clone, Debug)]
-pub struct ConsensusCommitV1 {
+pub struct ConsensusCommit {
     /// The sequence of committed certificates' digests.
     pub certificates: Vec<CertificateDigest>,
     /// The leader certificate's digest responsible of committing this sub-dag.
@@ -288,7 +277,7 @@ pub struct ConsensusCommitV1 {
     pub commit_timestamp: TimestampSec,
 }
 
-impl ConsensusCommitV1 {
+impl ConsensusCommit {
     pub fn from_sub_dag(sub_dag: &CommittedSubDag) -> Self {
         Self {
             certificates: sub_dag.certificates.iter().map(|x| x.digest()).collect(),
@@ -299,75 +288,29 @@ impl ConsensusCommitV1 {
             commit_timestamp: sub_dag.commit_timestamp,
         }
     }
-}
 
-impl ConsensusCommitAPI for ConsensusCommitV1 {
-    fn certificates(&self) -> Vec<CertificateDigest> {
+    pub fn certificates(&self) -> Vec<CertificateDigest> {
         self.certificates.clone()
     }
 
-    fn leader(&self) -> CertificateDigest {
+    pub fn leader(&self) -> CertificateDigest {
         self.leader
     }
 
-    fn leader_round(&self) -> Round {
+    pub fn leader_round(&self) -> Round {
         self.leader_round
     }
 
-    fn sub_dag_index(&self) -> SequenceNumber {
+    pub fn sub_dag_index(&self) -> SequenceNumber {
         self.sub_dag_index
     }
 
-    fn reputation_score(&self) -> ReputationScores {
+    pub fn reputation_score(&self) -> ReputationScores {
         self.reputation_score.clone()
     }
 
-    fn commit_timestamp(&self) -> TimestampSec {
-        self.commit_timestamp
-    }
-}
-
-#[derive(Serialize, Deserialize, Clone, Debug)]
-#[enum_dispatch(ConsensusCommitAPI)]
-pub enum ConsensusCommit {
-    V1(ConsensusCommitV1),
-}
-
-impl ConsensusCommit {
-    pub fn certificates(&self) -> Vec<CertificateDigest> {
-        match self {
-            ConsensusCommit::V1(sub_dag) => sub_dag.certificates(),
-        }
-    }
-
-    pub fn leader(&self) -> CertificateDigest {
-        match self {
-            ConsensusCommit::V1(sub_dag) => sub_dag.leader(),
-        }
-    }
-
-    pub fn leader_round(&self) -> Round {
-        match self {
-            ConsensusCommit::V1(sub_dag) => sub_dag.leader_round(),
-        }
-    }
-
-    pub fn sub_dag_index(&self) -> SequenceNumber {
-        match self {
-            ConsensusCommit::V1(sub_dag) => sub_dag.sub_dag_index(),
-        }
-    }
-
-    pub fn reputation_score(&self) -> ReputationScores {
-        match self {
-            ConsensusCommit::V1(sub_dag) => sub_dag.reputation_score(),
-        }
-    }
-
     pub fn commit_timestamp(&self) -> TimestampSec {
-        match self {
-            ConsensusCommit::V1(sub_dag) => sub_dag.commit_timestamp(),
-        }
+        self.commit_timestamp
     }
 }
 

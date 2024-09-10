@@ -8,9 +8,7 @@ use narwhal_typed_store::{
     traits::{Database, DbTxMut},
 };
 use std::collections::HashMap;
-use tn_types::{
-    AuthorityIdentifier, CommittedSubDag, ConsensusCommit, ConsensusCommitV1, Round, SequenceNumber,
-};
+use tn_types::{AuthorityIdentifier, CommittedSubDag, ConsensusCommit, Round, SequenceNumber};
 use tracing::debug;
 
 /// The persistent storage of the sequencer.
@@ -44,7 +42,7 @@ impl<DB: Database> ConsensusStore<DB> {
         sub_dag: &CommittedSubDag,
     ) -> eyre::Result<()> {
         let mut txn = self.db.write_txn()?;
-        let commit = ConsensusCommit::V1(ConsensusCommitV1::from_sub_dag(sub_dag));
+        let commit = ConsensusCommit::from_sub_dag(sub_dag);
 
         for (id, round) in last_committed.iter() {
             txn.insert::<LastCommitted>(id, round)?;
