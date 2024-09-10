@@ -328,6 +328,11 @@ impl Database for ReDB {
         let read_table = self.db.read().begin_read().ok()?.open_table(td).ok()?;
         read_table.last().ok().flatten().map(|(k, v)| (k.value().clone(), v.value().clone()))
     }
+
+    fn compact(&self) -> eyre::Result<()> {
+        self.db.write().compact()?;
+        Ok(())
+    }
 }
 
 #[self_referencing(pub_extras)]

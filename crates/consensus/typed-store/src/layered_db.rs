@@ -9,6 +9,7 @@ use std::{
         Arc,
     },
     thread::JoinHandle,
+    time::{Duration, Instant},
 };
 
 use crate::{
@@ -74,8 +75,13 @@ impl<DB: Database> DbTxMut for LayeredDbTxMut<DB> {
 }
 
 /// Run the thread to manage the persistant DB in the background.
+/// If DB needs compaction this thread will compact on startup and once a day after that.
 fn db_run<DB: Database>(db: DB, rx: Receiver<DBMessage<DB>>) {
     let mut txn = None;
+    let mut last_compact = Instant::now();
+    if let Err(e) = db.compact() {
+        tracing::error!("DB ERROR compacting DB on startup (background): {e}");
+    }
     while let Ok(msg) = rx.recv() {
         match msg {
             DBMessage::StartTxn => {
@@ -127,6 +133,13 @@ fn db_run<DB: Database>(db: DB, rx: Receiver<DBMessage<DB>>) {
                 }
             }
             DBMessage::Shutdown => break,
+        }
+        // if it has been 24 hours since last compaction then do it again.
+        if last_compact.elapsed() > Duration::from_secs(86_400) {
+            last_compact = Instant::now();
+            if let Err(e) = db.compact() {
+                tracing::error!("DB ERROR compacting DB (background): {e}");
+            }
         }
     }
     tracing::info!("Layerd DB thread Shutdown complete");
