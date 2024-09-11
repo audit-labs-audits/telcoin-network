@@ -2968,18 +2968,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "enum_dispatch"
-version = "0.3.13"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "aa18ce2bc66555b3218614519ac839ddb759a7d6720732f979ef8d13be147ecd"
-dependencies = [
- "once_cell",
- "proc-macro2",
- "quote",
- "syn 2.0.77",
-]
-
-[[package]]
 name = "enumn"
 version = "0.1.14"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -11042,7 +11030,6 @@ dependencies = [
  "consensus-metrics",
  "criterion",
  "derive_builder",
- "enum_dispatch",
  "eyre",
  "fastcrypto",
  "fastcrypto-tbls",
@@ -11059,7 +11046,6 @@ dependencies = [
  "rand 0.8.5",
  "reth-chainspec",
  "reth-consensus",
- "reth-db",
  "reth-evm",
  "reth-evm-ethereum",
  "reth-payload-primitives",
