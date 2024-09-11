@@ -19,7 +19,7 @@ impl MdbxMetrics {
                 registry,
             )?,
             depth: register_int_gauge_with_registry!(
-                "mdbx_page_size",
+                "mdbx_depth",
                 "Depth (height) of the B-tree.",
                 registry,
             )?,
@@ -34,12 +34,12 @@ impl MdbxMetrics {
                 registry,
             )?,
             overflow_pages: register_int_gauge_with_registry!(
-                "mdbx_leaf_pages",
+                "mdbx_overflow_pages",
                 "Number of overflow pages.",
                 registry,
             )?,
             entries: register_int_gauge_with_registry!(
-                "mdbx_leaf_pages",
+                "mdbx_entries",
                 "Number of data items.",
                 registry,
             )?,
