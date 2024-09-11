@@ -1,7 +1,15 @@
 // Copyright (c) Telcoin, LLC
 // SPDX-License-Identifier: Apache-2.0
 
-use std::{marker::PhantomData, path::Path};
+use std::{
+    marker::PhantomData,
+    path::Path,
+    sync::{
+        mpsc::{self, SyncSender},
+        Arc,
+    },
+    time::Duration,
+};
 
 use bincode::Options;
 use reth_libmdbx::{
@@ -10,7 +18,10 @@ use reth_libmdbx::{
 };
 use serde::{Deserialize, Serialize};
 
-use crate::traits::{Database, DbTx, DbTxMut, KeyT, Table, ValueT};
+use crate::{
+    mdbx::metrics::MdbxMetrics,
+    traits::{Database, DbTx, DbTxMut, KeyT, Table, ValueT},
+};
 
 fn decode<'a, T: Deserialize<'a>>(bytes: &'a [u8]) -> T {
     bincode::DefaultOptions::new()
@@ -115,6 +126,20 @@ impl DbTxMut for MdbxTxMut {
 pub struct MdbxDatabase {
     /// Libmdbx-sys environment.
     inner: Environment,
+    shutdown_tx: Arc<SyncSender<bool>>,
+}
+
+impl Drop for MdbxDatabase {
+    fn drop(&mut self) {
+        if Arc::strong_count(&self.shutdown_tx) <= 2 {
+            tracing::info!("MDBX Dropping, shutting down metrics thread");
+            // shutdown_tx is a sync sender with no buffer so this should block until the thread
+            // reads it and shuts down.
+            if let Err(e) = self.shutdown_tx.send(true) {
+                tracing::error!("Error while trying to send shutdown to MDBX metrics thread {e}");
+            }
+        }
+    }
 }
 
 const GIGABYTE: usize = 1024 * 1024 * 1024;
@@ -151,7 +176,37 @@ impl MdbxDatabase {
                 page_size: Some(PageSize::Set(default_page_size())),
             })
             .open(path.as_ref())?;
-        Ok(MdbxDatabase { inner: env })
+
+        let (shutdown_tx, rx) = mpsc::sync_channel::<bool>(0);
+
+        let db_cloned = env.clone();
+        // Spawn thread to update metrics from ReDB stats every 2 seconds.
+        std::thread::spawn(move || {
+            tracing::info!("Starting MDBX metrics thread");
+            let metrics = MdbxMetrics::default();
+            while let Err(mpsc::RecvTimeoutError::Timeout) = rx.recv_timeout(Duration::from_secs(2))
+            {
+                match db_cloned.stat() {
+                    Ok(status) => {
+                        tracing::trace!("MDBX metrics thread {status:?}");
+                        metrics.page_size.set(status.page_size().into());
+                        metrics.depth.set(status.depth().into());
+                        metrics.branch_pages.set(status.branch_pages().try_into().unwrap_or(-1));
+                        metrics.leaf_pages.set(status.leaf_pages().try_into().unwrap_or(-1));
+                        metrics
+                            .overflow_pages
+                            .set(status.overflow_pages().try_into().unwrap_or(-1));
+                        metrics.entries.set(status.entries().try_into().unwrap_or(-1));
+                    }
+                    Err(e) => {
+                        tracing::error!("Error while trying to get MDBX status: {e}");
+                    }
+                }
+            }
+            tracing::info!("Ending MDBX metrics thread");
+        });
+
+        Ok(MdbxDatabase { inner: env, shutdown_tx: Arc::new(shutdown_tx) })
     }
 
     pub fn open_table<T: Table>(&self) -> eyre::Result<()> {
