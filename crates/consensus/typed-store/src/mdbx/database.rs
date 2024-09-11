@@ -131,7 +131,7 @@ pub struct MdbxDatabase {
 
 impl Drop for MdbxDatabase {
     fn drop(&mut self) {
-        if Arc::strong_count(&self.shutdown_tx) <= 2 {
+        if Arc::strong_count(&self.shutdown_tx) <= 1 {
             tracing::info!("MDBX Dropping, shutting down metrics thread");
             // shutdown_tx is a sync sender with no buffer so this should block until the thread
             // reads it and shuts down.
