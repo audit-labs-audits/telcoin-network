@@ -3,11 +3,10 @@
 
 use std::{collections::BTreeMap, fmt::Debug, marker::PhantomData, sync::Arc};
 
-use bincode::Options;
 use dashmap::DashMap;
 use ouroboros::self_referencing;
 use parking_lot::{RwLock, RwLockReadGuard};
-use serde::{Deserialize, Serialize};
+use tn_types::{decode, encode};
 
 use crate::traits::{DBIter, Database, DbTx, DbTxMut, Table};
 
@@ -275,22 +274,6 @@ impl Database for MemDatabase {
     }
 }
 
-fn decode<'a, T: Deserialize<'a>>(bytes: &'a [u8]) -> T {
-    bincode::DefaultOptions::new()
-        .with_big_endian()
-        .with_fixint_encoding()
-        .deserialize(bytes)
-        .expect("Invalid bytes!")
-}
-
-fn encode<T: Serialize>(obj: &T) -> Vec<u8> {
-    bincode::DefaultOptions::new()
-        .with_big_endian()
-        .with_fixint_encoding()
-        .serialize(obj)
-        .expect("Can not serialize!")
-}
-
 #[self_referencing]
 struct TabAndGuard<T>
 where
@@ -321,16 +304,8 @@ impl<T: Table> Iterator for MemDBIter<T> {
     fn next(&mut self) -> Option<Self::Item> {
         self.with_mut(|fields| {
             fields.iter.next().map(|(key_bytes, value_bytes)| {
-                let key = bincode::DefaultOptions::new()
-                    .with_big_endian()
-                    .with_fixint_encoding()
-                    .deserialize(key_bytes)
-                    .expect("Invalid bytes!");
-                let value = bincode::DefaultOptions::new()
-                    .with_big_endian()
-                    .with_fixint_encoding()
-                    .deserialize(value_bytes)
-                    .expect("Invalid bytes!");
+                let key = decode(key_bytes);
+                let value = decode(value_bytes);
                 (key, value)
             })
         })

@@ -23,7 +23,6 @@ use std::{
     path::{Path, PathBuf},
     sync::Arc,
 };
-use tap::TapFallible;
 use tracing::{info, instrument, warn};
 
 pub use errors::TypedStoreError;
@@ -525,11 +524,13 @@ impl<'a> Iterator for RocksDBIter<'a> {
 }
 
 pub fn read_size_from_env(var_name: &str) -> Option<usize> {
-    env::var(var_name)
-        .ok()?
-        .parse::<usize>()
-        .tap_err(|e| warn!("Env var {} does not contain valid usize integer: {}", var_name, e))
-        .ok()
+    match env::var(var_name).ok()?.parse::<usize>() {
+        Ok(size) => Some(size),
+        Err(e) => {
+            warn!("Env var {} does not contain valid usize integer: {}", var_name, e);
+            None
+        }
+    }
 }
 
 #[derive(Clone, Debug)]
@@ -762,6 +763,7 @@ fn get_block_options(block_cache_size_mb: usize) -> BlockBasedOptions {
     block_options
 }
 
+/*
 /// Opens a database with options, and a number of column families that are created if they do not
 /// exist.
 #[instrument(level="debug", skip_all, fields(path = ?path.as_ref(), cf = ?opt_cfs), err)]
@@ -775,6 +777,7 @@ pub fn open_cf<P: AsRef<Path>>(
     let column_descriptors: Vec<_> = opt_cfs.iter().map(|name| (*name, options.clone())).collect();
     open_cf_opts(path, Some(options.clone()), metric_conf, &column_descriptors[..])
 }
+*/
 
 fn prepare_db_options(db_options: Option<rocksdb::Options>) -> rocksdb::Options {
     // Customize database options
@@ -784,6 +787,7 @@ fn prepare_db_options(db_options: Option<rocksdb::Options>) -> rocksdb::Options 
     options
 }
 
+/*
 /// Opens a database with options, and a number of column families with individual options that are
 /// created if they do not exist.
 #[instrument(level="debug", skip_all, fields(path = ?path.as_ref()), err)]
@@ -819,6 +823,7 @@ pub fn open_cf_opts<P: AsRef<Path>>(
         })))
     })
 }
+*/
 
 /// Opens a database with options, and a number of column families with individual options that are
 /// created if they do not exist.

@@ -11,33 +11,16 @@ use std::{
     time::Duration,
 };
 
-use bincode::Options;
 use reth_libmdbx::{
     ffi::MDBX_dbi, Cursor, DatabaseFlags, Environment, Geometry, PageSize, Transaction, WriteFlags,
     RO, RW,
 };
-use serde::{Deserialize, Serialize};
+use tn_types::{decode, encode};
 
 use crate::{
     mdbx::metrics::MdbxMetrics,
     traits::{Database, DbTx, DbTxMut, KeyT, Table, ValueT},
 };
-
-fn decode<'a, T: Deserialize<'a>>(bytes: &'a [u8]) -> T {
-    bincode::DefaultOptions::new()
-        .with_big_endian()
-        .with_fixint_encoding()
-        .deserialize(bytes)
-        .expect("Invalid bytes!")
-}
-
-fn encode<T: Serialize>(obj: &T) -> Vec<u8> {
-    bincode::DefaultOptions::new()
-        .with_big_endian()
-        .with_fixint_encoding()
-        .serialize(obj)
-        .expect("Can not serialize!")
-}
 
 /// Wrapper for the libmdbx transaction.
 #[derive(Debug)]

@@ -111,12 +111,6 @@ impl From<bincode::Error> for BincodeErrorDef {
     }
 }
 
-impl From<bcs::Error> for TypedStoreError {
-    fn from(err: bcs::Error) -> Self {
-        TypedStoreError::SerializationError(format!("{err}"))
-    }
-}
-
 impl From<bincode::Error> for TypedStoreError {
     fn from(err: bincode::Error) -> Self {
         TypedStoreError::SerializationError(format!("{err}"))
