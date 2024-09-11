@@ -10976,7 +10976,7 @@ dependencies = [
  "alloy-rlp",
  "anemo",
  "base64 0.21.7",
- "bincode",
+ "bcs",
  "consensus-metrics",
  "criterion",
  "derive_builder",
