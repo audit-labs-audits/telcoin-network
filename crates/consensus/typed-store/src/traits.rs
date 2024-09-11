@@ -112,4 +112,10 @@ pub trait Database: Send + Sync + Clone + 'static {
         let tx = self.read_txn()?;
         keys.into_iter().map(|key| tx.get::<T>(key.borrow())).collect()
     }
+
+    /// If the underlying DB needs to be manually compacted (looking at redb here) then this can be
+    /// overwritten to allow this.  No-op for most backends.
+    fn compact(&self) -> eyre::Result<()> {
+        Ok(())
+    }
 }
