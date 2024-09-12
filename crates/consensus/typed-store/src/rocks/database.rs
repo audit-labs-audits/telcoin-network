@@ -4,7 +4,6 @@
 
 use rocksdb::{properties, AsColumnFamilyRef, Transaction};
 use tn_types::{decode, encode, encode_key};
-//use tracing::error;
 
 use crate::{
     rocks::CF_METRICS_REPORT_PERIOD_MILLIS,
@@ -157,14 +156,10 @@ impl RocksDatabase {
         let db_cloned = db.clone();
         let db_metrics = Arc::new(DBMetrics::default());
         let db_metrics_cloned = db_metrics.clone();
-        //let (sender, mut recv) = tokio::sync::oneshot::channel();
         let (sender, recv) = mpsc::sync_channel::<bool>(0);
         let cfs: Arc<Vec<(&'static str, Arc<DBMetrics>)>> =
             Arc::new(opt_cfs.iter().map(|(cf, _)| (*cf, Arc::new(DBMetrics::default()))).collect());
         std::thread::spawn(move || {
-            //tokio::task::spawn(async move {
-            //let mut interval =
-            //    tokio::time::interval(Duration::from_millis(CF_METRICS_REPORT_PERIOD_MILLIS));
             while let Err(mpsc::RecvTimeoutError::Timeout) =
                 recv.recv_timeout(Duration::from_millis(CF_METRICS_REPORT_PERIOD_MILLIS))
             {
@@ -173,31 +168,9 @@ impl RocksDatabase {
                     let db_metrics = db_metrics.clone();
                     let cf = *cf;
                     let db_cloned = db_cloned.clone();
-                    //if let Err(e) = tokio::task::spawn_blocking(move || {
                     Self::report_metrics(&db_cloned, cf, &db_metrics);
-                    //}).await {
-                    // error!("Failed to log metrics with error: {}", e);
-                    //}
                 }
             }
-            /*loop {
-                tokio::select! {
-                    _ = interval.tick() => {
-                        let cfs_cloned = cfs.clone();
-                        for (cf, db_metrics) in cfs_cloned.iter() {
-                            let db_metrics = db_metrics.clone();
-                            let cf = *cf;
-                            let db_cloned = db_cloned.clone();
-                            if let Err(e) = tokio::task::spawn_blocking(move || {
-                                Self::report_metrics(&db_cloned, cf, &db_metrics);
-                            }).await {
-                                error!("Failed to log metrics with error: {}", e);
-                            }
-                        }
-                    }
-                    _ = &mut recv => break,
-                }
-            }*/
         });
         Self {
             rocksdb: db.clone(),

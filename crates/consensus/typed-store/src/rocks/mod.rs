@@ -762,22 +762,6 @@ fn get_block_options(block_cache_size_mb: usize) -> BlockBasedOptions {
     block_options
 }
 
-/*
-/// Opens a database with options, and a number of column families that are created if they do not
-/// exist.
-#[instrument(level="debug", skip_all, fields(path = ?path.as_ref(), cf = ?opt_cfs), err)]
-pub fn open_cf<P: AsRef<Path>>(
-    path: P,
-    db_options: Option<rocksdb::Options>,
-    metric_conf: MetricConf,
-    opt_cfs: &[&str],
-) -> Result<Arc<RocksDB>, TypedStoreError> {
-    let options = db_options.unwrap_or_else(|| default_db_options().options);
-    let column_descriptors: Vec<_> = opt_cfs.iter().map(|name| (*name, options.clone())).collect();
-    open_cf_opts(path, Some(options.clone()), metric_conf, &column_descriptors[..])
-}
-*/
-
 fn prepare_db_options(db_options: Option<rocksdb::Options>) -> rocksdb::Options {
     // Customize database options
     let mut options = db_options.unwrap_or_else(|| default_db_options().options);
@@ -785,44 +769,6 @@ fn prepare_db_options(db_options: Option<rocksdb::Options>) -> rocksdb::Options 
     options.create_missing_column_families(true);
     options
 }
-
-/*
-/// Opens a database with options, and a number of column families with individual options that are
-/// created if they do not exist.
-#[instrument(level="debug", skip_all, fields(path = ?path.as_ref()), err)]
-pub fn open_cf_opts<P: AsRef<Path>>(
-    path: P,
-    db_options: Option<rocksdb::Options>,
-    metric_conf: MetricConf,
-    opt_cfs: &[(&str, rocksdb::Options)],
-) -> Result<Arc<RocksDB>, TypedStoreError> {
-    let path = path.as_ref();
-    // In the simulator, we intercept the wall clock in the test thread only. This causes problems
-    // because rocksdb uses the simulated clock when creating its background threads, but then
-    // those threads see the real wall clock (because they are not the test thread), which causes
-    // rocksdb to panic. The `nondeterministic` macro evaluates expressions in new threads, which
-    // resolves the issue.
-    //
-    // This is a no-op in non-simulator builds.
-
-    let cfs = populate_missing_cfs(opt_cfs, path)?;
-    nondeterministic!({
-        let options = prepare_db_options(db_options);
-        let rocksdb = {
-            rocksdb::DBWithThreadMode::<MultiThreaded>::open_cf_descriptors(
-                &options,
-                path,
-                cfs.into_iter().map(|(name, opts)| ColumnFamilyDescriptor::new(name, opts)),
-            )?
-        };
-        Ok(Arc::new(RocksDB::DBWithThreadMode(DBWithThreadModeWrapper {
-            underlying: rocksdb,
-            metric_conf,
-            db_path: PathBuf::from(path),
-        })))
-    })
-}
-*/
 
 /// Opens a database with options, and a number of column families with individual options that are
 /// created if they do not exist.
