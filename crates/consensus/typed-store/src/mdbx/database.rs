@@ -15,7 +15,7 @@ use reth_libmdbx::{
     ffi::MDBX_dbi, Cursor, DatabaseFlags, Environment, Geometry, PageSize, Transaction, WriteFlags,
     RO, RW,
 };
-use tn_types::{decode, encode};
+use tn_types::{decode, decode_key, encode, encode_key};
 
 use crate::{
     mdbx::metrics::MdbxMetrics,
@@ -42,7 +42,7 @@ impl MdbxTx {
 
 impl DbTx for MdbxTx {
     fn get<T: Table>(&self, key: &T::Key) -> eyre::Result<Option<T::Value>> {
-        let key_buf = encode(key);
+        let key_buf = encode_key(key);
         let v = self
             .inner
             .get::<Vec<u8>>(self.get_dbi::<T>()?, &key_buf[..])
@@ -67,7 +67,7 @@ impl MdbxTxMut {
 
 impl DbTx for MdbxTxMut {
     fn get<T: Table>(&self, key: &T::Key) -> eyre::Result<Option<T::Value>> {
-        let key_buf = encode(key);
+        let key_buf = encode_key(key);
         let v = self
             .inner
             .get::<Vec<u8>>(self.get_dbi::<T>()?, &key_buf[..])
@@ -82,14 +82,14 @@ impl DbTxMut for MdbxTxMut {
         key: &T::Key,
         value: &T::Value,
     ) -> eyre::Result<()> {
-        let key_buf = encode(key);
+        let key_buf = encode_key(key);
         let value_buf = encode(value);
         self.inner.put(self.get_dbi::<T>()?, key_buf, value_buf, WriteFlags::UPSERT)?;
         Ok(())
     }
 
     fn remove<T: crate::traits::Table>(&mut self, key: &T::Key) -> eyre::Result<()> {
-        let key_buf = encode(key);
+        let key_buf = encode_key(key);
         self.inner.del(self.get_dbi::<T>()?, key_buf, None)?;
         Ok(())
     }
@@ -297,7 +297,7 @@ impl Database for MdbxDatabase {
             .ok()?
             .last::<Vec<u8>, Vec<u8>>()
             .ok()?
-            .map(|(k, v)| (decode::<T::Key>(&k), decode::<T::Value>(&v)))
+            .map(|(k, v)| (decode_key::<T::Key>(&k), decode::<T::Value>(&v)))
     }
 }
 
@@ -320,7 +320,7 @@ where
 
     fn next(&mut self) -> Option<Self::Item> {
         if let Ok(result) = self.cursor.next::<Vec<u8>, Vec<u8>>() {
-            result.map(|(k, v)| (decode::<K>(&k), decode::<V>(&v)))
+            result.map(|(k, v)| (decode_key::<K>(&k), decode::<V>(&v)))
         } else {
             None
         }
@@ -352,10 +352,10 @@ where
                 .cursor
                 .last::<Vec<u8>, Vec<u8>>()
                 .ok()?
-                .map(|(k, v)| (decode::<K>(&k), decode::<V>(&v)));
+                .map(|(k, v)| (decode_key::<K>(&k), decode::<V>(&v)));
         }
         if let Ok(result) = self.cursor.prev::<Vec<u8>, Vec<u8>>() {
-            result.map(|(k, v)| (decode::<K>(&k), decode::<V>(&v)))
+            result.map(|(k, v)| (decode_key::<K>(&k), decode::<V>(&v)))
         } else {
             None
         }

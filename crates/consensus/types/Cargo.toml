@@ -12,8 +12,8 @@ publish = false
 
 [dependencies]
 base64 = { workspace = true }
-bcs = { workspace = true }    # See encode/decode in lib.rs if you want to swap the serde impl
-#bincode = { workspace = true }
+bcs = { workspace = true }
+bincode = { workspace = true }
 reth-payload-primitives = { workspace = true }
 reth-primitives = { workspace = true }
 reth-chainspec = { workspace = true }

@@ -5126,8 +5126,6 @@ name = "narwhal-executor"
 version = "0.1.0"
 dependencies = [
  "async-trait",
- "bcs",
- "bincode",
  "bytes",
  "consensus-metrics",
  "fastcrypto",
@@ -5163,7 +5161,6 @@ dependencies = [
  "axum",
  "axum-server",
  "backoff",
- "bincode",
  "bytes",
  "consensus-metrics",
  "dashmap 6.1.0",
@@ -5211,8 +5208,6 @@ dependencies = [
  "anemo-tower",
  "async-trait",
  "backoff",
- "bcs",
- "bincode",
  "bytes",
  "cfg-if",
  "consensus-metrics",
@@ -10977,6 +10972,7 @@ dependencies = [
  "anemo",
  "base64 0.21.7",
  "bcs",
+ "bincode",
  "consensus-metrics",
  "criterion",
  "derive_builder",

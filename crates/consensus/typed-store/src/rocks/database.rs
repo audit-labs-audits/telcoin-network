@@ -3,7 +3,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 use rocksdb::{properties, AsColumnFamilyRef, Transaction};
-use tn_types::{decode, encode};
+use tn_types::{decode, encode, encode_key};
 //use tracing::error;
 
 use crate::{
@@ -23,7 +23,7 @@ use std::{
 };
 
 use super::{
-    be_fix_int_ser, default_db_options,
+    default_db_options,
     iter::Iter,
     metrics::{DBMetrics, RocksDBPerfContext, SamplingInterval},
     open_cf_opts_transactional, MetricConf, ReadWriteOptions, METRICS_ERROR,
@@ -48,11 +48,8 @@ impl<'txn> DbTx for RocksDbTxMut<'txn> {
             .rocksdb
             .cf_handle(T::NAME)
             .unwrap_or_else(|| panic!("invalid table {}", T::NAME));
-        let key_buf = be_fix_int_ser(key)?;
-        Ok(self
-            .txn
-            .get_cf(&cf, key_buf)
-            .map(|res| res.and_then(|bytes| Some(decode::<T::Value>(&bytes))))?)
+        let key_buf = encode_key(key);
+        Ok(self.txn.get_cf(&cf, key_buf).map(|res| res.map(|bytes| decode::<T::Value>(&bytes)))?)
     }
 }
 
@@ -76,7 +73,7 @@ impl<'txn> DbTxMut for RocksDbTxMut<'txn> {
             .start_timer();
         let perf_ctx =
             if self.db.write_sample_interval.sample() { Some(RocksDBPerfContext) } else { None };
-        let key_buf = be_fix_int_ser(key)?;
+        let key_buf = encode_key(key);
         let value_buf = encode(value);
         self.db
             .db_metrics
@@ -106,7 +103,7 @@ impl<'txn> DbTxMut for RocksDbTxMut<'txn> {
             .start_timer();
         let perf_ctx =
             if self.db.write_sample_interval.sample() { Some(RocksDBPerfContext) } else { None };
-        let key_buf = be_fix_int_ser(key)?;
+        let key_buf = encode_key(key);
         self.txn.delete_cf(&cf, key_buf)?;
         self.db.db_metrics.op_metrics.rocksdb_deletes.with_label_values(&[T::NAME]).inc();
         if perf_ctx.is_some() {
@@ -403,7 +400,7 @@ impl Database for RocksDatabase {
     fn contains_key<T: Table>(&self, key: &T::Key) -> eyre::Result<bool> {
         let cf =
             self.rocksdb.cf_handle(T::NAME).unwrap_or_else(|| panic!("invalid table {}", T::NAME));
-        let key_buf = be_fix_int_ser(key)?;
+        let key_buf = encode_key(key);
         // [`rocksdb::DBWithThreadMode::key_may_exist_cf`] can have false positives,
         // but no false negatives. We use it to short-circuit the absent case
         let readopts = self.opts.readopts();
@@ -422,7 +419,7 @@ impl Database for RocksDatabase {
             .start_timer();
         let perf_ctx =
             if self.get_sample_interval.sample() { Some(RocksDBPerfContext) } else { None };
-        let key_buf = be_fix_int_ser(key)?;
+        let key_buf = encode_key(key);
         let res = self.rocksdb.get_pinned_cf_opt(&cf, &key_buf, &self.opts.readopts())?;
         self.db_metrics
             .op_metrics
@@ -449,7 +446,7 @@ impl Database for RocksDatabase {
             .start_timer();
         let perf_ctx =
             if self.write_sample_interval.sample() { Some(RocksDBPerfContext) } else { None };
-        let key_buf = be_fix_int_ser(key)?;
+        let key_buf = encode_key(key);
         let value_buf = encode(value);
         self.db_metrics
             .op_metrics
@@ -474,7 +471,7 @@ impl Database for RocksDatabase {
             .start_timer();
         let perf_ctx =
             if self.write_sample_interval.sample() { Some(RocksDBPerfContext) } else { None };
-        let key_buf = be_fix_int_ser(key)?;
+        let key_buf = encode_key(key);
         self.rocksdb.delete_cf(&cf, key_buf, &self.opts.writeopts())?;
         self.db_metrics.op_metrics.rocksdb_deletes.with_label_values(&[T::NAME]).inc();
         if perf_ctx.is_some() {

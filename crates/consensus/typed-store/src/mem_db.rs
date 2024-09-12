@@ -6,7 +6,7 @@ use std::{collections::BTreeMap, fmt::Debug, marker::PhantomData, sync::Arc};
 use dashmap::DashMap;
 use ouroboros::self_referencing;
 use parking_lot::{RwLock, RwLockReadGuard};
-use tn_types::{decode, encode};
+use tn_types::{decode, decode_key, encode, encode_key};
 
 use crate::traits::{DBIter, Database, DbTx, DbTxMut, Table};
 
@@ -14,7 +14,7 @@ type StoreType = DashMap<&'static str, Arc<RwLock<BTreeMap<Vec<u8>, Vec<u8>>>>>;
 
 fn get<T: crate::traits::Table>(store: &StoreType, key: &T::Key) -> eyre::Result<Option<T::Value>> {
     if let Some(table) = store.get(T::NAME) {
-        let key_bytes = encode(key);
+        let key_bytes = encode_key(key);
         if let Some(val_bytes) = table.read().get(&key_bytes) {
             let val = decode(val_bytes);
             return Ok(Some(val));
@@ -48,7 +48,7 @@ impl DbTx for MemDbTxMut {
 impl DbTxMut for MemDbTxMut {
     fn insert<T: Table>(&mut self, key: &T::Key, value: &T::Value) -> eyre::Result<()> {
         if let Some(table) = self.store.get(T::NAME) {
-            let key_bytes = encode(key);
+            let key_bytes = encode_key(key);
             let value_bytes = encode(value);
             table.write().insert(key_bytes, value_bytes);
         }
@@ -57,7 +57,7 @@ impl DbTxMut for MemDbTxMut {
 
     fn remove<T: Table>(&mut self, key: &T::Key) -> eyre::Result<()> {
         if let Some(table) = self.store.get(T::NAME) {
-            let key_bytes = encode(key);
+            let key_bytes = encode_key(key);
             table.write().remove(&key_bytes);
         }
         Ok(())
@@ -120,7 +120,7 @@ impl Database for MemDatabase {
 
     fn contains_key<T: Table>(&self, key: &T::Key) -> eyre::Result<bool> {
         if let Some(table) = self.store.get(T::NAME) {
-            let key_bytes = encode(key);
+            let key_bytes = encode_key(key);
             return Ok(table.read().contains_key(&key_bytes));
         }
         Ok(false)
@@ -132,7 +132,7 @@ impl Database for MemDatabase {
 
     fn insert<T: Table>(&self, key: &T::Key, value: &T::Value) -> eyre::Result<()> {
         if let Some(table) = self.store.get(T::NAME) {
-            let key_bytes = encode(key);
+            let key_bytes = encode_key(key);
             let value_bytes = encode(value);
             table.write().insert(key_bytes, value_bytes);
         }
@@ -141,7 +141,7 @@ impl Database for MemDatabase {
 
     fn remove<T: Table>(&self, key: &T::Key) -> eyre::Result<()> {
         if let Some(table) = self.store.get(T::NAME) {
-            let key_bytes = encode(key);
+            let key_bytes = encode_key(key);
             table.write().remove(&key_bytes);
         }
         Ok(())
@@ -199,7 +199,7 @@ impl Database for MemDatabase {
                     .build(),
                     iter_builder: |table: &'_ TabAndGuard<T>| {
                         table.with(|fields| {
-                            let key_bytes = encode(key);
+                            let key_bytes = encode_key(key);
                             let iter = Box::new(
                                 fields.guard.iter().skip_while(move |(k, _)| **k < key_bytes),
                             );
@@ -242,7 +242,7 @@ impl Database for MemDatabase {
 
     fn record_prior_to<T: Table>(&self, key: &T::Key) -> Option<(T::Key, T::Value)> {
         if let Some(table) = self.store.get(T::NAME) {
-            let key_bytes = encode(key);
+            let key_bytes = encode_key(key);
             let mut last = None;
             let guard = table.read();
             for (k, v) in guard.iter() {
@@ -252,7 +252,7 @@ impl Database for MemDatabase {
                 last = Some((k, v));
             }
             last.map(|(key_bytes, value_bytes)| {
-                let key = decode(key_bytes);
+                let key = decode_key(key_bytes);
                 let value = decode(value_bytes);
                 (key, value)
             })
@@ -264,7 +264,7 @@ impl Database for MemDatabase {
     fn last_record<T: Table>(&self) -> Option<(T::Key, T::Value)> {
         if let Some(table) = self.store.get(T::NAME) {
             table.read().last_key_value().map(|(key_bytes, value_bytes)| {
-                let key = decode(key_bytes);
+                let key = decode_key(key_bytes);
                 let value = decode(value_bytes);
                 (key, value)
             })
@@ -304,7 +304,7 @@ impl<T: Table> Iterator for MemDBIter<T> {
     fn next(&mut self) -> Option<Self::Item> {
         self.with_mut(|fields| {
             fields.iter.next().map(|(key_bytes, value_bytes)| {
-                let key = decode(key_bytes);
+                let key = decode_key(key_bytes);
                 let value = decode(value_bytes);
                 (key, value)
             })

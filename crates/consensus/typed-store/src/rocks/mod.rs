@@ -8,7 +8,6 @@ pub(crate) mod iter;
 pub mod metrics;
 pub mod util;
 
-use bincode::Options;
 use metrics::SamplingInterval;
 use rocksdb::{
     checkpoint::Checkpoint, AsColumnFamilyRef, BlockBasedOptions, BottommostLevelCompaction,
@@ -935,19 +934,6 @@ pub fn list_tables(path: std::path::PathBuf) -> eyre::Result<Vec<String>> {
                 })
                 .collect()
         })
-}
-
-/// TODO: Good description of why we're doing this : RocksDB stores keys in BE and has a seek operator on iterators, see `https://github.com/facebook/rocksdb/wiki/Iterator#introduction`
-#[inline]
-pub fn be_fix_int_ser<S>(t: &S) -> Result<Vec<u8>, TypedStoreError>
-where
-    S: ?Sized + serde::Serialize,
-{
-    bincode::DefaultOptions::new()
-        .with_big_endian()
-        .with_fixint_encoding()
-        .serialize(t)
-        .map_err(|e| e.into())
 }
 
 #[derive(Clone)]
