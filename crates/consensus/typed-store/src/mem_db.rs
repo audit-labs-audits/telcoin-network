@@ -149,7 +149,10 @@ impl MemDatabase {
                 self.metrics.write().table_counts.insert(T::NAME, m);
             }
             Err(e) => {
-                tracing::error!(target: "telcoin::memdb", "Error adding metrics for table {}: {e}", T::NAME)
+                // This will happen for tests.  Nothing really to do, if the guage is missing then
+                // the metrics thread will just not update it... Log at debug level
+                // in case something else is going on and someone is debugging.
+                tracing::debug!(target: "telcoin::memdb", "Error adding metrics for table {}: {e}", T::NAME)
             }
         }
     }
