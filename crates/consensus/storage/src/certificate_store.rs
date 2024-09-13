@@ -7,7 +7,7 @@ use lru::LruCache;
 use parking_lot::Mutex;
 use prometheus::{register_int_counter_with_registry, IntCounter, Registry};
 use std::{
-    cmp::Ordering,
+    cmp::{max, Ordering},
     collections::{BTreeMap, HashMap},
     num::NonZeroUsize,
     sync::Arc,
@@ -15,7 +15,7 @@ use std::{
 use tap::Tap;
 use telcoin_macros::fail_point;
 
-use crate::StoreResult;
+use crate::{StoreResult, ROUNDS_TO_KEEP};
 use narwhal_typed_store::{
     tables::{CertificateDigestByOrigin, CertificateDigestByRound, Certificates},
     traits::{Database, DbTx, DbTxMut},
@@ -237,19 +237,37 @@ pub struct CertificateStore<DB, T: Cache + Clone = CertificateStoreCache> {
 }
 
 impl<DB: Database, T: Cache + Clone> CertificateStore<DB, T> {
-    pub fn new(
-        db: DB,
-        //certificate_id_by_round: Arc<dyn DBMap<(Round, AuthorityIdentifier),
-        // CertificateDigest>>, // CertificateDigestByRound certificate_id_by_origin:
-        // Arc<dyn DBMap<(AuthorityIdentifier, Round), CertificateDigest>>, //
-        // CertificateDigestByOrigin
-        certificate_store_cache: T,
-    ) -> CertificateStore<DB, T> {
+    pub fn new(db: DB, certificate_store_cache: T) -> CertificateStore<DB, T> {
         Self {
             db,
             notify_subscribers: Arc::new(NotifyRead::new()),
             cache: Arc::new(certificate_store_cache),
         }
+    }
+
+    /// Save a cert using an open txn.
+    fn save_cert<TX: DbTxMut>(
+        &self,
+        txn: &mut TX,
+        digest: CertificateDigest,
+        certificate: Certificate,
+    ) -> StoreResult<()> {
+        txn.insert::<Certificates>(&digest, &certificate)?;
+
+        // write the certificates id by their rounds
+        let key = (certificate.round(), certificate.origin());
+        txn.insert::<CertificateDigestByRound>(&key, &digest)?;
+
+        // write the certificates id by their origins
+        let key = (certificate.origin(), certificate.round());
+        txn.insert::<CertificateDigestByOrigin>(&key, &digest)?;
+
+        self.notify_subscribers.notify(&digest, &certificate);
+
+        // insert in cache
+        self.cache.write(certificate);
+
+        Ok(())
     }
 
     /// Inserts a certificate to the store
@@ -258,21 +276,12 @@ impl<DB: Database, T: Cache + Clone> CertificateStore<DB, T> {
         let mut txn = self.db.write_txn()?;
 
         let id = certificate.digest();
-
-        // write the certificate by its id
-        txn.insert::<Certificates>(&id, &certificate)?;
-
-        // Index the certificate id by its round and origin.
-        txn.insert::<CertificateDigestByRound>(&(certificate.round(), certificate.origin()), &id)?;
-        txn.insert::<CertificateDigestByOrigin>(&(certificate.origin(), certificate.round()), &id)?;
-
-        self.notify_subscribers.notify(&id, &certificate);
-
-        // insert in cache
-        self.cache.write(certificate);
+        let round = certificate.round();
+        self.save_cert(&mut txn, id, certificate)?;
 
         txn.commit()?;
         fail_point!("narwhal-store-after-write");
+        self.gc_rounds(round)?;
         Ok(())
     }
 
@@ -283,39 +292,21 @@ impl<DB: Database, T: Cache + Clone> CertificateStore<DB, T> {
         &self,
         certificates: impl IntoIterator<Item = Certificate>,
     ) -> StoreResult<()> {
-        /// Helper function to make error handling below saner.
-        fn save_certs<TX: DbTxMut>(
-            txn: &mut TX,
-            digest: CertificateDigest,
-            certificate: &Certificate,
-        ) -> StoreResult<()> {
-            txn.insert::<Certificates>(&digest, certificate)?;
-
-            // write the certificates id by their rounds
-            let key = (certificate.round(), certificate.origin());
-            txn.insert::<CertificateDigestByRound>(&key, &digest)?;
-
-            // write the certificates id by their origins
-            let key = (certificate.origin(), certificate.round());
-            txn.insert::<CertificateDigestByOrigin>(&key, &digest)?;
-            Ok(())
-        }
-
         fail_point!("narwhal-store-before-write");
 
         let mut txn = self.db.write_txn()?;
+        let mut round = 0;
         for certificate in certificates {
             let digest = certificate.digest();
-            if let Err(e) = save_certs(&mut txn, digest, &certificate) {
+            round = max(round, certificate.round());
+            if let Err(e) = self.save_cert(&mut txn, digest, certificate) {
                 tracing::error!("Failed to write certificate for {digest} due to error {e}.");
                 return Err(e);
-            } else {
-                self.notify_subscribers.notify(&digest, &certificate);
-                self.cache.write(certificate);
             }
         }
 
         txn.commit()?;
+        self.gc_rounds(round)?;
         fail_point!("narwhal-store-after-write");
         Ok(())
     }
@@ -511,22 +502,32 @@ impl<DB: Database, T: Cache + Clone> CertificateStore<DB, T> {
                 }
             }
         }
-        /*
-        // Fetch all those certificates from main storage, return an error if any one is missing.
-
-        self.db.multi_get::<Certificates>(digests.clone())?
-            .into_iter()
-            .map(|opt_cert| {
-                opt_cert.ok_or_else(|| {
-                    eyre::Report::msg(format!(
-                        "Certificate with some digests not found, CertificateStore invariant violation: {:?}",
-                        digests
-                    ))
-                })
-            })
-            .collect()
-            */
         Ok(certs)
+    }
+
+    /// Deletes all certs for a round before round.
+    fn gc_rounds(&self, target_round: Round) -> StoreResult<()> {
+        if target_round <= ROUNDS_TO_KEEP {
+            return Ok(());
+        }
+        let target_round = target_round - ROUNDS_TO_KEEP;
+        let mut certs = Vec::new();
+        for ((round, origin), digest) in self.db.iter::<CertificateDigestByRound>() {
+            if round < target_round {
+                certs.push((round, origin, digest));
+            } else {
+                // We are done, all following rounds will be greater.
+                break;
+            }
+        }
+        let mut txn = self.db.write_txn()?;
+        for (round, origin, digest) in certs {
+            txn.remove::<Certificates>(&digest)?;
+            txn.remove::<CertificateDigestByRound>(&(round, origin))?;
+            txn.remove::<CertificateDigestByOrigin>(&(origin, round))?;
+        }
+        txn.commit()?;
+        Ok(())
     }
 
     /// Retrieves origins with certificates in each round >= the provided round.
