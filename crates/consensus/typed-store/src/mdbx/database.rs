@@ -163,7 +163,7 @@ impl MdbxDatabase {
         let (shutdown_tx, rx) = mpsc::sync_channel::<()>(0);
 
         let db_cloned = env.clone();
-        // Spawn thread to update metrics from ReDB stats every 2 seconds.
+        // Spawn thread to update metrics from MDBX stats every 2 seconds.
         std::thread::spawn(move || {
             tracing::info!(target: "telcoin::mdbx", "Starting MDBX metrics thread");
             let metrics = MdbxMetrics::default();
