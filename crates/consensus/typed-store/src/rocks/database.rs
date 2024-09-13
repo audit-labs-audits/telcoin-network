@@ -135,14 +135,14 @@ pub struct RocksDatabase {
     write_sample_interval: SamplingInterval,
     iter_sample_interval: SamplingInterval,
     //metrics_task_cancel_handle: Arc<Option<tokio::sync::oneshot::Sender<()>>>,
-    metrics_task_cancel_handle: Arc<Option<SyncSender<bool>>>,
+    metrics_task_cancel_handle: Arc<Option<SyncSender<()>>>,
 }
 
 impl Drop for RocksDatabase {
     fn drop(&mut self) {
         if Arc::strong_count(&self.metrics_task_cancel_handle) <= 1 {
             let _ = Arc::get_mut(&mut self.metrics_task_cancel_handle)
-                .map(|c| c.take().map(|c| c.send(true)));
+                .map(|c| c.take().map(|c| c.send(())));
         }
     }
 }
@@ -156,7 +156,7 @@ impl RocksDatabase {
         let db_cloned = db.clone();
         let db_metrics = Arc::new(DBMetrics::default());
         let db_metrics_cloned = db_metrics.clone();
-        let (sender, recv) = mpsc::sync_channel::<bool>(0);
+        let (sender, recv) = mpsc::sync_channel::<()>(0);
         let cfs: Arc<Vec<(&'static str, Arc<DBMetrics>)>> =
             Arc::new(opt_cfs.iter().map(|(cf, _)| (*cf, Arc::new(DBMetrics::default()))).collect());
         std::thread::spawn(move || {

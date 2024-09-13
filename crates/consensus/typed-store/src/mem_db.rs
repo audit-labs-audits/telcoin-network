@@ -94,7 +94,7 @@ impl DbTxMut for MemDbTxMut {
 pub struct MemDatabase {
     store: Arc<StoreType>,
     metrics: Arc<RwLock<MemDBMetrics>>,
-    shutdown_tx: Arc<SyncSender<bool>>,
+    shutdown_tx: Arc<SyncSender<()>>,
 }
 
 impl Drop for MemDatabase {
@@ -103,7 +103,7 @@ impl Drop for MemDatabase {
             tracing::info!(target: "telcoin::memdb", "MemDatabase Dropping, shutting down metrics thread");
             // shutdown_tx is a sync sender with no buffer so this should block until the thread
             // reads it and shuts down.
-            if let Err(e) = self.shutdown_tx.send(true) {
+            if let Err(e) = self.shutdown_tx.send(()) {
                 tracing::error!(target: "telcoin::memdb",
                     "Error while trying to send shutdown to MemDatabase metrics thread {e}"
                 );
@@ -116,7 +116,7 @@ impl MemDatabase {
     pub fn new() -> Self {
         let store: Arc<StoreType> = Arc::new(DashMap::new());
         let metrics = Arc::new(RwLock::new(MemDBMetrics::default()));
-        let (shutdown_tx, rx) = mpsc::sync_channel::<bool>(0);
+        let (shutdown_tx, rx) = mpsc::sync_channel::<()>(0);
 
         let store_cloned = Arc::clone(&store);
         let metrics_cloned = metrics.clone();

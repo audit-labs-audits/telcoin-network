@@ -109,7 +109,7 @@ impl DbTxMut for MdbxTxMut {
 pub struct MdbxDatabase {
     /// Libmdbx-sys environment.
     inner: Environment,
-    shutdown_tx: Arc<SyncSender<bool>>,
+    shutdown_tx: Arc<SyncSender<()>>,
 }
 
 impl Drop for MdbxDatabase {
@@ -118,7 +118,7 @@ impl Drop for MdbxDatabase {
             tracing::info!(target: "telcoin::mdbx", "MDBX Dropping, shutting down metrics thread");
             // shutdown_tx is a sync sender with no buffer so this should block until the thread
             // reads it and shuts down.
-            if let Err(e) = self.shutdown_tx.send(true) {
+            if let Err(e) = self.shutdown_tx.send(()) {
                 tracing::error!(target: "telcoin::mdbx", "Error while trying to send shutdown to MDBX metrics thread {e}");
             }
         }
@@ -160,7 +160,7 @@ impl MdbxDatabase {
             })
             .open(path.as_ref())?;
 
-        let (shutdown_tx, rx) = mpsc::sync_channel::<bool>(0);
+        let (shutdown_tx, rx) = mpsc::sync_channel::<()>(0);
 
         let db_cloned = env.clone();
         // Spawn thread to update metrics from ReDB stats every 2 seconds.
