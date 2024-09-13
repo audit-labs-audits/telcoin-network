@@ -115,11 +115,11 @@ pub struct MdbxDatabase {
 impl Drop for MdbxDatabase {
     fn drop(&mut self) {
         if Arc::strong_count(&self.shutdown_tx) <= 1 {
-            tracing::info!("MDBX Dropping, shutting down metrics thread");
+            tracing::info!(target: "telcoin::mdbx", "MDBX Dropping, shutting down metrics thread");
             // shutdown_tx is a sync sender with no buffer so this should block until the thread
             // reads it and shuts down.
             if let Err(e) = self.shutdown_tx.send(true) {
-                tracing::error!("Error while trying to send shutdown to MDBX metrics thread {e}");
+                tracing::error!(target: "telcoin::mdbx", "Error while trying to send shutdown to MDBX metrics thread {e}");
             }
         }
     }
@@ -165,13 +165,13 @@ impl MdbxDatabase {
         let db_cloned = env.clone();
         // Spawn thread to update metrics from ReDB stats every 2 seconds.
         std::thread::spawn(move || {
-            tracing::info!("Starting MDBX metrics thread");
+            tracing::info!(target: "telcoin::mdbx", "Starting MDBX metrics thread");
             let metrics = MdbxMetrics::default();
             while let Err(mpsc::RecvTimeoutError::Timeout) = rx.recv_timeout(Duration::from_secs(2))
             {
                 match db_cloned.stat() {
                     Ok(status) => {
-                        tracing::trace!("MDBX metrics thread {status:?}");
+                        tracing::trace!(target: "telcoin::mdbx", "MDBX metrics thread {status:?}");
                         metrics.page_size.set(status.page_size().into());
                         metrics.depth.set(status.depth().into());
                         metrics.branch_pages.set(status.branch_pages().try_into().unwrap_or(-1));
@@ -182,11 +182,11 @@ impl MdbxDatabase {
                         metrics.entries.set(status.entries().try_into().unwrap_or(-1));
                     }
                     Err(e) => {
-                        tracing::error!("Error while trying to get MDBX status: {e}");
+                        tracing::error!(target: "telcoin::mdbx", "Error while trying to get MDBX status: {e}");
                     }
                 }
             }
-            tracing::info!("Ending MDBX metrics thread");
+            tracing::info!(target: "telcoin::mdbx", "Ending MDBX metrics thread");
         });
 
         Ok(MdbxDatabase { inner: env, shutdown_tx: Arc::new(shutdown_tx) })

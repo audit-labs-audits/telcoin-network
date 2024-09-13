@@ -100,11 +100,11 @@ pub struct MemDatabase {
 impl Drop for MemDatabase {
     fn drop(&mut self) {
         if Arc::strong_count(&self.shutdown_tx) <= 1 {
-            tracing::info!("MemDatabase Dropping, shutting down metrics thread");
+            tracing::info!(target: "telcoin::memdb", "MemDatabase Dropping, shutting down metrics thread");
             // shutdown_tx is a sync sender with no buffer so this should block until the thread
             // reads it and shuts down.
             if let Err(e) = self.shutdown_tx.send(true) {
-                tracing::error!(
+                tracing::error!(target: "telcoin::memdb",
                     "Error while trying to send shutdown to MemDatabase metrics thread {e}"
                 );
             }
@@ -120,23 +120,19 @@ impl MemDatabase {
 
         let store_cloned = Arc::clone(&store);
         let metrics_cloned = metrics.clone();
-        // Spawn thread to update metrics from ReDB stats every 2 seconds.
+        // Spawn thread to update metrics from MemDB stats every 30 seconds.
         std::thread::spawn(move || {
-            tracing::info!("Starting MemDB metrics thread");
+            tracing::info!(target: "telcoin::memdb", "Starting MemDB metrics thread");
             while let Err(mpsc::RecvTimeoutError::Timeout) =
                 rx.recv_timeout(Duration::from_secs(30))
             {
-                tracing::info!("XXXXX She wakes....");
                 for kv in &*store_cloned {
-                    tracing::info!("XXXXX She walks {} ....", kv.key());
                     if let Some(m) = metrics_cloned.read().table_counts.get(kv.key()) {
-                        tracing::info!("XXXXX She walks more....");
                         m.set(kv.value().read().len().try_into().unwrap_or(-1));
                     }
                 }
-                tracing::info!("XXXXX She sleeps....");
             }
-            tracing::info!("Ending MemDB metrics thread");
+            tracing::info!(target: "telcoin::memdb", "Ending MemDB metrics thread");
         });
 
         Self { store, metrics, shutdown_tx: Arc::new(shutdown_tx) }
@@ -152,7 +148,9 @@ impl MemDatabase {
             Ok(m) => {
                 self.metrics.write().table_counts.insert(T::NAME, m);
             }
-            Err(e) => tracing::error!("Error adding metrics for table {}: {e}", T::NAME),
+            Err(e) => {
+                tracing::error!(target: "telcoin::memdb", "Error adding metrics for table {}: {e}", T::NAME)
+            }
         }
     }
 }
