@@ -905,7 +905,8 @@ mod test {
 
         println!("Stored certificates: {} seconds", now.elapsed().as_secs_f32());
 
-        let round_cutoff = 21;
+        // Large enough to avoid certificate store GC.
+        let round_cutoff = 41;
 
         // now filter the certificates over round 21
         let mut certs_ids_over_cutoff_round = certs
