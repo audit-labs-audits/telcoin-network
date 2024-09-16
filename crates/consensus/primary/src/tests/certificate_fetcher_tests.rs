@@ -475,8 +475,8 @@ async fn fetch_certificates_v1_basic() {
     verify_certificates_in_store(
         &certificate_store,
         &certificates[(target_index - 60)..(target_index)],
-        4, /* 18,  // 14 fetched certs verified directly + the initial 4 inserted (what's left
-            * in the range) */
+        4,  /* 18,  // 14 fetched certs verified directly + the initial 4 inserted (what's left
+             * in the range) */
         56, //310, // to be verified indirectly (what's left in the range)
     )
     .await;
