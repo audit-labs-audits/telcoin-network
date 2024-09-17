@@ -2,15 +2,8 @@
 // SPDX-License-Identifier: Apache-2.0
 
 //! Specific test utils for execution layer
-use super::contract_artifacts::{ERC1967PROXY_INITCODE, STABLECOIN_INITCODE};
 use crate::{adiri_genesis, now, ExecutionKeypair, TimestampSec, WorkerBlock};
-use alloy::{
-    network::{EthereumWallet, TransactionBuilder},
-    providers::{Provider, ProviderBuilder},
-    signers::{k256::FieldBytes, local::PrivateKeySigner},
-    sol,
-    sol_types::SolValue,
-};
+use alloy::signers::{k256::FieldBytes, local::PrivateKeySigner};
 use rand::{rngs::StdRng, Rng, SeedableRng};
 use reth_chainspec::{BaseFeeParams, ChainSpec};
 use reth_evm::execute::{BlockExecutionOutput, BlockExecutorProvider, Executor as _};
@@ -24,7 +17,6 @@ use reth_primitives::{
 };
 use reth_provider::{BlockReaderIdExt, ExecutionOutcome, StateProviderFactory};
 use reth_revm::database::StateProviderDatabase;
-use reth_rpc_types::TransactionRequest;
 use reth_transaction_pool::{PoolTransaction, TransactionOrigin, TransactionPool};
 use reth_trie::HashedPostState;
 use secp256k1::Secp256k1;

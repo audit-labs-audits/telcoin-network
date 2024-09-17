@@ -10,7 +10,7 @@
 use crate::util::create_validator_info;
 use alloy::{
     network::EthereumWallet,
-    providers::{Provider, ProviderBuilder},
+    providers::ProviderBuilder,
     sol,
     sol_types::SolValue,
 };
