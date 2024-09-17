@@ -322,9 +322,9 @@ mod tests {
         let mut network = TestRequestBlocksNetwork::new();
         let temp_dir = TempDir::new().unwrap();
         let block_store = open_db(temp_dir.path());
-        let mut header = Header { nonce: 1, ..Default::default() };
+        let header = Header { nonce: 1, ..Default::default() };
         let block1 = WorkerBlock::new(vec![transaction()], header.seal_slow());
-        let mut header = Header { nonce: 2, ..Default::default() };
+        let header = Header { nonce: 2, ..Default::default() };
         let block2 = WorkerBlock::new(vec![transaction()], header.seal_slow());
         let (digests, known_workers) = (
             HashSet::from_iter(vec![block1.digest(), block2.digest()]),
@@ -501,7 +501,7 @@ mod tests {
         // 6 blocks available locally with response size limit of 2
         let mut nonce = 0;
         for _i in 0..num_digests / 2 {
-            let header = Header { nonce: nonce, ..Default::default() };
+            let header = Header { nonce, ..Default::default() };
             nonce += 1;
             let block = WorkerBlock::new(vec![transaction()], header.seal_slow());
             local_digests.push(block.digest());
@@ -511,7 +511,7 @@ mod tests {
         }
         // 6 blocks available remotely with response size limit of 2
         for _i in (num_digests / 2)..num_digests {
-            let header = Header { nonce: nonce, ..Default::default() };
+            let header = Header { nonce, ..Default::default() };
             nonce += 1;
             let block = WorkerBlock::new(vec![transaction()], header.seal_slow());
             network.put(&[1, 2, 3], block.clone());
