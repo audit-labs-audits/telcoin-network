@@ -177,8 +177,7 @@ fn start_validator(instance: usize, exe_path: &Path, base_dir: &Path, mut rpc_po
 
 fn test_blocks_same(client_urls: &[String; 4]) -> eyre::Result<()> {
     let block0 = get_block(&client_urls[0], None)?;
-    let number =
-        u64::from_str_radix(&block0["number"].as_str().unwrap_or("0x100_000")[2..], 16)?;
+    let number = u64::from_str_radix(&block0["number"].as_str().unwrap_or("0x100_000")[2..], 16)?;
     let block = get_block(&client_urls[1], Some(number))?;
     if block0["hash"] != block["hash"] {
         return Err(Report::msg("Blocks between validators not the same!".to_string()));
