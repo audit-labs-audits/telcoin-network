@@ -5208,7 +5208,6 @@ dependencies = [
  "anemo-tower",
  "async-trait",
  "backoff",
- "bcs",
  "bytes",
  "cfg-if",
  "consensus-metrics",

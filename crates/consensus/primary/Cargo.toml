@@ -33,7 +33,6 @@ tokio = { workspace = true, features = [
 tower = { workspace = true }
 tracing = { workspace = true }
 tap = { workspace = true }
-bcs = { workspace = true }
 
 fastcrypto = { workspace = true }
 fastcrypto-tbls = { workspace = true }
