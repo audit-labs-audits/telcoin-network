@@ -3,10 +3,7 @@
 
 //! Specific test utils for execution layer
 use super::contract_artifacts::{ERC1967PROXY_INITCODE, STABLECOIN_INITCODE};
-use crate::{
-    adiri_genesis, now,
-    ExecutionKeypair, TimestampSec, WorkerBlock,
-};
+use crate::{adiri_genesis, now, ExecutionKeypair, TimestampSec, WorkerBlock};
 use alloy::{
     network::{EthereumWallet, TransactionBuilder},
     providers::{Provider, ProviderBuilder},
