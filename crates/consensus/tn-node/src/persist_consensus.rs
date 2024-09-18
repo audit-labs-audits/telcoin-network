@@ -19,6 +19,9 @@ pub struct PersistConsensus {
 impl PersistConsensus {
     /// Create a new PersistConsensus.  Will open a new ReDB database at path and save to that.
     pub fn new<P: AsRef<std::path::Path> + Send>(path: P) -> PersistConsensus {
+        // Just pick the DB type and tables here, keep it simple.
+        // Nothing else cares about this, eventually some RPC calls will need to use this module to
+        // expose the DB.
         let db = ReDB::open(path).expect("Cannot open database");
         db.open_table::<WorkerBlocks>().expect("failed to open table!");
         db.open_table::<SubDags>().expect("failed to open table!");
