@@ -21,9 +21,7 @@ use narwhal_network_types::{
     FetchCertificatesRequest, MockPrimaryToWorker, PrimaryToPrimary, RequestVoteRequest,
 };
 use narwhal_primary_metrics::{PrimaryChannelMetrics, PrimaryMetrics};
-use narwhal_storage::{
-    CertificateStore, CertificateStoreCache, NodeStorage, PayloadStore, VoteDigestStore,
-};
+use narwhal_storage::{CertificateStore, NodeStorage, PayloadStore, VoteDigestStore};
 use narwhal_typed_store::open_db;
 use narwhal_worker::{
     metrics::{Metrics, WorkerChannelMetrics},
@@ -66,7 +64,7 @@ async fn test_get_network_peers_from_admin_server() {
     let temp_dir = TempDir::new().unwrap();
     let _ = std::fs::create_dir_all(temp_dir.path());
     let db = open_db(temp_dir.path());
-    let store = NodeStorage::reopen(db, None);
+    let store = NodeStorage::reopen(db);
     let client_1 = NetworkClient::new_from_keypair(&authority_1.network_keypair());
 
     let (tx_new_certificates, _rx_new_certificates) = consensus_metrics::metered_channel::channel(
@@ -454,10 +452,7 @@ async fn test_request_vote_accept_missing_parents() {
     let temp_dir = TempDir::new().unwrap();
     let db = open_db(temp_dir.path());
     let (certificate_store, payload_store, vote_digest_store) = (
-        CertificateStore::new(
-            db.clone(),
-            CertificateStoreCache::new(NonZeroUsize::new(100).unwrap(), None),
-        ),
+        CertificateStore::new(db.clone()),
         PayloadStore::new(db.clone()),
         VoteDigestStore::new(db),
     );
@@ -861,10 +856,7 @@ async fn test_fetch_certificates_handler() {
     let temp_dir = TempDir::new().unwrap();
     let db = open_db(temp_dir.path());
     let (certificate_store, payload_store, vote_digest_store) = (
-        CertificateStore::new(
-            db.clone(),
-            CertificateStoreCache::new(NonZeroUsize::new(100).unwrap(), None),
-        ),
+        CertificateStore::new(db.clone()),
         PayloadStore::new(db.clone()),
         VoteDigestStore::new(db),
     );
@@ -1012,10 +1004,7 @@ async fn test_request_vote_created_at_in_future() {
     let temp_dir = TempDir::new().unwrap();
     let db = open_db(temp_dir.path());
     let (certificate_store, payload_store, vote_digest_store) = (
-        CertificateStore::new(
-            db.clone(),
-            CertificateStoreCache::new(NonZeroUsize::new(100).unwrap(), None),
-        ),
+        CertificateStore::new(db.clone()),
         PayloadStore::new(db.clone()),
         VoteDigestStore::new(db),
     );
