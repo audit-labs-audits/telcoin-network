@@ -8,6 +8,7 @@ mod aggregators;
 mod certificate_fetcher;
 mod certifier;
 pub mod consensus;
+mod error;
 mod network;
 mod primary;
 mod proposer;

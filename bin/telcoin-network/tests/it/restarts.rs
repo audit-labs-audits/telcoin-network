@@ -1,55 +1,88 @@
+use crate::util::config_local_testnet;
+use ethereum_tx_sign::{LegacyTransaction, Transaction};
+use eyre::Report;
+use rand::{rngs::StdRng, SeedableRng};
+use reth_primitives::{alloy_primitives, keccak256, Address};
+use reth_tracing::init_test_tracing;
+use secp256k1::{Keypair, Secp256k1, SecretKey};
+use serde_json::{value::RawValue, Value};
 use std::{
     collections::HashMap,
     path::{Path, PathBuf},
     process::{Child, Command},
     time::Duration,
 };
-
-use ethereum_tx_sign::{LegacyTransaction, Transaction};
-use eyre::Report;
-use rand::{rngs::StdRng, SeedableRng};
-use reth_primitives::{alloy_primitives, keccak256, Address};
-use secp256k1::{Keypair, Secp256k1, SecretKey};
-use serde_json::{value::RawValue, Value};
 use tn_types::utils::get_available_tcp_port;
 use tokio::runtime::Runtime;
+use tracing::{debug, error};
 
-use crate::util::config_local_testnet;
-
+/// One unit of TEL (10^18) measured in wei.
 const WEI_PER_TEL: u128 = 1_000_000_000_000_000_000;
 
 /// Run the first part tests, broken up like this to allow more robust node shutdown.
 fn run_restart_tests1(
     client_urls: &[String; 4],
-    mut child2: Child,
+    child2: &mut Child,
     exe_path: &Path,
     temp_path: &Path,
     rpc_port2: u16,
 ) -> eyre::Result<Child> {
     let key = get_key("test-source");
     let to_account = address_from_word("testing");
-    send_tel(&client_urls[1], &key, to_account, 10 * WEI_PER_TEL, 250, 21000, 0)?;
+    // send tel and kill child2 if error
+    send_tel(&client_urls[1], &key, to_account, 10 * WEI_PER_TEL, 250, 21000, 0).inspect_err(
+        |e| {
+            child2.kill().expect("child2 killed after error received");
+            child2.wait().expect("child2 waited to die after error received");
+            error!(target: "restart-test", ?e);
+        },
+    )?;
+
+    // sleep
     std::thread::sleep(Duration::from_millis(1000));
-    let bal = get_positive_balance_with_retry(&client_urls[2], &to_account.to_string())?;
+    debug!(target: "restart-test", "calling get_positive_balance_with_retry in tests1...");
+
+    // get positive bal and kill child2 if error
+    let bal = get_positive_balance_with_retry(&client_urls[2], &to_account.to_string())
+        .inspect_err(|e| {
+            child2.kill().expect("child2 killed after error received");
+            child2.wait().expect("child2 waited to die after error received");
+            error!(target: "restart-test", ?e);
+        })?;
+
     if 10 * WEI_PER_TEL != bal {
+        error!(target: "restart-test", "tests1: 10 * WEI_PER_TEL != bal - returning error!");
+        child2.kill().expect("child2 killed after error received");
+        child2.wait().expect("child2 waited to die after error received");
         return Err(Report::msg(format!("Expected a balance of {} got {bal}!", 10 * WEI_PER_TEL)));
     }
+    debug!(target: "restart-test", "killing child2...");
     child2.kill()?;
     child2.wait()?;
+    debug!(target: "restart-test", "child2.wait() success! sleeping...");
     std::thread::sleep(Duration::from_millis(3000));
     // This validator should be down now, confirm.
     if get_balance(&client_urls[2], &to_account.to_string(), 5).is_ok() {
+        error!(target: "restart-test", "tests1: get_balancer worked for shutdown validator - returning error!");
         return Err(Report::msg("Validator not down!".to_string()));
     }
+
+    debug!(target: "restart-test", "restarting child2...");
     // Restart
-    let child2 = start_validator(2, exe_path, temp_path, rpc_port2);
+    let mut child2 = start_validator(2, exe_path, temp_path, rpc_port2);
     let bal = get_positive_balance_with_retry(&client_urls[2], &to_account.to_string())?;
     if 10 * WEI_PER_TEL != bal {
+        error!(target: "restart-test", "tests1 after restart: 10 * WEI_PER_TEL != bal - returning error!");
+        child2.kill().expect("child2 killed after error received");
+        child2.wait().expect("child2 waited to die after error received");
         return Err(Report::msg(format!("Expected a balance of {} got {bal}!", 10 * WEI_PER_TEL)));
     }
     send_tel(&client_urls[0], &key, to_account, 10 * WEI_PER_TEL, 250, 21000, 1)?;
     let bal = get_balance_above_with_retry(&client_urls[2], &to_account.to_string(), bal)?;
     if 20 * WEI_PER_TEL != bal {
+        error!(target: "restart-test", "tests1 after restart: 20 * WEI_PER_TEL != bal - returning error!");
+        child2.kill().expect("child2 killed after error received");
+        child2.wait().expect("child2 waited to die after error received");
         return Err(Report::msg(format!("Expected a balance of {} got {bal}!", 20 * WEI_PER_TEL)));
     }
     Ok(child2)
@@ -72,12 +105,13 @@ fn run_restart_tests2(client_urls: &[String; 4]) -> eyre::Result<()> {
 }
 
 #[test]
-fn test_restarts() {
+fn test_restarts() -> eyre::Result<()> {
+    init_test_tracing();
     // the tmp dir should be removed once tmp_quard is dropped
     let tmp_guard = tempfile::TempDir::new().expect("tempdir is okay");
     // create temp path for test
     let temp_path = tmp_guard.path().to_path_buf();
-    let rt = Runtime::new().expect("tokio failed");
+    let rt = Runtime::new()?;
     rt.block_on(config_local_testnet(temp_path.clone())).expect("failed to config");
     let mut exe_path =
         PathBuf::from(std::env::var("CARGO_MANIFEST_DIR").expect("Missing CARGO_MANIFEST_DIR!"));
@@ -98,31 +132,35 @@ fn test_restarts() {
         *child = Some(start_validator(i, &exe_path, &temp_path, rpc_port));
     }
 
-    let res1 = run_restart_tests1(
-        &client_urls,
-        children[2].take().expect("missing child 2"),
-        &exe_path,
-        &temp_path,
-        rpc_ports[2],
-    );
+    // pass &mut to `run_restart_tests1` to shutdown child in case of error
+    let mut child2 = children[2].take().expect("missing child 2");
+
+    // run restart tests1
+    let res1 = run_restart_tests1(&client_urls, &mut child2, &exe_path, &temp_path, rpc_ports[2]);
     let is_ok = res1.is_ok();
+
+    // kill new child2 if successfully restarted
     match res1 {
-        Ok(mut child2) => {
-            let _ = child2.kill();
-            let _ = child2.wait();
+        Ok(mut child2_restarted) => {
+            let _ = child2_restarted.kill();
+            let _ = child2_restarted.wait();
         }
         Err(err) => {
-            println!("Got error: {err}");
+            tracing::error!(target: "restart-test", "Got error: {err}");
         }
     }
+
+    // kill all children (child2 should already be dead)
     for (i, child) in children.iter_mut().enumerate() {
-        // Best effort to kill all the nodes.
+        // Best effort to kill all the other nodes.
         if i != 2 {
             let child = child.as_mut().expect("missing a child");
             let _ = child.kill();
             let _ = child.wait();
+            debug!(target: "restart-test", "kill and wait on child{i} complete");
         }
     }
+
     // Make sure we shutdown nodes even if an error in first testing.
     assert!(is_ok);
     let to_account = address_from_word("testing");
@@ -138,14 +176,19 @@ fn test_restarts() {
 
     let res2 = run_restart_tests2(&client_urls);
 
-    let res3 = if res2.is_ok() { test_blocks_same(&client_urls) } else { Ok(()) };
+    // test blocks are the same if res2 is okay - otherwise use error from res2
+    let final_result = if res2.is_ok() { test_blocks_same(&client_urls) } else { res2 };
+
+    // kill children before returnin final_result
     for child in children.iter_mut() {
         let child = child.as_mut().expect("missing a child");
         let _ = child.kill();
         let _ = child.wait();
+        debug!(target: "restart-test", "kill and wait on child complete for final result");
     }
-    res2.expect("Failed restart test");
-    res3.expect("Failed restart test");
+
+    // contains res2 if failure
+    final_result
 }
 
 /// Start a process running a validator node.
@@ -202,6 +245,7 @@ fn get_balance(node: &str, address: &str, retries: usize) -> eyre::Result<u128> 
     let params = RawValue::from_string(format!("[\"{address}\", \"latest\"]"))?;
     let res_str = call_rpc(node, "eth_getBalance", Some(&params), retries)?;
     let tel = u128::from_str_radix(&res_str[2..], 16)?;
+    debug!(target: "restart-test", "get_balance for {node}: {tel:?}");
     Ok(tel)
 }
 
@@ -210,7 +254,9 @@ fn get_positive_balance_with_retry(node: &str, address: &str) -> eyre::Result<u1
     get_balance_above_with_retry(node, address, 0)
 }
 
-/// Retry up to 10 times to retrieve an account balance > above.
+/// Retry up to 30 times to retrieve an account balance > above.
+///
+/// Max time to get balance is 1min.
 fn get_balance_above_with_retry(node: &str, address: &str, above: u128) -> eyre::Result<u128> {
     let mut bal = get_balance(node, address, 5).unwrap_or(0);
     let mut i = 0;
@@ -220,6 +266,7 @@ fn get_balance_above_with_retry(node: &str, address: &str, above: u128) -> eyre:
         bal = get_balance(node, address, 5).unwrap_or(0);
     }
     if i == 30 && bal <= above {
+        error!(target:"restart-test", "get_balance_above_with_retry i == 30 - returning error!!");
         Err(Report::msg(format!("Failed to get a balance {bal} for {address} above {above}")))
     } else {
         Ok(bal)
@@ -306,7 +353,7 @@ fn send_tel(
     let transaction_bytes = new_transaction.sign(&ecdsa);
     let params = RawValue::from_string(format!("[\"{}\"]", const_hex::encode(transaction_bytes)))?;
     let res_str = call_rpc(node, "eth_sendRawTransaction", Some(&params), 5)?;
-    println!("Submitted TEL transfer from {from_account} to {to_account} for {amount}: {res_str}");
+    debug!(target: "restart-test", "Submitted TEL transfer from {from_account} to {to_account} for {amount}: {res_str}");
     Ok(())
 }
 

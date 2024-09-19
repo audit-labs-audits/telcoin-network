@@ -24,7 +24,10 @@ use anemo_tower::{
     set_header::{SetRequestHeaderLayer, SetResponseHeaderLayer},
     trace::{DefaultMakeSpan, DefaultOnFailure, TraceLayer},
 };
-use consensus_metrics::metered_channel::{channel_with_total, Receiver, Sender};
+use consensus_metrics::{
+    metered_channel::{channel_with_total, Receiver, Sender},
+    spawn_logged_monitored_task,
+};
 use fastcrypto::{
     serde_helpers::ToFromByteArray,
     signature_service::SignatureService,
@@ -176,7 +179,7 @@ impl Primary {
             inflight_limit::InflightLimitLayer::new(1, inflight_limit::WaitMode::ReturnError),
         ))
         // Allow only one inflight FetchCertificates RPC at a time per peer.
-        // These are already a batch request; an individual peer should never need more than one.
+        // These are already a block request; an individual peer should never need more than one.
         .add_layer_for_fetch_certificates(InboundRequestLayer::new(
             inflight_limit::InflightLimitLayer::new(1, inflight_limit::WaitMode::ReturnError),
         ));
@@ -396,8 +399,8 @@ impl Primary {
         );
 
         // When the `Synchronizer` collects enough parent certificates, the `Proposer` generates
-        // a new header with new batch digests from our workers and sends it to the `Certifier`.
-        let proposer_handle = Proposer::spawn(
+        // a new header with new block digests from our workers and sends it to the `Certifier`.
+        let proposer = Proposer::new(
             authority.id(),
             committee.clone(),
             proposer_store,
@@ -417,10 +420,16 @@ impl Primary {
             leader_schedule,
         );
 
+        // TODO: include this with other handles
+        let _proposer_handle = spawn_logged_monitored_task!(proposer, "ProposerTask");
+
+        // TODO: all handles should return error
+        //
+        // can't include proposer handle yet
         let mut handles = vec![
             core_handle,
             certificate_fetcher_handle,
-            proposer_handle,
+            // proposer_handle,
             connection_monitor_handle,
         ];
         handles.extend(admin_handles);

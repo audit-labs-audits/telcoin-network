@@ -33,7 +33,7 @@ impl<DB: Database> WorkerToPrimary for WorkerReceiverHandler<DB> {
                 digest: message.digest,
                 worker_id: message.worker_id,
                 timestamp: message.worker_block.created_at(),
-                ack_channel: Some(tx_ack),
+                ack_channel: tx_ack,
             })
             .await
             .map(|_| anemo::Response::new(()))
