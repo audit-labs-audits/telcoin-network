@@ -96,9 +96,8 @@ impl<DB: Database> Certifier<DB> {
                     network: primary_network,
                     metrics,
                 }
-                //.run_inner()
                 .await;
-                info!(target: "primary::certifier", "Certifier on node {} has has shutdown.", authority_id);
+                info!(target: "primary::certifier", "Certifier on node {} has shutdown.", authority_id);
             },
             "CertifierTask"
         )
