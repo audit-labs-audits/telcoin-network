@@ -334,6 +334,12 @@ impl<DB: Database> Future for Certifier<DB> {
         cx: &mut std::task::Context<'_>,
     ) -> std::task::Poll<Self::Output> {
         let this = self.get_mut();
+
+        // Are we done?
+        if pin!(this.rx_shutdown.receiver.recv()).poll(cx).is_ready() {
+            return Poll::Ready(());
+        }
+
         // We also receive here our new headers created by the `Proposer`.
         while let Poll::Ready(Some(header)) = this.rx_headers.poll_recv(cx) {
             debug!(target: "primary::certifier", authority=?this.authority_id, ?header, "header received!");
@@ -393,9 +399,6 @@ impl<DB: Database> Future for Certifier<DB> {
                     }
                 }
             }
-        }
-        if pin!(this.rx_shutdown.receiver.recv()).poll(cx).is_ready() {
-            return Poll::Ready(());
         }
 
         Poll::Pending
