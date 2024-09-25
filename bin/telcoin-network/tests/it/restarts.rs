@@ -1,4 +1,4 @@
-use crate::util::config_local_testnet;
+use crate::util::{config_local_testnet, IT_TEST_MUTEX};
 use ethereum_tx_sign::{LegacyTransaction, Transaction};
 use eyre::Report;
 use rand::{rngs::StdRng, SeedableRng};
@@ -70,15 +70,31 @@ fn run_restart_tests1(
     debug!(target: "restart-test", "restarting child2...");
     // Restart
     let mut child2 = start_validator(2, exe_path, temp_path, rpc_port2);
-    let bal = get_positive_balance_with_retry(&client_urls[2], &to_account.to_string())?;
+    let bal = get_positive_balance_with_retry(&client_urls[2], &to_account.to_string())
+        .inspect_err(|e| {
+            child2.kill().expect("child2 killed after error received");
+            child2.wait().expect("child2 waited to die after error received");
+            error!(target: "restart-test", ?e);
+        })?;
     if 10 * WEI_PER_TEL != bal {
         error!(target: "restart-test", "tests1 after restart: 10 * WEI_PER_TEL != bal - returning error!");
         child2.kill().expect("child2 killed after error received");
         child2.wait().expect("child2 waited to die after error received");
         return Err(Report::msg(format!("Expected a balance of {} got {bal}!", 10 * WEI_PER_TEL)));
     }
-    send_tel(&client_urls[0], &key, to_account, 10 * WEI_PER_TEL, 250, 21000, 1)?;
-    let bal = get_balance_above_with_retry(&client_urls[2], &to_account.to_string(), bal)?;
+    send_tel(&client_urls[0], &key, to_account, 10 * WEI_PER_TEL, 250, 21000, 1).inspect_err(
+        |e| {
+            child2.kill().expect("child2 killed after error received");
+            child2.wait().expect("child2 waited to die after error received");
+            error!(target: "restart-test", ?e);
+        },
+    )?;
+    let bal = get_balance_above_with_retry(&client_urls[2], &to_account.to_string(), bal)
+        .inspect_err(|e| {
+            child2.kill().expect("child2 killed after error received");
+            child2.wait().expect("child2 waited to die after error received");
+            error!(target: "restart-test", ?e);
+        })?;
     if 20 * WEI_PER_TEL != bal {
         error!(target: "restart-test", "tests1 after restart: 20 * WEI_PER_TEL != bal - returning error!");
         child2.kill().expect("child2 killed after error received");
@@ -106,6 +122,7 @@ fn run_restart_tests2(client_urls: &[String; 4]) -> eyre::Result<()> {
 
 #[test]
 fn test_restarts() -> eyre::Result<()> {
+    let _guard = IT_TEST_MUTEX.lock();
     init_test_tracing();
     // the tmp dir should be removed once tmp_quard is dropped
     let tmp_guard = tempfile::TempDir::new().expect("tempdir is okay");
