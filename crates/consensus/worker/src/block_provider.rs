@@ -236,7 +236,6 @@ impl<DB: Database> Future for BlockProvider<DB> {
         let this = self.get_mut();
 
         // If we are shutting down then go ahead and end.
-        //if pin!(this.rx_shutdown.receiver.recv()).poll(cx).is_ready() {
         if pin!(&this.rx_shutdown).poll(cx).is_ready() {
             return Poll::Ready(());
         }
