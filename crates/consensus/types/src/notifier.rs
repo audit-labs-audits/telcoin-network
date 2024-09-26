@@ -87,3 +87,53 @@ impl Future for &Noticer {
         this.poll_int(cx)
     }
 }
+
+#[cfg(test)]
+mod test {
+    use std::{sync::Arc, time::Duration};
+
+    use parking_lot::Mutex;
+
+    use crate::Notifier;
+
+    #[tokio::test]
+    async fn test_notifier() {
+        let b1 = Arc::new(Mutex::new(false));
+        let b1_clone = b1.clone();
+        let b2 = Arc::new(Mutex::new(false));
+        let b2_clone = b2.clone();
+        let b3 = Arc::new(Mutex::new(false));
+        let b3_clone = b3.clone();
+        let mut notifier = Notifier::new();
+        let n1 = notifier.subscribe();
+        let n2 = notifier.subscribe();
+        let n3 = notifier.subscribe();
+        tokio::spawn(async move {
+            n1.await;
+            *b1_clone.lock() = true;
+        });
+        tokio::spawn(async move {
+            n2.await;
+            *b2_clone.lock() = true;
+        });
+        tokio::spawn(async move {
+            n3.await;
+            *b3_clone.lock() = true;
+        });
+        assert!(!(*b1.lock()));
+        assert!(!(*b2.lock()));
+        assert!(!(*b3.lock()));
+        tokio::time::sleep(Duration::from_secs(3)).await;
+        assert!(!(*b1.lock()));
+        assert!(!(*b2.lock()));
+        assert!(!(*b3.lock()));
+        notifier.notify();
+        // Make sure the background tasks get a chance to run.
+        for _ in 0..10 {
+            tokio::task::yield_now().await;
+        }
+        assert!(*b1.lock());
+        assert!(*b2.lock());
+        assert!(*b3.lock());
+    }
+}
