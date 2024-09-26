@@ -6,7 +6,6 @@ use crate::{
     common::create_db_stores,
     consensus::{ConsensusRound, LeaderSchedule, LeaderSwapTable},
     synchronizer::Synchronizer,
-    NUM_SHUTDOWN_RECEIVERS,
 };
 use consensus_metrics::metered_channel::channel_with_total;
 use fastcrypto::{
@@ -39,8 +38,8 @@ use tn_block_validator::NoopBlockValidator;
 use tn_types::{
     now,
     test_utils::{make_optimal_signed_certificates, CommitteeFixture},
-    AuthorityIdentifier, Certificate, ChainIdentifier, Committee, Parameters,
-    PreSubscribedBroadcastSender, SignatureVerificationState,
+    AuthorityIdentifier, Certificate, ChainIdentifier, Committee, Notifier, Parameters,
+    SignatureVerificationState,
 };
 use tokio::{sync::watch, time::timeout};
 
@@ -86,7 +85,7 @@ async fn test_get_network_peers_from_admin_server() {
     let (_tx_consensus_round_updates, rx_consensus_round_updates) =
         watch::channel(ConsensusRound::default());
 
-    let mut tx_shutdown = PreSubscribedBroadcastSender::new(NUM_SHUTDOWN_RECEIVERS);
+    let mut tx_shutdown = Notifier::new();
 
     // Spawn Primary 1
     Primary::spawn(
@@ -121,7 +120,7 @@ async fn test_get_network_peers_from_admin_server() {
         ..Parameters::default()
     };
 
-    let mut tx_shutdown_worker = PreSubscribedBroadcastSender::new(NUM_SHUTDOWN_RECEIVERS);
+    let mut tx_shutdown_worker = Notifier::new();
 
     // For EL batch maker
     let channel_metrics: Arc<WorkerChannelMetrics> = metrics_1.channel_metrics.clone();
@@ -219,7 +218,7 @@ async fn test_get_network_peers_from_admin_server() {
     );
     let (_tx_consensus_round_updates, rx_consensus_round_updates) =
         watch::channel(ConsensusRound::default());
-    let mut tx_shutdown_2 = PreSubscribedBroadcastSender::new(NUM_SHUTDOWN_RECEIVERS);
+    let mut tx_shutdown_2 = Notifier::new();
 
     // Spawn Primary 2
     Primary::spawn(

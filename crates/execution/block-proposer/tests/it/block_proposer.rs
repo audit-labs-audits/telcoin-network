@@ -8,7 +8,7 @@ use assert_matches::assert_matches;
 use narwhal_network::client::NetworkClient;
 use narwhal_network_types::MockWorkerToPrimary;
 use narwhal_typed_store::{open_db, tables::WorkerBlocks, traits::Database};
-use narwhal_worker::{metrics::WorkerMetrics, BlockProvider, NUM_SHUTDOWN_RECEIVERS};
+use narwhal_worker::{metrics::WorkerMetrics, BlockProvider};
 use reth::{beacon_consensus::EthBeaconConsensus, tasks::TaskManager};
 use reth_blockchain_tree::noop::NoopBlockchainTree;
 use reth_chainspec::ChainSpec;
@@ -30,7 +30,7 @@ use tn_block_proposer::{BlockProposerBuilder, MiningMode};
 use tn_block_validator::{BlockValidation, BlockValidator};
 use tn_types::{
     test_utils::{get_gas_price, test_genesis, TransactionFactory},
-    Consensus, PendingWorkerBlock, PreSubscribedBroadcastSender, WorkerBlock,
+    Consensus, Notifier, PendingWorkerBlock, WorkerBlock,
 };
 use tokio::{sync::watch, time::timeout};
 use tracing::debug;
@@ -49,7 +49,7 @@ async fn test_make_block_el_to_cl() {
     let network_client = NetworkClient::new_with_empty_id();
     let temp_dir = TempDir::new().unwrap();
     let store = open_db(temp_dir.path());
-    let mut tx_shutdown = PreSubscribedBroadcastSender::new(NUM_SHUTDOWN_RECEIVERS);
+    let mut tx_shutdown = Notifier::new();
     let (tx_quorum_waiter, mut rx_quorum_waiter) = tn_types::test_channel!(1);
     let node_metrics = WorkerMetrics::default();
 
@@ -62,9 +62,6 @@ async fn test_make_block_el_to_cl() {
     let id = 0;
     let _block_provider_handle = BlockProvider::spawn(
         id,
-        /* max_block_size */ 200,
-        /* max_block_delay */
-        Duration::from_millis(1_000_000), // Ensure the timer is not triggered.
         tx_shutdown.subscribe(),
         rx_block_maker,
         tx_quorum_waiter,

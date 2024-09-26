@@ -4,11 +4,10 @@
 // SPDX-License-Identifier: Apache-2.0
 
 use super::*;
-use crate::NUM_SHUTDOWN_RECEIVERS;
 use narwhal_network::test_utils::WorkerToWorkerMockServer;
 use tn_types::{
     test_utils::{batch, test_network, CommitteeFixture},
-    PreSubscribedBroadcastSender,
+    Notifier,
 };
 
 #[tokio::test]
@@ -20,7 +19,7 @@ async fn wait_for_quorum() {
     let my_primary = fixture.authorities().next().unwrap();
     let myself = fixture.authorities().next().unwrap().worker(0);
 
-    let mut tx_shutdown = PreSubscribedBroadcastSender::new(NUM_SHUTDOWN_RECEIVERS);
+    let mut tx_shutdown = Notifier::new();
     let node_metrics = Arc::new(WorkerMetrics::default());
 
     // setup network
@@ -74,7 +73,7 @@ async fn pipeline_for_quorum() {
     let my_primary = fixture.authorities().next().unwrap();
     let myself = fixture.authorities().next().unwrap().worker(0);
 
-    let mut tx_shutdown = PreSubscribedBroadcastSender::new(NUM_SHUTDOWN_RECEIVERS);
+    let mut tx_shutdown = Notifier::new();
     let node_metrics = Arc::new(WorkerMetrics::default());
 
     // setup network

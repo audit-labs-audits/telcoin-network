@@ -1,29 +1,33 @@
-// Copyright (c) 2021, Facebook, Inc. and its affiliates
 // Copyright (c) Telcoin, LLC
+// Copyright (c) 2021, Facebook, Inc. and its affiliates
 // Copyright (c) Mysten Labs, Inc.
 // SPDX-License-Identifier: Apache-2.0
+
 //! The receiving side of the execution layer's `BlockProvider`.
 //!
 //! Consensus `BlockProvider` takes a block from the EL, stores it,
 //! and sends it to the quorum waiter for broadcasting to peers.
+
 use crate::metrics::WorkerMetrics;
 use consensus_metrics::{
     metered_channel::{Receiver, Sender},
     monitored_scope, spawn_logged_monitored_task,
 };
-use futures::{future::BoxFuture, stream::FuturesUnordered, StreamExt};
+use futures::{stream::FuturesUnordered, StreamExt};
 use narwhal_network::{client::NetworkClient, WorkerToPrimaryClient};
 use narwhal_typed_store::{tables::WorkerBlocks, traits::Database};
-use std::sync::Arc;
-use tn_types::{NewWorkerBlock, WorkerId};
+use std::{
+    future::Future,
+    pin::{pin, Pin},
+    sync::Arc,
+    task::Poll,
+};
+use tn_types::{NewWorkerBlock, Noticer, WorkerId};
 
 use narwhal_network_types::WorkerOwnBlockMessage;
-use tn_types::{error::DagError, ConditionalBroadcastReceiver, WorkerBlock};
-use tokio::{
-    task::JoinHandle,
-    time::{Duration, Instant},
-};
-use tracing::{error, warn};
+use tn_types::WorkerBlock;
+use tokio::{task::JoinHandle, time::Instant};
+use tracing::{error, info, warn};
 
 #[cfg(feature = "trace_transaction")]
 use byteorder::{BigEndian, ReadBytesExt};
@@ -35,20 +39,14 @@ pub const MAX_PARALLEL_BLOCK: usize = 100;
 #[path = "tests/block_provider_tests.rs"]
 pub mod block_provider_tests;
 
+type BPBoxFuture<T> = Pin<Box<dyn Future<Output = T> + Send>>;
+
 /// Process blocks from EL into sealed blocks for CL.
 pub struct BlockProvider<DB: Database> {
     /// Our worker's id.
     id: WorkerId,
-    /// TODO: remove this
-    ///
-    /// The preferred block size (in bytes).
-    _block_size_limit: usize,
-    /// TODO: remove this
-    ///
-    /// The maximum delay after which to seal the block.
-    _max_block_delay: Duration,
     /// Receiver for shutdown.
-    rx_shutdown: ConditionalBroadcastReceiver,
+    rx_shutdown: Noticer,
     /// Channel to receive transactions from the network.
     rx_block_maker: Receiver<NewWorkerBlock>,
     /// Output channel to deliver sealed blocks to the `QuorumWaiter`.
@@ -62,6 +60,8 @@ pub struct BlockProvider<DB: Database> {
     client: NetworkClient,
     /// The block store to store our own blocks.
     store: DB,
+    /// collection of future sealed blocks
+    block_pipeline: FuturesUnordered<BPBoxFuture<()>>,
 }
 
 impl<DB: Database + Clone + 'static> BlockProvider<DB> {
@@ -69,79 +69,36 @@ impl<DB: Database + Clone + 'static> BlockProvider<DB> {
     #[must_use]
     pub fn spawn(
         id: WorkerId,
-        _block_size_limit: usize,
-        _max_block_delay: Duration,
-        rx_shutdown: ConditionalBroadcastReceiver,
+        rx_shutdown: Noticer,
         rx_block_maker: Receiver<NewWorkerBlock>,
         tx_quorum_waiter: Sender<(WorkerBlock, tokio::sync::oneshot::Sender<()>)>,
         node_metrics: Arc<WorkerMetrics>,
         client: NetworkClient,
         store: DB,
     ) -> JoinHandle<()> {
+        let this = Self {
+            id,
+            rx_shutdown,
+            rx_block_maker,
+            tx_quorum_waiter,
+            block_start_timestamp: Instant::now(),
+            node_metrics,
+            client,
+            store,
+            block_pipeline: FuturesUnordered::new(),
+        };
         spawn_logged_monitored_task!(
             async move {
-                Self {
-                    id,
-                    _block_size_limit,
-                    _max_block_delay,
-                    rx_shutdown,
-                    rx_block_maker,
-                    tx_quorum_waiter,
-                    block_start_timestamp: Instant::now(),
-                    node_metrics,
-                    client,
-                    store,
-                }
-                .run()
-                .await;
+                info!(target: "worker::block_provider", "BlockProvider id {} has started successfully.", id);
+                this.await;
+                info!(target: "worker::block_provider", "BlockProvider id {} has shutdown.", id);
             },
             "BlockProviderTask"
         )
     }
 
-    /// Main loop receiving incoming transactions and creating blocks.
-    async fn run(&mut self) {
-        // collection of future sealed blocks
-        let mut block_pipeline = FuturesUnordered::new();
-
-        loop {
-            tokio::select! {
-                // Wait for the next block from the EL.
-                //
-                // Note that transactions are only consumed when the number of blocks
-                // 'in-flight' are below a certain number (MAX_PARALLEL_BLOCK). This
-                // condition will be met eventually if the store and network are functioning.
-                Some(new_block) = self.rx_block_maker.recv(), if block_pipeline.len() < MAX_PARALLEL_BLOCK => {
-                    let _scope = monitored_scope("BlockProvider::recv");
-                    // try seal the block
-                    if let Some(seal) = self.seal(new_block).await {
-                        block_pipeline.push(seal);
-                    }
-
-                    self.node_metrics.parallel_worker_blocks.set(block_pipeline.len() as i64);
-                    self.block_start_timestamp = Instant::now();
-
-                    // Yield once per size threshold to allow other tasks to run.
-                    tokio::task::yield_now().await;
-                },
-
-                _ = self.rx_shutdown.receiver.recv() => {
-                    return
-                }
-
-                // Process the pipeline of blocks, this consumes items in the `block_pipeline`
-                // list, and ensures the main loop in run will always be able to make progress
-                // by lowering it until condition block_pipeline.len() < MAX_PARALLEL_BLOCK is met.
-                _ = block_pipeline.next(), if !block_pipeline.is_empty() => {
-                    self.node_metrics.parallel_worker_blocks.set(block_pipeline.len() as i64);
-                }
-
-            }
-        }
-    }
-
     /// Seal and broadcast the current block.
-    async fn seal<'a>(&self, new_block: NewWorkerBlock) -> Option<BoxFuture<'a, ()>> {
+    fn seal(&self, new_block: NewWorkerBlock) -> Option<BPBoxFuture<()>> {
         #[cfg(feature = "benchmark")]
         {
             let digest = new_block.block.digest();
@@ -160,7 +117,7 @@ impl<DB: Database + Clone + 'static> BlockProvider<DB> {
 
             for id in tx_ids {
                 // NOTE: This log entry is used to compute performance.
-                tracing::info!("Block {:?} contains sample tx {}", digest, u64::from_be_bytes(id));
+                tracing::info!(target: "worker::block_provider", "Block {:?} contains sample tx {}", digest, u64::from_be_bytes(id));
             }
 
             #[cfg(feature = "trace_transaction")]
@@ -182,6 +139,7 @@ impl<DB: Database + Clone + 'static> BlockProvider<DB> {
                     })
                     .collect();
                 tracing::debug!(
+                    target: "worker::block_provider",
                     "Tracking IDs of transactions in the Block {:?}: {:?}",
                     digest,
                     tracking_ids
@@ -189,7 +147,7 @@ impl<DB: Database + Clone + 'static> BlockProvider<DB> {
             }
 
             // NOTE: This log entry is used to compute performance.
-            tracing::info!("Block {:?} contains {} B", digest, size);
+            tracing::info!(target: "worker::block_provider", "Block {:?} contains {} B", digest, size);
         }
 
         let NewWorkerBlock { block, ack } = new_block;
@@ -203,14 +161,17 @@ impl<DB: Database + Clone + 'static> BlockProvider<DB> {
 
         // Send the block through the deliver channel for further processing.
         let (notify_done, broadcasted_to_quorum) = tokio::sync::oneshot::channel();
-        if self.tx_quorum_waiter.send((block.clone(), notify_done)).await.is_err() {
-            tracing::debug!("{}", DagError::ShuttingDown);
-            return None;
-        }
+        let tx_quorum_waiter = self.tx_quorum_waiter.clone();
+        let block_clone = block.clone();
+        tokio::spawn(async move {
+            if let Err(e) = tx_quorum_waiter.send((block_clone, notify_done)).await {
+                tracing::error!(target: "worker::block_provider", "Error sending block to quorum waiter: {e}");
+            }
+        });
 
         let block_creation_duration = self.block_start_timestamp.elapsed().as_secs_f64();
 
-        tracing::debug!(
+        tracing::debug!(target: "worker::block_provider",
             "Block {:?} took {} seconds to create due to {}",
             block.digest(),
             block_creation_duration,
@@ -245,14 +206,14 @@ impl<DB: Database + Clone + 'static> BlockProvider<DB> {
             let digest = block.digest();
 
             if let Err(e) = store.insert::<WorkerBlocks>(&digest, &block) {
-                error!("Store failed with error: {:?}", e);
+                error!(target: "worker::block_provider", "Store failed with error: {:?}", e);
                 return;
             }
 
             // Send the block to the primary.
             let message = WorkerOwnBlockMessage { digest, worker_id, worker_block: block.clone() };
             if let Err(e) = client.report_own_block(message).await {
-                warn!("Failed to report our block: {}", e);
+                warn!(target: "worker::block_provider", "Failed to report our block: {}", e);
                 // Drop all response handlers to signal error, since we
                 // cannot ensure the primary has actually signaled the
                 // block will eventually be sent.
@@ -264,5 +225,59 @@ impl<DB: Database + Clone + 'static> BlockProvider<DB> {
             // that the block is sealed.
             let _ = ack.send(digest);
         }))
+    }
+}
+
+impl<DB: Database> Future for BlockProvider<DB> {
+    // Errors are either loggable events or show stoppers so we don't return an error type.
+    type Output = ();
+
+    fn poll(self: std::pin::Pin<&mut Self>, cx: &mut std::task::Context<'_>) -> Poll<Self::Output> {
+        let this = self.get_mut();
+
+        // If we are shutting down then go ahead and end.
+        //if pin!(this.rx_shutdown.receiver.recv()).poll(cx).is_ready() {
+        if pin!(&this.rx_shutdown).poll(cx).is_ready() {
+            return Poll::Ready(());
+        }
+
+        // Clear space in the block_pipeline first to make room for new blocks.
+        while let Poll::Ready(Some(_)) = this.block_pipeline.poll_next_unpin(cx) {
+            this.node_metrics.parallel_worker_blocks.set(this.block_pipeline.len() as i64);
+        }
+
+        // Wait for the next block from the EL.
+        //
+        // Note that transactions are only consumed when the number of blocks
+        // 'in-flight' are below a certain number (MAX_PARALLEL_BLOCK). This
+        // condition will be met eventually if the store and network are functioning.
+        if this.block_pipeline.len() < MAX_PARALLEL_BLOCK {
+            while let Poll::Ready(Some(new_block)) = this.rx_block_maker.poll_recv(cx) {
+                let _scope = monitored_scope("BlockProvider::recv");
+                // try seal the block
+                if let Some(seal) = this.seal(new_block) {
+                    this.block_pipeline.push(seal);
+                }
+
+                this.node_metrics.parallel_worker_blocks.set(this.block_pipeline.len() as i64);
+                this.block_start_timestamp = Instant::now();
+                if this.block_pipeline.len() >= MAX_PARALLEL_BLOCK {
+                    // Breaking like this leaves us with no watch on rx_block_maker
+                    // but that is good since we have to clear the block_pipeline
+                    // first before we care...
+                    break;
+                }
+
+                // Yield once per size threshold to allow other tasks to run.
+                //tokio::task::yield_now().await;
+            }
+            // This might look pointless but is important.  We need to do this here so that the
+            // waiter will be activated when block_pipeline is ready.
+            while let Poll::Ready(Some(_)) = this.block_pipeline.poll_next_unpin(cx) {
+                this.node_metrics.parallel_worker_blocks.set(this.block_pipeline.len() as i64);
+            }
+        }
+
+        Poll::Pending
     }
 }

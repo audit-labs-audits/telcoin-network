@@ -9,9 +9,7 @@ use futures::stream::{futures_unordered::FuturesUnordered, StreamExt as _};
 use narwhal_network::{CancelOnDropHandler, ReliableNetwork};
 use narwhal_network_types::WorkerBlockMessage;
 use std::{sync::Arc, time::Duration};
-use tn_types::{
-    Authority, Committee, ConditionalBroadcastReceiver, Stake, WorkerBlock, WorkerCache, WorkerId,
-};
+use tn_types::{Authority, Committee, Noticer, Stake, WorkerBlock, WorkerCache, WorkerId};
 use tokio::{task::JoinHandle, time::timeout};
 use tracing::{trace, warn};
 
@@ -30,7 +28,7 @@ pub struct QuorumWaiter {
     /// The worker information cache.
     worker_cache: WorkerCache,
     /// Receiver for shutdown.
-    rx_shutdown: ConditionalBroadcastReceiver,
+    rx_shutdown: Noticer,
     /// Input Channel to receive commands.
     rx_quorum_waiter: Receiver<(WorkerBlock, tokio::sync::oneshot::Sender<()>)>,
     /// A network sender to broadcast the batches to the other workers.
@@ -48,7 +46,7 @@ impl QuorumWaiter {
         id: WorkerId,
         committee: Committee,
         worker_cache: WorkerCache,
-        rx_shutdown: ConditionalBroadcastReceiver,
+        rx_shutdown: Noticer,
         rx_quorum_waiter: Receiver<(WorkerBlock, tokio::sync::oneshot::Sender<()>)>,
         network: anemo::Network,
         metrics: Arc<WorkerMetrics>,
@@ -179,7 +177,7 @@ impl QuorumWaiter {
                 // or timeout.
                 Some(_) = best_effort_with_timeout.next() => {}
 
-                _ = self.rx_shutdown.receiver.recv() => {
+                _ = &self.rx_shutdown => {
                     return
                 }
             }

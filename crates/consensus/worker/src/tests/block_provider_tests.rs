@@ -4,19 +4,18 @@
 // SPDX-License-Identifier: Apache-2.0
 use super::*;
 
-use crate::NUM_SHUTDOWN_RECEIVERS;
 use narwhal_network_types::MockWorkerToPrimary;
 use narwhal_typed_store::open_db;
 use reth_primitives::SealedHeader;
 use tempfile::TempDir;
-use tn_types::{test_utils::transaction, PreSubscribedBroadcastSender};
+use tn_types::{test_utils::transaction, Notifier};
 
 #[tokio::test]
 async fn make_block() {
     let client = NetworkClient::new_with_empty_id();
     let temp_dir = TempDir::new().unwrap();
     let store = open_db(temp_dir.path());
-    let mut tx_shutdown = PreSubscribedBroadcastSender::new(NUM_SHUTDOWN_RECEIVERS);
+    let mut tx_shutdown = Notifier::new();
     let (tx_block_maker, rx_block_maker) = tn_types::test_channel!(1);
     let (tx_quorum_waiter, mut rx_quorum_waiter) = tn_types::test_channel!(1);
     let node_metrics = WorkerMetrics::default();
@@ -30,9 +29,6 @@ async fn make_block() {
     let id = 0;
     let _block_maker_handle = BlockProvider::spawn(
         id,
-        /* max_block_size */ 200,
-        /* max_block_delay */
-        Duration::from_millis(1_000_000), // Ensure the timer is not triggered.
         tx_shutdown.subscribe(),
         rx_block_maker,
         tx_quorum_waiter,

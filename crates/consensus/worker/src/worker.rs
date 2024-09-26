@@ -1,14 +1,14 @@
-// Copyright (c) 2021, Facebook, Inc. and its affiliates
 // Copyright (c) Telcoin, LLC
+// Copyright (c) 2021, Facebook, Inc. and its affiliates
 // Copyright (c) Mysten Labs, Inc.
 // SPDX-License-Identifier: Apache-2.0
+
 use crate::{
     block_fetcher::WorkerBlockFetcher,
     block_provider::BlockProvider,
     metrics::{Metrics, WorkerChannelMetrics, WorkerMetrics},
     network::{PrimaryReceiverHandler, WorkerReceiverHandler},
     quorum_waiter::QuorumWaiter,
-    NUM_SHUTDOWN_RECEIVERS,
 };
 use anemo::{
     codegen::InboundRequestLayer,
@@ -35,12 +35,11 @@ use narwhal_network::{
 use narwhal_network_types::{PrimaryToWorkerServer, WorkerToWorkerServer};
 use narwhal_typed_store::traits::Database;
 use std::{collections::HashMap, net::Ipv4Addr, sync::Arc, thread::sleep, time::Duration};
-use tap::TapFallible;
 use tn_block_validator::BlockValidation;
 use tn_types::{
-    traits::KeyPair as _, Authority, AuthorityIdentifier, Committee, ConditionalBroadcastReceiver,
-    Multiaddr, NetworkKeypair, NetworkPublicKey, NewWorkerBlock, Parameters,
-    PreSubscribedBroadcastSender, Protocol, WorkerCache, WorkerId,
+    traits::KeyPair as _, Authority, AuthorityIdentifier, Committee, Multiaddr, NetworkKeypair,
+    NetworkPublicKey, NewWorkerBlock, Noticer, Notifier, Parameters, Protocol, WorkerCache,
+    WorkerId,
 };
 use tokio::task::JoinHandle;
 use tower::ServiceBuilder;
@@ -84,7 +83,7 @@ impl<DB: Database> Worker<DB> {
         client: NetworkClient,
         store: DB,
         metrics: Metrics,
-        tx_shutdown: &mut PreSubscribedBroadcastSender,
+        tx_shutdown: &mut Notifier,
         // for EL batch maker
         channel_metrics: Arc<WorkerChannelMetrics>,
         rx_batch_maker: Receiver<NewWorkerBlock>,
@@ -105,8 +104,6 @@ impl<DB: Database> Worker<DB> {
         };
 
         let node_metrics = metrics.worker_metrics.clone();
-
-        let mut shutdown_receivers = tx_shutdown.subscribe_n(NUM_SHUTDOWN_RECEIVERS);
 
         let mut worker_service = WorkerToWorkerServer::new(WorkerReceiverHandler {
             id: worker.id,
@@ -260,7 +257,7 @@ impl<DB: Database> Worker<DB> {
                     if retries_left <= 0 {
                         panic!();
                     }
-                    error!(
+                    error!(target: "worker::worker",
                         "Address {} should be available for the primary Narwhal service, retrying in one second",
                         addr
                     );
@@ -270,7 +267,7 @@ impl<DB: Database> Worker<DB> {
         }
         client.set_worker_network(id, network.clone());
 
-        info!("Worker {} listening to worker messages on {}", id, address);
+        info!(target: "worker::worker", "Worker {} listening to worker messages on {}", id, address);
 
         let batch_fetcher = WorkerBlockFetcher::new(
             worker_name,
@@ -304,7 +301,7 @@ impl<DB: Database> Worker<DB> {
         for (public_key, address) in other_workers {
             let (peer_id, address) = Self::add_peer_in_network(&network, public_key, &address);
             peer_types.insert(peer_id, "other_worker".to_string());
-            info!("Adding others workers with peer id {} and address {}", peer_id, address);
+            info!(target: "worker::worker", "Adding others workers with peer id {} and address {}", peer_id, address);
         }
 
         // Connect worker to its corresponding primary.
@@ -314,7 +311,7 @@ impl<DB: Database> Worker<DB> {
             &authority.primary_network_address(),
         );
         peer_types.insert(peer_id, "our_primary".to_string());
-        info!("Adding our primary with peer id {} and address {}", peer_id, address);
+        info!(target: "worker::worker", "Adding our primary with peer id {} and address {}", peer_id, address);
 
         // update the peer_types with the "other_primary". We do not add them in the Network
         // struct, otherwise the networking library will try to connect to it
@@ -329,7 +326,7 @@ impl<DB: Database> Worker<DB> {
                 network.downgrade(),
                 metrics.network_connection_metrics.clone(),
                 peer_types,
-                Some(shutdown_receivers.pop().unwrap()),
+                tx_shutdown.subscribe(),
             );
 
         let network_admin_server_base_port = parameters
@@ -337,7 +334,7 @@ impl<DB: Database> Worker<DB> {
             .worker_network_admin_server_base_port
             .checked_add(id)
             .unwrap();
-        info!(
+        info!(target: "worker::worker",
             "Worker {} listening to network admin messages on 127.0.0.1:{}",
             id, network_admin_server_base_port
         );
@@ -345,29 +342,23 @@ impl<DB: Database> Worker<DB> {
         let admin_handles = narwhal_network::admin::start_admin_server(
             network_admin_server_base_port,
             network.clone(),
-            shutdown_receivers.pop().unwrap(),
+            tx_shutdown.subscribe(),
         );
 
         let client_flow_handles = worker.spawn_block_proposals(
-            vec![
-                shutdown_receivers.pop().unwrap(),
-                shutdown_receivers.pop().unwrap(),
-                shutdown_receivers.pop().unwrap(),
-            ],
+            tx_shutdown,
             node_metrics,
             channel_metrics,
-            // endpoint_metrics,
-            // validator,
             client,
             network.clone(),
             rx_batch_maker,
         );
 
         let network_shutdown_handle =
-            Self::shutdown_network_listener(shutdown_receivers.pop().unwrap(), network);
+            Self::shutdown_network_listener(tx_shutdown.subscribe(), network);
 
         // NOTE: This log entry is used to compute performance.
-        info!(
+        info!(target: "worker::worker",
             "Worker {} successfully booted on {}",
             id,
             worker
@@ -385,21 +376,14 @@ impl<DB: Database> Worker<DB> {
 
     // Spawns a task responsible for explicitly shutting down the network
     // when a shutdown signal has been sent to the node.
-    fn shutdown_network_listener(
-        mut rx_shutdown: ConditionalBroadcastReceiver,
-        network: Network,
-    ) -> JoinHandle<()> {
+    fn shutdown_network_listener(rx_shutdown: Noticer, network: Network) -> JoinHandle<()> {
         spawn_logged_monitored_task!(
             async move {
-                match rx_shutdown.receiver.recv().await {
-                    Ok(()) | Err(_) => {
-                        let _ = network
-                            .shutdown()
-                            .await
-                            .tap_err(|err| error!("Error while shutting down network: {err}"));
-                        info!("Worker network server shutdown");
-                    }
+                rx_shutdown.await;
+                if let Err(e) = network.shutdown().await {
+                    error!(target: "worker::worker", "Error while shutting down network: {e}");
                 }
+                info!(target: "worker::worker", "Worker network server shutdown");
             },
             "WorkerShutdownNetworkListenerTask"
         )
@@ -425,14 +409,14 @@ impl<DB: Database> Worker<DB> {
     /// Spawn all tasks responsible to handle clients transactions.
     fn spawn_block_proposals(
         &self,
-        mut shutdown_receivers: Vec<ConditionalBroadcastReceiver>,
+        tx_shutdown: &mut Notifier,
         node_metrics: Arc<WorkerMetrics>,
         channel_metrics: Arc<WorkerChannelMetrics>,
         client: NetworkClient,
         network: anemo::Network,
         rx_batch_maker: Receiver<NewWorkerBlock>,
     ) -> Vec<JoinHandle<()>> {
-        info!("Starting handler for transactions");
+        info!(target: "worker::worker", "Starting handler for transactions");
 
         let (tx_quorum_waiter, rx_quorum_waiter) = channel_with_total(
             CHANNEL_CAPACITY,
@@ -444,9 +428,7 @@ impl<DB: Database> Worker<DB> {
         // peers with the same `id` before passing off to the `QuorumWaiter`.
         let block_provider_handle = BlockProvider::spawn(
             self.id,
-            self.parameters.batch_size,
-            self.parameters.max_batch_delay,
-            shutdown_receivers.pop().unwrap(),
+            tx_shutdown.subscribe(),
             rx_batch_maker,
             tx_quorum_waiter,
             node_metrics.clone(),
@@ -461,7 +443,7 @@ impl<DB: Database> Worker<DB> {
             self.id,
             self.committee.clone(),
             self.worker_cache.clone(),
-            shutdown_receivers.pop().unwrap(),
+            tx_shutdown.subscribe(),
             rx_quorum_waiter,
             network,
             node_metrics,

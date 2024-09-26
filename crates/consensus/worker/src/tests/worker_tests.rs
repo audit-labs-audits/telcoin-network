@@ -8,7 +8,7 @@ use async_trait::async_trait;
 use fastcrypto::encoding::{Encoding, Hex};
 use narwhal_primary::{
     consensus::{ConsensusRound, LeaderSchedule, LeaderSwapTable},
-    Primary, CHANNEL_CAPACITY, NUM_SHUTDOWN_RECEIVERS,
+    Primary, CHANNEL_CAPACITY,
 };
 use narwhal_storage::NodeStorage;
 
@@ -352,7 +352,7 @@ async fn get_network_peers_from_admin_server() {
     let (_tx_feedback, rx_feedback) = tn_types::test_channel!(CHANNEL_CAPACITY);
     let (_tx_consensus_round_updates, rx_consensus_round_updates) =
         watch::channel(ConsensusRound::default());
-    let mut tx_shutdown = PreSubscribedBroadcastSender::new(NUM_SHUTDOWN_RECEIVERS);
+    let mut tx_shutdown = Notifier::new();
 
     // Spawn Primary 1
     Primary::spawn(
@@ -381,7 +381,7 @@ async fn get_network_peers_from_admin_server() {
 
     let registry_1 = Registry::new();
     let metrics_1 = Metrics::new_with_registry(&registry_1);
-    let mut tx_shutdown = PreSubscribedBroadcastSender::new(NUM_SHUTDOWN_RECEIVERS);
+    let mut tx_shutdown = Notifier::new();
 
     let worker_1_parameters = Parameters {
         batch_size: 200, // Two transactions.
@@ -468,7 +468,7 @@ async fn get_network_peers_from_admin_server() {
     let (_tx_consensus_round_updates, rx_consensus_round_updates) =
         watch::channel(ConsensusRound::default());
 
-    let mut tx_shutdown_2 = PreSubscribedBroadcastSender::new(NUM_SHUTDOWN_RECEIVERS);
+    let mut tx_shutdown_2 = Notifier::new();
 
     // Spawn Primary 2
     Primary::spawn(
@@ -503,7 +503,7 @@ async fn get_network_peers_from_admin_server() {
         ..Parameters::default()
     };
 
-    let mut tx_shutdown_worker = PreSubscribedBroadcastSender::new(NUM_SHUTDOWN_RECEIVERS);
+    let mut tx_shutdown_worker = Notifier::new();
 
     // For EL batch maker
     let channel_metrics: Arc<WorkerChannelMetrics> = metrics_2.channel_metrics.clone();

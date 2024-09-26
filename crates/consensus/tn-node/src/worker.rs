@@ -12,7 +12,7 @@ use narwhal_storage::NodeStorage;
 use narwhal_typed_store::traits::Database as ConsensusDatabase;
 use narwhal_worker::{
     metrics::{Metrics, WorkerChannelMetrics},
-    Worker, CHANNEL_CAPACITY, NUM_SHUTDOWN_RECEIVERS,
+    Worker, CHANNEL_CAPACITY,
 };
 use reth_db::{
     database::Database,
@@ -21,8 +21,7 @@ use reth_db::{
 use reth_evm::{execute::BlockExecutorProvider, ConfigureEvm};
 use std::{sync::Arc, time::Instant};
 use tn_types::{
-    BlsPublicKey, Committee, NetworkKeypair, Parameters, PreSubscribedBroadcastSender, WorkerCache,
-    WorkerId,
+    BlsPublicKey, Committee, NetworkKeypair, Notifier, Parameters, WorkerCache, WorkerId,
 };
 use tokio::{sync::RwLock, task::JoinHandle};
 use tracing::{info, instrument};
@@ -35,7 +34,7 @@ pub struct WorkerNodeInner {
     // The task handles created from primary
     handles: FuturesUnordered<JoinHandle<()>>,
     // The shutdown signal channel
-    tx_shutdown: Option<PreSubscribedBroadcastSender>,
+    tx_shutdown: Option<Notifier>,
     // Peer ID used for local connections.
     own_peer_id: Option<PeerId>,
 }
@@ -75,7 +74,7 @@ impl WorkerNodeInner {
 
         self.own_peer_id = Some(PeerId(network_keypair.public().0.to_bytes()));
 
-        let mut tx_shutdown = PreSubscribedBroadcastSender::new(NUM_SHUTDOWN_RECEIVERS);
+        let mut tx_shutdown = Notifier::new();
 
         let authority = committee.authority_by_key(&primary_name).unwrap_or_else(|| {
             panic!("Our node with key {:?} should be in committee", primary_name)
@@ -129,9 +128,8 @@ impl WorkerNodeInner {
         }
 
         let now = Instant::now();
-        if let Some(tx_shutdown) = self.tx_shutdown.as_ref() {
-            tx_shutdown.send().expect("Couldn't send the shutdown signal to downstream components");
-            self.tx_shutdown = None;
+        if let Some(mut tx_shutdown) = self.tx_shutdown.take() {
+            tx_shutdown.notify();
         }
 
         // Now wait until handles have been completed

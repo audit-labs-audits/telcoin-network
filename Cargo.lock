@@ -10908,6 +10908,7 @@ dependencies = [
  "mem-utils",
  "multiaddr 0.17.1",
  "once_cell",
+ "parking_lot 0.12.3",
  "prometheus",
  "proptest",
  "rand 0.8.5",
