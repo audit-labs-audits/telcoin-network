@@ -10,7 +10,7 @@
 //!
 //! The methods in this module are thread-safe wrappers for the inner type that contains logic.
 
-use consensus_metrics::metered_channel::Sender;
+use narwhal_worker::BlockProvider;
 use reth_db::{
     database::Database,
     database_metrics::{DatabaseMetadata, DatabaseMetrics},
@@ -26,7 +26,7 @@ use reth_provider::{providers::BlockchainProvider, ExecutionOutcome};
 use reth_tasks::TaskExecutor;
 use tn_block_validator::BlockValidator;
 use tn_faucet::FaucetArgs;
-use tn_types::{Config, ConsensusOutput, NewWorkerBlock, PendingWorkerBlock, WorkerId};
+use tn_types::{Config, ConsensusOutput, PendingWorkerBlock, WorkerId};
 use tokio::sync::{broadcast, watch, RwLock};
 pub use worker::*;
 
@@ -86,13 +86,13 @@ where
     }
 
     /// Batch maker
-    pub async fn start_batch_maker(
+    pub async fn start_batch_maker<CDB: narwhal_typed_store::traits::Database>(
         &self,
-        to_worker: Sender<NewWorkerBlock>,
         worker_id: WorkerId,
+        block_provider: BlockProvider<CDB>,
     ) -> eyre::Result<()> {
         let mut guard = self.internal.write().await;
-        guard.start_batch_maker(to_worker, worker_id).await
+        guard.start_batch_maker(worker_id, block_provider).await
     }
 
     /// Batch validator

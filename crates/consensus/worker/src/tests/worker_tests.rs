@@ -409,7 +409,6 @@ async fn get_network_peers_from_admin_server() {
         store.batch_store.clone(),
         metrics_1.clone(),
         &mut tx_shutdown,
-        channel_metrics,
         rx_batch_maker,
     );
 
@@ -526,7 +525,6 @@ async fn get_network_peers_from_admin_server() {
         store.batch_store,
         metrics_2.clone(),
         &mut tx_shutdown_worker,
-        channel_metrics,
         rx_batch_maker,
     );
 

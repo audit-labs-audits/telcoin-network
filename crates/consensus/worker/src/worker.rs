@@ -6,7 +6,7 @@
 use crate::{
     block_fetcher::WorkerBlockFetcher,
     block_provider::BlockProvider,
-    metrics::{Metrics, WorkerChannelMetrics, WorkerMetrics},
+    metrics::{Metrics, WorkerMetrics},
     network::{PrimaryReceiverHandler, WorkerReceiverHandler},
     quorum_waiter::QuorumWaiter,
 };
@@ -22,10 +22,7 @@ use anemo_tower::{
     set_header::{SetRequestHeaderLayer, SetResponseHeaderLayer},
     trace::{DefaultMakeSpan, DefaultOnFailure, TraceLayer},
 };
-use consensus_metrics::{
-    metered_channel::{channel_with_total, Receiver},
-    spawn_logged_monitored_task,
-};
+use consensus_metrics::spawn_logged_monitored_task;
 use narwhal_network::{
     client::NetworkClient,
     epoch_filter::{AllowedEpoch, EPOCH_HEADER_KEY},
@@ -38,8 +35,7 @@ use std::{collections::HashMap, net::Ipv4Addr, sync::Arc, thread::sleep, time::D
 use tn_block_validator::BlockValidation;
 use tn_types::{
     traits::KeyPair as _, Authority, AuthorityIdentifier, Committee, Multiaddr, NetworkKeypair,
-    NetworkPublicKey, NewWorkerBlock, Noticer, Notifier, Parameters, Protocol, WorkerCache,
-    WorkerId,
+    NetworkPublicKey, Noticer, Notifier, Parameters, Protocol, WorkerCache, WorkerId,
 };
 use tokio::task::JoinHandle;
 use tower::ServiceBuilder;
@@ -84,10 +80,7 @@ impl<DB: Database> Worker<DB> {
         store: DB,
         metrics: Metrics,
         tx_shutdown: &mut Notifier,
-        // for EL batch maker
-        channel_metrics: Arc<WorkerChannelMetrics>,
-        rx_batch_maker: Receiver<NewWorkerBlock>,
-    ) -> Vec<JoinHandle<()>> {
+    ) -> (Vec<JoinHandle<()>>, BlockProvider<DB>) {
         let worker_name = keypair.public().clone();
         let worker_peer_id = PeerId(worker_name.0.to_bytes());
         info!("Boot worker node with id {} peer id {}", id, worker_peer_id,);
@@ -345,14 +338,7 @@ impl<DB: Database> Worker<DB> {
             tx_shutdown.subscribe(),
         );
 
-        let client_flow_handles = worker.spawn_block_proposals(
-            tx_shutdown,
-            node_metrics,
-            channel_metrics,
-            client,
-            network.clone(),
-            rx_batch_maker,
-        );
+        let block_provider = worker.new_block_provider(node_metrics, client, network.clone());
 
         let network_shutdown_handle =
             Self::shutdown_network_listener(tx_shutdown.subscribe(), network);
@@ -370,8 +356,7 @@ impl<DB: Database> Worker<DB> {
 
         let mut handles = vec![connection_monitor_handle, network_shutdown_handle];
         handles.extend(admin_handles);
-        handles.extend(client_flow_handles);
-        handles
+        (handles, block_provider)
     }
 
     // Spawns a task responsible for explicitly shutting down the network
@@ -407,48 +392,25 @@ impl<DB: Database> Worker<DB> {
     }
 
     /// Spawn all tasks responsible to handle clients transactions.
-    fn spawn_block_proposals(
+    fn new_block_provider(
         &self,
-        tx_shutdown: &mut Notifier,
         node_metrics: Arc<WorkerMetrics>,
-        channel_metrics: Arc<WorkerChannelMetrics>,
         client: NetworkClient,
         network: anemo::Network,
-        rx_batch_maker: Receiver<NewWorkerBlock>,
-    ) -> Vec<JoinHandle<()>> {
+    ) -> BlockProvider<DB> {
         info!(target: "worker::worker", "Starting handler for transactions");
-
-        let (tx_quorum_waiter, rx_quorum_waiter) = channel_with_total(
-            CHANNEL_CAPACITY,
-            &channel_metrics.tx_quorum_waiter,
-            &channel_metrics.tx_quorum_waiter_total,
-        );
-
-        // Receives a fully executed worker block from execution layer and reliably broadcasts to
-        // peers with the same `id` before passing off to the `QuorumWaiter`.
-        let block_provider_handle = BlockProvider::spawn(
-            self.id,
-            tx_shutdown.subscribe(),
-            rx_batch_maker,
-            tx_quorum_waiter,
-            node_metrics.clone(),
-            client,
-            self.store.clone(),
-        );
 
         // The `QuorumWaiter` waits for 2f authorities to acknowledge receiving the block
         // before forwarding the block to the `Processor`
-        let quorum_waiter_handle = QuorumWaiter::spawn(
+        let quorum_waiter = QuorumWaiter::new(
             self.authority.clone(),
             self.id,
             self.committee.clone(),
             self.worker_cache.clone(),
-            tx_shutdown.subscribe(),
-            rx_quorum_waiter,
             network,
-            node_metrics,
+            node_metrics.clone(),
         );
 
-        vec![block_provider_handle, quorum_waiter_handle]
+        BlockProvider::new(self.id, quorum_waiter, node_metrics, client, self.store.clone())
     }
 }

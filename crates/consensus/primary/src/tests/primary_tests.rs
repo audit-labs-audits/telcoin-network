@@ -143,7 +143,6 @@ async fn test_get_network_peers_from_admin_server() {
         store.batch_store,
         metrics_1,
         &mut tx_shutdown_worker,
-        channel_metrics,
         rx_batch_maker,
     );
 

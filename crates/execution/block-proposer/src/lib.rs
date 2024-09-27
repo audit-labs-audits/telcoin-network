@@ -16,7 +16,8 @@
 #![deny(unused_must_use, rust_2018_idioms)]
 #![cfg_attr(docsrs, feature(doc_cfg, doc_auto_cfg))]
 
-use consensus_metrics::metered_channel::Sender;
+use narwhal_typed_store::traits::Database;
+use narwhal_worker::BlockProvider;
 use reth_chainspec::ChainSpec;
 use reth_evm::execute::{
     BlockExecutionError, BlockExecutionOutput, BlockExecutorProvider, BlockValidationError,
@@ -37,7 +38,7 @@ use std::{
     sync::Arc,
     time::{SystemTime, UNIX_EPOCH},
 };
-use tn_types::{now, AutoSealConsensus, NewWorkerBlock, PendingWorkerBlock};
+use tn_types::{now, AutoSealConsensus, PendingWorkerBlock};
 use tokio::sync::{watch, RwLock, RwLockReadGuard, RwLockWriteGuard};
 use tracing::{debug, error, trace, warn};
 
@@ -50,23 +51,24 @@ pub use task::MiningTask;
 
 /// Builder type for configuring the setup
 #[derive(Debug)]
-pub struct BlockProposerBuilder<Client, Pool, EvmConfig> {
+pub struct BlockProposerBuilder<Client, Pool, EvmConfig, DB: Database> {
     client: Client,
     consensus: AutoSealConsensus,
     pool: Pool,
     mode: MiningMode,
     storage: Storage,
-    to_worker: Sender<NewWorkerBlock>,
     evm_config: EvmConfig,
     watch_tx: watch::Sender<PendingWorkerBlock>,
+    block_provider: BlockProvider<DB>,
 }
 
 // === impl AutoSealBuilder ===
 
-impl<Client, Pool, EvmConfig> BlockProposerBuilder<Client, Pool, EvmConfig>
+impl<Client, Pool, EvmConfig, DB> BlockProposerBuilder<Client, Pool, EvmConfig, DB>
 where
     Client: BlockReaderIdExt,
     Pool: TransactionPool,
+    DB: Database,
 {
     /// Creates a new builder instance to configure all parts.
     #[allow(clippy::too_many_arguments)]
@@ -74,11 +76,11 @@ where
         chain_spec: Arc<ChainSpec>,
         client: Client,
         pool: Pool,
-        to_worker: Sender<NewWorkerBlock>,
         mode: MiningMode,
         address: Address,
         evm_config: EvmConfig,
         watch_tx: watch::Sender<PendingWorkerBlock>,
+        block_provider: BlockProvider<DB>,
         // TODO: pass max_block here to shut down block maker?
     ) -> Self {
         let latest_header = client
@@ -93,9 +95,9 @@ where
             consensus: AutoSealConsensus::new(chain_spec),
             pool,
             mode,
-            to_worker,
             evm_config,
             watch_tx,
+            block_provider,
         }
     }
 
@@ -107,20 +109,21 @@ where
 
     /// Consumes the type and returns all components
     #[track_caller]
-    pub fn build(self) -> MiningTask<Client, Pool, EvmConfig> {
-        let Self { client, consensus, pool, mode, storage, to_worker, evm_config, watch_tx } = self;
+    pub fn build(self) -> MiningTask<Client, Pool, EvmConfig, DB> {
+        let Self { client, consensus, pool, mode, storage, evm_config, watch_tx, block_provider } =
+            self;
         // let auto_client = AutoSealClient::new(storage.clone());
 
         // (consensus, auto_client, task)
         MiningTask::new(
             Arc::clone(consensus.chain_spec()),
             mode,
-            to_worker,
             storage,
             client,
             pool,
             evm_config,
             watch_tx,
+            block_provider,
         )
     }
 }

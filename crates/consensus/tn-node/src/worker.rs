@@ -5,15 +5,11 @@
 //! Hierarchical type to hold tasks spawned for a worker in the network.
 use crate::{engine::ExecutionNode, error::NodeError, try_join_all, FuturesUnordered};
 use anemo::PeerId;
-use consensus_metrics::metered_channel::channel_with_total;
 use fastcrypto::traits::KeyPair;
 use narwhal_network::client::NetworkClient;
 use narwhal_storage::NodeStorage;
 use narwhal_typed_store::traits::Database as ConsensusDatabase;
-use narwhal_worker::{
-    metrics::{Metrics, WorkerChannelMetrics},
-    Worker, CHANNEL_CAPACITY,
-};
+use narwhal_worker::{metrics::Metrics, Worker};
 use reth_db::{
     database::Database,
     database_metrics::{DatabaseMetadata, DatabaseMetrics},
@@ -81,17 +77,10 @@ impl WorkerNodeInner {
         });
 
         let metrics = Metrics::default();
-        // For EL batch maker
-        let channel_metrics: Arc<WorkerChannelMetrics> = metrics.channel_metrics.clone();
-        let (tx_batch_maker, rx_batch_maker) = channel_with_total(
-            CHANNEL_CAPACITY,
-            &channel_metrics.tx_block_maker,
-            &channel_metrics.tx_block_maker_total,
-        );
 
         let batch_validator = execution_node.new_batch_validator().await;
 
-        let handles = Worker::spawn(
+        let (handles, block_provider) = Worker::spawn(
             authority.clone(),
             network_keypair,
             self.id,
@@ -103,12 +92,10 @@ impl WorkerNodeInner {
             store.batch_store.clone(),
             metrics,
             &mut tx_shutdown,
-            channel_metrics,
-            rx_batch_maker,
         );
 
         // spawn batch maker for worker
-        execution_node.start_batch_maker(tx_batch_maker, self.id).await?;
+        execution_node.start_batch_maker(self.id, block_provider).await?;
 
         // now keep the handlers
         self.handles.clear();

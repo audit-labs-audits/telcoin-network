@@ -7,8 +7,8 @@ use crate::{
     engine::{WorkerNetwork, WorkerNode},
     error::ExecutionError,
 };
-use consensus_metrics::metered_channel::Sender;
 use jsonrpsee::http_client::HttpClient;
+use narwhal_worker::BlockProvider;
 use reth::rpc::{
     builder::{config::RethRpcServerConfig, RpcModuleBuilder, RpcServerHandle},
     eth::EthApi,
@@ -40,7 +40,7 @@ use tn_block_proposer::{BlockProposerBuilder, MiningMode};
 use tn_block_validator::BlockValidator;
 use tn_engine::ExecutorEngine;
 use tn_faucet::{FaucetArgs, FaucetRpcExtApiServer as _};
-use tn_types::{Consensus, ConsensusOutput, NewWorkerBlock, PendingWorkerBlock, WorkerId};
+use tn_types::{Consensus, ConsensusOutput, PendingWorkerBlock, WorkerId};
 use tokio::sync::{broadcast, mpsc::unbounded_channel, watch};
 use tokio_stream::wrappers::BroadcastStream;
 use tracing::{debug, error, info};
@@ -223,10 +223,10 @@ where
     }
 
     /// The worker's RPC, TX pool, and block builder
-    pub(super) async fn start_batch_maker(
+    pub(super) async fn start_batch_maker<CDB: narwhal_typed_store::traits::Database>(
         &mut self,
-        to_worker: Sender<NewWorkerBlock>,
         worker_id: WorkerId,
+        block_provider: BlockProvider<CDB>,
     ) -> eyre::Result<()> {
         // TODO: both start_engine and start_batch_maker lookup head
         let head = self.node_config.lookup_head(self.provider_factory.clone())?;
@@ -260,11 +260,11 @@ where
             Arc::clone(&self.node_config.chain),
             self.blockchain_db.clone(),
             transaction_pool.clone(),
-            to_worker,
             mining_mode,
             self.address,
             self.evm_executor.clone(),
             watch_tx.clone(),
+            block_provider,
         )
         .build();
 
