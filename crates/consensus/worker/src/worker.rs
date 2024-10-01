@@ -80,7 +80,7 @@ impl<DB: Database> Worker<DB> {
         store: DB,
         metrics: Metrics,
         tx_shutdown: &mut Notifier,
-    ) -> (Vec<JoinHandle<()>>, BlockProvider<DB>) {
+    ) -> (Vec<JoinHandle<()>>, BlockProvider<DB, QuorumWaiter>) {
         let worker_name = keypair.public().clone();
         let worker_peer_id = PeerId(worker_name.0.to_bytes());
         info!("Boot worker node with id {} peer id {}", id, worker_peer_id,);
@@ -397,7 +397,7 @@ impl<DB: Database> Worker<DB> {
         node_metrics: Arc<WorkerMetrics>,
         client: NetworkClient,
         network: anemo::Network,
-    ) -> BlockProvider<DB> {
+    ) -> BlockProvider<DB, QuorumWaiter> {
         info!(target: "worker::worker", "Starting handler for transactions");
 
         // The `QuorumWaiter` waits for 2f authorities to acknowledge receiving the block

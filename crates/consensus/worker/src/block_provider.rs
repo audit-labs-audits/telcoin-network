@@ -10,7 +10,7 @@
 
 use crate::{
     metrics::WorkerMetrics,
-    quorum_waiter::{QuorumWaiter, QuorumWaiterError},
+    quorum_waiter::{QuorumWaiterError, QuorumWaiterTrait},
 };
 use narwhal_network::{client::NetworkClient, WorkerToPrimaryClient};
 use narwhal_typed_store::{tables::WorkerBlocks, traits::Database};
@@ -18,11 +18,11 @@ use std::{sync::Arc, time::Duration};
 use tn_types::{WorkerBlock, WorkerId};
 
 use narwhal_network_types::WorkerOwnBlockMessage;
-use tokio::{task::JoinHandle, time::Instant};
-use tracing::{error, warn};
+use tokio::time::Instant;
+use tracing::error;
 
 #[cfg(feature = "trace_transaction")]
-use byteorder::{BigEndian, ReadBytesExt};
+use byteorder::BigEndian;
 
 #[cfg(test)]
 #[path = "tests/block_provider_tests.rs"]
@@ -30,11 +30,11 @@ pub mod block_provider_tests;
 
 /// Process blocks from EL into sealed blocks for CL.
 #[derive(Clone)]
-pub struct BlockProvider<DB: Database> {
+pub struct BlockProvider<DB, QW> {
     /// Our worker's id.
     id: WorkerId,
     /// Use `QuorumWaiter` to attest to blocks.
-    quorum_waiter: QuorumWaiter,
+    quorum_waiter: QW,
     /// Metrics handler
     node_metrics: Arc<WorkerMetrics>,
     /// The timestamp of the block creation.
@@ -46,16 +46,16 @@ pub struct BlockProvider<DB: Database> {
     store: DB,
 }
 
-impl<DB: Database> std::fmt::Debug for BlockProvider<DB> {
+impl<DB, QW> std::fmt::Debug for BlockProvider<DB, QW> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(f, "BlockProvider for worker {}", self.id)
     }
 }
 
-impl<DB: Database + Clone + 'static> BlockProvider<DB> {
+impl<DB: Database, QW: QuorumWaiterTrait> BlockProvider<DB, QW> {
     pub fn new(
         id: WorkerId,
-        quorum_waiter: QuorumWaiter,
+        quorum_waiter: QW,
         node_metrics: Arc<WorkerMetrics>,
         client: NetworkClient,
         store: DB,
@@ -71,19 +71,19 @@ impl<DB: Database + Clone + 'static> BlockProvider<DB> {
     }
 
     /// Seal and broadcast the current block.
-    pub fn seal(
+    pub async fn seal(
         &self,
         block: WorkerBlock,
         timeout: Duration,
-    ) -> JoinHandle<Result<(), QuorumWaiterError>> {
+    ) -> Result<(), QuorumWaiterError> {
+        //JoinHandle<Result<(), QuorumWaiterError>> {
         #[cfg(feature = "benchmark")]
         {
-            let digest = new_block.block.digest();
+            let digest = block.digest();
 
             // Look for sample txs (they all start with 0) and gather their txs id (the next 8
             // bytes).
-            let tx_ids: Vec<_> = new_block
-                .block
+            let tx_ids: Vec<_> = block
                 .transactions()
                 .iter()
                 .filter(|tx| tx.hash[0] == 0u8 && tx.hash.len() > 8)
@@ -99,11 +99,11 @@ impl<DB: Database + Clone + 'static> BlockProvider<DB> {
 
             #[cfg(feature = "trace_transaction")]
             {
+                use byteorder::ReadBytesExt;
                 // The first 8 bytes of each transaction message is reserved for an identifier
                 // that's useful for debugging and tracking the lifetime of messages between
                 // Narwhal and clients.
-                let tracking_ids: Vec<_> = new_block
-                    .block
+                let tracking_ids: Vec<_> = block
                     .transactions()
                     .iter()
                     .map(|tx| {
@@ -157,49 +157,47 @@ impl<DB: Database + Clone + 'static> BlockProvider<DB> {
         let store = self.store.clone();
         let worker_id = self.id;
 
-        tokio::spawn(async move {
-            // Wait for our block to reach quorum or fail to do so.
-            match block_attest_handle.await {
-                Ok(res) => {
-                    match res {
-                        Ok(_) => {} // Block reach quorum!
-                        Err(e) => return Err(e), /*match e {
-                                         crate::quorum_waiter::QuorumWaiterError::QuorumRejected => todo!(),
-                                         crate::quorum_waiter::QuorumWaiterError::AntiQuorum => todo!(),
-                                         crate::quorum_waiter::QuorumWaiterError::Timeout => todo!(),
-                                         crate::quorum_waiter::QuorumWaiterError::Network => todo!(),
-                                         crate::quorum_waiter::QuorumWaiterError::Rpc(status_code) => todo!(),
-                                     },*/
-                    }
-                }
-                Err(e) => {
-                    error!("Join error attempting block quorum! {e}");
-                    // XXXX proper error.
-                    return Err(QuorumWaiterError::Timeout);
+        // Wait for our block to reach quorum or fail to do so.
+        match block_attest_handle.await {
+            Ok(res) => {
+                match res {
+                    Ok(_) => {} // Block reach quorum!
+                    Err(e) => return Err(e), /*match e {
+                                     crate::quorum_waiter::QuorumWaiterError::QuorumRejected => todo!(),
+                                     crate::quorum_waiter::QuorumWaiterError::AntiQuorum => todo!(),
+                                     crate::quorum_waiter::QuorumWaiterError::Timeout => todo!(),
+                                     crate::quorum_waiter::QuorumWaiterError::Network => todo!(),
+                                     crate::quorum_waiter::QuorumWaiterError::Rpc(status_code) => todo!(),
+                                 },*/
                 }
             }
-
-            // Now save it to disk
-            let digest = block.digest();
-
-            if let Err(e) = store.insert::<WorkerBlocks>(&digest, &block) {
-                error!(target: "worker::block_provider", "Store failed with error: {:?}", e);
+            Err(e) => {
+                error!(target: "worker::block_provider", "Join error attempting block quorum! {e}");
                 // XXXX proper error.
                 return Err(QuorumWaiterError::Timeout);
             }
+        }
 
-            // Send the block to the primary.
-            let message = WorkerOwnBlockMessage { digest, worker_id, worker_block: block.clone() };
-            if let Err(e) = client.report_own_block(message).await {
-                warn!(target: "worker::block_provider", "Failed to report our block: {}", e);
-                // Drop all response handlers to signal error, since we
-                // cannot ensure the primary has actually signaled the
-                // block will eventually be sent.
-                // The transaction submitter will see the error and retry.
-                // XXXX proper error.
-                return Err(QuorumWaiterError::Timeout);
-            }
-            Ok(())
-        })
+        // Now save it to disk
+        let digest = block.digest();
+
+        if let Err(e) = store.insert::<WorkerBlocks>(&digest, &block) {
+            error!(target: "worker::block_provider", "Store failed with error: {:?}", e);
+            // XXXX proper error.
+            return Err(QuorumWaiterError::Timeout);
+        }
+
+        // Send the block to the primary.
+        let message = WorkerOwnBlockMessage { digest, worker_id, worker_block: block.clone() };
+        if let Err(e) = client.report_own_block(message).await {
+            error!(target: "worker::block_provider", "Failed to report our block: {}", e);
+            // Drop all response handlers to signal error, since we
+            // cannot ensure the primary has actually signaled the
+            // block will eventually be sent.
+            // The transaction submitter will see the error and retry.
+            // XXXX proper error.
+            //return Err(QuorumWaiterError::Timeout);
+        }
+        Ok(())
     }
 }

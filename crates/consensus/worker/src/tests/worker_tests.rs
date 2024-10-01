@@ -388,14 +388,6 @@ async fn get_network_peers_from_admin_server() {
         ..Parameters::default()
     };
 
-    // For EL batch maker
-    let channel_metrics: Arc<WorkerChannelMetrics> = metrics_1.channel_metrics.clone();
-    let (_tx_batch_maker, rx_batch_maker) = channel_with_total(
-        CHANNEL_CAPACITY,
-        &channel_metrics.tx_block_maker,
-        &channel_metrics.tx_block_maker_total,
-    );
-
     // Spawn a `Worker` instance for primary 1.
     Worker::spawn(
         authority_1.authority().clone(),
@@ -409,7 +401,6 @@ async fn get_network_peers_from_admin_server() {
         store.batch_store.clone(),
         metrics_1.clone(),
         &mut tx_shutdown,
-        rx_batch_maker,
     );
 
     let primary_1_peer_id = Hex::encode(authority_1.network_keypair().copy().public().0.as_bytes());
@@ -504,14 +495,6 @@ async fn get_network_peers_from_admin_server() {
 
     let mut tx_shutdown_worker = Notifier::new();
 
-    // For EL batch maker
-    let channel_metrics: Arc<WorkerChannelMetrics> = metrics_2.channel_metrics.clone();
-    let (_tx_batch_maker, rx_batch_maker) = channel_with_total(
-        CHANNEL_CAPACITY,
-        &channel_metrics.tx_block_maker,
-        &channel_metrics.tx_block_maker_total,
-    );
-
     // Spawn a `Worker` instance for primary 2.
     Worker::spawn(
         authority_2.authority().clone(),
@@ -525,7 +508,6 @@ async fn get_network_peers_from_admin_server() {
         store.batch_store,
         metrics_2.clone(),
         &mut tx_shutdown_worker,
-        rx_batch_maker,
     );
 
     // Wait for tasks to start. Sleeping longer here to ensure all primaries and workers

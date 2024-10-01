@@ -23,6 +23,27 @@ use tokio::task::JoinHandle;
 #[path = "tests/quorum_waiter_tests.rs"]
 pub mod quorum_waiter_tests;
 
+/// Interface to QuorumWaiter, exists primarily for tests.
+pub trait QuorumWaiterTrait: Send + Sync + Clone + Unpin + 'static {
+    /// Send a block to committee peers in an attempt to get quorum on it's validity.
+    ///
+    /// Returns a JoinHandle to a future that will timeout.  Each peer attempt can:
+    /// - Accept the block and it's stake to quorum
+    /// - Reject the block explicitly in which case it's stake will never be added to quorum (can
+    ///   cause total block rejection)
+    /// - Have an error of some type stopping it's stake from adding to quorum but possibly not
+    ///   forever
+    ///
+    /// If the future resolves to Ok then the block has reached quorum other wise examine the error.
+    /// An error of QuorumWaiterError::QuorumRejected indicates the block will never be accepted
+    /// otherwise it might be possible if the network improves.
+    fn attest_block(
+        &self,
+        block: WorkerBlock,
+        timeout: Duration,
+    ) -> JoinHandle<Result<(), QuorumWaiterError>>;
+}
+
 /// Basically BoxFuture but without the unneeded lifetime.
 type QMBoxFuture<T> = Pin<Box<dyn Future<Output = T> + Send>>;
 
@@ -69,16 +90,28 @@ impl QuorumWaiter {
         }
     }
 
-    /// Sent a block to committee peers in an attempt to get quorum on it's validity.
-    ///
-    /// Returns a JoinHandle to a future that will timeout.  Each peer attempt can:
-    /// - Accept the block and it's stake to quorum
-    /// - Reject the block explicitly in which case it's stake will never be added to quorum (can cause total block rejection)
-    /// - Have an error of some type stopping it's stake from adding to quorum but possibly not forever
-    /// If the future resolves to Ok then the block has reached quorum other wise examine the error.
-    /// An error of QuorumWaiterError::QuorumRejected indicates the block will never be accepted otherwise
-    /// it might be possible if the network improves.
-    pub fn attest_block(
+    /// Helper function. It waits for a future to complete and then delivers a value.
+    async fn waiter(
+        wait_for: CancelOnDropHandler<eyre::Result<anemo::Response<()>>>,
+        deliver: Stake,
+    ) -> Result<Stake, WaiterError> {
+        match wait_for.await {
+            Ok(r) => {
+                let status = r.status();
+                match status {
+                    StatusCode::Success => Ok(deliver),
+                    StatusCode::BadRequest => Err(WaiterError::Rejected(deliver)),
+                    // Non-exhaustive enum...
+                    _ => Err(WaiterError::Rpc(status, deliver)),
+                }
+            }
+            Err(_) => Err(WaiterError::Network(deliver)),
+        }
+    }
+}
+
+impl QuorumWaiterTrait for QuorumWaiter {
+    fn attest_block(
         &self,
         block: WorkerBlock,
         timeout: Duration,
@@ -125,7 +158,8 @@ impl QuorumWaiter {
                 // If more stake than this is rejected then the block will never be accepted.
                 let max_rejected_stake = available_stake - threshold;
 
-                // Wait on the peer responses and produce an Ok(()) for quorum (2/3 stake confirmed block) or Error if quorum not reached.
+                // Wait on the peer responses and produce an Ok(()) for quorum (2/3 stake confirmed
+                // block) or Error if quorum not reached.
                 loop {
                     if let Some(res) = wait_for_quorum.next().await {
                         match res {
@@ -135,13 +169,14 @@ impl QuorumWaiter {
                                     let remaining_time =
                                         start_time.elapsed().saturating_sub(timeout);
                                     if !wait_for_quorum.is_empty() && !remaining_time.is_zero() {
-                                        // Let the remaining waiters have a chance for the remaining time.
-                                        // These are fire and forget, they will timeout soon so no big deal.
+                                        // Let the remaining waiters have a chance for the remaining
+                                        // time.
+                                        // These are fire and forget, they will timeout soon so no
+                                        // big deal.
                                         tokio::spawn(async move {
                                             let _ =
                                                 tokio::time::timeout(remaining_time, async move {
-                                                    while let Some(_) = wait_for_quorum.next().await
-                                                    {
+                                                    while (wait_for_quorum.next().await).is_some() {
                                                     }
                                                 })
                                                 .await;
@@ -166,7 +201,8 @@ impl QuorumWaiter {
                         break Err(QuorumWaiterError::AntiQuorum);
                     }
                     if rejected_stake > max_rejected_stake {
-                        // Can no longer reach quorum because our block was explicitly rejected by to much stack.
+                        // Can no longer reach quorum because our block was explicitly rejected by
+                        // to much stack.
                         break Err(QuorumWaiterError::QuorumRejected);
                     }
                     if total_stake + available_stake < threshold {
@@ -185,31 +221,6 @@ impl QuorumWaiter {
                 Err(_elapsed) => Err(QuorumWaiterError::Timeout),
             }
         })
-    }
-
-    /// Helper function. It waits for a future to complete and then delivers a value.
-    async fn waiter(
-        wait_for: CancelOnDropHandler<eyre::Result<anemo::Response<()>>>,
-        deliver: Stake,
-    ) -> Result<Stake, WaiterError> {
-        match wait_for.await {
-            Ok(r) => {
-                let status = r.status();
-                match status {
-                    StatusCode::Success => Ok(deliver),
-                    StatusCode::BadRequest => Err(WaiterError::Rejected(deliver)),
-                    StatusCode::NotFound
-                    | StatusCode::RequestTimeout
-                    | StatusCode::TooManyRequests
-                    | StatusCode::InternalServerError
-                    | StatusCode::VersionNotSupported
-                    | StatusCode::Unknown
-                    // Non-exhaustive enum...
-                    | _ => Err(WaiterError::Rpc(status, deliver)),
-                }
-            }
-            Err(_) => Err(WaiterError::Network(deliver)),
-        }
     }
 }
 

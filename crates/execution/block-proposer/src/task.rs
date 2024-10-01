@@ -1,7 +1,10 @@
 use crate::{mode::MiningMode, Storage};
 use futures_util::{future::BoxFuture, FutureExt};
 use narwhal_typed_store::traits::Database;
-use narwhal_worker::{quorum_waiter::QuorumWaiterError, BlockProvider};
+use narwhal_worker::{
+    quorum_waiter::{QuorumWaiterError, QuorumWaiterTrait},
+    BlockProvider,
+};
 use reth_chainspec::ChainSpec;
 use reth_evm::execute::BlockExecutorProvider;
 use reth_primitives::{IntoRecoveredTransaction, Withdrawals};
@@ -17,10 +20,13 @@ use std::{
 };
 use tn_types::{PendingWorkerBlock, WorkerBlock};
 use tokio::sync::watch;
-use tracing::{debug, error, warn};
+use tracing::{debug, warn};
 
 /// A Future that listens for new ready transactions and puts new blocks into storage
-pub struct MiningTask<Client, Pool: TransactionPool, BlockExecutor, DB: Database> {
+pub struct MiningTask<Client, Pool, BlockExecutor, DB, QW>
+where
+    Pool: TransactionPool,
+{
     /// The configured chain spec
     chain_spec: Arc<ChainSpec>,
     /// The client used to interact with the state
@@ -40,13 +46,16 @@ pub struct MiningTask<Client, Pool: TransactionPool, BlockExecutor, DB: Database
     /// The watch channel that shares the current pending worker block.
     watch_tx: watch::Sender<PendingWorkerBlock>,
     /// Provider for sealing blocks.
-    block_provider: BlockProvider<DB>,
+    block_provider: BlockProvider<DB, QW>,
 }
 
 // === impl MiningTask ===
 
-impl<Client, Pool: TransactionPool, BlockExecutor, DB: Database>
-    MiningTask<Client, Pool, BlockExecutor, DB>
+impl<Client, Pool, BlockExecutor, DB, QW> MiningTask<Client, Pool, BlockExecutor, DB, QW>
+where
+    Pool: TransactionPool,
+    DB: Database,
+    QW: QuorumWaiterTrait,
 {
     /// Creates a new instance of the task
     #[allow(clippy::too_many_arguments)]
@@ -58,7 +67,7 @@ impl<Client, Pool: TransactionPool, BlockExecutor, DB: Database>
         pool: Pool,
         block_executor: BlockExecutor,
         watch_tx: watch::Sender<PendingWorkerBlock>,
-        block_provider: BlockProvider<DB>,
+        block_provider: BlockProvider<DB, QW>,
     ) -> Self {
         Self {
             chain_spec,
@@ -67,7 +76,6 @@ impl<Client, Pool: TransactionPool, BlockExecutor, DB: Database>
             insert_task: None,
             storage,
             pool,
-            // canon_state_notification,
             queued: Default::default(),
             block_executor,
             watch_tx,
@@ -76,12 +84,13 @@ impl<Client, Pool: TransactionPool, BlockExecutor, DB: Database>
     }
 }
 
-impl<BlockExecutor, Client, Pool, DB> Future for MiningTask<Client, Pool, BlockExecutor, DB>
+impl<BlockExecutor, Client, Pool, DB, QW> Future for MiningTask<Client, Pool, BlockExecutor, DB, QW>
 where
     BlockExecutor: BlockExecutorProvider,
     Client: StateProviderFactory + CanonChainTracker + BlockReaderIdExt + Clone + Unpin + 'static,
     Pool: TransactionPool + Unpin + 'static,
     DB: Database,
+    QW: QuorumWaiterTrait,
 {
     type Output = ();
 
@@ -141,65 +150,26 @@ where
                                 new_header,
                             );
                             let digest = block.digest();
-                            let seal_handle = block_provider.seal(block, Duration::from_secs(10));
 
-                            match seal_handle.await {
-                                Ok(res) => match res {
-                                    Ok(()) => {
-                                        debug!(target: "execution::block_provider", ?digest, "Block sealed:");
-                                    }
-                                    Err(e) => return Err(e),
-                                },
-                                Err(err) => {
-                                    error!(target: "execution::block_provider", ?err, "Execution's BlockProvider Ack Failed:");
-                                    // XXXX Proper error
-                                    return Err(QuorumWaiterError::Timeout);
+                            // Abstract this so this can be broken into a seperate proc eventually.
+                            match block_provider.seal(block, Duration::from_secs(10)).await {
+                                Ok(()) => {
+                                    debug!(target: "execution::block_provider", ?digest, "Block sealed:");
+                                    // update execution state on watch channel
+                                    let _ =
+                                        worker_update.send(PendingWorkerBlock::new(Some(state)));
+                                    // TODO: this comment says dependent txs are also removed?
+                                    // might need to extend the trait onto another pool impl
+                                    //
+                                    // clear all transactions from pool once block is sealed
+                                    pool.remove_transactions(
+                                        transactions.iter().map(|tx| *(tx.hash())).collect(),
+                                    );
+                                }
+                                Err(e) => {
+                                    return Err(e);
                                 }
                             }
-
-                            // TODO: leaving this here in case `WorkerBlock` -> `SealedBlock`
-
-                            // // seal the block
-                            // let block = Block {
-                            //     header: new_header.clone().unseal(),
-                            //     body: transactions,
-                            //     ommers: vec![],
-                            //     withdrawals: None,
-                            // };
-                            // let sealed_block = block.seal_slow();
-
-                            // let sealed_block_with_senders =
-                            //     SealedBlockWithSenders::new(sealed_block, senders)
-                            //         .expect("senders are valid");
-
-                            // debug!(target: "execution::block_provider",
-                            // header=?sealed_block_with_senders.hash(), "sending block
-                            // notification");
-
-                            // let chain =
-                            //     Arc::new(Chain::new(vec![sealed_block_with_senders],
-                            // bundle_state));
-
-                            // // send block notification
-                            // let _ = canon_state_notification
-                            //     .send(reth_provider::CanonStateNotification::Commit { new: chain
-                            // });
-
-                            // update execution state on watch channel
-                            let _ = worker_update.send(PendingWorkerBlock::new(Some(state)));
-
-                            // TODO: is this the best place to remove transactions?
-                            // should the miner poll this like payload builder?
-
-                            // TODO: this comment says dependent txs are also removed?
-                            // might need to extend the trait onto another pool impl
-                            //
-                            // clear all transactions from pool once block is sealed
-                            pool.remove_transactions(
-                                transactions.iter().map(|tx| *(tx.hash())).collect(),
-                            );
-
-                            drop(storage);
                         }
                         Err(err) => {
                             warn!(target: "execution::block_provider", ?err, "failed to execute block");
@@ -218,11 +188,16 @@ where
                         Ok(()) => {} // Block accepted!
                         Err(e) => match e {
                             // XXXX Use an error type at this level that has more meaning.
-                            QuorumWaiterError::QuorumRejected => {} // Block has been rejected by peers don't try it again...
+                            QuorumWaiterError::QuorumRejected => {} /* Block has been rejected */
+                            // by peers don't try it
+                            // again...
                             QuorumWaiterError::AntiQuorum => {} // Rejected but may work later (?)
-                            QuorumWaiterError::Timeout => {} // Timeout, maybe not enough peers up?
+                            QuorumWaiterError::Timeout => {}    /* Timeout, maybe not enough */
+                            // peers up?
                             QuorumWaiterError::Network => {} // Net failure
-                            QuorumWaiterError::Rpc(_status_code) => {} // RPC error talking to a peer, should not come back
+                            QuorumWaiterError::Rpc(_status_code) => {} /* RPC error talking to a
+                                                               * peer, should not come
+                                                               * back */
                         },
                     },
                     Poll::Pending => {
@@ -237,8 +212,8 @@ where
     }
 }
 
-impl<EvmConfig, Client, Pool: TransactionPool, DB: Database> std::fmt::Debug
-    for MiningTask<Client, Pool, EvmConfig, DB>
+impl<EvmConfig, Client, Pool: TransactionPool, DB, QW> std::fmt::Debug
+    for MiningTask<Client, Pool, EvmConfig, DB, QW>
 {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("MiningTask").finish_non_exhaustive()

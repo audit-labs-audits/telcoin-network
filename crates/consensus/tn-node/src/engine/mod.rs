@@ -10,7 +10,7 @@
 //!
 //! The methods in this module are thread-safe wrappers for the inner type that contains logic.
 
-use narwhal_worker::BlockProvider;
+use narwhal_worker::{quorum_waiter::QuorumWaiterTrait, BlockProvider};
 use reth_db::{
     database::Database,
     database_metrics::{DatabaseMetadata, DatabaseMetrics},
@@ -86,11 +86,15 @@ where
     }
 
     /// Batch maker
-    pub async fn start_batch_maker<CDB: narwhal_typed_store::traits::Database>(
+    pub async fn start_batch_maker<CDB, QW>(
         &self,
         worker_id: WorkerId,
-        block_provider: BlockProvider<CDB>,
-    ) -> eyre::Result<()> {
+        block_provider: BlockProvider<CDB, QW>,
+    ) -> eyre::Result<()>
+    where
+        CDB: narwhal_typed_store::traits::Database,
+        QW: QuorumWaiterTrait,
+    {
         let mut guard = self.internal.write().await;
         guard.start_batch_maker(worker_id, block_provider).await
     }

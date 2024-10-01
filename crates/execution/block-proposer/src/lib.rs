@@ -17,7 +17,7 @@
 #![cfg_attr(docsrs, feature(doc_cfg, doc_auto_cfg))]
 
 use narwhal_typed_store::traits::Database;
-use narwhal_worker::BlockProvider;
+use narwhal_worker::{quorum_waiter::QuorumWaiterTrait, BlockProvider};
 use reth_chainspec::ChainSpec;
 use reth_evm::execute::{
     BlockExecutionError, BlockExecutionOutput, BlockExecutorProvider, BlockValidationError,
@@ -51,7 +51,7 @@ pub use task::MiningTask;
 
 /// Builder type for configuring the setup
 #[derive(Debug)]
-pub struct BlockProposerBuilder<Client, Pool, EvmConfig, DB: Database> {
+pub struct BlockProposerBuilder<Client, Pool, EvmConfig, DB, QW> {
     client: Client,
     consensus: AutoSealConsensus,
     pool: Pool,
@@ -59,16 +59,17 @@ pub struct BlockProposerBuilder<Client, Pool, EvmConfig, DB: Database> {
     storage: Storage,
     evm_config: EvmConfig,
     watch_tx: watch::Sender<PendingWorkerBlock>,
-    block_provider: BlockProvider<DB>,
+    block_provider: BlockProvider<DB, QW>,
 }
 
 // === impl AutoSealBuilder ===
 
-impl<Client, Pool, EvmConfig, DB> BlockProposerBuilder<Client, Pool, EvmConfig, DB>
+impl<Client, Pool, EvmConfig, DB, QW> BlockProposerBuilder<Client, Pool, EvmConfig, DB, QW>
 where
     Client: BlockReaderIdExt,
     Pool: TransactionPool,
     DB: Database,
+    QW: QuorumWaiterTrait,
 {
     /// Creates a new builder instance to configure all parts.
     #[allow(clippy::too_many_arguments)]
@@ -80,7 +81,7 @@ where
         address: Address,
         evm_config: EvmConfig,
         watch_tx: watch::Sender<PendingWorkerBlock>,
-        block_provider: BlockProvider<DB>,
+        block_provider: BlockProvider<DB, QW>,
         // TODO: pass max_block here to shut down block maker?
     ) -> Self {
         let latest_header = client
@@ -109,7 +110,7 @@ where
 
     /// Consumes the type and returns all components
     #[track_caller]
-    pub fn build(self) -> MiningTask<Client, Pool, EvmConfig, DB> {
+    pub fn build(self) -> MiningTask<Client, Pool, EvmConfig, DB, QW> {
         let Self { client, consensus, pool, mode, storage, evm_config, watch_tx, block_provider } =
             self;
         // let auto_client = AutoSealClient::new(storage.clone());
@@ -391,6 +392,9 @@ impl StorageInner {
 mod tests {
     use super::*;
     use assert_matches::assert_matches;
+    use narwhal_network::client::NetworkClient;
+    use narwhal_typed_store::{open_db, tables::WorkerBlocks};
+    use narwhal_worker::{metrics::WorkerMetrics, quorum_waiter::QuorumWaiterError};
     use reth::tasks::TaskManager;
     use reth_blockchain_tree::noop::NoopBlockchainTree;
     use reth_db::test_utils::{create_test_rw_db, tempdir_path};
@@ -406,11 +410,25 @@ mod tests {
         blobstore::InMemoryBlobStore, PoolConfig, TransactionValidationTaskExecutor,
     };
     use std::{str::FromStr, time::Duration};
+    use tempfile::TempDir;
     use tn_types::{
         adiri_chain_spec_arc, adiri_genesis,
         test_utils::{get_gas_price, TransactionFactory},
+        WorkerBlock,
     };
-    use tokio::{sync::watch, time::timeout};
+    use tokio::sync::watch;
+
+    #[derive(Clone, Debug)]
+    struct TestMakeBlockQuorumWaiter();
+    impl QuorumWaiterTrait for TestMakeBlockQuorumWaiter {
+        fn attest_block(
+            &self,
+            _block: WorkerBlock,
+            _timeout: Duration,
+        ) -> tokio::task::JoinHandle<Result<(), QuorumWaiterError>> {
+            tokio::spawn(async move { Ok(()) })
+        }
+    }
 
     #[tokio::test]
     async fn test_make_block() {
@@ -467,24 +485,30 @@ mod tests {
         let mining_mode =
             MiningMode::instant(max_transactions, txpool.pending_transactions_listener());
 
-        // worker channel
-        let (to_worker, mut worker_rx) = tn_types::test_channel!(1);
         let address = Address::from(U160::from(33));
 
         let evm_config = EthEvmConfig::default();
         let block_executor = EthExecutorProvider::new(chain.clone(), evm_config);
-        let (tx, _rx) = watch::channel(PendingWorkerBlock::default());
+        let (tx, mut rx_pending_worker) = watch::channel(PendingWorkerBlock::default());
 
+        let client = NetworkClient::new_with_empty_id();
+        let temp_dir = TempDir::new().unwrap();
+        let store = open_db(temp_dir.path());
+        let qw = TestMakeBlockQuorumWaiter();
+        let node_metrics = WorkerMetrics::default();
+        let block_provider =
+            BlockProvider::new(0, qw.clone(), Arc::new(node_metrics), client, store.clone());
         // build block proposer
         let task = BlockProposerBuilder::new(
             Arc::clone(&chain),
             blockchain_db.clone(),
             txpool.clone(),
-            to_worker,
+            //to_worker,
             mining_mode,
             address,
             block_executor,
             tx,
+            block_provider,
         )
         .build();
 
@@ -541,15 +565,22 @@ mod tests {
         let _mining_task = tokio::spawn(Box::pin(task));
 
         // wait for new block
-        let too_long = Duration::from_secs(5);
-        let new_block = timeout(too_long, worker_rx.recv())
-            .await
-            .expect("new block created within time")
-            .expect("new block is Some()");
+        let mut new_block = None;
+        for _ in 0..5 {
+            let _ = tokio::time::sleep(Duration::from_secs(1)).await;
+            // Ensure the block is stored
+            if let Some((_, wb)) = store.iter::<WorkerBlocks>().next() {
+                new_block = Some(wb);
+                break;
+            }
+        }
+        let new_block = new_block.unwrap();
+        // Wait for this to change so the txns will be out of the pool (block may be in DB early).
+        let _ = rx_pending_worker.changed().await;
 
         debug!("new block: {new_block:?}");
         // number of transactions in the block
-        let block_txs = new_block.block.transactions();
+        let block_txs = new_block.transactions();
 
         // check max tx for task matches num of transactions in block
         let num_block_txs = block_txs.len();
@@ -558,38 +589,6 @@ mod tests {
         // ensure decoded block transaction is transaction1
         let block_tx = block_txs.first().cloned().expect("one tx in block");
         assert_eq!(block_tx, transaction1);
-
-        // send the worker's ack to task
-        let digest = new_block.block.digest();
-        let _ack = new_block.ack.send(digest);
-
-        // // retrieve block number 1 from storage
-        // //
-        // // at this point, we know the task has completed because
-        // // the task's Storage write lock must be dropped for the
-        // // read lock to be available here
-        // let storage_header = client
-        //     .get_headers_with_priority(
-        //         HeadersRequest { start: 1.into(), limit: 1, direction: HeadersDirection::Rising
-        // },         Priority::Normal,
-        //     )
-        //     .await
-        //     .expect("header is available from storage")
-        //     .into_data()
-        //     .first()
-        //     .expect("header included")
-        //     .to_owned();
-
-        // debug!("awaited first reply from storage header");
-
-        // let storage_sealed_header = storage_header.seal_slow();
-
-        // debug!("storage sealed header: {storage_sealed_header:?}");
-
-        // // TODO: this isn't the right thing to test bc storage should be removed
-        // //
-        // assert_eq!(new_block.block.versioned_metadata().sealed_header(), &storage_sealed_header);
-        // assert_eq!(storage_sealed_header.beneficiary, address);
 
         // yield to try and give pool a chance to update
         tokio::task::yield_now().await;

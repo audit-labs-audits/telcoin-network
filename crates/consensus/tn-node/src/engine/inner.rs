@@ -8,7 +8,7 @@ use crate::{
     error::ExecutionError,
 };
 use jsonrpsee::http_client::HttpClient;
-use narwhal_worker::BlockProvider;
+use narwhal_worker::{quorum_waiter::QuorumWaiterTrait, BlockProvider};
 use reth::rpc::{
     builder::{config::RethRpcServerConfig, RpcModuleBuilder, RpcServerHandle},
     eth::EthApi,
@@ -223,11 +223,15 @@ where
     }
 
     /// The worker's RPC, TX pool, and block builder
-    pub(super) async fn start_batch_maker<CDB: narwhal_typed_store::traits::Database>(
+    pub(super) async fn start_batch_maker<CDB, QW>(
         &mut self,
         worker_id: WorkerId,
-        block_provider: BlockProvider<CDB>,
-    ) -> eyre::Result<()> {
+        block_provider: BlockProvider<CDB, QW>,
+    ) -> eyre::Result<()>
+    where
+        CDB: narwhal_typed_store::traits::Database,
+        QW: QuorumWaiterTrait,
+    {
         // TODO: both start_engine and start_batch_maker lookup head
         let head = self.node_config.lookup_head(self.provider_factory.clone())?;
 
