@@ -1,5 +1,7 @@
 use std::sync::Mutex;
 
+use crate::quorum_waiter::QuorumWaiterError;
+
 // Copyright (c) 2021, Facebook, Inc. and its affiliates
 // Copyright (c) Telcoin, LLC
 // Copyright (c) Mysten Labs, Inc.

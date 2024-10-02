@@ -22,7 +22,7 @@ use tn_types::{
 use tokio::{sync::RwLock, task::JoinHandle};
 use tracing::{info, instrument};
 
-pub struct WorkerNodeInner {
+pub struct WorkerNodeInner<CDB: ConsensusDatabase> {
     // The worker's id
     id: WorkerId,
     // The configuration parameters.
@@ -33,14 +33,16 @@ pub struct WorkerNodeInner {
     tx_shutdown: Option<Notifier>,
     // Peer ID used for local connections.
     own_peer_id: Option<PeerId>,
+    // Keep the worker around.
+    worker: Option<Worker<CDB>>,
 }
 
-impl WorkerNodeInner {
+impl<CDB: ConsensusDatabase> WorkerNodeInner<CDB> {
     /// Starts the worker node with the provided info. If the node is already running then this
     /// method will return an error instead.
     #[allow(clippy::too_many_arguments)]
     #[instrument(name = "worker", skip_all)]
-    async fn start<DB, Evm, CE, CDB>(
+    async fn start<DB, Evm, CE>(
         &mut self,
         // The primary's id
         primary_name: BlsPublicKey,
@@ -80,19 +82,18 @@ impl WorkerNodeInner {
 
         let batch_validator = execution_node.new_batch_validator().await;
 
-        let (handles, block_provider) = Worker::spawn(
+        let worker = Worker::new(
             authority.clone(),
             network_keypair,
             self.id,
             committee.clone(),
             worker_cache.clone(),
             self.parameters.clone(),
-            batch_validator,
-            client.clone(),
             store.batch_store.clone(),
-            metrics,
-            &mut tx_shutdown,
         );
+
+        let (handles, block_provider) =
+            worker.spawn(batch_validator, client.clone(), metrics, &mut tx_shutdown);
 
         // spawn batch maker for worker
         execution_node.start_batch_maker(self.id, block_provider).await?;
@@ -101,6 +102,7 @@ impl WorkerNodeInner {
         self.handles.clear();
         self.handles.extend(handles);
         self.tx_shutdown = Some(tx_shutdown);
+        self.worker = Some(worker);
 
         Ok(())
     }
@@ -142,25 +144,26 @@ impl WorkerNodeInner {
 }
 
 #[derive(Clone)]
-pub struct WorkerNode {
-    internal: Arc<RwLock<WorkerNodeInner>>,
+pub struct WorkerNode<CDB: ConsensusDatabase> {
+    internal: Arc<RwLock<WorkerNodeInner<CDB>>>,
 }
 
-impl WorkerNode {
-    pub fn new(id: WorkerId, parameters: Parameters) -> WorkerNode {
+impl<CDB: ConsensusDatabase> WorkerNode<CDB> {
+    pub fn new(id: WorkerId, parameters: Parameters) -> WorkerNode<CDB> {
         let inner = WorkerNodeInner {
             id,
             parameters,
             handles: FuturesUnordered::new(),
             tx_shutdown: None,
             own_peer_id: None,
+            worker: None,
         };
 
         Self { internal: Arc::new(RwLock::new(inner)) }
     }
 
     #[allow(clippy::too_many_arguments)]
-    pub async fn start<DB, Evm, CE, CDB>(
+    pub async fn start<DB, Evm, CE>(
         &self,
         // The primary's public key of this authority.
         primary_key: BlsPublicKey,
@@ -182,7 +185,6 @@ impl WorkerNode {
         DB: Database + DatabaseMetadata + DatabaseMetrics + Clone + Unpin + 'static,
         Evm: BlockExecutorProvider + Clone + 'static,
         CE: ConfigureEvm,
-        CDB: ConsensusDatabase,
     {
         let mut guard = self.internal.write().await;
         guard

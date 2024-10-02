@@ -1,10 +1,5 @@
 use crate::{mode::MiningMode, Storage};
 use futures_util::{future::BoxFuture, FutureExt};
-use narwhal_typed_store::traits::Database;
-use narwhal_worker::{
-    quorum_waiter::{QuorumWaiterError, QuorumWaiterTrait},
-    BlockProvider,
-};
 use reth_chainspec::ChainSpec;
 use reth_evm::execute::BlockExecutorProvider;
 use reth_primitives::{IntoRecoveredTransaction, Withdrawals};
@@ -18,12 +13,15 @@ use std::{
     task::{Context, Poll},
     time::Duration,
 };
-use tn_types::{PendingWorkerBlock, WorkerBlock};
-use tokio::sync::watch;
+use tn_types::{error::BlockSealError, PendingWorkerBlock, WorkerBlock};
+use tokio::sync::{mpsc::Sender, oneshot, watch};
 use tracing::{debug, warn};
 
+pub(super) type BlockSender =
+    Sender<(WorkerBlock, Duration, oneshot::Sender<Result<(), BlockSealError>>)>;
+
 /// A Future that listens for new ready transactions and puts new blocks into storage
-pub struct MiningTask<Client, Pool, BlockExecutor, DB, QW>
+pub struct MiningTask<Client, Pool, BlockExecutor>
 where
     Pool: TransactionPool,
 {
@@ -34,7 +32,7 @@ where
     /// The active miner
     miner: MiningMode,
     /// Single active future that inserts a new block into `storage`
-    insert_task: Option<BoxFuture<'static, Result<(), QuorumWaiterError>>>,
+    insert_task: Option<BoxFuture<'static, Result<(), BlockSealError>>>,
     /// Shared storage to insert new blocks
     storage: Storage,
     /// Pool where transactions are stored
@@ -45,17 +43,15 @@ where
     block_executor: BlockExecutor,
     /// The watch channel that shares the current pending worker block.
     watch_tx: watch::Sender<PendingWorkerBlock>,
-    /// Provider for sealing blocks.
-    block_provider: BlockProvider<DB, QW>,
+    /// Channel for sealing blocks.
+    block_provider_sender: BlockSender,
 }
 
 // === impl MiningTask ===
 
-impl<Client, Pool, BlockExecutor, DB, QW> MiningTask<Client, Pool, BlockExecutor, DB, QW>
+impl<Client, Pool, BlockExecutor> MiningTask<Client, Pool, BlockExecutor>
 where
     Pool: TransactionPool,
-    DB: Database,
-    QW: QuorumWaiterTrait,
 {
     /// Creates a new instance of the task
     #[allow(clippy::too_many_arguments)]
@@ -67,7 +63,7 @@ where
         pool: Pool,
         block_executor: BlockExecutor,
         watch_tx: watch::Sender<PendingWorkerBlock>,
-        block_provider: BlockProvider<DB, QW>,
+        block_provider_sender: BlockSender,
     ) -> Self {
         Self {
             chain_spec,
@@ -79,18 +75,31 @@ where
             queued: Default::default(),
             block_executor,
             watch_tx,
-            block_provider,
+            block_provider_sender,
+        }
+    }
+
+    async fn seal(
+        block_provider_sender: BlockSender,
+        block: WorkerBlock,
+        timeout: Duration,
+    ) -> Result<(), BlockSealError> {
+        let (tx, rx) = oneshot::channel();
+        match block_provider_sender.send((block, timeout, tx)).await {
+            Ok(_) => match rx.await {
+                Ok(res) => res,
+                Err(_) => Err(BlockSealError::FailedQuorum),
+            },
+            Err(_) => Err(BlockSealError::FailedQuorum),
         }
     }
 }
 
-impl<BlockExecutor, Client, Pool, DB, QW> Future for MiningTask<Client, Pool, BlockExecutor, DB, QW>
+impl<BlockExecutor, Client, Pool> Future for MiningTask<Client, Pool, BlockExecutor>
 where
     BlockExecutor: BlockExecutorProvider,
     Client: StateProviderFactory + CanonChainTracker + BlockReaderIdExt + Clone + Unpin + 'static,
     Pool: TransactionPool + Unpin + 'static,
-    DB: Database,
-    QW: QuorumWaiterTrait,
 {
     type Output = ();
 
@@ -114,7 +123,7 @@ where
                 let storage = this.storage.clone();
                 let transactions = this.queued.pop_front().expect("not empty");
 
-                let block_provider = this.block_provider.clone();
+                let block_provider_sender = this.block_provider_sender.clone();
                 let client = this.client.clone();
                 let chain_spec = Arc::clone(&this.chain_spec);
                 let pool = this.pool.clone();
@@ -152,7 +161,9 @@ where
                             let digest = block.digest();
 
                             // Abstract this so this can be broken into a seperate proc eventually.
-                            match block_provider.seal(block, Duration::from_secs(10)).await {
+                            match Self::seal(block_provider_sender, block, Duration::from_secs(10))
+                                .await
+                            {
                                 Ok(()) => {
                                     debug!(target: "execution::block_provider", ?digest, "Block sealed:");
                                     // update execution state on watch channel
@@ -173,8 +184,7 @@ where
                         }
                         Err(err) => {
                             warn!(target: "execution::block_provider", ?err, "failed to execute block");
-                            // XXXX proper error
-                            return Err(QuorumWaiterError::Timeout);
+                            return Err(BlockSealError::FailedQuorum);
                         }
                     }
 
@@ -187,17 +197,13 @@ where
                     Poll::Ready(res) => match res {
                         Ok(()) => {} // Block accepted!
                         Err(e) => match e {
-                            // XXXX Use an error type at this level that has more meaning.
-                            QuorumWaiterError::QuorumRejected => {} /* Block has been rejected */
+                            BlockSealError::QuorumRejected => {} // Block has been rejected
                             // by peers don't try it
                             // again...
-                            QuorumWaiterError::AntiQuorum => {} // Rejected but may work later (?)
-                            QuorumWaiterError::Timeout => {}    /* Timeout, maybe not enough */
+                            BlockSealError::AntiQuorum => {} // Rejected but may work later (?)
+                            BlockSealError::Timeout => {}    // Timeout, maybe not enough */
                             // peers up?
-                            QuorumWaiterError::Network => {} // Net failure
-                            QuorumWaiterError::Rpc(_status_code) => {} /* RPC error talking to a
-                                                               * peer, should not come
-                                                               * back */
+                            BlockSealError::FailedQuorum => {} // General failure (probably network)
                         },
                     },
                     Poll::Pending => {
@@ -212,8 +218,8 @@ where
     }
 }
 
-impl<EvmConfig, Client, Pool: TransactionPool, DB, QW> std::fmt::Debug
-    for MiningTask<Client, Pool, EvmConfig, DB, QW>
+impl<EvmConfig, Client, Pool: TransactionPool> std::fmt::Debug
+    for MiningTask<Client, Pool, EvmConfig>
 {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("MiningTask").finish_non_exhaustive()

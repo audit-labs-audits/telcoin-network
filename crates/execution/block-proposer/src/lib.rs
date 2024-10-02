@@ -16,8 +16,6 @@
 #![deny(unused_must_use, rust_2018_idioms)]
 #![cfg_attr(docsrs, feature(doc_cfg, doc_auto_cfg))]
 
-use narwhal_typed_store::traits::Database;
-use narwhal_worker::{quorum_waiter::QuorumWaiterTrait, BlockProvider};
 use reth_chainspec::ChainSpec;
 use reth_evm::execute::{
     BlockExecutionError, BlockExecutionOutput, BlockExecutorProvider, BlockValidationError,
@@ -38,6 +36,7 @@ use std::{
     sync::Arc,
     time::{SystemTime, UNIX_EPOCH},
 };
+use task::BlockSender;
 use tn_types::{now, AutoSealConsensus, PendingWorkerBlock};
 use tokio::sync::{watch, RwLock, RwLockReadGuard, RwLockWriteGuard};
 use tracing::{debug, error, trace, warn};
@@ -51,7 +50,7 @@ pub use task::MiningTask;
 
 /// Builder type for configuring the setup
 #[derive(Debug)]
-pub struct BlockProposerBuilder<Client, Pool, EvmConfig, DB, QW> {
+pub struct BlockProposerBuilder<Client, Pool, EvmConfig> {
     client: Client,
     consensus: AutoSealConsensus,
     pool: Pool,
@@ -59,17 +58,15 @@ pub struct BlockProposerBuilder<Client, Pool, EvmConfig, DB, QW> {
     storage: Storage,
     evm_config: EvmConfig,
     watch_tx: watch::Sender<PendingWorkerBlock>,
-    block_provider: BlockProvider<DB, QW>,
+    block_provider_sender: BlockSender,
 }
 
 // === impl AutoSealBuilder ===
 
-impl<Client, Pool, EvmConfig, DB, QW> BlockProposerBuilder<Client, Pool, EvmConfig, DB, QW>
+impl<Client, Pool, EvmConfig> BlockProposerBuilder<Client, Pool, EvmConfig>
 where
     Client: BlockReaderIdExt,
     Pool: TransactionPool,
-    DB: Database,
-    QW: QuorumWaiterTrait,
 {
     /// Creates a new builder instance to configure all parts.
     #[allow(clippy::too_many_arguments)]
@@ -81,7 +78,7 @@ where
         address: Address,
         evm_config: EvmConfig,
         watch_tx: watch::Sender<PendingWorkerBlock>,
-        block_provider: BlockProvider<DB, QW>,
+        block_provider_sender: BlockSender,
         // TODO: pass max_block here to shut down block maker?
     ) -> Self {
         let latest_header = client
@@ -98,7 +95,7 @@ where
             mode,
             evm_config,
             watch_tx,
-            block_provider,
+            block_provider_sender,
         }
     }
 
@@ -110,9 +107,17 @@ where
 
     /// Consumes the type and returns all components
     #[track_caller]
-    pub fn build(self) -> MiningTask<Client, Pool, EvmConfig, DB, QW> {
-        let Self { client, consensus, pool, mode, storage, evm_config, watch_tx, block_provider } =
-            self;
+    pub fn build(self) -> MiningTask<Client, Pool, EvmConfig> {
+        let Self {
+            client,
+            consensus,
+            pool,
+            mode,
+            storage,
+            evm_config,
+            watch_tx,
+            block_provider_sender,
+        } = self;
         // let auto_client = AutoSealClient::new(storage.clone());
 
         // (consensus, auto_client, task)
@@ -124,7 +129,7 @@ where
             pool,
             evm_config,
             watch_tx,
-            block_provider,
+            block_provider_sender,
         )
     }
 }
@@ -393,8 +398,12 @@ mod tests {
     use super::*;
     use assert_matches::assert_matches;
     use narwhal_network::client::NetworkClient;
-    use narwhal_typed_store::{open_db, tables::WorkerBlocks};
-    use narwhal_worker::{metrics::WorkerMetrics, quorum_waiter::QuorumWaiterError};
+    use narwhal_typed_store::{open_db, tables::WorkerBlocks, traits::Database};
+    use narwhal_worker::{
+        metrics::WorkerMetrics,
+        quorum_waiter::{QuorumWaiterError, QuorumWaiterTrait},
+        BlockProvider,
+    };
     use reth::tasks::TaskManager;
     use reth_blockchain_tree::noop::NoopBlockchainTree;
     use reth_db::test_utils::{create_test_rw_db, tempdir_path};
@@ -508,7 +517,7 @@ mod tests {
             address,
             block_executor,
             tx,
-            block_provider,
+            block_provider.blocks_rx(),
         )
         .build();
 

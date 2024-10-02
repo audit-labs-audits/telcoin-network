@@ -13,7 +13,7 @@ use crate::{
 use anemo::{
     codegen::InboundRequestLayer,
     types::{Address, PeerInfo},
-    Network, PeerId,
+    Config, Network, PeerId,
 };
 use anemo_tower::{
     auth::{AllowedPeers, RequireAuthorizationLayer},
@@ -67,45 +67,92 @@ pub struct Worker<DB> {
 }
 
 impl<DB: Database> Worker<DB> {
-    #[allow(clippy::too_many_arguments)]
-    pub fn spawn(
+    //#[allow(clippy::too_many_arguments)]
+    pub fn new(
         authority: Authority,
         keypair: NetworkKeypair,
         id: WorkerId,
         committee: Committee,
         worker_cache: WorkerCache,
         parameters: Parameters,
-        validator: impl BlockValidation,
-        client: NetworkClient,
         store: DB,
-        metrics: Metrics,
-        tx_shutdown: &mut Notifier,
-    ) -> (Vec<JoinHandle<()>>, BlockProvider<DB, QuorumWaiter>) {
+    ) -> Self {
         let worker_name = keypair.public().clone();
         let worker_peer_id = PeerId(worker_name.0.to_bytes());
         info!("Boot worker node with id {} peer id {}", id, worker_peer_id,);
 
         // Define a worker instance.
-        let worker = Self {
-            authority: authority.clone(),
-            keypair,
-            id,
-            committee: committee.clone(),
-            worker_cache: worker_cache.clone(),
-            parameters: parameters.clone(),
-            store,
-        };
+        Self { authority, keypair, id, committee, worker_cache, parameters, store }
+    }
+
+    fn anemo_config() -> Config {
+        let mut quic_config = anemo::QuicConfig::default();
+        // Allow more concurrent streams for burst activity.
+        quic_config.max_concurrent_bidi_streams = Some(10_000);
+        // Increase send and receive buffer sizes on the worker, since the worker is
+        // responsible for broadcasting and fetching payloads.
+        // With 200MiB buffer size and ~500ms RTT, the max throughput ~400MiB.
+        quic_config.stream_receive_window = Some(100 << 20);
+        quic_config.receive_window = Some(200 << 20);
+        quic_config.send_window = Some(200 << 20);
+        quic_config.crypto_buffer_size = Some(1 << 20);
+        quic_config.socket_receive_buffer_size = Some(20 << 20);
+        quic_config.socket_send_buffer_size = Some(20 << 20);
+        quic_config.allow_failed_socket_buffer_size_setting = true;
+        quic_config.max_idle_timeout_ms = Some(30_000);
+        // Enable keep alives every 5s
+        quic_config.keep_alive_interval_ms = Some(5_000);
+        let mut config = anemo::Config::default();
+        config.quic = Some(quic_config);
+        // Set the max_frame_size to be 1 GB to work around the issue of there being too many
+        // delegation events in the epoch change txn.
+        config.max_frame_size = Some(1 << 30);
+        // Set a default timeout of 300s for all RPC requests
+        config.inbound_request_timeout_ms = Some(300_000);
+        config.outbound_request_timeout_ms = Some(300_000);
+        config.shutdown_idle_timeout_ms = Some(1_000);
+        config.connectivity_check_interval_ms = Some(2_000);
+        config.connection_backoff_ms = Some(1_000);
+        config.max_connection_backoff_ms = Some(20_000);
+        config
+    }
+
+    fn my_address(&self) -> Multiaddr {
+        let address = self
+            .worker_cache
+            .worker(self.authority.protocol_key(), &self.id)
+            .expect("Our public key or worker id is not in the worker cache")
+            .worker_address;
+        if let Some(addr) =
+            address.replace(0, |_protocol| Some(Protocol::Ip4(Ipv4Addr::UNSPECIFIED)))
+        {
+            addr
+        } else {
+            address
+        }
+    }
+
+    pub fn spawn(
+        &self,
+        validator: impl BlockValidation,
+        client: NetworkClient,
+        metrics: Metrics,
+        tx_shutdown: &mut Notifier,
+    ) -> (Vec<JoinHandle<()>>, BlockProvider<DB, QuorumWaiter>) {
+        let worker_name = self.keypair.public().clone();
+        let worker_peer_id = PeerId(worker_name.0.to_bytes());
+        info!("Boot worker node with id {} peer id {}", self.id, worker_peer_id,);
 
         let node_metrics = metrics.worker_metrics.clone();
 
         let mut worker_service = WorkerToWorkerServer::new(WorkerReceiverHandler {
-            id: worker.id,
+            id: self.id,
             client: client.clone(),
-            store: worker.store.clone(),
+            store: self.store.clone(),
             validator: validator.clone(),
         });
         // Apply rate limits from configuration as needed.
-        if let Some(limit) = parameters.anemo.report_batch_rate_limit {
+        if let Some(limit) = self.parameters.anemo.report_batch_rate_limit {
             worker_service = worker_service.add_layer_for_report_block(InboundRequestLayer::new(
                 rate_limit::RateLimitLayer::new(
                     governor::Quota::per_second(limit),
@@ -113,7 +160,7 @@ impl<DB: Database> Worker<DB> {
                 ),
             ));
         }
-        if let Some(limit) = parameters.anemo.request_batches_rate_limit {
+        if let Some(limit) = self.parameters.anemo.request_batches_rate_limit {
             worker_service = worker_service.add_layer_for_request_blocks(InboundRequestLayer::new(
                 rate_limit::RateLimitLayer::new(
                     governor::Quota::per_second(limit),
@@ -124,37 +171,32 @@ impl<DB: Database> Worker<DB> {
 
         // Legacy RPC interface, only used by delete_batches() for external consensus.
         let primary_service = PrimaryToWorkerServer::new(PrimaryReceiverHandler {
-            id: worker.id,
-            committee: worker.committee.clone(),
-            worker_cache: worker.worker_cache.clone(),
-            store: worker.store.clone(),
-            request_batches_timeout: worker.parameters.sync_retry_delay,
+            id: self.id,
+            committee: self.committee.clone(),
+            worker_cache: self.worker_cache.clone(),
+            store: self.store.clone(),
+            request_batches_timeout: self.parameters.sync_retry_delay,
             network: None,
             batch_fetcher: None,
             validator: validator.clone(),
         });
 
         // Receive incoming messages from other workers.
-        let address = worker
-            .worker_cache
-            .worker(authority.protocol_key(), &id)
-            .expect("Our public key or worker id is not in the worker cache")
-            .worker_address;
-        let address =
-            address.replace(0, |_protocol| Some(Protocol::Ip4(Ipv4Addr::UNSPECIFIED))).unwrap();
+        let address = self.my_address();
         let addr = address.to_anemo_address().unwrap();
 
-        let epoch_string: String = committee.epoch().to_string();
+        let epoch_string: String = self.committee.epoch().to_string();
 
         // Set up anemo Network.
-        let our_primary_peer_id = PeerId(authority.network_key().0.to_bytes());
+        let our_primary_peer_id = PeerId(self.authority.network_key().0.to_bytes());
         let primary_to_worker_router = anemo::Router::new()
             .add_rpc_service(primary_service)
             // Add an Authorization Layer to ensure that we only service requests from our primary
             .route_layer(RequireAuthorizationLayer::new(AllowedPeers::new([our_primary_peer_id])))
             .route_layer(RequireAuthorizationLayer::new(AllowedEpoch::new(epoch_string.clone())));
 
-        let worker_peer_ids = worker_cache
+        let worker_peer_ids = self
+            .worker_cache
             .all_workers()
             .into_iter()
             .map(|(worker_name, _)| PeerId(worker_name.0.to_bytes()));
@@ -172,7 +214,7 @@ impl<DB: Database> Worker<DB> {
             )
             .layer(CallbackLayer::new(MetricsMakeCallbackHandler::new(
                 metrics.inbound_network_metrics.clone(),
-                parameters.anemo.excessive_message_size(),
+                self.parameters.anemo.excessive_message_size(),
             )))
             .layer(CallbackLayer::new(FailpointsMakeCallbackHandler::new()))
             .layer(SetResponseHeaderLayer::overriding(
@@ -189,7 +231,7 @@ impl<DB: Database> Worker<DB> {
             )
             .layer(CallbackLayer::new(MetricsMakeCallbackHandler::new(
                 metrics.outbound_network_metrics.clone(),
-                parameters.anemo.excessive_message_size(),
+                self.parameters.anemo.excessive_message_size(),
             )))
             .layer(CallbackLayer::new(FailpointsMakeCallbackHandler::new()))
             .layer(SetRequestHeaderLayer::overriding(
@@ -198,44 +240,14 @@ impl<DB: Database> Worker<DB> {
             ))
             .into_inner();
 
-        let anemo_config = {
-            let mut quic_config = anemo::QuicConfig::default();
-            // Allow more concurrent streams for burst activity.
-            quic_config.max_concurrent_bidi_streams = Some(10_000);
-            // Increase send and receive buffer sizes on the worker, since the worker is
-            // responsible for broadcasting and fetching payloads.
-            // With 200MiB buffer size and ~500ms RTT, the max throughput ~400MiB.
-            quic_config.stream_receive_window = Some(100 << 20);
-            quic_config.receive_window = Some(200 << 20);
-            quic_config.send_window = Some(200 << 20);
-            quic_config.crypto_buffer_size = Some(1 << 20);
-            quic_config.socket_receive_buffer_size = Some(20 << 20);
-            quic_config.socket_send_buffer_size = Some(20 << 20);
-            quic_config.allow_failed_socket_buffer_size_setting = true;
-            quic_config.max_idle_timeout_ms = Some(30_000);
-            // Enable keep alives every 5s
-            quic_config.keep_alive_interval_ms = Some(5_000);
-            let mut config = anemo::Config::default();
-            config.quic = Some(quic_config);
-            // Set the max_frame_size to be 1 GB to work around the issue of there being too many
-            // delegation events in the epoch change txn.
-            config.max_frame_size = Some(1 << 30);
-            // Set a default timeout of 300s for all RPC requests
-            config.inbound_request_timeout_ms = Some(300_000);
-            config.outbound_request_timeout_ms = Some(300_000);
-            config.shutdown_idle_timeout_ms = Some(1_000);
-            config.connectivity_check_interval_ms = Some(2_000);
-            config.connection_backoff_ms = Some(1_000);
-            config.max_connection_backoff_ms = Some(20_000);
-            config
-        };
+        let anemo_config = Self::anemo_config();
 
         let network;
         let mut retries_left = 90;
         loop {
             let network_result = anemo::Network::bind(addr.clone())
                 .server_name("narwhal")
-                .private_key(worker.keypair.copy().private().0.to_bytes())
+                .private_key(self.keypair.copy().private().0.to_bytes())
                 .config(anemo_config.clone())
                 .outbound_request_layer(outbound_layer.clone())
                 .start(service.clone());
@@ -258,24 +270,24 @@ impl<DB: Database> Worker<DB> {
                 }
             }
         }
-        client.set_worker_network(id, network.clone());
+        client.set_worker_network(self.id, network.clone());
 
-        info!(target: "worker::worker", "Worker {} listening to worker messages on {}", id, address);
+        info!(target: "worker::worker", "Worker {} listening to worker messages on {}", self.id, address);
 
         let batch_fetcher = WorkerBlockFetcher::new(
             worker_name,
             network.clone(),
-            worker.store.clone(),
+            self.store.clone(),
             node_metrics.clone(),
         );
         client.set_primary_to_worker_local_handler(
             worker_peer_id,
             Arc::new(PrimaryReceiverHandler {
-                id: worker.id,
-                committee: worker.committee.clone(),
-                worker_cache: worker.worker_cache.clone(),
-                store: worker.store.clone(),
-                request_batches_timeout: worker.parameters.sync_retry_delay,
+                id: self.id,
+                committee: self.committee.clone(),
+                worker_cache: self.worker_cache.clone(),
+                store: self.store.clone(),
+                request_batches_timeout: self.parameters.sync_retry_delay,
                 network: Some(network.clone()),
                 batch_fetcher: Some(batch_fetcher),
                 validator: validator.clone(),
@@ -284,9 +296,9 @@ impl<DB: Database> Worker<DB> {
 
         let mut peer_types = HashMap::new();
 
-        let other_workers = worker
+        let other_workers = self
             .worker_cache
-            .others_workers_by_id(authority.protocol_key(), &id)
+            .others_workers_by_id(self.authority.protocol_key(), &self.id)
             .into_iter()
             .map(|(_, info)| (info.name, info.worker_address));
 
@@ -300,8 +312,8 @@ impl<DB: Database> Worker<DB> {
         // Connect worker to its corresponding primary.
         let (peer_id, address) = Self::add_peer_in_network(
             &network,
-            authority.network_key(),
-            &authority.primary_network_address(),
+            self.authority.network_key(),
+            &self.authority.primary_network_address(),
         );
         peer_types.insert(peer_id, "our_primary".to_string());
         info!(target: "worker::worker", "Adding our primary with peer id {} and address {}", peer_id, address);
@@ -309,7 +321,7 @@ impl<DB: Database> Worker<DB> {
         // update the peer_types with the "other_primary". We do not add them in the Network
         // struct, otherwise the networking library will try to connect to it
         let other_primaries: Vec<(AuthorityIdentifier, Multiaddr, NetworkPublicKey)> =
-            committee.others_primaries_by_id(authority.id());
+            self.committee.others_primaries_by_id(self.authority.id());
         for (_, _, network_key) in other_primaries {
             peer_types.insert(PeerId(network_key.0.to_bytes()), "other_primary".to_string());
         }
@@ -322,14 +334,15 @@ impl<DB: Database> Worker<DB> {
                 tx_shutdown.subscribe(),
             );
 
-        let network_admin_server_base_port = parameters
+        let network_admin_server_base_port = self
+            .parameters
             .network_admin_server
             .worker_network_admin_server_base_port
-            .checked_add(id)
+            .checked_add(self.id)
             .unwrap();
         info!(target: "worker::worker",
             "Worker {} listening to network admin messages on 127.0.0.1:{}",
-            id, network_admin_server_base_port
+            self.id, network_admin_server_base_port
         );
 
         let admin_handles = narwhal_network::admin::start_admin_server(
@@ -338,7 +351,7 @@ impl<DB: Database> Worker<DB> {
             tx_shutdown.subscribe(),
         );
 
-        let block_provider = worker.new_block_provider(node_metrics, client, network.clone());
+        let block_provider = self.new_block_provider(node_metrics, client, network.clone());
 
         let network_shutdown_handle =
             Self::shutdown_network_listener(tx_shutdown.subscribe(), network);
@@ -346,10 +359,10 @@ impl<DB: Database> Worker<DB> {
         // NOTE: This log entry is used to compute performance.
         info!(target: "worker::worker",
             "Worker {} successfully booted on {}",
-            id,
-            worker
+            self.id,
+            self
                 .worker_cache
-                .worker(authority.protocol_key(), &worker.id)
+                .worker(self.authority.protocol_key(), &self.id)
                 .expect("Our public key or worker id is not in the worker cache")
                 .transactions
         );
@@ -391,7 +404,7 @@ impl<DB: Database> Worker<DB> {
         (peer_id, address)
     }
 
-    /// Spawn all tasks responsible to handle clients transactions.
+    /// Builds a new block provider responsible for handling client transactions.
     fn new_block_provider(
         &self,
         node_metrics: Arc<WorkerMetrics>,

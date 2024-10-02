@@ -389,19 +389,16 @@ async fn get_network_peers_from_admin_server() {
     };
 
     // Spawn a `Worker` instance for primary 1.
-    Worker::spawn(
+    let worker = Worker::new(
         authority_1.authority().clone(),
         worker_1_keypair.copy(),
         worker_id,
         committee.clone(),
         worker_cache.clone(),
         worker_1_parameters.clone(),
-        NoopBlockValidator,
-        client_1.clone(),
         store.batch_store.clone(),
-        metrics_1.clone(),
-        &mut tx_shutdown,
     );
+    worker.spawn(NoopBlockValidator, client_1.clone(), metrics_1.clone(), &mut tx_shutdown);
 
     let primary_1_peer_id = Hex::encode(authority_1.network_keypair().copy().public().0.as_bytes());
     let worker_1_peer_id = Hex::encode(worker_1_keypair.copy().public().0.as_bytes());
@@ -496,19 +493,16 @@ async fn get_network_peers_from_admin_server() {
     let mut tx_shutdown_worker = Notifier::new();
 
     // Spawn a `Worker` instance for primary 2.
-    Worker::spawn(
+    let worker = Worker::new(
         authority_2.authority().clone(),
         worker_2_keypair.copy(),
         worker_id,
         committee.clone(),
         worker_cache.clone(),
         worker_2_parameters.clone(),
-        NoopBlockValidator,
-        client_2,
         store.batch_store,
-        metrics_2.clone(),
-        &mut tx_shutdown_worker,
     );
+    worker.spawn(NoopBlockValidator, client_2, metrics_2.clone(), &mut tx_shutdown_worker);
 
     // Wait for tasks to start. Sleeping longer here to ensure all primaries and workers
     // have  a chance to connect to each other.

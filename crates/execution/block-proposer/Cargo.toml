@@ -29,10 +29,6 @@ reth-execution-errors = { workspace = true }
 
 consensus-metrics = { workspace = true }
 
-# XXX these deps ok here?
-narwhal-worker = { workspace = true }
-narwhal-typed-store = { workspace = true }
-
 [dev-dependencies]
 # unit tests
 tn-types = { workspace = true, features = ["test-utils"] }

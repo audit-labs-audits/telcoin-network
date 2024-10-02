@@ -268,7 +268,7 @@ where
             self.address,
             self.evm_executor.clone(),
             watch_tx.clone(),
-            block_provider,
+            block_provider.blocks_rx(),
         )
         .build();
 

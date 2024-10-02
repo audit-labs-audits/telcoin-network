@@ -131,7 +131,7 @@ async fn test_make_block_el_to_cl() {
         address,
         block_executor.clone(),
         tx,
-        block_provider,
+        block_provider.blocks_rx(),
     )
     .build();
 
