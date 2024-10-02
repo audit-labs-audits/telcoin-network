@@ -59,7 +59,7 @@ impl<DB: Database, QW: QuorumWaiterTrait> BlockProvider<DB, QW> {
         let this = Self { id, quorum_waiter, node_metrics, client, store, tx_blocks };
         let this_clone = this.clone();
         // Spawn a little task to accept blocks from a channel and seal them that way.
-        // Allows then engine to remain removed from the worker.
+        // Allows the engine to remain removed from the worker.
         tokio::spawn(async move {
             while let Some((block, timeout, tx)) = rx_blocks.recv().await {
                 let res = this_clone.seal(block, timeout).await;
@@ -129,12 +129,9 @@ impl<DB: Database, QW: QuorumWaiterTrait> BlockProvider<DB, QW> {
             WorkerOwnBlockMessage { digest, worker_id: self.id, worker_block: block.clone() };
         if let Err(err) = self.client.report_own_block(message).await {
             error!(target: "worker::block_provider", "Failed to report our block: {err}");
-            // Drop all response handlers to signal error, since we
-            // cannot ensure the primary has actually signaled the
-            // block will eventually be sent.
-            // The transaction submitter will see the error and retry.
-            // XXXX proper error.
-            //return Err(QuorumWaiterError::Timeout);
+            // Should we return an error here?  Doing so complicates some tests but also the block
+            // is sealed, etc. Also, if we can not report our own block is this a
+            // showstopper?
         }
         Ok(())
     }
