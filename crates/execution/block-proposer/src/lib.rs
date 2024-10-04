@@ -506,7 +506,7 @@ mod tests {
         let qw = TestMakeBlockQuorumWaiter();
         let node_metrics = WorkerMetrics::default();
         let block_provider =
-            BlockProvider::new(0, qw.clone(), Arc::new(node_metrics), client, store.clone());
+            BlockProvider::new(0, qw, Arc::new(node_metrics), client, store.clone());
         // build block proposer
         let task = BlockProposerBuilder::new(
             Arc::clone(&chain),

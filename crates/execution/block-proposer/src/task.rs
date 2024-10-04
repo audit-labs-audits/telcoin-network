@@ -203,7 +203,10 @@ where
                             BlockSealError::AntiQuorum => {} // Rejected but may work later (?)
                             BlockSealError::Timeout => {}    // Timeout, maybe not enough */
                             // peers up?
-                            BlockSealError::FailedQuorum => {} // General failure (probably network)
+                            BlockSealError::FailedQuorum => {} /* General failure (probably */
+                            // network)
+                            BlockSealError::FatalDBFailure => {} /* DB access failed, probably
+                                                                  * should panic/shutdown */
                         },
                     },
                     Poll::Pending => {

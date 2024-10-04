@@ -12,8 +12,7 @@ use crate::{metrics::WorkerMetrics, quorum_waiter::QuorumWaiterTrait};
 use narwhal_network::{client::NetworkClient, WorkerToPrimaryClient};
 use narwhal_typed_store::{tables::WorkerBlocks, traits::Database};
 use std::{sync::Arc, time::Duration};
-use tn_types::{error::BlockSealError, WorkerBlock, WorkerId};
-use tokio::sync::{mpsc::Sender, oneshot};
+use tn_types::{error::BlockSealError, WorkerBlock, WorkerBlockSender, WorkerId};
 
 use narwhal_network_types::WorkerOwnBlockMessage;
 use tracing::error;
@@ -21,8 +20,6 @@ use tracing::error;
 #[cfg(test)]
 #[path = "tests/block_provider_tests.rs"]
 pub mod block_provider_tests;
-
-pub type BlockSender = Sender<(WorkerBlock, Duration, oneshot::Sender<Result<(), BlockSealError>>)>;
 
 /// Process blocks from EL into sealed blocks for CL.
 #[derive(Clone)]
@@ -38,7 +35,7 @@ pub struct BlockProvider<DB, QW> {
     /// The block store to store our own blocks.
     store: DB,
     /// Channel sender for alternate block submision if not calling seal directly.
-    tx_blocks: BlockSender,
+    tx_blocks: WorkerBlockSender,
 }
 
 impl<DB, QW> std::fmt::Debug for BlockProvider<DB, QW> {
@@ -71,7 +68,7 @@ impl<DB: Database, QW: QuorumWaiterTrait> BlockProvider<DB, QW> {
         this
     }
 
-    pub fn blocks_rx(&self) -> BlockSender {
+    pub fn blocks_rx(&self) -> WorkerBlockSender {
         self.tx_blocks.clone()
     }
 
@@ -121,7 +118,7 @@ impl<DB: Database, QW: QuorumWaiterTrait> BlockProvider<DB, QW> {
 
         if let Err(e) = self.store.insert::<WorkerBlocks>(&digest, &block) {
             error!(target: "worker::block_provider", "Store failed with error: {:?}", e);
-            return Err(BlockSealError::FailedQuorum);
+            return Err(BlockSealError::FatalDBFailure);
         }
 
         // Send the block to the primary.

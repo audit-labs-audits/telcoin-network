@@ -165,4 +165,6 @@ pub enum BlockSealError {
     Timeout,
     #[error("Failed to get enough responses to reach quorum")]
     FailedQuorum,
+    #[error("Failed to access consensus DB, this is fatal")]
+    FatalDBFailure,
 }

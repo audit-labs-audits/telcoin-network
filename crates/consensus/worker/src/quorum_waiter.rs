@@ -177,6 +177,7 @@ impl QuorumWaiterTrait for QuorumWaiter {
                                             let _ =
                                                 tokio::time::timeout(remaining_time, async move {
                                                     while (wait_for_quorum.next().await).is_some() {
+                                                        // do nothing
                                                     }
                                                 })
                                                 .await;

@@ -8,7 +8,6 @@ use crate::{
     error::ExecutionError,
 };
 use jsonrpsee::http_client::HttpClient;
-use narwhal_worker::{quorum_waiter::QuorumWaiterTrait, BlockProvider};
 use reth::rpc::{
     builder::{config::RethRpcServerConfig, RpcModuleBuilder, RpcServerHandle},
     eth::EthApi,
@@ -40,7 +39,7 @@ use tn_block_proposer::{BlockProposerBuilder, MiningMode};
 use tn_block_validator::BlockValidator;
 use tn_engine::ExecutorEngine;
 use tn_faucet::{FaucetArgs, FaucetRpcExtApiServer as _};
-use tn_types::{Consensus, ConsensusOutput, PendingWorkerBlock, WorkerId};
+use tn_types::{Consensus, ConsensusOutput, PendingWorkerBlock, WorkerBlockSender, WorkerId};
 use tokio::sync::{broadcast, mpsc::unbounded_channel, watch};
 use tokio_stream::wrappers::BroadcastStream;
 use tracing::{debug, error, info};
@@ -223,15 +222,11 @@ where
     }
 
     /// The worker's RPC, TX pool, and block builder
-    pub(super) async fn start_batch_maker<CDB, QW>(
+    pub(super) async fn start_batch_maker(
         &mut self,
         worker_id: WorkerId,
-        block_provider: BlockProvider<CDB, QW>,
-    ) -> eyre::Result<()>
-    where
-        CDB: narwhal_typed_store::traits::Database,
-        QW: QuorumWaiterTrait,
-    {
+        block_provider_sender: WorkerBlockSender,
+    ) -> eyre::Result<()> {
         // TODO: both start_engine and start_batch_maker lookup head
         let head = self.node_config.lookup_head(self.provider_factory.clone())?;
 
@@ -268,7 +263,7 @@ where
             self.address,
             self.evm_executor.clone(),
             watch_tx.clone(),
-            block_provider.blocks_rx(),
+            block_provider_sender,
         )
         .build();
 

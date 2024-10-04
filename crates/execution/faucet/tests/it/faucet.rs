@@ -262,7 +262,7 @@ async fn test_faucet_transfers_tel_with_google_kms() -> eyre::Result<()> {
         BlockProvider::new(0, qw.clone(), Arc::new(node_metrics), client, store.clone());
 
     // start batch maker
-    execution_node.start_batch_maker(worker_id, block_provider).await?;
+    execution_node.start_batch_maker(worker_id, block_provider.blocks_rx()).await?;
 
     // create client
     let client = execution_node.worker_http_client(&worker_id).await?.expect("worker rpc client");
@@ -553,7 +553,7 @@ async fn test_faucet_transfers_stablecoin_with_google_kms() -> eyre::Result<()> 
     let block_provider =
         BlockProvider::new(0, qw.clone(), Arc::new(node_metrics), client, store.clone());
     // start batch maker
-    execution_node.start_batch_maker(worker_id, block_provider).await?;
+    execution_node.start_batch_maker(worker_id, block_provider.blocks_rx()).await?;
 
     let user_address = Address::random();
     let client = execution_node.worker_http_client(&worker_id).await?.expect("worker rpc client");
