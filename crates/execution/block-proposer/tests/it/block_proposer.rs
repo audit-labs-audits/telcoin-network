@@ -42,7 +42,7 @@ use tracing::debug;
 #[derive(Clone, Debug)]
 struct TestMakeBlockQuorumWaiter();
 impl QuorumWaiterTrait for TestMakeBlockQuorumWaiter {
-    fn attest_block(
+    fn verify_block(
         &self,
         _block: WorkerBlock,
         _timeout: Duration,

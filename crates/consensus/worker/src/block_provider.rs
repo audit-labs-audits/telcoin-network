@@ -81,7 +81,7 @@ impl<DB: Database, QW: QuorumWaiterTrait> BlockProvider<DB, QW> {
             .with_label_values(&["latest block size"])
             .observe(size as f64);
 
-        let block_attest_handle = self.quorum_waiter.attest_block(block.clone(), timeout);
+        let block_attest_handle = self.quorum_waiter.verify_block(block.clone(), timeout);
 
         // Wait for our block to reach quorum or fail to do so.
         match block_attest_handle.await {

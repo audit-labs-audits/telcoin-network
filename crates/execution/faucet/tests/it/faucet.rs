@@ -57,7 +57,7 @@ use tracing::debug;
 #[derive(Clone, Debug)]
 struct TestChanQuorumWaiter(Sender<WorkerBlock>);
 impl QuorumWaiterTrait for TestChanQuorumWaiter {
-    fn attest_block(
+    fn verify_block(
         &self,
         block: WorkerBlock,
         _timeout: Duration,

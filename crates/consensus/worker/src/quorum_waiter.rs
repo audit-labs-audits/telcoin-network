@@ -37,7 +37,7 @@ pub trait QuorumWaiterTrait: Send + Sync + Clone + Unpin + 'static {
     /// If the future resolves to Ok then the block has reached quorum other wise examine the error.
     /// An error of QuorumWaiterError::QuorumRejected indicates the block will never be accepted
     /// otherwise it might be possible if the network improves.
-    fn attest_block(
+    fn verify_block(
         &self,
         block: WorkerBlock,
         timeout: Duration,
@@ -111,7 +111,7 @@ impl QuorumWaiter {
 }
 
 impl QuorumWaiterTrait for QuorumWaiter {
-    fn attest_block(
+    fn verify_block(
         &self,
         block: WorkerBlock,
         timeout: Duration,

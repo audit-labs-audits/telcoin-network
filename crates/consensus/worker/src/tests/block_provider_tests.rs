@@ -22,7 +22,7 @@ impl TestMakeBlockQuorumWaiter {
     }
 }
 impl QuorumWaiterTrait for TestMakeBlockQuorumWaiter {
-    fn attest_block(
+    fn verify_block(
         &self,
         block: WorkerBlock,
         _timeout: Duration,

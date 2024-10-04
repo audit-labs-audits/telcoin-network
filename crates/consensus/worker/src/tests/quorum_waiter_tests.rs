@@ -45,7 +45,7 @@ async fn wait_for_quorum() {
     }
 
     // Forward the block along with the handlers to the `QuorumWaiter`.
-    let attest_handle = quorum_waiter.attest_block(block.clone(), Duration::from_secs(10));
+    let attest_handle = quorum_waiter.verify_block(block.clone(), Duration::from_secs(10));
 
     // Wait for the `QuorumWaiter` to gather enough acknowledgements and output the block.
     assert!(attest_handle.await.unwrap().is_ok());
@@ -55,7 +55,7 @@ async fn wait_for_quorum() {
     let message2 = WorkerBlockMessage { worker_block: block2.clone() };
 
     // Forward the block along with the handlers to the `QuorumWaiter`.
-    let attest2_handle = quorum_waiter.attest_block(block2.clone(), Duration::from_secs(10));
+    let attest2_handle = quorum_waiter.verify_block(block2.clone(), Duration::from_secs(10));
 
     // Wait for the `QuorumWaiter` to gather enough acknowledgements and output the block.
     //assert!(attest2_handle.await.unwrap().is_ok());
