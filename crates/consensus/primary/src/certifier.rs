@@ -13,14 +13,13 @@ use narwhal_primary_metrics::PrimaryMetrics;
 use narwhal_storage::CertificateStore;
 use narwhal_typed_store::traits::Database;
 use std::{future::Future, pin::pin, sync::Arc, task::Poll, time::Duration};
-use tn_types::{AuthorityIdentifier, Committee};
+use tn_types::{AuthorityIdentifier, Committee, Noticer};
 
 use narwhal_network_types::{PrimaryToPrimaryClient, RequestVoteRequest};
 use tn_types::{
     ensure,
     error::{DagError, DagResult},
-    BlsSignature, Certificate, CertificateDigest, ConditionalBroadcastReceiver, Header,
-    NetworkPublicKey, Vote,
+    BlsSignature, Certificate, CertificateDigest, Header, NetworkPublicKey, Vote,
 };
 use tokio::{
     sync::oneshot,
@@ -49,7 +48,7 @@ pub struct Certifier<DB> {
     /// Service to sign headers.
     signature_service: SignatureService<BlsSignature, { tn_types::INTENT_MESSAGE_LENGTH }>,
     /// Receiver for shutdown.
-    rx_shutdown: ConditionalBroadcastReceiver,
+    rx_shutdown: Noticer,
     /// Receives our newly created headers from the `Proposer`.
     rx_headers: Receiver<Header>,
     /// Used to cancel vote requests for a previously-proposed header that is being replaced
@@ -75,7 +74,7 @@ impl<DB: Database> Certifier<DB> {
         certificate_store: CertificateStore<DB>,
         synchronizer: Arc<Synchronizer<DB>>,
         signature_service: SignatureService<BlsSignature, { tn_types::INTENT_MESSAGE_LENGTH }>,
-        rx_shutdown: ConditionalBroadcastReceiver,
+        rx_shutdown: Noticer,
         rx_headers: Receiver<Header>,
         metrics: Arc<PrimaryMetrics>,
         primary_network: anemo::Network,
@@ -336,7 +335,7 @@ impl<DB: Database> Future for Certifier<DB> {
         let this = self.get_mut();
 
         // Are we done?
-        if pin!(this.rx_shutdown.receiver.recv()).poll(cx).is_ready() {
+        if pin!(&this.rx_shutdown).poll(cx).is_ready() {
             return Poll::Ready(());
         }
 
