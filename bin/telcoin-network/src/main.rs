@@ -19,7 +19,7 @@ fn main() {
             let evm_config = EthEvmConfig::default();
             let executor =
                 EthExecutorProvider::new(Arc::clone(&builder.node_config.chain), evm_config);
-            launch_node(builder, executor, evm_config, &tn_datadir).await
+            launch_node(builder, executor, evm_config, tn_datadir).await
         })
     {
         eprintln!("Error: {err:?}");
@@ -33,7 +33,7 @@ fn main() {
             let evm_config = EthEvmConfig::default();
             let executor =
                 EthExecutorProvider::new(Arc::clone(&builder.node_config.chain), evm_config);
-            launch_node(builder, executor, evm_config, &tn_datadir).await
+            launch_node(builder, executor, evm_config, tn_datadir).await
         },
     ) {
         eprintln!("Error: {err:?}");

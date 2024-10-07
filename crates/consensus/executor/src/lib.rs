@@ -58,20 +58,7 @@ impl Executor {
         rx_sequence: metered_channel::Receiver<CommittedSubDag>,
         restored_consensus_output: Vec<CommittedSubDag>,
         consensus_output_notification_sender: broadcast::Sender<ConsensusOutput>,
-        // TODO: this is needed to create the tx_notifier channel
-        metrics: ExecutorMetrics,
-    ) -> SubscriberResult<JoinHandle<()>>
-// where
-    //     State: ExecutionState + Send + Sync + 'static,
-    {
-        // TODO: OLD way was to create metrics here,
-        // before I moved tx_notifier out
-
-        // let metrics = ExecutorMetrics::new(registry);
-
-        // This will be needed in the `Subscriber`.
-        let arc_metrics = Arc::new(metrics);
-
+    ) -> SubscriberResult<JoinHandle<()>> {
         // Spawn the subscriber.
         let subscriber_handle = spawn_subscriber(
             authority_id,
@@ -80,10 +67,8 @@ impl Executor {
             client,
             rx_shutdown,
             rx_sequence,
-            arc_metrics,
             restored_consensus_output,
             consensus_output_notification_sender,
-            // execution_state,
         );
 
         // Return the handle.

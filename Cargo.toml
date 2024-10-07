@@ -4,6 +4,7 @@ members = [
 
     # consensus
     "crates/consensus/types",
+    "crates/consensus/config",
     "crates/consensus/consensus-metrics",
     "crates/consensus/executor",
     "crates/consensus/mem-utils",
@@ -195,6 +196,7 @@ assert_matches = { version = "1.5.0" }
 # common
 tn-types = { path = "./crates/consensus/types" }
 tn-node = { path = "./crates/consensus/tn-node" }
+tn-config = { path = "./crates/consensus/config" }
 
 # optional
 tn-faucet = { path = "./crates/execution/faucet" }

@@ -6,8 +6,6 @@
 use crate::{engine::ExecutionNode, error::NodeError, try_join_all, FuturesUnordered};
 use anemo::PeerId;
 use fastcrypto::traits::KeyPair;
-use narwhal_network::client::NetworkClient;
-use narwhal_storage::NodeStorage;
 use narwhal_typed_store::traits::Database as ConsensusDatabase;
 use narwhal_worker::{metrics::Metrics, Worker};
 use reth_db::{
@@ -16,17 +14,16 @@ use reth_db::{
 };
 use reth_evm::{execute::BlockExecutorProvider, ConfigureEvm};
 use std::{sync::Arc, time::Instant};
-use tn_types::{
-    BlsPublicKey, Committee, NetworkKeypair, Notifier, Parameters, WorkerCache, WorkerId,
-};
+use tn_config::ConsensusConfig;
+use tn_types::{Notifier, WorkerId};
 use tokio::{sync::RwLock, task::JoinHandle};
 use tracing::{info, instrument};
 
 pub struct WorkerNodeInner<CDB: ConsensusDatabase> {
     // The worker's id
     id: WorkerId,
-    // The configuration parameters.
-    parameters: Parameters,
+    // The consensus configuration.
+    consensus_config: ConsensusConfig<CDB>,
     // The task handles created from primary
     handles: FuturesUnordered<JoinHandle<()>>,
     // The shutdown signal channel
@@ -40,23 +37,9 @@ pub struct WorkerNodeInner<CDB: ConsensusDatabase> {
 impl<CDB: ConsensusDatabase> WorkerNodeInner<CDB> {
     /// Starts the worker node with the provided info. If the node is already running then this
     /// method will return an error instead.
-    #[allow(clippy::too_many_arguments)]
     #[instrument(name = "worker", skip_all)]
     async fn start<DB, Evm, CE>(
         &mut self,
-        // The primary's id
-        primary_name: BlsPublicKey,
-        // The private-public network key pair of this authority.
-        network_keypair: NetworkKeypair,
-        // The committee information.
-        committee: Committee,
-        // The worker information cache.
-        worker_cache: WorkerCache,
-        // Client for communications.
-        client: NetworkClient,
-        // The node's store
-        // TODO: replace this by a path so the method can open and independent storage
-        store: &NodeStorage<CDB>,
         // used to create the batch maker process
         execution_node: &ExecutionNode<DB, Evm, CE>,
     ) -> eyre::Result<()>
@@ -70,30 +53,19 @@ impl<CDB: ConsensusDatabase> WorkerNodeInner<CDB> {
             return Err(NodeError::NodeAlreadyRunning.into());
         }
 
-        self.own_peer_id = Some(PeerId(network_keypair.public().0.to_bytes()));
+        self.own_peer_id = Some(PeerId(
+            self.consensus_config.key_config().network_keypair().public().0.to_bytes(),
+        ));
 
         let mut tx_shutdown = Notifier::new();
-
-        let authority = committee.authority_by_key(&primary_name).unwrap_or_else(|| {
-            panic!("Our node with key {:?} should be in committee", primary_name)
-        });
 
         let metrics = Metrics::default();
 
         let batch_validator = execution_node.new_batch_validator().await;
 
-        let worker = Worker::new(
-            authority.clone(),
-            network_keypair,
-            self.id,
-            committee.clone(),
-            worker_cache.clone(),
-            self.parameters.clone(),
-            store.batch_store.clone(),
-        );
+        let worker = Worker::new(self.id, self.consensus_config.clone());
 
-        let (handles, block_provider) =
-            worker.spawn(batch_validator, client.clone(), metrics, &mut tx_shutdown);
+        let (handles, block_provider) = worker.spawn(batch_validator, metrics, &mut tx_shutdown);
 
         // spawn batch maker for worker
         execution_node.start_batch_maker(self.id, block_provider.blocks_rx()).await?;
@@ -149,10 +121,10 @@ pub struct WorkerNode<CDB: ConsensusDatabase> {
 }
 
 impl<CDB: ConsensusDatabase> WorkerNode<CDB> {
-    pub fn new(id: WorkerId, parameters: Parameters) -> WorkerNode<CDB> {
+    pub fn new(id: WorkerId, consensus_config: ConsensusConfig<CDB>) -> WorkerNode<CDB> {
         let inner = WorkerNodeInner {
             id,
-            parameters,
+            consensus_config,
             handles: FuturesUnordered::new(),
             tx_shutdown: None,
             own_peer_id: None,
@@ -162,22 +134,8 @@ impl<CDB: ConsensusDatabase> WorkerNode<CDB> {
         Self { internal: Arc::new(RwLock::new(inner)) }
     }
 
-    #[allow(clippy::too_many_arguments)]
     pub async fn start<DB, Evm, CE>(
         &self,
-        // The primary's public key of this authority.
-        primary_key: BlsPublicKey,
-        // The private-public network key pair of this authority.
-        network_keypair: NetworkKeypair,
-        // The committee information.
-        committee: Committee,
-        // The worker information cache.
-        worker_cache: WorkerCache,
-        // Client for communications.
-        client: NetworkClient,
-        // The node's store
-        // TODO: replace this by a path so the method can open and independent storage
-        store: &NodeStorage<CDB>,
         // used to create the batch maker process
         execution_node: &ExecutionNode<DB, Evm, CE>,
     ) -> eyre::Result<()>
@@ -187,17 +145,7 @@ impl<CDB: ConsensusDatabase> WorkerNode<CDB> {
         CE: ConfigureEvm,
     {
         let mut guard = self.internal.write().await;
-        guard
-            .start(
-                primary_key,
-                network_keypair,
-                committee,
-                worker_cache,
-                client,
-                store,
-                execution_node,
-            )
-            .await
+        guard.start(execution_node).await
     }
 
     pub async fn shutdown(&self) {

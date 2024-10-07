@@ -2,12 +2,11 @@
 // SPDX-License-Identifier: Apache-2.0
 
 //! Primary fixture for the cluster
-use fastcrypto::traits::KeyPair as _;
 use narwhal_executor::SerializedTransaction;
 use narwhal_network::client::NetworkClient;
 use narwhal_primary::consensus::ConsensusMetrics;
 use narwhal_storage::NodeStorage;
-use narwhal_typed_store::open_db;
+use narwhal_typed_store::{open_db, traits::Database};
 use std::{cell::RefCell, path::PathBuf, rc::Rc, sync::Arc};
 use tn_node::primary::PrimaryNode;
 use tn_types::{
@@ -26,13 +25,13 @@ use tracing::info;
 use crate::TestExecutionNode;
 
 #[derive(Clone)]
-pub struct PrimaryNodeDetails {
+pub struct PrimaryNodeDetails<DB: Database> {
     pub id: usize,
     pub name: AuthorityIdentifier,
     pub key_pair: Arc<BlsKeypair>,
     pub network_key_pair: Arc<NetworkKeypair>,
     pub tx_transaction_confirmation: Sender<SerializedTransaction>,
-    node: PrimaryNode,
+    node: PrimaryNode<DB>,
     store_path: PathBuf,
     _parameters: Parameters,
     committee: Committee,
@@ -40,7 +39,7 @@ pub struct PrimaryNodeDetails {
     handlers: Rc<RefCell<Vec<JoinHandle<()>>>>,
 }
 
-impl PrimaryNodeDetails {
+impl<DB: Database> PrimaryNodeDetails<DB> {
     pub(crate) fn new(
         id: usize,
         name: AuthorityIdentifier,
@@ -105,18 +104,7 @@ impl PrimaryNodeDetails {
         let db = open_db(&store_path);
         let primary_store = NodeStorage::reopen(db);
 
-        self.node
-            .start(
-                self.key_pair.copy(),
-                self.network_key_pair.copy(),
-                self.committee.clone(),
-                ChainIdentifier::unknown(),
-                self.worker_cache.clone(),
-                client,
-                &primary_store,
-                execution_components,
-            )
-            .await?;
+        self.node.start(ChainIdentifier::unknown(), execution_components).await?;
 
         let (tx, _) = tokio::sync::broadcast::channel(narwhal_primary::CHANNEL_CAPACITY);
         let transactions_sender = tx.clone();

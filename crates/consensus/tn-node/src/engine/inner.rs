@@ -194,29 +194,7 @@ where
                 Ok(_) => info!(target: "engine", "TN Engine exited gracefully"),
                 Err(e) => error!(target: "engine", ?e, "TN Engine error"),
             }
-            // TODO: return oneshot channel here?
         });
-
-        // // TODO: TN needs to support event streams
-        // // leaving this here as a reminder of possible events to stream
-        // // with the understanding TN solution should be independent of reth
-        // let events = stream_select!(
-        //     network.event_listener().map(Into::into),
-        //     beacon_engine_handle.event_listener().map(Into::into),
-        //     pipeline_events_for_events_handler.map(Into::into),
-        //     pruner_events.map(Into::into),
-        //     static_file_producer_events.map(Into::into),
-        // );
-
-        // self.task_executor().spawn_critical(
-        //     "events task",
-        //     reth_node_events::node::handle_events(
-        //         None, // network handle
-        //         Some(head.number), // latest block
-        //         events,
-        //         self.provider_factory.db_ref().clone(),
-        //     ),
-        // );
 
         Ok(())
     }

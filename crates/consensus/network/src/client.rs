@@ -202,7 +202,7 @@ impl PrimaryToWorkerClient for NetworkClient {
         }
     }
 
-    async fn fetch_batches(
+    async fn fetch_blocks(
         &self,
         worker_name: NetworkPublicKey,
         request: FetchBlocksRequest,

@@ -50,7 +50,7 @@ pub trait PrimaryToWorkerClient {
         request: WorkerSynchronizeMessage,
     ) -> impl Future<Output = Result<(), LocalClientError>>;
 
-    fn fetch_batches(
+    fn fetch_blocks(
         &self,
         worker_name: NetworkPublicKey,
         request: FetchBlocksRequest,

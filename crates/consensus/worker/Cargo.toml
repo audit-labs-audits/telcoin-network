@@ -29,6 +29,7 @@ fastcrypto = { workspace = true, features = ["copy_key"] }
 narwhal-network = { workspace = true }
 narwhal-network-types = { workspace = true }
 tn-types = { workspace = true }
+tn-config = { workspace = true }
 prometheus = { workspace = true }
 narwhal-typed-store = { workspace = true }
 consensus-metrics = { workspace = true }

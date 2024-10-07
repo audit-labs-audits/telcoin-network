@@ -5244,6 +5244,7 @@ dependencies = [
  "tempfile",
  "thiserror",
  "tn-block-validator",
+ "tn-config",
  "tn-node",
  "tn-types",
  "tokio",
@@ -5379,6 +5380,7 @@ dependencies = [
  "tempfile",
  "thiserror",
  "tn-block-validator",
+ "tn-config",
  "tn-node",
  "tn-types",
  "tokio",
@@ -10743,6 +10745,20 @@ dependencies = [
 ]
 
 [[package]]
+name = "tn-config"
+version = "0.1.0"
+dependencies = [
+ "eyre",
+ "fastcrypto",
+ "narwhal-network",
+ "narwhal-storage",
+ "narwhal-typed-store",
+ "thiserror",
+ "tn-types",
+ "tracing",
+]
+
+[[package]]
 name = "tn-engine"
 version = "0.1.0"
 dependencies = [
@@ -10880,6 +10896,7 @@ dependencies = [
  "thiserror",
  "tn-block-proposer",
  "tn-block-validator",
+ "tn-config",
  "tn-engine",
  "tn-faucet",
  "tn-types",

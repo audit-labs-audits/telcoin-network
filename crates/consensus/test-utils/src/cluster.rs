@@ -6,10 +6,12 @@
 use crate::{authority::AuthorityDetails, default_test_execution_node};
 use fastcrypto::traits::KeyPair as _;
 use itertools::Itertools;
+use narwhal_typed_store::mem_db::MemDatabase;
 use reth::tasks::TaskExecutor;
 use std::{collections::HashMap, time::Duration};
 use tn_types::{
-    test_utils::CommitteeFixture, Committee, ConsensusOutput, Parameters, WorkerCache, WorkerId,
+    test_utils::CommitteeFixture, Committee, Config, ConsensusOutput, Parameters, WorkerCache,
+    WorkerId,
 };
 use tokio::sync::broadcast;
 use tracing::info;
@@ -58,6 +60,13 @@ impl Cluster {
                 executor.clone(),
             )
             .expect("default test execution node");
+
+            let mut config = Config::default();
+            config.parameters =
+                if let Some(parameters) = parameters { parameters } else { Parameters::default() };
+            let tn_datadir = TelcoinTestDirs::default();
+            let node_storage = MemDatabase::default();
+            let consensus_config = ConsensusConfig::new(config, tn_datadir, node_storage)?;
 
             let authority = AuthorityDetails::new(
                 id,
