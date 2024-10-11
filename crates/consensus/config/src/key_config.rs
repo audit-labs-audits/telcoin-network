@@ -13,6 +13,8 @@ struct KeyConfigInner {
     worker_network_keypair: NetworkKeypair,
 }
 
+// TODO: audit the use of this struct for leaking private keys, etc...
+#[derive(Clone)]
 pub struct KeyConfig {
     inner: Arc<KeyConfigInner>,
 }
@@ -41,10 +43,10 @@ impl KeyConfig {
     /// Generate random keys with provided RNG.
     ///
     /// Useful for testing.
-    pub fn with_random<R: AllowedRng>(mut rng: R) -> Self {
-        let bls_keypair = BlsKeypair::generate(&mut rng);
-        let network_keypair = NetworkKeypair::generate(&mut rng);
-        let worker_network_keypair = NetworkKeypair::generate(&mut rng);
+    pub fn with_random<R: AllowedRng>(rng: &mut R) -> Self {
+        let bls_keypair = BlsKeypair::generate(rng);
+        let network_keypair = NetworkKeypair::generate(rng);
+        let worker_network_keypair = NetworkKeypair::generate(rng);
         Self {
             inner: Arc::new(KeyConfigInner {
                 bls_keypair,

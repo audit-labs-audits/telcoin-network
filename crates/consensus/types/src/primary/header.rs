@@ -4,7 +4,6 @@ use derive_builder::Builder;
 use fastcrypto::hash::{Digest, Hash, HashFunction};
 use fastcrypto_tbls::{tbls::ThresholdBls, types::ThresholdBls12381MinSig};
 use indexmap::IndexMap;
-use mem_utils::MallocSizeOf;
 use once_cell::sync::OnceCell;
 use reth_primitives::BlockHash;
 use serde::{Deserialize, Serialize};
@@ -19,7 +18,7 @@ use crate::{
 
 /// Messages generated internally by Narwhal that are included in headers for sequencing.
 #[allow(clippy::large_enum_variant)]
-#[derive(Clone, Deserialize, MallocSizeOf, Serialize)]
+#[derive(Clone, Deserialize, Serialize)]
 pub enum SystemMessage {
     // DKG is used to generate keys for use in the random beacon protocol.
     // `DkgMessage` is sent out at start-of-epoch to initiate the process.
@@ -237,9 +236,7 @@ impl HeaderBuilder {
 }
 
 /// The slice of bytes for the header's digest.
-#[derive(
-    Clone, Copy, Serialize, Deserialize, Default, PartialEq, Eq, Hash, PartialOrd, Ord, MallocSizeOf,
-)]
+#[derive(Clone, Copy, Serialize, Deserialize, Default, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub struct HeaderDigest(pub [u8; crypto::DIGEST_LENGTH]);
 
 impl HeaderDigest {

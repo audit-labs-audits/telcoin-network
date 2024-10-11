@@ -7,12 +7,10 @@ use std::{collections::BTreeSet, sync::Arc};
 use fastcrypto::hash::Hash;
 use narwhal_storage::NodeStorage;
 
-use narwhal_typed_store::open_db;
+use narwhal_test_utils::CommitteeFixture;
+use narwhal_typed_store::{mem_db::MemDatabase, open_db};
 use tempfile::TempDir;
-use tn_types::{
-    test_utils::CommitteeFixture, Certificate, Notifier, ReputationScores,
-    DEFAULT_BAD_NODES_STAKE_THRESHOLD,
-};
+use tn_types::{Certificate, Notifier, ReputationScores, DEFAULT_BAD_NODES_STAKE_THRESHOLD};
 use tokio::sync::watch;
 
 use crate::consensus::{
@@ -43,7 +41,7 @@ async fn test_consensus_recovery_with_bullshark() {
     let certificate_store = storage.certificate_store;
 
     // AND Setup consensus
-    let fixture = CommitteeFixture::builder().build();
+    let fixture = CommitteeFixture::builder(MemDatabase::default).build();
     let committee = fixture.committee();
 
     // config.set_consensus_bad_nodes_stake_threshold(33);

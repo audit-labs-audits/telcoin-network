@@ -4,34 +4,37 @@
 // SPDX-License-Identifier: Apache-2.0
 
 //! Committe fixture for all authorities and their workers within a committee for a specific epoch.
-use super::{fixture_batch_with_transactions, AuthorityFixture, Builder};
-use crate::{
-    Certificate, CertificateDigest, Committee, Epoch, Header, HeaderBuilder, Round, Vote,
-    WorkerCache,
+use narwhal_typed_store::traits::Database;
+use tn_types::{
+    test_utils::fixture_batch_with_transactions, Certificate, CertificateDigest, Committee, Header,
+    HeaderBuilder, Round, Vote, WorkerCache,
 };
+
+use super::{AuthorityFixture, Builder};
 use std::collections::BTreeSet;
 
 /// Fixture representing a committee to reach consensus.
 ///
 /// The [CommitteeFixture] holds all authorities.
-pub struct CommitteeFixture {
+pub struct CommitteeFixture<DB> {
     /// The collection of [AuthorityFixture]s that comprise the committee.
-    pub(crate) authorities: Vec<AuthorityFixture>,
+    pub(crate) authorities: Vec<AuthorityFixture<DB>>,
     /// The [Committee] used in production.
     pub(crate) committee: Committee,
-    /// The [Epoch] the the [Committee] is responsible for reaching consensus.
-    pub(crate) epoch: Epoch,
 }
 
-impl CommitteeFixture {
+impl<DB: Database> CommitteeFixture<DB> {
     /// Return an Iterator for [AuthorityFixture] references.
-    pub fn authorities(&self) -> impl Iterator<Item = &AuthorityFixture> {
+    pub fn authorities(&self) -> impl Iterator<Item = &AuthorityFixture<DB>> {
         self.authorities.iter()
     }
 
     /// Return a builder for the [CommitteeFixture].
-    pub fn builder() -> Builder {
-        Builder::new()
+    pub fn builder<F>(new_db: F) -> Builder<DB, F>
+    where
+        F: Fn() -> DB,
+    {
+        Builder::new(new_db)
     }
 
     /// Return the [Committee] for the fixture.
@@ -41,10 +44,13 @@ impl CommitteeFixture {
 
     /// Return the [WorkerCache] for the committee.
     pub fn worker_cache(&self) -> WorkerCache {
-        WorkerCache {
-            epoch: self.epoch,
-            workers: self.authorities.iter().map(|a| (a.public_key(), a.worker_index())).collect(),
-        }
+        // All the authorities have the same work cache so just use the first one.
+        self.authorities
+            .get(0)
+            .expect("no authorities so no worker cache!")
+            .consensus_config()
+            .worker_cache()
+            .clone()
     }
 
     // pub fn header(&self, author: BlsPublicKey) -> Header {

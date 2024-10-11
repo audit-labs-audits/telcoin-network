@@ -10,11 +10,12 @@ use fastcrypto::traits::KeyPair;
 use narwhal_network::client::NetworkClient;
 use narwhal_network_types::{MockPrimaryToPrimary, PrimaryToPrimaryServer, RequestVoteResponse};
 use narwhal_primary_metrics::PrimaryChannelMetrics;
-use narwhal_typed_store::open_db;
+use narwhal_test_utils::CommitteeFixture;
+use narwhal_typed_store::{mem_db::MemDatabase, open_db};
 use rand::{rngs::StdRng, SeedableRng};
 use std::num::NonZeroUsize;
 use tempfile::TempDir;
-use tn_types::{test_utils::CommitteeFixture, BlsKeypair, Notifier, SignatureVerificationState};
+use tn_types::{BlsKeypair, Notifier, SignatureVerificationState};
 use tokio::sync::watch;
 
 // // TODO: Remove after network has moved to CertificateV2
@@ -141,7 +142,7 @@ use tokio::sync::watch;
 async fn propose_header_and_form_certificate_v2() {
     let temp_dir = TempDir::new().unwrap();
     reth_tracing::init_test_tracing();
-    let fixture = CommitteeFixture::builder().randomize_ports(true).build();
+    let fixture = CommitteeFixture::builder(MemDatabase::default).randomize_ports(true).build();
     let committee = fixture.committee();
     let worker_cache = fixture.worker_cache();
     let primary = fixture.authorities().last().unwrap();
@@ -233,11 +234,15 @@ async fn propose_header_and_form_certificate_v2() {
         network,
     );
 
+    println!("XXXX 1");
     // Propose header and ensure that a certificate is formed by pulling it out of the
     // consensus channel.
     let proposed_digest = proposed_header.digest();
+    println!("XXXX 2");
     tx_headers.send(proposed_header).await.unwrap();
+    println!("XXXX 3");
     let certificate = rx_new_certificates.recv().await.unwrap();
+    println!("XXXX 4");
     assert_eq!(certificate.header().digest(), proposed_digest);
     assert!(matches!(
         certificate.signature_verification_state(),
@@ -249,7 +254,7 @@ async fn propose_header_and_form_certificate_v2() {
 async fn propose_header_failure() {
     let temp_dir = TempDir::new().unwrap();
     reth_tracing::init_test_tracing();
-    let fixture = CommitteeFixture::builder().randomize_ports(true).build();
+    let fixture = CommitteeFixture::builder(MemDatabase::default).randomize_ports(true).build();
     let committee = fixture.committee();
     let worker_cache = fixture.worker_cache();
     let primary = fixture.authorities().last().unwrap();
@@ -356,7 +361,7 @@ async fn run_vote_aggregator_with_param(
     num_byzantine: usize,
     expect_cert: bool,
 ) {
-    let fixture = CommitteeFixture::builder()
+    let fixture = CommitteeFixture::builder(MemDatabase::default)
         .committee_size(NonZeroUsize::new(committee_size).unwrap())
         .randomize_ports(true)
         .build();
@@ -469,7 +474,7 @@ async fn run_vote_aggregator_with_param(
 
 #[tokio::test]
 async fn test_shutdown_core() {
-    let fixture = CommitteeFixture::builder().build();
+    let fixture = CommitteeFixture::builder(MemDatabase::default).build();
     let committee = fixture.committee();
     let worker_cache = fixture.worker_cache();
     let primary = fixture.authorities().next().unwrap();

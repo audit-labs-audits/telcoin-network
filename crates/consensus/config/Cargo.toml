@@ -17,6 +17,7 @@ narwhal-typed-store = { workspace = true }
 narwhal-storage = { workspace = true }
 tn-types = { workspace = true }
 eyre = { workspace = true }
+rand = { workspace = true }
 
 
 [dev-dependencies]

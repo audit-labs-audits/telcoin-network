@@ -2,10 +2,11 @@ use std::sync::Arc;
 
 use narwhal_network::client::NetworkClient;
 use narwhal_storage::NodeStorage;
-use narwhal_typed_store::traits::Database;
+use narwhal_typed_store::{mem_db::MemDatabase, traits::Database};
+use rand::rngs::ThreadRng;
 use tn_types::{
-    traits::KeyPair, Authority, Committee, Config, ConfigTrait, Parameters, TelcoinDirs,
-    WorkerCache,
+    test_utils::TelcoinTempDirs, traits::KeyPair, Authority, Committee, Config, ConfigTrait,
+    Parameters, TelcoinDirs, WorkerCache,
 };
 
 use crate::KeyConfig;
@@ -13,7 +14,6 @@ use crate::KeyConfig;
 struct ConsensusConfigInner<DB> {
     config: Config,
     committee: Committee,
-    worker_cache: WorkerCache,
     tn_datadir: Arc<dyn TelcoinDirs>,
     network_client: NetworkClient,
     node_storage: NodeStorage<DB>,
@@ -24,6 +24,7 @@ struct ConsensusConfigInner<DB> {
 #[derive(Clone)]
 pub struct ConsensusConfig<DB> {
     inner: Arc<ConsensusConfigInner<DB>>,
+    worker_cache: Option<Arc<WorkerCache>>,
 }
 
 impl<DB> ConsensusConfig<DB>
@@ -36,18 +37,12 @@ where
         node_storage: NodeStorage<DB>,
         key_config: KeyConfig,
     ) -> eyre::Result<Self> {
-        //let key_config = KeyConfig::new(&tn_datadir)?;
-        let network_client =
-            NetworkClient::new_from_public_key(config.validator_info.primary_network_key());
-
         // load committee from file
         let mut committee: Committee = Config::load_from_path(tn_datadir.committee_path())?;
         committee.load();
         tracing::info!(target: "telcoin::consensus_config", "committee loaded");
         // TODO: make worker cache part of committee?
         let worker_cache: WorkerCache = Config::load_from_path(tn_datadir.worker_cache_path())?;
-        tracing::info!(target: "telcoin::consensus_config", "worker cache loaded");
-
         // TODO: this could be a separate method on `Committee` to have robust checks in place
         // - all public keys are unique
         // - thresholds / stake
@@ -65,6 +60,28 @@ where
             "each validator within committee must have one worker"
         );
 
+        tracing::info!(target: "telcoin::consensus_config", "worker cache loaded");
+        Self::new_with_committee(
+            config,
+            tn_datadir,
+            node_storage,
+            key_config,
+            committee,
+            Some(worker_cache),
+        )
+    }
+
+    pub fn new_with_committee<TND: TelcoinDirs + 'static>(
+        config: Config,
+        tn_datadir: TND,
+        node_storage: NodeStorage<DB>,
+        key_config: KeyConfig,
+        committee: Committee,
+        mut worker_cache: Option<WorkerCache>,
+    ) -> eyre::Result<Self> {
+        let network_client =
+            NetworkClient::new_from_public_key(config.validator_info.primary_network_key());
+
         let authority = committee
             .authority_by_key(key_config.bls_keypair().public())
             .unwrap_or_else(|| {
@@ -76,18 +93,33 @@ where
             .clone();
 
         let tn_datadir = Arc::new(tn_datadir);
+        let worker_cache = match worker_cache.take() {
+            Some(worker_cache) => Some(Arc::new(worker_cache)),
+            None => None,
+        };
         Ok(Self {
             inner: Arc::new(ConsensusConfigInner {
                 config,
                 committee,
-                worker_cache,
                 tn_datadir,
                 network_client,
                 node_storage,
                 key_config,
                 authority,
             }),
+            worker_cache,
         })
+    }
+
+    /// Create a new config with temp dirs, mem db, random keys and defaults.
+    /// Useful for testing.  This will panic on error.
+    pub fn new_test_config() -> ConsensusConfig<MemDatabase> {
+        let config = Config::default();
+        let tn_datadir = TelcoinTempDirs::default();
+        let node_storage = NodeStorage::reopen(MemDatabase::default());
+        let key_configs = KeyConfig::with_random(&mut ThreadRng::default());
+        ConsensusConfig::<MemDatabase>::new(config, tn_datadir, node_storage, key_configs)
+            .expect("failed to create config!")
     }
 
     pub fn config(&self) -> &Config {
@@ -99,7 +131,12 @@ where
     }
 
     pub fn worker_cache(&self) -> &WorkerCache {
-        &self.inner.worker_cache
+        self.worker_cache.as_ref().expect("invalid config- missing worker cache!")
+    }
+
+    pub fn set_worker_cache(&mut self, worker_cache: WorkerCache) {
+        assert!(self.worker_cache.is_none(), "Can not change the working cache on a config!");
+        self.worker_cache = Some(Arc::new(worker_cache));
     }
 
     pub fn tn_datadir(&self) -> Arc<dyn TelcoinDirs> {

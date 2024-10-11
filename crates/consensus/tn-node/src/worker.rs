@@ -19,7 +19,7 @@ use tn_types::{Notifier, WorkerId};
 use tokio::{sync::RwLock, task::JoinHandle};
 use tracing::{info, instrument};
 
-pub struct WorkerNodeInner<CDB: ConsensusDatabase> {
+pub struct WorkerNodeInner<CDB> {
     // The worker's id
     id: WorkerId,
     // The consensus configuration.
@@ -116,7 +116,7 @@ impl<CDB: ConsensusDatabase> WorkerNodeInner<CDB> {
 }
 
 #[derive(Clone)]
-pub struct WorkerNode<CDB: ConsensusDatabase> {
+pub struct WorkerNode<CDB> {
     internal: Arc<RwLock<WorkerNodeInner<CDB>>>,
 }
 

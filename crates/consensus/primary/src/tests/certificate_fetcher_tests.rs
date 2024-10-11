@@ -17,15 +17,16 @@ use narwhal_network_types::{
 };
 use narwhal_primary_metrics::{PrimaryChannelMetrics, PrimaryMetrics};
 use narwhal_storage::{CertificateStore, NodeStorage};
-use narwhal_typed_store::{open_db, traits::Database};
+use narwhal_test_utils::CommitteeFixture;
+use narwhal_typed_store::{mem_db::MemDatabase, open_db, traits::Database};
 use once_cell::sync::OnceCell;
 use reth_tracing::init_test_tracing;
 use std::{collections::BTreeSet, sync::Arc, time::Duration};
 use tempfile::TempDir;
 use tn_types::{
-    test_utils::CommitteeFixture, AuthorityIdentifier, BlockHash, BlsAggregateSignatureBytes,
-    Certificate, CertificateDigest, Epoch, Header, HeaderDigest, Notifier, Round,
-    SignatureVerificationState, SystemMessage, TimestampSec, WorkerId,
+    AuthorityIdentifier, BlockHash, BlsAggregateSignatureBytes, Certificate, CertificateDigest,
+    Epoch, Header, HeaderDigest, Notifier, Round, SignatureVerificationState, SystemMessage,
+    TimestampSec, WorkerId,
 };
 use tokio::{
     sync::{
@@ -158,7 +159,7 @@ struct BadHeader {
 #[tokio::test(flavor = "current_thread", start_paused = true)]
 async fn fetch_certificates_v1_basic() {
     init_test_tracing();
-    let fixture = CommitteeFixture::builder().randomize_ports(true).build();
+    let fixture = CommitteeFixture::builder(MemDatabase::default).randomize_ports(true).build();
     let worker_cache = fixture.worker_cache();
     let primary = fixture.authorities().next().unwrap();
     let client = NetworkClient::new_from_keypair(&primary.network_keypair());

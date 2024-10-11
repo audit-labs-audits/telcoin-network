@@ -33,7 +33,7 @@ use tokio::{
 };
 use tracing::{info, instrument};
 
-struct PrimaryNodeInner<CDB: ConsensusDatabase> {
+struct PrimaryNodeInner<CDB> {
     consensus_config: ConsensusConfig<CDB>,
     /// The task handles created from primary
     handles: FuturesUnordered<JoinHandle<()>>,
@@ -321,7 +321,7 @@ impl<CDB: ConsensusDatabase> PrimaryNodeInner<CDB> {
 }
 
 #[derive(Clone)]
-pub struct PrimaryNode<CDB: ConsensusDatabase> {
+pub struct PrimaryNode<CDB> {
     internal: Arc<RwLock<PrimaryNodeInner<CDB>>>,
 }
 

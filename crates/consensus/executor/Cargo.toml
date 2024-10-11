@@ -36,5 +36,4 @@ tempfile.workspace = true
 narwhal-primary = { workspace = true }
 tn-node = { workspace = true }
 narwhal-test-utils = { workspace = true }
-tn-types = { workspace = true }
 bytes = { workspace = true }

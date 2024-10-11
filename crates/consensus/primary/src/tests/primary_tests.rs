@@ -19,8 +19,9 @@ use narwhal_network_types::{
     FetchCertificatesRequest, MockPrimaryToWorker, PrimaryToPrimary, RequestVoteRequest,
 };
 use narwhal_primary_metrics::{PrimaryChannelMetrics, PrimaryMetrics};
-use narwhal_storage::{CertificateStore, NodeStorage, PayloadStore, VoteDigestStore};
-use narwhal_typed_store::open_db;
+use narwhal_storage::{CertificateStore, PayloadStore, VoteDigestStore};
+use narwhal_test_utils::CommitteeFixture;
+use narwhal_typed_store::{mem_db::MemDatabase, open_db};
 use narwhal_worker::{metrics::Metrics, Worker};
 use prometheus::Registry;
 use std::{
@@ -32,10 +33,8 @@ use std::{
 use tempfile::TempDir;
 use tn_block_validator::NoopBlockValidator;
 use tn_types::{
-    now,
-    test_utils::{make_optimal_signed_certificates, CommitteeFixture},
-    AuthorityIdentifier, Certificate, ChainIdentifier, Committee, Notifier, Parameters,
-    SignatureVerificationState,
+    now, test_utils::make_optimal_signed_certificates, AuthorityIdentifier, Certificate,
+    ChainIdentifier, Committee, Notifier, Parameters, SignatureVerificationState,
 };
 use tokio::{sync::watch, time::timeout};
 
@@ -45,22 +44,13 @@ async fn test_get_network_peers_from_admin_server() {
         batch_size: 200, // Two transactions.
         ..Parameters::default()
     };
-    let fixture = CommitteeFixture::builder().randomize_ports(true).build();
+    let fixture = CommitteeFixture::builder(MemDatabase::default).randomize_ports(true).build();
     let committee = fixture.committee();
-    let worker_cache = fixture.worker_cache();
     let authority_1 = fixture.authorities().next().unwrap();
-    let signer_1 = authority_1.keypair().copy();
+    let config_1 = authority_1.consensus_config();
 
     let worker_id = 0;
-    let worker_1_keypair = authority_1.worker(worker_id).keypair().copy();
-
-    // Make the data store.
-    // In case the DB dir does not yet exist.
-    let temp_dir = TempDir::new().unwrap();
-    let _ = std::fs::create_dir_all(temp_dir.path());
-    let db = open_db(temp_dir.path());
-    let store = NodeStorage::reopen(db);
-    let client_1 = NetworkClient::new_from_keypair(&authority_1.network_keypair());
+    let worker_1_keypair = authority_1.worker().keypair().copy();
 
     let (tx_new_certificates, _rx_new_certificates) = consensus_metrics::metered_channel::channel(
         CHANNEL_CAPACITY,
@@ -85,18 +75,8 @@ async fn test_get_network_peers_from_admin_server() {
 
     // Spawn Primary 1
     Primary::spawn(
-        authority_1.authority().clone(),
-        signer_1,
-        authority_1.network_keypair().copy(),
-        committee.clone(),
-        worker_cache.clone(),
+        config_1.clone(),
         ChainIdentifier::unknown(),
-        primary_1_parameters.clone(),
-        client_1.clone(),
-        store.certificate_store.clone(),
-        store.proposer_store.clone(),
-        store.payload_store.clone(),
-        store.vote_digest_store.clone(),
         tx_new_certificates,
         rx_feedback,
         rx_consensus_round_updates,
@@ -111,24 +91,11 @@ async fn test_get_network_peers_from_admin_server() {
     let registry_1 = Registry::new();
     let metrics_1 = Metrics::new_with_registry(&registry_1);
 
-    let worker_1_parameters = Parameters {
-        batch_size: 200, // Two transactions.
-        ..Parameters::default()
-    };
-
     let mut tx_shutdown_worker = Notifier::new();
 
     // Spawn a `Worker` instance for primary 1.
-    let worker = Worker::new(
-        authority_1.authority().clone(),
-        worker_1_keypair.copy(),
-        worker_id,
-        committee.clone(),
-        worker_cache.clone(),
-        worker_1_parameters.clone(),
-        store.batch_store,
-    );
-    worker.spawn(NoopBlockValidator, client_1, metrics_1, &mut tx_shutdown_worker);
+    let worker = Worker::new(worker_id, config_1);
+    worker.spawn(NoopBlockValidator, metrics_1, &mut tx_shutdown_worker);
 
     // Test getting all known peers for primary 1
     let resp = reqwest::get(format!(
@@ -173,9 +140,7 @@ async fn test_get_network_peers_from_admin_server() {
     assert_eq!(1, resp.len());
 
     let authority_2 = fixture.authorities().nth(1).unwrap();
-    let signer_2 = authority_2.keypair().copy();
-    let client_2 = NetworkClient::new_from_keypair(&authority_2.network_keypair());
-
+    let config_2 = authority_2.consensus_config();
     let primary_2_parameters = Parameters {
         batch_size: 200, // Two transactions.
         ..Parameters::default()
@@ -205,18 +170,8 @@ async fn test_get_network_peers_from_admin_server() {
 
     // Spawn Primary 2
     Primary::spawn(
-        authority_2.authority().clone(),
-        signer_2,
-        authority_2.network_keypair().copy(),
-        committee.clone(),
-        worker_cache.clone(),
+        config_2,
         ChainIdentifier::unknown(),
-        primary_2_parameters.clone(),
-        client_2.clone(),
-        store.certificate_store.clone(),
-        store.proposer_store.clone(),
-        store.payload_store.clone(),
-        store.vote_digest_store.clone(),
         /* tx_consensus */ tx_new_certificates_2,
         /* rx_consensus */ rx_feedback_2,
         rx_consensus_round_updates,
@@ -273,7 +228,7 @@ async fn test_get_network_peers_from_admin_server() {
 async fn test_request_vote_has_missing_parents() {
     reth_tracing::init_test_tracing();
     const NUM_PARENTS: usize = 10;
-    let fixture = CommitteeFixture::builder()
+    let fixture = CommitteeFixture::builder(MemDatabase::default)
         .randomize_ports(true)
         .committee_size(NonZeroUsize::new(NUM_PARENTS).unwrap())
         .build();
@@ -415,7 +370,7 @@ async fn test_request_vote_has_missing_parents() {
 async fn test_request_vote_accept_missing_parents() {
     reth_tracing::init_test_tracing();
     const NUM_PARENTS: usize = 10;
-    let fixture = CommitteeFixture::builder()
+    let fixture = CommitteeFixture::builder(MemDatabase::default)
         .randomize_ports(true)
         .committee_size(NonZeroUsize::new(NUM_PARENTS).unwrap())
         .build();
@@ -551,7 +506,7 @@ async fn test_request_vote_accept_missing_parents() {
 #[tokio::test]
 async fn test_request_vote_missing_batches() {
     reth_tracing::init_test_tracing();
-    let fixture = CommitteeFixture::builder()
+    let fixture = CommitteeFixture::builder(MemDatabase::default)
         .randomize_ports(true)
         .committee_size(NonZeroUsize::new(4).unwrap())
         .build();
@@ -634,7 +589,7 @@ async fn test_request_vote_missing_batches() {
 
     // Set up mock worker.
     let author_id = author.id();
-    let worker = primary.worker(1);
+    let worker = primary.worker();
     let worker_address = &worker.info().worker_address;
     let worker_peer_id = anemo::PeerId(worker.keypair().public().0.to_bytes());
     let mut mock_server = MockPrimaryToWorker::new();
@@ -671,7 +626,7 @@ async fn test_request_vote_missing_batches() {
 #[tokio::test]
 async fn test_request_vote_already_voted() {
     reth_tracing::init_test_tracing();
-    let fixture = CommitteeFixture::builder()
+    let fixture = CommitteeFixture::builder(MemDatabase::default)
         .randomize_ports(true)
         .committee_size(NonZeroUsize::new(4).unwrap())
         .build();
@@ -745,7 +700,7 @@ async fn test_request_vote_already_voted() {
     }
 
     // Set up mock worker.
-    let worker = primary.worker(1);
+    let worker = primary.worker();
     let worker_address = &worker.info().worker_address;
     let worker_peer_id = anemo::PeerId(worker.keypair().public().0.to_bytes());
     let mut mock_server = MockPrimaryToWorker::new();
@@ -823,7 +778,7 @@ async fn test_request_vote_already_voted() {
 
 #[tokio::test]
 async fn test_fetch_certificates_handler() {
-    let fixture = CommitteeFixture::builder()
+    let fixture = CommitteeFixture::builder(MemDatabase::default)
         .randomize_ports(true)
         .committee_size(NonZeroUsize::new(4).unwrap())
         .build();
@@ -968,7 +923,7 @@ async fn test_fetch_certificates_handler() {
 #[tokio::test]
 async fn test_request_vote_created_at_in_future() {
     reth_tracing::init_test_tracing();
-    let fixture = CommitteeFixture::builder()
+    let fixture = CommitteeFixture::builder(MemDatabase::default)
         .randomize_ports(true)
         .committee_size(NonZeroUsize::new(4).unwrap())
         .build();
@@ -1045,7 +1000,7 @@ async fn test_request_vote_created_at_in_future() {
     }
 
     // Set up mock worker.
-    let worker = primary.worker(1);
+    let worker = primary.worker();
     let worker_address = &worker.info().worker_address;
     let worker_peer_id = anemo::PeerId(worker.keypair().public().0.to_bytes());
     let mut mock_server = MockPrimaryToWorker::new();

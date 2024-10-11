@@ -1,25 +1,26 @@
 // Copyright (c) Telcoin, LLC
 // Copyright (c) Mysten Labs, Inc.
 // SPDX-License-Identifier: Apache-2.0
-use fastcrypto::traits::KeyPair as _;
 use indexmap::IndexMap;
+use narwhal_test_utils::{AuthorityFixture, CommitteeFixture};
+use narwhal_typed_store::mem_db::MemDatabase;
 use rand::{rngs::OsRng, seq::SliceRandom};
 use std::{collections::BTreeSet, num::NonZeroUsize};
 use tn_types::{
-    test_utils::{AuthorityFixture, CommitteeFixture},
-    AuthorityIdentifier, BlsPublicKey, BlsSignature, Certificate, Committee, Header, Stake, Vote,
+    traits::KeyPair, AuthorityIdentifier, BlsPublicKey, BlsSignature, Certificate, Committee,
+    Header, Stake, Vote,
 };
 
 #[tokio::test]
 async fn test_certificate_signers_are_ordered() {
     // GIVEN
-    let fixture = CommitteeFixture::builder()
+    let fixture = CommitteeFixture::builder(MemDatabase::default)
         .committee_size(NonZeroUsize::new(4).unwrap())
         .stake_distribution((1..=4).collect()) // provide some non-uniform stake
         .build();
     let committee: Committee = fixture.committee();
 
-    let authorities = fixture.authorities().collect::<Vec<&AuthorityFixture>>();
+    let authorities = fixture.authorities().collect::<Vec<&AuthorityFixture<MemDatabase>>>();
 
     // The authority that creates the Header
     let authority = authorities[0];

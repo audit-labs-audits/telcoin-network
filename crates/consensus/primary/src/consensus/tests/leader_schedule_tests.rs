@@ -9,14 +9,14 @@ use std::{
 };
 
 use narwhal_storage::ConsensusStore;
-use narwhal_typed_store::open_db;
+use narwhal_typed_store::{mem_db::MemDatabase, open_db};
 use reth_tracing::init_test_tracing;
 use tempfile::TempDir;
 use tn_types::AuthorityIdentifier;
 
+use narwhal_test_utils::CommitteeFixture;
 use tn_types::{
-    test_utils::{mock_certificate, CommitteeFixture},
-    Certificate, CommittedSubDag, ReputationScores, Round,
+    test_utils::mock_certificate, Certificate, CommittedSubDag, ReputationScores, Round,
 };
 
 use crate::consensus::{Dag, LeaderSchedule, LeaderSwapTable};
@@ -24,7 +24,7 @@ use crate::consensus::{Dag, LeaderSchedule, LeaderSwapTable};
 #[tokio::test]
 async fn test_leader_swap_table() {
     // GIVEN
-    let fixture = CommitteeFixture::builder().build();
+    let fixture = CommitteeFixture::builder(MemDatabase::default).build();
     let committee = fixture.committee();
     // protocol_config.set_consensus_bad_nodes_stake_threshold(33);
 
@@ -60,8 +60,9 @@ async fn test_leader_swap_table() {
 
     // Now we create a larger committee with more score variation - still all the authorities have
     // equal stake.
-    let fixture =
-        CommitteeFixture::builder().committee_size(NonZeroUsize::new(10).unwrap()).build();
+    let fixture = CommitteeFixture::builder(MemDatabase::default)
+        .committee_size(NonZeroUsize::new(10).unwrap())
+        .build();
     let committee = fixture.committee();
 
     // the authority ids
@@ -101,7 +102,7 @@ async fn test_leader_swap_table() {
 #[tokio::test]
 async fn test_leader_schedule() {
     // GIVEN
-    let fixture = CommitteeFixture::builder().build();
+    let fixture = CommitteeFixture::builder(MemDatabase::default).build();
     let committee = fixture.committee();
     // protocol_config.set_consensus_bad_nodes_stake_threshold(33);
 
@@ -165,7 +166,7 @@ async fn test_leader_schedule() {
 async fn test_leader_schedule_from_store() {
     init_test_tracing();
     // GIVEN
-    let fixture = CommitteeFixture::builder().build();
+    let fixture = CommitteeFixture::builder(MemDatabase::default).build();
     let committee = fixture.committee();
     let authority_ids: Vec<AuthorityIdentifier> = fixture.authorities().map(|a| a.id()).collect();
     let temp_dir = TempDir::new().unwrap();

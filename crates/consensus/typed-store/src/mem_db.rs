@@ -160,7 +160,17 @@ impl MemDatabase {
 
 impl Default for MemDatabase {
     fn default() -> Self {
-        Self::new()
+        let db = Self::new();
+        db.open_table::<crate::tables::LastProposed>();
+        db.open_table::<crate::tables::Votes>();
+        db.open_table::<crate::tables::Certificates>();
+        db.open_table::<crate::tables::CertificateDigestByRound>();
+        db.open_table::<crate::tables::CertificateDigestByOrigin>();
+        db.open_table::<crate::tables::Payload>();
+        db.open_table::<crate::tables::WorkerBlocks>();
+        db.open_table::<crate::tables::LastCommitted>();
+        db.open_table::<crate::tables::CommittedSubDag>();
+        db
     }
 }
 

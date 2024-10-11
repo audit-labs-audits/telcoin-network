@@ -13,7 +13,8 @@ use futures::{stream::FuturesUnordered, StreamExt};
 use itertools::Itertools;
 use narwhal_network::client::NetworkClient;
 use narwhal_primary_metrics::{PrimaryChannelMetrics, PrimaryMetrics};
-use narwhal_typed_store::open_db;
+use narwhal_test_utils::CommitteeFixture;
+use narwhal_typed_store::{mem_db::MemDatabase, open_db};
 use std::{
     collections::{BTreeSet, HashMap},
     num::NonZeroUsize,
@@ -23,14 +24,14 @@ use std::{
 use tempfile::TempDir;
 use tn_types::{
     error::DagError,
-    test_utils::{make_optimal_signed_certificates, mock_signed_certificate, CommitteeFixture},
+    test_utils::{make_optimal_signed_certificates, mock_signed_certificate},
     BlsAggregateSignatureBytes, Certificate, Committee, Round, SignatureVerificationState,
 };
 use tokio::sync::watch;
 
 #[tokio::test]
 async fn accept_certificates() {
-    let fixture = CommitteeFixture::builder().randomize_ports(true).build();
+    let fixture = CommitteeFixture::builder(MemDatabase::default).randomize_ports(true).build();
     let committee = fixture.committee();
     let worker_cache = fixture.worker_cache();
     let primary = fixture.authorities().last().unwrap();
@@ -116,7 +117,7 @@ async fn accept_certificates() {
 async fn accept_suspended_certificates() {
     const NUM_AUTHORITIES: usize = 4;
     reth_tracing::init_test_tracing();
-    let fixture = CommitteeFixture::builder()
+    let fixture = CommitteeFixture::builder(MemDatabase::default)
         .randomize_ports(true)
         .committee_size(NonZeroUsize::new(NUM_AUTHORITIES).unwrap())
         .build();
@@ -212,7 +213,7 @@ async fn accept_suspended_certificates() {
 
 #[tokio::test(flavor = "current_thread", start_paused = true)]
 async fn synchronizer_recover_basic() {
-    let fixture = CommitteeFixture::builder().randomize_ports(true).build();
+    let fixture = CommitteeFixture::builder(MemDatabase::default).randomize_ports(true).build();
     let committee = fixture.committee();
     let worker_cache = fixture.worker_cache();
     let primary = fixture.authorities().last().unwrap();
@@ -314,7 +315,7 @@ async fn synchronizer_recover_basic() {
 
 #[tokio::test(flavor = "current_thread", start_paused = true)]
 async fn synchronizer_recover_partial_certs() {
-    let fixture = CommitteeFixture::builder().randomize_ports(true).build();
+    let fixture = CommitteeFixture::builder(MemDatabase::default).randomize_ports(true).build();
     let committee = fixture.committee();
     let worker_cache = fixture.worker_cache();
     let primary = fixture.authorities().last().unwrap();
@@ -414,7 +415,7 @@ async fn synchronizer_recover_partial_certs() {
 
 #[tokio::test(flavor = "current_thread", start_paused = true)]
 async fn synchronizer_recover_previous_round() {
-    let fixture = CommitteeFixture::builder().randomize_ports(true).build();
+    let fixture = CommitteeFixture::builder(MemDatabase::default).randomize_ports(true).build();
     let committee = fixture.committee();
     let worker_cache = fixture.worker_cache();
     let primary = fixture.authorities().last().unwrap();
@@ -513,7 +514,7 @@ async fn synchronizer_recover_previous_round() {
 
 #[tokio::test]
 async fn deliver_certificate_using_store() {
-    let fixture = CommitteeFixture::builder().build();
+    let fixture = CommitteeFixture::builder(MemDatabase::default).build();
     let primary = fixture.authorities().next().unwrap();
     let client = NetworkClient::new_from_keypair(&primary.network_keypair());
     let name = primary.id();
@@ -572,7 +573,7 @@ async fn deliver_certificate_using_store() {
 
 #[tokio::test(flavor = "current_thread", start_paused = true)]
 async fn deliver_certificate_not_found_parents() {
-    let fixture = CommitteeFixture::builder().build();
+    let fixture = CommitteeFixture::builder(MemDatabase::default).build();
     let primary = fixture.authorities().next().unwrap();
     let client = NetworkClient::new_from_keypair(&primary.network_keypair());
     let name = primary.id();
@@ -640,7 +641,7 @@ async fn deliver_certificate_not_found_parents() {
 
 #[tokio::test]
 async fn sanitize_fetched_certificates() {
-    let fixture = CommitteeFixture::builder().build();
+    let fixture = CommitteeFixture::builder(MemDatabase::default).build();
     let primary = fixture.authorities().next().unwrap();
     let client = NetworkClient::new_from_keypair(&primary.network_keypair());
     let name = primary.id();
@@ -751,7 +752,7 @@ async fn sanitize_fetched_certificates() {
 #[tokio::test]
 async fn sync_batches_drops_old() {
     reth_tracing::init_test_tracing();
-    let fixture = CommitteeFixture::builder()
+    let fixture = CommitteeFixture::builder(MemDatabase::default)
         .randomize_ports(true)
         .committee_size(NonZeroUsize::new(4).unwrap())
         .build();
@@ -828,7 +829,7 @@ async fn gc_suspended_certificates() {
     const GC_DEPTH: Round = 5;
 
     reth_tracing::init_test_tracing();
-    let fixture = CommitteeFixture::builder()
+    let fixture = CommitteeFixture::builder(MemDatabase::default)
         .randomize_ports(true)
         .committee_size(NonZeroUsize::new(NUM_AUTHORITIES).unwrap())
         .build();

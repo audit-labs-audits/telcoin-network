@@ -346,16 +346,17 @@ impl fmt::Display for ConsensusOutputDigest {
 #[cfg(test)]
 mod tests {
     use crate::{
-        test_utils::CommitteeFixture, AuthorityIdentifier, Certificate, CommittedSubDag,
-        HeaderBuilder, ReputationScores,
+        AuthorityIdentifier, Certificate, CommittedSubDag, CommitteeBuilder, HeaderBuilder,
+        ReputationScores,
     };
     use indexmap::IndexMap;
-    use std::{collections::BTreeSet, num::NonZeroUsize};
+    use std::collections::BTreeSet;
 
     #[test]
     fn test_zero_timestamp_in_sub_dag() {
-        let fixture = CommitteeFixture::builder().build();
-        let committee = fixture.committee();
+        //let fixture = CommitteeFixture::builder().build();
+        //let committee = fixture.committee();
+        let committee = CommitteeBuilder::new(1).build();
 
         let header_builder = HeaderBuilder::default();
         let header = header_builder
@@ -389,8 +390,9 @@ mod tests {
         let newer_timestamp = 100;
         let older_timestamp = 50;
 
-        let fixture = CommitteeFixture::builder().build();
-        let committee = fixture.committee();
+        //let fixture = CommitteeFixture::builder().build();
+        //let committee = fixture.committee();
+        let committee = CommitteeBuilder::new(0).build();
 
         let header_builder = HeaderBuilder::default();
         let header = header_builder
@@ -447,13 +449,25 @@ mod tests {
 
     #[test]
     fn test_authority_sorting_in_reputation_scores() {
-        let fixture =
-            CommitteeFixture::builder().committee_size(NonZeroUsize::new(10).unwrap()).build();
-        let committee = fixture.committee();
+        //let fixture =
+        //    CommitteeFixture::builder().committee_size(NonZeroUsize::new(10).unwrap()).build();
+        //let committee = fixture.committee();
+        let committee = CommitteeBuilder::new(0).build();
 
         let mut scores = ReputationScores::new(&committee);
 
-        let ids: Vec<AuthorityIdentifier> = fixture.authorities().map(|a| a.id()).collect();
+        let ids: Vec<AuthorityIdentifier> = vec![
+            0.into(),
+            0.into(),
+            0.into(),
+            0.into(),
+            0.into(),
+            0.into(),
+            0.into(),
+            0.into(),
+            0.into(),
+            0.into(),
+        ]; //fixture.authorities().map(|a| a.id()).collect();
 
         // adding some scores
         scores.add_score(ids[0], 0);

@@ -35,7 +35,6 @@ thiserror = { workspace = true }
 tokio = { workspace = true, features = ["sync", "rt", "macros"] }
 tonic = { workspace = true }
 tracing = { workspace = true }
-mem-utils = { workspace = true }
 eyre = { workspace = true }
 fastcrypto = { workspace = true, features = ["copy_key"] }
 fastcrypto-tbls = { workspace = true }

@@ -7,12 +7,14 @@ use fastcrypto::{
     serde_helpers::ToFromByteArray,
     traits::{KeyPair, ToFromBytes},
 };
-use tn_types::test_utils::CommitteeFixture;
+use narwhal_test_utils::CommitteeFixture;
+use narwhal_typed_store::mem_db::MemDatabase;
 
 #[tokio::test]
 async fn start_dkg() {
-    let fixture =
-        CommitteeFixture::builder().stake_distribution(vec![2500, 2500, 2500, 2500].into()).build();
+    let fixture = CommitteeFixture::builder(MemDatabase::default)
+        .stake_distribution(vec![2500, 2500, 2500, 2500].into())
+        .build();
     let committee = fixture.committee();
     let primary = fixture.authorities().next().unwrap();
     let name = primary.id();

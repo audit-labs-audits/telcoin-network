@@ -12,13 +12,12 @@ use crate::consensus::{
 };
 #[allow(unused_imports)]
 use fastcrypto::traits::KeyPair;
-use narwhal_typed_store::open_db;
+use narwhal_test_utils::CommitteeFixture;
+use narwhal_typed_store::{mem_db::MemDatabase, open_db};
 #[cfg(test)]
 use std::collections::BTreeSet;
 use std::collections::HashMap;
-use tn_types::{
-    test_utils::CommitteeFixture, AuthorityIdentifier, Notifier, DEFAULT_BAD_NODES_STAKE_THRESHOLD,
-};
+use tn_types::{AuthorityIdentifier, Notifier, DEFAULT_BAD_NODES_STAKE_THRESHOLD};
 #[allow(unused_imports)]
 use tokio::sync::mpsc::channel;
 use tokio::sync::watch;
@@ -27,7 +26,7 @@ use tracing::info;
 #[tokio::test]
 async fn order_leaders() {
     // GIVEN
-    let fixture = CommitteeFixture::builder().build();
+    let fixture = CommitteeFixture::builder(MemDatabase::default).build();
     let committee = fixture.committee();
     // Make certificates for rounds 1 to 7.
     let ids: Vec<_> = fixture.authorities().map(|a| a.id()).collect();
@@ -98,7 +97,7 @@ async fn commit_one_with_leader_schedule_change() {
         println!("Running test case \"{}\"", test_case.description);
 
         // GIVEN
-        let fixture = CommitteeFixture::builder().build();
+        let fixture = CommitteeFixture::builder(MemDatabase::default).build();
         let committee = fixture.committee();
         // Make certificates for rounds 1 to 9.
         let ids: Vec<_> = fixture.authorities().map(|a| a.id()).collect();
@@ -157,7 +156,7 @@ async fn commit_one_with_leader_schedule_change() {
 #[tokio::test]
 async fn not_enough_support_with_leader_schedule_change() {
     // GIVEN
-    let fixture = CommitteeFixture::builder().build();
+    let fixture = CommitteeFixture::builder(MemDatabase::default).build();
     let committee = fixture.committee();
 
     let ids: Vec<_> = fixture.authorities().map(|a| a.id()).collect();
@@ -304,7 +303,7 @@ async fn not_enough_support_with_leader_schedule_change() {
 #[tokio::test]
 async fn test_long_period_of_asynchrony_for_leader_schedule_change() {
     // GIVEN
-    let fixture = CommitteeFixture::builder().build();
+    let fixture = CommitteeFixture::builder(MemDatabase::default).build();
     let committee = fixture.committee();
 
     let ids: Vec<_> = fixture.authorities().map(|a| a.id()).collect();
@@ -420,7 +419,7 @@ async fn test_long_period_of_asynchrony_for_leader_schedule_change() {
 /// the leader of round 2.
 #[tokio::test]
 async fn commit_one() {
-    let fixture = CommitteeFixture::builder().build();
+    let fixture = CommitteeFixture::builder(MemDatabase::default).build();
     let committee = fixture.committee();
     // Make certificates for rounds 1 and 2.
     let ids: Vec<_> = fixture.authorities().map(|a| a.id()).collect();
@@ -503,7 +502,7 @@ async fn commit_one() {
 #[tokio::test]
 async fn dead_node() {
     // Make the certificates.
-    let fixture = CommitteeFixture::builder().build();
+    let fixture = CommitteeFixture::builder(MemDatabase::default).build();
     let committee: Committee = fixture.committee();
     let mut ids: Vec<_> = committee.authorities().map(|authority| authority.id()).collect();
 
@@ -606,7 +605,7 @@ async fn dead_node() {
 /// round 4 does. The leader of rounds 2 and 4 should thus be committed (because they are linked).
 #[tokio::test]
 async fn not_enough_support() {
-    let fixture = CommitteeFixture::builder().build();
+    let fixture = CommitteeFixture::builder(MemDatabase::default).build();
     let committee = fixture.committee();
     let mut ids: Vec<_> = fixture.authorities().map(|a| a.id()).collect();
     ids.sort();
@@ -760,7 +759,7 @@ async fn not_enough_support() {
 /// and reappears from round 3.
 #[tokio::test]
 async fn missing_leader() {
-    let fixture = CommitteeFixture::builder().build();
+    let fixture = CommitteeFixture::builder(MemDatabase::default).build();
     let committee = fixture.committee();
     let mut ids: Vec<_> = fixture.authorities().map(|a| a.id()).collect();
     ids.sort();
@@ -857,7 +856,7 @@ async fn missing_leader() {
 /// Every two rounds (on odd rounds), restart consensus and check consistency.
 #[tokio::test]
 async fn committed_round_after_restart() {
-    let fixture = CommitteeFixture::builder().build();
+    let fixture = CommitteeFixture::builder(MemDatabase::default).build();
     let committee = fixture.committee();
     let ids: Vec<_> = fixture.authorities().map(|a| a.id()).collect();
     let epoch = committee.epoch();
@@ -954,7 +953,7 @@ async fn committed_round_after_restart() {
 /// from round 2. Certificate 2 should not get committed.
 #[tokio::test]
 async fn delayed_certificates_are_rejected() {
-    let fixture = CommitteeFixture::builder().build();
+    let fixture = CommitteeFixture::builder(MemDatabase::default).build();
     let committee = fixture.committee();
     let ids: Vec<_> = fixture.authorities().map(|a| a.id()).collect();
     let epoch = committee.epoch();
@@ -1008,7 +1007,7 @@ async fn delayed_certificates_are_rejected() {
 async fn submitting_equivocating_certificate_should_error() {
     const NUM_SUB_DAGS_PER_SCHEDULE: u64 = 100;
 
-    let fixture = CommitteeFixture::builder().build();
+    let fixture = CommitteeFixture::builder(MemDatabase::default).build();
     let committee = fixture.committee();
     let ids: Vec<_> = fixture.authorities().map(|a| a.id()).collect();
     let epoch = committee.epoch();
@@ -1069,7 +1068,7 @@ async fn submitting_equivocating_certificate_should_error() {
 async fn reset_consensus_scores_on_every_schedule_change() {
     const NUM_SUB_DAGS_PER_SCHEDULE: u64 = 5;
 
-    let fixture = CommitteeFixture::builder().build();
+    let fixture = CommitteeFixture::builder(MemDatabase::default).build();
     let committee = fixture.committee();
     let ids: Vec<_> = fixture.authorities().map(|a| a.id()).collect();
     let epoch = committee.epoch();
@@ -1144,7 +1143,7 @@ async fn reset_consensus_scores_on_every_schedule_change() {
 /// the leader of round 2. Then shutdown consensus and restart in a new epoch.
 #[tokio::test]
 async fn restart_with_new_committee() {
-    let fixture = CommitteeFixture::builder().build();
+    let fixture = CommitteeFixture::builder(MemDatabase::default).build();
     let mut committee: Committee = fixture.committee();
     let ids: Vec<_> = fixture.authorities().map(|a| a.id()).collect();
 
@@ -1252,7 +1251,7 @@ async fn restart_with_new_committee() {
 async fn garbage_collection_basic() {
     const GC_DEPTH: Round = 4;
 
-    let fixture = CommitteeFixture::builder().build();
+    let fixture = CommitteeFixture::builder(MemDatabase::default).build();
     let committee: Committee = fixture.committee();
 
     // We create certificates for rounds 1 to 7. For the authorities 1 to 3 the references
@@ -1334,7 +1333,7 @@ async fn garbage_collection_basic() {
 async fn slow_node() {
     const GC_DEPTH: Round = 4;
 
-    let fixture = CommitteeFixture::builder().build();
+    let fixture = CommitteeFixture::builder(MemDatabase::default).build();
     let committee: Committee = fixture.committee();
 
     // We create certificates for rounds 1 to 8. For the authorities 1 to 3 the references
@@ -1465,7 +1464,7 @@ async fn slow_node() {
 async fn not_enough_support_and_missing_leaders_and_gc() {
     const GC_DEPTH: Round = 4;
 
-    let fixture = CommitteeFixture::builder().build();
+    let fixture = CommitteeFixture::builder(MemDatabase::default).build();
     let committee: Committee = fixture.committee();
 
     let ids: Vec<AuthorityIdentifier> =

@@ -6,11 +6,10 @@ use narwhal_executor::get_restored_consensus_output;
 use narwhal_primary::consensus::{
     Bullshark, Consensus, ConsensusMetrics, ConsensusRound, LeaderSchedule, LeaderSwapTable,
 };
-use narwhal_storage::NodeStorage;
 
-use narwhal_typed_store::open_db;
-use tempfile::TempDir;
-use tn_types::{test_utils::CommitteeFixture, Notifier, DEFAULT_BAD_NODES_STAKE_THRESHOLD};
+use narwhal_test_utils::CommitteeFixture;
+use narwhal_typed_store::mem_db::MemDatabase;
+use tn_types::{Notifier, DEFAULT_BAD_NODES_STAKE_THRESHOLD};
 
 use std::{collections::BTreeSet, sync::Arc};
 use tokio::sync::watch;
@@ -19,18 +18,11 @@ use tn_types::{Certificate, Round};
 
 #[tokio::test]
 async fn test_recovery() {
-    // Create storage
-    // In case the DB dir does not yet exist.
-    let temp_dir = TempDir::new().unwrap();
-    let _ = std::fs::create_dir_all(temp_dir.path());
-    let db = open_db(temp_dir.path());
-    let storage = NodeStorage::reopen(db);
-
-    let consensus_store = storage.consensus_store;
-    let certificate_store = storage.certificate_store;
-
     // Setup consensus
-    let fixture = CommitteeFixture::builder().build();
+    let fixture = CommitteeFixture::builder(MemDatabase::default).build();
+    let config_1 = fixture.authorities().next().unwrap().consensus_config();
+    let consensus_store = config_1.node_storage().consensus_store.clone();
+    let certificate_store = config_1.node_storage().certificate_store.clone();
     let committee = fixture.committee();
 
     // Make certificates for rounds 1 up to 4.

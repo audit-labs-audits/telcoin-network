@@ -9,7 +9,7 @@ use crate::consensus::{
 use fastcrypto::hash::{Hash, HashFunction};
 use futures::{stream::FuturesUnordered, StreamExt};
 use narwhal_storage::ConsensusStore;
-use narwhal_typed_store::{open_db, traits::Database};
+use narwhal_typed_store::{mem_db::MemDatabase, open_db, traits::Database};
 use rand::{
     distributions::{Bernoulli, Distribution},
     prelude::SliceRandom,
@@ -24,10 +24,8 @@ use std::{
 };
 use tn_types::{Authority, AuthorityIdentifier, Committee, Stake};
 
-use tn_types::{
-    test_utils::{mock_certificate_with_rand, CommitteeFixture},
-    Certificate, CertificateDigest, Round,
-};
+use narwhal_test_utils::CommitteeFixture;
+use tn_types::{test_utils::mock_certificate_with_rand, Certificate, CertificateDigest, Round};
 #[allow(unused_imports)]
 use tokio::sync::mpsc::channel;
 
@@ -266,7 +264,7 @@ fn generate_randomised_dag(
     // Create an RNG to share for the committee creation
     let rand = StdRng::seed_from_u64(seed);
 
-    let fixture = CommitteeFixture::builder()
+    let fixture = CommitteeFixture::builder(MemDatabase::default)
         .committee_size(NonZeroUsize::new(committee_size).unwrap())
         .rng(rand)
         .build();
