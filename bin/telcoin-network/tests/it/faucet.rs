@@ -663,7 +663,7 @@ async fn spawn_local_testnet(
                                 std::sync::Arc::clone(&builder.node_config.chain),
                                 evm_config,
                             );
-                            launch_node(builder, executor, evm_config, &tn_datadir).await
+                            launch_node(builder, executor, evm_config, tn_datadir).await
                         },
                     )
                     .await;

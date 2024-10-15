@@ -25,7 +25,7 @@ use tracing::error;
 /// network calls.
 ///
 /// TODO: investigate splitting this into Primary and Worker specific clients.
-#[derive(Clone)]
+#[derive(Debug, Clone)]
 pub struct NetworkClient {
     inner: Arc<RwLock<Inner>>,
     shutdown_notify: Arc<NotifyOnce>,
@@ -40,9 +40,16 @@ struct Inner {
     shutdown: bool,
 }
 
+impl std::fmt::Debug for Inner {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "NetworkClient::Inner for {}", self.primary_peer_id)?;
+        write!(f, "\t{} nodes in worker network", self.worker_network.len())
+    }
+}
+
 impl NetworkClient {
     const GET_CLIENT_RETRIES: usize = 50;
-    const GET_CLIENT_INTERVAL: Duration = Duration::from_millis(100);
+    const GET_CLIENT_INTERVAL: Duration = Duration::from_millis(1000);
 
     pub fn new(primary_peer_id: PeerId) -> Self {
         Self {

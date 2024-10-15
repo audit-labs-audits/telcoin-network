@@ -16,8 +16,8 @@ use std::{
 };
 use tn_config::KeyConfig;
 use tn_types::{
-    traits::KeyPair, utils::get_available_tcp_port, Authority, AuthorityIdentifier, BlsPublicKey,
-    Committee, Epoch, Multiaddr, Stake, WorkerCache, WorkerIndex,
+    traits::KeyPair, utils::get_available_tcp_port, Authority, Committee, Epoch, Multiaddr, Stake,
+    WorkerCache, WorkerIndex,
 };
 
 pub struct Builder<DB, F, R = OsRng> {
@@ -118,16 +118,21 @@ where
             let authority = Authority::new_for_test(
                 (i as u16).into(),
                 key_config.bls_keypair().public().clone(),
-                self.stake.get(i).unwrap_or(&1).clone(),
+                *self.stake.get(i).unwrap_or(&1),
                 primary_network_address,
                 Address::random_with(&mut rng),
                 key_config.network_keypair().public().clone(),
                 format!("authority{i}"),
             );
-            authorities.insert(authority.protocol_key().clone(), authority.clone());
-            committee_info.push((key_config, authority));
+            authorities.insert(authority.protocol_key().clone(), (key_config, authority.clone()));
+            //committee_info.push((key_config, authority));
         }
-        let committee = Committee::new_for_test(authorities, 0);
+        for (i, (_, (key_config, authority))) in authorities.iter_mut().enumerate() {
+            authority.initialise((i as u16).into());
+            committee_info.push((key_config.clone(), authority.clone()));
+        }
+        let committee =
+            Committee::new_for_test(authorities.into_iter().map(|(k, (_, a))| (k, a)).collect(), 0);
         let mut authorities: Vec<AuthorityFixture<DB>> = committee_info
             .into_iter()
             .map(|(key_config, authority)| {
@@ -153,13 +158,17 @@ where
         // same order.
         authorities.sort_by_key(|a1| a1.public_key());
 
+        /*let mut worker_index = BTreeMap::new();
+        for a in &authorities {
+            worker_index.insert(a.worker().id, a.worker().info().clone());
+        }*/
         let worker_cache = WorkerCache {
             epoch: self.epoch,
             workers: authorities
                 .iter()
                 .map(|a| {
                     let mut worker_index = BTreeMap::new();
-                    worker_index.insert(a.worker().id, a.worker().info().clone());
+                    worker_index.insert(0, a.worker().info().clone());
                     (a.public_key(), WorkerIndex(worker_index.clone()))
                 })
                 .collect(),

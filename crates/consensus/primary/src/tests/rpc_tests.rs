@@ -13,7 +13,6 @@ use reth::tasks::TaskManager;
 use reth_tracing::init_test_tracing;
 use tn_types::AuthorityIdentifier;
 
-/* XXXX
 #[tokio::test]
 async fn test_server_authorizations() {
     init_test_tracing();
@@ -24,10 +23,16 @@ async fn test_server_authorizations() {
     test_cluster.start(Some(4), Some(1), None).await;
     tokio::time::sleep(Duration::from_secs(3)).await;
 
-    let test_authority = test_cluster.authority(0);
-    let test_client = test_authority.client().await;
+    let test_client = test_cluster
+        .fixture()
+        .authorities()
+        .next()
+        .unwrap()
+        .consensus_config()
+        .network_client()
+        .clone();
     let test_committee = test_cluster.committee.clone();
-    //let test_worker_cache = test_cluster.worker_cache.clone();
+    let test_worker_cache = test_cluster.fixture().worker_cache().clone();
 
     // Reachable to primaries in the same committee.
     {
@@ -40,16 +45,15 @@ async fn test_server_authorizations() {
         primary_network.fetch_certificates(&primary_target_name, request).await.unwrap();
 
         let worker_network = test_client.get_worker_network(0).await.unwrap();
-        let worker_target_name = target_authority.worker().info().name;
-        /*let worker_target_name = test_worker_cache
-        .workers
-        .get(target_authority.protocol_key())
-        .unwrap()
-        .0
-        .get(&0)
-        .unwrap()
-        .name
-        .clone();*/
+        let worker_target_name = test_worker_cache
+            .workers
+            .get(target_authority.protocol_key())
+            .unwrap()
+            .0
+            .get(&0)
+            .unwrap()
+            .name
+            .clone();
         let request = anemo::Request::new(RequestBlocksRequest::default())
             .with_timeout(Duration::from_secs(5));
         worker_network.request_blocks(&worker_target_name, request).await.unwrap();
@@ -65,7 +69,7 @@ async fn test_server_authorizations() {
     // test_client should not reach unreachable_authority.
     {
         let unreachable_committee = unreachable_cluster.committee.clone();
-        let unreachable_worker_cache = unreachable_cluster.worker_cache.clone();
+        let unreachable_worker_cache = unreachable_cluster.fixture().worker_cache().clone();
 
         let unreachable_authority =
             unreachable_committee.authority(&AuthorityIdentifier(0)).unwrap();
@@ -98,4 +102,3 @@ async fn test_server_authorizations() {
         assert!(worker_network.request_blocks(&worker_target_name, request).await.is_err());
     }
 }
-*/

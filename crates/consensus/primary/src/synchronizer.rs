@@ -542,9 +542,12 @@ impl<DB: Database> Synchronizer<DB> {
         let inner_senders = inner.clone();
         spawn_logged_monitored_task!(
             async move {
-                let Ok(network) = client.get_primary_network().await else {
-                    error!(target:"primary::synchronizer::broadcast_certificates", "failed to get primary network!");
-                    return;
+                let network = match client.get_primary_network().await {
+                    Ok(network) => network,
+                    Err(e) => {
+                        error!(target:"primary::synchronizer::broadcast_certificates", ?e, "failed to get primary network!");
+                        return;
+                    }
                 };
 
                 trace!(target:"primary::synchronizer::broadcast_certificates", "awaiting lock for certificate senders...");

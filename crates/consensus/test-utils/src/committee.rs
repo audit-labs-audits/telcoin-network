@@ -16,6 +16,7 @@ use std::collections::BTreeSet;
 /// Fixture representing a committee to reach consensus.
 ///
 /// The [CommitteeFixture] holds all authorities.
+#[derive(Debug)]
 pub struct CommitteeFixture<DB> {
     /// The collection of [AuthorityFixture]s that comprise the committee.
     pub(crate) authorities: Vec<AuthorityFixture<DB>>,
@@ -46,15 +47,12 @@ impl<DB: Database> CommitteeFixture<DB> {
     pub fn worker_cache(&self) -> WorkerCache {
         // All the authorities have the same work cache so just use the first one.
         self.authorities
-            .get(0)
+            .first()
             .expect("no authorities so no worker cache!")
             .consensus_config()
             .worker_cache()
             .clone()
     }
-
-    // pub fn header(&self, author: BlsPublicKey) -> Header {
-    // Currently sign with the last authority
 
     /// Return a header from the last authority in the committee.
     ///

@@ -11,7 +11,7 @@ use std::{
     fmt::{Debug, Formatter},
     sync::Arc,
 };
-use tn_types::{Authority, AuthorityIdentifier, BlsPublicKey, Committee, Stake};
+use tn_types::{Authority, AuthorityIdentifier, Committee, Stake};
 
 use tn_types::{Certificate, ReputationScores, Round};
 use tracing::{debug, trace};

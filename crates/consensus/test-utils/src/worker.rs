@@ -76,6 +76,7 @@ impl<DB: Database> WorkerNodeDetails<DB> {
 /// Fixture representing a worker for an [AuthorityFixture].
 ///
 /// [WorkerFixture] holds keypairs and should not be used in production.
+#[derive(Debug)]
 pub struct WorkerFixture {
     key_config: KeyConfig,
     pub id: WorkerId,

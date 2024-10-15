@@ -75,7 +75,8 @@ impl Authority {
         }
     }
 
-    /// Version of new that can be called directly.  Useful for testing, if you are calling this outside of a test you are wrong (see comment on new).
+    /// Version of new that can be called directly.  Useful for testing, if you are calling this
+    /// outside of a test you are wrong (see comment on new).
     pub fn new_for_test(
         id: AuthorityIdentifier,
         protocol_key: BlsPublicKey,
@@ -99,7 +100,8 @@ impl Authority {
         }
     }
 
-    fn initialise(&mut self, id: AuthorityIdentifier) {
+    // XXXX really should not be pub...
+    pub fn initialise(&mut self, id: AuthorityIdentifier) {
         self.id = id;
         self.initialised = true;
     }
@@ -213,7 +215,8 @@ impl Committee {
         committee
     }
 
-    /// Expose new for tests.  If you are calling this outside of a test you are wrong, see comment on new.
+    /// Expose new for tests.  If you are calling this outside of a test you are wrong, see comment
+    /// on new.
     pub fn new_for_test(authorities: BTreeMap<BlsPublicKey, Authority>, epoch: Epoch) -> Self {
         let mut committee = Self {
             authorities,
@@ -223,14 +226,10 @@ impl Committee {
             quorum_threshold: 0,
         };
 
-        committee.authorities_by_id = (0_u16..)
-            .zip(committee.authorities.iter())
-            .map(|(_, (_key, authority))| {
-                let id = authority.id();
-                //authority.initialise(id);
-
-                (id, authority.clone())
-            })
+        committee.authorities_by_id = committee
+            .authorities
+            .values()
+            .map(|authority| (authority.id(), authority.clone()))
             .collect();
         committee.validity_threshold = committee.calculate_validity_threshold().get();
         committee.quorum_threshold = committee.calculate_quorum_threshold().get();

@@ -58,7 +58,7 @@ pub struct Worker<DB> {
 
 impl<DB: Database> Worker<DB> {
     pub fn new(id: WorkerId, consensus_config: ConsensusConfig<DB>) -> Self {
-        let worker_name = consensus_config.key_config().network_keypair().public().clone();
+        let worker_name = consensus_config.key_config().worker_network_keypair().public().clone();
         let worker_peer_id = PeerId(worker_name.0.to_bytes());
         info!("Boot worker node with id {} peer id {}", id, worker_peer_id,);
 
@@ -120,7 +120,8 @@ impl<DB: Database> Worker<DB> {
         metrics: Metrics,
         tx_shutdown: &mut Notifier,
     ) -> (Vec<JoinHandle<()>>, BlockProvider<DB, QuorumWaiter>) {
-        let worker_name = self.consensus_config.key_config().network_keypair().public().clone();
+        let worker_name =
+            self.consensus_config.key_config().worker_network_keypair().public().clone();
         let worker_peer_id = PeerId(worker_name.0.to_bytes());
         info!("Boot worker node with id {} peer id {}", self.id, worker_peer_id,);
 
@@ -236,7 +237,7 @@ impl<DB: Database> Worker<DB> {
                 .private_key(
                     self.consensus_config
                         .key_config()
-                        .network_keypair()
+                        .worker_network_keypair()
                         .copy()
                         .private()
                         .0
@@ -308,7 +309,7 @@ impl<DB: Database> Worker<DB> {
         let (peer_id, address) = Self::add_peer_in_network(
             &network,
             self.consensus_config.authority().network_key(),
-            &self.consensus_config.authority().primary_network_address(),
+            self.consensus_config.authority().primary_network_address(),
         );
         peer_types.insert(peer_id, "our_primary".to_string());
         info!(target: "worker::worker", "Adding our primary with peer id {} and address {}", peer_id, address);

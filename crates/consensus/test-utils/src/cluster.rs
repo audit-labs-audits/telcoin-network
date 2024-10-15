@@ -18,7 +18,6 @@ pub mod cluster_tests;
 
 /// Test fixture that holds all information needed to run a local network.
 pub struct Cluster<DB> {
-    #[allow(unused)]
     fixture: CommitteeFixture<DB>,
     authorities: HashMap<usize, AuthorityDetails<DB>>,
     pub committee: Committee,
@@ -259,5 +258,9 @@ where
     ) -> broadcast::Receiver<ConsensusOutput> {
         let authority = self.authority(id);
         authority.subscribe_consensus_output().await
+    }
+
+    pub fn fixture(&self) -> &CommitteeFixture<DB> {
+        &self.fixture
     }
 }

@@ -34,20 +34,17 @@ use tempfile::TempDir;
 use tn_block_validator::NoopBlockValidator;
 use tn_types::{
     now, test_utils::make_optimal_signed_certificates, AuthorityIdentifier, Certificate,
-    ChainIdentifier, Committee, Notifier, Parameters, SignatureVerificationState,
+    ChainIdentifier, Committee, Notifier, SignatureVerificationState,
 };
 use tokio::{sync::watch, time::timeout};
 
 #[tokio::test]
 async fn test_get_network_peers_from_admin_server() {
-    let primary_1_parameters = Parameters {
-        batch_size: 200, // Two transactions.
-        ..Parameters::default()
-    };
     let fixture = CommitteeFixture::builder(MemDatabase::default).randomize_ports(true).build();
     let committee = fixture.committee();
     let authority_1 = fixture.authorities().next().unwrap();
     let config_1 = authority_1.consensus_config();
+    let primary_1_parameters = config_1.config().parameters.clone();
 
     let worker_id = 0;
     let worker_1_keypair = authority_1.worker().keypair().copy();
@@ -95,6 +92,7 @@ async fn test_get_network_peers_from_admin_server() {
 
     // Spawn a `Worker` instance for primary 1.
     let worker = Worker::new(worker_id, config_1);
+    //let worker = authority_1.worker(); //Worker::new(worker_id, config_1);
     worker.spawn(NoopBlockValidator, metrics_1, &mut tx_shutdown_worker);
 
     // Test getting all known peers for primary 1
@@ -108,8 +106,8 @@ async fn test_get_network_peers_from_admin_server() {
     .await
     .unwrap();
 
-    // Assert we returned 19 peers (3 other primaries + 4 workers + 4*3 other workers)
-    assert_eq!(19, resp.len());
+    // Assert we returned 7 peers (3 other primaries + 1 workers + 1*3 other workers)
+    assert_eq!(7, resp.len());
 
     // Test getting all connected peers for primary 1
     let mut resp = reqwest::get(format!(
@@ -141,10 +139,7 @@ async fn test_get_network_peers_from_admin_server() {
 
     let authority_2 = fixture.authorities().nth(1).unwrap();
     let config_2 = authority_2.consensus_config();
-    let primary_2_parameters = Parameters {
-        batch_size: 200, // Two transactions.
-        ..Parameters::default()
-    };
+    let primary_2_parameters = config_2.config().parameters.clone();
 
     // TODO: Rework test-utils so that macro can be used for the channels below.
     let (tx_new_certificates_2, _rx_new_certificates_2) =
@@ -581,7 +576,7 @@ async fn test_request_vote_missing_batches() {
         .header_builder(&fixture.committee())
         .round(2)
         .parents(certificates.keys().cloned().collect())
-        .with_payload_batch(tn_types::test_utils::fixture_batch_with_transactions(10), 1, 0)
+        .with_payload_batch(tn_types::test_utils::fixture_batch_with_transactions(10), 0, 0)
         .build()
         .unwrap();
     let test_digests: HashSet<_> =
@@ -639,11 +634,12 @@ async fn test_request_vote_already_voted() {
     let primary_channel_metrics = PrimaryChannelMetrics::default();
     let network =
         tn_types::test_utils::test_network(primary.network_keypair(), primary.network_address());
-    let client = NetworkClient::new_from_keypair(&primary.network_keypair());
+    let client = primary.consensus_config().network_client().clone(); // NetworkClient::new_from_keypair(&primary.network_keypair());
 
-    let temp_dir = TempDir::new().unwrap();
-    let db = open_db(temp_dir.path());
-    let (certificate_store, payload_store, vote_digest_store) = create_db_stores(db);
+    let certificate_store = primary.consensus_config().node_storage().certificate_store.clone();
+    let payload_store = primary.consensus_config().node_storage().payload_store.clone();
+    let vote_digest_store = primary.consensus_config().node_storage().vote_digest_store.clone();
+
     let (tx_certificate_fetcher, _rx_certificate_fetcher) = tn_types::test_channel!(1);
     let (tx_new_certificates, _rx_new_certificates) = tn_types::test_channel!(100);
     let (tx_parents, _rx_parents) = tn_types::test_channel!(100);
@@ -718,7 +714,7 @@ async fn test_request_vote_already_voted() {
         .header_builder(&fixture.committee())
         .round(2)
         .parents(certificates.keys().cloned().collect())
-        .with_payload_batch(tn_types::test_utils::fixture_batch_with_transactions(10), 1, 0)
+        .with_payload_batch(tn_types::test_utils::fixture_batch_with_transactions(10), 0, 0)
         .build()
         .unwrap();
     let mut request = anemo::Request::new(RequestVoteRequest {
@@ -731,7 +727,10 @@ async fn test_request_vote_already_voted() {
         .insert(anemo::PeerId(author.network_public_key().0.to_bytes()))
         .is_none());
 
-    let response = handler.request_vote(request).await.unwrap();
+    let response = tokio::time::timeout(Duration::from_secs(10), handler.request_vote(request))
+        .await
+        .unwrap()
+        .unwrap();
     assert!(response.body().vote.is_some());
     let vote = response.into_body().vote.unwrap();
 
@@ -755,7 +754,7 @@ async fn test_request_vote_already_voted() {
         .header_builder(&fixture.committee())
         .round(2)
         .parents(certificates.keys().cloned().collect())
-        .with_payload_batch(tn_types::test_utils::fixture_batch_with_transactions(10), 1, 0)
+        .with_payload_batch(tn_types::test_utils::fixture_batch_with_transactions(10), 0, 0)
         .build()
         .unwrap();
     let mut request = anemo::Request::new(RequestVoteRequest {
@@ -938,13 +937,10 @@ async fn test_request_vote_created_at_in_future() {
         tn_types::test_utils::test_network(primary.network_keypair(), primary.network_address());
     let client = NetworkClient::new_from_keypair(&primary.network_keypair());
 
-    let temp_dir = TempDir::new().unwrap();
-    let db = open_db(temp_dir.path());
-    let (certificate_store, payload_store, vote_digest_store) = (
-        CertificateStore::new(db.clone()),
-        PayloadStore::new(db.clone()),
-        VoteDigestStore::new(db),
-    );
+    let certificate_store = primary.consensus_config().node_storage().certificate_store.clone();
+    let payload_store = primary.consensus_config().node_storage().payload_store.clone();
+    let vote_digest_store = primary.consensus_config().node_storage().vote_digest_store.clone();
+
     let (tx_certificate_fetcher, _rx_certificate_fetcher) = tn_types::test_channel!(1);
     let (tx_new_certificates, _rx_new_certificates) = tn_types::test_channel!(100);
     let (tx_parents, _rx_parents) = tn_types::test_channel!(100);
@@ -1022,7 +1018,7 @@ async fn test_request_vote_created_at_in_future() {
         .header_builder(&fixture.committee())
         .round(2)
         .parents(certificates.keys().cloned().collect())
-        .with_payload_batch(tn_types::test_utils::fixture_batch_with_transactions(10), 1, 0)
+        .with_payload_batch(tn_types::test_utils::fixture_batch_with_transactions(10), 0, 0)
         .created_at(created_at)
         .build()
         .unwrap();
@@ -1049,7 +1045,7 @@ async fn test_request_vote_created_at_in_future() {
         .header_builder(&fixture.committee())
         .round(2)
         .parents(certificates.keys().cloned().collect())
-        .with_payload_batch(tn_types::test_utils::fixture_batch_with_transactions(10), 1, 0)
+        .with_payload_batch(tn_types::test_utils::fixture_batch_with_transactions(10), 0, 0)
         .created_at(created_at)
         .build()
         .unwrap();

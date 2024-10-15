@@ -16,7 +16,7 @@ use narwhal_typed_store::mem_db::MemDatabase;
 use prometheus::Registry;
 use tempfile::TempDir;
 use tn_block_validator::NoopBlockValidator;
-use tn_types::{ChainIdentifier, Parameters, WorkerBlock};
+use tn_types::{ChainIdentifier, WorkerBlock};
 use tokio::sync::watch;
 
 // A test validator that rejects every batch
@@ -365,10 +365,7 @@ async fn get_network_peers_from_admin_server() {
     let metrics_1 = Metrics::new_with_registry(&registry_1);
     let mut tx_shutdown = Notifier::new();
 
-    let worker_1_parameters = Parameters {
-        batch_size: 200, // Two transactions.
-        ..Parameters::default()
-    };
+    let worker_1_parameters = config_1.config().parameters.clone();
 
     // Spawn a `Worker` instance for primary 1.
     let worker = Worker::new(worker_id, config_1);
@@ -443,10 +440,7 @@ async fn get_network_peers_from_admin_server() {
     let registry_2 = Registry::new();
     let metrics_2 = Metrics::new_with_registry(&registry_2);
 
-    let worker_2_parameters = Parameters {
-        batch_size: 200, // Two transactions.
-        ..Parameters::default()
-    };
+    let worker_2_parameters = config_2.config().parameters.clone();
 
     let mut tx_shutdown_worker = Notifier::new();
 

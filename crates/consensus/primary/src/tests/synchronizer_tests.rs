@@ -809,7 +809,7 @@ async fn sync_batches_drops_old() {
         .header_builder(&fixture.committee())
         .round(2)
         .parents(certificates.keys().cloned().collect())
-        .with_payload_batch(tn_types::test_utils::fixture_batch_with_transactions(10), 1, 0)
+        .with_payload_batch(tn_types::test_utils::fixture_batch_with_transactions(10), 0, 0)
         .build()
         .unwrap();
 

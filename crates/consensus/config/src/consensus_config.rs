@@ -11,6 +11,7 @@ use tn_types::{
 
 use crate::KeyConfig;
 
+#[derive(Debug)]
 struct ConsensusConfigInner<DB> {
     config: Config,
     committee: Committee,
@@ -21,7 +22,7 @@ struct ConsensusConfigInner<DB> {
     authority: Authority,
 }
 
-#[derive(Clone)]
+#[derive(Debug, Clone)]
 pub struct ConsensusConfig<DB> {
     inner: Arc<ConsensusConfigInner<DB>>,
     worker_cache: Option<Arc<WorkerCache>>,
@@ -93,10 +94,7 @@ where
             .clone();
 
         let tn_datadir = Arc::new(tn_datadir);
-        let worker_cache = match worker_cache.take() {
-            Some(worker_cache) => Some(Arc::new(worker_cache)),
-            None => None,
-        };
+        let worker_cache = worker_cache.take().map(Arc::new);
         Ok(Self {
             inner: Arc::new(ConsensusConfigInner {
                 config,

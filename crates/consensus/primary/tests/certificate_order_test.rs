@@ -16,11 +16,15 @@ async fn test_certificate_signers_are_ordered() {
     // GIVEN
     let fixture = CommitteeFixture::builder(MemDatabase::default)
         .committee_size(NonZeroUsize::new(4).unwrap())
-        .stake_distribution((1..=4).collect()) // provide some non-uniform stake
+        .stake_distribution(vec![2, 2, 3, 4].into() /* (1..=4).collect() */) // provide some non-uniform stake
         .build();
     let committee: Committee = fixture.committee();
 
     let authorities = fixture.authorities().collect::<Vec<&AuthorityFixture<MemDatabase>>>();
+    let total_stake: u64 = authorities.iter().map(|a| a.authority().stake()).sum();
+    assert_eq!(total_stake, 11);
+    // authorities are ordered by keys so the stake may not be 1, 2, 3, 4...
+    let last_three_stake: u64 = authorities[1..].iter().map(|a| a.authority().stake()).sum();
 
     // The authority that creates the Header
     let authority = authorities[0];
@@ -53,5 +57,5 @@ async fn test_certificate_signers_are_ordered() {
     // AND authorities public keys are returned in order
     assert_eq!(signers, sorted_signers);
 
-    assert_eq!(stake, 9 as Stake);
+    assert_eq!(stake, last_three_stake as Stake);
 }

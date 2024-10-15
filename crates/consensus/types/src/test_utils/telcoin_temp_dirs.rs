@@ -4,6 +4,7 @@ use tempfile::{tempdir, TempDir};
 
 use crate::TelcoinDirs;
 
+#[derive(Debug)]
 pub struct TelcoinTempDirs(TempDir);
 
 impl Default for TelcoinTempDirs {

@@ -406,12 +406,6 @@ pub struct ValidatorInfo {
     pub execution_address: Address,
     /// Proof
     pub proof_of_possession: BlsSignature,
-    // TODO: remove these for now since they don't seem critical
-
-    // /// Hostname for the node.
-    // hostname: String,
-    // /// Peer address for execution clients?
-    // p2p_address: Multiaddr,
 }
 
 impl ValidatorInfo {

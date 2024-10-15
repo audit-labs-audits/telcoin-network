@@ -23,4 +23,6 @@ pub use execution::{
 };
 
 #[cfg(test)]
+mod output_tests;
+#[cfg(test)]
 mod storage_tests;

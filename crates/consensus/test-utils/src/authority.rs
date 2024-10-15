@@ -22,8 +22,9 @@ use tokio::sync::{broadcast, RwLock};
 use tracing::info;
 
 /// The authority details hold all the necessary structs and details
-/// to identify and manage a specific authority. An authority is
-/// composed of its primary node and the worker nodes. Via this struct
+/// to identify and manage a specific authority.
+///
+/// An authority is composed of its primary node and the worker nodes. Via this struct
 /// we can manage the nodes one by one or in batch fashion (ex stop_all).
 /// The Authority can be cloned and reused across the instances as its
 /// internals are thread safe. So changes made from one instance will be
@@ -328,6 +329,7 @@ impl<DB: Database> AuthorityDetails<DB> {
 /// Fixture representing an validator node within the network.
 ///
 /// [AuthorityFixture] holds keypairs and should not be used in production.
+#[derive(Debug)]
 pub struct AuthorityFixture<DB> {
     /// Thread-safe cell with a reference to the [Authority] struct used in production.
     authority: Authority,
@@ -453,7 +455,15 @@ impl<DB: Database> AuthorityFixture<DB> {
         // Currently only support one worker per node.
         // If/when this is relaxed then the key_config below will need to change.
         assert_eq!(number_of_workers.get(), 1);
-        let config = Config::default();
+        let mut config = Config::default();
+        // These key updates don't return errors...
+        let _ = config.update_protocol_key(key_config.bls_keypair().public().clone());
+        let _ = config.update_primary_network_key(key_config.network_keypair().public().clone());
+        let _ =
+            config.update_worker_network_key(key_config.worker_network_keypair().public().clone());
+        config.validator_info.primary_info.network_address =
+            authority.primary_network_address().clone();
+
         let tn_datadirs = TelcoinTempDirs::default();
         let node_config = tn_node::NodeStorage::reopen(db);
         let consensus_config = ConsensusConfig::new_with_committee(

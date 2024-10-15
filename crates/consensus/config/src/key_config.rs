@@ -7,6 +7,7 @@ use tn_types::{
     WORKER_NETWORK_KEYFILE,
 };
 
+#[derive(Debug)]
 struct KeyConfigInner {
     bls_keypair: BlsKeypair,
     network_keypair: NetworkKeypair,
@@ -14,7 +15,7 @@ struct KeyConfigInner {
 }
 
 // TODO: audit the use of this struct for leaking private keys, etc...
-#[derive(Clone)]
+#[derive(Debug, Clone)]
 pub struct KeyConfig {
     inner: Arc<KeyConfigInner>,
 }
