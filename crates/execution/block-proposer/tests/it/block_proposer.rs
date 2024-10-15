@@ -13,7 +13,6 @@ use narwhal_worker::{
     quorum_waiter::{QuorumWaiterError, QuorumWaiterTrait},
     BlockProvider,
 };
-use reth::{beacon_consensus::EthBeaconConsensus, tasks::TaskManager};
 use reth_blockchain_tree::noop::NoopBlockchainTree;
 use reth_chainspec::ChainSpec;
 use reth_db::test_utils::{create_test_rw_db, tempdir_path};
@@ -70,8 +69,15 @@ async fn test_make_block_el_to_cl() {
     network_client.set_worker_to_primary_local_handler(Arc::new(mock_server));
 
     let qw = TestMakeBlockQuorumWaiter();
-    let block_provider =
-        BlockProvider::new(0, qw.clone(), Arc::new(node_metrics), network_client, store.clone());
+    let timeout = Duration::from_secs(5);
+    let block_provider = BlockProvider::new(
+        0,
+        qw.clone(),
+        Arc::new(node_metrics),
+        network_client,
+        store.clone(),
+        timeout,
+    );
 
     //
     //=== Execution Layer
@@ -202,8 +208,7 @@ async fn test_make_block_el_to_cl() {
     let block = block.unwrap();
 
     // ensure block validator succeeds
-    let consensus: Arc<dyn Consensus> = Arc::new(EthBeaconConsensus::new(chain.clone()));
-    let block_validator = BlockValidator::new(consensus, blockchain_db.clone(), block_executor);
+    let block_validator = BlockValidator::new(blockchain_db.clone(), 1_000_000, 30_000_000);
 
     let valid_block_result = block_validator.validate_block(&block).await;
     assert!(valid_block_result.is_ok());

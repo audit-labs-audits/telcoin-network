@@ -21,10 +21,9 @@ use reth_tasks::{TaskSpawner, TokioTaskExecutor};
 use reth_transaction_pool::TransactionPool;
 use secp256k1::constants::PUBLIC_KEY_SIZE;
 use std::time::Duration;
-use tn_types::PendingWorkerBlock;
 use tokio::sync::{
     mpsc::{unbounded_channel, UnboundedSender},
-    oneshot, watch,
+    oneshot,
 };
 use tokio_stream::wrappers::UnboundedReceiverStream;
 mod cli_ext;
@@ -112,28 +111,33 @@ impl Faucet {
         pool: Pool,
         executor: Tasks,
         config: FaucetConfig,
-        watch_rx: watch::Receiver<PendingWorkerBlock>,
     ) -> (Self, FaucetService<Provider, Pool, Tasks>) {
         let (to_service, rx) = unbounded_channel();
         let FaucetConfig { wait_period, chain_id, wallet, contract_address } = config;
 
         // Construct an `LruCache` of `<String, SystemTime>`s, limited by 24hr expiry time
-        let lru_cache = LruCache::with_expiry_duration(wait_period);
-        let (add_to_cache_tx, update_cache_rx) = tokio::sync::mpsc::unbounded_channel();
+        let success_cache = LruCache::with_expiry_duration(wait_period);
+
+        // short time-based LRU cache to stop duplicate requests while consensus is being reached
+        // NOTE: 10s chosen bc defaults primary header delay - this should be configurable
+        let pending_cache = LruCache::with_expiry_duration(Duration::from_secs(10));
+        let (add_to_success_cache_tx, update_success_cache_rx) =
+            tokio::sync::mpsc::unbounded_channel();
 
         let service = FaucetService {
             faucet_contract: contract_address,
             request_rx: UnboundedReceiverStream::new(rx),
             provider,
             pool,
-            lru_cache,
+            success_cache,
+            pending_cache,
             chain_id,
             wait_period,
             executor,
             wallet,
-            add_to_cache_tx,
-            update_cache_rx,
-            watch_rx,
+            add_to_success_cache_tx,
+            update_success_cache_rx,
+            next_nonce: 0, // start at 0 - service checks db
         };
         let faucet = Self { to_service };
         (faucet, service)
@@ -147,13 +151,12 @@ impl Faucet {
         provider: Provider,
         pool: Pool,
         config: FaucetConfig,
-        watch_rx: watch::Receiver<PendingWorkerBlock>,
     ) -> Self
     where
         Provider: BlockReaderIdExt + StateProviderFactory + Unpin + Clone + 'static,
         Pool: TransactionPool + Unpin + Clone + 'static,
     {
-        Self::spawn_with(provider, pool, config, TokioTaskExecutor::default(), watch_rx)
+        Self::spawn_with(provider, pool, config, TokioTaskExecutor::default())
     }
 
     /// Creates a new async LRU backed cache service task and spawns it to a new task via
@@ -165,14 +168,13 @@ impl Faucet {
         pool: Pool,
         config: FaucetConfig,
         executor: Tasks,
-        watch_rx: watch::Receiver<PendingWorkerBlock>,
     ) -> Self
     where
         Provider: BlockReaderIdExt + StateProviderFactory + Unpin + Clone + 'static,
         Pool: TransactionPool + Unpin + Clone + 'static,
         Tasks: TaskSpawner + Clone + 'static,
     {
-        let (this, service) = Self::create(provider, pool, executor.clone(), config, watch_rx);
+        let (this, service) = Self::create(provider, pool, executor.clone(), config);
 
         executor.spawn_critical("faucet cache", Box::pin(service));
         this

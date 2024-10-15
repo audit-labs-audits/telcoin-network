@@ -80,7 +80,7 @@ impl<CDB: ConsensusDatabase> WorkerNodeInner<CDB> {
 
         let metrics = Metrics::default();
 
-        let batch_validator = execution_node.new_batch_validator().await;
+        let batch_validator = execution_node.new_block_validator().await;
 
         let worker = Worker::new(
             authority.clone(),
@@ -96,7 +96,7 @@ impl<CDB: ConsensusDatabase> WorkerNodeInner<CDB> {
             worker.spawn(batch_validator, client.clone(), metrics, &mut tx_shutdown);
 
         // spawn batch maker for worker
-        execution_node.start_batch_maker(self.id, block_provider.blocks_rx()).await?;
+        execution_node.start_block_builder(self.id, block_provider.blocks_rx()).await?;
 
         // now keep the handlers
         self.handles.clear();

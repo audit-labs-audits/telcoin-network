@@ -155,14 +155,20 @@ pub struct Parameters {
     /// are picked at random from the committee.
     #[serde(default = "Parameters::default_sync_retry_nodes")]
     pub sync_retry_nodes: usize,
-    /// The preferred batch size. The workers seal a batch of transactions when it reaches this
-    /// size. Denominated in bytes.
-    #[serde(default = "Parameters::default_batch_size")]
-    pub batch_size: usize,
+    /// The maximum size (in bytes) for the proposed collection of transactions.
+    ///
+    /// The worker's collection of transactions must not exceed this value.
+    #[serde(default = "Parameters::default_max_worker_block_size")]
+    pub max_worker_tx_bytes_size: usize,
+    /// The maximum size (in gas) for the proposed collection of transactions.
+    ///
+    /// The worker's collection of transactions must not exceed this value.
+    #[serde(default = "Parameters::default_max_worker_block_gas")]
+    pub max_worker_tx_gas: u64,
     /// The delay after which the workers seal a batch of transactions, even if `max_batch_size`
     /// is not reached.
-    #[serde(with = "humantime_serde", default = "Parameters::default_max_batch_delay")]
-    pub max_batch_delay: Duration,
+    #[serde(with = "humantime_serde", default = "Parameters::default_max_worker_block_delay")]
+    pub max_worker_block_delay: Duration,
     /// The maximum number of concurrent requests for messages accepted from an un-trusted entity
     #[serde(default = "Parameters::default_max_concurrent_requests")]
     pub max_concurrent_requests: usize,
@@ -175,6 +181,9 @@ pub struct Parameters {
     /// Anemo network settings.
     #[serde(default = "AnemoParameters::default")]
     pub anemo: AnemoParameters,
+    /// Worker timeout when request vote from peers.
+    #[serde(default = "Parameters::default_worker_block_vote_timeout")]
+    pub worker_block_vote_timeout: Duration,
 }
 
 impl Parameters {
@@ -206,16 +215,26 @@ impl Parameters {
         3
     }
 
-    fn default_batch_size() -> usize {
-        5_000_000
+    /// Measured in bytes - 1MB
+    fn default_max_worker_block_size() -> usize {
+        1_000_000
     }
 
-    fn default_max_batch_delay() -> Duration {
+    /// Measured in wei - 30mil
+    fn default_max_worker_block_gas() -> u64 {
+        30_000_000
+    }
+
+    fn default_max_worker_block_delay() -> Duration {
         Duration::from_secs(1)
     }
 
     fn default_max_concurrent_requests() -> usize {
         500_000
+    }
+
+    fn default_worker_block_vote_timeout() -> Duration {
+        Duration::from_secs(10)
     }
 }
 
@@ -346,12 +365,14 @@ impl Default for Parameters {
             gc_depth: Parameters::default_gc_depth(),
             sync_retry_delay: Parameters::default_sync_retry_delay(),
             sync_retry_nodes: Parameters::default_sync_retry_nodes(),
-            batch_size: Parameters::default_batch_size(),
-            max_batch_delay: Parameters::default_max_batch_delay(),
+            max_worker_tx_bytes_size: Parameters::default_max_worker_block_size(),
+            max_worker_tx_gas: Parameters::default_max_worker_block_gas(),
+            max_worker_block_delay: Parameters::default_max_worker_block_delay(),
             max_concurrent_requests: Parameters::default_max_concurrent_requests(),
             prometheus_metrics: PrometheusMetricsParameters::default(),
             network_admin_server: NetworkAdminServerParameters::default(),
             anemo: AnemoParameters::default(),
+            worker_block_vote_timeout: Parameters::default_worker_block_vote_timeout(),
         }
     }
 }
@@ -375,8 +396,9 @@ impl Parameters {
         info!("Garbage collection depth set to {} rounds", self.gc_depth);
         info!("Sync retry delay set to {} ms", self.sync_retry_delay.as_millis());
         info!("Sync retry nodes set to {} nodes", self.sync_retry_nodes);
-        info!("Batch size set to {} B", self.batch_size);
-        info!("Max batch delay set to {} ms", self.max_batch_delay.as_millis());
+        info!("Worker block size set to {} B", self.max_worker_tx_bytes_size);
+        info!("Worker block gas set to {} wei", self.max_worker_tx_gas);
+        info!("Max batch delay set to {} ms", self.max_worker_block_delay.as_millis());
         info!("Max concurrent requests set to {}", self.max_concurrent_requests);
         info!("Prometheus metrics server will run on {}", self.prometheus_metrics.socket_addr);
         info!(

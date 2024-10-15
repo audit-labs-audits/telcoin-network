@@ -3,22 +3,23 @@
 
 //! Specific test utils for execution layer
 use crate::{adiri_genesis, now, ExecutionKeypair, TimestampSec, WorkerBlock};
-use alloy::signers::{k256::FieldBytes, local::PrivateKeySigner};
+use alloy::{
+    eips::eip1559::MIN_PROTOCOL_BASE_FEE,
+    signers::{k256::FieldBytes, local::PrivateKeySigner},
+};
 use rand::{rngs::StdRng, Rng, SeedableRng};
 use reth_chainspec::{BaseFeeParams, ChainSpec};
 use reth_evm::execute::{BlockExecutionOutput, BlockExecutorProvider, Executor as _};
 use reth_primitives::{
-    constants::{
-        EMPTY_TRANSACTIONS, EMPTY_WITHDRAWALS, ETHEREUM_BLOCK_GAS_LIMIT, MIN_PROTOCOL_BASE_FEE,
-    },
+    constants::{EMPTY_TRANSACTIONS, EMPTY_WITHDRAWALS, ETHEREUM_BLOCK_GAS_LIMIT},
     proofs, public_key_to_address, sign_message, Address, Block, Bytes, Genesis, GenesisAccount,
     Header, PooledTransactionsElement, SealedHeader, Signature, Transaction, TransactionSigned,
     TxEip1559, TxHash, TxKind, Withdrawals, B256, EMPTY_OMMER_ROOT_HASH, U256,
 };
 use reth_provider::{BlockReaderIdExt, ExecutionOutcome, StateProviderFactory};
 use reth_revm::database::StateProviderDatabase;
+use reth_rpc_types::AccessList;
 use reth_transaction_pool::{PoolTransaction, TransactionOrigin, TransactionPool};
-use reth_trie::HashedPostState;
 use secp256k1::Secp256k1;
 use std::{str::FromStr as _, sync::Arc};
 use tracing::debug;
@@ -30,6 +31,21 @@ pub fn test_genesis() -> Genesis {
     let default_factory_account =
         vec![(default_address, GenesisAccount::default().with_balance(U256::MAX))];
     genesis.extend_accounts(default_factory_account)
+}
+
+/// Helper function to seed addresses within adiri genesis.
+///
+/// Each address is funded with 99_000_000 TEL at genesis.
+pub fn adiri_genesis_seeded(accounts: Vec<Address>) -> Genesis {
+    let accounts = accounts.into_iter().map(|acc| {
+        (
+            acc,
+            GenesisAccount::default().with_balance(
+                U256::from_str("0x51E410C0F93FE543000000").expect("account balance is parsed"),
+            ),
+        )
+    });
+    adiri_genesis().extend_accounts(accounts)
 }
 
 /// Helper function to seed an instance of Genesis with accounts from a random batch.
@@ -104,117 +120,14 @@ pub struct OptionalTestBatchParams {
     pub base_fee_per_gas_opt: Option<u64>,
 }
 
-/// Attempt to update batch with accurate header information.
+/// Test utility to execute worker block and return execution outcome.
 ///
-/// NOTE: this is loosely based on reth's auto-seal consensus
-pub fn execute_test_batch<P, E>(
-    worker_block: &mut WorkerBlock,
-    parent: &SealedHeader,
-    optional_params: OptionalTestBatchParams,
-    provider: &P,
-    executor: &E,
-) where
-    P: StateProviderFactory + BlockReaderIdExt,
-    E: BlockExecutorProvider,
-{
-    // deconstruct optional parameters for header
-    let OptionalTestBatchParams {
-        beneficiary_opt,
-        withdrawals_opt,
-        timestamp_opt,
-        mix_hash_opt,
-        base_fee_per_gas_opt,
-    } = optional_params;
-
-    // create "empty" header with default values
-    let mut header = Header {
-        parent_hash: parent.hash(),
-        ommers_hash: EMPTY_OMMER_ROOT_HASH,
-        beneficiary: beneficiary_opt.unwrap_or_else(|| Address::random()),
-        state_root: Default::default(),
-        transactions_root: Default::default(),
-        receipts_root: Default::default(),
-        withdrawals_root: Some(
-            withdrawals_opt
-                .clone()
-                .map_or(EMPTY_WITHDRAWALS, |w| proofs::calculate_withdrawals_root(&w)),
-        ),
-        logs_bloom: Default::default(),
-        difficulty: U256::ZERO,
-        number: parent.number + 1,
-        gas_limit: ETHEREUM_BLOCK_GAS_LIMIT,
-        gas_used: 0,
-        timestamp: timestamp_opt.unwrap_or_else(now),
-        mix_hash: mix_hash_opt.unwrap_or_else(|| B256::random()),
-        nonce: 0,
-        base_fee_per_gas: base_fee_per_gas_opt.or(Some(MIN_PROTOCOL_BASE_FEE)),
-        blob_gas_used: None,
-        excess_blob_gas: None,
-        extra_data: Default::default(),
-        parent_beacon_block_root: None,
-        requests_root: None,
-    };
-
-    // update header's transactions root
-    header.transactions_root = if worker_block.transactions().is_empty() {
-        EMPTY_TRANSACTIONS
-    } else {
-        proofs::calculate_transaction_root(worker_block.transactions())
-    };
-
-    // recover senders from block
-    let block = Block {
-        header,
-        body: worker_block.transactions().clone(),
-        ommers: vec![],
-        withdrawals: withdrawals_opt.clone(),
-        requests: None,
-    }
-    .with_recovered_senders()
-    .expect("unable to recover senders while executing test batch");
-
-    // create execution db
-    let mut db = StateProviderDatabase::new(
-        provider.latest().expect("provider retrieves latest during test batch execution"),
-    );
-
-    // convenience
-    let block_number = block.number;
-
-    // execute the block
-    let BlockExecutionOutput { state, receipts, gas_used, .. } = executor
-        .executor(&mut db)
-        .execute((&block, U256::ZERO).into())
-        .expect("executor can execute test batch transactions");
-    let execution_outcome = ExecutionOutcome::new(state, receipts.into(), block_number, vec![]);
-    let hashed_state = HashedPostState::from_bundle_state(&execution_outcome.state().state);
-
-    // retrieve header to update values post-execution
-    let Block { mut header, .. } = block.block;
-
-    // update header
-    header.gas_used = gas_used;
-    header.state_root =
-        db.state_root(hashed_state).expect("state root calculation during test batch execution");
-    header.receipts_root = execution_outcome
-        .receipts_root_slow(block_number)
-        .expect("receipts root calculation during test batch execution");
-    header.logs_bloom = execution_outcome
-        .block_logs_bloom(block_number)
-        .expect("logs bloom calculation during test batch execution");
-
-    // seal header and update batch's metadata
-    let sealed_header = header.seal_slow();
-    worker_block.update_header(sealed_header);
-}
-
-/// Test utility to execute batch and return execution outcome.
-///
-/// NOTE: this is loosely based on reth's auto-seal consensus
-pub fn execution_outcome_from_test_batch_<P, E>(
+/// This is useful for simulating execution results for account state changes.
+/// Currently only used by faucet tests to obtain faucet contract account info
+/// by simulating deploying proxy contract. The results are then put into genesis.
+pub fn execution_outcome_for_tests<P, E>(
     worker_block: &WorkerBlock,
     parent: &SealedHeader,
-    optional_params: OptionalTestBatchParams,
     provider: &P,
     executor: &E,
 ) -> ExecutionOutcome
@@ -222,37 +135,24 @@ where
     P: StateProviderFactory + BlockReaderIdExt,
     E: BlockExecutorProvider,
 {
-    // deconstruct optional parameters for header
-    let OptionalTestBatchParams {
-        beneficiary_opt,
-        withdrawals_opt,
-        timestamp_opt,
-        mix_hash_opt,
-        base_fee_per_gas_opt,
-    } = optional_params;
-
     // create "empty" header with default values
     let mut header = Header {
         parent_hash: parent.hash(),
         ommers_hash: EMPTY_OMMER_ROOT_HASH,
-        beneficiary: beneficiary_opt.unwrap_or_else(|| Address::random()),
+        beneficiary: Address::ZERO,
         state_root: Default::default(),
         transactions_root: Default::default(),
         receipts_root: Default::default(),
-        withdrawals_root: Some(
-            withdrawals_opt
-                .clone()
-                .map_or(EMPTY_WITHDRAWALS, |w| proofs::calculate_withdrawals_root(&w)),
-        ),
+        withdrawals_root: Some(EMPTY_WITHDRAWALS),
         logs_bloom: Default::default(),
         difficulty: U256::ZERO,
         number: parent.number + 1,
         gas_limit: ETHEREUM_BLOCK_GAS_LIMIT,
         gas_used: 0,
-        timestamp: timestamp_opt.unwrap_or_else(now),
-        mix_hash: mix_hash_opt.unwrap_or_else(|| B256::random()),
+        timestamp: now(),
+        mix_hash: B256::random(),
         nonce: 0,
-        base_fee_per_gas: base_fee_per_gas_opt.or(Some(MIN_PROTOCOL_BASE_FEE)),
+        base_fee_per_gas: Some(MIN_PROTOCOL_BASE_FEE),
         blob_gas_used: None,
         excess_blob_gas: None,
         extra_data: Default::default(),
@@ -279,7 +179,7 @@ where
         header,
         body: txs,
         ommers: vec![],
-        withdrawals: withdrawals_opt.clone(),
+        withdrawals: Some(Default::default()),
         requests: None,
     }
     .with_recovered_senders()
@@ -302,6 +202,7 @@ where
 }
 
 /// Transaction factory
+#[derive(Clone, Copy, Debug)]
 pub struct TransactionFactory {
     /// Keypair for signing transactions
     keypair: ExecutionKeypair,
@@ -391,6 +292,62 @@ impl TransactionFactory {
         let signature = self.sign_hash(tx_signature_hash);
 
         // increase nonce for next tx
+        self.inc_nonce();
+
+        TransactionSigned::from_transaction_and_signature(transaction, signature)
+    }
+
+    /// Create and sign an EIP1559 transaction with all possible parameters passed.
+    ///
+    /// All arguments are optional and default to:
+    /// - chain_id: 2017 (adiri testnet)
+    /// - nonce: `Self::nonce` (correctly incremented)
+    /// - max_priority_fee_per_gas: 0 (no tip)
+    /// - max_fee_per_gas: basefee minimum (7 wei)
+    /// - gas_limit: 1_000_000 wei
+    /// - to: None (results in `TxKind::Create`)
+    /// - value: 1TEL (1^10*18 wei)
+    /// - input: empty bytes (`Bytes::default()`)
+    /// - access_list: None
+    ///
+    /// NOTE: the nonce is still incremented to track the number of signed transactions for `Self`.
+    #[allow(clippy::too_many_arguments)]
+    pub fn create_explicit_eip1559(
+        &mut self,
+        chain_id: Option<u64>,
+        nonce: Option<u64>,
+        max_priority_fee_per_gas: Option<u128>,
+        max_fee_per_gas: Option<u128>,
+        gas_limit: Option<u64>,
+        to: Option<Address>,
+        value: Option<U256>,
+        input: Option<Bytes>,
+        access_list: Option<AccessList>,
+    ) -> TransactionSigned {
+        let tx_kind = match to {
+            Some(address) => TxKind::Call(address),
+            None => TxKind::Create,
+        };
+
+        // Eip1559
+        let transaction = Transaction::Eip1559(TxEip1559 {
+            chain_id: chain_id.unwrap_or(2017),
+            nonce: nonce.unwrap_or(self.nonce),
+            max_priority_fee_per_gas: max_priority_fee_per_gas.unwrap_or(0),
+            max_fee_per_gas: max_fee_per_gas.unwrap_or(MIN_PROTOCOL_BASE_FEE.into()),
+            gas_limit: gas_limit.unwrap_or(1_000_000),
+            to: tx_kind,
+            value: value.unwrap_or_else(|| {
+                U256::from(10).checked_pow(U256::from(18)).expect("1x10^18 does not overflow")
+            }),
+            input: input.unwrap_or_default(),
+            access_list: access_list.unwrap_or_default(),
+        });
+
+        let tx_signature_hash = transaction.signature_hash();
+        let signature = self.sign_hash(tx_signature_hash);
+
+        // increase nonce for self
         self.inc_nonce();
 
         TransactionSigned::from_transaction_and_signature(transaction, signature)
