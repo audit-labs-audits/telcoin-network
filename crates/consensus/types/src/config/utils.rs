@@ -2,7 +2,7 @@
 // Copyright (c) Mysten Labs, Inc.
 // SPDX-License-Identifier: Apache-2.0
 
-use std::net::{TcpListener, TcpStream};
+use std::net::TcpListener;
 
 /// Return an ephemeral, available port.
 ///

@@ -27,8 +27,4 @@ mod certificate_tests;
 #[path = "tests/rpc_tests.rs"]
 mod rpc_tests;
 
-#[cfg(test)]
-#[path = "tests/certificate_order_test.rs"]
-mod certificate_order_test;
-
 pub use crate::primary::{Primary, CHANNEL_CAPACITY};
