@@ -45,7 +45,7 @@ impl BlockValidation for NilBatchValidator {
 //     let client = NetworkClient::new_from_keypair(&my_primary.network_keypair());
 
 //     let parameters = Parameters {
-//         batch_size: 200, // Two transactions.
+//         max_worker_tx_bytes_size: 200, // Two transactions.
 //         ..Parameters::default()
 //     };
 
@@ -118,7 +118,7 @@ impl BlockValidation for NilBatchValidator {
 //     let client = NetworkClient::new_from_keypair(&my_primary.network_keypair());
 
 //     let parameters = Parameters {
-//         batch_size: 200, // Two transactions.
+//         max_worker_tx_bytes_size: 200, // Two transactions.
 //         ..Parameters::default()
 //     };
 
@@ -226,7 +226,7 @@ impl BlockValidation for NilBatchValidator {
 //     let client = NetworkClient::new_from_keypair(&my_primary.network_keypair());
 
 //     let parameters = Parameters {
-//         batch_size: 200, // Two transactions.
+//         max_worker_tx_bytes_size: 200, // Two transactions.
 //         ..Parameters::default()
 //     };
 

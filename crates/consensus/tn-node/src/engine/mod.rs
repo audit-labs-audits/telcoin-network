@@ -21,12 +21,12 @@ mod inner;
 mod worker;
 
 use self::inner::ExecutionNodeInner;
-use reth_provider::{providers::BlockchainProvider, ExecutionOutcome};
+use reth_provider::providers::BlockchainProvider;
 use reth_tasks::TaskExecutor;
 use tn_block_validator::BlockValidator;
 use tn_faucet::FaucetArgs;
-use tn_types::{Config, ConsensusOutput, PendingWorkerBlock, WorkerBlockSender, WorkerId};
-use tokio::sync::{broadcast, watch, RwLock};
+use tn_types::{Config, ConsensusOutput, WorkerBlockSender, WorkerId};
+use tokio::sync::{broadcast, RwLock};
 pub use worker::*;
 
 /// The struct used to build the execution nodes.
@@ -85,19 +85,19 @@ where
     }
 
     /// Batch maker
-    pub async fn start_batch_maker(
+    pub async fn start_block_builder(
         &self,
         worker_id: WorkerId,
         block_provider_sender: WorkerBlockSender,
     ) -> eyre::Result<()> {
         let mut guard = self.internal.write().await;
-        guard.start_batch_maker(worker_id, block_provider_sender).await
+        guard.start_block_builder(worker_id, block_provider_sender).await
     }
 
     /// Batch validator
-    pub async fn new_batch_validator(&self) -> BlockValidator<DB, Evm> {
+    pub async fn new_block_validator(&self) -> BlockValidator<DB> {
         let guard = self.internal.read().await;
-        guard.new_batch_validator()
+        guard.new_block_validator()
     }
 
     /// Retrieve the last executed block from the database to restore consensus.
@@ -140,24 +140,6 @@ where
     ) -> eyre::Result<WorkerTxPool<DB>> {
         let guard = self.internal.read().await;
         guard.get_worker_transaction_pool(worker_id)
-    }
-
-    /// Return the worker's current pending block state.
-    pub async fn worker_pending_block(
-        &self,
-        worker_id: &WorkerId,
-    ) -> eyre::Result<Option<ExecutionOutcome>> {
-        let guard = self.internal.read().await;
-        guard.worker_pending_block(worker_id)
-    }
-
-    /// Return a worker's sending channel for pending block updates.
-    pub async fn worker_pending_block_sender(
-        &self,
-        worker_id: &WorkerId,
-    ) -> eyre::Result<watch::Sender<PendingWorkerBlock>> {
-        let guard = self.internal.read().await;
-        guard.worker_pending_block_sender(worker_id)
     }
 
     /// Return an HTTP local address for submitting transactions to the RPC.

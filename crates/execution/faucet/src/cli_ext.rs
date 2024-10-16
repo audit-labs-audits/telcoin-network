@@ -14,8 +14,6 @@ use reth_provider::{BlockReaderIdExt, StateProviderFactory};
 use reth_transaction_pool::TransactionPool;
 use secp256k1::PublicKey;
 use std::{str::FromStr, time::Duration};
-use tn_types::PendingWorkerBlock;
-use tokio::sync::watch;
 use tracing::{info, warn};
 
 /// Args for running the faucet.
@@ -101,7 +99,6 @@ impl FaucetArgs {
         &self,
         provider: Provider,
         pool: Pool,
-        watch_rx: watch::Receiver<PendingWorkerBlock>,
     ) -> eyre::Result<FaucetRpcExt>
     where
         Provider: BlockReaderIdExt + StateProviderFactory + Unpin + Clone + 'static,
@@ -145,7 +142,7 @@ impl FaucetArgs {
                 contract_address: self.contract_address,
             };
 
-            let ext = FaucetRpcExt::new(provider, pool, config, watch_rx);
+            let ext = FaucetRpcExt::new(provider, pool, config);
 
             info!(target: "faucet", "Google KMS active - merging faucet extension.");
             return Ok(ext);

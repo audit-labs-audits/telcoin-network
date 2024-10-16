@@ -433,6 +433,7 @@ impl<DB: Database> Worker<DB> {
             node_metrics,
             client,
             self.consensus_config.database().clone(),
+            self.consensus_config.parameters().worker_block_vote_timeout,
         )
     }
 }

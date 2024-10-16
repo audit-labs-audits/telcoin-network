@@ -42,16 +42,20 @@ use tempfile::TempDir;
 use tn_faucet::Drip;
 use tn_types::{
     adiri_genesis,
+    error::BlockSealError,
     test_utils::{
         contract_artifacts::{
             ERC1967PROXY_INITCODE, ERC1967PROXY_RUNTIMECODE, STABLECOINMANAGER_RUNTIMECODE,
             STABLECOIN_RUNTIMECODE,
         },
-        execution_outcome_from_test_batch_, TransactionFactory,
+        execution_outcome_for_tests, TransactionFactory,
     },
     TransactionSigned, WorkerBlock,
 };
-use tokio::{sync::mpsc::Sender, time::timeout};
+use tokio::{
+    sync::{mpsc::Sender, oneshot},
+    time,
+};
 use tracing::debug;
 
 #[derive(Clone, Debug)]
@@ -258,11 +262,12 @@ async fn test_faucet_transfers_tel_with_google_kms() -> eyre::Result<()> {
     let store = open_db(temp_dir.path());
     let qw = TestChanQuorumWaiter(to_worker);
     let node_metrics = WorkerMetrics::default();
+    let timeout = Duration::from_secs(5);
     let block_provider =
-        BlockProvider::new(0, qw.clone(), Arc::new(node_metrics), client, store.clone());
+        BlockProvider::new(0, qw.clone(), Arc::new(node_metrics), client, store.clone(), timeout);
 
     // start batch maker
-    execution_node.start_batch_maker(worker_id, block_provider.blocks_rx()).await?;
+    execution_node.start_block_builder(worker_id, block_provider.blocks_rx()).await?;
 
     // create client
     let client = execution_node.worker_http_client(&worker_id).await?.expect("worker rpc client");
@@ -273,7 +278,7 @@ async fn test_faucet_transfers_tel_with_google_kms() -> eyre::Result<()> {
     let starting_balance: String = client.request("eth_getBalance", rpc_params!(address)).await?;
     assert_eq!(U256::from_str(&starting_balance)?, U256::ZERO);
 
-    // // note: response is different each time bc KMS
+    // note: response is different each time bc KMS
     let tx_hash: String = client.request("faucet_transfer", rpc_params![address]).await?;
 
     // more than enough time for the next block
@@ -281,7 +286,7 @@ async fn test_faucet_transfers_tel_with_google_kms() -> eyre::Result<()> {
 
     // wait for canon event or timeout
     let new_block: WorkerBlock =
-        timeout(duration, next_batch.recv()).await?.expect("batch received");
+        time::timeout(duration, next_batch.recv()).await?.expect("batch received");
 
     let batch_txs = new_block.transactions();
     let tx = batch_txs.first().expect("first batch tx from faucet");
@@ -542,18 +547,10 @@ async fn test_faucet_transfers_stablecoin_with_google_kms() -> eyre::Result<()> 
     let execution_node =
         faucet_test_execution_node(true, Some(chain), None, executor, faucet_proxy_address)?;
 
-    println!("starting batch maker...");
+    // start batch maker
     let worker_id = 0;
     let (to_worker, mut next_batch) = tokio::sync::mpsc::channel(2);
-    let client = NetworkClient::new_with_empty_id();
-    let temp_dir = TempDir::new().unwrap();
-    let store = open_db(temp_dir.path());
-    let qw = TestChanQuorumWaiter(to_worker);
-    let node_metrics = WorkerMetrics::default();
-    let block_provider =
-        BlockProvider::new(0, qw.clone(), Arc::new(node_metrics), client, store.clone());
-    // start batch maker
-    execution_node.start_batch_maker(worker_id, block_provider.blocks_rx()).await?;
+    execution_node.start_block_builder(worker_id, to_worker).await?;
 
     let user_address = Address::random();
     let client = execution_node.worker_http_client(&worker_id).await?.expect("worker rpc client");
@@ -573,9 +570,11 @@ async fn test_faucet_transfers_stablecoin_with_google_kms() -> eyre::Result<()> 
     let duration = Duration::from_secs(15);
 
     // wait for canon event or timeout
-    let new_block: WorkerBlock =
-        timeout(duration, next_batch.recv()).await?.expect("batch received");
+    let (new_block, ack): (WorkerBlock, oneshot::Sender<Result<(), BlockSealError>>) =
+        time::timeout(duration, next_batch.recv()).await?.expect("batch received");
 
+    // send ack
+    let _ = ack.send(Ok(()));
     let batch_txs = new_block.transactions();
     let tx = batch_txs.first().expect("first batch tx from faucet");
 
@@ -586,21 +585,38 @@ async fn test_faucet_transfers_stablecoin_with_google_kms() -> eyre::Result<()> 
     let expected_input = [&selector, &contract_params[..]].concat();
 
     // assert recovered transaction
-    assert_eq!(tx_hash, tx.hash_ref().to_string());
+    let expected_tx_hash = tx.hash_ref().to_string();
+    assert_eq!(tx_hash, expected_tx_hash);
     assert_eq!(tx.transaction.input(), &expected_input);
 
     // ensure duplicate request is error
-    let response = client
+    let dup_request = client
         .request::<String, _>("faucet_transfer", rpc_params![user_address, contract_address])
         .await;
-    assert!(response.is_err());
+    assert!(dup_request.is_err());
 
     // ensure user can request a different stablecoin
     let contract_address = Address::from(U160::from(87654321));
     let response = client
         .request::<String, _>("faucet_transfer", rpc_params![user_address, contract_address])
         .await;
-    Ok(assert!(response.is_ok()))
+    assert!(response.is_ok());
+
+    // ensure duplicate request is error
+    let dup_request = client
+        .request::<String, _>("faucet_transfer", rpc_params![user_address, contract_address])
+        .await;
+    assert!(dup_request.is_err());
+
+    // sleep for 11s so request is cleared from pending cache
+    // NOTE: pending cache is hard-coded to 10s and this test doesn't update the DB
+    tokio::time::sleep(Duration::from_secs(11)).await;
+
+    let ok_dup_request = client
+        .request::<String, _>("faucet_transfer", rpc_params![user_address, contract_address])
+        .await;
+
+    Ok(assert!(ok_dup_request.is_ok()))
 }
 
 /// Keys obtained from google kms calling:
@@ -645,6 +661,7 @@ async fn test_faucet_transfers_stablecoin_with_google_kms() -> eyre::Result<()> 
 /// ```
 
 #[test]
+#[ignore = "only useful for debugging purposes"]
 fn test_print_kms_wallets() -> eyre::Result<()> {
     let keys = [
         "-----BEGIN PUBLIC KEY-----\nMFYwEAYHKoZIzj0CAQYFK4EEAAoDQgAEqzv8pSIJXo3PJZsGv+feaCZJFQoG3ed5\ngl0o/dpBKtwT+yajMYTCravDiqW/g62W+PNVzLoCbaot1WdlwXcp4Q==\n-----END PUBLIC KEY-----\n",
@@ -732,13 +749,8 @@ async fn get_contract_state_for_genesis(
     // execute batch
     let batch = WorkerBlock::new(raw_txs_to_execute, SealedHeader::default());
     let parent = chain.sealed_genesis_header();
-    let execution_outcome = execution_outcome_from_test_batch_(
-        &batch,
-        &parent,
-        Default::default(),
-        &provider,
-        &block_executor,
-    );
+    let execution_outcome =
+        execution_outcome_for_tests(&batch, &parent, &provider, &block_executor);
 
     Ok(execution_outcome)
 }

@@ -20,7 +20,7 @@ members = [
     "crates/consensus/primary-metrics",
 
     # execution
-    "crates/execution/block-proposer",
+    "crates/execution/block-builder",
     "crates/execution/block-validator",
     "crates/execution/faucet",
     "crates/execution/engine",
@@ -33,7 +33,7 @@ resolver = "2"
 [workspace.package]
 version = "0.1.0"
 edition = "2021"
-rust-version = "1.79"                                     # Remember to update .clippy.toml and README.md
+rust-version = "1.81"                                     # Remember to update .clippy.toml and README.md
 license = "MIT OR Apache-2.0"
 homepage = "https://telcoin.network"
 repository = "https://github.com/telcoin/telcoin-network"
@@ -168,6 +168,7 @@ reth-errors = { git = "https://github.com/paradigmxyz/reth", tag = "v1.0.6" }
 reth-libmdbx = { git = "https://github.com/paradigmxyz/reth", tag = "v1.0.6" }
 reth-trie = { git = "https://github.com/paradigmxyz/reth", tag = "v1.0.6" }
 reth-execution-errors = { git = "https://github.com/paradigmxyz/reth", tag = "v1.0.6" }
+reth-fs-util = { git = "https://github.com/paradigmxyz/reth", tag = "v1.0.6" }
 
 revm = { version = "14.0.0", features = [
     "std",
@@ -186,7 +187,7 @@ tn-block-validator = { path = "crates/execution/block-validator" }
 tn-engine = { path = "crates/execution/engine" }
 
 # block maker
-tn-block-proposer = { path = "crates/execution/block-proposer" }
+tn-block-builder = { path = "crates/execution/block-builder" }
 futures-util = "0.3.25"
 jsonrpsee = { version = "0.24" }
 assert_matches = { version = "1.5.0" }

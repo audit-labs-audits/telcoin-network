@@ -2,18 +2,18 @@
 //!
 //! This module contains the logic for execution.
 
-use super::{PendingBlockWatchChannels, TnBuilder, WorkerComponents, WorkerTxPool};
+use super::{TnBuilder, WorkerComponents, WorkerTxPool};
 use crate::{
     engine::{WorkerNetwork, WorkerNode},
     error::ExecutionError,
 };
+use eyre::eyre;
 use jsonrpsee::http_client::HttpClient;
 use reth::rpc::{
     builder::{config::RethRpcServerConfig, RpcModuleBuilder, RpcServerHandle},
     eth::EthApi,
 };
 use reth_auto_seal_consensus::AutoSealConsensus;
-use reth_beacon_consensus::EthBeaconConsensus;
 use reth_blockchain_tree::{
     BlockchainTree, BlockchainTreeConfig, ShareableBlockchainTree, TreeExternals,
 };
@@ -23,24 +23,30 @@ use reth_db::{
 };
 use reth_db_common::init::init_genesis;
 use reth_evm::{execute::BlockExecutorProvider, ConfigureEvm};
-use reth_node_builder::{common::WithConfigs, components::PoolBuilder, BuilderContext, NodeConfig};
-use reth_node_ethereum::{node::EthereumPoolBuilder, EthEvmConfig};
-use reth_primitives::Address;
+use reth_node_builder::{common::WithConfigs, BuilderContext, NodeConfig};
+use reth_node_ethereum::EthEvmConfig;
+use reth_primitives::{
+    constants::MIN_PROTOCOL_BASE_FEE, Address, BlockBody, SealedBlock, SealedBlockWithSenders,
+};
 use reth_provider::{
     providers::{BlockchainProvider, StaticFileProvider},
-    DatabaseProviderFactory, ExecutionOutcome, FinalizedBlockReader, HeaderProvider,
-    ProviderFactory,
+    BlockIdReader, BlockReader, CanonStateSubscriptions as _, DatabaseProviderFactory,
+    FinalizedBlockReader, HeaderProvider, ProviderFactory, TransactionVariant,
 };
 use reth_prune::PruneModes;
 use reth_tasks::TaskExecutor;
-use reth_transaction_pool::TransactionPool;
+use reth_transaction_pool::{
+    blobstore::DiskFileBlobStore, TransactionPool, TransactionValidationTaskExecutor,
+};
 use std::{collections::HashMap, net::SocketAddr, sync::Arc};
-use tn_block_proposer::{BlockProposerBuilder, MiningMode};
+use tn_block_builder::BlockBuilder;
 use tn_block_validator::BlockValidator;
 use tn_engine::ExecutorEngine;
 use tn_faucet::{FaucetArgs, FaucetRpcExtApiServer as _};
-use tn_types::{Consensus, ConsensusOutput, PendingWorkerBlock, WorkerBlockSender, WorkerId};
-use tokio::sync::{broadcast, mpsc::unbounded_channel, watch};
+use tn_types::{
+    Config, Consensus, ConsensusOutput, LastCanonicalUpdate, WorkerBlockSender, WorkerId,
+};
+use tokio::sync::{broadcast, mpsc::unbounded_channel};
 use tokio_stream::wrappers::BroadcastStream;
 use tracing::{debug, error, info};
 
@@ -56,6 +62,8 @@ where
     /// The address refers to the execution layer's address
     /// based on the authority's secp256k1 public key.
     address: Address,
+    /// The validator node config.
+    tn_config: Config,
     /// The type that holds all information needed to launch the node's engine.
     ///
     /// The [NodeConfig] is reth-specific and holds many helper functions that
@@ -160,6 +168,7 @@ where
             evm_executor,
             task_executor,
             opt_faucet_args,
+            tn_config,
             workers: HashMap::default(),
         })
     }
@@ -200,12 +209,11 @@ where
     }
 
     /// The worker's RPC, TX pool, and block builder
-    pub(super) async fn start_batch_maker(
+    pub(super) async fn start_block_builder(
         &mut self,
         worker_id: WorkerId,
         block_provider_sender: WorkerBlockSender,
     ) -> eyre::Result<()> {
-        // TODO: both start_engine and start_batch_maker lookup head
         let head = self.node_config.lookup_head(self.provider_factory.clone())?;
 
         let ctx = BuilderContext::<WorkerNode<DB, Evm>>::new(
@@ -214,39 +222,116 @@ where
             self.task_executor.clone(),
             WithConfigs {
                 config: self.node_config.clone(),
-                toml_config: reth_config::Config::default(), /* mostly peer / staging configs */
+                toml_config: reth_config::Config::default(), /* mostly unused peer and staging
+                                                              * configs */
             },
         );
 
-        // default tx pool
-        let pool_builder = EthereumPoolBuilder::default();
+        // inspired by reth's default eth tx pool:
+        // - `EthereumPoolBuilder::default()`
+        // - `components_builder.build_components()`
+        // - `pool_builder.build_pool(&ctx)`
+        let transaction_pool = {
+            let data_dir = ctx.config().datadir();
+            let pool_config = ctx.pool_config();
+            let blob_store = DiskFileBlobStore::open(data_dir.blobstore(), Default::default())?;
+            let validator = TransactionValidationTaskExecutor::eth_builder(ctx.chain_spec())
+                .with_head_timestamp(ctx.head().timestamp)
+                .kzg_settings(ctx.kzg_settings()?)
+                .with_local_transactions_config(pool_config.local_transactions_config.clone())
+                .with_additional_tasks(ctx.config().txpool.additional_validation_tasks)
+                .build_with_tasks(
+                    ctx.provider().clone(),
+                    ctx.task_executor().clone(),
+                    blob_store.clone(),
+                );
 
-        // taken from components_builder.build_components();
-        let transaction_pool = pool_builder.build_pool(&ctx).await?;
-        // TODO: this is basically noop and missing some functionality
+            let transaction_pool =
+                reth_transaction_pool::Pool::eth_pool(validator, blob_store, pool_config);
+
+            info!(target: "tn::execution", "Transaction pool initialized");
+
+            let transactions_path = data_dir.txpool_transactions();
+            let transactions_backup_config =
+                reth_transaction_pool::maintain::LocalTransactionBackupConfig::with_local_txs_backup(transactions_path);
+
+            // spawn task to backup local transaction pool in case of restarts
+            ctx.task_executor().spawn_critical_with_graceful_shutdown_signal(
+                "local transactions backup task",
+                |shutdown| {
+                    reth_transaction_pool::maintain::backup_local_transactions_task(
+                        shutdown,
+                        transaction_pool.clone(),
+                        transactions_backup_config,
+                    )
+                },
+            );
+
+            transaction_pool
+        };
+
+        // TODO: WorkerNetwork is basically noop and missing some functionality
         let network = WorkerNetwork::default();
+        use reth_transaction_pool::TransactionPoolExt as _;
+        let mut tx_pool_latest = transaction_pool.block_info();
+        tx_pool_latest.pending_basefee = MIN_PROTOCOL_BASE_FEE;
+        tx_pool_latest.last_seen_block_hash = ctx
+            .provider()
+            .finalized_block_hash()?
+            .unwrap_or_else(|| self.tn_config.chain_spec().sealed_genesis_header().hash());
+        tx_pool_latest.last_seen_block_number =
+            ctx.provider().finalized_block_number()?.unwrap_or_default();
+        transaction_pool.set_block_info(tx_pool_latest);
 
-        // watch channel for new batches
-        let (watch_tx, watch_rx) = watch::channel(PendingWorkerBlock::default());
+        let tip = match tx_pool_latest.last_seen_block_number {
+            // use genesis on startup
+            0 => SealedBlockWithSenders::new(
+                SealedBlock::new(
+                    self.tn_config.chain_spec().sealed_genesis_header(),
+                    BlockBody::default(),
+                ),
+                vec![],
+            )
+            .ok_or_else(|| eyre!("Failed to create genesis block for starting tx pool"))?,
+            // retrieve from database
+            _ => self
+                .blockchain_db
+                .sealed_block_with_senders(
+                    tx_pool_latest.last_seen_block_hash.into(),
+                    TransactionVariant::NoHash,
+                )?
+                .ok_or_else(|| {
+                    eyre!(
+                        "Failed to find sealed block during block builder startup! ({} - {:?}) ",
+                        tx_pool_latest.last_seen_block_number,
+                        tx_pool_latest.last_seen_block_hash,
+                    )
+                })?,
+        };
 
-        // build batch maker
-        let max_transactions = 10;
-        let mining_mode =
-            MiningMode::instant(max_transactions, transaction_pool.pending_transactions_listener());
-        let task = BlockProposerBuilder::new(
-            Arc::clone(&self.node_config.chain),
+        let latest_canon_state = LastCanonicalUpdate {
+            tip: tip.block,
+            pending_block_base_fee: tx_pool_latest.pending_basefee,
+            pending_block_blob_fee: tx_pool_latest.pending_blob_fee,
+        };
+
+        let block_builder = BlockBuilder::new(
             self.blockchain_db.clone(),
             transaction_pool.clone(),
-            mining_mode,
-            self.address,
-            self.evm_executor.clone(),
-            watch_tx.clone(),
+            self.blockchain_db.canonical_state_stream(),
+            latest_canon_state,
             block_provider_sender,
-        )
-        .build();
+            self.address,
+            self.tn_config.parameters.max_worker_block_delay,
+            self.tn_config.parameters.max_worker_tx_gas,
+            self.tn_config.parameters.max_worker_tx_bytes_size,
+        );
 
-        // spawn batch maker mining task
-        self.task_executor.spawn_critical("batch maker", task);
+        // spawn block builder task
+        tokio::spawn(async move {
+            let res = block_builder.await;
+            info!(target: "tn::execution", ?res, "block builder task exited");
+        });
 
         // let mut hooks = EngineHooks::new();
 
@@ -282,11 +367,9 @@ where
 
         if let Some(faucet_args) = self.opt_faucet_args.take() {
             // create extension from CLI args
-            match faucet_args.create_rpc_extension(
-                self.blockchain_db.clone(),
-                transaction_pool.clone(),
-                watch_rx.clone(),
-            ) {
+            match faucet_args
+                .create_rpc_extension(self.blockchain_db.clone(), transaction_pool.clone())
+            {
                 Ok(faucet_ext) => {
                     // add faucet module
                     if let Err(e) = server.merge_configured(faucet_ext.into_rpc()) {
@@ -301,32 +384,24 @@ where
             }
         }
 
-        // start the server
+        // start the RPC server
         let server_config = self.node_config.rpc.rpc_server_config();
         let rpc_handle = server_config.start(&server).await?;
 
-        let components = WorkerComponents::new(
-            rpc_handle,
-            PendingBlockWatchChannels::new(watch_tx, watch_rx),
-            transaction_pool,
-        );
-
+        // take ownership of worker components
+        let components = WorkerComponents::new(rpc_handle, transaction_pool);
         self.workers.insert(worker_id, components);
+
         Ok(())
     }
 
-    /// Create a new batch validator.
-    pub(super) fn new_batch_validator(&self) -> BlockValidator<DB, Evm> {
-        // validate batches using beaacon consensus
-        // to ensure inner-chain compatibility
-        let consensus: Arc<dyn Consensus> =
-            Arc::new(EthBeaconConsensus::new(self.node_config.chain.clone()));
-
+    /// Create a new block validator.
+    pub(super) fn new_block_validator(&self) -> BlockValidator<DB> {
         // batch validator
-        BlockValidator::<DB, Evm>::new(
-            consensus,
+        BlockValidator::<DB>::new(
             self.blockchain_db.clone(),
-            self.evm_executor.clone(),
+            self.tn_config.parameters.max_worker_tx_bytes_size,
+            self.tn_config.parameters.max_worker_tx_gas,
         )
     }
 
@@ -406,36 +481,6 @@ where
             .pool();
 
         Ok(tx_pool)
-    }
-
-    /// Return a worker's pending block state if it exists.
-    pub(super) fn worker_pending_block(
-        &self,
-        worker_id: &WorkerId,
-    ) -> eyre::Result<Option<ExecutionOutcome>> {
-        let state = self
-            .workers
-            .get(worker_id)
-            .ok_or(ExecutionError::WorkerNotFound(worker_id.to_owned()))?
-            .pending_block_receiver()
-            .borrow()
-            .latest();
-
-        Ok(state)
-    }
-
-    /// Return a worker's sending channel for pending block updates.
-    pub(super) fn worker_pending_block_sender(
-        &self,
-        worker_id: &WorkerId,
-    ) -> eyre::Result<watch::Sender<PendingWorkerBlock>> {
-        let sender = self
-            .workers
-            .get(worker_id)
-            .ok_or(ExecutionError::WorkerNotFound(worker_id.to_owned()))?
-            .pending_block_sender();
-
-        Ok(sender)
     }
 
     /// Return a worker's local Http address if the RpcServer exists.

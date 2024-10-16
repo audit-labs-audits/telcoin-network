@@ -19,14 +19,15 @@ use gcloud_sdk::{
 use humantime::format_duration;
 use lru_time_cache::LruCache;
 use reth::rpc::server_types::eth::{EthApiError, EthResult, RpcInvalidTransactionError};
-use reth_chainspec::BaseFeeParams;
 use reth_primitives::{
     Address, Signature as EthSignature, Transaction, TransactionSigned, TxEip1559, TxHash, TxKind,
     B256, U256,
 };
 use reth_provider::{BlockReaderIdExt, StateProviderFactory};
 use reth_tasks::TaskSpawner;
-use reth_transaction_pool::{PoolTransaction, TransactionOrigin, TransactionPool};
+use reth_transaction_pool::{
+    PoolTransaction, TransactionEvent, TransactionOrigin, TransactionPool,
+};
 use secp256k1::{
     ecdsa::{RecoverableSignature, RecoveryId, Signature},
     Message, SECP256K1,
@@ -37,13 +38,31 @@ use std::{
     task::{ready, Context, Poll},
     time::{Duration, SystemTime},
 };
-use tn_types::PendingWorkerBlock;
 use tokio::sync::{
     mpsc::{UnboundedReceiver, UnboundedSender},
-    oneshot, watch,
+    oneshot,
 };
 use tokio_stream::wrappers::UnboundedReceiverStream;
-use tracing::{debug, error};
+use tracing::{debug, error, warn};
+
+/// The mined transaction information for the faucet to track.
+///
+/// This struct is used when a subscribed event is received for a transaction that is mined from the
+/// transaction pool. The information is used to track faucet state.
+#[derive(Copy, Clone, Debug)]
+pub(crate) struct MinedTxInfo {
+    /// The address that received the faucet's drip.
+    user: Address,
+    /// The contract associated with the digital asset that the faucet dripped to the address.
+    contract: Address,
+}
+
+impl MinedTxInfo {
+    /// Create a new instance of Self.
+    fn new(user: Address, contract: Address) -> Self {
+        Self { user, contract }
+    }
+}
 
 /// Service for managing requests.
 ///
@@ -73,7 +92,13 @@ pub(crate) struct FaucetService<Provider, Pool, Tasks> {
     ///
     /// Users request faucet transfers for native tokens (zero address) and
     /// stablecoin tokens (contract address) at specific times.
-    pub(crate) lru_cache: LruCache<(Address, Address), SystemTime>,
+    /// NOTE: only transactions that were successfully mined are included in this 24-hr cache.
+    pub(crate) success_cache: LruCache<(Address, Address), SystemTime>,
+    /// Short-lived pending cache.
+    ///
+    /// This cache is to prevent quick calls before a request has had time to reach consensus. The
+    /// cache is much shorter so a user can re-request if a faucet transaction failed.
+    pub(crate) pending_cache: LruCache<(Address, Address), SystemTime>,
     /// The chain id for constructing transactions.
     pub(crate) chain_id: u64,
     /// The amount of time the LRU cache retains an address (specified in `FaucetConfig`).
@@ -86,15 +111,19 @@ pub(crate) struct FaucetService<Provider, Pool, Tasks> {
     ///
     /// The user's address and contract address are sent through this channel
     /// then added to the LRU cache.
-    pub(crate) add_to_cache_tx: UnboundedSender<(Address, Address)>,
+    pub(crate) add_to_success_cache_tx: UnboundedSender<MinedTxInfo>,
     /// Receiving half of the cache channel.
     ///
     /// Addresses received on this channel are added to the LRU cache.
-    pub(crate) update_cache_rx: UnboundedReceiver<(Address, Address)>,
-    /// The watch channel for tracking the worker's latest pending block.
+    pub(crate) update_success_cache_rx: UnboundedReceiver<MinedTxInfo>,
+    /// The nonce for this faucet as tracked through the highest submitted transaction nonce.
     ///
-    /// The pending block is updated right before transactions are removed from the tx pool.
-    pub(crate) watch_rx: watch::Receiver<PendingWorkerBlock>,
+    /// The faucet service checks for the highest nonce in the transaction pool and if needd, in
+    /// the database. However, the faucet also needs to nonce state for transactions that are
+    /// pending in worker blocks.
+    ///
+    /// The account nonce read from the database returns the account's CURRENT nonce.
+    pub(crate) next_nonce: u64,
 }
 
 impl<Provider, Pool, Tasks> FaucetService<Provider, Pool, Tasks>
@@ -126,11 +155,16 @@ where
         let transaction = self.create_transaction_to_sign(user, contract)?;
         // request signature from kms
         let kms_name = self.wallet.name();
-        // let kms_client = self.kms_client();
         let public_key = self.wallet.kms_public_key();
         let chain_id = self.chain_id;
         let pool = self.pool.clone();
-        let add_to_cache = self.add_to_cache_tx.clone();
+        let add_to_success_cache = self.add_to_success_cache_tx.clone();
+
+        debug!(target: "faucet", ?transaction, "processing transfer request");
+
+        // update tracked nonce
+        let nonce = transaction.nonce();
+        self.next_nonce = nonce + 1;
 
         // request signature and submit to txpool
         self.executor.spawn(Box::pin(async move {
@@ -143,11 +177,9 @@ where
                 Ok(signature) => {
                     let tx_for_pool =
                         TransactionSigned::from_transaction_and_signature(transaction, signature);
-                    let res = submit_transaction(pool, tx_for_pool).await;
-                    if res.is_ok() {
-                        // forward address to update cache
-                        let _ = add_to_cache.send((user, contract));
-                    }
+                    let res =
+                        submit_transaction(pool, tx_for_pool, add_to_success_cache, user, contract)
+                            .await;
                     // reply to rpc
                     let _ = reply.send(res);
                 }
@@ -162,14 +194,9 @@ where
     ///
     /// This method intentionally uses `&mut self` to ensure nonce is incremented correctly.
     /// TODO: use AtomicU64 for thread safe nonce increments
-    fn create_transaction_to_sign(
-        &mut self,
-        to: Address,
-        contract: Address,
-    ) -> EthResult<Transaction> {
-        // find the tx nonce and gas price
-        let nonce = self.get_transaction_count()?;
-        let gas_price = self.gas_price()?;
+    fn create_transaction_to_sign(&self, to: Address, contract: Address) -> EthResult<Transaction> {
+        let nonce = self.next_nonce()?;
+        let gas_price = self.gas_price();
 
         // TNFaucet.sol will drip native TEL when called with RPC param `contract == address(0)`
         let transaction = {
@@ -198,13 +225,21 @@ where
         Ok(transaction)
     }
 
-    /// Taken from rpc/src/eth/api/state.rs
-    fn get_transaction_count(&self) -> EthResult<u64> {
+    /// Calculate the next nonce to use.
+    ///
+    /// This method looks at the transaction pool first because the pool is gapless. If no
+    /// faucet transactions in the pool, compare the highest nonce in the database and the
+    /// highest nonce the faucet has seen. It is still possible for a transaction to fail after it
+    /// was mined. This would require restarting the faucet service.
+    ///
+    /// The account nonce read from the database returns the account's CURRENT nonce.
+    fn next_nonce(&self) -> EthResult<u64> {
         let address = self.wallet.address;
         debug!(?address, "Faucet address");
         // lookup transactions in pool
         let address_txs = self.pool.get_transactions_by_sender(address);
 
+        // use highest nonce in tx pool bc this is most recent transaction
         if !address_txs.is_empty() {
             // get max transaction with the highest nonce
             let highest_nonce_tx = address_txs
@@ -228,24 +263,22 @@ where
             return Ok(tx_count);
         }
 
-        // lookup account nonce in db and compare it to pending worker block
+        // lookup account nonce in db and compare it last known tx nonce mined by worker
         let state = self.provider.latest()?;
-        let latest_nonce = state.account_nonce(address)?.unwrap_or_default();
-        let pending_nonce = self.watch_rx.borrow().account_nonce(&address).unwrap_or_default();
-        debug!(target: "faucet", ?latest_nonce, ?pending_nonce, "comparing faucet nonces");
+        let db_account_nonce = state.account_nonce(address)?.unwrap_or_default();
+        debug!(target: "faucet", ?db_account_nonce, tracked_nonce=?self.next_nonce, "comparing faucet nonces");
+        let highest_nonce = std::cmp::max(db_account_nonce, self.next_nonce);
 
-        Ok(std::cmp::max(latest_nonce, pending_nonce))
+        Ok(highest_nonce)
     }
 
     /// Taken from rpc/src/eth/api/fees.rs
     ///
     /// Estimate gas price for legacy transactions
-    fn gas_price(&self) -> EthResult<u128> {
-        let header =
-            self.provider.latest_header()?.ok_or_else(|| EthApiError::UnknownBlockNumber)?;
-        let next_base_fee =
-            header.next_block_base_fee(BaseFeeParams::ethereum()).unwrap_or_default();
-        Ok(next_base_fee.into())
+    fn gas_price(&self) -> u128 {
+        let pool_info = self.pool.block_info();
+        debug!(target: "faucet", ?pool_info, "checking gas price");
+        pool_info.pending_basefee.into()
     }
 
     /// Send a request to Google KMS and convert it to EVM compatible.
@@ -387,16 +420,18 @@ where
 
         loop {
             // listen for cache updates
-            while let Poll::Ready(Some((address, contract))) = this.update_cache_rx.poll_recv(cx) {
+            while let Poll::Ready(Some(MinedTxInfo { user, contract })) =
+                this.update_success_cache_rx.poll_recv(cx)
+            {
                 // insert user's address and contract address into LRU cache
-                this.lru_cache.insert((address, contract), SystemTime::now());
+                this.success_cache.insert((user, contract), SystemTime::now());
             }
 
             match ready!(this.request_rx.poll_next_unpin(cx)) {
                 None => {
                     unreachable!("faucet request_rx can't close - always listening for addresses from the rpc")
                 }
-                Some((address, contract, reply)) => {
+                Some((user_address, contract, reply)) => {
                     // assign token address for checking LRU cache
                     let contract_address = if let Some(address) = contract {
                         // stablecoin transfer
@@ -406,9 +441,10 @@ where
                         Address::ZERO
                     };
 
-                    // check the cache for user's address
+                    // check the pending cache for user's address
+                    //
                     // use `::peek` so cache timer doesn't reset
-                    if let Some(time) = this.lru_cache.peek(&(address, contract_address)) {
+                    if let Some(time) = this.pending_cache.peek(&(user_address, contract_address)) {
                         // return remaining time if address combo is still cached
                         let wait_period_over = this.calc_wait_period(time);
                         let error = match wait_period_over {
@@ -427,8 +463,33 @@ where
                         continue;
                     }
 
-                    // user's request not in cache - process request
-                    if let Err(e) = this.process_transfer_request(address, contract_address, reply)
+                    // check the longer-lived success cache for user's address
+                    // use `::peek` so cache timer doesn't reset
+                    if let Some(time) = this.success_cache.peek(&(user_address, contract_address)) {
+                        // return remaining time if address combo is still cached
+                        let wait_period_over = this.calc_wait_period(time);
+                        let error = match wait_period_over {
+                            Ok(time) => {
+                                // trim off ms, us, and ns
+                                let human_readable =
+                                    format_duration(Duration::new(time.as_secs(), 0));
+                                let msg = format!("Wait period over at: {}", human_readable);
+                                Err(EthApiError::InvalidParams(msg))
+                            }
+                            Err(e) => Err(e),
+                        };
+
+                        // return the error and check the next request
+                        let _ = reply.send(error);
+                        continue;
+                    }
+
+                    // add request to short-lived pending cache if not found in either cache
+                    this.pending_cache.insert((user_address, contract_address), SystemTime::now());
+
+                    // user's request not in either cache - process request
+                    if let Err(e) =
+                        this.process_transfer_request(user_address, contract_address, reply)
                     {
                         error!(target: "faucet", ?e, "Error creating faucet transaction")
                     }
@@ -438,17 +499,58 @@ where
     }
 }
 
-async fn submit_transaction<Pool>(pool: Pool, tx: TransactionSigned) -> EthResult<TxHash>
+/// Recover the signed transaction and submit to the pool.
+///
+/// The transaction is submitted to the pool and the service subscribes to events. When the
+/// transaction is `Mined`, the
+async fn submit_transaction<Pool>(
+    pool: Pool,
+    tx: TransactionSigned,
+    add_to_success_cache: UnboundedSender<MinedTxInfo>,
+    user: Address,
+    contract: Address,
+) -> EthResult<TxHash>
 where
     Pool: TransactionPool + Clone + 'static,
 {
     let recovered = tx.try_into_ecrecovered().or(Err(EthApiError::InvalidTransactionSignature))?;
-
     let pool_transaction = match recovered.try_into() {
         Ok(converted) => <Pool::Transaction>::from_pooled(converted),
         Err(_) => return Err(EthApiError::TransactionConversionError),
     };
 
-    let hash = pool.add_transaction(TransactionOrigin::Local, pool_transaction).await?;
-    Ok(hash)
+    // submit tx and subscribe to events
+    let mut tx_events =
+        pool.add_transaction_and_subscribe(TransactionOrigin::Local, pool_transaction).await?;
+
+    let tx_hash = tx_events.hash();
+    let mined_tx_info = MinedTxInfo::new(user, contract);
+
+    // spawn task to listen for mining event, then update lru cache
+    tokio::task::spawn(async move {
+        // process events until tx mined
+        // drain the notification stream
+        while let Some(event) = tx_events.next().await {
+            debug!(target: "faucet", ?event, "tx event received:");
+            match event {
+                TransactionEvent::Mined(block_hash) => {
+                    debug!(target: "faucet", ?block_hash, ?mined_tx_info, "successfully mined");
+                    let _ = add_to_success_cache.send(mined_tx_info);
+                    // end loop
+                    break;
+                }
+                _ => (/* ignore other events */),
+            }
+
+            // this can happen for replace, discard, and mined events
+            //
+            // if the tx was mined successfully, then loop already broke
+            if event.is_final() {
+                warn!(target: "faucet", "faucet transaction did not get mined: {event:?}");
+                break;
+            }
+        }
+    });
+
+    Ok(tx_hash)
 }

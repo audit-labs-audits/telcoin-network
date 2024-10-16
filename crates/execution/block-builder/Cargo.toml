@@ -1,0 +1,62 @@
+[package]
+name = "tn-block-builder"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+homepage.workspace = true
+repository.workspace = true
+
+[dependencies]
+tn-types = { workspace = true }
+futures-util = { workspace = true }
+tokio = { workspace = true, features = ["sync", "time"] }
+tracing = { workspace = true }
+
+reth-primitives = { workspace = true }
+reth-errors = { workspace = true }
+reth-stages = { workspace = true }
+reth-provider = { workspace = true }
+reth-transaction-pool = { workspace = true }
+reth-execution-types = { workspace = true }
+reth-fs-util = { workspace = true }
+reth-tasks = { workspace = true }
+reth-metrics = { workspace = true }
+metrics = { workspace = true }
+thiserror = { workspace = true }
+alloy-rlp = { workspace = true }
+
+[dev-dependencies]
+# unit tests
+tn-types = { workspace = true, features = ["test-utils"] }
+narwhal-test-utils = { workspace = true }
+reth = { workspace = true }
+assert_matches = { workspace = true }
+reth-blockchain-tree = { workspace = true }
+reth-transaction-pool = { workspace = true, features = ["test-utils"] }
+reth-tracing = { workspace = true }
+fastcrypto = { workspace = true }
+tempfile = { workspace = true }
+reth-provider = { workspace = true, features = ["test-utils"] }
+
+# integration tests
+anemo = { workspace = true }
+prometheus = { workspace = true }
+narwhal-worker = { workspace = true }
+narwhal-network = { workspace = true }
+narwhal-network-types = { workspace = true }
+narwhal-typed-store = { workspace = true }
+tn-block-validator = { workspace = true }
+reth-chainspec = { workspace = true }
+reth-db = { workspace = true }
+reth-db-common = { workspace = true }
+tn-engine = { workspace = true }
+tn-block-builder = { workspace = true, features = ["test-utils"] }
+
+# TODO: only used for canon it test
+reth-prune = { workspace = true }
+reth-node-ethereum = { workspace = true }
+
+[features]
+default = []
+test-utils = []

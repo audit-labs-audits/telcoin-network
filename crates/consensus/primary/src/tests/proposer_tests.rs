@@ -11,13 +11,12 @@ use indexmap::IndexMap;
 use narwhal_test_utils::CommitteeFixture;
 use narwhal_typed_store::{mem_db::MemDatabase, open_db};
 use reth_primitives::B256;
-use reth_tracing::init_test_tracing;
 use tempfile::TempDir;
 use tn_types::{test_utils::fixture_payload, BlockHash, Notifier};
 
 #[tokio::test]
 async fn test_empty_proposal() {
-    init_test_tracing();
+    reth_tracing::init_test_tracing();
     let fixture = CommitteeFixture::builder(MemDatabase::default).build();
     let committee = fixture.committee();
     let worker_cache = fixture.worker_cache();
@@ -71,7 +70,7 @@ async fn test_empty_proposal() {
 
 #[tokio::test]
 async fn test_propose_payload_fatal_timer() {
-    init_test_tracing();
+    reth_tracing::init_test_tracing();
     let fixture = CommitteeFixture::builder(MemDatabase::default).build();
     let committee = fixture.committee();
     let worker_cache = fixture.worker_cache();
@@ -218,7 +217,7 @@ async fn test_propose_payload_fatal_timer() {
 
 #[tokio::test]
 async fn test_equivocation_protection_after_restart() {
-    init_test_tracing();
+    reth_tracing::init_test_tracing();
     let fixture = CommitteeFixture::builder(MemDatabase::default).build();
     let committee = fixture.committee();
     let worker_cache = fixture.worker_cache();
