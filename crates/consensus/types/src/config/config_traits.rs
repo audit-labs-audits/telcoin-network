@@ -71,7 +71,7 @@ pub trait ConfigTrait {
 }
 
 /// Telcoin Network specific directories.
-pub trait TelcoinDirs: std::fmt::Debug {
+pub trait TelcoinDirs: std::fmt::Debug + Send + Sync + 'static {
     /// Return the path to `configuration` yaml file.
     fn node_config_path(&self) -> PathBuf;
     /// Return the path to the directory that holds

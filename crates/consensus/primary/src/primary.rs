@@ -65,6 +65,7 @@ pub struct Primary;
 impl Primary {
     /// Spawns the primary and returns the JoinHandles of its tasks, as well as a metered receiver
     /// for the Consensus.
+    #[allow(clippy::too_many_arguments)]
     pub fn spawn<DB: Database>(
         config: ConsensusConfig<DB>,
         chain_identifier: ChainIdentifier,

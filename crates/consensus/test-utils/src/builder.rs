@@ -103,8 +103,9 @@ where
 
         let mut rng = StdRng::from_rng(&mut self.rng).unwrap();
         let mut committee_info = Vec::with_capacity(committee_size);
+        #[allow(clippy::mutable_key_type)]
         let mut authorities = BTreeMap::new();
-        // Pass 1 to make the committee struct we need later.
+        // Pass 1 to make the authorities so we can make the committee struct we need later.
         for i in 0..committee_size {
             let key_config = KeyConfig::with_random(&mut rng);
             let host = "127.0.0.1";
@@ -125,12 +126,13 @@ where
                 format!("authority{i}"),
             );
             authorities.insert(authority.protocol_key().clone(), (key_config, authority.clone()));
-            //committee_info.push((key_config, authority));
         }
+        // Reset the authority ids so they are in sort order.  Some tests require this.
         for (i, (_, (key_config, authority))) in authorities.iter_mut().enumerate() {
             authority.initialise((i as u16).into());
             committee_info.push((key_config.clone(), authority.clone()));
         }
+        // Make the committee so we can give it the AuthorityFixtures below.
         let committee =
             Committee::new_for_test(authorities.into_iter().map(|(k, (_, a))| (k, a)).collect(), 0);
         let mut authorities: Vec<AuthorityFixture<DB>> = committee_info
@@ -156,12 +158,10 @@ where
         // now order the AuthorityFixtures by the authority BlsPublicKey so when we iterate either
         // via the committee.authorities() or via the fixture.authorities() we'll get the
         // same order.
+        // These are probably already sorted but this does not hurt and the comment is helpful.
         authorities.sort_by_key(|a1| a1.public_key());
 
-        /*let mut worker_index = BTreeMap::new();
-        for a in &authorities {
-            worker_index.insert(a.worker().id, a.worker().info().clone());
-        }*/
+        // Build our worker cache.  This is map of authorities to it's worker (one per authority).
         let worker_cache = WorkerCache {
             epoch: self.epoch,
             workers: authorities
@@ -173,42 +173,10 @@ where
                 })
                 .collect(),
         };
+        // All the authorities use the same worker cache.
         for a in authorities.iter_mut() {
             a.set_worker_cache(worker_cache.clone());
         }
-
-        /*
-        // create the committee in order to assign the ids to the authorities
-        let mut committee_builder = CommitteeBuilder::new(self.epoch);
-        for a in authorities.iter() {
-            committee_builder.add_authority(
-                a.public_key().clone(),
-                self.stake.pop_front().unwrap_or(1),
-                a.network_address.clone(),
-                a.execution_address,
-                a.network_public_key(),
-                a.network_address.to_string(),
-            );
-        }
-        let committee = committee_builder.build();
-        */
-
-        // Update the Fixtures with the id assigned from the committee
-        /*for authority in authorities.iter_mut() {
-            let a = committee.authority_by_key(&authority.public_key()).unwrap();
-            authority.authority = OnceCell::with_value(a.clone());
-            authority.stake = a.stake();
-        }*/
-
-        // Now update the stake to follow the order of the authorities so we produce expected
-        // results
-        /*let authorities: Vec<AuthorityFixture<DB>> = authorities
-        .into_iter()
-        .map(|mut authority| {
-            authority.stake = self.stake.pop_front().unwrap_or(1);
-            authority
-        })
-        .collect();*/
 
         CommitteeFixture { authorities, committee }
     }

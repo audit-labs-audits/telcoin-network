@@ -814,7 +814,6 @@ mod tests {
 
         // simulate engine to create canonical blocks from empty rounds
         let evm_config = EthEvmConfig::default();
-        let mut subdag_index = 0;
         let mut parent = chain.sealed_genesis_header();
 
         let non_fatal_errors = vec![
@@ -827,14 +826,14 @@ mod tests {
         // receive new blocks and return non-fatal errors
         // non-fatal errors cause the loop to break and wait for txpool updates
         // submitting a new pending transaction is one of the ways this task wakes up
-        for (idx, error) in non_fatal_errors.into_iter().enumerate() {
+        for (subdag_index, error) in non_fatal_errors.into_iter().enumerate() {
             let (block, ack) = timeout(duration, from_block_builder.recv())
                 .await
                 .expect("block builder built another block after canonical update")
                 .expect("worker block was built");
 
             // all 3 transactions present
-            assert_eq!(block.transactions().len(), 3 + idx);
+            assert_eq!(block.transactions().len(), 3 + subdag_index);
 
             // send non-fatal error
             let _ = ack.send(Err(error));
@@ -855,7 +854,7 @@ mod tests {
                 sub_dag: CommittedSubDag::new(
                     vec![Default::default()],
                     Default::default(),
-                    subdag_index,
+                    subdag_index as u64,
                     Default::default(),
                     None,
                 )
@@ -870,7 +869,6 @@ mod tests {
 
             // update values for next loop
             parent = final_header;
-            subdag_index += 1;
 
             // sleep to ensure canonical update received before ack
             let _ = tokio::time::sleep(Duration::from_secs(1)).await;
