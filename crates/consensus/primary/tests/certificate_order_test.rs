@@ -16,13 +16,13 @@ async fn test_certificate_signers_are_ordered() {
     // GIVEN
     let fixture = CommitteeFixture::builder(MemDatabase::default)
         .committee_size(NonZeroUsize::new(4).unwrap())
-        .stake_distribution(vec![2, 2, 3, 4].into() /* (1..=4).collect() */) // provide some non-uniform stake
+        .stake_distribution(vec![2, 3, 3, 4].into() /* (1..=4).collect() */) // provide some non-uniform stake
         .build();
     let committee: Committee = fixture.committee();
 
     let authorities = fixture.authorities().collect::<Vec<&AuthorityFixture<MemDatabase>>>();
     let total_stake: u64 = authorities.iter().map(|a| a.authority().stake()).sum();
-    assert_eq!(total_stake, 11);
+    assert_eq!(total_stake, 12);
     // authorities are ordered by keys so the stake may not be 1, 2, 3, 4...
     let last_three_stake: u64 = authorities[1..].iter().map(|a| a.authority().stake()).sum();
 
