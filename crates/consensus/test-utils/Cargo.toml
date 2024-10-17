@@ -37,7 +37,7 @@ narwhal-typed-store = { workspace = true }
 reth-tracing = { workspace = true }
 reth-chainspec = { workspace = true }
 reth-cli-commands = { workspace = true }
-
+reth-tasks = { workspace = true }
 
 anemo = { workspace = true }
 
@@ -53,5 +53,6 @@ reth-db = { workspace = true, features = ["test-utils"] }
 reth-transaction-pool = { workspace = true }
 jsonrpsee = { workspace = true }
 clap = { workspace = true, features = ["env"] }
+alloy = { workspace = true }
 
 telcoin-network = { path = "../../../bin/telcoin-network" }

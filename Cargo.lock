@@ -5292,6 +5292,7 @@ dependencies = [
 name = "narwhal-test-utils"
 version = "0.1.0"
 dependencies = [
+ "alloy",
  "anemo",
  "clap",
  "consensus-metrics",
@@ -5318,6 +5319,7 @@ dependencies = [
  "reth-db",
  "reth-node-ethereum",
  "reth-stages",
+ "reth-tasks",
  "reth-tracing",
  "reth-transaction-pool",
  "telcoin-network",
