@@ -4,7 +4,6 @@
 
 use crate::{
     certificate_fetcher::CertificateFetcherCommand,
-    common::create_db_stores,
     consensus::{gc_round, ConsensusRound},
     synchronizer::Synchronizer,
 };
@@ -14,14 +13,13 @@ use itertools::Itertools;
 use narwhal_network::client::NetworkClient;
 use narwhal_primary_metrics::{PrimaryChannelMetrics, PrimaryMetrics};
 use narwhal_test_utils::CommitteeFixture;
-use narwhal_typed_store::{mem_db::MemDatabase, open_db};
+use narwhal_typed_store::mem_db::MemDatabase;
 use std::{
     collections::{BTreeSet, HashMap},
     num::NonZeroUsize,
     sync::Arc,
     time::Duration,
 };
-use tempfile::TempDir;
 use tn_types::{
     error::DagError,
     test_utils::{make_optimal_signed_certificates, mock_signed_certificate},
@@ -33,7 +31,6 @@ use tokio::sync::watch;
 async fn accept_certificates() {
     let fixture = CommitteeFixture::builder(MemDatabase::default).randomize_ports(true).build();
     let committee = fixture.committee();
-    let worker_cache = fixture.worker_cache();
     let primary = fixture.authorities().last().unwrap();
     let network_key = primary.network_keypair().copy().private().0.to_bytes();
     let authority_id = primary.id();
@@ -47,20 +44,11 @@ async fn accept_certificates() {
     let (_tx_consensus_round_updates, rx_consensus_round_updates) =
         watch::channel(ConsensusRound::default());
 
-    // Create test stores.
-    let temp_dir = TempDir::new().unwrap();
-    let db = open_db(temp_dir.path());
-    let (certificate_store, payload_store, _) = create_db_stores(db);
+    let certificate_store = primary.consensus_config().node_storage().certificate_store.clone();
 
     // Make a synchronizer.
     let synchronizer = Arc::new(Synchronizer::new(
-        authority_id,
-        fixture.committee(),
-        worker_cache.clone(),
-        /* gc_depth */ 50,
-        client.clone(),
-        certificate_store.clone(),
-        payload_store.clone(),
+        primary.consensus_config(),
         tx_certificate_fetcher,
         tx_new_certificates.clone(),
         tx_parents.clone(),
@@ -121,17 +109,11 @@ async fn accept_suspended_certificates() {
         .randomize_ports(true)
         .committee_size(NonZeroUsize::new(NUM_AUTHORITIES).unwrap())
         .build();
-    let worker_cache = fixture.worker_cache();
     let metrics = Arc::new(PrimaryMetrics::default());
     let primary_channel_metrics = PrimaryChannelMetrics::default();
 
     let primary = fixture.authorities().next().unwrap();
-    let authority_id = primary.id();
-    let client = NetworkClient::new_from_keypair(&primary.network_keypair());
 
-    let temp_dir = TempDir::new().unwrap();
-    let db = open_db(temp_dir.path());
-    let (certificate_store, payload_store, _) = create_db_stores(db);
     let (tx_certificate_fetcher, _rx_certificate_fetcher) = tn_types::test_channel!(100);
     let (tx_new_certificates, _rx_new_certificates) = tn_types::test_channel!(100);
     let (tx_parents, _rx_parents) = tn_types::test_channel!(100);
@@ -139,13 +121,7 @@ async fn accept_suspended_certificates() {
         watch::channel(ConsensusRound::new(1, 0));
 
     let synchronizer = Arc::new(Synchronizer::new(
-        authority_id,
-        fixture.committee(),
-        worker_cache.clone(),
-        /* gc_depth */ 50,
-        client,
-        certificate_store.clone(),
-        payload_store.clone(),
+        primary.consensus_config(),
         tx_certificate_fetcher,
         tx_new_certificates,
         tx_parents,
@@ -215,7 +191,6 @@ async fn accept_suspended_certificates() {
 async fn synchronizer_recover_basic() {
     let fixture = CommitteeFixture::builder(MemDatabase::default).randomize_ports(true).build();
     let committee = fixture.committee();
-    let worker_cache = fixture.worker_cache();
     let primary = fixture.authorities().last().unwrap();
     let client = NetworkClient::new_from_keypair(&primary.network_keypair());
     let network_key = primary.network_keypair().copy().private().0.to_bytes();
@@ -229,20 +204,11 @@ async fn synchronizer_recover_basic() {
     let (_tx_consensus_round_updates, rx_consensus_round_updates) =
         watch::channel(ConsensusRound::default());
 
-    // Create test stores.
-    let temp_dir = TempDir::new().unwrap();
-    let db = open_db(temp_dir.path());
-    let (certificate_store, payload_store, _) = create_db_stores(db);
+    let certificate_store = primary.consensus_config().node_storage().certificate_store.clone();
 
     // Make Synchronizer.
     let synchronizer = Arc::new(Synchronizer::new(
-        name,
-        fixture.committee(),
-        worker_cache.clone(),
-        /* gc_depth */ 50,
-        client.clone(),
-        certificate_store.clone(),
-        payload_store.clone(),
+        primary.consensus_config(),
         tx_certificate_fetcher,
         tx_new_certificates,
         tx_parents,
@@ -276,13 +242,7 @@ async fn synchronizer_recover_basic() {
     let (tx_parents, mut rx_parents) = tn_types::test_channel!(4);
 
     let _synchronizer = Arc::new(Synchronizer::new(
-        name,
-        fixture.committee(),
-        worker_cache.clone(),
-        /* gc_depth */ 50,
-        client.clone(),
-        certificate_store.clone(),
-        payload_store.clone(),
+        primary.consensus_config(),
         tx_certificate_fetcher,
         tx_new_certificates,
         tx_parents,
@@ -317,7 +277,6 @@ async fn synchronizer_recover_basic() {
 async fn synchronizer_recover_partial_certs() {
     let fixture = CommitteeFixture::builder(MemDatabase::default).randomize_ports(true).build();
     let committee = fixture.committee();
-    let worker_cache = fixture.worker_cache();
     let primary = fixture.authorities().last().unwrap();
     let client = NetworkClient::new_from_keypair(&primary.network_keypair());
     let network_key = primary.network_keypair().copy().private().0.to_bytes();
@@ -331,20 +290,9 @@ async fn synchronizer_recover_partial_certs() {
     let (_tx_consensus_round_updates, rx_consensus_round_updates) =
         watch::channel(ConsensusRound::default());
 
-    // Create test stores.
-    let temp_dir = TempDir::new().unwrap();
-    let db = open_db(temp_dir.path());
-    let (certificate_store, payload_store, _) = create_db_stores(db);
-
     // Make a synchronizer.
     let synchronizer = Arc::new(Synchronizer::new(
-        name,
-        fixture.committee(),
-        worker_cache.clone(),
-        /* gc_depth */ 50,
-        client.clone(),
-        certificate_store.clone(),
-        payload_store.clone(),
+        primary.consensus_config(),
         tx_certificate_fetcher,
         tx_new_certificates.clone(),
         tx_parents.clone(),
@@ -377,13 +325,7 @@ async fn synchronizer_recover_partial_certs() {
     let (tx_parents, mut rx_parents) = tn_types::test_channel!(4);
 
     let synchronizer = Arc::new(Synchronizer::new(
-        name,
-        fixture.committee(),
-        worker_cache.clone(),
-        /* gc_depth */ 50,
-        client.clone(),
-        certificate_store.clone(),
-        payload_store.clone(),
+        primary.consensus_config(),
         tx_certificate_fetcher,
         tx_new_certificates,
         tx_parents,
@@ -417,7 +359,6 @@ async fn synchronizer_recover_partial_certs() {
 async fn synchronizer_recover_previous_round() {
     let fixture = CommitteeFixture::builder(MemDatabase::default).randomize_ports(true).build();
     let committee = fixture.committee();
-    let worker_cache = fixture.worker_cache();
     let primary = fixture.authorities().last().unwrap();
     let client = NetworkClient::new_from_keypair(&primary.network_keypair());
     let network_key = primary.network_keypair().copy().private().0.to_bytes();
@@ -431,20 +372,9 @@ async fn synchronizer_recover_previous_round() {
     let (_tx_consensus_round_updates, rx_consensus_round_updates) =
         watch::channel(ConsensusRound::default());
 
-    // Create test stores.
-    let temp_dir = TempDir::new().unwrap();
-    let db = open_db(temp_dir.path());
-    let (certificate_store, payload_store, _) = create_db_stores(db);
-
     // Make a synchronizer.
     let synchronizer = Arc::new(Synchronizer::new(
-        name,
-        fixture.committee(),
-        worker_cache.clone(),
-        /* gc_depth */ 50,
-        client.clone(),
-        certificate_store.clone(),
-        payload_store.clone(),
+        primary.consensus_config(),
         tx_certificate_fetcher,
         tx_new_certificates.clone(),
         tx_parents.clone(),
@@ -486,13 +416,7 @@ async fn synchronizer_recover_previous_round() {
     let (tx_parents, mut rx_parents) = tn_types::test_channel!(10);
 
     let _synchronizer = Arc::new(Synchronizer::new(
-        name,
-        fixture.committee(),
-        worker_cache.clone(),
-        /* gc_depth */ 50,
-        client.clone(),
-        certificate_store.clone(),
-        payload_store.clone(),
+        primary.consensus_config(),
         tx_certificate_fetcher,
         tx_new_certificates,
         tx_parents,
@@ -516,16 +440,11 @@ async fn synchronizer_recover_previous_round() {
 async fn deliver_certificate_using_store() {
     let fixture = CommitteeFixture::builder(MemDatabase::default).build();
     let primary = fixture.authorities().next().unwrap();
-    let client = NetworkClient::new_from_keypair(&primary.network_keypair());
-    let name = primary.id();
     let committee = fixture.committee();
-    let worker_cache = fixture.worker_cache();
     let metrics = Arc::new(PrimaryMetrics::default());
     let primary_channel_metrics = PrimaryChannelMetrics::default();
 
-    let temp_dir = TempDir::new().unwrap();
-    let db = open_db(temp_dir.path());
-    let (certificates_store, payload_store, _) = create_db_stores(db);
+    let certificates_store = primary.consensus_config().node_storage().certificate_store.clone();
     let (tx_certificate_fetcher, _rx_certificate_fetcher) = tn_types::test_channel!(1);
     let (tx_new_certificates, _rx_new_certificates) = tn_types::test_channel!(100);
     let (tx_parents, _rx_parents) = tn_types::test_channel!(100);
@@ -533,13 +452,7 @@ async fn deliver_certificate_using_store() {
         watch::channel(ConsensusRound::default());
 
     let synchronizer = Synchronizer::new(
-        name,
-        fixture.committee(),
-        worker_cache.clone(),
-        /* gc_depth */ 50,
-        client,
-        certificates_store.clone(),
-        payload_store.clone(),
+        primary.consensus_config(),
         tx_certificate_fetcher,
         tx_new_certificates,
         tx_parents,
@@ -575,16 +488,10 @@ async fn deliver_certificate_using_store() {
 async fn deliver_certificate_not_found_parents() {
     let fixture = CommitteeFixture::builder(MemDatabase::default).build();
     let primary = fixture.authorities().next().unwrap();
-    let client = NetworkClient::new_from_keypair(&primary.network_keypair());
-    let name = primary.id();
     let committee = fixture.committee();
-    let worker_cache = fixture.worker_cache();
     let metrics = Arc::new(PrimaryMetrics::default());
     let primary_channel_metrics = PrimaryChannelMetrics::default();
 
-    let temp_dir = TempDir::new().unwrap();
-    let db = open_db(temp_dir.path());
-    let (certificates_store, payload_store, _) = create_db_stores(db);
     let (tx_certificate_fetcher, mut rx_certificate_fetcher) = tn_types::test_channel!(1);
     let (tx_new_certificates, _rx_new_certificates) = tn_types::test_channel!(100);
     let (tx_parents, _rx_parents) = tn_types::test_channel!(100);
@@ -592,13 +499,7 @@ async fn deliver_certificate_not_found_parents() {
         watch::channel(ConsensusRound::default());
 
     let synchronizer = Synchronizer::new(
-        name,
-        fixture.committee(),
-        worker_cache.clone(),
-        /* gc_depth */ 50,
-        client,
-        certificates_store,
-        payload_store,
+        primary.consensus_config(),
         tx_certificate_fetcher,
         tx_new_certificates,
         tx_parents,
@@ -643,16 +544,10 @@ async fn deliver_certificate_not_found_parents() {
 async fn sanitize_fetched_certificates() {
     let fixture = CommitteeFixture::builder(MemDatabase::default).build();
     let primary = fixture.authorities().next().unwrap();
-    let client = NetworkClient::new_from_keypair(&primary.network_keypair());
-    let name = primary.id();
     let committee = fixture.committee();
-    let worker_cache = fixture.worker_cache();
     let metrics = Arc::new(PrimaryMetrics::default());
     let primary_channel_metrics = PrimaryChannelMetrics::default();
 
-    let temp_dir = TempDir::new().unwrap();
-    let db = open_db(temp_dir.path());
-    let (certificates_store, payload_store, _) = create_db_stores(db);
     let (tx_certificate_fetcher, _rx_certificate_fetcher) = tn_types::test_channel!(1);
     let (tx_new_certificates, _rx_new_certificates) = tn_types::test_channel!(10000);
     let (tx_parents, _rx_parents) = tn_types::test_channel!(10000);
@@ -660,13 +555,7 @@ async fn sanitize_fetched_certificates() {
         watch::channel(ConsensusRound::default());
 
     let synchronizer = Synchronizer::new(
-        name,
-        fixture.committee(),
-        worker_cache.clone(),
-        /* gc_depth */ 50,
-        client,
-        certificates_store.clone(),
-        payload_store.clone(),
+        primary.consensus_config(),
         tx_certificate_fetcher,
         tx_new_certificates,
         tx_parents,
@@ -756,15 +645,12 @@ async fn sync_batches_drops_old() {
         .randomize_ports(true)
         .committee_size(NonZeroUsize::new(4).unwrap())
         .build();
-    let worker_cache = fixture.worker_cache();
     let metrics = Arc::new(PrimaryMetrics::default());
     let primary = fixture.authorities().next().unwrap();
     let author = fixture.authorities().nth(2).unwrap();
-    let client = NetworkClient::new_from_keypair(&primary.network_keypair());
 
-    let temp_dir = TempDir::new().unwrap();
-    let db = open_db(temp_dir.path());
-    let (certificate_store, payload_store, _) = create_db_stores(db);
+    let certificate_store = primary.consensus_config().node_storage().certificate_store.clone();
+    let payload_store = primary.consensus_config().node_storage().payload_store.clone();
     let (tx_certificate_fetcher, _rx_certificate_fetcher) = tn_types::test_channel!(1);
     let (tx_new_certificates, _rx_new_certificates) = tn_types::test_channel!(100);
     let (tx_parents, _rx_parents) = tn_types::test_channel!(100);
@@ -773,13 +659,7 @@ async fn sync_batches_drops_old() {
     let primary_channel_metrics = PrimaryChannelMetrics::default();
 
     let synchronizer = Arc::new(Synchronizer::new(
-        primary.id(),
-        fixture.committee(),
-        worker_cache.clone(),
-        /* gc_depth */ 50,
-        client,
-        certificate_store.clone(),
-        payload_store.clone(),
+        primary.consensus_config(),
         tx_certificate_fetcher,
         tx_new_certificates,
         tx_parents,
@@ -833,14 +713,9 @@ async fn gc_suspended_certificates() {
         .randomize_ports(true)
         .committee_size(NonZeroUsize::new(NUM_AUTHORITIES).unwrap())
         .build();
-    let worker_cache = fixture.worker_cache();
     let metrics = Arc::new(PrimaryMetrics::default());
     let primary = fixture.authorities().next().unwrap();
-    let client = NetworkClient::new_from_keypair(&primary.network_keypair());
 
-    let temp_dir = TempDir::new().unwrap();
-    let db = open_db(temp_dir.path());
-    let (certificate_store, payload_store, _) = create_db_stores(db);
     let (tx_certificate_fetcher, _rx_certificate_fetcher) = tn_types::test_channel!(100);
     let (tx_new_certificates, mut rx_new_certificates) = tn_types::test_channel!(100);
     let (tx_parents, _rx_parents) = tn_types::test_channel!(100);
@@ -849,13 +724,7 @@ async fn gc_suspended_certificates() {
     let primary_channel_metrics = PrimaryChannelMetrics::default();
 
     let synchronizer = Arc::new(Synchronizer::new(
-        primary.id(),
-        fixture.committee(),
-        worker_cache.clone(),
-        /* gc_depth */ GC_DEPTH,
-        client,
-        certificate_store.clone(),
-        payload_store.clone(),
+        primary.consensus_config(),
         tx_certificate_fetcher,
         tx_new_certificates,
         tx_parents,

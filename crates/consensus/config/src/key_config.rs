@@ -2,9 +2,9 @@ use std::sync::Arc;
 
 use tn_types::{
     read_validator_keypair_from_file,
-    traits::{AllowedRng, KeyPair},
-    BlsKeypair, NetworkKeypair, TelcoinDirs, BLS_KEYFILE, PRIMARY_NETWORK_KEYFILE,
-    WORKER_NETWORK_KEYFILE,
+    traits::{AllowedRng, KeyPair, Signer},
+    BlsKeypair, BlsSignature, BlsSigner, NetworkKeypair, TelcoinDirs, BLS_KEYFILE,
+    PRIMARY_NETWORK_KEYFILE, WORKER_NETWORK_KEYFILE,
 };
 
 #[derive(Debug)]
@@ -67,5 +67,11 @@ impl KeyConfig {
 
     pub fn worker_network_keypair(&self) -> &NetworkKeypair {
         &self.inner.worker_network_keypair
+    }
+}
+
+impl BlsSigner for KeyConfig {
+    fn request_signature_direct(&self, msg: &[u8]) -> BlsSignature {
+        self.inner.bls_keypair.sign(msg)
     }
 }

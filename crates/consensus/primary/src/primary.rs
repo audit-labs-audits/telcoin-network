@@ -30,7 +30,6 @@ use consensus_metrics::{
 };
 use fastcrypto::{
     serde_helpers::ToFromByteArray,
-    signature_service::SignatureService,
     traits::{KeyPair as _, ToFromBytes},
 };
 use narwhal_network::{
@@ -120,15 +119,8 @@ impl Primary {
 
         let (tx_narwhal_round_updates, rx_narwhal_round_updates) = watch::channel(0u64);
 
-        // XXXX
         let synchronizer = Arc::new(Synchronizer::new(
-            config.authority().id(),
-            config.committee().clone(),
-            config.worker_cache().clone(),
-            config.parameters().gc_depth,
-            config.network_client().clone(),
-            config.node_storage().certificate_store.clone(),
-            config.node_storage().payload_store.clone(),
+            config.clone(),
             tx_certificate_fetcher,
             tx_new_certificates,
             tx_parents,
@@ -149,21 +141,14 @@ impl Primary {
                 .expect("key length should match"),
         )
         .expect("should work to convert BLS key to Scalar");
-        let signature_service = SignatureService::new(config.key_config().bls_keypair().copy());
 
         // Spawn the network receiver listening to messages from the other primaries.
         let address = config.authority().primary_network_address();
         let address =
             address.replace(0, |_protocol| Some(Protocol::Ip4(Ipv4Addr::UNSPECIFIED))).unwrap();
-        //XXXX
         let mut primary_service = PrimaryToPrimaryServer::new(PrimaryReceiverHandler::new(
-            config.authority().id(),
-            config.committee().clone(),
-            config.worker_cache().clone(),
+            config.clone(),
             synchronizer.clone(),
-            signature_service.clone(),
-            config.node_storage().certificate_store.clone(),
-            config.node_storage().vote_digest_store.clone(),
             rx_narwhal_round_updates,
             Default::default(),
             metrics.node_metrics.clone(),
@@ -375,12 +360,13 @@ impl Primary {
             tx_shutdown.subscribe(),
         );
 
+        // XXXX
         let core_handle = Certifier::spawn(
             config.authority().id(),
             config.committee().clone(),
             config.node_storage().certificate_store.clone(),
             synchronizer.clone(),
-            signature_service,
+            config.key_config().clone(),
             tx_shutdown.subscribe(),
             rx_headers,
             metrics.node_metrics.clone(),

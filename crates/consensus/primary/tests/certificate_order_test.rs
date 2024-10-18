@@ -7,8 +7,7 @@ use narwhal_typed_store::mem_db::MemDatabase;
 use rand::{rngs::OsRng, seq::SliceRandom};
 use std::{collections::BTreeSet, num::NonZeroUsize};
 use tn_types::{
-    traits::KeyPair, AuthorityIdentifier, BlsPublicKey, BlsSignature, Certificate, Committee,
-    Header, Stake, Vote,
+    AuthorityIdentifier, BlsPublicKey, BlsSignature, Certificate, Committee, Header, Stake, Vote,
 };
 
 #[tokio::test]
@@ -37,9 +36,11 @@ async fn test_certificate_signers_are_ordered() {
 
     // The authorities on position 1, 2, 3 are the ones who would sign
     for authority in &authorities[1..=3] {
-        sorted_signers.push(authority.keypair().public().clone());
+        sorted_signers.push(authority.public_key());
 
-        let vote = Vote::new_with_signer(&header.clone(), &authority.id(), authority.keypair());
+        let vote =
+            Vote::new(&header.clone(), &authority.id(), authority.consensus_config().key_config())
+                .await;
         votes.push((vote.author(), vote.signature().clone()));
     }
 

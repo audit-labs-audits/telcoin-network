@@ -16,10 +16,6 @@ mod state_handler;
 mod synchronizer;
 
 #[cfg(test)]
-#[path = "tests/common.rs"]
-mod common;
-
-#[cfg(test)]
 #[path = "tests/certificate_tests.rs"]
 mod certificate_tests;
 

@@ -2,7 +2,6 @@
 use base64::{engine::general_purpose, Engine};
 use fastcrypto::{
     hash::{Digest, Hash},
-    signature_service::SignatureService,
     traits::{Signer, VerifyingKey},
 };
 use serde::{Deserialize, Serialize};
@@ -13,7 +12,7 @@ use crate::{
     crypto::{
         self, to_intent_message, BlsPublicKey, BlsSignature, IntentMessage, ValidatorSignature,
     },
-    encode, Header, HeaderDigest, Round,
+    encode, BlsSigner, Header, HeaderDigest, Round,
 };
 
 /// A Vote on a Header is a claim by the voting authority that all payloads and the full history
@@ -37,10 +36,10 @@ pub struct Vote {
 impl Vote {
     // TODO: Add version number and match on that
     /// Create a new instance of [Vote]
-    pub async fn new(
+    pub async fn new<BLS: BlsSigner>(
         header: &Header,
         author: &AuthorityIdentifier,
-        signature_service: &SignatureService<BlsSignature, { crypto::INTENT_MESSAGE_LENGTH }>,
+        signature_service: &BLS,
     ) -> Self {
         let vote = Self {
             header_digest: header.digest(),
@@ -50,11 +49,34 @@ impl Vote {
             author: *author,
             signature: BlsSignature::default(),
         };
-        let signature = signature_service.request_signature(vote.digest().into()).await;
+        let vote_digest: Digest<{ crypto::DIGEST_LENGTH }> = vote.digest().into();
+        let signature =
+            signature_service.request_signature(encode(&to_intent_message(vote_digest))).await;
         Self { signature, ..vote }
     }
 
-    /// TODO: docs
+    /// Create a new instance of [Vote], sync version.
+    pub fn new_sync<BLS: BlsSigner>(
+        header: &Header,
+        author: &AuthorityIdentifier,
+        signature_service: &BLS,
+    ) -> Self {
+        let vote = Self {
+            header_digest: header.digest(),
+            round: header.round(),
+            epoch: header.epoch(),
+            origin: header.author(),
+            author: *author,
+            signature: BlsSignature::default(),
+        };
+        let vote_digest: Digest<{ crypto::DIGEST_LENGTH }> = vote.digest().into();
+        let signature =
+            signature_service.request_signature_direct(&encode(&to_intent_message(vote_digest)));
+        Self { signature, ..vote }
+    }
+
+    /// Create a vote directly with a suplied signer (private key).
+    /// Used for testing, other wise use one BlsSigner versions.
     pub fn new_with_signer<S>(header: &Header, author: &AuthorityIdentifier, signer: &S) -> Self
     where
         S: Signer<BlsSignature>,

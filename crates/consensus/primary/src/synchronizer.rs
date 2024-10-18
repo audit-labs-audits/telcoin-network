@@ -30,6 +30,7 @@ use std::{
     time::Duration,
 };
 use telcoin_sync::sync::notify_once::NotifyOnce;
+use tn_config::ConsensusConfig;
 use tn_types::{AuthorityIdentifier, Committee, NetworkPublicKey, WorkerCache};
 
 use narwhal_network_types::{
@@ -330,13 +331,7 @@ pub struct Synchronizer<DB> {
 impl<DB: Database> Synchronizer<DB> {
     #[allow(clippy::too_many_arguments)]
     pub fn new(
-        authority_id: AuthorityIdentifier,
-        committee: Committee,
-        worker_cache: WorkerCache,
-        gc_depth: Round,
-        client: NetworkClient,
-        certificate_store: CertificateStore<DB>,
-        payload_store: PayloadStore<DB>,
+        consensus_config: ConsensusConfig<DB>,
         tx_certificate_fetcher: Sender<CertificateFetcherCommand>,
         tx_new_certificates: Sender<Certificate>,
         tx_parents: Sender<(Vec<Certificate>, Round)>,
@@ -344,10 +339,12 @@ impl<DB: Database> Synchronizer<DB> {
         metrics: Arc<PrimaryMetrics>,
         primary_channel_metrics: &PrimaryChannelMetrics,
     ) -> Self {
-        let committee: &Committee = &committee;
+        let committee: &Committee = consensus_config.committee();
         let genesis = Self::make_genesis(committee);
-        let highest_processed_round = certificate_store.highest_round_number();
-        let highest_created_certificate = certificate_store.last_round(authority_id).unwrap();
+        let node_store = consensus_config.node_storage();
+        let highest_processed_round = node_store.certificate_store.highest_round_number();
+        let highest_created_certificate =
+            node_store.certificate_store.last_round(consensus_config.authority().id()).unwrap();
         let gc_round = rx_consensus_round_updates.borrow().gc_round;
         let (tx_own_certificate_broadcast, _rx_own_certificate_broadcast) =
             broadcast::channel(CHANNEL_CAPACITY);
@@ -364,16 +361,16 @@ impl<DB: Database> Synchronizer<DB> {
         );
 
         let inner = Arc::new(Inner {
-            authority_id,
+            authority_id: consensus_config.authority().id(),
             committee: committee.clone(),
-            worker_cache,
-            gc_depth,
+            worker_cache: consensus_config.worker_cache().clone(),
+            gc_depth: consensus_config.parameters().gc_depth,
             gc_round: AtomicU64::new(gc_round),
             highest_processed_round: AtomicU64::new(highest_processed_round),
             highest_received_round: AtomicU64::new(0),
-            client: client.clone(),
-            certificate_store,
-            payload_store,
+            client: consensus_config.network_client().clone(),
+            certificate_store: consensus_config.node_storage().certificate_store.clone(),
+            payload_store: consensus_config.node_storage().payload_store.clone(),
             tx_certificate_fetcher,
             tx_certificate_acceptor,
             tx_new_certificates,
@@ -392,7 +389,7 @@ impl<DB: Database> Synchronizer<DB> {
         // tx_own_certificate_broadcast.send()
         let broadcast_targets: Vec<(_, _, _)> = inner
             .committee
-            .others_primaries_by_id(authority_id)
+            .others_primaries_by_id(consensus_config.authority().id())
             .into_iter()
             .map(|(name, _addr, network_key)| {
                 (name, tx_own_certificate_broadcast.subscribe(), network_key)
@@ -540,6 +537,7 @@ impl<DB: Database> Synchronizer<DB> {
 
         // Start tasks to broadcast created certificates.
         let inner_senders = inner.clone();
+        let client = consensus_config.network_client().clone();
         spawn_logged_monitored_task!(
             async move {
                 let network = match client.get_primary_network().await {

@@ -6,20 +6,19 @@
 use crate::{aggregators::VotesAggregator, synchronizer::Synchronizer};
 
 use consensus_metrics::{metered_channel::Receiver, monitored_future, spawn_logged_monitored_task};
-use fastcrypto::signature_service::SignatureService;
 use futures::{stream::FuturesUnordered, StreamExt};
 use narwhal_network::anemo_ext::NetworkExt;
 use narwhal_primary_metrics::PrimaryMetrics;
 use narwhal_storage::CertificateStore;
 use narwhal_typed_store::traits::Database;
 use std::{future::Future, pin::pin, sync::Arc, task::Poll, time::Duration};
-use tn_types::{AuthorityIdentifier, Committee, Noticer};
+use tn_types::{AuthorityIdentifier, BlsSigner, Committee, Noticer};
 
 use narwhal_network_types::{PrimaryToPrimaryClient, RequestVoteRequest};
 use tn_types::{
     ensure,
     error::{DagError, DagResult},
-    BlsSignature, Certificate, CertificateDigest, Header, NetworkPublicKey, Vote,
+    Certificate, CertificateDigest, Header, NetworkPublicKey, Vote,
 };
 use tokio::{
     sync::oneshot,
@@ -36,7 +35,7 @@ pub mod certifier_tests;
 ///
 /// It receives headers to propose from Proposer via `rx_headers`, and sends out certificates to be
 /// broadcasted by calling `Synchronizer::accept_own_certificate()`.
-pub struct Certifier<DB> {
+pub struct Certifier<DB, BLS> {
     /// The identifier of this primary.
     authority_id: AuthorityIdentifier,
     /// The committee information.
@@ -46,7 +45,7 @@ pub struct Certifier<DB> {
     /// Handles synchronization with other nodes and our workers.
     synchronizer: Arc<Synchronizer<DB>>,
     /// Service to sign headers.
-    signature_service: SignatureService<BlsSignature, { tn_types::INTENT_MESSAGE_LENGTH }>,
+    signature_service: BLS,
     /// Receiver for shutdown.
     rx_shutdown: Noticer,
     /// Receives our newly created headers from the `Proposer`.
@@ -65,7 +64,7 @@ pub struct Certifier<DB> {
     metrics: Arc<PrimaryMetrics>,
 }
 
-impl<DB: Database> Certifier<DB> {
+impl<DB: Database, BLS: BlsSigner> Certifier<DB, BLS> {
     #[allow(clippy::too_many_arguments)]
     #[must_use]
     pub fn spawn(
@@ -73,7 +72,7 @@ impl<DB: Database> Certifier<DB> {
         committee: Committee,
         certificate_store: CertificateStore<DB>,
         synchronizer: Arc<Synchronizer<DB>>,
-        signature_service: SignatureService<BlsSignature, { tn_types::INTENT_MESSAGE_LENGTH }>,
+        signature_service: BLS,
         rx_shutdown: Noticer,
         rx_headers: Receiver<Header>,
         metrics: Arc<PrimaryMetrics>,
@@ -223,7 +222,7 @@ impl<DB: Database> Certifier<DB> {
         authority_id: AuthorityIdentifier,
         committee: Committee,
         certificate_store: CertificateStore<DB>,
-        signature_service: SignatureService<BlsSignature, { tn_types::INTENT_MESSAGE_LENGTH }>,
+        signature_service: BLS,
         metrics: Arc<PrimaryMetrics>,
         network: anemo::Network,
         header: Header,
@@ -286,7 +285,9 @@ impl<DB: Database> Certifier<DB> {
                             )?;
                         },
                         Some(Err(e)) => error!(target: "primary::certifier", ?authority_id, "failed to get vote for header {header:?}: {e:?}"),
-                        None => break,
+                        None => {
+                            break;
+                        }
                     }
                 },
                 _ = &mut cancel => {
@@ -314,7 +315,7 @@ impl<DB: Database> Certifier<DB> {
                     };
                     msg.push_str(&parent_msg);
                 }
-                warn!(target: "primary::certifier", ?authority_id, msg, "inside propose_header");
+                error!(target: "primary::certifier", ?authority_id, msg, "inside propose_header");
             }
             DagError::CouldNotFormCertificate(header.digest())
         })?;
@@ -324,7 +325,7 @@ impl<DB: Database> Certifier<DB> {
     }
 }
 
-impl<DB: Database> Future for Certifier<DB> {
+impl<DB: Database, BLS: BlsSigner> Future for Certifier<DB, BLS> {
     // Errors are either loggable events or show stoppers so we don't return an error type.
     type Output = ();
 

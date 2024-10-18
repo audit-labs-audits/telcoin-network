@@ -402,11 +402,6 @@ impl<DB: Database> AuthorityFixture<DB> {
         self.consensus_config.key_config().network_keypair().public().clone()
     }
 
-    /* /// The [WorkerIndex] for the authority.
-    pub fn worker_index(&self) -> WorkerIndex {
-        WorkerIndex(self.workers.iter().map(|(id, w)| (*id, w.info.clone())).collect())
-    }*/
-
     /// Create a [Header] with a default payload based on the [Committee] argument.
     pub fn header(&self, committee: &Committee) -> Header {
         self.header_builder(committee).payload(Default::default()).build().unwrap()
@@ -429,7 +424,7 @@ impl<DB: Database> AuthorityFixture<DB> {
 
     /// Sign a [Header] and return a [Vote] with no additional validation.
     pub fn vote(&self, header: &Header) -> Vote {
-        Vote::new_with_signer(header, &self.id(), self.consensus_config.key_config().bls_keypair())
+        Vote::new_sync(header, &self.id(), self.consensus_config.key_config())
     }
 
     /// Return the consensus config.

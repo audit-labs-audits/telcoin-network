@@ -12,6 +12,8 @@
 //! - use generic schemes (avoid using the algo's `Struct`` impl functions)
 //! - change type aliases to update codebase with new crypto
 
+use std::future::Future;
+
 use eyre::Context;
 use fastcrypto::{
     bls12381, ed25519,
@@ -25,6 +27,7 @@ use reth_chainspec::ChainSpec;
 use serde::Serialize;
 mod intent;
 pub use intent::*;
+use tokio::sync::oneshot;
 
 use crate::encode;
 
@@ -70,6 +73,20 @@ pub type RandomnessPrivateKey =
 pub type DefaultHashFunction = Blake2b256;
 pub const DIGEST_LENGTH: usize = DefaultHashFunction::OUTPUT_SIZE;
 pub const INTENT_MESSAGE_LENGTH: usize = INTENT_PREFIX_LENGTH + DIGEST_LENGTH;
+
+pub trait BlsSigner: Clone + Send + Sync + Unpin + 'static {
+    fn request_signature_direct(&self, msg: &[u8]) -> BlsSignature;
+
+    fn request_signature(&self, msg: Vec<u8>) -> impl Future<Output = BlsSignature> + Send {
+        let (sender, receiver): (oneshot::Sender<_>, oneshot::Receiver<_>) = oneshot::channel();
+        let this = self.clone();
+        tokio::spawn(async move {
+            let signature = this.request_signature_direct(&msg);
+            let _ = sender.send(signature);
+        });
+        async move { receiver.await.expect("Failed to receive signature from Signature Service") }
+    }
+}
 
 /// Creates a proof of that the authority account address is owned by the
 /// holder of authority protocol key, and also ensures that the authority
@@ -182,83 +199,6 @@ impl ValidatorAggregateSignature for BlsAggregateSignature {
 pub fn to_intent_message<T>(value: T) -> IntentMessage<T> {
     IntentMessage::new(Intent::narwhal_app(IntentScope::HeaderDigest), value)
 }
-
-// TODO: not sure I want to keep this
-
-// /// Defines the compressed version of the public key for validators.
-// #[serde_as]
-// #[derive(
-//     Copy,
-//     Clone,
-//     PartialEq,
-//     Eq,
-//     Hash,
-//     PartialOrd,
-//     Ord,
-//     Serialize,
-//     Deserialize,
-//     schemars::JsonSchema,
-//     AsRef,
-// )]
-// #[as_ref(forward)]
-// pub struct BlsPublicKeyBytes(
-//     #[schemars(with = "Base64")]
-//     #[serde_as(as = "Readable<Base64, Bytes>")]
-//     pub [u8; BlsPublicKey::LENGTH],
-// );
-
-// /// Use with serde_as to control serde for human-readable serialization and deserialization
-// /// `H` : serde_as SerializeAs/DeserializeAs delegation for human readable in/output
-// /// `R` : serde_as SerializeAs/DeserializeAs delegation for non-human readable in/output
-// ///
-// /// # Example:
-// ///
-// /// ```text
-// /// #[serde_as]
-// /// #[derive(Deserialize, Serialize)]
-// /// struct Example(#[serde_as(as = "Readable<DisplayFromStr, _>")] [u8; 20]);
-// /// ```
-// ///
-// /// The above example will delegate human-readable serde to `DisplayFromStr`
-// /// and array tuple (default) for non-human-readable serializer.
-// pub struct Readable<H, R> {
-//     human_readable: PhantomData<H>,
-//     non_human_readable: PhantomData<R>,
-// }
-
-// impl<T: ?Sized, H, R> SerializeAs<T> for Readable<H, R>
-// where
-//     H: SerializeAs<T>,
-//     R: SerializeAs<T>,
-// {
-//     fn serialize_as<S>(value: &T, serializer: S) -> Result<S::Ok, S::Error>
-//     where
-//         S: Serializer,
-//     {
-//         if serializer.is_human_readable() {
-//             H::serialize_as(value, serializer)
-//         } else {
-//             R::serialize_as(value, serializer)
-//         }
-//     }
-// }
-
-// impl<'de, R, H, T> DeserializeAs<'de, T> for Readable<H, R>
-// where
-//     H: DeserializeAs<'de, T>,
-//     R: DeserializeAs<'de, T>,
-// {
-//     fn deserialize_as<D>(deserializer: D) -> Result<T, D::Error>
-//     where
-//         D: Deserializer<'de>,
-//     {
-//         if deserializer.is_human_readable() {
-//             H::deserialize_as(deserializer)
-//         } else {
-//             R::deserialize_as(deserializer)
-//         }
-//     }
-// }
 
 #[cfg(test)]
 mod tests {

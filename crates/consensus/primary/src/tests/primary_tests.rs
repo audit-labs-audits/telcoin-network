@@ -3,25 +3,21 @@
 // SPDX-License-Identifier: Apache-2.0
 use super::{Primary, PrimaryReceiverHandler, CHANNEL_CAPACITY};
 use crate::{
-    common::create_db_stores,
     consensus::{ConsensusRound, LeaderSchedule, LeaderSwapTable},
     synchronizer::Synchronizer,
 };
 use fastcrypto::{
     encoding::{Encoding, Hex},
     hash::Hash,
-    signature_service::SignatureService,
     traits::KeyPair as _,
 };
 use itertools::Itertools;
-use narwhal_network::client::NetworkClient;
 use narwhal_network_types::{
     FetchCertificatesRequest, MockPrimaryToWorker, PrimaryToPrimary, RequestVoteRequest,
 };
 use narwhal_primary_metrics::{PrimaryChannelMetrics, PrimaryMetrics};
-use narwhal_storage::{CertificateStore, PayloadStore, VoteDigestStore};
 use narwhal_test_utils::CommitteeFixture;
-use narwhal_typed_store::{mem_db::MemDatabase, open_db};
+use narwhal_typed_store::mem_db::MemDatabase;
 use narwhal_worker::{metrics::Metrics, Worker};
 use prometheus::Registry;
 use std::{
@@ -30,7 +26,6 @@ use std::{
     sync::Arc,
     time::Duration,
 };
-use tempfile::TempDir;
 use tn_block_validator::NoopBlockValidator;
 use tn_types::{
     now, test_utils::make_optimal_signed_certificates, AuthorityIdentifier, Certificate,
@@ -229,19 +224,14 @@ async fn test_request_vote_has_missing_parents() {
         .build();
     let target = fixture.authorities().next().unwrap();
     let author = fixture.authorities().nth(2).unwrap();
-    let target_id = target.id();
     let author_id = author.id();
-    let worker_cache = fixture.worker_cache();
-    let signature_service = SignatureService::new(target.keypair().copy());
     let metrics = Arc::new(PrimaryMetrics::default());
     let primary_channel_metrics = PrimaryChannelMetrics::default();
     let network =
         tn_types::test_utils::test_network(target.network_keypair(), target.network_address());
-    let client = NetworkClient::new_from_keypair(&target.network_keypair());
 
-    let temp_dir = TempDir::new().unwrap();
-    let db = open_db(temp_dir.path());
-    let (certificate_store, payload_store, vote_digest_store) = create_db_stores(db);
+    let certificate_store = target.consensus_config().node_storage().certificate_store.clone();
+    let payload_store = target.consensus_config().node_storage().payload_store.clone();
     let (tx_certificate_fetcher, _rx_certificate_fetcher) = tn_types::test_channel!(1);
     let (tx_new_certificates, _rx_new_certificates) = tn_types::test_channel!(100);
     let (tx_parents, _rx_parents) = tn_types::test_channel!(100);
@@ -250,13 +240,7 @@ async fn test_request_vote_has_missing_parents() {
     let (tx_narwhal_round_updates, rx_narwhal_round_updates) = watch::channel(1u64);
 
     let synchronizer = Arc::new(Synchronizer::new(
-        target_id,
-        fixture.committee(),
-        worker_cache.clone(),
-        /* gc_depth */ 50,
-        client,
-        certificate_store.clone(),
-        payload_store.clone(),
+        target.consensus_config(),
         tx_certificate_fetcher,
         tx_new_certificates,
         tx_parents,
@@ -265,13 +249,8 @@ async fn test_request_vote_has_missing_parents() {
         &primary_channel_metrics,
     ));
     let handler = PrimaryReceiverHandler::new(
-        target_id,
-        fixture.committee(),
-        worker_cache.clone(),
+        target.consensus_config(),
         synchronizer.clone(),
-        signature_service,
-        certificate_store.clone(),
-        vote_digest_store,
         rx_narwhal_round_updates,
         Default::default(),
         metrics.clone(),
@@ -371,23 +350,14 @@ async fn test_request_vote_accept_missing_parents() {
         .build();
     let target = fixture.authorities().next().unwrap();
     let author = fixture.authorities().nth(2).unwrap();
-    let target_id = target.id();
     let author_id = author.id();
-    let worker_cache = fixture.worker_cache();
-    let signature_service = SignatureService::new(target.keypair().copy());
     let metrics = Arc::new(PrimaryMetrics::default());
     let primary_channel_metrics = PrimaryChannelMetrics::default();
     let network =
         tn_types::test_utils::test_network(target.network_keypair(), target.network_address());
-    let client = NetworkClient::new_from_keypair(&target.network_keypair());
 
-    let temp_dir = TempDir::new().unwrap();
-    let db = open_db(temp_dir.path());
-    let (certificate_store, payload_store, vote_digest_store) = (
-        CertificateStore::new(db.clone()),
-        PayloadStore::new(db.clone()),
-        VoteDigestStore::new(db),
-    );
+    let certificate_store = target.consensus_config().node_storage().certificate_store.clone();
+    let payload_store = target.consensus_config().node_storage().payload_store.clone();
     let (tx_certificate_fetcher, _rx_certificate_fetcher) = tn_types::test_channel!(1);
     let (tx_new_certificates, _rx_new_certificates) = tn_types::test_channel!(100);
     let (tx_parents, _rx_parents) = tn_types::test_channel!(100);
@@ -396,13 +366,7 @@ async fn test_request_vote_accept_missing_parents() {
     let (_tx_narwhal_round_updates, rx_narwhal_round_updates) = watch::channel(1u64);
 
     let synchronizer = Arc::new(Synchronizer::new(
-        target_id,
-        fixture.committee(),
-        worker_cache.clone(),
-        50, // gc_depth
-        client,
-        certificate_store.clone(),
-        payload_store.clone(),
+        target.consensus_config(),
         tx_certificate_fetcher,
         tx_new_certificates,
         tx_parents,
@@ -411,13 +375,8 @@ async fn test_request_vote_accept_missing_parents() {
         &primary_channel_metrics,
     ));
     let handler = PrimaryReceiverHandler::new(
-        target_id,
-        fixture.committee(),
-        worker_cache.clone(),
+        target.consensus_config(),
         synchronizer.clone(),
-        signature_service,
-        certificate_store.clone(),
-        vote_digest_store,
         rx_narwhal_round_updates,
         Default::default(),
         metrics.clone(),
@@ -505,20 +464,17 @@ async fn test_request_vote_missing_batches() {
         .randomize_ports(true)
         .committee_size(NonZeroUsize::new(4).unwrap())
         .build();
-    let worker_cache = fixture.worker_cache();
     let primary = fixture.authorities().next().unwrap();
     let authority_id = primary.id();
     let author = fixture.authorities().nth(2).unwrap();
-    let signature_service = SignatureService::new(primary.keypair().copy());
     let metrics = Arc::new(PrimaryMetrics::default());
     let primary_channel_metrics = PrimaryChannelMetrics::default();
     let network =
         tn_types::test_utils::test_network(primary.network_keypair(), primary.network_address());
-    let client = NetworkClient::new_from_keypair(&primary.network_keypair());
+    let client = primary.consensus_config().network_client().clone();
 
-    let temp_dir = TempDir::new().unwrap();
-    let db = open_db(temp_dir.path());
-    let (certificate_store, payload_store, vote_digest_store) = create_db_stores(db);
+    let certificate_store = primary.consensus_config().node_storage().certificate_store.clone();
+    let payload_store = primary.consensus_config().node_storage().payload_store.clone();
     let (tx_certificate_fetcher, _rx_certificate_fetcher) = tn_types::test_channel!(1);
     let (tx_new_certificates, _rx_new_certificates) = tn_types::test_channel!(100);
     let (tx_parents, _rx_parents) = tn_types::test_channel!(100);
@@ -527,13 +483,7 @@ async fn test_request_vote_missing_batches() {
     let (_tx_narwhal_round_updates, rx_narwhal_round_updates) = watch::channel(1u64);
 
     let synchronizer = Arc::new(Synchronizer::new(
-        authority_id,
-        fixture.committee(),
-        worker_cache.clone(),
-        /* gc_depth */ 50,
-        client.clone(),
-        certificate_store.clone(),
-        payload_store.clone(),
+        primary.consensus_config(),
         tx_certificate_fetcher,
         tx_new_certificates,
         tx_parents,
@@ -542,13 +492,8 @@ async fn test_request_vote_missing_batches() {
         &primary_channel_metrics,
     ));
     let handler = PrimaryReceiverHandler::new(
-        authority_id,
-        fixture.committee(),
-        worker_cache.clone(),
+        primary.consensus_config(),
         synchronizer.clone(),
-        signature_service,
-        certificate_store.clone(),
-        vote_digest_store,
         rx_narwhal_round_updates,
         Default::default(),
         metrics.clone(),
@@ -625,11 +570,9 @@ async fn test_request_vote_already_voted() {
         .randomize_ports(true)
         .committee_size(NonZeroUsize::new(4).unwrap())
         .build();
-    let worker_cache = fixture.worker_cache();
     let primary = fixture.authorities().next().unwrap();
     let id = primary.id();
     let author = fixture.authorities().nth(2).unwrap();
-    let signature_service = SignatureService::new(primary.keypair().copy());
     let metrics = Arc::new(PrimaryMetrics::default());
     let primary_channel_metrics = PrimaryChannelMetrics::default();
     let network =
@@ -638,7 +581,6 @@ async fn test_request_vote_already_voted() {
 
     let certificate_store = primary.consensus_config().node_storage().certificate_store.clone();
     let payload_store = primary.consensus_config().node_storage().payload_store.clone();
-    let vote_digest_store = primary.consensus_config().node_storage().vote_digest_store.clone();
 
     let (tx_certificate_fetcher, _rx_certificate_fetcher) = tn_types::test_channel!(1);
     let (tx_new_certificates, _rx_new_certificates) = tn_types::test_channel!(100);
@@ -648,13 +590,7 @@ async fn test_request_vote_already_voted() {
     let (_tx_narwhal_round_updates, rx_narwhal_round_updates) = watch::channel(1u64);
 
     let synchronizer = Arc::new(Synchronizer::new(
-        id,
-        fixture.committee(),
-        worker_cache.clone(),
-        /* gc_depth */ 50,
-        client.clone(),
-        certificate_store.clone(),
-        payload_store.clone(),
+        primary.consensus_config(),
         tx_certificate_fetcher,
         tx_new_certificates,
         tx_parents,
@@ -664,13 +600,8 @@ async fn test_request_vote_already_voted() {
     ));
 
     let handler = PrimaryReceiverHandler::new(
-        id,
-        fixture.committee(),
-        worker_cache.clone(),
+        primary.consensus_config(),
         synchronizer.clone(),
-        signature_service,
-        certificate_store.clone(),
-        vote_digest_store,
         rx_narwhal_round_updates,
         Default::default(),
         metrics.clone(),
@@ -781,21 +712,11 @@ async fn test_fetch_certificates_handler() {
         .randomize_ports(true)
         .committee_size(NonZeroUsize::new(4).unwrap())
         .build();
-    let id = fixture.authorities().next().unwrap().id();
-    let worker_cache = fixture.worker_cache();
     let primary = fixture.authorities().next().unwrap();
-    let signature_service = SignatureService::new(primary.keypair().copy());
     let metrics = Arc::new(PrimaryMetrics::default());
     let primary_channel_metrics = PrimaryChannelMetrics::default();
-    let client = NetworkClient::new_from_keypair(&primary.network_keypair());
 
-    let temp_dir = TempDir::new().unwrap();
-    let db = open_db(temp_dir.path());
-    let (certificate_store, payload_store, vote_digest_store) = (
-        CertificateStore::new(db.clone()),
-        PayloadStore::new(db.clone()),
-        VoteDigestStore::new(db),
-    );
+    let certificate_store = primary.consensus_config().node_storage().certificate_store.clone();
     let (tx_certificate_fetcher, _rx_certificate_fetcher) = tn_types::test_channel!(1);
     let (tx_new_certificates, _rx_new_certificates) = tn_types::test_channel!(100);
     let (tx_parents, _rx_parents) = tn_types::test_channel!(100);
@@ -804,13 +725,7 @@ async fn test_fetch_certificates_handler() {
     let (_tx_narwhal_round_updates, rx_narwhal_round_updates) = watch::channel(1u64);
 
     let synchronizer = Arc::new(Synchronizer::new(
-        id,
-        fixture.committee(),
-        worker_cache.clone(),
-        /* gc_depth */ 50,
-        client,
-        certificate_store.clone(),
-        payload_store.clone(),
+        primary.consensus_config(),
         tx_certificate_fetcher,
         tx_new_certificates,
         tx_parents,
@@ -819,13 +734,8 @@ async fn test_fetch_certificates_handler() {
         &primary_channel_metrics,
     ));
     let handler = PrimaryReceiverHandler::new(
-        id,
-        fixture.committee(),
-        worker_cache.clone(),
+        primary.consensus_config(),
         synchronizer.clone(),
-        signature_service,
-        certificate_store.clone(),
-        vote_digest_store,
         rx_narwhal_round_updates,
         Default::default(),
         metrics.clone(),
@@ -926,20 +836,17 @@ async fn test_request_vote_created_at_in_future() {
         .randomize_ports(true)
         .committee_size(NonZeroUsize::new(4).unwrap())
         .build();
-    let worker_cache = fixture.worker_cache();
     let primary = fixture.authorities().next().unwrap();
     let id = primary.id();
     let author = fixture.authorities().nth(2).unwrap();
-    let signature_service = SignatureService::new(primary.keypair().copy());
     let metrics = Arc::new(PrimaryMetrics::default());
     let primary_channel_metrics = PrimaryChannelMetrics::default();
     let network =
         tn_types::test_utils::test_network(primary.network_keypair(), primary.network_address());
-    let client = NetworkClient::new_from_keypair(&primary.network_keypair());
+    let client = primary.consensus_config().network_client().clone();
 
     let certificate_store = primary.consensus_config().node_storage().certificate_store.clone();
     let payload_store = primary.consensus_config().node_storage().payload_store.clone();
-    let vote_digest_store = primary.consensus_config().node_storage().vote_digest_store.clone();
 
     let (tx_certificate_fetcher, _rx_certificate_fetcher) = tn_types::test_channel!(1);
     let (tx_new_certificates, _rx_new_certificates) = tn_types::test_channel!(100);
@@ -949,13 +856,7 @@ async fn test_request_vote_created_at_in_future() {
     let (_tx_narwhal_round_updates, rx_narwhal_round_updates) = watch::channel(1u64);
 
     let synchronizer = Arc::new(Synchronizer::new(
-        id,
-        fixture.committee(),
-        worker_cache.clone(),
-        /* gc_depth */ 50,
-        client.clone(),
-        certificate_store.clone(),
-        payload_store.clone(),
+        primary.consensus_config(),
         tx_certificate_fetcher,
         tx_new_certificates,
         tx_parents,
@@ -964,13 +865,8 @@ async fn test_request_vote_created_at_in_future() {
         &primary_channel_metrics,
     ));
     let handler = PrimaryReceiverHandler::new(
-        id,
-        fixture.committee(),
-        worker_cache.clone(),
+        primary.consensus_config(),
         synchronizer.clone(),
-        signature_service,
-        certificate_store.clone(),
-        vote_digest_store,
         rx_narwhal_round_updates,
         Default::default(),
         metrics.clone(),
