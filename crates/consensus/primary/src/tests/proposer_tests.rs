@@ -9,9 +9,8 @@ use crate::consensus::LeaderSwapTable;
 use consensus_metrics::spawn_logged_monitored_task;
 use indexmap::IndexMap;
 use narwhal_test_utils::CommitteeFixture;
-use narwhal_typed_store::{mem_db::MemDatabase, open_db};
+use narwhal_typed_store::mem_db::MemDatabase;
 use reth_primitives::B256;
-use tempfile::TempDir;
 use tn_types::{test_utils::fixture_payload, BlockHash, Notifier};
 
 #[tokio::test]
@@ -21,7 +20,6 @@ async fn test_empty_proposal() {
     let committee = fixture.committee();
     let worker_cache = fixture.worker_cache();
     let primary = fixture.authorities().next().unwrap();
-    let name = primary.id();
 
     let mut tx_shutdown = Notifier::new();
     let (_tx_parents, rx_parents) = tn_types::test_channel!(1);
@@ -32,19 +30,8 @@ async fn test_empty_proposal() {
     let (tx_narwhal_round_updates, _rx_narwhal_round_updates) = watch::channel(0u64);
 
     let metrics = Arc::new(PrimaryMetrics::default());
-    let temp_dir = TempDir::new().unwrap();
-    let db = open_db(temp_dir.path());
-
-    // Spawn the proposer.
-    let proposer_store = ProposerStore::new(db);
     let proposer_task = Proposer::new(
-        name,
-        committee.clone(),
-        proposer_store,
-        /* header_num_of_batches_threshold */ 32,
-        /* max_header_num_of_batches */ 100,
-        /* max_header_delay */ Duration::from_millis(20),
-        /* min_header_delay */ Duration::from_millis(20),
+        primary.consensus_config(),
         None, // default fatal timer
         tx_shutdown.subscribe(),
         /* synchronizer */ rx_parents,
@@ -75,7 +62,6 @@ async fn test_propose_payload_fatal_timer() {
     let committee = fixture.committee();
     let worker_cache = fixture.worker_cache();
     let primary = fixture.authorities().next().unwrap();
-    let name = primary.id();
     // long enough for proposer to build but not too long for tests
     let fatal_header_interval = Duration::from_secs(3);
 
@@ -92,18 +78,8 @@ async fn test_propose_payload_fatal_timer() {
     let max_num_of_batches = 10;
 
     // Spawn the proposer.
-    let temp_dir = TempDir::new().unwrap();
-    let proposer_store = ProposerStore::new(open_db(temp_dir.path()));
     let proposer_task = Proposer::new(
-        name,
-        committee.clone(),
-        proposer_store,
-        /* header_num_of_batches_threshold */ 1,
-        /* max_header_num_of_batches */ max_num_of_batches,
-        /* max_header_delay */
-        Duration::from_millis(1_000_000), // Ensure it is not triggered.
-        /* min_header_delay */
-        Duration::from_millis(1_000_000), // Ensure it is not triggered.
+        primary.consensus_config(),
         Some(fatal_header_interval),
         tx_shutdown.subscribe(),
         /* rx_core */ rx_parents,
@@ -222,9 +198,6 @@ async fn test_equivocation_protection_after_restart() {
     let committee = fixture.committee();
     let worker_cache = fixture.worker_cache();
     let primary = fixture.authorities().next().unwrap();
-    let authority_id = primary.id();
-    let temp_dir = TempDir::new().unwrap();
-    let proposer_store = ProposerStore::new(open_db(temp_dir.path()));
 
     let mut tx_shutdown = Notifier::new();
     let (tx_parents, rx_parents) = tn_types::test_channel!(1);
@@ -235,17 +208,15 @@ async fn test_equivocation_protection_after_restart() {
     let (_tx_committed_own_headers, rx_committed_own_headers) = tn_types::test_channel!(1);
     let metrics = Arc::new(PrimaryMetrics::default());
 
+    /* Old comments, note if test gets flakey:
+     max_header_delay
+    Duration::from_secs(1_000), // Ensure it is not triggered.
+     min_header_delay
+    Duration::from_secs(1_000), // Ensure it is not triggered.
+    */
     // Spawn the proposer.
     let proposer_task = Proposer::new(
-        authority_id,
-        committee.clone(),
-        proposer_store.clone(),
-        /* header_num_of_batches_threshold */ 1,
-        /* max_header_num_of_batches */ 10,
-        /* max_header_delay */
-        Duration::from_secs(1_000), // Ensure it is not triggered.
-        /* min_header_delay */
-        Duration::from_secs(1_000), // Ensure it is not triggered.
+        primary.consensus_config(),
         None,
         tx_shutdown.subscribe(),
         /* rx_core */ rx_parents,
@@ -299,15 +270,7 @@ async fn test_equivocation_protection_after_restart() {
     let metrics = Arc::new(PrimaryMetrics::default());
 
     let proposer_task = Proposer::new(
-        authority_id,
-        committee.clone(),
-        proposer_store,
-        /* header_num_of_batches_threshold */ 1,
-        /* max_header_num_of_batches */ 10,
-        /* max_header_delay */
-        Duration::from_millis(1_000_000), // Ensure it is not triggered.
-        /* min_header_delay */
-        Duration::from_millis(1_000_000), // Ensure it is not triggered.
+        primary.consensus_config(),
         None,
         tx_shutdown.subscribe(),
         /* rx_core */ rx_parents,

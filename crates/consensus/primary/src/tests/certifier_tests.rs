@@ -153,7 +153,6 @@ async fn propose_header_and_form_certificate_v2() {
     let (tx_parents, _rx_parents) = tn_types::test_channel!(1);
     let (_tx_consensus_round_updates, rx_consensus_round_updates) =
         watch::channel(ConsensusRound::new(0, 0));
-    let certificate_store = primary.consensus_config().node_storage().certificate_store.clone();
 
     // Create a fake header.
     let proposed_header = primary.header(&committee);
@@ -209,11 +208,8 @@ async fn propose_header_and_form_certificate_v2() {
     ));
 
     let _handle = Certifier::spawn(
-        id,
-        committee.clone(),
-        certificate_store.clone(),
+        primary.consensus_config(),
         synchronizer,
-        primary.consensus_config().key_config().clone(),
         tx_shutdown.subscribe(),
         rx_headers,
         metrics.clone(),
@@ -253,7 +249,6 @@ async fn propose_header_failure() {
     let (tx_parents, _rx_parents) = tn_types::test_channel!(1);
     let (_tx_consensus_round_updates, rx_consensus_round_updates) =
         watch::channel(ConsensusRound::default());
-    let certificate_store = primary.consensus_config().node_storage().certificate_store.clone();
 
     // Create a fake header.
     let proposed_header = primary.header(&committee);
@@ -297,11 +292,8 @@ async fn propose_header_failure() {
     ));
 
     let _handle = Certifier::spawn(
-        authority_id,
-        committee.clone(),
-        certificate_store.clone(),
+        primary.consensus_config(),
         synchronizer,
-        primary.consensus_config().key_config().clone(),
         tx_shutdown.subscribe(),
         rx_headers,
         metrics.clone(),
@@ -354,7 +346,6 @@ async fn run_vote_aggregator_with_param(
     let (tx_parents, _rx_parents) = tn_types::test_channel!(1);
     let (_tx_consensus_round_updates, rx_consensus_round_updates) =
         watch::channel(ConsensusRound::new(0, 0));
-    let certificate_store = primary.consensus_config().node_storage().certificate_store.clone();
 
     // Create a fake header.
     let proposed_header = primary.header(&committee);
@@ -404,11 +395,8 @@ async fn run_vote_aggregator_with_param(
         &primary_channel_metrics,
     ));
     let _handle = Certifier::spawn(
-        id,
-        committee.clone(),
-        certificate_store.clone(),
+        primary.consensus_config(),
         synchronizer,
-        primary.consensus_config().key_config().clone(),
         tx_shutdown.subscribe(),
         rx_headers,
         metrics.clone(),
@@ -452,8 +440,6 @@ async fn test_shutdown_core() {
     let (_tx_consensus_round_updates, rx_consensus_round_updates) =
         watch::channel(ConsensusRound::new(0, 0));
 
-    let certificate_store = primary.consensus_config().node_storage().certificate_store.clone();
-
     // Make a synchronizer for the core.
     let synchronizer = Arc::new(Synchronizer::new(
         primary.consensus_config(),
@@ -476,11 +462,8 @@ async fn test_shutdown_core() {
 
     // Spawn the core.
     let handle = Certifier::spawn(
-        id,
-        committee.clone(),
-        certificate_store.clone(),
+        primary.consensus_config(),
         synchronizer.clone(),
-        primary.consensus_config().key_config().clone(),
         tx_shutdown.subscribe(),
         rx_headers,
         metrics.clone(),

@@ -24,6 +24,7 @@ narwhal-storage = { workspace = true }
 narwhal-network-types = { workspace = true }
 
 tn-types = { workspace = true }
+tn-config = { workspace = true }
 narwhal-network = { workspace = true }
 mockall.workspace = true
 

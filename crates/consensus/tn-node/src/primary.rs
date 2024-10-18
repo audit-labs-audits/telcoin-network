@@ -24,8 +24,8 @@ use reth_evm::{execute::BlockExecutorProvider, ConfigureEvm};
 use std::{sync::Arc, time::Instant};
 use tn_config::ConsensusConfig;
 use tn_types::{
-    AuthorityIdentifier, BlsPublicKey, Certificate, ChainIdentifier, ConsensusOutput, Notifier,
-    Round, DEFAULT_BAD_NODES_STAKE_THRESHOLD,
+    BlsPublicKey, Certificate, ChainIdentifier, ConsensusOutput, Notifier, Round,
+    DEFAULT_BAD_NODES_STAKE_THRESHOLD,
 };
 use tokio::{
     sync::{broadcast, watch, RwLock},
@@ -170,7 +170,6 @@ impl<CDB: ConsensusDatabase> PrimaryNodeInner<CDB> {
 
         let (consensus_handles, leader_schedule) = self
             .spawn_consensus(
-                self.consensus_config.authority().id(),
                 tx_shutdown,
                 rx_new_certificates,
                 tx_committed_certificates.clone(),
@@ -209,7 +208,6 @@ impl<CDB: ConsensusDatabase> PrimaryNodeInner<CDB> {
     #[allow(clippy::too_many_arguments)]
     async fn spawn_consensus(
         &self,
-        authority_id: AuthorityIdentifier,
         tx_shutdown: &mut Notifier,
         rx_new_certificates: metered_channel::Receiver<Certificate>,
         tx_committed_certificates: metered_channel::Sender<(Round, Vec<Certificate>)>,
@@ -291,12 +289,8 @@ impl<CDB: ConsensusDatabase> PrimaryNodeInner<CDB> {
 
         // Spawn the client executing the transactions. It can also synchronize with the
         // subscriber handler if it missed some transactions.
-        //XXXX
         let executor_handle = Executor::spawn(
-            authority_id,
-            self.consensus_config.worker_cache().clone(),
-            self.consensus_config.committee().clone(),
-            self.consensus_config.network_client().clone(),
+            self.consensus_config.clone(),
             tx_shutdown.subscribe(),
             rx_sequence,
             restored_consensus_output,

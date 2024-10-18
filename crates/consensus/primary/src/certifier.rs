@@ -12,6 +12,7 @@ use narwhal_primary_metrics::PrimaryMetrics;
 use narwhal_storage::CertificateStore;
 use narwhal_typed_store::traits::Database;
 use std::{future::Future, pin::pin, sync::Arc, task::Poll, time::Duration};
+use tn_config::{ConsensusConfig, KeyConfig};
 use tn_types::{AuthorityIdentifier, BlsSigner, Committee, Noticer};
 
 use narwhal_network_types::{PrimaryToPrimaryClient, RequestVoteRequest};
@@ -35,7 +36,7 @@ pub mod certifier_tests;
 ///
 /// It receives headers to propose from Proposer via `rx_headers`, and sends out certificates to be
 /// broadcasted by calling `Synchronizer::accept_own_certificate()`.
-pub struct Certifier<DB, BLS> {
+pub struct Certifier<DB> {
     /// The identifier of this primary.
     authority_id: AuthorityIdentifier,
     /// The committee information.
@@ -45,7 +46,7 @@ pub struct Certifier<DB, BLS> {
     /// Handles synchronization with other nodes and our workers.
     synchronizer: Arc<Synchronizer<DB>>,
     /// Service to sign headers.
-    signature_service: BLS,
+    signature_service: KeyConfig,
     /// Receiver for shutdown.
     rx_shutdown: Noticer,
     /// Receives our newly created headers from the `Proposer`.
@@ -64,15 +65,11 @@ pub struct Certifier<DB, BLS> {
     metrics: Arc<PrimaryMetrics>,
 }
 
-impl<DB: Database, BLS: BlsSigner> Certifier<DB, BLS> {
-    #[allow(clippy::too_many_arguments)]
+impl<DB: Database> Certifier<DB> {
     #[must_use]
     pub fn spawn(
-        authority_id: AuthorityIdentifier,
-        committee: Committee,
-        certificate_store: CertificateStore<DB>,
+        config: ConsensusConfig<DB>,
         synchronizer: Arc<Synchronizer<DB>>,
-        signature_service: BLS,
         rx_shutdown: Noticer,
         rx_headers: Receiver<Header>,
         metrics: Arc<PrimaryMetrics>,
@@ -80,13 +77,13 @@ impl<DB: Database, BLS: BlsSigner> Certifier<DB, BLS> {
     ) -> JoinHandle<()> {
         spawn_logged_monitored_task!(
             async move {
-                info!(target: "primary::certifier", "Certifier on node {} has started successfully.", authority_id);
+                info!(target: "primary::certifier", "Certifier on node {} has started successfully.", config.authority().id());
                 Self {
-                    authority_id,
-                    committee,
-                    certificate_store,
+                    authority_id: config.authority().id(),
+                    committee: config.committee().clone(),
+                    certificate_store: config.node_storage().certificate_store.clone(),
                     synchronizer,
-                    signature_service,
+                    signature_service: config.key_config().clone(),
                     rx_shutdown,
                     rx_headers,
                     cancel_proposed_header: None,
@@ -95,7 +92,7 @@ impl<DB: Database, BLS: BlsSigner> Certifier<DB, BLS> {
                     metrics,
                 }
                 .await;
-                info!(target: "primary::certifier", "Certifier on node {} has shutdown.", authority_id);
+                info!(target: "primary::certifier", "Certifier on node {} has shutdown.", config.authority().id());
             },
             "CertifierTask"
         )
@@ -218,7 +215,7 @@ impl<DB: Database, BLS: BlsSigner> Certifier<DB, BLS> {
 
     #[allow(clippy::too_many_arguments)]
     #[instrument(level = "debug", skip_all, fields(header_digest = ?header.digest()))]
-    async fn propose_header(
+    async fn propose_header<BLS: BlsSigner>(
         authority_id: AuthorityIdentifier,
         committee: Committee,
         certificate_store: CertificateStore<DB>,
@@ -325,7 +322,7 @@ impl<DB: Database, BLS: BlsSigner> Certifier<DB, BLS> {
     }
 }
 
-impl<DB: Database, BLS: BlsSigner> Future for Certifier<DB, BLS> {
+impl<DB: Database> Future for Certifier<DB> {
     // Errors are either loggable events or show stoppers so we don't return an error type.
     type Output = ();
 

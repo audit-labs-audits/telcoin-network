@@ -360,13 +360,9 @@ impl Primary {
             tx_shutdown.subscribe(),
         );
 
-        // XXXX
         let core_handle = Certifier::spawn(
-            config.authority().id(),
-            config.committee().clone(),
-            config.node_storage().certificate_store.clone(),
+            config.clone(),
             synchronizer.clone(),
-            config.key_config().clone(),
             tx_shutdown.subscribe(),
             rx_headers,
             metrics.node_metrics.clone(),
@@ -389,15 +385,8 @@ impl Primary {
 
         // When the `Synchronizer` collects enough parent certificates, the `Proposer` generates
         // a new header with new block digests from our workers and sends it to the `Certifier`.
-        // XXXX
         let proposer = Proposer::new(
-            config.authority().id(),
-            config.committee().clone(),
-            config.node_storage().proposer_store.clone(),
-            config.parameters().header_num_of_batches_threshold,
-            config.parameters().max_header_num_of_batches,
-            config.parameters().max_header_delay,
-            config.parameters().min_header_delay,
+            config.clone(),
             None,
             tx_shutdown.subscribe(),
             rx_parents,
