@@ -14,7 +14,7 @@ use tn_types::{Notifier, DEFAULT_BAD_NODES_STAKE_THRESHOLD};
 use std::{collections::BTreeSet, sync::Arc};
 use tokio::sync::watch;
 
-use tn_types::{Certificate, Round};
+use tn_types::Certificate;
 
 #[tokio::test]
 async fn test_recovery() {
@@ -49,7 +49,6 @@ async fn test_recovery() {
 
     let mut tx_shutdown = Notifier::new();
 
-    const GC_DEPTH: Round = 50;
     const NUM_SUB_DAGS_PER_SCHEDULE: u64 = 100;
     let metrics = Arc::new(ConsensusMetrics::default());
     let bullshark = Bullshark::new(
@@ -62,10 +61,7 @@ async fn test_recovery() {
     );
 
     let _consensus_handle = Consensus::spawn(
-        committee,
-        GC_DEPTH,
-        consensus_store.clone(),
-        certificate_store.clone(),
+        config_1,
         tx_shutdown.subscribe(),
         rx_waiter,
         tx_primary,

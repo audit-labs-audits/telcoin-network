@@ -7,8 +7,7 @@
 use super::*;
 
 use crate::consensus::{
-    make_certificate_store, make_consensus_store, Consensus, ConsensusRound,
-    NUM_SUB_DAGS_PER_SCHEDULE,
+    make_consensus_store, Consensus, ConsensusRound, NUM_SUB_DAGS_PER_SCHEDULE,
 };
 #[allow(unused_imports)]
 use fastcrypto::traits::KeyPair;
@@ -17,7 +16,10 @@ use narwhal_typed_store::{mem_db::MemDatabase, open_db};
 #[cfg(test)]
 use std::collections::BTreeSet;
 use std::collections::HashMap;
-use tn_types::{AuthorityIdentifier, Notifier, DEFAULT_BAD_NODES_STAKE_THRESHOLD};
+use tn_config::ConsensusConfig;
+use tn_types::{
+    test_utils::TelcoinTempDirs, AuthorityIdentifier, Notifier, DEFAULT_BAD_NODES_STAKE_THRESHOLD,
+};
 #[allow(unused_imports)]
 use tokio::sync::mpsc::channel;
 use tokio::sync::watch;
@@ -445,9 +447,8 @@ async fn commit_one() {
 
     let mut tx_shutdown = Notifier::new();
 
-    let store = make_consensus_store(open_db(tn_types::test_utils::temp_dir()));
-    let cert_store = make_certificate_store(open_db(tn_types::test_utils::temp_dir()));
-    let gc_depth = 50;
+    let config = fixture.authorities().next().unwrap().consensus_config();
+    let store = config.node_storage().consensus_store.clone();
     let metrics = Arc::new(ConsensusMetrics::default());
 
     let bullshark = Bullshark::new(
@@ -460,10 +461,7 @@ async fn commit_one() {
     );
 
     let _consensus_handle = Consensus::spawn(
-        committee,
-        gc_depth,
-        store,
-        cert_store,
+        config,
         tx_shutdown.subscribe(),
         rx_new_certificates,
         tx_primary,
@@ -524,9 +522,8 @@ async fn dead_node() {
 
     let mut tx_shutdown = Notifier::new();
 
-    let store = make_consensus_store(open_db(tn_types::test_utils::temp_dir()));
-    let cert_store = make_certificate_store(open_db(tn_types::test_utils::temp_dir()));
-    let gc_depth = 50;
+    let config = fixture.authorities().next().unwrap().consensus_config();
+    let store = config.node_storage().consensus_store.clone();
     let metrics = Arc::new(ConsensusMetrics::default());
 
     let bullshark = Bullshark::new(
@@ -539,10 +536,7 @@ async fn dead_node() {
     );
 
     let _consensus_handle = Consensus::spawn(
-        committee,
-        gc_depth,
-        store,
-        cert_store,
+        config,
         tx_shutdown.subscribe(),
         rx_new_certificates,
         tx_primary,
@@ -678,9 +672,8 @@ async fn not_enough_support() {
 
     let mut tx_shutdown = Notifier::new();
 
-    let store = make_consensus_store(open_db(tn_types::test_utils::temp_dir()));
-    let cert_store = make_certificate_store(open_db(tn_types::test_utils::temp_dir()));
-    let gc_depth = 50;
+    let config = fixture.authorities().next().unwrap().consensus_config();
+    let store = config.node_storage().consensus_store.clone();
     let metrics = Arc::new(ConsensusMetrics::default());
 
     let bullshark = Bullshark::new(
@@ -693,10 +686,7 @@ async fn not_enough_support() {
     );
 
     let _consensus_handle = Consensus::spawn(
-        committee,
-        gc_depth,
-        store,
-        cert_store,
+        config,
         tx_shutdown.subscribe(),
         rx_new_certificates,
         tx_primary,
@@ -796,9 +786,8 @@ async fn missing_leader() {
 
     let mut tx_shutdown = Notifier::new();
 
-    let store = make_consensus_store(open_db(tn_types::test_utils::temp_dir()));
-    let cert_store = make_certificate_store(open_db(tn_types::test_utils::temp_dir()));
-    let gc_depth = 50;
+    let config = fixture.authorities().next().unwrap().consensus_config();
+    let store = config.node_storage().consensus_store.clone();
     let metrics = Arc::new(ConsensusMetrics::default());
     let bullshark = Bullshark::new(
         committee.clone(),
@@ -810,10 +799,7 @@ async fn missing_leader() {
     );
 
     let _consensus_handle = Consensus::spawn(
-        committee,
-        gc_depth,
-        store,
-        cert_store,
+        config,
         tx_shutdown.subscribe(),
         rx_new_certificates,
         tx_primary,
@@ -872,8 +858,9 @@ async fn committed_round_after_restart() {
         &ids,
     );
 
-    let store = make_consensus_store(open_db(tn_types::test_utils::temp_dir()));
-    let cert_store = make_certificate_store(open_db(tn_types::test_utils::temp_dir()));
+    let config = fixture.authorities().next().unwrap().consensus_config();
+    let store = config.node_storage().consensus_store.clone();
+    let cert_store = config.node_storage().certificate_store.clone();
 
     for input_round in (1..=11usize).step_by(2) {
         // Spawn consensus and create related channels.
@@ -884,7 +871,6 @@ async fn committed_round_after_restart() {
             watch::channel(ConsensusRound::new(0, 0));
 
         let mut tx_shutdown = Notifier::new();
-        let gc_depth = 50;
         let metrics = Arc::new(ConsensusMetrics::default());
 
         let bullshark = Bullshark::new(
@@ -897,10 +883,7 @@ async fn committed_round_after_restart() {
         );
 
         let handle = Consensus::spawn(
-            committee.clone(),
-            gc_depth,
-            store.clone(),
-            cert_store.clone(),
+            config.clone(),
             tx_shutdown.subscribe(),
             rx_new_certificates,
             tx_primary,
@@ -1143,7 +1126,7 @@ async fn reset_consensus_scores_on_every_schedule_change() {
 /// the leader of round 2. Then shutdown consensus and restart in a new epoch.
 #[tokio::test]
 async fn restart_with_new_committee() {
-    let fixture = CommitteeFixture::builder(MemDatabase::default).build();
+    let mut fixture = CommitteeFixture::builder(MemDatabase::default).build();
     let mut committee: Committee = fixture.committee();
     let ids: Vec<_> = fixture.authorities().map(|a| a.id()).collect();
 
@@ -1157,9 +1140,19 @@ async fn restart_with_new_committee() {
             watch::channel(ConsensusRound::new(0, 0));
 
         let mut tx_shutdown = Notifier::new();
-        let store = make_consensus_store(open_db(tn_types::test_utils::temp_dir()));
-        let cert_store = make_certificate_store(open_db(tn_types::test_utils::temp_dir()));
-        let gc_depth = 50;
+        let config = fixture.authorities().next().unwrap().consensus_config();
+        let config = ConsensusConfig::new_with_committee(
+            config.config().clone(),
+            TelcoinTempDirs::default(),
+            config.node_storage().clone(),
+            config.key_config().clone(),
+            committee.clone(),
+            Some(config.worker_cache().clone()),
+        )
+        .unwrap();
+        let store = config.node_storage().consensus_store.clone();
+        store.clear().unwrap();
+        config.node_storage().certificate_store.clear().unwrap();
         let metrics = Arc::new(ConsensusMetrics::default());
         let bullshark = Bullshark::new(
             committee.clone(),
@@ -1171,10 +1164,7 @@ async fn restart_with_new_committee() {
         );
 
         let handle = Consensus::spawn(
-            committee.clone(),
-            gc_depth,
-            store,
-            cert_store,
+            config,
             tx_shutdown.subscribe(),
             rx_new_certificates,
             tx_primary,
@@ -1234,7 +1224,8 @@ async fn restart_with_new_committee() {
         assert_eq!(output.round(), 2);
 
         // Move to the next epoch.
-        committee = committee.advance_epoch(epoch + 1);
+        committee = committee.advance_epoch_for_test(epoch + 1);
+        fixture.update_committee(committee.clone());
         tx_shutdown.notify();
 
         // Ensure consensus stopped.

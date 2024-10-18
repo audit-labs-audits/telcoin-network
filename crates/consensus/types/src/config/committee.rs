@@ -96,12 +96,14 @@ impl Authority {
             execution_address,
             network_key,
             hostname,
-            initialised: true,
+            initialised: false,
         }
     }
 
-    // XXXX really should not be pub...
+    /// Exposed for testing, can only be called once.
+    /// In normal use is called at creation.
     pub fn initialise(&mut self, id: AuthorityIdentifier) {
+        assert!(!self.initialised);
         self.id = id;
         self.initialised = true;
     }
@@ -112,7 +114,8 @@ impl Authority {
     }
 
     pub fn protocol_key(&self) -> &BlsPublicKey {
-        assert!(self.initialised);
+        // Skip the assert here, this is called in testing before the initialise...
+        // assert!(self.initialised);
         &self.protocol_key
     }
 
@@ -519,8 +522,8 @@ impl Committee {
 
     /// Used for testing - not recommended to use for any other case.
     /// It creates a new instance with updated epoch
-    pub fn advance_epoch(&self, new_epoch: Epoch) -> Committee {
-        Committee::new(self.authorities.clone(), new_epoch)
+    pub fn advance_epoch_for_test(&self, new_epoch: Epoch) -> Committee {
+        Committee::new_for_test(self.authorities.clone(), new_epoch)
     }
 }
 

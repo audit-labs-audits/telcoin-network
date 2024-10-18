@@ -278,12 +278,8 @@ impl<CDB: ConsensusDatabase> PrimaryNodeInner<CDB> {
             leader_schedule.clone(),
             DEFAULT_BAD_NODES_STAKE_THRESHOLD,
         );
-        //XXXX
         let consensus_handle = Consensus::spawn(
-            self.consensus_config.committee().clone(),
-            self.consensus_config.config().parameters.gc_depth,
-            self.consensus_config.node_storage().consensus_store.clone(),
-            self.consensus_config.node_storage().certificate_store.clone(),
+            self.consensus_config.clone(),
             tx_shutdown.subscribe(),
             rx_new_certificates,
             tx_committed_certificates,

@@ -134,4 +134,8 @@ impl<DB: Database> CommitteeFixture<DB> {
             self.votes(header).into_iter().map(|x| (x.author(), x.signature().clone())).collect();
         Certificate::new_unverified(&committee, header.clone(), votes).unwrap()
     }
+
+    pub fn update_committee(&mut self, committee: Committee) {
+        self.committee = committee;
+    }
 }
