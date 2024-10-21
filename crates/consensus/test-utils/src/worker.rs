@@ -104,7 +104,7 @@ impl WorkerFixture {
     where
         P: FnMut(&str) -> u16,
     {
-        let worker_name = key_config.worker_network_keypair().public().clone();
+        let worker_name = key_config.worker_network_public_key();
         let host = "127.0.0.1";
         let worker_address = format!("/ip4/{}/udp/{}", host, get_port(host)).parse().unwrap();
         let transactions = format!("/ip4/{}/tcp/{}/http", host, get_port(host)).parse().unwrap();

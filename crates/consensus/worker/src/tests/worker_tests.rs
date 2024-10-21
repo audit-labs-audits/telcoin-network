@@ -16,7 +16,7 @@ use narwhal_typed_store::mem_db::MemDatabase;
 use prometheus::Registry;
 use tempfile::TempDir;
 use tn_block_validator::NoopBlockValidator;
-use tn_types::{ChainIdentifier, WorkerBlock};
+use tn_types::WorkerBlock;
 use tokio::sync::watch;
 
 // A test validator that rejects every batch
@@ -349,7 +349,6 @@ async fn get_network_peers_from_admin_server() {
     // Spawn Primary 1
     Primary::spawn(
         config_1.clone(),
-        ChainIdentifier::unknown(),
         tx_new_certificates,
         rx_feedback,
         rx_consensus_round_updates,
@@ -425,7 +424,6 @@ async fn get_network_peers_from_admin_server() {
     // Spawn Primary 2
     Primary::spawn(
         config_2.clone(),
-        ChainIdentifier::unknown(),
         tx_new_certificates_2,
         rx_feedback_2,
         rx_consensus_round_updates,

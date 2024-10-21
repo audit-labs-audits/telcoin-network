@@ -58,7 +58,7 @@ pub struct Worker<DB> {
 
 impl<DB: Database> Worker<DB> {
     pub fn new(id: WorkerId, consensus_config: ConsensusConfig<DB>) -> Self {
-        let worker_name = consensus_config.key_config().worker_network_keypair().public().clone();
+        let worker_name = consensus_config.key_config().worker_network_public_key();
         let worker_peer_id = PeerId(worker_name.0.to_bytes());
         info!("Boot worker node with id {} peer id {}", id, worker_peer_id,);
 
@@ -120,8 +120,7 @@ impl<DB: Database> Worker<DB> {
         metrics: Metrics,
         tx_shutdown: &mut Notifier,
     ) -> (Vec<JoinHandle<()>>, BlockProvider<DB, QuorumWaiter>) {
-        let worker_name =
-            self.consensus_config.key_config().worker_network_keypair().public().clone();
+        let worker_name = self.consensus_config.key_config().worker_network_public_key();
         let worker_peer_id = PeerId(worker_name.0.to_bytes());
         info!("Boot worker node with id {} peer id {}", self.id, worker_peer_id,);
 

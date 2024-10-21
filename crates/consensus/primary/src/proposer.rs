@@ -136,8 +136,6 @@ pub struct Proposer<DB: Database> {
     rx_parents: Receiver<(Vec<Certificate>, Round)>,
     /// Receives the batches' digests from our workers.
     rx_our_digests: Receiver<OurDigestMessage>,
-    /// Receives system messages to include in the next header.
-    rx_system_messages: Receiver<SystemMessage>,
     /// Sends newly created headers to the `Certifier`.
     tx_headers: Sender<Header>,
     /// The proposer store for persisting the last header.
@@ -192,7 +190,6 @@ impl<DB: Database + 'static> Proposer<DB> {
         rx_shutdown: Noticer,
         rx_parents: Receiver<(Vec<Certificate>, Round)>,
         rx_our_digests: Receiver<OurDigestMessage>,
-        rx_system_messages: Receiver<SystemMessage>,
         tx_headers: Sender<Header>,
         tx_narwhal_round_updates: watch::Sender<Round>,
         rx_committed_own_headers: Receiver<(Round, Vec<Round>)>,
@@ -222,7 +219,6 @@ impl<DB: Database + 'static> Proposer<DB> {
             rx_shutdown,
             rx_parents,
             rx_our_digests,
-            rx_system_messages,
             tx_headers,
             tx_narwhal_round_updates,
             proposer_store: config.node_storage().proposer_store.clone(),
@@ -861,12 +857,6 @@ where
             if pin!(&this.rx_shutdown).poll(cx).is_ready() {
                 warn!(target: "primary::proposer", authority=?this.authority_id, round=this.round, "received shutdown signal...");
                 return Poll::Ready(Ok(()));
-            }
-
-            // check for new system messages
-            if let Poll::Ready(Some(msg)) = this.rx_system_messages.poll_recv(cx) {
-                debug!(target: "primary::proposer", authority=?this.authority_id, round=this.round, "received system message");
-                this.system_messages.push(msg);
             }
 
             // check for new digests from workers and send ack back to worker

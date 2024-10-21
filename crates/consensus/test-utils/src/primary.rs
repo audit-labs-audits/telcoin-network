@@ -7,7 +7,7 @@ use narwhal_typed_store::traits::Database;
 use std::{cell::RefCell, rc::Rc, sync::Arc};
 use tn_config::ConsensusConfig;
 use tn_node::primary::PrimaryNode;
-use tn_types::{AuthorityIdentifier, ChainIdentifier, ConsensusOutput};
+use tn_types::{AuthorityIdentifier, ConsensusOutput};
 use tokio::{
     sync::broadcast::{self},
     task::JoinHandle,
@@ -54,7 +54,7 @@ impl<DB: Database> PrimaryNodeDetails<DB> {
             panic!("Tried to start a node that is already running");
         }
 
-        self.node.start(ChainIdentifier::unknown(), execution_components).await?;
+        self.node.start(execution_components).await?;
 
         // return receiver for execution engine
         Ok(())

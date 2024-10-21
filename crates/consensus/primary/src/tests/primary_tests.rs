@@ -28,8 +28,8 @@ use std::{
 };
 use tn_block_validator::NoopBlockValidator;
 use tn_types::{
-    now, test_utils::make_optimal_signed_certificates, AuthorityIdentifier, Certificate,
-    ChainIdentifier, Committee, Notifier, SignatureVerificationState,
+    now, test_utils::make_optimal_signed_certificates, AuthorityIdentifier, Certificate, Committee,
+    Notifier, SignatureVerificationState,
 };
 use tokio::{sync::watch, time::timeout};
 
@@ -68,7 +68,6 @@ async fn test_get_network_peers_from_admin_server() {
     // Spawn Primary 1
     Primary::spawn(
         config_1.clone(),
-        ChainIdentifier::unknown(),
         tx_new_certificates,
         rx_feedback,
         rx_consensus_round_updates,
@@ -161,7 +160,6 @@ async fn test_get_network_peers_from_admin_server() {
     // Spawn Primary 2
     Primary::spawn(
         config_2,
-        ChainIdentifier::unknown(),
         /* tx_consensus */ tx_new_certificates_2,
         /* rx_consensus */ rx_feedback_2,
         rx_consensus_round_updates,

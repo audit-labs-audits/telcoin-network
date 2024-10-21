@@ -25,7 +25,6 @@ async fn test_empty_proposal() {
     let (_tx_parents, rx_parents) = tn_types::test_channel!(1);
     let (_tx_committed_own_headers, rx_committed_own_headers) = tn_types::test_channel!(1);
     let (_tx_our_digests, rx_our_digests) = tn_types::test_channel!(1);
-    let (_tx_system_messages, rx_system_messages) = tn_types::test_channel!(1);
     let (tx_headers, mut rx_headers) = tn_types::test_channel!(1);
     let (tx_narwhal_round_updates, _rx_narwhal_round_updates) = watch::channel(0u64);
 
@@ -36,7 +35,6 @@ async fn test_empty_proposal() {
         tx_shutdown.subscribe(),
         /* synchronizer */ rx_parents,
         /* rx_workers */ rx_our_digests,
-        rx_system_messages,
         /* tx_synchronizer */ tx_headers,
         tx_narwhal_round_updates,
         rx_committed_own_headers,
@@ -68,7 +66,6 @@ async fn test_propose_payload_fatal_timer() {
     let mut tx_shutdown = Notifier::new();
     let (tx_parents, rx_parents) = tn_types::test_channel!(1);
     let (tx_our_digests, rx_our_digests) = tn_types::test_channel!(1);
-    let (_tx_system_messages, rx_system_messages) = tn_types::test_channel!(1);
     let (_tx_committed_own_headers, rx_committed_own_headers) = tn_types::test_channel!(1);
     let (tx_headers, mut rx_headers) = tn_types::test_channel!(1);
     let (tx_narwhal_round_updates, _rx_narwhal_round_updates) = watch::channel(0u64);
@@ -84,7 +81,6 @@ async fn test_propose_payload_fatal_timer() {
         tx_shutdown.subscribe(),
         /* rx_core */ rx_parents,
         /* rx_workers */ rx_our_digests,
-        rx_system_messages,
         /* tx_synchronizer */ tx_headers.clone(),
         tx_narwhal_round_updates,
         rx_committed_own_headers,
@@ -202,7 +198,6 @@ async fn test_equivocation_protection_after_restart() {
     let mut tx_shutdown = Notifier::new();
     let (tx_parents, rx_parents) = tn_types::test_channel!(1);
     let (tx_our_digests, rx_our_digests) = tn_types::test_channel!(1);
-    let (_tx_system_messages, rx_system_messages) = tn_types::test_channel!(1);
     let (tx_headers, mut rx_headers) = tn_types::test_channel!(1);
     let (tx_narwhal_round_updates, _rx_narwhal_round_updates) = watch::channel(0u64);
     let (_tx_committed_own_headers, rx_committed_own_headers) = tn_types::test_channel!(1);
@@ -221,7 +216,6 @@ async fn test_equivocation_protection_after_restart() {
         tx_shutdown.subscribe(),
         /* rx_core */ rx_parents,
         /* rx_workers */ rx_our_digests,
-        rx_system_messages,
         /* tx_synchronizer */ tx_headers,
         tx_narwhal_round_updates,
         rx_committed_own_headers,
@@ -263,7 +257,6 @@ async fn test_equivocation_protection_after_restart() {
     let mut tx_shutdown = Notifier::new();
     let (tx_parents, rx_parents) = tn_types::test_channel!(1);
     let (tx_our_digests, rx_our_digests) = tn_types::test_channel!(1);
-    let (_tx_system_messages, rx_system_messages) = tn_types::test_channel!(1);
     let (tx_headers, mut rx_headers) = tn_types::test_channel!(1);
     let (tx_narwhal_round_updates, _rx_narwhal_round_updates) = watch::channel(0u64);
     let (_tx_committed_own_headers, rx_committed_own_headers) = tn_types::test_channel!(1);
@@ -275,7 +268,6 @@ async fn test_equivocation_protection_after_restart() {
         tx_shutdown.subscribe(),
         /* rx_core */ rx_parents,
         /* rx_workers */ rx_our_digests,
-        rx_system_messages,
         /* tx_synchronizer */ tx_headers,
         tx_narwhal_round_updates,
         rx_committed_own_headers,
