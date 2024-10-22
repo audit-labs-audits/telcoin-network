@@ -8,8 +8,6 @@ pub mod cluster;
 mod execution;
 mod primary;
 mod worker;
-// #[cfg(test)]
-mod genesis_tests;
 pub use execution::{
     default_test_execution_node, execution_builder, faucet_test_execution_node, CommandParser,
     TestExecutionNode,
