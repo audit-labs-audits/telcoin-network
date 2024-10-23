@@ -8,7 +8,7 @@ use itertools::Itertools;
 use narwhal_typed_store::traits::Database;
 use reth::tasks::TaskExecutor;
 use std::{collections::HashMap, time::Duration};
-use tn_types::{Committee, ConsensusOutput, Parameters, WorkerId};
+use tn_types::{Committee, ConsensusOutput, WorkerId};
 use tokio::sync::broadcast;
 use tracing::info;
 
@@ -21,8 +21,6 @@ pub struct Cluster<DB> {
     fixture: CommitteeFixture<DB>,
     authorities: HashMap<usize, AuthorityDetails<DB>>,
     pub committee: Committee,
-    #[allow(dead_code)]
-    parameters: Parameters,
 }
 
 impl<DB> Cluster<DB>
@@ -35,13 +33,12 @@ where
     ///
     /// Fields passed in via Parameters will be used, expect specified ports which have to be
     /// different for each instance. If None, the default Parameters will be used.
-    pub fn new<F>(parameters: Option<Parameters>, executor: TaskExecutor, new_db: F) -> Self
+    pub fn new<F>(executor: TaskExecutor, new_db: F) -> Self
     where
         F: Fn() -> DB,
     {
         let fixture = CommitteeFixture::builder(new_db).randomize_ports(true).build();
         let committee = fixture.committee();
-        let params = parameters.unwrap_or_else(Self::parameters);
 
         info!("###### Creating new cluster ######");
         info!("Validator keys:");
@@ -67,7 +64,7 @@ where
             nodes.insert(id, authority);
         }
 
-        Self { fixture, authorities: nodes, committee, parameters: params }
+        Self { fixture, authorities: nodes, committee }
     }
 
     /// Starts a cluster by the defined number of authorities. The authorities
@@ -144,7 +141,7 @@ where
             .unwrap_or_else(|| panic!("Authority with id {} not found", id));
 
         // start the primary
-        authority.start_primary(preserve_store).await?;
+        authority.start_primary().await?;
 
         // start the workers
         if let Some(workers) = workers_per_authority {
@@ -243,10 +240,6 @@ where
         }
 
         authorities_latest_commit
-    }
-
-    fn parameters() -> Parameters {
-        Parameters { max_worker_tx_bytes_size: 200, ..Parameters::default() }
     }
 
     /// Subscribe to [ConsensusOutput] broadcast.

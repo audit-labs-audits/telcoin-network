@@ -74,9 +74,15 @@ pub type DefaultHashFunction = Blake2b256;
 pub const DIGEST_LENGTH: usize = DefaultHashFunction::OUTPUT_SIZE;
 pub const INTENT_MESSAGE_LENGTH: usize = INTENT_PREFIX_LENGTH + DIGEST_LENGTH;
 
+/// Trait to implement Bls key signing.  This allows us to maintain private keys in a
+/// secure enclave and provide a signing service.
 pub trait BlsSigner: Clone + Send + Sync + Unpin + 'static {
+    /// Sync version to sign something with a BLS private key.
     fn request_signature_direct(&self, msg: &[u8]) -> BlsSignature;
 
+    /// Request a signature asyncronisly.
+    /// Note: used the de-sugared signature here (instead of async fn request_signature...)
+    /// due to current async trait limitations and the need for + Send.
     fn request_signature(&self, msg: Vec<u8>) -> impl Future<Output = BlsSignature> + Send {
         let (sender, receiver): (oneshot::Sender<_>, oneshot::Receiver<_>) = oneshot::channel();
         let this = self.clone();

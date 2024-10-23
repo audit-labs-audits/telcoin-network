@@ -19,7 +19,7 @@ async fn test_restore_from_disk() {
 
     let manager = TaskManager::current();
     let executor = manager.executor();
-    let mut cluster = Cluster::new(None, executor, MemDatabase::default);
+    let mut cluster = Cluster::new(executor, MemDatabase::default);
 
     // start the cluster
     cluster.start(Some(4), Some(1), None).await;
@@ -88,7 +88,7 @@ async fn test_read_causal_signed_certificates() {
 
     let manager = TaskManager::current();
     let executor = manager.executor();
-    let mut cluster = Cluster::new(None, executor, MemDatabase::default);
+    let mut cluster = Cluster::new(executor, MemDatabase::default);
 
     // start the cluster
     cluster.start(Some(4), Some(1), None).await;

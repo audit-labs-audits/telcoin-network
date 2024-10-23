@@ -2,6 +2,8 @@
 // Copyright (c) Mysten Labs, Inc.
 // SPDX-License-Identifier: Apache-2.0
 
+//! NOTE: tests for this module are in test-utils storage_tests.rs to avoid circular dependancies.
+
 use fastcrypto::hash::Hash;
 use std::{
     cmp::{max, Ordering},

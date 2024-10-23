@@ -150,14 +150,6 @@ async fn test_consensus_recovery_with_bullshark() {
     let (tx_consensus_round_updates, _rx_consensus_round_updates) =
         watch::channel(ConsensusRound::default());
 
-    // In case the DB dir does not yet exist.
-    /*let temp_dir = TempDir::new().unwrap();
-    let _ = std::fs::create_dir_all(temp_dir.path());
-    let db = open_db(temp_dir.path());
-    let storage = NodeStorage::reopen(db);
-
-    let consensus_store = storage.consensus_store;
-    let certificate_store = storage.certificate_store;*/
     consensus_store.clear().unwrap();
     certificate_store.clear().unwrap();
 

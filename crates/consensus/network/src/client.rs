@@ -49,7 +49,7 @@ impl std::fmt::Debug for Inner {
 
 impl NetworkClient {
     const GET_CLIENT_RETRIES: usize = 50;
-    const GET_CLIENT_INTERVAL: Duration = Duration::from_millis(1000);
+    const GET_CLIENT_INTERVAL: Duration = Duration::from_millis(300);
 
     pub fn new(primary_peer_id: PeerId) -> Self {
         Self {

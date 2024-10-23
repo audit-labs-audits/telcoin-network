@@ -22,7 +22,6 @@ tracing = { workspace = true }
 once_cell = { workspace = true }
 
 fastcrypto = { workspace = true }
-#narwhal-executor = { workspace = true }
 narwhal-network = { workspace = true }
 narwhal-network-types = { workspace = true }
 tn-node = { workspace = true }

@@ -1,4 +1,8 @@
+// Copyright (c) Telcoin, LLC
+// SPDX-License-Identifier: Apache-2.0
+
 //! The ouput from consensus (bullshark)
+//! See test_utils output_tests.rs for this modules tests.
 
 use crate::{
     crypto, encode, Certificate, CertificateDigest, ReputationScores, Round, SequenceNumber,
