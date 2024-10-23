@@ -200,11 +200,13 @@ async fn fetch_certificates_v1_basic() {
         }));
     let fake_server_network = anemo::Network::bind(fake_primary_addr.clone())
         .server_name("narwhal")
-        .private_key(fake_primary.network_keypair().copy().private().0.to_bytes())
+        .private_key(fake_primary.primary_network_keypair().copy().private().0.to_bytes())
         .start(fake_route)
         .unwrap();
-    let client_network =
-        tn_types::test_utils::test_network(primary.network_keypair(), primary.network_address());
+    let client_network = tn_types::test_utils::test_network(
+        primary.primary_network_keypair(),
+        primary.network_address(),
+    );
     client_network
         .connect_with_peer_id(fake_primary_addr, fake_server_network.peer_id())
         .await

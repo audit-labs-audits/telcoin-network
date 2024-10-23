@@ -16,7 +16,7 @@ use narwhal_typed_store::mem_db::MemDatabase;
 use prometheus::Registry;
 use tempfile::TempDir;
 use tn_block_validator::NoopBlockValidator;
-use tn_types::{ChainIdentifier, WorkerBlock};
+use tn_types::WorkerBlock;
 use tokio::sync::watch;
 
 // A test validator that rejects every batch
@@ -42,7 +42,7 @@ impl BlockValidation for NilBatchValidator {
 //     let my_primary = fixture.authorities().next().unwrap();
 //     let myself = my_primary.worker(worker_id);
 //     let public_key = my_primary.public_key();
-//     let client = NetworkClient::new_from_keypair(&my_primary.network_keypair());
+//     let client = NetworkClient::new_from_keypair(&my_primary.primary_network_keypair());
 
 //     let parameters = Parameters {
 //         max_worker_tx_bytes_size: 200, // Two transactions.
@@ -115,7 +115,7 @@ impl BlockValidation for NilBatchValidator {
 //     let my_primary = fixture.authorities().next().unwrap();
 //     let myself = my_primary.worker(worker_id);
 //     let authority_public_key = my_primary.public_key();
-//     let client = NetworkClient::new_from_keypair(&my_primary.network_keypair());
+//     let client = NetworkClient::new_from_keypair(&my_primary.primary_network_keypair());
 
 //     let parameters = Parameters {
 //         max_worker_tx_bytes_size: 200, // Two transactions.
@@ -223,7 +223,7 @@ impl BlockValidation for NilBatchValidator {
 //     let my_primary = fixture.authorities().next().unwrap();
 //     let myself = my_primary.worker(worker_id);
 //     let authority_public_key = my_primary.public_key();
-//     let client = NetworkClient::new_from_keypair(&my_primary.network_keypair());
+//     let client = NetworkClient::new_from_keypair(&my_primary.primary_network_keypair());
 
 //     let parameters = Parameters {
 //         max_worker_tx_bytes_size: 200, // Two transactions.
@@ -349,7 +349,6 @@ async fn get_network_peers_from_admin_server() {
     // Spawn Primary 1
     Primary::spawn(
         config_1.clone(),
-        ChainIdentifier::unknown(),
         tx_new_certificates,
         rx_feedback,
         rx_consensus_round_updates,
@@ -371,7 +370,8 @@ async fn get_network_peers_from_admin_server() {
     let worker = Worker::new(worker_id, config_1);
     worker.spawn(NoopBlockValidator, metrics_1.clone(), &mut tx_shutdown);
 
-    let primary_1_peer_id = Hex::encode(authority_1.network_keypair().copy().public().0.as_bytes());
+    let primary_1_peer_id =
+        Hex::encode(authority_1.primary_network_keypair().copy().public().0.as_bytes());
     let worker_1_peer_id = Hex::encode(worker_1_keypair.copy().public().0.as_bytes());
 
     // Wait for tasks to start
@@ -425,7 +425,6 @@ async fn get_network_peers_from_admin_server() {
     // Spawn Primary 2
     Primary::spawn(
         config_2.clone(),
-        ChainIdentifier::unknown(),
         tx_new_certificates_2,
         rx_feedback_2,
         rx_consensus_round_updates,
@@ -452,7 +451,8 @@ async fn get_network_peers_from_admin_server() {
     // have  a chance to connect to each other.
     tokio::time::sleep(Duration::from_secs(5)).await;
 
-    let primary_2_peer_id = Hex::encode(authority_2.network_keypair().copy().public().0.as_bytes());
+    let primary_2_peer_id =
+        Hex::encode(authority_2.primary_network_keypair().copy().public().0.as_bytes());
     let worker_2_peer_id = Hex::encode(worker_2_keypair.copy().public().0.as_bytes());
 
     // Test getting all known peers for worker 2 (worker at index 0 for primary 2)

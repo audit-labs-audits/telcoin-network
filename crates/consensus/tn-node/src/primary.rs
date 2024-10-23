@@ -6,7 +6,7 @@
 use crate::{engine::ExecutionNode, error::NodeError, try_join_all, FuturesUnordered};
 use anemo::PeerId;
 use consensus_metrics::metered_channel;
-use fastcrypto::traits::{KeyPair as _, VerifyingKey};
+use fastcrypto::traits::VerifyingKey;
 use narwhal_executor::{get_restored_consensus_output, Executor, SubscriberResult};
 use narwhal_primary::{
     consensus::{
@@ -24,8 +24,7 @@ use reth_evm::{execute::BlockExecutorProvider, ConfigureEvm};
 use std::{sync::Arc, time::Instant};
 use tn_config::ConsensusConfig;
 use tn_types::{
-    BlsPublicKey, Certificate, ChainIdentifier, ConsensusOutput, Notifier, Round,
-    DEFAULT_BAD_NODES_STAKE_THRESHOLD,
+    BlsPublicKey, Certificate, ConsensusOutput, Notifier, Round, DEFAULT_BAD_NODES_STAKE_THRESHOLD,
 };
 use tokio::{
     sync::{broadcast, watch, RwLock},
@@ -59,11 +58,9 @@ impl<CDB: ConsensusDatabase> PrimaryNodeInner<CDB> {
 
     /// Starts the primary node with the provided info. If the node is already running then this
     /// method will return an error instead.
-    #[allow(clippy::too_many_arguments)]
     #[instrument(name = "primary_node", skip_all)]
     async fn start<DB, Evm, CE>(
         &mut self,
-        chain: ChainIdentifier,
         // Execution components needed to spawn the EL Executor
         execution_components: &ExecutionNode<DB, Evm, CE>,
     ) -> eyre::Result<()>
@@ -77,7 +74,7 @@ impl<CDB: ConsensusDatabase> PrimaryNodeInner<CDB> {
         }
 
         self.own_peer_id = Some(PeerId(
-            self.consensus_config.key_config().network_keypair().public().0.to_bytes(),
+            self.consensus_config.key_config().primary_network_public_key().0.to_bytes(),
         ));
 
         // create the channel to send the shutdown signal
@@ -92,7 +89,7 @@ impl<CDB: ConsensusDatabase> PrimaryNodeInner<CDB> {
 
         // spawn primary if not already running
         let primary_handles =
-            self.spawn_primary(chain, &mut tx_shutdown, last_executed_sub_dag_index).await?;
+            self.spawn_primary(&mut tx_shutdown, last_executed_sub_dag_index).await?;
 
         // start engine
         execution_components.start_engine(consensus_output_rx).await?;
@@ -145,10 +142,8 @@ impl<CDB: ConsensusDatabase> PrimaryNodeInner<CDB> {
 
     /// Spawn a new primary. Optionally also spawn the consensus and a client executing
     /// transactions.
-    #[allow(clippy::too_many_arguments)]
     pub async fn spawn_primary(
         &self,
-        chain: ChainIdentifier,
         // The channel to send the shutdown signal
         tx_shutdown: &mut Notifier,
         // Used for recovering after crashes/restarts
@@ -186,7 +181,6 @@ impl<CDB: ConsensusDatabase> PrimaryNodeInner<CDB> {
         // Spawn the primary.
         let primary_handles = Primary::spawn(
             self.consensus_config.clone(),
-            chain,
             tx_new_certificates,
             rx_committed_certificates,
             rx_consensus_round_updates,
@@ -339,7 +333,6 @@ impl<CDB: ConsensusDatabase> PrimaryNode<CDB> {
 
     pub async fn start<DB, Evm, CE>(
         &self,
-        chain: ChainIdentifier,
         // Execution components needed to spawn the EL Executor
         execution_components: &ExecutionNode<DB, Evm, CE>,
     ) -> eyre::Result<()>
@@ -350,7 +343,7 @@ impl<CDB: ConsensusDatabase> PrimaryNode<CDB> {
         CDB: ConsensusDatabase,
     {
         let mut guard = self.internal.write().await;
-        guard.start(chain, execution_components).await
+        guard.start(execution_components).await
     }
 
     pub async fn shutdown(&self) {

@@ -16,8 +16,8 @@ use std::{
 };
 use tn_config::KeyConfig;
 use tn_types::{
-    traits::KeyPair, utils::get_available_tcp_port, Authority, Committee, Epoch, Multiaddr, Stake,
-    WorkerCache, WorkerIndex,
+    traits::KeyPair, utils::get_available_tcp_port, Authority, BlsKeypair, Committee, Epoch,
+    Multiaddr, Stake, WorkerCache, WorkerIndex,
 };
 
 pub struct Builder<DB, F, R = OsRng> {
@@ -107,7 +107,9 @@ where
         let mut authorities = BTreeMap::new();
         // Pass 1 to make the authorities so we can make the committee struct we need later.
         for i in 0..committee_size {
-            let key_config = KeyConfig::with_random(&mut rng);
+            let primary_keypair = BlsKeypair::generate(&mut rng);
+            let key_config =
+                KeyConfig::with_primary_random_networks(primary_keypair.copy(), &mut rng);
             let host = "127.0.0.1";
             let port = if self.randomize_ports {
                 get_available_tcp_port(host).unwrap_or_default()
@@ -118,26 +120,32 @@ where
                 format!("/ip4/{host}/udp/{port}").parse().unwrap();
             let authority = Authority::new_for_test(
                 (i as u16).into(),
-                key_config.bls_keypair().public().clone(),
+                key_config.primary_public_key(),
                 *self.stake.get(i).unwrap_or(&1),
                 primary_network_address,
                 Address::random_with(&mut rng),
-                key_config.network_keypair().public().clone(),
+                key_config.primary_network_public_key(),
                 format!("authority{i}"),
             );
-            authorities.insert(authority.protocol_key().clone(), (key_config, authority.clone()));
+            authorities.insert(
+                authority.protocol_key().clone(),
+                (primary_keypair, key_config, authority.clone()),
+            );
         }
         // Reset the authority ids so they are in sort order.  Some tests require this.
-        for (i, (_, (key_config, authority))) in authorities.iter_mut().enumerate() {
+        for (i, (_, (primary_keypair, key_config, authority))) in authorities.iter_mut().enumerate()
+        {
             authority.initialise((i as u16).into());
-            committee_info.push((key_config.clone(), authority.clone()));
+            committee_info.push((primary_keypair.copy(), key_config.clone(), authority.clone()));
         }
         // Make the committee so we can give it the AuthorityFixtures below.
-        let committee =
-            Committee::new_for_test(authorities.into_iter().map(|(k, (_, a))| (k, a)).collect(), 0);
+        let committee = Committee::new_for_test(
+            authorities.into_iter().map(|(k, (_, _, a))| (k, a)).collect(),
+            0,
+        );
         let mut authorities: Vec<AuthorityFixture<DB>> = committee_info
             .into_iter()
-            .map(|(key_config, authority)| {
+            .map(|(primary_keypair, key_config, authority)| {
                 AuthorityFixture::generate(
                     self.number_of_workers,
                     |host| {
@@ -148,6 +156,7 @@ where
                         }
                     },
                     authority,
+                    primary_keypair,
                     key_config,
                     committee.clone(),
                     (self.new_db)(),
@@ -159,7 +168,7 @@ where
         // via the committee.authorities() or via the fixture.authorities() we'll get the
         // same order.
         // These are probably already sorted but this does not hurt and the comment is helpful.
-        authorities.sort_by_key(|a1| a1.public_key());
+        authorities.sort_by_key(|a1| a1.primary_public_key());
 
         // Build our worker cache.  This is map of authorities to it's worker (one per authority).
         let worker_cache = WorkerCache {
@@ -169,7 +178,7 @@ where
                 .map(|a| {
                     let mut worker_index = BTreeMap::new();
                     worker_index.insert(0, a.worker().info().clone());
-                    (a.public_key(), WorkerIndex(worker_index.clone()))
+                    (a.primary_public_key(), WorkerIndex(worker_index.clone()))
                 })
                 .collect(),
         };

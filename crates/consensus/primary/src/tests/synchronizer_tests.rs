@@ -32,11 +32,11 @@ async fn accept_certificates() {
     let fixture = CommitteeFixture::builder(MemDatabase::default).randomize_ports(true).build();
     let committee = fixture.committee();
     let primary = fixture.authorities().last().unwrap();
-    let network_key = primary.network_keypair().copy().private().0.to_bytes();
+    let network_key = primary.primary_network_keypair().copy().private().0.to_bytes();
     let authority_id = primary.id();
     let metrics = Arc::new(PrimaryMetrics::default());
     let primary_channel_metrics = PrimaryChannelMetrics::default();
-    let client = NetworkClient::new_from_keypair(&primary.network_keypair());
+    let client = NetworkClient::new_from_keypair(&primary.primary_network_keypair());
 
     let (tx_certificate_fetcher, _rx_certificate_fetcher) = tn_types::test_channel!(1);
     let (tx_new_certificates, mut rx_new_certificates) = tn_types::test_channel!(3);
@@ -192,8 +192,8 @@ async fn synchronizer_recover_basic() {
     let fixture = CommitteeFixture::builder(MemDatabase::default).randomize_ports(true).build();
     let committee = fixture.committee();
     let primary = fixture.authorities().last().unwrap();
-    let client = NetworkClient::new_from_keypair(&primary.network_keypair());
-    let network_key = primary.network_keypair().copy().private().0.to_bytes();
+    let client = NetworkClient::new_from_keypair(&primary.primary_network_keypair());
+    let network_key = primary.primary_network_keypair().copy().private().0.to_bytes();
     let name = primary.id();
     let metrics = Arc::new(PrimaryMetrics::default());
     let primary_channel_metrics = PrimaryChannelMetrics::default();
@@ -278,8 +278,8 @@ async fn synchronizer_recover_partial_certs() {
     let fixture = CommitteeFixture::builder(MemDatabase::default).randomize_ports(true).build();
     let committee = fixture.committee();
     let primary = fixture.authorities().last().unwrap();
-    let client = NetworkClient::new_from_keypair(&primary.network_keypair());
-    let network_key = primary.network_keypair().copy().private().0.to_bytes();
+    let client = NetworkClient::new_from_keypair(&primary.primary_network_keypair());
+    let network_key = primary.primary_network_keypair().copy().private().0.to_bytes();
     let name = primary.id();
     let metrics = Arc::new(PrimaryMetrics::default());
     let primary_channel_metrics = PrimaryChannelMetrics::default();
@@ -360,8 +360,8 @@ async fn synchronizer_recover_previous_round() {
     let fixture = CommitteeFixture::builder(MemDatabase::default).randomize_ports(true).build();
     let committee = fixture.committee();
     let primary = fixture.authorities().last().unwrap();
-    let client = NetworkClient::new_from_keypair(&primary.network_keypair());
-    let network_key = primary.network_keypair().copy().private().0.to_bytes();
+    let client = NetworkClient::new_from_keypair(&primary.primary_network_keypair());
+    let network_key = primary.primary_network_keypair().copy().private().0.to_bytes();
     let name = primary.id();
     let metrics = Arc::new(PrimaryMetrics::default());
     let primary_channel_metrics = PrimaryChannelMetrics::default();

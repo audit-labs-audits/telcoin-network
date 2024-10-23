@@ -13,7 +13,7 @@ use reth_db::{
 };
 use reth_evm::{execute::BlockExecutorProvider, ConfigureEvm};
 use tn_config::{ConsensusConfig, KeyConfig};
-use tn_types::{ChainIdentifier, TelcoinDirs};
+use tn_types::TelcoinDirs;
 use tracing::{info, instrument};
 
 pub mod dirs;
@@ -72,12 +72,7 @@ where
     persist_consensus.start(primary.subscribe_consensus_output().await).await;
 
     // start the primary
-    primary
-        .start(
-            ChainIdentifier::unknown(), // TODO: use ChainSpec here
-            &engine,
-        )
-        .await?;
+    primary.start(&engine).await?;
 
     // start the worker
     worker.start(&engine).await?;

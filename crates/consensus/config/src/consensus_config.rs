@@ -5,8 +5,8 @@ use narwhal_storage::NodeStorage;
 use narwhal_typed_store::{mem_db::MemDatabase, traits::Database};
 use rand::rngs::ThreadRng;
 use tn_types::{
-    test_utils::TelcoinTempDirs, traits::KeyPair, Authority, Committee, Config, ConfigTrait,
-    Parameters, TelcoinDirs, WorkerCache,
+    test_utils::TelcoinTempDirs, Authority, Committee, Config, ConfigTrait, Parameters,
+    TelcoinDirs, WorkerCache,
 };
 
 use crate::KeyConfig;
@@ -83,13 +83,11 @@ where
         let network_client =
             NetworkClient::new_from_public_key(config.validator_info.primary_network_key());
 
+        let primary_public_key = key_config.primary_public_key();
         let authority = committee
-            .authority_by_key(key_config.bls_keypair().public())
+            .authority_by_key(&primary_public_key)
             .unwrap_or_else(|| {
-                panic!(
-                    "Our node with key {:?} should be in committee",
-                    key_config.bls_keypair().public()
-                )
+                panic!("Our node with key {:?} should be in committee", primary_public_key)
             })
             .clone();
 

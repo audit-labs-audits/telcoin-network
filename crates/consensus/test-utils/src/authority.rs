@@ -55,7 +55,7 @@ impl<DB: Database> AuthorityDetails<DB> {
         execution: TestExecutionNode,
     ) -> Self {
         // Create all the nodes we have in the committee
-        let public_key = consensus_config.key_config().bls_keypair().public().clone();
+        let public_key = consensus_config.key_config().primary_public_key();
 
         let primary = PrimaryNodeDetails::new(id, name, consensus_config.clone());
 
@@ -337,6 +337,8 @@ pub struct AuthorityFixture<DB> {
     worker: WorkerFixture,
     /// Config for this authority.
     consensus_config: ConsensusConfig<DB>,
+    /// The testing primary key.
+    primary_keypair: BlsKeypair,
 }
 
 impl<DB: Database> AuthorityFixture<DB> {
@@ -352,12 +354,12 @@ impl<DB: Database> AuthorityFixture<DB> {
 
     /// The authority's bls12381 [KeyPair] used to sign consensus messages.
     pub fn keypair(&self) -> &BlsKeypair {
-        self.consensus_config.key_config().bls_keypair()
+        &self.primary_keypair
     }
 
     /// The authority's ed25519 [NetworkKeypair] used to sign messages on the network.
-    pub fn network_keypair(&self) -> NetworkKeypair {
-        self.consensus_config.key_config().network_keypair().copy()
+    pub fn primary_network_keypair(&self) -> NetworkKeypair {
+        self.consensus_config.key_config().primary_network_keypair().copy()
     }
 
     /// The authority's [Address] for execution layer.
@@ -369,7 +371,7 @@ impl<DB: Database> AuthorityFixture<DB> {
     pub fn new_network(&self, router: anemo::Router) -> anemo::Network {
         anemo::Network::bind(self.authority.primary_network_address().to_anemo_address().unwrap())
             .server_name("narwhal")
-            .private_key(self.network_keypair().private().0.to_bytes())
+            .private_key(self.primary_network_keypair().private().0.to_bytes())
             .start(router)
             .unwrap()
     }
@@ -385,13 +387,13 @@ impl<DB: Database> AuthorityFixture<DB> {
     }
 
     /// The authority's [PublicKey].
-    pub fn public_key(&self) -> BlsPublicKey {
-        self.consensus_config.key_config().bls_keypair().public().clone()
+    pub fn primary_public_key(&self) -> BlsPublicKey {
+        self.consensus_config.key_config().primary_public_key()
     }
 
     /// The authority's [NetworkPublicKey].
-    pub fn network_public_key(&self) -> NetworkPublicKey {
-        self.consensus_config.key_config().network_keypair().public().clone()
+    pub fn primary_network_public_key(&self) -> NetworkPublicKey {
+        self.consensus_config.key_config().primary_network_public_key()
     }
 
     /// Create a [Header] with a default payload based on the [Committee] argument.
@@ -429,6 +431,7 @@ impl<DB: Database> AuthorityFixture<DB> {
         number_of_workers: NonZeroUsize,
         mut get_port: P,
         authority: Authority,
+        primary_keypair: BlsKeypair,
         key_config: KeyConfig,
         committee: Committee,
         db: DB,
@@ -437,17 +440,17 @@ impl<DB: Database> AuthorityFixture<DB> {
         P: FnMut(&str) -> u16,
     {
         // Make sure our keys are correct.
-        assert_eq!(key_config.bls_keypair().public(), authority.protocol_key());
-        assert_eq!(key_config.network_keypair().public(), &authority.network_key());
+        assert_eq!(&key_config.primary_public_key(), authority.protocol_key());
+        assert_eq!(key_config.primary_network_public_key(), authority.network_key());
+        assert_eq!(primary_keypair.public(), &key_config.primary_public_key());
         // Currently only support one worker per node.
         // If/when this is relaxed then the key_config below will need to change.
         assert_eq!(number_of_workers.get(), 1);
         let mut config = Config::default();
         // These key updates don't return errors...
-        let _ = config.update_protocol_key(key_config.bls_keypair().public().clone());
-        let _ = config.update_primary_network_key(key_config.network_keypair().public().clone());
-        let _ =
-            config.update_worker_network_key(key_config.worker_network_keypair().public().clone());
+        let _ = config.update_protocol_key(key_config.primary_public_key());
+        let _ = config.update_primary_network_key(key_config.primary_network_public_key());
+        let _ = config.update_worker_network_key(key_config.worker_network_public_key());
         config.validator_info.primary_info.network_address =
             authority.primary_network_address().clone();
 
@@ -465,7 +468,7 @@ impl<DB: Database> AuthorityFixture<DB> {
 
         let worker = WorkerFixture::generate(key_config.clone(), authority.id().0, &mut get_port);
 
-        Self { authority, worker, consensus_config }
+        Self { authority, worker, consensus_config, primary_keypair }
     }
 
     pub(crate) fn set_worker_cache(&mut self, worker_cache: WorkerCache) {

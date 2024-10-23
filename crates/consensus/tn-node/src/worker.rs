@@ -5,7 +5,6 @@
 //! Hierarchical type to hold tasks spawned for a worker in the network.
 use crate::{engine::ExecutionNode, error::NodeError, try_join_all, FuturesUnordered};
 use anemo::PeerId;
-use fastcrypto::traits::KeyPair;
 use narwhal_typed_store::traits::Database as ConsensusDatabase;
 use narwhal_worker::{metrics::Metrics, Worker};
 use reth_db::{
@@ -54,7 +53,7 @@ impl<CDB: ConsensusDatabase> WorkerNodeInner<CDB> {
         }
 
         self.own_peer_id = Some(PeerId(
-            self.consensus_config.key_config().network_keypair().public().0.to_bytes(),
+            self.consensus_config.key_config().primary_network_public_key().0.to_bytes(),
         ));
 
         let mut tx_shutdown = Notifier::new();

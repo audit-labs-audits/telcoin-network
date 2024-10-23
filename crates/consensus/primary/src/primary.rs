@@ -28,10 +28,7 @@ use consensus_metrics::{
     metered_channel::{channel_with_total, Receiver, Sender},
     spawn_logged_monitored_task,
 };
-use fastcrypto::{
-    serde_helpers::ToFromByteArray,
-    traits::{KeyPair as _, ToFromBytes},
-};
+use fastcrypto::traits::KeyPair as _;
 use narwhal_network::{
     epoch_filter::{AllowedEpoch, EPOCH_HEADER_KEY},
     failpoints::FailpointsMakeCallbackHandler,
@@ -41,10 +38,7 @@ use narwhal_primary_metrics::Metrics;
 use narwhal_typed_store::traits::Database;
 use std::{collections::HashMap, net::Ipv4Addr, sync::Arc, thread::sleep, time::Duration};
 use tn_config::ConsensusConfig;
-use tn_types::{
-    traits::EncodeDecodeBase64, ChainIdentifier, Multiaddr, NetworkPublicKey, Notifier, Protocol,
-    RandomnessPrivateKey,
-};
+use tn_types::{traits::EncodeDecodeBase64, Multiaddr, NetworkPublicKey, Notifier, Protocol};
 
 use narwhal_network_types::{PrimaryToPrimaryServer, WorkerToPrimaryServer};
 use tn_types::{Certificate, Round};
@@ -67,7 +61,6 @@ impl Primary {
     #[allow(clippy::too_many_arguments)]
     pub fn spawn<DB: Database>(
         config: ConsensusConfig<DB>,
-        chain_identifier: ChainIdentifier,
         tx_new_certificates: Sender<Certificate>,
         rx_committed_certificates: Receiver<(Round, Vec<Certificate>)>,
         rx_consensus_round_updates: watch::Receiver<ConsensusRound>,
@@ -79,7 +72,7 @@ impl Primary {
         config.parameters().tracing();
 
         // Some info statements
-        let own_peer_id = PeerId(config.key_config().network_keypair().public().0.to_bytes());
+        let own_peer_id = PeerId(config.key_config().primary_network_public_key().0.to_bytes());
         info!(
             "Boot primary node with peer id {} and public key {}",
             own_peer_id,
@@ -90,11 +83,6 @@ impl Primary {
             CHANNEL_CAPACITY,
             &metrics.primary_channel_metrics.tx_our_digests,
             &metrics.primary_channel_metrics.tx_our_digests_total,
-        );
-        let (tx_system_messages, rx_system_messages) = channel_with_total(
-            CHANNEL_CAPACITY,
-            &metrics.primary_channel_metrics.tx_system_messages,
-            &metrics.primary_channel_metrics.tx_system_messages_total,
         );
         let (tx_parents, rx_parents) = channel_with_total(
             CHANNEL_CAPACITY,
@@ -128,19 +116,6 @@ impl Primary {
             metrics.node_metrics.clone(),
             &metrics.primary_channel_metrics,
         ));
-
-        // Convert authority private key into key used for random beacon.
-        let randomness_private_key = fastcrypto::groups::bls12381::Scalar::from_byte_array(
-            config
-                .key_config()
-                .bls_keypair()
-                .copy()
-                .private()
-                .as_bytes()
-                .try_into()
-                .expect("key length should match"),
-        )
-        .expect("should work to convert BLS key to Scalar");
 
         // Spawn the network receiver listening to messages from the other primaries.
         let address = config.authority().primary_network_address();
@@ -281,7 +256,9 @@ impl Primary {
         loop {
             let network_result = anemo::Network::bind(addr.clone())
                 .server_name("narwhal")
-                .private_key(config.key_config().network_keypair().copy().private().0.to_bytes())
+                .private_key(
+                    config.key_config().primary_network_keypair().copy().private().0.to_bytes(),
+                )
                 .config(anemo_config.clone())
                 .outbound_request_layer(outbound_layer.clone())
                 .start(service.clone());
@@ -391,7 +368,6 @@ impl Primary {
             tx_shutdown.subscribe(),
             rx_parents,
             rx_our_digests,
-            rx_system_messages,
             tx_headers,
             tx_narwhal_round_updates,
             rx_committed_own_headers,
@@ -416,17 +392,11 @@ impl Primary {
         // Keeps track of the latest consensus round and allows other tasks to clean up their their
         // internal state
         let state_handler_handle = StateHandler::spawn(
-            &chain_identifier,
             config.authority().id(),
-            config.committee().clone(),
             rx_committed_certificates,
             tx_shutdown.subscribe(),
             Some(tx_committed_own_headers),
-            tx_system_messages,
-            RandomnessPrivateKey::from(randomness_private_key),
             network,
-            // Some(800), // TODO: this value based on sui's current default. may not want this yet
-            None,
         );
         handles.push(state_handler_handle);
 
