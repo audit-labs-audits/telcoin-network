@@ -27,7 +27,6 @@ use reth_chainspec::ChainSpec;
 use serde::Serialize;
 mod intent;
 pub use intent::*;
-use tokio::sync::oneshot;
 
 use crate::encode;
 
@@ -84,13 +83,9 @@ pub trait BlsSigner: Clone + Send + Sync + Unpin + 'static {
     /// Note: used the de-sugared signature here (instead of async fn request_signature...)
     /// due to current async trait limitations and the need for + Send.
     fn request_signature(&self, msg: Vec<u8>) -> impl Future<Output = BlsSignature> + Send {
-        let (sender, receiver): (oneshot::Sender<_>, oneshot::Receiver<_>) = oneshot::channel();
         let this = self.clone();
-        tokio::spawn(async move {
-            let signature = this.request_signature_direct(&msg);
-            let _ = sender.send(signature);
-        });
-        async move { receiver.await.expect("Failed to receive signature from Signature Service") }
+        let handle = tokio::task::spawn_blocking(move || this.request_signature_direct(&msg));
+        async move { handle.await.expect("Failed to receive signature from Signature Service") }
     }
 }
 
