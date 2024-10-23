@@ -45,7 +45,7 @@ where
         let mut nodes = HashMap::new();
 
         for (id, authority_fixture) in fixture.authorities().enumerate() {
-            info!("Key {id} -> {}", authority_fixture.public_key());
+            info!("Key {id} -> {}", authority_fixture.primary_public_key());
 
             let authority_id = authority_fixture.id();
             let authority_execution_address = authority_fixture.execution_address();

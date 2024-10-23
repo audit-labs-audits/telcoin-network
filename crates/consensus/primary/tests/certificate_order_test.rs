@@ -36,7 +36,7 @@ async fn test_certificate_signers_are_ordered() {
 
     // The authorities on position 1, 2, 3 are the ones who would sign
     for authority in &authorities[1..=3] {
-        sorted_signers.push(authority.public_key());
+        sorted_signers.push(authority.primary_public_key());
 
         let vote =
             Vote::new(&header.clone(), &authority.id(), authority.consensus_config().key_config())

@@ -15,7 +15,7 @@ struct KeyConfigInner {
     // DO NOT expose the private key to other code.  Tests that need this will provide a primary
     // key. Use the BlsSigner trait for signing for the primary.
     primary_keypair: BlsKeypair,
-    network_keypair: NetworkKeypair,
+    primary_network_keypair: NetworkKeypair,
     worker_network_keypair: NetworkKeypair,
 }
 
@@ -41,7 +41,7 @@ impl KeyConfig {
         Ok(Self {
             inner: Arc::new(KeyConfigInner {
                 primary_keypair,
-                network_keypair,
+                primary_network_keypair: network_keypair,
                 worker_network_keypair,
             }),
         })
@@ -57,7 +57,7 @@ impl KeyConfig {
         Self {
             inner: Arc::new(KeyConfigInner {
                 primary_keypair,
-                network_keypair,
+                primary_network_keypair: network_keypair,
                 worker_network_keypair,
             }),
         }
@@ -75,7 +75,7 @@ impl KeyConfig {
         Self {
             inner: Arc::new(KeyConfigInner {
                 primary_keypair,
-                network_keypair,
+                primary_network_keypair: network_keypair,
                 worker_network_keypair,
             }),
         }
@@ -88,13 +88,13 @@ impl KeyConfig {
 
     /// Provide the keypair (with private key) for the network.
     /// Allows building the anemo network.
-    pub fn network_keypair(&self) -> &NetworkKeypair {
-        &self.inner.network_keypair
+    pub fn primary_network_keypair(&self) -> &NetworkKeypair {
+        &self.inner.primary_network_keypair
     }
 
     /// The [NetworkPublicKey] for the primary network.
-    pub fn network_public_key(&self) -> NetworkPublicKey {
-        self.inner.network_keypair.public().clone()
+    pub fn primary_network_public_key(&self) -> NetworkPublicKey {
+        self.inner.primary_network_keypair.public().clone()
     }
 
     /// Provide the keypair (with private key) for the worker network.

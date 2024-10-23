@@ -73,8 +73,9 @@ impl<CDB: ConsensusDatabase> PrimaryNodeInner<CDB> {
             return Err(NodeError::NodeAlreadyRunning.into());
         }
 
-        self.own_peer_id =
-            Some(PeerId(self.consensus_config.key_config().network_public_key().0.to_bytes()));
+        self.own_peer_id = Some(PeerId(
+            self.consensus_config.key_config().primary_network_public_key().0.to_bytes(),
+        ));
 
         // create the channel to send the shutdown signal
         let mut tx_shutdown = Notifier::new();

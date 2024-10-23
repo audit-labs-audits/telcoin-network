@@ -358,8 +358,8 @@ impl<DB: Database> AuthorityFixture<DB> {
     }
 
     /// The authority's ed25519 [NetworkKeypair] used to sign messages on the network.
-    pub fn network_keypair(&self) -> NetworkKeypair {
-        self.consensus_config.key_config().network_keypair().copy()
+    pub fn primary_network_keypair(&self) -> NetworkKeypair {
+        self.consensus_config.key_config().primary_network_keypair().copy()
     }
 
     /// The authority's [Address] for execution layer.
@@ -371,7 +371,7 @@ impl<DB: Database> AuthorityFixture<DB> {
     pub fn new_network(&self, router: anemo::Router) -> anemo::Network {
         anemo::Network::bind(self.authority.primary_network_address().to_anemo_address().unwrap())
             .server_name("narwhal")
-            .private_key(self.network_keypair().private().0.to_bytes())
+            .private_key(self.primary_network_keypair().private().0.to_bytes())
             .start(router)
             .unwrap()
     }
@@ -387,13 +387,13 @@ impl<DB: Database> AuthorityFixture<DB> {
     }
 
     /// The authority's [PublicKey].
-    pub fn public_key(&self) -> BlsPublicKey {
+    pub fn primary_public_key(&self) -> BlsPublicKey {
         self.consensus_config.key_config().primary_public_key()
     }
 
     /// The authority's [NetworkPublicKey].
-    pub fn network_public_key(&self) -> NetworkPublicKey {
-        self.consensus_config.key_config().network_public_key()
+    pub fn primary_network_public_key(&self) -> NetworkPublicKey {
+        self.consensus_config.key_config().primary_network_public_key()
     }
 
     /// Create a [Header] with a default payload based on the [Committee] argument.
@@ -441,7 +441,7 @@ impl<DB: Database> AuthorityFixture<DB> {
     {
         // Make sure our keys are correct.
         assert_eq!(&key_config.primary_public_key(), authority.protocol_key());
-        assert_eq!(key_config.network_public_key(), authority.network_key());
+        assert_eq!(key_config.primary_network_public_key(), authority.network_key());
         assert_eq!(primary_keypair.public(), &key_config.primary_public_key());
         // Currently only support one worker per node.
         // If/when this is relaxed then the key_config below will need to change.
@@ -449,7 +449,7 @@ impl<DB: Database> AuthorityFixture<DB> {
         let mut config = Config::default();
         // These key updates don't return errors...
         let _ = config.update_protocol_key(key_config.primary_public_key());
-        let _ = config.update_primary_network_key(key_config.network_public_key());
+        let _ = config.update_primary_network_key(key_config.primary_network_public_key());
         let _ = config.update_worker_network_key(key_config.worker_network_public_key());
         config.validator_info.primary_info.network_address =
             authority.primary_network_address().clone();

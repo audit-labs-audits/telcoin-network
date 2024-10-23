@@ -124,7 +124,7 @@ where
                 *self.stake.get(i).unwrap_or(&1),
                 primary_network_address,
                 Address::random_with(&mut rng),
-                key_config.network_public_key(),
+                key_config.primary_network_public_key(),
                 format!("authority{i}"),
             );
             authorities.insert(
@@ -168,7 +168,7 @@ where
         // via the committee.authorities() or via the fixture.authorities() we'll get the
         // same order.
         // These are probably already sorted but this does not hurt and the comment is helpful.
-        authorities.sort_by_key(|a1| a1.public_key());
+        authorities.sort_by_key(|a1| a1.primary_public_key());
 
         // Build our worker cache.  This is map of authorities to it's worker (one per authority).
         let worker_cache = WorkerCache {
@@ -178,7 +178,7 @@ where
                 .map(|a| {
                     let mut worker_index = BTreeMap::new();
                     worker_index.insert(0, a.worker().info().clone());
-                    (a.public_key(), WorkerIndex(worker_index.clone()))
+                    (a.primary_public_key(), WorkerIndex(worker_index.clone()))
                 })
                 .collect(),
         };

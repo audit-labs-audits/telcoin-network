@@ -171,8 +171,10 @@ async fn test_get_network_peers_from_admin_server() {
     // Wait for tasks to start
     tokio::time::sleep(Duration::from_secs(1)).await;
 
-    let primary_1_peer_id = Hex::encode(authority_1.network_keypair().copy().public().0.as_bytes());
-    let primary_2_peer_id = Hex::encode(authority_2.network_keypair().copy().public().0.as_bytes());
+    let primary_1_peer_id =
+        Hex::encode(authority_1.primary_network_keypair().copy().public().0.as_bytes());
+    let primary_2_peer_id =
+        Hex::encode(authority_2.primary_network_keypair().copy().public().0.as_bytes());
     let worker_1_peer_id = Hex::encode(worker_1_keypair.copy().public().0.as_bytes());
 
     // Test getting all connected peers for primary 1
@@ -225,8 +227,10 @@ async fn test_request_vote_has_missing_parents() {
     let author_id = author.id();
     let metrics = Arc::new(PrimaryMetrics::default());
     let primary_channel_metrics = PrimaryChannelMetrics::default();
-    let network =
-        tn_types::test_utils::test_network(target.network_keypair(), target.network_address());
+    let network = tn_types::test_utils::test_network(
+        target.primary_network_keypair(),
+        target.network_address(),
+    );
 
     let certificate_store = target.consensus_config().node_storage().certificate_store.clone();
     let payload_store = target.consensus_config().node_storage().payload_store.clone();
@@ -294,7 +298,7 @@ async fn test_request_vote_has_missing_parents() {
     assert!(request.extensions_mut().insert(network.downgrade()).is_none());
     assert!(request
         .extensions_mut()
-        .insert(anemo::PeerId(author.network_public_key().0.to_bytes()))
+        .insert(anemo::PeerId(author.primary_network_public_key().0.to_bytes()))
         .is_none());
     let result = handler.request_vote(request).await;
 
@@ -310,7 +314,7 @@ async fn test_request_vote_has_missing_parents() {
     assert!(request.extensions_mut().insert(network.downgrade()).is_none());
     assert!(request
         .extensions_mut()
-        .insert(anemo::PeerId(author.network_public_key().0.to_bytes()))
+        .insert(anemo::PeerId(author.primary_network_public_key().0.to_bytes()))
         .is_none());
     // No additional missing parents will be requested.
     let result = timeout(Duration::from_secs(5), handler.request_vote(request)).await;
@@ -326,7 +330,7 @@ async fn test_request_vote_has_missing_parents() {
     assert!(request.extensions_mut().insert(network.downgrade()).is_none());
     assert!(request
         .extensions_mut()
-        .insert(anemo::PeerId(author.network_public_key().0.to_bytes()))
+        .insert(anemo::PeerId(author.primary_network_public_key().0.to_bytes()))
         .is_none());
     // Because round 1 certificates are not in store, the missing parents will not be accepted yet.
     let result = handler.request_vote(request).await;
@@ -351,8 +355,10 @@ async fn test_request_vote_accept_missing_parents() {
     let author_id = author.id();
     let metrics = Arc::new(PrimaryMetrics::default());
     let primary_channel_metrics = PrimaryChannelMetrics::default();
-    let network =
-        tn_types::test_utils::test_network(target.network_keypair(), target.network_address());
+    let network = tn_types::test_utils::test_network(
+        target.primary_network_keypair(),
+        target.network_address(),
+    );
 
     let certificate_store = target.consensus_config().node_storage().certificate_store.clone();
     let payload_store = target.consensus_config().node_storage().payload_store.clone();
@@ -432,7 +438,7 @@ async fn test_request_vote_accept_missing_parents() {
     assert!(request.extensions_mut().insert(network.downgrade()).is_none());
     assert!(request
         .extensions_mut()
-        .insert(anemo::PeerId(author.network_public_key().0.to_bytes()))
+        .insert(anemo::PeerId(author.primary_network_public_key().0.to_bytes()))
         .is_none());
     let result = handler.request_vote(request).await;
 
@@ -448,7 +454,7 @@ async fn test_request_vote_accept_missing_parents() {
     assert!(request.extensions_mut().insert(network.downgrade()).is_none());
     assert!(request
         .extensions_mut()
-        .insert(anemo::PeerId(author.network_public_key().0.to_bytes()))
+        .insert(anemo::PeerId(author.primary_network_public_key().0.to_bytes()))
         .is_none());
 
     let result = timeout(Duration::from_secs(5), handler.request_vote(request)).await.unwrap();
@@ -467,8 +473,10 @@ async fn test_request_vote_missing_batches() {
     let author = fixture.authorities().nth(2).unwrap();
     let metrics = Arc::new(PrimaryMetrics::default());
     let primary_channel_metrics = PrimaryChannelMetrics::default();
-    let network =
-        tn_types::test_utils::test_network(primary.network_keypair(), primary.network_address());
+    let network = tn_types::test_utils::test_network(
+        primary.primary_network_keypair(),
+        primary.network_address(),
+    );
     let client = primary.consensus_config().network_client().clone();
 
     let certificate_store = primary.consensus_config().node_storage().certificate_store.clone();
@@ -554,7 +562,7 @@ async fn test_request_vote_missing_batches() {
     assert!(request.extensions_mut().insert(network.downgrade()).is_none());
     assert!(request
         .extensions_mut()
-        .insert(anemo::PeerId(author.network_public_key().0.to_bytes()))
+        .insert(anemo::PeerId(author.primary_network_public_key().0.to_bytes()))
         .is_none());
 
     let response = handler.request_vote(request).await.unwrap();
@@ -573,9 +581,11 @@ async fn test_request_vote_already_voted() {
     let author = fixture.authorities().nth(2).unwrap();
     let metrics = Arc::new(PrimaryMetrics::default());
     let primary_channel_metrics = PrimaryChannelMetrics::default();
-    let network =
-        tn_types::test_utils::test_network(primary.network_keypair(), primary.network_address());
-    let client = primary.consensus_config().network_client().clone(); // NetworkClient::new_from_keypair(&primary.network_keypair());
+    let network = tn_types::test_utils::test_network(
+        primary.primary_network_keypair(),
+        primary.network_address(),
+    );
+    let client = primary.consensus_config().network_client().clone(); // NetworkClient::new_from_keypair(&primary.primary_primary_primary_network_keypair());
 
     let certificate_store = primary.consensus_config().node_storage().certificate_store.clone();
     let payload_store = primary.consensus_config().node_storage().payload_store.clone();
@@ -653,7 +663,7 @@ async fn test_request_vote_already_voted() {
     assert!(request.extensions_mut().insert(network.downgrade()).is_none());
     assert!(request
         .extensions_mut()
-        .insert(anemo::PeerId(author.network_public_key().0.to_bytes()))
+        .insert(anemo::PeerId(author.primary_network_public_key().0.to_bytes()))
         .is_none());
 
     let response = tokio::time::timeout(Duration::from_secs(10), handler.request_vote(request))
@@ -671,7 +681,7 @@ async fn test_request_vote_already_voted() {
     assert!(request.extensions_mut().insert(network.downgrade()).is_none());
     assert!(request
         .extensions_mut()
-        .insert(anemo::PeerId(author.network_public_key().0.to_bytes()))
+        .insert(anemo::PeerId(author.primary_network_public_key().0.to_bytes()))
         .is_none());
 
     let response = handler.request_vote(request).await.unwrap();
@@ -693,7 +703,7 @@ async fn test_request_vote_already_voted() {
     assert!(request.extensions_mut().insert(network.downgrade()).is_none());
     assert!(request
         .extensions_mut()
-        .insert(anemo::PeerId(author.network_public_key().0.to_bytes()))
+        .insert(anemo::PeerId(author.primary_network_public_key().0.to_bytes()))
         .is_none());
 
     let response = handler.request_vote(request).await;
@@ -839,8 +849,10 @@ async fn test_request_vote_created_at_in_future() {
     let author = fixture.authorities().nth(2).unwrap();
     let metrics = Arc::new(PrimaryMetrics::default());
     let primary_channel_metrics = PrimaryChannelMetrics::default();
-    let network =
-        tn_types::test_utils::test_network(primary.network_keypair(), primary.network_address());
+    let network = tn_types::test_utils::test_network(
+        primary.primary_network_keypair(),
+        primary.network_address(),
+    );
     let client = primary.consensus_config().network_client().clone();
 
     let certificate_store = primary.consensus_config().node_storage().certificate_store.clone();
@@ -924,7 +936,7 @@ async fn test_request_vote_created_at_in_future() {
     assert!(request.extensions_mut().insert(network.downgrade()).is_none());
     assert!(request
         .extensions_mut()
-        .insert(anemo::PeerId(author.network_public_key().0.to_bytes()))
+        .insert(anemo::PeerId(author.primary_network_public_key().0.to_bytes()))
         .is_none());
 
     // For such a future header we get back an error
@@ -951,7 +963,7 @@ async fn test_request_vote_created_at_in_future() {
     assert!(request.extensions_mut().insert(network.downgrade()).is_none());
     assert!(request
         .extensions_mut()
-        .insert(anemo::PeerId(author.network_public_key().0.to_bytes()))
+        .insert(anemo::PeerId(author.primary_network_public_key().0.to_bytes()))
         .is_none());
 
     let response = handler.request_vote(request).await.unwrap();

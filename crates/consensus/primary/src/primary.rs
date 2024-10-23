@@ -72,7 +72,7 @@ impl Primary {
         config.parameters().tracing();
 
         // Some info statements
-        let own_peer_id = PeerId(config.key_config().network_public_key().0.to_bytes());
+        let own_peer_id = PeerId(config.key_config().primary_network_public_key().0.to_bytes());
         info!(
             "Boot primary node with peer id {} and public key {}",
             own_peer_id,
@@ -256,7 +256,9 @@ impl Primary {
         loop {
             let network_result = anemo::Network::bind(addr.clone())
                 .server_name("narwhal")
-                .private_key(config.key_config().network_keypair().copy().private().0.to_bytes())
+                .private_key(
+                    config.key_config().primary_network_keypair().copy().private().0.to_bytes(),
+                )
                 .config(anemo_config.clone())
                 .outbound_request_layer(outbound_layer.clone())
                 .start(service.clone());

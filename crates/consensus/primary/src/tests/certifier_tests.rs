@@ -24,8 +24,8 @@ use tokio::sync::watch;
 //     let committee = fixture.committee();
 //     let worker_cache = fixture.worker_cache();
 //     let primary = fixture.authorities().last().unwrap();
-//     let client = NetworkClient::new_from_keypair(&primary.network_keypair());
-//     let network_key = primary.network_keypair().copy().private().0.to_bytes();
+//     let client = NetworkClient::new_from_keypair(&primary.primary_network_keypair());
+//     let network_key = primary.primary_network_keypair().copy().private().0.to_bytes();
 //     let id = primary.id();
 //     let signature_service = SignatureService::new(primary.keypair().copy());
 //     let metrics = Arc::new(PrimaryMetrics::new(&Registry::new()));
@@ -89,7 +89,7 @@ use tokio::sync::watch;
 //         println!("New primary added: {:?}", address);
 
 //         let address = address.to_anemo_address().unwrap();
-//         let peer_id = anemo::PeerId(primary.network_keypair().public().0.to_bytes());
+//         let peer_id = anemo::PeerId(primary.primary_network_keypair().public().0.to_bytes());
 //         network
 //             .connect_with_peer_id(address, peer_id)
 //             .await
@@ -161,7 +161,7 @@ async fn propose_header_and_form_certificate_v2() {
     // Set up remote primaries responding with votes.
     let mut peer_networks = Vec::new();
     for peer in fixture.authorities().filter(|a| a.id() != id) {
-        let address = committee.primary(&peer.public_key()).unwrap();
+        let address = committee.primary(&peer.primary_public_key()).unwrap();
         let name = peer.id();
         let vote = Vote::new(&proposed_header, &name, peer.consensus_config().key_config()).await;
         let mut mock_server = MockPrimaryToPrimary::new();
@@ -185,7 +185,7 @@ async fn propose_header_and_form_certificate_v2() {
         println!("New primary added: {:?}", address);
 
         let address = address.to_anemo_address().unwrap();
-        let peer_id = anemo::PeerId(peer.network_keypair().public().0.to_bytes());
+        let peer_id = anemo::PeerId(peer.primary_network_keypair().public().0.to_bytes());
         network.connect_with_peer_id(address, peer_id).await.unwrap();
     }
 
@@ -230,7 +230,7 @@ async fn propose_header_failure() {
     let fixture = CommitteeFixture::builder(MemDatabase::default).randomize_ports(true).build();
     let committee = fixture.committee();
     let primary = fixture.authorities().last().unwrap();
-    let network_key = primary.network_keypair().copy().private().0.to_bytes();
+    let network_key = primary.primary_network_keypair().copy().private().0.to_bytes();
     let authority_id = primary.id();
     let metrics = Arc::new(PrimaryMetrics::default());
     let primary_channel_metrics = PrimaryChannelMetrics::default();
@@ -256,7 +256,7 @@ async fn propose_header_failure() {
     // Set up remote primaries responding with votes.
     let mut primary_networks = Vec::new();
     for primary in fixture.authorities().filter(|a| a.id() != authority_id) {
-        let address = committee.primary(&primary.public_key()).unwrap();
+        let address = committee.primary(&primary.primary_public_key()).unwrap();
         let mut mock_server = MockPrimaryToPrimary::new();
         mock_server.expect_request_vote().returning(move |_request| {
             Err(anemo::rpc::Status::new(
@@ -268,7 +268,7 @@ async fn propose_header_failure() {
         println!("New primary added: {:?}", address);
 
         let address = address.to_anemo_address().unwrap();
-        let peer_id = anemo::PeerId(primary.network_keypair().public().0.to_bytes());
+        let peer_id = anemo::PeerId(primary.primary_network_keypair().public().0.to_bytes());
         network.connect_with_peer_id(address, peer_id).await.unwrap();
     }
 
@@ -347,7 +347,7 @@ async fn run_vote_aggregator_with_param(
     // Set up remote primaries responding with votes.
     let mut peer_networks = Vec::new();
     for (i, peer) in fixture.authorities().filter(|a| a.id() != id).enumerate() {
-        let address = committee.primary(&peer.public_key()).unwrap();
+        let address = committee.primary(&peer.primary_public_key()).unwrap();
         let name = peer.id();
         // Create bad signature for a number of byzantines.
         let vote = if i < num_byzantine {
@@ -371,7 +371,7 @@ async fn run_vote_aggregator_with_param(
         println!("New primary added: {:?}", address);
 
         let address = address.to_anemo_address().unwrap();
-        let peer_id = anemo::PeerId(peer.network_keypair().public().0.to_bytes());
+        let peer_id = anemo::PeerId(peer.primary_network_keypair().public().0.to_bytes());
         network.connect_with_peer_id(address, peer_id).await.unwrap();
     }
 
@@ -418,7 +418,7 @@ async fn test_shutdown_core() {
     let fixture = CommitteeFixture::builder(MemDatabase::default).build();
     let committee = fixture.committee();
     let primary = fixture.authorities().next().unwrap();
-    let network_key = primary.network_keypair().copy().private().0.to_bytes();
+    let network_key = primary.primary_network_keypair().copy().private().0.to_bytes();
     let id: AuthorityIdentifier = primary.id();
     let metrics = Arc::new(PrimaryMetrics::default());
     let primary_channel_metrics = PrimaryChannelMetrics::default();
