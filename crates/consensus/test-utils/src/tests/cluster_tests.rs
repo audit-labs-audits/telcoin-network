@@ -3,6 +3,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 use crate::cluster::Cluster;
+use narwhal_typed_store::mem_db::MemDatabase;
 use reth::{providers::BlockReader, tasks::TaskManager};
 use std::time::Duration;
 use tn_types::test_utils::ensure_test_environment;
@@ -15,7 +16,7 @@ async fn basic_cluster_setup() {
     let manager = TaskManager::current();
     let executor = manager.executor();
 
-    let mut cluster = Cluster::new(None, executor);
+    let mut cluster = Cluster::new(executor, MemDatabase::default);
 
     // start the cluster will all the possible nodes
     cluster.start(Some(4), Some(1), None).await;

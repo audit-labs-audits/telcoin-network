@@ -10,21 +10,20 @@ use eyre::Result;
 use fastcrypto::{hash::Hash, traits::KeyPair};
 use indexmap::IndexMap;
 use itertools::Itertools;
-use narwhal_network::client::NetworkClient;
 use narwhal_network_types::{
     FetchCertificatesRequest, FetchCertificatesResponse, PrimaryToPrimary, PrimaryToPrimaryServer,
     RequestVoteRequest, RequestVoteResponse, SendCertificateRequest, SendCertificateResponse,
 };
 use narwhal_primary_metrics::{PrimaryChannelMetrics, PrimaryMetrics};
-use narwhal_storage::{CertificateStore, NodeStorage};
-use narwhal_typed_store::{open_db, traits::Database};
+use narwhal_storage::CertificateStore;
+use narwhal_test_utils::CommitteeFixture;
+use narwhal_typed_store::{mem_db::MemDatabase, traits::Database};
 use once_cell::sync::OnceCell;
 use std::{collections::BTreeSet, sync::Arc, time::Duration};
-use tempfile::TempDir;
 use tn_types::{
-    test_utils::CommitteeFixture, AuthorityIdentifier, BlockHash, BlsAggregateSignatureBytes,
-    Certificate, CertificateDigest, Epoch, Header, HeaderDigest, Notifier, Round,
-    SignatureVerificationState, SystemMessage, TimestampSec, WorkerId,
+    AuthorityIdentifier, BlockHash, BlsAggregateSignatureBytes, Certificate, CertificateDigest,
+    Epoch, Header, HeaderDigest, Notifier, Round, SignatureVerificationState, SystemMessage,
+    TimestampSec, WorkerId,
 };
 use tokio::{
     sync::{
@@ -157,15 +156,12 @@ struct BadHeader {
 #[tokio::test(flavor = "current_thread", start_paused = true)]
 async fn fetch_certificates_v1_basic() {
     reth_tracing::init_test_tracing();
-    let fixture = CommitteeFixture::builder().randomize_ports(true).build();
-    let worker_cache = fixture.worker_cache();
+    let fixture = CommitteeFixture::builder(MemDatabase::default).randomize_ports(true).build();
     let primary = fixture.authorities().next().unwrap();
-    let client = NetworkClient::new_from_keypair(&primary.network_keypair());
     let id = primary.id();
     let fake_primary = fixture.authorities().nth(1).unwrap();
     let metrics = Arc::new(PrimaryMetrics::default());
     let primary_channel_metrics = PrimaryChannelMetrics::default();
-    let gc_depth: Round = 50;
 
     // kept empty
     let mut tx_shutdown = Notifier::new();
@@ -178,14 +174,8 @@ async fn fetch_certificates_v1_basic() {
     // test -> FetchCertificateProxy
     let (tx_fetch_resp, rx_fetch_resp) = mpsc::channel(1000);
 
-    // Create test stores.
-    // In case the DB dir does not yet exist.
-    let temp_dir = TempDir::new().unwrap();
-    let _ = std::fs::create_dir_all(temp_dir.path());
-    let db = open_db(temp_dir.path());
-    let store = NodeStorage::reopen(db);
-    let certificate_store = store.certificate_store.clone();
-    let payload_store = store.payload_store.clone();
+    let certificate_store = primary.consensus_config().node_storage().certificate_store.clone();
+    let payload_store = primary.consensus_config().node_storage().payload_store.clone();
 
     // Signal rounds
     let (_tx_consensus_round_updates, rx_consensus_round_updates) =
@@ -193,13 +183,7 @@ async fn fetch_certificates_v1_basic() {
 
     // Make a synchronizer for certificates.
     let synchronizer = Arc::new(Synchronizer::new(
-        id,
-        fixture.committee(),
-        worker_cache.clone(),
-        gc_depth,
-        client,
-        certificate_store.clone(),
-        payload_store.clone(),
+        primary.consensus_config(),
         tx_certificate_fetcher,
         tx_new_certificates.clone(),
         tx_parents.clone(),

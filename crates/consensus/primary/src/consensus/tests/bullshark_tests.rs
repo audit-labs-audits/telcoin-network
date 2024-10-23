@@ -7,17 +7,18 @@
 use super::*;
 
 use crate::consensus::{
-    make_certificate_store, make_consensus_store, Consensus, ConsensusRound,
-    NUM_SUB_DAGS_PER_SCHEDULE,
+    make_consensus_store, Consensus, ConsensusRound, NUM_SUB_DAGS_PER_SCHEDULE,
 };
 #[allow(unused_imports)]
 use fastcrypto::traits::KeyPair;
-use narwhal_typed_store::open_db;
+use narwhal_test_utils::CommitteeFixture;
+use narwhal_typed_store::{mem_db::MemDatabase, open_db};
 #[cfg(test)]
 use std::collections::BTreeSet;
 use std::collections::HashMap;
+use tn_config::ConsensusConfig;
 use tn_types::{
-    test_utils::CommitteeFixture, AuthorityIdentifier, Notifier, DEFAULT_BAD_NODES_STAKE_THRESHOLD,
+    test_utils::TelcoinTempDirs, AuthorityIdentifier, Notifier, DEFAULT_BAD_NODES_STAKE_THRESHOLD,
 };
 #[allow(unused_imports)]
 use tokio::sync::mpsc::channel;
@@ -27,7 +28,7 @@ use tracing::info;
 #[tokio::test]
 async fn order_leaders() {
     // GIVEN
-    let fixture = CommitteeFixture::builder().build();
+    let fixture = CommitteeFixture::builder(MemDatabase::default).build();
     let committee = fixture.committee();
     // Make certificates for rounds 1 to 7.
     let ids: Vec<_> = fixture.authorities().map(|a| a.id()).collect();
@@ -98,7 +99,7 @@ async fn commit_one_with_leader_schedule_change() {
         println!("Running test case \"{}\"", test_case.description);
 
         // GIVEN
-        let fixture = CommitteeFixture::builder().build();
+        let fixture = CommitteeFixture::builder(MemDatabase::default).build();
         let committee = fixture.committee();
         // Make certificates for rounds 1 to 9.
         let ids: Vec<_> = fixture.authorities().map(|a| a.id()).collect();
@@ -157,7 +158,7 @@ async fn commit_one_with_leader_schedule_change() {
 #[tokio::test]
 async fn not_enough_support_with_leader_schedule_change() {
     // GIVEN
-    let fixture = CommitteeFixture::builder().build();
+    let fixture = CommitteeFixture::builder(MemDatabase::default).build();
     let committee = fixture.committee();
 
     let ids: Vec<_> = fixture.authorities().map(|a| a.id()).collect();
@@ -304,7 +305,7 @@ async fn not_enough_support_with_leader_schedule_change() {
 #[tokio::test]
 async fn test_long_period_of_asynchrony_for_leader_schedule_change() {
     // GIVEN
-    let fixture = CommitteeFixture::builder().build();
+    let fixture = CommitteeFixture::builder(MemDatabase::default).build();
     let committee = fixture.committee();
 
     let ids: Vec<_> = fixture.authorities().map(|a| a.id()).collect();
@@ -420,7 +421,7 @@ async fn test_long_period_of_asynchrony_for_leader_schedule_change() {
 /// the leader of round 2.
 #[tokio::test]
 async fn commit_one() {
-    let fixture = CommitteeFixture::builder().build();
+    let fixture = CommitteeFixture::builder(MemDatabase::default).build();
     let committee = fixture.committee();
     // Make certificates for rounds 1 and 2.
     let ids: Vec<_> = fixture.authorities().map(|a| a.id()).collect();
@@ -446,9 +447,8 @@ async fn commit_one() {
 
     let mut tx_shutdown = Notifier::new();
 
-    let store = make_consensus_store(open_db(tn_types::test_utils::temp_dir()));
-    let cert_store = make_certificate_store(open_db(tn_types::test_utils::temp_dir()));
-    let gc_depth = 50;
+    let config = fixture.authorities().next().unwrap().consensus_config();
+    let store = config.node_storage().consensus_store.clone();
     let metrics = Arc::new(ConsensusMetrics::default());
 
     let bullshark = Bullshark::new(
@@ -461,10 +461,7 @@ async fn commit_one() {
     );
 
     let _consensus_handle = Consensus::spawn(
-        committee,
-        gc_depth,
-        store,
-        cert_store,
+        config,
         tx_shutdown.subscribe(),
         rx_new_certificates,
         tx_primary,
@@ -503,7 +500,7 @@ async fn commit_one() {
 #[tokio::test]
 async fn dead_node() {
     // Make the certificates.
-    let fixture = CommitteeFixture::builder().build();
+    let fixture = CommitteeFixture::builder(MemDatabase::default).build();
     let committee: Committee = fixture.committee();
     let mut ids: Vec<_> = committee.authorities().map(|authority| authority.id()).collect();
 
@@ -525,9 +522,8 @@ async fn dead_node() {
 
     let mut tx_shutdown = Notifier::new();
 
-    let store = make_consensus_store(open_db(tn_types::test_utils::temp_dir()));
-    let cert_store = make_certificate_store(open_db(tn_types::test_utils::temp_dir()));
-    let gc_depth = 50;
+    let config = fixture.authorities().next().unwrap().consensus_config();
+    let store = config.node_storage().consensus_store.clone();
     let metrics = Arc::new(ConsensusMetrics::default());
 
     let bullshark = Bullshark::new(
@@ -540,10 +536,7 @@ async fn dead_node() {
     );
 
     let _consensus_handle = Consensus::spawn(
-        committee,
-        gc_depth,
-        store,
-        cert_store,
+        config,
         tx_shutdown.subscribe(),
         rx_new_certificates,
         tx_primary,
@@ -606,7 +599,7 @@ async fn dead_node() {
 /// round 4 does. The leader of rounds 2 and 4 should thus be committed (because they are linked).
 #[tokio::test]
 async fn not_enough_support() {
-    let fixture = CommitteeFixture::builder().build();
+    let fixture = CommitteeFixture::builder(MemDatabase::default).build();
     let committee = fixture.committee();
     let mut ids: Vec<_> = fixture.authorities().map(|a| a.id()).collect();
     ids.sort();
@@ -679,9 +672,8 @@ async fn not_enough_support() {
 
     let mut tx_shutdown = Notifier::new();
 
-    let store = make_consensus_store(open_db(tn_types::test_utils::temp_dir()));
-    let cert_store = make_certificate_store(open_db(tn_types::test_utils::temp_dir()));
-    let gc_depth = 50;
+    let config = fixture.authorities().next().unwrap().consensus_config();
+    let store = config.node_storage().consensus_store.clone();
     let metrics = Arc::new(ConsensusMetrics::default());
 
     let bullshark = Bullshark::new(
@@ -694,10 +686,7 @@ async fn not_enough_support() {
     );
 
     let _consensus_handle = Consensus::spawn(
-        committee,
-        gc_depth,
-        store,
-        cert_store,
+        config,
         tx_shutdown.subscribe(),
         rx_new_certificates,
         tx_primary,
@@ -760,7 +749,7 @@ async fn not_enough_support() {
 /// and reappears from round 3.
 #[tokio::test]
 async fn missing_leader() {
-    let fixture = CommitteeFixture::builder().build();
+    let fixture = CommitteeFixture::builder(MemDatabase::default).build();
     let committee = fixture.committee();
     let mut ids: Vec<_> = fixture.authorities().map(|a| a.id()).collect();
     ids.sort();
@@ -797,9 +786,8 @@ async fn missing_leader() {
 
     let mut tx_shutdown = Notifier::new();
 
-    let store = make_consensus_store(open_db(tn_types::test_utils::temp_dir()));
-    let cert_store = make_certificate_store(open_db(tn_types::test_utils::temp_dir()));
-    let gc_depth = 50;
+    let config = fixture.authorities().next().unwrap().consensus_config();
+    let store = config.node_storage().consensus_store.clone();
     let metrics = Arc::new(ConsensusMetrics::default());
     let bullshark = Bullshark::new(
         committee.clone(),
@@ -811,10 +799,7 @@ async fn missing_leader() {
     );
 
     let _consensus_handle = Consensus::spawn(
-        committee,
-        gc_depth,
-        store,
-        cert_store,
+        config,
         tx_shutdown.subscribe(),
         rx_new_certificates,
         tx_primary,
@@ -857,7 +842,7 @@ async fn missing_leader() {
 /// Every two rounds (on odd rounds), restart consensus and check consistency.
 #[tokio::test]
 async fn committed_round_after_restart() {
-    let fixture = CommitteeFixture::builder().build();
+    let fixture = CommitteeFixture::builder(MemDatabase::default).build();
     let committee = fixture.committee();
     let ids: Vec<_> = fixture.authorities().map(|a| a.id()).collect();
     let epoch = committee.epoch();
@@ -873,8 +858,9 @@ async fn committed_round_after_restart() {
         &ids,
     );
 
-    let store = make_consensus_store(open_db(tn_types::test_utils::temp_dir()));
-    let cert_store = make_certificate_store(open_db(tn_types::test_utils::temp_dir()));
+    let config = fixture.authorities().next().unwrap().consensus_config();
+    let store = config.node_storage().consensus_store.clone();
+    let cert_store = config.node_storage().certificate_store.clone();
 
     for input_round in (1..=11usize).step_by(2) {
         // Spawn consensus and create related channels.
@@ -885,7 +871,6 @@ async fn committed_round_after_restart() {
             watch::channel(ConsensusRound::new(0, 0));
 
         let mut tx_shutdown = Notifier::new();
-        let gc_depth = 50;
         let metrics = Arc::new(ConsensusMetrics::default());
 
         let bullshark = Bullshark::new(
@@ -898,10 +883,7 @@ async fn committed_round_after_restart() {
         );
 
         let handle = Consensus::spawn(
-            committee.clone(),
-            gc_depth,
-            store.clone(),
-            cert_store.clone(),
+            config.clone(),
             tx_shutdown.subscribe(),
             rx_new_certificates,
             tx_primary,
@@ -954,7 +936,7 @@ async fn committed_round_after_restart() {
 /// from round 2. Certificate 2 should not get committed.
 #[tokio::test]
 async fn delayed_certificates_are_rejected() {
-    let fixture = CommitteeFixture::builder().build();
+    let fixture = CommitteeFixture::builder(MemDatabase::default).build();
     let committee = fixture.committee();
     let ids: Vec<_> = fixture.authorities().map(|a| a.id()).collect();
     let epoch = committee.epoch();
@@ -1008,7 +990,7 @@ async fn delayed_certificates_are_rejected() {
 async fn submitting_equivocating_certificate_should_error() {
     const NUM_SUB_DAGS_PER_SCHEDULE: u64 = 100;
 
-    let fixture = CommitteeFixture::builder().build();
+    let fixture = CommitteeFixture::builder(MemDatabase::default).build();
     let committee = fixture.committee();
     let ids: Vec<_> = fixture.authorities().map(|a| a.id()).collect();
     let epoch = committee.epoch();
@@ -1069,7 +1051,7 @@ async fn submitting_equivocating_certificate_should_error() {
 async fn reset_consensus_scores_on_every_schedule_change() {
     const NUM_SUB_DAGS_PER_SCHEDULE: u64 = 5;
 
-    let fixture = CommitteeFixture::builder().build();
+    let fixture = CommitteeFixture::builder(MemDatabase::default).build();
     let committee = fixture.committee();
     let ids: Vec<_> = fixture.authorities().map(|a| a.id()).collect();
     let epoch = committee.epoch();
@@ -1144,7 +1126,7 @@ async fn reset_consensus_scores_on_every_schedule_change() {
 /// the leader of round 2. Then shutdown consensus and restart in a new epoch.
 #[tokio::test]
 async fn restart_with_new_committee() {
-    let fixture = CommitteeFixture::builder().build();
+    let mut fixture = CommitteeFixture::builder(MemDatabase::default).build();
     let mut committee: Committee = fixture.committee();
     let ids: Vec<_> = fixture.authorities().map(|a| a.id()).collect();
 
@@ -1158,9 +1140,19 @@ async fn restart_with_new_committee() {
             watch::channel(ConsensusRound::new(0, 0));
 
         let mut tx_shutdown = Notifier::new();
-        let store = make_consensus_store(open_db(tn_types::test_utils::temp_dir()));
-        let cert_store = make_certificate_store(open_db(tn_types::test_utils::temp_dir()));
-        let gc_depth = 50;
+        let config = fixture.authorities().next().unwrap().consensus_config();
+        let config = ConsensusConfig::new_with_committee(
+            config.config().clone(),
+            TelcoinTempDirs::default(),
+            config.node_storage().clone(),
+            config.key_config().clone(),
+            committee.clone(),
+            Some(config.worker_cache().clone()),
+        )
+        .unwrap();
+        let store = config.node_storage().consensus_store.clone();
+        store.clear().unwrap();
+        config.node_storage().certificate_store.clear().unwrap();
         let metrics = Arc::new(ConsensusMetrics::default());
         let bullshark = Bullshark::new(
             committee.clone(),
@@ -1172,10 +1164,7 @@ async fn restart_with_new_committee() {
         );
 
         let handle = Consensus::spawn(
-            committee.clone(),
-            gc_depth,
-            store,
-            cert_store,
+            config,
             tx_shutdown.subscribe(),
             rx_new_certificates,
             tx_primary,
@@ -1235,7 +1224,8 @@ async fn restart_with_new_committee() {
         assert_eq!(output.round(), 2);
 
         // Move to the next epoch.
-        committee = committee.advance_epoch(epoch + 1);
+        committee = committee.advance_epoch_for_test(epoch + 1);
+        fixture.update_committee(committee.clone());
         tx_shutdown.notify();
 
         // Ensure consensus stopped.
@@ -1252,7 +1242,7 @@ async fn restart_with_new_committee() {
 async fn garbage_collection_basic() {
     const GC_DEPTH: Round = 4;
 
-    let fixture = CommitteeFixture::builder().build();
+    let fixture = CommitteeFixture::builder(MemDatabase::default).build();
     let committee: Committee = fixture.committee();
 
     // We create certificates for rounds 1 to 7. For the authorities 1 to 3 the references
@@ -1334,7 +1324,7 @@ async fn garbage_collection_basic() {
 async fn slow_node() {
     const GC_DEPTH: Round = 4;
 
-    let fixture = CommitteeFixture::builder().build();
+    let fixture = CommitteeFixture::builder(MemDatabase::default).build();
     let committee: Committee = fixture.committee();
 
     // We create certificates for rounds 1 to 8. For the authorities 1 to 3 the references
@@ -1465,7 +1455,7 @@ async fn slow_node() {
 async fn not_enough_support_and_missing_leaders_and_gc() {
     const GC_DEPTH: Round = 4;
 
-    let fixture = CommitteeFixture::builder().build();
+    let fixture = CommitteeFixture::builder(MemDatabase::default).build();
     let committee: Committee = fixture.committee();
 
     let ids: Vec<AuthorityIdentifier> =

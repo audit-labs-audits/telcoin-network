@@ -154,16 +154,14 @@ impl<DB: Database> WorkerBlockFetcher<DB> {
         // Continue to bulk request from local worker until no remaining digests
         // are available.
         debug!("Local attempt to fetch {} digests", digests.len());
-        let local_blocks = self
-            .block_store
-            .multi_get::<WorkerBlocks>(digests.iter())
-            .expect("Failed to get blocks");
-        for (digest, block) in digests.into_iter().zip(local_blocks.into_iter()) {
-            if let Some(block) = block {
-                self.metrics.worker_block_fetch.with_label_values(&["local", "success"]).inc();
-                fetched_blocks.insert(digest, block);
-            } else {
-                self.metrics.worker_block_fetch.with_label_values(&["local", "missing"]).inc();
+        if let Ok(local_blocks) = self.block_store.multi_get::<WorkerBlocks>(digests.iter()) {
+            for (digest, block) in digests.into_iter().zip(local_blocks.into_iter()) {
+                if let Some(block) = block {
+                    self.metrics.worker_block_fetch.with_label_values(&["local", "success"]).inc();
+                    fetched_blocks.insert(digest, block);
+                } else {
+                    self.metrics.worker_block_fetch.with_label_values(&["local", "missing"]).inc();
+                }
             }
         }
 

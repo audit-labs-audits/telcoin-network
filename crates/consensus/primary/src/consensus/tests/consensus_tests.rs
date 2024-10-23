@@ -5,14 +5,10 @@
 use std::{collections::BTreeSet, sync::Arc};
 
 use fastcrypto::hash::Hash;
-use narwhal_storage::NodeStorage;
 
-use narwhal_typed_store::open_db;
-use tempfile::TempDir;
-use tn_types::{
-    test_utils::CommitteeFixture, Certificate, Notifier, ReputationScores,
-    DEFAULT_BAD_NODES_STAKE_THRESHOLD,
-};
+use narwhal_test_utils::CommitteeFixture;
+use narwhal_typed_store::mem_db::MemDatabase;
+use tn_types::{Certificate, Notifier, ReputationScores, DEFAULT_BAD_NODES_STAKE_THRESHOLD};
 use tokio::sync::watch;
 
 use crate::consensus::{
@@ -33,18 +29,13 @@ use crate::consensus::{
 async fn test_consensus_recovery_with_bullshark() {
     // GIVEN
     let num_sub_dags_per_schedule = 3;
-    // In case the DB dir does not yet exist.
-    let temp_dir = TempDir::new().unwrap();
-    let _ = std::fs::create_dir_all(temp_dir.path());
-    let db = open_db(temp_dir.path());
-    let storage = NodeStorage::reopen(db);
-
-    let consensus_store = storage.consensus_store;
-    let certificate_store = storage.certificate_store;
 
     // AND Setup consensus
-    let fixture = CommitteeFixture::builder().build();
+    let fixture = CommitteeFixture::builder(MemDatabase::default).build();
     let committee = fixture.committee();
+    let config = fixture.authorities().next().unwrap().consensus_config().clone();
+    let consensus_store = config.node_storage().consensus_store.clone();
+    let certificate_store = config.node_storage().certificate_store.clone();
 
     // config.set_consensus_bad_nodes_stake_threshold(33);
 
@@ -64,7 +55,6 @@ async fn test_consensus_recovery_with_bullshark() {
 
     let mut tx_shutdown = Notifier::new();
 
-    let gc_depth = 50;
     let metrics = Arc::new(ConsensusMetrics::default());
     let leader_schedule = LeaderSchedule::from_store(
         committee.clone(),
@@ -81,10 +71,7 @@ async fn test_consensus_recovery_with_bullshark() {
     );
 
     let consensus_handle = Consensus::spawn(
-        committee.clone(),
-        gc_depth,
-        consensus_store.clone(),
-        certificate_store.clone(),
+        config.clone(),
         tx_shutdown.subscribe(),
         rx_waiter,
         tx_primary,
@@ -163,14 +150,8 @@ async fn test_consensus_recovery_with_bullshark() {
     let (tx_consensus_round_updates, _rx_consensus_round_updates) =
         watch::channel(ConsensusRound::default());
 
-    // In case the DB dir does not yet exist.
-    let temp_dir = TempDir::new().unwrap();
-    let _ = std::fs::create_dir_all(temp_dir.path());
-    let db = open_db(temp_dir.path());
-    let storage = NodeStorage::reopen(db);
-
-    let consensus_store = storage.consensus_store;
-    let certificate_store = storage.certificate_store;
+    consensus_store.clear().unwrap();
+    certificate_store.clear().unwrap();
 
     let leader_schedule = LeaderSchedule::from_store(
         committee.clone(),
@@ -187,10 +168,7 @@ async fn test_consensus_recovery_with_bullshark() {
     );
 
     let consensus_handle = Consensus::spawn(
-        committee.clone(),
-        gc_depth,
-        consensus_store.clone(),
-        certificate_store.clone(),
+        config.clone(),
         tx_shutdown.subscribe(),
         rx_waiter,
         tx_primary,
@@ -259,10 +237,7 @@ async fn test_consensus_recovery_with_bullshark() {
     );
 
     let _consensus_handle = Consensus::spawn(
-        committee.clone(),
-        gc_depth,
-        consensus_store.clone(),
-        certificate_store.clone(),
+        config,
         tx_shutdown.subscribe(),
         rx_waiter,
         tx_primary,

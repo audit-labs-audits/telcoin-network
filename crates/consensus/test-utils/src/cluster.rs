@@ -3,14 +3,12 @@
 // SPDX-License-Identifier: Apache-2.0
 
 //! Cluster fixture to represent a local network.
-use crate::{authority::AuthorityDetails, default_test_execution_node};
-use fastcrypto::traits::KeyPair as _;
+use crate::{authority::AuthorityDetails, default_test_execution_node, CommitteeFixture};
 use itertools::Itertools;
+use narwhal_typed_store::traits::Database;
 use reth::tasks::TaskExecutor;
 use std::{collections::HashMap, time::Duration};
-use tn_types::{
-    test_utils::CommitteeFixture, Committee, ConsensusOutput, Parameters, WorkerCache, WorkerId,
-};
+use tn_types::{Committee, ConsensusOutput, WorkerId};
 use tokio::sync::broadcast;
 use tracing::info;
 
@@ -19,28 +17,28 @@ use tracing::info;
 pub mod cluster_tests;
 
 /// Test fixture that holds all information needed to run a local network.
-pub struct Cluster {
-    #[allow(unused)]
-    fixture: CommitteeFixture,
-    authorities: HashMap<usize, AuthorityDetails>,
+pub struct Cluster<DB> {
+    fixture: CommitteeFixture<DB>,
+    authorities: HashMap<usize, AuthorityDetails<DB>>,
     pub committee: Committee,
-    pub worker_cache: WorkerCache,
-    #[allow(dead_code)]
-    parameters: Parameters,
 }
 
-impl Cluster {
+impl<DB> Cluster<DB>
+where
+    DB: Database,
+{
     /// Initialises a new cluster by the provided parameters. The cluster will
     /// create all the authorities (primaries & workers) that are defined under
     /// the committee structure, but none of them will be started.
     ///
     /// Fields passed in via Parameters will be used, expect specified ports which have to be
     /// different for each instance. If None, the default Parameters will be used.
-    pub fn new(parameters: Option<Parameters>, executor: TaskExecutor) -> Self {
-        let fixture = CommitteeFixture::builder().randomize_ports(true).build();
+    pub fn new<F>(executor: TaskExecutor, new_db: F) -> Self
+    where
+        F: Fn() -> DB,
+    {
+        let fixture = CommitteeFixture::builder(new_db).randomize_ports(true).build();
         let committee = fixture.committee();
-        let worker_cache = fixture.worker_cache();
-        let params = parameters.unwrap_or_else(Self::parameters);
 
         info!("###### Creating new cluster ######");
         info!("Validator keys:");
@@ -59,21 +57,14 @@ impl Cluster {
             )
             .expect("default test execution node");
 
-            let authority = AuthorityDetails::new(
-                id,
-                authority_id,
-                authority_fixture.keypair().copy(),
-                authority_fixture.network_keypair().copy(),
-                authority_fixture.worker_keypairs(),
-                params.with_available_ports(),
-                committee.clone(),
-                worker_cache.clone(),
-                engine,
-            );
+            let consensus_config = authority_fixture.consensus_config().clone();
+
+            let authority =
+                AuthorityDetails::new(id, authority_id, consensus_config.clone(), engine);
             nodes.insert(id, authority);
         }
 
-        Self { fixture, authorities: nodes, committee, worker_cache, parameters: params }
+        Self { fixture, authorities: nodes, committee }
     }
 
     /// Starts a cluster by the defined number of authorities. The authorities
@@ -150,7 +141,7 @@ impl Cluster {
             .unwrap_or_else(|| panic!("Authority with id {} not found", id));
 
         // start the primary
-        authority.start_primary(preserve_store).await?;
+        authority.start_primary().await?;
 
         // start the workers
         if let Some(workers) = workers_per_authority {
@@ -181,7 +172,7 @@ impl Cluster {
     /// * or has been stopped
     ///
     /// will not be returned by this method.
-    pub async fn authorities(&self) -> Vec<AuthorityDetails> {
+    pub async fn authorities(&self) -> Vec<AuthorityDetails<DB>> {
         let mut result = Vec::new();
 
         for authority in self.authorities.values() {
@@ -196,7 +187,7 @@ impl Cluster {
     /// Returns the authority identified by the provided id. Will panic if the
     /// authority with the id is not found. The returned authority can be freely
     /// cloned and managed without having the need to fetch again.
-    pub fn authority(&self, id: usize) -> AuthorityDetails {
+    pub fn authority(&self, id: usize) -> AuthorityDetails<DB> {
         self.authorities
             .get(&id)
             .unwrap_or_else(|| panic!("Authority with id {} not found", id))
@@ -251,10 +242,6 @@ impl Cluster {
         authorities_latest_commit
     }
 
-    fn parameters() -> Parameters {
-        Parameters { max_worker_tx_bytes_size: 200, ..Parameters::default() }
-    }
-
     /// Subscribe to [ConsensusOutput] broadcast.
     ///
     /// NOTE: this broadcasts to all subscribers, but lagging receivers will lose messages
@@ -264,5 +251,9 @@ impl Cluster {
     ) -> broadcast::Receiver<ConsensusOutput> {
         let authority = self.authority(id);
         authority.subscribe_consensus_output().await
+    }
+
+    pub fn fixture(&self) -> &CommitteeFixture<DB> {
+        &self.fixture
     }
 }

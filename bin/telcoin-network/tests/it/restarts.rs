@@ -161,15 +161,17 @@ fn test_restarts() -> eyre::Result<()> {
     let is_ok = res1.is_ok();
 
     // kill new child2 if successfully restarted
-    match res1 {
+    let assert_str = match res1 {
         Ok(mut child2_restarted) => {
             kill_child(&mut child2_restarted);
+            "".to_string()
         }
         Err(err) => {
             // run_restart_tests1 shutsdown child2 on error
             tracing::error!(target: "restart-test", "Got error: {err}");
+            err.to_string()
         }
-    }
+    };
 
     // kill all children (child2 should already be dead)
     for (i, child) in children.iter_mut().enumerate() {
@@ -182,7 +184,7 @@ fn test_restarts() -> eyre::Result<()> {
     }
 
     // Make sure we shutdown nodes even if an error in first testing.
-    assert!(is_ok);
+    assert!(is_ok, "{}", assert_str);
     let to_account = address_from_word("testing");
     // The validators should be down now, confirm.
     assert!(get_balance(&client_urls[0], &to_account.to_string(), 5).is_err());

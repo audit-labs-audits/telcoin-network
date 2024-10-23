@@ -5,19 +5,18 @@
 // This test file tests the validity of the 'certificates' implementation.
 
 use fastcrypto::traits::KeyPair as _;
+use narwhal_test_utils::CommitteeFixture;
+use narwhal_typed_store::mem_db::MemDatabase;
 use rand::{
     rngs::{OsRng, StdRng},
     SeedableRng,
 };
 use std::num::NonZeroUsize;
-use tn_types::{
-    test_utils::CommitteeFixture, AuthorityIdentifier, BlsKeypair, Certificate,
-    SignatureVerificationState, Vote,
-};
+use tn_types::{AuthorityIdentifier, BlsKeypair, Certificate, SignatureVerificationState, Vote};
 
 #[test]
 fn test_empty_certificate_verification() {
-    let fixture = CommitteeFixture::builder().build();
+    let fixture = CommitteeFixture::builder(MemDatabase::default).build();
 
     let committee = fixture.committee();
     let header = fixture.header();
@@ -55,7 +54,7 @@ fn test_empty_certificate_verification() {
 
 #[test]
 fn test_valid_certificate_v2_verification() {
-    let fixture = CommitteeFixture::builder().build();
+    let fixture = CommitteeFixture::builder(MemDatabase::default).build();
     let committee = fixture.committee();
     let header = fixture.header();
 
@@ -80,7 +79,7 @@ fn test_valid_certificate_v2_verification() {
 
 #[test]
 fn test_certificate_insufficient_signatures() {
-    let fixture = CommitteeFixture::builder().build();
+    let fixture = CommitteeFixture::builder(MemDatabase::default).build();
     let committee = fixture.committee();
     let header = fixture.header();
 
@@ -101,7 +100,7 @@ fn test_certificate_insufficient_signatures() {
 
 #[test]
 fn test_certificate_validly_repeated_public_keys() {
-    let fixture = CommitteeFixture::builder().build();
+    let fixture = CommitteeFixture::builder(MemDatabase::default).build();
     let committee = fixture.committee();
     let header = fixture.header();
 
@@ -125,7 +124,7 @@ fn test_certificate_validly_repeated_public_keys() {
 
 #[test]
 fn test_unknown_signature_in_certificate() {
-    let fixture = CommitteeFixture::builder().build();
+    let fixture = CommitteeFixture::builder(MemDatabase::default).build();
     let committee = fixture.committee();
     let header = fixture.header();
 
@@ -151,7 +150,7 @@ proptest::proptest! {
     fn test_certificate_verification(
         committee_size in 4..35_usize
     ) {
-        let fixture = CommitteeFixture::builder()
+        let fixture = CommitteeFixture::builder(MemDatabase::default)
             .committee_size(NonZeroUsize::new(committee_size).unwrap())
             .build();
         let committee = fixture.committee();

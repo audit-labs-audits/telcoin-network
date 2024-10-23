@@ -3,7 +3,6 @@ use fastcrypto::{
     hash::{Digest, Hash},
     traits::AggregateAuthenticator,
 };
-use mem_utils::MallocSizeOf;
 use serde::{Deserialize, Serialize};
 use serde_with::serde_as;
 use std::{collections::VecDeque, fmt};
@@ -311,7 +310,7 @@ impl Certificate {
 // certificate chain that is formed via the DAG by only verifying the
 // leaves of the certificate chain when they are fetched from validators
 // during catchup.
-#[derive(Clone, Serialize, Deserialize, MallocSizeOf, Debug)]
+#[derive(Clone, Serialize, Deserialize, Debug)]
 pub enum SignatureVerificationState {
     // This state occurs when the certificate has not yet received a quorum of
     // signatures.
@@ -353,9 +352,7 @@ pub fn validate_received_certificate_version(
 }
 
 /// Certificate digest.
-#[derive(
-    Clone, Copy, Serialize, Deserialize, Default, MallocSizeOf, PartialEq, Eq, Hash, PartialOrd, Ord,
-)]
+#[derive(Clone, Copy, Serialize, Deserialize, Default, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub struct CertificateDigest([u8; crypto::DIGEST_LENGTH]);
 
 impl CertificateDigest {

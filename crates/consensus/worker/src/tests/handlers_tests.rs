@@ -4,10 +4,11 @@
 // SPDX-License-Identifier: Apache-2.0
 
 use narwhal_network_types::{MockWorkerToWorker, WorkerToWorkerServer};
-use narwhal_typed_store::open_db;
+use narwhal_test_utils::CommitteeFixture;
+use narwhal_typed_store::{mem_db::MemDatabase, open_db};
 use std::vec;
 use tempfile::TempDir;
-use tn_types::test_utils::{batch, random_network, CommitteeFixture};
+use tn_types::test_utils::{batch, random_network};
 
 use super::*;
 use tn_block_validator::NoopBlockValidator;
@@ -15,7 +16,7 @@ use tn_block_validator::NoopBlockValidator;
 #[tokio::test]
 async fn synchronize() {
     reth_tracing::init_test_tracing();
-    let fixture = CommitteeFixture::builder().randomize_ports(true).build();
+    let fixture = CommitteeFixture::builder(MemDatabase::default).randomize_ports(true).build();
     let committee = fixture.committee();
     let worker_cache = fixture.worker_cache();
     let id = 0;
@@ -46,7 +47,7 @@ async fn synchronize() {
             }))
         });
     let routes = anemo::Router::new().add_rpc_service(WorkerToWorkerServer::new(mock_server));
-    let target_worker = target_primary.worker(id);
+    let target_worker = target_primary.worker();
     let _recv_network = target_worker.new_network(routes);
     let send_network = random_network();
     send_network
@@ -83,7 +84,7 @@ async fn synchronize() {
 async fn synchronize_when_batch_exists() {
     reth_tracing::init_test_tracing();
 
-    let fixture = CommitteeFixture::builder().randomize_ports(true).build();
+    let fixture = CommitteeFixture::builder(MemDatabase::default).randomize_ports(true).build();
     let committee = fixture.committee();
     let worker_cache = fixture.worker_cache();
     let id = 0;

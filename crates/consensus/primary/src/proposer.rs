@@ -38,6 +38,7 @@ use std::{
     sync::Arc,
     task::{Context, Poll},
 };
+use tn_config::ConsensusConfig;
 use tn_types::{
     now, AuthorityIdentifier, BlockHash, Certificate, Committee, Epoch, Header, Noticer, Round,
     SystemMessage, TimestampSec, WorkerId,
@@ -186,13 +187,7 @@ impl<DB: Database + 'static> Proposer<DB> {
     #[allow(clippy::too_many_arguments)]
     #[must_use]
     pub fn new(
-        authority_id: AuthorityIdentifier,
-        committee: Committee,
-        proposer_store: ProposerStore<DB>,
-        header_num_of_batches_threshold: usize,
-        max_header_num_of_batches: usize,
-        max_header_delay: Duration,
-        min_header_delay: Duration,
+        config: ConsensusConfig<DB>,
         fatal_header_timeout: Option<Duration>,
         rx_shutdown: Noticer,
         rx_parents: Receiver<(Vec<Certificate>, Round)>,
@@ -204,22 +199,22 @@ impl<DB: Database + 'static> Proposer<DB> {
         metrics: Arc<PrimaryMetrics>,
         leader_schedule: LeaderSchedule,
     ) -> Self {
-        let genesis = Certificate::genesis(&committee);
+        let genesis = Certificate::genesis(config.committee());
         let fatal_header_timeout = fatal_header_timeout.unwrap_or(DEFAULT_FATAL_HEADER_TIMEOUT);
         // create min/max delay intervals
-        let min_delay_interval = tokio::time::interval(min_header_delay);
-        let max_delay_interval = tokio::time::interval(max_header_delay);
+        let min_delay_interval = tokio::time::interval(config.parameters().min_header_delay);
+        let max_delay_interval = tokio::time::interval(config.parameters().max_header_delay);
         let mut fatal_header_timeout = tokio::time::interval(fatal_header_timeout);
         // reset interval because first tick completes immediately
         fatal_header_timeout.reset();
 
         Self {
-            authority_id,
-            committee,
-            header_num_of_batches_threshold,
-            max_header_num_of_batches,
-            min_header_delay,
-            max_header_delay,
+            authority_id: config.authority().id(),
+            committee: config.committee().clone(),
+            header_num_of_batches_threshold: config.parameters().header_num_of_batches_threshold,
+            max_header_num_of_batches: config.parameters().max_header_num_of_batches,
+            min_header_delay: config.parameters().min_header_delay,
+            max_header_delay: config.parameters().max_header_delay,
             min_delay_interval,
             max_delay_interval,
             fatal_header_timeout,
@@ -230,12 +225,12 @@ impl<DB: Database + 'static> Proposer<DB> {
             rx_system_messages,
             tx_headers,
             tx_narwhal_round_updates,
-            proposer_store,
+            proposer_store: config.node_storage().proposer_store.clone(),
             round: 0,
             last_round_timestamp: None,
             last_parents: genesis,
             last_leader: None,
-            digests: VecDeque::with_capacity(2 * max_header_num_of_batches),
+            digests: VecDeque::with_capacity(2 * config.parameters().max_header_num_of_batches),
             system_messages: Vec::new(),
             proposed_headers: BTreeMap::new(),
             rx_committed_own_headers,

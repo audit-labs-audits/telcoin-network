@@ -406,12 +406,6 @@ pub struct ValidatorInfo {
     pub execution_address: Address,
     /// Proof
     pub proof_of_possession: BlsSignature,
-    // TODO: remove these for now since they don't seem critical
-
-    // /// Hostname for the node.
-    // hostname: String,
-    // /// Peer address for execution clients?
-    // p2p_address: Multiaddr,
 }
 
 impl ValidatorInfo {
@@ -510,57 +504,19 @@ impl PartialEq for ValidatorSignatureInfo {
 mod tests {
     use super::NetworkGenesis;
     use crate::{
-        adiri_chain_spec, generate_proof_of_possession, BlsKeypair, Multiaddr, NetworkKeypair,
-        PrimaryInfo, TelcoinDirs, ValidatorInfo, WorkerIndex, WorkerInfo,
+        adiri_chain_spec, generate_proof_of_possession, test_utils::TelcoinTempDirs, BlsKeypair,
+        Multiaddr, NetworkKeypair, PrimaryInfo, TelcoinDirs, ValidatorInfo, WorkerIndex,
+        WorkerInfo,
     };
     use fastcrypto::traits::KeyPair;
     use rand::{rngs::StdRng, SeedableRng};
     use reth_primitives::Address;
-    use std::{collections::BTreeMap, path::PathBuf};
-    use tempfile::tempdir;
-
-    struct TempTCDirs(PathBuf);
-
-    impl Default for TempTCDirs {
-        fn default() -> Self {
-            Self(tempdir().expect("tempdir created").into_path())
-        }
-    }
-
-    impl TelcoinDirs for TempTCDirs {
-        fn node_config_path(&self) -> PathBuf {
-            self.0.join("telcoin-network.yaml")
-        }
-
-        fn validator_keys_path(&self) -> PathBuf {
-            self.0.join("validator-keys")
-        }
-
-        fn validator_info_path(&self) -> PathBuf {
-            self.0.join("validator")
-        }
-
-        fn genesis_path(&self) -> PathBuf {
-            self.0.join("genesis")
-        }
-
-        fn committee_path(&self) -> PathBuf {
-            self.genesis_path().join("committee.yaml")
-        }
-
-        fn worker_cache_path(&self) -> PathBuf {
-            self.genesis_path().join("worker_cache.yaml")
-        }
-
-        fn narwhal_db_path(&self) -> PathBuf {
-            self.0.join("narwhal-db")
-        }
-    }
+    use std::collections::BTreeMap;
 
     #[test]
     fn test_write_and_read_network_genesis() {
         let mut network_genesis = NetworkGenesis::new();
-        let paths = TempTCDirs::default();
+        let paths = TelcoinTempDirs::default();
         // create keys and information for validator
         let bls_keypair = BlsKeypair::generate(&mut StdRng::from_seed([0; 32]));
         let network_keypair = NetworkKeypair::generate(&mut StdRng::from_seed([0; 32]));

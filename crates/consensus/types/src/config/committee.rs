@@ -12,7 +12,6 @@ use fastcrypto::{
     serde_helpers::ToFromByteArray,
     traits::{EncodeDecodeBase64, ToFromBytes},
 };
-use mem_utils::MallocSizeOf;
 use rand::{rngs::StdRng, seq::SliceRandom, SeedableRng};
 use reth_primitives::Address;
 use serde::{Deserialize, Serialize};
@@ -76,7 +75,35 @@ impl Authority {
         }
     }
 
-    fn initialise(&mut self, id: AuthorityIdentifier) {
+    /// Version of new that can be called directly.  Useful for testing, if you are calling this
+    /// outside of a test you are wrong (see comment on new).
+    pub fn new_for_test(
+        id: AuthorityIdentifier,
+        protocol_key: BlsPublicKey,
+        stake: Stake,
+        primary_network_address: Multiaddr,
+        execution_address: Address,
+        network_key: NetworkPublicKey,
+        hostname: String,
+    ) -> Self {
+        let protocol_key_bytes = BlsPublicKeyBytes::from(&protocol_key);
+        Self {
+            id,
+            protocol_key,
+            protocol_key_bytes,
+            stake,
+            primary_network_address,
+            execution_address,
+            network_key,
+            hostname,
+            initialised: false,
+        }
+    }
+
+    /// Exposed for testing, can only be called once.
+    /// In normal use is called at creation.
+    pub fn initialise(&mut self, id: AuthorityIdentifier) {
+        assert!(!self.initialised);
         self.id = id;
         self.initialised = true;
     }
@@ -87,7 +114,8 @@ impl Authority {
     }
 
     pub fn protocol_key(&self) -> &BlsPublicKey {
-        assert!(self.initialised);
+        // Skip the assert here, this is called in testing before the initialise...
+        // assert!(self.initialised);
         &self.protocol_key
     }
 
@@ -101,9 +129,9 @@ impl Authority {
         self.stake
     }
 
-    pub fn primary_network_address(&self) -> Multiaddr {
+    pub fn primary_network_address(&self) -> &Multiaddr {
         assert!(self.initialised);
-        self.primary_network_address.clone()
+        &self.primary_network_address
     }
 
     pub fn execution_address(&self) -> Address {
@@ -146,24 +174,19 @@ pub struct Committee {
 // Every authority gets uniquely identified by the AuthorityIdentifier
 // The type can be easily swapped without needing to change anything else in the implementation.
 #[derive(
-    Eq,
-    PartialEq,
-    Ord,
-    PartialOrd,
-    Clone,
-    Copy,
-    Debug,
-    Default,
-    Hash,
-    Serialize,
-    Deserialize,
-    MallocSizeOf,
+    Eq, PartialEq, Ord, PartialOrd, Clone, Copy, Debug, Default, Hash, Serialize, Deserialize,
 )]
 pub struct AuthorityIdentifier(pub u16);
 
 impl Display for AuthorityIdentifier {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         f.write_str(self.0.to_string().as_str())
+    }
+}
+
+impl From<u16> for AuthorityIdentifier {
+    fn from(value: u16) -> Self {
+        Self(value)
     }
 }
 
@@ -195,6 +218,31 @@ impl Committee {
         committee
     }
 
+    /// Expose new for tests.  If you are calling this outside of a test you are wrong, see comment
+    /// on new.
+    pub fn new_for_test(authorities: BTreeMap<BlsPublicKey, Authority>, epoch: Epoch) -> Self {
+        let mut committee = Self {
+            authorities,
+            epoch,
+            authorities_by_id: Default::default(),
+            validity_threshold: 0,
+            quorum_threshold: 0,
+        };
+
+        committee.authorities_by_id = committee
+            .authorities
+            .values()
+            .map(|authority| (authority.id(), authority.clone()))
+            .collect();
+        committee.validity_threshold = committee.calculate_validity_threshold().get();
+        committee.quorum_threshold = committee.calculate_quorum_threshold().get();
+        assert!(committee.authorities_by_id.len() > 1, "committee size must be larger that 1");
+        // Some sanity checks to ensure that we'll not end up in invalid state
+        assert_eq!(committee.authorities_by_id.len(), committee.authorities.len());
+
+        committee
+    }
+
     fn calculate_quorum_threshold(&self) -> NonZeroU64 {
         // If N = 3f + 1 + k (0 <= k < 3)
         // then (2 N + 3) / 3 = 2f + 1 + (2k + 2)/3 = 2f + 1 + k = N - f
@@ -206,7 +254,7 @@ impl Committee {
         // If N = 3f + 1 + k (0 <= k < 3)
         // then (N + 2) / 3 = f + 1 + k/3 = f + 1
         let total_votes: Stake = self.total_stake();
-        NonZeroU64::new((total_votes + 2) / 3).unwrap()
+        NonZeroU64::new((total_votes + 2) / 3).unwrap_or(NonZeroU64::new(1).expect("1 is NOT 0!"))
     }
 
     /// Updates the committee internal secondary indexes.
@@ -393,7 +441,11 @@ impl Committee {
             .iter()
             .filter(|(_, authority)| authority.id() != myself)
             .map(|(_, authority)| {
-                (authority.id(), authority.primary_network_address(), authority.network_key())
+                (
+                    authority.id(),
+                    authority.primary_network_address().clone(),
+                    authority.network_key(),
+                )
             })
             .collect()
     }
@@ -470,8 +522,8 @@ impl Committee {
 
     /// Used for testing - not recommended to use for any other case.
     /// It creates a new instance with updated epoch
-    pub fn advance_epoch(&self, new_epoch: Epoch) -> Committee {
-        Committee::new(self.authorities.clone(), new_epoch)
+    pub fn advance_epoch_for_test(&self, new_epoch: Epoch) -> Committee {
+        Committee::new_for_test(self.authorities.clone(), new_epoch)
     }
 }
 

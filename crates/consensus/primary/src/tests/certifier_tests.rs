@@ -3,18 +3,16 @@
 // Copyright (c) Mysten Labs, Inc.
 // SPDX-License-Identifier: Apache-2.0
 use super::*;
-use crate::common::create_db_stores;
 
 use crate::consensus::ConsensusRound;
 use fastcrypto::traits::KeyPair;
-use narwhal_network::client::NetworkClient;
 use narwhal_network_types::{MockPrimaryToPrimary, PrimaryToPrimaryServer, RequestVoteResponse};
 use narwhal_primary_metrics::PrimaryChannelMetrics;
-use narwhal_typed_store::open_db;
+use narwhal_test_utils::CommitteeFixture;
+use narwhal_typed_store::mem_db::MemDatabase;
 use rand::{rngs::StdRng, SeedableRng};
 use std::num::NonZeroUsize;
-use tempfile::TempDir;
-use tn_types::{test_utils::CommitteeFixture, BlsKeypair, Notifier, SignatureVerificationState};
+use tn_types::{BlsKeypair, Notifier, SignatureVerificationState};
 use tokio::sync::watch;
 
 // // TODO: Remove after network has moved to CertificateV2
@@ -139,16 +137,11 @@ use tokio::sync::watch;
 
 #[tokio::test(flavor = "current_thread", start_paused = true)]
 async fn propose_header_and_form_certificate_v2() {
-    let temp_dir = TempDir::new().unwrap();
     reth_tracing::init_test_tracing();
-    let fixture = CommitteeFixture::builder().randomize_ports(true).build();
+    let fixture = CommitteeFixture::builder(MemDatabase::default).randomize_ports(true).build();
     let committee = fixture.committee();
-    let worker_cache = fixture.worker_cache();
     let primary = fixture.authorities().last().unwrap();
-    let client = NetworkClient::new_from_keypair(&primary.network_keypair());
-    let network_key = primary.network_keypair().copy().private().0.to_bytes();
     let id = primary.id();
-    let signature_service = SignatureService::new(primary.keypair().copy());
     let metrics = Arc::new(PrimaryMetrics::default());
     let primary_channel_metrics = PrimaryChannelMetrics::default();
     let mut tx_shutdown = Notifier::new();
@@ -158,27 +151,19 @@ async fn propose_header_and_form_certificate_v2() {
     let (tx_parents, _rx_parents) = tn_types::test_channel!(1);
     let (_tx_consensus_round_updates, rx_consensus_round_updates) =
         watch::channel(ConsensusRound::new(0, 0));
-    let db = open_db(temp_dir.path());
-    let (certificate_store, payload_store, _) = create_db_stores(db);
 
     // Create a fake header.
     let proposed_header = primary.header(&committee);
 
     // Set up network.
-    let own_address = committee.primary_by_id(&id).unwrap().to_anemo_address().unwrap();
-    let network = anemo::Network::bind(own_address)
-        .server_name("narwhal")
-        .private_key(network_key)
-        .start(anemo::Router::new())
-        .unwrap();
+    let network = primary.new_network(anemo::Router::new());
 
     // Set up remote primaries responding with votes.
-    let mut primary_networks = Vec::new();
-    for primary in fixture.authorities().filter(|a| a.id() != id) {
-        let address = committee.primary(&primary.public_key()).unwrap();
-        let name = primary.id();
-        let signature_service = SignatureService::new(primary.keypair().copy());
-        let vote = Vote::new(&proposed_header, &name, &signature_service).await;
+    let mut peer_networks = Vec::new();
+    for peer in fixture.authorities().filter(|a| a.id() != id) {
+        let address = committee.primary(&peer.public_key()).unwrap();
+        let name = peer.id();
+        let vote = Vote::new(&proposed_header, &name, peer.consensus_config().key_config()).await;
         let mut mock_server = MockPrimaryToPrimary::new();
         let mut mock_seq = mockall::Sequence::new();
         // Verify errors are retried.
@@ -196,23 +181,17 @@ async fn propose_header_and_form_certificate_v2() {
             },
         );
         let routes = anemo::Router::new().add_rpc_service(PrimaryToPrimaryServer::new(mock_server));
-        primary_networks.push(primary.new_network(routes));
+        peer_networks.push(peer.new_network(routes));
         println!("New primary added: {:?}", address);
 
         let address = address.to_anemo_address().unwrap();
-        let peer_id = anemo::PeerId(primary.network_keypair().public().0.to_bytes());
+        let peer_id = anemo::PeerId(peer.network_keypair().public().0.to_bytes());
         network.connect_with_peer_id(address, peer_id).await.unwrap();
     }
 
     // Spawn the core.
     let synchronizer = Arc::new(Synchronizer::new(
-        id,
-        fixture.committee(),
-        worker_cache.clone(),
-        /* gc_depth */ 50,
-        client,
-        certificate_store.clone(),
-        payload_store.clone(),
+        primary.consensus_config(),
         tx_certificate_fetcher,
         tx_new_certificates.clone(),
         tx_parents.clone(),
@@ -222,11 +201,8 @@ async fn propose_header_and_form_certificate_v2() {
     ));
 
     let _handle = Certifier::spawn(
-        id,
-        committee.clone(),
-        certificate_store.clone(),
+        primary.consensus_config(),
         synchronizer,
-        signature_service,
         tx_shutdown.subscribe(),
         rx_headers,
         metrics.clone(),
@@ -237,7 +213,10 @@ async fn propose_header_and_form_certificate_v2() {
     // consensus channel.
     let proposed_digest = proposed_header.digest();
     tx_headers.send(proposed_header).await.unwrap();
-    let certificate = rx_new_certificates.recv().await.unwrap();
+    let certificate = tokio::time::timeout(Duration::from_secs(10), rx_new_certificates.recv())
+        .await
+        .unwrap()
+        .unwrap();
     assert_eq!(certificate.header().digest(), proposed_digest);
     assert!(matches!(
         certificate.signature_verification_state(),
@@ -247,16 +226,12 @@ async fn propose_header_and_form_certificate_v2() {
 
 #[tokio::test(flavor = "current_thread", start_paused = true)]
 async fn propose_header_failure() {
-    let temp_dir = TempDir::new().unwrap();
     reth_tracing::init_test_tracing();
-    let fixture = CommitteeFixture::builder().randomize_ports(true).build();
+    let fixture = CommitteeFixture::builder(MemDatabase::default).randomize_ports(true).build();
     let committee = fixture.committee();
-    let worker_cache = fixture.worker_cache();
     let primary = fixture.authorities().last().unwrap();
-    let client = NetworkClient::new_from_keypair(&primary.network_keypair());
     let network_key = primary.network_keypair().copy().private().0.to_bytes();
     let authority_id = primary.id();
-    let signature_service = SignatureService::new(primary.keypair().copy());
     let metrics = Arc::new(PrimaryMetrics::default());
     let primary_channel_metrics = PrimaryChannelMetrics::default();
     let mut tx_shutdown = Notifier::new();
@@ -266,8 +241,6 @@ async fn propose_header_failure() {
     let (tx_parents, _rx_parents) = tn_types::test_channel!(1);
     let (_tx_consensus_round_updates, rx_consensus_round_updates) =
         watch::channel(ConsensusRound::default());
-    let db = open_db(temp_dir.path());
-    let (certificate_store, payload_store, _) = create_db_stores(db);
 
     // Create a fake header.
     let proposed_header = primary.header(&committee);
@@ -301,13 +274,7 @@ async fn propose_header_failure() {
 
     // Spawn the core.
     let synchronizer = Arc::new(Synchronizer::new(
-        authority_id,
-        fixture.committee(),
-        worker_cache.clone(),
-        /* gc_depth */ 50,
-        client,
-        certificate_store.clone(),
-        payload_store.clone(),
+        primary.consensus_config(),
         tx_certificate_fetcher,
         tx_new_certificates.clone(),
         tx_parents.clone(),
@@ -317,11 +284,8 @@ async fn propose_header_failure() {
     ));
 
     let _handle = Certifier::spawn(
-        authority_id,
-        committee.clone(),
-        certificate_store.clone(),
+        primary.consensus_config(),
         synchronizer,
-        signature_service,
         tx_shutdown.subscribe(),
         rx_headers,
         metrics.clone(),
@@ -337,7 +301,7 @@ async fn propose_header_failure() {
     }
 }
 
-#[tokio::test(flavor = "current_thread", start_paused = true)]
+#[tokio::test(flavor = "current_thread")]
 async fn propose_header_scenario_with_bad_sigs() {
     reth_tracing::init_test_tracing();
     // expect cert if less than 2 byzantines, otherwise no cert
@@ -356,18 +320,14 @@ async fn run_vote_aggregator_with_param(
     num_byzantine: usize,
     expect_cert: bool,
 ) {
-    let fixture = CommitteeFixture::builder()
+    let fixture = CommitteeFixture::builder(MemDatabase::default)
         .committee_size(NonZeroUsize::new(committee_size).unwrap())
         .randomize_ports(true)
         .build();
 
     let committee = fixture.committee();
-    let worker_cache = fixture.worker_cache();
     let primary = fixture.authorities().last().unwrap();
-    let client = NetworkClient::new_from_keypair(&primary.network_keypair());
-    let network_key = primary.network_keypair().copy().private().0.to_bytes();
     let id: AuthorityIdentifier = primary.id();
-    let signature_service = SignatureService::new(primary.keypair().copy());
     let metrics = Arc::new(PrimaryMetrics::default());
     let primary_channel_metrics = PrimaryChannelMetrics::default();
     let mut tx_shutdown = Notifier::new();
@@ -377,32 +337,24 @@ async fn run_vote_aggregator_with_param(
     let (tx_parents, _rx_parents) = tn_types::test_channel!(1);
     let (_tx_consensus_round_updates, rx_consensus_round_updates) =
         watch::channel(ConsensusRound::new(0, 0));
-    let temp_dir = TempDir::new().unwrap();
-    let db = open_db(temp_dir.path());
-    let (certificate_store, payload_store, _) = create_db_stores(db);
 
     // Create a fake header.
     let proposed_header = primary.header(&committee);
 
     // Set up network.
-    let own_address = committee.primary_by_id(&id).unwrap().to_anemo_address().unwrap();
-    let network = anemo::Network::bind(own_address)
-        .server_name("narwhal")
-        .private_key(network_key)
-        .start(anemo::Router::new())
-        .unwrap();
+    let network = primary.new_network(anemo::Router::new());
 
     // Set up remote primaries responding with votes.
-    let mut primary_networks = Vec::new();
-    for (i, primary) in fixture.authorities().filter(|a| a.id() != id).enumerate() {
-        let address = committee.primary(&primary.public_key()).unwrap();
-        let name = primary.id();
+    let mut peer_networks = Vec::new();
+    for (i, peer) in fixture.authorities().filter(|a| a.id() != id).enumerate() {
+        let address = committee.primary(&peer.public_key()).unwrap();
+        let name = peer.id();
         // Create bad signature for a number of byzantines.
         let vote = if i < num_byzantine {
             let bad_key = BlsKeypair::generate(&mut StdRng::from_seed([0; 32]));
             Vote::new_with_signer(&proposed_header, &name, &bad_key)
         } else {
-            Vote::new_with_signer(&proposed_header, &name, primary.keypair())
+            Vote::new(&proposed_header, &name, peer.consensus_config().key_config()).await
         };
         let mut mock_server = MockPrimaryToPrimary::new();
         let mut mock_seq = mockall::Sequence::new();
@@ -415,36 +367,27 @@ async fn run_vote_aggregator_with_param(
             },
         );
         let routes = anemo::Router::new().add_rpc_service(PrimaryToPrimaryServer::new(mock_server));
-        primary_networks.push(primary.new_network(routes));
+        peer_networks.push(peer.new_network(routes));
         println!("New primary added: {:?}", address);
 
         let address = address.to_anemo_address().unwrap();
-        let peer_id = anemo::PeerId(primary.network_keypair().public().0.to_bytes());
+        let peer_id = anemo::PeerId(peer.network_keypair().public().0.to_bytes());
         network.connect_with_peer_id(address, peer_id).await.unwrap();
     }
 
     // Spawn the core.
     let synchronizer = Arc::new(Synchronizer::new(
-        id,
-        fixture.committee(),
-        worker_cache.clone(),
-        /* gc_depth */ 50,
-        client,
-        certificate_store.clone(),
-        payload_store.clone(),
+        primary.consensus_config(),
         tx_certificate_fetcher,
-        tx_new_certificates.clone(),
+        tx_new_certificates,
         tx_parents.clone(),
         rx_consensus_round_updates.clone(),
         metrics.clone(),
         &primary_channel_metrics,
     ));
     let _handle = Certifier::spawn(
-        id,
-        committee.clone(),
-        certificate_store.clone(),
+        primary.consensus_config(),
         synchronizer,
-        signature_service,
         tx_shutdown.subscribe(),
         rx_headers,
         metrics.clone(),
@@ -457,7 +400,10 @@ async fn run_vote_aggregator_with_param(
 
     if expect_cert {
         // A cert is expected, checks that the header digest matches.
-        let certificate = rx_new_certificates.recv().await.unwrap();
+        let certificate = tokio::time::timeout(Duration::from_secs(5), rx_new_certificates.recv())
+            .await
+            .unwrap()
+            .unwrap();
         assert_eq!(certificate.header().digest(), proposed_digest);
     } else {
         // A cert is not expected, checks that it times out without forming the cert.
@@ -469,14 +415,11 @@ async fn run_vote_aggregator_with_param(
 
 #[tokio::test]
 async fn test_shutdown_core() {
-    let fixture = CommitteeFixture::builder().build();
+    let fixture = CommitteeFixture::builder(MemDatabase::default).build();
     let committee = fixture.committee();
-    let worker_cache = fixture.worker_cache();
     let primary = fixture.authorities().next().unwrap();
-    let client = NetworkClient::new_from_keypair(&primary.network_keypair());
     let network_key = primary.network_keypair().copy().private().0.to_bytes();
     let id: AuthorityIdentifier = primary.id();
-    let signature_service = SignatureService::new(primary.keypair().copy());
     let metrics = Arc::new(PrimaryMetrics::default());
     let primary_channel_metrics = PrimaryChannelMetrics::default();
 
@@ -488,20 +431,9 @@ async fn test_shutdown_core() {
     let (_tx_consensus_round_updates, rx_consensus_round_updates) =
         watch::channel(ConsensusRound::new(0, 0));
 
-    // Create test stores.
-    let temp_dir = TempDir::new().unwrap();
-    let db = open_db(temp_dir.path());
-    let (certificate_store, payload_store, _) = create_db_stores(db);
-
     // Make a synchronizer for the core.
     let synchronizer = Arc::new(Synchronizer::new(
-        id,
-        fixture.committee(),
-        worker_cache.clone(),
-        /* gc_depth */ 50,
-        client,
-        certificate_store.clone(),
-        payload_store.clone(),
+        primary.consensus_config(),
         tx_certificate_fetcher,
         tx_new_certificates.clone(),
         tx_parents.clone(),
@@ -521,11 +453,8 @@ async fn test_shutdown_core() {
 
     // Spawn the core.
     let handle = Certifier::spawn(
-        id,
-        committee.clone(),
-        certificate_store.clone(),
+        primary.consensus_config(),
         synchronizer.clone(),
-        signature_service.clone(),
         tx_shutdown.subscribe(),
         rx_headers,
         metrics.clone(),

@@ -2,6 +2,7 @@
 // Copyright (c) Mysten Labs, Inc.
 // SPDX-License-Identifier: Apache-2.0
 use narwhal_test_utils::cluster::Cluster;
+use narwhal_typed_store::mem_db::MemDatabase;
 use prometheus::core::Metric;
 use reth::tasks::TaskManager;
 
@@ -18,7 +19,7 @@ async fn test_restore_from_disk() {
 
     let manager = TaskManager::current();
     let executor = manager.executor();
-    let mut cluster = Cluster::new(None, executor);
+    let mut cluster = Cluster::new(executor, MemDatabase::default);
 
     // start the cluster
     cluster.start(Some(4), Some(1), None).await;
@@ -87,7 +88,7 @@ async fn test_read_causal_signed_certificates() {
 
     let manager = TaskManager::current();
     let executor = manager.executor();
-    let mut cluster = Cluster::new(None, executor);
+    let mut cluster = Cluster::new(executor, MemDatabase::default);
 
     // start the cluster
     cluster.start(Some(4), Some(1), None).await;

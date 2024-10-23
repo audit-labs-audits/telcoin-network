@@ -1,25 +1,29 @@
 // Copyright (c) Telcoin, LLC
 // Copyright (c) Mysten Labs, Inc.
 // SPDX-License-Identifier: Apache-2.0
-use fastcrypto::traits::KeyPair as _;
 use indexmap::IndexMap;
+use narwhal_test_utils::{AuthorityFixture, CommitteeFixture};
+use narwhal_typed_store::mem_db::MemDatabase;
 use rand::{rngs::OsRng, seq::SliceRandom};
 use std::{collections::BTreeSet, num::NonZeroUsize};
 use tn_types::{
-    test_utils::{AuthorityFixture, CommitteeFixture},
     AuthorityIdentifier, BlsPublicKey, BlsSignature, Certificate, Committee, Header, Stake, Vote,
 };
 
 #[tokio::test]
 async fn test_certificate_signers_are_ordered() {
     // GIVEN
-    let fixture = CommitteeFixture::builder()
+    let fixture = CommitteeFixture::builder(MemDatabase::default)
         .committee_size(NonZeroUsize::new(4).unwrap())
-        .stake_distribution((1..=4).collect()) // provide some non-uniform stake
+        .stake_distribution(vec![3, 3, 4, 4].into() /* (1..=4).collect() */) // provide some non-uniform stake
         .build();
     let committee: Committee = fixture.committee();
 
-    let authorities = fixture.authorities().collect::<Vec<&AuthorityFixture>>();
+    let authorities = fixture.authorities().collect::<Vec<&AuthorityFixture<MemDatabase>>>();
+    let total_stake: u64 = authorities.iter().map(|a| a.authority().stake()).sum();
+    assert_eq!(total_stake, 14);
+    // authorities are ordered by keys so the stake may not be 1, 2, 3, 4...
+    let last_three_stake: u64 = authorities[1..].iter().map(|a| a.authority().stake()).sum();
 
     // The authority that creates the Header
     let authority = authorities[0];
@@ -32,9 +36,11 @@ async fn test_certificate_signers_are_ordered() {
 
     // The authorities on position 1, 2, 3 are the ones who would sign
     for authority in &authorities[1..=3] {
-        sorted_signers.push(authority.keypair().public().clone());
+        sorted_signers.push(authority.public_key());
 
-        let vote = Vote::new_with_signer(&header.clone(), &authority.id(), authority.keypair());
+        let vote =
+            Vote::new(&header.clone(), &authority.id(), authority.consensus_config().key_config())
+                .await;
         votes.push((vote.author(), vote.signature().clone()));
     }
 
@@ -52,5 +58,5 @@ async fn test_certificate_signers_are_ordered() {
     // AND authorities public keys are returned in order
     assert_eq!(signers, sorted_signers);
 
-    assert_eq!(stake, 9 as Stake);
+    assert_eq!(stake, last_three_stake as Stake);
 }

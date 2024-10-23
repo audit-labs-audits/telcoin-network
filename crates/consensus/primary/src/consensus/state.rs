@@ -8,7 +8,7 @@
 use crate::consensus::{bullshark::Bullshark, utils::gc_round, ConsensusError, ConsensusMetrics};
 use consensus_metrics::{metered_channel, spawn_logged_monitored_task};
 use fastcrypto::hash::Hash;
-use narwhal_storage::{CertificateStore, ConsensusStore};
+use narwhal_storage::CertificateStore;
 use narwhal_typed_store::traits::Database;
 use std::{
     cmp::{max, Ordering},
@@ -16,6 +16,7 @@ use std::{
     fmt::Debug,
     sync::Arc,
 };
+use tn_config::ConsensusConfig;
 use tn_types::{
     AuthorityIdentifier, Certificate, CertificateDigest, CommittedSubDag, Committee,
     ConsensusCommit, Noticer, Round, SequenceNumber, Timestamp,
@@ -298,10 +299,7 @@ impl<DB: Database> Consensus<DB> {
     #[allow(clippy::too_many_arguments)]
     #[must_use]
     pub fn spawn(
-        committee: Committee,
-        gc_depth: Round,
-        store: Arc<ConsensusStore<DB>>,
-        cert_store: CertificateStore<DB>,
+        consensus_config: ConsensusConfig<DB>,
         rx_shutdown: Noticer,
         rx_new_certificates: metered_channel::Receiver<Certificate>,
         tx_committed_certificates: metered_channel::Sender<(Round, Vec<Certificate>)>,
@@ -311,13 +309,14 @@ impl<DB: Database> Consensus<DB> {
         metrics: Arc<ConsensusMetrics>,
     ) -> JoinHandle<()> {
         // The consensus state (everything else is immutable).
-        let recovered_last_committed = store.read_last_committed();
+        let recovered_last_committed =
+            consensus_config.node_storage().consensus_store.read_last_committed();
         let last_committed_round = recovered_last_committed
             .iter()
             .max_by(|a, b| a.1.cmp(b.1))
             .map(|(_k, v)| *v)
             .unwrap_or_else(|| 0);
-        let latest_sub_dag = store.get_latest_sub_dag();
+        let latest_sub_dag = consensus_config.node_storage().consensus_store.get_latest_sub_dag();
         if let Some(sub_dag) = &latest_sub_dag {
             assert_eq!(
                 sub_dag.leader_round(),
@@ -331,10 +330,10 @@ impl<DB: Database> Consensus<DB> {
         let state = ConsensusState::new_from_store(
             metrics.clone(),
             last_committed_round,
-            gc_depth,
+            consensus_config.parameters().gc_depth,
             recovered_last_committed,
             latest_sub_dag,
-            cert_store,
+            consensus_config.node_storage().certificate_store.clone(),
         );
 
         tx_consensus_round_updates
@@ -342,7 +341,7 @@ impl<DB: Database> Consensus<DB> {
             .expect("Failed to send last_committed_round on initialization!");
 
         let s = Self {
-            committee,
+            committee: consensus_config.committee().clone(),
             rx_shutdown,
             rx_new_certificates,
             tx_committed_certificates,

@@ -10,11 +10,12 @@ use narwhal_primary::consensus::{
     Bullshark, ConsensusMetrics, ConsensusState, LeaderSchedule, LeaderSwapTable,
 };
 use narwhal_storage::NodeStorage;
-use narwhal_typed_store::open_db;
+use narwhal_test_utils::CommitteeFixture;
+use narwhal_typed_store::{mem_db::MemDatabase, open_db};
 use std::{collections::BTreeSet, sync::Arc};
 use tn_types::{
     encode,
-    test_utils::{make_optimal_certificates, temp_dir, CommitteeFixture},
+    test_utils::{make_optimal_certificates, temp_dir},
     Certificate, Round, DEFAULT_BAD_NODES_STAKE_THRESHOLD,
 };
 use tokio::time::Instant;
@@ -25,7 +26,7 @@ pub fn process_certificates(c: &mut Criterion) {
 
     static BATCH_SIZES: [u64; 4] = [100, 500, 1000, 5000];
 
-    let fixture = CommitteeFixture::builder().build();
+    let fixture = CommitteeFixture::builder(MemDatabase::default).build();
     let committee = fixture.committee();
     let keys: Vec<_> = fixture.authorities().map(|a| a.id()).collect();
 

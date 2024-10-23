@@ -3,61 +3,43 @@
 
 //! Worker fixture for the cluster
 
-use narwhal_network::client::NetworkClient;
-use narwhal_storage::NodeStorage;
-use narwhal_typed_store::{open_db, DatabaseType};
+use fastcrypto::traits::KeyPair as _;
+use narwhal_typed_store::traits::Database;
 use std::path::PathBuf;
+use tn_config::{ConsensusConfig, KeyConfig};
 use tn_node::worker::WorkerNode;
 use tn_types::{
-    test_utils::temp_dir, AuthorityIdentifier, BlsPublicKey, Committee, Multiaddr, NetworkKeypair,
-    Parameters, WorkerCache, WorkerId,
+    test_utils::temp_dir, AuthorityIdentifier, Multiaddr, NetworkKeypair, WorkerId, WorkerInfo,
 };
 use tracing::info;
 
 use crate::TestExecutionNode;
 
 #[derive(Clone)]
-pub struct WorkerNodeDetails {
+pub struct WorkerNodeDetails<DB> {
     pub id: WorkerId,
     pub transactions_address: Multiaddr,
     name: AuthorityIdentifier,
-    primary_key: BlsPublicKey,
     // Need to assign a type to WorkerNode generic since we create it in this struct.
-    node: WorkerNode<DatabaseType>,
-    committee: Committee,
-    worker_cache: WorkerCache,
+    node: WorkerNode<DB>,
     store_path: PathBuf,
 }
 
-impl WorkerNodeDetails {
+impl<DB: Database> WorkerNodeDetails<DB> {
     pub(crate) fn new(
         id: WorkerId,
         name: AuthorityIdentifier,
-        primary_key: BlsPublicKey,
-        parameters: Parameters,
+        consensus_config: ConsensusConfig<DB>,
         transactions_address: Multiaddr,
-        committee: Committee,
-        worker_cache: WorkerCache,
     ) -> Self {
-        let node = WorkerNode::new(id, parameters);
+        let node = WorkerNode::new(id, consensus_config);
 
-        Self {
-            id,
-            name,
-            primary_key,
-            store_path: temp_dir(),
-            transactions_address,
-            committee,
-            worker_cache,
-            node,
-        }
+        Self { id, name, store_path: temp_dir(), transactions_address, node }
     }
 
     /// Starts the node. When preserve_store is true then the last used
     pub(crate) async fn start(
         &mut self,
-        keypair: NetworkKeypair,
-        client: NetworkClient,
         preserve_store: bool,
         execution_node: &TestExecutionNode,
     ) -> eyre::Result<()> {
@@ -68,24 +50,9 @@ impl WorkerNodeDetails {
         // Make the data store.
         let store_path = if preserve_store { self.store_path.clone() } else { temp_dir() };
 
-        // In case the DB dir does not yet exist.
-        let _ = std::fs::create_dir_all(&store_path);
-        let db = open_db(&store_path);
-        let worker_store = NodeStorage::reopen(db);
-
         info!(target: "cluster::worker", "starting worker-{} for authority {}", self.id, self.name);
 
-        self.node
-            .start(
-                self.primary_key.clone(),
-                keypair,
-                self.committee.clone(),
-                self.worker_cache.clone(),
-                client,
-                &worker_store,
-                execution_node,
-            )
-            .await?;
+        self.node.start(execution_node).await?;
 
         self.store_path = store_path;
 
@@ -103,5 +70,49 @@ impl WorkerNodeDetails {
     /// node as still running.
     pub async fn is_running(&self) -> bool {
         self.node.is_running().await
+    }
+}
+
+/// Fixture representing a worker for an [AuthorityFixture].
+///
+/// [WorkerFixture] holds keypairs and should not be used in production.
+#[derive(Debug)]
+pub struct WorkerFixture {
+    key_config: KeyConfig,
+    pub id: WorkerId,
+    pub info: WorkerInfo,
+}
+
+impl WorkerFixture {
+    pub fn keypair(&self) -> NetworkKeypair {
+        self.key_config.worker_network_keypair().copy()
+    }
+
+    pub fn info(&self) -> &WorkerInfo {
+        &self.info
+    }
+
+    pub fn new_network(&self, router: anemo::Router) -> anemo::Network {
+        anemo::Network::bind(self.info().worker_address.to_anemo_address().unwrap())
+            .server_name("narwhal")
+            .private_key(self.keypair().private().0.to_bytes())
+            .start(router)
+            .unwrap()
+    }
+
+    pub(crate) fn generate<P>(key_config: KeyConfig, id: WorkerId, mut get_port: P) -> Self
+    where
+        P: FnMut(&str) -> u16,
+    {
+        let worker_name = key_config.worker_network_keypair().public().clone();
+        let host = "127.0.0.1";
+        let worker_address = format!("/ip4/{}/udp/{}", host, get_port(host)).parse().unwrap();
+        let transactions = format!("/ip4/{}/tcp/{}/http", host, get_port(host)).parse().unwrap();
+
+        Self {
+            key_config,
+            id,
+            info: WorkerInfo { name: worker_name, worker_address, transactions },
+        }
     }
 }

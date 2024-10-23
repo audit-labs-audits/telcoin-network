@@ -8,6 +8,7 @@ use anemo::PeerId;
 use narwhal_network::{PrimaryToPrimaryRpc, WorkerRpc};
 use narwhal_network_types::{FetchCertificatesRequest, RequestBlocksRequest};
 use narwhal_test_utils::cluster::Cluster;
+use narwhal_typed_store::mem_db::MemDatabase;
 use reth::tasks::TaskManager;
 use tn_types::AuthorityIdentifier;
 
@@ -17,14 +18,20 @@ async fn test_server_authorizations() {
     // Set up primaries and workers with a committee.
     let manager = TaskManager::current();
     let executor = manager.executor();
-    let mut test_cluster = Cluster::new(None, executor);
+    let mut test_cluster = Cluster::new(executor, MemDatabase::default);
     test_cluster.start(Some(4), Some(1), None).await;
     tokio::time::sleep(Duration::from_secs(3)).await;
 
-    let test_authority = test_cluster.authority(0);
-    let test_client = test_authority.client().await;
+    let test_client = test_cluster
+        .fixture()
+        .authorities()
+        .next()
+        .unwrap()
+        .consensus_config()
+        .network_client()
+        .clone();
     let test_committee = test_cluster.committee.clone();
-    let test_worker_cache = test_cluster.worker_cache.clone();
+    let test_worker_cache = test_cluster.fixture().worker_cache().clone();
 
     // Reachable to primaries in the same committee.
     {
@@ -54,14 +61,14 @@ async fn test_server_authorizations() {
     // Set up primaries and workers with a another committee.
     let manager = TaskManager::current();
     let executor = manager.executor();
-    let mut unreachable_cluster = Cluster::new(None, executor);
+    let mut unreachable_cluster = Cluster::new(executor, MemDatabase::default);
     unreachable_cluster.start(Some(4), Some(1), None).await;
     tokio::time::sleep(Duration::from_secs(3)).await;
 
     // test_client should not reach unreachable_authority.
     {
         let unreachable_committee = unreachable_cluster.committee.clone();
-        let unreachable_worker_cache = unreachable_cluster.worker_cache.clone();
+        let unreachable_worker_cache = unreachable_cluster.fixture().worker_cache().clone();
 
         let unreachable_authority =
             unreachable_committee.authority(&AuthorityIdentifier(0)).unwrap();

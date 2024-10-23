@@ -30,23 +30,20 @@ use consensus_metrics::{
 };
 use fastcrypto::{
     serde_helpers::ToFromByteArray,
-    signature_service::SignatureService,
     traits::{KeyPair as _, ToFromBytes},
 };
 use narwhal_network::{
-    client::NetworkClient,
     epoch_filter::{AllowedEpoch, EPOCH_HEADER_KEY},
     failpoints::FailpointsMakeCallbackHandler,
     metrics::MetricsMakeCallbackHandler,
 };
 use narwhal_primary_metrics::Metrics;
-use narwhal_storage::{CertificateStore, PayloadStore, ProposerStore, VoteDigestStore};
 use narwhal_typed_store::traits::Database;
 use std::{collections::HashMap, net::Ipv4Addr, sync::Arc, thread::sleep, time::Duration};
+use tn_config::ConsensusConfig;
 use tn_types::{
-    traits::EncodeDecodeBase64, Authority, BlsKeypair, ChainIdentifier, Committee, Multiaddr,
-    NetworkKeypair, NetworkPublicKey, Notifier, Parameters, Protocol, RandomnessPrivateKey,
-    WorkerCache,
+    traits::EncodeDecodeBase64, ChainIdentifier, Multiaddr, NetworkPublicKey, Notifier, Protocol,
+    RandomnessPrivateKey,
 };
 
 use narwhal_network_types::{PrimaryToPrimaryServer, WorkerToPrimaryServer};
@@ -69,18 +66,8 @@ impl Primary {
     /// for the Consensus.
     #[allow(clippy::too_many_arguments)]
     pub fn spawn<DB: Database>(
-        authority: Authority,
-        signer: BlsKeypair,
-        network_signer: NetworkKeypair,
-        committee: Committee,
-        worker_cache: WorkerCache,
+        config: ConsensusConfig<DB>,
         chain_identifier: ChainIdentifier,
-        parameters: Parameters,
-        client: NetworkClient,
-        certificate_store: CertificateStore<DB>,
-        proposer_store: ProposerStore<DB>,
-        payload_store: PayloadStore<DB>,
-        vote_digest_store: VoteDigestStore<DB>,
         tx_new_certificates: Sender<Certificate>,
         rx_committed_certificates: Receiver<(Round, Vec<Certificate>)>,
         rx_consensus_round_updates: watch::Receiver<ConsensusRound>,
@@ -89,14 +76,14 @@ impl Primary {
         metrics: &Metrics,
     ) -> Vec<JoinHandle<()>> {
         // Write the parameters to the logs.
-        parameters.tracing();
+        config.parameters().tracing();
 
         // Some info statements
-        let own_peer_id = PeerId(network_signer.public().0.to_bytes());
+        let own_peer_id = PeerId(config.key_config().network_keypair().public().0.to_bytes());
         info!(
             "Boot primary node with peer id {} and public key {}",
             own_peer_id,
-            authority.protocol_key().encode_base64(),
+            config.authority().protocol_key().encode_base64(),
         );
 
         let (tx_our_digests, rx_our_digests) = channel_with_total(
@@ -133,13 +120,7 @@ impl Primary {
         let (tx_narwhal_round_updates, rx_narwhal_round_updates) = watch::channel(0u64);
 
         let synchronizer = Arc::new(Synchronizer::new(
-            authority.id(),
-            committee.clone(),
-            worker_cache.clone(),
-            parameters.gc_depth,
-            client.clone(),
-            certificate_store.clone(),
-            payload_store.clone(),
+            config.clone(),
             tx_certificate_fetcher,
             tx_new_certificates,
             tx_parents,
@@ -150,23 +131,24 @@ impl Primary {
 
         // Convert authority private key into key used for random beacon.
         let randomness_private_key = fastcrypto::groups::bls12381::Scalar::from_byte_array(
-            signer.copy().private().as_bytes().try_into().expect("key length should match"),
+            config
+                .key_config()
+                .bls_keypair()
+                .copy()
+                .private()
+                .as_bytes()
+                .try_into()
+                .expect("key length should match"),
         )
         .expect("should work to convert BLS key to Scalar");
-        let signature_service = SignatureService::new(signer);
 
         // Spawn the network receiver listening to messages from the other primaries.
-        let address = authority.primary_network_address();
+        let address = config.authority().primary_network_address();
         let address =
             address.replace(0, |_protocol| Some(Protocol::Ip4(Ipv4Addr::UNSPECIFIED))).unwrap();
         let mut primary_service = PrimaryToPrimaryServer::new(PrimaryReceiverHandler::new(
-            authority.id(),
-            committee.clone(),
-            worker_cache.clone(),
+            config.clone(),
             synchronizer.clone(),
-            signature_service.clone(),
-            certificate_store.clone(),
-            vote_digest_store,
             rx_narwhal_round_updates,
             Default::default(),
             metrics.node_metrics.clone(),
@@ -183,7 +165,7 @@ impl Primary {
         ));
 
         // Apply other rate limits from configuration as needed.
-        if let Some(limit) = parameters.anemo.send_certificate_rate_limit {
+        if let Some(limit) = config.parameters().anemo.send_certificate_rate_limit {
             primary_service = primary_service.add_layer_for_send_certificate(
                 InboundRequestLayer::new(rate_limit::RateLimitLayer::new(
                     governor::Quota::per_second(limit),
@@ -192,18 +174,22 @@ impl Primary {
             );
         }
 
-        let worker_receiver_handler = WorkerReceiverHandler::new(tx_our_digests, payload_store);
+        let worker_receiver_handler =
+            WorkerReceiverHandler::new(tx_our_digests, config.node_storage().payload_store.clone());
 
-        client.set_worker_to_primary_local_handler(Arc::new(worker_receiver_handler.clone()));
+        config
+            .network_client()
+            .set_worker_to_primary_local_handler(Arc::new(worker_receiver_handler.clone()));
 
         let worker_service = WorkerToPrimaryServer::new(worker_receiver_handler);
 
         let addr = address.to_anemo_address().unwrap();
 
-        let epoch_string: String = committee.epoch().to_string();
+        let epoch_string: String = config.committee().epoch().to_string();
 
-        let our_worker_peer_ids = worker_cache
-            .our_workers(authority.protocol_key())
+        let our_worker_peer_ids = config
+            .worker_cache()
+            .our_workers(config.authority().protocol_key())
             .unwrap()
             .into_iter()
             .map(|worker_info| PeerId(worker_info.name.0.to_bytes()));
@@ -213,8 +199,10 @@ impl Primary {
             .route_layer(RequireAuthorizationLayer::new(AllowedPeers::new(our_worker_peer_ids)))
             .route_layer(RequireAuthorizationLayer::new(AllowedEpoch::new(epoch_string.clone())));
 
-        let primary_peer_ids =
-            committee.authorities().map(|authority| PeerId(authority.network_key().0.to_bytes()));
+        let primary_peer_ids = config
+            .committee()
+            .authorities()
+            .map(|authority| PeerId(authority.network_key().0.to_bytes()));
         let routes = anemo::Router::new()
             .add_rpc_service(primary_service)
             .route_layer(RequireAuthorizationLayer::new(AllowedPeers::new(primary_peer_ids)))
@@ -229,7 +217,7 @@ impl Primary {
             )
             .layer(CallbackLayer::new(MetricsMakeCallbackHandler::new(
                 metrics.inbound_network_metrics.clone(),
-                parameters.anemo.excessive_message_size(),
+                config.parameters().anemo.excessive_message_size(),
             )))
             .layer(CallbackLayer::new(FailpointsMakeCallbackHandler::new()))
             .layer(SetResponseHeaderLayer::overriding(
@@ -246,7 +234,7 @@ impl Primary {
             )
             .layer(CallbackLayer::new(MetricsMakeCallbackHandler::new(
                 metrics.outbound_network_metrics.clone(),
-                parameters.anemo.excessive_message_size(),
+                config.parameters().anemo.excessive_message_size(),
             )))
             .layer(CallbackLayer::new(FailpointsMakeCallbackHandler::new()))
             .layer(SetRequestHeaderLayer::overriding(
@@ -293,7 +281,7 @@ impl Primary {
         loop {
             let network_result = anemo::Network::bind(addr.clone())
                 .server_name("narwhal")
-                .private_key(network_signer.copy().private().0.to_bytes())
+                .private_key(config.key_config().network_keypair().copy().private().0.to_bytes())
                 .config(anemo_config.clone())
                 .outbound_request_layer(outbound_layer.clone())
                 .start(service.clone());
@@ -316,14 +304,15 @@ impl Primary {
                 }
             }
         }
-        client.set_primary_network(network.clone());
+        config.network_client().set_primary_network(network.clone());
 
-        info!("Primary {} listening on {}", authority.id(), address);
+        info!("Primary {} listening on {}", config.authority().id(), address);
 
         let mut peer_types = HashMap::new();
 
         // Add my workers
-        for worker in worker_cache.our_workers(authority.protocol_key()).unwrap() {
+        for worker in config.worker_cache().our_workers(config.authority().protocol_key()).unwrap()
+        {
             let (peer_id, address) =
                 Self::add_peer_in_network(&network, worker.name, &worker.worker_address);
             peer_types.insert(peer_id, "our_worker".to_string());
@@ -331,7 +320,7 @@ impl Primary {
         }
 
         // Add others workers
-        for (_, worker) in worker_cache.others_workers(authority.protocol_key()) {
+        for (_, worker) in config.worker_cache().others_workers(config.authority().protocol_key()) {
             let (peer_id, address) =
                 Self::add_peer_in_network(&network, worker.name, &worker.worker_address);
             peer_types.insert(peer_id, "other_worker".to_string());
@@ -339,8 +328,9 @@ impl Primary {
         }
 
         // Add other primaries
-        let primaries = committee
-            .others_primaries_by_id(authority.id())
+        let primaries = config
+            .committee()
+            .others_primaries_by_id(config.authority().id())
             .into_iter()
             .map(|(_, address, network_key)| (network_key, address));
 
@@ -360,22 +350,19 @@ impl Primary {
 
         info!(
             "Primary {} listening to network admin messages on 127.0.0.1:{}",
-            authority.id(),
-            parameters.network_admin_server.primary_network_admin_server_port
+            config.authority().id(),
+            config.parameters().network_admin_server.primary_network_admin_server_port
         );
 
         let admin_handles = narwhal_network::admin::start_admin_server(
-            parameters.network_admin_server.primary_network_admin_server_port,
+            config.parameters().network_admin_server.primary_network_admin_server_port,
             network.clone(),
             tx_shutdown.subscribe(),
         );
 
         let core_handle = Certifier::spawn(
-            authority.id(),
-            committee.clone(),
-            certificate_store.clone(),
+            config.clone(),
             synchronizer.clone(),
-            signature_service,
             tx_shutdown.subscribe(),
             rx_headers,
             metrics.node_metrics.clone(),
@@ -385,10 +372,10 @@ impl Primary {
         // The `CertificateFetcher` waits to receive all the ancestors of a certificate before
         // looping it back to the `Synchronizer` for further processing.
         let certificate_fetcher_handle = CertificateFetcher::spawn(
-            authority.id(),
-            committee.clone(),
+            config.authority().id(),
+            config.committee().clone(),
             network.clone(),
-            certificate_store,
+            config.node_storage().certificate_store.clone(),
             rx_consensus_round_updates,
             tx_shutdown.subscribe(),
             rx_certificate_fetcher,
@@ -399,13 +386,7 @@ impl Primary {
         // When the `Synchronizer` collects enough parent certificates, the `Proposer` generates
         // a new header with new block digests from our workers and sends it to the `Certifier`.
         let proposer = Proposer::new(
-            authority.id(),
-            committee.clone(),
-            proposer_store,
-            parameters.header_num_of_batches_threshold,
-            parameters.max_header_num_of_batches,
-            parameters.max_header_delay,
-            parameters.min_header_delay,
+            config.clone(),
             None,
             tx_shutdown.subscribe(),
             rx_parents,
@@ -436,8 +417,8 @@ impl Primary {
         // internal state
         let state_handler_handle = StateHandler::spawn(
             &chain_identifier,
-            authority.id(),
-            committee,
+            config.authority().id(),
+            config.committee().clone(),
             rx_committed_certificates,
             tx_shutdown.subscribe(),
             Some(tx_committed_own_headers),
@@ -452,8 +433,8 @@ impl Primary {
         // NOTE: This log entry is used to compute performance.
         info!(
             "Primary {} successfully booted on {}",
-            authority.id(),
-            authority.primary_network_address()
+            config.authority().id(),
+            config.authority().primary_network_address()
         );
 
         handles
