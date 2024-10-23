@@ -16,7 +16,7 @@ async fn basic_cluster_setup() {
     let manager = TaskManager::current();
     let executor = manager.executor();
 
-    let mut cluster = Cluster::new(None, executor, MemDatabase::default);
+    let mut cluster = Cluster::new(executor, MemDatabase::default);
 
     // start the cluster will all the possible nodes
     cluster.start(Some(4), Some(1), None).await;

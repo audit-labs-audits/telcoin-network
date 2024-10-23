@@ -20,7 +20,7 @@ async fn test_response_error_after_shutdown_internal_consensus() {
     // A cluster of 4 nodes will be created, with internal consensus.
     let manager = TaskManager::current();
     let executor = manager.executor();
-    let cluster = Cluster::new(None, executor, MemDatabase::default);
+    let cluster = Cluster::new(executor, MemDatabase::default);
 
     // ==== Start first authority ====
     let authority = cluster.authority(0);
@@ -64,7 +64,7 @@ async fn test_node_staggered_starts() {
     // A cluster of 4 nodes will be created
     let manager = TaskManager::current();
     let executor = manager.executor();
-    let cluster = Cluster::new(None, executor, MemDatabase::default);
+    let cluster = Cluster::new(executor, MemDatabase::default);
 
     // ==== Start first authority ====
     cluster.authority(0).start(false, Some(1)).await.expect("authority able to start");
@@ -117,7 +117,7 @@ async fn test_full_outage_and_recovery() {
     // A cluster of 4 nodes will be created
     let manager = TaskManager::current();
     let executor = manager.executor();
-    let mut cluster = Cluster::new(None, executor, MemDatabase::default);
+    let mut cluster = Cluster::new(executor, MemDatabase::default);
 
     // ===== Start the cluster ====
     cluster.start(Some(4), Some(1), None).await;
@@ -170,7 +170,7 @@ async fn test_second_node_restart() {
     // A cluster of 4 nodes will be created
     let manager = TaskManager::current();
     let executor = manager.executor();
-    let mut cluster = Cluster::new(None, executor, MemDatabase::default);
+    let mut cluster = Cluster::new(executor, MemDatabase::default);
 
     // ===== Start the cluster ====
     cluster.start(Some(4), Some(1), None).await;
@@ -214,7 +214,7 @@ async fn test_loss_of_liveness_without_recovery() {
     // A cluster of 4 nodes will be created
     let manager = TaskManager::current();
     let executor = manager.executor();
-    let mut cluster = Cluster::new(None, executor, MemDatabase::default);
+    let mut cluster = Cluster::new(executor, MemDatabase::default);
 
     // ===== Start the cluster ====
     cluster.start(Some(4), Some(1), None).await;
@@ -270,7 +270,7 @@ async fn test_loss_of_liveness_with_recovery() {
     // A cluster of 4 nodes will be created
     let manager = TaskManager::current();
     let executor = manager.executor();
-    let mut cluster = Cluster::new(None, executor, MemDatabase::default);
+    let mut cluster = Cluster::new(executor, MemDatabase::default);
 
     // ===== Start the cluster ====
     cluster.start(Some(4), Some(1), None).await;

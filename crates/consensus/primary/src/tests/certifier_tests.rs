@@ -137,12 +137,10 @@ use tokio::sync::watch;
 
 #[tokio::test(flavor = "current_thread", start_paused = true)]
 async fn propose_header_and_form_certificate_v2() {
-    //let temp_dir = TempDir::new().unwrap();
     reth_tracing::init_test_tracing();
     let fixture = CommitteeFixture::builder(MemDatabase::default).randomize_ports(true).build();
     let committee = fixture.committee();
     let primary = fixture.authorities().last().unwrap();
-    //let network_key = primary.network_keypair().copy().private().0.to_bytes();
     let id = primary.id();
     let metrics = Arc::new(PrimaryMetrics::default());
     let primary_channel_metrics = PrimaryChannelMetrics::default();
@@ -158,12 +156,7 @@ async fn propose_header_and_form_certificate_v2() {
     let proposed_header = primary.header(&committee);
 
     // Set up network.
-    //let own_address = committee.primary_by_id(&id).unwrap().to_anemo_address().unwrap();
-    let network = primary.new_network(anemo::Router::new()); //anemo::Network::bind(own_address)
-                                                             //.server_name("narwhal")
-                                                             //.private_key(network_key)
-                                                             //.start(anemo::Router::new())
-                                                             //.unwrap();
+    let network = primary.new_network(anemo::Router::new());
 
     // Set up remote primaries responding with votes.
     let mut peer_networks = Vec::new();
@@ -220,7 +213,6 @@ async fn propose_header_and_form_certificate_v2() {
     // consensus channel.
     let proposed_digest = proposed_header.digest();
     tx_headers.send(proposed_header).await.unwrap();
-    //let certificate = rx_new_certificates.recv().await.unwrap();
     let certificate = tokio::time::timeout(Duration::from_secs(10), rx_new_certificates.recv())
         .await
         .unwrap()
@@ -309,7 +301,6 @@ async fn propose_header_failure() {
     }
 }
 
-//#[tokio::test(flavor = "current_thread", start_paused = true)]
 #[tokio::test(flavor = "current_thread")]
 async fn propose_header_scenario_with_bad_sigs() {
     reth_tracing::init_test_tracing();

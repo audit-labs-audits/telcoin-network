@@ -56,7 +56,7 @@ pub fn spawn_subscriber(
 
     spawn_logged_monitored_task!(
         async move {
-            info!("Starting subscriber");
+            info!(target: "telcoin::subscriber", "Starting subscriber");
             let subscriber = Subscriber {
                 rx_shutdown,
                 rx_sequence,
@@ -116,7 +116,7 @@ impl Subscriber {
                 // NOTE: this broadcasts to all subscribers, but lagging receivers will lose messages
                 Some(message) = waiting.next() => {
                     if let Err(e) = consensus_output_notification_sender.send(message) {
-                        error!("error broadcasting consensus output for authority {}: {}", self.inner.authority_id, e);
+                        error!(target: "telcoin::subscriber", "error broadcasting consensus output for authority {}: {}", self.inner.authority_id, e);
                         return Ok(());
                     }
                 },
@@ -240,7 +240,7 @@ impl Subscriber {
                 match worker {
                     Ok(worker) => Some(worker.name),
                     Err(err) => {
-                        error!(
+                        error!(target: "telcoin::subscriber",
                             "Worker {} not found for authority {}: {:?}",
                             worker_id, authority, err
                         );

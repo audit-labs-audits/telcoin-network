@@ -104,7 +104,7 @@ impl<DB: Database> AuthorityDetails<DB> {
         preserve_store: bool,
         num_of_workers: Option<usize>,
     ) -> eyre::Result<()> {
-        self.start_primary(preserve_store).await?;
+        self.start_primary().await?;
 
         let workers_to_start;
         {
@@ -122,7 +122,7 @@ impl<DB: Database> AuthorityDetails<DB> {
     /// Starts the primary node. If the preserve_store value is true then the
     /// previous node's storage will be preserved. If false then the node will
     /// start with a fresh (empty) storage.
-    pub async fn start_primary(&self, _preserve_store: bool) -> eyre::Result<()> {
+    pub async fn start_primary(&self) -> eyre::Result<()> {
         let mut internal = self.internal.write().await;
 
         let execution_components = internal.execution.clone();
@@ -333,7 +333,7 @@ impl<DB: Database> AuthorityDetails<DB> {
 pub struct AuthorityFixture<DB> {
     /// Thread-safe cell with a reference to the [Authority] struct used in production.
     authority: Authority,
-    /// All workers for this authority mapped in a [WorkerFixture].
+    /// All workers for this authority as a [WorkerFixture].
     worker: WorkerFixture,
     /// Config for this authority.
     consensus_config: ConsensusConfig<DB>,
@@ -466,13 +466,6 @@ impl<DB: Database> AuthorityFixture<DB> {
         )
         .expect("failed to generate config!");
 
-        /*let workers = (0..number_of_workers.get())
-        .map(|idx| {
-            let worker = WorkerFixture::generate(key_config.clone(), idx as u16, &mut get_port);
-
-            (idx as u16, worker)
-        })
-        .collect();*/
         let worker = WorkerFixture::generate(key_config.clone(), authority.id().0, &mut get_port);
 
         Self { authority, worker, consensus_config, primary_keypair }

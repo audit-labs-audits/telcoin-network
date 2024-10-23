@@ -18,7 +18,7 @@ async fn test_server_authorizations() {
     // Set up primaries and workers with a committee.
     let manager = TaskManager::current();
     let executor = manager.executor();
-    let mut test_cluster = Cluster::new(None, executor, MemDatabase::default);
+    let mut test_cluster = Cluster::new(executor, MemDatabase::default);
     test_cluster.start(Some(4), Some(1), None).await;
     tokio::time::sleep(Duration::from_secs(3)).await;
 
@@ -61,7 +61,7 @@ async fn test_server_authorizations() {
     // Set up primaries and workers with a another committee.
     let manager = TaskManager::current();
     let executor = manager.executor();
-    let mut unreachable_cluster = Cluster::new(None, executor, MemDatabase::default);
+    let mut unreachable_cluster = Cluster::new(executor, MemDatabase::default);
     unreachable_cluster.start(Some(4), Some(1), None).await;
     tokio::time::sleep(Duration::from_secs(3)).await;
 
