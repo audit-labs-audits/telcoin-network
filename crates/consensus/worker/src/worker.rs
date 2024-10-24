@@ -35,8 +35,8 @@ use std::{collections::HashMap, net::Ipv4Addr, sync::Arc, thread::sleep, time::D
 use tn_block_validator::BlockValidation;
 use tn_config::ConsensusConfig;
 use tn_types::{
-    traits::KeyPair as _, AuthorityIdentifier, Multiaddr, NetworkPublicKey, Noticer, Notifier,
-    Protocol, WorkerId,
+    traits::KeyPair as _, AuthorityIdentifier, Multiaddr, NetworkPublicKey, Noticer, Protocol,
+    WorkerId,
 };
 use tokio::task::JoinHandle;
 use tower::ServiceBuilder;
@@ -118,7 +118,7 @@ impl<DB: Database> Worker<DB> {
         &self,
         validator: impl BlockValidation,
         metrics: Metrics,
-        tx_shutdown: &mut Notifier,
+        config: ConsensusConfig<DB>,
     ) -> (Vec<JoinHandle<()>>, BlockProvider<DB, QuorumWaiter>) {
         let worker_name = self.consensus_config.key_config().worker_network_public_key();
         let worker_peer_id = PeerId(worker_name.0.to_bytes());
@@ -328,7 +328,7 @@ impl<DB: Database> Worker<DB> {
                 network.downgrade(),
                 metrics.network_connection_metrics.clone(),
                 peer_types,
-                tx_shutdown.subscribe(),
+                config.subscribe_shutdown(),
             );
 
         let network_admin_server_base_port = self
@@ -346,7 +346,7 @@ impl<DB: Database> Worker<DB> {
         let admin_handles = narwhal_network::admin::start_admin_server(
             network_admin_server_base_port,
             network.clone(),
-            tx_shutdown.subscribe(),
+            config.subscribe_shutdown(),
         );
 
         let block_provider = self.new_block_provider(
@@ -356,7 +356,7 @@ impl<DB: Database> Worker<DB> {
         );
 
         let network_shutdown_handle =
-            Self::shutdown_network_listener(tx_shutdown.subscribe(), network);
+            Self::shutdown_network_listener(config.subscribe_shutdown(), network);
 
         // NOTE: This log entry is used to compute performance.
         info!(target: "worker::worker",

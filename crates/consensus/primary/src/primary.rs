@@ -38,7 +38,7 @@ use narwhal_primary_metrics::Metrics;
 use narwhal_typed_store::traits::Database;
 use std::{collections::HashMap, net::Ipv4Addr, sync::Arc, thread::sleep, time::Duration};
 use tn_config::ConsensusConfig;
-use tn_types::{traits::EncodeDecodeBase64, Multiaddr, NetworkPublicKey, Notifier, Protocol};
+use tn_types::{traits::EncodeDecodeBase64, Multiaddr, NetworkPublicKey, Protocol};
 
 use narwhal_network_types::{PrimaryToPrimaryServer, WorkerToPrimaryServer};
 use tn_types::{Certificate, Round};
@@ -58,13 +58,11 @@ pub struct Primary;
 impl Primary {
     /// Spawns the primary and returns the JoinHandles of its tasks, as well as a metered receiver
     /// for the Consensus.
-    #[allow(clippy::too_many_arguments)]
     pub fn spawn<DB: Database>(
         config: ConsensusConfig<DB>,
         tx_new_certificates: Sender<Certificate>,
         rx_committed_certificates: Receiver<(Round, Vec<Certificate>)>,
         rx_consensus_round_updates: watch::Receiver<ConsensusRound>,
-        tx_shutdown: &mut Notifier,
         leader_schedule: LeaderSchedule,
         metrics: &Metrics,
     ) -> Vec<JoinHandle<()>> {
@@ -322,7 +320,7 @@ impl Primary {
                 network.downgrade(),
                 metrics.network_connection_metrics.clone(),
                 peer_types,
-                tx_shutdown.subscribe(),
+                config.subscribe_shutdown(),
             );
 
         info!(
@@ -334,13 +332,12 @@ impl Primary {
         let admin_handles = narwhal_network::admin::start_admin_server(
             config.parameters().network_admin_server.primary_network_admin_server_port,
             network.clone(),
-            tx_shutdown.subscribe(),
+            config.subscribe_shutdown(),
         );
 
         let core_handle = Certifier::spawn(
             config.clone(),
             synchronizer.clone(),
-            tx_shutdown.subscribe(),
             rx_headers,
             metrics.node_metrics.clone(),
             network.clone(),
@@ -354,7 +351,7 @@ impl Primary {
             network.clone(),
             config.node_storage().certificate_store.clone(),
             rx_consensus_round_updates,
-            tx_shutdown.subscribe(),
+            config.subscribe_shutdown(),
             rx_certificate_fetcher,
             synchronizer,
             metrics.node_metrics.clone(),
@@ -365,7 +362,6 @@ impl Primary {
         let proposer = Proposer::new(
             config.clone(),
             None,
-            tx_shutdown.subscribe(),
             rx_parents,
             rx_our_digests,
             tx_headers,
@@ -394,7 +390,7 @@ impl Primary {
         let state_handler_handle = StateHandler::spawn(
             config.authority().id(),
             rx_committed_certificates,
-            tx_shutdown.subscribe(),
+            config.subscribe_shutdown(),
             Some(tx_committed_own_headers),
             network,
         );

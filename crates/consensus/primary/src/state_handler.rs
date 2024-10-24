@@ -6,7 +6,7 @@ use consensus_metrics::{
     metered_channel::{Receiver, Sender},
     spawn_logged_monitored_task,
 };
-use tn_types::{AuthorityIdentifier, Noticer};
+use tn_types::{AuthorityIdentifier, Noticer, TnReceiver, TnSender};
 
 use tap::TapFallible;
 use tn_types::{Certificate, Round};

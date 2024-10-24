@@ -18,7 +18,7 @@ use std::{
     sync::Arc,
     time::Duration,
 };
-use tn_types::{AuthorityIdentifier, Committee, NetworkPublicKey, Noticer};
+use tn_types::{AuthorityIdentifier, Committee, NetworkPublicKey, Noticer, TnReceiver};
 
 use narwhal_network_types::{FetchCertificatesRequest, FetchCertificatesResponse};
 use tn_types::{

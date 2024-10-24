@@ -36,7 +36,7 @@ use std::{
     pin::Pin,
     task::{Context, Poll},
 };
-use tn_types::{BuildArguments, ConsensusOutput};
+use telnet_types::{BuildArguments, ConsensusOutput};
 use tokio::sync::oneshot;
 use tokio_stream::wrappers::BroadcastStream;
 use tracing::{error, info, trace, warn};
@@ -589,7 +589,7 @@ mod tests {
         let timestamp = now();
         let mut leader_1 = Certificate::default();
         // update timestamp
-        leader_1.update_created_at(timestamp);
+        leader_1.update_created_at_for_test(timestamp);
         let sub_dag_index_1 = 1;
         let reputation_scores = ReputationScores::default();
         let previous_sub_dag = None;
@@ -614,7 +614,7 @@ mod tests {
         // create second output
         let mut leader_2 = Certificate::default();
         // update timestamp
-        leader_2.update_created_at(timestamp + 2);
+        leader_2.update_created_at_for_test(timestamp + 2);
         let sub_dag_index_2 = 2;
         let reputation_scores = ReputationScores::default();
         let previous_sub_dag = Some(subdag_1.as_ref());
@@ -947,7 +947,7 @@ mod tests {
         let timestamp = now();
         let mut leader_1 = Certificate::default();
         // update timestamp
-        leader_1.update_created_at(timestamp);
+        leader_1.update_created_at_for_test(timestamp);
         let sub_dag_index_1 = 1;
         let reputation_scores = ReputationScores::default();
         let previous_sub_dag = None;
@@ -972,7 +972,7 @@ mod tests {
         // create second output
         let mut leader_2 = Certificate::default();
         // update timestamp
-        leader_2.update_created_at(timestamp + 2);
+        leader_2.update_created_at_for_test(timestamp + 2);
         let sub_dag_index_2 = 2;
         let reputation_scores = ReputationScores::default();
         let previous_sub_dag = Some(subdag_1.as_ref());
@@ -1283,7 +1283,7 @@ mod tests {
         let timestamp = now();
         let mut leader_1 = Certificate::default();
         // update timestamp
-        leader_1.update_created_at(timestamp);
+        leader_1.update_created_at_for_test(timestamp);
         let sub_dag_index_1 = 1;
         let reputation_scores = ReputationScores::default();
         let previous_sub_dag = None;
@@ -1307,7 +1307,7 @@ mod tests {
         // create second output
         let mut leader_2 = Certificate::default();
         // update timestamp
-        leader_2.update_created_at(timestamp + 2);
+        leader_2.update_created_at_for_test(timestamp + 2);
         let sub_dag_index_2 = 2;
         let reputation_scores = ReputationScores::default();
         let previous_sub_dag = Some(subdag_1.as_ref());

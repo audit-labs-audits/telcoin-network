@@ -3,7 +3,7 @@
 use std::time::Duration;
 
 use tn_types::Header;
-use tokio::sync::{mpsc, oneshot, watch};
+use tokio::sync::{oneshot, watch};
 
 /// Result alias for [`ProposerError`].
 pub(crate) type ProposerResult<T> = Result<T, ProposerError>;
@@ -23,7 +23,8 @@ pub enum ProposerError {
     OneshotChannelClosed,
     /// Sending error for the proposer to certifier.
     #[error("Proposer failed to send header to certifier.")]
-    CertifierSender(#[from] mpsc::error::SendError<Header>),
+    //CertifierSender(#[from] mpsc::error::SendError<Header>),
+    CertifierSender(#[from] tn_types::SendError<Header>),
     /// Error writing to the proposer store.
     #[error("Failed to write new header to proposer store: {0}")]
     StoreError(String),

@@ -1,6 +1,8 @@
 [workspace]
 members = [
+    # common
     "bin/telcoin-network",
+    "crates/telnet-types",
 
     # consensus
     "crates/consensus/types",
@@ -194,6 +196,7 @@ assert_matches = { version = "1.5.0" }
 
 # common
 tn-types = { path = "./crates/consensus/types" }
+telnet-types = { path = "./crates/telnet-types" }
 tn-node = { path = "./crates/consensus/tn-node" }
 tn-config = { path = "./crates/consensus/config" }
 

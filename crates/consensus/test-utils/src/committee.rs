@@ -138,4 +138,11 @@ impl<DB: Database> CommitteeFixture<DB> {
     pub fn update_committee(&mut self, committee: Committee) {
         self.committee = committee;
     }
+
+    /// Send a shutdown notfication to all authorities.
+    pub fn notify_shutdown(&self) {
+        for a in &self.authorities {
+            a.consensus_config().shutdown();
+        }
+    }
 }

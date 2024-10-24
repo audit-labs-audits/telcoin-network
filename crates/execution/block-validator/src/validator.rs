@@ -7,7 +7,7 @@ use reth_primitives::{
 };
 use reth_provider::{providers::BlockchainProvider, HeaderProvider};
 use std::fmt::{Debug, Display};
-use tn_types::{TransactionSigned, WorkerBlock};
+use telnet_types::{TransactionSigned, WorkerBlock};
 
 /// Type convenience for implementing block validation errors.
 type BlockValidationResult<T> = Result<T, BlockValidationError>;

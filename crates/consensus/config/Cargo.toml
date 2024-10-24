@@ -18,6 +18,7 @@ narwhal-storage = { workspace = true }
 tn-types = { workspace = true }
 eyre = { workspace = true }
 rand = { workspace = true }
+parking_lot = { workspace = true }
 
 
 [dev-dependencies]

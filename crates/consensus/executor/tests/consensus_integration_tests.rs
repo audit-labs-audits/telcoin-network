@@ -9,12 +9,12 @@ use narwhal_primary::consensus::{
 
 use narwhal_test_utils::CommitteeFixture;
 use narwhal_typed_store::mem_db::MemDatabase;
-use tn_types::{Notifier, DEFAULT_BAD_NODES_STAKE_THRESHOLD};
+use tn_types::DEFAULT_BAD_NODES_STAKE_THRESHOLD;
 
 use std::{collections::BTreeSet, sync::Arc};
 use tokio::sync::watch;
 
-use tn_types::Certificate;
+use tn_types::{Certificate, TnReceiver, TnSender};
 
 #[tokio::test]
 async fn test_recovery() {
@@ -47,8 +47,6 @@ async fn test_recovery() {
     let (tx_consensus_round_updates, _rx_consensus_round_updates) =
         watch::channel(ConsensusRound::default());
 
-    let mut tx_shutdown = Notifier::new();
-
     const NUM_SUB_DAGS_PER_SCHEDULE: u64 = 100;
     let metrics = Arc::new(ConsensusMetrics::default());
     let bullshark = Bullshark::new(
@@ -62,7 +60,6 @@ async fn test_recovery() {
 
     let _consensus_handle = Consensus::spawn(
         config_1,
-        tx_shutdown.subscribe(),
         rx_waiter,
         tx_primary,
         tx_consensus_round_updates,

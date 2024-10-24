@@ -41,7 +41,7 @@ use std::{
 use tn_config::ConsensusConfig;
 use tn_types::{
     now, AuthorityIdentifier, BlockHash, Certificate, Committee, Epoch, Header, Noticer, Round,
-    SystemMessage, TimestampSec, WorkerId,
+    SystemMessage, TimestampSec, TnReceiver, TnSender, WorkerId,
 };
 use tokio::{
     sync::{
@@ -187,7 +187,6 @@ impl<DB: Database + 'static> Proposer<DB> {
     pub fn new(
         config: ConsensusConfig<DB>,
         fatal_header_timeout: Option<Duration>,
-        rx_shutdown: Noticer,
         rx_parents: Receiver<(Vec<Certificate>, Round)>,
         rx_our_digests: Receiver<OurDigestMessage>,
         tx_headers: Sender<Header>,
@@ -196,6 +195,7 @@ impl<DB: Database + 'static> Proposer<DB> {
         metrics: Arc<PrimaryMetrics>,
         leader_schedule: LeaderSchedule,
     ) -> Self {
+        let rx_shutdown = config.subscribe_shutdown();
         let genesis = Certificate::genesis(config.committee());
         let fatal_header_timeout = fatal_header_timeout.unwrap_or(DEFAULT_FATAL_HEADER_TIMEOUT);
         // create min/max delay intervals

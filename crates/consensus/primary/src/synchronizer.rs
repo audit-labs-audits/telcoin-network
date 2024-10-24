@@ -31,7 +31,9 @@ use std::{
 };
 use telcoin_sync::sync::notify_once::NotifyOnce;
 use tn_config::ConsensusConfig;
-use tn_types::{AuthorityIdentifier, Committee, NetworkPublicKey, WorkerCache};
+use tn_types::{
+    AuthorityIdentifier, Committee, NetworkPublicKey, TnReceiver, TnSender, WorkerCache,
+};
 
 use narwhal_network_types::{
     PrimaryToPrimaryClient, SendCertificateRequest, SendCertificateResponse,

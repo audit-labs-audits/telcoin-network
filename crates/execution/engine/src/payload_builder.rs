@@ -24,7 +24,7 @@ use reth_revm::{
 };
 use reth_trie::HashedPostState;
 use std::sync::Arc;
-use tn_types::{BuildArguments, TNPayload, TNPayloadAttributes};
+use telnet_types::{BuildArguments, TNPayload, TNPayloadAttributes};
 use tracing::{debug, error, info, warn};
 
 /// Execute output from consensus to extend the canonical chain.

@@ -344,7 +344,6 @@ async fn get_network_peers_from_admin_server() {
     let (_tx_feedback, rx_feedback) = tn_types::test_channel!(CHANNEL_CAPACITY);
     let (_tx_consensus_round_updates, rx_consensus_round_updates) =
         watch::channel(ConsensusRound::default());
-    let mut tx_shutdown = Notifier::new();
 
     // Spawn Primary 1
     Primary::spawn(
@@ -352,7 +351,6 @@ async fn get_network_peers_from_admin_server() {
         tx_new_certificates,
         rx_feedback,
         rx_consensus_round_updates,
-        &mut tx_shutdown,
         LeaderSchedule::new(committee.clone(), LeaderSwapTable::default()),
         &narwhal_primary_metrics::Metrics::default(),
     );
@@ -362,13 +360,12 @@ async fn get_network_peers_from_admin_server() {
 
     let registry_1 = Registry::new();
     let metrics_1 = Metrics::new_with_registry(&registry_1);
-    let mut tx_shutdown = Notifier::new();
 
     let worker_1_parameters = config_1.config().parameters.clone();
 
     // Spawn a `Worker` instance for primary 1.
-    let worker = Worker::new(worker_id, config_1);
-    worker.spawn(NoopBlockValidator, metrics_1.clone(), &mut tx_shutdown);
+    let worker = Worker::new(worker_id, config_1.clone());
+    worker.spawn(NoopBlockValidator, metrics_1.clone(), config_1);
 
     let primary_1_peer_id =
         Hex::encode(authority_1.primary_network_keypair().copy().public().0.as_bytes());
@@ -420,15 +417,12 @@ async fn get_network_peers_from_admin_server() {
     let (_tx_consensus_round_updates, rx_consensus_round_updates) =
         watch::channel(ConsensusRound::default());
 
-    let mut tx_shutdown_2 = Notifier::new();
-
     // Spawn Primary 2
     Primary::spawn(
         config_2.clone(),
         tx_new_certificates_2,
         rx_feedback_2,
         rx_consensus_round_updates,
-        &mut tx_shutdown_2,
         LeaderSchedule::new(committee.clone(), LeaderSwapTable::default()),
         &narwhal_primary_metrics::Metrics::default(),
     );
@@ -441,11 +435,9 @@ async fn get_network_peers_from_admin_server() {
 
     let worker_2_parameters = config_2.config().parameters.clone();
 
-    let mut tx_shutdown_worker = Notifier::new();
-
     // Spawn a `Worker` instance for primary 2.
-    let worker = Worker::new(worker_id, config_2);
-    worker.spawn(NoopBlockValidator, metrics_2.clone(), &mut tx_shutdown_worker);
+    let worker = Worker::new(worker_id, config_2.clone());
+    worker.spawn(NoopBlockValidator, metrics_2.clone(), config_2);
 
     // Wait for tasks to start. Sleeping longer here to ensure all primaries and workers
     // have  a chance to connect to each other.

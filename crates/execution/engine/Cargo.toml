@@ -12,7 +12,7 @@ fastcrypto = { workspace = true }
 futures = { workspace = true }
 futures-util = { workspace = true }
 thiserror = { workspace = true }
-tn-types = { workspace = true }
+telnet-types = { workspace = true }
 tokio = { workspace = true, features = ["sync", "time"] }
 tokio-stream = { workspace = true, features = ["sync"] }
 tracing = { workspace = true }

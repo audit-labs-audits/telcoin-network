@@ -8,7 +8,9 @@ use fastcrypto::hash::Hash;
 
 use narwhal_test_utils::CommitteeFixture;
 use narwhal_typed_store::mem_db::MemDatabase;
-use tn_types::{Certificate, Notifier, ReputationScores, DEFAULT_BAD_NODES_STAKE_THRESHOLD};
+use tn_types::{
+    Certificate, ReputationScores, TnReceiver, TnSender, DEFAULT_BAD_NODES_STAKE_THRESHOLD,
+};
 use tokio::sync::watch;
 
 use crate::consensus::{
@@ -53,8 +55,6 @@ async fn test_consensus_recovery_with_bullshark() {
     let (tx_consensus_round_updates, _rx_consensus_round_updates) =
         watch::channel(ConsensusRound::default());
 
-    let mut tx_shutdown = Notifier::new();
-
     let metrics = Arc::new(ConsensusMetrics::default());
     let leader_schedule = LeaderSchedule::from_store(
         committee.clone(),
@@ -72,7 +72,6 @@ async fn test_consensus_recovery_with_bullshark() {
 
     let consensus_handle = Consensus::spawn(
         config.clone(),
-        tx_shutdown.subscribe(),
         rx_waiter,
         tx_primary,
         tx_consensus_round_updates,
@@ -143,7 +142,6 @@ async fn test_consensus_recovery_with_bullshark() {
 
     // AND bring up consensus again. Store is clean. Now send again the same certificates
     // but up to round 3.
-    let mut tx_shutdown = Notifier::new();
     let (tx_waiter, rx_waiter) = tn_types::test_channel!(100);
     let (tx_primary, _rx_primary) = tn_types::test_channel!(100);
     let (tx_output, mut rx_output) = tn_types::test_channel!(1);
@@ -169,7 +167,6 @@ async fn test_consensus_recovery_with_bullshark() {
 
     let consensus_handle = Consensus::spawn(
         config.clone(),
-        tx_shutdown.subscribe(),
         rx_waiter,
         tx_primary,
         tx_consensus_round_updates,
@@ -219,7 +216,6 @@ async fn test_consensus_recovery_with_bullshark() {
     consensus_handle.abort();
 
     // AND bring up consensus again. Re-use the same store, so we can recover certificates
-    let mut tx_shutdown = Notifier::new();
     let (tx_waiter, rx_waiter) = tn_types::test_channel!(100);
     let (tx_primary, _rx_primary) = tn_types::test_channel!(100);
     let (tx_output, mut rx_output) = tn_types::test_channel!(1);
@@ -238,7 +234,6 @@ async fn test_consensus_recovery_with_bullshark() {
 
     let _consensus_handle = Consensus::spawn(
         config,
-        tx_shutdown.subscribe(),
         rx_waiter,
         tx_primary,
         tx_consensus_round_updates,

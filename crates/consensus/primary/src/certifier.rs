@@ -19,7 +19,7 @@ use narwhal_network_types::{PrimaryToPrimaryClient, RequestVoteRequest};
 use tn_types::{
     ensure,
     error::{DagError, DagResult},
-    Certificate, CertificateDigest, Header, NetworkPublicKey, Vote,
+    Certificate, CertificateDigest, Header, NetworkPublicKey, TnReceiver, Vote,
 };
 use tokio::{
     sync::oneshot,
@@ -70,11 +70,11 @@ impl<DB: Database> Certifier<DB> {
     pub fn spawn(
         config: ConsensusConfig<DB>,
         synchronizer: Arc<Synchronizer<DB>>,
-        rx_shutdown: Noticer,
         rx_headers: Receiver<Header>,
         metrics: Arc<PrimaryMetrics>,
         primary_network: anemo::Network,
     ) -> JoinHandle<()> {
+        let rx_shutdown = config.subscribe_shutdown();
         spawn_logged_monitored_task!(
             async move {
                 info!(target: "primary::certifier", "Certifier on node {} has started successfully.", config.authority().id());

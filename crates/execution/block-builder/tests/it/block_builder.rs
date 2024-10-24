@@ -33,14 +33,15 @@ use reth_transaction_pool::{
     blobstore::InMemoryBlobStore, PoolConfig, TransactionPool, TransactionValidationTaskExecutor,
 };
 use std::{collections::VecDeque, sync::Arc, time::Duration};
+use telnet_types::{Certificate, WorkerBlock};
 use tempfile::TempDir;
 use tn_block_builder::{test_utils::execute_test_worker_block, BlockBuilder};
 use tn_block_validator::{BlockValidation, BlockValidator};
 use tn_engine::execute_consensus_output;
 use tn_types::{
     test_utils::{get_gas_price, test_genesis, TransactionFactory},
-    AutoSealConsensus, BuildArguments, Certificate, CommittedSubDag, Consensus, ConsensusOutput,
-    LastCanonicalUpdate, ReputationScores, WorkerBlock,
+    AutoSealConsensus, BuildArguments, CommittedSubDag, Consensus, ConsensusOutput,
+    LastCanonicalUpdate, ReputationScores,
 };
 use tokio::time::timeout;
 use tracing::debug;

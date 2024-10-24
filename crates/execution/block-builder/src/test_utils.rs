@@ -17,7 +17,7 @@ use std::{
     sync::Arc,
     time::Instant,
 };
-use tn_types::{
+use telnet_types::{
     LastCanonicalUpdate, PendingBlockConfig, TransactionSigned, WorkerBlock, WorkerBlockBuilderArgs,
 };
 use tokio::sync::mpsc::{self, Receiver};

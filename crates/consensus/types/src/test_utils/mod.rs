@@ -6,8 +6,7 @@
 mod artifacts;
 mod execution;
 mod helpers;
-mod telcoin_temp_dirs;
 pub use artifacts::*;
 pub use execution::*;
 pub use helpers::*;
-pub use telcoin_temp_dirs::*;
+pub use telnet_types::telcoin_temp_dirs::*;

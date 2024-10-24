@@ -22,8 +22,8 @@ use once_cell::sync::OnceCell;
 use std::{collections::BTreeSet, sync::Arc, time::Duration};
 use tn_types::{
     AuthorityIdentifier, BlockHash, BlsAggregateSignatureBytes, Certificate, CertificateDigest,
-    Epoch, Header, HeaderDigest, Notifier, Round, SignatureVerificationState, SystemMessage,
-    TimestampSec, WorkerId,
+    Epoch, Header, HeaderDigest, Round, SignatureVerificationState, SystemMessage, TimestampSec,
+    WorkerId,
 };
 use tokio::{
     sync::{
@@ -163,8 +163,6 @@ async fn fetch_certificates_v1_basic() {
     let metrics = Arc::new(PrimaryMetrics::default());
     let primary_channel_metrics = PrimaryChannelMetrics::default();
 
-    // kept empty
-    let mut tx_shutdown = Notifier::new();
     // synchronizer to certificate fetcher
     let (tx_certificate_fetcher, rx_certificate_fetcher) = tn_types::test_channel!(1000);
     let (tx_new_certificates, _rx_new_certificates) = tn_types::test_channel!(1000);
@@ -219,7 +217,7 @@ async fn fetch_certificates_v1_basic() {
         client_network.clone(),
         certificate_store.clone(),
         rx_consensus_round_updates.clone(),
-        tx_shutdown.subscribe(),
+        primary.consensus_config().subscribe_shutdown(),
         rx_certificate_fetcher,
         synchronizer.clone(),
         metrics.clone(),
@@ -392,7 +390,7 @@ async fn fetch_certificates_v1_basic() {
     let mut certs = Vec::new();
     // Add cert missing parent info.
     let mut cert = certificates[num_written].clone();
-    cert.header_mut().clear_parents();
+    cert.header_mut_for_test().clear_parents_for_test();
     certs.push(cert);
     // Add cert with incorrect digest.
     let mut cert = certificates[num_written].clone();
@@ -408,7 +406,7 @@ async fn fetch_certificates_v1_basic() {
 
     // instead: use dummy, default header for bad data
     let wolf_header = Header::default();
-    cert.update_header(wolf_header);
+    cert.update_header_for_test(wolf_header);
     certs.push(cert);
     // Add cert without all parents in storage.
     certs.push(certificates[num_written + 1].clone());

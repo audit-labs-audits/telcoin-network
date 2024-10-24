@@ -24,6 +24,7 @@ use tn_types::{
     error::DagError,
     test_utils::{make_optimal_signed_certificates, mock_signed_certificate},
     BlsAggregateSignatureBytes, Certificate, Committee, Round, SignatureVerificationState,
+    TnReceiver,
 };
 use tokio::sync::watch;
 

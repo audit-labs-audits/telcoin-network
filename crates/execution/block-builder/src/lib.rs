@@ -35,7 +35,7 @@ use std::{
     task::{Context, Poll},
     time::Duration,
 };
-use tn_types::{
+use telnet_types::{
     error::BlockSealError, LastCanonicalUpdate, PendingBlockConfig, WorkerBlockBuilderArgs,
     WorkerBlockSender,
 };
@@ -463,13 +463,12 @@ mod tests {
         EthTransactionValidator, Pool, PoolConfig, TransactionValidationTaskExecutor,
     };
     use std::{str::FromStr, time::Duration};
+    use telnet_types::{adiri_genesis, WorkerBlock};
     use tempfile::TempDir;
     use tn_engine::execute_consensus_output;
     use tn_types::{
-        adiri_genesis,
         test_utils::{adiri_genesis_seeded, get_gas_price, TransactionFactory},
         AutoSealConsensus, BuildArguments, CommittedSubDag, Consensus, ConsensusOutput,
-        WorkerBlock,
     };
     use tokio::time::timeout;
 

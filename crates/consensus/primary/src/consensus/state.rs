@@ -19,7 +19,7 @@ use std::{
 use tn_config::ConsensusConfig;
 use tn_types::{
     AuthorityIdentifier, Certificate, CertificateDigest, CommittedSubDag, Committee,
-    ConsensusCommit, Noticer, Round, SequenceNumber, Timestamp,
+    ConsensusCommit, Noticer, Round, SequenceNumber, Timestamp, TnReceiver, TnSender,
 };
 use tokio::{sync::watch, task::JoinHandle};
 use tracing::{debug, info, instrument};
@@ -300,7 +300,6 @@ impl<DB: Database> Consensus<DB> {
     #[must_use]
     pub fn spawn(
         consensus_config: ConsensusConfig<DB>,
-        rx_shutdown: Noticer,
         rx_new_certificates: metered_channel::Receiver<Certificate>,
         tx_committed_certificates: metered_channel::Sender<(Round, Vec<Certificate>)>,
         tx_consensus_round_updates: watch::Sender<ConsensusRound>,
@@ -308,6 +307,7 @@ impl<DB: Database> Consensus<DB> {
         protocol: Bullshark<DB>,
         metrics: Arc<ConsensusMetrics>,
     ) -> JoinHandle<()> {
+        let rx_shutdown = consensus_config.subscribe_shutdown();
         // The consensus state (everything else is immutable).
         let recovered_last_committed =
             consensus_config.node_storage().consensus_store.read_last_committed();

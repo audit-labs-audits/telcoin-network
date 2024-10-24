@@ -18,7 +18,8 @@ use std::collections::BTreeSet;
 use std::collections::HashMap;
 use tn_config::ConsensusConfig;
 use tn_types::{
-    test_utils::TelcoinTempDirs, AuthorityIdentifier, Notifier, DEFAULT_BAD_NODES_STAKE_THRESHOLD,
+    test_utils::TelcoinTempDirs, AuthorityIdentifier, TnReceiver, TnSender,
+    DEFAULT_BAD_NODES_STAKE_THRESHOLD,
 };
 #[allow(unused_imports)]
 use tokio::sync::mpsc::channel;
@@ -445,8 +446,6 @@ async fn commit_one() {
     let (tx_consensus_round_updates, _rx_consensus_round_updates) =
         watch::channel(ConsensusRound::new(0, 0));
 
-    let mut tx_shutdown = Notifier::new();
-
     let config = fixture.authorities().next().unwrap().consensus_config();
     let store = config.node_storage().consensus_store.clone();
     let metrics = Arc::new(ConsensusMetrics::default());
@@ -462,7 +461,6 @@ async fn commit_one() {
 
     let _consensus_handle = Consensus::spawn(
         config,
-        tx_shutdown.subscribe(),
         rx_new_certificates,
         tx_primary,
         tx_consensus_round_updates,
@@ -520,8 +518,6 @@ async fn dead_node() {
     let (tx_consensus_round_updates, _rx_consensus_round_updates) =
         watch::channel(ConsensusRound::new(0, 0));
 
-    let mut tx_shutdown = Notifier::new();
-
     let config = fixture.authorities().next().unwrap().consensus_config();
     let store = config.node_storage().consensus_store.clone();
     let metrics = Arc::new(ConsensusMetrics::default());
@@ -537,7 +533,6 @@ async fn dead_node() {
 
     let _consensus_handle = Consensus::spawn(
         config,
-        tx_shutdown.subscribe(),
         rx_new_certificates,
         tx_primary,
         tx_consensus_round_updates,
@@ -670,8 +665,6 @@ async fn not_enough_support() {
     let (tx_consensus_round_updates, _rx_consensus_round_updates) =
         watch::channel(ConsensusRound::new(0, 0));
 
-    let mut tx_shutdown = Notifier::new();
-
     let config = fixture.authorities().next().unwrap().consensus_config();
     let store = config.node_storage().consensus_store.clone();
     let metrics = Arc::new(ConsensusMetrics::default());
@@ -687,7 +680,6 @@ async fn not_enough_support() {
 
     let _consensus_handle = Consensus::spawn(
         config,
-        tx_shutdown.subscribe(),
         rx_new_certificates,
         tx_primary,
         tx_consensus_round_updates,
@@ -784,8 +776,6 @@ async fn missing_leader() {
     let (tx_consensus_round_updates, _rx_consensus_round_updates) =
         watch::channel(ConsensusRound::new(0, 0));
 
-    let mut tx_shutdown = Notifier::new();
-
     let config = fixture.authorities().next().unwrap().consensus_config();
     let store = config.node_storage().consensus_store.clone();
     let metrics = Arc::new(ConsensusMetrics::default());
@@ -800,7 +790,6 @@ async fn missing_leader() {
 
     let _consensus_handle = Consensus::spawn(
         config,
-        tx_shutdown.subscribe(),
         rx_new_certificates,
         tx_primary,
         tx_consensus_round_updates,
@@ -870,7 +859,6 @@ async fn committed_round_after_restart() {
         let (tx_consensus_round_updates, rx_consensus_round_updates) =
             watch::channel(ConsensusRound::new(0, 0));
 
-        let mut tx_shutdown = Notifier::new();
         let metrics = Arc::new(ConsensusMetrics::default());
 
         let bullshark = Bullshark::new(
@@ -884,7 +872,6 @@ async fn committed_round_after_restart() {
 
         let handle = Consensus::spawn(
             config.clone(),
-            tx_shutdown.subscribe(),
             rx_new_certificates,
             tx_primary,
             tx_consensus_round_updates,
@@ -927,7 +914,7 @@ async fn committed_round_after_restart() {
         info!("Committed round adanced to {}", input_round.saturating_sub(1));
 
         // Shutdown consensus and wait for it to stop.
-        tx_shutdown.notify();
+        fixture.notify_shutdown();
         handle.await.unwrap();
     }
 }
@@ -1139,7 +1126,6 @@ async fn restart_with_new_committee() {
         let (tx_consensus_round_updates, _rx_consensus_round_updates) =
             watch::channel(ConsensusRound::new(0, 0));
 
-        let mut tx_shutdown = Notifier::new();
         let config = fixture.authorities().next().unwrap().consensus_config();
         let config = ConsensusConfig::new_with_committee(
             config.config().clone(),
@@ -1164,8 +1150,7 @@ async fn restart_with_new_committee() {
         );
 
         let handle = Consensus::spawn(
-            config,
-            tx_shutdown.subscribe(),
+            config.clone(),
             rx_new_certificates,
             tx_primary,
             tx_consensus_round_updates,
@@ -1226,7 +1211,7 @@ async fn restart_with_new_committee() {
         // Move to the next epoch.
         committee = committee.advance_epoch_for_test(epoch + 1);
         fixture.update_committee(committee.clone());
-        tx_shutdown.notify();
+        config.shutdown();
 
         // Ensure consensus stopped.
         handle.await.unwrap();

@@ -504,9 +504,8 @@ impl PartialEq for ValidatorSignatureInfo {
 mod tests {
     use super::NetworkGenesis;
     use crate::{
-        adiri_chain_spec, generate_proof_of_possession, test_utils::TelcoinTempDirs, BlsKeypair,
-        Multiaddr, NetworkKeypair, PrimaryInfo, TelcoinDirs, ValidatorInfo, WorkerIndex,
-        WorkerInfo,
+        adiri_chain_spec, generate_proof_of_possession, BlsKeypair, Multiaddr, NetworkKeypair,
+        PrimaryInfo, TelcoinDirs, TelcoinTempDirs, ValidatorInfo, WorkerIndex, WorkerInfo,
     };
     use fastcrypto::traits::KeyPair;
     use rand::{rngs::StdRng, SeedableRng};

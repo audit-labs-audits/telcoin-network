@@ -11,7 +11,7 @@ use indexmap::IndexMap;
 use narwhal_test_utils::CommitteeFixture;
 use narwhal_typed_store::mem_db::MemDatabase;
 use reth_primitives::B256;
-use tn_types::{test_utils::fixture_payload, BlockHash, Notifier};
+use tn_types::{test_utils::fixture_payload, BlockHash};
 
 #[tokio::test]
 async fn test_empty_proposal() {
@@ -21,7 +21,6 @@ async fn test_empty_proposal() {
     let worker_cache = fixture.worker_cache();
     let primary = fixture.authorities().next().unwrap();
 
-    let mut tx_shutdown = Notifier::new();
     let (_tx_parents, rx_parents) = tn_types::test_channel!(1);
     let (_tx_committed_own_headers, rx_committed_own_headers) = tn_types::test_channel!(1);
     let (_tx_our_digests, rx_our_digests) = tn_types::test_channel!(1);
@@ -32,7 +31,6 @@ async fn test_empty_proposal() {
     let proposer_task = Proposer::new(
         primary.consensus_config(),
         None, // default fatal timer
-        tx_shutdown.subscribe(),
         /* synchronizer */ rx_parents,
         /* rx_workers */ rx_our_digests,
         /* tx_synchronizer */ tx_headers,
@@ -63,7 +61,6 @@ async fn test_propose_payload_fatal_timer() {
     // long enough for proposer to build but not too long for tests
     let fatal_header_interval = Duration::from_secs(3);
 
-    let mut tx_shutdown = Notifier::new();
     let (tx_parents, rx_parents) = tn_types::test_channel!(1);
     let (tx_our_digests, rx_our_digests) = tn_types::test_channel!(1);
     let (_tx_committed_own_headers, rx_committed_own_headers) = tn_types::test_channel!(1);
@@ -78,7 +75,6 @@ async fn test_propose_payload_fatal_timer() {
     let proposer_task = Proposer::new(
         primary.consensus_config(),
         Some(fatal_header_interval),
-        tx_shutdown.subscribe(),
         /* rx_core */ rx_parents,
         /* rx_workers */ rx_our_digests,
         /* tx_synchronizer */ tx_headers.clone(),
@@ -195,7 +191,6 @@ async fn test_equivocation_protection_after_restart() {
     let worker_cache = fixture.worker_cache();
     let primary = fixture.authorities().next().unwrap();
 
-    let mut tx_shutdown = Notifier::new();
     let (tx_parents, rx_parents) = tn_types::test_channel!(1);
     let (tx_our_digests, rx_our_digests) = tn_types::test_channel!(1);
     let (tx_headers, mut rx_headers) = tn_types::test_channel!(1);
@@ -213,7 +208,6 @@ async fn test_equivocation_protection_after_restart() {
     let proposer_task = Proposer::new(
         primary.consensus_config(),
         None,
-        tx_shutdown.subscribe(),
         /* rx_core */ rx_parents,
         /* rx_workers */ rx_our_digests,
         /* tx_synchronizer */ tx_headers,
@@ -251,10 +245,9 @@ async fn test_equivocation_protection_after_restart() {
     // TODO: assert header el state present
 
     // restart the proposer.
-    tx_shutdown.notify();
+    fixture.notify_shutdown();
     assert!(proposer_handle.await.is_ok());
 
-    let mut tx_shutdown = Notifier::new();
     let (tx_parents, rx_parents) = tn_types::test_channel!(1);
     let (tx_our_digests, rx_our_digests) = tn_types::test_channel!(1);
     let (tx_headers, mut rx_headers) = tn_types::test_channel!(1);
@@ -265,7 +258,6 @@ async fn test_equivocation_protection_after_restart() {
     let proposer_task = Proposer::new(
         primary.consensus_config(),
         None,
-        tx_shutdown.subscribe(),
         /* rx_core */ rx_parents,
         /* rx_workers */ rx_our_digests,
         /* tx_synchronizer */ tx_headers,

@@ -11,7 +11,7 @@ use reth_primitives::{
     B256, EMPTY_OMMER_ROOT_HASH, U256,
 };
 use reth_transaction_pool::TransactionPool;
-use tn_types::{now, PendingBlockConfig, WorkerBlock, WorkerBlockBuilderArgs};
+use telnet_types::{now, PendingBlockConfig, WorkerBlock, WorkerBlockBuilderArgs};
 use tracing::{debug, warn};
 
 /// The output from building the next block.

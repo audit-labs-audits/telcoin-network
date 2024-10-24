@@ -231,7 +231,7 @@ async fn test_certificate_store_next_round_number() {
     let mut certs = Vec::new();
     for r in &rounds {
         let mut c = cert.clone();
-        c.header_mut().update_round(*r);
+        c.header_mut_for_test().update_round_for_test(*r);
         certs.push(c);
     }
 

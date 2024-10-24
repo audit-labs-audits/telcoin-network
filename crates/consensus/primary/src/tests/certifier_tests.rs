@@ -12,7 +12,7 @@ use narwhal_test_utils::CommitteeFixture;
 use narwhal_typed_store::mem_db::MemDatabase;
 use rand::{rngs::StdRng, SeedableRng};
 use std::num::NonZeroUsize;
-use tn_types::{BlsKeypair, Notifier, SignatureVerificationState};
+use tn_types::{BlsKeypair, SignatureVerificationState, TnSender};
 use tokio::sync::watch;
 
 // // TODO: Remove after network has moved to CertificateV2
@@ -144,7 +144,6 @@ async fn propose_header_and_form_certificate_v2() {
     let id = primary.id();
     let metrics = Arc::new(PrimaryMetrics::default());
     let primary_channel_metrics = PrimaryChannelMetrics::default();
-    let mut tx_shutdown = Notifier::new();
     let (tx_certificate_fetcher, _rx_certificate_fetcher) = tn_types::test_channel!(1);
     let (tx_headers, rx_headers) = tn_types::test_channel!(1);
     let (tx_new_certificates, mut rx_new_certificates) = tn_types::test_channel!(3);
@@ -203,7 +202,6 @@ async fn propose_header_and_form_certificate_v2() {
     let _handle = Certifier::spawn(
         primary.consensus_config(),
         synchronizer,
-        tx_shutdown.subscribe(),
         rx_headers,
         metrics.clone(),
         network,
@@ -234,7 +232,6 @@ async fn propose_header_failure() {
     let authority_id = primary.id();
     let metrics = Arc::new(PrimaryMetrics::default());
     let primary_channel_metrics = PrimaryChannelMetrics::default();
-    let mut tx_shutdown = Notifier::new();
     let (tx_certificate_fetcher, _rx_certificate_fetcher) = tn_types::test_channel!(1);
     let (tx_headers, rx_headers) = tn_types::test_channel!(1);
     let (tx_new_certificates, mut rx_new_certificates) = tn_types::test_channel!(3);
@@ -286,7 +283,6 @@ async fn propose_header_failure() {
     let _handle = Certifier::spawn(
         primary.consensus_config(),
         synchronizer,
-        tx_shutdown.subscribe(),
         rx_headers,
         metrics.clone(),
         network,
@@ -330,7 +326,6 @@ async fn run_vote_aggregator_with_param(
     let id: AuthorityIdentifier = primary.id();
     let metrics = Arc::new(PrimaryMetrics::default());
     let primary_channel_metrics = PrimaryChannelMetrics::default();
-    let mut tx_shutdown = Notifier::new();
     let (tx_certificate_fetcher, _rx_certificate_fetcher) = tn_types::test_channel!(1);
     let (tx_headers, rx_headers) = tn_types::test_channel!(1);
     let (tx_new_certificates, mut rx_new_certificates) = tn_types::test_channel!(3);
@@ -388,7 +383,6 @@ async fn run_vote_aggregator_with_param(
     let _handle = Certifier::spawn(
         primary.consensus_config(),
         synchronizer,
-        tx_shutdown.subscribe(),
         rx_headers,
         metrics.clone(),
         network,
@@ -423,7 +417,6 @@ async fn test_shutdown_core() {
     let metrics = Arc::new(PrimaryMetrics::default());
     let primary_channel_metrics = PrimaryChannelMetrics::default();
 
-    let mut tx_shutdown = Notifier::new();
     let (tx_certificate_fetcher, _rx_certificate_fetcher) = tn_types::test_channel!(1);
     let (_tx_headers, rx_headers) = tn_types::test_channel!(1);
     let (tx_new_certificates, _rx_new_certificates) = tn_types::test_channel!(1);
@@ -455,13 +448,12 @@ async fn test_shutdown_core() {
     let handle = Certifier::spawn(
         primary.consensus_config(),
         synchronizer.clone(),
-        tx_shutdown.subscribe(),
         rx_headers,
         metrics.clone(),
         network.clone(),
     );
 
     // Shutdown the core.
-    tx_shutdown.notify();
+    fixture.notify_shutdown();
     assert!(handle.await.is_ok());
 }

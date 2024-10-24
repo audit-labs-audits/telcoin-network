@@ -16,7 +16,7 @@ use std::{
 };
 use tn_types::{
     AuthorityIdentifier, BlockHash, Certificate, CommittedSubDag, Committee, ConsensusOutput,
-    NetworkPublicKey, Noticer, Timestamp, WorkerBlock, WorkerCache, WorkerId,
+    NetworkPublicKey, Noticer, Timestamp, TnReceiver, WorkerBlock, WorkerCache, WorkerId,
 };
 use tokio::{sync::broadcast, task::JoinHandle};
 use tracing::{debug, error, info, warn};

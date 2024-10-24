@@ -24,7 +24,7 @@ use reth_evm::{execute::BlockExecutorProvider, ConfigureEvm};
 use std::{sync::Arc, time::Instant};
 use tn_config::ConsensusConfig;
 use tn_types::{
-    BlsPublicKey, Certificate, ConsensusOutput, Notifier, Round, DEFAULT_BAD_NODES_STAKE_THRESHOLD,
+    BlsPublicKey, Certificate, ConsensusOutput, Round, DEFAULT_BAD_NODES_STAKE_THRESHOLD,
 };
 use tokio::{
     sync::{broadcast, watch, RwLock},
@@ -36,8 +36,6 @@ struct PrimaryNodeInner<CDB> {
     consensus_config: ConsensusConfig<CDB>,
     /// The task handles created from primary
     handles: FuturesUnordered<JoinHandle<()>>,
-    /// The shutdown signal channel
-    tx_shutdown: Option<Notifier>,
     /// Peer ID used for local connections.
     own_peer_id: Option<PeerId>,
     /// Consensus broadcast channel.
@@ -77,9 +75,6 @@ impl<CDB: ConsensusDatabase> PrimaryNodeInner<CDB> {
             self.consensus_config.key_config().primary_network_public_key().0.to_bytes(),
         ));
 
-        // create the channel to send the shutdown signal
-        let mut tx_shutdown = Notifier::new();
-
         // used to retrieve the last executed certificate in case of restarts
         let last_executed_sub_dag_index =
             execution_components.last_executed_output().await.expect("execution found HEAD");
@@ -88,8 +83,7 @@ impl<CDB: ConsensusDatabase> PrimaryNodeInner<CDB> {
         let consensus_output_rx = self.subscribe_consensus_output();
 
         // spawn primary if not already running
-        let primary_handles =
-            self.spawn_primary(&mut tx_shutdown, last_executed_sub_dag_index).await?;
+        let primary_handles = self.spawn_primary(last_executed_sub_dag_index).await?;
 
         // start engine
         execution_components.start_engine(consensus_output_rx).await?;
@@ -97,7 +91,6 @@ impl<CDB: ConsensusDatabase> PrimaryNodeInner<CDB> {
         // now keep the handlers
         self.handles.clear();
         self.handles.extend(primary_handles);
-        self.tx_shutdown = Some(tx_shutdown);
 
         Ok(())
     }
@@ -115,10 +108,7 @@ impl<CDB: ConsensusDatabase> PrimaryNodeInner<CDB> {
         let now = Instant::now();
 
         self.consensus_config.network_client().shutdown();
-
-        if let Some(mut tx_shutdown) = self.tx_shutdown.take() {
-            tx_shutdown.notify();
-        }
+        self.consensus_config.shutdown();
 
         // Now wait until handles have been completed
         try_join_all(&mut self.handles).await.unwrap();
@@ -144,8 +134,6 @@ impl<CDB: ConsensusDatabase> PrimaryNodeInner<CDB> {
     /// transactions.
     pub async fn spawn_primary(
         &self,
-        // The channel to send the shutdown signal
-        tx_shutdown: &mut Notifier,
         // Used for recovering after crashes/restarts
         last_executed_sub_dag_index: u64,
     ) -> SubscriberResult<Vec<JoinHandle<()>>> {
@@ -165,7 +153,6 @@ impl<CDB: ConsensusDatabase> PrimaryNodeInner<CDB> {
 
         let (consensus_handles, leader_schedule) = self
             .spawn_consensus(
-                tx_shutdown,
                 rx_new_certificates,
                 tx_committed_certificates.clone(),
                 tx_consensus_round_updates,
@@ -184,7 +171,6 @@ impl<CDB: ConsensusDatabase> PrimaryNodeInner<CDB> {
             tx_new_certificates,
             rx_committed_certificates,
             rx_consensus_round_updates,
-            tx_shutdown,
             leader_schedule,
             &self.primary_metrics,
         );
@@ -199,10 +185,8 @@ impl<CDB: ConsensusDatabase> PrimaryNodeInner<CDB> {
     ///
     /// TODO: Executor metrics is needed to create the metered channel. This
     /// could be done a better way, but bigger priorities right now.
-    #[allow(clippy::too_many_arguments)]
     async fn spawn_consensus(
         &self,
-        tx_shutdown: &mut Notifier,
         rx_new_certificates: metered_channel::Receiver<Certificate>,
         tx_committed_certificates: metered_channel::Sender<(Round, Vec<Certificate>)>,
         tx_consensus_round_updates: watch::Sender<ConsensusRound>,
@@ -272,7 +256,6 @@ impl<CDB: ConsensusDatabase> PrimaryNodeInner<CDB> {
         );
         let consensus_handle = Consensus::spawn(
             self.consensus_config.clone(),
-            tx_shutdown.subscribe(),
             rx_new_certificates,
             tx_committed_certificates,
             tx_consensus_round_updates,
@@ -285,7 +268,7 @@ impl<CDB: ConsensusDatabase> PrimaryNodeInner<CDB> {
         // subscriber handler if it missed some transactions.
         let executor_handle = Executor::spawn(
             self.consensus_config.clone(),
-            tx_shutdown.subscribe(),
+            self.consensus_config.subscribe_shutdown(),
             rx_sequence,
             restored_consensus_output,
             self.consensus_output_notification_sender.clone(),
@@ -321,7 +304,6 @@ impl<CDB: ConsensusDatabase> PrimaryNode<CDB> {
         let inner = PrimaryNodeInner {
             consensus_config,
             handles: FuturesUnordered::new(),
-            tx_shutdown: None,
             own_peer_id: None,
             consensus_output_notification_sender,
             consensus_metrics,

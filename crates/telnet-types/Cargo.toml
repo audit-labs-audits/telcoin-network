@@ -1,5 +1,5 @@
 [package]
-name = "tn-types"
+name = "telnet-types"
 version.workspace = true
 edition = "2021"
 license = "Apache-2.0"
@@ -12,15 +12,19 @@ publish = false
 
 [dependencies]
 base64 = { workspace = true }
+bcs = { workspace = true }
+bincode = { workspace = true }
+reth-payload-primitives = { workspace = true }
 reth-primitives = { workspace = true }
 reth-chainspec = { workspace = true }
+reth-consensus = { workspace = true }
+reth-evm-ethereum = { workspace = true }
 reth-revm = { workspace = true }
 reth-rpc-types = { workspace = true }
 derive_builder = { workspace = true }
 futures = { workspace = true }
 indexmap = { workspace = true }
 prometheus = { workspace = true }
-proptest = { workspace = true }
 rand = { workspace = true }
 roaring = { workspace = true }
 serde = { workspace = true }
@@ -30,7 +34,6 @@ serde_repr = { workspace = true }
 humantime-serde = { workspace = true }
 thiserror = { workspace = true }
 tokio = { workspace = true, features = ["sync", "rt", "macros"] }
-tonic = { workspace = true }
 tracing = { workspace = true }
 eyre = { workspace = true }
 fastcrypto = { workspace = true, features = ["copy_key"] }
@@ -42,54 +45,10 @@ multiaddr = { workspace = true }
 telcoin-sync = { workspace = true }
 alloy-rlp = { workspace = true }
 parking_lot = { workspace = true }
-
-schemars = { version = "0.8.16" }
 serde_yaml = { workspace = true }
 secp256k1 = { workspace = true }
-reth-consensus = { workspace = true }
-reth-evm-ethereum = { workspace = true }
-reth-provider = { workspace = true }
 
-# optional dependencies for test-utils
-tempfile = { workspace = true, optional = true }
-fdlimit = { workspace = true, optional = true }
-reth-tracing = { workspace = true, optional = true }
-reth-transaction-pool = { workspace = true, optional = true }
-reth-evm = { workspace = true, optional = true }
-
-alloy = { workspace = true, features = [
-    "contract",
-    "signers",
-    "signer-local",
-    "network",
-], optional = true }
-
-telnet-types = { workspace = true }
+# for telcoin_temp_dirs (should maybe move to testing only- probably test-utils crate...).
+tempfile = { workspace = true }
 
 [dev-dependencies]
-criterion = { workspace = true }
-tempfile = { workspace = true }
-fdlimit = { workspace = true }
-tn-types = { path = ".", features = ["test-utils"] }
-consensus-metrics = { workspace = true }
-
-[features]
-default = []
-test-utils = [
-    "tempfile",
-    "fdlimit",
-    "reth-tracing",
-    "reth-transaction-pool",
-    "reth-primitives/arbitrary",
-    "reth-evm",
-    "alloy",
-]
-arbitrary = ["reth-primitives/arbitrary"]
-
-[[bench]]
-name = "batch_digest"
-harness = false
-
-[[bench]]
-name = "verify_certificate"
-harness = false
