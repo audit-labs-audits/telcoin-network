@@ -16,7 +16,6 @@ use narwhal_network::{
     client::NetworkClient,
     PrimaryToWorkerClient, RetryConfig,
 };
-use narwhal_primary_metrics::{PrimaryChannelMetrics, PrimaryMetrics};
 use narwhal_storage::{CertificateStore, PayloadStore};
 use narwhal_typed_store::traits::Database;
 use parking_lot::Mutex;
@@ -45,7 +44,7 @@ use tn_types::{
     Certificate, CertificateDigest, Header, Round, SignatureVerificationState,
 };
 use tokio::{
-    sync::{broadcast, oneshot, watch, MutexGuard},
+    sync::{broadcast, oneshot, MutexGuard},
     task::{spawn_blocking, JoinSet},
     time::{sleep, timeout, Instant},
 };
@@ -53,7 +52,7 @@ use tracing::{debug, error, instrument, trace, warn};
 
 use crate::{
     aggregators::CertificatesAggregator, certificate_fetcher::CertificateFetcherCommand,
-    consensus::ConsensusRound, CHANNEL_CAPACITY,
+    ConsensusBus, CHANNEL_CAPACITY,
 };
 
 #[cfg(test)]
@@ -88,24 +87,15 @@ struct Inner<DB> {
     // The persistent store of the available batch digests produced either via our own workers
     // or others workers.
     payload_store: PayloadStore<DB>,
-    // Send missing certificates to the `CertificateFetcher`.
-    tx_certificate_fetcher: Sender<CertificateFetcherCommand>,
     // Send certificates to be accepted into a separate task that runs
     // `process_certificates_with_lock()` in a loop.
     // See comment above `process_certificates_with_lock()` for why this is necessary.
     tx_certificate_acceptor: Sender<(Vec<Certificate>, oneshot::Sender<DagResult<()>>, bool)>,
-    // Output all certificates to the consensus layer. Must send certificates in causal order.
-    tx_new_certificates: Sender<Certificate>,
-    // Send valid a quorum of certificates' ids to the `Proposer` (along with their round).
-    tx_parents: Sender<(Vec<Certificate>, Round)>,
+    consensus_bus: ConsensusBus,
     // Send own certificates to be broadcasted to all other peers.
     tx_own_certificate_broadcast: broadcast::Sender<Certificate>,
-    // Get a signal when the commit & gc round changes.
-    rx_consensus_round_updates: watch::Receiver<ConsensusRound>,
     // Genesis digests and contents.
     genesis: HashMap<CertificateDigest, Certificate>,
-    // Contains Synchronizer specific metrics among other Primary metrics.
-    metrics: Arc<PrimaryMetrics>,
     // Background tasks broadcasting newly formed certificates.
     certificate_senders: Mutex<JoinSet<()>>,
     // A background task that synchronizes batches. A tuple of a header and the maximum accepted
@@ -153,7 +143,8 @@ impl<DB: Database> Inner<DB> {
             return Ok(());
         };
         // Send it to the `Proposer`.
-        self.tx_parents
+        self.consensus_bus
+            .parents()
             .send((parents, certificate.round()))
             .await
             .map_err(|_| DagError::ShuttingDown)
@@ -225,11 +216,18 @@ impl<DB: Database> Inner<DB> {
             .max(certificate.round());
         let certificate_source =
             if self.authority_id.eq(&certificate.origin()) { "own" } else { "other" };
-        self.metrics
+        self.consensus_bus
+            .primary_metrics()
+            .node_metrics
             .highest_processed_round
             .with_label_values(&[certificate_source])
             .set(highest_processed_round as i64);
-        self.metrics.certificates_processed.with_label_values(&[certificate_source]).inc();
+        self.consensus_bus
+            .primary_metrics()
+            .node_metrics
+            .certificates_processed
+            .with_label_values(&[certificate_source])
+            .inc();
 
         // Append the certificate to the aggregator of the
         // corresponding round.
@@ -239,7 +237,7 @@ impl<DB: Database> Inner<DB> {
         }
 
         // Send the accepted certificate to the consensus layer.
-        if let Err(e) = self.tx_new_certificates.send(certificate).await {
+        if let Err(e) = self.consensus_bus.new_certificates().send(certificate).await {
             warn!("Failed to deliver certificate {} to the consensus: {}", digest, e);
             return Err(DagError::ShuttingDown);
         }
@@ -302,7 +300,8 @@ impl<DB: Database> Inner<DB> {
             }
         }
         if !result.is_empty() {
-            self.tx_certificate_fetcher
+            self.consensus_bus
+                .certificate_fetcher()
                 .send(CertificateFetcherCommand::Ancestors(certificate.clone()))
                 .await
                 .map_err(|_| DagError::ShuttingDown)?;
@@ -331,23 +330,17 @@ pub struct Synchronizer<DB> {
 }
 
 impl<DB: Database> Synchronizer<DB> {
-    #[allow(clippy::too_many_arguments)]
-    pub fn new(
-        consensus_config: ConsensusConfig<DB>,
-        tx_certificate_fetcher: Sender<CertificateFetcherCommand>,
-        tx_new_certificates: Sender<Certificate>,
-        tx_parents: Sender<(Vec<Certificate>, Round)>,
-        rx_consensus_round_updates: watch::Receiver<ConsensusRound>,
-        metrics: Arc<PrimaryMetrics>,
-        primary_channel_metrics: &PrimaryChannelMetrics,
-    ) -> Self {
+    pub fn new(consensus_config: ConsensusConfig<DB>, consensus_bus: &ConsensusBus) -> Self {
+        let metrics = consensus_bus.primary_metrics();
+        let primary_channel_metrics = &metrics.primary_channel_metrics;
         let committee: &Committee = consensus_config.committee();
         let genesis = Self::make_genesis(committee);
         let node_store = consensus_config.node_storage();
         let highest_processed_round = node_store.certificate_store.highest_round_number();
         let highest_created_certificate =
             node_store.certificate_store.last_round(consensus_config.authority().id()).unwrap();
-        let gc_round = rx_consensus_round_updates.borrow().gc_round;
+        let gc_round = consensus_bus.consensus_round_updates().borrow().gc_round;
+        // XXXX
         let (tx_own_certificate_broadcast, _rx_own_certificate_broadcast) =
             broadcast::channel(CHANNEL_CAPACITY);
         let (tx_certificate_acceptor, mut rx_certificate_acceptor) = channel_with_total(
@@ -373,14 +366,10 @@ impl<DB: Database> Synchronizer<DB> {
             client: consensus_config.network_client().clone(),
             certificate_store: consensus_config.node_storage().certificate_store.clone(),
             payload_store: consensus_config.node_storage().payload_store.clone(),
-            tx_certificate_fetcher,
             tx_certificate_acceptor,
-            tx_new_certificates,
-            tx_parents,
+            consensus_bus: consensus_bus.clone(),
             tx_own_certificate_broadcast: tx_own_certificate_broadcast.clone(),
-            rx_consensus_round_updates: rx_consensus_round_updates.clone(),
             genesis,
-            metrics,
             tx_batch_tasks,
             certificate_senders: Mutex::new(JoinSet::new()),
             certificates_aggregators: Mutex::new(BTreeMap::new()),
@@ -425,10 +414,11 @@ impl<DB: Database> Synchronizer<DB> {
         // Start a task to update gc_round, gc in-memory data, and trigger certificate catchup
         // if no gc / consensus commit happened for 30s.
         let weak_inner = Arc::downgrade(&inner);
+        let mut rx_consensus_round_updates = consensus_bus.consensus_round_updates().subscribe();
         spawn_logged_monitored_task!(
             async move {
                 const FETCH_TRIGGER_TIMEOUT: Duration = Duration::from_secs(30);
-                let mut rx_consensus_round_updates = rx_consensus_round_updates.clone();
+                //let mut rx_consensus_round_updates = rx_consensus_round_updates.clone();
                 loop {
                     let Ok(result) =
                         timeout(FETCH_TRIGGER_TIMEOUT, rx_consensus_round_updates.changed()).await
@@ -442,13 +432,21 @@ impl<DB: Database> Synchronizer<DB> {
                             error!(target: "primary::synchronizer::gc", "failed to upgrade weak pointer while re-fetching rx_consensus_round_updates - shutting down");
                             return;
                         };
-                        if let Err(e) =
-                            inner.tx_certificate_fetcher.send(CertificateFetcherCommand::Kick).await
+                        if let Err(e) = inner
+                            .consensus_bus
+                            .certificate_fetcher()
+                            .send(CertificateFetcherCommand::Kick)
+                            .await
                         {
                             error!(target: "primary::synchronizer::gc", ?e, "failed to send on tx_certificate_fetcher");
                             return;
                         }
-                        inner.metrics.synchronizer_gc_timeout.inc();
+                        inner
+                            .consensus_bus
+                            .primary_metrics()
+                            .node_metrics
+                            .synchronizer_gc_timeout
+                            .inc();
                         warn!(target: "primary::synchronizer::gc", "No consensus commit happened for {:?}, triggering certificate fetching.", FETCH_TRIGGER_TIMEOUT);
                         continue;
                     };
@@ -662,7 +660,9 @@ impl<DB: Database> Synchronizer<DB> {
             .fetch_max(highest_round, Ordering::AcqRel)
             .max(highest_round);
         self.inner
-            .metrics
+            .consensus_bus
+            .primary_metrics()
+            .node_metrics
             .highest_received_round
             .with_label_values(&[certificate_source])
             .set(highest_received_round as i64);
@@ -678,7 +678,8 @@ impl<DB: Database> Synchronizer<DB> {
         // we witnessed.
         let minimal_round_for_parents = highest_received_round.saturating_sub(1);
         self.inner
-            .tx_parents
+            .consensus_bus
+            .parents()
             .send((vec![], minimal_round_for_parents))
             .await
             .map_err(|_| DagError::ShuttingDown)?;
@@ -703,7 +704,8 @@ impl<DB: Database> Synchronizer<DB> {
 
             if highest_processed_round + NEW_CERTIFICATE_ROUND_LIMIT < certificate.round() {
                 self.inner
-                    .tx_certificate_fetcher
+                    .consensus_bus
+                    .certificate_fetcher()
                     .send(CertificateFetcherCommand::Ancestors(certificate.clone()))
                     .await
                     .map_err(|_| DagError::ShuttingDown)?;
@@ -755,9 +757,19 @@ impl<DB: Database> Synchronizer<DB> {
         let header_to_certificate_duration =
             Duration::from_millis(certificate.created_at() - *certificate.header().created_at())
                 .as_secs_f64();
-        self.inner.metrics.certificate_created_round.set(round as i64);
-        self.inner.metrics.certificates_created.inc();
-        self.inner.metrics.header_to_certificate_latency.observe(header_to_certificate_duration);
+        self.inner
+            .consensus_bus
+            .primary_metrics()
+            .node_metrics
+            .certificate_created_round
+            .set(round as i64);
+        self.inner.consensus_bus.primary_metrics().node_metrics.certificates_created.inc();
+        self.inner
+            .consensus_bus
+            .primary_metrics()
+            .node_metrics
+            .header_to_certificate_latency
+            .observe(header_to_certificate_duration);
 
         // NOTE: This log entry is used to compute performance.
         debug!(
@@ -831,7 +843,9 @@ impl<DB: Database> Synchronizer<DB> {
                         sanitized_certs.push((idx, inner.sanitize_certificate(c)?));
                     }
                     inner
-                        .metrics
+                        .consensus_bus
+                        .primary_metrics()
+                        .node_metrics
                         .certificate_fetcher_total_verification_us
                         .inc_by(now.elapsed().as_micros() as u64);
                     Ok::<Vec<(usize, Certificate)>, DagError>(sanitized_certs)
@@ -855,9 +869,16 @@ impl<DB: Database> Synchronizer<DB> {
 
         let certificates_count = certificates.len() as u64;
         let direct_verification_count = direct_verification_certs.len() as u64;
-        self.inner.metrics.fetched_certificates_verified_directly.inc_by(direct_verification_count);
         self.inner
-            .metrics
+            .consensus_bus
+            .primary_metrics()
+            .node_metrics
+            .fetched_certificates_verified_directly
+            .inc_by(direct_verification_count);
+        self.inner
+            .consensus_bus
+            .primary_metrics()
+            .node_metrics
             .fetched_certificates_verified_indirectly
             .inc_by(certificates_count.saturating_sub(direct_verification_count));
 
@@ -876,7 +897,12 @@ impl<DB: Database> Synchronizer<DB> {
         let digest = certificate.digest();
         if self.inner.certificate_store.contains(&digest)? {
             trace!(target: "primary::synchronizer", "Certificate {digest:?} has already been processed. Skip processing.");
-            self.inner.metrics.duplicate_certificates_processed.inc();
+            self.inner
+                .consensus_bus
+                .primary_metrics()
+                .node_metrics
+                .duplicate_certificates_processed
+                .inc();
             return Ok(());
         }
         // Ensure parents are checked if !early_suspend.
@@ -884,7 +910,13 @@ impl<DB: Database> Synchronizer<DB> {
         if early_suspend {
             if let Some(notify) = self.inner.state.lock().await.check_suspended(&digest) {
                 trace!(target: "primary::synchronizer", ?digest, "certificate is still suspended - returning suspended error...");
-                self.inner.metrics.certificates_suspended.with_label_values(&["dedup"]).inc();
+                self.inner
+                    .consensus_bus
+                    .primary_metrics()
+                    .node_metrics
+                    .certificates_suspended
+                    .with_label_values(&["dedup"])
+                    .inc();
                 return Err(DagError::Suspended(notify));
             }
         }
@@ -903,7 +935,9 @@ impl<DB: Database> Synchronizer<DB> {
             .fetch_max(certificate.round(), Ordering::AcqRel)
             .max(certificate.round());
         self.inner
-            .metrics
+            .consensus_bus
+            .primary_metrics()
+            .node_metrics
             .highest_received_round
             .with_label_values(&[certificate_source])
             .set(highest_received_round as i64);
@@ -919,7 +953,8 @@ impl<DB: Database> Synchronizer<DB> {
         // we witnessed.
         let minimal_round_for_parents = certificate.round().saturating_sub(1);
         self.inner
-            .tx_parents
+            .consensus_bus
+            .parents()
             .send((vec![], minimal_round_for_parents))
             .await
             .map_err(|_| DagError::ShuttingDown)?;
@@ -939,7 +974,8 @@ impl<DB: Database> Synchronizer<DB> {
         let highest_processed_round = self.inner.highest_processed_round.load(Ordering::Acquire);
         if highest_processed_round + NEW_CERTIFICATE_ROUND_LIMIT < certificate.round() {
             self.inner
-                .tx_certificate_fetcher
+                .consensus_bus
+                .certificate_fetcher()
                 .send(CertificateFetcherCommand::Ancestors(certificate.clone()))
                 .await
                 .map_err(|_| DagError::ShuttingDown)?;
@@ -989,7 +1025,12 @@ impl<DB: Database> Synchronizer<DB> {
             .filter_map(|(c, exist)| {
                 if exist {
                     debug!("Skip processing certificate {:?}", c);
-                    inner.metrics.duplicate_certificates_processed.inc();
+                    inner
+                        .consensus_bus
+                        .primary_metrics()
+                        .node_metrics
+                        .duplicate_certificates_processed
+                        .inc();
                     return None;
                 }
                 Some(c)
@@ -1026,7 +1067,13 @@ impl<DB: Database> Synchronizer<DB> {
                 // is acquired.
                 if let Some(notify) = state.check_suspended(&digest) {
                     trace!(target: "primary::synchronizer", "Certificate {digest:?} is still suspended. Skip processing.");
-                    inner.metrics.certificates_suspended.with_label_values(&["dedup_locked"]).inc();
+                    inner
+                        .consensus_bus
+                        .primary_metrics()
+                        .node_metrics
+                        .certificates_suspended
+                        .with_label_values(&["dedup_locked"])
+                        .inc();
                     result = Err(DagError::Suspended(notify));
                     continue;
                 }
@@ -1040,7 +1087,9 @@ impl<DB: Database> Synchronizer<DB> {
                 if !missing_parents.is_empty() {
                     debug!("Processing certificate {:?} suspended: missing ancestors", certificate);
                     inner
-                        .metrics
+                        .consensus_bus
+                        .primary_metrics()
+                        .node_metrics
                         .certificates_suspended
                         .with_label_values(&["missing_parents"])
                         .inc();
@@ -1049,7 +1098,9 @@ impl<DB: Database> Synchronizer<DB> {
                     // But we can revisit later.
                     let notify = state.insert(certificate, missing_parents, !early_suspend);
                     inner
-                        .metrics
+                        .consensus_bus
+                        .primary_metrics()
+                        .node_metrics
                         .certificates_currently_suspended
                         .set(state.num_suspended() as i64);
                     result = Err(DagError::Suspended(notify));
@@ -1066,7 +1117,12 @@ impl<DB: Database> Synchronizer<DB> {
             }
         }
 
-        inner.metrics.certificates_currently_suspended.set(state.num_suspended() as i64);
+        inner
+            .consensus_bus
+            .primary_metrics()
+            .node_metrics
+            .certificates_currently_suspended
+            .set(state.num_suspended() as i64);
 
         result
     }
@@ -1181,7 +1237,8 @@ impl<DB: Database> Synchronizer<DB> {
 
         // Clone the round updates channel so we can get update notifications specific to
         // this RPC handler.
-        let mut rx_consensus_round_updates = inner.rx_consensus_round_updates.clone();
+        let mut rx_consensus_round_updates =
+            inner.consensus_bus.consensus_round_updates().subscribe();
         let mut consensus_round = rx_consensus_round_updates.borrow().committed_round;
         ensure!(
             header.round() >= consensus_round.saturating_sub(max_age),

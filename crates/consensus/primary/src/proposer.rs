@@ -23,8 +23,8 @@
 use crate::{
     consensus::LeaderSchedule,
     error::{ProposerError, ProposerResult},
+    ConsensusBus,
 };
-use consensus_metrics::metered_channel::{Receiver, Sender};
 use fastcrypto::hash::Hash as _;
 use futures::FutureExt;
 use narwhal_primary_metrics::PrimaryMetrics;
@@ -44,10 +44,7 @@ use tn_types::{
     SystemMessage, TimestampSec, TnReceiver, TnSender, WorkerId,
 };
 use tokio::{
-    sync::{
-        oneshot::{self, error::RecvError},
-        watch,
-    },
+    sync::oneshot::{self, error::RecvError},
     time::{sleep, Duration, Interval},
 };
 use tracing::{debug, enabled, error, trace, warn};
@@ -131,21 +128,14 @@ pub struct Proposer<DB: Database> {
     ///
     /// Also used to signal committee change.
     rx_shutdown: Noticer,
-    /// Receives the parents to include in the next header (along with their round number) from
-    /// `Synchronizer`.
-    rx_parents: Receiver<(Vec<Certificate>, Round)>,
-    /// Receives the batches' digests from our workers.
-    rx_our_digests: Receiver<OurDigestMessage>,
-    /// Sends newly created headers to the `Certifier`.
-    tx_headers: Sender<Header>,
+    /// consensus channels
+    consensus_bus: ConsensusBus,
     /// The proposer store for persisting the last header.
     proposer_store: ProposerStore<DB>,
     /// The current round of the dag.
     round: Round,
     /// Last time the round has been updated
     last_round_timestamp: Option<TimestampSec>,
-    /// Signals a new narwhal round
-    tx_narwhal_round_updates: watch::Sender<Round>,
     /// Holds the certificates' ids waiting to be included in the next header.
     last_parents: Vec<Certificate>,
     /// Holds the certificate of the last leader (if any).
@@ -158,12 +148,6 @@ pub struct Proposer<DB: Database> {
     /// Holds the map of proposed previous round headers and their digest messages, to ensure that
     /// all batches' digest included will eventually be re-sent.
     proposed_headers: BTreeMap<Round, Header>,
-    /// Receiver for updates when Self's headers were committed by consensus.
-    ///
-    /// NOTE: this does not mean the header was executed yet.
-    rx_committed_own_headers: Receiver<(Round, Vec<Round>)>,
-    /// Metrics handler
-    metrics: Arc<PrimaryMetrics>,
     /// The consensus leader schedule to be used in order to resolve the leader needed for the
     /// protocol advancement.
     leader_schedule: LeaderSchedule,
@@ -182,17 +166,10 @@ impl<DB: Database + 'static> Proposer<DB> {
     ///
     /// The proposer's intervals and genesis certificate are created in this function.
     /// Also set `advance_round` to true.
-    #[allow(clippy::too_many_arguments)]
-    #[must_use]
     pub fn new(
         config: ConsensusConfig<DB>,
+        consensus_bus: ConsensusBus,
         fatal_header_timeout: Option<Duration>,
-        rx_parents: Receiver<(Vec<Certificate>, Round)>,
-        rx_our_digests: Receiver<OurDigestMessage>,
-        tx_headers: Sender<Header>,
-        tx_narwhal_round_updates: watch::Sender<Round>,
-        rx_committed_own_headers: Receiver<(Round, Vec<Round>)>,
-        metrics: Arc<PrimaryMetrics>,
         leader_schedule: LeaderSchedule,
     ) -> Self {
         let rx_shutdown = config.subscribe_shutdown();
@@ -217,10 +194,7 @@ impl<DB: Database + 'static> Proposer<DB> {
             fatal_header_timeout,
             opt_latest_header: None,
             rx_shutdown,
-            rx_parents,
-            rx_our_digests,
-            tx_headers,
-            tx_narwhal_round_updates,
+            consensus_bus,
             proposer_store: config.node_storage().proposer_store.clone(),
             round: 0,
             last_round_timestamp: None,
@@ -229,8 +203,6 @@ impl<DB: Database + 'static> Proposer<DB> {
             digests: VecDeque::with_capacity(2 * config.parameters().max_header_num_of_batches),
             system_messages: Vec::new(),
             proposed_headers: BTreeMap::new(),
-            rx_committed_own_headers,
-            metrics,
             leader_schedule,
             advance_round: true,
             pending_header: None,
@@ -249,7 +221,7 @@ impl<DB: Database + 'static> Proposer<DB> {
         current_epoch: Epoch,
         authority_id: AuthorityIdentifier,
         proposer_store: ProposerStore<DB>,
-        tx_headers: Sender<Header>,
+        consensus_bus: &ConsensusBus,
         parents: Vec<Certificate>,
         digests: VecDeque<ProposerDigest>,
         system_messages: Vec<SystemMessage>,
@@ -337,8 +309,7 @@ impl<DB: Database + 'static> Proposer<DB> {
         );
 
         // store and send newly built header
-        Proposer::store_and_send_header(&header, proposer_store, tx_headers, &reason, metrics)
-            .await?;
+        Proposer::store_and_send_header(&header, proposer_store, consensus_bus, &reason).await?;
 
         Ok(header)
     }
@@ -353,12 +324,10 @@ impl<DB: Database + 'static> Proposer<DB> {
     async fn repropose_header(
         header: Header,
         proposer_store: ProposerStore<DB>,
-        tx_headers: Sender<Header>,
+        consensus_bus: &ConsensusBus,
         reason: String,
-        metrics: Arc<PrimaryMetrics>,
     ) -> ProposerResult<Header> {
-        Proposer::store_and_send_header(&header, proposer_store, tx_headers, &reason, metrics)
-            .await?;
+        Proposer::store_and_send_header(&header, proposer_store, consensus_bus, &reason).await?;
 
         Ok(header)
     }
@@ -369,9 +338,8 @@ impl<DB: Database + 'static> Proposer<DB> {
     async fn store_and_send_header(
         header: &Header,
         proposer_store: ProposerStore<DB>,
-        tx_headers: Sender<Header>,
+        consensus_bus: &ConsensusBus,
         reason: &str,
-        metrics: Arc<PrimaryMetrics>,
     ) -> ProposerResult<()> {
         // Store the last header.
         proposer_store
@@ -385,9 +353,11 @@ impl<DB: Database + 'static> Proposer<DB> {
         }
 
         // Send the new header to the `Certifier` that will broadcast and certify it.
-        let result = tx_headers.send(header.clone()).await.map_err(|e| e.into());
+        let result = consensus_bus.headers().send(header.clone()).await.map_err(|e| e.into());
         let num_digests = header.payload().len();
-        metrics
+        consensus_bus
+            .primary_metrics()
+            .node_metrics
             .num_of_batch_digests_in_header
             .with_label_values(&[reason])
             .observe(num_digests as f64);
@@ -532,7 +502,7 @@ impl<DB: Database + 'static> Proposer<DB> {
                 // late (or just joined the network).
                 self.round = round;
                 // broadcast new round
-                let _ = self.tx_narwhal_round_updates.send(self.round);
+                let _ = self.consensus_bus.narwhal_round_updates().send(self.round);
                 self.last_parents = parents;
                 // Reset advance flag.
                 self.advance_round = false;
@@ -594,7 +564,9 @@ impl<DB: Database + 'static> Proposer<DB> {
 
         // update metrics
         let round_type = if self.round % 2 == 0 { "even" } else { "odd" };
-        self.metrics
+        self.consensus_bus
+            .primary_metrics()
+            .node_metrics
             .proposer_ready_to_advance
             .with_label_values(&[&self.advance_round.to_string(), round_type])
             .inc();
@@ -677,8 +649,16 @@ impl<DB: Database + 'static> Proposer<DB> {
                 self.proposed_headers.len()
             );
 
-            self.metrics.proposer_resend_headers.inc_by(retransmit_rounds.len() as u64);
-            self.metrics.proposer_resend_batches.inc_by(num_digests_to_resend as u64);
+            self.consensus_bus
+                .primary_metrics()
+                .node_metrics
+                .proposer_resend_headers
+                .inc_by(retransmit_rounds.len() as u64);
+            self.consensus_bus
+                .primary_metrics()
+                .node_metrics
+                .proposer_resend_batches
+                .inc_by(num_digests_to_resend as u64);
         }
     }
 
@@ -692,13 +672,15 @@ impl<DB: Database + 'static> Proposer<DB> {
     fn propose_next_header(&mut self, reason: String) -> ProposerResult<PendingHeaderTask> {
         // Advance to the next round.
         self.round += 1;
-        let _ = self.tx_narwhal_round_updates.send(self.round);
+        let _ = self.consensus_bus.narwhal_round_updates().send(self.round);
 
         // Update the metrics
-        self.metrics.current_round.set(self.round as i64);
+        self.consensus_bus.primary_metrics().node_metrics.current_round.set(self.round as i64);
         let current_timestamp = now();
         if let Some(t) = &self.last_round_timestamp {
-            self.metrics
+            self.consensus_bus
+                .primary_metrics()
+                .node_metrics
                 .proposal_latency
                 .with_label_values(&[&reason])
                 .observe(Duration::from_millis(current_timestamp - t).as_secs_f64());
@@ -720,8 +702,7 @@ impl<DB: Database + 'static> Proposer<DB> {
         let possible_header_to_repropose =
             last_proposed.filter(|h| h.round() == current_round && h.epoch() == current_epoch);
         let proposer_store = self.proposer_store.clone();
-        let tx_headers = self.tx_headers.clone();
-        let metrics = self.metrics.clone();
+        let metrics = self.consensus_bus.primary_metrics().node_metrics.clone();
 
         match possible_header_to_repropose {
             // resend header
@@ -730,16 +711,12 @@ impl<DB: Database + 'static> Proposer<DB> {
                 // clear parents if reproposing after restart
                 self.last_parents.clear();
 
+                let consensus_bus = self.consensus_bus.clone();
                 tokio::task::spawn(async move {
                     // use this instead of store_and_send to because rx always expects a Header
-                    let res = Proposer::repropose_header(
-                        header,
-                        proposer_store,
-                        tx_headers,
-                        reason,
-                        metrics,
-                    )
-                    .await;
+                    let res =
+                        Proposer::repropose_header(header, proposer_store, &consensus_bus, reason)
+                            .await;
                     let _ = tx.send(res);
                 });
             }
@@ -768,6 +745,7 @@ impl<DB: Database + 'static> Proposer<DB> {
                     }
                 };
 
+                let consensus_bus = self.consensus_bus.clone();
                 // spawn tokio task to create, store, and send new header to certifier
                 tokio::task::spawn(async move {
                     let proposal = Proposer::propose_header(
@@ -775,7 +753,7 @@ impl<DB: Database + 'static> Proposer<DB> {
                         current_epoch,
                         authority_id,
                         proposer_store,
-                        tx_headers,
+                        &consensus_bus,
                         parents,
                         digests,
                         system_messages,
@@ -867,7 +845,9 @@ where
             // committed/sequenced in the DAG or the epoch concludes
             //
             // NOTE: this will not persist primary restarts
-            while let Poll::Ready(Some(msg)) = this.rx_our_digests.poll_recv(cx) {
+            while let Poll::Ready(Some(msg)) =
+                this.consensus_bus.our_digests().borrow_subscriber().poll_recv(cx)
+            {
                 debug!(target: "primary::proposer", authority=?this.authority_id, round=this.round, "received digest");
 
                 // parse message into parts
@@ -883,17 +863,31 @@ where
             // - this node round: 11
             // - synchronizer receives certs from restarted node at round 10
             // - this debug goes off with empty vec for round 10 (during restart it test)
-            while let Poll::Ready(Some((certs, round))) = this.rx_parents.poll_recv(cx) {
-                debug!(target: "primary::proposer", authority=?this.authority_id, this_round=this.round, parent_round=round, num_parents=certs.len(), "received parents");
-                this.process_parents(certs, round)?;
+            {
+                // Silly borrow checker games...
+                let mut rx_parents = this.consensus_bus.parents().borrow_subscriber();
+                while let Poll::Ready(Some((certs, round))) = rx_parents.poll_recv(cx) {
+                    drop(rx_parents);
+                    debug!(target: "primary::proposer", authority=?this.authority_id, this_round=this.round, parent_round=round, num_parents=certs.len(), "received parents");
+                    this.process_parents(certs, round)?;
+                    rx_parents = this.consensus_bus.parents().borrow_subscriber();
+                }
             }
 
-            // check for previous headers that were committed
-            while let Poll::Ready(Some((commit_round, committed_headers))) =
-                this.rx_committed_own_headers.poll_recv(cx)
             {
-                debug!(target: "primary::proposer", authority=?this.authority_id, round=this.round, "received committed update for own header");
-                this.process_committed_headers(commit_round, committed_headers);
+                // Same Silly borrow checker games...
+                let mut rx_committed_own_headers =
+                    this.consensus_bus.committed_own_headers().borrow_subscriber();
+                // check for previous headers that were committed
+                while let Poll::Ready(Some((commit_round, committed_headers))) =
+                    rx_committed_own_headers.poll_recv(cx)
+                {
+                    drop(rx_committed_own_headers);
+                    debug!(target: "primary::proposer", authority=?this.authority_id, round=this.round, "received committed update for own header");
+                    this.process_committed_headers(commit_round, committed_headers);
+                    rx_committed_own_headers =
+                        this.consensus_bus.committed_own_headers().borrow_subscriber();
+                }
             }
 
             // poll receiver that returns proposed header result

@@ -6,8 +6,9 @@
 
 use super::*;
 
-use crate::consensus::{
-    make_consensus_store, Consensus, ConsensusRound, NUM_SUB_DAGS_PER_SCHEDULE,
+use crate::{
+    consensus::{make_consensus_store, Consensus, NUM_SUB_DAGS_PER_SCHEDULE},
+    ConsensusBus,
 };
 #[allow(unused_imports)]
 use fastcrypto::traits::KeyPair;
@@ -23,7 +24,6 @@ use tn_types::{
 };
 #[allow(unused_imports)]
 use tokio::sync::mpsc::channel;
-use tokio::sync::watch;
 use tracing::info;
 
 #[tokio::test]
@@ -440,11 +440,7 @@ async fn commit_one() {
     certificates.push_back(certificate);
 
     // Spawn the consensus engine and sink the primary channel.
-    let (tx_new_certificates, rx_new_certificates) = tn_types::test_channel!(1);
-    let (tx_primary, mut rx_primary) = tn_types::test_channel!(1);
     let (tx_output, mut rx_output) = tn_types::test_channel!(1);
-    let (tx_consensus_round_updates, _rx_consensus_round_updates) =
-        watch::channel(ConsensusRound::new(0, 0));
 
     let config = fixture.authorities().next().unwrap().consensus_config();
     let store = config.node_storage().consensus_store.clone();
@@ -459,21 +455,18 @@ async fn commit_one() {
         DEFAULT_BAD_NODES_STAKE_THRESHOLD,
     );
 
-    let _consensus_handle = Consensus::spawn(
-        config,
-        rx_new_certificates,
-        tx_primary,
-        tx_consensus_round_updates,
-        tx_output,
-        bullshark,
-        metrics,
-    );
-    tokio::spawn(async move { while rx_primary.recv().await.is_some() {} });
+    let cb = ConsensusBus::new();
+    let _consensus_handle = Consensus::spawn(config, &cb, tx_output, bullshark);
+    let cb_clone = cb.clone();
+    tokio::spawn(async move {
+        let mut rx_primary = cb_clone.committed_certificates().subscribe();
+        while rx_primary.recv().await.is_some() {}
+    });
 
     // Feed all certificates to the consensus. Only the last certificate should trigger
     // commits, so the task should not block.
     while let Some(certificate) = certificates.pop_front() {
-        tx_new_certificates.send(certificate).await.unwrap();
+        cb.new_certificates().send(certificate).await.unwrap();
     }
 
     // Ensure the first 4 ordered certificates are from round 1 (they are the parents of the
@@ -512,11 +505,7 @@ async fn dead_node() {
         tn_types::test_utils::make_optimal_certificates(&committee, 1..=11, &genesis, &ids);
 
     // Spawn the consensus engine and sink the primary channel.
-    let (tx_new_certificates, rx_new_certificates) = tn_types::test_channel!(1);
-    let (tx_primary, mut rx_primary) = tn_types::test_channel!(1);
     let (tx_output, mut rx_output) = tn_types::test_channel!(1);
-    let (tx_consensus_round_updates, _rx_consensus_round_updates) =
-        watch::channel(ConsensusRound::new(0, 0));
 
     let config = fixture.authorities().next().unwrap().consensus_config();
     let store = config.node_storage().consensus_store.clone();
@@ -531,21 +520,18 @@ async fn dead_node() {
         DEFAULT_BAD_NODES_STAKE_THRESHOLD,
     );
 
-    let _consensus_handle = Consensus::spawn(
-        config,
-        rx_new_certificates,
-        tx_primary,
-        tx_consensus_round_updates,
-        tx_output,
-        bullshark,
-        metrics,
-    );
-    tokio::spawn(async move { while rx_primary.recv().await.is_some() {} });
+    let cb = ConsensusBus::new();
+    let _consensus_handle = Consensus::spawn(config, &cb, tx_output, bullshark);
+    let cb_clone = cb.clone();
+    tokio::spawn(async move {
+        let mut rx_primary = cb_clone.committed_certificates().subscribe();
+        while rx_primary.recv().await.is_some() {}
+    });
 
     // Feed all certificates to the consensus.
     tokio::spawn(async move {
         while let Some(certificate) = certificates.pop_front() {
-            tx_new_certificates.send(certificate).await.unwrap();
+            cb.new_certificates().send(certificate).await.unwrap();
         }
     });
 
@@ -659,11 +645,7 @@ async fn not_enough_support() {
     certificates.push_back(certificate);
 
     // Spawn the consensus engine and sink the primary channel.
-    let (tx_new_certificates, rx_new_certificates) = tn_types::test_channel!(1);
-    let (tx_primary, mut rx_primary) = tn_types::test_channel!(1);
     let (tx_output, mut rx_output) = tn_types::test_channel!(1);
-    let (tx_consensus_round_updates, _rx_consensus_round_updates) =
-        watch::channel(ConsensusRound::new(0, 0));
 
     let config = fixture.authorities().next().unwrap().consensus_config();
     let store = config.node_storage().consensus_store.clone();
@@ -678,21 +660,18 @@ async fn not_enough_support() {
         DEFAULT_BAD_NODES_STAKE_THRESHOLD,
     );
 
-    let _consensus_handle = Consensus::spawn(
-        config,
-        rx_new_certificates,
-        tx_primary,
-        tx_consensus_round_updates,
-        tx_output,
-        bullshark,
-        metrics,
-    );
-    tokio::spawn(async move { while rx_primary.recv().await.is_some() {} });
+    let cb = ConsensusBus::new();
+    let _consensus_handle = Consensus::spawn(config, &cb, tx_output, bullshark);
+    let cb_clone = cb.clone();
+    tokio::spawn(async move {
+        let mut rx_primary = cb_clone.committed_certificates().subscribe();
+        while rx_primary.recv().await.is_some() {}
+    });
 
     // Feed all certificates to the consensus. Only the last certificate should trigger
     // commits, so the task should not block.
     while let Some(certificate) = certificates.pop_front() {
-        tx_new_certificates.send(certificate).await.unwrap();
+        cb.new_certificates().send(certificate).await.unwrap();
     }
 
     // We should commit 2 leaders (rounds 2 and 4).
@@ -770,11 +749,7 @@ async fn missing_leader() {
     certificates.push_back(certificate);
 
     // Spawn the consensus engine and sink the primary channel.
-    let (tx_new_certificates, rx_new_certificates) = tn_types::test_channel!(1);
-    let (tx_primary, mut rx_primary) = tn_types::test_channel!(1);
     let (tx_output, mut rx_output) = tn_types::test_channel!(1);
-    let (tx_consensus_round_updates, _rx_consensus_round_updates) =
-        watch::channel(ConsensusRound::new(0, 0));
 
     let config = fixture.authorities().next().unwrap().consensus_config();
     let store = config.node_storage().consensus_store.clone();
@@ -788,21 +763,18 @@ async fn missing_leader() {
         DEFAULT_BAD_NODES_STAKE_THRESHOLD,
     );
 
-    let _consensus_handle = Consensus::spawn(
-        config,
-        rx_new_certificates,
-        tx_primary,
-        tx_consensus_round_updates,
-        tx_output,
-        bullshark,
-        metrics,
-    );
-    tokio::spawn(async move { while rx_primary.recv().await.is_some() {} });
+    let cb = ConsensusBus::new();
+    let _consensus_handle = Consensus::spawn(config, &cb, tx_output, bullshark);
+    let cb_clone = cb.clone();
+    tokio::spawn(async move {
+        let mut rx_primary = cb_clone.committed_certificates().subscribe();
+        while rx_primary.recv().await.is_some() {}
+    });
 
     // Feed all certificates to the consensus. We should only commit upon receiving the last
     // certificate, so calls below should not block the task.
     while let Some(certificate) = certificates.pop_front() {
-        tx_new_certificates.send(certificate).await.unwrap();
+        cb.new_certificates().send(certificate).await.unwrap();
     }
 
     // Ensure the commit sequence is as expected.
@@ -853,11 +825,7 @@ async fn committed_round_after_restart() {
 
     for input_round in (1..=11usize).step_by(2) {
         // Spawn consensus and create related channels.
-        let (tx_new_certificates, rx_new_certificates) = tn_types::test_channel!(100);
-        let (tx_primary, mut rx_primary) = tn_types::test_channel!(100);
         let (tx_output, mut rx_output) = tn_types::test_channel!(100);
-        let (tx_consensus_round_updates, rx_consensus_round_updates) =
-            watch::channel(ConsensusRound::new(0, 0));
 
         let metrics = Arc::new(ConsensusMetrics::default());
 
@@ -870,21 +838,15 @@ async fn committed_round_after_restart() {
             DEFAULT_BAD_NODES_STAKE_THRESHOLD,
         );
 
-        let handle = Consensus::spawn(
-            config.clone(),
-            rx_new_certificates,
-            tx_primary,
-            tx_consensus_round_updates,
-            tx_output,
-            bullshark,
-            metrics.clone(),
-        );
+        let cb = ConsensusBus::new();
+        let mut rx_primary = cb.committed_certificates().subscribe();
+        let handle = Consensus::spawn(config.clone(), &cb, tx_output, bullshark);
 
         // When `input_round` is 2 * r + 1, r > 1, the previous commit round would be 2 * (r - 1),
         // and the expected commit round after sending in certificates up to `input_round` would
         // be 2 * r.
 
-        let last_committed_round = rx_consensus_round_updates.borrow().committed_round as usize;
+        let last_committed_round = cb.consensus_round_updates().borrow().committed_round as usize;
         assert_eq!(last_committed_round, input_round.saturating_sub(3),);
         info!("Consensus started at last_committed_round={last_committed_round}");
 
@@ -893,7 +855,7 @@ async fn committed_round_after_restart() {
         let end_index = input_round * committee.size();
         for cert in certificates.iter().take(end_index).skip(start_index) {
             cert_store.write(cert.clone()).unwrap();
-            tx_new_certificates.send(cert.clone()).await.unwrap();
+            cb.new_certificates().send(cert.clone()).await.unwrap();
         }
         info!("Sent certificates {start_index} ~ {end_index} to consensus");
 
@@ -908,7 +870,7 @@ async fn committed_round_after_restart() {
         // After sending inputs up to round 2 * r + 1 to consensus, round 2 * r should have been
         // committed.
         assert_eq!(
-            rx_consensus_round_updates.borrow().committed_round as usize,
+            cb.consensus_round_updates().borrow().committed_round as usize,
             input_round.saturating_sub(1),
         );
         info!("Committed round adanced to {}", input_round.saturating_sub(1));
@@ -1120,11 +1082,7 @@ async fn restart_with_new_committee() {
     // Run for a few epochs.
     for epoch in 0..5 {
         // Spawn the consensus engine and sink the primary channel.
-        let (tx_new_certificates, rx_new_certificates) = tn_types::test_channel!(1);
-        let (tx_primary, mut rx_primary) = tn_types::test_channel!(1);
         let (tx_output, mut rx_output) = tn_types::test_channel!(1);
-        let (tx_consensus_round_updates, _rx_consensus_round_updates) =
-            watch::channel(ConsensusRound::new(0, 0));
 
         let config = fixture.authorities().next().unwrap().consensus_config();
         let config = ConsensusConfig::new_with_committee(
@@ -1149,16 +1107,13 @@ async fn restart_with_new_committee() {
             DEFAULT_BAD_NODES_STAKE_THRESHOLD,
         );
 
-        let handle = Consensus::spawn(
-            config.clone(),
-            rx_new_certificates,
-            tx_primary,
-            tx_consensus_round_updates,
-            tx_output,
-            bullshark,
-            metrics.clone(),
-        );
-        tokio::spawn(async move { while rx_primary.recv().await.is_some() {} });
+        let cb = ConsensusBus::new();
+        let handle = Consensus::spawn(config.clone(), &cb, tx_output, bullshark);
+        let cb_clone = cb.clone();
+        tokio::spawn(async move {
+            let mut rx_primary = cb_clone.committed_certificates().subscribe();
+            while rx_primary.recv().await.is_some() {}
+        });
 
         // Make certificates for rounds 1 and 2.
         let genesis =
@@ -1192,7 +1147,7 @@ async fn restart_with_new_committee() {
         // Feed all certificates to the consensus. Only the last certificate should trigger
         // commits, so the task should not block.
         while let Some(certificate) = certificates.pop_front() {
-            tx_new_certificates.send(certificate).await.unwrap();
+            cb.new_certificates().send(certificate).await.unwrap();
         }
 
         // Ensure the first 4 ordered certificates are from round 1 (they are the parents of the

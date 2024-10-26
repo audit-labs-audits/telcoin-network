@@ -113,7 +113,7 @@ impl<T> From<tokio::sync::mpsc::error::TrySendError<T>> for TrySendError<T> {
     }
 }
 
-pub trait TnReceiver<T>: Unpin {
+pub trait TnReceiver<T>: Send + Unpin {
     /// Receives the next value for this channel.
     /// Signature is desugared async fn recv(&mut self) -> Option<T> with Send added.
     fn recv(&mut self) -> impl Future<Output = Option<T>> + Send;
@@ -136,5 +136,11 @@ pub trait TnSender<T>: Unpin + Clone {
 
     /// Get a reciever for this TnSender.
     /// For an MPSC or other limited channel this may panic if called more than once.
-    fn subscribe(&mut self) -> impl TnReceiver<T>;
+    fn subscribe(&self) -> impl TnReceiver<T>;
+
+    /// Borrow a reciever for this TnSender.
+    /// This should try to return a receiver that once dropped can be reused.
+    /// This is in contrast to subscribe which may give out the only receiver
+    /// for some channel types (MPSC for instance).
+    fn borrow_subscriber(&self) -> impl TnReceiver<T>;
 }

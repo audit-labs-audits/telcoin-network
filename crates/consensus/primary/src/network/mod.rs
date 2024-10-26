@@ -7,8 +7,7 @@
 //!
 //! This module includes implementations for when the primary receives network
 //! requests from it's own workers and other primaries.
-use crate::{proposer::OurDigestMessage, synchronizer::Synchronizer};
-use consensus_metrics::metered_channel::Sender;
+use crate::{synchronizer::Synchronizer, ConsensusBus};
 use fastcrypto::hash::Hash;
 use narwhal_network_types::{RequestVoteRequest, RequestVoteResponse};
 use narwhal_primary_metrics::PrimaryMetrics;
@@ -29,7 +28,6 @@ use tn_types::{
     validate_received_certificate_version, AuthorityIdentifier, Certificate, CertificateDigest,
     Header, NetworkPublicKey, Round, Vote,
 };
-use tokio::sync::watch;
 use tracing::{debug, error, warn};
 
 mod primary;
@@ -38,14 +36,14 @@ mod worker;
 /// Defines how the network receiver handles incoming workers messages.
 #[derive(Clone)]
 pub(super) struct WorkerReceiverHandler<DB> {
-    tx_our_digests: Sender<OurDigestMessage>,
+    consensus_bus: ConsensusBus,
     payload_store: PayloadStore<DB>,
 }
 
 impl<DB: Database> WorkerReceiverHandler<DB> {
     /// Create a new instance of Self.
-    pub fn new(tx_our_digests: Sender<OurDigestMessage>, payload_store: PayloadStore<DB>) -> Self {
-        Self { tx_our_digests, payload_store }
+    pub fn new(consensus_bus: ConsensusBus, payload_store: PayloadStore<DB>) -> Self {
+        Self { consensus_bus, payload_store }
     }
 }
 
@@ -53,9 +51,8 @@ impl<DB: Database> WorkerReceiverHandler<DB> {
 #[derive(Clone)]
 pub(super) struct PrimaryReceiverHandler<DB> {
     consensus_config: ConsensusConfig<DB>,
+    consensus_bus: ConsensusBus,
     synchronizer: Arc<Synchronizer<DB>>,
-    /// Get a signal when the round changes.
-    rx_narwhal_round_updates: watch::Receiver<Round>,
     /// Known parent digests that are being fetched from header proposers.
     /// Values are where the digests are first known from.
     /// TODO: consider limiting maximum number of digests from one authority, allow timeout
@@ -70,11 +67,11 @@ impl<DB: Database> PrimaryReceiverHandler<DB> {
     pub fn new(
         consensus_config: ConsensusConfig<DB>,
         synchronizer: Arc<Synchronizer<DB>>,
-        rx_narwhal_round_updates: watch::Receiver<Round>,
+        consensus_bus: ConsensusBus,
         parent_digests: Arc<Mutex<BTreeMap<(Round, CertificateDigest), AuthorityIdentifier>>>,
-        metrics: Arc<PrimaryMetrics>,
     ) -> Self {
-        Self { consensus_config, synchronizer, rx_narwhal_round_updates, parent_digests, metrics }
+        let metrics = consensus_bus.primary_metrics().node_metrics.clone();
+        Self { consensus_config, consensus_bus, synchronizer, parent_digests, metrics }
     }
 
     fn find_next_round(
@@ -343,7 +340,7 @@ impl<DB: Database> PrimaryReceiverHandler<DB> {
         let mut parent_digests = self.parent_digests.lock();
 
         // Check that the header is not too old.
-        let narwhal_round = *self.rx_narwhal_round_updates.borrow();
+        let narwhal_round = *self.consensus_bus.narwhal_round_updates().borrow();
         let limit_round = narwhal_round.saturating_sub(HEADER_AGE_LIMIT);
         ensure!(
             limit_round <= header.round(),

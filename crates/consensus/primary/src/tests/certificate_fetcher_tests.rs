@@ -2,9 +2,7 @@
 // Copyright (c) Mysten Labs, Inc.
 // SPDX-License-Identifier: Apache-2.0
 
-use crate::{
-    certificate_fetcher::CertificateFetcher, consensus::ConsensusRound, synchronizer::Synchronizer,
-};
+use crate::{certificate_fetcher::CertificateFetcher, synchronizer::Synchronizer, ConsensusBus};
 use anemo::async_trait;
 use eyre::Result;
 use fastcrypto::{hash::Hash, traits::KeyPair};
@@ -14,7 +12,6 @@ use narwhal_network_types::{
     FetchCertificatesRequest, FetchCertificatesResponse, PrimaryToPrimary, PrimaryToPrimaryServer,
     RequestVoteRequest, RequestVoteResponse, SendCertificateRequest, SendCertificateResponse,
 };
-use narwhal_primary_metrics::{PrimaryChannelMetrics, PrimaryMetrics};
 use narwhal_storage::CertificateStore;
 use narwhal_test_utils::CommitteeFixture;
 use narwhal_typed_store::{mem_db::MemDatabase, traits::Database};
@@ -28,7 +25,7 @@ use tn_types::{
 use tokio::{
     sync::{
         mpsc::{self, error::TryRecvError, Receiver, Sender},
-        watch, Mutex,
+        Mutex,
     },
     time::sleep,
 };
@@ -160,13 +157,7 @@ async fn fetch_certificates_v1_basic() {
     let primary = fixture.authorities().next().unwrap();
     let id = primary.id();
     let fake_primary = fixture.authorities().nth(1).unwrap();
-    let metrics = Arc::new(PrimaryMetrics::default());
-    let primary_channel_metrics = PrimaryChannelMetrics::default();
 
-    // synchronizer to certificate fetcher
-    let (tx_certificate_fetcher, rx_certificate_fetcher) = tn_types::test_channel!(1000);
-    let (tx_new_certificates, _rx_new_certificates) = tn_types::test_channel!(1000);
-    let (tx_parents, _rx_parents) = tn_types::test_channel!(1000);
     // FetchCertificateProxy -> test
     let (tx_fetch_req, mut rx_fetch_req) = mpsc::channel(1000);
     // test -> FetchCertificateProxy
@@ -176,19 +167,10 @@ async fn fetch_certificates_v1_basic() {
     let payload_store = primary.consensus_config().node_storage().payload_store.clone();
 
     // Signal rounds
-    let (_tx_consensus_round_updates, rx_consensus_round_updates) =
-        watch::channel(ConsensusRound::new(0, 0));
 
+    let cb = ConsensusBus::new();
     // Make a synchronizer for certificates.
-    let synchronizer = Arc::new(Synchronizer::new(
-        primary.consensus_config(),
-        tx_certificate_fetcher,
-        tx_new_certificates.clone(),
-        tx_parents.clone(),
-        rx_consensus_round_updates.clone(),
-        metrics.clone(),
-        &primary_channel_metrics,
-    ));
+    let synchronizer = Arc::new(Synchronizer::new(primary.consensus_config(), &cb));
 
     let fake_primary_addr = fake_primary.network_address().to_anemo_address().unwrap();
     let fake_route =
@@ -216,11 +198,9 @@ async fn fetch_certificates_v1_basic() {
         fixture.committee(),
         client_network.clone(),
         certificate_store.clone(),
-        rx_consensus_round_updates.clone(),
+        cb.clone(),
         primary.consensus_config().subscribe_shutdown(),
-        rx_certificate_fetcher,
         synchronizer.clone(),
-        metrics.clone(),
     );
 
     // Generate headers and certificates in successive rounds

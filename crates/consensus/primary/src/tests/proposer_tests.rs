@@ -21,22 +21,12 @@ async fn test_empty_proposal() {
     let worker_cache = fixture.worker_cache();
     let primary = fixture.authorities().next().unwrap();
 
-    let (_tx_parents, rx_parents) = tn_types::test_channel!(1);
-    let (_tx_committed_own_headers, rx_committed_own_headers) = tn_types::test_channel!(1);
-    let (_tx_our_digests, rx_our_digests) = tn_types::test_channel!(1);
-    let (tx_headers, mut rx_headers) = tn_types::test_channel!(1);
-    let (tx_narwhal_round_updates, _rx_narwhal_round_updates) = watch::channel(0u64);
-
-    let metrics = Arc::new(PrimaryMetrics::default());
+    let cb = ConsensusBus::new();
+    let mut rx_headers = cb.headers().subscribe();
     let proposer_task = Proposer::new(
         primary.consensus_config(),
+        cb.clone(),
         None, // default fatal timer
-        /* synchronizer */ rx_parents,
-        /* rx_workers */ rx_our_digests,
-        /* tx_synchronizer */ tx_headers,
-        tx_narwhal_round_updates,
-        rx_committed_own_headers,
-        metrics,
         LeaderSchedule::new(committee.clone(), LeaderSwapTable::default()),
     );
 
@@ -61,26 +51,15 @@ async fn test_propose_payload_fatal_timer() {
     // long enough for proposer to build but not too long for tests
     let fatal_header_interval = Duration::from_secs(3);
 
-    let (tx_parents, rx_parents) = tn_types::test_channel!(1);
-    let (tx_our_digests, rx_our_digests) = tn_types::test_channel!(1);
-    let (_tx_committed_own_headers, rx_committed_own_headers) = tn_types::test_channel!(1);
-    let (tx_headers, mut rx_headers) = tn_types::test_channel!(1);
-    let (tx_narwhal_round_updates, _rx_narwhal_round_updates) = watch::channel(0u64);
-
-    let metrics = Arc::new(PrimaryMetrics::default());
-
     let max_num_of_batches = 10;
 
     // Spawn the proposer.
+    let cb = ConsensusBus::new();
+    let mut rx_headers = cb.headers().subscribe();
     let proposer_task = Proposer::new(
         primary.consensus_config(),
+        cb.clone(),
         Some(fatal_header_interval),
-        /* rx_core */ rx_parents,
-        /* rx_workers */ rx_our_digests,
-        /* tx_synchronizer */ tx_headers.clone(),
-        tx_narwhal_round_updates,
-        rx_committed_own_headers,
-        metrics,
         LeaderSchedule::new(committee.clone(), LeaderSwapTable::default()),
     );
 
@@ -93,7 +72,7 @@ async fn test_propose_payload_fatal_timer() {
     let (tx_ack, rx_ack) = tokio::sync::oneshot::channel();
 
     tracing::error!(target: "primary", "sending our digests...");
-    tx_our_digests
+    cb.our_digests()
         .send(OurDigestMessage { digest, worker_id, timestamp: created_at_ts, ack_channel: tx_ack })
         .await
         .unwrap();
@@ -120,7 +99,7 @@ async fn test_propose_payload_fatal_timer() {
     let mut ack_list = vec![];
     for (batch_id, (worker_id, created_at)) in batches {
         let (tx_ack, rx_ack) = tokio::sync::oneshot::channel();
-        tx_our_digests
+        cb.our_digests()
             .send(OurDigestMessage {
                 digest: batch_id,
                 worker_id,
@@ -141,7 +120,7 @@ async fn test_propose_payload_fatal_timer() {
         fixture.headers().iter().take(4).map(|h| fixture.certificate(h)).collect();
 
     tracing::error!(target: "primary", "sending parents...");
-    let result = tx_parents.send((parents, 1)).await;
+    let result = cb.parents().send((parents, 1)).await;
     assert!(result.is_ok());
     tracing::error!(target: "primary", "parents sent! awaiting rx_headers...");
 
@@ -164,7 +143,7 @@ async fn test_propose_payload_fatal_timer() {
     // fill tx_headers before round 3 (capacity 1) to simulate to trigger fatal timer
     // use the same header for convenience, makes no difference
     // just fill the send channel - don't call recv()
-    let fill_channel = tx_headers.send(header).await;
+    let fill_channel = cb.headers().send(header).await;
     assert!(fill_channel.is_ok());
 
     // send parents to advance the 2 round
@@ -172,7 +151,7 @@ async fn test_propose_payload_fatal_timer() {
         fixture.headers_next_round().iter().take(4).map(|h| fixture.certificate(h)).collect();
 
     tracing::error!(target: "primary", "FINAL sending parents...");
-    let result = tx_parents.send((parents, 2)).await;
+    let result = cb.parents().send((parents, 2)).await;
     assert!(result.is_ok());
     tracing::error!(target: "primary", "FINAL parents sent! awaiting rx_headers...");
 
@@ -191,13 +170,6 @@ async fn test_equivocation_protection_after_restart() {
     let worker_cache = fixture.worker_cache();
     let primary = fixture.authorities().next().unwrap();
 
-    let (tx_parents, rx_parents) = tn_types::test_channel!(1);
-    let (tx_our_digests, rx_our_digests) = tn_types::test_channel!(1);
-    let (tx_headers, mut rx_headers) = tn_types::test_channel!(1);
-    let (tx_narwhal_round_updates, _rx_narwhal_round_updates) = watch::channel(0u64);
-    let (_tx_committed_own_headers, rx_committed_own_headers) = tn_types::test_channel!(1);
-    let metrics = Arc::new(PrimaryMetrics::default());
-
     /* Old comments, note if test gets flakey:
      max_header_delay
     Duration::from_secs(1_000), // Ensure it is not triggered.
@@ -205,15 +177,12 @@ async fn test_equivocation_protection_after_restart() {
     Duration::from_secs(1_000), // Ensure it is not triggered.
     */
     // Spawn the proposer.
+    let cb = ConsensusBus::new();
+    let mut rx_headers = cb.headers().subscribe();
     let proposer_task = Proposer::new(
         primary.consensus_config(),
+        cb.clone(),
         None,
-        /* rx_core */ rx_parents,
-        /* rx_workers */ rx_our_digests,
-        /* tx_synchronizer */ tx_headers,
-        tx_narwhal_round_updates,
-        rx_committed_own_headers,
-        metrics,
         LeaderSchedule::new(committee.clone(), LeaderSwapTable::default()),
     );
 
@@ -224,7 +193,7 @@ async fn test_equivocation_protection_after_restart() {
     let worker_id = 0;
     let created_at_ts = 0;
     let (tx_ack, rx_ack) = tokio::sync::oneshot::channel();
-    tx_our_digests
+    cb.our_digests()
         .send(OurDigestMessage { digest, worker_id, timestamp: created_at_ts, ack_channel: tx_ack })
         .await
         .unwrap();
@@ -233,7 +202,7 @@ async fn test_equivocation_protection_after_restart() {
     let parents: Vec<_> =
         fixture.headers().iter().take(3).map(|h| fixture.certificate(h)).collect();
 
-    let result = tx_parents.send((parents, 1)).await;
+    let result = cb.parents().send((parents, 1)).await;
     assert!(result.is_ok());
     assert!(rx_ack.await.is_ok());
 
@@ -248,22 +217,12 @@ async fn test_equivocation_protection_after_restart() {
     fixture.notify_shutdown();
     assert!(proposer_handle.await.is_ok());
 
-    let (tx_parents, rx_parents) = tn_types::test_channel!(1);
-    let (tx_our_digests, rx_our_digests) = tn_types::test_channel!(1);
-    let (tx_headers, mut rx_headers) = tn_types::test_channel!(1);
-    let (tx_narwhal_round_updates, _rx_narwhal_round_updates) = watch::channel(0u64);
-    let (_tx_committed_own_headers, rx_committed_own_headers) = tn_types::test_channel!(1);
-    let metrics = Arc::new(PrimaryMetrics::default());
-
+    let cb = ConsensusBus::new();
+    let mut rx_headers = cb.headers().subscribe();
     let proposer_task = Proposer::new(
         primary.consensus_config(),
+        cb.clone(),
         None,
-        /* rx_core */ rx_parents,
-        /* rx_workers */ rx_our_digests,
-        /* tx_synchronizer */ tx_headers,
-        tx_narwhal_round_updates,
-        rx_committed_own_headers,
-        metrics,
         LeaderSchedule::new(committee.clone(), LeaderSwapTable::default()),
     );
 
@@ -273,7 +232,7 @@ async fn test_equivocation_protection_after_restart() {
     let digest = B256::random();
     let worker_id = 0;
     let (tx_ack, rx_ack) = tokio::sync::oneshot::channel();
-    tx_our_digests
+    cb.our_digests()
         .send(OurDigestMessage { digest, worker_id, timestamp: 0, ack_channel: tx_ack })
         .await
         .unwrap();
@@ -282,7 +241,7 @@ async fn test_equivocation_protection_after_restart() {
     let parents: Vec<_> =
         fixture.headers().iter().take(4).map(|h| fixture.certificate(h)).collect();
 
-    let result = tx_parents.send((parents, 1)).await;
+    let result = cb.parents().send((parents, 1)).await;
     assert!(result.is_ok());
     assert!(rx_ack.await.is_ok());
 

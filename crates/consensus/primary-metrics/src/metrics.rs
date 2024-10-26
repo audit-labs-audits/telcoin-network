@@ -19,7 +19,7 @@ const LATENCY_SEC_BUCKETS: &[f64] = &[
     12.5, 15., 17.5, 20., 25., 30., 60., 90., 120., 180., 300.,
 ];
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub struct Metrics {
     pub inbound_network_metrics: Arc<NetworkMetrics>,
     pub outbound_network_metrics: Arc<NetworkMetrics>,
@@ -77,7 +77,7 @@ impl Default for Metrics {
     }
 }
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub struct PrimaryChannelMetrics {
     /// occupancy of the channel from the `primary::WorkerReceiverHandler` to the
     /// `primary::PayloadReceiver`
@@ -302,7 +302,7 @@ impl Default for PrimaryChannelMetrics {
     }
 }
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub struct PrimaryMetrics {
     /// count number of headers that the node proposed
     pub headers_proposed: IntCounterVec,

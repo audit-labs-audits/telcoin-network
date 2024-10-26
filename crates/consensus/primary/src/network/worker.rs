@@ -29,7 +29,8 @@ impl<DB: Database> WorkerToPrimary for WorkerReceiverHandler<DB> {
 
         let (tx_ack, rx_ack) = oneshot::channel();
         let response = self
-            .tx_our_digests
+            .consensus_bus
+            .our_digests()
             .send(OurDigestMessage {
                 digest: message.digest,
                 worker_id: message.worker_id,

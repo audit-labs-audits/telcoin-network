@@ -25,7 +25,7 @@ use tracing::{debug, error};
 type Point = u64;
 type HistogramMessage = (HistogramLabels, Point);
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub struct Histogram {
     labels: HistogramLabels,
     channel: mpsc::Sender<HistogramMessage>,
@@ -57,6 +57,7 @@ struct HistogramReporter {
 
 type HistogramLabels = Arc<HistogramLabelsInner>;
 
+#[derive(Debug)]
 struct HistogramLabelsInner {
     labels: Vec<String>,
     hash: u64,

@@ -11,7 +11,7 @@ use prometheus::{
 use std::sync::Arc;
 use tracing::warn;
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub struct NetworkConnectionMetrics {
     /// The connection status of known peers. 0 if not connected, 1 if connected.
     pub network_peer_connected: IntGaugeVec,
@@ -183,7 +183,7 @@ impl NetworkConnectionMetrics {
     }
 }
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub struct NetworkMetrics {
     /// Counter of requests by route
     requests: IntCounterVec,

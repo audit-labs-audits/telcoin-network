@@ -11,10 +11,10 @@ use narwhal_typed_store::mem_db::MemDatabase;
 use tn_types::{
     Certificate, ReputationScores, TnReceiver, TnSender, DEFAULT_BAD_NODES_STAKE_THRESHOLD,
 };
-use tokio::sync::watch;
 
-use crate::consensus::{
-    Bullshark, Consensus, ConsensusMetrics, ConsensusRound, LeaderSchedule, LeaderSwapTable,
+use crate::{
+    consensus::{Bullshark, Consensus, ConsensusMetrics, LeaderSchedule, LeaderSwapTable},
+    ConsensusBus,
 };
 
 /// This test is trying to compare the output of the Consensus algorithm when:
@@ -49,11 +49,7 @@ async fn test_consensus_recovery_with_bullshark() {
         tn_types::test_utils::make_optimal_certificates(&committee, 1..=7, &genesis, &ids);
 
     // AND Spawn the consensus engine.
-    let (tx_waiter, rx_waiter) = tn_types::test_channel!(100);
-    let (tx_primary, _rx_primary) = tn_types::test_channel!(100);
     let (tx_output, mut rx_output) = tn_types::test_channel!(1);
-    let (tx_consensus_round_updates, _rx_consensus_round_updates) =
-        watch::channel(ConsensusRound::default());
 
     let metrics = Arc::new(ConsensusMetrics::default());
     let leader_schedule = LeaderSchedule::from_store(
@@ -70,22 +66,15 @@ async fn test_consensus_recovery_with_bullshark() {
         DEFAULT_BAD_NODES_STAKE_THRESHOLD,
     );
 
-    let consensus_handle = Consensus::spawn(
-        config.clone(),
-        rx_waiter,
-        tx_primary,
-        tx_consensus_round_updates,
-        tx_output,
-        bullshark,
-        metrics.clone(),
-    );
+    let cb = ConsensusBus::new();
+    let consensus_handle = Consensus::spawn(config.clone(), &cb, tx_output, bullshark);
 
     // WHEN we feed all certificates to the consensus.
     for certificate in certificates.iter() {
         // we store the certificates so we can enable the recovery
         // mechanism later.
         certificate_store.write(certificate.clone()).unwrap();
-        tx_waiter.send(certificate.clone()).await.unwrap();
+        cb.new_certificates().send(certificate.clone()).await.unwrap();
     }
 
     // THEN we expect to have 2 leader election rounds (round = 2, and round = 4).
@@ -142,11 +131,7 @@ async fn test_consensus_recovery_with_bullshark() {
 
     // AND bring up consensus again. Store is clean. Now send again the same certificates
     // but up to round 3.
-    let (tx_waiter, rx_waiter) = tn_types::test_channel!(100);
-    let (tx_primary, _rx_primary) = tn_types::test_channel!(100);
     let (tx_output, mut rx_output) = tn_types::test_channel!(1);
-    let (tx_consensus_round_updates, _rx_consensus_round_updates) =
-        watch::channel(ConsensusRound::default());
 
     consensus_store.clear().unwrap();
     certificate_store.clear().unwrap();
@@ -165,15 +150,8 @@ async fn test_consensus_recovery_with_bullshark() {
         DEFAULT_BAD_NODES_STAKE_THRESHOLD,
     );
 
-    let consensus_handle = Consensus::spawn(
-        config.clone(),
-        rx_waiter,
-        tx_primary,
-        tx_consensus_round_updates,
-        tx_output,
-        bullshark,
-        metrics.clone(),
-    );
+    let cb = ConsensusBus::new();
+    let consensus_handle = Consensus::spawn(config.clone(), &cb, tx_output, bullshark);
 
     // WHEN we send same certificates but up to round 3 (inclusive)
     // Then we store all the certificates up to round 6 so we can let the recovery algorithm
@@ -182,7 +160,7 @@ async fn test_consensus_recovery_with_bullshark() {
     // election round and commit.
     for certificate in certificates.iter() {
         if certificate.header().round() <= 3 {
-            tx_waiter.send(certificate.clone()).await.unwrap();
+            cb.new_certificates().send(certificate.clone()).await.unwrap();
         }
         if certificate.header().round() <= 6 {
             certificate_store.write(certificate.clone()).unwrap();
@@ -216,11 +194,7 @@ async fn test_consensus_recovery_with_bullshark() {
     consensus_handle.abort();
 
     // AND bring up consensus again. Re-use the same store, so we can recover certificates
-    let (tx_waiter, rx_waiter) = tn_types::test_channel!(100);
-    let (tx_primary, _rx_primary) = tn_types::test_channel!(100);
     let (tx_output, mut rx_output) = tn_types::test_channel!(1);
-    let (tx_consensus_round_updates, _rx_consensus_round_updates) =
-        watch::channel(ConsensusRound::default());
 
     let bad_nodes_stake_threshold = 0;
     let bullshark = Bullshark::new(
@@ -232,21 +206,14 @@ async fn test_consensus_recovery_with_bullshark() {
         bad_nodes_stake_threshold,
     );
 
-    let _consensus_handle = Consensus::spawn(
-        config,
-        rx_waiter,
-        tx_primary,
-        tx_consensus_round_updates,
-        tx_output,
-        bullshark,
-        metrics.clone(),
-    );
+    let cb = ConsensusBus::new();
+    let _consensus_handle = Consensus::spawn(config, &cb, tx_output, bullshark);
 
     // WHEN send the certificates of round >= 5 to trigger a leader election for round 4
     // and start committing.
     for certificate in certificates.iter() {
         if certificate.header().round() >= 5 {
-            tx_waiter.send(certificate.clone()).await.unwrap();
+            cb.new_certificates().send(certificate.clone()).await.unwrap();
         }
     }
 

@@ -4,16 +4,14 @@
 // SPDX-License-Identifier: Apache-2.0
 use super::*;
 
-use crate::consensus::ConsensusRound;
+use crate::ConsensusBus;
 use fastcrypto::traits::KeyPair;
 use narwhal_network_types::{MockPrimaryToPrimary, PrimaryToPrimaryServer, RequestVoteResponse};
-use narwhal_primary_metrics::PrimaryChannelMetrics;
 use narwhal_test_utils::CommitteeFixture;
 use narwhal_typed_store::mem_db::MemDatabase;
 use rand::{rngs::StdRng, SeedableRng};
 use std::num::NonZeroUsize;
 use tn_types::{BlsKeypair, SignatureVerificationState, TnSender};
-use tokio::sync::watch;
 
 // // TODO: Remove after network has moved to CertificateV2
 // #[tokio::test(flavor = "current_thread", start_paused = true)]
@@ -142,14 +140,6 @@ async fn propose_header_and_form_certificate_v2() {
     let committee = fixture.committee();
     let primary = fixture.authorities().last().unwrap();
     let id = primary.id();
-    let metrics = Arc::new(PrimaryMetrics::default());
-    let primary_channel_metrics = PrimaryChannelMetrics::default();
-    let (tx_certificate_fetcher, _rx_certificate_fetcher) = tn_types::test_channel!(1);
-    let (tx_headers, rx_headers) = tn_types::test_channel!(1);
-    let (tx_new_certificates, mut rx_new_certificates) = tn_types::test_channel!(3);
-    let (tx_parents, _rx_parents) = tn_types::test_channel!(1);
-    let (_tx_consensus_round_updates, rx_consensus_round_updates) =
-        watch::channel(ConsensusRound::new(0, 0));
 
     // Create a fake header.
     let proposed_header = primary.header(&committee);
@@ -188,29 +178,18 @@ async fn propose_header_and_form_certificate_v2() {
         network.connect_with_peer_id(address, peer_id).await.unwrap();
     }
 
+    let cb = ConsensusBus::new();
+    let mut rx_new_certificates = cb.new_certificates().subscribe();
     // Spawn the core.
-    let synchronizer = Arc::new(Synchronizer::new(
-        primary.consensus_config(),
-        tx_certificate_fetcher,
-        tx_new_certificates.clone(),
-        tx_parents.clone(),
-        rx_consensus_round_updates.clone(),
-        metrics.clone(),
-        &primary_channel_metrics,
-    ));
+    let synchronizer = Arc::new(Synchronizer::new(primary.consensus_config(), &cb));
 
-    let _handle = Certifier::spawn(
-        primary.consensus_config(),
-        synchronizer,
-        rx_headers,
-        metrics.clone(),
-        network,
-    );
+    let _handle =
+        Certifier::spawn(primary.consensus_config(), cb.clone(), synchronizer, network.clone());
 
     // Propose header and ensure that a certificate is formed by pulling it out of the
     // consensus channel.
     let proposed_digest = proposed_header.digest();
-    tx_headers.send(proposed_header).await.unwrap();
+    cb.headers().send(proposed_header).await.unwrap();
     let certificate = tokio::time::timeout(Duration::from_secs(10), rx_new_certificates.recv())
         .await
         .unwrap()
@@ -230,14 +209,6 @@ async fn propose_header_failure() {
     let primary = fixture.authorities().last().unwrap();
     let network_key = primary.primary_network_keypair().copy().private().0.to_bytes();
     let authority_id = primary.id();
-    let metrics = Arc::new(PrimaryMetrics::default());
-    let primary_channel_metrics = PrimaryChannelMetrics::default();
-    let (tx_certificate_fetcher, _rx_certificate_fetcher) = tn_types::test_channel!(1);
-    let (tx_headers, rx_headers) = tn_types::test_channel!(1);
-    let (tx_new_certificates, mut rx_new_certificates) = tn_types::test_channel!(3);
-    let (tx_parents, _rx_parents) = tn_types::test_channel!(1);
-    let (_tx_consensus_round_updates, rx_consensus_round_updates) =
-        watch::channel(ConsensusRound::default());
 
     // Create a fake header.
     let proposed_header = primary.header(&committee);
@@ -269,27 +240,15 @@ async fn propose_header_failure() {
         network.connect_with_peer_id(address, peer_id).await.unwrap();
     }
 
+    let cb = ConsensusBus::new();
+    let mut rx_new_certificates = cb.new_certificates().subscribe();
     // Spawn the core.
-    let synchronizer = Arc::new(Synchronizer::new(
-        primary.consensus_config(),
-        tx_certificate_fetcher,
-        tx_new_certificates.clone(),
-        tx_parents.clone(),
-        rx_consensus_round_updates.clone(),
-        metrics.clone(),
-        &primary_channel_metrics,
-    ));
+    let synchronizer = Arc::new(Synchronizer::new(primary.consensus_config(), &cb));
 
-    let _handle = Certifier::spawn(
-        primary.consensus_config(),
-        synchronizer,
-        rx_headers,
-        metrics.clone(),
-        network,
-    );
+    let _handle = Certifier::spawn(primary.consensus_config(), cb.clone(), synchronizer, network);
 
     // Propose header and verify we get no certificate back.
-    tx_headers.send(proposed_header).await.unwrap();
+    cb.headers().send(proposed_header).await.unwrap();
     if let Ok(result) =
         tokio::time::timeout(Duration::from_secs(5), rx_new_certificates.recv()).await
     {
@@ -324,14 +283,6 @@ async fn run_vote_aggregator_with_param(
     let committee = fixture.committee();
     let primary = fixture.authorities().last().unwrap();
     let id: AuthorityIdentifier = primary.id();
-    let metrics = Arc::new(PrimaryMetrics::default());
-    let primary_channel_metrics = PrimaryChannelMetrics::default();
-    let (tx_certificate_fetcher, _rx_certificate_fetcher) = tn_types::test_channel!(1);
-    let (tx_headers, rx_headers) = tn_types::test_channel!(1);
-    let (tx_new_certificates, mut rx_new_certificates) = tn_types::test_channel!(3);
-    let (tx_parents, _rx_parents) = tn_types::test_channel!(1);
-    let (_tx_consensus_round_updates, rx_consensus_round_updates) =
-        watch::channel(ConsensusRound::new(0, 0));
 
     // Create a fake header.
     let proposed_header = primary.header(&committee);
@@ -370,27 +321,15 @@ async fn run_vote_aggregator_with_param(
         network.connect_with_peer_id(address, peer_id).await.unwrap();
     }
 
+    let cb = ConsensusBus::new();
+    let mut rx_new_certificates = cb.new_certificates().subscribe();
     // Spawn the core.
-    let synchronizer = Arc::new(Synchronizer::new(
-        primary.consensus_config(),
-        tx_certificate_fetcher,
-        tx_new_certificates,
-        tx_parents.clone(),
-        rx_consensus_round_updates.clone(),
-        metrics.clone(),
-        &primary_channel_metrics,
-    ));
-    let _handle = Certifier::spawn(
-        primary.consensus_config(),
-        synchronizer,
-        rx_headers,
-        metrics.clone(),
-        network,
-    );
+    let synchronizer = Arc::new(Synchronizer::new(primary.consensus_config(), &cb));
+    let _handle = Certifier::spawn(primary.consensus_config(), cb.clone(), synchronizer, network);
 
     // Send a proposed header.
     let proposed_digest = proposed_header.digest();
-    tx_headers.send(proposed_header).await.unwrap();
+    cb.headers().send(proposed_header).await.unwrap();
 
     if expect_cert {
         // A cert is expected, checks that the header digest matches.
@@ -414,28 +353,10 @@ async fn test_shutdown_core() {
     let primary = fixture.authorities().next().unwrap();
     let network_key = primary.primary_network_keypair().copy().private().0.to_bytes();
     let id: AuthorityIdentifier = primary.id();
-    let metrics = Arc::new(PrimaryMetrics::default());
-    let primary_channel_metrics = PrimaryChannelMetrics::default();
 
-    let (tx_certificate_fetcher, _rx_certificate_fetcher) = tn_types::test_channel!(1);
-    let (_tx_headers, rx_headers) = tn_types::test_channel!(1);
-    let (tx_new_certificates, _rx_new_certificates) = tn_types::test_channel!(1);
-    let (tx_parents, _rx_parents) = tn_types::test_channel!(1);
-    let (_tx_consensus_round_updates, rx_consensus_round_updates) =
-        watch::channel(ConsensusRound::new(0, 0));
-
+    let cb = ConsensusBus::new();
     // Make a synchronizer for the core.
-    let synchronizer = Arc::new(Synchronizer::new(
-        primary.consensus_config(),
-        tx_certificate_fetcher,
-        tx_new_certificates.clone(),
-        tx_parents.clone(),
-        rx_consensus_round_updates.clone(),
-        metrics.clone(),
-        &primary_channel_metrics,
-    ));
-
-    let metrics = Arc::new(PrimaryMetrics::default());
+    let synchronizer = Arc::new(Synchronizer::new(primary.consensus_config(), &cb));
 
     let own_address = committee.primary_by_id(&id).unwrap().to_anemo_address().unwrap();
     let network = anemo::Network::bind(own_address)
@@ -447,9 +368,8 @@ async fn test_shutdown_core() {
     // Spawn the core.
     let handle = Certifier::spawn(
         primary.consensus_config(),
+        cb.clone(),
         synchronizer.clone(),
-        rx_headers,
-        metrics.clone(),
         network.clone(),
     );
 

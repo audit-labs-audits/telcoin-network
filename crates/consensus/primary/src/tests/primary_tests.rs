@@ -1,10 +1,11 @@
 // Copyright (c) Telcoin, LLC
 // Copyright (c) Mysten Labs, Inc.
 // SPDX-License-Identifier: Apache-2.0
-use super::{Primary, PrimaryReceiverHandler, CHANNEL_CAPACITY};
+use super::{Primary, PrimaryReceiverHandler};
 use crate::{
-    consensus::{ConsensusRound, LeaderSchedule, LeaderSwapTable},
+    consensus::{LeaderSchedule, LeaderSwapTable},
     synchronizer::Synchronizer,
+    ConsensusBus,
 };
 use fastcrypto::{
     encoding::{Encoding, Hex},
@@ -15,7 +16,6 @@ use itertools::Itertools;
 use narwhal_network_types::{
     FetchCertificatesRequest, MockPrimaryToWorker, PrimaryToPrimary, RequestVoteRequest,
 };
-use narwhal_primary_metrics::{PrimaryChannelMetrics, PrimaryMetrics};
 use narwhal_test_utils::CommitteeFixture;
 use narwhal_typed_store::mem_db::MemDatabase;
 use narwhal_worker::{metrics::Metrics, Worker};
@@ -31,7 +31,7 @@ use tn_types::{
     now, test_utils::make_optimal_signed_certificates, AuthorityIdentifier, Certificate, Committee,
     SignatureVerificationState,
 };
-use tokio::{sync::watch, time::timeout};
+use tokio::time::timeout;
 
 #[tokio::test]
 async fn test_get_network_peers_from_admin_server() {
@@ -44,33 +44,12 @@ async fn test_get_network_peers_from_admin_server() {
     let worker_id = 0;
     let worker_1_keypair = authority_1.worker().keypair().copy();
 
-    let (tx_new_certificates, _rx_new_certificates) = consensus_metrics::metered_channel::channel(
-        CHANNEL_CAPACITY,
-        &prometheus::IntGauge::new(
-            PrimaryChannelMetrics::NAME_NEW_CERTS,
-            PrimaryChannelMetrics::DESC_NEW_CERTS,
-        )
-        .unwrap(),
-    );
-    let (_tx_feedback, rx_feedback) = consensus_metrics::metered_channel::channel(
-        CHANNEL_CAPACITY,
-        &prometheus::IntGauge::new(
-            PrimaryChannelMetrics::NAME_COMMITTED_CERTS,
-            PrimaryChannelMetrics::DESC_COMMITTED_CERTS,
-        )
-        .unwrap(),
-    );
-    let (_tx_consensus_round_updates, rx_consensus_round_updates) =
-        watch::channel(ConsensusRound::default());
-
+    let cb_1 = ConsensusBus::new();
     // Spawn Primary 1
     Primary::spawn(
         config_1.clone(),
-        tx_new_certificates,
-        rx_feedback,
-        rx_consensus_round_updates,
+        &cb_1,
         LeaderSchedule::new(committee.clone(), LeaderSwapTable::default()),
-        &narwhal_primary_metrics::Metrics::default(),
     );
 
     // Wait for tasks to start
@@ -130,36 +109,9 @@ async fn test_get_network_peers_from_admin_server() {
     let config_2 = authority_2.consensus_config();
     let primary_2_parameters = config_2.config().parameters.clone();
 
-    // TODO: Rework test-utils so that macro can be used for the channels below.
-    let (tx_new_certificates_2, _rx_new_certificates_2) =
-        consensus_metrics::metered_channel::channel(
-            CHANNEL_CAPACITY,
-            &prometheus::IntGauge::new(
-                PrimaryChannelMetrics::NAME_NEW_CERTS,
-                PrimaryChannelMetrics::DESC_NEW_CERTS,
-            )
-            .unwrap(),
-        );
-    let (_tx_feedback_2, rx_feedback_2) = consensus_metrics::metered_channel::channel(
-        CHANNEL_CAPACITY,
-        &prometheus::IntGauge::new(
-            PrimaryChannelMetrics::NAME_COMMITTED_CERTS,
-            PrimaryChannelMetrics::DESC_COMMITTED_CERTS,
-        )
-        .unwrap(),
-    );
-    let (_tx_consensus_round_updates, rx_consensus_round_updates) =
-        watch::channel(ConsensusRound::default());
-
+    let cb_2 = ConsensusBus::new();
     // Spawn Primary 2
-    Primary::spawn(
-        config_2,
-        /* tx_consensus */ tx_new_certificates_2,
-        /* rx_consensus */ rx_feedback_2,
-        rx_consensus_round_updates,
-        LeaderSchedule::new(committee, LeaderSwapTable::default()),
-        &narwhal_primary_metrics::Metrics::default(),
-    );
+    Primary::spawn(config_2, &cb_2, LeaderSchedule::new(committee, LeaderSwapTable::default()));
 
     // Wait for tasks to start
     tokio::time::sleep(Duration::from_secs(1)).await;
@@ -218,8 +170,6 @@ async fn test_request_vote_has_missing_parents() {
     let target = fixture.authorities().next().unwrap();
     let author = fixture.authorities().nth(2).unwrap();
     let author_id = author.id();
-    let metrics = Arc::new(PrimaryMetrics::default());
-    let primary_channel_metrics = PrimaryChannelMetrics::default();
     let network = tn_types::test_utils::test_network(
         target.primary_network_keypair(),
         target.network_address(),
@@ -227,28 +177,14 @@ async fn test_request_vote_has_missing_parents() {
 
     let certificate_store = target.consensus_config().node_storage().certificate_store.clone();
     let payload_store = target.consensus_config().node_storage().payload_store.clone();
-    let (tx_certificate_fetcher, _rx_certificate_fetcher) = tn_types::test_channel!(1);
-    let (tx_new_certificates, _rx_new_certificates) = tn_types::test_channel!(100);
-    let (tx_parents, _rx_parents) = tn_types::test_channel!(100);
-    let (_tx_consensus_round_updates, rx_consensus_round_updates) =
-        watch::channel(ConsensusRound::new(1, 0));
-    let (tx_narwhal_round_updates, rx_narwhal_round_updates) = watch::channel(1u64);
 
-    let synchronizer = Arc::new(Synchronizer::new(
-        target.consensus_config(),
-        tx_certificate_fetcher,
-        tx_new_certificates,
-        tx_parents,
-        rx_consensus_round_updates,
-        metrics.clone(),
-        &primary_channel_metrics,
-    ));
+    let cb = ConsensusBus::new();
+    let synchronizer = Arc::new(Synchronizer::new(target.consensus_config(), &cb));
     let handler = PrimaryReceiverHandler::new(
         target.consensus_config(),
         synchronizer.clone(),
-        rx_narwhal_round_updates,
+        cb.clone(),
         Default::default(),
-        metrics.clone(),
     );
 
     // Make some mock certificates that are parents of our new header.
@@ -315,7 +251,7 @@ async fn test_request_vote_has_missing_parents() {
 
     // TEST PHASE 3: Handler should return error if header is too old.
     // Increase round threshold.
-    let _ = tx_narwhal_round_updates.send(100);
+    let _ = cb.narwhal_round_updates().send(100);
     let mut request = anemo::Request::new(RequestVoteRequest {
         header: test_header.clone(),
         parents: Vec::new(),
@@ -346,8 +282,6 @@ async fn test_request_vote_accept_missing_parents() {
     let target = fixture.authorities().next().unwrap();
     let author = fixture.authorities().nth(2).unwrap();
     let author_id = author.id();
-    let metrics = Arc::new(PrimaryMetrics::default());
-    let primary_channel_metrics = PrimaryChannelMetrics::default();
     let network = tn_types::test_utils::test_network(
         target.primary_network_keypair(),
         target.network_address(),
@@ -355,28 +289,14 @@ async fn test_request_vote_accept_missing_parents() {
 
     let certificate_store = target.consensus_config().node_storage().certificate_store.clone();
     let payload_store = target.consensus_config().node_storage().payload_store.clone();
-    let (tx_certificate_fetcher, _rx_certificate_fetcher) = tn_types::test_channel!(1);
-    let (tx_new_certificates, _rx_new_certificates) = tn_types::test_channel!(100);
-    let (tx_parents, _rx_parents) = tn_types::test_channel!(100);
-    let (_tx_consensus_round_updates, rx_consensus_round_updates) =
-        watch::channel(ConsensusRound::new(1, 0));
-    let (_tx_narwhal_round_updates, rx_narwhal_round_updates) = watch::channel(1u64);
 
-    let synchronizer = Arc::new(Synchronizer::new(
-        target.consensus_config(),
-        tx_certificate_fetcher,
-        tx_new_certificates,
-        tx_parents,
-        rx_consensus_round_updates,
-        metrics.clone(),
-        &primary_channel_metrics,
-    ));
+    let cb = ConsensusBus::new();
+    let synchronizer = Arc::new(Synchronizer::new(target.consensus_config(), &cb));
     let handler = PrimaryReceiverHandler::new(
         target.consensus_config(),
         synchronizer.clone(),
-        rx_narwhal_round_updates,
+        cb.clone(),
         Default::default(),
-        metrics.clone(),
     );
 
     // Make some mock certificates that are parents of our new header.
@@ -464,8 +384,6 @@ async fn test_request_vote_missing_batches() {
     let primary = fixture.authorities().next().unwrap();
     let authority_id = primary.id();
     let author = fixture.authorities().nth(2).unwrap();
-    let metrics = Arc::new(PrimaryMetrics::default());
-    let primary_channel_metrics = PrimaryChannelMetrics::default();
     let network = tn_types::test_utils::test_network(
         primary.primary_network_keypair(),
         primary.network_address(),
@@ -474,28 +392,14 @@ async fn test_request_vote_missing_batches() {
 
     let certificate_store = primary.consensus_config().node_storage().certificate_store.clone();
     let payload_store = primary.consensus_config().node_storage().payload_store.clone();
-    let (tx_certificate_fetcher, _rx_certificate_fetcher) = tn_types::test_channel!(1);
-    let (tx_new_certificates, _rx_new_certificates) = tn_types::test_channel!(100);
-    let (tx_parents, _rx_parents) = tn_types::test_channel!(100);
-    let (_tx_consensus_round_updates, rx_consensus_round_updates) =
-        watch::channel(ConsensusRound::new(1, 0));
-    let (_tx_narwhal_round_updates, rx_narwhal_round_updates) = watch::channel(1u64);
 
-    let synchronizer = Arc::new(Synchronizer::new(
-        primary.consensus_config(),
-        tx_certificate_fetcher,
-        tx_new_certificates,
-        tx_parents,
-        rx_consensus_round_updates,
-        metrics.clone(),
-        &primary_channel_metrics,
-    ));
+    let cb = ConsensusBus::new();
+    let synchronizer = Arc::new(Synchronizer::new(primary.consensus_config(), &cb));
     let handler = PrimaryReceiverHandler::new(
         primary.consensus_config(),
         synchronizer.clone(),
-        rx_narwhal_round_updates,
+        cb.clone(),
         Default::default(),
-        metrics.clone(),
     );
 
     // Make some mock certificates that are parents of our new header.
@@ -572,8 +476,6 @@ async fn test_request_vote_already_voted() {
     let primary = fixture.authorities().next().unwrap();
     let id = primary.id();
     let author = fixture.authorities().nth(2).unwrap();
-    let metrics = Arc::new(PrimaryMetrics::default());
-    let primary_channel_metrics = PrimaryChannelMetrics::default();
     let network = tn_types::test_utils::test_network(
         primary.primary_network_keypair(),
         primary.network_address(),
@@ -583,29 +485,14 @@ async fn test_request_vote_already_voted() {
     let certificate_store = primary.consensus_config().node_storage().certificate_store.clone();
     let payload_store = primary.consensus_config().node_storage().payload_store.clone();
 
-    let (tx_certificate_fetcher, _rx_certificate_fetcher) = tn_types::test_channel!(1);
-    let (tx_new_certificates, _rx_new_certificates) = tn_types::test_channel!(100);
-    let (tx_parents, _rx_parents) = tn_types::test_channel!(100);
-    let (_tx_consensus_round_updates, rx_consensus_round_updates) =
-        watch::channel(ConsensusRound::new(1, 0));
-    let (_tx_narwhal_round_updates, rx_narwhal_round_updates) = watch::channel(1u64);
-
-    let synchronizer = Arc::new(Synchronizer::new(
-        primary.consensus_config(),
-        tx_certificate_fetcher,
-        tx_new_certificates,
-        tx_parents,
-        rx_consensus_round_updates,
-        metrics.clone(),
-        &primary_channel_metrics,
-    ));
+    let cb = ConsensusBus::new();
+    let synchronizer = Arc::new(Synchronizer::new(primary.consensus_config(), &cb));
 
     let handler = PrimaryReceiverHandler::new(
         primary.consensus_config(),
         synchronizer.clone(),
-        rx_narwhal_round_updates,
+        cb.clone(),
         Default::default(),
-        metrics.clone(),
     );
 
     // Make some mock certificates that are parents of our new header.
@@ -714,32 +601,16 @@ async fn test_fetch_certificates_handler() {
         .committee_size(NonZeroUsize::new(4).unwrap())
         .build();
     let primary = fixture.authorities().next().unwrap();
-    let metrics = Arc::new(PrimaryMetrics::default());
-    let primary_channel_metrics = PrimaryChannelMetrics::default();
 
     let certificate_store = primary.consensus_config().node_storage().certificate_store.clone();
-    let (tx_certificate_fetcher, _rx_certificate_fetcher) = tn_types::test_channel!(1);
-    let (tx_new_certificates, _rx_new_certificates) = tn_types::test_channel!(100);
-    let (tx_parents, _rx_parents) = tn_types::test_channel!(100);
-    let (_tx_consensus_round_updates, rx_consensus_round_updates) =
-        watch::channel(ConsensusRound::default());
-    let (_tx_narwhal_round_updates, rx_narwhal_round_updates) = watch::channel(1u64);
 
-    let synchronizer = Arc::new(Synchronizer::new(
-        primary.consensus_config(),
-        tx_certificate_fetcher,
-        tx_new_certificates,
-        tx_parents,
-        rx_consensus_round_updates.clone(),
-        metrics.clone(),
-        &primary_channel_metrics,
-    ));
+    let cb = ConsensusBus::new();
+    let synchronizer = Arc::new(Synchronizer::new(primary.consensus_config(), &cb));
     let handler = PrimaryReceiverHandler::new(
         primary.consensus_config(),
         synchronizer.clone(),
-        rx_narwhal_round_updates,
+        cb.clone(),
         Default::default(),
-        metrics.clone(),
     );
 
     let mut current_round: Vec<_> = Certificate::genesis(&fixture.committee())
@@ -840,8 +711,6 @@ async fn test_request_vote_created_at_in_future() {
     let primary = fixture.authorities().next().unwrap();
     let id = primary.id();
     let author = fixture.authorities().nth(2).unwrap();
-    let metrics = Arc::new(PrimaryMetrics::default());
-    let primary_channel_metrics = PrimaryChannelMetrics::default();
     let network = tn_types::test_utils::test_network(
         primary.primary_network_keypair(),
         primary.network_address(),
@@ -851,28 +720,13 @@ async fn test_request_vote_created_at_in_future() {
     let certificate_store = primary.consensus_config().node_storage().certificate_store.clone();
     let payload_store = primary.consensus_config().node_storage().payload_store.clone();
 
-    let (tx_certificate_fetcher, _rx_certificate_fetcher) = tn_types::test_channel!(1);
-    let (tx_new_certificates, _rx_new_certificates) = tn_types::test_channel!(100);
-    let (tx_parents, _rx_parents) = tn_types::test_channel!(100);
-    let (_tx_consensus_round_updates, rx_consensus_round_updates) =
-        watch::channel(ConsensusRound::new(1, 0));
-    let (_tx_narwhal_round_updates, rx_narwhal_round_updates) = watch::channel(1u64);
-
-    let synchronizer = Arc::new(Synchronizer::new(
-        primary.consensus_config(),
-        tx_certificate_fetcher,
-        tx_new_certificates,
-        tx_parents,
-        rx_consensus_round_updates,
-        metrics.clone(),
-        &primary_channel_metrics,
-    ));
+    let cb = ConsensusBus::new();
+    let synchronizer = Arc::new(Synchronizer::new(primary.consensus_config(), &cb));
     let handler = PrimaryReceiverHandler::new(
         primary.consensus_config(),
         synchronizer.clone(),
-        rx_narwhal_round_updates,
+        cb.clone(),
         Default::default(),
-        metrics.clone(),
     );
 
     // Make some mock certificates that are parents of our new header.
