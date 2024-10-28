@@ -12,7 +12,10 @@ use fastcrypto::{hash::Hash, traits::KeyPair};
 use futures::{stream::FuturesUnordered, StreamExt};
 use itertools::Itertools;
 use narwhal_network::client::NetworkClient;
-use narwhal_test_utils::CommitteeFixture;
+use narwhal_test_utils::{
+    fixture_batch_with_transactions, make_optimal_signed_certificates, mock_signed_certificate,
+    CommitteeFixture,
+};
 use narwhal_typed_store::mem_db::MemDatabase;
 use std::{
     collections::{BTreeSet, HashMap},
@@ -21,10 +24,8 @@ use std::{
     time::Duration,
 };
 use tn_types::{
-    error::DagError,
-    test_utils::{make_optimal_signed_certificates, mock_signed_certificate},
-    BlsAggregateSignatureBytes, Certificate, Committee, Round, SignatureVerificationState,
-    TnReceiver, TnSender,
+    error::DagError, BlsAggregateSignatureBytes, Certificate, Committee, Round,
+    SignatureVerificationState, TnReceiver, TnSender,
 };
 
 #[tokio::test]
@@ -527,7 +528,7 @@ async fn sync_batches_drops_old() {
     for _ in 0..3 {
         let header = author
             .header_builder(&fixture.committee())
-            .with_payload_batch(tn_types::test_utils::fixture_batch_with_transactions(10), 0, 0)
+            .with_payload_batch(fixture_batch_with_transactions(10), 0, 0)
             .build()
             .unwrap();
 
@@ -544,7 +545,7 @@ async fn sync_batches_drops_old() {
         .header_builder(&fixture.committee())
         .round(2)
         .parents(certificates.keys().cloned().collect())
-        .with_payload_batch(tn_types::test_utils::fixture_batch_with_transactions(10), 0, 0)
+        .with_payload_batch(fixture_batch_with_transactions(10), 0, 0)
         .build()
         .unwrap();
 

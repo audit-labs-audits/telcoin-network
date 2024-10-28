@@ -46,7 +46,6 @@ tn-types = { workspace = true }
 reth-tracing = { workspace = true }
 prometheus = { workspace = true }
 fastcrypto = { workspace = true }
-tn-types = { workspace = true, features = ["test-utils"] }
 consensus-metrics = { workspace = true }
 narwhal-test-utils = { workspace = true }
 narwhal-network = { workspace = true }

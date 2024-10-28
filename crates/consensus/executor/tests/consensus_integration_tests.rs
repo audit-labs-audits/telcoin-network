@@ -30,18 +30,18 @@ async fn test_recovery() {
     let genesis =
         Certificate::genesis(&committee).iter().map(|x| x.digest()).collect::<BTreeSet<_>>();
     let (mut certificates, next_parents) =
-        tn_types::test_utils::make_optimal_certificates(&committee, 1..=4, &genesis, &ids);
+        narwhal_test_utils::make_optimal_certificates(&committee, 1..=4, &genesis, &ids);
 
     // Make two certificate (f+1) with round 5 to trigger the commits.
     let (_, certificate) =
-        tn_types::test_utils::mock_certificate(&committee, ids[0], 5, next_parents.clone());
+        narwhal_test_utils::mock_certificate(&committee, ids[0], 5, next_parents.clone());
     certificates.push_back(certificate);
     let (_, certificate) =
-        tn_types::test_utils::mock_certificate(&committee, ids[1], 5, next_parents);
+        narwhal_test_utils::mock_certificate(&committee, ids[1], 5, next_parents);
     certificates.push_back(certificate);
 
     // Spawn the consensus engine and sink the primary channel.
-    let (tx_output, mut rx_output) = tn_types::test_channel!(1);
+    let (tx_output, mut rx_output) = narwhal_test_utils::test_channel!(1);
 
     const NUM_SUB_DAGS_PER_SCHEDULE: u64 = 100;
     let metrics = Arc::new(ConsensusMetrics::default());

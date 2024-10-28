@@ -2,11 +2,6 @@
 // SPDX-License-Identifier: Apache-2.0
 
 //! Helper methods for creating useful structs during tests.
-use crate::{
-    adiri_chain_spec_arc, to_intent_message, AuthorityIdentifier, BlsKeypair, BlsSignature,
-    Certificate, CertificateDigest, Committee, Epoch, HeaderBuilder, Multiaddr, NetworkKeypair,
-    Round, Stake, TimestampSec, ValidatorSignature, WorkerBlock, WorkerId,
-};
 use fastcrypto::{hash::Hash, traits::KeyPair as _};
 use indexmap::IndexMap;
 use rand::{
@@ -21,8 +16,13 @@ use std::{
     collections::{BTreeSet, HashMap, VecDeque},
     ops::RangeInclusive,
 };
+use tn_types::{
+    adiri_chain_spec_arc, to_intent_message, AuthorityIdentifier, BlsKeypair, BlsSignature,
+    Certificate, CertificateDigest, Committee, Epoch, HeaderBuilder, Multiaddr, NetworkKeypair,
+    Round, Stake, TimestampSec, ValidatorSignature, WorkerBlock, WorkerId,
+};
 
-use super::TransactionFactory;
+use crate::execution::TransactionFactory;
 
 pub const VOTES_CF: &str = "votes";
 pub const HEADERS_CF: &str = "headers";

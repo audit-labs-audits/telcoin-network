@@ -3,14 +3,13 @@
 
 //! Worker fixture for the cluster
 
+use crate::temp_dir;
 use fastcrypto::traits::KeyPair as _;
 use narwhal_typed_store::traits::Database;
 use std::path::PathBuf;
 use tn_config::{ConsensusConfig, KeyConfig};
 use tn_node::worker::WorkerNode;
-use tn_types::{
-    test_utils::temp_dir, AuthorityIdentifier, Multiaddr, NetworkKeypair, WorkerId, WorkerInfo,
-};
+use tn_types::{AuthorityIdentifier, Multiaddr, NetworkKeypair, WorkerId, WorkerInfo};
 use tracing::info;
 
 use crate::TestExecutionNode;

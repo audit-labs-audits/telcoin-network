@@ -335,7 +335,7 @@ impl Primary {
         // internal state
         let state_handler_handle = StateHandler::spawn(
             config.authority().id(),
-            &consensus_bus,
+            consensus_bus,
             config.subscribe_shutdown(),
             network,
         );

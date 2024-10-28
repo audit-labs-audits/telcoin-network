@@ -8,7 +8,7 @@ homepage.workspace = true
 repository.workspace = true
 
 [dependencies]
-telnet-types = { workspace = true }
+tn-types = { workspace = true }
 futures-util = { workspace = true }
 tokio = { workspace = true, features = ["sync", "time"] }
 tracing = { workspace = true }
@@ -28,7 +28,6 @@ alloy-rlp = { workspace = true }
 
 [dev-dependencies]
 # unit tests
-tn-types = { workspace = true, features = ["test-utils"] }
 narwhal-test-utils = { workspace = true }
 reth = { workspace = true }
 assert_matches = { workspace = true }

@@ -5,9 +5,10 @@ use criterion::{
     criterion_group, criterion_main, BenchmarkId, Criterion, SamplingMode, Throughput,
 };
 
+use narwhal_test_utils::transaction_with_rand;
 use rand::rngs::ThreadRng;
 use reth_primitives::{SealedHeader, TransactionSigned};
-use tn_types::{test_utils::transaction_with_rand, WorkerBlock};
+use tn_types::WorkerBlock;
 
 pub fn batch_digest(c: &mut Criterion) {
     let mut digest_group = c.benchmark_group("Batch digests");

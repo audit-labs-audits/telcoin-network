@@ -2,10 +2,10 @@
 members = [
     # common
     "bin/telcoin-network",
-    "crates/telnet-types",
+    "crates/tn-types",
 
     # consensus
-    "crates/consensus/types",
+    "crates/consensus/types-tests",
     "crates/consensus/config",
     "crates/consensus/consensus-metrics",
     "crates/consensus/executor",
@@ -195,8 +195,8 @@ jsonrpsee = { version = "0.24" }
 assert_matches = { version = "1.5.0" }
 
 # common
-tn-types = { path = "./crates/consensus/types" }
-telnet-types = { path = "./crates/telnet-types" }
+tn-types-tests = { path = "./crates/consensus/types-tests" }
+tn-types = { path = "./crates/tn-types" }
 tn-node = { path = "./crates/consensus/tn-node" }
 tn-config = { path = "./crates/consensus/config" }
 

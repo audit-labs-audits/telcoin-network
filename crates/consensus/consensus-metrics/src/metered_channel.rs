@@ -11,7 +11,7 @@ use std::{
     sync::Arc,
     task::{Context, Poll},
 };
-use telnet_types::{TnReceiver, TnSender};
+use tn_types::{TnReceiver, TnSender};
 use tokio::sync::mpsc::{self};
 
 #[cfg(test)]
@@ -43,11 +43,11 @@ pub struct BorrowedReceiver<'a, T> {
 }
 
 impl<'a, T: Send> TnReceiver<T> for BorrowedReceiver<'a, T> {
-    fn recv(&mut self) -> impl std::future::Future<Output = Option<T>> + Send {
-        async { self.guard.as_mut().expect("receiver has been taken!").recv().await }
+    async fn recv(&mut self) -> Option<T> {
+        self.guard.as_mut().expect("receiver has been taken!").recv().await
     }
 
-    fn try_recv(&mut self) -> Result<T, telnet_types::TryRecvError> {
+    fn try_recv(&mut self) -> Result<T, tn_types::TryRecvError> {
         self.guard.as_mut().expect("receiver has been taken!").try_recv()
     }
 
@@ -84,7 +84,7 @@ impl<T: Send> TnReceiver<T> for Receiver<T> {
         })
     }
 
-    fn try_recv(&mut self) -> Result<T, telnet_types::TryRecvError> {
+    fn try_recv(&mut self) -> Result<T, tn_types::TryRecvError> {
         Ok(self.inner.try_recv().inspect(|_| {
             self.gauge.dec();
             if let Some(total_gauge) = &self.total {
@@ -139,13 +139,13 @@ impl<T: Send> TnSender<T> for Sender<T> {
     fn send(
         &self,
         value: T,
-    ) -> impl std::future::Future<Output = Result<(), telnet_types::SendError<T>>> + Send {
+    ) -> impl std::future::Future<Output = Result<(), tn_types::SendError<T>>> + Send {
         self.inner.send(value).inspect_ok(|_| self.gauge.inc()).map_err(|e| e.into())
     }
 
     /// Attempts to immediately send a message on this `Sender`
     /// Increments the gauge in case of a successful `try_send`.
-    fn try_send(&self, message: T) -> Result<(), telnet_types::TrySendError<T>> {
+    fn try_send(&self, message: T) -> Result<(), tn_types::TrySendError<T>> {
         Ok(self
             .inner
             .try_send(message)

@@ -14,9 +14,9 @@ use reth::primitives::Address;
 use std::{collections::HashMap, num::NonZeroUsize, sync::Arc, time::Duration};
 use tn_config::{ConsensusConfig, KeyConfig};
 use tn_types::{
-    test_utils::TelcoinTempDirs, Authority, AuthorityIdentifier, BlsKeypair, BlsPublicKey,
-    Certificate, Committee, Config, ConsensusOutput, Header, HeaderBuilder, Multiaddr,
-    NetworkKeypair, NetworkPublicKey, Round, Vote, WorkerCache, WorkerId,
+    Authority, AuthorityIdentifier, BlsKeypair, BlsPublicKey, Certificate, Committee, Config,
+    ConsensusOutput, Header, HeaderBuilder, Multiaddr, NetworkKeypair, NetworkPublicKey, Round,
+    TelcoinTempDirs, Vote, WorkerCache, WorkerId,
 };
 use tokio::sync::{broadcast, RwLock};
 use tracing::info;

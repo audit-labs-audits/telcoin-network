@@ -8,7 +8,7 @@ use futures::{
     FutureExt,
 };
 use prometheus::{IntCounter, IntGauge};
-use telnet_types::{TnReceiver, TnSender, TrySendError};
+use tn_types::{TnReceiver, TnSender, TrySendError};
 
 #[tokio::test]
 async fn test_send() {

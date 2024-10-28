@@ -4,10 +4,10 @@
 // SPDX-License-Identifier: Apache-2.0
 
 //! Committe fixture for all authorities and their workers within a committee for a specific epoch.
+use crate::fixture_batch_with_transactions;
 use narwhal_typed_store::traits::Database;
 use tn_types::{
-    test_utils::fixture_batch_with_transactions, Certificate, CertificateDigest, Committee, Header,
-    HeaderBuilder, Round, Vote, WorkerCache,
+    Certificate, CertificateDigest, Committee, Header, HeaderBuilder, Round, Vote, WorkerCache,
 };
 
 use super::{AuthorityFixture, Builder};

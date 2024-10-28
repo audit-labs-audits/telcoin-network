@@ -8,10 +8,10 @@ use super::*;
 use crate::consensus::LeaderSwapTable;
 use consensus_metrics::spawn_logged_monitored_task;
 use indexmap::IndexMap;
-use narwhal_test_utils::CommitteeFixture;
+use narwhal_test_utils::{fixture_payload, CommitteeFixture};
 use narwhal_typed_store::mem_db::MemDatabase;
 use reth_primitives::B256;
-use tn_types::{test_utils::fixture_payload, BlockHash, CHANNEL_CAPACITY};
+use tn_types::{BlockHash, CHANNEL_CAPACITY};
 
 #[tokio::test]
 async fn test_empty_proposal() {

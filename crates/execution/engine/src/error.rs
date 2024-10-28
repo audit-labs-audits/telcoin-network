@@ -3,7 +3,7 @@
 use reth_blockchain_tree::error::InsertBlockError;
 use reth_errors::{CanonicalError, ProviderError, RethError};
 use reth_revm::primitives::EVMError;
-use telnet_types::WorkerBlockConversionError;
+use tn_types::WorkerBlockConversionError;
 use tokio::sync::oneshot;
 
 /// Result alias for [`TNEngineError`].

@@ -56,6 +56,12 @@ pub struct ConsensusBus {
     _rx_narwhal_round_updates: watch::Receiver<Round>,
 }
 
+impl Default for ConsensusBus {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl ConsensusBus {
     pub fn new() -> Self {
         let consensus_metrics = Arc::new(ConsensusMetrics::default());

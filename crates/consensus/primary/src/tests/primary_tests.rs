@@ -16,7 +16,10 @@ use itertools::Itertools;
 use narwhal_network_types::{
     FetchCertificatesRequest, MockPrimaryToWorker, PrimaryToPrimary, RequestVoteRequest,
 };
-use narwhal_test_utils::CommitteeFixture;
+use narwhal_test_utils::{
+    fixture_batch_with_transactions, make_optimal_signed_certificates, test_network,
+    CommitteeFixture,
+};
 use narwhal_typed_store::mem_db::MemDatabase;
 use narwhal_worker::{metrics::Metrics, Worker};
 use prometheus::Registry;
@@ -27,10 +30,7 @@ use std::{
     time::Duration,
 };
 use tn_block_validator::NoopBlockValidator;
-use tn_types::{
-    now, test_utils::make_optimal_signed_certificates, AuthorityIdentifier, Certificate, Committee,
-    SignatureVerificationState,
-};
+use tn_types::{now, AuthorityIdentifier, Certificate, Committee, SignatureVerificationState};
 use tokio::time::timeout;
 
 #[tokio::test]
@@ -170,10 +170,7 @@ async fn test_request_vote_has_missing_parents() {
     let target = fixture.authorities().next().unwrap();
     let author = fixture.authorities().nth(2).unwrap();
     let author_id = author.id();
-    let network = tn_types::test_utils::test_network(
-        target.primary_network_keypair(),
-        target.network_address(),
-    );
+    let network = test_network(target.primary_network_keypair(), target.network_address());
 
     let certificate_store = target.consensus_config().node_storage().certificate_store.clone();
     let payload_store = target.consensus_config().node_storage().payload_store.clone();
@@ -205,7 +202,7 @@ async fn test_request_vote_has_missing_parents() {
         .author(author_id)
         .round(3)
         .parents(round_2_certs.iter().map(|c| c.digest()).collect())
-        .with_payload_batch(tn_types::test_utils::fixture_batch_with_transactions(10), 0, 0)
+        .with_payload_batch(fixture_batch_with_transactions(10), 0, 0)
         .build()
         .unwrap();
 
@@ -282,10 +279,7 @@ async fn test_request_vote_accept_missing_parents() {
     let target = fixture.authorities().next().unwrap();
     let author = fixture.authorities().nth(2).unwrap();
     let author_id = author.id();
-    let network = tn_types::test_utils::test_network(
-        target.primary_network_keypair(),
-        target.network_address(),
-    );
+    let network = test_network(target.primary_network_keypair(), target.network_address());
 
     let certificate_store = target.consensus_config().node_storage().certificate_store.clone();
     let payload_store = target.consensus_config().node_storage().payload_store.clone();
@@ -319,7 +313,7 @@ async fn test_request_vote_accept_missing_parents() {
         .author(author_id)
         .round(3)
         .parents(round_2_certs.iter().map(|c| c.digest()).collect())
-        .with_payload_batch(tn_types::test_utils::fixture_batch_with_transactions(10), 0, 0)
+        .with_payload_batch(fixture_batch_with_transactions(10), 0, 0)
         .build()
         .unwrap();
 
@@ -384,10 +378,7 @@ async fn test_request_vote_missing_batches() {
     let primary = fixture.authorities().next().unwrap();
     let authority_id = primary.id();
     let author = fixture.authorities().nth(2).unwrap();
-    let network = tn_types::test_utils::test_network(
-        primary.primary_network_keypair(),
-        primary.network_address(),
-    );
+    let network = test_network(primary.primary_network_keypair(), primary.network_address());
     let client = primary.consensus_config().network_client().clone();
 
     let certificate_store = primary.consensus_config().node_storage().certificate_store.clone();
@@ -407,7 +398,7 @@ async fn test_request_vote_missing_batches() {
     for primary in fixture.authorities().filter(|a| a.id() != authority_id) {
         let header = primary
             .header_builder(&fixture.committee())
-            .with_payload_batch(tn_types::test_utils::fixture_batch_with_transactions(10), 0, 0)
+            .with_payload_batch(fixture_batch_with_transactions(10), 0, 0)
             .build()
             .unwrap();
 
@@ -424,7 +415,7 @@ async fn test_request_vote_missing_batches() {
         .header_builder(&fixture.committee())
         .round(2)
         .parents(certificates.keys().cloned().collect())
-        .with_payload_batch(tn_types::test_utils::fixture_batch_with_transactions(10), 0, 0)
+        .with_payload_batch(fixture_batch_with_transactions(10), 0, 0)
         .build()
         .unwrap();
     let test_digests: HashSet<_> =
@@ -476,10 +467,7 @@ async fn test_request_vote_already_voted() {
     let primary = fixture.authorities().next().unwrap();
     let id = primary.id();
     let author = fixture.authorities().nth(2).unwrap();
-    let network = tn_types::test_utils::test_network(
-        primary.primary_network_keypair(),
-        primary.network_address(),
-    );
+    let network = test_network(primary.primary_network_keypair(), primary.network_address());
     let client = primary.consensus_config().network_client().clone(); // NetworkClient::new_from_keypair(&primary.primary_primary_primary_network_keypair());
 
     let certificate_store = primary.consensus_config().node_storage().certificate_store.clone();
@@ -500,7 +488,7 @@ async fn test_request_vote_already_voted() {
     for primary in fixture.authorities().filter(|a| a.id() != id) {
         let header = primary
             .header_builder(&fixture.committee())
-            .with_payload_batch(tn_types::test_utils::fixture_batch_with_transactions(10), 0, 0)
+            .with_payload_batch(fixture_batch_with_transactions(10), 0, 0)
             .build()
             .unwrap();
 
@@ -533,7 +521,7 @@ async fn test_request_vote_already_voted() {
         .header_builder(&fixture.committee())
         .round(2)
         .parents(certificates.keys().cloned().collect())
-        .with_payload_batch(tn_types::test_utils::fixture_batch_with_transactions(10), 0, 0)
+        .with_payload_batch(fixture_batch_with_transactions(10), 0, 0)
         .build()
         .unwrap();
     let mut request = anemo::Request::new(RequestVoteRequest {
@@ -573,7 +561,7 @@ async fn test_request_vote_already_voted() {
         .header_builder(&fixture.committee())
         .round(2)
         .parents(certificates.keys().cloned().collect())
-        .with_payload_batch(tn_types::test_utils::fixture_batch_with_transactions(10), 0, 0)
+        .with_payload_batch(fixture_batch_with_transactions(10), 0, 0)
         .build()
         .unwrap();
     let mut request = anemo::Request::new(RequestVoteRequest {
@@ -711,10 +699,7 @@ async fn test_request_vote_created_at_in_future() {
     let primary = fixture.authorities().next().unwrap();
     let id = primary.id();
     let author = fixture.authorities().nth(2).unwrap();
-    let network = tn_types::test_utils::test_network(
-        primary.primary_network_keypair(),
-        primary.network_address(),
-    );
+    let network = test_network(primary.primary_network_keypair(), primary.network_address());
     let client = primary.consensus_config().network_client().clone();
 
     let certificate_store = primary.consensus_config().node_storage().certificate_store.clone();
@@ -734,7 +719,7 @@ async fn test_request_vote_created_at_in_future() {
     for primary in fixture.authorities().filter(|a| a.id() != id) {
         let header = primary
             .header_builder(&fixture.committee())
-            .with_payload_batch(tn_types::test_utils::fixture_batch_with_transactions(10), 0, 0)
+            .with_payload_batch(fixture_batch_with_transactions(10), 0, 0)
             .build()
             .unwrap();
 
@@ -771,7 +756,7 @@ async fn test_request_vote_created_at_in_future() {
         .header_builder(&fixture.committee())
         .round(2)
         .parents(certificates.keys().cloned().collect())
-        .with_payload_batch(tn_types::test_utils::fixture_batch_with_transactions(10), 0, 0)
+        .with_payload_batch(fixture_batch_with_transactions(10), 0, 0)
         .created_at(created_at)
         .build()
         .unwrap();
@@ -798,7 +783,7 @@ async fn test_request_vote_created_at_in_future() {
         .header_builder(&fixture.committee())
         .round(2)
         .parents(certificates.keys().cloned().collect())
-        .with_payload_batch(tn_types::test_utils::fixture_batch_with_transactions(10), 0, 0)
+        .with_payload_batch(fixture_batch_with_transactions(10), 0, 0)
         .created_at(created_at)
         .build()
         .unwrap();

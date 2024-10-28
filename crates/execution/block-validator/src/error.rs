@@ -2,8 +2,8 @@
 
 use reth_primitives::{BlockNumber, B256};
 use reth_provider::ProviderError;
-use telnet_types::BlockHash;
 use thiserror::Error;
+use tn_types::BlockHash;
 
 /// Block validation error types
 #[derive(Error, Debug)]

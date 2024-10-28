@@ -10,14 +10,10 @@ use narwhal_primary::consensus::{
     Bullshark, ConsensusMetrics, ConsensusState, LeaderSchedule, LeaderSwapTable,
 };
 use narwhal_storage::NodeStorage;
-use narwhal_test_utils::CommitteeFixture;
+use narwhal_test_utils::{make_optimal_certificates, temp_dir, CommitteeFixture};
 use narwhal_typed_store::{mem_db::MemDatabase, open_db};
 use std::{collections::BTreeSet, sync::Arc};
-use tn_types::{
-    encode,
-    test_utils::{make_optimal_certificates, temp_dir},
-    Certificate, Round, DEFAULT_BAD_NODES_STAKE_THRESHOLD,
-};
+use tn_types::{encode, Certificate, Round, DEFAULT_BAD_NODES_STAKE_THRESHOLD};
 use tokio::time::Instant;
 
 pub fn process_certificates(c: &mut Criterion) {
