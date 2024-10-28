@@ -365,7 +365,6 @@ impl<DB: Database> Future for Certifier<DB> {
                     header,
                     rx_cancel,
                 )));
-                rx_headers = this.consensus_bus.headers().borrow_subscriber();
             }
         }
 

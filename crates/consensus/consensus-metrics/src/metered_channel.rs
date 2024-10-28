@@ -110,27 +110,10 @@ impl<T: Send> TnReceiver<T> for Receiver<T> {
 impl<T> Unpin for Receiver<T> {}
 
 impl<T> Sender<T> {
-    /*/// Sends a value, waiting until there is capacity.
-    /// Increments the gauge in case of a successful `send`.
-    pub async fn send(&self, value: T) -> Result<(), SendError<T>> {
-        self.inner.send(value).inspect_ok(|_| self.gauge.inc()).await
-    }*/
-
     /// Completes when the receiver has dropped.
     pub async fn closed(&self) {
         self.inner.closed().await
     }
-
-    /*/// Attempts to immediately send a message on this `Sender`
-    /// Increments the gauge in case of a successful `try_send`.
-    pub fn try_send(&self, message: T) -> Result<(), TrySendError<T>> {
-        self.inner
-            .try_send(message)
-            // remove this unsightly hack once https://github.com/rust-lang/rust/issues/91345 is resolved
-            .inspect(|_| {
-                self.gauge.inc();
-            })
-    }*/
 
     /// Checks if the channel has been closed. This happens when the
     /// [`Receiver`] is dropped, or when the [`Receiver::close`] method is
@@ -151,6 +134,8 @@ impl<T> Sender<T> {
 }
 
 impl<T: Send> TnSender<T> for Sender<T> {
+    /// Sends a value, waiting until there is capacity.
+    /// Increments the gauge in case of a successful `send`.
     fn send(
         &self,
         value: T,
@@ -158,6 +143,8 @@ impl<T: Send> TnSender<T> for Sender<T> {
         self.inner.send(value).inspect_ok(|_| self.gauge.inc()).map_err(|e| e.into())
     }
 
+    /// Attempts to immediately send a message on this `Sender`
+    /// Increments the gauge in case of a successful `try_send`.
     fn try_send(&self, message: T) -> Result<(), telnet_types::TrySendError<T>> {
         Ok(self
             .inner

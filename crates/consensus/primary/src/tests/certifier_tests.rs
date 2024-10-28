@@ -133,7 +133,7 @@ use tn_types::{BlsKeypair, SignatureVerificationState, TnSender};
 //     assert_eq!(certificate.header().digest(), proposed_digest);
 // }
 
-#[tokio::test(flavor = "current_thread", start_paused = true)]
+#[tokio::test(flavor = "current_thread")]
 async fn propose_header_and_form_certificate_v2() {
     reth_tracing::init_test_tracing();
     let fixture = CommitteeFixture::builder(MemDatabase::default).randomize_ports(true).build();

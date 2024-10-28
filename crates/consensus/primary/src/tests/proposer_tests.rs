@@ -11,7 +11,7 @@ use indexmap::IndexMap;
 use narwhal_test_utils::CommitteeFixture;
 use narwhal_typed_store::mem_db::MemDatabase;
 use reth_primitives::B256;
-use tn_types::{test_utils::fixture_payload, BlockHash};
+use tn_types::{test_utils::fixture_payload, BlockHash, CHANNEL_CAPACITY};
 
 #[tokio::test]
 async fn test_empty_proposal() {
@@ -137,14 +137,12 @@ async fn test_propose_payload_fatal_timer() {
     }
     tracing::error!(target: "primary", "all acks received");
 
-    // update watch channel to simulate execution progress
-    // tx_watch.send((2, BlockNumHash::new(2, B256::random()))).expect("el watch channel updated");
-
-    // fill tx_headers before round 3 (capacity 1) to simulate to trigger fatal timer
+    // fill tx_headers before round 3 to simulate to trigger fatal timer
     // use the same header for convenience, makes no difference
     // just fill the send channel - don't call recv()
-    let fill_channel = cb.headers().send(header).await;
-    assert!(fill_channel.is_ok());
+    for _ in 0..CHANNEL_CAPACITY {
+        cb.headers().send(header.clone()).await.unwrap();
+    }
 
     // send parents to advance the 2 round
     let parents: Vec<_> =

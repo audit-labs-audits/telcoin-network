@@ -73,7 +73,6 @@ impl ConsensusBus {
         let (tx_consensus_round_updates, _rx_consensus_round_updates) =
             watch::channel(ConsensusRound::new(0, 0));
 
-        // XXXX
         let our_digests = channel_with_total_sender(
             CHANNEL_CAPACITY,
             &primary_metrics.primary_channel_metrics.tx_our_digests,

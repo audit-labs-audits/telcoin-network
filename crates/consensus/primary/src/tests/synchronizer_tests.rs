@@ -12,7 +12,6 @@ use fastcrypto::{hash::Hash, traits::KeyPair};
 use futures::{stream::FuturesUnordered, StreamExt};
 use itertools::Itertools;
 use narwhal_network::client::NetworkClient;
-use narwhal_primary_metrics::PrimaryMetrics;
 use narwhal_test_utils::CommitteeFixture;
 use narwhal_typed_store::mem_db::MemDatabase;
 use std::{
@@ -171,7 +170,6 @@ async fn synchronizer_recover_basic() {
     let client = NetworkClient::new_from_keypair(&primary.primary_network_keypair());
     let network_key = primary.primary_network_keypair().copy().private().0.to_bytes();
     let name = primary.id();
-    let metrics = Arc::new(PrimaryMetrics::default());
 
     let certificate_store = primary.consensus_config().node_storage().certificate_store.clone();
 
@@ -200,6 +198,13 @@ async fn synchronizer_recover_basic() {
 
     // Restart Synchronizer.
 
+    let mut m = HashMap::new();
+    m.insert("source", "other");
+    assert_eq!(
+        cb.primary_metrics().node_metrics.certificates_processed.get_metric_with(&m).unwrap().get(),
+        3
+    );
+
     let cb = ConsensusBus::new();
     let mut rx_parents = cb.parents().subscribe();
     let _synchronizer = Arc::new(Synchronizer::new(primary.consensus_config(), &cb));
@@ -221,9 +226,11 @@ async fn synchronizer_recover_basic() {
         assert_eq!(stored, Some(x.clone()));
     }
 
-    let mut m = HashMap::new();
-    m.insert("source", "other");
-    assert_eq!(metrics.certificates_processed.get_metric_with(&m).unwrap().get(), 3);
+    // New metrics, they should be zeroed out.
+    assert_eq!(
+        cb.primary_metrics().node_metrics.certificates_processed.get_metric_with(&m).unwrap().get(),
+        0
+    );
 }
 
 #[tokio::test(flavor = "current_thread", start_paused = true)]
