@@ -571,6 +571,7 @@ mod tests {
         let transaction1 = tx_factory.create_eip1559(
             chain.clone(),
             gas_price,
+            None,
             Some(Address::ZERO),
             value, // 1 TEL
             Bytes::new(),
@@ -579,6 +580,7 @@ mod tests {
         let transaction2 = tx_factory.create_eip1559(
             chain.clone(),
             gas_price,
+            None,
             Some(Address::ZERO),
             value, // 1 TEL
             Bytes::new(),
@@ -587,6 +589,7 @@ mod tests {
         let transaction3 = tx_factory.create_eip1559(
             chain.clone(),
             gas_price,
+            None,
             Some(Address::ZERO),
             value, // 1 TEL
             Bytes::new(),
@@ -772,6 +775,7 @@ mod tests {
         let transaction1 = tx_factory.create_eip1559(
             chain.clone(),
             gas_price,
+            None,
             Some(Address::ZERO),
             value, // 1 TEL
             Bytes::new(),
@@ -780,6 +784,7 @@ mod tests {
         let transaction2 = tx_factory.create_eip1559(
             chain.clone(),
             gas_price,
+            None,
             Some(Address::ZERO),
             value, // 1 TEL
             Bytes::new(),
@@ -788,6 +793,7 @@ mod tests {
         let transaction3 = tx_factory.create_eip1559(
             chain.clone(),
             gas_price,
+            None,
             Some(Address::ZERO),
             value, // 1 TEL
             Bytes::new(),
@@ -931,6 +937,7 @@ mod tests {
         let transaction1 = tx_factory.create_eip1559(
             chain.clone(),
             gas_price,
+            None,
             Some(Address::ZERO),
             value, // 1 TEL
             Bytes::new(),
@@ -939,6 +946,7 @@ mod tests {
         let transaction2 = tx_factory.create_eip1559(
             chain.clone(),
             gas_price,
+            None,
             Some(Address::ZERO),
             value, // 1 TEL
             Bytes::new(),
@@ -947,6 +955,7 @@ mod tests {
         let transaction3 = tx_factory.create_eip1559(
             chain.clone(),
             gas_price,
+            None,
             Some(Address::ZERO),
             value, // 1 TEL
             Bytes::new(),

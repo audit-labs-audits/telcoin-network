@@ -266,10 +266,15 @@ impl TransactionFactory {
         &mut self,
         chain: Arc<ChainSpec>,
         gas_price: u128,
+        gas_limit: Option<u64>,
         to: Option<Address>,
         value: U256,
         input: Bytes,
     ) -> TransactionSigned {
+        let gas_limit = match gas_limit {
+            Some(limit) => limit,
+            None => 3_000_000,
+        };
         let tx_kind = match to {
             Some(address) => TxKind::Call(address),
             None => TxKind::Create,
@@ -281,7 +286,7 @@ impl TransactionFactory {
             nonce: self.nonce,
             max_priority_fee_per_gas: 0,
             max_fee_per_gas: gas_price,
-            gas_limit: 1_000_000,
+            gas_limit: gas_limit,
             to: tx_kind,
             value,
             input,
@@ -384,7 +389,7 @@ impl TransactionFactory {
     where
         Pool: TransactionPool,
     {
-        let tx = self.create_eip1559(chain, gas_price, Some(to), value, Bytes::new());
+        let tx = self.create_eip1559(chain, gas_price, None, Some(to), value, Bytes::new());
         let pooled_tx =
             PooledTransactionsElement::try_from_broadcast(tx).expect("tx valid for pool");
         let recovered = pooled_tx.try_into_ecrecovered().expect("tx is recovered");

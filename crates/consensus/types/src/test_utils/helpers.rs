@@ -177,7 +177,7 @@ pub fn transaction_with_rand<R: Rng + ?Sized>(rand: &mut R) -> TransactionSigned
     let value = U256::from(10).checked_pow(U256::from(18)).expect("1e18 doesn't overflow U256");
 
     // random transaction
-    tx_factory.create_eip1559(chain, gas_price, Some(Address::ZERO), value, Bytes::new())
+    tx_factory.create_eip1559(chain, gas_price, None, Some(Address::ZERO), value, Bytes::new())
 }
 
 pub fn batch_with_rand<R: Rng + ?Sized>(rand: &mut R) -> WorkerBlock {
@@ -205,7 +205,7 @@ pub fn transaction() -> TransactionSigned {
     let value = U256::from(10).checked_pow(U256::from(18)).expect("1e18 doesn't overflow U256");
 
     // random transaction
-    tx_factory.create_eip1559(chain, gas_price, Some(Address::ZERO), value, Bytes::new())
+    tx_factory.create_eip1559(chain, gas_price, None, Some(Address::ZERO), value, Bytes::new())
 
     // // generate random value transactions, but the length will be always 100 bytes
     // (0..100).map(|_v| rand::random::<u8>()).collect()

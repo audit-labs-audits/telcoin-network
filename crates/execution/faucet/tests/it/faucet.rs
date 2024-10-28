@@ -191,6 +191,7 @@ async fn test_faucet_transfers_tel_with_google_kms() -> eyre::Result<()> {
         pre_genesis_chain.clone(),
         gas_price,
         None,
+        None,
         U256::ZERO,
         faucet_create_data.clone().into(),
     );
@@ -200,6 +201,7 @@ async fn test_faucet_transfers_tel_with_google_kms() -> eyre::Result<()> {
     let role_tx_raw = tx_factory.create_eip1559(
         pre_genesis_chain.clone(),
         gas_price,
+        None,
         Some(faucet_proxy_address),
         U256::ZERO,
         grant_role_call,
@@ -481,6 +483,7 @@ async fn test_faucet_transfers_stablecoin_with_google_kms() -> eyre::Result<()> 
         pre_genesis_chain.clone(),
         gas_price,
         None,
+        None,
         U256::ZERO,
         faucet_create_data.clone().into(),
     );
@@ -488,6 +491,7 @@ async fn test_faucet_transfers_stablecoin_with_google_kms() -> eyre::Result<()> 
     let role_tx_raw = tx_factory.create_eip1559(
         pre_genesis_chain.clone(),
         gas_price,
+        None,
         Some(faucet_proxy_address),
         U256::ZERO,
         grant_role_call,
@@ -496,6 +500,7 @@ async fn test_faucet_transfers_stablecoin_with_google_kms() -> eyre::Result<()> 
     let minter_tx_raw = tx_factory.create_eip1559(
         pre_genesis_chain.clone(),
         gas_price,
+        None,
         Some(stablecoin_address),
         U256::ZERO,
         minter_role_call,
