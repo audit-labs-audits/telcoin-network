@@ -12,15 +12,13 @@ use crate::{
 };
 #[allow(unused_imports)]
 use fastcrypto::traits::KeyPair;
-use narwhal_test_utils::CommitteeFixture;
+use narwhal_test_utils::{CommitteeFixture, TelcoinTempDirs};
 use narwhal_typed_store::{mem_db::MemDatabase, open_db};
 #[cfg(test)]
 use std::collections::BTreeSet;
 use std::collections::HashMap;
 use tn_config::ConsensusConfig;
-use tn_types::{
-    AuthorityIdentifier, TelcoinTempDirs, TnReceiver, TnSender, DEFAULT_BAD_NODES_STAKE_THRESHOLD,
-};
+use tn_types::{AuthorityIdentifier, TnReceiver, TnSender, DEFAULT_BAD_NODES_STAKE_THRESHOLD};
 #[allow(unused_imports)]
 use tokio::sync::mpsc::channel;
 use tracing::info;

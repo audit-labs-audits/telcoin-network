@@ -7,7 +7,7 @@
 
 use std::sync::Arc;
 
-use consensus_metrics::metered_channel::{self, channel_with_total_sender, Sender};
+use consensus_metrics::metered_channel::{self, channel_with_total_sender, MeteredMpscChannel};
 use narwhal_primary_metrics::{ConsensusMetrics, Metrics};
 use tn_types::{Certificate, Header, Round, TnSender, CHANNEL_CAPACITY};
 use tokio::sync::watch;
@@ -17,13 +17,13 @@ use crate::{
     proposer::OurDigestMessage,
 };
 
-#[derive(Clone, Debug)]
-pub struct ConsensusBus {
+#[derive(Debug)]
+struct ConsensusBusInner {
     /// Receives new certificates from the primary. The primary should send us new certificates
     /// only if it already sent us its whole history.
-    new_certificates: Sender<Certificate>,
+    new_certificates: MeteredMpscChannel<Certificate>,
     /// Outputs the sequence of ordered certificates to the primary (for cleanup and feedback).
-    committed_certificates: Sender<(Round, Vec<Certificate>)>,
+    committed_certificates: MeteredMpscChannel<(Round, Vec<Certificate>)>,
     /// Outputs the highest committed round & corresponding gc_round in the consensus.
     tx_consensus_round_updates: watch::Sender<ConsensusRound>,
     /// Hold onto a receiver to keep it "open".
@@ -31,19 +31,19 @@ pub struct ConsensusBus {
 
     /// Send missing certificates to the `CertificateFetcher`.
     /// Receives certificates with missing parents from the `Synchronizer`.
-    certificate_fetcher: Sender<CertificateFetcherCommand>,
+    certificate_fetcher: MeteredMpscChannel<CertificateFetcherCommand>,
     // Send valid a quorum of certificates' ids to the `Proposer` (along with their round).
     /// Receives the parents to include in the next header (along with their round number) from
     /// `Synchronizer`.
-    parents: Sender<(Vec<Certificate>, Round)>,
+    parents: MeteredMpscChannel<(Vec<Certificate>, Round)>,
     /// Receives the batches' digests from our workers.
-    our_digests: Sender<OurDigestMessage>,
+    our_digests: MeteredMpscChannel<OurDigestMessage>,
     /// Sends newly created headers to the `Certifier`.
-    headers: Sender<Header>,
+    headers: MeteredMpscChannel<Header>,
     /// Receiver for updates when Self's headers were committed by consensus.
     ///
     /// NOTE: this does not mean the header was executed yet.
-    committed_own_headers: Sender<(Round, Vec<Round>)>,
+    committed_own_headers: MeteredMpscChannel<(Round, Vec<Round>)>,
 
     /// Hold onto the consensus_metrics (mostly for testing)
     consensus_metrics: Arc<ConsensusMetrics>,
@@ -54,6 +54,11 @@ pub struct ConsensusBus {
     tx_narwhal_round_updates: watch::Sender<Round>,
     /// Hold onto the primary metrics (allow early creation)
     _rx_narwhal_round_updates: watch::Receiver<Round>,
+}
+
+#[derive(Clone, Debug)]
+pub struct ConsensusBus {
+    inner: Arc<ConsensusBusInner>,
 }
 
 impl Default for ConsensusBus {
@@ -108,64 +113,66 @@ impl ConsensusBus {
         let (tx_narwhal_round_updates, _rx_narwhal_round_updates) = watch::channel(0u64);
 
         Self {
-            new_certificates,
-            committed_certificates,
-            tx_consensus_round_updates,
-            _rx_consensus_round_updates,
-            certificate_fetcher,
-            parents,
-            our_digests,
-            headers,
-            committed_own_headers,
+            inner: Arc::new(ConsensusBusInner {
+                new_certificates,
+                committed_certificates,
+                tx_consensus_round_updates,
+                _rx_consensus_round_updates,
+                certificate_fetcher,
+                parents,
+                our_digests,
+                headers,
+                committed_own_headers,
 
-            tx_narwhal_round_updates,
-            _rx_narwhal_round_updates,
-            consensus_metrics,
-            primary_metrics,
+                tx_narwhal_round_updates,
+                _rx_narwhal_round_updates,
+                consensus_metrics,
+                primary_metrics,
+            }),
         }
     }
 
     pub fn new_certificates(&self) -> &impl TnSender<Certificate> {
-        &self.new_certificates
+        &self.inner.new_certificates
     }
 
     pub fn committed_certificates(&self) -> &impl TnSender<(Round, Vec<Certificate>)> {
-        &self.committed_certificates
+        &self.inner.committed_certificates
     }
 
     pub fn certificate_fetcher(&self) -> &impl TnSender<CertificateFetcherCommand> {
-        &self.certificate_fetcher
+        &self.inner.certificate_fetcher
     }
 
     pub fn parents(&self) -> &impl TnSender<(Vec<Certificate>, Round)> {
-        &self.parents
+        &self.inner.parents
     }
 
     pub fn consensus_round_updates(&self) -> &watch::Sender<ConsensusRound> {
-        &self.tx_consensus_round_updates
+        &self.inner.tx_consensus_round_updates
     }
 
     pub fn narwhal_round_updates(&self) -> &watch::Sender<u64> {
-        &self.tx_narwhal_round_updates
+        &self.inner.tx_narwhal_round_updates
     }
 
     pub fn our_digests(&self) -> &impl TnSender<OurDigestMessage> {
-        &self.our_digests
+        &self.inner.our_digests
     }
 
     pub fn headers(&self) -> &impl TnSender<Header> {
-        &self.headers
+        &self.inner.headers
     }
 
     pub fn committed_own_headers(&self) -> &impl TnSender<(Round, Vec<Round>)> {
-        &self.committed_own_headers
+        &self.inner.committed_own_headers
     }
 
     pub fn consensus_metrics(&self) -> Arc<ConsensusMetrics> {
-        self.consensus_metrics.clone()
+        self.inner.consensus_metrics.clone()
     }
 
     pub fn primary_metrics(&self) -> Arc<Metrics> {
-        self.primary_metrics.clone()
+        self.inner.primary_metrics.clone()
     }
 }

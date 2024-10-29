@@ -5,7 +5,7 @@
 
 use anemo::{rpc::Status, Network, Request, Response};
 use consensus_metrics::{
-    metered_channel::{channel_with_total, Sender},
+    metered_channel::{channel_with_total, MeteredMpscChannel},
     monitored_scope, spawn_logged_monitored_task,
 };
 use fastcrypto::hash::Hash as _;
@@ -90,7 +90,8 @@ struct Inner<DB> {
     // Send certificates to be accepted into a separate task that runs
     // `process_certificates_with_lock()` in a loop.
     // See comment above `process_certificates_with_lock()` for why this is necessary.
-    tx_certificate_acceptor: Sender<(Vec<Certificate>, oneshot::Sender<DagResult<()>>, bool)>,
+    tx_certificate_acceptor:
+        MeteredMpscChannel<(Vec<Certificate>, oneshot::Sender<DagResult<()>>, bool)>,
     consensus_bus: ConsensusBus,
     // Send own certificates to be broadcasted to all other peers.
     tx_own_certificate_broadcast: broadcast::Sender<Certificate>,
@@ -100,7 +101,7 @@ struct Inner<DB> {
     certificate_senders: Mutex<JoinSet<()>>,
     // A background task that synchronizes batches. A tuple of a header and the maximum accepted
     // age is sent over.
-    tx_batch_tasks: Sender<(Header, u64)>,
+    tx_batch_tasks: MeteredMpscChannel<(Header, u64)>,
     // Aggregates certificates to use as parents for new headers.
     certificates_aggregators: Mutex<BTreeMap<Round, Box<CertificatesAggregator>>>,
     // State for tracking suspended certificates and when they can be accepted.

@@ -48,7 +48,5 @@ parking_lot = { workspace = true }
 serde_yaml = { workspace = true }
 secp256k1 = { workspace = true }
 
-# for telcoin_temp_dirs (should maybe move to testing only- probably test-utils crate...).
-tempfile = { workspace = true }
-
 [dev-dependencies]
+tempfile = { workspace = true }

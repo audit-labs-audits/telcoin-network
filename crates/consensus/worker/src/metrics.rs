@@ -47,7 +47,6 @@ impl Metrics {
         Ok(Metrics {
             worker_metrics,
             channel_metrics,
-            //endpoint_metrics,
             inbound_network_metrics,
             outbound_network_metrics,
             network_connection_metrics,

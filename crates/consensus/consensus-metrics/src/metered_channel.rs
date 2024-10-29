@@ -21,13 +21,13 @@ mod metered_channel_tests;
 /// An [`mpsc::Sender`] with an [`IntGauge`]
 /// counting the number of currently queued items.
 #[derive(Debug)]
-pub struct Sender<T> {
+pub struct MeteredMpscChannel<T> {
     inner: mpsc::Sender<T>,
     gauge: IntGauge,
     receiver: Arc<Mutex<Option<Receiver<T>>>>,
 }
 
-impl<T> Clone for Sender<T> {
+impl<T> Clone for MeteredMpscChannel<T> {
     fn clone(&self) -> Self {
         Self {
             inner: self.inner.clone(),
@@ -109,7 +109,7 @@ impl<T: Send> TnReceiver<T> for Receiver<T> {
 
 impl<T> Unpin for Receiver<T> {}
 
-impl<T> Sender<T> {
+impl<T> MeteredMpscChannel<T> {
     /// Completes when the receiver has dropped.
     pub async fn closed(&self) {
         self.inner.closed().await
@@ -133,7 +133,7 @@ impl<T> Sender<T> {
     }
 }
 
-impl<T: Send> TnSender<T> for Sender<T> {
+impl<T: Send> TnSender<T> for MeteredMpscChannel<T> {
     /// Sends a value, waiting until there is capacity.
     /// Increments the gauge in case of a successful `send`.
     fn send(
@@ -226,11 +226,15 @@ impl<T> From<Receiver<T>> for ReceiverStream<T> {
 
 /// Similar to `mpsc::channel`, `channel` creates a pair of `Sender` and `Receiver`
 #[track_caller]
-pub fn channel<T>(size: usize, gauge: &IntGauge) -> (Sender<T>, Receiver<T>) {
+pub fn channel<T>(size: usize, gauge: &IntGauge) -> (MeteredMpscChannel<T>, Receiver<T>) {
     gauge.set(0);
     let (sender, receiver) = mpsc::channel(size);
     (
-        Sender { inner: sender, gauge: gauge.clone(), receiver: Arc::new(Mutex::new(None)) },
+        MeteredMpscChannel {
+            inner: sender,
+            gauge: gauge.clone(),
+            receiver: Arc::new(Mutex::new(None)),
+        },
         Receiver { inner: receiver, gauge: gauge.clone(), total: None },
     )
 }
@@ -240,31 +244,43 @@ pub fn channel_with_total<T>(
     size: usize,
     gauge: &IntGauge,
     total_gauge: &IntCounter,
-) -> (Sender<T>, Receiver<T>) {
+) -> (MeteredMpscChannel<T>, Receiver<T>) {
     gauge.set(0);
     let (sender, receiver) = mpsc::channel(size);
     (
-        Sender { inner: sender, gauge: gauge.clone(), receiver: Arc::new(Mutex::new(None)) },
+        MeteredMpscChannel {
+            inner: sender,
+            gauge: gauge.clone(),
+            receiver: Arc::new(Mutex::new(None)),
+        },
         Receiver { inner: receiver, gauge: gauge.clone(), total: Some(total_gauge.clone()) },
     )
 }
 
 /// Similar to `mpsc::channel`, `channel` creates a pair of `Sender` and `Receiver`
 /// This version will save the reciever in the sender for one time subscribtion.
-pub fn channel_sender<T>(size: usize, gauge: &IntGauge) -> Sender<T> {
+pub fn channel_sender<T>(size: usize, gauge: &IntGauge) -> MeteredMpscChannel<T> {
     gauge.set(0);
     let (sender, receiver) = mpsc::channel(size);
     let rx = Receiver { inner: receiver, gauge: gauge.clone(), total: None };
-    Sender { inner: sender, gauge: gauge.clone(), receiver: Arc::new(Mutex::new(Some(rx))) }
+    MeteredMpscChannel {
+        inner: sender,
+        gauge: gauge.clone(),
+        receiver: Arc::new(Mutex::new(Some(rx))),
+    }
 }
 
 pub fn channel_with_total_sender<T>(
     size: usize,
     gauge: &IntGauge,
     total_gauge: &IntCounter,
-) -> Sender<T> {
+) -> MeteredMpscChannel<T> {
     gauge.set(0);
     let (sender, receiver) = mpsc::channel(size);
     let rx = Receiver { inner: receiver, gauge: gauge.clone(), total: Some(total_gauge.clone()) };
-    Sender { inner: sender, gauge: gauge.clone(), receiver: Arc::new(Mutex::new(Some(rx))) }
+    MeteredMpscChannel {
+        inner: sender,
+        gauge: gauge.clone(),
+        receiver: Arc::new(Mutex::new(Some(rx))),
+    }
 }

@@ -1,8 +1,7 @@
 use std::path::PathBuf;
 
 use tempfile::{tempdir, TempDir};
-
-use crate::TelcoinDirs;
+use tn_types::TelcoinDirs;
 
 #[derive(Debug)]
 pub struct TelcoinTempDirs(TempDir);

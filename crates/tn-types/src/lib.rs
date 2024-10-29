@@ -28,9 +28,6 @@ pub use multiaddr::*;
 pub mod genesis;
 pub use genesis::*;
 
-pub mod telcoin_temp_dirs;
-pub use telcoin_temp_dirs::*;
-
 mod consensus;
 pub use consensus::*;
 

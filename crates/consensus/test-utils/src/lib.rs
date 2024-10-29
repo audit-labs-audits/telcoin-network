@@ -29,6 +29,9 @@ pub use helpers::*;
 mod artifacts;
 pub use artifacts::*;
 
+mod telcoin_temp_dirs;
+pub use telcoin_temp_dirs::*;
+
 #[cfg(test)]
 mod output_tests;
 #[cfg(test)]

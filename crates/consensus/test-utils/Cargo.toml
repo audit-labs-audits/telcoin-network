@@ -68,4 +68,13 @@ alloy = { workspace = true, features = [
 
 [dev-dependencies]
 narwhal-storage = { workspace = true }
+criterion = { workspace = true }
 futures.workspace = true
+
+[[bench]]
+name = "batch_digest"
+harness = false
+
+[[bench]]
+name = "verify_certificate"
+harness = false

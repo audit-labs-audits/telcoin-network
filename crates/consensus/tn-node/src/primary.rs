@@ -132,26 +132,11 @@ impl<CDB: ConsensusDatabase> PrimaryNodeInner<CDB> {
         // Used for recovering after crashes/restarts
         last_executed_sub_dag_index: u64,
     ) -> SubscriberResult<Vec<JoinHandle<()>>> {
-        /*let (tx_new_certificates, rx_new_certificates) = metered_channel::channel(
-            narwhal_primary::CHANNEL_CAPACITY,
-            &self.primary_metrics.primary_channel_metrics.tx_new_certificates,
-        );
-
-        let (tx_committed_certificates, rx_committed_certificates) = metered_channel::channel(
-            narwhal_primary::CHANNEL_CAPACITY,
-            &self.primary_metrics.primary_channel_metrics.tx_committed_certificates,
-        );*/
-
         let mut handles = Vec::new();
-        //let (tx_consensus_round_updates, rx_consensus_round_updates) =
-        //    watch::channel(ConsensusRound::new(0, 0));
 
         let (consensus_handles, leader_schedule) =
             self.spawn_consensus(&self.consensus_bus, last_executed_sub_dag_index).await?;
         handles.extend(consensus_handles);
-
-        // TODO: the same set of variables are sent to primary, consensus and downstream
-        // components. Consider using a holder struct to pass them around.
 
         // Spawn the primary.
         let primary_handles =
@@ -164,9 +149,6 @@ impl<CDB: ConsensusDatabase> PrimaryNodeInner<CDB> {
     /// Spawn the consensus core and the client executing transactions.
     ///
     /// Pass the sender channel for consensus output and executor metrics.
-    ///
-    /// TODO: Executor metrics is needed to create the metered channel. This
-    /// could be done a better way, but bigger priorities right now.
     async fn spawn_consensus(
         &self,
         consensus_bus: &ConsensusBus,
@@ -174,7 +156,6 @@ impl<CDB: ConsensusDatabase> PrimaryNodeInner<CDB> {
     ) -> SubscriberResult<(Vec<JoinHandle<()>>, LeaderSchedule)>
     where
         BlsPublicKey: VerifyingKey,
-        // State: ExecutionState + Send + Sync + 'static,
     {
         let channel_metrics = ChannelMetrics::default();
 

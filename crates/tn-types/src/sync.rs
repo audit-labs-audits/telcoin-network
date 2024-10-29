@@ -12,6 +12,8 @@ use std::{
     task::{Context, Poll},
 };
 
+use tokio::sync::{broadcast, mpsc};
+
 /// The default channel capacity for each channel.
 pub const CHANNEL_CAPACITY: usize = 10_000;
 
@@ -25,6 +27,8 @@ pub enum TryRecvError {
     /// The **channel**'s sending half has become disconnected, and there will
     /// never be any more data received on it.
     Disconnected,
+    /// If the underlying channel is a broadcast it has lagged and some messages were not received.
+    Lagged,
 }
 
 impl Error for TryRecvError {}
@@ -34,15 +38,26 @@ impl Display for TryRecvError {
         match self {
             TryRecvError::Empty => write!(f, "recv error: Empty"),
             TryRecvError::Disconnected => write!(f, "recv error: Disconnected"),
+            TryRecvError::Lagged => write!(f, "recv error: Lagged"),
         }
     }
 }
 
-impl From<tokio::sync::mpsc::error::TryRecvError> for TryRecvError {
-    fn from(value: tokio::sync::mpsc::error::TryRecvError) -> Self {
+impl From<mpsc::error::TryRecvError> for TryRecvError {
+    fn from(value: mpsc::error::TryRecvError) -> Self {
         match value {
             tokio::sync::mpsc::error::TryRecvError::Empty => Self::Empty,
             tokio::sync::mpsc::error::TryRecvError::Disconnected => Self::Disconnected,
+        }
+    }
+}
+
+impl From<broadcast::error::TryRecvError> for TryRecvError {
+    fn from(value: broadcast::error::TryRecvError) -> Self {
+        match value {
+            broadcast::error::TryRecvError::Empty => Self::Empty,
+            broadcast::error::TryRecvError::Closed => Self::Disconnected,
+            broadcast::error::TryRecvError::Lagged(_) => Self::Lagged,
         }
     }
 }
@@ -65,8 +80,14 @@ impl<T> std::fmt::Debug for SendError<T> {
     }
 }
 
-impl<T> From<tokio::sync::mpsc::error::SendError<T>> for SendError<T> {
+impl<T> From<mpsc::error::SendError<T>> for SendError<T> {
     fn from(value: tokio::sync::mpsc::error::SendError<T>) -> SendError<T> {
+        SendError(value.0)
+    }
+}
+
+impl<T> From<broadcast::error::SendError<T>> for SendError<T> {
+    fn from(value: broadcast::error::SendError<T>) -> SendError<T> {
         SendError(value.0)
     }
 }
@@ -82,6 +103,9 @@ pub enum TrySendError<T> {
     /// The receive half of the channel was explicitly closed or has been
     /// dropped.
     Closed(T),
+
+    /// Broadcast channel error.
+    Broadcast(T),
 }
 
 impl<T> Error for TrySendError<T> {}
@@ -91,6 +115,7 @@ impl<T> Display for TrySendError<T> {
         match self {
             TrySendError::Full(_) => write!(f, "Send Error: Full"),
             TrySendError::Closed(_) => write!(f, "Send Error: Closed"),
+            TrySendError::Broadcast(_) => write!(f, "Send Error: Broadcast"),
         }
     }
 }
@@ -100,16 +125,23 @@ impl<T> std::fmt::Debug for TrySendError<T> {
         match self {
             TrySendError::Full(_) => write!(f, "Send Error: Full"),
             TrySendError::Closed(_) => write!(f, "Send Error: Closed"),
+            TrySendError::Broadcast(_) => write!(f, "Send Error: Broadcast"),
         }
     }
 }
 
-impl<T> From<tokio::sync::mpsc::error::TrySendError<T>> for TrySendError<T> {
-    fn from(value: tokio::sync::mpsc::error::TrySendError<T>) -> TrySendError<T> {
+impl<T> From<mpsc::error::TrySendError<T>> for TrySendError<T> {
+    fn from(value: mpsc::error::TrySendError<T>) -> TrySendError<T> {
         match value {
             tokio::sync::mpsc::error::TrySendError::Full(t) => TrySendError::Full(t),
             tokio::sync::mpsc::error::TrySendError::Closed(t) => TrySendError::Closed(t),
         }
+    }
+}
+
+impl<T> From<broadcast::error::SendError<T>> for TrySendError<T> {
+    fn from(value: broadcast::error::SendError<T>) -> TrySendError<T> {
+        TrySendError::Broadcast(value.0)
     }
 }
 
@@ -143,4 +175,36 @@ pub trait TnSender<T>: Unpin + Clone {
     /// This is in contrast to subscribe which may give out the only receiver
     /// for some channel types (MPSC for instance).
     fn borrow_subscriber(&self) -> impl TnReceiver<T>;
+}
+
+impl<T: Send + Clone> TnSender<T> for broadcast::Sender<T> {
+    async fn send(&self, value: T) -> Result<(), SendError<T>> {
+        Ok(self.send(value).map(|_| ())?)
+    }
+
+    fn try_send(&self, message: T) -> Result<(), TrySendError<T>> {
+        Ok(self.send(message).map(|_| ())?)
+    }
+
+    fn subscribe(&self) -> impl TnReceiver<T> {
+        self.subscribe()
+    }
+
+    fn borrow_subscriber(&self) -> impl TnReceiver<T> {
+        self.subscribe()
+    }
+}
+
+impl<T: Send + Clone> TnReceiver<T> for broadcast::Receiver<T> {
+    async fn recv(&mut self) -> Option<T> {
+        broadcast::Receiver::recv(self).await.ok()
+    }
+
+    fn try_recv(&mut self) -> Result<T, TryRecvError> {
+        Ok(broadcast::Receiver::try_recv(self)?)
+    }
+
+    fn poll_recv(&mut self, _cx: &mut Context<'_>) -> Poll<Option<T>> {
+        panic!("poll_recv not implemented for tokio broadcast channels!")
+    }
 }

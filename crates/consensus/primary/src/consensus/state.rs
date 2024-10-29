@@ -281,7 +281,7 @@ pub struct Consensus<DB> {
     /// Receiver for shutdown.
     rx_shutdown: Noticer,
     /// Outputs the sequence of ordered certificates to the application layer.
-    tx_sequence: metered_channel::Sender<CommittedSubDag>,
+    tx_sequence: metered_channel::MeteredMpscChannel<CommittedSubDag>,
 
     /// The consensus protocol to run.
     protocol: Bullshark<DB>,
@@ -298,7 +298,7 @@ impl<DB: Database> Consensus<DB> {
     pub fn spawn(
         consensus_config: ConsensusConfig<DB>,
         consensus_bus: &ConsensusBus,
-        tx_sequence: metered_channel::Sender<CommittedSubDag>,
+        tx_sequence: metered_channel::MeteredMpscChannel<CommittedSubDag>,
         protocol: Bullshark<DB>,
     ) -> JoinHandle<()> {
         let metrics = consensus_bus.consensus_metrics();

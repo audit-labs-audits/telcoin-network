@@ -4,7 +4,8 @@
 //! Authority fixture for the cluster
 
 use crate::{
-    primary::PrimaryNodeDetails, worker::WorkerNodeDetails, TestExecutionNode, WorkerFixture,
+    primary::PrimaryNodeDetails, worker::WorkerNodeDetails, TelcoinTempDirs, TestExecutionNode,
+    WorkerFixture,
 };
 use fastcrypto::{hash::Hash, traits::KeyPair as _};
 use jsonrpsee::http_client::HttpClient;
@@ -16,7 +17,7 @@ use tn_config::{ConsensusConfig, KeyConfig};
 use tn_types::{
     Authority, AuthorityIdentifier, BlsKeypair, BlsPublicKey, Certificate, Committee, Config,
     ConsensusOutput, Header, HeaderBuilder, Multiaddr, NetworkKeypair, NetworkPublicKey, Round,
-    TelcoinTempDirs, Vote, WorkerCache, WorkerId,
+    Vote, WorkerCache, WorkerId,
 };
 use tokio::sync::{broadcast, RwLock};
 use tracing::info;
