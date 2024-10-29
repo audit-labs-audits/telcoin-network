@@ -6,14 +6,13 @@
 //! adiri is the current name for multi-node testnet.
 
 use crate::{
-    verify_proof_of_possession, BlsPublicKey, BlsSignature, Committee, CommitteeBuilder, Config,
-    ConfigTrait, Epoch, Intent, IntentMessage, Multiaddr, NetworkPublicKey, PrimaryInfo,
-    TelcoinDirs, ValidatorSignature, WorkerCache, WorkerIndex,
+    test_utils::contract_artifacts::{CONSENSUSREGISTRY_RUNTIMECODE, ERC1967PROXY_RUNTIMECODE}, verify_proof_of_possession, BlsPublicKey, BlsSignature, Committee, CommitteeBuilder, Config, ConfigTrait, Epoch, Intent, IntentMessage, Multiaddr, NetworkPublicKey, PrimaryInfo, TelcoinDirs, ValidatorSignature, WorkerCache, WorkerIndex
 };
+use alloy::hex;
 use eyre::Context;
 use fastcrypto::traits::{InsecureDefault, Signer};
 use reth_chainspec::ChainSpec;
-use reth_primitives::{constants::MIN_PROTOCOL_BASE_FEE, keccak256, Address, Genesis};
+use reth_primitives::{constants::MIN_PROTOCOL_BASE_FEE, keccak256, Address, Genesis, GenesisAccount, U256};
 use serde::{Deserialize, Serialize};
 use std::{
     collections::BTreeMap,
@@ -181,6 +180,34 @@ impl NetworkGenesis {
         self.validators.insert(validator.public_key().clone(), validator);
     }
 
+    pub fn construct_registry_genesis_accounts(validator_infos: Vec<ValidatorInfo>) -> Vec<(Address, GenesisAccount)> {
+        // placeholder for Telcoin governance addr
+        let owner = Address::random();
+        // let stake_amount = U256::from(1_000_000e18);
+        // let min_withdraw_amount = U256::from(10_000e18);
+        // todo: feed validator_infos to foundry startStateDiffRecording utility
+        // based on validators.length -> let validator1_slot, validator2_slot etc = slot && write keys
+        // let execution_storage_registry = read from foundry-generated file
+        let registry_impl = Address::random();
+        let registry_proxy = Address::from_word(hex!("00000000000000000000000007e17e17e17e17e17e17e17e17e17e17e17e17e1").into());
+        let rwtel = Address::from_word(hex!("00000000000000000000000000000000000000000000000000000000000007e1").into());
+        let registry_genesis_accounts = vec![
+            (registry_impl, GenesisAccount::default().with_code(Some(CONSENSUSREGISTRY_RUNTIMECODE.into()))),
+            (
+                registry_proxy, 
+                GenesisAccount::default()
+                .with_code(Some(ERC1967PROXY_RUNTIMECODE.into()))
+                // .with_storage(Some(
+                //     execution_storage_registry
+                //         .iter()
+                //         .map(|(k, v)| ((*k).into(), v.present_value.into()))
+                //         .collect(),
+                // )),
+            )
+        ];
+        return registry_genesis_accounts;
+    }
+
     /// Generate a [NetworkGenesis] by reading files in a directory.
     pub fn load_from_path<P>(telcoin_paths: &P) -> eyre::Result<Self>
     where
@@ -215,13 +242,18 @@ impl NetworkGenesis {
             }
         }
 
+        let tn_config: Config = Config::load_from_path(telcoin_paths.node_config_path())?;
+
+        // add ConsensusRegistry config to genesis
+        let validator_infos: Vec<ValidatorInfo> = validators.iter().map(|(_, info)| info.clone()).collect();
+        let registry_genesis_accounts = Self::construct_registry_genesis_accounts(validator_infos);
+        tn_config.chain_spec().genesis.extend_accounts(registry_genesis_accounts); // is this mutable?
+
         // prevent mutable key type
         // The keys being used here seem to trip this because they contain a OnceCell but do not
         // appear to be actually mutable.  So it should be safe to ignore this clippy warning...
         #[allow(clippy::mutable_key_type)]
         let validators = BTreeMap::from_iter(validators);
-
-        let tn_config: Config = Config::load_from_path(telcoin_paths.node_config_path())?;
 
         let network_genesis = Self {
             chain: tn_config.chain_spec(),
