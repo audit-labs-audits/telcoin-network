@@ -8,9 +8,9 @@
 use crate::{
     test_utils::contract_artifacts::{CONSENSUSREGISTRY_RUNTIMECODE, ERC1967PROXY_RUNTIMECODE}, verify_proof_of_possession, BlsPublicKey, BlsSignature, Committee, CommitteeBuilder, Config, ConfigTrait, Epoch, Intent, IntentMessage, Multiaddr, NetworkPublicKey, PrimaryInfo, TelcoinDirs, ValidatorSignature, WorkerCache, WorkerIndex
 };
-use alloy::{hex, primitives::FixedBytes, sol_types::SolValue};
+use alloy::{hex, primitives::FixedBytes, signers::k256::ecdsa, sol_types::SolValue};
 use eyre::Context;
-use fastcrypto::traits::{InsecureDefault, Signer, ToFromBytes};
+use fastcrypto::{ed25519, traits::{InsecureDefault, Signer, ToFromBytes}};
 use reth_chainspec::ChainSpec;
 use reth_primitives::{constants::MIN_PROTOCOL_BASE_FEE, keccak256, Address, Genesis, GenesisAccount, B256, U256};
 use reth_tracing::tracing_subscriber::registry;
@@ -193,58 +193,73 @@ impl NetworkGenesis {
             .map(|(k, v)| (k.parse().expect("Invalid key"), v.parse().expect("Invalid val")))
             .collect();
 
-        // declare flags used to label storage values for overwriting- could be pub consts if precalculated
-        let validator1_ecdsa_flag = keccak256("VALIDATOR1_ECDSA");
-        let validator2_ecdsa_flag = keccak256("VALIDATOR2_ECDSA");
-        let validator3_ecdsa_flag = keccak256("VALIDATOR3_ECDSA");
-        let validator4_ecdsa_flag = keccak256("VALIDATOR4_ECDSA");
-        //todo: handle (a,b,c) labels for each bls word
-        // let validator1_bls_flag_a = keccak256("VALIDATOR1_BLS_A");
-        // let validator1_bls_flag_b = keccak256("VALIDATOR1_BLS_B");
-        // let validator1_bls_flag_c = keccak256("VALIDATOR1_BLS_C");
-        // let validator2_bls_flag_a = keccak256("VALIDATOR2_BLS_A");
-        // let validator2_bls_flag_b = keccak256("VALIDATOR2_BLS_B");
-        // let validator2_bls_flag_c = keccak256("VALIDATOR2_BLS_C");
-        // let validator3_bls_flag_a = keccak256("VALIDATOR3_BLS_A");
-        // let validator3_bls_flag_b = keccak256("VALIDATOR3_BLS_B");
-        // let validator3_bls_flag_c = keccak256("VALIDATOR3_BLS_C");
-        // let validator4_bls_flag_a = keccak256("VALIDATOR4_BLS_A");
-        // let validator4_bls_flag_b = keccak256("VALIDATOR4_BLS_B");
-        // let validator4_bls_flag_c = keccak256("VALIDATOR4_BLS_C");
-        let validator1_ed25519_flag = keccak256("VALIDATOR1_ED25519");
-        let validator2_ed25519_flag = keccak256("VALIDATOR2_ED25519");
-        let validator3_ed25519_flag = keccak256("VALIDATOR3_ED25519");
-        let validator4_ed25519_flag = keccak256("VALIDATOR4_ED25519");
-
+            
+        let pubkey_flags = pubkey_flags();
         // iterate over BTreeMap to conditionally overwrite labeled values with ones that are now known
         for val in registry_storage_cfg.values_mut() {
-            if *val == validator1_ecdsa_flag {
-                *val = validator_infos[0].execution_address.into_word();
-            } else if *val == validator2_ecdsa_flag {
-                *val = validator_infos[1].execution_address.into_word();
-            } else if *val == validator3_ecdsa_flag {
-                *val = validator_infos[2].execution_address.into_word();
-            } else if *val == validator4_ecdsa_flag {
-                *val = validator_infos[3].execution_address.into_word();
-            } /* else if *val == validator1_bls_flag { // todo: handle each word
-                *val = validator_infos[0].bls_public_key;
-            } else if *val == validator2_ecdsa_flag {
-                *val = validator_infos[1].execution_address;
-            } else if *val == validator3_ecdsa_flag {
-                *val = validator_infos[2].execution_address;
-            } else if *val == validator4_ecdsa_flag {
-                *val = validator_infos[3].execution_address;
-            }
-            */ else if *val == validator1_ed25519_flag {
-                *val = FixedBytes::from_slice(validator_infos[0].primary_network_key().as_bytes());
-            } else if *val == validator2_ed25519_flag {
-                *val = FixedBytes::from_slice(validator_infos[1].primary_network_key().as_bytes());
-            } else if *val == validator3_ed25519_flag {
-                *val = FixedBytes::from_slice(validator_infos[2].primary_network_key().as_bytes());
-            } else if *val == validator4_ed25519_flag {
-                *val = FixedBytes::from_slice(validator_infos[3].primary_network_key().as_bytes());
-            } 
+            overwrite_if_flag(val, &pubkey_flags, &validator_infos);
         }
+
+        fn overwrite_if_flag(val: &mut FixedBytes<32>, flags: &[ValidatorFlags; 4], validator_infos: &Vec<ValidatorInfo>) {
+            for (i, flag) in flags.iter().enumerate() {
+                if *val == flag.bls_a {
+                    // todo: split public key and use first 32 bytes 
+                    // *val = validator_infos[i].bls_public_key().as_bytes().slice(0:32);
+                    // return;
+                } if *val == flag.bls_b {
+                    // todo: split public key and use second 32 bytes 
+                    // *val = validator_infos[i].bls_public_key().as_bytes().slice(32:64);
+                    // return;
+                } if *val == flag.bls_c {
+                    // todo: split public key and use last 32 bytes 
+                    // *val = validator_infos[i].bls_public_key().as_bytes().slice(64:96);
+                    // return;
+                } else if *val == flag.ecdsa {
+                    *val = validator_infos[i].execution_address.into_word();
+                    return;
+                } else if *val == flag.ed25519 {
+                    *val = FixedBytes::from_slice(validator_infos[i].primary_network_key().as_bytes());
+                    return;
+                }
+            }
+        }
+
+        struct ValidatorFlags {
+            bls_a: FixedBytes<32>,
+            bls_b: FixedBytes<32>,
+            bls_c: FixedBytes<32>,
+            ecdsa: FixedBytes<32>,
+            ed25519: FixedBytes<32>
+        }
+        /// Calculate flags used by Foundry util to label storage values for overwriting
+        /// could be pub consts if precalculated
+        fn pubkey_flags() -> [ValidatorFlags; 4] {
+            bls_a: keccak256("VALIDATOR1_BLS_1A");
+            bls_b: keccak256("VALIDATOR1_BLS_1B");
+            bls_c: keccak256("VALIDATOR1_BLS_1C");
+            ed25519: keccak256("VALIDATOR1_ED25519");
+            ecdsa: keccak256("VALIDATOR1_ECDSA");
+
+            bls_a: keccak256("VALIDATOR2_BLS_2A");
+            bls_b: keccak256("VALIDATOR2_BLS_2B");
+            bls_c: keccak256("VALIDATOR2_BLS_2C");
+            ed25519: keccak256("VALIDATOR2_ED25519");
+            ecdsa: keccak256("VALIDATOR2_ECDSA");
+
+            bls_a: keccak256("VALIDATOR3_BLS_3A");
+            bls_b: keccak256("VALIDATOR3_BLS_3B");
+            bls_c: keccak256("VALIDATOR3_BLS_3C");
+            ed25519: keccak256("VALIDATOR3_ED25519");
+            ecdsa: keccak256("VALIDATOR3_ECDSA");
+
+            bls_a: keccak256("VALIDATOR4_BLS_4A");
+            bls_b: keccak256("VALIDATOR4_BLS_4B");
+            bls_c: keccak256("VALIDATOR4_BLS_4C");
+            ed25519: keccak256("VALIDATOR4_ED25519");
+            ecdsa: keccak256("VALIDATOR4_ECDSA");
+        }
+
+
         let registry_impl = Address::random();
         let registry_proxy = Address::from_word(hex!("00000000000000000000000007e17e17e17e17e17e17e17e17e17e17e17e17e1").into());
         let registry_genesis_accounts = vec![
