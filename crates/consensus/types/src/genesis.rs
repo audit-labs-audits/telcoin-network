@@ -8,18 +8,19 @@
 use crate::{
     test_utils::contract_artifacts::{CONSENSUSREGISTRY_RUNTIMECODE, ERC1967PROXY_RUNTIMECODE}, verify_proof_of_possession, BlsPublicKey, BlsSignature, Committee, CommitteeBuilder, Config, ConfigTrait, Epoch, Intent, IntentMessage, Multiaddr, NetworkPublicKey, PrimaryInfo, TelcoinDirs, ValidatorSignature, WorkerCache, WorkerIndex
 };
-use alloy::hex;
+use alloy::{hex, primitives::FixedBytes, sol_types::SolValue};
 use eyre::Context;
-use fastcrypto::traits::{InsecureDefault, Signer};
+use fastcrypto::traits::{InsecureDefault, Signer, ToFromBytes};
 use reth_chainspec::ChainSpec;
-use reth_primitives::{constants::MIN_PROTOCOL_BASE_FEE, keccak256, Address, Genesis, GenesisAccount, U256};
+use reth_primitives::{constants::MIN_PROTOCOL_BASE_FEE, keccak256, Address, Genesis, GenesisAccount, B256, U256};
+use reth_tracing::tracing_subscriber::registry;
 use serde::{Deserialize, Serialize};
 use std::{
     collections::BTreeMap,
     ffi::OsStr,
     fmt::{Display, Formatter},
     fs,
-    path::Path,
+    path::{Path, PathBuf},
     sync::Arc,
 };
 use tracing::{info, warn};
@@ -180,29 +181,79 @@ impl NetworkGenesis {
         self.validators.insert(validator.public_key().clone(), validator);
     }
 
-    pub fn construct_registry_genesis_accounts(validator_infos: Vec<ValidatorInfo>) -> Vec<(Address, GenesisAccount)> {
-        // placeholder for Telcoin governance addr
-        let owner = Address::random();
-        // let stake_amount = U256::from(1_000_000e18);
-        // let min_withdraw_amount = U256::from(10_000e18);
-        // todo: feed validator_infos to foundry startStateDiffRecording utility
-        // based on validators.length -> let validator1_slot, validator2_slot etc = slot && write keys
-        // let execution_storage_registry = read from foundry-generated file
+    /// Read output file from Solidity GenerateConsensusRegistryStorage utility
+    /// to fetch storage configuration for ConsensusRegistry at genesis
+    /// 
+    /// Q: Should this function programmatically invoke the Foundry util directly?
+    pub fn construct_registry_genesis_accounts(registry_cfg_path: &PathBuf, validator_infos: Vec<ValidatorInfo>) -> Vec<(Address, GenesisAccount)> {
+        let content = fs::read_to_string(registry_cfg_path).expect("Failed to read consensus-registry-storage yaml");
+        let registry_storage_cfg: BTreeMap<String, String> = serde_yaml::from_str(&content).expect("Parsing failure");
+        let mut registry_storage_cfg: BTreeMap<FixedBytes<32>, FixedBytes<32>> = registry_storage_cfg
+            .into_iter()
+            .map(|(k, v)| (k.parse().expect("Invalid key"), v.parse().expect("Invalid val")))
+            .collect();
+
+        // declare flags used to label storage values for overwriting- could be pub consts if precalculated
+        let validator1_ecdsa_flag = keccak256("VALIDATOR1_ECDSA");
+        let validator2_ecdsa_flag = keccak256("VALIDATOR2_ECDSA");
+        let validator3_ecdsa_flag = keccak256("VALIDATOR3_ECDSA");
+        let validator4_ecdsa_flag = keccak256("VALIDATOR4_ECDSA");
+        //todo: handle (a,b,c) labels for each bls word
+        // let validator1_bls_flag_a = keccak256("VALIDATOR1_BLS_A");
+        // let validator1_bls_flag_b = keccak256("VALIDATOR1_BLS_B");
+        // let validator1_bls_flag_c = keccak256("VALIDATOR1_BLS_C");
+        // let validator2_bls_flag_a = keccak256("VALIDATOR2_BLS_A");
+        // let validator2_bls_flag_b = keccak256("VALIDATOR2_BLS_B");
+        // let validator2_bls_flag_c = keccak256("VALIDATOR2_BLS_C");
+        // let validator3_bls_flag_a = keccak256("VALIDATOR3_BLS_A");
+        // let validator3_bls_flag_b = keccak256("VALIDATOR3_BLS_B");
+        // let validator3_bls_flag_c = keccak256("VALIDATOR3_BLS_C");
+        // let validator4_bls_flag_a = keccak256("VALIDATOR4_BLS_A");
+        // let validator4_bls_flag_b = keccak256("VALIDATOR4_BLS_B");
+        // let validator4_bls_flag_c = keccak256("VALIDATOR4_BLS_C");
+        let validator1_ed25519_flag = keccak256("VALIDATOR1_ED25519");
+        let validator2_ed25519_flag = keccak256("VALIDATOR2_ED25519");
+        let validator3_ed25519_flag = keccak256("VALIDATOR3_ED25519");
+        let validator4_ed25519_flag = keccak256("VALIDATOR4_ED25519");
+
+        // iterate over BTreeMap to conditionally overwrite labeled values with ones that are now known
+        for val in registry_storage_cfg.values_mut() {
+            if *val == validator1_ecdsa_flag {
+                *val = validator_infos[0].execution_address.into_word();
+            } else if *val == validator2_ecdsa_flag {
+                *val = validator_infos[1].execution_address.into_word();
+            } else if *val == validator3_ecdsa_flag {
+                *val = validator_infos[2].execution_address.into_word();
+            } else if *val == validator4_ecdsa_flag {
+                *val = validator_infos[3].execution_address.into_word();
+            } /* else if *val == validator1_bls_flag { // todo: handle each word
+                *val = validator_infos[0].bls_public_key;
+            } else if *val == validator2_ecdsa_flag {
+                *val = validator_infos[1].execution_address;
+            } else if *val == validator3_ecdsa_flag {
+                *val = validator_infos[2].execution_address;
+            } else if *val == validator4_ecdsa_flag {
+                *val = validator_infos[3].execution_address;
+            }
+            */ else if *val == validator1_ed25519_flag {
+                *val = FixedBytes::from_slice(validator_infos[0].primary_network_key().as_bytes());
+            } else if *val == validator2_ed25519_flag {
+                *val = FixedBytes::from_slice(validator_infos[1].primary_network_key().as_bytes());
+            } else if *val == validator3_ed25519_flag {
+                *val = FixedBytes::from_slice(validator_infos[2].primary_network_key().as_bytes());
+            } else if *val == validator4_ed25519_flag {
+                *val = FixedBytes::from_slice(validator_infos[3].primary_network_key().as_bytes());
+            } 
+        }
         let registry_impl = Address::random();
         let registry_proxy = Address::from_word(hex!("00000000000000000000000007e17e17e17e17e17e17e17e17e17e17e17e17e1").into());
-        let rwtel = Address::from_word(hex!("00000000000000000000000000000000000000000000000000000000000007e1").into());
         let registry_genesis_accounts = vec![
             (registry_impl, GenesisAccount::default().with_code(Some(CONSENSUSREGISTRY_RUNTIMECODE.into()))),
             (
                 registry_proxy, 
                 GenesisAccount::default()
                 .with_code(Some(ERC1967PROXY_RUNTIMECODE.into()))
-                // .with_storage(Some(
-                //     execution_storage_registry
-                //         .iter()
-                //         .map(|(k, v)| ((*k).into(), v.present_value.into()))
-                //         .collect(),
-                // )),
+                .with_storage(Some(registry_storage_cfg)),
             )
         ];
         return registry_genesis_accounts;
@@ -246,7 +297,7 @@ impl NetworkGenesis {
 
         // add ConsensusRegistry config to genesis
         let validator_infos: Vec<ValidatorInfo> = validators.iter().map(|(_, info)| info.clone()).collect();
-        let registry_genesis_accounts = Self::construct_registry_genesis_accounts(validator_infos);
+        let registry_genesis_accounts = Self::construct_registry_genesis_accounts(&path, validator_infos);
         tn_config.chain_spec().genesis.extend_accounts(registry_genesis_accounts); // is this mutable?
 
         // prevent mutable key type
