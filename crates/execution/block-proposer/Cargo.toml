@@ -31,7 +31,6 @@ consensus-metrics = { workspace = true }
 
 [dev-dependencies]
 # unit tests
-tn-types = { workspace = true, features = ["test-utils"] }
 reth = { workspace = true }
 assert_matches = { workspace = true }
 reth-db = { workspace = true, features = ["test-utils"] }

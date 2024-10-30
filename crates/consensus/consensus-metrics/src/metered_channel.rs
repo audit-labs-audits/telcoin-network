@@ -1,19 +1,18 @@
 // Copyright (c) Telcoin, LLC
 // Copyright (c) Mysten Labs, Inc.
 // SPDX-License-Identifier: Apache-2.0
-#![allow(dead_code)]
 
-use async_trait::async_trait;
-use std::future::Future;
 // TODO: complete tests - This kinda sorta facades the whole tokio::mpsc::{Sender, Receiver}:
 // without tests, this will be fragile to maintain.
 use futures::{FutureExt, Stream, TryFutureExt};
+use parking_lot::{Mutex, MutexGuard};
 use prometheus::{IntCounter, IntGauge};
-use std::task::{Context, Poll};
-use tokio::sync::mpsc::{
-    self,
-    error::{SendError, TryRecvError, TrySendError},
+use std::{
+    sync::Arc,
+    task::{Context, Poll},
 };
+use tn_types::{TnReceiver, TnSender};
+use tokio::sync::mpsc::{self};
 
 #[cfg(test)]
 #[path = "tests/metered_channel_tests.rs"]
@@ -22,14 +21,38 @@ mod metered_channel_tests;
 /// An [`mpsc::Sender`] with an [`IntGauge`]
 /// counting the number of currently queued items.
 #[derive(Debug)]
-pub struct Sender<T> {
+pub struct MeteredMpscChannel<T> {
     inner: mpsc::Sender<T>,
     gauge: IntGauge,
+    receiver: Arc<Mutex<Option<Receiver<T>>>>,
 }
 
-impl<T> Clone for Sender<T> {
+impl<T> Clone for MeteredMpscChannel<T> {
     fn clone(&self) -> Self {
-        Self { inner: self.inner.clone(), gauge: self.gauge.clone() }
+        Self {
+            inner: self.inner.clone(),
+            gauge: self.gauge.clone(),
+            receiver: self.receiver.clone(),
+        }
+    }
+}
+
+#[derive(Debug)]
+pub struct BorrowedReceiver<'a, T> {
+    guard: MutexGuard<'a, Option<Receiver<T>>>,
+}
+
+impl<'a, T: Send> TnReceiver<T> for BorrowedReceiver<'a, T> {
+    async fn recv(&mut self) -> Option<T> {
+        self.guard.as_mut().expect("receiver has been taken!").recv().await
+    }
+
+    fn try_recv(&mut self) -> Result<T, tn_types::TryRecvError> {
+        self.guard.as_mut().expect("receiver has been taken!").try_recv()
+    }
+
+    fn poll_recv(&mut self, cx: &mut Context<'_>) -> Poll<Option<T>> {
+        self.guard.as_mut().expect("receiver has been taken!").poll_recv(cx)
     }
 }
 
@@ -43,44 +66,34 @@ pub struct Receiver<T> {
 }
 
 impl<T> Receiver<T> {
-    /// Receives the next value for this receiver.
-    /// Decrements the gauge in case of a successful `recv`.
-    pub async fn recv(&mut self) -> Option<T> {
-        self.inner
-            .recv()
-            .inspect(|opt| {
-                if opt.is_some() {
-                    self.gauge.dec();
-                    if let Some(total_gauge) = &self.total {
-                        total_gauge.inc();
-                    }
-                }
-            })
-            .await
-    }
-
-    /// Attempts to receive the next value for this receiver.
-    /// Decrements the gauge in case of a successful `try_recv`.
-    pub fn try_recv(&mut self) -> Result<T, TryRecvError> {
-        self.inner.try_recv().inspect(|_| {
-            self.gauge.dec();
-            if let Some(total_gauge) = &self.total {
-                total_gauge.inc();
-            }
-        })
-    }
-
-    // TODO: facade [`blocking_recv`](tokio::mpsc::Receiver::blocking_recv) under the tokio feature
-    // flag "sync"
-
     /// Closes the receiving half of a channel without dropping it.
     pub fn close(&mut self) {
         self.inner.close()
     }
+}
 
-    /// Polls to receive the next message on this channel.
-    /// Decrements the gauge in case of a successful `poll_recv`.
-    pub fn poll_recv(&mut self, cx: &mut Context<'_>) -> Poll<Option<T>> {
+impl<T: Send> TnReceiver<T> for Receiver<T> {
+    fn recv(&mut self) -> impl std::future::Future<Output = Option<T>> + Send {
+        self.inner.recv().inspect(|opt| {
+            if opt.is_some() {
+                self.gauge.dec();
+                if let Some(total_gauge) = &self.total {
+                    total_gauge.inc();
+                }
+            }
+        })
+    }
+
+    fn try_recv(&mut self) -> Result<T, tn_types::TryRecvError> {
+        Ok(self.inner.try_recv().inspect(|_| {
+            self.gauge.dec();
+            if let Some(total_gauge) = &self.total {
+                total_gauge.inc();
+            }
+        })?)
+    }
+
+    fn poll_recv(&mut self, cx: &mut Context<'_>) -> Poll<Option<T>> {
         match self.inner.poll_recv(cx) {
             res @ Poll::Ready(Some(_)) => {
                 self.gauge.dec();
@@ -96,60 +109,11 @@ impl<T> Receiver<T> {
 
 impl<T> Unpin for Receiver<T> {}
 
-/// A newtype for an `mpsc::Permit` which allows us to inject gauge accounting
-/// in the case the permit is dropped w/o sending
-pub struct Permit<'a, T> {
-    permit: Option<mpsc::Permit<'a, T>>,
-    gauge_ref: &'a IntGauge,
-}
-
-impl<'a, T> Permit<'a, T> {
-    pub fn new(permit: mpsc::Permit<'a, T>, gauge_ref: &'a IntGauge) -> Permit<'a, T> {
-        Permit { permit: Some(permit), gauge_ref }
-    }
-
-    pub fn send(mut self, value: T) {
-        let sender = self.permit.take().expect("Permit invariant violated!");
-        sender.send(value);
-        // skip the drop logic, see https://github.com/tokio-rs/tokio/blob/a66884a2fb80d1180451706f3c3e006a3fdcb036/tokio/src/sync/mpsc/bounded.rs#L1155-L1163
-        std::mem::forget(self);
-    }
-}
-
-impl<'a, T> Drop for Permit<'a, T> {
-    fn drop(&mut self) {
-        // in the case the permit is dropped without sending, we still want to decrease the
-        // occupancy of the channel
-        self.gauge_ref.dec()
-    }
-}
-
-impl<T> Sender<T> {
-    /// Sends a value, waiting until there is capacity.
-    /// Increments the gauge in case of a successful `send`.
-    pub async fn send(&self, value: T) -> Result<(), SendError<T>> {
-        self.inner.send(value).inspect_ok(|_| self.gauge.inc()).await
-    }
-
+impl<T> MeteredMpscChannel<T> {
     /// Completes when the receiver has dropped.
     pub async fn closed(&self) {
         self.inner.closed().await
     }
-
-    /// Attempts to immediately send a message on this `Sender`
-    /// Increments the gauge in case of a successful `try_send`.
-    pub fn try_send(&self, message: T) -> Result<(), TrySendError<T>> {
-        self.inner
-            .try_send(message)
-            // remove this unsightly hack once https://github.com/rust-lang/rust/issues/91345 is resolved
-            .inspect(|_| {
-                self.gauge.inc();
-            })
-    }
-
-    // TODO: facade [`send_timeout`](tokio::mpsc::Sender::send_timeout) under the tokio feature flag
-    // "time" TODO: facade [`blocking_send`](tokio::mpsc::Sender::blocking_send) under the tokio
-    // feature flag "sync"
 
     /// Checks if the channel has been closed. This happens when the
     /// [`Receiver`] is dropped, or when the [`Receiver::close`] method is
@@ -158,48 +122,45 @@ impl<T> Sender<T> {
         self.inner.is_closed()
     }
 
-    /// Waits for channel capacity. Once capacity to send one message is
-    /// available, it is reserved for the caller.
-    /// Increments the gauge in case of a successful `reserve`.
-    pub async fn reserve(&self) -> Result<Permit<'_, T>, SendError<()>> {
-        self.inner
-            .reserve()
-            // remove this unsightly hack once https://github.com/rust-lang/rust/issues/91345 is resolved
-            .map(|val| {
-                val.map(|permit| {
-                    self.gauge.inc();
-                    Permit::new(permit, &self.gauge)
-                })
-            })
-            .await
-    }
-
-    /// Tries to acquire a slot in the channel without waiting for the slot to become
-    /// available.
-    /// Increments the gauge in case of a successful `try_reserve`.
-    pub fn try_reserve(&self) -> Result<Permit<'_, T>, TrySendError<()>> {
-        self.inner.try_reserve().map(|val| {
-            // remove this unsightly hack once https://github.com/rust-lang/rust/issues/91345 is resolved
-            self.gauge.inc();
-            Permit::new(val, &self.gauge)
-        })
-    }
-
-    // TODO: consider exposing the _owned methods
-
-    // Note: not exposing `same_channel`, as it is hard to implement with callers able to
-    // break the coupling between channel and gauge using `gauge`.
-
     /// Returns the current capacity of the channel.
     pub fn capacity(&self) -> usize {
         self.inner.capacity()
     }
 
-    // We're voluntarily not putting WeakSender under a facade.
-
     /// Returns a reference to the underlying gauge.
     pub fn gauge(&self) -> &IntGauge {
         &self.gauge
+    }
+}
+
+impl<T: Send> TnSender<T> for MeteredMpscChannel<T> {
+    /// Sends a value, waiting until there is capacity.
+    /// Increments the gauge in case of a successful `send`.
+    fn send(
+        &self,
+        value: T,
+    ) -> impl std::future::Future<Output = Result<(), tn_types::SendError<T>>> + Send {
+        self.inner.send(value).inspect_ok(|_| self.gauge.inc()).map_err(|e| e.into())
+    }
+
+    /// Attempts to immediately send a message on this `Sender`
+    /// Increments the gauge in case of a successful `try_send`.
+    fn try_send(&self, message: T) -> Result<(), tn_types::TrySendError<T>> {
+        Ok(self
+            .inner
+            .try_send(message)
+            // remove this unsightly hack once https://github.com/rust-lang/rust/issues/91345 is resolved
+            .inspect(|_| {
+                self.gauge.inc();
+            })?)
+    }
+
+    fn subscribe(&self) -> impl TnReceiver<T> {
+        self.receiver.lock().take().expect("No receiver to subscribe, can only subscribe once!")
+    }
+
+    fn borrow_subscriber(&self) -> impl TnReceiver<T> {
+        BorrowedReceiver { guard: self.receiver.lock() }
     }
 }
 
@@ -230,7 +191,7 @@ impl<T> ReceiverStream<T> {
     }
 }
 
-impl<T> Stream for ReceiverStream<T> {
+impl<T: Send> Stream for ReceiverStream<T> {
     type Item = T;
 
     fn poll_next(
@@ -259,20 +220,21 @@ impl<T> From<Receiver<T>> for ReceiverStream<T> {
     }
 }
 
-// TODO: facade PollSender
-// TODO: add prom metrics reporting for gauge and migrate all existing use cases.
-
 ////////////////////////////////////////////////////////////////
 /// Constructor
 ////////////////////////////////////////////////////////////////
 
 /// Similar to `mpsc::channel`, `channel` creates a pair of `Sender` and `Receiver`
 #[track_caller]
-pub fn channel<T>(size: usize, gauge: &IntGauge) -> (Sender<T>, Receiver<T>) {
+pub fn channel<T>(size: usize, gauge: &IntGauge) -> (MeteredMpscChannel<T>, Receiver<T>) {
     gauge.set(0);
     let (sender, receiver) = mpsc::channel(size);
     (
-        Sender { inner: sender, gauge: gauge.clone() },
+        MeteredMpscChannel {
+            inner: sender,
+            gauge: gauge.clone(),
+            receiver: Arc::new(Mutex::new(None)),
+        },
         Receiver { inner: receiver, gauge: gauge.clone(), total: None },
     )
 }
@@ -282,24 +244,43 @@ pub fn channel_with_total<T>(
     size: usize,
     gauge: &IntGauge,
     total_gauge: &IntCounter,
-) -> (Sender<T>, Receiver<T>) {
+) -> (MeteredMpscChannel<T>, Receiver<T>) {
     gauge.set(0);
     let (sender, receiver) = mpsc::channel(size);
     (
-        Sender { inner: sender, gauge: gauge.clone() },
+        MeteredMpscChannel {
+            inner: sender,
+            gauge: gauge.clone(),
+            receiver: Arc::new(Mutex::new(None)),
+        },
         Receiver { inner: receiver, gauge: gauge.clone(), total: Some(total_gauge.clone()) },
     )
 }
 
-#[async_trait]
-pub trait WithPermit<T> {
-    async fn with_permit<F: Future + Send>(&self, f: F) -> Option<(Permit<T>, F::Output)>;
+/// Similar to `mpsc::channel`, `channel` creates a pair of `Sender` and `Receiver`
+/// This version will save the reciever in the sender for one time subscribtion.
+pub fn channel_sender<T>(size: usize, gauge: &IntGauge) -> MeteredMpscChannel<T> {
+    gauge.set(0);
+    let (sender, receiver) = mpsc::channel(size);
+    let rx = Receiver { inner: receiver, gauge: gauge.clone(), total: None };
+    MeteredMpscChannel {
+        inner: sender,
+        gauge: gauge.clone(),
+        receiver: Arc::new(Mutex::new(Some(rx))),
+    }
 }
 
-#[async_trait]
-impl<T: Send> WithPermit<T> for Sender<T> {
-    async fn with_permit<F: Future + Send>(&self, f: F) -> Option<(Permit<T>, F::Output)> {
-        let permit = self.reserve().await.ok()?;
-        Some((permit, f.await))
+pub fn channel_with_total_sender<T>(
+    size: usize,
+    gauge: &IntGauge,
+    total_gauge: &IntCounter,
+) -> MeteredMpscChannel<T> {
+    gauge.set(0);
+    let (sender, receiver) = mpsc::channel(size);
+    let rx = Receiver { inner: receiver, gauge: gauge.clone(), total: Some(total_gauge.clone()) };
+    MeteredMpscChannel {
+        inner: sender,
+        gauge: gauge.clone(),
+        receiver: Arc::new(Mutex::new(Some(rx))),
     }
 }

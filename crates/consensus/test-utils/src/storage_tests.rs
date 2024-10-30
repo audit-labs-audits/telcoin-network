@@ -9,14 +9,13 @@ use std::{
     time::Instant,
 };
 
-use crate::CommitteeFixture;
+use crate::{fixture_batch_with_transactions, temp_dir, CommitteeFixture};
 use fastcrypto::hash::Hash;
 use futures::future::join_all;
 use narwhal_storage::{CertificateStore, ConsensusStore, ProposerStore};
 use narwhal_typed_store::{mem_db::MemDatabase, open_db, traits::Database};
 use tempfile::TempDir;
 use tn_types::{
-    test_utils::{fixture_batch_with_transactions, temp_dir},
     AuthorityIdentifier, Certificate, CertificateDigest, CommittedSubDag, Header, HeaderBuilder,
     ReputationScores, Round,
 };
@@ -231,7 +230,7 @@ async fn test_certificate_store_next_round_number() {
     let mut certs = Vec::new();
     for r in &rounds {
         let mut c = cert.clone();
-        c.header_mut().update_round(*r);
+        c.header_mut_for_test().update_round_for_test(*r);
         certs.push(c);
     }
 

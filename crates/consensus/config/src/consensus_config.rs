@@ -2,11 +2,11 @@ use std::sync::Arc;
 
 use narwhal_network::client::NetworkClient;
 use narwhal_storage::NodeStorage;
-use narwhal_typed_store::{mem_db::MemDatabase, traits::Database};
-use rand::rngs::ThreadRng;
+use narwhal_typed_store::traits::Database;
+use parking_lot::Mutex;
 use tn_types::{
-    test_utils::TelcoinTempDirs, Authority, Committee, Config, ConfigTrait, Parameters,
-    TelcoinDirs, WorkerCache,
+    Authority, Committee, Config, ConfigTrait, Noticer, Notifier, Parameters, TelcoinDirs,
+    WorkerCache,
 };
 
 use crate::KeyConfig;
@@ -26,6 +26,7 @@ struct ConsensusConfigInner<DB> {
 pub struct ConsensusConfig<DB> {
     inner: Arc<ConsensusConfigInner<DB>>,
     worker_cache: Option<Arc<WorkerCache>>,
+    shutdown: Arc<Mutex<Notifier>>,
 }
 
 impl<DB> ConsensusConfig<DB>
@@ -72,6 +73,8 @@ where
         )
     }
 
+    /// Create a new config with a committe.
+    /// Exposed for testing ONLY.
     pub fn new_with_committee<TND: TelcoinDirs + 'static>(
         config: Config,
         tn_datadir: TND,
@@ -93,6 +96,7 @@ where
 
         let tn_datadir = Arc::new(tn_datadir);
         let worker_cache = worker_cache.take().map(Arc::new);
+        let shutdown = Arc::new(Mutex::new(Notifier::new()));
         Ok(Self {
             inner: Arc::new(ConsensusConfigInner {
                 config,
@@ -104,18 +108,18 @@ where
                 authority,
             }),
             worker_cache,
+            shutdown,
         })
     }
 
-    /// Create a new config with temp dirs, mem db, random keys and defaults.
-    /// Useful for testing.  This will panic on error.
-    pub fn new_test_config() -> ConsensusConfig<MemDatabase> {
-        let config = Config::default();
-        let tn_datadir = TelcoinTempDirs::default();
-        let node_storage = NodeStorage::reopen(MemDatabase::default());
-        let key_configs = KeyConfig::with_random(&mut ThreadRng::default());
-        ConsensusConfig::<MemDatabase>::new(config, tn_datadir, node_storage, key_configs)
-            .expect("failed to create config!")
+    /// Return a Noticer that will signal when shutdown has occurred.
+    pub fn subscribe_shutdown(&self) -> Noticer {
+        self.shutdown.lock().subscribe()
+    }
+
+    /// Sends the shudown signal to all subscribers of the configs shutdown Noticer.
+    pub fn shutdown(&self) {
+        self.shutdown.lock().notify();
     }
 
     pub fn config(&self) -> &Config {

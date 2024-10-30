@@ -89,3 +89,93 @@ pub trait TelcoinDirs: std::fmt::Debug + Send + Sync + 'static {
     /// Return the path to narwhal's node storage.
     fn narwhal_db_path(&self) -> PathBuf;
 }
+
+impl TelcoinDirs for PathBuf {
+    fn node_config_path(&self) -> PathBuf {
+        self.join("telcoin-network.yaml")
+    }
+
+    fn validator_keys_path(&self) -> PathBuf {
+        self.join("validator-keys")
+    }
+
+    fn validator_info_path(&self) -> PathBuf {
+        self.join("validator")
+    }
+
+    fn genesis_path(&self) -> PathBuf {
+        self.join("genesis")
+    }
+
+    fn committee_path(&self) -> PathBuf {
+        self.genesis_path().join("committee.yaml")
+    }
+
+    fn worker_cache_path(&self) -> PathBuf {
+        self.genesis_path().join("worker_cache.yaml")
+    }
+
+    fn narwhal_db_path(&self) -> PathBuf {
+        self.join("narwhal-db")
+    }
+}
+
+impl TelcoinDirs for Path {
+    fn node_config_path(&self) -> PathBuf {
+        self.join("telcoin-network.yaml")
+    }
+
+    fn validator_keys_path(&self) -> PathBuf {
+        self.join("validator-keys")
+    }
+
+    fn validator_info_path(&self) -> PathBuf {
+        self.join("validator")
+    }
+
+    fn genesis_path(&self) -> PathBuf {
+        self.join("genesis")
+    }
+
+    fn committee_path(&self) -> PathBuf {
+        self.genesis_path().join("committee.yaml")
+    }
+
+    fn worker_cache_path(&self) -> PathBuf {
+        self.genesis_path().join("worker_cache.yaml")
+    }
+
+    fn narwhal_db_path(&self) -> PathBuf {
+        self.join("narwhal-db")
+    }
+}
+
+impl TelcoinDirs for &'static Path {
+    fn node_config_path(&self) -> PathBuf {
+        self.join("telcoin-network.yaml")
+    }
+
+    fn validator_keys_path(&self) -> PathBuf {
+        self.join("validator-keys")
+    }
+
+    fn validator_info_path(&self) -> PathBuf {
+        self.join("validator")
+    }
+
+    fn genesis_path(&self) -> PathBuf {
+        self.join("genesis")
+    }
+
+    fn committee_path(&self) -> PathBuf {
+        self.genesis_path().join("committee.yaml")
+    }
+
+    fn worker_cache_path(&self) -> PathBuf {
+        self.genesis_path().join("worker_cache.yaml")
+    }
+
+    fn narwhal_db_path(&self) -> PathBuf {
+        self.join("narwhal-db")
+    }
+}

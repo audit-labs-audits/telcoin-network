@@ -6,8 +6,8 @@ use narwhal_typed_store::mem_db::MemDatabase;
 use prometheus::core::Metric;
 use reth::tasks::TaskManager;
 
+use narwhal_test_utils::setup_test_tracing;
 use std::time::Duration;
-use tn_types::test_utils::setup_test_tracing;
 use tracing::info;
 
 #[ignore]

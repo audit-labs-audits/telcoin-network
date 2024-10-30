@@ -9,9 +9,7 @@ use prometheus::{
     register_int_gauge_with_registry, Histogram, HistogramVec, IntCounter, IntCounterVec, IntGauge,
     Registry,
 };
-use std::{sync::Arc, time::Duration};
-use tn_types::MetricsCallbackProvider;
-use tonic::Code;
+use std::sync::Arc;
 
 const LATENCY_SEC_BUCKETS: &[f64] = &[
     0.001, 0.005, 0.01, 0.05, 0.1, 0.15, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9, 1.0, 1.2, 1.4,
@@ -23,7 +21,6 @@ const LATENCY_SEC_BUCKETS: &[f64] = &[
 pub struct Metrics {
     pub worker_metrics: Arc<WorkerMetrics>,
     pub channel_metrics: Arc<WorkerChannelMetrics>,
-    pub endpoint_metrics: Arc<WorkerEndpointMetrics>,
     pub inbound_network_metrics: Arc<NetworkMetrics>,
     pub outbound_network_metrics: Arc<NetworkMetrics>,
     pub network_connection_metrics: Arc<NetworkConnectionMetrics>,
@@ -36,9 +33,6 @@ impl Metrics {
 
         // Channel metrics
         let channel_metrics = Arc::new(WorkerChannelMetrics::try_new(registry)?);
-
-        // Endpoint metrics
-        let endpoint_metrics = Arc::new(WorkerEndpointMetrics::try_new(registry)?);
 
         // The metrics used for communicating over the network
         let inbound_network_metrics =
@@ -53,7 +47,6 @@ impl Metrics {
         Ok(Metrics {
             worker_metrics,
             channel_metrics,
-            endpoint_metrics,
             inbound_network_metrics,
             outbound_network_metrics,
             network_connection_metrics,
@@ -230,48 +223,5 @@ impl WorkerChannelMetrics {
                 registry
             )?,
         })
-    }
-}
-
-#[derive(Clone)]
-pub struct WorkerEndpointMetrics {
-    /// Counter of requests, route is a label (ie separate timeseries per route)
-    requests_by_route: IntCounterVec,
-    /// Request latency, route is a label
-    req_latency_by_route: HistogramVec,
-}
-
-impl WorkerEndpointMetrics {
-    fn try_new(registry: &Registry) -> Result<Self, prometheus::Error> {
-        Ok(Self {
-            requests_by_route: register_int_counter_vec_with_registry!(
-                "worker_requests_by_route",
-                "Number of requests by route",
-                &["route", "status", "grpc_status_code"],
-                registry
-            )?,
-            req_latency_by_route: register_histogram_vec_with_registry!(
-                "worker_req_latency_by_route",
-                "Latency of a request by route",
-                &["route", "status", "grpc_status_code"],
-                registry
-            )?,
-        })
-    }
-}
-
-impl MetricsCallbackProvider for WorkerEndpointMetrics {
-    fn on_request(&self, _path: String) {
-        // For now we just do nothing
-    }
-
-    fn on_response(&self, path: String, latency: Duration, status: u16, grpc_status_code: Code) {
-        let code: i32 = grpc_status_code.into();
-        let labels = [path.as_str(), &status.to_string(), &code.to_string()];
-
-        self.requests_by_route.with_label_values(&labels).inc();
-
-        let req_latency_secs = latency.as_secs_f64();
-        self.req_latency_by_route.with_label_values(&labels).observe(req_latency_secs);
     }
 }

@@ -14,10 +14,8 @@ use reth_tracing::init_test_tracing;
 use tempfile::TempDir;
 use tn_types::AuthorityIdentifier;
 
-use narwhal_test_utils::CommitteeFixture;
-use tn_types::{
-    test_utils::mock_certificate, Certificate, CommittedSubDag, ReputationScores, Round,
-};
+use narwhal_test_utils::{mock_certificate, CommitteeFixture};
+use tn_types::{Certificate, CommittedSubDag, ReputationScores, Round};
 
 use crate::consensus::{Dag, LeaderSchedule, LeaderSwapTable};
 

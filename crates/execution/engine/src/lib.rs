@@ -298,7 +298,7 @@ impl<BT, CE> std::fmt::Debug for ExecutorEngine<BT, CE> {
 mod tests {
     use crate::ExecutorEngine;
     use fastcrypto::hash::Hash as _;
-    use narwhal_test_utils::default_test_execution_node;
+    use narwhal_test_utils::{default_test_execution_node, seeded_genesis_from_random_batches};
     use reth_blockchain_tree::BlockchainTreeViewer;
     use reth_chainspec::ChainSpec;
     use reth_primitives::{
@@ -311,8 +311,8 @@ mod tests {
     use std::{collections::VecDeque, str::FromStr as _, sync::Arc, time::Duration};
     use tn_block_builder::test_utils::execute_test_worker_block;
     use tn_types::{
-        adiri_chain_spec_arc, adiri_genesis, now, test_utils::seeded_genesis_from_random_batches,
-        BlockHash, Certificate, CommittedSubDag, ConsensusOutput, ReputationScores,
+        adiri_chain_spec_arc, adiri_genesis, now, BlockHash, Certificate, CommittedSubDag,
+        ConsensusOutput, ReputationScores,
     };
     use tokio::{sync::oneshot, time::timeout};
     use tokio_stream::wrappers::BroadcastStream;
@@ -496,8 +496,8 @@ mod tests {
     async fn test_queued_output_executes_after_sending_channel_closed() -> eyre::Result<()> {
         init_test_tracing();
         // create batches for consensus output
-        let mut batches_1 = tn_types::test_utils::batches(4); // create 4 batches
-        let mut batches_2 = tn_types::test_utils::batches(4); // create 4 batches
+        let mut batches_1 = narwhal_test_utils::batches(4); // create 4 batches
+        let mut batches_2 = narwhal_test_utils::batches(4); // create 4 batches
 
         // okay to clone these because they are only used to seed genesis, decode transactions, and
         // recover signers
@@ -589,7 +589,7 @@ mod tests {
         let timestamp = now();
         let mut leader_1 = Certificate::default();
         // update timestamp
-        leader_1.update_created_at(timestamp);
+        leader_1.update_created_at_for_test(timestamp);
         let sub_dag_index_1 = 1;
         let reputation_scores = ReputationScores::default();
         let previous_sub_dag = None;
@@ -614,7 +614,7 @@ mod tests {
         // create second output
         let mut leader_2 = Certificate::default();
         // update timestamp
-        leader_2.update_created_at(timestamp + 2);
+        leader_2.update_created_at_for_test(timestamp + 2);
         let sub_dag_index_2 = 2;
         let reputation_scores = ReputationScores::default();
         let previous_sub_dag = Some(subdag_1.as_ref());
@@ -825,8 +825,8 @@ mod tests {
     async fn test_execution_succeeds_with_duplicate_transactions() -> eyre::Result<()> {
         init_test_tracing();
         // create batches for consensus output
-        let mut batches_1 = tn_types::test_utils::batches(4); // create 4 batches
-        let mut batches_2 = tn_types::test_utils::batches(4); // create 4 batches
+        let mut batches_1 = narwhal_test_utils::batches(4); // create 4 batches
+        let mut batches_2 = narwhal_test_utils::batches(4); // create 4 batches
 
         // duplicate transactions in last batch for each round
         //
@@ -947,7 +947,7 @@ mod tests {
         let timestamp = now();
         let mut leader_1 = Certificate::default();
         // update timestamp
-        leader_1.update_created_at(timestamp);
+        leader_1.update_created_at_for_test(timestamp);
         let sub_dag_index_1 = 1;
         let reputation_scores = ReputationScores::default();
         let previous_sub_dag = None;
@@ -972,7 +972,7 @@ mod tests {
         // create second output
         let mut leader_2 = Certificate::default();
         // update timestamp
-        leader_2.update_created_at(timestamp + 2);
+        leader_2.update_created_at_for_test(timestamp + 2);
         let sub_dag_index_2 = 2;
         let reputation_scores = ReputationScores::default();
         let previous_sub_dag = Some(subdag_1.as_ref());
@@ -1191,8 +1191,8 @@ mod tests {
     async fn test_max_round_terminates_early() -> eyre::Result<()> {
         init_test_tracing();
         // create batches for consensus output
-        let mut batches_1 = tn_types::test_utils::batches(4); // create 4 batches
-        let mut batches_2 = tn_types::test_utils::batches(4); // create 4 batches
+        let mut batches_1 = narwhal_test_utils::batches(4); // create 4 batches
+        let mut batches_2 = narwhal_test_utils::batches(4); // create 4 batches
 
         // okay to clone these because they are only used to seed genesis, decode transactions, and
         // recover signers
@@ -1283,7 +1283,7 @@ mod tests {
         let timestamp = now();
         let mut leader_1 = Certificate::default();
         // update timestamp
-        leader_1.update_created_at(timestamp);
+        leader_1.update_created_at_for_test(timestamp);
         let sub_dag_index_1 = 1;
         let reputation_scores = ReputationScores::default();
         let previous_sub_dag = None;
@@ -1307,7 +1307,7 @@ mod tests {
         // create second output
         let mut leader_2 = Certificate::default();
         // update timestamp
-        leader_2.update_created_at(timestamp + 2);
+        leader_2.update_created_at_for_test(timestamp + 2);
         let sub_dag_index_2 = 2;
         let reputation_scores = ReputationScores::default();
         let previous_sub_dag = Some(subdag_1.as_ref());

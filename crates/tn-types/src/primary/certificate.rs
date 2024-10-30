@@ -13,6 +13,7 @@ use crate::{
         self, to_intent_message, BlsAggregateSignature, BlsAggregateSignatureBytes, BlsPublicKey,
         BlsSignature, ValidatorAggregateSignature,
     },
+    ensure,
     error::{DagError, DagResult},
     now,
     serde::NarwhalBitmap,
@@ -283,24 +284,21 @@ impl Certificate {
     /// Change the certificate's header.
     ///
     /// Only Used for testing.
-    #[cfg(any(test, feature = "test-utils"))]
-    pub fn update_header(&mut self, header: Header) {
+    pub fn update_header_for_test(&mut self, header: Header) {
         self.header = header;
     }
 
     /// Return a mutable reference to the header.
     ///
     /// Only Used for testing.
-    #[cfg(any(test, feature = "test-utils"))]
-    pub fn header_mut(&mut self) -> &mut Header {
+    pub fn header_mut_for_test(&mut self) -> &mut Header {
         &mut self.header
     }
 
     /// Change the certificate's created_at timestamp.
     ///
     /// Only Used for testing.
-    #[cfg(any(test, feature = "test-utils"))]
-    pub fn update_created_at(&mut self, timestamp: TimestampSec) {
+    pub fn update_created_at_for_test(&mut self, timestamp: TimestampSec) {
         self.created_at = timestamp;
     }
 }

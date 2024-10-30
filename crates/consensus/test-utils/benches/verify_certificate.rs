@@ -7,12 +7,13 @@ use criterion::{
     criterion_group, criterion_main, BenchmarkId, Criterion, SamplingMode, Throughput,
 };
 use fastcrypto::{hash::Hash, traits::KeyPair};
+use narwhal_test_utils::make_optimal_signed_certificates;
 use rand::rngs::ThreadRng;
 use reth_primitives::Address;
 use std::collections::{BTreeMap, BTreeSet};
 use tn_types::{
-    encode, test_utils::make_optimal_signed_certificates, BlsKeypair, Certificate,
-    CommitteeBuilder, Multiaddr, NetworkKeypair, WorkerCache, WorkerIndex,
+    encode, BlsKeypair, Certificate, CommitteeBuilder, Multiaddr, NetworkKeypair, WorkerCache,
+    WorkerIndex,
 };
 
 pub fn verify_certificates(c: &mut Criterion) {

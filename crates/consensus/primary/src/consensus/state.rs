@@ -5,7 +5,10 @@
 
 #![allow(clippy::mutable_key_type)]
 
-use crate::consensus::{bullshark::Bullshark, utils::gc_round, ConsensusError, ConsensusMetrics};
+use crate::{
+    consensus::{bullshark::Bullshark, utils::gc_round, ConsensusError, ConsensusMetrics},
+    ConsensusBus,
+};
 use consensus_metrics::{metered_channel, spawn_logged_monitored_task};
 use fastcrypto::hash::Hash;
 use narwhal_storage::CertificateStore;
@@ -19,9 +22,9 @@ use std::{
 use tn_config::ConsensusConfig;
 use tn_types::{
     AuthorityIdentifier, Certificate, CertificateDigest, CommittedSubDag, Committee,
-    ConsensusCommit, Noticer, Round, SequenceNumber, Timestamp,
+    ConsensusCommit, Noticer, Round, SequenceNumber, Timestamp, TnReceiver, TnSender,
 };
-use tokio::{sync::watch, task::JoinHandle};
+use tokio::task::JoinHandle;
 use tracing::{debug, info, instrument};
 
 #[cfg(test)]
@@ -272,18 +275,13 @@ impl ConsensusRound {
 pub struct Consensus<DB> {
     /// The committee information.
     committee: Committee,
+    /// The chanell "bus" for consensus (container for consesus channel and watches).
+    consensus_bus: ConsensusBus,
 
     /// Receiver for shutdown.
     rx_shutdown: Noticer,
-    /// Receives new certificates from the primary. The primary should send us new certificates
-    /// only if it already sent us its whole history.
-    rx_new_certificates: metered_channel::Receiver<Certificate>,
-    /// Outputs the sequence of ordered certificates to the primary (for cleanup and feedback).
-    tx_committed_certificates: metered_channel::Sender<(Round, Vec<Certificate>)>,
-    /// Outputs the highest committed round & corresponding gc_round in the consensus.
-    tx_consensus_round_updates: watch::Sender<ConsensusRound>,
     /// Outputs the sequence of ordered certificates to the application layer.
-    tx_sequence: metered_channel::Sender<CommittedSubDag>,
+    tx_sequence: metered_channel::MeteredMpscChannel<CommittedSubDag>,
 
     /// The consensus protocol to run.
     protocol: Bullshark<DB>,
@@ -296,18 +294,15 @@ pub struct Consensus<DB> {
 }
 
 impl<DB: Database> Consensus<DB> {
-    #[allow(clippy::too_many_arguments)]
     #[must_use]
     pub fn spawn(
         consensus_config: ConsensusConfig<DB>,
-        rx_shutdown: Noticer,
-        rx_new_certificates: metered_channel::Receiver<Certificate>,
-        tx_committed_certificates: metered_channel::Sender<(Round, Vec<Certificate>)>,
-        tx_consensus_round_updates: watch::Sender<ConsensusRound>,
-        tx_sequence: metered_channel::Sender<CommittedSubDag>,
+        consensus_bus: &ConsensusBus,
+        tx_sequence: metered_channel::MeteredMpscChannel<CommittedSubDag>,
         protocol: Bullshark<DB>,
-        metrics: Arc<ConsensusMetrics>,
     ) -> JoinHandle<()> {
+        let metrics = consensus_bus.consensus_metrics();
+        let rx_shutdown = consensus_config.subscribe_shutdown();
         // The consensus state (everything else is immutable).
         let recovered_last_committed =
             consensus_config.node_storage().consensus_store.read_last_committed();
@@ -336,16 +331,15 @@ impl<DB: Database> Consensus<DB> {
             consensus_config.node_storage().certificate_store.clone(),
         );
 
-        tx_consensus_round_updates
+        consensus_bus
+            .consensus_round_updates()
             .send(state.last_round)
             .expect("Failed to send last_committed_round on initialization!");
 
         let s = Self {
             committee: consensus_config.committee().clone(),
+            consensus_bus: consensus_bus.clone(),
             rx_shutdown,
-            rx_new_certificates,
-            tx_committed_certificates,
-            tx_consensus_round_updates,
             tx_sequence,
             protocol,
             metrics,
@@ -367,6 +361,7 @@ impl<DB: Database> Consensus<DB> {
 
     async fn run_inner(mut self) -> Result<(), ConsensusError> {
         // Listen to incoming certificates.
+        let mut rx_new_certificates = self.consensus_bus.new_certificates().subscribe();
         'main: loop {
             tokio::select! {
 
@@ -374,7 +369,7 @@ impl<DB: Database> Consensus<DB> {
                     return Ok(())
                 }
 
-                Some(certificate) = self.rx_new_certificates.recv() => {
+                Some(certificate) = rx_new_certificates.recv() => {
                     match certificate.epoch().cmp(&self.committee.epoch()) {
                         Ordering::Equal => {
                             // we can proceed.
@@ -425,14 +420,14 @@ impl<DB: Database> Consensus<DB> {
                         // expected by primary.
                         let leader_commit_round = committed_certificates.iter().map(|c| c.round()).max().unwrap();
 
-                        self.tx_committed_certificates
+                        self.consensus_bus.committed_certificates()
                             .send((leader_commit_round, committed_certificates))
                             .await
                             .map_err(|_|ConsensusError::ShuttingDown)?;
 
                         assert_eq!(self.state.last_round.committed_round, leader_commit_round);
 
-                        self.tx_consensus_round_updates.send(self.state.last_round)
+                        self.consensus_bus.consensus_round_updates().send(self.state.last_round)
                             .map_err(|_|ConsensusError::ShuttingDown)?;
                     }
 

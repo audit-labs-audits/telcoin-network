@@ -6,11 +6,12 @@
 use crate::{
     certificate_fetcher::CertificateFetcher,
     certifier::Certifier,
-    consensus::{ConsensusRound, LeaderSchedule},
+    consensus::LeaderSchedule,
     network::{PrimaryReceiverHandler, WorkerReceiverHandler},
     proposer::Proposer,
     state_handler::StateHandler,
     synchronizer::Synchronizer,
+    ConsensusBus,
 };
 use anemo::{
     codegen::InboundRequestLayer,
@@ -24,25 +25,20 @@ use anemo_tower::{
     set_header::{SetRequestHeaderLayer, SetResponseHeaderLayer},
     trace::{DefaultMakeSpan, DefaultOnFailure, TraceLayer},
 };
-use consensus_metrics::{
-    metered_channel::{channel_with_total, Receiver, Sender},
-    spawn_logged_monitored_task,
-};
+use consensus_metrics::spawn_logged_monitored_task;
 use fastcrypto::traits::KeyPair as _;
 use narwhal_network::{
     epoch_filter::{AllowedEpoch, EPOCH_HEADER_KEY},
     failpoints::FailpointsMakeCallbackHandler,
     metrics::MetricsMakeCallbackHandler,
 };
-use narwhal_primary_metrics::Metrics;
 use narwhal_typed_store::traits::Database;
 use std::{collections::HashMap, net::Ipv4Addr, sync::Arc, thread::sleep, time::Duration};
 use tn_config::ConsensusConfig;
-use tn_types::{traits::EncodeDecodeBase64, Multiaddr, NetworkPublicKey, Notifier, Protocol};
+use tn_types::{traits::EncodeDecodeBase64, Multiaddr, NetworkPublicKey, Protocol};
 
 use narwhal_network_types::{PrimaryToPrimaryServer, WorkerToPrimaryServer};
-use tn_types::{Certificate, Round};
-use tokio::{sync::watch, task::JoinHandle};
+use tokio::task::JoinHandle;
 use tower::ServiceBuilder;
 use tracing::{error, info};
 
@@ -58,15 +54,10 @@ pub struct Primary;
 impl Primary {
     /// Spawns the primary and returns the JoinHandles of its tasks, as well as a metered receiver
     /// for the Consensus.
-    #[allow(clippy::too_many_arguments)]
     pub fn spawn<DB: Database>(
         config: ConsensusConfig<DB>,
-        tx_new_certificates: Sender<Certificate>,
-        rx_committed_certificates: Receiver<(Round, Vec<Certificate>)>,
-        rx_consensus_round_updates: watch::Receiver<ConsensusRound>,
-        tx_shutdown: &mut Notifier,
+        consensus_bus: &ConsensusBus,
         leader_schedule: LeaderSchedule,
-        metrics: &Metrics,
     ) -> Vec<JoinHandle<()>> {
         // Write the parameters to the logs.
         config.parameters().tracing();
@@ -79,43 +70,7 @@ impl Primary {
             config.authority().protocol_key().encode_base64(),
         );
 
-        let (tx_our_digests, rx_our_digests) = channel_with_total(
-            CHANNEL_CAPACITY,
-            &metrics.primary_channel_metrics.tx_our_digests,
-            &metrics.primary_channel_metrics.tx_our_digests_total,
-        );
-        let (tx_parents, rx_parents) = channel_with_total(
-            CHANNEL_CAPACITY,
-            &metrics.primary_channel_metrics.tx_parents,
-            &metrics.primary_channel_metrics.tx_parents_total,
-        );
-        let (tx_headers, rx_headers) = channel_with_total(
-            CHANNEL_CAPACITY,
-            &metrics.primary_channel_metrics.tx_headers,
-            &metrics.primary_channel_metrics.tx_headers_total,
-        );
-        let (tx_certificate_fetcher, rx_certificate_fetcher) = channel_with_total(
-            CHANNEL_CAPACITY,
-            &metrics.primary_channel_metrics.tx_certificate_fetcher,
-            &metrics.primary_channel_metrics.tx_certificate_fetcher_total,
-        );
-        let (tx_committed_own_headers, rx_committed_own_headers) = channel_with_total(
-            CHANNEL_CAPACITY,
-            &metrics.primary_channel_metrics.tx_committed_own_headers,
-            &metrics.primary_channel_metrics.tx_committed_own_headers_total,
-        );
-
-        let (tx_narwhal_round_updates, rx_narwhal_round_updates) = watch::channel(0u64);
-
-        let synchronizer = Arc::new(Synchronizer::new(
-            config.clone(),
-            tx_certificate_fetcher,
-            tx_new_certificates,
-            tx_parents,
-            rx_consensus_round_updates.clone(),
-            metrics.node_metrics.clone(),
-            &metrics.primary_channel_metrics,
-        ));
+        let synchronizer = Arc::new(Synchronizer::new(config.clone(), consensus_bus));
 
         // Spawn the network receiver listening to messages from the other primaries.
         let address = config.authority().primary_network_address();
@@ -124,9 +79,8 @@ impl Primary {
         let mut primary_service = PrimaryToPrimaryServer::new(PrimaryReceiverHandler::new(
             config.clone(),
             synchronizer.clone(),
-            rx_narwhal_round_updates,
+            consensus_bus.clone(),
             Default::default(),
-            metrics.node_metrics.clone(),
         ))
         // Allow only one inflight RequestVote RPC at a time per peer.
         // This is required for correctness.
@@ -149,8 +103,10 @@ impl Primary {
             );
         }
 
-        let worker_receiver_handler =
-            WorkerReceiverHandler::new(tx_our_digests, config.node_storage().payload_store.clone());
+        let worker_receiver_handler = WorkerReceiverHandler::new(
+            consensus_bus.clone(),
+            config.node_storage().payload_store.clone(),
+        );
 
         config
             .network_client()
@@ -191,7 +147,7 @@ impl Primary {
                     .on_failure(DefaultOnFailure::new().level(tracing::Level::WARN)),
             )
             .layer(CallbackLayer::new(MetricsMakeCallbackHandler::new(
-                metrics.inbound_network_metrics.clone(),
+                consensus_bus.primary_metrics().inbound_network_metrics.clone(),
                 config.parameters().anemo.excessive_message_size(),
             )))
             .layer(CallbackLayer::new(FailpointsMakeCallbackHandler::new()))
@@ -208,7 +164,7 @@ impl Primary {
                     .on_failure(DefaultOnFailure::new().level(tracing::Level::WARN)),
             )
             .layer(CallbackLayer::new(MetricsMakeCallbackHandler::new(
-                metrics.outbound_network_metrics.clone(),
+                consensus_bus.primary_metrics().outbound_network_metrics.clone(),
                 config.parameters().anemo.excessive_message_size(),
             )))
             .layer(CallbackLayer::new(FailpointsMakeCallbackHandler::new()))
@@ -320,9 +276,9 @@ impl Primary {
         let (connection_monitor_handle, _) =
             narwhal_network::connectivity::ConnectionMonitor::spawn(
                 network.downgrade(),
-                metrics.network_connection_metrics.clone(),
+                consensus_bus.primary_metrics().network_connection_metrics.clone(),
                 peer_types,
-                tx_shutdown.subscribe(),
+                config.subscribe_shutdown(),
             );
 
         info!(
@@ -334,15 +290,13 @@ impl Primary {
         let admin_handles = narwhal_network::admin::start_admin_server(
             config.parameters().network_admin_server.primary_network_admin_server_port,
             network.clone(),
-            tx_shutdown.subscribe(),
+            config.subscribe_shutdown(),
         );
 
         let core_handle = Certifier::spawn(
             config.clone(),
+            consensus_bus.clone(),
             synchronizer.clone(),
-            tx_shutdown.subscribe(),
-            rx_headers,
-            metrics.node_metrics.clone(),
             network.clone(),
         );
 
@@ -353,27 +307,15 @@ impl Primary {
             config.committee().clone(),
             network.clone(),
             config.node_storage().certificate_store.clone(),
-            rx_consensus_round_updates,
-            tx_shutdown.subscribe(),
-            rx_certificate_fetcher,
+            consensus_bus.clone(),
+            config.subscribe_shutdown(),
             synchronizer,
-            metrics.node_metrics.clone(),
         );
 
         // When the `Synchronizer` collects enough parent certificates, the `Proposer` generates
         // a new header with new block digests from our workers and sends it to the `Certifier`.
-        let proposer = Proposer::new(
-            config.clone(),
-            None,
-            tx_shutdown.subscribe(),
-            rx_parents,
-            rx_our_digests,
-            tx_headers,
-            tx_narwhal_round_updates,
-            rx_committed_own_headers,
-            metrics.node_metrics.clone(),
-            leader_schedule,
-        );
+        // XXXX
+        let proposer = Proposer::new(config.clone(), consensus_bus.clone(), None, leader_schedule);
 
         // TODO: include this with other handles
         let _proposer_handle = spawn_logged_monitored_task!(proposer, "ProposerTask");
@@ -393,9 +335,8 @@ impl Primary {
         // internal state
         let state_handler_handle = StateHandler::spawn(
             config.authority().id(),
-            rx_committed_certificates,
-            tx_shutdown.subscribe(),
-            Some(tx_committed_own_headers),
+            consensus_bus,
+            config.subscribe_shutdown(),
             network,
         );
         handles.push(state_handler_handle);

@@ -19,6 +19,7 @@ pub struct Noticer {
 /// Will hand out a future on a subscribe() call that will resolve after
 /// notify() if called.  Can manage any number of "subscribers".
 /// Once notify() if called the resolved subscribers will be cleared.
+#[derive(Debug)]
 pub struct Notifier {
     noticers: Vec<Noticer>,
 }

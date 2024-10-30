@@ -14,7 +14,7 @@ use reth_db::{
 use reth_evm::{execute::BlockExecutorProvider, ConfigureEvm};
 use std::{sync::Arc, time::Instant};
 use tn_config::ConsensusConfig;
-use tn_types::{Notifier, WorkerId};
+use tn_types::WorkerId;
 use tokio::{sync::RwLock, task::JoinHandle};
 use tracing::{info, instrument};
 
@@ -25,8 +25,6 @@ pub struct WorkerNodeInner<CDB> {
     consensus_config: ConsensusConfig<CDB>,
     // The task handles created from primary
     handles: FuturesUnordered<JoinHandle<()>>,
-    // The shutdown signal channel
-    tx_shutdown: Option<Notifier>,
     // Peer ID used for local connections.
     own_peer_id: Option<PeerId>,
     // Keep the worker around.
@@ -56,15 +54,14 @@ impl<CDB: ConsensusDatabase> WorkerNodeInner<CDB> {
             self.consensus_config.key_config().primary_network_public_key().0.to_bytes(),
         ));
 
-        let mut tx_shutdown = Notifier::new();
-
         let metrics = Metrics::default();
 
         let batch_validator = execution_node.new_block_validator().await;
 
         let worker = Worker::new(self.id, self.consensus_config.clone());
 
-        let (handles, block_provider) = worker.spawn(batch_validator, metrics, &mut tx_shutdown);
+        let (handles, block_provider) =
+            worker.spawn(batch_validator, metrics, self.consensus_config.clone());
 
         // spawn batch maker for worker
         execution_node.start_block_builder(self.id, block_provider.blocks_rx()).await?;
@@ -72,7 +69,6 @@ impl<CDB: ConsensusDatabase> WorkerNodeInner<CDB> {
         // now keep the handlers
         self.handles.clear();
         self.handles.extend(handles);
-        self.tx_shutdown = Some(tx_shutdown);
         self.worker = Some(worker);
 
         Ok(())
@@ -88,9 +84,7 @@ impl<CDB: ConsensusDatabase> WorkerNodeInner<CDB> {
         }
 
         let now = Instant::now();
-        if let Some(mut tx_shutdown) = self.tx_shutdown.take() {
-            tx_shutdown.notify();
-        }
+        self.consensus_config.shutdown();
 
         // Now wait until handles have been completed
         try_join_all(&mut self.handles).await.unwrap();
@@ -125,7 +119,6 @@ impl<CDB: ConsensusDatabase> WorkerNode<CDB> {
             id,
             consensus_config,
             handles: FuturesUnordered::new(),
-            tx_shutdown: None,
             own_peer_id: None,
             worker: None,
         };

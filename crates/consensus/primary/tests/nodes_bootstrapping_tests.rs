@@ -5,8 +5,8 @@ use narwhal_test_utils::cluster::Cluster;
 use narwhal_typed_store::mem_db::MemDatabase;
 use reth::tasks::TaskManager;
 
+use narwhal_test_utils::setup_test_tracing;
 use std::time::Duration;
-use tn_types::test_utils::setup_test_tracing;
 
 #[ignore]
 #[tokio::test(flavor = "current_thread", start_paused = true)]

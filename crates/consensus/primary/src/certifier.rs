@@ -3,9 +3,9 @@
 // Copyright (c) Mysten Labs, Inc.
 // SPDX-License-Identifier: Apache-2.0
 
-use crate::{aggregators::VotesAggregator, synchronizer::Synchronizer};
+use crate::{aggregators::VotesAggregator, synchronizer::Synchronizer, ConsensusBus};
 
-use consensus_metrics::{metered_channel::Receiver, monitored_future, spawn_logged_monitored_task};
+use consensus_metrics::{monitored_future, spawn_logged_monitored_task};
 use futures::{stream::FuturesUnordered, StreamExt};
 use narwhal_network::anemo_ext::NetworkExt;
 use narwhal_primary_metrics::PrimaryMetrics;
@@ -13,13 +13,13 @@ use narwhal_storage::CertificateStore;
 use narwhal_typed_store::traits::Database;
 use std::{future::Future, pin::pin, sync::Arc, task::Poll, time::Duration};
 use tn_config::{ConsensusConfig, KeyConfig};
-use tn_types::{AuthorityIdentifier, BlsSigner, Committee, Noticer};
+use tn_types::{AuthorityIdentifier, BlsSigner, Committee, Noticer, TnSender};
 
 use narwhal_network_types::{PrimaryToPrimaryClient, RequestVoteRequest};
 use tn_types::{
     ensure,
     error::{DagError, DagResult},
-    Certificate, CertificateDigest, Header, NetworkPublicKey, Vote,
+    Certificate, CertificateDigest, Header, NetworkPublicKey, TnReceiver, Vote,
 };
 use tokio::{
     sync::oneshot,
@@ -49,8 +49,8 @@ pub struct Certifier<DB> {
     signature_service: KeyConfig,
     /// Receiver for shutdown.
     rx_shutdown: Noticer,
-    /// Receives our newly created headers from the `Proposer`.
-    rx_headers: Receiver<Header>,
+    /// Consensus channels.
+    consensus_bus: ConsensusBus,
     /// Used to cancel vote requests for a previously-proposed header that is being replaced
     /// before a certificate could be formed.
     cancel_proposed_header: Option<oneshot::Sender<()>>,
@@ -69,12 +69,12 @@ impl<DB: Database> Certifier<DB> {
     #[must_use]
     pub fn spawn(
         config: ConsensusConfig<DB>,
+        consensus_bus: ConsensusBus,
         synchronizer: Arc<Synchronizer<DB>>,
-        rx_shutdown: Noticer,
-        rx_headers: Receiver<Header>,
-        metrics: Arc<PrimaryMetrics>,
         primary_network: anemo::Network,
     ) -> JoinHandle<()> {
+        let rx_shutdown = config.subscribe_shutdown();
+        let metrics = consensus_bus.primary_metrics().node_metrics.clone();
         spawn_logged_monitored_task!(
             async move {
                 info!(target: "primary::certifier", "Certifier on node {} has started successfully.", config.authority().id());
@@ -85,7 +85,7 @@ impl<DB: Database> Certifier<DB> {
                     synchronizer,
                     signature_service: config.key_config().clone(),
                     rx_shutdown,
-                    rx_headers,
+                    consensus_bus,
                     cancel_proposed_header: None,
                     propose_header_tasks: JoinSet::new(),
                     network: primary_network,
@@ -337,32 +337,35 @@ impl<DB: Database> Future for Certifier<DB> {
             return Poll::Ready(());
         }
 
-        // We also receive here our new headers created by the `Proposer`.
-        while let Poll::Ready(Some(header)) = this.rx_headers.poll_recv(cx) {
-            debug!(target: "primary::certifier", authority=?this.authority_id, ?header, "header received!");
-            let (tx_cancel, rx_cancel) = oneshot::channel();
-            if let Some(cancel) = this.cancel_proposed_header.take() {
-                let _ = cancel.send(());
-            }
-            this.cancel_proposed_header = Some(tx_cancel);
+        {
+            let mut rx_headers = this.consensus_bus.headers().borrow_subscriber();
+            // We also receive here our new headers created by the `Proposer`.
+            while let Poll::Ready(Some(header)) = rx_headers.poll_recv(cx) {
+                debug!(target: "primary::certifier", authority=?this.authority_id, ?header, "header received!");
+                let (tx_cancel, rx_cancel) = oneshot::channel();
+                if let Some(cancel) = this.cancel_proposed_header.take() {
+                    let _ = cancel.send(());
+                }
+                this.cancel_proposed_header = Some(tx_cancel);
 
-            let name = this.authority_id;
-            let committee = this.committee.clone();
-            let certificate_store = this.certificate_store.clone();
-            let signature_service = this.signature_service.clone();
-            let metrics = this.metrics.clone();
-            let network = this.network.clone();
-            debug!(target: "primary::certifier", authority=?this.authority_id, "spawning proposer header task...");
-            this.propose_header_tasks.spawn(monitored_future!(Self::propose_header(
-                name,
-                committee,
-                certificate_store,
-                signature_service,
-                metrics,
-                network,
-                header,
-                rx_cancel,
-            )));
+                let name = this.authority_id;
+                let committee = this.committee.clone();
+                let certificate_store = this.certificate_store.clone();
+                let signature_service = this.signature_service.clone();
+                let metrics = this.metrics.clone();
+                let network = this.network.clone();
+                debug!(target: "primary::certifier", authority=?this.authority_id, "spawning proposer header task...");
+                this.propose_header_tasks.spawn(monitored_future!(Self::propose_header(
+                    name,
+                    committee,
+                    certificate_store,
+                    signature_service,
+                    metrics,
+                    network,
+                    header,
+                    rx_cancel,
+                )));
+            }
         }
 
         // Process certificates formed after receiving enough votes.

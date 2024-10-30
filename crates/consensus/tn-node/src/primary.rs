@@ -9,10 +9,8 @@ use consensus_metrics::metered_channel;
 use fastcrypto::traits::VerifyingKey;
 use narwhal_executor::{get_restored_consensus_output, Executor, SubscriberResult};
 use narwhal_primary::{
-    consensus::{
-        Bullshark, ChannelMetrics, Consensus, ConsensusMetrics, ConsensusRound, LeaderSchedule,
-    },
-    Primary, CHANNEL_CAPACITY,
+    consensus::{Bullshark, ChannelMetrics, Consensus, ConsensusMetrics, LeaderSchedule},
+    ConsensusBus, Primary, CHANNEL_CAPACITY,
 };
 use narwhal_primary_metrics::Metrics;
 use narwhal_typed_store::traits::Database as ConsensusDatabase;
@@ -23,31 +21,26 @@ use reth_db::{
 use reth_evm::{execute::BlockExecutorProvider, ConfigureEvm};
 use std::{sync::Arc, time::Instant};
 use tn_config::ConsensusConfig;
-use tn_types::{
-    BlsPublicKey, Certificate, ConsensusOutput, Notifier, Round, DEFAULT_BAD_NODES_STAKE_THRESHOLD,
-};
+use tn_types::{BlsPublicKey, ConsensusOutput, DEFAULT_BAD_NODES_STAKE_THRESHOLD};
 use tokio::{
-    sync::{broadcast, watch, RwLock},
+    sync::{broadcast, RwLock},
     task::JoinHandle,
 };
 use tracing::{info, instrument};
 
 struct PrimaryNodeInner<CDB> {
+    /// Consensus configuration.
     consensus_config: ConsensusConfig<CDB>,
+    /// Container for consensus channels.
+    consensus_bus: ConsensusBus,
     /// The task handles created from primary
     handles: FuturesUnordered<JoinHandle<()>>,
-    /// The shutdown signal channel
-    tx_shutdown: Option<Notifier>,
     /// Peer ID used for local connections.
     own_peer_id: Option<PeerId>,
     /// Consensus broadcast channel.
     ///
     /// NOTE: this broadcasts to all subscribers, but lagging receivers will lose messages
     consensus_output_notification_sender: broadcast::Sender<ConsensusOutput>,
-    /// Hold onto the consensus_metrics (mostly for testing)
-    consensus_metrics: Arc<ConsensusMetrics>,
-    /// Hold onto the primary metrics (allow early creation)
-    primary_metrics: Arc<Metrics>,
 }
 
 impl<CDB: ConsensusDatabase> PrimaryNodeInner<CDB> {
@@ -77,9 +70,6 @@ impl<CDB: ConsensusDatabase> PrimaryNodeInner<CDB> {
             self.consensus_config.key_config().primary_network_public_key().0.to_bytes(),
         ));
 
-        // create the channel to send the shutdown signal
-        let mut tx_shutdown = Notifier::new();
-
         // used to retrieve the last executed certificate in case of restarts
         let last_executed_sub_dag_index =
             execution_components.last_executed_output().await.expect("execution found HEAD");
@@ -88,8 +78,7 @@ impl<CDB: ConsensusDatabase> PrimaryNodeInner<CDB> {
         let consensus_output_rx = self.subscribe_consensus_output();
 
         // spawn primary if not already running
-        let primary_handles =
-            self.spawn_primary(&mut tx_shutdown, last_executed_sub_dag_index).await?;
+        let primary_handles = self.spawn_primary(last_executed_sub_dag_index).await?;
 
         // start engine
         execution_components.start_engine(consensus_output_rx).await?;
@@ -97,7 +86,6 @@ impl<CDB: ConsensusDatabase> PrimaryNodeInner<CDB> {
         // now keep the handlers
         self.handles.clear();
         self.handles.extend(primary_handles);
-        self.tx_shutdown = Some(tx_shutdown);
 
         Ok(())
     }
@@ -115,10 +103,7 @@ impl<CDB: ConsensusDatabase> PrimaryNodeInner<CDB> {
         let now = Instant::now();
 
         self.consensus_config.network_client().shutdown();
-
-        if let Some(mut tx_shutdown) = self.tx_shutdown.take() {
-            tx_shutdown.notify();
-        }
+        self.consensus_config.shutdown();
 
         // Now wait until handles have been completed
         try_join_all(&mut self.handles).await.unwrap();
@@ -144,50 +129,18 @@ impl<CDB: ConsensusDatabase> PrimaryNodeInner<CDB> {
     /// transactions.
     pub async fn spawn_primary(
         &self,
-        // The channel to send the shutdown signal
-        tx_shutdown: &mut Notifier,
         // Used for recovering after crashes/restarts
         last_executed_sub_dag_index: u64,
     ) -> SubscriberResult<Vec<JoinHandle<()>>> {
-        let (tx_new_certificates, rx_new_certificates) = metered_channel::channel(
-            narwhal_primary::CHANNEL_CAPACITY,
-            &self.primary_metrics.primary_channel_metrics.tx_new_certificates,
-        );
-
-        let (tx_committed_certificates, rx_committed_certificates) = metered_channel::channel(
-            narwhal_primary::CHANNEL_CAPACITY,
-            &self.primary_metrics.primary_channel_metrics.tx_committed_certificates,
-        );
-
         let mut handles = Vec::new();
-        let (tx_consensus_round_updates, rx_consensus_round_updates) =
-            watch::channel(ConsensusRound::new(0, 0));
 
-        let (consensus_handles, leader_schedule) = self
-            .spawn_consensus(
-                tx_shutdown,
-                rx_new_certificates,
-                tx_committed_certificates.clone(),
-                tx_consensus_round_updates,
-                // in loo of sui's execution_state:
-                last_executed_sub_dag_index,
-            )
-            .await?;
+        let (consensus_handles, leader_schedule) =
+            self.spawn_consensus(&self.consensus_bus, last_executed_sub_dag_index).await?;
         handles.extend(consensus_handles);
 
-        // TODO: the same set of variables are sent to primary, consensus and downstream
-        // components. Consider using a holder struct to pass them around.
-
         // Spawn the primary.
-        let primary_handles = Primary::spawn(
-            self.consensus_config.clone(),
-            tx_new_certificates,
-            rx_committed_certificates,
-            rx_consensus_round_updates,
-            tx_shutdown,
-            leader_schedule,
-            &self.primary_metrics,
-        );
+        let primary_handles =
+            Primary::spawn(self.consensus_config.clone(), &self.consensus_bus, leader_schedule);
         handles.extend(primary_handles);
 
         Ok(handles)
@@ -196,24 +149,17 @@ impl<CDB: ConsensusDatabase> PrimaryNodeInner<CDB> {
     /// Spawn the consensus core and the client executing transactions.
     ///
     /// Pass the sender channel for consensus output and executor metrics.
-    ///
-    /// TODO: Executor metrics is needed to create the metered channel. This
-    /// could be done a better way, but bigger priorities right now.
-    #[allow(clippy::too_many_arguments)]
     async fn spawn_consensus(
         &self,
-        tx_shutdown: &mut Notifier,
-        rx_new_certificates: metered_channel::Receiver<Certificate>,
-        tx_committed_certificates: metered_channel::Sender<(Round, Vec<Certificate>)>,
-        tx_consensus_round_updates: watch::Sender<ConsensusRound>,
+        consensus_bus: &ConsensusBus,
         last_executed_sub_dag_index: u64,
     ) -> SubscriberResult<(Vec<JoinHandle<()>>, LeaderSchedule)>
     where
         BlsPublicKey: VerifyingKey,
-        // State: ExecutionState + Send + Sync + 'static,
     {
         let channel_metrics = ChannelMetrics::default();
 
+        // XXXX
         let (tx_sequence, rx_sequence) = metered_channel::channel(
             narwhal_primary::CHANNEL_CAPACITY,
             &channel_metrics.tx_sequence,
@@ -253,7 +199,7 @@ impl<CDB: ConsensusDatabase> PrimaryNodeInner<CDB> {
                 "Consensus output on its way to the executor was restored for {num_sub_dags} sub-dags",
             );
         }
-        self.consensus_metrics.recovered_consensus_output.inc_by(num_sub_dags);
+        self.consensus_bus.consensus_metrics().recovered_consensus_output.inc_by(num_sub_dags);
 
         let leader_schedule = LeaderSchedule::from_store(
             self.consensus_config.committee().clone(),
@@ -265,27 +211,23 @@ impl<CDB: ConsensusDatabase> PrimaryNodeInner<CDB> {
         let ordering_engine = Bullshark::new(
             self.consensus_config.committee().clone(),
             self.consensus_config.node_storage().consensus_store.clone(),
-            self.consensus_metrics.clone(),
+            self.consensus_bus.consensus_metrics().clone(),
             Self::CONSENSUS_SCHEDULE_CHANGE_SUB_DAGS,
             leader_schedule.clone(),
             DEFAULT_BAD_NODES_STAKE_THRESHOLD,
         );
         let consensus_handle = Consensus::spawn(
             self.consensus_config.clone(),
-            tx_shutdown.subscribe(),
-            rx_new_certificates,
-            tx_committed_certificates,
-            tx_consensus_round_updates,
+            consensus_bus,
             tx_sequence,
             ordering_engine,
-            self.consensus_metrics.clone(),
         );
 
         // Spawn the client executing the transactions. It can also synchronize with the
         // subscriber handler if it missed some transactions.
         let executor_handle = Executor::spawn(
             self.consensus_config.clone(),
-            tx_shutdown.subscribe(),
+            self.consensus_config.subscribe_shutdown(),
             rx_sequence,
             restored_consensus_output,
             self.consensus_output_notification_sender.clone(),
@@ -316,16 +258,13 @@ impl<CDB: ConsensusDatabase> PrimaryNode<CDB> {
         let (consensus_output_notification_sender, _receiver) =
             tokio::sync::broadcast::channel(CHANNEL_CAPACITY);
 
-        let consensus_metrics = Arc::new(ConsensusMetrics::default());
-        let primary_metrics = Arc::new(Metrics::default()); // Initialize the metrics
+        let consensus_bus = ConsensusBus::new();
         let inner = PrimaryNodeInner {
             consensus_config,
+            consensus_bus,
             handles: FuturesUnordered::new(),
-            tx_shutdown: None,
             own_peer_id: None,
             consensus_output_notification_sender,
-            consensus_metrics,
-            primary_metrics,
         };
 
         Self { internal: Arc::new(RwLock::new(inner)) }
@@ -368,11 +307,11 @@ impl<CDB: ConsensusDatabase> PrimaryNode<CDB> {
 
     /// Return the consensus metrics.
     pub async fn consensus_metrics(&self) -> Arc<ConsensusMetrics> {
-        self.internal.read().await.consensus_metrics.clone()
+        self.internal.read().await.consensus_bus.consensus_metrics()
     }
 
     /// Return the primary metrics.
     pub async fn primary_metrics(&self) -> Arc<Metrics> {
-        self.internal.read().await.primary_metrics.clone()
+        self.internal.read().await.consensus_bus.primary_metrics()
     }
 }

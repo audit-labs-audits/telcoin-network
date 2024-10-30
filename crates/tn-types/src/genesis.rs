@@ -504,19 +504,21 @@ impl PartialEq for ValidatorSignatureInfo {
 mod tests {
     use super::NetworkGenesis;
     use crate::{
-        adiri_chain_spec, generate_proof_of_possession, test_utils::TelcoinTempDirs, BlsKeypair,
-        Multiaddr, NetworkKeypair, PrimaryInfo, TelcoinDirs, ValidatorInfo, WorkerIndex,
-        WorkerInfo,
+        adiri_chain_spec, generate_proof_of_possession, BlsKeypair, Multiaddr, NetworkKeypair,
+        PrimaryInfo, TelcoinDirs, ValidatorInfo, WorkerIndex, WorkerInfo,
     };
     use fastcrypto::traits::KeyPair;
     use rand::{rngs::StdRng, SeedableRng};
     use reth_primitives::Address;
     use std::collections::BTreeMap;
+    use tempfile::tempdir;
 
     #[test]
     fn test_write_and_read_network_genesis() {
         let mut network_genesis = NetworkGenesis::new();
-        let paths = TelcoinTempDirs::default();
+        let tmp_dir = tempdir().unwrap();
+        // Keep tmp_dir around so the temp dir is not deleted yet.
+        let paths = tmp_dir.path().to_path_buf();
         // create keys and information for validator
         let bls_keypair = BlsKeypair::generate(&mut StdRng::from_seed([0; 32]));
         let network_keypair = NetworkKeypair::generate(&mut StdRng::from_seed([0; 32]));

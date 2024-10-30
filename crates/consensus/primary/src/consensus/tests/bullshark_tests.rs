@@ -6,23 +6,21 @@
 
 use super::*;
 
-use crate::consensus::{
-    make_consensus_store, Consensus, ConsensusRound, NUM_SUB_DAGS_PER_SCHEDULE,
+use crate::{
+    consensus::{make_consensus_store, Consensus, NUM_SUB_DAGS_PER_SCHEDULE},
+    ConsensusBus,
 };
 #[allow(unused_imports)]
 use fastcrypto::traits::KeyPair;
-use narwhal_test_utils::CommitteeFixture;
+use narwhal_test_utils::{CommitteeFixture, TelcoinTempDirs};
 use narwhal_typed_store::{mem_db::MemDatabase, open_db};
 #[cfg(test)]
 use std::collections::BTreeSet;
 use std::collections::HashMap;
 use tn_config::ConsensusConfig;
-use tn_types::{
-    test_utils::TelcoinTempDirs, AuthorityIdentifier, Notifier, DEFAULT_BAD_NODES_STAKE_THRESHOLD,
-};
+use tn_types::{AuthorityIdentifier, TnReceiver, TnSender, DEFAULT_BAD_NODES_STAKE_THRESHOLD};
 #[allow(unused_imports)]
 use tokio::sync::mpsc::channel;
-use tokio::sync::watch;
 use tracing::info;
 
 #[tokio::test]
@@ -35,7 +33,7 @@ async fn order_leaders() {
     let genesis =
         Certificate::genesis(&committee).iter().map(|x| x.digest()).collect::<BTreeSet<_>>();
     let (certificates, _next_parents) =
-        tn_types::test_utils::make_optimal_certificates(&committee, 1..=7, &genesis, &ids);
+        narwhal_test_utils::make_optimal_certificates(&committee, 1..=7, &genesis, &ids);
 
     let metrics = Arc::new(ConsensusMetrics::default());
     let gc_depth = 50;
@@ -45,7 +43,7 @@ async fn order_leaders() {
         state.try_insert(&certificate).unwrap();
     }
 
-    let store = make_consensus_store(open_db(tn_types::test_utils::temp_dir()));
+    let store = make_consensus_store(open_db(narwhal_test_utils::temp_dir()));
     let schedule = LeaderSchedule::new(committee.clone(), LeaderSwapTable::default());
     let bullshark = Bullshark::new(
         committee,
@@ -105,7 +103,7 @@ async fn commit_one_with_leader_schedule_change() {
         let ids: Vec<_> = fixture.authorities().map(|a| a.id()).collect();
         let genesis =
             Certificate::genesis(&committee).iter().map(|x| x.digest()).collect::<BTreeSet<_>>();
-        let (certificates, _next_parents) = tn_types::test_utils::make_optimal_certificates(
+        let (certificates, _next_parents) = narwhal_test_utils::make_optimal_certificates(
             &committee,
             1..=test_case.rounds,
             &genesis,
@@ -116,7 +114,7 @@ async fn commit_one_with_leader_schedule_change() {
         let gc_depth = 50;
         let sub_dags_per_schedule = 3;
         let mut state = ConsensusState::new(metrics.clone(), gc_depth);
-        let store = make_consensus_store(open_db(tn_types::test_utils::temp_dir()));
+        let store = make_consensus_store(open_db(narwhal_test_utils::temp_dir()));
         let schedule = LeaderSchedule::new(committee.clone(), LeaderSwapTable::default());
         let bad_nodes_stake_threshold = 33;
         let mut bullshark = Bullshark::new(
@@ -174,11 +172,11 @@ async fn not_enough_support_with_leader_schedule_change() {
     // later leader.
     leader_configs.insert(
         6,
-        tn_types::test_utils::TestLeaderConfiguration {
+        narwhal_test_utils::TestLeaderConfiguration {
             round: 6,
             authority: AuthorityIdentifier(2),
             should_omit: false,
-            support: Some(tn_types::test_utils::TestLeaderSupport::Weak),
+            support: Some(narwhal_test_utils::TestLeaderSupport::Weak),
         },
     );
 
@@ -187,11 +185,11 @@ async fn not_enough_support_with_leader_schedule_change() {
     // certificate of round 9 refers to this leader, we don't expect to get committed at all.
     leader_configs.insert(
         8,
-        tn_types::test_utils::TestLeaderConfiguration {
+        narwhal_test_utils::TestLeaderConfiguration {
             round: 8,
             authority: AuthorityIdentifier(3),
             should_omit: false,
-            support: Some(tn_types::test_utils::TestLeaderSupport::NoSupport),
+            support: Some(narwhal_test_utils::TestLeaderSupport::NoSupport),
         },
     );
 
@@ -205,15 +203,15 @@ async fn not_enough_support_with_leader_schedule_change() {
     // get committed.
     leader_configs.insert(
         10,
-        tn_types::test_utils::TestLeaderConfiguration {
+        narwhal_test_utils::TestLeaderConfiguration {
             round: 10,
             authority: AuthorityIdentifier(0),
             should_omit: false,
-            support: Some(tn_types::test_utils::TestLeaderSupport::Weak),
+            support: Some(narwhal_test_utils::TestLeaderSupport::Weak),
         },
     );
 
-    let (out, _parents) = tn_types::test_utils::make_certificates_with_leader_configuration(
+    let (out, _parents) = narwhal_test_utils::make_certificates_with_leader_configuration(
         &committee,
         1..=15,
         &genesis,
@@ -226,7 +224,7 @@ async fn not_enough_support_with_leader_schedule_change() {
     let gc_depth = 50;
     let sub_dags_per_schedule = 4;
     let mut state = ConsensusState::new(metrics.clone(), gc_depth);
-    let store = make_consensus_store(open_db(tn_types::test_utils::temp_dir()));
+    let store = make_consensus_store(open_db(narwhal_test_utils::temp_dir()));
     let schedule = LeaderSchedule::new(committee.clone(), LeaderSwapTable::default());
 
     let bad_nodes_stake_threshold = 33;
@@ -323,16 +321,16 @@ async fn test_long_period_of_asynchrony_for_leader_schedule_change() {
     for (round, authority_id) in leaders_with_weak_support {
         leader_configs.insert(
             round,
-            tn_types::test_utils::TestLeaderConfiguration {
+            narwhal_test_utils::TestLeaderConfiguration {
                 round,
                 authority: AuthorityIdentifier(authority_id),
                 should_omit: false,
-                support: Some(tn_types::test_utils::TestLeaderSupport::Weak),
+                support: Some(narwhal_test_utils::TestLeaderSupport::Weak),
             },
         );
     }
 
-    let (out, _parents) = tn_types::test_utils::make_certificates_with_leader_configuration(
+    let (out, _parents) = narwhal_test_utils::make_certificates_with_leader_configuration(
         &committee,
         1..=15,
         &genesis,
@@ -345,7 +343,7 @@ async fn test_long_period_of_asynchrony_for_leader_schedule_change() {
     let gc_depth = 50;
     let sub_dags_per_schedule = 4;
     let mut state = ConsensusState::new(metrics.clone(), gc_depth);
-    let store = make_consensus_store(open_db(tn_types::test_utils::temp_dir()));
+    let store = make_consensus_store(open_db(narwhal_test_utils::temp_dir()));
     let schedule = LeaderSchedule::new(committee.clone(), LeaderSwapTable::default());
 
     let bad_nodes_stake_threshold = 33;
@@ -428,24 +426,18 @@ async fn commit_one() {
     let genesis =
         Certificate::genesis(&committee).iter().map(|x| x.digest()).collect::<BTreeSet<_>>();
     let (mut certificates, next_parents) =
-        tn_types::test_utils::make_optimal_certificates(&committee, 1..=2, &genesis, &ids);
+        narwhal_test_utils::make_optimal_certificates(&committee, 1..=2, &genesis, &ids);
 
     // Make two certificate (f+1) with round 3 to trigger the commits.
     let (_, certificate) =
-        tn_types::test_utils::mock_certificate(&committee, ids[0], 3, next_parents.clone());
+        narwhal_test_utils::mock_certificate(&committee, ids[0], 3, next_parents.clone());
     certificates.push_back(certificate);
     let (_, certificate) =
-        tn_types::test_utils::mock_certificate(&committee, ids[1], 3, next_parents);
+        narwhal_test_utils::mock_certificate(&committee, ids[1], 3, next_parents);
     certificates.push_back(certificate);
 
     // Spawn the consensus engine and sink the primary channel.
-    let (tx_new_certificates, rx_new_certificates) = tn_types::test_channel!(1);
-    let (tx_primary, mut rx_primary) = tn_types::test_channel!(1);
-    let (tx_output, mut rx_output) = tn_types::test_channel!(1);
-    let (tx_consensus_round_updates, _rx_consensus_round_updates) =
-        watch::channel(ConsensusRound::new(0, 0));
-
-    let mut tx_shutdown = Notifier::new();
+    let (tx_output, mut rx_output) = narwhal_test_utils::test_channel!(1);
 
     let config = fixture.authorities().next().unwrap().consensus_config();
     let store = config.node_storage().consensus_store.clone();
@@ -460,22 +452,18 @@ async fn commit_one() {
         DEFAULT_BAD_NODES_STAKE_THRESHOLD,
     );
 
-    let _consensus_handle = Consensus::spawn(
-        config,
-        tx_shutdown.subscribe(),
-        rx_new_certificates,
-        tx_primary,
-        tx_consensus_round_updates,
-        tx_output,
-        bullshark,
-        metrics,
-    );
-    tokio::spawn(async move { while rx_primary.recv().await.is_some() {} });
+    let cb = ConsensusBus::new();
+    let _consensus_handle = Consensus::spawn(config, &cb, tx_output, bullshark);
+    let cb_clone = cb.clone();
+    tokio::spawn(async move {
+        let mut rx_primary = cb_clone.committed_certificates().subscribe();
+        while rx_primary.recv().await.is_some() {}
+    });
 
     // Feed all certificates to the consensus. Only the last certificate should trigger
     // commits, so the task should not block.
     while let Some(certificate) = certificates.pop_front() {
-        tx_new_certificates.send(certificate).await.unwrap();
+        cb.new_certificates().send(certificate).await.unwrap();
     }
 
     // Ensure the first 4 ordered certificates are from round 1 (they are the parents of the
@@ -511,16 +499,10 @@ async fn dead_node() {
         Certificate::genesis(&committee).iter().map(|x| x.digest()).collect::<BTreeSet<_>>();
 
     let (mut certificates, _) =
-        tn_types::test_utils::make_optimal_certificates(&committee, 1..=11, &genesis, &ids);
+        narwhal_test_utils::make_optimal_certificates(&committee, 1..=11, &genesis, &ids);
 
     // Spawn the consensus engine and sink the primary channel.
-    let (tx_new_certificates, rx_new_certificates) = tn_types::test_channel!(1);
-    let (tx_primary, mut rx_primary) = tn_types::test_channel!(1);
-    let (tx_output, mut rx_output) = tn_types::test_channel!(1);
-    let (tx_consensus_round_updates, _rx_consensus_round_updates) =
-        watch::channel(ConsensusRound::new(0, 0));
-
-    let mut tx_shutdown = Notifier::new();
+    let (tx_output, mut rx_output) = narwhal_test_utils::test_channel!(1);
 
     let config = fixture.authorities().next().unwrap().consensus_config();
     let store = config.node_storage().consensus_store.clone();
@@ -535,22 +517,18 @@ async fn dead_node() {
         DEFAULT_BAD_NODES_STAKE_THRESHOLD,
     );
 
-    let _consensus_handle = Consensus::spawn(
-        config,
-        tx_shutdown.subscribe(),
-        rx_new_certificates,
-        tx_primary,
-        tx_consensus_round_updates,
-        tx_output,
-        bullshark,
-        metrics,
-    );
-    tokio::spawn(async move { while rx_primary.recv().await.is_some() {} });
+    let cb = ConsensusBus::new();
+    let _consensus_handle = Consensus::spawn(config, &cb, tx_output, bullshark);
+    let cb_clone = cb.clone();
+    tokio::spawn(async move {
+        let mut rx_primary = cb_clone.committed_certificates().subscribe();
+        while rx_primary.recv().await.is_some() {}
+    });
 
     // Feed all certificates to the consensus.
     tokio::spawn(async move {
         while let Some(certificate) = certificates.pop_front() {
-            tx_new_certificates.send(certificate).await.unwrap();
+            cb.new_certificates().send(certificate).await.unwrap();
         }
     });
 
@@ -612,18 +590,18 @@ async fn not_enough_support() {
     // Round 1: Fully connected graph.
     let nodes: Vec<_> = ids.iter().take(3).cloned().collect();
     let (out, parents) =
-        tn_types::test_utils::make_optimal_certificates(&committee, 1..=1, &genesis, &nodes);
+        narwhal_test_utils::make_optimal_certificates(&committee, 1..=1, &genesis, &nodes);
     certificates.extend(out);
 
     // Round 2: Fully connect graph. But remember the digest of the leader. Note that this
     // round is the only one with 4 certificates.
     let (leader_2_digest, certificate) =
-        tn_types::test_utils::mock_certificate(&committee, ids[0], 2, parents.clone());
+        narwhal_test_utils::mock_certificate(&committee, ids[0], 2, parents.clone());
     certificates.push_back(certificate);
 
     let nodes: Vec<_> = ids.iter().skip(1).cloned().collect();
     let (out, mut parents) =
-        tn_types::test_utils::make_optimal_certificates(&committee, 2..=2, &parents, &nodes);
+        narwhal_test_utils::make_optimal_certificates(&committee, 2..=2, &parents, &nodes);
     certificates.extend(out);
 
     // Round 3: Only node 0 links to the leader of round 2.
@@ -631,20 +609,20 @@ async fn not_enough_support() {
 
     let name = ids[1];
     let (digest, certificate) =
-        tn_types::test_utils::mock_certificate(&committee, name, 3, parents.clone());
+        narwhal_test_utils::mock_certificate(&committee, name, 3, parents.clone());
     certificates.push_back(certificate);
     next_parents.insert(digest);
 
     let name = ids[2];
     let (digest, certificate) =
-        tn_types::test_utils::mock_certificate(&committee, name, 3, parents.clone());
+        narwhal_test_utils::mock_certificate(&committee, name, 3, parents.clone());
     certificates.push_back(certificate);
     next_parents.insert(digest);
 
     let name = ids[0];
     parents.insert(leader_2_digest);
     let (digest, certificate) =
-        tn_types::test_utils::mock_certificate(&committee, name, 3, parents.clone());
+        narwhal_test_utils::mock_certificate(&committee, name, 3, parents.clone());
     certificates.push_back(certificate);
     next_parents.insert(digest);
 
@@ -653,24 +631,18 @@ async fn not_enough_support() {
     // Rounds 4: Fully connected graph. This is the where we "boost" the leader.
     let nodes: Vec<_> = ids.to_vec();
     let (out, parents) =
-        tn_types::test_utils::make_optimal_certificates(&committee, 4..=4, &parents, &nodes);
+        narwhal_test_utils::make_optimal_certificates(&committee, 4..=4, &parents, &nodes);
     certificates.extend(out);
 
     // Round 5: Send f+1 certificates to trigger the commit of leader 4.
     let (_, certificate) =
-        tn_types::test_utils::mock_certificate(&committee, ids[0], 5, parents.clone());
+        narwhal_test_utils::mock_certificate(&committee, ids[0], 5, parents.clone());
     certificates.push_back(certificate);
-    let (_, certificate) = tn_types::test_utils::mock_certificate(&committee, ids[1], 5, parents);
+    let (_, certificate) = narwhal_test_utils::mock_certificate(&committee, ids[1], 5, parents);
     certificates.push_back(certificate);
 
     // Spawn the consensus engine and sink the primary channel.
-    let (tx_new_certificates, rx_new_certificates) = tn_types::test_channel!(1);
-    let (tx_primary, mut rx_primary) = tn_types::test_channel!(1);
-    let (tx_output, mut rx_output) = tn_types::test_channel!(1);
-    let (tx_consensus_round_updates, _rx_consensus_round_updates) =
-        watch::channel(ConsensusRound::new(0, 0));
-
-    let mut tx_shutdown = Notifier::new();
+    let (tx_output, mut rx_output) = narwhal_test_utils::test_channel!(1);
 
     let config = fixture.authorities().next().unwrap().consensus_config();
     let store = config.node_storage().consensus_store.clone();
@@ -685,22 +657,18 @@ async fn not_enough_support() {
         DEFAULT_BAD_NODES_STAKE_THRESHOLD,
     );
 
-    let _consensus_handle = Consensus::spawn(
-        config,
-        tx_shutdown.subscribe(),
-        rx_new_certificates,
-        tx_primary,
-        tx_consensus_round_updates,
-        tx_output,
-        bullshark,
-        metrics,
-    );
-    tokio::spawn(async move { while rx_primary.recv().await.is_some() {} });
+    let cb = ConsensusBus::new();
+    let _consensus_handle = Consensus::spawn(config, &cb, tx_output, bullshark);
+    let cb_clone = cb.clone();
+    tokio::spawn(async move {
+        let mut rx_primary = cb_clone.committed_certificates().subscribe();
+        while rx_primary.recv().await.is_some() {}
+    });
 
     // Feed all certificates to the consensus. Only the last certificate should trigger
     // commits, so the task should not block.
     while let Some(certificate) = certificates.pop_front() {
-        tx_new_certificates.send(certificate).await.unwrap();
+        cb.new_certificates().send(certificate).await.unwrap();
     }
 
     // We should commit 2 leaders (rounds 2 and 4).
@@ -762,29 +730,23 @@ async fn missing_leader() {
     // Remove the leader for rounds 1 and 2.
     let nodes: Vec<_> = ids.iter().skip(1).cloned().collect();
     let (out, parents) =
-        tn_types::test_utils::make_optimal_certificates(&committee, 1..=2, &genesis, &nodes);
+        narwhal_test_utils::make_optimal_certificates(&committee, 1..=2, &genesis, &nodes);
     certificates.extend(out);
 
     // Add back the leader for rounds 3 and 4.
     let (out, parents) =
-        tn_types::test_utils::make_optimal_certificates(&committee, 3..=4, &parents, &ids);
+        narwhal_test_utils::make_optimal_certificates(&committee, 3..=4, &parents, &ids);
     certificates.extend(out);
 
     // Add f+1 certificates of round 5 to commit the leader of round 4.
     let (_, certificate) =
-        tn_types::test_utils::mock_certificate(&committee, ids[0], 5, parents.clone());
+        narwhal_test_utils::mock_certificate(&committee, ids[0], 5, parents.clone());
     certificates.push_back(certificate);
-    let (_, certificate) = tn_types::test_utils::mock_certificate(&committee, ids[1], 5, parents);
+    let (_, certificate) = narwhal_test_utils::mock_certificate(&committee, ids[1], 5, parents);
     certificates.push_back(certificate);
 
     // Spawn the consensus engine and sink the primary channel.
-    let (tx_new_certificates, rx_new_certificates) = tn_types::test_channel!(1);
-    let (tx_primary, mut rx_primary) = tn_types::test_channel!(1);
-    let (tx_output, mut rx_output) = tn_types::test_channel!(1);
-    let (tx_consensus_round_updates, _rx_consensus_round_updates) =
-        watch::channel(ConsensusRound::new(0, 0));
-
-    let mut tx_shutdown = Notifier::new();
+    let (tx_output, mut rx_output) = narwhal_test_utils::test_channel!(1);
 
     let config = fixture.authorities().next().unwrap().consensus_config();
     let store = config.node_storage().consensus_store.clone();
@@ -798,22 +760,18 @@ async fn missing_leader() {
         DEFAULT_BAD_NODES_STAKE_THRESHOLD,
     );
 
-    let _consensus_handle = Consensus::spawn(
-        config,
-        tx_shutdown.subscribe(),
-        rx_new_certificates,
-        tx_primary,
-        tx_consensus_round_updates,
-        tx_output,
-        bullshark,
-        metrics,
-    );
-    tokio::spawn(async move { while rx_primary.recv().await.is_some() {} });
+    let cb = ConsensusBus::new();
+    let _consensus_handle = Consensus::spawn(config, &cb, tx_output, bullshark);
+    let cb_clone = cb.clone();
+    tokio::spawn(async move {
+        let mut rx_primary = cb_clone.committed_certificates().subscribe();
+        while rx_primary.recv().await.is_some() {}
+    });
 
     // Feed all certificates to the consensus. We should only commit upon receiving the last
     // certificate, so calls below should not block the task.
     while let Some(certificate) = certificates.pop_front() {
-        tx_new_certificates.send(certificate).await.unwrap();
+        cb.new_certificates().send(certificate).await.unwrap();
     }
 
     // Ensure the commit sequence is as expected.
@@ -850,13 +808,8 @@ async fn committed_round_after_restart() {
     // Make certificates for rounds 1 to 11.
     let genesis =
         Certificate::genesis(&committee).iter().map(|x| x.digest()).collect::<BTreeSet<_>>();
-    let (certificates, _) = tn_types::test_utils::make_certificates_with_epoch(
-        &committee,
-        1..=11,
-        epoch,
-        &genesis,
-        &ids,
-    );
+    let (certificates, _) =
+        narwhal_test_utils::make_certificates_with_epoch(&committee, 1..=11, epoch, &genesis, &ids);
 
     let config = fixture.authorities().next().unwrap().consensus_config();
     let store = config.node_storage().consensus_store.clone();
@@ -864,13 +817,8 @@ async fn committed_round_after_restart() {
 
     for input_round in (1..=11usize).step_by(2) {
         // Spawn consensus and create related channels.
-        let (tx_new_certificates, rx_new_certificates) = tn_types::test_channel!(100);
-        let (tx_primary, mut rx_primary) = tn_types::test_channel!(100);
-        let (tx_output, mut rx_output) = tn_types::test_channel!(100);
-        let (tx_consensus_round_updates, rx_consensus_round_updates) =
-            watch::channel(ConsensusRound::new(0, 0));
+        let (tx_output, mut rx_output) = narwhal_test_utils::test_channel!(100);
 
-        let mut tx_shutdown = Notifier::new();
         let metrics = Arc::new(ConsensusMetrics::default());
 
         let bullshark = Bullshark::new(
@@ -882,22 +830,15 @@ async fn committed_round_after_restart() {
             DEFAULT_BAD_NODES_STAKE_THRESHOLD,
         );
 
-        let handle = Consensus::spawn(
-            config.clone(),
-            tx_shutdown.subscribe(),
-            rx_new_certificates,
-            tx_primary,
-            tx_consensus_round_updates,
-            tx_output,
-            bullshark,
-            metrics.clone(),
-        );
+        let cb = ConsensusBus::new();
+        let mut rx_primary = cb.committed_certificates().subscribe();
+        let handle = Consensus::spawn(config.clone(), &cb, tx_output, bullshark);
 
         // When `input_round` is 2 * r + 1, r > 1, the previous commit round would be 2 * (r - 1),
         // and the expected commit round after sending in certificates up to `input_round` would
         // be 2 * r.
 
-        let last_committed_round = rx_consensus_round_updates.borrow().committed_round as usize;
+        let last_committed_round = cb.consensus_round_updates().borrow().committed_round as usize;
         assert_eq!(last_committed_round, input_round.saturating_sub(3),);
         info!("Consensus started at last_committed_round={last_committed_round}");
 
@@ -906,7 +847,7 @@ async fn committed_round_after_restart() {
         let end_index = input_round * committee.size();
         for cert in certificates.iter().take(end_index).skip(start_index) {
             cert_store.write(cert.clone()).unwrap();
-            tx_new_certificates.send(cert.clone()).await.unwrap();
+            cb.new_certificates().send(cert.clone()).await.unwrap();
         }
         info!("Sent certificates {start_index} ~ {end_index} to consensus");
 
@@ -921,13 +862,13 @@ async fn committed_round_after_restart() {
         // After sending inputs up to round 2 * r + 1 to consensus, round 2 * r should have been
         // committed.
         assert_eq!(
-            rx_consensus_round_updates.borrow().committed_round as usize,
+            cb.consensus_round_updates().borrow().committed_round as usize,
             input_round.saturating_sub(1),
         );
         info!("Committed round adanced to {}", input_round.saturating_sub(1));
 
         // Shutdown consensus and wait for it to stop.
-        tx_shutdown.notify();
+        fixture.notify_shutdown();
         handle.await.unwrap();
     }
 }
@@ -946,15 +887,10 @@ async fn delayed_certificates_are_rejected() {
     let genesis =
         Certificate::genesis(&committee).iter().map(|x| x.digest()).collect::<BTreeSet<_>>();
     let metrics = Arc::new(ConsensusMetrics::default());
-    let (certificates, _) = tn_types::test_utils::make_certificates_with_epoch(
-        &committee,
-        1..=5,
-        epoch,
-        &genesis,
-        &ids,
-    );
+    let (certificates, _) =
+        narwhal_test_utils::make_certificates_with_epoch(&committee, 1..=5, epoch, &genesis, &ids);
 
-    let store = make_consensus_store(open_db(tn_types::test_utils::temp_dir()));
+    let store = make_consensus_store(open_db(narwhal_test_utils::temp_dir()));
     let mut state = ConsensusState::new(metrics.clone(), gc_depth);
 
     let mut bullshark = Bullshark::new(
@@ -1000,15 +936,10 @@ async fn submitting_equivocating_certificate_should_error() {
     let genesis =
         Certificate::genesis(&committee).iter().map(|x| x.digest()).collect::<BTreeSet<_>>();
     let metrics = Arc::new(ConsensusMetrics::default());
-    let (certificates, _) = tn_types::test_utils::make_certificates_with_epoch(
-        &committee,
-        1..=1,
-        epoch,
-        &genesis,
-        &ids,
-    );
+    let (certificates, _) =
+        narwhal_test_utils::make_certificates_with_epoch(&committee, 1..=1, epoch, &genesis, &ids);
 
-    let store = make_consensus_store(open_db(tn_types::test_utils::temp_dir()));
+    let store = make_consensus_store(open_db(narwhal_test_utils::temp_dir()));
     let mut state = ConsensusState::new(metrics.clone(), gc_depth);
     let mut bullshark = Bullshark::new(
         committee.clone(),
@@ -1032,7 +963,7 @@ async fn submitting_equivocating_certificate_should_error() {
     // Try to submit certificates for same rounds but equivocating certificates (we just create
     // them with different epoch as a way to trigger the difference)
     let (certificates, _) =
-        tn_types::test_utils::make_certificates_with_epoch(&committee, 1..=1, 100, &genesis, &ids);
+        narwhal_test_utils::make_certificates_with_epoch(&committee, 1..=1, 100, &genesis, &ids);
     assert_eq!(certificates.len(), 4);
 
     for certificate in certificates {
@@ -1061,15 +992,10 @@ async fn reset_consensus_scores_on_every_schedule_change() {
     let genesis =
         Certificate::genesis(&committee).iter().map(|x| x.digest()).collect::<BTreeSet<_>>();
     let metrics = Arc::new(ConsensusMetrics::default());
-    let (certificates, _) = tn_types::test_utils::make_certificates_with_epoch(
-        &committee,
-        1..=50,
-        epoch,
-        &genesis,
-        &ids,
-    );
+    let (certificates, _) =
+        narwhal_test_utils::make_certificates_with_epoch(&committee, 1..=50, epoch, &genesis, &ids);
 
-    let store = make_consensus_store(open_db(tn_types::test_utils::temp_dir()));
+    let store = make_consensus_store(open_db(narwhal_test_utils::temp_dir()));
     let mut state = ConsensusState::new(metrics.clone(), gc_depth);
     let mut bullshark = Bullshark::new(
         committee.clone(),
@@ -1133,13 +1059,8 @@ async fn restart_with_new_committee() {
     // Run for a few epochs.
     for epoch in 0..5 {
         // Spawn the consensus engine and sink the primary channel.
-        let (tx_new_certificates, rx_new_certificates) = tn_types::test_channel!(1);
-        let (tx_primary, mut rx_primary) = tn_types::test_channel!(1);
-        let (tx_output, mut rx_output) = tn_types::test_channel!(1);
-        let (tx_consensus_round_updates, _rx_consensus_round_updates) =
-            watch::channel(ConsensusRound::new(0, 0));
+        let (tx_output, mut rx_output) = narwhal_test_utils::test_channel!(1);
 
-        let mut tx_shutdown = Notifier::new();
         let config = fixture.authorities().next().unwrap().consensus_config();
         let config = ConsensusConfig::new_with_committee(
             config.config().clone(),
@@ -1163,22 +1084,18 @@ async fn restart_with_new_committee() {
             DEFAULT_BAD_NODES_STAKE_THRESHOLD,
         );
 
-        let handle = Consensus::spawn(
-            config,
-            tx_shutdown.subscribe(),
-            rx_new_certificates,
-            tx_primary,
-            tx_consensus_round_updates,
-            tx_output,
-            bullshark,
-            metrics.clone(),
-        );
-        tokio::spawn(async move { while rx_primary.recv().await.is_some() {} });
+        let cb = ConsensusBus::new();
+        let handle = Consensus::spawn(config.clone(), &cb, tx_output, bullshark);
+        let cb_clone = cb.clone();
+        tokio::spawn(async move {
+            let mut rx_primary = cb_clone.committed_certificates().subscribe();
+            while rx_primary.recv().await.is_some() {}
+        });
 
         // Make certificates for rounds 1 and 2.
         let genesis =
             Certificate::genesis(&committee).iter().map(|x| x.digest()).collect::<BTreeSet<_>>();
-        let (mut certificates, next_parents) = tn_types::test_utils::make_certificates_with_epoch(
+        let (mut certificates, next_parents) = narwhal_test_utils::make_certificates_with_epoch(
             &committee,
             1..=2,
             epoch,
@@ -1187,7 +1104,7 @@ async fn restart_with_new_committee() {
         );
 
         // Make two certificate (f+1) with round 3 to trigger the commits.
-        let (_, certificate) = tn_types::test_utils::mock_certificate_with_epoch(
+        let (_, certificate) = narwhal_test_utils::mock_certificate_with_epoch(
             &committee,
             ids[0],
             3,
@@ -1195,7 +1112,7 @@ async fn restart_with_new_committee() {
             next_parents.clone(),
         );
         certificates.push_back(certificate);
-        let (_, certificate) = tn_types::test_utils::mock_certificate_with_epoch(
+        let (_, certificate) = narwhal_test_utils::mock_certificate_with_epoch(
             &committee,
             ids[1],
             3,
@@ -1207,7 +1124,7 @@ async fn restart_with_new_committee() {
         // Feed all certificates to the consensus. Only the last certificate should trigger
         // commits, so the task should not block.
         while let Some(certificate) = certificates.pop_front() {
-            tx_new_certificates.send(certificate).await.unwrap();
+            cb.new_certificates().send(certificate).await.unwrap();
         }
 
         // Ensure the first 4 ordered certificates are from round 1 (they are the parents of the
@@ -1226,7 +1143,7 @@ async fn restart_with_new_committee() {
         // Move to the next epoch.
         committee = committee.advance_epoch_for_test(epoch + 1);
         fixture.update_committee(committee.clone());
-        tx_shutdown.notify();
+        config.shutdown();
 
         // Ensure consensus stopped.
         handle.await.unwrap();
@@ -1259,7 +1176,7 @@ async fn garbage_collection_basic() {
 
     let slow_nodes = vec![(slow_node, 0.0_f64)];
     let (certificates, _round_5_certificates) =
-        tn_types::test_utils::make_certificates_with_slow_nodes(
+        narwhal_test_utils::make_certificates_with_slow_nodes(
             &committee,
             1..=7,
             genesis,
@@ -1268,7 +1185,7 @@ async fn garbage_collection_basic() {
         );
 
     // Create Bullshark consensus engine
-    let store = make_consensus_store(open_db(tn_types::test_utils::temp_dir()));
+    let store = make_consensus_store(open_db(narwhal_test_utils::temp_dir()));
 
     let metrics = Arc::new(ConsensusMetrics::default());
     let mut state = ConsensusState::new(metrics.clone(), GC_DEPTH);
@@ -1341,7 +1258,7 @@ async fn slow_node() {
 
     let slow_nodes = vec![(slow_node, 0.0_f64)];
     let (certificates, round_8_certificates) =
-        tn_types::test_utils::make_certificates_with_slow_nodes(
+        narwhal_test_utils::make_certificates_with_slow_nodes(
             &committee,
             1..=8,
             genesis,
@@ -1363,7 +1280,7 @@ async fn slow_node() {
     });
 
     // Create Bullshark consensus engine
-    let store = make_consensus_store(open_db(tn_types::test_utils::temp_dir()));
+    let store = make_consensus_store(open_db(narwhal_test_utils::temp_dir()));
     let metrics = Arc::new(ConsensusMetrics::default());
     let mut state = ConsensusState::new(metrics.clone(), GC_DEPTH);
     let mut bullshark = Bullshark::new(
@@ -1400,7 +1317,7 @@ async fn slow_node() {
     // leader, so commit should be triggered immediately.
     // It is reminded that the leader election for testing is round robin, thus we can
     // deterministically know the leader of each round.
-    let (certificates, _) = tn_types::test_utils::make_certificates_with_slow_nodes(
+    let (certificates, _) = narwhal_test_utils::make_certificates_with_slow_nodes(
         &committee,
         9..=9,
         round_8_certificates,
@@ -1468,7 +1385,7 @@ async fn not_enough_support_and_missing_leaders_and_gc() {
     let genesis = Certificate::genesis(&committee);
 
     let (mut certificates, round_2_certificates) =
-        tn_types::test_utils::make_certificates_with_slow_nodes(
+        narwhal_test_utils::make_certificates_with_slow_nodes(
             &committee,
             1..=2,
             genesis,
@@ -1485,7 +1402,7 @@ async fn not_enough_support_and_missing_leaders_and_gc() {
             let parents =
                 round_2_certificates.iter().map(|cert| cert.digest()).collect::<BTreeSet<_>>();
             let (_, certificate) =
-                tn_types::test_utils::mock_certificate(&committee, *id, 3, parents);
+                narwhal_test_utils::mock_certificate(&committee, *id, 3, parents);
             round_3_certificates.push(certificate);
         } else {
             // we filter out the round 2 leader
@@ -1495,7 +1412,7 @@ async fn not_enough_support_and_missing_leaders_and_gc() {
                 .map(|cert| cert.digest())
                 .collect::<BTreeSet<_>>();
             let (_, certificate) =
-                tn_types::test_utils::mock_certificate(&committee, *id, 3, parents);
+                narwhal_test_utils::mock_certificate(&committee, *id, 3, parents);
             round_3_certificates.push(certificate);
         }
     }
@@ -1506,7 +1423,7 @@ async fn not_enough_support_and_missing_leaders_and_gc() {
     for id in ids.iter().filter(|a| *a != missing_leader) {
         let parents =
             round_3_certificates.iter().map(|cert| cert.digest()).collect::<BTreeSet<_>>();
-        let (_, certificate) = tn_types::test_utils::mock_certificate(&committee, *id, 4, parents);
+        let (_, certificate) = narwhal_test_utils::mock_certificate(&committee, *id, 4, parents);
         round_4_certificates.push(certificate);
     }
 
@@ -1516,7 +1433,7 @@ async fn not_enough_support_and_missing_leaders_and_gc() {
     let slow_nodes = vec![(slow_node, 0.0_f64)];
 
     let (certificates_5_to_7, _round_7_certificates) =
-        tn_types::test_utils::make_certificates_with_slow_nodes(
+        narwhal_test_utils::make_certificates_with_slow_nodes(
             &committee,
             5..=7,
             round_4_certificates.clone(),
@@ -1530,7 +1447,7 @@ async fn not_enough_support_and_missing_leaders_and_gc() {
     certificates.extend(certificates_5_to_7);
 
     // Create Bullshark consensus engine
-    let store = make_consensus_store(open_db(tn_types::test_utils::temp_dir()));
+    let store = make_consensus_store(open_db(narwhal_test_utils::temp_dir()));
     let metrics = Arc::new(ConsensusMetrics::default());
     let mut state = ConsensusState::new(metrics.clone(), GC_DEPTH);
     let mut bullshark = Bullshark::new(

@@ -24,3 +24,6 @@ mod certificate_tests;
 mod rpc_tests;
 
 pub use crate::primary::{Primary, CHANNEL_CAPACITY};
+
+mod consensus_bus;
+pub use consensus_bus::*;

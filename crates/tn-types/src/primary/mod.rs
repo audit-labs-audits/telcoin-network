@@ -1,10 +1,10 @@
 //! Primary types used for consensus.
 
 use std::time::{Duration, SystemTime};
-mod certificate;
-mod header;
-mod vote;
-mod worker_block;
+pub mod certificate;
+pub mod header;
+pub mod vote;
+pub mod worker_block;
 
 pub use certificate::*;
 pub use header::*;

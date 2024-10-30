@@ -19,7 +19,7 @@ telcoin-macros.workspace = true
 eyre = { workspace = true }
 
 [dev-dependencies]
-tn-types = { workspace = true, features = ["test-utils"] }
 tempfile.workspace = true
 tokio = { workspace = true, features = ["sync", "rt", "macros"] }
+narwhal-test-utils = { workspace = true }
 futures.workspace = true

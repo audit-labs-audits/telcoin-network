@@ -1,7 +1,9 @@
 // Copyright (c) Telcoin, LLC
 // SPDX-License-Identifier: Apache-2.0
 
-//! This contains the encode/decode (serialize/deserialize) functions.  These should be used to
+//! This contains the encode/decode (serialize/deserialize) functions.
+//!
+//! These should be used to
 //! allow for one place to examine and change. Note the normal and "key" versions, the key versions
 //! have the added requirement that the produced bytes will binary sort correctly when used
 //! as a DB key.  They do not need be used for anything else, bincode with the with_fixint_encoding

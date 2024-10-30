@@ -95,17 +95,23 @@ impl Header {
     /// The digest is calculated with the sealed header, so the EL data is also verified.
     pub fn validate(&self, committee: &Committee, worker_cache: &WorkerCache) -> DagResult<()> {
         // Ensure the header is from the correct epoch.
-        ensure!(
-            self.epoch == committee.epoch(),
-            DagError::InvalidEpoch { expected: committee.epoch(), received: self.epoch }
-        );
+        if self.epoch != committee.epoch() {
+            return Err(DagError::InvalidEpoch {
+                expected: committee.epoch(),
+                received: self.epoch,
+            });
+        }
 
         // Ensure the header digest is well formed.
-        ensure!(Hash::digest(self) == self.digest(), DagError::InvalidHeaderDigest);
+        if Hash::digest(self) != self.digest() {
+            return Err(DagError::InvalidHeaderDigest);
+        }
 
         // Ensure the authority has voting rights.
         let voting_rights = committee.stake_by_id(self.author);
-        ensure!(voting_rights > 0, DagError::UnknownAuthority(self.author.to_string()));
+        if voting_rights == 0 {
+            return Err(DagError::UnknownAuthority(self.author.to_string()));
+        }
 
         // Ensure all worker ids are correct.
         for (worker_id, _) in self.payload.values() {
@@ -120,15 +126,23 @@ impl Header {
         for m in self.system_messages.iter() {
             match m {
                 SystemMessage::DkgMessage(msg) => {
-                    ensure!(msg.sender == self.author.0, DagError::InvalidSystemMessage);
+                    if msg.sender != self.author.0 {
+                        return Err(DagError::InvalidSystemMessage);
+                    }
                     // A header must have no more than one DkgMessage.
-                    ensure!(!has_dkg_message, DagError::DuplicateSystemMessage);
+                    if has_dkg_message {
+                        return Err(DagError::DuplicateSystemMessage);
+                    }
                     has_dkg_message = true;
                 }
                 SystemMessage::DkgConfirmation(conf) => {
-                    ensure!(conf.sender == self.author.0, DagError::InvalidSystemMessage);
+                    if conf.sender != self.author.0 {
+                        return Err(DagError::InvalidSystemMessage);
+                    }
                     // A header must have no more than one DkgConfirmation.
-                    ensure!(!has_dkg_confirmation, DagError::DuplicateSystemMessage);
+                    if has_dkg_confirmation {
+                        return Err(DagError::DuplicateSystemMessage);
+                    }
                     has_dkg_confirmation = true;
                 }
             }
@@ -171,22 +185,22 @@ impl Header {
     /// Replace the header's payload with a new one.
     ///
     /// Only used for testing.
-    #[cfg(any(test, feature = "test-utils"))]
-    pub fn update_payload(&mut self, new_payload: IndexMap<BlockHash, (WorkerId, TimestampSec)>) {
+    pub fn update_payload_for_test(
+        &mut self,
+        new_payload: IndexMap<BlockHash, (WorkerId, TimestampSec)>,
+    ) {
         self.payload = new_payload;
     }
 
     /// Replace the header's round with a new one.
     ///
     /// Only used for testing.
-    #[cfg(any(test, feature = "test-utils"))]
-    pub fn update_round(&mut self, new_round: Round) {
+    pub fn update_round_for_test(&mut self, new_round: Round) {
         self.round = new_round;
     }
 
     /// Clear the header's parents.
-    #[cfg(any(test, feature = "test-utils"))]
-    pub fn clear_parents(&mut self) {
+    pub fn clear_parents_for_test(&mut self) {
         self.parents.clear();
     }
 }

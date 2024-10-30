@@ -2,48 +2,38 @@
 // Copyright (c) Telcoin, LLC
 // Copyright (c) Mysten Labs, Inc.
 // SPDX-License-Identifier: Apache-2.0
-use consensus_metrics::{
-    metered_channel::{Receiver, Sender},
-    spawn_logged_monitored_task,
-};
-use tn_types::{AuthorityIdentifier, Noticer};
+use consensus_metrics::spawn_logged_monitored_task;
+use tn_types::{AuthorityIdentifier, Noticer, TnReceiver, TnSender};
 
 use tap::TapFallible;
 use tn_types::{Certificate, Round};
 use tokio::task::JoinHandle;
 use tracing::{debug, error, info, warn};
 
+use crate::ConsensusBus;
+
 /// Updates Narwhal system state based on certificates received from consensus.
 pub struct StateHandler {
     authority_id: AuthorityIdentifier,
 
-    /// Receives the ordered certificates from consensus.
-    rx_committed_certificates: Receiver<(Round, Vec<Certificate>)>,
+    /// Used for Receives the ordered certificates from consensus.
+    consensus_bus: ConsensusBus,
     /// Channel to signal committee changes.
     rx_shutdown: Noticer,
-    /// A channel to update the committed rounds
-    tx_committed_own_headers: Option<Sender<(Round, Vec<Round>)>>,
 
     network: anemo::Network,
 }
 
 impl StateHandler {
-    #[allow(clippy::too_many_arguments)]
     #[must_use]
     pub fn spawn(
         authority_id: AuthorityIdentifier,
-        rx_committed_certificates: Receiver<(Round, Vec<Certificate>)>,
+        consensus_bus: &ConsensusBus,
         rx_shutdown: Noticer,
-        tx_committed_own_headers: Option<Sender<(Round, Vec<Round>)>>,
         network: anemo::Network,
     ) -> JoinHandle<()> {
-        let state_handler = Self {
-            authority_id,
-            rx_committed_certificates,
-            rx_shutdown,
-            tx_committed_own_headers,
-            network,
-        };
+        let state_handler =
+            Self { authority_id, consensus_bus: consensus_bus.clone(), rx_shutdown, network };
         spawn_logged_monitored_task!(
             async move {
                 state_handler.run().await;
@@ -64,31 +54,39 @@ impl StateHandler {
                 }
             })
             .collect();
-        debug!("Own committed rounds {:?} at round {:?}", own_rounds_committed, commit_round);
+        debug!(target: "primary::state_handler", "Own committed rounds {:?} at round {:?}", own_rounds_committed, commit_round);
 
         // If a reporting channel is available send the committed own
         // headers to it.
-        if let Some(sender) = &self.tx_committed_own_headers {
-            let _ = sender.send((commit_round, own_rounds_committed)).await;
+        if let Err(e) = self
+            .consensus_bus
+            .committed_own_headers()
+            .send((commit_round, own_rounds_committed))
+            .await
+        {
+            error!(target: "primary::state_handler", "error sending commit header: {e}");
         }
     }
 
     async fn run(mut self) {
-        info!("StateHandler on node {} has started successfully.", self.authority_id);
-
+        info!(target: "primary::state_handler", "StateHandler on node {} has started successfully.", self.authority_id);
+        // This clone inso a variable is D-U-M, subscribe should return an owned object but here we
+        // are.
+        let committed_certificates = self.consensus_bus.committed_certificates().clone();
+        let mut rx_committed_certificates = committed_certificates.subscribe();
         loop {
             tokio::select! {
-                Some((commit_round, certificates)) = self.rx_committed_certificates.recv() => {
+                Some((commit_round, certificates)) = rx_committed_certificates.recv() => {
                     self.handle_sequenced(commit_round, certificates).await;
                 },
 
                 _ = &self.rx_shutdown => {
                     // shutdown network
                     let _ = self.network.shutdown().await.tap_err(|err|{
-                        error!("Error while shutting down network: {err}")
+                        error!(target: "primary::state_handler", "Error while shutting down network: {err}")
                     });
 
-                    warn!("Network has shutdown");
+                    warn!(target: "primary::state_handler", "Network has shutdown");
 
                     return;
                 }

@@ -64,7 +64,6 @@ tikv-jemallocator = { workspace = true, optional = true }
 reth-basic-payload-builder = { workspace = true }
 reth-payload-builder = { workspace = true }
 tempfile = { workspace = true }
-tn-types = { workspace = true, features = ["test-utils"] }
 
 # Used for integration testing.
 ethereum-tx-sign = "6.1.3"

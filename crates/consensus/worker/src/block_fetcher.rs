@@ -309,11 +309,12 @@ impl RequestBlocksNetwork for RequestBlocksNetworkImpl {
 mod tests {
     use super::*;
     use fastcrypto::traits::KeyPair;
+    use narwhal_test_utils::transaction;
     use narwhal_typed_store::open_db;
     use rand::rngs::StdRng;
     use reth_primitives::{Header, SealedHeader};
     use tempfile::TempDir;
-    use tn_types::{test_utils::transaction, NetworkKeypair};
+    use tn_types::NetworkKeypair;
 
     #[tokio::test]
     pub async fn test_fetcher() {

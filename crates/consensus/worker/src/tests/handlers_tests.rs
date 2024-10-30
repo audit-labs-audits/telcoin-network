@@ -4,11 +4,10 @@
 // SPDX-License-Identifier: Apache-2.0
 
 use narwhal_network_types::{MockWorkerToWorker, WorkerToWorkerServer};
-use narwhal_test_utils::CommitteeFixture;
+use narwhal_test_utils::{batch, random_network, CommitteeFixture};
 use narwhal_typed_store::{mem_db::MemDatabase, open_db};
 use std::vec;
 use tempfile::TempDir;
-use tn_types::test_utils::{batch, random_network};
 
 use super::*;
 use tn_block_validator::NoopBlockValidator;

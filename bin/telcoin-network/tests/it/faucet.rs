@@ -23,7 +23,13 @@ use jsonrpsee::{
     rpc_params,
 };
 use k256::{elliptic_curve::sec1::ToEncodedPoint, pkcs8::DecodePublicKey, PublicKey as PubKey};
-use narwhal_test_utils::{default_test_execution_node, CommandParser};
+use narwhal_test_utils::{
+    contract_artifacts::{
+        ERC1967PROXY_INITCODE, ERC1967PROXY_RUNTIMECODE, STABLECOINMANAGER_RUNTIMECODE,
+        STABLECOIN_RUNTIMECODE,
+    },
+    default_test_execution_node, execution_outcome_for_tests, CommandParser, TransactionFactory,
+};
 use reth::{
     providers::ExecutionOutcome,
     tasks::{TaskExecutor, TaskManager},
@@ -38,17 +44,7 @@ use std::{str::FromStr, sync::Arc, time::Duration};
 use telcoin_network::{genesis::GenesisArgs, node::NodeCommand};
 use tn_faucet::FaucetArgs;
 use tn_node::launch_node;
-use tn_types::{
-    adiri_genesis,
-    test_utils::{
-        contract_artifacts::{
-            ERC1967PROXY_INITCODE, ERC1967PROXY_RUNTIMECODE, STABLECOINMANAGER_RUNTIMECODE,
-            STABLECOIN_RUNTIMECODE,
-        },
-        execution_outcome_for_tests, TransactionFactory,
-    },
-    TransactionSigned, WorkerBlock,
-};
+use tn_types::{adiri_genesis, TransactionSigned, WorkerBlock};
 use tokio::{runtime::Handle, task::JoinHandle, time::timeout};
 use tracing::{debug, error, info};
 

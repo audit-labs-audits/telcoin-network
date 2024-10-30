@@ -7,6 +7,7 @@ mod authority;
 pub use authority::*;
 pub mod cluster;
 mod execution;
+pub use execution::*;
 mod primary;
 mod worker;
 pub use worker::*;
@@ -21,6 +22,15 @@ pub use execution::{
     default_test_execution_node, execution_builder, faucet_test_execution_node, CommandParser,
     TestExecutionNode,
 };
+
+pub mod helpers;
+pub use helpers::*;
+
+mod artifacts;
+pub use artifacts::*;
+
+mod telcoin_temp_dirs;
+pub use telcoin_temp_dirs::*;
 
 #[cfg(test)]
 mod output_tests;
