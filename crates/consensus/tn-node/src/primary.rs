@@ -156,14 +156,6 @@ impl<CDB: ConsensusDatabase> PrimaryNodeInner<CDB> {
     where
         BlsPublicKey: VerifyingKey,
     {
-        /*let channel_metrics = ChannelMetrics::default();
-
-        // XXXX
-        let (tx_sequence, rx_sequence) = metered_channel::channel(
-            narwhal_primary::CHANNEL_CAPACITY,
-            &channel_metrics.tx_sequence,
-        );*/
-
         // TODO: this may need to be adjusted depending on how TN executes output
         //
         // if executor engine executes-per-batch:
