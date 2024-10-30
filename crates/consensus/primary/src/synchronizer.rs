@@ -341,7 +341,9 @@ impl<DB: Database> Synchronizer<DB> {
         let highest_created_certificate =
             node_store.certificate_store.last_round(consensus_config.authority().id()).unwrap();
         let gc_round = consensus_bus.consensus_round_updates().borrow().gc_round;
-        // XXXX
+        // These channels are used internally to this module (file) and don't need to go in the
+        // consensus bus. If this changes they can move.  Note there can be issues receiving
+        // certs over the broadcast if not subscribed early.
         let (tx_own_certificate_broadcast, _rx_own_certificate_broadcast) =
             broadcast::channel(CHANNEL_CAPACITY);
         let (tx_certificate_acceptor, mut rx_certificate_acceptor) = channel_with_total(

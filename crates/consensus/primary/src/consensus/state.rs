@@ -9,7 +9,7 @@ use crate::{
     consensus::{bullshark::Bullshark, utils::gc_round, ConsensusError, ConsensusMetrics},
     ConsensusBus,
 };
-use consensus_metrics::{metered_channel, spawn_logged_monitored_task};
+use consensus_metrics::spawn_logged_monitored_task;
 use fastcrypto::hash::Hash;
 use narwhal_storage::CertificateStore;
 use narwhal_typed_store::traits::Database;
@@ -280,8 +280,6 @@ pub struct Consensus<DB> {
 
     /// Receiver for shutdown.
     rx_shutdown: Noticer,
-    /// Outputs the sequence of ordered certificates to the application layer.
-    tx_sequence: metered_channel::MeteredMpscChannel<CommittedSubDag>,
 
     /// The consensus protocol to run.
     protocol: Bullshark<DB>,
@@ -298,7 +296,6 @@ impl<DB: Database> Consensus<DB> {
     pub fn spawn(
         consensus_config: ConsensusConfig<DB>,
         consensus_bus: &ConsensusBus,
-        tx_sequence: metered_channel::MeteredMpscChannel<CommittedSubDag>,
         protocol: Bullshark<DB>,
     ) -> JoinHandle<()> {
         let metrics = consensus_bus.consensus_metrics();
@@ -340,7 +337,6 @@ impl<DB: Database> Consensus<DB> {
             committee: consensus_config.committee().clone(),
             consensus_bus: consensus_bus.clone(),
             rx_shutdown,
-            tx_sequence,
             protocol,
             metrics,
             state,
@@ -412,7 +408,7 @@ impl<DB: Database> Consensus<DB> {
 
                         // NOTE: The size of the sub-dag can be arbitrarily large (depending on the network condition
                         // and Byzantine leaders).
-                        self.tx_sequence.send(committed_sub_dag).await.map_err(|_|ConsensusError::ShuttingDown)?;
+                        self.consensus_bus.sequence().send(committed_sub_dag).await.map_err(|_|ConsensusError::ShuttingDown)?;
                     }
 
                     if !committed_certificates.is_empty(){

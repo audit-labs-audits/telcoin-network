@@ -2,11 +2,12 @@
 // Copyright (c) Mysten Labs, Inc.
 // SPDX-License-Identifier: Apache-2.0
 use crate::{errors::SubscriberResult, metrics::ExecutorMetrics};
-use consensus_metrics::{metered_channel, spawn_logged_monitored_task};
+use consensus_metrics::spawn_logged_monitored_task;
 use fastcrypto::hash::Hash;
 use futures::{stream::FuturesOrdered, StreamExt};
 use narwhal_network::{client::NetworkClient, PrimaryToWorkerClient};
 use narwhal_network_types::FetchBlocksRequest;
+use narwhal_primary::ConsensusBus;
 use reth_primitives::Address;
 use std::{
     collections::{HashMap, HashSet, VecDeque},
@@ -16,7 +17,7 @@ use std::{
 };
 use tn_types::{
     AuthorityIdentifier, BlockHash, Certificate, CommittedSubDag, Committee, ConsensusOutput,
-    NetworkPublicKey, Noticer, Timestamp, TnReceiver, WorkerBlock, WorkerCache, WorkerId,
+    NetworkPublicKey, Noticer, Timestamp, TnReceiver, TnSender, WorkerBlock, WorkerCache, WorkerId,
 };
 use tokio::{sync::broadcast, task::JoinHandle};
 use tracing::{debug, error, info, warn};
@@ -27,8 +28,8 @@ use tracing::{debug, error, info, warn};
 pub struct Subscriber {
     /// Receiver for shutdown
     rx_shutdown: Noticer,
-    /// A channel to receive sequenced consensus messages.
-    rx_sequence: metered_channel::Receiver<CommittedSubDag>,
+    /// Used to get the sequence receiver
+    consensus_bus: ConsensusBus,
     /// Inner state.
     inner: Arc<Inner>,
 }
@@ -48,7 +49,7 @@ pub fn spawn_subscriber(
     committee: Committee,
     client: NetworkClient,
     rx_shutdown: Noticer,
-    rx_sequence: metered_channel::Receiver<CommittedSubDag>,
+    consensus_bus: ConsensusBus,
     restored_consensus_output: Vec<CommittedSubDag>,
     consensus_output_notification_sender: broadcast::Sender<ConsensusOutput>,
 ) -> JoinHandle<()> {
@@ -59,7 +60,7 @@ pub fn spawn_subscriber(
             info!(target: "telcoin::subscriber", "Starting subscriber");
             let subscriber = Subscriber {
                 rx_shutdown,
-                rx_sequence,
+                consensus_bus,
                 inner: Arc::new(Inner { authority_id, committee, worker_cache, client, metrics }),
             };
             subscriber
@@ -77,7 +78,7 @@ impl Subscriber {
 
     /// Main loop connecting to the consensus to listen to sequence messages.
     async fn run(
-        mut self,
+        self,
         restored_consensus_output: Vec<CommittedSubDag>,
         consensus_output_notification_sender: broadcast::Sender<ConsensusOutput>,
     ) -> SubscriberResult<()> {
@@ -99,11 +100,12 @@ impl Subscriber {
             self.inner.metrics.subscriber_recovered_certificates_count.inc();
         }
 
+        let mut rx_sequence = self.consensus_bus.sequence().subscribe();
         // Listen to sequenced consensus message and process them.
         loop {
             tokio::select! {
                 // Receive the ordered sequence of consensus messages from a consensus node.
-                Some(sub_dag) = self.rx_sequence.recv(), if waiting.len() < Self::MAX_PENDING_PAYLOADS => {
+                Some(sub_dag) = rx_sequence.recv(), if waiting.len() < Self::MAX_PENDING_PAYLOADS => {
                     // We can schedule more then MAX_PENDING_PAYLOADS payloads but
                     // don't process more consensus messages when more
                     // then MAX_PENDING_PAYLOADS is pending
