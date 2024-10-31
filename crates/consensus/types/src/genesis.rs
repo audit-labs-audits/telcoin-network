@@ -184,7 +184,7 @@ impl NetworkGenesis {
     /// Read output file from Solidity GenerateConsensusRegistryStorage utility
     /// to fetch storage configuration for ConsensusRegistry at genesis
     /// 
-    /// Q: Should this function programmatically invoke the Foundry util directly?
+    /// 
     pub fn construct_registry_genesis_accounts(registry_cfg_path: &PathBuf, validator_infos: Vec<ValidatorInfo>) -> Vec<(Address, GenesisAccount)> {
         let content = fs::read_to_string(registry_cfg_path).expect("Failed to read consensus-registry-storage yaml");
         let registry_storage_cfg: BTreeMap<String, String> = serde_yaml::from_str(&content).expect("Parsing failure");
@@ -193,27 +193,29 @@ impl NetworkGenesis {
             .map(|(k, v)| (k.parse().expect("Invalid key"), v.parse().expect("Invalid val")))
             .collect();
 
-            
-        let pubkey_flags = pubkey_flags();
-        // iterate over BTreeMap to conditionally overwrite labeled values with ones that are now known
+        let pubkey_flags = pubkey_flags(validator_infos.len());
+        // iterate over BTreeMap to conditionally overwrite flagged values with pubkeys that are now known
         for val in registry_storage_cfg.values_mut() {
             overwrite_if_flag(val, &pubkey_flags, &validator_infos);
         }
 
-        fn overwrite_if_flag(val: &mut FixedBytes<32>, flags: &[ValidatorFlags; 4], validator_infos: &Vec<ValidatorInfo>) {
+        fn overwrite_if_flag(val: &mut FixedBytes<32>, flags: &Vec<ValidatorFlags>, validator_infos: &Vec<ValidatorInfo>) {
             for (i, flag) in flags.iter().enumerate() {
                 if *val == flag.bls_a {
-                    // todo: split public key and use first 32 bytes 
-                    // *val = validator_infos[i].bls_public_key().as_bytes().slice(0:32);
-                    // return;
-                } if *val == flag.bls_b {
-                    // todo: split public key and use second 32 bytes 
-                    // *val = validator_infos[i].bls_public_key().as_bytes().slice(32:64);
-                    // return;
-                } if *val == flag.bls_c {
-                    // todo: split public key and use last 32 bytes 
-                    // *val = validator_infos[i].bls_public_key().as_bytes().slice(64:96);
-                    // return;
+                    // overwrite using first 32 bytes of bls pubkey
+                    let bls_first_word = &validator_infos[i].bls_public_key.as_bytes()[0..32];
+                    val.copy_from_slice(&bls_first_word);
+                    return;
+                } else if *val == flag.bls_b {
+                    // overwrite using middle 32 bytes of bls pubkey
+                    let bls_middle_word = &validator_infos[i].bls_public_key.as_bytes()[32..64];
+                    val.copy_from_slice(&bls_middle_word);
+                    return;
+                } else if *val == flag.bls_c {
+                    // overwrite using last 32 bytes of bls pubkey
+                    let bls_last_word = &validator_infos[i].bls_public_key.as_bytes()[64..96];
+                    val.copy_from_slice(&bls_last_word);
+                    return;
                 } else if *val == flag.ecdsa {
                     *val = validator_infos[i].execution_address.into_word();
                     return;
@@ -223,42 +225,6 @@ impl NetworkGenesis {
                 }
             }
         }
-
-        struct ValidatorFlags {
-            bls_a: FixedBytes<32>,
-            bls_b: FixedBytes<32>,
-            bls_c: FixedBytes<32>,
-            ecdsa: FixedBytes<32>,
-            ed25519: FixedBytes<32>
-        }
-        /// Calculate flags used by Foundry util to label storage values for overwriting
-        /// could be pub consts if precalculated
-        fn pubkey_flags() -> [ValidatorFlags; 4] {
-            bls_a: keccak256("VALIDATOR1_BLS_1A");
-            bls_b: keccak256("VALIDATOR1_BLS_1B");
-            bls_c: keccak256("VALIDATOR1_BLS_1C");
-            ed25519: keccak256("VALIDATOR1_ED25519");
-            ecdsa: keccak256("VALIDATOR1_ECDSA");
-
-            bls_a: keccak256("VALIDATOR2_BLS_2A");
-            bls_b: keccak256("VALIDATOR2_BLS_2B");
-            bls_c: keccak256("VALIDATOR2_BLS_2C");
-            ed25519: keccak256("VALIDATOR2_ED25519");
-            ecdsa: keccak256("VALIDATOR2_ECDSA");
-
-            bls_a: keccak256("VALIDATOR3_BLS_3A");
-            bls_b: keccak256("VALIDATOR3_BLS_3B");
-            bls_c: keccak256("VALIDATOR3_BLS_3C");
-            ed25519: keccak256("VALIDATOR3_ED25519");
-            ecdsa: keccak256("VALIDATOR3_ECDSA");
-
-            bls_a: keccak256("VALIDATOR4_BLS_4A");
-            bls_b: keccak256("VALIDATOR4_BLS_4B");
-            bls_c: keccak256("VALIDATOR4_BLS_4C");
-            ed25519: keccak256("VALIDATOR4_ED25519");
-            ecdsa: keccak256("VALIDATOR4_ECDSA");
-        }
-
 
         let registry_impl = Address::random();
         let registry_proxy = Address::from_word(hex!("00000000000000000000000007e17e17e17e17e17e17e17e17e17e17e17e17e1").into());
@@ -602,6 +568,37 @@ impl PartialEq for ValidatorSignatureInfo {
         // valid signatures for the same epoch and authority.
         self.epoch == other.epoch && self.authority == other.authority
     }
+}
+
+struct ValidatorFlags {
+    bls_a: FixedBytes<32>,
+    bls_b: FixedBytes<32>,
+    bls_c: FixedBytes<32>,
+    ed25519: FixedBytes<32>,
+    ecdsa: FixedBytes<32>
+}
+
+/// Calculate flags used by Foundry util to label storage values for overwriting
+fn pubkey_flags(num_validators: usize) -> Vec<ValidatorFlags> {
+    let mut flags = Vec::with_capacity(num_validators);
+
+    for i in 1..=num_validators {
+        let flag_bls_a = keccak256(&format!("VALIDATOR_{}_BLS_A", i));
+        let flag_bls_b = keccak256(&format!("VALIDATOR_{}_BLS_B", i));
+        let flag_bls_c = keccak256(&format!("VALIDATOR_{}_BLS_C", i));
+        let flag_ed25519 = keccak256(&format!("VALIDATOR_{}_ED25519", i));
+        let flag_ecdsa = keccak256(&format!("VALIDATOR_{}_ECDSA", i));
+        
+        flags.push(ValidatorFlags {
+            bls_a: flag_bls_a,
+            bls_b: flag_bls_b,
+            bls_c: flag_bls_c,
+            ed25519: flag_ed25519,
+            ecdsa: flag_ecdsa
+        });
+    }
+    
+    flags
 }
 
 #[cfg(test)]
