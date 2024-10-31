@@ -4,38 +4,34 @@ mod tests {
     use alloy::{
         network::EthereumWallet,
         primitives::{FixedBytes, Uint},
-        providers::{Provider, ProviderBuilder},
-        signers::local::LocalSigner,
+        providers::ProviderBuilder,
         sol,
         sol_types::SolValue,
     };
     use fastcrypto::traits::{KeyPair, ToFromBytes};
     use jsonrpsee::{
         core::client::ClientT,
-        http_client::{HttpClient, HttpClientBuilder},
+        http_client::HttpClientBuilder,
         rpc_params,
     };
-    use k256::ecdsa::SigningKey;
     use rand::{rngs::StdRng, SeedableRng};
     use reth::{
-        primitives::{Address, Bytes, GenesisAccount, SealedHeader, U256},
+        primitives::{Address, Bytes, GenesisAccount, U256},
         tasks::TaskManager,
     };
     use reth_chainspec::ChainSpec;
-    use reth_tracing::init_test_tracing;
-    use std::{str::FromStr, sync::Arc, time::Duration};
+    use std::{sync::Arc, time::Duration};
     use tn_types::{
         adiri_genesis,
         test_utils::{
             contract_artifacts::{
                 CONSENSUSREGISTRY_RUNTIMECODE, ERC1967PROXY_INITCODE, ERC1967PROXY_RUNTIMECODE,
             },
-            execution_outcome_for_tests, TransactionFactory,
+            TransactionFactory
         },
-        BlsKeypair, NetworkKeypair, WorkerBlock,
+        BlsKeypair, NetworkKeypair,
     };
     use tokio::runtime::Handle;
-    use tracing::info;
 
     #[tokio::test]
     async fn test_genesis_with_consensus_registry() {

@@ -586,8 +586,8 @@ impl PubkeyFlags {
     /// within `flags`
     fn overwrite_if_flag(
         val: &mut FixedBytes<32>,
-        flags: &Vec<PubkeyFlags>,
-        validator_infos: &Vec<ValidatorInfo>,
+        flags: &[PubkeyFlags],
+        validator_infos: &[ValidatorInfo],
     ) {
         for (i, flag) in flags.iter().enumerate() {
             if *val == flag.bls_a {

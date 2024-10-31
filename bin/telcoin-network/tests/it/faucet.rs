@@ -8,7 +8,7 @@
 //! then submits the transaction to the RPC Transaction Pool for the next batch.
 
 use crate::util::{
-    create_validator_info, ensure_account_balance_infinite_loop, get_contract_state_for_genesis,
+    ensure_account_balance_infinite_loop, get_contract_state_for_genesis,
     spawn_local_testnet, IT_TEST_MUTEX,
 };
 use alloy::{network::EthereumWallet, providers::ProviderBuilder, sol, sol_types::SolValue};
@@ -22,25 +22,20 @@ use gcloud_sdk::{
 };
 use jsonrpsee::{
     core::client::ClientT,
-    http_client::{HttpClient, HttpClientBuilder},
+    http_client::HttpClientBuilder,
     rpc_params,
 };
 use k256::{elliptic_curve::sec1::ToEncodedPoint, pkcs8::DecodePublicKey, PublicKey as PubKey};
-use narwhal_test_utils::{default_test_execution_node, CommandParser};
+use narwhal_test_utils::default_test_execution_node;
 use reth::{
     providers::ExecutionOutcome,
-    tasks::{TaskExecutor, TaskManager},
-    CliContext,
+    tasks::TaskManager
 };
 use reth_chainspec::ChainSpec;
-use reth_node_ethereum::{EthEvmConfig, EthExecutorProvider};
-use reth_primitives::{public_key_to_address, Address, GenesisAccount, SealedHeader, B256, U256};
+use reth_primitives::{public_key_to_address, Address, GenesisAccount, B256, U256};
 use reth_tracing::init_test_tracing;
 use secp256k1::PublicKey;
 use std::{str::FromStr, sync::Arc, time::Duration};
-use telcoin_network::{genesis::GenesisArgs, node::NodeCommand};
-use tn_faucet::FaucetArgs;
-use tn_node::launch_node;
 use tn_types::{
     adiri_genesis,
     test_utils::{
@@ -49,11 +44,10 @@ use tn_types::{
             STABLECOIN_RUNTIMECODE,
         },
         execution_outcome_for_tests, TransactionFactory,
-    },
-    TransactionSigned, WorkerBlock,
+    }
 };
 use tokio::{runtime::Handle, task::JoinHandle, time::timeout};
-use tracing::{debug, error, info};
+use tracing::{debug, info};
 
 #[tokio::test]
 async fn test_faucet_transfers_tel_and_xyz_with_google_kms_e2e() -> eyre::Result<()> {
