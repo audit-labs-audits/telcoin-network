@@ -184,15 +184,14 @@ impl NetworkGenesis {
 
     /// Read output file from Solidity GenerateConsensusRegistryStorage utility
     /// to fetch storage configuration for ConsensusRegistry at genesis
-    pub fn construct_registry_genesis_accounts(registry_cfg_path: &PathBuf, validator_infos: Vec<ValidatorInfo>) -> Vec<(Address, GenesisAccount)> {
+    pub fn construct_registry_genesis_accounts(validator_infos: Vec<ValidatorInfo>) -> Vec<(Address, GenesisAccount)> {
+        let registry_cfg_path = "../../../tn-contracts/deployments/consensus-registry-storage.yaml";
         let content = fs::read_to_string(registry_cfg_path).expect("Failed to read consensus-registry-storage yaml");
         let registry_storage_cfg: BTreeMap<String, String> = serde_yaml::from_str(&content).expect("Parsing failure");
         let mut registry_storage_cfg: BTreeMap<FixedBytes<32>, FixedBytes<32>> = registry_storage_cfg
             .into_iter()
             .map(|(k, v)| (k.parse().expect("Invalid key"), v.parse().expect("Invalid val")))
             .collect();
-
-        println!("{:#?}", registry_storage_cfg);//todo: does this parse uint -> bytes or hex -> bytes 
 
         let pubkey_flags = PubkeyFlags::new(validator_infos.len());
         // iterate over BTreeMap to conditionally overwrite flagged values with pubkeys that are now known
@@ -248,12 +247,12 @@ impl NetworkGenesis {
             }
         }
 
-        let tn_config: Config = Config::load_from_path(telcoin_paths.node_config_path())?;
-
         // add ConsensusRegistry config to genesis
         let validator_infos: Vec<ValidatorInfo> = validators.iter().map(|(_, info)| info.clone()).collect();
-        let registry_genesis_accounts = Self::construct_registry_genesis_accounts(&path, validator_infos);
-        tn_config.chain_spec().genesis.extend_accounts(registry_genesis_accounts);
+        let registry_genesis_accounts = Self::construct_registry_genesis_accounts(validator_infos);
+
+        let mut tn_config: Config = Config::load_from_path(telcoin_paths.node_config_path())?;
+        tn_config.genesis = tn_config.genesis.extend_accounts(registry_genesis_accounts);
 
         // prevent mutable key type
         // The keys being used here seem to trip this because they contain a OnceCell but do not
@@ -602,7 +601,7 @@ impl PubkeyFlags {
 mod tests {
     use super::NetworkGenesis;
     use crate::{
-        adiri_chain_spec, adiri_genesis, generate_proof_of_possession, test_utils::{contract_artifacts::{ERC1967PROXY_INITCODE, CONSENSUSREGISTRY_RUNTIMECODE}, execution_outcome_for_tests, TransactionFactory}, BlsKeypair, Multiaddr, NetworkKeypair, PrimaryInfo, TelcoinDirs, ValidatorInfo, WorkerBlock, WorkerIndex, WorkerInfo
+        adiri_chain_spec, adiri_genesis, generate_proof_of_possession, test_utils::{contract_artifacts::{CONSENSUSREGISTRY_RUNTIMECODE, ERC1967PROXY_INITCODE, ERC1967PROXY_RUNTIMECODE}, execution_outcome_for_tests, TransactionFactory}, BlsKeypair, Multiaddr, NetworkKeypair, PrimaryInfo, TelcoinDirs, ValidatorInfo, WorkerBlock, WorkerIndex, WorkerInfo
     };
     use alloy::{primitives::FixedBytes, signers::k256::ecdsa, sol, sol_types::SolValue};
     use anemo::Network;
@@ -611,7 +610,7 @@ mod tests {
     use reth_primitives::{ruint::aliases::U32, Address, Bytes, GenesisAccount, SealedHeader, B256, U256};
     use reth_revm::handler::execution;
     use reth_tracing::tracing_subscriber::registry;
-    use std::{collections::BTreeMap, path::PathBuf, process::exit, sync::Arc};
+    use std::{collections::BTreeMap, path::PathBuf, process::exit, str::FromStr, sync::Arc};
     use tempfile::tempdir;
 
     struct TempTCDirs(PathBuf);
@@ -690,6 +689,24 @@ mod tests {
         let loaded_validator =
             loaded_network_genesis.validators.get(validator.public_key()).unwrap();
         assert_eq!(&validator, loaded_validator);
+
+        let expected_registry_addr = Address::from_str("0x07e17e17e17e17e17e17e17e17e17e17e17e17e1").expect("failed to parse address");
+        match loaded_network_genesis.chain.genesis.alloc.get(&expected_registry_addr) {
+            Some(account) => {
+                // check registry bytecode matches expected value
+                match &account.code {
+                    Some(code) => assert_eq!(***code, *ERC1967PROXY_RUNTIMECODE, "wrong registry bytecode"),
+                    None => panic!("registry code not set")
+                }
+
+                // check registry storage was set and is not `None`
+                match &account.storage {
+                    Some(storage) => assert!(storage.len() != 0),
+                    None => panic!("registry storage not set")
+                }
+            }
+            None => panic!("expected registry address not found in genesis")
+        }
     }
 
     #[test]
