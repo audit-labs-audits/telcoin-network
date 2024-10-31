@@ -11,24 +11,20 @@ use crate::{
     ConfigTrait, Epoch, Intent, IntentMessage, Multiaddr, NetworkPublicKey, PrimaryInfo,
     TelcoinDirs, ValidatorSignature, WorkerCache, WorkerIndex,
 };
-use alloy::{hex, primitives::FixedBytes, signers::k256::ecdsa, sol_types::SolValue};
+use alloy::{hex, primitives::FixedBytes};
 use eyre::Context;
-use fastcrypto::{
-    ed25519,
-    traits::{InsecureDefault, Signer, ToFromBytes},
-};
+use fastcrypto::traits::{InsecureDefault, Signer, ToFromBytes};
 use reth_chainspec::ChainSpec;
 use reth_primitives::{
-    constants::MIN_PROTOCOL_BASE_FEE, keccak256, Address, Genesis, GenesisAccount, B256, U256,
+    constants::MIN_PROTOCOL_BASE_FEE, keccak256, Address, Genesis, GenesisAccount,
 };
-use reth_tracing::tracing_subscriber::registry;
 use serde::{Deserialize, Serialize};
 use std::{
     collections::BTreeMap,
     ffi::OsStr,
     fmt::{Display, Formatter},
     fs,
-    path::{Path, PathBuf},
+    path::Path,
     sync::Arc,
 };
 use tracing::{info, warn};
@@ -229,7 +225,7 @@ impl NetworkGenesis {
                     .with_storage(Some(registry_storage_cfg)),
             ),
         ];
-        return registry_genesis_accounts;
+        registry_genesis_accounts
     }
 
     /// Generate a [NetworkGenesis] by reading files in a directory.
@@ -576,11 +572,11 @@ impl PubkeyFlags {
     fn new(num_validators: usize) -> Vec<PubkeyFlags> {
         (1..=num_validators)
             .map(|i| PubkeyFlags {
-                bls_a: keccak256(&format!("VALIDATOR_{}_BLS_A", i)),
-                bls_b: keccak256(&format!("VALIDATOR_{}_BLS_B", i)),
-                bls_c: keccak256(&format!("VALIDATOR_{}_BLS_C", i)),
-                ed25519: keccak256(&format!("VALIDATOR_{}_ED25519", i)),
-                ecdsa: keccak256(&format!("VALIDATOR_{}_ECDSA", i)),
+                bls_a: keccak256(format!("VALIDATOR_{}_BLS_A", i)),
+                bls_b: keccak256(format!("VALIDATOR_{}_BLS_B", i)),
+                bls_c: keccak256(format!("VALIDATOR_{}_BLS_C", i)),
+                ed25519: keccak256(format!("VALIDATOR_{}_ED25519", i)),
+                ecdsa: keccak256(format!("VALIDATOR_{}_ECDSA", i)),
             })
             .collect()
     }
@@ -597,17 +593,17 @@ impl PubkeyFlags {
             if *val == flag.bls_a {
                 // overwrite using first 32 bytes of bls pubkey
                 let bls_first_word = &validator_infos[i].bls_public_key.as_bytes()[0..32];
-                val.copy_from_slice(&bls_first_word);
+                val.copy_from_slice(bls_first_word);
                 return;
             } else if *val == flag.bls_b {
                 // overwrite using middle 32 bytes of bls pubkey
                 let bls_middle_word = &validator_infos[i].bls_public_key.as_bytes()[32..64];
-                val.copy_from_slice(&bls_middle_word);
+                val.copy_from_slice(bls_middle_word);
                 return;
             } else if *val == flag.bls_c {
                 // overwrite using last 32 bytes of bls pubkey
                 let bls_last_word = &validator_infos[i].bls_public_key.as_bytes()[64..96];
-                val.copy_from_slice(&bls_last_word);
+                val.copy_from_slice(bls_last_word);
                 return;
             } else if *val == flag.ecdsa {
                 *val = validator_infos[i].execution_address.into_word();
@@ -624,26 +620,18 @@ impl PubkeyFlags {
 mod tests {
     use super::NetworkGenesis;
     use crate::{
-        adiri_chain_spec, adiri_genesis, generate_proof_of_possession,
-        test_utils::{
-            contract_artifacts::{
-                CONSENSUSREGISTRY_RUNTIMECODE, ERC1967PROXY_INITCODE, ERC1967PROXY_RUNTIMECODE,
-            },
-            execution_outcome_for_tests, TransactionFactory,
-        },
-        BlsKeypair, Multiaddr, NetworkKeypair, PrimaryInfo, TelcoinDirs, ValidatorInfo,
-        WorkerBlock, WorkerIndex, WorkerInfo,
+        adiri_chain_spec, generate_proof_of_possession,
+        test_utils::contract_artifacts::ERC1967PROXY_RUNTIMECODE,
+        BlsKeypair, Multiaddr, NetworkKeypair, PrimaryInfo, TelcoinDirs, ValidatorInfo, WorkerIndex, WorkerInfo,
     };
-    use alloy::{primitives::FixedBytes, signers::k256::ecdsa, sol, sol_types::SolValue};
-    use anemo::Network;
-    use fastcrypto::traits::{AllowedRng, KeyPair, ToFromBytes};
+    
+    
+    use fastcrypto::traits::KeyPair;
     use rand::{rngs::StdRng, SeedableRng};
-    use reth_primitives::{
-        ruint::aliases::U32, Address, Bytes, GenesisAccount, SealedHeader, B256, U256,
-    };
-    use reth_revm::handler::execution;
-    use reth_tracing::tracing_subscriber::registry;
-    use std::{collections::BTreeMap, path::PathBuf, process::exit, str::FromStr, sync::Arc};
+    use reth_primitives::Address;
+    
+    
+    use std::{collections::BTreeMap, path::PathBuf, str::FromStr};
     use tempfile::tempdir;
 
     struct TempTCDirs(PathBuf);
@@ -738,7 +726,7 @@ mod tests {
 
                 // check registry storage was set and is not `None`
                 match &account.storage {
-                    Some(storage) => assert!(storage.len() != 0),
+                    Some(storage) => assert!(!storage.is_empty()),
                     None => panic!("registry storage not set"),
                 }
             }
