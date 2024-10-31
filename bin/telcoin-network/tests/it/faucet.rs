@@ -12,7 +12,6 @@ use crate::util::{
     spawn_local_testnet, IT_TEST_MUTEX,
 };
 use alloy::{network::EthereumWallet, providers::ProviderBuilder, sol, sol_types::SolValue};
-use clap::Parser;
 use futures::{stream::FuturesUnordered, StreamExt};
 use gcloud_sdk::{
     google::cloud::kms::v1::{
@@ -26,11 +25,7 @@ use jsonrpsee::{
     rpc_params,
 };
 use k256::{elliptic_curve::sec1::ToEncodedPoint, pkcs8::DecodePublicKey, PublicKey as PubKey};
-use narwhal_test_utils::default_test_execution_node;
-use reth::{
-    providers::ExecutionOutcome,
-    tasks::TaskManager
-};
+use reth::tasks::TaskManager;
 use reth_chainspec::ChainSpec;
 use reth_primitives::{public_key_to_address, Address, GenesisAccount, B256, U256};
 use reth_tracing::init_test_tracing;
@@ -42,8 +37,7 @@ use tn_types::{
         contract_artifacts::{
             ERC1967PROXY_INITCODE, ERC1967PROXY_RUNTIMECODE, STABLECOINMANAGER_RUNTIMECODE,
             STABLECOIN_RUNTIMECODE,
-        },
-        execution_outcome_for_tests, TransactionFactory,
+        }, TransactionFactory,
     }
 };
 use tokio::{runtime::Handle, task::JoinHandle, time::timeout};

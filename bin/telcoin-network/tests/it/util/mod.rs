@@ -3,7 +3,7 @@ use std::{path::PathBuf, sync::Arc, time::Duration};
 use clap::Parser;
 use jsonrpsee::{
     core::client::ClientT,
-    http_client::{HttpClient, HttpClientBuilder},
+    http_client::HttpClient,
     rpc_params,
 };
 use narwhal_test_utils::{default_test_execution_node, CommandParser};
