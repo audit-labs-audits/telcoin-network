@@ -233,6 +233,7 @@ async fn test_faucet_transfers_tel_and_xyz_with_google_kms_e2e() -> eyre::Result
     let updatexyz_tx_raw = tx_factory.create_eip1559(
         pre_genesis_chain.clone(),
         gas_price,
+        None,
         Some(faucet_proxy_address),
         U256::ZERO,
         updatexyz_call,
@@ -241,6 +242,7 @@ async fn test_faucet_transfers_tel_and_xyz_with_google_kms_e2e() -> eyre::Result
     let minter_tx_raw = tx_factory.create_eip1559(
         pre_genesis_chain.clone(),
         gas_price,
+        None,
         Some(stablecoin_address),
         U256::ZERO,
         minter_role_call,
