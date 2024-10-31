@@ -314,7 +314,6 @@ impl Primary {
 
         // When the `Synchronizer` collects enough parent certificates, the `Proposer` generates
         // a new header with new block digests from our workers and sends it to the `Certifier`.
-        // XXXX
         let proposer = Proposer::new(config.clone(), consensus_bus.clone(), None, leader_schedule);
 
         // TODO: include this with other handles

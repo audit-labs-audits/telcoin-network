@@ -30,6 +30,7 @@ mockall.workspace = true
 
 consensus-metrics.workspace = true
 narwhal-typed-store = { workspace = true }
+narwhal-primary = { workspace = true }
 
 [dev-dependencies]
 indexmap.workspace = true

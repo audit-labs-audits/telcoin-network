@@ -8,6 +8,7 @@ mod subscriber;
 mod metrics;
 
 pub use errors::{SubscriberError, SubscriberResult};
+use narwhal_primary::ConsensusBus;
 use narwhal_typed_store::traits::Database;
 pub use state::ExecutionIndices;
 
@@ -15,7 +16,6 @@ pub use crate::metrics::ExecutorMetrics;
 use crate::subscriber::spawn_subscriber;
 
 use async_trait::async_trait;
-use consensus_metrics::metered_channel;
 use mockall::automock;
 use narwhal_storage::{CertificateStore, ConsensusStore};
 use std::sync::Arc;
@@ -48,7 +48,7 @@ impl Executor {
     pub fn spawn<DB: Database>(
         config: ConsensusConfig<DB>,
         rx_shutdown: Noticer,
-        rx_sequence: metered_channel::Receiver<CommittedSubDag>,
+        consensus_bus: ConsensusBus,
         restored_consensus_output: Vec<CommittedSubDag>,
         consensus_output_notification_sender: broadcast::Sender<ConsensusOutput>,
     ) -> SubscriberResult<JoinHandle<()>> {
@@ -59,7 +59,7 @@ impl Executor {
             config.committee().clone(),
             config.network_client().clone(),
             rx_shutdown,
-            rx_sequence,
+            consensus_bus,
             restored_consensus_output,
             consensus_output_notification_sender,
         );

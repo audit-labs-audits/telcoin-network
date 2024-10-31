@@ -40,9 +40,6 @@ async fn test_recovery() {
         narwhal_test_utils::mock_certificate(&committee, ids[1], 5, next_parents);
     certificates.push_back(certificate);
 
-    // Spawn the consensus engine and sink the primary channel.
-    let (tx_output, mut rx_output) = narwhal_test_utils::test_channel!(1);
-
     const NUM_SUB_DAGS_PER_SCHEDULE: u64 = 100;
     let metrics = Arc::new(ConsensusMetrics::default());
     let bullshark = Bullshark::new(
@@ -56,7 +53,8 @@ async fn test_recovery() {
 
     let cb = ConsensusBus::new();
     let cb_clone = cb.clone();
-    let _consensus_handle = Consensus::spawn(config_1, &cb, tx_output, bullshark);
+    let mut rx_output = cb.sequence().subscribe();
+    let _consensus_handle = Consensus::spawn(config_1, &cb, bullshark);
     tokio::spawn(async move {
         let mut rx_primary = cb_clone.committed_certificates().subscribe();
         while rx_primary.recv().await.is_some() {}

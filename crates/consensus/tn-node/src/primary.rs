@@ -5,11 +5,10 @@
 //! Hierarchical type to hold tasks spawned for a worker in the network.
 use crate::{engine::ExecutionNode, error::NodeError, try_join_all, FuturesUnordered};
 use anemo::PeerId;
-use consensus_metrics::metered_channel;
 use fastcrypto::traits::VerifyingKey;
 use narwhal_executor::{get_restored_consensus_output, Executor, SubscriberResult};
 use narwhal_primary::{
-    consensus::{Bullshark, ChannelMetrics, Consensus, ConsensusMetrics, LeaderSchedule},
+    consensus::{Bullshark, Consensus, ConsensusMetrics, LeaderSchedule},
     ConsensusBus, Primary, CHANNEL_CAPACITY,
 };
 use narwhal_primary_metrics::Metrics;
@@ -157,14 +156,6 @@ impl<CDB: ConsensusDatabase> PrimaryNodeInner<CDB> {
     where
         BlsPublicKey: VerifyingKey,
     {
-        let channel_metrics = ChannelMetrics::default();
-
-        // XXXX
-        let (tx_sequence, rx_sequence) = metered_channel::channel(
-            narwhal_primary::CHANNEL_CAPACITY,
-            &channel_metrics.tx_sequence,
-        );
-
         // TODO: this may need to be adjusted depending on how TN executes output
         //
         // if executor engine executes-per-batch:
@@ -216,19 +207,15 @@ impl<CDB: ConsensusDatabase> PrimaryNodeInner<CDB> {
             leader_schedule.clone(),
             DEFAULT_BAD_NODES_STAKE_THRESHOLD,
         );
-        let consensus_handle = Consensus::spawn(
-            self.consensus_config.clone(),
-            consensus_bus,
-            tx_sequence,
-            ordering_engine,
-        );
+        let consensus_handle =
+            Consensus::spawn(self.consensus_config.clone(), consensus_bus, ordering_engine);
 
         // Spawn the client executing the transactions. It can also synchronize with the
         // subscriber handler if it missed some transactions.
         let executor_handle = Executor::spawn(
             self.consensus_config.clone(),
             self.consensus_config.subscribe_shutdown(),
-            rx_sequence,
+            consensus_bus.clone(),
             restored_consensus_output,
             self.consensus_output_notification_sender.clone(),
         )?;

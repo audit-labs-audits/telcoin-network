@@ -48,9 +48,6 @@ async fn test_consensus_recovery_with_bullshark() {
     let (certificates, _next_parents) =
         narwhal_test_utils::make_optimal_certificates(&committee, 1..=7, &genesis, &ids);
 
-    // AND Spawn the consensus engine.
-    let (tx_output, mut rx_output) = narwhal_test_utils::test_channel!(1);
-
     let metrics = Arc::new(ConsensusMetrics::default());
     let leader_schedule = LeaderSchedule::from_store(
         committee.clone(),
@@ -67,7 +64,8 @@ async fn test_consensus_recovery_with_bullshark() {
     );
 
     let cb = ConsensusBus::new();
-    let consensus_handle = Consensus::spawn(config.clone(), &cb, tx_output, bullshark);
+    let mut rx_output = cb.sequence().subscribe();
+    let consensus_handle = Consensus::spawn(config.clone(), &cb, bullshark);
 
     // WHEN we feed all certificates to the consensus.
     for certificate in certificates.iter() {
@@ -129,10 +127,6 @@ async fn test_consensus_recovery_with_bullshark() {
     // AND shutdown consensus
     consensus_handle.abort();
 
-    // AND bring up consensus again. Store is clean. Now send again the same certificates
-    // but up to round 3.
-    let (tx_output, mut rx_output) = narwhal_test_utils::test_channel!(1);
-
     consensus_store.clear().unwrap();
     certificate_store.clear().unwrap();
 
@@ -151,7 +145,8 @@ async fn test_consensus_recovery_with_bullshark() {
     );
 
     let cb = ConsensusBus::new();
-    let consensus_handle = Consensus::spawn(config.clone(), &cb, tx_output, bullshark);
+    let mut rx_output = cb.sequence().subscribe();
+    let consensus_handle = Consensus::spawn(config.clone(), &cb, bullshark);
 
     // WHEN we send same certificates but up to round 3 (inclusive)
     // Then we store all the certificates up to round 6 so we can let the recovery algorithm
@@ -193,9 +188,6 @@ async fn test_consensus_recovery_with_bullshark() {
     // AND shutdown (crash) consensus
     consensus_handle.abort();
 
-    // AND bring up consensus again. Re-use the same store, so we can recover certificates
-    let (tx_output, mut rx_output) = narwhal_test_utils::test_channel!(1);
-
     let bad_nodes_stake_threshold = 0;
     let bullshark = Bullshark::new(
         committee.clone(),
@@ -207,7 +199,8 @@ async fn test_consensus_recovery_with_bullshark() {
     );
 
     let cb = ConsensusBus::new();
-    let _consensus_handle = Consensus::spawn(config, &cb, tx_output, bullshark);
+    let mut rx_output = cb.sequence().subscribe();
+    let _consensus_handle = Consensus::spawn(config, &cb, bullshark);
 
     // WHEN send the certificates of round >= 5 to trigger a leader election for round 4
     // and start committing.

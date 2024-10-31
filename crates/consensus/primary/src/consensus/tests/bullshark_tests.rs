@@ -436,9 +436,6 @@ async fn commit_one() {
         narwhal_test_utils::mock_certificate(&committee, ids[1], 3, next_parents);
     certificates.push_back(certificate);
 
-    // Spawn the consensus engine and sink the primary channel.
-    let (tx_output, mut rx_output) = narwhal_test_utils::test_channel!(1);
-
     let config = fixture.authorities().next().unwrap().consensus_config();
     let store = config.node_storage().consensus_store.clone();
     let metrics = Arc::new(ConsensusMetrics::default());
@@ -453,7 +450,8 @@ async fn commit_one() {
     );
 
     let cb = ConsensusBus::new();
-    let _consensus_handle = Consensus::spawn(config, &cb, tx_output, bullshark);
+    let mut rx_output = cb.sequence().subscribe();
+    let _consensus_handle = Consensus::spawn(config, &cb, bullshark);
     let cb_clone = cb.clone();
     tokio::spawn(async move {
         let mut rx_primary = cb_clone.committed_certificates().subscribe();
@@ -501,9 +499,6 @@ async fn dead_node() {
     let (mut certificates, _) =
         narwhal_test_utils::make_optimal_certificates(&committee, 1..=11, &genesis, &ids);
 
-    // Spawn the consensus engine and sink the primary channel.
-    let (tx_output, mut rx_output) = narwhal_test_utils::test_channel!(1);
-
     let config = fixture.authorities().next().unwrap().consensus_config();
     let store = config.node_storage().consensus_store.clone();
     let metrics = Arc::new(ConsensusMetrics::default());
@@ -518,17 +513,19 @@ async fn dead_node() {
     );
 
     let cb = ConsensusBus::new();
-    let _consensus_handle = Consensus::spawn(config, &cb, tx_output, bullshark);
+    let mut rx_output = cb.sequence().subscribe();
+    let _consensus_handle = Consensus::spawn(config, &cb, bullshark);
     let cb_clone = cb.clone();
     tokio::spawn(async move {
         let mut rx_primary = cb_clone.committed_certificates().subscribe();
         while rx_primary.recv().await.is_some() {}
     });
 
+    let cb_clone = cb.clone();
     // Feed all certificates to the consensus.
     tokio::spawn(async move {
         while let Some(certificate) = certificates.pop_front() {
-            cb.new_certificates().send(certificate).await.unwrap();
+            cb_clone.new_certificates().send(certificate).await.unwrap();
         }
     });
 
@@ -641,9 +638,6 @@ async fn not_enough_support() {
     let (_, certificate) = narwhal_test_utils::mock_certificate(&committee, ids[1], 5, parents);
     certificates.push_back(certificate);
 
-    // Spawn the consensus engine and sink the primary channel.
-    let (tx_output, mut rx_output) = narwhal_test_utils::test_channel!(1);
-
     let config = fixture.authorities().next().unwrap().consensus_config();
     let store = config.node_storage().consensus_store.clone();
     let metrics = Arc::new(ConsensusMetrics::default());
@@ -658,7 +652,8 @@ async fn not_enough_support() {
     );
 
     let cb = ConsensusBus::new();
-    let _consensus_handle = Consensus::spawn(config, &cb, tx_output, bullshark);
+    let mut rx_output = cb.sequence().subscribe();
+    let _consensus_handle = Consensus::spawn(config, &cb, bullshark);
     let cb_clone = cb.clone();
     tokio::spawn(async move {
         let mut rx_primary = cb_clone.committed_certificates().subscribe();
@@ -745,9 +740,6 @@ async fn missing_leader() {
     let (_, certificate) = narwhal_test_utils::mock_certificate(&committee, ids[1], 5, parents);
     certificates.push_back(certificate);
 
-    // Spawn the consensus engine and sink the primary channel.
-    let (tx_output, mut rx_output) = narwhal_test_utils::test_channel!(1);
-
     let config = fixture.authorities().next().unwrap().consensus_config();
     let store = config.node_storage().consensus_store.clone();
     let metrics = Arc::new(ConsensusMetrics::default());
@@ -761,7 +753,8 @@ async fn missing_leader() {
     );
 
     let cb = ConsensusBus::new();
-    let _consensus_handle = Consensus::spawn(config, &cb, tx_output, bullshark);
+    let mut rx_output = cb.sequence().subscribe();
+    let _consensus_handle = Consensus::spawn(config, &cb, bullshark);
     let cb_clone = cb.clone();
     tokio::spawn(async move {
         let mut rx_primary = cb_clone.committed_certificates().subscribe();
@@ -816,9 +809,6 @@ async fn committed_round_after_restart() {
     let cert_store = config.node_storage().certificate_store.clone();
 
     for input_round in (1..=11usize).step_by(2) {
-        // Spawn consensus and create related channels.
-        let (tx_output, mut rx_output) = narwhal_test_utils::test_channel!(100);
-
         let metrics = Arc::new(ConsensusMetrics::default());
 
         let bullshark = Bullshark::new(
@@ -832,7 +822,8 @@ async fn committed_round_after_restart() {
 
         let cb = ConsensusBus::new();
         let mut rx_primary = cb.committed_certificates().subscribe();
-        let handle = Consensus::spawn(config.clone(), &cb, tx_output, bullshark);
+        let mut rx_output = cb.sequence().subscribe();
+        let handle = Consensus::spawn(config.clone(), &cb, bullshark);
 
         // When `input_round` is 2 * r + 1, r > 1, the previous commit round would be 2 * (r - 1),
         // and the expected commit round after sending in certificates up to `input_round` would
@@ -1058,9 +1049,6 @@ async fn restart_with_new_committee() {
 
     // Run for a few epochs.
     for epoch in 0..5 {
-        // Spawn the consensus engine and sink the primary channel.
-        let (tx_output, mut rx_output) = narwhal_test_utils::test_channel!(1);
-
         let config = fixture.authorities().next().unwrap().consensus_config();
         let config = ConsensusConfig::new_with_committee(
             config.config().clone(),
@@ -1085,7 +1073,8 @@ async fn restart_with_new_committee() {
         );
 
         let cb = ConsensusBus::new();
-        let handle = Consensus::spawn(config.clone(), &cb, tx_output, bullshark);
+        let mut rx_output = cb.sequence().subscribe();
+        let handle = Consensus::spawn(config.clone(), &cb, bullshark);
         let cb_clone = cb.clone();
         tokio::spawn(async move {
             let mut rx_primary = cb_clone.committed_certificates().subscribe();
