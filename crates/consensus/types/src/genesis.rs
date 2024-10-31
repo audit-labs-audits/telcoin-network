@@ -26,6 +26,7 @@ use std::{
 use tracing::{info, warn};
 /// The validators directory used to create genesis.
 pub const GENESIS_VALIDATORS_DIR: &str = "validators";
+/// The ConsensusRegistry storage file name
 
 /// adiri genesis
 ///
@@ -183,8 +184,6 @@ impl NetworkGenesis {
 
     /// Read output file from Solidity GenerateConsensusRegistryStorage utility
     /// to fetch storage configuration for ConsensusRegistry at genesis
-    /// 
-    /// 
     pub fn construct_registry_genesis_accounts(registry_cfg_path: &PathBuf, validator_infos: Vec<ValidatorInfo>) -> Vec<(Address, GenesisAccount)> {
         let content = fs::read_to_string(registry_cfg_path).expect("Failed to read consensus-registry-storage yaml");
         let registry_storage_cfg: BTreeMap<String, String> = serde_yaml::from_str(&content).expect("Parsing failure");
@@ -193,37 +192,12 @@ impl NetworkGenesis {
             .map(|(k, v)| (k.parse().expect("Invalid key"), v.parse().expect("Invalid val")))
             .collect();
 
-        let pubkey_flags = pubkey_flags(validator_infos.len());
+        println!("{:#?}", registry_storage_cfg);//todo: does this parse uint -> bytes or hex -> bytes 
+
+        let pubkey_flags = PubkeyFlags::new(validator_infos.len());
         // iterate over BTreeMap to conditionally overwrite flagged values with pubkeys that are now known
         for val in registry_storage_cfg.values_mut() {
-            overwrite_if_flag(val, &pubkey_flags, &validator_infos);
-        }
-
-        fn overwrite_if_flag(val: &mut FixedBytes<32>, flags: &Vec<ValidatorFlags>, validator_infos: &Vec<ValidatorInfo>) {
-            for (i, flag) in flags.iter().enumerate() {
-                if *val == flag.bls_a {
-                    // overwrite using first 32 bytes of bls pubkey
-                    let bls_first_word = &validator_infos[i].bls_public_key.as_bytes()[0..32];
-                    val.copy_from_slice(&bls_first_word);
-                    return;
-                } else if *val == flag.bls_b {
-                    // overwrite using middle 32 bytes of bls pubkey
-                    let bls_middle_word = &validator_infos[i].bls_public_key.as_bytes()[32..64];
-                    val.copy_from_slice(&bls_middle_word);
-                    return;
-                } else if *val == flag.bls_c {
-                    // overwrite using last 32 bytes of bls pubkey
-                    let bls_last_word = &validator_infos[i].bls_public_key.as_bytes()[64..96];
-                    val.copy_from_slice(&bls_last_word);
-                    return;
-                } else if *val == flag.ecdsa {
-                    *val = validator_infos[i].execution_address.into_word();
-                    return;
-                } else if *val == flag.ed25519 {
-                    *val = FixedBytes::from_slice(validator_infos[i].primary_network_key().as_bytes());
-                    return;
-                }
-            }
+            PubkeyFlags::overwrite_if_flag(val, &pubkey_flags, &validator_infos);
         }
 
         let registry_impl = Address::random();
@@ -279,7 +253,7 @@ impl NetworkGenesis {
         // add ConsensusRegistry config to genesis
         let validator_infos: Vec<ValidatorInfo> = validators.iter().map(|(_, info)| info.clone()).collect();
         let registry_genesis_accounts = Self::construct_registry_genesis_accounts(&path, validator_infos);
-        tn_config.chain_spec().genesis.extend_accounts(registry_genesis_accounts); // is this mutable?
+        tn_config.chain_spec().genesis.extend_accounts(registry_genesis_accounts);
 
         // prevent mutable key type
         // The keys being used here seem to trip this because they contain a OnceCell but do not
@@ -570,7 +544,7 @@ impl PartialEq for ValidatorSignatureInfo {
     }
 }
 
-struct ValidatorFlags {
+struct PubkeyFlags {
     bls_a: FixedBytes<32>,
     bls_b: FixedBytes<32>,
     bls_c: FixedBytes<32>,
@@ -578,27 +552,50 @@ struct ValidatorFlags {
     ecdsa: FixedBytes<32>
 }
 
-/// Calculate flags used by Foundry util to label storage values for overwriting
-fn pubkey_flags(num_validators: usize) -> Vec<ValidatorFlags> {
-    let mut flags = Vec::with_capacity(num_validators);
-
-    for i in 1..=num_validators {
-        let flag_bls_a = keccak256(&format!("VALIDATOR_{}_BLS_A", i));
-        let flag_bls_b = keccak256(&format!("VALIDATOR_{}_BLS_B", i));
-        let flag_bls_c = keccak256(&format!("VALIDATOR_{}_BLS_C", i));
-        let flag_ed25519 = keccak256(&format!("VALIDATOR_{}_ED25519", i));
-        let flag_ecdsa = keccak256(&format!("VALIDATOR_{}_ECDSA", i));
-        
-        flags.push(ValidatorFlags {
-            bls_a: flag_bls_a,
-            bls_b: flag_bls_b,
-            bls_c: flag_bls_c,
-            ed25519: flag_ed25519,
-            ecdsa: flag_ecdsa
-        });
+impl PubkeyFlags {
+    /// Calculate flags used by Foundry util to label storage values for overwriting
+    fn new(num_validators: usize) -> Vec<PubkeyFlags> {
+        (1..=num_validators)
+            .map(|i| {
+                PubkeyFlags {
+                    bls_a: keccak256(&format!("VALIDATOR_{}_BLS_A", i)),
+                    bls_b: keccak256(&format!("VALIDATOR_{}_BLS_B", i)),
+                    bls_c: keccak256(&format!("VALIDATOR_{}_BLS_C", i)),
+                    ed25519: keccak256(&format!("VALIDATOR_{}_ED25519", i)),
+                    ecdsa: keccak256(&format!("VALIDATOR_{}_ECDSA", i))
+                }
+            })
+            .collect()
     }
-    
-    flags
+
+    /// Conditionally overwrites flagged placeholder values with the intended pubkey within `validator_infos`
+    /// This only occurs if `val` is found to match a collision-resistant hash within `flags`
+    fn overwrite_if_flag(val: &mut FixedBytes<32>, flags: &Vec<PubkeyFlags>, validator_infos: &Vec<ValidatorInfo>) {
+        for (i, flag) in flags.iter().enumerate() {
+            if *val == flag.bls_a {
+                // overwrite using first 32 bytes of bls pubkey
+                let bls_first_word = &validator_infos[i].bls_public_key.as_bytes()[0..32];
+                val.copy_from_slice(&bls_first_word);
+                return;
+            } else if *val == flag.bls_b {
+                // overwrite using middle 32 bytes of bls pubkey
+                let bls_middle_word = &validator_infos[i].bls_public_key.as_bytes()[32..64];
+                val.copy_from_slice(&bls_middle_word);
+                return;
+            } else if *val == flag.bls_c {
+                // overwrite using last 32 bytes of bls pubkey
+                let bls_last_word = &validator_infos[i].bls_public_key.as_bytes()[64..96];
+                val.copy_from_slice(&bls_last_word);
+                return;
+            } else if *val == flag.ecdsa {
+                *val = validator_infos[i].execution_address.into_word();
+                return;
+            } else if *val == flag.ed25519 {
+                *val = FixedBytes::from_slice(validator_infos[i].primary_network_key().as_bytes());
+                return;
+            }
+        }
+    }
 }
 
 #[cfg(test)]
