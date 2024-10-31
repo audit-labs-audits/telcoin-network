@@ -30,7 +30,6 @@ use std::{
 use tracing::{info, warn};
 /// The validators directory used to create genesis.
 pub const GENESIS_VALIDATORS_DIR: &str = "validators";
-/// The ConsensusRegistry storage file name
 
 /// adiri genesis
 ///

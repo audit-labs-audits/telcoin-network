@@ -271,7 +271,7 @@ impl TransactionFactory {
         value: U256,
         input: Bytes,
     ) -> TransactionSigned {
-        let gas_limit = gas_limit.unwrap_or(3_000_000);
+        let gas_limit = gas_limit.unwrap_or(1_000_000);
         let tx_kind = match to {
             Some(address) => TxKind::Call(address),
             None => TxKind::Create,
