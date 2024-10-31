@@ -1,20 +1,41 @@
 #[cfg(test)]
 mod tests {
     use crate::util::{get_contract_state_for_genesis, spawn_local_testnet};
-    use jsonrpsee::{core::client::ClientT, http_client::{HttpClient, HttpClientBuilder}, rpc_params};
+    use alloy::{
+        network::EthereumWallet,
+        primitives::{FixedBytes, Uint},
+        providers::{Provider, ProviderBuilder},
+        signers::local::LocalSigner,
+        sol,
+        sol_types::SolValue,
+    };
+    use fastcrypto::traits::{KeyPair, ToFromBytes};
+    use jsonrpsee::{
+        core::client::ClientT,
+        http_client::{HttpClient, HttpClientBuilder},
+        rpc_params,
+    };
     use k256::ecdsa::SigningKey;
     use rand::{rngs::StdRng, SeedableRng};
+    use reth::{
+        primitives::{Address, Bytes, GenesisAccount, SealedHeader, U256},
+        tasks::TaskManager,
+    };
     use reth_chainspec::ChainSpec;
     use reth_tracing::init_test_tracing;
+    use std::{str::FromStr, sync::Arc, time::Duration};
     use tn_types::{
-        adiri_genesis, test_utils::{contract_artifacts::{CONSENSUSREGISTRY_RUNTIMECODE, ERC1967PROXY_INITCODE, ERC1967PROXY_RUNTIMECODE}, execution_outcome_for_tests, TransactionFactory}, BlsKeypair, NetworkKeypair, WorkerBlock
+        adiri_genesis,
+        test_utils::{
+            contract_artifacts::{
+                CONSENSUSREGISTRY_RUNTIMECODE, ERC1967PROXY_INITCODE, ERC1967PROXY_RUNTIMECODE,
+            },
+            execution_outcome_for_tests, TransactionFactory,
+        },
+        BlsKeypair, NetworkKeypair, WorkerBlock,
     };
-    use alloy::{network::EthereumWallet, primitives::{FixedBytes, Uint}, providers::{Provider, ProviderBuilder}, signers::local::LocalSigner, sol, sol_types::SolValue};
-    use fastcrypto::traits::{KeyPair, ToFromBytes};
     use tokio::runtime::Handle;
     use tracing::info;
-    use std::{str::FromStr, sync::Arc, time::Duration};
-    use reth::{primitives::{Address, Bytes, GenesisAccount, SealedHeader, U256}, tasks::TaskManager};
 
     #[tokio::test]
     async fn test_genesis_with_consensus_registry() {
@@ -29,7 +50,10 @@ mod tests {
         let tmp_genesis = tmp_chain.genesis.clone().extend_accounts(
             vec![
                 (factory_address, GenesisAccount::default().with_balance(U256::MAX)),
-                (registry_impl_address, GenesisAccount::default().with_code(Some(registry_impl_bytecode.into()))),
+                (
+                    registry_impl_address,
+                    GenesisAccount::default().with_code(Some(registry_impl_bytecode.into())),
+                ),
             ]
             .into_iter(),
         );
@@ -44,7 +68,8 @@ mod tests {
         );
 
         let constructor_params = (registry_impl_address, Bytes::default()).abi_encode_params();
-        let registry_create_data = [ERC1967PROXY_INITCODE.as_slice(), &constructor_params[..]].concat();
+        let registry_create_data =
+            [ERC1967PROXY_INITCODE.as_slice(), &constructor_params[..]].concat();
 
         // ConsensusRegistry interface
         sol!(
@@ -72,8 +97,8 @@ mod tests {
                     uint64 blockHeight;
                 }
                 function initialize(
-                    address rwTEL_, 
-                    uint256 stakeAmount_, 
+                    address rwTEL_,
+                    uint256 stakeAmount_,
                     uint256 minWithdrawAmount_,
                     ValidatorInfo[] memory initialValidators_,
                     address owner_
@@ -89,26 +114,37 @@ mod tests {
         let active_status = ConsensusRegistry::ValidatorStatus::Active;
 
         // construct array of 4 validators with 1-indexed `validatorIndex`
-        let initial_validators: Vec<ConsensusRegistry::ValidatorInfo> = (1..=4).map(|i| {
-            // generate random bls, ed25519, and ecdsa keys for each validator
-            let mut rng = StdRng::from_entropy();
-            let bls_keypair = BlsKeypair::generate(&mut rng);
-            let bls_pubkey = bls_keypair.public().as_bytes().to_vec();
-            let ed_25519_keypair = NetworkKeypair::generate(&mut rng);
-            let ecdsa_pubkey = Address::random();
+        let initial_validators: Vec<ConsensusRegistry::ValidatorInfo> = (1..=4)
+            .map(|i| {
+                // generate random bls, ed25519, and ecdsa keys for each validator
+                let mut rng = StdRng::from_entropy();
+                let bls_keypair = BlsKeypair::generate(&mut rng);
+                let bls_pubkey = bls_keypair.public().as_bytes().to_vec();
+                let ed_25519_keypair = NetworkKeypair::generate(&mut rng);
+                let ecdsa_pubkey = Address::random();
 
-            ConsensusRegistry::ValidatorInfo {
-                blsPubkey: bls_pubkey.clone().into(),
-                ed25519Pubkey: FixedBytes::<32>::from_slice(ed_25519_keypair.public().as_bytes()),
-                ecdsaPubkey: ecdsa_pubkey,
-                activationEpoch: activation_epoch,
-                exitEpoch: exit_epoch,
-                validatorIndex: Uint::<24, 1>::from(i),
-                currentStatus: active_status,
-            }
-        }).collect();
+                ConsensusRegistry::ValidatorInfo {
+                    blsPubkey: bls_pubkey.clone().into(),
+                    ed25519Pubkey: FixedBytes::<32>::from_slice(
+                        ed_25519_keypair.public().as_bytes(),
+                    ),
+                    ecdsaPubkey: ecdsa_pubkey,
+                    activationEpoch: activation_epoch,
+                    exitEpoch: exit_epoch,
+                    validatorIndex: Uint::<24, 1>::from(i),
+                    currentStatus: active_status,
+                }
+            })
+            .collect();
 
-        let registry_init_params = (Address::random(), U256::from(1_000_000e18), U256::from(10_000e18), initial_validators.clone(), Address::random()).abi_encode_params();
+        let registry_init_params = (
+            Address::random(),
+            U256::from(1_000_000e18),
+            U256::from(10_000e18),
+            initial_validators.clone(),
+            Address::random(),
+        )
+            .abi_encode_params();
         let init_call = [&registry_init_selector, &registry_init_params[..]].concat();
 
         // construct proxy deployment and initialize txs
@@ -136,7 +172,9 @@ mod tests {
         let raw_txs = vec![registry_tx_raw.clone(), initialize_tx_raw];
 
         // fetch storage changes from pre-genesis for actual genesis
-        let execution_outcome = get_contract_state_for_genesis(pre_genesis_chain.clone(), raw_txs).await.expect("unable to fetch contract state");
+        let execution_outcome = get_contract_state_for_genesis(pre_genesis_chain.clone(), raw_txs)
+            .await
+            .expect("unable to fetch contract state");
         let execution_bundle = execution_outcome.bundle;
         let execution_storage_registry = &execution_bundle
             .state
@@ -147,9 +185,12 @@ mod tests {
 
         // perform canonical adiri chain genesis with fetched storage
         let genesis_accounts = vec![
-            (registry_impl_address, GenesisAccount::default().with_code(Some(registry_impl_bytecode.into()))),
-            (   
-                registry_proxy_address, 
+            (
+                registry_impl_address,
+                GenesisAccount::default().with_code(Some(registry_impl_bytecode.into())),
+            ),
+            (
+                registry_proxy_address,
                 GenesisAccount::default()
                     .with_code(Some(registry_proxy_bytecode.into()))
                     .with_storage(Some(
@@ -158,7 +199,7 @@ mod tests {
                             .map(|(k, v)| ((*k).into(), v.present_value.into()))
                             .collect(),
                     )),
-            )
+            ),
         ];
         let real_genesis = adiri_genesis();
         let genesis = real_genesis.extend_accounts(genesis_accounts.into_iter());
@@ -167,29 +208,47 @@ mod tests {
         // task manager
         let manager = TaskManager::new(Handle::current());
         let task_executor = manager.executor();
-        spawn_local_testnet(&task_executor, chain, "0x0000000000000000000000000000000000000000").await.expect("failed to spawn testnet");
+        spawn_local_testnet(&task_executor, chain, "0x0000000000000000000000000000000000000000")
+            .await
+            .expect("failed to spawn testnet");
         // allow time for nodes to start
         tokio::time::sleep(Duration::from_secs(10)).await;
 
         let rpc_url = "http://127.0.0.1:8545".to_string();
-        let client = HttpClientBuilder::default().build(&rpc_url).expect("couldn't build rpc client");
+        let client =
+            HttpClientBuilder::default().build(&rpc_url).expect("couldn't build rpc client");
 
         // sanity check onchain reads
-        let returned_impl_code: String = client.request("eth_getCode", rpc_params!(registry_impl_address)).await.expect("Failed to fetch registry impl bytecode");
+        let returned_impl_code: String = client
+            .request("eth_getCode", rpc_params!(registry_impl_address))
+            .await
+            .expect("Failed to fetch registry impl bytecode");
         // trim `0x`
         assert_eq!(returned_impl_code[2..], alloy::hex::encode(registry_impl_bytecode));
 
         let signer = tx_factory.get_default_signer().expect("failed to fetch signer");
         let wallet = EthereumWallet::from(signer);
-        let provider = ProviderBuilder::new().with_recommended_fillers().wallet(wallet).on_http(rpc_url.parse().expect("rpc url parse error"));
+        let provider = ProviderBuilder::new()
+            .with_recommended_fillers()
+            .wallet(wallet)
+            .on_http(rpc_url.parse().expect("rpc url parse error"));
         let consensus_registry = ConsensusRegistry::new(registry_proxy_address, provider.clone());
-        
-        let active_validators = consensus_registry.getValidators(2).call().await.expect("failed active validators read");
+
+        let active_validators = consensus_registry
+            .getValidators(2)
+            .call()
+            .await
+            .expect("failed active validators read");
         assert_eq!(active_validators._0.abi_encode(), initial_validators.abi_encode());
 
-        // assert committees for first 3 epochs comprise all genesis validators 
+        // assert committees for first 3 epochs comprise all genesis validators
         for i in 0..3 {
-            let epoch_info = consensus_registry.getEpochInfo(i).call().await.expect("failed epoch read").epochInfo;
+            let epoch_info = consensus_registry
+                .getEpochInfo(i)
+                .call()
+                .await
+                .expect("failed epoch read")
+                .epochInfo;
             for j in 0..initial_validators.len() {
                 assert_eq!(epoch_info.committee[j], initial_validators[j].ecdsaPubkey);
             }

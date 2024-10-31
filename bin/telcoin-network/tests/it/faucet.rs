@@ -7,7 +7,10 @@
 //! signature to be EVM compatible. The faucet service does all of this and
 //! then submits the transaction to the RPC Transaction Pool for the next batch.
 
-use crate::util::{create_validator_info, IT_TEST_MUTEX, spawn_local_testnet, ensure_account_balance_infinite_loop, get_contract_state_for_genesis};
+use crate::util::{
+    create_validator_info, ensure_account_balance_infinite_loop, get_contract_state_for_genesis,
+    spawn_local_testnet, IT_TEST_MUTEX,
+};
 use alloy::{network::EthereumWallet, providers::ProviderBuilder, sol, sol_types::SolValue};
 use clap::Parser;
 use futures::{stream::FuturesUnordered, StreamExt};

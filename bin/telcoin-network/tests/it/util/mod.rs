@@ -1,22 +1,26 @@
 use std::{path::PathBuf, sync::Arc, time::Duration};
 
 use clap::Parser;
-use narwhal_test_utils::{default_test_execution_node, CommandParser};
-use reth::{providers::ExecutionOutcome, tasks::{TaskExecutor, TaskManager}, CliContext};
-use reth_chainspec::ChainSpec;
-use reth_node_ethereum::{EthEvmConfig, EthExecutorProvider};
-use reth_primitives::{Address, SealedHeader, U256};
-use telcoin_network::{genesis::GenesisArgs, keytool::KeyArgs, node::NodeCommand};
-use tn_node::launch_node;
-use tn_types::{test_utils::execution_outcome_for_tests, TransactionSigned, WorkerBlock};
-use tokio::task::JoinHandle;
-use tracing::{debug, error};
 use jsonrpsee::{
     core::client::ClientT,
     http_client::{HttpClient, HttpClientBuilder},
     rpc_params,
 };
+use narwhal_test_utils::{default_test_execution_node, CommandParser};
+use reth::{
+    providers::ExecutionOutcome,
+    tasks::{TaskExecutor, TaskManager},
+    CliContext,
+};
+use reth_chainspec::ChainSpec;
+use reth_node_ethereum::{EthEvmConfig, EthExecutorProvider};
+use reth_primitives::{Address, SealedHeader, U256};
 use std::str::FromStr;
+use telcoin_network::{genesis::GenesisArgs, keytool::KeyArgs, node::NodeCommand};
+use tn_node::launch_node;
+use tn_types::{test_utils::execution_outcome_for_tests, TransactionSigned, WorkerBlock};
+use tokio::task::JoinHandle;
+use tracing::{debug, error};
 
 pub static IT_TEST_MUTEX: std::sync::Mutex<()> = std::sync::Mutex::new(());
 
@@ -162,7 +166,7 @@ pub async fn spawn_local_testnet(
 
         let instance = v.chars().last().expect("validator instance").to_string();
 
-        #[cfg(feature="faucet")]
+        #[cfg(feature = "faucet")]
         let mut command = NodeCommand::<tn_faucet::FaucetArgs>::parse_from([
             "tn",
             "--dev",
@@ -182,10 +186,11 @@ pub async fn spawn_local_testnet(
             "--contract-address",
             contract_address,
         ]);
-        #[cfg(not(feature="faucet"))]
+        #[cfg(not(feature = "faucet"))]
         let mut command = NodeCommand::parse_from([
             "tn",
-            "--public-key", "0223382261d641424b8d8b63497a811c56f85ee89574f9853474c3e9ab0d690d99",
+            "--public-key",
+            "0223382261d641424b8d8b63497a811c56f85ee89574f9853474c3e9ab0d690d99",
             "--dev",
             "--datadir",
             datadir,
@@ -238,7 +243,7 @@ pub async fn spawn_local_testnet(
 /// RPC request to continually check until an account balance is above 0.
 ///
 /// Warning: this should only be called with a timeout - could result in infinite loop otherwise.
-#[cfg(feature="faucet")]
+#[cfg(feature = "faucet")]
 pub async fn ensure_account_balance_infinite_loop(
     client: &HttpClient,
     address: Address,
@@ -279,4 +284,3 @@ pub async fn get_contract_state_for_genesis(
 
     Ok(execution_outcome)
 }
-

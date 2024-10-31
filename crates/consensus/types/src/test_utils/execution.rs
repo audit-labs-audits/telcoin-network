@@ -286,7 +286,7 @@ impl TransactionFactory {
             nonce: self.nonce,
             max_priority_fee_per_gas: 0,
             max_fee_per_gas: gas_price,
-            gas_limit: gas_limit,
+            gas_limit,
             to: tx_kind,
             value,
             input,

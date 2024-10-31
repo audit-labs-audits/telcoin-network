@@ -6,13 +6,21 @@
 //! adiri is the current name for multi-node testnet.
 
 use crate::{
-    test_utils::contract_artifacts::{CONSENSUSREGISTRY_RUNTIMECODE, ERC1967PROXY_RUNTIMECODE}, verify_proof_of_possession, BlsPublicKey, BlsSignature, Committee, CommitteeBuilder, Config, ConfigTrait, Epoch, Intent, IntentMessage, Multiaddr, NetworkPublicKey, PrimaryInfo, TelcoinDirs, ValidatorSignature, WorkerCache, WorkerIndex
+    test_utils::contract_artifacts::{CONSENSUSREGISTRY_RUNTIMECODE, ERC1967PROXY_RUNTIMECODE},
+    verify_proof_of_possession, BlsPublicKey, BlsSignature, Committee, CommitteeBuilder, Config,
+    ConfigTrait, Epoch, Intent, IntentMessage, Multiaddr, NetworkPublicKey, PrimaryInfo,
+    TelcoinDirs, ValidatorSignature, WorkerCache, WorkerIndex,
 };
 use alloy::{hex, primitives::FixedBytes, signers::k256::ecdsa, sol_types::SolValue};
 use eyre::Context;
-use fastcrypto::{ed25519, traits::{InsecureDefault, Signer, ToFromBytes}};
+use fastcrypto::{
+    ed25519,
+    traits::{InsecureDefault, Signer, ToFromBytes},
+};
 use reth_chainspec::ChainSpec;
-use reth_primitives::{constants::MIN_PROTOCOL_BASE_FEE, keccak256, Address, Genesis, GenesisAccount, B256, U256};
+use reth_primitives::{
+    constants::MIN_PROTOCOL_BASE_FEE, keccak256, Address, Genesis, GenesisAccount, B256, U256,
+};
 use reth_tracing::tracing_subscriber::registry;
 use serde::{Deserialize, Serialize};
 use std::{
@@ -184,31 +192,42 @@ impl NetworkGenesis {
 
     /// Read output file from Solidity GenerateConsensusRegistryStorage utility
     /// to fetch storage configuration for ConsensusRegistry at genesis
-    pub fn construct_registry_genesis_accounts(validator_infos: Vec<ValidatorInfo>) -> Vec<(Address, GenesisAccount)> {
+    pub fn construct_registry_genesis_accounts(
+        validator_infos: Vec<ValidatorInfo>,
+    ) -> Vec<(Address, GenesisAccount)> {
         let registry_cfg_path = "../../../tn-contracts/deployments/consensus-registry-storage.yaml";
-        let content = fs::read_to_string(registry_cfg_path).expect("Failed to read consensus-registry-storage yaml");
-        let registry_storage_cfg: BTreeMap<String, String> = serde_yaml::from_str(&content).expect("Parsing failure");
-        let mut registry_storage_cfg: BTreeMap<FixedBytes<32>, FixedBytes<32>> = registry_storage_cfg
-            .into_iter()
-            .map(|(k, v)| (k.parse().expect("Invalid key"), v.parse().expect("Invalid val")))
-            .collect();
+        let content = fs::read_to_string(registry_cfg_path)
+            .expect("Failed to read consensus-registry-storage yaml");
+        let registry_storage_cfg: BTreeMap<String, String> =
+            serde_yaml::from_str(&content).expect("Parsing failure");
+        let mut registry_storage_cfg: BTreeMap<FixedBytes<32>, FixedBytes<32>> =
+            registry_storage_cfg
+                .into_iter()
+                .map(|(k, v)| (k.parse().expect("Invalid key"), v.parse().expect("Invalid val")))
+                .collect();
 
         let pubkey_flags = PubkeyFlags::new(validator_infos.len());
-        // iterate over BTreeMap to conditionally overwrite flagged values with pubkeys that are now known
+        // iterate over BTreeMap to conditionally overwrite flagged values with pubkeys that are now
+        // known
         for val in registry_storage_cfg.values_mut() {
             PubkeyFlags::overwrite_if_flag(val, &pubkey_flags, &validator_infos);
         }
 
         let registry_impl = Address::random();
-        let registry_proxy = Address::from_word(hex!("00000000000000000000000007e17e17e17e17e17e17e17e17e17e17e17e17e1").into());
+        let registry_proxy = Address::from_word(
+            hex!("00000000000000000000000007e17e17e17e17e17e17e17e17e17e17e17e17e1").into(),
+        );
         let registry_genesis_accounts = vec![
-            (registry_impl, GenesisAccount::default().with_code(Some(CONSENSUSREGISTRY_RUNTIMECODE.into()))),
             (
-                registry_proxy, 
+                registry_impl,
+                GenesisAccount::default().with_code(Some(CONSENSUSREGISTRY_RUNTIMECODE.into())),
+            ),
+            (
+                registry_proxy,
                 GenesisAccount::default()
-                .with_code(Some(ERC1967PROXY_RUNTIMECODE.into()))
-                .with_storage(Some(registry_storage_cfg)),
-            )
+                    .with_code(Some(ERC1967PROXY_RUNTIMECODE.into()))
+                    .with_storage(Some(registry_storage_cfg)),
+            ),
         ];
         return registry_genesis_accounts;
     }
@@ -248,7 +267,8 @@ impl NetworkGenesis {
         }
 
         // add ConsensusRegistry config to genesis
-        let validator_infos: Vec<ValidatorInfo> = validators.iter().map(|(_, info)| info.clone()).collect();
+        let validator_infos: Vec<ValidatorInfo> =
+            validators.iter().map(|(_, info)| info.clone()).collect();
         let registry_genesis_accounts = Self::construct_registry_genesis_accounts(validator_infos);
 
         let mut tn_config: Config = Config::load_from_path(telcoin_paths.node_config_path())?;
@@ -548,28 +568,31 @@ struct PubkeyFlags {
     bls_b: FixedBytes<32>,
     bls_c: FixedBytes<32>,
     ed25519: FixedBytes<32>,
-    ecdsa: FixedBytes<32>
+    ecdsa: FixedBytes<32>,
 }
 
 impl PubkeyFlags {
     /// Calculate flags used by Foundry util to label storage values for overwriting
     fn new(num_validators: usize) -> Vec<PubkeyFlags> {
         (1..=num_validators)
-            .map(|i| {
-                PubkeyFlags {
-                    bls_a: keccak256(&format!("VALIDATOR_{}_BLS_A", i)),
-                    bls_b: keccak256(&format!("VALIDATOR_{}_BLS_B", i)),
-                    bls_c: keccak256(&format!("VALIDATOR_{}_BLS_C", i)),
-                    ed25519: keccak256(&format!("VALIDATOR_{}_ED25519", i)),
-                    ecdsa: keccak256(&format!("VALIDATOR_{}_ECDSA", i))
-                }
+            .map(|i| PubkeyFlags {
+                bls_a: keccak256(&format!("VALIDATOR_{}_BLS_A", i)),
+                bls_b: keccak256(&format!("VALIDATOR_{}_BLS_B", i)),
+                bls_c: keccak256(&format!("VALIDATOR_{}_BLS_C", i)),
+                ed25519: keccak256(&format!("VALIDATOR_{}_ED25519", i)),
+                ecdsa: keccak256(&format!("VALIDATOR_{}_ECDSA", i)),
             })
             .collect()
     }
 
-    /// Conditionally overwrites flagged placeholder values with the intended pubkey within `validator_infos`
-    /// This only occurs if `val` is found to match a collision-resistant hash within `flags`
-    fn overwrite_if_flag(val: &mut FixedBytes<32>, flags: &Vec<PubkeyFlags>, validator_infos: &Vec<ValidatorInfo>) {
+    /// Conditionally overwrites flagged placeholder values with the intended pubkey within
+    /// `validator_infos` This only occurs if `val` is found to match a collision-resistant hash
+    /// within `flags`
+    fn overwrite_if_flag(
+        val: &mut FixedBytes<32>,
+        flags: &Vec<PubkeyFlags>,
+        validator_infos: &Vec<ValidatorInfo>,
+    ) {
         for (i, flag) in flags.iter().enumerate() {
             if *val == flag.bls_a {
                 // overwrite using first 32 bytes of bls pubkey
@@ -601,13 +624,23 @@ impl PubkeyFlags {
 mod tests {
     use super::NetworkGenesis;
     use crate::{
-        adiri_chain_spec, adiri_genesis, generate_proof_of_possession, test_utils::{contract_artifacts::{CONSENSUSREGISTRY_RUNTIMECODE, ERC1967PROXY_INITCODE, ERC1967PROXY_RUNTIMECODE}, execution_outcome_for_tests, TransactionFactory}, BlsKeypair, Multiaddr, NetworkKeypair, PrimaryInfo, TelcoinDirs, ValidatorInfo, WorkerBlock, WorkerIndex, WorkerInfo
+        adiri_chain_spec, adiri_genesis, generate_proof_of_possession,
+        test_utils::{
+            contract_artifacts::{
+                CONSENSUSREGISTRY_RUNTIMECODE, ERC1967PROXY_INITCODE, ERC1967PROXY_RUNTIMECODE,
+            },
+            execution_outcome_for_tests, TransactionFactory,
+        },
+        BlsKeypair, Multiaddr, NetworkKeypair, PrimaryInfo, TelcoinDirs, ValidatorInfo,
+        WorkerBlock, WorkerIndex, WorkerInfo,
     };
     use alloy::{primitives::FixedBytes, signers::k256::ecdsa, sol, sol_types::SolValue};
     use anemo::Network;
     use fastcrypto::traits::{AllowedRng, KeyPair, ToFromBytes};
     use rand::{rngs::StdRng, SeedableRng};
-    use reth_primitives::{ruint::aliases::U32, Address, Bytes, GenesisAccount, SealedHeader, B256, U256};
+    use reth_primitives::{
+        ruint::aliases::U32, Address, Bytes, GenesisAccount, SealedHeader, B256, U256,
+    };
     use reth_revm::handler::execution;
     use reth_tracing::tracing_subscriber::registry;
     use std::{collections::BTreeMap, path::PathBuf, process::exit, str::FromStr, sync::Arc};
@@ -690,22 +723,26 @@ mod tests {
             loaded_network_genesis.validators.get(validator.public_key()).unwrap();
         assert_eq!(&validator, loaded_validator);
 
-        let expected_registry_addr = Address::from_str("0x07e17e17e17e17e17e17e17e17e17e17e17e17e1").expect("failed to parse address");
+        let expected_registry_addr =
+            Address::from_str("0x07e17e17e17e17e17e17e17e17e17e17e17e17e1")
+                .expect("failed to parse address");
         match loaded_network_genesis.chain.genesis.alloc.get(&expected_registry_addr) {
             Some(account) => {
                 // check registry bytecode matches expected value
                 match &account.code {
-                    Some(code) => assert_eq!(***code, *ERC1967PROXY_RUNTIMECODE, "wrong registry bytecode"),
-                    None => panic!("registry code not set")
+                    Some(code) => {
+                        assert_eq!(***code, *ERC1967PROXY_RUNTIMECODE, "wrong registry bytecode")
+                    }
+                    None => panic!("registry code not set"),
                 }
 
                 // check registry storage was set and is not `None`
                 match &account.storage {
                     Some(storage) => assert!(storage.len() != 0),
-                    None => panic!("registry storage not set")
+                    None => panic!("registry storage not set"),
                 }
             }
-            None => panic!("expected registry address not found in genesis")
+            None => panic!("expected registry address not found in genesis"),
         }
     }
 
