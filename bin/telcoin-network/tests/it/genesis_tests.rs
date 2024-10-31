@@ -245,7 +245,7 @@ mod tests {
                 .await
                 .expect("failed epoch read")
                 .epochInfo;
-            for j in 0..initial_validators.len() {
+            for (j, _) in initial_validators.iter().enumerate() {
                 assert_eq!(epoch_info.committee[j], initial_validators[j].ecdsaPubkey);
             }
         }
