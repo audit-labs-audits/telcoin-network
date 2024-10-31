@@ -621,16 +621,14 @@ mod tests {
     use super::NetworkGenesis;
     use crate::{
         adiri_chain_spec, generate_proof_of_possession,
-        test_utils::contract_artifacts::ERC1967PROXY_RUNTIMECODE,
-        BlsKeypair, Multiaddr, NetworkKeypair, PrimaryInfo, TelcoinDirs, ValidatorInfo, WorkerIndex, WorkerInfo,
+        test_utils::contract_artifacts::ERC1967PROXY_RUNTIMECODE, BlsKeypair, Multiaddr,
+        NetworkKeypair, PrimaryInfo, TelcoinDirs, ValidatorInfo, WorkerIndex, WorkerInfo,
     };
-    
-    
+
     use fastcrypto::traits::KeyPair;
     use rand::{rngs::StdRng, SeedableRng};
     use reth_primitives::Address;
-    
-    
+
     use std::{collections::BTreeMap, path::PathBuf, str::FromStr};
     use tempfile::tempdir;
 

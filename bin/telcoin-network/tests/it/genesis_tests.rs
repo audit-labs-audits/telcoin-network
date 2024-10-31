@@ -9,11 +9,7 @@ mod tests {
         sol_types::SolValue,
     };
     use fastcrypto::traits::{KeyPair, ToFromBytes};
-    use jsonrpsee::{
-        core::client::ClientT,
-        http_client::HttpClientBuilder,
-        rpc_params,
-    };
+    use jsonrpsee::{core::client::ClientT, http_client::HttpClientBuilder, rpc_params};
     use rand::{rngs::StdRng, SeedableRng};
     use reth::{
         primitives::{Address, Bytes, GenesisAccount, U256},
@@ -27,7 +23,7 @@ mod tests {
             contract_artifacts::{
                 CONSENSUSREGISTRY_RUNTIMECODE, ERC1967PROXY_INITCODE, ERC1967PROXY_RUNTIMECODE,
             },
-            TransactionFactory
+            TransactionFactory,
         },
         BlsKeypair, NetworkKeypair,
     };

@@ -8,8 +8,8 @@
 //! then submits the transaction to the RPC Transaction Pool for the next batch.
 
 use crate::util::{
-    ensure_account_balance_infinite_loop, get_contract_state_for_genesis,
-    spawn_local_testnet, IT_TEST_MUTEX,
+    ensure_account_balance_infinite_loop, get_contract_state_for_genesis, spawn_local_testnet,
+    IT_TEST_MUTEX,
 };
 use alloy::{network::EthereumWallet, providers::ProviderBuilder, sol, sol_types::SolValue};
 use futures::{stream::FuturesUnordered, StreamExt};
@@ -19,11 +19,7 @@ use gcloud_sdk::{
     },
     GoogleApi, GoogleAuthMiddleware, GoogleEnvironment,
 };
-use jsonrpsee::{
-    core::client::ClientT,
-    http_client::HttpClientBuilder,
-    rpc_params,
-};
+use jsonrpsee::{core::client::ClientT, http_client::HttpClientBuilder, rpc_params};
 use k256::{elliptic_curve::sec1::ToEncodedPoint, pkcs8::DecodePublicKey, PublicKey as PubKey};
 use reth::tasks::TaskManager;
 use reth_chainspec::ChainSpec;
@@ -37,8 +33,9 @@ use tn_types::{
         contract_artifacts::{
             ERC1967PROXY_INITCODE, ERC1967PROXY_RUNTIMECODE, STABLECOINMANAGER_RUNTIMECODE,
             STABLECOIN_RUNTIMECODE,
-        }, TransactionFactory,
-    }
+        },
+        TransactionFactory,
+    },
 };
 use tokio::{runtime::Handle, task::JoinHandle, time::timeout};
 use tracing::{debug, info};
