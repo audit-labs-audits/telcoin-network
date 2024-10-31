@@ -820,7 +820,6 @@ mod tests {
 
         // simulate engine to create canonical blocks from empty rounds
         let evm_config = EthEvmConfig::default();
-        let mut subdag_index = 0;
         let mut parent = chain.sealed_genesis_header();
 
         let non_fatal_errors = vec![
