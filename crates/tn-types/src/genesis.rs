@@ -190,7 +190,10 @@ impl NetworkGenesis {
     pub fn construct_registry_genesis_accounts(
         validator_infos: Vec<ValidatorInfo>,
     ) -> Vec<(Address, GenesisAccount)> {
-        let registry_cfg_path = "../../../tn-contracts/deployments/consensus-registry-storage.yaml";
+        let mut registry_cfg_path = std::path::PathBuf::from(
+            std::env::var("CARGO_MANIFEST_DIR").expect("Missing CARGO_MANIFEST_DIR!"),
+        );
+        registry_cfg_path.push("../../tn-contracts/deployments/consensus-registry-storage.yaml");
         let content = fs::read_to_string(registry_cfg_path)
             .expect("Failed to read consensus-registry-storage yaml");
         let registry_storage_cfg: BTreeMap<String, String> =
