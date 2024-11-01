@@ -224,10 +224,11 @@ async fn test_make_block_el_to_cl() {
     assert!(valid_block_result.is_ok());
 
     // ensure expected transaction is in block
-    let expected_block = WorkerBlock::new(
-        vec![transaction1.clone(), transaction2.clone(), transaction3.clone()],
-        block.sealed_header().clone(),
-    );
+    let expected_block = WorkerBlock {
+        transactions: vec![transaction1.clone(), transaction2.clone(), transaction3.clone()],
+        received_at: None,
+        ..block
+    };
     let block_txs = block.transactions();
     assert_eq!(block_txs, expected_block.transactions());
 
@@ -241,8 +242,7 @@ async fn test_make_block_el_to_cl() {
         .get::<WorkerBlocks>(&expected_block.digest())
         .expect("store searched for batch")
         .expect("batch in store");
-    let sealed_header_from_batch_store = batch_from_store.sealed_header();
-    assert_eq!(sealed_header_from_batch_store.beneficiary, address);
+    assert_eq!(batch_from_store.beneficiary, address);
 
     // txpool should be empty after mining
     // test_make_block_no_ack_txs_in_pool_still tests for txs in pool without mining event
@@ -412,10 +412,11 @@ async fn test_block_builder_produces_valid_blocks() {
     assert!(valid_block_result.is_ok());
 
     // ensure expected transaction is in block
-    let expected_block = WorkerBlock::new(
-        vec![transaction1.clone(), transaction2.clone(), transaction3.clone()],
-        first_block.sealed_header().clone(),
-    );
+    let expected_block = WorkerBlock {
+        transactions: vec![transaction1.clone(), transaction2.clone(), transaction3.clone()],
+        received_at: None,
+        ..first_block
+    };
     let block_txs = first_block.transactions();
     assert_eq!(block_txs, expected_block.transactions());
 
@@ -603,7 +604,7 @@ async fn test_canonical_notification_updates_pool() {
     assert_eq!(queued_pool_len, 1);
 
     // ensure expected transaction is in block
-    let mut first_block = WorkerBlock::new(
+    let mut first_block = WorkerBlock::new_for_test(
         vec![transaction1.clone(), transaction2.clone(), transaction3.clone()],
         SealedHeader::default(),
     );

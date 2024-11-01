@@ -3,12 +3,16 @@
 //! Blocks hold transactions and other data.
 // Copyright (c) Telcoin, LLC
 
+use fastcrypto::hash::HashFunction;
 use reth_primitives::{
-    BlockHash, SealedBlock, SealedBlockWithSenders, SealedHeader, TransactionSigned, Withdrawals,
+    constants::EMPTY_WITHDRAWALS, proofs, Address, BlockHash, Bloom, Bytes, Header, SealedBlock,
+    SealedHeader, TransactionSigned, B256, EMPTY_OMMER_ROOT_HASH, U256,
 };
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
 use tokio::sync::oneshot;
+
+use crate::{crypto, encode};
 
 use super::TimestampSec;
 
@@ -32,20 +36,44 @@ pub enum WorkerBlockConversionError {
 pub struct WorkerBlock {
     /// The collection of transactions executed in this block.
     pub transactions: Vec<TransactionSigned>,
-    /// The sealed header for this block.
-    pub sealed_header: SealedHeader,
     /// Timestamp of when the entity was received by another node. This will help
     /// calculate latencies that are not affected by clock drift or network
     /// delays. This field is not set for own blocks.
+    #[serde(skip)]
+    // This field changes often so don't serialize (i.e. don't use it in the digest)
     pub received_at: Option<TimestampSec>,
+
+    /// The Keccak 256-bit hash of the parent
+    /// block’s header, in its entirety; formally Hp.
+    pub parent_hash: B256,
+    /// The 160-bit address to which all fees collected from the successful mining of this block
+    /// be transferred; formally Hc.
+    pub beneficiary: Address,
+    /// A scalar value equal to the reasonable output of Unix’s time() at this block’s inception;
+    /// formally Hs.
+    pub timestamp: u64,
+    /// A scalar representing EIP1559 base fee which can move up or down each block according
+    /// to a formula which is a function of gas used in parent block and gas target
+    /// (block gas limit divided by elasticity multiplier) of parent block.
+    /// The algorithm results in the base fee per gas increasing when blocks are
+    /// above the gas target, and decreasing when blocks are below the gas target. The base fee per
+    /// gas is burned.
+    pub base_fee_per_gas: Option<u64>,
 }
 
 impl WorkerBlock {
     /// Create a new block for testing only!
     ///
     /// This is NOT a valid block for consensus.
-    pub fn new(transactions: Vec<TransactionSigned>, sealed_header: SealedHeader) -> Self {
-        Self { transactions, sealed_header, received_at: None }
+    pub fn new_for_test(transactions: Vec<TransactionSigned>, sealed_header: SealedHeader) -> Self {
+        Self {
+            transactions,
+            parent_hash: sealed_header.parent_hash,
+            beneficiary: sealed_header.beneficiary,
+            timestamp: sealed_header.timestamp,
+            base_fee_per_gas: sealed_header.base_fee_per_gas,
+            received_at: None,
+        }
     }
 
     /// Size of the block.
@@ -55,17 +83,25 @@ impl WorkerBlock {
 
     /// Digest for this block (the hash of the sealed header).
     pub fn digest(&self) -> BlockHash {
-        self.sealed_header.hash()
+        let mut hasher = crypto::DefaultHashFunction::new();
+        //hasher.update(encode(&self.transactions));
+        hasher.update(encode(self));
+        // finalize
+        BlockHash::from_slice(&hasher.finalize().digest)
     }
 
-    /// Replace the sealed header.
-    pub fn update_header(&mut self, sealed_header: SealedHeader) {
-        self.sealed_header = sealed_header;
+    /// Replace the common fields with the provided sealed header.
+    /// This is for testing.
+    pub fn update_header_for_test(&mut self, sealed_header: &SealedHeader) {
+        self.parent_hash = sealed_header.parent_hash;
+        self.beneficiary = sealed_header.beneficiary;
+        self.timestamp = sealed_header.timestamp;
+        self.base_fee_per_gas = sealed_header.base_fee_per_gas;
     }
 
     /// Timestamp of this block header.
     pub fn created_at(&self) -> TimestampSec {
-        self.sealed_header.header().timestamp
+        self.timestamp
     }
 
     /// Pass a reference to a Vec<Transaction>;
@@ -78,9 +114,59 @@ impl WorkerBlock {
         &mut self.transactions
     }
 
-    /// Returns the sealed header.
-    pub fn sealed_header(&self) -> &SealedHeader {
-        &self.sealed_header
+    /// Return the max possible gas the contained transactions could use.
+    /// Does not execute transactions, just sums up there gas limit.
+    pub fn total_possible_gas(&self) -> u64 {
+        let mut total_possible_gas = 0;
+
+        // begin loop through sorted "best" transactions in pending pool
+        // and execute them to build the block
+        for tx in &self.transactions {
+            // txs are not executed, so use the gas_limit
+            total_possible_gas += tx.gas_limit();
+        }
+        total_possible_gas
+    }
+
+    /// Returns a sealed header.
+    /// This is a synthetic sealed header with a lot of default values.
+    /// It is NOT an actual block on the chain and has limited utility.
+    pub fn sealed_header(&self) -> SealedHeader {
+        let transactions_root = proofs::calculate_transaction_root(&self.transactions);
+
+        let total_possible_gas = self.total_possible_gas();
+
+        //    &self.sealed_header
+        // create header
+        //
+        // NOTE: workers do not execute transactions. Peers validate:
+        // - calculated transaction root
+        // - all other roots are defaults
+        // - use ZERO for hashes
+        let header = Header {
+            parent_hash: self.parent_hash,
+            ommers_hash: EMPTY_OMMER_ROOT_HASH,
+            beneficiary: self.beneficiary,
+            state_root: B256::ZERO,
+            transactions_root,
+            receipts_root: B256::ZERO,
+            withdrawals_root: Some(EMPTY_WITHDRAWALS),
+            logs_bloom: Bloom::default(),
+            timestamp: self.timestamp,
+            mix_hash: B256::ZERO,
+            nonce: 0,
+            base_fee_per_gas: self.base_fee_per_gas,
+            number: 1,
+            gas_limit: 30_000_000, // gas limit in wei - just a default
+            difficulty: U256::ZERO,
+            gas_used: total_possible_gas,
+            extra_data: Bytes::default(),
+            parent_beacon_block_root: None,
+            blob_gas_used: None,
+            excess_blob_gas: None,
+            requests_root: None,
+        };
+        header.seal_slow()
     }
 
     /// Returns the received at time if available.
@@ -91,24 +177,5 @@ impl WorkerBlock {
     /// Sets the recieved at field.
     pub fn set_received_at(&mut self, time: TimestampSec) {
         self.received_at = Some(time)
-    }
-}
-
-impl TryFrom<&WorkerBlock> for SealedBlockWithSenders {
-    type Error = WorkerBlockConversionError;
-
-    fn try_from(block: &WorkerBlock) -> Result<Self, Self::Error> {
-        let header = block.sealed_header.clone();
-        // decode transactions
-        let body = block.transactions.clone();
-        // seal block
-        let block = SealedBlock {
-            header,
-            body,
-            ommers: vec![],
-            withdrawals: Some(Withdrawals::new(vec![])),
-            requests: None,
-        };
-        block.try_seal_with_senders().map_err(Self::Error::RecoverSigners)
     }
 }

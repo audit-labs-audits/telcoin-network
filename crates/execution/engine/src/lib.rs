@@ -540,7 +540,7 @@ mod tests {
 
             // okay to use bad hash bc execution executing block will seal slowly
             let updated = header.seal(B256::ZERO);
-            batch.update_header(updated);
+            batch.update_header_for_test(&updated);
 
             // actually execute the block now
             execute_test_worker_block(batch, &parent);
@@ -567,7 +567,7 @@ mod tests {
 
             // okay to use bad hash bc execution executing block will seal slowly
             let updated = header.seal(B256::ZERO);
-            batch.update_header(updated);
+            batch.update_header_for_test(&updated);
 
             // actually execute the block now
             execute_test_worker_block(batch, &parent);
@@ -877,7 +877,7 @@ mod tests {
 
             // okay to use bad hash bc execution executing block will seal slowly
             let updated = header.seal(B256::ZERO);
-            batch.update_header(updated);
+            batch.update_header_for_test(&updated);
 
             // actually execute the block now
             execute_test_worker_block(batch, &parent);
@@ -904,7 +904,7 @@ mod tests {
 
             // okay to use bad hash bc execution executing block will seal slowly
             let updated = header.seal(B256::ZERO);
-            batch.update_header(updated);
+            batch.update_header_for_test(&updated);
 
             // actually execute the block now
             execute_test_worker_block(batch, &parent);
@@ -1234,7 +1234,7 @@ mod tests {
 
             // okay to use bad hash bc execution executing block will seal slowly
             let updated = header.seal(B256::ZERO);
-            batch.update_header(updated);
+            batch.update_header_for_test(&updated);
 
             // actually execute the block now
             execute_test_worker_block(batch, &parent);
@@ -1261,7 +1261,7 @@ mod tests {
 
             // okay to use bad hash bc execution executing block will seal slowly
             let updated = header.seal(B256::ZERO);
-            batch.update_header(updated);
+            batch.update_header_for_test(&updated);
 
             // actually execute the block now
             execute_test_worker_block(batch, &parent);

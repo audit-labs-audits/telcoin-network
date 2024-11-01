@@ -1,6 +1,6 @@
 //! Error types for building and executing output from consensus.
 
-use reth_primitives::{BlockNumber, B256};
+use reth_primitives::B256;
 use reth_provider::ProviderError;
 use thiserror::Error;
 use tn_types::BlockHash;
@@ -16,16 +16,6 @@ pub enum BlockValidationError {
         /// The block hash provided with the payload.
         peer_hash: Box<B256>,
     },
-    /// Error when the block number does not match the parent block number.
-    #[error(
-        "Worker's block number {block_number} does not match parent block number {parent_block_number}"
-    )]
-    ParentBlockNumberMismatch {
-        /// The parent block number.
-        parent_block_number: BlockNumber,
-        /// The block number.
-        block_number: BlockNumber,
-    },
     /// Attempt to retrieve the block's header from this worker's database.
     #[error("Error retrieving header from database provider: {0}")]
     Provider(#[from] ProviderError),
@@ -36,14 +26,6 @@ pub enum BlockValidationError {
         parent_timestamp: u64,
         /// The block's timestamp.
         timestamp: u64,
-    },
-    /// Verify transaction root.
-    #[error("Peer's transaction root mismatch: expected {expected:?} - received {peer_root:?}")]
-    TransactionRootMismatch {
-        /// The transaction root computed from the peer's transactions.
-        expected: Box<B256>,
-        /// The transaction root provided with the peer's block.
-        peer_root: Box<B256>,
     },
     /// Canonical chain header cannot be found.
     #[error("Canonical chain header {block_hash} can't be found for peer block's parent")]
