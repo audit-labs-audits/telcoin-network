@@ -5,7 +5,7 @@ use reth::dirs::MaybePlatformPath;
 use reth_chainspec::ChainSpec;
 use std::{path::PathBuf, sync::Arc};
 use tn_node::dirs::{default_datadir_args, DataDirChainPath, DataDirPath};
-use tn_types::{Config, ConfigTrait, NetworkGenesis, TelcoinDirs as _};
+use tn_types::{Config, ConfigFmt, ConfigTrait, NetworkGenesis, TelcoinDirs as _};
 
 use crate::args::clap_genesis_parser;
 use tracing::info;
@@ -87,19 +87,21 @@ impl CreateCommitteeArgs {
 
         // update the config with new genesis information
         let config_path = self.config.clone().unwrap_or(data_dir.node_config_path());
-        let mut tn_config: Config = Config::load_from_path(&config_path)?;
+        let mut tn_config: Config = Config::load_from_path(&config_path, ConfigFmt::YAML)?;
         tn_config.genesis = network_genesis.chain_info().genesis().clone();
 
         // write genesis and config to file
-        Config::store_path(data_dir.genesis_file_path(), tn_config.genesis())?;
-        Config::store_path(config_path, tn_config)?;
+        //
+        // NOTE: CLI parser only supports JSON format for genesis
+        Config::store_path(data_dir.genesis_file_path(), tn_config.genesis(), ConfigFmt::JSON)?;
+        Config::store_path(config_path, tn_config, ConfigFmt::YAML)?;
 
         // generate committee and worker cache
         let committee = network_genesis.create_committee()?;
         let worker_cache = network_genesis.create_worker_cache()?;
 
         // write to file
-        Config::store_path(data_dir.committee_path(), committee)?;
-        Config::store_path(data_dir.worker_cache_path(), worker_cache)
+        Config::store_path(data_dir.committee_path(), committee, ConfigFmt::YAML)?;
+        Config::store_path(data_dir.worker_cache_path(), worker_cache, ConfigFmt::YAML)
     }
 }

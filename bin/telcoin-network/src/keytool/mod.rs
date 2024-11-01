@@ -14,7 +14,7 @@ use std::{
     sync::Arc,
 };
 use tn_node::dirs::{default_datadir_args, DataDirChainPath, DataDirPath};
-use tn_types::{Config, ConfigTrait, TelcoinDirs as _};
+use tn_types::{Config, ConfigFmt, ConfigTrait, TelcoinDirs as _};
 use tracing::{debug, info, warn};
 
 /// Generate keypairs and save them to a file.
@@ -108,7 +108,7 @@ impl KeyArgs {
                         config.keypath = authority_key_path;
 
                         debug!("{config:?}");
-                        Config::store_path(self.config_path(), config)?;
+                        Config::store_path(self.config_path(), config, ConfigFmt::YAML)?;
                     }
                 }
             }
@@ -186,7 +186,8 @@ impl KeyArgs {
         debug!("loading config...");
         let config_path = self.config_path();
         debug!(?config_path);
-        let config = Config::load_from_path::<Config>(&config_path).unwrap_or_default();
+        let config =
+            Config::load_from_path::<Config>(&config_path, ConfigFmt::YAML).unwrap_or_default();
         debug!("{:?}", config);
 
         info!(target: "tn::cli", path = ?config_path, "Configuration loaded");

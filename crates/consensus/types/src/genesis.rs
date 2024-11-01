@@ -8,7 +8,7 @@
 use crate::{
     test_utils::contract_artifacts::{CONSENSUSREGISTRY_RUNTIMECODE, ERC1967PROXY_RUNTIMECODE},
     verify_proof_of_possession, BlsPublicKey, BlsSignature, Committee, CommitteeBuilder, Config,
-    ConfigTrait, Epoch, Intent, IntentMessage, Multiaddr, NetworkPublicKey, PrimaryInfo,
+    ConfigFmt, ConfigTrait, Epoch, Intent, IntentMessage, Multiaddr, NetworkPublicKey, PrimaryInfo,
     TelcoinDirs, ValidatorSignature, WorkerCache, WorkerIndex,
 };
 use alloy::{hex, primitives::FixedBytes};
@@ -275,7 +275,8 @@ impl NetworkGenesis {
         #[allow(clippy::mutable_key_type)]
         let validators = BTreeMap::from_iter(validators);
 
-        let tn_config: Config = Config::load_from_path(telcoin_paths.node_config_path())?;
+        let tn_config: Config =
+            Config::load_from_path(telcoin_paths.node_config_path(), ConfigFmt::YAML)?;
 
         let network_genesis = Self {
             chain: tn_config.chain_spec(),
