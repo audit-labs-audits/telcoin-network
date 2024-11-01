@@ -5,15 +5,16 @@
 
 use super::*;
 use narwhal_network::test_utils::WorkerToWorkerMockServer;
-use tn_types::test_utils::{batch, test_network, CommitteeFixture};
+use narwhal_test_utils::{batch, test_network, CommitteeFixture};
+use narwhal_typed_store::mem_db::MemDatabase;
 
 #[tokio::test]
 async fn wait_for_quorum() {
-    let fixture = CommitteeFixture::builder().randomize_ports(true).build();
+    let fixture = CommitteeFixture::builder(MemDatabase::default).randomize_ports(true).build();
     let committee = fixture.committee();
     let worker_cache = fixture.worker_cache();
     let my_primary = fixture.authorities().next().unwrap();
-    let myself = fixture.authorities().next().unwrap().worker(0);
+    let myself = fixture.authorities().next().unwrap().worker();
 
     let node_metrics = Arc::new(WorkerMetrics::default());
 
@@ -35,7 +36,7 @@ async fn wait_for_quorum() {
 
     // Spawn enough listeners to acknowledge our batches.
     let mut listener_handles = Vec::new();
-    for worker in fixture.authorities().skip(1).map(|a| a.worker(0)) {
+    for worker in fixture.authorities().skip(1).map(|a| a.worker()) {
         let handle =
             WorkerToWorkerMockServer::spawn(worker.keypair(), worker.info().worker_address.clone());
         listener_handles.push(handle);

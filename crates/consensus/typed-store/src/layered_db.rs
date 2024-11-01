@@ -181,7 +181,7 @@ impl<DB: Database> LayeredDatabase<DB> {
         let (tx, rx) = mpsc::channel();
         let db_cloned = db.clone();
         let thread = Some(Arc::new(std::thread::spawn(move || db_run(db_cloned, rx))));
-        Self { mem_db: MemDatabase::default(), db, tx, thread }
+        Self { mem_db: MemDatabase::new(), db, tx, thread }
     }
 
     pub fn open_table<T: Table>(&self) {

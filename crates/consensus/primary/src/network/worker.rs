@@ -11,6 +11,7 @@
 use anemo::async_trait;
 use narwhal_network_types::{WorkerOthersBlockMessage, WorkerOwnBlockMessage, WorkerToPrimary};
 use narwhal_typed_store::traits::Database;
+use tn_types::TnSender;
 use tokio::sync::oneshot;
 
 use crate::proposer::OurDigestMessage;
@@ -28,7 +29,8 @@ impl<DB: Database> WorkerToPrimary for WorkerReceiverHandler<DB> {
 
         let (tx_ack, rx_ack) = oneshot::channel();
         let response = self
-            .tx_our_digests
+            .consensus_bus
+            .our_digests()
             .send(OurDigestMessage {
                 digest: message.digest,
                 worker_id: message.worker_id,

@@ -135,6 +135,8 @@ impl<DB: Database> PrimaryToPrimary for PrimaryReceiverHandler<DB> {
             // Allow the request handler to be stopped after timeout.
             tokio::task::yield_now().await;
             match self
+                .consensus_config
+                .node_storage()
                 .certificate_store
                 .read_by_index(*origin, round)
                 .map_err(|e| anemo::rpc::Status::unknown(format!("unknown error: {e}")))?

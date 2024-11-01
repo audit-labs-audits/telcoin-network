@@ -2,34 +2,30 @@
 // Copyright (c) Mysten Labs, Inc.
 // SPDX-License-Identifier: Apache-2.0
 
-use crate::{
-    certificate_fetcher::CertificateFetcher, consensus::ConsensusRound, synchronizer::Synchronizer,
-};
+use crate::{certificate_fetcher::CertificateFetcher, synchronizer::Synchronizer, ConsensusBus};
 use anemo::async_trait;
 use eyre::Result;
 use fastcrypto::{hash::Hash, traits::KeyPair};
 use indexmap::IndexMap;
 use itertools::Itertools;
-use narwhal_network::client::NetworkClient;
 use narwhal_network_types::{
     FetchCertificatesRequest, FetchCertificatesResponse, PrimaryToPrimary, PrimaryToPrimaryServer,
     RequestVoteRequest, RequestVoteResponse, SendCertificateRequest, SendCertificateResponse,
 };
-use narwhal_primary_metrics::{PrimaryChannelMetrics, PrimaryMetrics};
-use narwhal_storage::{CertificateStore, NodeStorage};
-use narwhal_typed_store::{open_db, traits::Database};
+use narwhal_storage::CertificateStore;
+use narwhal_test_utils::{test_network, CommitteeFixture};
+use narwhal_typed_store::{mem_db::MemDatabase, traits::Database};
 use once_cell::sync::OnceCell;
 use std::{collections::BTreeSet, sync::Arc, time::Duration};
-use tempfile::TempDir;
 use tn_types::{
-    test_utils::CommitteeFixture, AuthorityIdentifier, BlockHash, BlsAggregateSignatureBytes,
-    Certificate, CertificateDigest, Epoch, Header, HeaderDigest, Notifier, Round,
-    SignatureVerificationState, SystemMessage, TimestampSec, WorkerId,
+    AuthorityIdentifier, BlockHash, BlsAggregateSignatureBytes, Certificate, CertificateDigest,
+    Epoch, Header, HeaderDigest, Round, SignatureVerificationState, SystemMessage, TimestampSec,
+    WorkerId,
 };
 use tokio::{
     sync::{
         mpsc::{self, error::TryRecvError, Receiver, Sender},
-        watch, Mutex,
+        Mutex,
     },
     time::sleep,
 };
@@ -157,56 +153,24 @@ struct BadHeader {
 #[tokio::test(flavor = "current_thread", start_paused = true)]
 async fn fetch_certificates_v1_basic() {
     reth_tracing::init_test_tracing();
-    let fixture = CommitteeFixture::builder().randomize_ports(true).build();
-    let worker_cache = fixture.worker_cache();
+    let fixture = CommitteeFixture::builder(MemDatabase::default).randomize_ports(true).build();
     let primary = fixture.authorities().next().unwrap();
-    let client = NetworkClient::new_from_keypair(&primary.network_keypair());
     let id = primary.id();
     let fake_primary = fixture.authorities().nth(1).unwrap();
-    let metrics = Arc::new(PrimaryMetrics::default());
-    let primary_channel_metrics = PrimaryChannelMetrics::default();
-    let gc_depth: Round = 50;
 
-    // kept empty
-    let mut tx_shutdown = Notifier::new();
-    // synchronizer to certificate fetcher
-    let (tx_certificate_fetcher, rx_certificate_fetcher) = tn_types::test_channel!(1000);
-    let (tx_new_certificates, _rx_new_certificates) = tn_types::test_channel!(1000);
-    let (tx_parents, _rx_parents) = tn_types::test_channel!(1000);
     // FetchCertificateProxy -> test
     let (tx_fetch_req, mut rx_fetch_req) = mpsc::channel(1000);
     // test -> FetchCertificateProxy
     let (tx_fetch_resp, rx_fetch_resp) = mpsc::channel(1000);
 
-    // Create test stores.
-    // In case the DB dir does not yet exist.
-    let temp_dir = TempDir::new().unwrap();
-    let _ = std::fs::create_dir_all(temp_dir.path());
-    let db = open_db(temp_dir.path());
-    let store = NodeStorage::reopen(db);
-    let certificate_store = store.certificate_store.clone();
-    let payload_store = store.payload_store.clone();
+    let certificate_store = primary.consensus_config().node_storage().certificate_store.clone();
+    let payload_store = primary.consensus_config().node_storage().payload_store.clone();
 
     // Signal rounds
-    let (_tx_consensus_round_updates, rx_consensus_round_updates) =
-        watch::channel(ConsensusRound::new(0, 0));
 
+    let cb = ConsensusBus::new();
     // Make a synchronizer for certificates.
-    let synchronizer = Arc::new(Synchronizer::new(
-        id,
-        fixture.committee(),
-        worker_cache.clone(),
-        gc_depth,
-        client,
-        certificate_store.clone(),
-        payload_store.clone(),
-        tx_certificate_fetcher,
-        tx_new_certificates.clone(),
-        tx_parents.clone(),
-        rx_consensus_round_updates.clone(),
-        metrics.clone(),
-        &primary_channel_metrics,
-    ));
+    let synchronizer = Arc::new(Synchronizer::new(primary.consensus_config(), &cb));
 
     let fake_primary_addr = fake_primary.network_address().to_anemo_address().unwrap();
     let fake_route =
@@ -216,11 +180,10 @@ async fn fetch_certificates_v1_basic() {
         }));
     let fake_server_network = anemo::Network::bind(fake_primary_addr.clone())
         .server_name("narwhal")
-        .private_key(fake_primary.network_keypair().copy().private().0.to_bytes())
+        .private_key(fake_primary.primary_network_keypair().copy().private().0.to_bytes())
         .start(fake_route)
         .unwrap();
-    let client_network =
-        tn_types::test_utils::test_network(primary.network_keypair(), primary.network_address());
+    let client_network = test_network(primary.primary_network_keypair(), primary.network_address());
     client_network
         .connect_with_peer_id(fake_primary_addr, fake_server_network.peer_id())
         .await
@@ -232,11 +195,9 @@ async fn fetch_certificates_v1_basic() {
         fixture.committee(),
         client_network.clone(),
         certificate_store.clone(),
-        rx_consensus_round_updates.clone(),
-        tx_shutdown.subscribe(),
-        rx_certificate_fetcher,
+        cb.clone(),
+        primary.consensus_config().subscribe_shutdown(),
         synchronizer.clone(),
-        metrics.clone(),
     );
 
     // Generate headers and certificates in successive rounds
@@ -406,7 +367,7 @@ async fn fetch_certificates_v1_basic() {
     let mut certs = Vec::new();
     // Add cert missing parent info.
     let mut cert = certificates[num_written].clone();
-    cert.header_mut().clear_parents();
+    cert.header_mut_for_test().clear_parents_for_test();
     certs.push(cert);
     // Add cert with incorrect digest.
     let mut cert = certificates[num_written].clone();
@@ -422,7 +383,7 @@ async fn fetch_certificates_v1_basic() {
 
     // instead: use dummy, default header for bad data
     let wolf_header = Header::default();
-    cert.update_header(wolf_header);
+    cert.update_header_for_test(wolf_header);
     certs.push(cert);
     // Add cert without all parents in storage.
     certs.push(certificates[num_written + 1].clone());

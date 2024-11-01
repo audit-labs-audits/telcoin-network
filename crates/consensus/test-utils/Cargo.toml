@@ -22,21 +22,21 @@ tracing = { workspace = true }
 once_cell = { workspace = true }
 
 fastcrypto = { workspace = true }
-narwhal-executor = { workspace = true }
 narwhal-network = { workspace = true }
 narwhal-network-types = { workspace = true }
 tn-node = { workspace = true }
 narwhal-primary = { workspace = true }
-tn-types = { workspace = true, features = ["test-utils"] }
+tn-types = { workspace = true }
 tn-faucet = { workspace = true }
+tn-config = { workspace = true }
 narwhal-worker = { workspace = true }
-narwhal-storage = { workspace = true }
 consensus-metrics = { workspace = true }
 narwhal-primary-metrics = { workspace = true }
 narwhal-typed-store = { workspace = true }
 reth-tracing = { workspace = true }
 reth-chainspec = { workspace = true }
 reth-cli-commands = { workspace = true }
+secp256k1 = { workspace = true }
 reth-tasks = { workspace = true }
 
 anemo = { workspace = true }
@@ -45,6 +45,7 @@ anemo = { workspace = true }
 eyre = { workspace = true }
 reth-node-ethereum = { workspace = true }
 reth-stages = { workspace = true }
+reth-primitives = { workspace = true }
 tn-block-builder = { workspace = true }
 tn-block-validator = { workspace = true }
 tn-engine = { workspace = true }
@@ -53,6 +54,27 @@ reth-db = { workspace = true, features = ["test-utils"] }
 reth-transaction-pool = { workspace = true }
 jsonrpsee = { workspace = true }
 clap = { workspace = true, features = ["env"] }
-alloy = { workspace = true }
 
 telcoin-network = { path = "../../../bin/telcoin-network" }
+
+reth-evm = { workspace = true }
+
+alloy = { workspace = true, features = [
+    "contract",
+    "signers",
+    "signer-local",
+    "network",
+] }
+
+[dev-dependencies]
+narwhal-storage = { workspace = true }
+criterion = { workspace = true }
+futures.workspace = true
+
+[[bench]]
+name = "batch_digest"
+harness = false
+
+[[bench]]
+name = "verify_certificate"
+harness = false

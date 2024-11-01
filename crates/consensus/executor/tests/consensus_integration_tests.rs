@@ -3,34 +3,26 @@
 // SPDX-License-Identifier: Apache-2.0
 use fastcrypto::hash::Hash;
 use narwhal_executor::get_restored_consensus_output;
-use narwhal_primary::consensus::{
-    Bullshark, Consensus, ConsensusMetrics, ConsensusRound, LeaderSchedule, LeaderSwapTable,
+use narwhal_primary::{
+    consensus::{Bullshark, Consensus, ConsensusMetrics, LeaderSchedule, LeaderSwapTable},
+    ConsensusBus,
 };
-use narwhal_storage::NodeStorage;
 
-use narwhal_typed_store::open_db;
-use tempfile::TempDir;
-use tn_types::{test_utils::CommitteeFixture, Notifier, DEFAULT_BAD_NODES_STAKE_THRESHOLD};
+use narwhal_test_utils::CommitteeFixture;
+use narwhal_typed_store::mem_db::MemDatabase;
+use tn_types::DEFAULT_BAD_NODES_STAKE_THRESHOLD;
 
 use std::{collections::BTreeSet, sync::Arc};
-use tokio::sync::watch;
 
-use tn_types::{Certificate, Round};
+use tn_types::{Certificate, TnReceiver, TnSender};
 
 #[tokio::test]
 async fn test_recovery() {
-    // Create storage
-    // In case the DB dir does not yet exist.
-    let temp_dir = TempDir::new().unwrap();
-    let _ = std::fs::create_dir_all(temp_dir.path());
-    let db = open_db(temp_dir.path());
-    let storage = NodeStorage::reopen(db);
-
-    let consensus_store = storage.consensus_store;
-    let certificate_store = storage.certificate_store;
-
     // Setup consensus
-    let fixture = CommitteeFixture::builder().build();
+    let fixture = CommitteeFixture::builder(MemDatabase::default).build();
+    let config_1 = fixture.authorities().next().unwrap().consensus_config();
+    let consensus_store = config_1.node_storage().consensus_store.clone();
+    let certificate_store = config_1.node_storage().certificate_store.clone();
     let committee = fixture.committee();
 
     // Make certificates for rounds 1 up to 4.
@@ -38,26 +30,16 @@ async fn test_recovery() {
     let genesis =
         Certificate::genesis(&committee).iter().map(|x| x.digest()).collect::<BTreeSet<_>>();
     let (mut certificates, next_parents) =
-        tn_types::test_utils::make_optimal_certificates(&committee, 1..=4, &genesis, &ids);
+        narwhal_test_utils::make_optimal_certificates(&committee, 1..=4, &genesis, &ids);
 
     // Make two certificate (f+1) with round 5 to trigger the commits.
     let (_, certificate) =
-        tn_types::test_utils::mock_certificate(&committee, ids[0], 5, next_parents.clone());
+        narwhal_test_utils::mock_certificate(&committee, ids[0], 5, next_parents.clone());
     certificates.push_back(certificate);
     let (_, certificate) =
-        tn_types::test_utils::mock_certificate(&committee, ids[1], 5, next_parents);
+        narwhal_test_utils::mock_certificate(&committee, ids[1], 5, next_parents);
     certificates.push_back(certificate);
 
-    // Spawn the consensus engine and sink the primary channel.
-    let (tx_waiter, rx_waiter) = tn_types::test_channel!(1);
-    let (tx_primary, mut rx_primary) = tn_types::test_channel!(1);
-    let (tx_output, mut rx_output) = tn_types::test_channel!(1);
-    let (tx_consensus_round_updates, _rx_consensus_round_updates) =
-        watch::channel(ConsensusRound::default());
-
-    let mut tx_shutdown = Notifier::new();
-
-    const GC_DEPTH: Round = 50;
     const NUM_SUB_DAGS_PER_SCHEDULE: u64 = 100;
     let metrics = Arc::new(ConsensusMetrics::default());
     let bullshark = Bullshark::new(
@@ -69,20 +51,14 @@ async fn test_recovery() {
         DEFAULT_BAD_NODES_STAKE_THRESHOLD,
     );
 
-    let _consensus_handle = Consensus::spawn(
-        committee,
-        GC_DEPTH,
-        consensus_store.clone(),
-        certificate_store.clone(),
-        tx_shutdown.subscribe(),
-        rx_waiter,
-        tx_primary,
-        tx_consensus_round_updates,
-        tx_output,
-        bullshark,
-        metrics,
-    );
-    tokio::spawn(async move { while rx_primary.recv().await.is_some() {} });
+    let cb = ConsensusBus::new();
+    let cb_clone = cb.clone();
+    let mut rx_output = cb.sequence().subscribe();
+    let _consensus_handle = Consensus::spawn(config_1, &cb, bullshark);
+    tokio::spawn(async move {
+        let mut rx_primary = cb_clone.committed_certificates().subscribe();
+        while rx_primary.recv().await.is_some() {}
+    });
 
     // Feed all certificates to the consensus. Only the last certificate should trigger
     // commits, so the task should not block.
@@ -90,7 +66,7 @@ async fn test_recovery() {
         // we store the certificates so we can enable the recovery
         // mechanism later.
         certificate_store.write(certificate.clone()).unwrap();
-        tx_waiter.send(certificate).await.unwrap();
+        cb.new_certificates().send(certificate).await.unwrap();
     }
 
     let expected_committed_sub_dags = 2;

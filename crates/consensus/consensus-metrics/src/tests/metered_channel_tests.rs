@@ -8,7 +8,7 @@ use futures::{
     FutureExt,
 };
 use prometheus::{IntCounter, IntGauge};
-use tokio::sync::mpsc::error::TrySendError;
+use tn_types::{TnReceiver, TnSender, TrySendError};
 
 #[tokio::test]
 async fn test_send() {
@@ -67,38 +67,6 @@ async fn test_empty_closed_channel() {
 }
 
 #[tokio::test]
-async fn test_reserve() {
-    let counter = IntGauge::new("TEST_COUNTER", "test").unwrap();
-    let (tx, mut rx) = channel(8, &counter);
-
-    assert_eq!(counter.get(), 0);
-    let item = 42;
-    let permit = tx.reserve().await.unwrap();
-    assert_eq!(counter.get(), 1);
-
-    permit.send(item);
-    let received_item = rx.recv().await.unwrap();
-
-    assert_eq!(received_item, item);
-    assert_eq!(counter.get(), 0);
-}
-
-#[tokio::test]
-async fn test_reserve_and_drop() {
-    let counter = IntGauge::new("TEST_COUNTER", "test").unwrap();
-    let (tx, _rx) = channel::<i32>(8, &counter);
-
-    assert_eq!(counter.get(), 0);
-
-    let permit = tx.reserve().await.unwrap();
-    assert_eq!(counter.get(), 1);
-
-    drop(permit);
-
-    assert_eq!(counter.get(), 0);
-}
-
-#[tokio::test]
 async fn test_send_backpressure() {
     let waker = noop_waker();
     let mut cx = Context::from_waker(&waker);
@@ -112,29 +80,6 @@ async fn test_send_backpressure() {
 
     let mut task = Box::pin(tx.send(2));
     assert!(matches!(task.poll_unpin(&mut cx), Poll::Pending));
-    let item = rx.recv().await.unwrap();
-    assert_eq!(item, 1);
-    assert_eq!(counter.get(), 0);
-    assert!(task.now_or_never().is_some());
-    assert_eq!(counter.get(), 1);
-}
-
-#[tokio::test]
-async fn test_reserve_backpressure() {
-    let waker = noop_waker();
-    let mut cx = Context::from_waker(&waker);
-
-    let counter = IntGauge::new("TEST_COUNTER", "test").unwrap();
-    let (tx, mut rx) = channel(1, &counter);
-
-    assert_eq!(counter.get(), 0);
-    let permit = tx.reserve().await.unwrap();
-    assert_eq!(counter.get(), 1);
-
-    let mut task = Box::pin(tx.send(2));
-    assert!(matches!(task.poll_unpin(&mut cx), Poll::Pending));
-
-    permit.send(1);
     let item = rx.recv().await.unwrap();
     assert_eq!(item, 1);
     assert_eq!(counter.get(), 0);

@@ -20,7 +20,14 @@ use gcloud_sdk::{
 use jsonrpsee::{core::client::ClientT, rpc_params};
 use k256::{elliptic_curve::sec1::ToEncodedPoint, pkcs8::DecodePublicKey, PublicKey as PubKey};
 use narwhal_network::client::NetworkClient;
-use narwhal_test_utils::{default_test_execution_node, faucet_test_execution_node};
+use narwhal_test_utils::{
+    contract_artifacts::{
+        ERC1967PROXY_INITCODE, ERC1967PROXY_RUNTIMECODE, STABLECOINMANAGER_RUNTIMECODE,
+        STABLECOIN_RUNTIMECODE,
+    },
+    default_test_execution_node, execution_outcome_for_tests, faucet_test_execution_node,
+    TransactionFactory,
+};
 use narwhal_typed_store::open_db;
 use narwhal_worker::{
     metrics::WorkerMetrics,
@@ -40,18 +47,7 @@ use secp256k1::PublicKey;
 use std::{str::FromStr, sync::Arc, time::Duration};
 use tempfile::TempDir;
 use tn_faucet::Drip;
-use tn_types::{
-    adiri_genesis,
-    error::BlockSealError,
-    test_utils::{
-        contract_artifacts::{
-            ERC1967PROXY_INITCODE, ERC1967PROXY_RUNTIMECODE, STABLECOINMANAGER_RUNTIMECODE,
-            STABLECOIN_RUNTIMECODE,
-        },
-        execution_outcome_for_tests, TransactionFactory,
-    },
-    TransactionSigned, WorkerBlock,
-};
+use tn_types::{adiri_genesis, error::BlockSealError, TransactionSigned, WorkerBlock};
 use tokio::{
     sync::{mpsc::Sender, oneshot},
     time,

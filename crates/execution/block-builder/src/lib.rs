@@ -432,6 +432,7 @@ mod tests {
     use super::*;
     use assert_matches::assert_matches;
     use narwhal_network::client::NetworkClient;
+    use narwhal_test_utils::{adiri_genesis_seeded, get_gas_price, TransactionFactory};
     use narwhal_typed_store::{open_db, tables::WorkerBlocks, traits::Database};
     use narwhal_worker::{
         metrics::WorkerMetrics,
@@ -466,10 +467,8 @@ mod tests {
     use tempfile::TempDir;
     use tn_engine::execute_consensus_output;
     use tn_types::{
-        adiri_genesis,
-        test_utils::{adiri_genesis_seeded, get_gas_price, TransactionFactory},
-        AutoSealConsensus, BuildArguments, CommittedSubDag, Consensus, ConsensusOutput,
-        WorkerBlock,
+        adiri_genesis, AutoSealConsensus, BuildArguments, CommittedSubDag, Consensus,
+        ConsensusOutput, WorkerBlock,
     };
     use tokio::time::timeout;
 
@@ -832,14 +831,14 @@ mod tests {
         // receive new blocks and return non-fatal errors
         // non-fatal errors cause the loop to break and wait for txpool updates
         // submitting a new pending transaction is one of the ways this task wakes up
-        for (subdag_index, (idx, error)) in non_fatal_errors.into_iter().enumerate().enumerate() {
+        for (subdag_index, error) in non_fatal_errors.into_iter().enumerate() {
             let (block, ack) = timeout(duration, from_block_builder.recv())
                 .await
                 .expect("block builder built another block after canonical update")
                 .expect("worker block was built");
 
             // all 3 transactions present
-            assert_eq!(block.transactions().len(), 3 + idx);
+            assert_eq!(block.transactions().len(), 3 + subdag_index);
 
             // send non-fatal error
             let _ = ack.send(Err(error));
@@ -860,7 +859,7 @@ mod tests {
                 sub_dag: CommittedSubDag::new(
                     vec![Default::default()],
                     Default::default(),
-                    subdag_index.try_into().unwrap(),
+                    subdag_index as u64,
                     Default::default(),
                     None,
                 )

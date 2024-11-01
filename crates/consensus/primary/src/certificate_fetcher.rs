@@ -2,11 +2,9 @@
 // Copyright (c) Telcoin, LLC
 // Copyright (c) Mysten Labs, Inc.
 // SPDX-License-Identifier: Apache-2.0
-use crate::{consensus::ConsensusRound, synchronizer::Synchronizer};
+use crate::{synchronizer::Synchronizer, ConsensusBus};
 use anemo::Request;
-use consensus_metrics::{
-    metered_channel::Receiver, monitored_future, monitored_scope, spawn_logged_monitored_task,
-};
+use consensus_metrics::{monitored_future, monitored_scope, spawn_logged_monitored_task};
 use futures::{stream::FuturesUnordered, StreamExt};
 use narwhal_network::PrimaryToPrimaryRpc;
 use narwhal_primary_metrics::PrimaryMetrics;
@@ -18,7 +16,7 @@ use std::{
     sync::Arc,
     time::Duration,
 };
-use tn_types::{AuthorityIdentifier, Committee, NetworkPublicKey, Noticer};
+use tn_types::{AuthorityIdentifier, Committee, NetworkPublicKey, Noticer, TnReceiver, TnSender};
 
 use narwhal_network_types::{FetchCertificatesRequest, FetchCertificatesResponse};
 use tn_types::{
@@ -26,7 +24,6 @@ use tn_types::{
     validate_received_certificate_version, Certificate, Round,
 };
 use tokio::{
-    sync::watch,
     task::{JoinHandle, JoinSet},
     time::{sleep, timeout, Instant},
 };
@@ -67,12 +64,10 @@ pub(crate) struct CertificateFetcher<DB> {
     committee: Committee,
     /// Persistent storage for certificates. Read-only usage.
     certificate_store: CertificateStore<DB>,
-    /// Receiver for signal of round changes.
-    rx_consensus_round_updates: watch::Receiver<ConsensusRound>,
+    /// Used to get Receiver for signal of round changes.
+    consensus_bus: ConsensusBus,
     /// Receiver for shutdown.
     rx_shutdown: Noticer,
-    /// Receives certificates with missing parents from the `Synchronizer`.
-    rx_certificate_fetcher: Receiver<CertificateFetcherCommand>,
     /// Map of validator to target rounds that local store must catch up to.
     /// The targets are updated with each certificate missing parents sent from the core.
     /// Each fetch task may satisfy some / all / none of the targets.
@@ -104,14 +99,16 @@ impl<DB: Database> CertificateFetcher<DB> {
         committee: Committee,
         network: anemo::Network,
         certificate_store: CertificateStore<DB>,
-        rx_consensus_round_updates: watch::Receiver<ConsensusRound>,
+        consensus_bus: ConsensusBus,
         rx_shutdown: Noticer,
-        rx_certificate_fetcher: Receiver<CertificateFetcherCommand>,
         synchronizer: Arc<Synchronizer<DB>>,
-        metrics: Arc<PrimaryMetrics>,
     ) -> JoinHandle<()> {
-        let state =
-            Arc::new(CertificateFetcherState { authority_id, network, synchronizer, metrics });
+        let state = Arc::new(CertificateFetcherState {
+            authority_id,
+            network,
+            synchronizer,
+            metrics: consensus_bus.primary_metrics().node_metrics.clone(),
+        });
 
         spawn_logged_monitored_task!(
             async move {
@@ -119,9 +116,8 @@ impl<DB: Database> CertificateFetcher<DB> {
                     state,
                     committee,
                     certificate_store,
-                    rx_consensus_round_updates,
+                    consensus_bus,
                     rx_shutdown,
-                    rx_certificate_fetcher,
                     targets: BTreeMap::new(),
                     fetch_certificates_task: JoinSet::new(),
                 }
@@ -133,9 +129,11 @@ impl<DB: Database> CertificateFetcher<DB> {
     }
 
     async fn run(&mut self) {
+        let cb_clone = self.consensus_bus.clone();
+        let mut rx_certificate_fetcher = cb_clone.certificate_fetcher().subscribe();
         loop {
             tokio::select! {
-                Some(command) = self.rx_certificate_fetcher.recv() => {
+                Some(command) = rx_certificate_fetcher.recv() => {
                     let certificate = match command {
                         CertificateFetcherCommand::Ancestors(certificate) => certificate,
                         CertificateFetcherCommand::Kick => {
@@ -300,7 +298,7 @@ impl<DB: Database> CertificateFetcher<DB> {
     }
 
     fn gc_round(&self) -> Round {
-        self.rx_consensus_round_updates.borrow().gc_round
+        self.consensus_bus.consensus_round_updates().borrow().gc_round
     }
 }
 

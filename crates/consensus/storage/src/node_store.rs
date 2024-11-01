@@ -24,6 +24,12 @@ pub struct NodeStorage<DB> {
     pub consensus_store: Arc<ConsensusStore<DB>>,
 }
 
+impl<DB> std::fmt::Debug for NodeStorage<DB> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "NodeStorage")
+    }
+}
+
 impl<DB: Database> NodeStorage<DB> {
     /// Open or reopen all the storage of the node.
     pub fn reopen(db: DB) -> NodeStorage<DB> {

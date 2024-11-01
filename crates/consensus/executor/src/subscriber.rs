@@ -2,11 +2,12 @@
 // Copyright (c) Mysten Labs, Inc.
 // SPDX-License-Identifier: Apache-2.0
 use crate::{errors::SubscriberResult, metrics::ExecutorMetrics};
-use consensus_metrics::{metered_channel, spawn_logged_monitored_task};
+use consensus_metrics::spawn_logged_monitored_task;
 use fastcrypto::hash::Hash;
 use futures::{stream::FuturesOrdered, StreamExt};
 use narwhal_network::{client::NetworkClient, PrimaryToWorkerClient};
 use narwhal_network_types::FetchBlocksRequest;
+use narwhal_primary::ConsensusBus;
 use reth_primitives::Address;
 use std::{
     collections::{HashMap, HashSet, VecDeque},
@@ -16,7 +17,7 @@ use std::{
 };
 use tn_types::{
     AuthorityIdentifier, BlockHash, Certificate, CommittedSubDag, Committee, ConsensusOutput,
-    NetworkPublicKey, Noticer, Timestamp, WorkerBlock, WorkerCache, WorkerId,
+    NetworkPublicKey, Noticer, Timestamp, TnReceiver, TnSender, WorkerBlock, WorkerCache, WorkerId,
 };
 use tokio::{sync::broadcast, task::JoinHandle};
 use tracing::{debug, error, info, warn};
@@ -27,8 +28,8 @@ use tracing::{debug, error, info, warn};
 pub struct Subscriber {
     /// Receiver for shutdown
     rx_shutdown: Noticer,
-    /// A channel to receive sequenced consensus messages.
-    rx_sequence: metered_channel::Receiver<CommittedSubDag>,
+    /// Used to get the sequence receiver
+    consensus_bus: ConsensusBus,
     /// Inner state.
     inner: Arc<Inner>,
 }
@@ -48,87 +49,27 @@ pub fn spawn_subscriber(
     committee: Committee,
     client: NetworkClient,
     rx_shutdown: Noticer,
-    rx_sequence: metered_channel::Receiver<CommittedSubDag>,
-    metrics: Arc<ExecutorMetrics>,
+    consensus_bus: ConsensusBus,
     restored_consensus_output: Vec<CommittedSubDag>,
     consensus_output_notification_sender: broadcast::Sender<ConsensusOutput>,
-    // state: State,
 ) -> JoinHandle<()> {
-    // This is ugly but has to be done this way for now
-    // Currently network incorporate both server and client side of RPC interface
-    // To construct server side we need to set up routes first, which requires starting Primary
-    // Some cleanup is needed
+    let metrics = Arc::new(ExecutorMetrics::default());
 
-    // let rx_shutdown_notify =
-    //     shutdown_receivers.pop().unwrap_or_else(|| panic!("Not enough shutdown receivers"));
-    // let rx_shutdown_subscriber =
-    //     shutdown_receiver;
-
-    // vec![
-    //     spawn_logged_monitored_task!(
-    //         // TODO: spawn EL executor here and pass the rx_notifier to it
-    //         run_notify(state, rx_notifier, rx_shutdown_notify),
-    //         "SubscriberNotifyTask"
-    //     ),
     spawn_logged_monitored_task!(
-        create_and_run_subscriber(
-            authority_id,
-            worker_cache,
-            committee,
-            rx_shutdown,
-            rx_sequence,
-            client,
-            metrics,
-            restored_consensus_output,
-            consensus_output_notification_sender,
-        ),
+        async move {
+            info!(target: "telcoin::subscriber", "Starting subscriber");
+            let subscriber = Subscriber {
+                rx_shutdown,
+                consensus_bus,
+                inner: Arc::new(Inner { authority_id, committee, worker_cache, client, metrics }),
+            };
+            subscriber
+                .run(restored_consensus_output, consensus_output_notification_sender)
+                .await
+                .expect("Failed to run subscriber")
+        },
         "SubscriberTask"
     )
-    // ]
-}
-
-// async fn run_notify<State: ExecutionState + Send + Sync + 'static>(
-//     mut state: State,
-//     mut rx_notify: metered_channel::Receiver<ConsensusOutput>,
-//     mut rx_shutdown: ConditionalBroadcastReceiver,
-// ) {
-//     loop {
-//         tokio::select! {
-//             // TODO: move rx_notify to execution layer
-//             Some(message) = rx_notify.recv() => {
-//                 state.handle_consensus_output(message).await;
-//             }
-
-//             _ = rx_shutdown.receiver.recv() => {
-//                 return
-//             }
-
-//         }
-//     }
-// }
-
-#[allow(clippy::too_many_arguments)]
-async fn create_and_run_subscriber(
-    authority_id: AuthorityIdentifier,
-    worker_cache: WorkerCache,
-    committee: Committee,
-    rx_shutdown: Noticer,
-    rx_sequence: metered_channel::Receiver<CommittedSubDag>,
-    client: NetworkClient,
-    metrics: Arc<ExecutorMetrics>,
-    restored_consensus_output: Vec<CommittedSubDag>,
-    consensus_output_notification_sender: broadcast::Sender<ConsensusOutput>,
-) {
-    info!("Starting subscriber");
-    let subscriber = Subscriber {
-        rx_shutdown,
-        rx_sequence,
-        inner: Arc::new(Inner { authority_id, committee, worker_cache, client, metrics }),
-    };
-    subscriber
-        .run(restored_consensus_output, consensus_output_notification_sender)
-        .await
-        .expect("Failed to run subscriber")
 }
 
 impl Subscriber {
@@ -137,7 +78,7 @@ impl Subscriber {
 
     /// Main loop connecting to the consensus to listen to sequence messages.
     async fn run(
-        mut self,
+        self,
         restored_consensus_output: Vec<CommittedSubDag>,
         consensus_output_notification_sender: broadcast::Sender<ConsensusOutput>,
     ) -> SubscriberResult<()> {
@@ -159,11 +100,12 @@ impl Subscriber {
             self.inner.metrics.subscriber_recovered_certificates_count.inc();
         }
 
+        let mut rx_sequence = self.consensus_bus.sequence().subscribe();
         // Listen to sequenced consensus message and process them.
         loop {
             tokio::select! {
                 // Receive the ordered sequence of consensus messages from a consensus node.
-                Some(sub_dag) = self.rx_sequence.recv(), if waiting.len() < Self::MAX_PENDING_PAYLOADS => {
+                Some(sub_dag) = rx_sequence.recv(), if waiting.len() < Self::MAX_PENDING_PAYLOADS => {
                     // We can schedule more then MAX_PENDING_PAYLOADS payloads but
                     // don't process more consensus messages when more
                     // then MAX_PENDING_PAYLOADS is pending
@@ -176,7 +118,7 @@ impl Subscriber {
                 // NOTE: this broadcasts to all subscribers, but lagging receivers will lose messages
                 Some(message) = waiting.next() => {
                     if let Err(e) = consensus_output_notification_sender.send(message) {
-                        error!("error broadcasting consensus output for authority {}: {}", self.inner.authority_id, e);
+                        error!(target: "telcoin::subscriber", "error broadcasting consensus output for authority {}: {}", self.inner.authority_id, e);
                         return Ok(());
                     }
                 },
@@ -191,8 +133,8 @@ impl Subscriber {
         }
     }
 
-    /// Returns ordered vector of futures for downloading batches for certificates
-    /// Order of futures returned follows order of batches in the certificates.
+    /// Returns ordered vector of futures for downloading blocks for certificates
+    /// Order of futures returned follows order of blocks in the certificates.
     /// See BlockFetcher for more details.
     async fn fetch_blocks(inner: Arc<Inner>, deliver: CommittedSubDag) -> ConsensusOutput {
         let num_blocks = deliver.num_blocks();
@@ -300,7 +242,7 @@ impl Subscriber {
                 match worker {
                     Ok(worker) => Some(worker.name),
                     Err(err) => {
-                        error!(
+                        error!(target: "telcoin::subscriber",
                             "Worker {} not found for authority {}: {:?}",
                             worker_id, authority, err
                         );
@@ -332,7 +274,7 @@ impl Subscriber {
             // optimization.
             let request = FetchBlocksRequest { digests, known_workers };
             let blocks = loop {
-                match inner.client.fetch_batches(worker_name.clone(), request.clone()).await {
+                match inner.client.fetch_blocks(worker_name.clone(), request.clone()).await {
                     Ok(resp) => break resp.blocks,
                     Err(e) => {
                         error!("Failed to fetch blocks from worker {worker_name}: {e:?}");

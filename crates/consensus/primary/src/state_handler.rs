@@ -2,233 +2,38 @@
 // Copyright (c) Telcoin, LLC
 // Copyright (c) Mysten Labs, Inc.
 // SPDX-License-Identifier: Apache-2.0
-use consensus_metrics::{
-    metered_channel::{Receiver, Sender},
-    spawn_logged_monitored_task,
-};
-use fastcrypto::groups;
-use fastcrypto_tbls::{dkg, nodes};
-use tn_types::{AuthorityIdentifier, ChainIdentifier, Committee, Noticer, RandomnessPrivateKey};
+use consensus_metrics::spawn_logged_monitored_task;
+use tn_types::{AuthorityIdentifier, Noticer, TnReceiver, TnSender};
 
 use tap::TapFallible;
-use tn_types::{Certificate, Round, SystemMessage};
+use tn_types::{Certificate, Round};
 use tokio::task::JoinHandle;
 use tracing::{debug, error, info, warn};
 
-type PkG = groups::bls12381::G2Element;
-type EncG = groups::bls12381::G2Element;
-
-#[cfg(test)]
-#[path = "tests/state_handler_tests.rs"]
-pub mod state_handler_tests;
+use crate::ConsensusBus;
 
 /// Updates Narwhal system state based on certificates received from consensus.
 pub struct StateHandler {
     authority_id: AuthorityIdentifier,
 
-    /// Receives the ordered certificates from consensus.
-    rx_committed_certificates: Receiver<(Round, Vec<Certificate>)>,
+    /// Used for Receives the ordered certificates from consensus.
+    consensus_bus: ConsensusBus,
     /// Channel to signal committee changes.
     rx_shutdown: Noticer,
-    /// A channel to update the committed rounds
-    tx_committed_own_headers: Option<Sender<(Round, Vec<Round>)>>,
-    /// A channel to send system messages to the proposer.
-    tx_system_messages: Sender<SystemMessage>,
-
-    /// If set, generates Narwhal system messages for random beacon
-    /// DKG and randomness generation.
-    randomness_state: Option<RandomnessState>,
 
     network: anemo::Network,
 }
 
-// Internal state for randomness DKG and generation.
-// TODO: Write a brief protocol description.
-struct RandomnessState {
-    party: dkg::Party<PkG, EncG>,
-    processed_messages: Vec<dkg::ProcessedMessage<PkG, EncG>>,
-    used_messages: Option<dkg::UsedProcessedMessages<PkG, EncG>>,
-    confirmations: Vec<dkg::Confirmation<EncG>>,
-    dkg_output: Option<dkg::Output<PkG, EncG>>,
-}
-
-impl RandomnessState {
-    /// Returns None in case of invalid input or other failure to initialize DKG.
-    /// In this case, narwhal will continue to function normally and simply not run
-    /// the random beacon protocol during the current epoch.
-    fn try_new(
-        chain: &ChainIdentifier,
-        committee: Committee,
-        private_key: RandomnessPrivateKey,
-        mut beacon_delta: Option<u16>,
-    ) -> Option<Self> {
-        // see if beacon delta is enabled
-        let random_state = match beacon_delta.take() {
-            Some(delta) => {
-                let info = committee.randomness_dkg_info();
-                let nodes = info
-                    .iter()
-                    .map(|(id, pk, stake)| nodes::Node::<EncG> {
-                        id: id.0,
-                        pk: pk.clone(),
-                        weight: *stake as u16,
-                    })
-                    .collect();
-                let nodes = match nodes::Nodes::new(nodes) {
-                    Ok(nodes) => nodes,
-                    Err(err) => {
-                        error!("Error while initializing random beacon Nodes: {err:?}");
-                        return None;
-                    }
-                };
-                let (nodes, t) = nodes.reduce(
-                    committee
-                        .validity_threshold()
-                        .try_into()
-                        .expect("validity threshold should fit in u16"),
-                    // protocol_config.random_beacon_reduction_allowed_delta(),
-                    delta, // 800 per current sui default
-                );
-                let total_weight = nodes.n();
-                let party = match dkg::Party::<PkG, EncG>::new(
-                    private_key,
-                    nodes,
-                    t.into(),
-                    fastcrypto_tbls::random_oracle::RandomOracle::new(
-                        format!("dkg {:x?} {}", chain.as_bytes(), committee.epoch()).as_str(),
-                    ),
-                    &mut rand::thread_rng(),
-                ) {
-                    Ok(party) => party,
-                    Err(err) => {
-                        error!("Error while initializing random beacon Party: {err:?}");
-                        return None;
-                    }
-                };
-                info!("random beacon: state initialized with total_weight={total_weight}, t={t}");
-                Some(Self {
-                    party,
-                    processed_messages: Vec::new(),
-                    used_messages: None,
-                    confirmations: Vec::new(),
-                    dkg_output: None,
-                })
-            }
-            None => {
-                info!("random beacon: disabled");
-                None
-            }
-        };
-
-        random_state
-    }
-
-    async fn start_dkg(&self, tx_system_messages: &Sender<SystemMessage>) {
-        let msg = self.party.create_message(&mut rand::thread_rng());
-        info!("random beacon: sending DKG Message: {msg:?}");
-        let _ = tx_system_messages.send(SystemMessage::DkgMessage(msg)).await;
-    }
-
-    fn add_message(&mut self, msg: dkg::Message<PkG, EncG>) {
-        if self.used_messages.is_some() {
-            // We've already sent a `Confirmation`, so we can't add any more messages.
-            return;
-        }
-        match self.party.process_message(msg, &mut rand::thread_rng()) {
-            Ok(processed) => {
-                self.processed_messages.push(processed);
-            }
-            Err(err) => {
-                debug!("error while processing randomness DKG message: {err:?}");
-            }
-        }
-    }
-
-    fn add_confirmation(&mut self, conf: dkg::Confirmation<EncG>) {
-        if self.used_messages.is_none() {
-            // We should never see a `Confirmation` before we've sent our `Message` because
-            // DKG messages are processed in consensus order.
-            return;
-        }
-        if self.dkg_output.is_some() {
-            // Once we have completed DKG, no more `Confirmation`s are needed.
-            return;
-        }
-        self.confirmations.push(conf)
-    }
-
-    // Generates the next SystemMessage needed to advance the random beacon protocol, if possible,
-    // and sends it to the proposer.
-    async fn advance(&mut self, tx_system_messages: &Sender<SystemMessage>) {
-        // Once we have enough ProcessedMessages, send a Confirmation.
-        if self.used_messages.is_none() && !self.processed_messages.is_empty() {
-            match self.party.merge(&self.processed_messages) {
-                Ok((conf, used_msgs)) => {
-                    info!(
-                        "random beacon: sending DKG Confirmation with {} complaints",
-                        conf.complaints.len()
-                    );
-                    self.used_messages = Some(used_msgs);
-                    let _ = tx_system_messages.send(SystemMessage::DkgConfirmation(conf)).await;
-                }
-                Err(fastcrypto::error::FastCryptoError::NotEnoughInputs) => (), /* wait for more */
-                // input
-                Err(e) => debug!("Error while merging randomness DKG messages: {e:?}"),
-            }
-        }
-
-        // Once we have enough Confirmations, process them and update shares.
-        if self.dkg_output.is_none()
-            && !self.confirmations.is_empty()
-            && self.used_messages.is_some()
-        {
-            match self.party.complete(
-                self.used_messages.as_ref().expect("checked above"),
-                &self.confirmations,
-                self.party.t() * 2 - 1, // t==f+1, we want 2f+1
-                &mut rand::thread_rng(),
-            ) {
-                Ok(output) => {
-                    self.dkg_output = Some(output);
-                    info!("random beacon: DKG complete with Output {:?}", self.dkg_output);
-                }
-                Err(fastcrypto::error::FastCryptoError::NotEnoughInputs) => (), /* wait for more */
-                // input
-                Err(e) => error!("Error while processing randomness DKG confirmations: {e:?}"),
-            }
-        }
-    }
-}
-
 impl StateHandler {
-    #[allow(clippy::too_many_arguments)]
     #[must_use]
     pub fn spawn(
-        chain: &ChainIdentifier,
         authority_id: AuthorityIdentifier,
-        committee: Committee,
-        rx_committed_certificates: Receiver<(Round, Vec<Certificate>)>,
+        consensus_bus: &ConsensusBus,
         rx_shutdown: Noticer,
-        tx_committed_own_headers: Option<Sender<(Round, Vec<Round>)>>,
-        tx_system_messages: Sender<SystemMessage>,
-        randomness_private_key: RandomnessPrivateKey,
         network: anemo::Network,
-        beacon_delta: Option<u16>,
     ) -> JoinHandle<()> {
-        let state_handler = Self {
-            authority_id,
-            rx_committed_certificates,
-            rx_shutdown,
-            tx_committed_own_headers,
-            tx_system_messages,
-            randomness_state: RandomnessState::try_new(
-                chain,
-                committee,
-                randomness_private_key,
-                beacon_delta,
-            ),
-            network,
-        };
+        let state_handler =
+            Self { authority_id, consensus_bus: consensus_bus.clone(), rx_shutdown, network };
         spawn_logged_monitored_task!(
             async move {
                 state_handler.run().await;
@@ -249,54 +54,39 @@ impl StateHandler {
                 }
             })
             .collect();
-        debug!("Own committed rounds {:?} at round {:?}", own_rounds_committed, commit_round);
+        debug!(target: "primary::state_handler", "Own committed rounds {:?} at round {:?}", own_rounds_committed, commit_round);
 
         // If a reporting channel is available send the committed own
         // headers to it.
-        if let Some(sender) = &self.tx_committed_own_headers {
-            let _ = sender.send((commit_round, own_rounds_committed)).await;
-        }
-
-        // Process committed system messages.
-        if let Some(randomness_state) = self.randomness_state.as_mut() {
-            for certificate in certificates {
-                let header = certificate.header();
-                for message in header.system_messages() {
-                    match message {
-                        SystemMessage::DkgMessage(msg) => randomness_state.add_message(msg.clone()),
-                        SystemMessage::DkgConfirmation(conf) => {
-                            randomness_state.add_confirmation(conf.clone())
-                        }
-                    }
-                }
-                // Advance the random beacon protocol if possible after each certificate.
-                // TODO: Implement/audit crash recovery for random beacon.
-                randomness_state.advance(&self.tx_system_messages).await;
-            }
+        if let Err(e) = self
+            .consensus_bus
+            .committed_own_headers()
+            .send((commit_round, own_rounds_committed))
+            .await
+        {
+            error!(target: "primary::state_handler", "error sending commit header: {e}");
         }
     }
 
     async fn run(mut self) {
-        info!("StateHandler on node {} has started successfully.", self.authority_id);
-
-        // Kick off randomness DKG if enabled.
-        if let Some(ref randomness_state) = self.randomness_state {
-            randomness_state.start_dkg(&self.tx_system_messages).await;
-        }
-
+        info!(target: "primary::state_handler", "StateHandler on node {} has started successfully.", self.authority_id);
+        // This clone inso a variable is D-U-M, subscribe should return an owned object but here we
+        // are.
+        let committed_certificates = self.consensus_bus.committed_certificates().clone();
+        let mut rx_committed_certificates = committed_certificates.subscribe();
         loop {
             tokio::select! {
-                Some((commit_round, certificates)) = self.rx_committed_certificates.recv() => {
+                Some((commit_round, certificates)) = rx_committed_certificates.recv() => {
                     self.handle_sequenced(commit_round, certificates).await;
                 },
 
                 _ = &self.rx_shutdown => {
                     // shutdown network
                     let _ = self.network.shutdown().await.tap_err(|err|{
-                        error!("Error while shutting down network: {err}")
+                        error!(target: "primary::state_handler", "Error while shutting down network: {err}")
                     });
 
-                    warn!("Network has shutdown");
+                    warn!(target: "primary::state_handler", "Network has shutdown");
 
                     return;
                 }

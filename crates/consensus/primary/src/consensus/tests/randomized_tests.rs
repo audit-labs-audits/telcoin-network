@@ -9,7 +9,7 @@ use crate::consensus::{
 use fastcrypto::hash::{Hash, HashFunction};
 use futures::{stream::FuturesUnordered, StreamExt};
 use narwhal_storage::ConsensusStore;
-use narwhal_typed_store::{open_db, traits::Database};
+use narwhal_typed_store::{mem_db::MemDatabase, open_db, traits::Database};
 use rand::{
     distributions::{Bernoulli, Distribution},
     prelude::SliceRandom,
@@ -24,10 +24,8 @@ use std::{
 };
 use tn_types::{Authority, AuthorityIdentifier, Committee, Stake};
 
-use tn_types::{
-    test_utils::{mock_certificate_with_rand, CommitteeFixture},
-    Certificate, CertificateDigest, Round,
-};
+use narwhal_test_utils::{mock_certificate_with_rand, CommitteeFixture};
+use tn_types::{Certificate, CertificateDigest, Round};
 #[allow(unused_imports)]
 use tokio::sync::mpsc::channel;
 
@@ -163,7 +161,7 @@ async fn bullshark_randomised_tests() {
 
     // Create a single store to be re-used across Bullshark instances to avoid hitting
     // a "too many files open" issue.
-    let store = make_consensus_store(open_db(tn_types::test_utils::temp_dir()));
+    let store = make_consensus_store(open_db(narwhal_test_utils::temp_dir()));
 
     // Run the actual tests via separate tasks
     loop {
@@ -266,7 +264,7 @@ fn generate_randomised_dag(
     // Create an RNG to share for the committee creation
     let rand = StdRng::seed_from_u64(seed);
 
-    let fixture = CommitteeFixture::builder()
+    let fixture = CommitteeFixture::builder(MemDatabase::default)
         .committee_size(NonZeroUsize::new(committee_size).unwrap())
         .rng(rand)
         .build();
@@ -365,7 +363,7 @@ pub fn make_certificates_with_parameters(
                 .collect();
 
             let mut parent_digests: BTreeSet<CertificateDigest> =
-                tn_types::test_utils::this_cert_parents_with_slow_nodes(
+                narwhal_test_utils::this_cert_parents_with_slow_nodes(
                     &authority.id(),
                     current_parents.clone(),
                     ids.as_slice(),

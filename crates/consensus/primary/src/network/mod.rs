@@ -7,12 +7,11 @@
 //!
 //! This module includes implementations for when the primary receives network
 //! requests from it's own workers and other primaries.
-use crate::{proposer::OurDigestMessage, synchronizer::Synchronizer};
-use consensus_metrics::metered_channel::Sender;
-use fastcrypto::{hash::Hash, signature_service::SignatureService};
+use crate::{synchronizer::Synchronizer, ConsensusBus};
+use fastcrypto::hash::Hash;
 use narwhal_network_types::{RequestVoteRequest, RequestVoteResponse};
 use narwhal_primary_metrics::PrimaryMetrics;
-use narwhal_storage::{CertificateStore, PayloadStore, VoteDigestStore};
+use narwhal_storage::PayloadStore;
 use narwhal_typed_store::traits::Database;
 use parking_lot::Mutex;
 use std::{
@@ -20,15 +19,15 @@ use std::{
     sync::Arc,
     time::Duration,
 };
+use tn_config::ConsensusConfig;
 use tn_types::{
     ensure,
     error::{DagError, DagResult},
     now,
     traits::ToFromBytes as _,
-    validate_received_certificate_version, AuthorityIdentifier, BlsSignature, Certificate,
-    CertificateDigest, Committee, Header, NetworkPublicKey, Round, Vote, WorkerCache,
+    validate_received_certificate_version, AuthorityIdentifier, Certificate, CertificateDigest,
+    Header, NetworkPublicKey, Round, Vote,
 };
-use tokio::sync::watch;
 use tracing::{debug, error, warn};
 
 mod primary;
@@ -37,32 +36,23 @@ mod worker;
 /// Defines how the network receiver handles incoming workers messages.
 #[derive(Clone)]
 pub(super) struct WorkerReceiverHandler<DB> {
-    tx_our_digests: Sender<OurDigestMessage>,
+    consensus_bus: ConsensusBus,
     payload_store: PayloadStore<DB>,
 }
 
 impl<DB: Database> WorkerReceiverHandler<DB> {
     /// Create a new instance of Self.
-    pub fn new(tx_our_digests: Sender<OurDigestMessage>, payload_store: PayloadStore<DB>) -> Self {
-        Self { tx_our_digests, payload_store }
+    pub fn new(consensus_bus: ConsensusBus, payload_store: PayloadStore<DB>) -> Self {
+        Self { consensus_bus, payload_store }
     }
 }
 
 /// Defines how the network receiver handles incoming primary messages.
 #[derive(Clone)]
 pub(super) struct PrimaryReceiverHandler<DB> {
-    /// The id of this primary.
-    authority_id: AuthorityIdentifier,
-    committee: Committee,
-    worker_cache: WorkerCache,
+    consensus_config: ConsensusConfig<DB>,
+    consensus_bus: ConsensusBus,
     synchronizer: Arc<Synchronizer<DB>>,
-    /// Service to sign headers.
-    signature_service: SignatureService<BlsSignature, { tn_types::INTENT_MESSAGE_LENGTH }>,
-    certificate_store: CertificateStore<DB>,
-    /// The store to persist the last voted round per authority, used to ensure idempotence.
-    vote_digest_store: VoteDigestStore<DB>,
-    /// Get a signal when the round changes.
-    rx_narwhal_round_updates: watch::Receiver<Round>,
     /// Known parent digests that are being fetched from header proposers.
     /// Values are where the digests are first known from.
     /// TODO: consider limiting maximum number of digests from one authority, allow timeout
@@ -74,31 +64,14 @@ pub(super) struct PrimaryReceiverHandler<DB> {
 #[allow(clippy::result_large_err)]
 impl<DB: Database> PrimaryReceiverHandler<DB> {
     /// Create a new instance of Self.
-    #[allow(clippy::too_many_arguments)]
     pub fn new(
-        authority_id: AuthorityIdentifier,
-        committee: Committee,
-        worker_cache: WorkerCache,
+        consensus_config: ConsensusConfig<DB>,
         synchronizer: Arc<Synchronizer<DB>>,
-        signature_service: SignatureService<BlsSignature, { tn_types::INTENT_MESSAGE_LENGTH }>,
-        certificate_store: CertificateStore<DB>,
-        vote_digest_store: VoteDigestStore<DB>,
-        rx_narwhal_round_updates: watch::Receiver<Round>,
+        consensus_bus: ConsensusBus,
         parent_digests: Arc<Mutex<BTreeMap<(Round, CertificateDigest), AuthorityIdentifier>>>,
-        metrics: Arc<PrimaryMetrics>,
     ) -> Self {
-        Self {
-            authority_id,
-            committee,
-            worker_cache,
-            synchronizer,
-            signature_service,
-            certificate_store,
-            vote_digest_store,
-            rx_narwhal_round_updates,
-            parent_digests,
-            metrics,
-        }
+        let metrics = consensus_bus.primary_metrics().node_metrics.clone();
+        Self { consensus_config, consensus_bus, synchronizer, parent_digests, metrics }
     }
 
     fn find_next_round(
@@ -109,6 +82,8 @@ impl<DB: Database> PrimaryReceiverHandler<DB> {
     ) -> Result<Option<Round>, anemo::rpc::Status> {
         let mut current_round = current_round;
         while let Some(round) = self
+            .consensus_config
+            .node_storage()
             .certificate_store
             .next_round_number(origin, current_round)
             .map_err(|e| anemo::rpc::Status::unknown(format!("unknown error: {e}")))?
@@ -127,8 +102,8 @@ impl<DB: Database> PrimaryReceiverHandler<DB> {
         request: anemo::Request<RequestVoteRequest>,
     ) -> DagResult<RequestVoteResponse> {
         let header = &request.body().header;
-        let committee = self.committee.clone();
-        header.validate(&committee, &self.worker_cache)?;
+        let committee = self.consensus_config.committee().clone();
+        header.validate(&committee, self.consensus_config.worker_cache())?;
 
         let num_parents = request.body().parents.len();
         ensure!(
@@ -259,7 +234,12 @@ impl<DB: Database> PrimaryReceiverHandler<DB> {
         // of the vote we create for this header.
         // Also when the header is older than one we've already voted for, it is useless to vote,
         // so we don't.
-        let result = self.vote_digest_store.read(&header.author()).map_err(DagError::StoreError)?;
+        let result = self
+            .consensus_config
+            .node_storage()
+            .vote_digest_store
+            .read(&header.author())
+            .map_err(DagError::StoreError)?;
 
         if let Some(vote_info) = result {
             ensure!(
@@ -276,7 +256,12 @@ impl<DB: Database> PrimaryReceiverHandler<DB> {
             );
             if header.round() == vote_info.round() {
                 // Make sure we don't vote twice for the same authority in the same epoch/round.
-                let vote = Vote::new(header, &self.authority_id, &self.signature_service).await;
+                let vote = Vote::new(
+                    header,
+                    &self.consensus_config.authority().id(),
+                    self.consensus_config.key_config(),
+                )
+                .await;
                 if vote.digest() != vote_info.vote_digest() {
                     warn!(
                         "Authority {} submitted different header {:?} for voting",
@@ -296,11 +281,16 @@ impl<DB: Database> PrimaryReceiverHandler<DB> {
         }
 
         // Make a vote and send it to the header's creator.
-        let vote = Vote::new(header, &self.authority_id, &self.signature_service).await;
+        let vote = Vote::new(
+            header,
+            &self.consensus_config.authority().id(),
+            self.consensus_config.key_config(),
+        )
+        .await;
         debug!("Created vote {vote:?} for {} at round {}", header, header.round());
 
         // Update the vote digest store with the vote we just sent.
-        self.vote_digest_store.write(&vote)?;
+        self.consensus_config.node_storage().vote_digest_store.write(&vote)?;
 
         Ok(RequestVoteResponse { vote: Some(vote), missing: Vec::new() })
     }
@@ -350,7 +340,7 @@ impl<DB: Database> PrimaryReceiverHandler<DB> {
         let mut parent_digests = self.parent_digests.lock();
 
         // Check that the header is not too old.
-        let narwhal_round = *self.rx_narwhal_round_updates.borrow();
+        let narwhal_round = *self.consensus_bus.narwhal_round_updates().borrow();
         let limit_round = narwhal_round.saturating_sub(HEADER_AGE_LIMIT);
         ensure!(
             limit_round <= header.round(),

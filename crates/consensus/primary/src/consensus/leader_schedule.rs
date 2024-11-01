@@ -231,9 +231,8 @@ impl LeaderSchedule {
                 // 2/2 = 1, 4/2 = 2, 6/2 = 3, 8/2 = 4  etc, and then do minus 1 so we can always
                 // start with base zero 0.
                 let next_leader = (round/2 + self.committee.size() as u64 - 1) as usize % self.committee.size();
-                let authorities = self.committee.authorities().collect::<Vec<_>>();
 
-                let leader: Authority = (*authorities.get(next_leader).unwrap()).clone();
+                let leader: Authority = self.committee.authorities().nth(next_leader).expect("authority out of bounds!").clone();
                 let table = self.leader_swap_table.read();
 
                 table.swap(&leader.id(), round).unwrap_or(leader)
