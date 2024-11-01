@@ -86,6 +86,8 @@ pub trait TelcoinDirs {
     fn committee_path(&self) -> PathBuf;
     /// Return the path to the worker cache file.
     fn worker_cache_path(&self) -> PathBuf;
+    /// Return the path to the chain spec file.
+    fn genesis_file_path(&self) -> PathBuf;
     /// Return the path to narwhal's node storage.
     fn narwhal_db_path(&self) -> PathBuf;
 }

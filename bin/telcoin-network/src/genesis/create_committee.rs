@@ -53,6 +53,10 @@ pub struct CreateCommitteeArgs {
         required = false,
     )]
     pub chain: Arc<ChainSpec>,
+
+    /// The path to the consensus registry storage yaml file.
+    #[arg(long, value_name = "CONSENSUS_REGISTRY_PATH", verbatim_doc_comment)]
+    pub consensus_registry: Option<PathBuf>,
 }
 
 impl CreateCommitteeArgs {
@@ -71,10 +75,24 @@ impl CreateCommitteeArgs {
         // load network genesis
         let data_dir: DataDirChainPath =
             self.datadir.unwrap_or_chain_default(self.chain.chain, default_datadir_args()).into();
-        let network_genesis = NetworkGenesis::load_from_path(&data_dir)?;
+        let mut network_genesis = NetworkGenesis::load_from_path(&data_dir)?;
 
         // validate only checks proof of possession for now
+        //
+        // the signatures must match the expected genesis file before consensus registry is added
         network_genesis.validate()?;
+
+        // updated genesis with registry information
+        network_genesis.construct_registry_genesis_accounts(self.consensus_registry.clone())?;
+
+        // update the config with new genesis information
+        let config_path = self.config.clone().unwrap_or(data_dir.node_config_path());
+        let mut tn_config: Config = Config::load_from_path(&config_path)?;
+        tn_config.genesis = network_genesis.chain_info().genesis().clone();
+
+        // write genesis and config to file
+        Config::store_path(data_dir.genesis_file_path(), tn_config.genesis())?;
+        Config::store_path(config_path, tn_config)?;
 
         // generate committee and worker cache
         let committee = network_genesis.create_committee()?;

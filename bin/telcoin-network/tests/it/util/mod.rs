@@ -159,6 +159,10 @@ pub async fn spawn_local_testnet(
             shared_genesis_dir.join("genesis/worker_cache.yaml"),
             dir.join("genesis/worker_cache.yaml"),
         )?;
+        std::fs::copy(
+            shared_genesis_dir.join("genesis/genesis.yaml"),
+            dir.join("genesis/genesis.yaml"),
+        )?;
 
         let instance = v.chars().last().expect("validator instance").to_string();
 
