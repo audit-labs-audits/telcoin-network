@@ -202,7 +202,7 @@ mod tests {
     use clap::Parser;
     use reth_cli_commands::node::NoArgs;
     use tempfile::tempdir;
-    use tn_types::{Config, ConfigTrait};
+    use tn_types::{Config, ConfigFmt, ConfigTrait};
 
     /// Test that generate keys command works.
     /// This test also ensures that confy is able to
@@ -230,7 +230,10 @@ mod tests {
 
         tn.run(|_, _, _| async move { Ok(()) }).expect("generate keys command");
 
-        Config::load_from_path::<Config>(tempdir.join("telcoin-network.yaml").as_path())
-            .expect("config loaded yaml okay");
+        Config::load_from_path::<Config>(
+            tempdir.join("telcoin-network.yaml").as_path(),
+            ConfigFmt::YAML,
+        )
+        .expect("config loaded yaml okay");
     }
 }
