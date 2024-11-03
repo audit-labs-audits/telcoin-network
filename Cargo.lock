@@ -10897,6 +10897,7 @@ dependencies = [
 name = "tn-types"
 version = "0.1.0"
 dependencies = [
+ "alloy",
  "alloy-rlp",
  "anemo",
  "base64 0.21.7",

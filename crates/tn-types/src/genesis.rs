@@ -13,7 +13,7 @@ use crate::{
 };
 use alloy::{hex, primitives::FixedBytes};
 use eyre::Context;
-use fastcrypto::traits::{InsecureDefault, Signer};
+use fastcrypto::traits::{InsecureDefault, Signer, ToFromBytes};
 use reth_chainspec::ChainSpec;
 use reth_primitives::{
     constants::MIN_PROTOCOL_BASE_FEE, keccak256, Address, Genesis, GenesisAccount
@@ -619,6 +619,7 @@ mod tests {
         adiri_chain_spec, generate_proof_of_possession, BlsKeypair, Multiaddr, NetworkKeypair,
         PrimaryInfo, TelcoinDirs, ValidatorInfo, WorkerIndex, WorkerInfo,
     };
+    use alloy::hex::FromHex;
     use fastcrypto::traits::KeyPair;
     use rand::{rngs::StdRng, SeedableRng};
     use reth_primitives::Address;
@@ -667,7 +668,7 @@ mod tests {
         assert_eq!(&validator, loaded_validator);
 
         let expected_registry_addr =
-            Address::from_str("0x07e17e17e17e17e17e17e17e17e17e17e17e17e1")
+            Address::from_hex("0x07e17e17e17e17e17e17e17e17e17e17e17e17e1")
                 .expect("failed to parse address");
         match loaded_network_genesis.chain.genesis.alloc.get(&expected_registry_addr) {
             Some(account) => {
