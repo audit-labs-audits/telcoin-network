@@ -1,7 +1,4 @@
-use std::{path::PathBuf, sync::Arc, time::Duration};
-
 use clap::Parser;
-use jsonrpsee::{core::client::ClientT, http_client::HttpClient, rpc_params};
 use narwhal_test_utils::{default_test_execution_node, CommandParser};
 use reth::{
     providers::ExecutionOutcome,
@@ -10,13 +7,13 @@ use reth::{
 };
 use reth_chainspec::ChainSpec;
 use reth_node_ethereum::{EthEvmConfig, EthExecutorProvider};
-use reth_primitives::{Address, SealedHeader, U256};
-use std::str::FromStr;
+use reth_primitives::SealedHeader;
+use std::{path::PathBuf, sync::Arc};
 use telcoin_network::{genesis::GenesisArgs, keytool::KeyArgs, node::NodeCommand};
 use tn_node::launch_node;
 use tn_types::{test_utils::execution_outcome_for_tests, TransactionSigned, WorkerBlock};
 use tokio::task::JoinHandle;
-use tracing::{debug, error};
+use tracing::error;
 
 pub static IT_TEST_MUTEX: std::sync::Mutex<()> = std::sync::Mutex::new(());
 
@@ -160,6 +157,10 @@ pub async fn spawn_local_testnet(
             dir.join("genesis/worker_cache.yaml"),
         )?;
 
+        // use genesis file
+        let genesis_json_path = dir.join("genesis/genesis.json");
+        std::fs::copy(shared_genesis_dir.join("genesis/genesis.json"), &genesis_json_path)?;
+
         let instance = v.chars().last().expect("validator instance").to_string();
 
         #[cfg(feature = "faucet")]
@@ -175,7 +176,7 @@ pub async fn spawn_local_testnet(
             // "5",
             // "--debug.terminate",
             "--chain",
-            "adiri",
+            genesis_json_path.to_str().expect("genesis_json_path casts to &str"),
             "--instance",
             &instance,
             "--google-kms",
@@ -197,7 +198,7 @@ pub async fn spawn_local_testnet(
             // "5",
             // "--debug.terminate",
             "--chain",
-            "adiri",
+            genesis_json_path.to_str().expect("genesis_json_path casts to &str"),
             "--instance",
             &instance,
             "--contract-address",
@@ -236,28 +237,36 @@ pub async fn spawn_local_testnet(
     Ok(node_handles)
 }
 
+// imports for traits used in faucet tests only
+#[cfg(feature = "faucet")]
+use jsonrpsee::core::client::ClientT;
+#[cfg(feature = "faucet")]
+use std::str::FromStr as _;
+
 /// RPC request to continually check until an account balance is above 0.
 ///
 /// Warning: this should only be called with a timeout - could result in infinite loop otherwise.
 #[cfg(feature = "faucet")]
 pub async fn ensure_account_balance_infinite_loop(
-    client: &HttpClient,
-    address: Address,
-    expected_bal: U256,
-) -> eyre::Result<U256> {
-    while let Ok(bal) = client.request::<String, _>("eth_getBalance", rpc_params!(address)).await {
-        debug!(target: "faucet-test", "{address} bal: {bal:?}");
-        let balance = U256::from_str(&bal)?;
+    client: &jsonrpsee::http_client::HttpClient,
+    address: reth_primitives::Address,
+    expected_bal: reth_primitives::U256,
+) -> eyre::Result<reth_primitives::U256> {
+    while let Ok(bal) =
+        client.request::<String, _>("eth_getBalance", jsonrpsee::rpc_params!(address)).await
+    {
+        tracing::debug!(target: "faucet-test", "{address} bal: {bal:?}");
+        let balance = reth_primitives::U256::from_str(&bal)?;
 
         // return Ok if expected bal
         if balance == expected_bal {
             return Ok(balance);
         }
 
-        tokio::time::sleep(Duration::from_secs(1)).await;
+        tokio::time::sleep(std::time::Duration::from_secs(1)).await;
     }
 
-    Ok(U256::ZERO)
+    Ok(reth_primitives::U256::ZERO)
 }
 
 /// Test utility to get desired state changes from a temporary genesis for a subsequent one.

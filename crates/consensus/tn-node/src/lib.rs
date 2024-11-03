@@ -14,8 +14,8 @@ use reth_db::{
 };
 use reth_evm::{execute::BlockExecutorProvider, ConfigureEvm};
 use tn_types::{
-    read_validator_keypair_from_file, ChainIdentifier, Committee, Config, ConfigTrait, TelcoinDirs,
-    WorkerCache, BLS_KEYFILE, PRIMARY_NETWORK_KEYFILE, WORKER_NETWORK_KEYFILE,
+    read_validator_keypair_from_file, ChainIdentifier, Committee, Config, ConfigFmt, ConfigTrait,
+    TelcoinDirs, WorkerCache, BLS_KEYFILE, PRIMARY_NETWORK_KEYFILE, WORKER_NETWORK_KEYFILE,
 };
 use tracing::{info, instrument};
 
@@ -83,11 +83,13 @@ where
         read_validator_keypair_from_file(validator_keypath.join(PRIMARY_NETWORK_KEYFILE))?;
 
     // load committee from file
-    let mut committee: Committee = Config::load_from_path(tn_datadir.committee_path())?;
+    let mut committee: Committee =
+        Config::load_from_path(tn_datadir.committee_path(), ConfigFmt::YAML)?;
     committee.load();
     info!(target: "telcoin::cli", "committee loaded");
     // TODO: make worker cache part of committee?
-    let worker_cache: WorkerCache = Config::load_from_path(tn_datadir.worker_cache_path())?;
+    let worker_cache: WorkerCache =
+        Config::load_from_path(tn_datadir.worker_cache_path(), ConfigFmt::YAML)?;
     info!(target: "telcoin::cli", "worker cache loaded");
 
     // TODO: this could be a separate method on `Committee` to have robust checks in place

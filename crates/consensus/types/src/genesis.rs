@@ -8,7 +8,7 @@
 use crate::{
     test_utils::contract_artifacts::{CONSENSUSREGISTRY_RUNTIMECODE, ERC1967PROXY_RUNTIMECODE},
     verify_proof_of_possession, BlsPublicKey, BlsSignature, Committee, CommitteeBuilder, Config,
-    ConfigTrait, Epoch, Intent, IntentMessage, Multiaddr, NetworkPublicKey, PrimaryInfo,
+    ConfigFmt, ConfigTrait, Epoch, Intent, IntentMessage, Multiaddr, NetworkPublicKey, PrimaryInfo,
     TelcoinDirs, ValidatorSignature, WorkerCache, WorkerIndex,
 };
 use alloy::{hex, primitives::FixedBytes};
@@ -24,7 +24,7 @@ use std::{
     ffi::OsStr,
     fmt::{Display, Formatter},
     fs,
-    path::Path,
+    path::{Path, PathBuf},
     sync::Arc,
 };
 use tracing::{info, warn};
@@ -187,10 +187,16 @@ impl NetworkGenesis {
 
     /// Read output file from Solidity GenerateConsensusRegistryStorage utility
     /// to fetch storage configuration for ConsensusRegistry at genesis
-    pub fn construct_registry_genesis_accounts(
-        validator_infos: Vec<ValidatorInfo>,
-    ) -> Vec<(Address, GenesisAccount)> {
-        let registry_cfg_path = "../../../tn-contracts/deployments/consensus-registry-storage.yaml";
+    pub fn construct_registry_genesis_accounts(&mut self, registry_cfg_path: Option<PathBuf>) {
+        // use git submodule as default
+        let registry_cfg_path = registry_cfg_path.unwrap_or_else(|| {
+            let mut default_path = std::path::PathBuf::from(
+                std::env::var("CARGO_MANIFEST_DIR").expect("Missing CARGO_MANIFEST_DIR!"),
+            );
+            default_path.push("../../tn-contracts/deployments/consensus-registry-storage.yaml");
+            default_path
+        });
+
         let content = fs::read_to_string(registry_cfg_path)
             .expect("Failed to read consensus-registry-storage yaml");
         let registry_storage_cfg: BTreeMap<String, String> =
@@ -201,11 +207,12 @@ impl NetworkGenesis {
                 .map(|(k, v)| (k.parse().expect("Invalid key"), v.parse().expect("Invalid val")))
                 .collect();
 
-        let pubkey_flags = PubkeyFlags::new(validator_infos.len());
+        let pubkey_flags = PubkeyFlags::new(self.validators.len());
         // iterate over BTreeMap to conditionally overwrite flagged values with pubkeys that are now
         // known
+        let validator_info: Vec<_> = self.validators.values().cloned().collect();
         for val in registry_storage_cfg.values_mut() {
-            PubkeyFlags::overwrite_if_flag(val, &pubkey_flags, &validator_infos);
+            PubkeyFlags::overwrite_if_flag(val, &pubkey_flags, &validator_info);
         }
 
         let registry_impl = Address::random();
@@ -224,7 +231,9 @@ impl NetworkGenesis {
                     .with_storage(Some(registry_storage_cfg)),
             ),
         ];
-        registry_genesis_accounts
+
+        // update chain with new genesis
+        self.chain = self.chain.genesis.clone().extend_accounts(registry_genesis_accounts).into();
     }
 
     /// Generate a [NetworkGenesis] by reading files in a directory.
@@ -261,19 +270,14 @@ impl NetworkGenesis {
             }
         }
 
-        // add ConsensusRegistry config to genesis
-        let validator_infos: Vec<ValidatorInfo> =
-            validators.iter().map(|(_, info)| info.clone()).collect();
-        let registry_genesis_accounts = Self::construct_registry_genesis_accounts(validator_infos);
-
-        let mut tn_config: Config = Config::load_from_path(telcoin_paths.node_config_path())?;
-        tn_config.genesis = tn_config.genesis.extend_accounts(registry_genesis_accounts);
-
         // prevent mutable key type
         // The keys being used here seem to trip this because they contain a OnceCell but do not
         // appear to be actually mutable.  So it should be safe to ignore this clippy warning...
         #[allow(clippy::mutable_key_type)]
         let validators = BTreeMap::from_iter(validators);
+
+        let tn_config: Config =
+            Config::load_from_path(telcoin_paths.node_config_path(), ConfigFmt::YAML)?;
 
         let network_genesis = Self {
             chain: tn_config.chain_spec(),
@@ -377,6 +381,11 @@ impl NetworkGenesis {
         // }
 
         Ok(())
+    }
+
+    /// Return a reference to `Self::chain`.
+    pub fn chain_info(&self) -> &ChainSpec {
+        &self.chain
     }
 
     /// Validate each validator:
@@ -664,6 +673,10 @@ mod tests {
             self.genesis_path().join("worker_cache.yaml")
         }
 
+        fn genesis_file_path(&self) -> PathBuf {
+            self.genesis_path().join("genesis.json")
+        }
+
         fn narwhal_db_path(&self) -> PathBuf {
             self.0.join("narwhal-db")
         }
@@ -702,8 +715,13 @@ mod tests {
         // save to file
         network_genesis.write_to_path(paths.genesis_path()).unwrap();
         // load network genesis
-        let loaded_network_genesis =
+        let mut loaded_network_genesis =
             NetworkGenesis::load_from_path(&paths).expect("unable to load network genesis");
+
+        loaded_network_genesis.construct_registry_genesis_accounts(Some(
+            "../../../tn-contracts/deployments/consensus-registry-storage.yaml".into(),
+        ));
+
         let loaded_validator =
             loaded_network_genesis.validators.get(validator.public_key()).unwrap();
         assert_eq!(&validator, loaded_validator);
