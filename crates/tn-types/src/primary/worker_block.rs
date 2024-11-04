@@ -90,15 +90,6 @@ impl WorkerBlock {
         BlockHash::from_slice(&hasher.finalize().digest)
     }
 
-    /// Replace the common fields with the provided sealed header.
-    /// This is for testing.
-    pub fn update_header_for_test(&mut self, sealed_header: &SealedHeader) {
-        self.parent_hash = sealed_header.parent_hash;
-        self.beneficiary = sealed_header.beneficiary;
-        self.timestamp = sealed_header.timestamp;
-        self.base_fee_per_gas = sealed_header.base_fee_per_gas;
-    }
-
     /// Timestamp of this block header.
     pub fn created_at(&self) -> TimestampSec {
         self.timestamp
