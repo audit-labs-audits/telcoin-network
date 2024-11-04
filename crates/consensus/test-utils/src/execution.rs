@@ -573,7 +573,7 @@ impl TransactionFactory {
     where
         Pool: TransactionPool,
     {
-        let tx = self.create_eip1559(chain, gas_price, None, Some(to), value, Bytes::new());
+        let tx = self.create_eip1559(chain, None, gas_price, Some(to), value, Bytes::new());
         let pooled_tx =
             PooledTransactionsElement::try_from_broadcast(tx).expect("tx valid for pool");
         let recovered = pooled_tx.try_into_ecrecovered().expect("tx is recovered");

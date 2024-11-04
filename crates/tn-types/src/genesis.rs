@@ -6,7 +6,7 @@
 //! adiri is the current name for multi-node testnet.
 
 use crate::{
-    test_utils::contract_artifacts::{CONSENSUSREGISTRY_RUNTIMECODE, ERC1967PROXY_RUNTIMECODE},
+    // test_utils::contract_artifacts::{CONSENSUSREGISTRY_RUNTIMECODE, ERC1967PROXY_RUNTIMECODE},
     verify_proof_of_possession, BlsPublicKey, BlsSignature, Committee, CommitteeBuilder, Config,
     ConfigTrait, Epoch, Intent, IntentMessage, Multiaddr, NetworkPublicKey, PrimaryInfo,
     TelcoinDirs, ValidatorSignature, WorkerCache, WorkerIndex,
@@ -22,7 +22,7 @@ use serde::{Deserialize, Serialize};
 use std::{
     collections::BTreeMap,
     ffi::OsStr,
-    fmt::{Display, Formatter},
+    fmt::{Display, Formatter}, 
     fs,
     path::Path,
     sync::Arc,
@@ -190,14 +190,9 @@ impl NetworkGenesis {
     pub fn construct_registry_genesis_accounts(
         validator_infos: Vec<ValidatorInfo>,
     ) -> Vec<(Address, GenesisAccount)> {
-        let mut registry_cfg_path = std::path::PathBuf::from(
-            std::env::var("CARGO_MANIFEST_DIR").expect("Missing CARGO_MANIFEST_DIR!"),
-        );
-        registry_cfg_path.push("../../tn-contracts/deployments/consensus-registry-storage.yaml");
-        let content = fs::read_to_string(registry_cfg_path)
-            .expect("Failed to read consensus-registry-storage yaml");
+        let registry_storage_yaml = fetch_file_content("../../tn-contracts/deployments/consensus-registry-storage.yaml");
         let registry_storage_cfg: BTreeMap<String, String> =
-            serde_yaml::from_str(&content).expect("Parsing failure");
+            serde_yaml::from_str(&registry_storage_yaml).expect("yaml parsing failure");
         let mut registry_storage_cfg: BTreeMap<FixedBytes<32>, FixedBytes<32>> =
             registry_storage_cfg
                 .into_iter()
@@ -212,18 +207,24 @@ impl NetworkGenesis {
         }
 
         let registry_impl = Address::random();
+        let registry_standard_json = fetch_file_content("../../tn-contracts/out/ConsensusRegistry.sol/ConsensusRegistry.json");
+        let registry_contract: ContractStandardJson = serde_json::from_str(&registry_standard_json).expect("json parsing failure");
+        let registry_bytecode = hex::decode(registry_contract.deployed_bytecode.object).expect("invalid bytecode hexstring");
         let registry_proxy = Address::from_word(
             hex!("00000000000000000000000007e17e17e17e17e17e17e17e17e17e17e17e17e1").into(),
         );
+        let proxy_standard_json = fetch_file_content("../../tn-contracts/out/ERC1967Proxy.sol/ERC1967Proxy.json");
+        let proxy_contract: ContractStandardJson = serde_json::from_str(&proxy_standard_json).expect("json parsing failure");
+        let proxy_bytecode = hex::decode(proxy_contract.deployed_bytecode.object).expect("invalid bytecode hexstring");
         let registry_genesis_accounts = vec![
             (
                 registry_impl,
-                GenesisAccount::default().with_code(Some(CONSENSUSREGISTRY_RUNTIMECODE.into())),
+                GenesisAccount::default().with_code(Some(registry_bytecode.into())),
             ),
             (
                 registry_proxy,
                 GenesisAccount::default()
-                    .with_code(Some(ERC1967PROXY_RUNTIMECODE.into()))
+                    .with_code(Some(proxy_bytecode.into()))
                     .with_storage(Some(registry_storage_cfg)),
             ),
         ];
@@ -612,14 +613,33 @@ impl PubkeyFlags {
     }
 }
 
+#[derive(Deserialize)]
+pub struct BytecodeObject {
+    pub object: String
+}
+
+#[derive(Deserialize)]
+pub struct ContractStandardJson {
+    pub bytecode: BytecodeObject,
+    #[serde(rename = "deployedBytecode")]
+    pub deployed_bytecode: BytecodeObject
+}
+
+pub fn fetch_file_content(relative_path: &str) -> String {
+    let mut file_path = std::path::PathBuf::from(std::env::var("CARGO_MANIFEST_DIR").expect("Missing CARGO_MANIFEST_DIR!"));
+    file_path.push(relative_path);
+    let content = fs::read_to_string(file_path).expect("unable to read file");
+
+    content
+}
+
 #[cfg(test)]
 mod tests {
     use super::NetworkGenesis;
     use crate::{
-        adiri_chain_spec, generate_proof_of_possession, BlsKeypair, Multiaddr, NetworkKeypair,
-        PrimaryInfo, TelcoinDirs, ValidatorInfo, WorkerIndex, WorkerInfo,
+        adiri_chain_spec, fetch_file_content, generate_proof_of_possession, genesis::ContractStandardJson, BlsKeypair, Multiaddr, NetworkKeypair, PrimaryInfo, TelcoinDirs, ValidatorInfo, WorkerIndex, WorkerInfo
     };
-    use alloy::hex::FromHex;
+    use alloy::hex::{self, FromHex};
     use fastcrypto::traits::KeyPair;
     use rand::{rngs::StdRng, SeedableRng};
     use reth_primitives::Address;
@@ -670,12 +690,15 @@ mod tests {
         let expected_registry_addr =
             Address::from_hex("0x07e17e17e17e17e17e17e17e17e17e17e17e17e1")
                 .expect("failed to parse address");
+        let proxy_standard_json = fetch_file_content("../../tn-contracts/out/ERC1967Proxy/ERC1967Proxy.sol");
+        let proxy_contract: ContractStandardJson = serde_json::from_str(&proxy_standard_json).expect("failed to parse json");
+        let proxy_bytecode = hex::decode(proxy_contract.deployed_bytecode.object).expect("invalid bytecode hexstring");
         match loaded_network_genesis.chain.genesis.alloc.get(&expected_registry_addr) {
             Some(account) => {
                 // check registry bytecode matches expected value
                 match &account.code {
                     Some(code) => {
-                        assert_eq!(***code, *ERC1967PROXY_RUNTIMECODE, "wrong registry bytecode")
+                        assert_eq!(***code, *proxy_bytecode, "wrong registry bytecode")
                     }
                     None => panic!("registry code not set"),
                 }

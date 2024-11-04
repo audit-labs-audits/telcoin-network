@@ -2,14 +2,11 @@
 mod tests {
     use crate::util::{get_contract_state_for_genesis, spawn_local_testnet};
     use alloy::{
-        network::EthereumWallet,
-        primitives::{FixedBytes, Uint},
-        providers::ProviderBuilder,
-        sol,
-        sol_types::SolValue,
+        hex, network::EthereumWallet, primitives::{FixedBytes, Uint}, providers::ProviderBuilder, sol, sol_types::SolValue
     };
     use fastcrypto::traits::{KeyPair, ToFromBytes};
     use jsonrpsee::{core::client::ClientT, http_client::HttpClientBuilder, rpc_params};
+    use narwhal_test_utils::TransactionFactory;
     use rand::{rngs::StdRng, SeedableRng};
     use reth::{
         primitives::{Address, Bytes, GenesisAccount, U256},
@@ -18,14 +15,7 @@ mod tests {
     use reth_chainspec::ChainSpec;
     use std::{sync::Arc, time::Duration};
     use tn_types::{
-        adiri_genesis,
-        test_utils::{
-            contract_artifacts::{
-                CONSENSUSREGISTRY_RUNTIMECODE, ERC1967PROXY_INITCODE, ERC1967PROXY_RUNTIMECODE,
-            },
-            TransactionFactory,
-        },
-        BlsKeypair, NetworkKeypair,
+        adiri_genesis, ContractStandardJson, fetch_file_content, BlsKeypair, NetworkKeypair
     };
     use tokio::runtime::Handle;
 
@@ -33,8 +23,12 @@ mod tests {
     async fn test_genesis_with_consensus_registry() {
         let network_genesis = adiri_genesis();
         let tmp_chain: Arc<ChainSpec> = Arc::new(network_genesis.into());
+
+        // fetch registry impl bytecode from compiled output in tn-contracts
+        let registry_standard_json = fetch_file_content("../../tn-contracts/out/ConsensusRegistry.sol/ConsensusRegistry.json");
+        let registry_contract: ContractStandardJson = serde_json::from_str(&registry_standard_json).expect("json parsing failure");
+        let registry_impl_bytecode = hex::decode(registry_contract.deployed_bytecode.object).expect("invalid bytecode hexstring");
         let registry_impl_address = Address::random();
-        let registry_impl_bytecode = *CONSENSUSREGISTRY_RUNTIMECODE;
         let mut tx_factory = TransactionFactory::new();
         let factory_address = tx_factory.address();
 
@@ -44,7 +38,7 @@ mod tests {
                 (factory_address, GenesisAccount::default().with_balance(U256::MAX)),
                 (
                     registry_impl_address,
-                    GenesisAccount::default().with_code(Some(registry_impl_bytecode.into())),
+                    GenesisAccount::default().with_code(Some(registry_impl_bytecode.clone().into())),
                 ),
             ]
             .into_iter(),
@@ -59,9 +53,13 @@ mod tests {
             }
         );
 
+        // fetch and construct registry proxy deployment transaction
+        let registry_proxy_json = fetch_file_content("../../tn-contracts/out/ERC1967Proxy.sol/ERC1967Proxy.json");
+        let registry_proxy_contract: ContractStandardJson = serde_json::from_str(&registry_proxy_json).expect("json parsing failure");
+        let registry_proxy_initcode = hex::decode(registry_proxy_contract.bytecode.object).expect("invalid bytecode hexstring");
         let constructor_params = (registry_impl_address, Bytes::default()).abi_encode_params();
         let registry_create_data =
-            [ERC1967PROXY_INITCODE.as_slice(), &constructor_params[..]].concat();
+            [registry_proxy_initcode.as_slice(), &constructor_params[..]].concat();
 
         // ConsensusRegistry interface
         sol!(
@@ -145,8 +143,8 @@ mod tests {
         let pre_genesis_chain: Arc<ChainSpec> = Arc::new(tmp_genesis.into());
         let registry_tx_raw = tx_factory.create_eip1559(
             tmp_chain.clone(),
-            gas_price,
             Some(gas_limit),
+            gas_price,
             None,
             U256::ZERO,
             registry_create_data.clone().into(),
@@ -155,8 +153,8 @@ mod tests {
         let registry_proxy_address = factory_address.create(0);
         let initialize_tx_raw = tx_factory.create_eip1559(
             tmp_chain.clone(),
-            gas_price,
             Some(gas_limit),
+            gas_price,
             Some(registry_proxy_address),
             U256::ZERO,
             init_call.clone().into(),
@@ -173,18 +171,20 @@ mod tests {
             .get(&registry_proxy_address)
             .expect("registry address missing from bundle state")
             .storage;
-        let registry_proxy_bytecode = *ERC1967PROXY_RUNTIMECODE;
+        let proxy_json = fetch_file_content("../../tn-contracts/out/ERC1967Proxy.sol/ERC1967Proxy.json");
+        let proxy_contract: ContractStandardJson = serde_json::from_str(&proxy_json).expect("json parsing failure");
+        let proxy_bytecode = hex::decode(proxy_contract.deployed_bytecode.object).expect("invalid bytecode hexstring");
 
         // perform canonical adiri chain genesis with fetched storage
         let genesis_accounts = vec![
             (
                 registry_impl_address,
-                GenesisAccount::default().with_code(Some(registry_impl_bytecode.into())),
+                GenesisAccount::default().with_code(Some(registry_impl_bytecode.clone().into())),
             ),
             (
                 registry_proxy_address,
                 GenesisAccount::default()
-                    .with_code(Some(registry_proxy_bytecode.into()))
+                    .with_code(Some(proxy_bytecode.into()))
                     .with_storage(Some(
                         execution_storage_registry
                             .iter()
@@ -215,8 +215,8 @@ mod tests {
             .request("eth_getCode", rpc_params!(registry_impl_address))
             .await
             .expect("Failed to fetch registry impl bytecode");
-        // trim `0x`
-        assert_eq!(returned_impl_code[2..], alloy::hex::encode(registry_impl_bytecode));
+        // trim `0x` prefix
+        assert_eq!(returned_impl_code[2..], hex::encode(registry_impl_bytecode));
 
         let signer = tx_factory.get_default_signer().expect("failed to fetch signer");
         let wallet = EthereumWallet::from(signer);

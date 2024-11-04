@@ -2,7 +2,7 @@ use std::{path::PathBuf, sync::Arc, time::Duration};
 
 use clap::Parser;
 use jsonrpsee::{core::client::ClientT, http_client::HttpClient, rpc_params};
-use narwhal_test_utils::{default_test_execution_node, CommandParser};
+use narwhal_test_utils::{default_test_execution_node, execution_outcome_for_tests, CommandParser};
 use reth::{
     providers::ExecutionOutcome,
     tasks::{TaskExecutor, TaskManager},
@@ -14,7 +14,7 @@ use reth_primitives::{Address, SealedHeader, U256};
 use std::str::FromStr;
 use telcoin_network::{genesis::GenesisArgs, keytool::KeyArgs, node::NodeCommand};
 use tn_node::launch_node;
-use tn_types::{test_utils::execution_outcome_for_tests, TransactionSigned, WorkerBlock};
+use tn_types::{TransactionSigned, WorkerBlock};
 use tokio::task::JoinHandle;
 use tracing::{debug, error};
 
@@ -224,7 +224,7 @@ pub async fn spawn_local_testnet(
                                 std::sync::Arc::clone(&builder.node_config.chain),
                                 evm_config,
                             );
-                            launch_node(builder, executor, evm_config, &tn_datadir).await
+                            launch_node(builder, executor, evm_config, tn_datadir).await
                         },
                     )
                     .await;

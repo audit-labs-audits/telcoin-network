@@ -159,8 +159,8 @@ async fn test_make_block_el_to_cl() {
     // create 3 transactions
     let transaction1 = tx_factory.create_eip1559(
         chain.clone(),
-        gas_price,
         None,
+        gas_price,
         Some(Address::ZERO),
         value, // 1 TEL
         Bytes::new(),
@@ -169,8 +169,8 @@ async fn test_make_block_el_to_cl() {
 
     let transaction2 = tx_factory.create_eip1559(
         chain.clone(),
-        gas_price,
         None,
+        gas_price,
         Some(Address::ZERO),
         value, // 1 TEL
         Bytes::new(),
@@ -179,8 +179,8 @@ async fn test_make_block_el_to_cl() {
 
     let transaction3 = tx_factory.create_eip1559(
         chain.clone(),
-        gas_price,
         None,
+        gas_price,
         Some(Address::ZERO),
         value, // 1 TEL
         Bytes::new(),
@@ -337,8 +337,8 @@ async fn test_block_builder_produces_valid_blocks() {
     // create 3 transactions
     let transaction1 = tx_factory.create_eip1559(
         chain.clone(),
-        gas_price,
         None,
+        gas_price,
         Some(Address::ZERO),
         value, // 1 TEL
         Bytes::new(),
@@ -346,8 +346,8 @@ async fn test_block_builder_produces_valid_blocks() {
 
     let transaction2 = tx_factory.create_eip1559(
         chain.clone(),
-        gas_price,
         None,
+        gas_price,
         Some(Address::ZERO),
         value, // 1 TEL
         Bytes::new(),
@@ -355,8 +355,8 @@ async fn test_block_builder_produces_valid_blocks() {
 
     let transaction3 = tx_factory.create_eip1559(
         chain.clone(),
-        gas_price,
         None,
+        gas_price,
         Some(Address::ZERO),
         value, // 1 TEL
         Bytes::new(),
@@ -550,8 +550,8 @@ async fn test_canonical_notification_updates_pool() {
     // create 3 transactions
     let transaction1 = tx_factory.create_eip1559(
         chain.clone(),
-        gas_price,
         None,
+        gas_price,
         Some(Address::ZERO),
         value, // 1 TEL
         Bytes::new(),
@@ -559,8 +559,8 @@ async fn test_canonical_notification_updates_pool() {
 
     let transaction2 = tx_factory.create_eip1559(
         chain.clone(),
-        gas_price,
         None,
+        gas_price,
         Some(Address::ZERO),
         value, // 1 TEL
         Bytes::new(),
@@ -568,8 +568,8 @@ async fn test_canonical_notification_updates_pool() {
 
     let transaction3 = tx_factory.create_eip1559(
         chain.clone(),
-        gas_price,
         None,
+        gas_price,
         Some(Address::ZERO),
         value, // 1 TEL
         Bytes::new(),
