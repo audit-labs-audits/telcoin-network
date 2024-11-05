@@ -195,10 +195,6 @@ mod tests {
     use tracing::debug;
 
     /// Return the next valid block
-    ///
-    /// Note that SealedHeader's `parent_hash`, `state_root`, and `extra_data` must be updated when
-    /// updating accounts to fund in `adiri_genesis_raw` These new values can be obtained using
-    /// `tn-block-builder::tests::test_make_block`
     fn next_valid_sealed_header() -> SealedHeader {
         let timestamp = 1701790139;
         // sealed header
@@ -284,6 +280,7 @@ mod tests {
         // create 3 transactions
         let transaction1 = tx_factory.create_eip1559(
             chain.clone(),
+            None,
             gas_price,
             Some(Address::ZERO),
             value, // 1 TEL
@@ -293,6 +290,7 @@ mod tests {
 
         let transaction2 = tx_factory.create_eip1559(
             chain.clone(),
+            None,
             gas_price,
             Some(Address::ZERO),
             value, // 1 TEL
@@ -302,6 +300,7 @@ mod tests {
 
         let transaction3 = tx_factory.create_eip1559(
             chain.clone(),
+            None,
             gas_price,
             Some(Address::ZERO),
             value, // 1 TEL
