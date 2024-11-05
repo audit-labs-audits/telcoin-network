@@ -121,7 +121,8 @@ impl WorkerBlock {
     /// Returns a Header.
     ///
     /// This is a synthetic Header with default values for things missing from WorkerBlock.
-    /// It is NOT an actual header on the chain and has limited utility (mostly for testing or possibly for use with Reth).
+    /// It is NOT an actual header on the chain and has limited utility (mostly for testing or
+    /// possibly for use with Reth).
     pub fn header(&self) -> Header {
         let transactions_root = proofs::calculate_transaction_root(&self.transactions);
 
