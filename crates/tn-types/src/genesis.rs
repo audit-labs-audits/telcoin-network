@@ -8,10 +8,10 @@
 use crate::{
     // test_utils::contract_artifacts::{CONSENSUSREGISTRY_RUNTIMECODE, ERC1967PROXY_RUNTIMECODE},
     verify_proof_of_possession, BlsPublicKey, BlsSignature, Committee, CommitteeBuilder, Config,
-    ConfigTrait, Epoch, Intent, IntentMessage, Multiaddr, NetworkPublicKey, PrimaryInfo,
+    ConfigFmt, ConfigTrait, Epoch, Intent, IntentMessage, Multiaddr, NetworkPublicKey, PrimaryInfo,
     TelcoinDirs, ValidatorSignature, WorkerCache, WorkerIndex,
 };
-use alloy::{hex, primitives::FixedBytes};
+use alloy::{hex::{self, FromHex}, primitives::FixedBytes};
 use eyre::Context;
 use fastcrypto::traits::{InsecureDefault, Signer, ToFromBytes};
 use reth_chainspec::ChainSpec;
@@ -24,7 +24,7 @@ use std::{
     ffi::OsStr,
     fmt::{Display, Formatter}, 
     fs,
-    path::Path,
+    path::{Path, PathBuf},
     sync::Arc,
 };
 use tracing::{info, warn};
@@ -187,10 +187,13 @@ impl NetworkGenesis {
 
     /// Read output file from Solidity GenerateConsensusRegistryStorage utility
     /// to fetch storage configuration for ConsensusRegistry at genesis
-    pub fn construct_registry_genesis_accounts(
-        validator_infos: Vec<ValidatorInfo>,
-    ) -> Vec<(Address, GenesisAccount)> {
-        let registry_storage_yaml = fetch_file_content("../../tn-contracts/deployments/consensus-registry-storage.yaml");
+    pub fn construct_registry_genesis_accounts(&mut self, registry_cfg_path: Option<PathBuf>) {
+        // make this match statement result in a variable assignment to 
+        let path = match registry_cfg_path {
+            Some(path) => path,
+            None => "../../tn-contracts/deployments/consensus-registry-storage.yaml".into()
+        };
+        let registry_storage_yaml = fetch_file_content(path);
         let registry_storage_cfg: BTreeMap<String, String> =
             serde_yaml::from_str(&registry_storage_yaml).expect("yaml parsing failure");
         let mut registry_storage_cfg: BTreeMap<FixedBytes<32>, FixedBytes<32>> =
@@ -199,21 +202,20 @@ impl NetworkGenesis {
                 .map(|(k, v)| (k.parse().expect("Invalid key"), v.parse().expect("Invalid val")))
                 .collect();
 
-        let pubkey_flags = PubkeyFlags::new(validator_infos.len());
+        let pubkey_flags = PubkeyFlags::new(self.validators.len());
         // iterate over BTreeMap to conditionally overwrite flagged values with pubkeys that are now
         // known
+        let validator_info: Vec<_> = self.validators.values().cloned().collect();
         for val in registry_storage_cfg.values_mut() {
-            PubkeyFlags::overwrite_if_flag(val, &pubkey_flags, &validator_infos);
+            PubkeyFlags::overwrite_if_flag(val, &pubkey_flags, &validator_info);
         }
 
         let registry_impl = Address::random();
-        let registry_standard_json = fetch_file_content("../../tn-contracts/out/ConsensusRegistry.sol/ConsensusRegistry.json");
+        let registry_standard_json = fetch_file_content("../../tn-contracts/out/ConsensusRegistry.sol/ConsensusRegistry.json".into());
         let registry_contract: ContractStandardJson = serde_json::from_str(&registry_standard_json).expect("json parsing failure");
         let registry_bytecode = hex::decode(registry_contract.deployed_bytecode.object).expect("invalid bytecode hexstring");
-        let registry_proxy = Address::from_word(
-            hex!("00000000000000000000000007e17e17e17e17e17e17e17e17e17e17e17e17e1").into(),
-        );
-        let proxy_standard_json = fetch_file_content("../../tn-contracts/out/ERC1967Proxy.sol/ERC1967Proxy.json");
+        let registry_proxy = Address::from_hex("0x07e17e17e17e17e17e17e17e17e17e17e17e17e1").expect("invalid hex address");
+        let proxy_standard_json = fetch_file_content("../../tn-contracts/out/ERC1967Proxy.sol/ERC1967Proxy.json".into());
         let proxy_contract: ContractStandardJson = serde_json::from_str(&proxy_standard_json).expect("json parsing failure");
         let proxy_bytecode = hex::decode(proxy_contract.deployed_bytecode.object).expect("invalid bytecode hexstring");
         let registry_genesis_accounts = vec![
@@ -228,7 +230,9 @@ impl NetworkGenesis {
                     .with_storage(Some(registry_storage_cfg)),
             ),
         ];
-        registry_genesis_accounts
+
+        // update chain with new genesis
+        self.chain = self.chain.genesis.clone().extend_accounts(registry_genesis_accounts).into();
     }
 
     /// Generate a [NetworkGenesis] by reading files in a directory.
@@ -265,19 +269,14 @@ impl NetworkGenesis {
             }
         }
 
-        // add ConsensusRegistry config to genesis
-        let validator_infos: Vec<ValidatorInfo> =
-            validators.iter().map(|(_, info)| info.clone()).collect();
-        let registry_genesis_accounts = Self::construct_registry_genesis_accounts(validator_infos);
-
-        let mut tn_config: Config = Config::load_from_path(telcoin_paths.node_config_path())?;
-        tn_config.genesis = tn_config.genesis.extend_accounts(registry_genesis_accounts);
-
         // prevent mutable key type
         // The keys being used here seem to trip this because they contain a OnceCell but do not
         // appear to be actually mutable.  So it should be safe to ignore this clippy warning...
         #[allow(clippy::mutable_key_type)]
         let validators = BTreeMap::from_iter(validators);
+
+        let tn_config: Config =
+            Config::load_from_path(telcoin_paths.node_config_path(), ConfigFmt::YAML)?;
 
         let network_genesis = Self {
             chain: tn_config.chain_spec(),
@@ -381,6 +380,11 @@ impl NetworkGenesis {
         // }
 
         Ok(())
+    }
+
+    /// Return a reference to `Self::chain`.
+    pub fn chain_info(&self) -> &ChainSpec {
+        &self.chain
     }
 
     /// Validate each validator:
@@ -625,7 +629,7 @@ pub struct ContractStandardJson {
     pub deployed_bytecode: BytecodeObject
 }
 
-pub fn fetch_file_content(relative_path: &str) -> String {
+pub fn fetch_file_content(relative_path: PathBuf) -> String {
     let mut file_path = std::path::PathBuf::from(std::env::var("CARGO_MANIFEST_DIR").expect("Missing CARGO_MANIFEST_DIR!"));
     file_path.push(relative_path);
     let content = fs::read_to_string(file_path).expect("unable to read file");
@@ -681,8 +685,13 @@ mod tests {
         // save to file
         network_genesis.write_to_path(paths.genesis_path()).unwrap();
         // load network genesis
-        let loaded_network_genesis =
+        let mut loaded_network_genesis =
             NetworkGenesis::load_from_path(&paths).expect("unable to load network genesis");
+
+        loaded_network_genesis.construct_registry_genesis_accounts(Some(
+            "../../../tn-contracts/deployments/consensus-registry-storage.yaml".into(),
+        ));
+
         let loaded_validator =
             loaded_network_genesis.validators.get(validator.public_key()).unwrap();
         assert_eq!(&validator, loaded_validator);
@@ -690,7 +699,7 @@ mod tests {
         let expected_registry_addr =
             Address::from_hex("0x07e17e17e17e17e17e17e17e17e17e17e17e17e1")
                 .expect("failed to parse address");
-        let proxy_standard_json = fetch_file_content("../../tn-contracts/out/ERC1967Proxy/ERC1967Proxy.sol");
+        let proxy_standard_json = fetch_file_content("../../tn-contracts/out/ERC1967Proxy/ERC1967Proxy.sol".into());
         let proxy_contract: ContractStandardJson = serde_json::from_str(&proxy_standard_json).expect("failed to parse json");
         let proxy_bytecode = hex::decode(proxy_contract.deployed_bytecode.object).expect("invalid bytecode hexstring");
         match loaded_network_genesis.chain.genesis.alloc.get(&expected_registry_addr) {
