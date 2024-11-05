@@ -21,9 +21,7 @@ use jsonrpsee::{core::client::ClientT, rpc_params};
 use k256::{elliptic_curve::sec1::ToEncodedPoint, pkcs8::DecodePublicKey, PublicKey as PubKey};
 use narwhal_network::client::NetworkClient;
 use narwhal_test_utils::{
-    default_test_execution_node,
-    execution_outcome_for_tests,
-    faucet_test_execution_node,
+    default_test_execution_node, execution_outcome_for_tests, faucet_test_execution_node,
     TransactionFactory,
 };
 use narwhal_typed_store::open_db;
