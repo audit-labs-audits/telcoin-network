@@ -27,7 +27,7 @@ use reth_primitives::{public_key_to_address, Address, GenesisAccount, B256, U256
 use reth_tracing::init_test_tracing;
 use secp256k1::PublicKey;
 use std::{str::FromStr, sync::Arc, time::Duration};
-use tn_types::adiri_genesis;
+use tn_types::{adiri_genesis, fetch_file_content};
 use narwhal_test_utils::TransactionFactory;
 use tokio::{runtime::Handle, task::JoinHandle, time::timeout};
 use tracing::{debug, info};
@@ -86,12 +86,25 @@ async fn test_faucet_transfers_tel_and_xyz_with_google_kms_e2e() -> eyre::Result
         }
     );
 
-    // extend genesis accounts to fund factory_address, etch bytecodes, and construct proxy creation
-    // txs
+    // set random addresses on which to etch contract bytecodes
     let faucet_impl_address = Address::random();
     let stablecoin_impl_address = Address::random();
-    let faucet_bytecode = *STABLECOINMANAGER_RUNTIMECODE;
-    let stablecoin_impl_bytecode = STABLECOIN_RUNTIMECODE.as_slice();
+    // fetch bytecode attributes from compiled jsons in tn-contracts repo
+    let faucet_standard_json = fetch_file_content(
+        "../../tn-contracts/out/StablecoinManager.sol/StablecoinManager.json".into(),
+    );
+    let faucet_contract: ContractStandardJson =
+        serde_json::from_str(&faucet_json).expect("json parsing failure");
+    let faucet_bytecode =
+        hex::decode(faucet_contract.deployed_bytecode.object).expect("invalid bytecode hexstring");
+    let stablecoin_json =
+        fetch_file_content("../../tn-contracts/out/Stablecoin.sol/Stablecoin.json".into());
+    let stablecoin_contract: ContractStandardJson =
+        serde_json::from_str(&stablecoin_json).expect("json parsing failure");
+    let stablecoin_impl_bytecode = hex::decode(stablecoin_contract.deployed_bytecode.object)
+        .expect("invalid bytecode hexstring");
+
+    // extend genesis accounts to fund factory_address, etch bytecodes, construct proxy creation txs
     let mut tx_factory = TransactionFactory::new();
     let factory_address = tx_factory.address();
     let tmp_genesis = tmp_chain.genesis.clone().extend_accounts(
@@ -144,8 +157,15 @@ async fn test_faucet_transfers_tel_and_xyz_with_google_kms_e2e() -> eyre::Result
     // construct create data for faucet proxy address
     let init_call = [&faucet_init_selector, &init_params[..]].concat();
     let constructor_params = (faucet_impl_address, init_call.clone()).abi_encode_params();
-    let faucet_init_code = ERC1967PROXY_INITCODE.as_slice();
-    let faucet_create_data = [faucet_init_code, &constructor_params[..]].concat();
+    let proxy_json =
+        fetch_file_content("../../tn-contracts/out/ERC1967Proxy.sol/ERC1967Proxy.json".into());
+    let proxy_contract: ContractStandardJson =
+        serde_json::from_str(&proxy_json).expect("json parsing failure");
+    let proxy_initcode =
+        hex::decode(proxy_contract.bytecode.object).expect("invalid bytecode hexstring");
+    let proxy_bytecode = 
+        hex::decode(proxy_contract.deployed_bytecode.object).expect("invalid bytecode hexstring");
+    let faucet_create_data = [proxy_initcode.clone().as_slice(), &constructor_params[..]].concat();
 
     // construct `grantRole(faucet)` data
     let grant_role_selector = [47, 47, 241, 93];
@@ -164,7 +184,7 @@ async fn test_faucet_transfers_tel_and_xyz_with_google_kms_e2e() -> eyre::Result
     let stablecoin_constructor_params =
         (stablecoin_impl_address, stablecoin_init_call.clone()).abi_encode_params();
     let stablecoin_create_data =
-        [ERC1967PROXY_INITCODE.as_slice(), &stablecoin_constructor_params[..]].concat();
+        [proxy_initcode.as_slice(), &stablecoin_constructor_params[..]].concat();
 
     // faucet deployment will be `factory_address`'s first tx, stablecoin will be second tx
     let faucet_proxy_address = factory_address.create(0);
@@ -188,8 +208,8 @@ async fn test_faucet_transfers_tel_and_xyz_with_google_kms_e2e() -> eyre::Result
     let gas_price = 100;
     let faucet_tx_raw = tx_factory.create_eip1559(
         pre_genesis_chain.clone(),
-        gas_price,
         None,
+        gas_price,
         None,
         U256::ZERO,
         faucet_create_data.clone().into(),
@@ -197,8 +217,8 @@ async fn test_faucet_transfers_tel_and_xyz_with_google_kms_e2e() -> eyre::Result
 
     let stablecoin_tx_raw = tx_factory.create_eip1559(
         pre_genesis_chain.clone(),
-        gas_price,
         None,
+        gas_price,
         None,
         U256::ZERO,
         stablecoin_create_data.clone().into(),
@@ -206,8 +226,8 @@ async fn test_faucet_transfers_tel_and_xyz_with_google_kms_e2e() -> eyre::Result
 
     let role_tx_raw = tx_factory.create_eip1559(
         pre_genesis_chain.clone(),
-        gas_price,
         None,
+        gas_price,
         Some(faucet_proxy_address),
         U256::ZERO,
         grant_role_call,
@@ -215,8 +235,8 @@ async fn test_faucet_transfers_tel_and_xyz_with_google_kms_e2e() -> eyre::Result
 
     let updatexyz_tx_raw = tx_factory.create_eip1559(
         pre_genesis_chain.clone(),
-        gas_price,
         None,
+        gas_price,
         Some(faucet_proxy_address),
         U256::ZERO,
         updatexyz_call,
@@ -224,8 +244,8 @@ async fn test_faucet_transfers_tel_and_xyz_with_google_kms_e2e() -> eyre::Result
 
     let minter_tx_raw = tx_factory.create_eip1559(
         pre_genesis_chain.clone(),
-        gas_price,
         None,
+        gas_price,
         Some(stablecoin_address),
         U256::ZERO,
         minter_role_call,
@@ -249,8 +269,6 @@ async fn test_faucet_transfers_tel_and_xyz_with_google_kms_e2e() -> eyre::Result
         .expect("stablecoin address missing from bundle state")
         .storage;
 
-    let faucet_proxy_bytecode = *ERC1967PROXY_RUNTIMECODE;
-
     // real genesis: configure genesis accounts for proxy deployment & faucet_role
     let genesis_accounts = vec![
         (factory_address, GenesisAccount::default().with_balance(U256::MAX)),
@@ -262,7 +280,7 @@ async fn test_faucet_transfers_tel_and_xyz_with_google_kms_e2e() -> eyre::Result
         (
             stablecoin_address,
             GenesisAccount::default()
-                .with_code(Some(ERC1967PROXY_RUNTIMECODE.into()))
+                .with_code(Some(proxy_bytecode.into()))
                 .with_storage(Some(
                     execution_storage_stablecoin
                         .iter()
@@ -275,7 +293,7 @@ async fn test_faucet_transfers_tel_and_xyz_with_google_kms_e2e() -> eyre::Result
         (
             faucet_proxy_address,
             GenesisAccount::default()
-                .with_code(Some(faucet_proxy_bytecode.into()))
+                .with_code(Some(proxy_bytecode.into()))
                 .with_balance(U256::MAX)
                 .with_storage(Some(
                     execution_storage_faucet
@@ -354,8 +372,8 @@ async fn test_faucet_transfers_tel_and_xyz_with_google_kms_e2e() -> eyre::Result
     // this creates scenario for faucet to rely on provider.latest() for accuracy
     let tx = random_tx_factory.create_eip1559(
         chain,
-        1_000_000_000,
         None,
+        1_000_000_000,
         Some(Address::random()),
         U256::from_str("0xaffffffffffffff").expect("U256 from str for tx factory"),
         Default::default(),
