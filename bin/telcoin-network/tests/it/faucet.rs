@@ -94,7 +94,7 @@ async fn test_faucet_transfers_tel_and_xyz_with_google_kms_e2e() -> eyre::Result
         "../../tn-contracts/out/StablecoinManager.sol/StablecoinManager.json".into(),
     );
     let faucet_contract: ContractStandardJson =
-        serde_json::from_str(&faucet_json).expect("json parsing failure");
+        serde_json::from_str(&faucet_standard_json).expect("json parsing failure");
     let faucet_bytecode =
         hex::decode(faucet_contract.deployed_bytecode.object).expect("invalid bytecode hexstring");
     let stablecoin_json =
