@@ -12,7 +12,7 @@ use serde::{Deserialize, Serialize};
 use thiserror::Error;
 use tokio::sync::oneshot;
 
-use crate::{crypto, encode};
+use crate::{crypto, encode, max_worker_block_gas};
 
 use super::TimestampSec;
 
@@ -84,7 +84,6 @@ impl WorkerBlock {
     /// Digest for this block (the hash of the sealed header).
     pub fn digest(&self) -> BlockHash {
         let mut hasher = crypto::DefaultHashFunction::new();
-        //hasher.update(encode(&self.transactions));
         hasher.update(encode(self));
         // finalize
         BlockHash::from_slice(&hasher.finalize().digest)
@@ -127,7 +126,6 @@ impl WorkerBlock {
 
         let total_possible_gas = self.total_possible_gas();
 
-        //    &self.sealed_header
         // create header
         //
         // NOTE: workers do not execute transactions. Peers validate:
@@ -148,7 +146,7 @@ impl WorkerBlock {
             nonce: 0,
             base_fee_per_gas: self.base_fee_per_gas,
             number: 1,
-            gas_limit: 30_000_000, // gas limit in wei - just a default
+            gas_limit: max_worker_block_gas(self.timestamp), // gas limit in wei - just a default
             difficulty: U256::ZERO,
             gas_used: total_possible_gas,
             extra_data: Bytes::default(),

@@ -39,8 +39,8 @@ use tn_block_builder::{test_utils::execute_test_worker_block, BlockBuilder};
 use tn_block_validator::{BlockValidation, BlockValidator};
 use tn_engine::execute_consensus_output;
 use tn_types::{
-    AutoSealConsensus, BuildArguments, Certificate, CommittedSubDag, Consensus, ConsensusOutput,
-    LastCanonicalUpdate, ReputationScores, WorkerBlock,
+    max_worker_block_gas, AutoSealConsensus, BuildArguments, Certificate, CommittedSubDag,
+    Consensus, ConsensusOutput, LastCanonicalUpdate, ReputationScores, WorkerBlock,
 };
 use tokio::time::timeout;
 use tracing::debug;
@@ -148,8 +148,8 @@ async fn test_make_block_el_to_cl() {
         block_provider.blocks_rx(),
         address,
         Duration::from_secs(1),
-        30_000_000, // 30mil gas limit
-        1_000_000,  // 1MB size
+        max_worker_block_gas(0), // 30mil gas limit
+        1_000_000,               // 1MB size
     );
 
     let gas_price = get_gas_price(&blockchain_db);
@@ -218,7 +218,11 @@ async fn test_make_block_el_to_cl() {
     let block = block.unwrap();
 
     // ensure block validator succeeds
-    let block_validator = BlockValidator::new(blockchain_db.clone(), 1_000_000, 30_000_000);
+    let block_validator = BlockValidator::new(
+        blockchain_db.clone(),
+        1_000_000,
+        max_worker_block_gas(block.timestamp),
+    );
 
     let valid_block_result = block_validator.validate_block(&block).await;
     assert!(valid_block_result.is_ok());
@@ -311,7 +315,7 @@ async fn test_block_builder_produces_valid_blocks() {
     };
 
     let (to_worker, mut from_block_builder) = tokio::sync::mpsc::channel(2);
-    let max_block_gas_limit = 30_000_000;
+    let max_block_gas_limit = max_worker_block_gas(0);
     let max_block_bytes_size = 1_000_000;
 
     // build execution block proposer
@@ -522,7 +526,7 @@ async fn test_canonical_notification_updates_pool() {
     };
 
     let (to_worker, mut from_block_builder) = tokio::sync::mpsc::channel(2);
-    let max_block_gas_limit = 30_000_000;
+    let max_block_gas_limit = max_worker_block_gas(0);
     let max_block_bytes_size = 1_000_000;
 
     // build execution block proposer

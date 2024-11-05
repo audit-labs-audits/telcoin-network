@@ -18,7 +18,8 @@ use std::{
     time::Instant,
 };
 use tn_types::{
-    LastCanonicalUpdate, PendingBlockConfig, TransactionSigned, WorkerBlock, WorkerBlockBuilderArgs,
+    max_worker_block_gas, LastCanonicalUpdate, PendingBlockConfig, TransactionSigned, WorkerBlock,
+    WorkerBlockBuilderArgs,
 };
 use tokio::sync::mpsc::{self, Receiver};
 
@@ -37,8 +38,8 @@ pub fn execute_test_worker_block(block: &mut WorkerBlock, parent: &SealedHeader)
     let block_config = PendingBlockConfig::new(
         block.beneficiary,
         parent_info,
-        30_000_000, // gas limit in wei
-        1_000_000,  // maxsize in bytes
+        max_worker_block_gas(block.timestamp),
+        1_000_000, // maxsize in bytes
     );
     let args = WorkerBlockBuilderArgs { pool, block_config };
     let BlockBuilderOutput { worker_block, .. } = build_worker_block(args);

@@ -191,7 +191,7 @@ mod tests {
     use reth_provider::{providers::StaticFileProvider, ProviderFactory};
     use reth_prune::PruneModes;
     use std::{str::FromStr, sync::Arc};
-    use tn_types::{adiri_genesis, Consensus};
+    use tn_types::{adiri_genesis, max_worker_block_gas, Consensus};
     use tracing::debug;
 
     /// Return the next valid block
@@ -200,6 +200,7 @@ mod tests {
     /// updating accounts to fund in `adiri_genesis_raw` These new values can be obtained using
     /// `tn-block-builder::tests::test_make_block`
     fn next_valid_sealed_header() -> SealedHeader {
+        let timestamp = 1701790139;
         // sealed header
         //
         // intentionally used hard-coded values
@@ -221,10 +222,10 @@ mod tests {
                 logs_bloom: Bloom::default(),
                 difficulty: U256::ZERO,
                 number: 1,
-                gas_limit: 30_000_000,
+                gas_limit: max_worker_block_gas(timestamp),
                 gas_used: 3_000_000, /* TxFactory sets limit to 1_000_000 * 3txs
                                       * timestamp: 1701790139, */
-                timestamp: 1701790139,
+                timestamp,
                 mix_hash: B256::ZERO,
                 nonce: 0,
                 base_fee_per_gas: Some(7),
@@ -250,7 +251,7 @@ mod tests {
 
     /// Create an instance of block validator for tests.
     async fn test_types() -> TestTools {
-        test_types_int(1_000_000, 30_000_000).await
+        test_types_int(1_000_000, max_worker_block_gas(0)).await
     }
 
     /// Create an instance of block validator for tests.
@@ -481,7 +482,7 @@ mod tests {
         let big_input = vec![1u8; 1_000_000];
 
         // create giant tx
-        let max_gas = 30_000_000;
+        let max_gas = max_worker_block_gas(0);
         let giant_tx = tx_factory.create_explicit_eip1559(
             Some(chain.chain.id()),
             Some(0),                      // make this first tx in block 1

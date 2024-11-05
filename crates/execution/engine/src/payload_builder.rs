@@ -24,7 +24,7 @@ use reth_revm::{
 };
 use reth_trie::HashedPostState;
 use std::sync::Arc;
-use tn_types::{BuildArguments, TNPayload, TNPayloadAttributes, WorkerBlock};
+use tn_types::{max_worker_block_gas, BuildArguments, TNPayload, TNPayloadAttributes, WorkerBlock};
 use tracing::{debug, error, info, warn};
 
 /// Execute output from consensus to extend the canonical chain.
@@ -50,7 +50,6 @@ where
 
     // capture values from consensus output for full execution
     let output_digest: B256 = output.digest().into();
-    //let sealed_blocks_with_senders = output.sealed_blocks_from_blocks()?;
     let worker_blocks = output.flatten_worker_blocks();
     let ommers = output.ommers();
 
@@ -63,7 +62,6 @@ where
 
     // assert vecs match
     debug_assert_eq!(
-        //sealed_blocks_with_senders.len(),
         worker_blocks.len(),
         output.block_digests.len(),
         "uneven number of sealed blocks from batches and batch digests"
@@ -119,12 +117,12 @@ where
                 output.next_block_digest().ok_or(TnEngineError::NextBlockDigestMissing)?;
             // use batch's base fee, gas limit, and withdrawals
             let base_fee_per_gas = block.base_fee_per_gas.unwrap_or_default();
-            let gas_limit = 30_000_000; //block.gas_limit;
+            let gas_limit = max_worker_block_gas(block.timestamp);
 
             // apply XOR bitwise operator with worker's digest to ensure unique mixed hash per block
             // for round
             let mix_hash = output_digest ^ block.digest();
-            let withdrawals = Withdrawals::new(vec![]); //block.withdrawals.clone().unwrap_or_else(|| Withdrawals::new(vec![]));
+            let withdrawals = Withdrawals::new(vec![]);
             let payload_attributes = TNPayloadAttributes::new(
                 canonical_header,
                 ommers.clone(),
@@ -207,7 +205,6 @@ fn build_block_from_batch_payload<EvmConfig, Provider>(
     payload: TNPayload,
     provider: &Provider,
     chain_spec: Arc<ChainSpec>,
-    //batch_block: SealedBlockWithSenders,
     batch_block: WorkerBlock,
 ) -> EngineResult<SealedBlockWithSenders>
 where
@@ -269,6 +266,8 @@ where
     // )
     // .map_err(|err| PayloadBuilderError::Internal(err.into()))?;
 
+    // TODO: parallelize tx recovery when it's worth it (see TransactionSigned::recover_signers())
+
     for tx in batch_block.transactions {
         //txs {
         // // TODO: support blob gas with cancun genesis hardfork
@@ -291,8 +290,8 @@ where
         let tx = if let Some(signer) = tx.recover_signer() {
             tx.with_signer(signer)
         } else {
-            warn!(target: "engine", "Could not recover signer for {tx:?}");
-            continue;
+            error!(target: "engine", "Could not recover signer for {tx:?}");
+            return Err(TnEngineError::MissingSigner);
         };
         let env = EnvWithHandlerCfg::new_with_cfg_env(
             cfg.clone(),
