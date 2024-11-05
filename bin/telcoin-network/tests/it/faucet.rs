@@ -11,7 +11,7 @@ use crate::util::{
     ensure_account_balance_infinite_loop, get_contract_state_for_genesis, spawn_local_testnet,
     IT_TEST_MUTEX,
 };
-use alloy::{network::EthereumWallet, providers::ProviderBuilder, sol, hex, sol_types::SolValue};
+use alloy::{hex, network::EthereumWallet, providers::ProviderBuilder, sol, sol_types::SolValue};
 use futures::{stream::FuturesUnordered, StreamExt};
 use gcloud_sdk::{
     google::cloud::kms::v1::{
@@ -21,6 +21,7 @@ use gcloud_sdk::{
 };
 use jsonrpsee::{core::client::ClientT, http_client::HttpClientBuilder, rpc_params};
 use k256::{elliptic_curve::sec1::ToEncodedPoint, pkcs8::DecodePublicKey, PublicKey as PubKey};
+use narwhal_test_utils::TransactionFactory;
 use reth::tasks::TaskManager;
 use reth_chainspec::ChainSpec;
 use reth_primitives::{public_key_to_address, Address, GenesisAccount, B256, U256};
@@ -28,7 +29,6 @@ use reth_tracing::init_test_tracing;
 use secp256k1::PublicKey;
 use std::{str::FromStr, sync::Arc, time::Duration};
 use tn_types::{adiri_genesis, fetch_file_content, ContractStandardJson};
-use narwhal_test_utils::TransactionFactory;
 use tokio::{runtime::Handle, task::JoinHandle, time::timeout};
 use tracing::{debug, info};
 
@@ -163,7 +163,7 @@ async fn test_faucet_transfers_tel_and_xyz_with_google_kms_e2e() -> eyre::Result
         serde_json::from_str(&proxy_json).expect("json parsing failure");
     let proxy_initcode =
         hex::decode(proxy_contract.bytecode.object).expect("invalid bytecode hexstring");
-    let proxy_bytecode = 
+    let proxy_bytecode =
         hex::decode(proxy_contract.deployed_bytecode.object).expect("invalid bytecode hexstring");
     let faucet_create_data = [proxy_initcode.clone().as_slice(), &constructor_params[..]].concat();
 
@@ -279,14 +279,14 @@ async fn test_faucet_transfers_tel_and_xyz_with_google_kms_e2e() -> eyre::Result
         ),
         (
             stablecoin_address,
-            GenesisAccount::default()
-                .with_code(Some(proxy_bytecode.clone().into()))
-                .with_storage(Some(
+            GenesisAccount::default().with_code(Some(proxy_bytecode.clone().into())).with_storage(
+                Some(
                     execution_storage_stablecoin
                         .iter()
                         .map(|(k, v)| ((*k).into(), v.present_value.into()))
                         .collect(),
-                )),
+                ),
+            ),
         ),
         (faucet_impl_address, GenesisAccount::default().with_code(Some(faucet_bytecode.into()))),
         // convert U256 HashMap to B256 for BTreeMap
