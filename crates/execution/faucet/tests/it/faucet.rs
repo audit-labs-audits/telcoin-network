@@ -36,7 +36,6 @@ use narwhal_worker::{
     quorum_waiter::{QuorumWaiterError, QuorumWaiterTrait},
     BlockProvider,
 };
-use reth::revm::interpreter::Contract;
 use reth_chainspec::ChainSpec;
 use reth_primitives::{
     alloy_primitives::U160, public_key_to_address, Address, GenesisAccount, SealedHeader, B256,
@@ -654,7 +653,8 @@ async fn test_faucet_transfers_stablecoin_with_google_kms() -> eyre::Result<()> 
         .request::<String, _>("faucet_transfer", rpc_params![user_address, contract_address])
         .await;
 
-    Ok(assert!(ok_dup_request.is_ok()))
+    assert!(ok_dup_request.is_ok());
+    Ok(())
 }
 
 /// Keys obtained from google kms calling:

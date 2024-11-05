@@ -656,9 +656,9 @@ pub fn fetch_file_content(relative_path: PathBuf) -> String {
         std::env::var("CARGO_MANIFEST_DIR").expect("Missing CARGO_MANIFEST_DIR!"),
     );
     file_path.push(relative_path);
-    let content = fs::read_to_string(file_path).expect("unable to read file");
+    
 
-    content
+    fs::read_to_string(file_path).expect("unable to read file")
 }
 
 #[cfg(test)]

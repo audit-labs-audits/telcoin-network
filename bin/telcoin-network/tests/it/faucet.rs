@@ -27,16 +27,8 @@ use reth_primitives::{public_key_to_address, Address, GenesisAccount, B256, U256
 use reth_tracing::init_test_tracing;
 use secp256k1::PublicKey;
 use std::{str::FromStr, sync::Arc, time::Duration};
-use tn_types::{
-    adiri_genesis,
-    test_utils::{
-        contract_artifacts::{
-            ERC1967PROXY_INITCODE, ERC1967PROXY_RUNTIMECODE, STABLECOINMANAGER_RUNTIMECODE,
-            STABLECOIN_RUNTIMECODE,
-        },
-        TransactionFactory,
-    },
-};
+use tn_types::adiri_genesis;
+use narwhal_test_utils::TransactionFactory;
 use tokio::{runtime::Handle, task::JoinHandle, time::timeout};
 use tracing::{debug, info};
 
