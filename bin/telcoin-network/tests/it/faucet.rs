@@ -112,11 +112,11 @@ async fn test_faucet_transfers_tel_and_xyz_with_google_kms_e2e() -> eyre::Result
             (factory_address, GenesisAccount::default().with_balance(U256::MAX)),
             (
                 faucet_impl_address,
-                GenesisAccount::default().with_code(Some(faucet_bytecode.into())),
+                GenesisAccount::default().with_code(Some(faucet_bytecode.clone().into())),
             ),
             (
                 stablecoin_impl_address,
-                GenesisAccount::default().with_code(Some(stablecoin_impl_bytecode.into())),
+                GenesisAccount::default().with_code(Some(stablecoin_impl_bytecode.clone().into())),
             ),
         ]
         .into_iter(),
@@ -280,7 +280,7 @@ async fn test_faucet_transfers_tel_and_xyz_with_google_kms_e2e() -> eyre::Result
         (
             stablecoin_address,
             GenesisAccount::default()
-                .with_code(Some(proxy_bytecode.into()))
+                .with_code(Some(proxy_bytecode.clone().into()))
                 .with_storage(Some(
                     execution_storage_stablecoin
                         .iter()
