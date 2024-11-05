@@ -21,10 +21,6 @@ use jsonrpsee::{core::client::ClientT, rpc_params};
 use k256::{elliptic_curve::sec1::ToEncodedPoint, pkcs8::DecodePublicKey, PublicKey as PubKey};
 use narwhal_network::client::NetworkClient;
 use narwhal_test_utils::{
-    // contract_artifacts::{
-    //     ERC1967PROXY_INITCODE, ERC1967PROXY_RUNTIMECODE, STABLECOINMANAGER_RUNTIMECODE,
-    //     STABLECOIN_RUNTIMECODE,
-    // },
     default_test_execution_node,
     execution_outcome_for_tests,
     faucet_test_execution_node,
@@ -125,7 +121,6 @@ async fn test_faucet_transfers_tel_with_google_kms() -> eyre::Result<()> {
 
     // extend genesis accounts to fund factory_address and etch impl bytecode on faucet_impl
     let faucet_impl_address = Address::random();
-    // let faucet_bytecode = *STABLECOINMANAGER_RUNTIMECODE;
     let faucet_json = fetch_file_content(
         "../../../tn-contracts/out/StablecoinManager.sol/StablecoinManager.json".into(),
     );
