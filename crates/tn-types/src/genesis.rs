@@ -725,7 +725,7 @@ mod tests {
             Address::from_hex("0x07e17e17e17e17e17e17e17e17e17e17e17e17e1")
                 .expect("failed to parse address");
         let proxy_standard_json =
-            fetch_file_content("../../tn-contracts/out/ERC1967Proxy/ERC1967Proxy.sol".into());
+            fetch_file_content("../../tn-contracts/out/ERC1967Proxy.sol/ERC1967Proxy.json".into());
         let proxy_contract: ContractStandardJson =
             serde_json::from_str(&proxy_standard_json).expect("failed to parse json");
         let proxy_bytecode = hex::decode(proxy_contract.deployed_bytecode.object)
