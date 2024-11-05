@@ -2,7 +2,12 @@
 mod tests {
     use crate::util::{get_contract_state_for_genesis, spawn_local_testnet};
     use alloy::{
-        hex, network::EthereumWallet, primitives::{FixedBytes, Uint}, providers::ProviderBuilder, sol, sol_types::SolValue
+        hex,
+        network::EthereumWallet,
+        primitives::{FixedBytes, Uint},
+        providers::ProviderBuilder,
+        sol,
+        sol_types::SolValue,
     };
     use fastcrypto::traits::{KeyPair, ToFromBytes};
     use jsonrpsee::{core::client::ClientT, http_client::HttpClientBuilder, rpc_params};
@@ -15,7 +20,7 @@ mod tests {
     use reth_chainspec::ChainSpec;
     use std::{sync::Arc, time::Duration};
     use tn_types::{
-        adiri_genesis, ContractStandardJson, fetch_file_content, BlsKeypair, NetworkKeypair
+        adiri_genesis, fetch_file_content, BlsKeypair, ContractStandardJson, NetworkKeypair,
     };
     use tokio::runtime::Handle;
 
@@ -25,9 +30,13 @@ mod tests {
         let tmp_chain: Arc<ChainSpec> = Arc::new(network_genesis.into());
 
         // fetch registry impl bytecode from compiled output in tn-contracts
-        let registry_standard_json = fetch_file_content("../../tn-contracts/out/ConsensusRegistry.sol/ConsensusRegistry.json".into());
-        let registry_contract: ContractStandardJson = serde_json::from_str(&registry_standard_json).expect("json parsing failure");
-        let registry_impl_bytecode = hex::decode(registry_contract.deployed_bytecode.object).expect("invalid bytecode hexstring");
+        let registry_standard_json = fetch_file_content(
+            "../../tn-contracts/out/ConsensusRegistry.sol/ConsensusRegistry.json".into(),
+        );
+        let registry_contract: ContractStandardJson =
+            serde_json::from_str(&registry_standard_json).expect("json parsing failure");
+        let registry_impl_bytecode = hex::decode(registry_contract.deployed_bytecode.object)
+            .expect("invalid bytecode hexstring");
         let registry_impl_address = Address::random();
         let mut tx_factory = TransactionFactory::new();
         let factory_address = tx_factory.address();
@@ -38,7 +47,8 @@ mod tests {
                 (factory_address, GenesisAccount::default().with_balance(U256::MAX)),
                 (
                     registry_impl_address,
-                    GenesisAccount::default().with_code(Some(registry_impl_bytecode.clone().into())),
+                    GenesisAccount::default()
+                        .with_code(Some(registry_impl_bytecode.clone().into())),
                 ),
             ]
             .into_iter(),
@@ -54,9 +64,12 @@ mod tests {
         );
 
         // fetch and construct registry proxy deployment transaction
-        let registry_proxy_json = fetch_file_content("../../tn-contracts/out/ERC1967Proxy.sol/ERC1967Proxy.json".into());
-        let registry_proxy_contract: ContractStandardJson = serde_json::from_str(&registry_proxy_json).expect("json parsing failure");
-        let registry_proxy_initcode = hex::decode(registry_proxy_contract.bytecode.object).expect("invalid bytecode hexstring");
+        let registry_proxy_json =
+            fetch_file_content("../../tn-contracts/out/ERC1967Proxy.sol/ERC1967Proxy.json".into());
+        let registry_proxy_contract: ContractStandardJson =
+            serde_json::from_str(&registry_proxy_json).expect("json parsing failure");
+        let registry_proxy_initcode = hex::decode(registry_proxy_contract.bytecode.object)
+            .expect("invalid bytecode hexstring");
         let constructor_params = (registry_impl_address, Bytes::default()).abi_encode_params();
         let registry_create_data =
             [registry_proxy_initcode.as_slice(), &constructor_params[..]].concat();
@@ -171,9 +184,12 @@ mod tests {
             .get(&registry_proxy_address)
             .expect("registry address missing from bundle state")
             .storage;
-        let proxy_json = fetch_file_content("../../tn-contracts/out/ERC1967Proxy.sol/ERC1967Proxy.json".into());
-        let proxy_contract: ContractStandardJson = serde_json::from_str(&proxy_json).expect("json parsing failure");
-        let proxy_bytecode = hex::decode(proxy_contract.deployed_bytecode.object).expect("invalid bytecode hexstring");
+        let proxy_json =
+            fetch_file_content("../../tn-contracts/out/ERC1967Proxy.sol/ERC1967Proxy.json".into());
+        let proxy_contract: ContractStandardJson =
+            serde_json::from_str(&proxy_json).expect("json parsing failure");
+        let proxy_bytecode = hex::decode(proxy_contract.deployed_bytecode.object)
+            .expect("invalid bytecode hexstring");
 
         // perform canonical adiri chain genesis with fetched storage
         let genesis_accounts = vec![
@@ -183,14 +199,14 @@ mod tests {
             ),
             (
                 registry_proxy_address,
-                GenesisAccount::default()
-                    .with_code(Some(proxy_bytecode.into()))
-                    .with_storage(Some(
+                GenesisAccount::default().with_code(Some(proxy_bytecode.into())).with_storage(
+                    Some(
                         execution_storage_registry
                             .iter()
                             .map(|(k, v)| ((*k).into(), v.present_value.into()))
                             .collect(),
-                    )),
+                    ),
+                ),
             ),
         ];
         let real_genesis = adiri_genesis();

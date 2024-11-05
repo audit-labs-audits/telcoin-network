@@ -8,7 +8,8 @@
 //! then submits the transaction to the RPC Transaction Pool for the next batch.
 
 use alloy::{
-    hex, sol, sol_types::{SolType, SolValue}
+    hex, sol,
+    sol_types::{SolType, SolValue},
 };
 use gcloud_sdk::{
     google::cloud::kms::v1::{
@@ -24,7 +25,9 @@ use narwhal_test_utils::{
     //     ERC1967PROXY_INITCODE, ERC1967PROXY_RUNTIMECODE, STABLECOINMANAGER_RUNTIMECODE,
     //     STABLECOIN_RUNTIMECODE,
     // },
-    default_test_execution_node, execution_outcome_for_tests, faucet_test_execution_node,
+    default_test_execution_node,
+    execution_outcome_for_tests,
+    faucet_test_execution_node,
     TransactionFactory,
 };
 use narwhal_typed_store::open_db;
@@ -47,7 +50,10 @@ use secp256k1::PublicKey;
 use std::{str::FromStr, sync::Arc, time::Duration};
 use tempfile::TempDir;
 use tn_faucet::Drip;
-use tn_types::{adiri_genesis, error::BlockSealError, fetch_file_content, ContractStandardJson, TransactionSigned, WorkerBlock};
+use tn_types::{
+    adiri_genesis, error::BlockSealError, fetch_file_content, ContractStandardJson,
+    TransactionSigned, WorkerBlock,
+};
 use tokio::{
     sync::{mpsc::Sender, oneshot},
     time,
@@ -121,9 +127,13 @@ async fn test_faucet_transfers_tel_with_google_kms() -> eyre::Result<()> {
     // extend genesis accounts to fund factory_address and etch impl bytecode on faucet_impl
     let faucet_impl_address = Address::random();
     // let faucet_bytecode = *STABLECOINMANAGER_RUNTIMECODE;
-    let faucet_json = fetch_file_content("../../../tn-contracts/out/StablecoinManager.sol/StablecoinManager.json".into());
-    let faucet_contract: ContractStandardJson = serde_json::from_str(&faucet_json).expect("json parsing failure");
-    let faucet_bytecode = hex::decode(faucet_contract.deployed_bytecode.object).expect("invalid bytecode hexstring");
+    let faucet_json = fetch_file_content(
+        "../../../tn-contracts/out/StablecoinManager.sol/StablecoinManager.json".into(),
+    );
+    let faucet_contract: ContractStandardJson =
+        serde_json::from_str(&faucet_json).expect("json parsing failure");
+    let faucet_bytecode =
+        hex::decode(faucet_contract.deployed_bytecode.object).expect("invalid bytecode hexstring");
     let mut tx_factory = TransactionFactory::new();
     let factory_address = tx_factory.address();
     let tmp_genesis = tmp_genesis.extend_accounts(
@@ -170,10 +180,14 @@ async fn test_faucet_transfers_tel_with_google_kms() -> eyre::Result<()> {
     // construct create data for faucet proxy address
     let init_call = [&faucet_init_selector, &init_params[..]].concat();
     let constructor_params = (faucet_impl_address, init_call.clone()).abi_encode_params();
-    let proxy_json = fetch_file_content("../../../tn-contracts/out/ERC1967Proxy.sol/ERC1967Proxy.json".into());
-    let proxy_contract: ContractStandardJson = serde_json::from_str(&proxy_json).expect("json parsing failure");
-    let proxy_initcode = hex::decode(proxy_contract.bytecode.object).expect("invalid bytecode hexstring");
-    let proxy_bytecode = hex::decode(proxy_contract.deployed_bytecode.object).expect("invalid bytecode hexstring");
+    let proxy_json =
+        fetch_file_content("../../../tn-contracts/out/ERC1967Proxy.sol/ERC1967Proxy.json".into());
+    let proxy_contract: ContractStandardJson =
+        serde_json::from_str(&proxy_json).expect("json parsing failure");
+    let proxy_initcode =
+        hex::decode(proxy_contract.bytecode.object).expect("invalid bytecode hexstring");
+    let proxy_bytecode =
+        hex::decode(proxy_contract.deployed_bytecode.object).expect("invalid bytecode hexstring");
     let faucet_create_data = [proxy_initcode.as_slice(), &constructor_params[..]].concat();
 
     // construct `grantRole(faucet)` data
@@ -396,19 +410,25 @@ async fn test_faucet_transfers_stablecoin_with_google_kms() -> eyre::Result<()> 
         }
     );
 
-
     // set random addresses on which to etch contract bytecodes
     let faucet_impl_address = Address::random();
     let stablecoin_address = Address::random();
     // fetch bytecode attributes from compiled jsons in tn-contracts repo
-    let faucet_json = fetch_file_content("../../tn-contracts/out/StablecoinManager.sol/StablecoinManager.json".into());
-    let faucet_contract: ContractStandardJson = serde_json::from_str(&faucet_json).expect("json parsing failure");
-    let faucet_bytecode = hex::decode(faucet_contract.deployed_bytecode.object).expect("invalid bytecode hexstring");
-    let stablecoin_json = fetch_file_content("../../tn-contracts/out/Stablecoin.sol/Stablecoin.json".into());
-    let stablecoin_contract: ContractStandardJson = serde_json::from_str(&stablecoin_json).expect("json parsing failure");
-    let stablecoin_bytecode = hex::decode(stablecoin_contract.deployed_bytecode.object).expect("invalid bytecode hexstring");
+    let faucet_json = fetch_file_content(
+        "../../tn-contracts/out/StablecoinManager.sol/StablecoinManager.json".into(),
+    );
+    let faucet_contract: ContractStandardJson =
+        serde_json::from_str(&faucet_json).expect("json parsing failure");
+    let faucet_bytecode =
+        hex::decode(faucet_contract.deployed_bytecode.object).expect("invalid bytecode hexstring");
+    let stablecoin_json =
+        fetch_file_content("../../tn-contracts/out/Stablecoin.sol/Stablecoin.json".into());
+    let stablecoin_contract: ContractStandardJson =
+        serde_json::from_str(&stablecoin_json).expect("json parsing failure");
+    let stablecoin_bytecode = hex::decode(stablecoin_contract.deployed_bytecode.object)
+        .expect("invalid bytecode hexstring");
 
-    // extend genesis accounts to fund factory_address, and etch contract bytecodes 
+    // extend genesis accounts to fund factory_address, and etch contract bytecodes
     let mut tx_factory = TransactionFactory::new();
     let factory_address = tx_factory.address();
     let tmp_genesis = tmp_genesis.extend_accounts(
@@ -460,9 +480,12 @@ async fn test_faucet_transfers_stablecoin_with_google_kms() -> eyre::Result<()> 
     // construct create data for faucet proxy address
     let init_call = [&faucet_init_selector, &init_params[..]].concat();
     let constructor_params = (faucet_impl_address, init_call.clone()).abi_encode_params();
-    let proxy_json = fetch_file_content("../../../tn-contracts/out/ERC1967Proxy.sol/ERC1967Proxy.json".into());
-    let proxy_contract: ContractStandardJson = serde_json::from_str(&proxy_json).expect("json parsing failure");
-    let proxy_initcode = hex::decode(proxy_contract.bytecode.object).expect("invalid bytecode hexstring");
+    let proxy_json =
+        fetch_file_content("../../../tn-contracts/out/ERC1967Proxy.sol/ERC1967Proxy.json".into());
+    let proxy_contract: ContractStandardJson =
+        serde_json::from_str(&proxy_json).expect("json parsing failure");
+    let proxy_initcode =
+        hex::decode(proxy_contract.bytecode.object).expect("invalid bytecode hexstring");
     let faucet_create_data = [proxy_initcode.as_slice(), &constructor_params[..]].concat();
 
     // construct `grantRole(faucet_role)` data
@@ -526,7 +549,8 @@ async fn test_faucet_transfers_stablecoin_with_google_kms() -> eyre::Result<()> 
         .expect("faucet address missing from bundle state")
         .storage;
 
-    let faucet_proxy_bytecode = hex::decode(proxy_contract.deployed_bytecode.object).expect("invalid bytecode hexstring");
+    let faucet_proxy_bytecode =
+        hex::decode(proxy_contract.deployed_bytecode.object).expect("invalid bytecode hexstring");
 
     // real genesis: configure genesis accounts for proxy deployment & faucet_role
     let genesis_accounts = vec![

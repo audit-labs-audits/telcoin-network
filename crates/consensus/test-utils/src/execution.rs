@@ -457,7 +457,7 @@ impl TransactionFactory {
     ) -> TransactionSigned {
         let gas_limit = match gas_limit {
             Some(limit) => limit,
-            None => 1_000_000
+            None => 1_000_000,
         };
         let tx_kind = match to {
             Some(address) => TxKind::Call(address),
@@ -470,7 +470,7 @@ impl TransactionFactory {
             nonce: self.nonce,
             max_priority_fee_per_gas: 0,
             max_fee_per_gas: gas_price,
-            gas_limit: gas_limit,
+            gas_limit,
             to: tx_kind,
             value,
             input,

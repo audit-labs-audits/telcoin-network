@@ -5,7 +5,8 @@ use narwhal_storage::NodeStorage;
 use narwhal_typed_store::traits::Database;
 use parking_lot::Mutex;
 use tn_types::{
-    Authority, Committee, Config, ConfigFmt, ConfigTrait, Noticer, Notifier, Parameters, TelcoinDirs, WorkerCache
+    Authority, Committee, Config, ConfigFmt, ConfigTrait, Noticer, Notifier, Parameters,
+    TelcoinDirs, WorkerCache,
 };
 
 use crate::KeyConfig;
@@ -39,11 +40,13 @@ where
         key_config: KeyConfig,
     ) -> eyre::Result<Self> {
         // load committee from file
-        let mut committee: Committee = Config::load_from_path(tn_datadir.committee_path(), ConfigFmt::YAML)?;
+        let mut committee: Committee =
+            Config::load_from_path(tn_datadir.committee_path(), ConfigFmt::YAML)?;
         committee.load();
         tracing::info!(target: "telcoin::consensus_config", "committee loaded");
         // TODO: make worker cache part of committee?
-        let worker_cache: WorkerCache = Config::load_from_path(tn_datadir.worker_cache_path(), ConfigFmt::YAML)?;
+        let worker_cache: WorkerCache =
+            Config::load_from_path(tn_datadir.worker_cache_path(), ConfigFmt::YAML)?;
         // TODO: this could be a separate method on `Committee` to have robust checks in place
         // - all public keys are unique
         // - thresholds / stake

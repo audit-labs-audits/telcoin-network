@@ -7,22 +7,40 @@
 
 use crate::{
     // test_utils::contract_artifacts::{CONSENSUSREGISTRY_RUNTIMECODE, ERC1967PROXY_RUNTIMECODE},
-    verify_proof_of_possession, BlsPublicKey, BlsSignature, Committee, CommitteeBuilder, Config,
-    ConfigFmt, ConfigTrait, Epoch, Intent, IntentMessage, Multiaddr, NetworkPublicKey, PrimaryInfo,
-    TelcoinDirs, ValidatorSignature, WorkerCache, WorkerIndex,
+    verify_proof_of_possession,
+    BlsPublicKey,
+    BlsSignature,
+    Committee,
+    CommitteeBuilder,
+    Config,
+    ConfigFmt,
+    ConfigTrait,
+    Epoch,
+    Intent,
+    IntentMessage,
+    Multiaddr,
+    NetworkPublicKey,
+    PrimaryInfo,
+    TelcoinDirs,
+    ValidatorSignature,
+    WorkerCache,
+    WorkerIndex,
 };
-use alloy::{hex::{self, FromHex}, primitives::FixedBytes};
+use alloy::{
+    hex::{self, FromHex},
+    primitives::FixedBytes,
+};
 use eyre::Context;
 use fastcrypto::traits::{InsecureDefault, Signer, ToFromBytes};
 use reth_chainspec::ChainSpec;
 use reth_primitives::{
-    constants::MIN_PROTOCOL_BASE_FEE, keccak256, Address, Genesis, GenesisAccount
+    constants::MIN_PROTOCOL_BASE_FEE, keccak256, Address, Genesis, GenesisAccount,
 };
 use serde::{Deserialize, Serialize};
 use std::{
     collections::BTreeMap,
     ffi::OsStr,
-    fmt::{Display, Formatter}, 
+    fmt::{Display, Formatter},
     fs,
     path::{Path, PathBuf},
     sync::Arc,
@@ -188,10 +206,9 @@ impl NetworkGenesis {
     /// Read output file from Solidity GenerateConsensusRegistryStorage utility
     /// to fetch storage configuration for ConsensusRegistry at genesis
     pub fn construct_registry_genesis_accounts(&mut self, registry_cfg_path: Option<PathBuf>) {
-        // make this match statement result in a variable assignment to 
         let path = match registry_cfg_path {
             Some(path) => path,
-            None => "../../tn-contracts/deployments/consensus-registry-storage.yaml".into()
+            None => "../../tn-contracts/deployments/consensus-registry-storage.yaml".into(),
         };
         let registry_storage_yaml = fetch_file_content(path);
         let registry_storage_cfg: BTreeMap<String, String> =
@@ -211,18 +228,23 @@ impl NetworkGenesis {
         }
 
         let registry_impl = Address::random();
-        let registry_standard_json = fetch_file_content("../../tn-contracts/out/ConsensusRegistry.sol/ConsensusRegistry.json".into());
-        let registry_contract: ContractStandardJson = serde_json::from_str(&registry_standard_json).expect("json parsing failure");
-        let registry_bytecode = hex::decode(registry_contract.deployed_bytecode.object).expect("invalid bytecode hexstring");
-        let registry_proxy = Address::from_hex("0x07e17e17e17e17e17e17e17e17e17e17e17e17e1").expect("invalid hex address");
-        let proxy_standard_json = fetch_file_content("../../tn-contracts/out/ERC1967Proxy.sol/ERC1967Proxy.json".into());
-        let proxy_contract: ContractStandardJson = serde_json::from_str(&proxy_standard_json).expect("json parsing failure");
-        let proxy_bytecode = hex::decode(proxy_contract.deployed_bytecode.object).expect("invalid bytecode hexstring");
+        let registry_standard_json = fetch_file_content(
+            "../../tn-contracts/out/ConsensusRegistry.sol/ConsensusRegistry.json".into(),
+        );
+        let registry_contract: ContractStandardJson =
+            serde_json::from_str(&registry_standard_json).expect("json parsing failure");
+        let registry_bytecode = hex::decode(registry_contract.deployed_bytecode.object)
+            .expect("invalid bytecode hexstring");
+        let registry_proxy = Address::from_hex("0x07e17e17e17e17e17e17e17e17e17e17e17e17e1")
+            .expect("invalid hex address");
+        let proxy_standard_json =
+            fetch_file_content("../../tn-contracts/out/ERC1967Proxy.sol/ERC1967Proxy.json".into());
+        let proxy_contract: ContractStandardJson =
+            serde_json::from_str(&proxy_standard_json).expect("json parsing failure");
+        let proxy_bytecode = hex::decode(proxy_contract.deployed_bytecode.object)
+            .expect("invalid bytecode hexstring");
         let registry_genesis_accounts = vec![
-            (
-                registry_impl,
-                GenesisAccount::default().with_code(Some(registry_bytecode.into())),
-            ),
+            (registry_impl, GenesisAccount::default().with_code(Some(registry_bytecode.into()))),
             (
                 registry_proxy,
                 GenesisAccount::default()
@@ -619,18 +641,20 @@ impl PubkeyFlags {
 
 #[derive(Deserialize)]
 pub struct BytecodeObject {
-    pub object: String
+    pub object: String,
 }
 
 #[derive(Deserialize)]
 pub struct ContractStandardJson {
     pub bytecode: BytecodeObject,
     #[serde(rename = "deployedBytecode")]
-    pub deployed_bytecode: BytecodeObject
+    pub deployed_bytecode: BytecodeObject,
 }
 
 pub fn fetch_file_content(relative_path: PathBuf) -> String {
-    let mut file_path = std::path::PathBuf::from(std::env::var("CARGO_MANIFEST_DIR").expect("Missing CARGO_MANIFEST_DIR!"));
+    let mut file_path = std::path::PathBuf::from(
+        std::env::var("CARGO_MANIFEST_DIR").expect("Missing CARGO_MANIFEST_DIR!"),
+    );
     file_path.push(relative_path);
     let content = fs::read_to_string(file_path).expect("unable to read file");
 
@@ -641,7 +665,9 @@ pub fn fetch_file_content(relative_path: PathBuf) -> String {
 mod tests {
     use super::NetworkGenesis;
     use crate::{
-        adiri_chain_spec, fetch_file_content, generate_proof_of_possession, genesis::ContractStandardJson, BlsKeypair, Multiaddr, NetworkKeypair, PrimaryInfo, TelcoinDirs, ValidatorInfo, WorkerIndex, WorkerInfo
+        adiri_chain_spec, fetch_file_content, generate_proof_of_possession,
+        genesis::ContractStandardJson, BlsKeypair, Multiaddr, NetworkKeypair, PrimaryInfo,
+        TelcoinDirs, ValidatorInfo, WorkerIndex, WorkerInfo,
     };
     use alloy::hex::{self, FromHex};
     use fastcrypto::traits::KeyPair;
@@ -699,9 +725,12 @@ mod tests {
         let expected_registry_addr =
             Address::from_hex("0x07e17e17e17e17e17e17e17e17e17e17e17e17e1")
                 .expect("failed to parse address");
-        let proxy_standard_json = fetch_file_content("../../tn-contracts/out/ERC1967Proxy/ERC1967Proxy.sol".into());
-        let proxy_contract: ContractStandardJson = serde_json::from_str(&proxy_standard_json).expect("failed to parse json");
-        let proxy_bytecode = hex::decode(proxy_contract.deployed_bytecode.object).expect("invalid bytecode hexstring");
+        let proxy_standard_json =
+            fetch_file_content("../../tn-contracts/out/ERC1967Proxy/ERC1967Proxy.sol".into());
+        let proxy_contract: ContractStandardJson =
+            serde_json::from_str(&proxy_standard_json).expect("failed to parse json");
+        let proxy_bytecode = hex::decode(proxy_contract.deployed_bytecode.object)
+            .expect("invalid bytecode hexstring");
         match loaded_network_genesis.chain.genesis.alloc.get(&expected_registry_addr) {
             Some(account) => {
                 // check registry bytecode matches expected value
