@@ -302,8 +302,8 @@ mod tests {
     use reth_blockchain_tree::BlockchainTreeViewer;
     use reth_chainspec::ChainSpec;
     use reth_primitives::{
-        constants::MIN_PROTOCOL_BASE_FEE, proofs, Address, BlockHashOrNumber, B256,
-        EMPTY_OMMER_ROOT_HASH, U256,
+        constants::MIN_PROTOCOL_BASE_FEE, Address, BlockHashOrNumber, B256, EMPTY_OMMER_ROOT_HASH,
+        U256,
     };
     use reth_provider::{BlockIdReader, BlockNumReader, BlockReader, TransactionVariant};
     use reth_tasks::TaskManager;
@@ -436,9 +436,6 @@ mod tests {
         assert_eq!(expected_block.nonce, sub_dag_index);
         assert_eq!(expected_block.nonce, consensus_output.nonce());
 
-        // ommers contains headers from all batches from consensus output
-        let expected_ommers = consensus_output.ommers();
-        assert_eq!(expected_block.ommers, expected_ommers);
         // ommers root
         assert_eq!(expected_block.header.ommers_hash, EMPTY_OMMER_ROOT_HASH,);
         // timestamp
@@ -540,7 +537,7 @@ mod tests {
             debug!("{idx}\n{:?}\n", batch);
 
             // store values for assertions later
-            let header = batch.sealed_header().clone();
+            let header = batch.header().seal_slow();
             batch_headers.push(header);
         }
 
@@ -560,7 +557,7 @@ mod tests {
             debug!("{idx}\n{:?}\n", batch);
 
             // store values for assertions later
-            let header = batch.sealed_header().clone();
+            let header = batch.header().seal_slow();
             batch_headers.push(header);
         }
         // Reload all_batches so we can calculate mix_hash properly later.
@@ -743,11 +740,6 @@ mod tests {
             assert_eq!(&block.nonce, expected_subdag_index);
             assert_eq!(block.nonce, expected_output.nonce());
 
-            // ommers root
-            assert_eq!(
-                block.header.ommers_hash,
-                proofs::calculate_ommers_root(&expected_output.ommers())
-            );
             // timestamp
             assert_eq!(block.timestamp, expected_output.committed_at());
             // parent beacon block root is output digest
@@ -865,7 +857,7 @@ mod tests {
             debug!("{idx}\n{:?}\n", batch);
 
             // store values for assertions later
-            let header = batch.sealed_header().clone();
+            let header = batch.header().seal_slow();
             batch_headers.push(header);
         }
 
@@ -885,7 +877,7 @@ mod tests {
             debug!("{idx}\n{:?}\n", batch);
 
             // store values for assertions later
-            let header = batch.sealed_header().clone();
+            let header = batch.header().seal_slow();
             batch_headers.push(header);
         }
         // Reload all_batches so we can calculate mix_hash properly later.
@@ -1109,11 +1101,6 @@ mod tests {
             assert_eq!(&block.nonce, expected_subdag_index);
             assert_eq!(block.nonce, expected_output.nonce());
 
-            // ommers root
-            assert_eq!(
-                block.header.ommers_hash,
-                proofs::calculate_ommers_root(&expected_output.ommers())
-            );
             // timestamp
             assert_eq!(block.timestamp, expected_output.committed_at());
             // parent beacon block root is output digest
@@ -1203,7 +1190,7 @@ mod tests {
             debug!("{idx}\n{:?}\n", batch);
 
             // store values for assertions later
-            let header = batch.sealed_header().clone();
+            let header = batch.header().seal_slow();
             batch_headers.push(header);
         }
 
@@ -1223,7 +1210,7 @@ mod tests {
             debug!("{idx}\n{:?}\n", batch);
 
             // store values for assertions later
-            let header = batch.sealed_header().clone();
+            let header = batch.header().seal_slow();
             batch_headers.push(header);
         }
 

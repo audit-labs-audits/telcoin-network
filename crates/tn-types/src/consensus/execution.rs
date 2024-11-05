@@ -114,10 +114,6 @@ impl TNPayload {
 pub struct TNPayloadAttributes {
     /// The previous canonical block's number and hash.
     pub parent_header: SealedHeader,
-    /// Ommers on TN are all the hashes of batches.
-    pub ommers: Vec<Header>,
-    /// Hash of all ommers in this output from consensus.
-    pub ommers_root: B256,
     /// The beneficiary from the round of consensus.
     pub beneficiary: Address,
     /// The index of the subdag, which equates to the round of consensus.
@@ -157,8 +153,6 @@ impl TNPayloadAttributes {
     #[allow(clippy::too_many_arguments)]
     pub fn new(
         parent_header: SealedHeader,
-        ommers: Vec<Header>,
-        ommers_root: B256,
         batch_index: u64,
         batch_digest: B256,
         output: &ConsensusOutput,
@@ -170,8 +164,6 @@ impl TNPayloadAttributes {
     ) -> Self {
         Self {
             parent_header,
-            ommers,
-            ommers_root,
             beneficiary: output.beneficiary(),
             nonce: output.nonce(),
             batch_index,

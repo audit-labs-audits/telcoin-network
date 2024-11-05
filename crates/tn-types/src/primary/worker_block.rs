@@ -118,10 +118,11 @@ impl WorkerBlock {
         total_possible_gas
     }
 
-    /// Returns a sealed header.
-    /// This is a synthetic sealed header with a lot of default values.
-    /// It is NOT an actual block on the chain and has limited utility.
-    pub fn sealed_header(&self) -> SealedHeader {
+    /// Returns a Header.
+    ///
+    /// This is a synthetic Header with default values for things missing from WorkerBlock.
+    /// It is NOT an actual header on the chain and has limited utility (mostly for testing or possibly for use with Reth).
+    pub fn header(&self) -> Header {
         let transactions_root = proofs::calculate_transaction_root(&self.transactions);
 
         let total_possible_gas = self.total_possible_gas();
@@ -132,7 +133,7 @@ impl WorkerBlock {
         // - calculated transaction root
         // - all other roots are defaults
         // - use ZERO for hashes
-        let header = Header {
+        Header {
             parent_hash: self.parent_hash,
             ommers_hash: EMPTY_OMMER_ROOT_HASH,
             beneficiary: self.beneficiary,
@@ -146,7 +147,7 @@ impl WorkerBlock {
             nonce: 0,
             base_fee_per_gas: self.base_fee_per_gas,
             number: 1,
-            gas_limit: max_worker_block_gas(self.timestamp), // gas limit in wei - just a default
+            gas_limit: max_worker_block_gas(self.timestamp), // gas limit in wei
             difficulty: U256::ZERO,
             gas_used: total_possible_gas,
             extra_data: Bytes::default(),
@@ -154,8 +155,7 @@ impl WorkerBlock {
             blob_gas_used: None,
             excess_blob_gas: None,
             requests_root: None,
-        };
-        header.seal_slow()
+        }
     }
 
     /// Returns the received at time if available.
