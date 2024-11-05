@@ -11,7 +11,7 @@ use crate::util::{
     ensure_account_balance_infinite_loop, get_contract_state_for_genesis, spawn_local_testnet,
     IT_TEST_MUTEX,
 };
-use alloy::{network::EthereumWallet, providers::ProviderBuilder, sol, sol_types::SolValue};
+use alloy::{network::EthereumWallet, providers::ProviderBuilder, sol, hex, sol_types::SolValue};
 use futures::{stream::FuturesUnordered, StreamExt};
 use gcloud_sdk::{
     google::cloud::kms::v1::{
