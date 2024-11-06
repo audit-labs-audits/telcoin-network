@@ -6,25 +6,9 @@
 //! adiri is the current name for multi-node testnet.
 
 use crate::{
-    // test_utils::contract_artifacts::{CONSENSUSREGISTRY_RUNTIMECODE, ERC1967PROXY_RUNTIMECODE},
-    verify_proof_of_possession,
-    BlsPublicKey,
-    BlsSignature,
-    Committee,
-    CommitteeBuilder,
-    Config,
-    ConfigFmt,
-    ConfigTrait,
-    Epoch,
-    Intent,
-    IntentMessage,
-    Multiaddr,
-    NetworkPublicKey,
-    PrimaryInfo,
-    TelcoinDirs,
-    ValidatorSignature,
-    WorkerCache,
-    WorkerIndex,
+    verify_proof_of_possession, BlsPublicKey, BlsSignature, Committee, CommitteeBuilder, Config,
+    ConfigFmt, ConfigTrait, Epoch, Intent, IntentMessage, Multiaddr, NetworkPublicKey, PrimaryInfo,
+    TelcoinDirs, ValidatorSignature, WorkerCache, WorkerIndex,
 };
 use alloy::{
     hex::{self, FromHex},
