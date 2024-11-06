@@ -212,9 +212,8 @@ impl NetworkGenesis {
         }
 
         let registry_impl = Address::random();
-        let registry_standard_json = fetch_file_content(
-            "../../tn-contracts/out/ConsensusRegistry.sol/ConsensusRegistry.json".into(),
-        );
+        let registry_standard_json =
+            fetch_file_content("../../tn-contracts/artifacts/ConsensusRegistry.json".into());
         let registry_contract: ContractStandardJson =
             serde_json::from_str(&registry_standard_json).expect("json parsing failure");
         let registry_bytecode = hex::decode(registry_contract.deployed_bytecode.object)
@@ -222,7 +221,7 @@ impl NetworkGenesis {
         let registry_proxy = Address::from_hex("0x07e17e17e17e17e17e17e17e17e17e17e17e17e1")
             .expect("invalid hex address");
         let proxy_standard_json =
-            fetch_file_content("../../tn-contracts/out/ERC1967Proxy.sol/ERC1967Proxy.json".into());
+            fetch_file_content("../../tn-contracts/artifacts/ERC1967Proxy.json".into());
         let proxy_contract: ContractStandardJson =
             serde_json::from_str(&proxy_standard_json).expect("json parsing failure");
         let proxy_bytecode = hex::decode(proxy_contract.deployed_bytecode.object)
@@ -709,7 +708,7 @@ mod tests {
             Address::from_hex("0x07e17e17e17e17e17e17e17e17e17e17e17e17e1")
                 .expect("failed to parse address");
         let proxy_standard_json =
-            fetch_file_content("../../tn-contracts/out/ERC1967Proxy.sol/ERC1967Proxy.json".into());
+            fetch_file_content("../../tn-contracts/artifacts/ERC1967Proxy.json".into());
         let proxy_contract: ContractStandardJson =
             serde_json::from_str(&proxy_standard_json).expect("failed to parse json");
         let proxy_bytecode = hex::decode(proxy_contract.deployed_bytecode.object)
