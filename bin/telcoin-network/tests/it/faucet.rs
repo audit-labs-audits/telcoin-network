@@ -157,8 +157,9 @@ async fn test_faucet_transfers_tel_and_xyz_with_google_kms_e2e() -> eyre::Result
     // construct create data for faucet proxy address
     let init_call = [&faucet_init_selector, &init_params[..]].concat();
     let constructor_params = (faucet_impl_address, init_call.clone()).abi_encode_params();
-    let proxy_json =
-        fetch_file_content("../../tn-contracts/artifacts/ERC1967Proxy.sol/ERC1967Proxy.json".into());
+    let proxy_json = fetch_file_content(
+        "../../tn-contracts/artifacts/ERC1967Proxy.sol/ERC1967Proxy.json".into(),
+    );
     let proxy_contract: ContractStandardJson =
         serde_json::from_str(&proxy_json).expect("json parsing failure");
     let proxy_initcode =

@@ -64,8 +64,9 @@ mod tests {
         );
 
         // fetch and construct registry proxy deployment transaction
-        let registry_proxy_json =
-            fetch_file_content("../../tn-contracts/artifacts/ERC1967Proxy.sol/ERC1967Proxy.json".into());
+        let registry_proxy_json = fetch_file_content(
+            "../../tn-contracts/artifacts/ERC1967Proxy.sol/ERC1967Proxy.json".into(),
+        );
         let registry_proxy_contract: ContractStandardJson =
             serde_json::from_str(&registry_proxy_json).expect("json parsing failure");
         let registry_proxy_initcode = hex::decode(registry_proxy_contract.bytecode.object)
@@ -184,8 +185,9 @@ mod tests {
             .get(&registry_proxy_address)
             .expect("registry address missing from bundle state")
             .storage;
-        let proxy_json =
-            fetch_file_content("../../tn-contracts/artifacts/ERC1967Proxy.sol/ERC1967Proxy.json".into());
+        let proxy_json = fetch_file_content(
+            "../../tn-contracts/artifacts/ERC1967Proxy.sol/ERC1967Proxy.json".into(),
+        );
         let proxy_contract: ContractStandardJson =
             serde_json::from_str(&proxy_json).expect("json parsing failure");
         let proxy_bytecode = hex::decode(proxy_contract.deployed_bytecode.object)
