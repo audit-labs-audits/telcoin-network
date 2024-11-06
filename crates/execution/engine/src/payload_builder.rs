@@ -8,7 +8,6 @@ use reth_blockchain_tree::{BlockValidationKind, BlockchainTreeEngine};
 use reth_chainspec::ChainSpec;
 use reth_evm::ConfigureEvm;
 use reth_execution_types::ExecutionOutcome;
-use reth_node_api::PayloadBuilderAttributes as _;
 use reth_payload_builder::database::CachedReads;
 use reth_primitives::{
     constants::{EMPTY_RECEIPTS, EMPTY_TRANSACTIONS, EMPTY_WITHDRAWALS},
@@ -224,7 +223,7 @@ where
     //
     // note: uses the worker's sealed header for "parent" values
     // note the sealed header below is more or less junk but payload trait requires it.
-    let (cfg, block_env) = payload.cfg_and_block_env(chain_spec.as_ref(), &batch_block.header());
+    let (cfg, block_env) = payload.cfg_and_block_env(chain_spec.as_ref());
 
     // TODO: better to get these from payload attributes?
     // - more efficient, but harder to maintain?
@@ -473,8 +472,7 @@ where
     // initialize values for execution from block env
     //
     // use the parent's header bc there are no batches and the header arg is not used
-    let (_cfg, block_env) =
-        payload.cfg_and_block_env(chain_spec.as_ref(), &payload.attributes.parent_header);
+    let (_cfg, block_env) = payload.cfg_and_block_env(chain_spec.as_ref());
 
     // merge all transitions into bundle state, this would apply the withdrawal balance
     // changes and 4788 contract call
