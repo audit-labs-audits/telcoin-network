@@ -17,6 +17,8 @@ use tracing::info;
 
 use crate::ConfigTrait;
 
+use super::max_worker_block_gas;
+
 /// The filename to use when reading/writing the validator's BlsKey.
 pub const BLS_KEYFILE: &str = "bls.key";
 /// The filename to use when reading/writing the primary's network key.
@@ -222,7 +224,7 @@ impl Parameters {
 
     /// Measured in wei - 30mil
     fn default_max_worker_block_gas() -> u64 {
-        30_000_000
+        max_worker_block_gas(0)
     }
 
     fn default_max_worker_block_delay() -> Duration {

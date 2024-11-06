@@ -208,7 +208,7 @@ async fn test_make_block_el_to_cl() {
     let block = block.unwrap();
 
     // ensure block validator succeeds
-    let block_validator = BlockValidator::new(blockchain_db.clone(), 1_000_000, 30_000_000);
+    let block_validator = BlockValidator::new(blockchain_db.clone(), 1_000_000, max_worker_block_gas(0));
 
     let valid_block_result = block_validator.validate_block(&block).await;
     assert!(valid_block_result.is_ok());
