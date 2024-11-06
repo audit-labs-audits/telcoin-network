@@ -91,14 +91,14 @@ async fn test_faucet_transfers_tel_and_xyz_with_google_kms_e2e() -> eyre::Result
     let stablecoin_impl_address = Address::random();
     // fetch bytecode attributes from compiled jsons in tn-contracts repo
     let faucet_standard_json = fetch_file_content(
-        "../../tn-contracts/out/StablecoinManager.sol/StablecoinManager.json".into(),
+        "../../tn-contracts/artifacts/StablecoinManager.sol/StablecoinManager.json".into(),
     );
     let faucet_contract: ContractStandardJson =
         serde_json::from_str(&faucet_standard_json).expect("json parsing failure");
     let faucet_bytecode =
         hex::decode(faucet_contract.deployed_bytecode.object).expect("invalid bytecode hexstring");
     let stablecoin_json =
-        fetch_file_content("../../tn-contracts/out/Stablecoin.sol/Stablecoin.json".into());
+        fetch_file_content("../../tn-contracts/artifacts/Stablecoin.sol/Stablecoin.json".into());
     let stablecoin_contract: ContractStandardJson =
         serde_json::from_str(&stablecoin_json).expect("json parsing failure");
     let stablecoin_impl_bytecode = hex::decode(stablecoin_contract.deployed_bytecode.object)
@@ -158,7 +158,7 @@ async fn test_faucet_transfers_tel_and_xyz_with_google_kms_e2e() -> eyre::Result
     let init_call = [&faucet_init_selector, &init_params[..]].concat();
     let constructor_params = (faucet_impl_address, init_call.clone()).abi_encode_params();
     let proxy_json =
-        fetch_file_content("../../tn-contracts/out/ERC1967Proxy.sol/ERC1967Proxy.json".into());
+        fetch_file_content("../../tn-contracts/artifacts/ERC1967Proxy.sol/ERC1967Proxy.json".into());
     let proxy_contract: ContractStandardJson =
         serde_json::from_str(&proxy_json).expect("json parsing failure");
     let proxy_initcode =

@@ -126,4 +126,4 @@ init-submodules:
 
 # update tn-contracts submodule
 update-tn-contracts:
-	cd tn-contracts && git pull && forge build && cd ..
+	git submodule update foreach get
