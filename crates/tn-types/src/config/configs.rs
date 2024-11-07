@@ -204,17 +204,7 @@ impl Parameters {
     fn default_sync_retry_nodes() -> usize {
         3
     }
-    /*
-        /// Measured in bytes - 1MB
-        fn default_max_worker_block_size() -> usize {
-            max_worker_block_size(0)
-        }
 
-        /// Measured in wei - 30mil
-        fn default_max_worker_block_gas() -> u64 {
-            max_worker_block_gas(0)
-        }
-    */
     fn default_max_worker_block_delay() -> Duration {
         Duration::from_secs(1)
     }
