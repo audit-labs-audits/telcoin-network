@@ -443,7 +443,7 @@ mod tests {
         // parent beacon block root is output digest
         assert_eq!(
             expected_block.parent_beacon_block_root,
-            Some(ConsensusHeader::default().digest().into())
+            Some(ConsensusHeader::default().digest())
         );
         // first block's parent is expected to be genesis
         assert_eq!(expected_block.parent_hash, chain.genesis_hash());
@@ -714,8 +714,7 @@ mod tests {
             let mut expected_beneficiary = &beneficiary_1;
             let mut expected_subdag_index = &sub_dag_index_1;
             let mut output_digest = output_digest_1;
-            let expected_parent_beacon_block_root: B256 =
-                ConsensusHeader::default().digest().into();
+            let expected_parent_beacon_block_root: B256 = ConsensusHeader::default().digest();
             let mut expected_batch_index = idx;
 
             // update values based on index for all assertions below
@@ -1059,8 +1058,7 @@ mod tests {
             let mut expected_subdag_index = &sub_dag_index_1;
             let mut output_digest = output_digest_1;
             // We just set this to default in the test...
-            let expected_parent_beacon_block_root: B256 =
-                ConsensusHeader::default().digest().into();
+            let expected_parent_beacon_block_root: B256 = ConsensusHeader::default().digest();
             let mut expected_batch_index = idx;
 
             // update values based on index for all assertions below

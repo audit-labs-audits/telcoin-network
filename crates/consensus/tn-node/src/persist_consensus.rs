@@ -77,10 +77,9 @@ impl PersistConsensus {
                         if let Err(e) = txn.insert::<ConsensusBlocks>(&number, &header) {
                             tracing::error!(target: "engine", ?e, "error saving a consensus header to persistant storage!")
                         }
-                        if let Err(e) = txn.insert::<ConsensusBlockNumbersByDigest>(
-                            &header.digest().into(),
-                            &number,
-                        ) {
+                        if let Err(e) =
+                            txn.insert::<ConsensusBlockNumbersByDigest>(&header.digest(), &number)
+                        {
                             tracing::error!(target: "engine", ?e, "error saving a consensus header number to persistant storage!")
                         }
                         if let Err(e) = txn.commit() {
