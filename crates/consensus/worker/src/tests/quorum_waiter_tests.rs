@@ -4,9 +4,9 @@
 // SPDX-License-Identifier: Apache-2.0
 
 use super::*;
-use narwhal_network::test_utils::WorkerToWorkerMockServer;
-use narwhal_test_utils::{batch, test_network, CommitteeFixture};
-use narwhal_typed_store::mem_db::MemDatabase;
+use consensus_network::test_utils::WorkerToWorkerMockServer;
+use tn_storage::mem_db::MemDatabase;
+use tn_test_utils::{batch, test_network, CommitteeFixture};
 
 #[tokio::test]
 async fn wait_for_quorum() {

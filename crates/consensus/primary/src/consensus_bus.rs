@@ -8,15 +8,16 @@
 use std::sync::Arc;
 
 use consensus_metrics::metered_channel::{self, channel_with_total_sender, MeteredMpscChannel};
-use narwhal_primary_metrics::{ChannelMetrics, ConsensusMetrics, Metrics};
+use tn_primary_metrics::{ChannelMetrics, ConsensusMetrics, Metrics};
 use tn_types::{
     Certificate, CommittedSubDag, ConsensusHeader, ConsensusOutput, Header, Round, TnSender,
+    CHANNEL_CAPACITY,
 };
 use tokio::sync::{broadcast, watch};
 
 use crate::{
     certificate_fetcher::CertificateFetcherCommand, consensus::ConsensusRound,
-    proposer::OurDigestMessage, RecentBlocks, CHANNEL_CAPACITY,
+    proposer::OurDigestMessage, RecentBlocks,
 };
 
 #[derive(Debug)]

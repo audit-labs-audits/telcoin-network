@@ -6,6 +6,10 @@ rust-version.workspace = true
 license.workspace = true
 homepage.workspace = true
 repository.workspace = true
+authors = [
+    "Grant Kee <grant@telcoin.org>",
+    "Steven Stanfield <steve@telcoin.org>",
+]
 
 [dependencies]
 tn-types = { workspace = true }
@@ -28,7 +32,7 @@ alloy-rlp = { workspace = true }
 
 [dev-dependencies]
 # unit tests
-narwhal-test-utils = { workspace = true }
+tn-test-utils = { workspace = true }
 reth = { workspace = true }
 assert_matches = { workspace = true }
 reth-blockchain-tree = { workspace = true }
@@ -41,10 +45,10 @@ reth-provider = { workspace = true, features = ["test-utils"] }
 # integration tests
 anemo = { workspace = true }
 prometheus = { workspace = true }
-narwhal-worker = { workspace = true }
-narwhal-network = { workspace = true }
-narwhal-network-types = { workspace = true }
-narwhal-typed-store = { workspace = true }
+tn-worker = { workspace = true }
+consensus-network = { workspace = true }
+consensus-network-types = { workspace = true }
+tn-storage = { workspace = true }
 tn-block-validator = { workspace = true }
 reth-chainspec = { workspace = true }
 reth-db = { workspace = true }

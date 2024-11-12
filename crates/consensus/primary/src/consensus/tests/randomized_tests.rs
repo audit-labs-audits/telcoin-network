@@ -8,8 +8,6 @@ use crate::consensus::{
 };
 use fastcrypto::hash::{Hash, HashFunction};
 use futures::{stream::FuturesUnordered, StreamExt};
-use narwhal_storage::ConsensusStore;
-use narwhal_typed_store::{mem_db::MemDatabase, open_db, traits::Database};
 use rand::{
     distributions::{Bernoulli, Distribution},
     prelude::SliceRandom,
@@ -22,9 +20,10 @@ use std::{
     ops::RangeInclusive,
     sync::Arc,
 };
+use tn_storage::{mem_db::MemDatabase, open_db, traits::Database, ConsensusStore};
 use tn_types::{Authority, AuthorityIdentifier, Committee, Stake};
 
-use narwhal_test_utils::{mock_certificate_with_rand, CommitteeFixture};
+use tn_test_utils::{mock_certificate_with_rand, CommitteeFixture};
 use tn_types::{Certificate, CertificateDigest, Round};
 #[allow(unused_imports)]
 use tokio::sync::mpsc::channel;
@@ -161,7 +160,7 @@ async fn bullshark_randomised_tests() {
 
     // Create a single store to be re-used across Bullshark instances to avoid hitting
     // a "too many files open" issue.
-    let store = make_consensus_store(open_db(narwhal_test_utils::temp_dir()));
+    let store = make_consensus_store(open_db(tn_test_utils::temp_dir()));
 
     // Run the actual tests via separate tasks
     loop {
@@ -363,7 +362,7 @@ pub fn make_certificates_with_parameters(
                 .collect();
 
             let mut parent_digests: BTreeSet<CertificateDigest> =
-                narwhal_test_utils::this_cert_parents_with_slow_nodes(
+                tn_test_utils::this_cert_parents_with_slow_nodes(
                     &authority.id(),
                     current_parents.clone(),
                     ids.as_slice(),

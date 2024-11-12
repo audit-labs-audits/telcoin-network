@@ -23,7 +23,7 @@ mod certificate_tests;
 #[path = "tests/rpc_tests.rs"]
 mod rpc_tests;
 
-pub use crate::primary::{Primary, CHANNEL_CAPACITY};
+pub use crate::primary::Primary;
 
 mod consensus_bus;
 pub use consensus_bus::*;

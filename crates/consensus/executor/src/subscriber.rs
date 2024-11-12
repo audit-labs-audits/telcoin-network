@@ -3,11 +3,10 @@
 // SPDX-License-Identifier: Apache-2.0
 use crate::{errors::SubscriberResult, metrics::ExecutorMetrics};
 use consensus_metrics::spawn_logged_monitored_task;
+use consensus_network::{client::NetworkClient, PrimaryToWorkerClient};
+use consensus_network_types::FetchBlocksRequest;
 use fastcrypto::hash::Hash;
 use futures::{stream::FuturesOrdered, StreamExt};
-use narwhal_network::{client::NetworkClient, PrimaryToWorkerClient};
-use narwhal_network_types::FetchBlocksRequest;
-use narwhal_primary::ConsensusBus;
 use reth_primitives::Address;
 use std::{
     collections::{HashMap, HashSet, VecDeque},
@@ -15,6 +14,7 @@ use std::{
     time::Duration,
     vec,
 };
+use tn_primary::ConsensusBus;
 use tn_types::{
     AuthorityIdentifier, BlockHash, Certificate, CommittedSubDag, Committee, ConsensusOutput,
     NetworkPublicKey, Noticer, Timestamp, TnReceiver, TnSender, WorkerBlock, WorkerCache, WorkerId,

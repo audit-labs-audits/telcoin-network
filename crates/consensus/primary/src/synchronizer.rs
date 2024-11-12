@@ -8,16 +8,14 @@ use consensus_metrics::{
     metered_channel::{channel_with_total, MeteredMpscChannel},
     monitored_scope, spawn_logged_monitored_task,
 };
-use fastcrypto::hash::Hash as _;
-use futures::{stream::FuturesOrdered, StreamExt};
-use itertools::Itertools;
-use narwhal_network::{
+use consensus_network::{
     anemo_ext::{NetworkExt, WaitingPeer},
     client::NetworkClient,
     PrimaryToWorkerClient, RetryConfig,
 };
-use narwhal_storage::{CertificateStore, PayloadStore};
-use narwhal_typed_store::traits::Database;
+use fastcrypto::hash::Hash as _;
+use futures::{stream::FuturesOrdered, StreamExt};
+use itertools::Itertools;
 use parking_lot::Mutex;
 use std::{
     cmp::min,
@@ -28,13 +26,15 @@ use std::{
     },
     time::Duration,
 };
-use telcoin_sync::sync::notify_once::NotifyOnce;
 use tn_config::ConsensusConfig;
+use tn_storage::{traits::Database, CertificateStore, PayloadStore};
 use tn_types::{
     AuthorityIdentifier, Committee, NetworkPublicKey, TnReceiver, TnSender, WorkerCache,
+    CHANNEL_CAPACITY,
 };
+use tn_utils::sync::notify_once::NotifyOnce;
 
-use narwhal_network_types::{
+use consensus_network_types::{
     PrimaryToPrimaryClient, SendCertificateRequest, SendCertificateResponse,
     WorkerSynchronizeMessage,
 };
@@ -52,7 +52,7 @@ use tracing::{debug, error, instrument, trace, warn};
 
 use crate::{
     aggregators::CertificatesAggregator, certificate_fetcher::CertificateFetcherCommand,
-    ConsensusBus, CHANNEL_CAPACITY,
+    ConsensusBus,
 };
 
 #[cfg(test)]
@@ -1572,9 +1572,9 @@ mod tests {
     use crate::synchronizer::State;
     use fastcrypto::{hash::Hash, traits::KeyPair};
     use itertools::Itertools;
-    use narwhal_test_utils::{make_optimal_signed_certificates, CommitteeFixture};
-    use narwhal_typed_store::mem_db::MemDatabase;
     use std::{collections::BTreeSet, num::NonZeroUsize};
+    use tn_storage::mem_db::MemDatabase;
+    use tn_test_utils::{make_optimal_signed_certificates, CommitteeFixture};
     use tn_types::{Certificate, Committee, Round};
 
     // Tests that gc_once is reporting back missing certificates up to gc_round and no further.
