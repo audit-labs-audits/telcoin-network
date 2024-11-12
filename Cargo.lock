@@ -2060,6 +2060,54 @@ dependencies = [
 ]
 
 [[package]]
+name = "consensus-network"
+version = "0.1.0"
+dependencies = [
+ "anemo",
+ "anemo-tower",
+ "anyhow",
+ "axum",
+ "axum-server",
+ "backoff",
+ "bytes",
+ "consensus-metrics",
+ "consensus-network-types",
+ "dashmap 6.1.0",
+ "eyre",
+ "futures",
+ "parking_lot 0.12.3",
+ "prometheus",
+ "quinn-proto",
+ "rand 0.8.5",
+ "thiserror",
+ "tn-test-utils",
+ "tn-types",
+ "tn-utils",
+ "tokio",
+ "tower",
+ "tracing",
+]
+
+[[package]]
+name = "consensus-network-types"
+version = "0.1.0"
+dependencies = [
+ "anemo",
+ "anemo-build",
+ "bcs",
+ "bytes",
+ "indexmap 1.9.3",
+ "mockall",
+ "roaring",
+ "rustversion",
+ "serde",
+ "snap",
+ "tn-types",
+ "tonic 0.8.3",
+ "tracing",
+]
+
+[[package]]
 name = "console"
 version = "0.15.8"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -5080,282 +5128,6 @@ dependencies = [
  "quote",
  "syn 1.0.109",
  "synstructure",
-]
-
-[[package]]
-name = "narwhal-executor"
-version = "0.1.0"
-dependencies = [
- "async-trait",
- "bytes",
- "consensus-metrics",
- "fastcrypto",
- "futures",
- "indexmap 2.5.0",
- "mockall",
- "narwhal-network",
- "narwhal-network-types",
- "narwhal-primary",
- "narwhal-storage",
- "narwhal-test-utils",
- "narwhal-typed-store",
- "prometheus",
- "reth-primitives",
- "serde",
- "tempfile",
- "thiserror",
- "tn-config",
- "tn-node",
- "tn-types",
- "tokio",
- "tonic 0.10.2",
- "tracing",
-]
-
-[[package]]
-name = "narwhal-network"
-version = "0.1.0"
-dependencies = [
- "anemo",
- "anemo-tower",
- "anyhow",
- "axum",
- "axum-server",
- "backoff",
- "bytes",
- "consensus-metrics",
- "dashmap 6.1.0",
- "eyre",
- "futures",
- "narwhal-network-types",
- "narwhal-test-utils",
- "parking_lot 0.12.3",
- "prometheus",
- "quinn-proto",
- "rand 0.8.5",
- "telcoin-macros",
- "telcoin-sync",
- "thiserror",
- "tn-types",
- "tokio",
- "tower",
- "tracing",
-]
-
-[[package]]
-name = "narwhal-network-types"
-version = "0.1.0"
-dependencies = [
- "anemo",
- "anemo-build",
- "bcs",
- "bytes",
- "indexmap 1.9.3",
- "mockall",
- "roaring",
- "rustversion",
- "serde",
- "snap",
- "tn-types",
- "tonic 0.8.3",
- "tracing",
-]
-
-[[package]]
-name = "narwhal-primary"
-version = "0.1.0"
-dependencies = [
- "anemo",
- "anemo-tower",
- "async-trait",
- "backoff",
- "bytes",
- "cfg-if",
- "consensus-metrics",
- "criterion",
- "dashmap 6.1.0",
- "eyre",
- "fastcrypto",
- "fastcrypto-tbls",
- "futures",
- "governor",
- "indexmap 2.5.0",
- "itertools 0.10.5",
- "mockall",
- "narwhal-executor",
- "narwhal-network",
- "narwhal-network-types",
- "narwhal-primary-metrics",
- "narwhal-storage",
- "narwhal-test-utils",
- "narwhal-typed-store",
- "narwhal-worker",
- "once_cell",
- "parking_lot 0.12.3",
- "prometheus",
- "proptest",
- "rand 0.8.5",
- "reqwest 0.12.7",
- "reth",
- "reth-primitives",
- "reth-tracing",
- "tap",
- "telcoin-macros",
- "telcoin-sync",
- "tempfile",
- "thiserror",
- "tn-block-validator",
- "tn-config",
- "tn-node",
- "tn-types",
- "tokio",
- "tokio-stream",
- "tower",
- "tracing",
-]
-
-[[package]]
-name = "narwhal-primary-metrics"
-version = "0.1.0"
-dependencies = [
- "consensus-metrics",
- "narwhal-network",
- "prometheus",
- "tracing",
-]
-
-[[package]]
-name = "narwhal-storage"
-version = "0.1.0"
-dependencies = [
- "eyre",
- "fastcrypto",
- "futures",
- "narwhal-test-utils",
- "narwhal-typed-store",
- "telcoin-macros",
- "telcoin-sync",
- "tempfile",
- "tn-types",
- "tokio",
- "tracing",
-]
-
-[[package]]
-name = "narwhal-test-utils"
-version = "0.1.0"
-dependencies = [
- "alloy",
- "anemo",
- "clap",
- "consensus-metrics",
- "criterion",
- "eyre",
- "fastcrypto",
- "fdlimit",
- "futures",
- "indexmap 2.5.0",
- "itertools 0.10.5",
- "jsonrpsee",
- "narwhal-network",
- "narwhal-network-types",
- "narwhal-primary",
- "narwhal-primary-metrics",
- "narwhal-storage",
- "narwhal-typed-store",
- "narwhal-worker",
- "once_cell",
- "prometheus",
- "rand 0.8.5",
- "reth",
- "reth-chainspec",
- "reth-cli-commands",
- "reth-db",
- "reth-evm",
- "reth-node-ethereum",
- "reth-primitives",
- "reth-stages",
- "reth-tasks",
- "reth-tracing",
- "reth-transaction-pool",
- "secp256k1 0.29.0",
- "telcoin-network",
- "tempfile",
- "tn-block-builder",
- "tn-block-validator",
- "tn-config",
- "tn-engine",
- "tn-faucet",
- "tn-node",
- "tn-types",
- "tokio",
- "tonic 0.10.2",
- "tracing",
-]
-
-[[package]]
-name = "narwhal-typed-store"
-version = "0.1.0"
-dependencies = [
- "dashmap 6.1.0",
- "eyre",
- "fdlimit",
- "ouroboros",
- "page_size",
- "parking_lot 0.12.3",
- "prometheus",
- "redb",
- "reth-libmdbx",
- "rocksdb",
- "serde",
- "telcoin-macros",
- "tempfile",
- "thiserror",
- "tn-types",
- "tracing",
- "uint",
-]
-
-[[package]]
-name = "narwhal-worker"
-version = "0.1.0"
-dependencies = [
- "anemo",
- "anemo-tower",
- "anyhow",
- "arc-swap",
- "async-trait",
- "byteorder",
- "bytes",
- "consensus-metrics",
- "eyre",
- "fastcrypto",
- "futures",
- "governor",
- "itertools 0.10.5",
- "narwhal-network",
- "narwhal-network-types",
- "narwhal-primary",
- "narwhal-primary-metrics",
- "narwhal-storage",
- "narwhal-test-utils",
- "narwhal-typed-store",
- "prometheus",
- "rand 0.8.5",
- "reqwest 0.12.7",
- "reth-primitives",
- "reth-tracing",
- "tap",
- "tempfile",
- "thiserror",
- "tn-block-validator",
- "tn-config",
- "tn-node",
- "tn-types",
- "tokio",
- "tonic 0.10.2",
- "tower",
- "tracing",
 ]
 
 [[package]]
@@ -10404,21 +10176,13 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "55937e1799185b12863d447f42597ed69d9928686b8d88a1df17376a097d8369"
 
 [[package]]
-name = "telcoin-macros"
-version = "0.1.0"
-dependencies = [
- "futures",
- "once_cell",
- "tracing",
-]
-
-[[package]]
 name = "telcoin-network"
 version = "0.1.0"
 dependencies = [
  "alloy",
  "clap",
  "consensus-metrics",
+ "consensus-network",
  "const-hex",
  "const-str",
  "ethereum-tx-sign",
@@ -10436,8 +10200,6 @@ dependencies = [
  "metrics-exporter-prometheus 0.12.2",
  "metrics-process 1.2.1",
  "metrics-util 0.15.0",
- "narwhal-network",
- "narwhal-test-utils",
  "pin-project 1.1.5",
  "prometheus",
  "rand 0.8.5",
@@ -10461,22 +10223,15 @@ dependencies = [
  "serde_yaml",
  "tempfile",
  "tikv-jemallocator",
+ "tn-config",
  "tn-faucet",
  "tn-node",
+ "tn-test-utils",
  "tn-types",
  "tokio",
  "tonic 0.10.2",
  "tracing",
  "vergen",
-]
-
-[[package]]
-name = "telcoin-sync"
-version = "0.1.0"
-dependencies = [
- "futures",
- "parking_lot 0.12.3",
- "tokio",
 ]
 
 [[package]]
@@ -10662,14 +10417,11 @@ dependencies = [
  "alloy-rlp",
  "anemo",
  "assert_matches",
+ "consensus-network",
+ "consensus-network-types",
  "fastcrypto",
  "futures-util",
  "metrics 0.23.0",
- "narwhal-network",
- "narwhal-network-types",
- "narwhal-test-utils",
- "narwhal-typed-store",
- "narwhal-worker",
  "prometheus",
  "reth",
  "reth-blockchain-tree",
@@ -10693,7 +10445,10 @@ dependencies = [
  "tn-block-builder",
  "tn-block-validator",
  "tn-engine",
+ "tn-storage",
+ "tn-test-utils",
  "tn-types",
+ "tn-worker",
  "tokio",
  "tracing",
 ]
@@ -10705,7 +10460,6 @@ dependencies = [
  "alloy-rlp",
  "assert_matches",
  "async-trait",
- "narwhal-test-utils",
  "reth",
  "reth-beacon-consensus",
  "reth-blockchain-tree",
@@ -10723,6 +10477,7 @@ dependencies = [
  "reth-tracing",
  "reth-trie",
  "thiserror",
+ "tn-test-utils",
  "tn-types",
  "tokio",
  "tracing",
@@ -10732,14 +10487,21 @@ dependencies = [
 name = "tn-config"
 version = "0.1.0"
 dependencies = [
+ "alloy",
+ "consensus-network",
  "eyre",
  "fastcrypto",
- "narwhal-network",
- "narwhal-storage",
- "narwhal-typed-store",
+ "humantime-serde",
  "parking_lot 0.12.3",
  "rand 0.8.5",
+ "reth-chainspec",
+ "reth-primitives",
+ "serde",
+ "serde_json",
+ "serde_yaml",
+ "tempfile",
  "thiserror",
+ "tn-storage",
  "tn-types",
  "tracing",
 ]
@@ -10752,7 +10514,6 @@ dependencies = [
  "fastcrypto",
  "futures",
  "futures-util",
- "narwhal-test-utils",
  "reth-blockchain-tree",
  "reth-chainspec",
  "reth-errors",
@@ -10767,9 +10528,39 @@ dependencies = [
  "reth-trie",
  "thiserror",
  "tn-block-builder",
+ "tn-test-utils",
  "tn-types",
  "tokio",
  "tokio-stream",
+ "tracing",
+]
+
+[[package]]
+name = "tn-executor"
+version = "0.1.0"
+dependencies = [
+ "async-trait",
+ "bytes",
+ "consensus-metrics",
+ "consensus-network",
+ "consensus-network-types",
+ "fastcrypto",
+ "futures",
+ "indexmap 2.5.0",
+ "mockall",
+ "prometheus",
+ "reth-primitives",
+ "serde",
+ "tempfile",
+ "thiserror",
+ "tn-config",
+ "tn-node",
+ "tn-primary",
+ "tn-storage",
+ "tn-test-utils",
+ "tn-types",
+ "tokio",
+ "tonic 0.10.2",
  "tracing",
 ]
 
@@ -10782,6 +10573,8 @@ dependencies = [
  "cfg-if",
  "clap",
  "consensus-metrics",
+ "consensus-network",
+ "consensus-network-types",
  "ecdsa",
  "eyre",
  "fastcrypto",
@@ -10791,11 +10584,6 @@ dependencies = [
  "jsonrpsee",
  "k256",
  "lru_time_cache",
- "narwhal-network",
- "narwhal-network-types",
- "narwhal-test-utils",
- "narwhal-typed-store",
- "narwhal-worker",
  "prometheus",
  "reth",
  "reth-chainspec",
@@ -10810,7 +10598,11 @@ dependencies = [
  "serde",
  "serde_json",
  "tempfile",
+ "tn-config",
+ "tn-storage",
+ "tn-test-utils",
  "tn-types",
+ "tn-worker",
  "tokio",
  "tokio-stream",
  "tonic 0.10.2",
@@ -10828,6 +10620,8 @@ dependencies = [
  "cfg-if",
  "clap",
  "consensus-metrics",
+ "consensus-network",
+ "consensus-network-types",
  "dirs-next",
  "enr",
  "eyre",
@@ -10835,15 +10629,6 @@ dependencies = [
  "fdlimit",
  "futures",
  "jsonrpsee",
- "narwhal-executor",
- "narwhal-network",
- "narwhal-network-types",
- "narwhal-primary",
- "narwhal-primary-metrics",
- "narwhal-storage",
- "narwhal-test-utils",
- "narwhal-typed-store",
- "narwhal-worker",
  "prometheus",
  "rand 0.8.5",
  "reqwest 0.12.7",
@@ -10885,12 +10670,157 @@ dependencies = [
  "tn-block-validator",
  "tn-config",
  "tn-engine",
+ "tn-executor",
  "tn-faucet",
+ "tn-primary",
+ "tn-primary-metrics",
+ "tn-storage",
+ "tn-test-utils",
  "tn-types",
+ "tn-worker",
  "tokio",
  "tokio-stream",
  "tracing",
  "url",
+]
+
+[[package]]
+name = "tn-primary"
+version = "0.1.0"
+dependencies = [
+ "anemo",
+ "anemo-tower",
+ "async-trait",
+ "backoff",
+ "bytes",
+ "cfg-if",
+ "consensus-metrics",
+ "consensus-network",
+ "consensus-network-types",
+ "criterion",
+ "dashmap 6.1.0",
+ "eyre",
+ "fastcrypto",
+ "fastcrypto-tbls",
+ "futures",
+ "governor",
+ "indexmap 2.5.0",
+ "itertools 0.10.5",
+ "mockall",
+ "once_cell",
+ "parking_lot 0.12.3",
+ "prometheus",
+ "proptest",
+ "rand 0.8.5",
+ "reqwest 0.12.7",
+ "reth",
+ "reth-primitives",
+ "reth-tracing",
+ "tap",
+ "tempfile",
+ "thiserror",
+ "tn-block-validator",
+ "tn-config",
+ "tn-executor",
+ "tn-node",
+ "tn-primary-metrics",
+ "tn-storage",
+ "tn-test-utils",
+ "tn-types",
+ "tn-utils",
+ "tn-worker",
+ "tokio",
+ "tokio-stream",
+ "tower",
+ "tracing",
+]
+
+[[package]]
+name = "tn-primary-metrics"
+version = "0.1.0"
+dependencies = [
+ "consensus-metrics",
+ "consensus-network",
+ "prometheus",
+ "tracing",
+]
+
+[[package]]
+name = "tn-storage"
+version = "0.1.0"
+dependencies = [
+ "dashmap 6.1.0",
+ "eyre",
+ "fastcrypto",
+ "fdlimit",
+ "futures",
+ "ouroboros",
+ "page_size",
+ "parking_lot 0.12.3",
+ "prometheus",
+ "redb",
+ "reth-libmdbx",
+ "rocksdb",
+ "serde",
+ "tempfile",
+ "thiserror",
+ "tn-test-utils",
+ "tn-types",
+ "tn-utils",
+ "tokio",
+ "tracing",
+ "uint",
+]
+
+[[package]]
+name = "tn-test-utils"
+version = "0.1.0"
+dependencies = [
+ "alloy",
+ "anemo",
+ "clap",
+ "consensus-metrics",
+ "consensus-network",
+ "consensus-network-types",
+ "criterion",
+ "eyre",
+ "fastcrypto",
+ "fdlimit",
+ "futures",
+ "indexmap 2.5.0",
+ "itertools 0.10.5",
+ "jsonrpsee",
+ "once_cell",
+ "prometheus",
+ "rand 0.8.5",
+ "reth",
+ "reth-chainspec",
+ "reth-cli-commands",
+ "reth-db",
+ "reth-evm",
+ "reth-node-ethereum",
+ "reth-primitives",
+ "reth-stages",
+ "reth-tasks",
+ "reth-tracing",
+ "reth-transaction-pool",
+ "secp256k1 0.29.0",
+ "telcoin-network",
+ "tempfile",
+ "tn-block-builder",
+ "tn-block-validator",
+ "tn-config",
+ "tn-engine",
+ "tn-faucet",
+ "tn-node",
+ "tn-primary",
+ "tn-primary-metrics",
+ "tn-storage",
+ "tn-types",
+ "tn-worker",
+ "tokio",
+ "tonic 0.10.2",
+ "tracing",
 ]
 
 [[package]]
@@ -10908,7 +10838,6 @@ dependencies = [
  "fastcrypto",
  "fastcrypto-tbls",
  "futures",
- "humantime-serde",
  "indexmap 2.5.0",
  "match_opt",
  "multiaddr 0.17.1",
@@ -10930,10 +10859,62 @@ dependencies = [
  "serde_repr",
  "serde_with 2.3.3",
  "serde_yaml",
- "telcoin-sync",
  "tempfile",
  "thiserror",
+ "tn-utils",
  "tokio",
+ "tracing",
+]
+
+[[package]]
+name = "tn-utils"
+version = "0.1.0"
+dependencies = [
+ "futures",
+ "once_cell",
+ "parking_lot 0.12.3",
+ "tokio",
+ "tracing",
+]
+
+[[package]]
+name = "tn-worker"
+version = "0.1.0"
+dependencies = [
+ "anemo",
+ "anemo-tower",
+ "anyhow",
+ "arc-swap",
+ "async-trait",
+ "byteorder",
+ "bytes",
+ "consensus-metrics",
+ "consensus-network",
+ "consensus-network-types",
+ "eyre",
+ "fastcrypto",
+ "futures",
+ "governor",
+ "itertools 0.10.5",
+ "prometheus",
+ "rand 0.8.5",
+ "reqwest 0.12.7",
+ "reth-primitives",
+ "reth-tracing",
+ "tap",
+ "tempfile",
+ "thiserror",
+ "tn-block-validator",
+ "tn-config",
+ "tn-node",
+ "tn-primary",
+ "tn-primary-metrics",
+ "tn-storage",
+ "tn-test-utils",
+ "tn-types",
+ "tokio",
+ "tonic 0.10.2",
+ "tower",
  "tracing",
 ]
 

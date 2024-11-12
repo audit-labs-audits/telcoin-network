@@ -1,9 +1,10 @@
 [package]
-name = "narwhal-worker"
+name = "tn-worker"
 version.workspace = true
 license = "Apache-2.0"
 authors = [
-    "Grant Kee <grant.kee@telco.in>",
+    "Grant Kee <grant@telcoin.org>",
+    "Steven Stanfield <steve@telcoin.org>",
     "Mysten Labs <build@mystenlabs.com>",
 ]
 edition = "2021"
@@ -25,15 +26,15 @@ tower = { workspace = true }
 tracing = { workspace = true }
 itertools = { workspace = true }
 
+tn-storage = { workspace = true }
 fastcrypto = { workspace = true, features = ["copy_key"] }
-narwhal-network = { workspace = true }
-narwhal-network-types = { workspace = true }
+consensus-network = { workspace = true }
+consensus-network-types = { workspace = true }
 tn-types = { workspace = true }
 tn-config = { workspace = true }
 prometheus = { workspace = true }
-narwhal-typed-store = { workspace = true }
 consensus-metrics = { workspace = true }
-narwhal-primary-metrics = { workspace = true }
+tn-primary-metrics = { workspace = true }
 
 anemo = { workspace = true }
 anemo-tower = { workspace = true }
@@ -44,13 +45,12 @@ tn-block-validator = { workspace = true }
 [dev-dependencies]
 rand = { workspace = true }
 tempfile = { workspace = true }
-narwhal-test-utils = { workspace = true }
+tn-test-utils = { workspace = true }
 reqwest = { workspace = true }
 tn-node = { workspace = true }
-narwhal-primary = { workspace = true }
-narwhal-storage = { workspace = true }
+tn-primary = { workspace = true }
 reth-tracing = { workspace = true }
-narwhal-network = { workspace = true, features = ["test-utils"] }
+consensus-network = { workspace = true, features = ["test-utils"] }
 bytes = { workspace = true }
 
 [features]

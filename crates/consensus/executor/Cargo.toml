@@ -1,10 +1,11 @@
 [package]
-name = "narwhal-executor"
+name = "tn-executor"
 version.workspace = true
 edition = "2021"
 license = "Apache-2.0"
 authors = [
-    "Grant Kee <grant.kee@telco.in>",
+    "Grant Kee <grant@telcoin.org>",
+    "Steven Stanfield <steve@telcoin.org>",
     "Mysten Labs <build@mystenlabs.com>",
 ]
 publish = false
@@ -20,22 +21,21 @@ tokio = { workspace = true, features = ["sync"] }
 tonic.workspace = true
 tracing.workspace = true
 prometheus.workspace = true
-narwhal-storage = { workspace = true }
-narwhal-network-types = { workspace = true }
+tn-storage = { workspace = true }
+consensus-network-types = { workspace = true }
 
 tn-types = { workspace = true }
 tn-config = { workspace = true }
-narwhal-network = { workspace = true }
+consensus-network = { workspace = true }
 mockall.workspace = true
 
 consensus-metrics.workspace = true
-narwhal-typed-store = { workspace = true }
-narwhal-primary = { workspace = true }
+tn-primary = { workspace = true }
 
 [dev-dependencies]
 indexmap.workspace = true
 tempfile.workspace = true
-narwhal-primary = { workspace = true }
+tn-primary = { workspace = true }
 tn-node = { workspace = true }
-narwhal-test-utils = { workspace = true }
+tn-test-utils = { workspace = true }
 bytes = { workspace = true }

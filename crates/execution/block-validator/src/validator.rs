@@ -168,7 +168,6 @@ impl BlockValidation for NoopBlockValidator {
 mod tests {
     use super::*;
     use assert_matches::assert_matches;
-    use narwhal_test_utils::TransactionFactory;
     use reth_beacon_consensus::EthBeaconConsensus;
     use reth_blockchain_tree::{
         BlockchainTree, BlockchainTreeConfig, ShareableBlockchainTree, TreeExternals,
@@ -186,7 +185,8 @@ mod tests {
     use reth_provider::{providers::StaticFileProvider, ProviderFactory};
     use reth_prune::PruneModes;
     use std::{str::FromStr, sync::Arc};
-    use tn_types::{adiri_genesis, max_worker_block_gas, max_worker_block_size, Consensus};
+    use tn_test_utils::TransactionFactory;
+    use tn_types::{adiri_genesis, max_worker_block_gas, Consensus};
     use tracing::debug;
 
     /// Return the next valid block

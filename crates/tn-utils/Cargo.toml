@@ -1,0 +1,28 @@
+[package]
+name = "tn-utils"
+authors = [
+    "Grant Kee <grant@telcoin.org>",
+    "Steven Stanfield <steve@telcoin.org>",
+    "Mysten Labs <build@mystenlabs.com>",
+]
+license = "Apache-2.0"
+version.workspace = true
+edition = "2021"
+publish = false
+
+[dependencies]
+tokio = { workspace = true, features = ["sync"] }
+parking_lot = { workspace = true }
+once_cell = { workspace = true }
+futures = { workspace = true }
+tracing = { workspace = true }
+
+[dev-dependencies]
+tokio = { workspace = true, features = ["macros", "test-util"] }
+
+
+[lints.rust]
+unexpected_cfgs = { level = "warn", check-cfg = [
+    'cfg(msim)',
+    'cfg(fail_points)',
+] }

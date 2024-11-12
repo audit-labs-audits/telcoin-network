@@ -8,11 +8,11 @@ use crate::quorum_waiter::QuorumWaiterError;
 // SPDX-License-Identifier: Apache-2.0
 use super::*;
 
-use narwhal_network_types::MockWorkerToPrimary;
-use narwhal_test_utils::transaction;
-use narwhal_typed_store::open_db;
+use consensus_network_types::MockWorkerToPrimary;
 use reth_primitives::SealedHeader;
 use tempfile::TempDir;
+use tn_storage::open_db;
+use tn_test_utils::transaction;
 
 #[derive(Clone, Debug)]
 struct TestMakeBlockQuorumWaiter(Arc<Mutex<Option<WorkerBlock>>>);

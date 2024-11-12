@@ -1,9 +1,10 @@
 [package]
-name = "narwhal-network"
+name = "consensus-network"
 version.workspace = true
 license = "Apache-2.0"
 authors = [
-    "Grant Kee <grant.kee@telco.in>",
+    "Grant Kee <grant@telcoin.org>",
+    "Steven Stanfield <steve@telcoin.org>",
     "Mysten Labs <build@mystenlabs.com>",
 ]
 edition = "2021"
@@ -17,13 +18,12 @@ parking_lot = { workspace = true }
 quinn-proto = { workspace = true }
 prometheus = { workspace = true }
 rand = { workspace = true, features = ["small_rng"] }
-telcoin-macros = { workspace = true }
 tokio = { workspace = true, features = ["rt", "net", "sync", "macros", "time"] }
 tracing = { workspace = true }
 tn-types = { workspace = true }
-telcoin-sync = { workspace = true }
+tn-utils = { workspace = true }
 consensus-metrics = { workspace = true }
-narwhal-network-types = { workspace = true }
+consensus-network-types = { workspace = true }
 
 anemo = { workspace = true }
 anemo-tower = { workspace = true }
@@ -36,7 +36,7 @@ eyre = { workspace = true }
 thiserror = { workspace = true }
 
 [dev-dependencies]
-narwhal-test-utils = { workspace = true }
+tn-test-utils = { workspace = true }
 
 [features]
 test-utils = []

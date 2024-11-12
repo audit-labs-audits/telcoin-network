@@ -8,20 +8,20 @@ use crate::{
     synchronizer::Synchronizer,
     ConsensusBus,
 };
+use consensus_network::client::NetworkClient;
 use fastcrypto::{hash::Hash, traits::KeyPair};
 use futures::{stream::FuturesUnordered, StreamExt};
 use itertools::Itertools;
-use narwhal_network::client::NetworkClient;
-use narwhal_test_utils::{
-    fixture_batch_with_transactions, make_optimal_signed_certificates, mock_signed_certificate,
-    CommitteeFixture,
-};
-use narwhal_typed_store::mem_db::MemDatabase;
 use std::{
     collections::{BTreeSet, HashMap},
     num::NonZeroUsize,
     sync::Arc,
     time::Duration,
+};
+use tn_storage::mem_db::MemDatabase;
+use tn_test_utils::{
+    fixture_batch_with_transactions, make_optimal_signed_certificates, mock_signed_certificate,
+    CommitteeFixture,
 };
 use tn_types::{
     error::DagError, BlsAggregateSignatureBytes, Certificate, Committee, Round,

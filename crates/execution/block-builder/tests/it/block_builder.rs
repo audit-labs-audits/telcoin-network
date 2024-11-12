@@ -4,15 +4,8 @@
 //! from peers.
 
 use assert_matches::assert_matches;
-use narwhal_network::client::NetworkClient;
-use narwhal_network_types::MockWorkerToPrimary;
-use narwhal_test_utils::{get_gas_price, test_genesis, TransactionFactory};
-use narwhal_typed_store::{open_db, tables::WorkerBlocks, traits::Database};
-use narwhal_worker::{
-    metrics::WorkerMetrics,
-    quorum_waiter::{QuorumWaiterError, QuorumWaiterTrait},
-    BlockProvider,
-};
+use consensus_network::client::NetworkClient;
+use consensus_network_types::MockWorkerToPrimary;
 use reth_blockchain_tree::{
     noop::NoopBlockchainTree, BlockchainTree, BlockchainTreeConfig, ShareableBlockchainTree,
     TreeExternals,
@@ -38,9 +31,16 @@ use tempfile::TempDir;
 use tn_block_builder::{test_utils::execute_test_worker_block, BlockBuilder};
 use tn_block_validator::{BlockValidation, BlockValidator};
 use tn_engine::execute_consensus_output;
+use tn_storage::{open_db, tables::WorkerBlocks, traits::Database};
+use tn_test_utils::{get_gas_price, test_genesis, TransactionFactory};
 use tn_types::{
     AutoSealConsensus, BuildArguments, Certificate, CommittedSubDag, Consensus, ConsensusOutput,
     LastCanonicalUpdate, ReputationScores, WorkerBlock,
+};
+use tn_worker::{
+    metrics::WorkerMetrics,
+    quorum_waiter::{QuorumWaiterError, QuorumWaiterTrait},
+    BlockProvider,
 };
 use tokio::time::timeout;
 use tracing::debug;

@@ -3,11 +3,11 @@
 // Copyright (c) Mysten Labs, Inc.
 // SPDX-License-Identifier: Apache-2.0
 
-use narwhal_network_types::{MockWorkerToWorker, WorkerToWorkerServer};
-use narwhal_test_utils::{batch, random_network, CommitteeFixture};
-use narwhal_typed_store::{mem_db::MemDatabase, open_db};
+use consensus_network_types::{MockWorkerToWorker, WorkerToWorkerServer};
 use std::vec;
 use tempfile::TempDir;
+use tn_storage::{mem_db::MemDatabase, open_db};
+use tn_test_utils::{batch, random_network, CommitteeFixture};
 
 use super::*;
 use tn_block_validator::NoopBlockValidator;

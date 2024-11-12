@@ -1,9 +1,10 @@
 [package]
-name = "narwhal-primary"
+name = "tn-primary"
 version.workspace = true
 license = "Apache-2.0"
 authors = [
-    "Grant Kee <grant.kee@telco.in>",
+    "Grant Kee <grant@telcoin.org>",
+    "Steven Stanfield <steve@telcoin.org>",
     "Mysten Labs <build@mystenlabs.com>",
 ]
 publish = false
@@ -36,17 +37,14 @@ tap = { workspace = true }
 
 fastcrypto = { workspace = true }
 fastcrypto-tbls = { workspace = true }
-narwhal-network = { workspace = true }
-narwhal-network-types = { workspace = true }
+consensus-network = { workspace = true }
+consensus-network-types = { workspace = true }
 tn-types = { workspace = true }
 tn-config = { workspace = true }
-narwhal-storage = { workspace = true }
-narwhal-typed-store = { workspace = true }
-telcoin-macros = { workspace = true }
-
-telcoin-sync = { workspace = true }
+tn-storage = { workspace = true }
+tn-utils = { workspace = true }
 consensus-metrics = { workspace = true }
-narwhal-primary-metrics = { workspace = true }
+tn-primary-metrics = { workspace = true }
 
 anemo = { workspace = true }
 anemo-tower = { workspace = true }
@@ -56,17 +54,17 @@ dashmap = { workspace = true }
 async-trait = { workspace = true }
 criterion = { workspace = true }
 futures = { workspace = true }
-narwhal-executor = { workspace = true }
+tn-executor = { workspace = true }
 indexmap = { workspace = true }
 itertools = { workspace = true }
 mockall = { workspace = true }
 tn-node = { workspace = true }
 proptest = { workspace = true }
 tempfile = { workspace = true }
-narwhal-test-utils = { workspace = true }
+tn-test-utils = { workspace = true }
 tracing = { workspace = true }
-narwhal-worker = { workspace = true }
-narwhal-storage = { workspace = true }
+tn-worker = { workspace = true }
+tn-storage = { workspace = true }
 reqwest = { workspace = true }
 bytes = { workspace = true }
 reth-tracing = { workspace = true }

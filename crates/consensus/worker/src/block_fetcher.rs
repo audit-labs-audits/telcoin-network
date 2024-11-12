@@ -10,18 +10,18 @@ use std::{
 
 use anemo::Network;
 use async_trait::async_trait;
+use consensus_network::WorkerRpc;
 use futures::{stream::FuturesUnordered, FutureExt, StreamExt};
 use itertools::Itertools;
-use narwhal_network::WorkerRpc;
-use narwhal_typed_store::{
+use prometheus::IntGauge;
+use rand::{rngs::ThreadRng, seq::SliceRandom};
+use tn_storage::{
     tables::WorkerBlocks,
     traits::{Database, DbTxMut},
 };
-use prometheus::IntGauge;
-use rand::{rngs::ThreadRng, seq::SliceRandom};
 use tn_types::NetworkPublicKey;
 
-use narwhal_network_types::{RequestBlocksRequest, RequestBlocksResponse};
+use consensus_network_types::{RequestBlocksRequest, RequestBlocksResponse};
 use tn_types::{now, BlockHash, WorkerBlock};
 use tokio::{
     select,
@@ -309,11 +309,11 @@ impl RequestBlocksNetwork for RequestBlocksNetworkImpl {
 mod tests {
     use super::*;
     use fastcrypto::traits::KeyPair;
-    use narwhal_test_utils::transaction;
-    use narwhal_typed_store::open_db;
     use rand::rngs::StdRng;
     use reth_primitives::{Header, SealedHeader};
     use tempfile::TempDir;
+    use tn_storage::open_db;
+    use tn_test_utils::transaction;
     use tn_types::NetworkKeypair;
 
     #[tokio::test]

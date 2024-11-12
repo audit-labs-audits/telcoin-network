@@ -6,6 +6,11 @@ rust-version.workspace = true
 license.workspace = true
 homepage.workspace = true
 repository.workspace = true
+authors = [
+    "Grant Kee <grant@telcoin.org>",
+    "Steven Stanfield <steve@telcoin.org>",
+    "Markus Osterlund <markus@telcoin.org>",
+]
 
 [dependencies]
 tracing = { workspace = true }
@@ -47,10 +52,11 @@ reth-tracing = { workspace = true }
 prometheus = { workspace = true }
 fastcrypto = { workspace = true }
 consensus-metrics = { workspace = true }
-narwhal-test-utils = { workspace = true }
-narwhal-network = { workspace = true }
-narwhal-network-types = { workspace = true }
-narwhal-worker = { workspace = true }
-narwhal-typed-store = { workspace = true }
+tn-test-utils = { workspace = true }
+consensus-network = { workspace = true }
+consensus-network-types = { workspace = true }
+tn-worker = { workspace = true }
+tn-storage = { workspace = true }
 tempfile = { workspace = true }
 serde_json = { workspace = true }
+tn-config = { workspace = true }

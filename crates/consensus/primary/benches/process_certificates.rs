@@ -6,13 +6,12 @@ use criterion::{
     criterion_group, criterion_main, BenchmarkId, Criterion, SamplingMode, Throughput,
 };
 use fastcrypto::hash::Hash;
-use narwhal_primary::consensus::{
+use std::{collections::BTreeSet, sync::Arc};
+use tn_primary::consensus::{
     Bullshark, ConsensusMetrics, ConsensusState, LeaderSchedule, LeaderSwapTable,
 };
-use narwhal_storage::NodeStorage;
-use narwhal_test_utils::{make_optimal_certificates, temp_dir, CommitteeFixture};
-use narwhal_typed_store::{mem_db::MemDatabase, open_db};
-use std::{collections::BTreeSet, sync::Arc};
+use tn_storage::{mem_db::MemDatabase, open_db, NodeStorage};
+use tn_test_utils::{make_optimal_certificates, temp_dir, CommitteeFixture};
 use tn_types::{encode, Certificate, Round, DEFAULT_BAD_NODES_STAKE_THRESHOLD};
 use tokio::time::Instant;
 
