@@ -4,15 +4,12 @@
 // Copyright (c) Telcoin, LLC
 
 use fastcrypto::hash::HashFunction;
-use reth_primitives::{
-    constants::EMPTY_WITHDRAWALS, proofs, Address, BlockHash, Bloom, Bytes, Header, SealedBlock,
-    SealedHeader, TransactionSigned, B256, EMPTY_OMMER_ROOT_HASH, U256,
-};
+use reth_primitives::{Address, BlockHash, SealedBlock, SealedHeader, TransactionSigned, B256};
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
 use tokio::sync::oneshot;
 
-use crate::{crypto, encode, max_worker_block_gas};
+use crate::{crypto, encode};
 
 use super::TimestampSec;
 
@@ -116,47 +113,6 @@ impl WorkerBlock {
             total_possible_gas += tx.gas_limit();
         }
         total_possible_gas
-    }
-
-    /// Returns a Header.
-    ///
-    /// This is a synthetic Header with default values for things missing from WorkerBlock.
-    /// It is NOT an actual header on the chain and has limited utility (mostly for testing or
-    /// possibly for use with Reth).
-    pub fn header(&self) -> Header {
-        let transactions_root = proofs::calculate_transaction_root(&self.transactions);
-
-        let total_possible_gas = self.total_possible_gas();
-
-        // create header
-        //
-        // NOTE: workers do not execute transactions. Peers validate:
-        // - calculated transaction root
-        // - all other roots are defaults
-        // - use ZERO for hashes
-        Header {
-            parent_hash: self.parent_hash,
-            ommers_hash: EMPTY_OMMER_ROOT_HASH,
-            beneficiary: self.beneficiary,
-            state_root: B256::ZERO,
-            transactions_root,
-            receipts_root: B256::ZERO,
-            withdrawals_root: Some(EMPTY_WITHDRAWALS),
-            logs_bloom: Bloom::default(),
-            timestamp: self.timestamp,
-            mix_hash: B256::ZERO,
-            nonce: 0,
-            base_fee_per_gas: self.base_fee_per_gas,
-            number: 1,
-            gas_limit: max_worker_block_gas(self.timestamp), // gas limit in wei
-            difficulty: U256::ZERO,
-            gas_used: total_possible_gas,
-            extra_data: Bytes::default(),
-            parent_beacon_block_root: None,
-            blob_gas_used: None,
-            excess_blob_gas: None,
-            requests_root: None,
-        }
     }
 
     /// Returns the received at time if available.

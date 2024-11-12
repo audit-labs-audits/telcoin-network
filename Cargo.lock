@@ -10758,7 +10758,6 @@ dependencies = [
  "reth-errors",
  "reth-evm",
  "reth-execution-types",
- "reth-node-api",
  "reth-payload-builder",
  "reth-primitives",
  "reth-provider",
