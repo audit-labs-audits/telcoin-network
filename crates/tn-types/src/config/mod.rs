@@ -421,3 +421,9 @@ impl WorkerCache {
 pub fn max_worker_block_gas(_timestamp: u64) -> u64 {
     30_000_000
 }
+
+/// Max worker block size in effect at a timestamp.  Measured in bytes.
+/// Currently allways 1,000,000 but can change in the future at a fork.
+pub fn max_worker_block_size(_timestamp: u64) -> usize {
+    1_000_000
+}
