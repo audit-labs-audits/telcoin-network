@@ -3,10 +3,9 @@
 
 //! Responsible for persisting all consensus output to a persistant store for later retrieval.
 
-use fastcrypto::hash::Hash;
 use narwhal_primary::ConsensusBus;
 use narwhal_typed_store::{
-    tables::{ConsensusBlockNumbersByDigest, ConsensusBlocks, SubDagsByDigest, WorkerBlocks},
+    tables::{ConsensusBlockNumbersByDigest, ConsensusBlocks, WorkerBlocks},
     traits::{Database, DbTxMut},
     ReDB,
 };
@@ -25,7 +24,6 @@ impl PersistConsensus {
         // expose the DB.
         let db = ReDB::open(path).expect("Cannot open database");
         db.open_table::<WorkerBlocks>().expect("failed to open table!");
-        db.open_table::<SubDagsByDigest>().expect("failed to open table!");
         db.open_table::<ConsensusBlocks>().expect("failed to open table!");
         db.open_table::<ConsensusBlockNumbersByDigest>().expect("failed to open table!");
         Self { db }
@@ -48,26 +46,16 @@ impl PersistConsensus {
                 match db.write_txn() {
                     Ok(mut txn) => {
                         let sub_dag = consensus_output.sub_dag.clone();
-                        let sub_dag_hash = sub_dag.digest();
                         let number = last_block.number + 1;
                         let parent_hash = last_block.digest();
-                        let header = ConsensusHeader {
-                            parent_hash,
-                            sub_dag_hash: sub_dag_hash.into(),
-                            number,
-                        };
+                        let header =
+                            ConsensusHeader { parent_hash, sub_dag: (*sub_dag).clone(), number };
                         if let Err(e) = consensus_bus
                             .consensus_output()
                             .send((consensus_output.clone(), header.clone()))
                             .await
                         {
                             tracing::error!(target: "engine", ?e, "error sending a committed sub dag with header!")
-                        }
-                        if let Err(e) = txn.insert::<SubDagsByDigest>(
-                            &consensus_output.digest().into(),
-                            &consensus_output.sub_dag,
-                        ) {
-                            tracing::error!(target: "engine", ?e, "error saving a committed sub dag to persistant storage!")
                         }
                         for wb in consensus_output.blocks.iter().flatten() {
                             if let Err(e) = txn.insert::<WorkerBlocks>(&wb.digest(), wb) {

@@ -67,10 +67,14 @@ struct ConsensusBusInner {
     /// Hold onto the recent blocks watch to keep it "open"
     _rx_recent_blocks: watch::Receiver<RecentBlocks>,
 
+    /// Initial consensus output with no consensus header.
     raw_consensus_output: broadcast::Sender<ConsensusOutput>,
+    /// Hold onto the initial consensus output to keep it open.
     _rx_raw_consensus_output: broadcast::Receiver<ConsensusOutput>,
 
+    /// Consensus output with a consensus header.
     consensus_output: broadcast::Sender<(ConsensusOutput, ConsensusHeader)>,
+    /// Hold onto consensus output with a consensus header to keep it open.
     _rx_consensus_output: broadcast::Receiver<(ConsensusOutput, ConsensusHeader)>,
 }
 
