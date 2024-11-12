@@ -72,7 +72,6 @@ where
     // messages.
     persist_consensus.start(primary.consensus_bus().await).await;
 
-    // XXXX- stream latest blocks
     let mut engine_state = engine.get_provider().await.canonical_state_stream();
     let eng_bus = primary.consensus_bus().await;
     // Spawn a task to update the consensus bus with new execution blocks as they are produced.
@@ -82,7 +81,6 @@ where
             eng_bus.recent_blocks().send_modify(|blocks| blocks.push_latest(latest_num_hash));
         }
     });
-    // XXXX Put the height and hash into a bus watch?
 
     // start the primary
     primary.start(&engine).await?;

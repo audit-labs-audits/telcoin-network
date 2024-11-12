@@ -419,7 +419,6 @@ mod tests {
 
         // min basefee in genesis
         let expected_base_fee = MIN_PROTOCOL_BASE_FEE;
-        let output_digest: B256 = consensus_output.digest().into();
         // assert expected basefee
         assert_eq!(genesis_header.base_fee_per_gas, Some(expected_base_fee));
         // basefee comes from workers - if no batches, then use parent's basefee
@@ -442,7 +441,10 @@ mod tests {
         // timestamp
         assert_eq!(expected_block.timestamp, consensus_output.committed_at());
         // parent beacon block root is output digest
-        assert_eq!(expected_block.parent_beacon_block_root, Some(output_digest));
+        assert_eq!(
+            expected_block.parent_beacon_block_root,
+            Some(ConsensusHeader::default().digest().into())
+        );
         // first block's parent is expected to be genesis
         assert_eq!(expected_block.parent_hash, chain.genesis_hash());
         // expect state roots to be same because empty output has no state change
@@ -711,7 +713,9 @@ mod tests {
             let mut expected_output = &consensus_output_1;
             let mut expected_beneficiary = &beneficiary_1;
             let mut expected_subdag_index = &sub_dag_index_1;
-            let mut expected_parent_beacon_block_root = &output_digest_1;
+            let mut output_digest = output_digest_1;
+            let expected_parent_beacon_block_root: B256 =
+                ConsensusHeader::default().digest().into();
             let mut expected_batch_index = idx;
 
             // update values based on index for all assertions below
@@ -720,7 +724,7 @@ mod tests {
                 expected_output = &consensus_output_2;
                 expected_beneficiary = &beneficiary_2;
                 expected_subdag_index = &sub_dag_index_2;
-                expected_parent_beacon_block_root = &output_digest_2;
+                output_digest = output_digest_2;
                 // takeaway 4 to compensate for independent loops for executing batches
                 expected_batch_index = idx - 4;
             }
@@ -734,7 +738,7 @@ mod tests {
             // timestamp
             assert_eq!(block.timestamp, expected_output.committed_at());
             // parent beacon block root is output digest
-            assert_eq!(block.parent_beacon_block_root, Some(*expected_parent_beacon_block_root));
+            assert_eq!(block.parent_beacon_block_root, Some(expected_parent_beacon_block_root));
 
             if idx == 0 {
                 // first block's parent is expected to be genesis
@@ -752,7 +756,7 @@ mod tests {
             }
 
             // mix hash is xor worker block's hash and consensus output digest
-            let expected_mix_hash = all_batches[idx].digest() ^ *expected_parent_beacon_block_root;
+            let expected_mix_hash = all_batches[idx].digest() ^ output_digest;
             assert_eq!(block.mix_hash, expected_mix_hash);
             // bloom expected to be the same bc all proposed transactions should be good
             // ie) no duplicates, etc.
@@ -1053,7 +1057,10 @@ mod tests {
             let mut expected_output = &consensus_output_1;
             let mut expected_beneficiary = &beneficiary_1;
             let mut expected_subdag_index = &sub_dag_index_1;
-            let mut expected_parent_beacon_block_root = &output_digest_1;
+            let mut output_digest = output_digest_1;
+            // We just set this to default in the test...
+            let expected_parent_beacon_block_root: B256 =
+                ConsensusHeader::default().digest().into();
             let mut expected_batch_index = idx;
 
             // update values based on index for all assertions below
@@ -1062,7 +1069,7 @@ mod tests {
                 expected_output = &consensus_output_2;
                 expected_beneficiary = &beneficiary_2;
                 expected_subdag_index = &sub_dag_index_2;
-                expected_parent_beacon_block_root = &output_digest_2;
+                output_digest = output_digest_2;
                 // takeaway 4 to compensate for independent loops for executing batches
                 expected_batch_index = idx - 4;
             }
@@ -1076,7 +1083,7 @@ mod tests {
             // timestamp
             assert_eq!(block.timestamp, expected_output.committed_at());
             // parent beacon block root is output digest
-            assert_eq!(block.parent_beacon_block_root, Some(*expected_parent_beacon_block_root));
+            assert_eq!(block.parent_beacon_block_root, Some(expected_parent_beacon_block_root));
 
             if idx == 0 {
                 // first block's parent is expected to be genesis
@@ -1090,7 +1097,7 @@ mod tests {
             }
 
             // mix hash is xor worker block's hash and consensus output digest
-            let expected_mix_hash = all_batches[idx].digest() ^ *expected_parent_beacon_block_root;
+            let expected_mix_hash = all_batches[idx].digest() ^ output_digest;
             assert_eq!(block.mix_hash, expected_mix_hash);
             // bloom expected to be the same bc all proposed transactions should be good
             // ie) no duplicates, etc.

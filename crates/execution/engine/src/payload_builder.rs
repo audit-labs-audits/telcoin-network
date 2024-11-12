@@ -435,10 +435,9 @@ where
         difficulty: U256::from(payload.attributes.batch_index),
         gas_used: cumulative_gas_used,
         extra_data: payload.attributes.batch_digest.into(),
-        // XXXX make this the consenus block hash that made this header.
-        parent_beacon_block_root: Some(consensus_header.digest()), // XXXXpayload.parent_beacon_block_root(),
-        blob_gas_used: None,                                       // TODO: support blobs
-        excess_blob_gas: None,                                     // TODO: support blobs
+        parent_beacon_block_root: Some(consensus_header.digest()),
+        blob_gas_used: None,   // TODO: support blobs
+        excess_blob_gas: None, // TODO: support blobs
         requests_root: None,
     };
 
@@ -519,9 +518,9 @@ where
         difficulty: U256::ZERO, // batch index
         gas_used: 0,
         extra_data: payload.attributes.batch_digest.into(),
-        parent_beacon_block_root: Some(consensus_header.digest()), //XXXX payload.parent_beacon_block_root(),
-        blob_gas_used: None,                                       // TODO: support blobs
-        excess_blob_gas: None,                                     // TODO: support blobs
+        parent_beacon_block_root: Some(consensus_header.digest()),
+        blob_gas_used: None,   // TODO: support blobs
+        excess_blob_gas: None, // TODO: support blobs
         requests_root: None,
     };
 

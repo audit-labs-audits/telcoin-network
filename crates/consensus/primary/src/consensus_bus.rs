@@ -261,16 +261,21 @@ impl ConsensusBus {
         &self.inner.tx_recent_blocks
     }
 
-    // XXXX docs here
     /// Broadcast channel with raw consensus output.
+    /// Raw means no ConsensusHeader exists yet.
     pub fn raw_consensus_output(&self) -> &impl TnSender<ConsensusOutput> {
         &self.inner.raw_consensus_output
     }
 
-    /// Broadcast channel with consensus output (includes the ConsensusBlock).
+    /// Broadcast channel with consensus output (includes the consensus chain block).
+    /// This also provides the ConsesusHeader, use this for block execution.
     pub fn consensus_output(&self) -> &impl TnSender<(ConsensusOutput, ConsensusHeader)> {
         &self.inner.consensus_output
     }
+
+    /// Broadcast subscriber with consensus output.
+    /// This breaks the trait pattern in order to return a concrete receiver to pass to the
+    /// execution module.
     pub fn subscribe_consensus_output(
         &self,
     ) -> broadcast::Receiver<(ConsensusOutput, ConsensusHeader)> {

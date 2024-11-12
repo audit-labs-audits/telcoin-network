@@ -3,15 +3,14 @@
 
 //! Responsible for persisting all consensus output to a persistant store for later retrieval.
 
-use fastcrypto::hash::{Hash, HashFunction};
+use fastcrypto::hash::Hash;
 use narwhal_primary::ConsensusBus;
 use narwhal_typed_store::{
     tables::{ConsensusBlockNumbersByDigest, ConsensusBlocks, SubDagsByDigest, WorkerBlocks},
     traits::{Database, DbTxMut},
     ReDB,
 };
-use reth_primitives::B256;
-use tn_types::{crypto, encode, BlockHash, ConsensusHeader, TnReceiver, TnSender};
+use tn_types::{ConsensusHeader, TnReceiver, TnSender};
 
 /// Implements writing consensus output to a peristant store.
 pub struct PersistConsensus {
@@ -38,11 +37,7 @@ impl PersistConsensus {
         let mut last_block = if let Some((_, last_block)) = db.last_record::<ConsensusBlocks>() {
             last_block
         } else {
-            ConsensusHeader {
-                parent_hash: B256::default(),
-                sub_dag_hash: B256::default(),
-                number: 0,
-            }
+            ConsensusHeader::default()
         };
         // Normal thread here so we don't bog down the runtime with DB writes.
         tokio::spawn(async move {
@@ -55,11 +50,7 @@ impl PersistConsensus {
                         let sub_dag = consensus_output.sub_dag.clone();
                         let sub_dag_hash = sub_dag.digest();
                         let number = last_block.number + 1;
-                        let parent_hash = {
-                            let mut hasher = crypto::DefaultHashFunction::new();
-                            hasher.update(encode(&last_block));
-                            BlockHash::from_slice(&hasher.finalize().digest)
-                        };
+                        let parent_hash = last_block.digest();
                         let header = ConsensusHeader {
                             parent_hash,
                             sub_dag_hash: sub_dag_hash.into(),

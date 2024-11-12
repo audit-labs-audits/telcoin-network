@@ -33,10 +33,6 @@ struct PrimaryNodeInner<CDB> {
     handles: FuturesUnordered<JoinHandle<()>>,
     /// Peer ID used for local connections.
     own_peer_id: Option<PeerId>,
-    // Consensus broadcast channel.
-    //
-    // NOTE: this broadcasts to all subscribers, but lagging receivers will lose messages
-    // XXXX consensus_output_notification_sender: broadcast::Sender<ConsensusOutput>,
 }
 
 impl<CDB: ConsensusDatabase> PrimaryNodeInner<CDB> {
@@ -230,11 +226,6 @@ pub struct PrimaryNode<CDB> {
 
 impl<CDB: ConsensusDatabase> PrimaryNode<CDB> {
     pub fn new(consensus_config: ConsensusConfig<CDB>) -> PrimaryNode<CDB> {
-        // TODO: what is an appropriate channel capacity? CHANNEL_CAPACITY currently set to 10k
-        // which seems really high but is consistent for now
-        //XXXX let (consensus_output_notification_sender, _receiver) =
-        //    tokio::sync::broadcast::channel(CHANNEL_CAPACITY);
-
         let consensus_bus = ConsensusBus::new();
         let inner = PrimaryNodeInner {
             consensus_config,
@@ -275,11 +266,6 @@ impl<CDB: ConsensusDatabase> PrimaryNode<CDB> {
         let mut guard = self.internal.write().await;
         guard.wait().await
     }
-
-    /* XXXX pub async fn subscribe_consensus_output(&self) -> broadcast::Receiver<ConsensusOutput> {
-        let guard = self.internal.read().await;
-        guard.consensus_output_notification_sender.subscribe()
-    }*/
 
     /// Return the consensus metrics.
     pub async fn consensus_metrics(&self) -> Arc<ConsensusMetrics> {

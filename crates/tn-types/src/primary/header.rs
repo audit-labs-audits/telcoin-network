@@ -229,6 +229,8 @@ impl From<Header> for CertificateDigest {
 
 impl HeaderBuilder {
     /// "Build" the header by taking all fields and calculating the hash.
+    /// This is used for tests, if used for "real" code then at least latest_execution_block will
+    /// need to be visited.
     pub fn build(self) -> Result<Header, fastcrypto::error::FastCryptoError> {
         let h = Header {
             author: self.author.unwrap(),
@@ -239,7 +241,7 @@ impl HeaderBuilder {
             system_messages: self.system_messages.unwrap_or_default(),
             parents: self.parents.unwrap(),
             digest: OnceCell::default(),
-            // XXXX- real data?  This is used by tests...
+            // Fake data for tests.  This is used by tests...
             latest_execution_block: BlockHash::default(),
             latest_execution_block_num: 0,
         };
