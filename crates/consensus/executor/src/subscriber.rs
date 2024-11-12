@@ -19,7 +19,7 @@ use tn_types::{
     AuthorityIdentifier, BlockHash, Certificate, CommittedSubDag, Committee, ConsensusOutput,
     NetworkPublicKey, Noticer, Timestamp, TnReceiver, TnSender, WorkerBlock, WorkerCache, WorkerId,
 };
-use tokio::{sync::broadcast, task::JoinHandle};
+use tokio::task::JoinHandle;
 use tracing::{debug, error, info, warn};
 
 /// The `Subscriber` receives certificates sequenced by the consensus and waits until the
@@ -51,7 +51,6 @@ pub fn spawn_subscriber(
     rx_shutdown: Noticer,
     consensus_bus: ConsensusBus,
     restored_consensus_output: Vec<CommittedSubDag>,
-    consensus_output_notification_sender: broadcast::Sender<ConsensusOutput>,
 ) -> JoinHandle<()> {
     let metrics = Arc::new(ExecutorMetrics::default());
 
@@ -63,10 +62,7 @@ pub fn spawn_subscriber(
                 consensus_bus,
                 inner: Arc::new(Inner { authority_id, committee, worker_cache, client, metrics }),
             };
-            subscriber
-                .run(restored_consensus_output, consensus_output_notification_sender)
-                .await
-                .expect("Failed to run subscriber")
+            subscriber.run(restored_consensus_output).await.expect("Failed to run subscriber")
         },
         "SubscriberTask"
     )
@@ -77,11 +73,7 @@ impl Subscriber {
     const MAX_PENDING_PAYLOADS: usize = 1000;
 
     /// Main loop connecting to the consensus to listen to sequence messages.
-    async fn run(
-        self,
-        restored_consensus_output: Vec<CommittedSubDag>,
-        consensus_output_notification_sender: broadcast::Sender<ConsensusOutput>,
-    ) -> SubscriberResult<()> {
+    async fn run(self, restored_consensus_output: Vec<CommittedSubDag>) -> SubscriberResult<()> {
         // It's important to have the futures in ordered fashion as we want
         // to guarantee that will deliver to the executor the certificates
         // in the same order we received from rx_sequence. So it doesn't
@@ -117,7 +109,7 @@ impl Subscriber {
                 //
                 // NOTE: this broadcasts to all subscribers, but lagging receivers will lose messages
                 Some(message) = waiting.next() => {
-                    if let Err(e) = consensus_output_notification_sender.send(message) {
+                    if let Err(e) = self.consensus_bus.raw_consensus_output().send(message).await {
                         error!(target: "telcoin::subscriber", "error broadcasting consensus output for authority {}: {}", self.inner.authority_id, e);
                         return Ok(());
                     }

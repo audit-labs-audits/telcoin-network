@@ -11,6 +11,8 @@ mod output;
 pub use output::*;
 mod execution;
 pub use execution::*;
+mod block;
+pub use block::*;
 pub use reth_consensus::{Consensus, ConsensusError};
 
 /// A global sequence number assigned to every CommittedSubDag.

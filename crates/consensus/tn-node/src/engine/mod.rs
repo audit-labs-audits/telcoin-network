@@ -25,7 +25,7 @@ use reth_provider::providers::BlockchainProvider;
 use reth_tasks::TaskExecutor;
 use tn_block_validator::BlockValidator;
 use tn_faucet::FaucetArgs;
-use tn_types::{Config, ConsensusOutput, WorkerBlockSender, WorkerId};
+use tn_types::{Config, ConsensusHeader, ConsensusOutput, WorkerBlockSender, WorkerId};
 use tokio::sync::{broadcast, RwLock};
 pub use worker::*;
 
@@ -78,7 +78,7 @@ where
     /// Execution engine to produce blocks after consensus.
     pub async fn start_engine(
         &self,
-        from_consensus: broadcast::Receiver<ConsensusOutput>,
+        from_consensus: broadcast::Receiver<(ConsensusOutput, ConsensusHeader)>,
     ) -> eyre::Result<()> {
         let guard = self.internal.read().await;
         guard.start_engine(from_consensus).await

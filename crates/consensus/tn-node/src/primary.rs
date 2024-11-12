@@ -9,7 +9,7 @@ use fastcrypto::traits::VerifyingKey;
 use narwhal_executor::{get_restored_consensus_output, Executor, SubscriberResult};
 use narwhal_primary::{
     consensus::{Bullshark, Consensus, ConsensusMetrics, LeaderSchedule},
-    ConsensusBus, Primary, CHANNEL_CAPACITY,
+    ConsensusBus, Primary,
 };
 use narwhal_primary_metrics::Metrics;
 use narwhal_typed_store::traits::Database as ConsensusDatabase;
@@ -20,11 +20,8 @@ use reth_db::{
 use reth_evm::{execute::BlockExecutorProvider, ConfigureEvm};
 use std::{sync::Arc, time::Instant};
 use tn_config::ConsensusConfig;
-use tn_types::{BlsPublicKey, ConsensusOutput, DEFAULT_BAD_NODES_STAKE_THRESHOLD};
-use tokio::{
-    sync::{broadcast, RwLock},
-    task::JoinHandle,
-};
+use tn_types::{BlsPublicKey, DEFAULT_BAD_NODES_STAKE_THRESHOLD};
+use tokio::{sync::RwLock, task::JoinHandle};
 use tracing::{info, instrument};
 
 struct PrimaryNodeInner<CDB> {
@@ -36,10 +33,10 @@ struct PrimaryNodeInner<CDB> {
     handles: FuturesUnordered<JoinHandle<()>>,
     /// Peer ID used for local connections.
     own_peer_id: Option<PeerId>,
-    /// Consensus broadcast channel.
-    ///
-    /// NOTE: this broadcasts to all subscribers, but lagging receivers will lose messages
-    consensus_output_notification_sender: broadcast::Sender<ConsensusOutput>,
+    // Consensus broadcast channel.
+    //
+    // NOTE: this broadcasts to all subscribers, but lagging receivers will lose messages
+    // XXXX consensus_output_notification_sender: broadcast::Sender<ConsensusOutput>,
 }
 
 impl<CDB: ConsensusDatabase> PrimaryNodeInner<CDB> {
@@ -74,7 +71,8 @@ impl<CDB: ConsensusDatabase> PrimaryNodeInner<CDB> {
             execution_components.last_executed_output().await.expect("execution found HEAD");
 
         // create receiving channel before spawning primary to ensure messages are not lost
-        let consensus_output_rx = self.subscribe_consensus_output();
+        //let consensus_output_rx = self.subscribe_consensus_output();
+        let consensus_output_rx = self.consensus_bus.subscribe_consensus_output();
 
         // spawn primary if not already running
         let primary_handles = self.spawn_primary(last_executed_sub_dag_index).await?;
@@ -217,19 +215,11 @@ impl<CDB: ConsensusDatabase> PrimaryNodeInner<CDB> {
             self.consensus_config.subscribe_shutdown(),
             consensus_bus.clone(),
             restored_consensus_output,
-            self.consensus_output_notification_sender.clone(),
         )?;
 
         let handles = vec![executor_handle, consensus_handle];
 
         Ok((handles, leader_schedule))
-    }
-
-    /// Subscribe to [ConsensusOutput] broadcast.
-    ///
-    /// NOTE: this broadcasts to all subscribers, but lagging receivers will lose messages
-    pub fn subscribe_consensus_output(&self) -> broadcast::Receiver<ConsensusOutput> {
-        self.consensus_output_notification_sender.subscribe()
     }
 }
 
@@ -242,8 +232,8 @@ impl<CDB: ConsensusDatabase> PrimaryNode<CDB> {
     pub fn new(consensus_config: ConsensusConfig<CDB>) -> PrimaryNode<CDB> {
         // TODO: what is an appropriate channel capacity? CHANNEL_CAPACITY currently set to 10k
         // which seems really high but is consistent for now
-        let (consensus_output_notification_sender, _receiver) =
-            tokio::sync::broadcast::channel(CHANNEL_CAPACITY);
+        //XXXX let (consensus_output_notification_sender, _receiver) =
+        //    tokio::sync::broadcast::channel(CHANNEL_CAPACITY);
 
         let consensus_bus = ConsensusBus::new();
         let inner = PrimaryNodeInner {
@@ -251,7 +241,6 @@ impl<CDB: ConsensusDatabase> PrimaryNode<CDB> {
             consensus_bus,
             handles: FuturesUnordered::new(),
             own_peer_id: None,
-            consensus_output_notification_sender,
         };
 
         Self { internal: Arc::new(RwLock::new(inner)) }
@@ -287,10 +276,10 @@ impl<CDB: ConsensusDatabase> PrimaryNode<CDB> {
         guard.wait().await
     }
 
-    pub async fn subscribe_consensus_output(&self) -> broadcast::Receiver<ConsensusOutput> {
+    /* XXXX pub async fn subscribe_consensus_output(&self) -> broadcast::Receiver<ConsensusOutput> {
         let guard = self.internal.read().await;
         guard.consensus_output_notification_sender.subscribe()
-    }
+    }*/
 
     /// Return the consensus metrics.
     pub async fn consensus_metrics(&self) -> Arc<ConsensusMetrics> {
@@ -300,5 +289,10 @@ impl<CDB: ConsensusDatabase> PrimaryNode<CDB> {
     /// Return the primary metrics.
     pub async fn primary_metrics(&self) -> Arc<Metrics> {
         self.internal.read().await.consensus_bus.primary_metrics()
+    }
+
+    /// Return a copy of the primaries consensus bus.
+    pub async fn consensus_bus(&self) -> ConsensusBus {
+        self.internal.read().await.consensus_bus.clone()
     }
 }

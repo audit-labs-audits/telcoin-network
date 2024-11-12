@@ -27,3 +27,6 @@ pub use crate::primary::{Primary, CHANNEL_CAPACITY};
 
 mod consensus_bus;
 pub use consensus_bus::*;
+
+mod recent_blocks;
+pub use recent_blocks::*;

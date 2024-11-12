@@ -21,7 +21,7 @@ use narwhal_storage::{CertificateStore, ConsensusStore};
 use std::sync::Arc;
 use tn_config::ConsensusConfig;
 use tn_types::{CertificateDigest, CommittedSubDag, ConsensusOutput, Noticer};
-use tokio::{sync::broadcast, task::JoinHandle};
+use tokio::task::JoinHandle;
 use tracing::info;
 
 /// Convenience type representing a serialized transaction.
@@ -50,7 +50,6 @@ impl Executor {
         rx_shutdown: Noticer,
         consensus_bus: ConsensusBus,
         restored_consensus_output: Vec<CommittedSubDag>,
-        consensus_output_notification_sender: broadcast::Sender<ConsensusOutput>,
     ) -> SubscriberResult<JoinHandle<()>> {
         // Spawn the subscriber.
         let subscriber_handle = spawn_subscriber(
@@ -61,7 +60,6 @@ impl Executor {
             rx_shutdown,
             consensus_bus,
             restored_consensus_output,
-            consensus_output_notification_sender,
         );
 
         // Return the handle.

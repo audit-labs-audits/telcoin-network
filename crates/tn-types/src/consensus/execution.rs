@@ -2,7 +2,7 @@
 
 use crate::ConsensusOutput;
 
-use super::{Consensus, ConsensusError};
+use super::{Consensus, ConsensusError, ConsensusHeader};
 use reth_chainspec::ChainSpec;
 use reth_consensus::PostExecutionInput;
 use reth_evm_ethereum::revm_spec_by_timestamp_after_merge;
@@ -77,12 +77,19 @@ pub struct BuildArguments<Provider> {
     pub output: ConsensusOutput,
     /// Last executed block from the previous consensus output.
     pub parent_header: SealedHeader,
+    /// The consensus header (for the consensus chain) that matches this ConsensusOutput.
+    pub consensus_header: ConsensusHeader,
 }
 
 impl<P> BuildArguments<P> {
     /// Initialize new instance of [Self].
-    pub fn new(provider: P, output: ConsensusOutput, parent_header: SealedHeader) -> Self {
-        Self { provider, output, parent_header }
+    pub fn new(
+        provider: P,
+        output: ConsensusOutput,
+        parent_header: SealedHeader,
+        consensus_header: ConsensusHeader,
+    ) -> Self {
+        Self { provider, output, parent_header, consensus_header }
     }
 }
 

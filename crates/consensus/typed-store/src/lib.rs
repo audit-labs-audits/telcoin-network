@@ -46,6 +46,9 @@ const BATCHES_CF: &str = "batches";
 const LAST_COMMITTED_CF: &str = "last_committed";
 const COMMITTED_SUB_DAG_INDEX_CF: &str = "committed_sub_dag";
 const SUB_DAG_CF: &str = "sub_dag";
+const SUB_DAG_BY_DIGEST_CF: &str = "sub_dag_by_digest";
+const CONSENSUS_BLOCK_CF: &str = "consensus_block";
+const CONSENSUS_BLOCK_NUMBER_BY_DIGEST_CF: &str = "consensus_block_number_by_digest";
 
 macro_rules! tables {
     ( $($table:ident;$name:expr;<$K:ty, $V:ty>),*) => {
@@ -66,7 +69,8 @@ pub mod tables {
     use super::{PayloadToken, ProposerKey};
     use tn_types::{
         AuthorityIdentifier, BlockHash, Certificate, CertificateDigest, CommittedSubDag as SubDag,
-        ConsensusCommit, Header, Round, SequenceNumber, VoteInfo, WorkerBlock, WorkerId,
+        ConsensusCommit, ConsensusHeader, Header, Round, SequenceNumber, VoteInfo, WorkerBlock,
+        WorkerId,
     };
 
     tables!(
@@ -76,10 +80,15 @@ pub mod tables {
         CertificateDigestByRound;crate::CERTIFICATE_DIGEST_BY_ROUND_CF;<(Round, AuthorityIdentifier), CertificateDigest>,
         CertificateDigestByOrigin;crate::CERTIFICATE_DIGEST_BY_ORIGIN_CF;<(AuthorityIdentifier, Round), CertificateDigest>,
         Payload;crate::PAYLOAD_CF;<(BlockHash, WorkerId), PayloadToken>,
-        WorkerBlocks;crate::BATCHES_CF;<BlockHash, WorkerBlock>,
         LastCommitted;crate::LAST_COMMITTED_CF;<AuthorityIdentifier, Round>,
         CommittedSubDag;crate::COMMITTED_SUB_DAG_INDEX_CF;<SequenceNumber, ConsensusCommit>,
-        SubDags;crate::SUB_DAG_CF;<SequenceNumber, SubDag>
+        SubDags;crate::SUB_DAG_CF;<SequenceNumber, SubDag>,
+        // Table is used for "normal" consensus DB as well as a version for the consensus chain.
+        WorkerBlocks;crate::BATCHES_CF;<BlockHash, WorkerBlock>,
+        // These tables are for the consensus chain not the normal consensus DB.
+        SubDagsByDigest;crate::SUB_DAG_BY_DIGEST_CF;<BlockHash, SubDag>,
+        ConsensusBlocks;crate::CONSENSUS_BLOCK_CF;<u64, ConsensusHeader>,
+        ConsensusBlockNumbersByDigest;crate::CONSENSUS_BLOCK_NUMBER_BY_DIGEST_CF;<BlockHash, u64>
     );
 }
 

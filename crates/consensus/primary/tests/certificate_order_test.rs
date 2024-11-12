@@ -5,6 +5,7 @@ use indexmap::IndexMap;
 use narwhal_test_utils::{AuthorityFixture, CommitteeFixture};
 use narwhal_typed_store::mem_db::MemDatabase;
 use rand::{rngs::OsRng, seq::SliceRandom};
+use reth_primitives::BlockNumHash;
 use std::{collections::BTreeSet, num::NonZeroUsize};
 use tn_types::{
     AuthorityIdentifier, BlsPublicKey, BlsSignature, Certificate, Committee, Header, Stake, Vote,
@@ -28,7 +29,15 @@ async fn test_certificate_signers_are_ordered() {
     // The authority that creates the Header
     let authority = authorities[0];
 
-    let header = Header::new(authority.id(), 1, 1, IndexMap::new(), Vec::new(), BTreeSet::new());
+    let header = Header::new(
+        authority.id(),
+        1,
+        1,
+        IndexMap::new(),
+        Vec::new(),
+        BTreeSet::new(),
+        BlockNumHash::default(),
+    );
 
     // WHEN
     let mut votes: Vec<(AuthorityIdentifier, BlsSignature)> = Vec::new();

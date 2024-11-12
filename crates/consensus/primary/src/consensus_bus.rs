@@ -9,12 +9,14 @@ use std::sync::Arc;
 
 use consensus_metrics::metered_channel::{self, channel_with_total_sender, MeteredMpscChannel};
 use narwhal_primary_metrics::{ChannelMetrics, ConsensusMetrics, Metrics};
-use tn_types::{Certificate, CommittedSubDag, Header, Round, TnSender, CHANNEL_CAPACITY};
-use tokio::sync::watch;
+use tn_types::{
+    Certificate, CommittedSubDag, ConsensusHeader, ConsensusOutput, Header, Round, TnSender,
+};
+use tokio::sync::{broadcast, watch};
 
 use crate::{
     certificate_fetcher::CertificateFetcherCommand, consensus::ConsensusRound,
-    proposer::OurDigestMessage,
+    proposer::OurDigestMessage, RecentBlocks, CHANNEL_CAPACITY,
 };
 
 #[derive(Debug)]
@@ -59,6 +61,17 @@ struct ConsensusBusInner {
     tx_narwhal_round_updates: watch::Sender<Round>,
     /// Hold onto the primary metrics (allow early creation)
     _rx_narwhal_round_updates: watch::Receiver<Round>,
+
+    /// Watch tracking most recent blocks
+    tx_recent_blocks: watch::Sender<RecentBlocks>,
+    /// Hold onto the recent blocks watch to keep it "open"
+    _rx_recent_blocks: watch::Receiver<RecentBlocks>,
+
+    raw_consensus_output: broadcast::Sender<ConsensusOutput>,
+    _rx_raw_consensus_output: broadcast::Receiver<ConsensusOutput>,
+
+    consensus_output: broadcast::Sender<(ConsensusOutput, ConsensusHeader)>,
+    _rx_consensus_output: broadcast::Receiver<(ConsensusOutput, ConsensusHeader)>,
 }
 
 #[derive(Clone, Debug)]
@@ -122,9 +135,13 @@ impl ConsensusBus {
         );
 
         let (tx_narwhal_round_updates, _rx_narwhal_round_updates) = watch::channel(0u64);
+        let (tx_recent_blocks, _rx_recent_blocks) = watch::channel(RecentBlocks::new(3));
 
         let sequence =
             metered_channel::channel_sender(CHANNEL_CAPACITY, &channel_metrics.tx_sequence);
+
+        let (raw_consensus_output, _rx_raw_consensus_output) = broadcast::channel(CHANNEL_CAPACITY);
+        let (consensus_output, _rx_consensus_output) = broadcast::channel(CHANNEL_CAPACITY);
 
         Self {
             inner: Arc::new(ConsensusBusInner {
@@ -144,6 +161,12 @@ impl ConsensusBus {
                 consensus_metrics,
                 primary_metrics,
                 channel_metrics,
+                tx_recent_blocks,
+                _rx_recent_blocks,
+                raw_consensus_output,
+                _rx_raw_consensus_output,
+                consensus_output,
+                _rx_consensus_output,
             }),
         }
     }
@@ -231,5 +254,26 @@ impl ConsensusBus {
     /// Hold onto the channel metrics (metrics for the sequence channel).
     pub fn channel_metrics(&self) -> Arc<ChannelMetrics> {
         self.inner.channel_metrics.clone()
+    }
+
+    /// Track recent blocks.
+    pub fn recent_blocks(&self) -> &watch::Sender<RecentBlocks> {
+        &self.inner.tx_recent_blocks
+    }
+
+    // XXXX docs here
+    /// Broadcast channel with raw consensus output.
+    pub fn raw_consensus_output(&self) -> &impl TnSender<ConsensusOutput> {
+        &self.inner.raw_consensus_output
+    }
+
+    /// Broadcast channel with consensus output (includes the ConsensusBlock).
+    pub fn consensus_output(&self) -> &impl TnSender<(ConsensusOutput, ConsensusHeader)> {
+        &self.inner.consensus_output
+    }
+    pub fn subscribe_consensus_output(
+        &self,
+    ) -> broadcast::Receiver<(ConsensusOutput, ConsensusHeader)> {
+        self.inner.consensus_output.subscribe()
     }
 }

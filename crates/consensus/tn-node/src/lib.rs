@@ -3,7 +3,7 @@
 
 use crate::{primary::PrimaryNode, worker::WorkerNode};
 use engine::{ExecutionNode, TnBuilder};
-use futures::{future::try_join_all, stream::FuturesUnordered};
+use futures::{future::try_join_all, stream::FuturesUnordered, StreamExt};
 pub use narwhal_storage::NodeStorage;
 use narwhal_typed_store::open_db;
 use persist_consensus::PersistConsensus;
@@ -12,6 +12,7 @@ use reth_db::{
     database_metrics::{DatabaseMetadata, DatabaseMetrics},
 };
 use reth_evm::{execute::BlockExecutorProvider, ConfigureEvm};
+use reth_provider::CanonStateSubscriptions;
 use tn_config::{ConsensusConfig, KeyConfig};
 use tn_types::TelcoinDirs;
 use tracing::{info, instrument};
@@ -69,7 +70,19 @@ where
     let primary = PrimaryNode::new(consensus_config.clone());
     // Start persist consensus output, do this before primary starts to be 100% sure of getting all
     // messages.
-    persist_consensus.start(primary.subscribe_consensus_output().await).await;
+    persist_consensus.start(primary.consensus_bus().await).await;
+
+    // XXXX- stream latest blocks
+    let mut engine_state = engine.get_provider().await.canonical_state_stream();
+    let eng_bus = primary.consensus_bus().await;
+    // Spawn a task to update the consensus bus with new execution blocks as they are produced.
+    tokio::spawn(async move {
+        while let Some(latest) = engine_state.next().await {
+            let latest_num_hash = latest.tip().block.num_hash();
+            eng_bus.recent_blocks().send_modify(|blocks| blocks.push_latest(latest_num_hash));
+        }
+    });
+    // XXXX Put the height and hash into a bus watch?
 
     // start the primary
     primary.start(&engine).await?;

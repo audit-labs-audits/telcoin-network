@@ -39,8 +39,8 @@ use tn_block_builder::{test_utils::execute_test_worker_block, BlockBuilder};
 use tn_block_validator::{BlockValidation, BlockValidator};
 use tn_engine::execute_consensus_output;
 use tn_types::{
-    AutoSealConsensus, BuildArguments, Certificate, CommittedSubDag, Consensus, ConsensusOutput,
-    LastCanonicalUpdate, ReputationScores, WorkerBlock,
+    AutoSealConsensus, BuildArguments, Certificate, CommittedSubDag, Consensus, ConsensusHeader,
+    ConsensusOutput, LastCanonicalUpdate, ReputationScores, WorkerBlock,
 };
 use tokio::time::timeout;
 use tracing::debug;
@@ -626,7 +626,12 @@ async fn test_canonical_notification_updates_pool() {
     };
 
     // execute output to trigger canonical update
-    let args = BuildArguments::new(blockchain_db.clone(), output, chain.sealed_genesis_header());
+    let args = BuildArguments::new(
+        blockchain_db.clone(),
+        output,
+        chain.sealed_genesis_header(),
+        ConsensusHeader::default(),
+    );
     let _final_header = execute_consensus_output(evm_config, args).expect("output executed");
 
     // sleep to ensure canonical update received before ack

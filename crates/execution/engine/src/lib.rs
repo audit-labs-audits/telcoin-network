@@ -36,7 +36,7 @@ use std::{
     pin::Pin,
     task::{Context, Poll},
 };
-use tn_types::{BuildArguments, ConsensusOutput};
+use tn_types::{BuildArguments, ConsensusHeader, ConsensusOutput};
 use tokio::sync::oneshot;
 use tokio_stream::wrappers::BroadcastStream;
 use tracing::{error, info, trace, warn};
@@ -56,7 +56,7 @@ type PendingExecutionTask = oneshot::Receiver<EngineResult<SealedHeader>>;
 /// is reached, the engine shuts down immediately.
 pub struct ExecutorEngine<BT, CE> {
     /// The backlog of output from consensus that's ready to be executed.
-    queued: VecDeque<ConsensusOutput>,
+    queued: VecDeque<(ConsensusOutput, ConsensusHeader)>,
     /// Single active future that executes consensus output on a blocking thread and then returns
     /// the result through a oneshot channel.
     pending_task: Option<PendingExecutionTask>,
@@ -72,7 +72,7 @@ pub struct ExecutorEngine<BT, CE> {
     max_round: Option<u64>,
     /// Receiving end from CL's `Executor`. The `ConsensusOutput` is sent
     /// to the mining task here.
-    consensus_output_stream: BroadcastStream<ConsensusOutput>,
+    consensus_output_stream: BroadcastStream<(ConsensusOutput, ConsensusHeader)>,
     /// The [SealedHeader] of the last fully-executed block.
     ///
     /// This information reflects the current finalized block number and hash.
@@ -101,7 +101,7 @@ where
         blockchain: BT,
         evm_config: CE,
         max_round: Option<u64>,
-        consensus_output_stream: BroadcastStream<ConsensusOutput>,
+        consensus_output_stream: BroadcastStream<(ConsensusOutput, ConsensusHeader)>,
         parent_header: SealedHeader,
     ) -> Self {
         Self {
@@ -130,11 +130,11 @@ where
         let (tx, rx) = oneshot::channel();
 
         // pop next output in queue and execute
-        if let Some(output) = self.queued.pop_front() {
+        if let Some((output, consensus_header)) = self.queued.pop_front() {
             let provider = self.blockchain.clone();
             let evm_config = self.evm_config.clone();
             let parent = self.parent_header.clone();
-            let build_args = BuildArguments::new(provider, output, parent);
+            let build_args = BuildArguments::new(provider, output, parent, consensus_header);
 
             // spawn blocking task and return future
             tokio::task::spawn_blocking(|| {
@@ -208,9 +208,9 @@ where
         loop {
             // check if output is available from consensus to keep broadcast stream from "lagging"
             match this.consensus_output_stream.poll_next_unpin(cx) {
-                Poll::Ready(Some(Ok(output))) => {
+                Poll::Ready(Some(Ok((output, consensus_header)))) => {
                     // queue the output for local execution
-                    this.queued.push_back(output)
+                    this.queued.push_back((output, consensus_header))
                 }
                 Poll::Ready(Some(Err(e))) => {
                     error!(target: "engine", ?e, "for consensus output stream");
@@ -312,7 +312,7 @@ mod tests {
     use tn_block_builder::test_utils::execute_test_worker_block;
     use tn_types::{
         adiri_chain_spec_arc, adiri_genesis, max_worker_block_gas, now, BlockHash, Certificate,
-        CommittedSubDag, ConsensusOutput, ReputationScores,
+        CommittedSubDag, ConsensusHeader, ConsensusOutput, ReputationScores,
     };
     use tokio::{sync::oneshot, time::timeout};
     use tokio_stream::wrappers::BroadcastStream;
@@ -377,7 +377,8 @@ mod tests {
         );
 
         // send output
-        let broadcast_result = to_engine.send(consensus_output.clone());
+        let broadcast_result =
+            to_engine.send((consensus_output.clone(), ConsensusHeader::default()));
         assert!(broadcast_result.is_ok());
 
         // drop sending channel to shut engine down
@@ -632,10 +633,11 @@ mod tests {
         );
 
         // queue the first output - simulate already received from channel
-        engine.queued.push_back(consensus_output_1.clone());
+        engine.queued.push_back((consensus_output_1.clone(), ConsensusHeader::default()));
 
         // send second output
-        let broadcast_result = to_engine.send(consensus_output_2.clone());
+        let broadcast_result =
+            to_engine.send((consensus_output_2.clone(), ConsensusHeader::default()));
         assert!(broadcast_result.is_ok());
 
         // drop sending channel before receiver has a chance to process message
@@ -955,10 +957,11 @@ mod tests {
         );
 
         // queue the first output - simulate already received from channel
-        engine.queued.push_back(consensus_output_1.clone());
+        engine.queued.push_back((consensus_output_1.clone(), ConsensusHeader::default()));
 
         // send second output
-        let broadcast_result = to_engine.send(consensus_output_2.clone());
+        let broadcast_result =
+            to_engine.send((consensus_output_2.clone(), ConsensusHeader::default()));
         assert!(broadcast_result.is_ok());
 
         // drop sending channel before receiver has a chance to process message
@@ -1247,8 +1250,8 @@ mod tests {
         );
 
         // queue both output - simulate already received from channel
-        engine.queued.push_back(consensus_output_1);
-        engine.queued.push_back(consensus_output_2);
+        engine.queued.push_back((consensus_output_1, ConsensusHeader::default()));
+        engine.queued.push_back((consensus_output_2, ConsensusHeader::default()));
 
         // NOTE: sending channel is NOT dropped in this test, so engine should continue listening
         // until max block reached

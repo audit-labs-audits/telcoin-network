@@ -16,10 +16,10 @@ use std::{collections::HashMap, num::NonZeroUsize, sync::Arc, time::Duration};
 use tn_config::{ConsensusConfig, KeyConfig};
 use tn_types::{
     Authority, AuthorityIdentifier, BlsKeypair, BlsPublicKey, Certificate, Committee, Config,
-    ConsensusOutput, Header, HeaderBuilder, Multiaddr, NetworkKeypair, NetworkPublicKey, Round,
-    Vote, WorkerCache, WorkerId,
+    Header, HeaderBuilder, Multiaddr, NetworkKeypair, NetworkPublicKey, Round, Vote, WorkerCache,
+    WorkerId,
 };
-use tokio::sync::{broadcast, RwLock};
+use tokio::sync::RwLock;
 use tracing::info;
 
 /// The authority details hold all the necessary structs and details
@@ -316,14 +316,6 @@ impl<DB: Database> AuthorityDetails<DB> {
         }
 
         false
-    }
-
-    /// Subscribe to [ConsensusOutput] broadcast.
-    ///
-    /// NOTE: this broadcasts to all subscribers, but lagging receivers will lose messages
-    pub async fn subscribe_consensus_output(&self) -> broadcast::Receiver<ConsensusOutput> {
-        let internal = self.internal.read().await;
-        internal.primary.subscribe_consensus_output().await
     }
 }
 

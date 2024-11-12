@@ -44,7 +44,8 @@ use tn_block_validator::BlockValidator;
 use tn_engine::ExecutorEngine;
 use tn_faucet::{FaucetArgs, FaucetRpcExtApiServer as _};
 use tn_types::{
-    Config, Consensus, ConsensusOutput, LastCanonicalUpdate, WorkerBlockSender, WorkerId,
+    Config, Consensus, ConsensusHeader, ConsensusOutput, LastCanonicalUpdate, WorkerBlockSender,
+    WorkerId,
 };
 use tokio::sync::{broadcast, mpsc::unbounded_channel};
 use tokio_stream::wrappers::BroadcastStream;
@@ -179,7 +180,7 @@ where
     /// All tasks are spawned with the [ExecutionNodeInner]'s [TaskManager].
     pub(super) async fn start_engine(
         &self,
-        from_consensus: broadcast::Receiver<ConsensusOutput>,
+        from_consensus: broadcast::Receiver<(ConsensusOutput, ConsensusHeader)>,
     ) -> eyre::Result<()> {
         let head = self.node_config.lookup_head(self.provider_factory.clone())?;
 

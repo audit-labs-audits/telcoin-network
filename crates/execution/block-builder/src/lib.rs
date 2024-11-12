@@ -104,7 +104,6 @@ where
     Pool: TransactionPoolExt + 'static,
 {
     /// Create a new instance of [Self].
-    #[allow(clippy::too_many_arguments)]
     pub fn new(
         _blockchain: BT,
         pool: Pool,
@@ -452,7 +451,7 @@ mod tests {
     use tn_engine::execute_consensus_output;
     use tn_types::{
         adiri_genesis, AutoSealConsensus, BuildArguments, CommittedSubDag, Consensus,
-        ConsensusOutput, WorkerBlock,
+        ConsensusHeader, ConsensusOutput, WorkerBlock,
     };
     use tokio::time::timeout;
 
@@ -849,7 +848,12 @@ mod tests {
                 block_digests: Default::default(),
             };
             // execute output to trigger canonical update
-            let args = BuildArguments::new(blockchain_db.clone(), output, parent);
+            let args = BuildArguments::new(
+                blockchain_db.clone(),
+                output,
+                parent,
+                ConsensusHeader::default(),
+            );
             let final_header = execute_consensus_output(evm_config, args).expect("output executed");
 
             // update values for next loop
