@@ -12,7 +12,7 @@ use reth_node_api::PayloadBuilderAttributes as _;
 use reth_payload_builder::database::CachedReads;
 use reth_primitives::{
     constants::{EMPTY_RECEIPTS, EMPTY_TRANSACTIONS, EMPTY_WITHDRAWALS},
-    proofs, Block, Header, Receipt, SealedBlockWithSenders, SealedHeader, Withdrawals, B256,
+    Block, Header, Receipt, SealedBlockWithSenders, SealedHeader, Withdrawals, B256,
     EMPTY_OMMER_ROOT_HASH, U256,
 };
 use reth_provider::{CanonChainTracker, ChainSpecProvider, StateProviderFactory};
@@ -51,14 +51,6 @@ where
     // capture values from consensus output for full execution
     let output_digest: B256 = output.digest().into();
     let worker_blocks = output.flatten_worker_blocks();
-    let ommers = output.ommers();
-
-    // calculate ommers hash or use default if empty
-    let ommers_root = if ommers.is_empty() {
-        EMPTY_OMMER_ROOT_HASH
-    } else {
-        proofs::calculate_ommers_root(&ommers)
-    };
 
     // assert vecs match
     debug_assert_eq!(
@@ -83,8 +75,6 @@ where
         let withdrawals = Withdrawals::new(vec![]);
         let payload_attributes = TNPayloadAttributes::new(
             canonical_header,
-            ommers.clone(),
-            ommers_root,
             0,
             B256::ZERO, // no batch to digest
             &output,
@@ -125,8 +115,6 @@ where
             let withdrawals = Withdrawals::new(vec![]);
             let payload_attributes = TNPayloadAttributes::new(
                 canonical_header,
-                ommers.clone(),
-                ommers_root,
                 block_index as u64,
                 batch_digest,
                 &output,
@@ -236,8 +224,7 @@ where
     //
     // note: uses the worker's sealed header for "parent" values
     // note the sealed header below is more or less junk but payload trait requires it.
-    let (cfg, block_env) =
-        payload.cfg_and_block_env(chain_spec.as_ref(), batch_block.sealed_header().header());
+    let (cfg, block_env) = payload.cfg_and_block_env(chain_spec.as_ref(), &batch_block.header());
 
     // TODO: better to get these from payload attributes?
     // - more efficient, but harder to maintain?
@@ -424,7 +411,7 @@ where
 
     let header = Header {
         parent_hash: payload.parent(),
-        ommers_hash: payload.attributes.ommers_root,
+        ommers_hash: EMPTY_OMMER_ROOT_HASH,
         beneficiary: block_env.coinbase,
         state_root,
         transactions_root,
@@ -448,13 +435,7 @@ where
 
     // seal the block
     let withdrawals = Some(payload.withdrawals().clone());
-    let block = Block {
-        header,
-        body: executed_txs,
-        ommers: payload.attributes.ommers,
-        withdrawals,
-        requests: None,
-    };
+    let block = Block { header, body: executed_txs, ommers: vec![], withdrawals, requests: None };
 
     let sealed_block = block.seal_slow();
     let sealed_block_with_senders = SealedBlockWithSenders::new(sealed_block, senders)
@@ -513,7 +494,7 @@ where
 
     let header = Header {
         parent_hash: payload.parent(),
-        ommers_hash: payload.attributes.ommers_root,
+        ommers_hash: EMPTY_OMMER_ROOT_HASH,
         beneficiary: block_env.coinbase,
         state_root,
         transactions_root: EMPTY_TRANSACTIONS,

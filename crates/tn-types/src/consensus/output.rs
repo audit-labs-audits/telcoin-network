@@ -9,7 +9,7 @@ use crate::{
     TimestampSec, WorkerBlock,
 };
 use fastcrypto::hash::{Digest, Hash, HashFunction};
-use reth_primitives::{Address, BlockHash, Header, B256};
+use reth_primitives::{Address, BlockHash, B256};
 use serde::{Deserialize, Serialize};
 use std::{
     collections::VecDeque,
@@ -68,15 +68,6 @@ impl ConsensusOutput {
     /// This method is used when executing [Self].
     pub fn next_block_digest(&mut self) -> Option<BlockHash> {
         self.block_digests.pop_front()
-    }
-    /// Ommers to use for the executed blocks.
-    ///
-    /// TODO: parallelize this when output contains enough blocks.
-    pub fn ommers(&self) -> Vec<Header> {
-        self.blocks
-            .iter()
-            .flat_map(|blocks| blocks.iter().map(|block| block.sealed_header().header().clone()))
-            .collect()
     }
 
     pub fn flatten_worker_blocks(&self) -> Vec<WorkerBlock> {
