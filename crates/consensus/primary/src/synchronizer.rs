@@ -30,6 +30,7 @@ use tn_config::ConsensusConfig;
 use tn_storage::{traits::Database, CertificateStore, PayloadStore};
 use tn_types::{
     AuthorityIdentifier, Committee, NetworkPublicKey, TnReceiver, TnSender, WorkerCache,
+    CHANNEL_CAPACITY,
 };
 use tn_utils::sync::notify_once::NotifyOnce;
 
@@ -51,7 +52,7 @@ use tracing::{debug, error, instrument, trace, warn};
 
 use crate::{
     aggregators::CertificatesAggregator, certificate_fetcher::CertificateFetcherCommand,
-    ConsensusBus, CHANNEL_CAPACITY,
+    ConsensusBus,
 };
 
 #[cfg(test)]
