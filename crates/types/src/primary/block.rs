@@ -6,15 +6,12 @@
 //! or observer) or any task that requires realtime or historic consesus data
 //! if not directly participating in consesus.
 
-use std::sync::Arc;
-
-use reth_primitives::{BlockHash, B256};
-use serde::{Deserialize, Serialize};
-
+use super::{CommittedSubDag, ConsensusOutput};
 use crate::{crypto, Certificate};
 use fastcrypto::hash::{Hash, HashFunction};
-
-use super::{CommittedSubDag, ConsensusOutput};
+use reth_primitives::{BlockHash, B256};
+use serde::{Deserialize, Serialize};
+use std::sync::Arc;
 
 /// Header for the consensus chain.
 ///

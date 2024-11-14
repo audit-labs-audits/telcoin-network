@@ -36,7 +36,7 @@ pub struct Subscriber<DB> {
     rx_shutdown: Noticer,
     /// Used to get the sequence receiver
     consensus_bus: ConsensusBus,
-    // Consensus configuration (contains the consensus DB)
+    /// Consensus configuration (contains the consensus DB)
     config: ConsensusConfig<DB>,
     /// Inner state.
     inner: Arc<Inner>,
@@ -81,27 +81,35 @@ impl<DB: Database> Subscriber<DB> {
     /// Returns the max number of sub-dag to fetch payloads concurrently.
     const MAX_PENDING_PAYLOADS: usize = 1000;
 
-    fn save_consensus(&self, consensus_output: ConsensusOutput) {
-        let db = self.config.node_storage().batch_store.clone();
-        match db.write_txn() {
+    /// Write the consensus header and it's digest to number index to the consensus DB.
+    ///
+    /// An error here indicates a critical node failure.
+    /// Note this function both logs and returns the error due to it's severity.
+    fn save_consensus(&self, consensus_output: ConsensusOutput) -> SubscriberResult<()> {
+        match self.config.database().write_txn() {
             Ok(mut txn) => {
                 let header: ConsensusHeader = consensus_output.into();
                 if let Err(e) = txn.insert::<ConsensusBlocks>(&header.number, &header) {
-                    tracing::error!(target: "engine", ?e, "error saving a consensus header to persistant storage!")
+                    tracing::error!(target: "engine", ?e, "error saving a consensus header to persistant storage!");
+                    return Err(e.into());
                 }
                 if let Err(e) =
                     txn.insert::<ConsensusBlockNumbersByDigest>(&header.digest(), &header.number)
                 {
-                    tracing::error!(target: "engine", ?e, "error saving a consensus header number to persistant storage!")
+                    tracing::error!(target: "engine", ?e, "error saving a consensus header number to persistant storage!");
+                    return Err(e.into());
                 }
                 if let Err(e) = txn.commit() {
-                    tracing::error!(target: "engine", ?e, "error saving committing to persistant storage!")
+                    tracing::error!(target: "engine", ?e, "error saving committing to persistant storage!");
+                    return Err(e.into());
                 }
             }
             Err(e) => {
-                tracing::error!(target: "engine", ?e, "error getting a transaction on persistant storage!")
+                tracing::error!(target: "engine", ?e, "error getting a transaction on persistant storage!");
+                return Err(e.into());
             }
-        };
+        }
+        Ok(())
     }
 
     /// Main loop connecting to the consensus to listen to sequence messages.
@@ -115,7 +123,7 @@ impl<DB: Database> Subscriber<DB> {
         let mut waiting = FuturesOrdered::new();
 
         // Get the DB and load our last know consensus block.
-        let db = self.config.node_storage().batch_store.clone();
+        let db = self.config.database();
         let last_block = if let Some((_, last_block)) = db.last_record::<ConsensusBlocks>() {
             last_block
         } else {
@@ -181,7 +189,7 @@ impl<DB: Database> Subscriber<DB> {
                 //
                 // NOTE: this broadcasts to all subscribers, but lagging receivers will lose messages
                 Some(message) = waiting.next() => {
-                    self.save_consensus(message.clone());
+                    self.save_consensus(message.clone())?;
                     if let Err(e) = self.consensus_bus.consensus_output().send(message).await {
                         error!(target: "telcoin::subscriber", "error broadcasting consensus output for authority {}: {}", self.inner.authority_id, e);
                         return Ok(());
