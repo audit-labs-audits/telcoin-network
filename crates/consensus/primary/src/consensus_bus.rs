@@ -10,8 +10,7 @@ use std::sync::Arc;
 use consensus_metrics::metered_channel::{self, channel_with_total_sender, MeteredMpscChannel};
 use tn_primary_metrics::{ChannelMetrics, ConsensusMetrics, Metrics};
 use tn_types::{
-    Certificate, CommittedSubDag, ConsensusHeader, ConsensusOutput, Header, Round, TnSender,
-    CHANNEL_CAPACITY,
+    Certificate, CommittedSubDag, ConsensusOutput, Header, Round, TnSender, CHANNEL_CAPACITY,
 };
 use tokio::sync::{broadcast, watch};
 
@@ -68,15 +67,10 @@ struct ConsensusBusInner {
     /// Hold onto the recent blocks watch to keep it "open"
     _rx_recent_blocks: watch::Receiver<RecentBlocks>,
 
-    /// Initial consensus output with no consensus header.
-    raw_consensus_output: broadcast::Sender<ConsensusOutput>,
-    /// Hold onto the initial consensus output to keep it open.
-    _rx_raw_consensus_output: broadcast::Receiver<ConsensusOutput>,
-
     /// Consensus output with a consensus header.
-    consensus_output: broadcast::Sender<(ConsensusOutput, ConsensusHeader)>,
+    consensus_output: broadcast::Sender<ConsensusOutput>,
     /// Hold onto consensus output with a consensus header to keep it open.
-    _rx_consensus_output: broadcast::Receiver<(ConsensusOutput, ConsensusHeader)>,
+    _rx_consensus_output: broadcast::Receiver<ConsensusOutput>,
 }
 
 #[derive(Clone, Debug)]
@@ -145,7 +139,6 @@ impl ConsensusBus {
         let sequence =
             metered_channel::channel_sender(CHANNEL_CAPACITY, &channel_metrics.tx_sequence);
 
-        let (raw_consensus_output, _rx_raw_consensus_output) = broadcast::channel(CHANNEL_CAPACITY);
         let (consensus_output, _rx_consensus_output) = broadcast::channel(CHANNEL_CAPACITY);
 
         Self {
@@ -168,8 +161,6 @@ impl ConsensusBus {
                 channel_metrics,
                 tx_recent_blocks,
                 _rx_recent_blocks,
-                raw_consensus_output,
-                _rx_raw_consensus_output,
                 consensus_output,
                 _rx_consensus_output,
             }),
@@ -266,24 +257,16 @@ impl ConsensusBus {
         &self.inner.tx_recent_blocks
     }
 
-    /// Broadcast channel with raw consensus output.
-    /// Raw means no ConsensusHeader exists yet.
-    pub fn raw_consensus_output(&self) -> &impl TnSender<ConsensusOutput> {
-        &self.inner.raw_consensus_output
-    }
-
     /// Broadcast channel with consensus output (includes the consensus chain block).
     /// This also provides the ConsesusHeader, use this for block execution.
-    pub fn consensus_output(&self) -> &impl TnSender<(ConsensusOutput, ConsensusHeader)> {
+    pub fn consensus_output(&self) -> &impl TnSender<ConsensusOutput> {
         &self.inner.consensus_output
     }
 
     /// Broadcast subscriber with consensus output.
     /// This breaks the trait pattern in order to return a concrete receiver to pass to the
     /// execution module.
-    pub fn subscribe_consensus_output(
-        &self,
-    ) -> broadcast::Receiver<(ConsensusOutput, ConsensusHeader)> {
+    pub fn subscribe_consensus_output(&self) -> broadcast::Receiver<ConsensusOutput> {
         self.inner.consensus_output.subscribe()
     }
 }

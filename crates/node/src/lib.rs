@@ -4,7 +4,6 @@
 use crate::{primary::PrimaryNode, worker::WorkerNode};
 use engine::{ExecutionNode, TnBuilder};
 use futures::{future::try_join_all, stream::FuturesUnordered, StreamExt};
-use persist_consensus::PersistConsensus;
 use reth_db::{
     database::Database,
     database_metrics::{DatabaseMetadata, DatabaseMetrics},
@@ -20,7 +19,6 @@ pub mod dirs;
 pub mod engine;
 mod error;
 pub mod metrics;
-mod persist_consensus;
 pub mod primary;
 pub mod worker;
 
@@ -49,9 +47,6 @@ where
     info!(target: "telcoin::node", "execution engine created");
 
     let narwhal_db_path = tn_datadir.narwhal_db_path();
-    let persist_db_path = narwhal_db_path.join("persist_consensus");
-    let _ = std::fs::create_dir_all(&persist_db_path);
-    let persist_consensus = PersistConsensus::new(persist_db_path);
 
     tracing::info!(target: "telcoin::cli", "opening node storage at {:?}", narwhal_db_path);
 
@@ -67,9 +62,6 @@ where
     let (worker_id, _worker_info) = consensus_config.config().workers().first_worker()?;
     let worker = WorkerNode::new(*worker_id, consensus_config.clone());
     let primary = PrimaryNode::new(consensus_config.clone());
-    // Start persist consensus output, do this before primary starts to be 100% sure of getting all
-    // messages.
-    persist_consensus.start(primary.consensus_bus().await).await;
 
     let mut engine_state = engine.get_provider().await.canonical_state_stream();
     let eng_bus = primary.consensus_bus().await;

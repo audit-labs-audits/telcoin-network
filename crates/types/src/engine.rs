@@ -1,6 +1,6 @@
 //! Recreated `AutoSealConsensus` to reduce the amount of imports from reth.
 
-use crate::{ConsensusHeader, ConsensusOutput};
+use crate::ConsensusOutput;
 use reth_chainspec::ChainSpec;
 use reth_consensus::PostExecutionInput;
 pub use reth_consensus::{Consensus, ConsensusError};
@@ -76,19 +76,12 @@ pub struct BuildArguments<Provider> {
     pub output: ConsensusOutput,
     /// Last executed block from the previous consensus output.
     pub parent_header: SealedHeader,
-    /// The consensus header (for the consensus chain) that matches this ConsensusOutput.
-    pub consensus_header: ConsensusHeader,
 }
 
 impl<P> BuildArguments<P> {
     /// Initialize new instance of [Self].
-    pub fn new(
-        provider: P,
-        output: ConsensusOutput,
-        parent_header: SealedHeader,
-        consensus_header: ConsensusHeader,
-    ) -> Self {
-        Self { provider, output, parent_header, consensus_header }
+    pub fn new(provider: P, output: ConsensusOutput, parent_header: SealedHeader) -> Self {
+        Self { provider, output, parent_header }
     }
 }
 

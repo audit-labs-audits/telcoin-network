@@ -846,14 +846,11 @@ mod tests {
                 blocks: vec![vec![]],
                 beneficiary: address,
                 block_digests: Default::default(),
+                parent_hash: ConsensusHeader::default().digest(),
+                number: 0,
             };
             // execute output to trigger canonical update
-            let args = BuildArguments::new(
-                blockchain_db.clone(),
-                output,
-                parent,
-                ConsensusHeader::default(),
-            );
+            let args = BuildArguments::new(blockchain_db.clone(), output, parent);
             let final_header = execute_consensus_output(evm_config, args).expect("output executed");
 
             // update values for next loop

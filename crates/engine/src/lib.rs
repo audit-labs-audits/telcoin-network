@@ -36,7 +36,7 @@ use std::{
     pin::Pin,
     task::{Context, Poll},
 };
-use tn_types::{BuildArguments, ConsensusHeader, ConsensusOutput};
+use tn_types::{BuildArguments, ConsensusOutput};
 use tokio::sync::oneshot;
 use tokio_stream::wrappers::BroadcastStream;
 use tracing::{error, info, trace, warn};
@@ -56,7 +56,7 @@ type PendingExecutionTask = oneshot::Receiver<EngineResult<SealedHeader>>;
 /// is reached, the engine shuts down immediately.
 pub struct ExecutorEngine<BT, CE> {
     /// The backlog of output from consensus that's ready to be executed.
-    queued: VecDeque<(ConsensusOutput, ConsensusHeader)>,
+    queued: VecDeque<ConsensusOutput>,
     /// Single active future that executes consensus output on a blocking thread and then returns
     /// the result through a oneshot channel.
     pending_task: Option<PendingExecutionTask>,
@@ -72,7 +72,7 @@ pub struct ExecutorEngine<BT, CE> {
     max_round: Option<u64>,
     /// Receiving end from CL's `Executor`. The `ConsensusOutput` is sent
     /// to the mining task here.
-    consensus_output_stream: BroadcastStream<(ConsensusOutput, ConsensusHeader)>,
+    consensus_output_stream: BroadcastStream<ConsensusOutput>,
     /// The [SealedHeader] of the last fully-executed block.
     ///
     /// This information reflects the current finalized block number and hash.
@@ -101,7 +101,7 @@ where
         blockchain: BT,
         evm_config: CE,
         max_round: Option<u64>,
-        consensus_output_stream: BroadcastStream<(ConsensusOutput, ConsensusHeader)>,
+        consensus_output_stream: BroadcastStream<ConsensusOutput>,
         parent_header: SealedHeader,
     ) -> Self {
         Self {
@@ -130,11 +130,11 @@ where
         let (tx, rx) = oneshot::channel();
 
         // pop next output in queue and execute
-        if let Some((output, consensus_header)) = self.queued.pop_front() {
+        if let Some(output) = self.queued.pop_front() {
             let provider = self.blockchain.clone();
             let evm_config = self.evm_config.clone();
             let parent = self.parent_header.clone();
-            let build_args = BuildArguments::new(provider, output, parent, consensus_header);
+            let build_args = BuildArguments::new(provider, output, parent);
 
             // spawn blocking task and return future
             tokio::task::spawn_blocking(|| {
@@ -208,9 +208,9 @@ where
         loop {
             // check if output is available from consensus to keep broadcast stream from "lagging"
             match this.consensus_output_stream.poll_next_unpin(cx) {
-                Poll::Ready(Some(Ok((output, consensus_header)))) => {
+                Poll::Ready(Some(Ok(output))) => {
                     // queue the output for local execution
-                    this.queued.push_back((output, consensus_header))
+                    this.queued.push_back(output)
                 }
                 Poll::Ready(Some(Err(e))) => {
                     error!(target: "engine", ?e, "for consensus output stream");
@@ -351,7 +351,10 @@ mod tests {
             blocks: Default::default(), // empty
             beneficiary,
             block_digests: Default::default(), // empty
+            parent_hash: ConsensusHeader::default().digest(),
+            number: 0,
         };
+        let consensus_output_hash = consensus_output.consensus_header_hash();
 
         let chain = adiri_chain_spec_arc();
 
@@ -377,8 +380,7 @@ mod tests {
         );
 
         // send output
-        let broadcast_result =
-            to_engine.send((consensus_output.clone(), ConsensusHeader::default()));
+        let broadcast_result = to_engine.send(consensus_output.clone());
         assert!(broadcast_result.is_ok());
 
         // drop sending channel to shut engine down
@@ -409,7 +411,7 @@ mod tests {
         assert_eq!(canonical_tip, final_block);
         // assert last executed output is correct and finalized
         let last_output = execution_node.last_executed_output().await?;
-        assert_eq!(last_output, sub_dag_index); // round of consensus
+        assert_eq!(last_output, consensus_output_hash);
 
         // pull newly executed block from database (skip genesis)
         let expected_block = provider
@@ -443,7 +445,7 @@ mod tests {
         // parent beacon block root is output digest
         assert_eq!(
             expected_block.parent_beacon_block_root,
-            Some(ConsensusHeader::default().digest())
+            Some(consensus_output.consensus_header_hash())
         );
         // first block's parent is expected to be genesis
         assert_eq!(expected_block.parent_hash, chain.genesis_hash());
@@ -586,6 +588,8 @@ mod tests {
             blocks: vec![batches_1],
             beneficiary: beneficiary_1,
             block_digests: batch_digests_1.clone(),
+            parent_hash: ConsensusHeader::default().digest(),
+            number: 0,
         };
 
         // create second output
@@ -611,7 +615,10 @@ mod tests {
             blocks: vec![batches_2],
             beneficiary: beneficiary_2,
             block_digests: batch_digests_2.clone(),
+            parent_hash: consensus_output_1.consensus_header_hash(),
+            number: 1,
         };
+        let consensus_output_2_hash = consensus_output_2.consensus_header_hash();
 
         // combine VecDeque and convert to Vec for assertions later
         batch_digests_1.extend(batch_digests_2);
@@ -635,11 +642,10 @@ mod tests {
         );
 
         // queue the first output - simulate already received from channel
-        engine.queued.push_back((consensus_output_1.clone(), ConsensusHeader::default()));
+        engine.queued.push_back(consensus_output_1.clone());
 
         // send second output
-        let broadcast_result =
-            to_engine.send((consensus_output_2.clone(), ConsensusHeader::default()));
+        let broadcast_result = to_engine.send(consensus_output_2.clone());
         assert!(broadcast_result.is_ok());
 
         // drop sending channel before receiver has a chance to process message
@@ -677,7 +683,7 @@ mod tests {
         assert_eq!(canonical_tip, final_block);
         // assert last executed output is correct and finalized
         let last_output = execution_node.last_executed_output().await?;
-        assert_eq!(last_output, sub_dag_index_2); // round of consensus
+        assert_eq!(last_output, consensus_output_2_hash); // round of consensus
 
         // pull newly executed blocks from database (skip genesis)
         //
@@ -714,7 +720,7 @@ mod tests {
             let mut expected_beneficiary = &beneficiary_1;
             let mut expected_subdag_index = &sub_dag_index_1;
             let mut output_digest = output_digest_1;
-            let expected_parent_beacon_block_root: B256 = ConsensusHeader::default().digest();
+            let mut expected_parent_beacon_block_root = consensus_output_1.consensus_header_hash();
             let mut expected_batch_index = idx;
 
             // update values based on index for all assertions below
@@ -724,6 +730,7 @@ mod tests {
                 expected_beneficiary = &beneficiary_2;
                 expected_subdag_index = &sub_dag_index_2;
                 output_digest = output_digest_2;
+                expected_parent_beacon_block_root = consensus_output_2.consensus_header_hash();
                 // takeaway 4 to compensate for independent loops for executing batches
                 expected_batch_index = idx - 4;
             }
@@ -911,6 +918,8 @@ mod tests {
             blocks: vec![batches_1],
             beneficiary: beneficiary_1,
             block_digests: batch_digests_1.clone(),
+            parent_hash: ConsensusHeader::default().digest(),
+            number: 0,
         };
 
         // create second output
@@ -936,7 +945,10 @@ mod tests {
             blocks: vec![batches_2],
             beneficiary: beneficiary_2,
             block_digests: batch_digests_2.clone(),
+            parent_hash: consensus_output_1.consensus_header_hash(),
+            number: 1,
         };
+        let consensus_output_2_hash = consensus_output_2.consensus_header_hash();
 
         // combine VecDeque and convert to Vec for assertions later
         batch_digests_1.extend(batch_digests_2);
@@ -960,11 +972,10 @@ mod tests {
         );
 
         // queue the first output - simulate already received from channel
-        engine.queued.push_back((consensus_output_1.clone(), ConsensusHeader::default()));
+        engine.queued.push_back(consensus_output_1.clone());
 
         // send second output
-        let broadcast_result =
-            to_engine.send((consensus_output_2.clone(), ConsensusHeader::default()));
+        let broadcast_result = to_engine.send(consensus_output_2.clone());
         assert!(broadcast_result.is_ok());
 
         // drop sending channel before receiver has a chance to process message
@@ -1006,7 +1017,7 @@ mod tests {
         assert_eq!(canonical_tip, final_block);
         // assert last executed output is correct and finalized
         let last_output = execution_node.last_executed_output().await?;
-        assert_eq!(last_output, sub_dag_index_2); // round of consensus
+        assert_eq!(last_output, consensus_output_2_hash); // round of consensus
 
         // pull newly executed blocks from database (skip genesis)
         //
@@ -1058,7 +1069,7 @@ mod tests {
             let mut expected_subdag_index = &sub_dag_index_1;
             let mut output_digest = output_digest_1;
             // We just set this to default in the test...
-            let expected_parent_beacon_block_root: B256 = ConsensusHeader::default().digest();
+            let mut expected_parent_beacon_block_root = consensus_output_1.consensus_header_hash();
             let mut expected_batch_index = idx;
 
             // update values based on index for all assertions below
@@ -1068,6 +1079,7 @@ mod tests {
                 expected_beneficiary = &beneficiary_2;
                 expected_subdag_index = &sub_dag_index_2;
                 output_digest = output_digest_2;
+                expected_parent_beacon_block_root = consensus_output_2.consensus_header_hash();
                 // takeaway 4 to compensate for independent loops for executing batches
                 expected_batch_index = idx - 4;
             }
@@ -1209,7 +1221,10 @@ mod tests {
             blocks: vec![batches_1],
             beneficiary: beneficiary_1,
             block_digests: batch_digests_1,
+            parent_hash: ConsensusHeader::default().digest(),
+            number: 0,
         };
+        let consensus_output_1_hash = consensus_output_1.consensus_header_hash();
 
         // create second output
         let mut leader_2 = Certificate::default();
@@ -1234,6 +1249,8 @@ mod tests {
             blocks: vec![batches_2],
             beneficiary: beneficiary_2,
             block_digests: batch_digests_2,
+            parent_hash: consensus_output_1.consensus_header_hash(),
+            number: 1,
         };
 
         //=== Execution
@@ -1255,8 +1272,8 @@ mod tests {
         );
 
         // queue both output - simulate already received from channel
-        engine.queued.push_back((consensus_output_1, ConsensusHeader::default()));
-        engine.queued.push_back((consensus_output_2, ConsensusHeader::default()));
+        engine.queued.push_back(consensus_output_1);
+        engine.queued.push_back(consensus_output_2);
 
         // NOTE: sending channel is NOT dropped in this test, so engine should continue listening
         // until max block reached
@@ -1293,7 +1310,7 @@ mod tests {
         assert_eq!(canonical_tip, final_block);
         // assert last executed output is correct and finalized
         let last_output = execution_node.last_executed_output().await?;
-        assert_eq!(last_output, 1);
+        assert_eq!(last_output, consensus_output_1_hash);
 
         Ok(())
     }

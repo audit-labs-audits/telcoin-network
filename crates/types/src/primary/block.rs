@@ -6,13 +6,15 @@
 //! or observer) or any task that requires realtime or historic consesus data
 //! if not directly participating in consesus.
 
+use std::sync::Arc;
+
 use reth_primitives::{BlockHash, B256};
 use serde::{Deserialize, Serialize};
 
 use crate::{crypto, Certificate};
 use fastcrypto::hash::{Hash, HashFunction};
 
-use super::CommittedSubDag;
+use super::{CommittedSubDag, ConsensusOutput};
 
 /// Header for the consensus chain.
 ///
@@ -32,11 +34,22 @@ pub struct ConsensusHeader {
 }
 
 impl ConsensusHeader {
+    /// Return the digest for this ConsensusHeader.
     pub fn digest(&self) -> BlockHash {
+        Self::digest_from_parts(self.parent_hash, &self.sub_dag, self.number)
+    }
+
+    /// Produce the digest that result from a ConsensusHeader with this data.
+    /// This allows digesting in some cases with out cloning a CommittedSubDag.
+    pub fn digest_from_parts(
+        parent_hash: B256,
+        sub_dag: &CommittedSubDag,
+        number: u64,
+    ) -> BlockHash {
         let mut hasher = crypto::DefaultHashFunction::new();
-        hasher.update(self.parent_hash);
-        hasher.update(self.sub_dag.digest());
-        hasher.update(self.number.to_le_bytes());
+        hasher.update(parent_hash);
+        hasher.update(sub_dag.digest());
+        hasher.update(number.to_le_bytes());
         BlockHash::from_slice(&hasher.finalize().digest)
     }
 }
@@ -51,5 +64,15 @@ impl Default for ConsensusHeader {
             None,
         );
         Self { parent_hash: B256::default(), sub_dag, number: 0 }
+    }
+}
+
+impl From<ConsensusOutput> for ConsensusHeader {
+    fn from(value: ConsensusOutput) -> Self {
+        Self {
+            parent_hash: value.parent_hash,
+            sub_dag: Arc::unwrap_or_clone(value.sub_dag),
+            number: value.number,
+        }
     }
 }

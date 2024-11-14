@@ -8,6 +8,7 @@ mod subscriber;
 mod metrics;
 
 pub use errors::{SubscriberError, SubscriberResult};
+use reth_primitives::B256;
 pub use state::ExecutionIndices;
 use tn_primary::ConsensusBus;
 use tn_storage::traits::Database;
@@ -49,18 +50,11 @@ impl Executor {
         config: ConsensusConfig<DB>,
         rx_shutdown: Noticer,
         consensus_bus: ConsensusBus,
-        restored_consensus_output: Vec<CommittedSubDag>,
+        last_executed_consensus_hash: B256,
     ) -> SubscriberResult<JoinHandle<()>> {
         // Spawn the subscriber.
-        let subscriber_handle = spawn_subscriber(
-            config.authority().id(),
-            config.worker_cache().clone(),
-            config.committee().clone(),
-            config.network_client().clone(),
-            rx_shutdown,
-            consensus_bus,
-            restored_consensus_output,
-        );
+        let subscriber_handle =
+            spawn_subscriber(config, rx_shutdown, consensus_bus, last_executed_consensus_hash);
 
         // Return the handle.
         info!("Consensus subscriber successfully started");

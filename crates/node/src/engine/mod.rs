@@ -16,6 +16,7 @@ use reth_db::{
 };
 use reth_evm::{execute::BlockExecutorProvider, ConfigureEvm};
 use reth_node_builder::NodeConfig;
+use reth_primitives::B256;
 use std::{net::SocketAddr, sync::Arc};
 use tn_config::Config;
 mod inner;
@@ -26,7 +27,7 @@ use reth_provider::providers::BlockchainProvider;
 use reth_tasks::TaskExecutor;
 use tn_block_validator::BlockValidator;
 use tn_faucet::FaucetArgs;
-use tn_types::{ConsensusHeader, ConsensusOutput, WorkerBlockSender, WorkerId};
+use tn_types::{ConsensusOutput, WorkerBlockSender, WorkerId};
 use tokio::sync::{broadcast, RwLock};
 pub use worker::*;
 
@@ -79,7 +80,7 @@ where
     /// Execution engine to produce blocks after consensus.
     pub async fn start_engine(
         &self,
-        from_consensus: broadcast::Receiver<(ConsensusOutput, ConsensusHeader)>,
+        from_consensus: broadcast::Receiver<ConsensusOutput>,
     ) -> eyre::Result<()> {
         let guard = self.internal.read().await;
         guard.start_engine(from_consensus).await
@@ -102,7 +103,7 @@ where
     }
 
     /// Retrieve the last executed block from the database to restore consensus.
-    pub async fn last_executed_output(&self) -> eyre::Result<u64> {
+    pub async fn last_executed_output(&self) -> eyre::Result<B256> {
         let guard = self.internal.read().await;
         guard.last_executed_output()
     }

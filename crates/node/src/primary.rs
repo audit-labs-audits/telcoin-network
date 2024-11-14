@@ -11,9 +11,10 @@ use reth_db::{
     database_metrics::{DatabaseMetadata, DatabaseMetrics},
 };
 use reth_evm::{execute::BlockExecutorProvider, ConfigureEvm};
+use reth_primitives::B256;
 use std::{sync::Arc, time::Instant};
 use tn_config::ConsensusConfig;
-use tn_executor::{get_restored_consensus_output, Executor, SubscriberResult};
+use tn_executor::{Executor, SubscriberResult};
 use tn_primary::{
     consensus::{Bullshark, Consensus, ConsensusMetrics, LeaderSchedule},
     ConsensusBus, Primary,
@@ -63,15 +64,14 @@ impl<CDB: ConsensusDatabase> PrimaryNodeInner<CDB> {
         ));
 
         // used to retrieve the last executed certificate in case of restarts
-        let last_executed_sub_dag_index =
+        let last_executed_consensus_hash =
             execution_components.last_executed_output().await.expect("execution found HEAD");
 
         // create receiving channel before spawning primary to ensure messages are not lost
-        //let consensus_output_rx = self.subscribe_consensus_output();
         let consensus_output_rx = self.consensus_bus.subscribe_consensus_output();
 
         // spawn primary if not already running
-        let primary_handles = self.spawn_primary(last_executed_sub_dag_index).await?;
+        let primary_handles = self.spawn_primary(last_executed_consensus_hash).await?;
 
         // start engine
         execution_components.start_engine(consensus_output_rx).await?;
@@ -123,12 +123,12 @@ impl<CDB: ConsensusDatabase> PrimaryNodeInner<CDB> {
     pub async fn spawn_primary(
         &self,
         // Used for recovering after crashes/restarts
-        last_executed_sub_dag_index: u64,
+        last_executed_consensus_hash: B256,
     ) -> SubscriberResult<Vec<JoinHandle<()>>> {
         let mut handles = Vec::new();
 
         let (consensus_handles, leader_schedule) =
-            self.spawn_consensus(&self.consensus_bus, last_executed_sub_dag_index).await?;
+            self.spawn_consensus(&self.consensus_bus, last_executed_consensus_hash).await?;
         handles.extend(consensus_handles);
 
         // Spawn the primary.
@@ -145,7 +145,7 @@ impl<CDB: ConsensusDatabase> PrimaryNodeInner<CDB> {
     async fn spawn_consensus(
         &self,
         consensus_bus: &ConsensusBus,
-        last_executed_sub_dag_index: u64,
+        last_executed_consensus_hash: B256,
     ) -> SubscriberResult<(Vec<JoinHandle<()>>, LeaderSchedule)>
     where
         BlsPublicKey: VerifyingKey,
@@ -168,23 +168,6 @@ impl<CDB: ConsensusDatabase> PrimaryNodeInner<CDB> {
         // for now, all batches are contained within a single block, (ie 1 consensus output = 1
         // executed block) so use block number for restored consensus output
         // since block number == last_executed_sub_dag_index
-
-        // Check for any sub-dags that have been sent by consensus but were not processed by the
-        // executor.
-        let restored_consensus_output = get_restored_consensus_output(
-            self.consensus_config.node_storage().consensus_store.clone(),
-            self.consensus_config.node_storage().certificate_store.clone(),
-            last_executed_sub_dag_index,
-        )
-        .await?;
-
-        let num_sub_dags = restored_consensus_output.len() as u64;
-        if num_sub_dags > 0 {
-            info!(
-                "Consensus output on its way to the executor was restored for {num_sub_dags} sub-dags",
-            );
-        }
-        self.consensus_bus.consensus_metrics().recovered_consensus_output.inc_by(num_sub_dags);
 
         let leader_schedule = LeaderSchedule::from_store(
             self.consensus_config.committee().clone(),
@@ -210,7 +193,7 @@ impl<CDB: ConsensusDatabase> PrimaryNodeInner<CDB> {
             self.consensus_config.clone(),
             self.consensus_config.subscribe_shutdown(),
             consensus_bus.clone(),
-            restored_consensus_output,
+            last_executed_consensus_hash,
         )?;
 
         let handles = vec![executor_handle, consensus_handle];

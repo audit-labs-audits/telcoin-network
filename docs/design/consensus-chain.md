@@ -6,7 +6,7 @@ chain header that build that block.
 
 The consensus chain header is simple, it contains:
 - parent hash: the hash of the previous header
-- sub dag hash: the hash of the committed sub dag for this output
+- committed sub dag: the committed sub dag for this output
 - number: the height of the consensus chain
 
 As consensus output is recieved the consensus chain will be built including saving the committed sub dag as well working blocks it references.

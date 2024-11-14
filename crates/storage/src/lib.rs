@@ -17,7 +17,8 @@ pub use redb::database::ReDB;
 use rocks::database::RocksDatabase;
 use tables::{
     CertificateDigestByOrigin, CertificateDigestByRound, Certificates, CommittedSubDag,
-    LastCommitted, LastProposed, Payload, Votes, WorkerBlocks,
+    ConsensusBlockNumbersByDigest, ConsensusBlocks, LastCommitted, LastProposed, Payload, Votes,
+    WorkerBlocks,
 };
 // Always build redb, we use it as the default for persistant consensus data.
 pub mod layered_db;
@@ -89,9 +90,9 @@ pub mod tables {
         LastCommitted;crate::LAST_COMMITTED_CF;<AuthorityIdentifier, Round>,
         CommittedSubDag;crate::COMMITTED_SUB_DAG_INDEX_CF;<SequenceNumber, ConsensusCommit>,
         SubDags;crate::SUB_DAG_CF;<SequenceNumber, SubDag>,
-        // Table is used for "normal" consensus DB as well as a version for the consensus chain.
+        // Table is used for "normal" consensus as well as for the consensus chain.
         WorkerBlocks;crate::BATCHES_CF;<BlockHash, WorkerBlock>,
-        // These tables are for the consensus chain not the normal consensus DB.
+        // These tables are for the consensus chain not the normal consensus.
         ConsensusBlocks;crate::CONSENSUS_BLOCK_CF;<u64, ConsensusHeader>,
         ConsensusBlockNumbersByDigest;crate::CONSENSUS_BLOCK_NUMBER_BY_DIGEST_CF;<BlockHash, u64>
     );
@@ -136,6 +137,8 @@ fn _open_mdbx<P: AsRef<std::path::Path> + Send>(store_path: P) -> LayeredDatabas
     db.open_table::<WorkerBlocks>().expect("failed to open table!");
     db.open_table::<LastCommitted>().expect("failed to open table!");
     db.open_table::<CommittedSubDag>().expect("failed to open table!");
+    db.open_table::<ConsensusBlocks>().expect("failed to open table!");
+    db.open_table::<ConsensusBlockNumbersByDigest>().expect("failed to open table!");
 
     let db = LayeredDatabase::open(db);
     db.open_table::<LastProposed>();
@@ -147,6 +150,8 @@ fn _open_mdbx<P: AsRef<std::path::Path> + Send>(store_path: P) -> LayeredDatabas
     db.open_table::<WorkerBlocks>();
     db.open_table::<LastCommitted>();
     db.open_table::<CommittedSubDag>();
+    db.open_table::<ConsensusBlocks>();
+    db.open_table::<ConsensusBlockNumbersByDigest>();
     db
 }
 
@@ -164,6 +169,8 @@ fn _open_rocks<P: AsRef<std::path::Path> + Send>(store_path: P) -> LayeredDataba
     db.open_table::<WorkerBlocks>();
     db.open_table::<LastCommitted>();
     db.open_table::<CommittedSubDag>();
+    db.open_table::<ConsensusBlocks>();
+    db.open_table::<ConsensusBlockNumbersByDigest>();
     db
 }
 
@@ -180,6 +187,8 @@ fn _open_redb<P: AsRef<std::path::Path> + Send>(store_path: P) -> LayeredDatabas
     db.open_table::<WorkerBlocks>().expect("failed to open table!");
     db.open_table::<LastCommitted>().expect("failed to open table!");
     db.open_table::<CommittedSubDag>().expect("failed to open table!");
+    db.open_table::<ConsensusBlocks>().expect("failed to open table!");
+    db.open_table::<ConsensusBlockNumbersByDigest>().expect("failed to open table!");
 
     let db = LayeredDatabase::open(db);
     db.open_table::<LastProposed>();
@@ -191,6 +200,8 @@ fn _open_redb<P: AsRef<std::path::Path> + Send>(store_path: P) -> LayeredDatabas
     db.open_table::<WorkerBlocks>();
     db.open_table::<LastCommitted>();
     db.open_table::<CommittedSubDag>();
+    db.open_table::<ConsensusBlocks>();
+    db.open_table::<ConsensusBlockNumbersByDigest>();
     db
 }
 

@@ -7,17 +7,23 @@ use consensus_network::{client::NetworkClient, PrimaryToWorkerClient};
 use consensus_network_types::FetchBlocksRequest;
 use fastcrypto::hash::Hash;
 use futures::{stream::FuturesOrdered, StreamExt};
-use reth_primitives::Address;
+use reth_primitives::{Address, B256};
 use std::{
     collections::{HashMap, HashSet, VecDeque},
     sync::Arc,
     time::Duration,
     vec,
 };
+use tn_config::ConsensusConfig;
 use tn_primary::ConsensusBus;
+use tn_storage::{
+    tables::{ConsensusBlockNumbersByDigest, ConsensusBlocks},
+    traits::{Database, DbTxMut},
+};
 use tn_types::{
-    AuthorityIdentifier, BlockHash, Certificate, CommittedSubDag, Committee, ConsensusOutput,
-    NetworkPublicKey, Noticer, Timestamp, TnReceiver, TnSender, WorkerBlock, WorkerCache, WorkerId,
+    AuthorityIdentifier, BlockHash, Certificate, CommittedSubDag, Committee, ConsensusHeader,
+    ConsensusOutput, NetworkPublicKey, Noticer, Timestamp, TnReceiver, TnSender, WorkerBlock,
+    WorkerCache, WorkerId,
 };
 use tokio::task::JoinHandle;
 use tracing::{debug, error, info, warn};
@@ -25,11 +31,13 @@ use tracing::{debug, error, info, warn};
 /// The `Subscriber` receives certificates sequenced by the consensus and waits until the
 /// downloaded all the transactions references by the certificates; it then
 /// forward the certificates to the Executor.
-pub struct Subscriber {
+pub struct Subscriber<DB> {
     /// Receiver for shutdown
     rx_shutdown: Noticer,
     /// Used to get the sequence receiver
     consensus_bus: ConsensusBus,
+    // Consensus configuration (contains the consensus DB)
+    config: ConsensusConfig<DB>,
     /// Inner state.
     inner: Arc<Inner>,
 }
@@ -42,17 +50,17 @@ struct Inner {
     metrics: Arc<ExecutorMetrics>,
 }
 
-#[allow(clippy::too_many_arguments)]
-pub fn spawn_subscriber(
-    authority_id: AuthorityIdentifier,
-    worker_cache: WorkerCache,
-    committee: Committee,
-    client: NetworkClient,
+pub fn spawn_subscriber<DB: Database>(
+    config: ConsensusConfig<DB>,
     rx_shutdown: Noticer,
     consensus_bus: ConsensusBus,
-    restored_consensus_output: Vec<CommittedSubDag>,
+    last_executed_consensus_hash: B256,
 ) -> JoinHandle<()> {
     let metrics = Arc::new(ExecutorMetrics::default());
+    let authority_id = config.authority().id();
+    let worker_cache = config.worker_cache().clone();
+    let committee = config.committee().clone();
+    let client = config.network_client().clone();
 
     spawn_logged_monitored_task!(
         async move {
@@ -60,20 +68,44 @@ pub fn spawn_subscriber(
             let subscriber = Subscriber {
                 rx_shutdown,
                 consensus_bus,
+                config,
                 inner: Arc::new(Inner { authority_id, committee, worker_cache, client, metrics }),
             };
-            subscriber.run(restored_consensus_output).await.expect("Failed to run subscriber")
+            subscriber.run(last_executed_consensus_hash).await.expect("Failed to run subscriber")
         },
         "SubscriberTask"
     )
 }
 
-impl Subscriber {
+impl<DB: Database> Subscriber<DB> {
     /// Returns the max number of sub-dag to fetch payloads concurrently.
     const MAX_PENDING_PAYLOADS: usize = 1000;
 
+    fn save_consensus(&self, consensus_output: ConsensusOutput) {
+        let db = self.config.node_storage().batch_store.clone();
+        match db.write_txn() {
+            Ok(mut txn) => {
+                let header: ConsensusHeader = consensus_output.into();
+                if let Err(e) = txn.insert::<ConsensusBlocks>(&header.number, &header) {
+                    tracing::error!(target: "engine", ?e, "error saving a consensus header to persistant storage!")
+                }
+                if let Err(e) =
+                    txn.insert::<ConsensusBlockNumbersByDigest>(&header.digest(), &header.number)
+                {
+                    tracing::error!(target: "engine", ?e, "error saving a consensus header number to persistant storage!")
+                }
+                if let Err(e) = txn.commit() {
+                    tracing::error!(target: "engine", ?e, "error saving committing to persistant storage!")
+                }
+            }
+            Err(e) => {
+                tracing::error!(target: "engine", ?e, "error getting a transaction on persistant storage!")
+            }
+        };
+    }
+
     /// Main loop connecting to the consensus to listen to sequence messages.
-    async fn run(self, restored_consensus_output: Vec<CommittedSubDag>) -> SubscriberResult<()> {
+    async fn run(self, last_executed_consensus_hash: B256) -> SubscriberResult<()> {
         // It's important to have the futures in ordered fashion as we want
         // to guarantee that will deliver to the executor the certificates
         // in the same order we received from rx_sequence. So it doesn't
@@ -82,14 +114,50 @@ impl Subscriber {
         // fetched, no later certificate will be delivered.
         let mut waiting = FuturesOrdered::new();
 
+        // Get the DB and load our last know consensus block.
+        let db = self.config.node_storage().batch_store.clone();
+        let last_block = if let Some((_, last_block)) = db.last_record::<ConsensusBlocks>() {
+            last_block
+        } else {
+            ConsensusHeader::default()
+        };
+        let last_executed_block = if let Ok(Some(number)) =
+            db.get::<ConsensusBlockNumbersByDigest>(&last_executed_consensus_hash)
+        {
+            if let Ok(Some(block)) = db.get::<ConsensusBlocks>(&number) {
+                block
+            } else {
+                ConsensusHeader::default()
+            }
+        } else {
+            ConsensusHeader::default()
+        };
+        let mut last_parent = last_block.digest();
+        let mut last_number = last_block.number;
         // First handle any consensus output messages that were restored due to a restart.
         // This needs to happen before we start listening on rx_sequence and receive messages
         // sequenced after these.
-        for message in restored_consensus_output {
-            let future = Self::fetch_blocks(self.inner.clone(), message);
-            waiting.push_back(future);
+        if last_executed_block.number < last_block.number {
+            let num_sub_dags = last_block.number - last_executed_block.number;
+            if num_sub_dags > 0 {
+                info!(target: "telcoin::subscriber",
+                    "Consensus output on its way to the executor was restored for {num_sub_dags} sub-dags",
+                );
+            }
+            self.consensus_bus.consensus_metrics().recovered_consensus_output.inc_by(num_sub_dags);
+            for number in last_executed_block.number + 1..=last_block.number {
+                if let Ok(Some(block)) = db.get::<ConsensusBlocks>(&number) {
+                    let future = Self::fetch_blocks(
+                        self.inner.clone(),
+                        block.sub_dag,
+                        block.parent_hash,
+                        block.number,
+                    );
+                    waiting.push_back(future);
 
-            self.inner.metrics.subscriber_recovered_certificates_count.inc();
+                    self.inner.metrics.subscriber_recovered_certificates_count.inc();
+                }
+            }
         }
 
         let mut rx_sequence = self.consensus_bus.sequence().subscribe();
@@ -101,7 +169,11 @@ impl Subscriber {
                     // We can schedule more then MAX_PENDING_PAYLOADS payloads but
                     // don't process more consensus messages when more
                     // then MAX_PENDING_PAYLOADS is pending
-                    waiting.push_back(Self::fetch_blocks(self.inner.clone(), sub_dag));
+                    let parent_hash = last_parent;
+                    let number = last_number + 1;
+                    last_parent = ConsensusHeader::digest_from_parts(parent_hash, &sub_dag, number);
+                    last_number += 1;
+                    waiting.push_back(Self::fetch_blocks(self.inner.clone(), sub_dag, parent_hash, number));
                 },
 
                 // Receive consensus messages after all transaction data is downloaded
@@ -109,7 +181,8 @@ impl Subscriber {
                 //
                 // NOTE: this broadcasts to all subscribers, but lagging receivers will lose messages
                 Some(message) = waiting.next() => {
-                    if let Err(e) = self.consensus_bus.raw_consensus_output().send(message).await {
+                    self.save_consensus(message.clone());
+                    if let Err(e) = self.consensus_bus.consensus_output().send(message).await {
                         error!(target: "telcoin::subscriber", "error broadcasting consensus output for authority {}: {}", self.inner.authority_id, e);
                         return Ok(());
                     }
@@ -128,7 +201,12 @@ impl Subscriber {
     /// Returns ordered vector of futures for downloading blocks for certificates
     /// Order of futures returned follows order of blocks in the certificates.
     /// See BlockFetcher for more details.
-    async fn fetch_blocks(inner: Arc<Inner>, deliver: CommittedSubDag) -> ConsensusOutput {
+    async fn fetch_blocks(
+        inner: Arc<Inner>,
+        deliver: CommittedSubDag,
+        parent_hash: B256,
+        number: u64,
+    ) -> ConsensusOutput {
         let num_blocks = deliver.num_blocks();
         let num_certs = deliver.len();
 
@@ -148,6 +226,8 @@ impl Subscriber {
                 blocks: vec![],
                 beneficiary: address,
                 block_digests: VecDeque::new(),
+                parent_hash,
+                number,
             };
         }
 
@@ -157,6 +237,8 @@ impl Subscriber {
             blocks: Vec::with_capacity(num_certs),
             beneficiary: address,
             block_digests: VecDeque::new(),
+            parent_hash,
+            number,
         };
 
         let mut batch_digests_and_workers: HashMap<

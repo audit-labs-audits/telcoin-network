@@ -623,15 +623,12 @@ async fn test_canonical_notification_updates_pool() {
         blocks: vec![vec![first_block]],
         beneficiary: address,
         block_digests,
+        parent_hash: ConsensusHeader::default().digest(),
+        number: 0,
     };
 
     // execute output to trigger canonical update
-    let args = BuildArguments::new(
-        blockchain_db.clone(),
-        output,
-        chain.sealed_genesis_header(),
-        ConsensusHeader::default(),
-    );
+    let args = BuildArguments::new(blockchain_db.clone(), output, chain.sealed_genesis_header());
     let _final_header = execute_consensus_output(evm_config, args).expect("output executed");
 
     // sleep to ensure canonical update received before ack
