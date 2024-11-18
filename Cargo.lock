@@ -10488,6 +10488,7 @@ name = "tn-config"
 version = "0.1.0"
 dependencies = [
  "alloy",
+ "anemo",
  "consensus-network",
  "eyre",
  "fastcrypto",

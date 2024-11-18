@@ -7,11 +7,11 @@
 
 pub mod admin;
 pub mod anemo_ext;
-pub mod client;
 pub mod connectivity;
 pub mod epoch_filter;
 mod error;
 pub mod failpoints;
+pub mod local;
 pub mod metrics;
 mod p2p;
 mod retry;

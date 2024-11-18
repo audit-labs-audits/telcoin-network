@@ -59,9 +59,7 @@ async fn test_get_network_peers_from_admin_server() {
     let metrics_1 = Metrics::new_with_registry(&registry_1);
 
     // Spawn a `Worker` instance for primary 1.
-    let worker = Worker::new(worker_id, config_1.clone());
-    //let worker = authority_1.worker(); //Worker::new(worker_id, config_1);
-    worker.spawn(NoopBlockValidator, metrics_1, config_1);
+    let _ = Worker::spawn(worker_id, NoopBlockValidator, metrics_1, config_1.clone());
 
     // Test getting all known peers for primary 1
     let resp = reqwest::get(format!(
@@ -379,7 +377,7 @@ async fn test_request_vote_missing_batches() {
     let authority_id = primary.id();
     let author = fixture.authorities().nth(2).unwrap();
     let network = test_network(primary.primary_network_keypair(), primary.network_address());
-    let client = primary.consensus_config().network_client().clone();
+    let client = primary.consensus_config().local_network().clone();
 
     let certificate_store = primary.consensus_config().node_storage().certificate_store.clone();
     let payload_store = primary.consensus_config().node_storage().payload_store.clone();
@@ -468,7 +466,7 @@ async fn test_request_vote_already_voted() {
     let id = primary.id();
     let author = fixture.authorities().nth(2).unwrap();
     let network = test_network(primary.primary_network_keypair(), primary.network_address());
-    let client = primary.consensus_config().network_client().clone(); // NetworkClient::new_from_keypair(&primary.primary_primary_primary_network_keypair());
+    let client = primary.consensus_config().local_network().clone();
 
     let certificate_store = primary.consensus_config().node_storage().certificate_store.clone();
     let payload_store = primary.consensus_config().node_storage().payload_store.clone();
@@ -700,7 +698,7 @@ async fn test_request_vote_created_at_in_future() {
     let id = primary.id();
     let author = fixture.authorities().nth(2).unwrap();
     let network = test_network(primary.primary_network_keypair(), primary.network_address());
-    let client = primary.consensus_config().network_client().clone();
+    let client = primary.consensus_config().local_network().clone();
 
     let certificate_store = primary.consensus_config().node_storage().certificate_store.clone();
     let payload_store = primary.consensus_config().node_storage().payload_store.clone();

@@ -7,7 +7,8 @@ use crate::{
     primary::PrimaryNodeDetails, worker::WorkerNodeDetails, TelcoinTempDirs, TestExecutionNode,
     WorkerFixture,
 };
-use consensus_network::client::NetworkClient;
+use anemo::Network;
+use consensus_network::local::LocalNetwork;
 use fastcrypto::{hash::Hash, traits::KeyPair as _};
 use jsonrpsee::http_client::HttpClient;
 use reth::primitives::Address;
@@ -40,7 +41,7 @@ pub struct AuthorityDetails<DB> {
 
 /// Inner type for authority's details.
 struct AuthorityDetailsInternal<DB> {
-    client: Option<NetworkClient>,
+    client: Option<LocalNetwork>,
     primary: PrimaryNodeDetails<DB>,
     workers: HashMap<WorkerId, WorkerNodeDetails<DB>>,
     execution: TestExecutionNode,
@@ -80,7 +81,7 @@ impl<DB: Database> AuthorityDetails<DB> {
         Self { id, public_key, name, internal: Arc::new(RwLock::new(internal)) }
     }
 
-    pub async fn client(&self) -> NetworkClient {
+    pub async fn client(&self) -> LocalNetwork {
         let internal = self.internal.read().await;
         internal
             .client
@@ -315,6 +316,16 @@ impl<DB: Database> AuthorityDetails<DB> {
         }
 
         false
+    }
+
+    /// Returns an owned primary WAN if it exists.
+    pub async fn primary_network(&self) -> Option<Network> {
+        self.primary().await.network().await
+    }
+
+    /// Returns an owned worker WAN if it exists.
+    pub async fn worker_network(&self, worker_id: WorkerId) -> Option<Network> {
+        self.worker(worker_id).await.network().await
     }
 }
 

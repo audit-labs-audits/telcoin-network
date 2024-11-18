@@ -3,7 +3,7 @@
 // SPDX-License-Identifier: Apache-2.0
 use crate::{errors::SubscriberResult, metrics::ExecutorMetrics};
 use consensus_metrics::spawn_logged_monitored_task;
-use consensus_network::{client::NetworkClient, PrimaryToWorkerClient};
+use consensus_network::{local::LocalNetwork, PrimaryToWorkerClient};
 use consensus_network_types::FetchBlocksRequest;
 use fastcrypto::hash::Hash;
 use futures::{stream::FuturesOrdered, StreamExt};
@@ -46,7 +46,7 @@ struct Inner {
     authority_id: AuthorityIdentifier,
     worker_cache: WorkerCache,
     committee: Committee,
-    client: NetworkClient,
+    client: LocalNetwork,
     metrics: Arc<ExecutorMetrics>,
 }
 
@@ -60,7 +60,7 @@ pub fn spawn_subscriber<DB: Database>(
     let authority_id = config.authority().id();
     let worker_cache = config.worker_cache().clone();
     let committee = config.committee().clone();
-    let client = config.network_client().clone();
+    let client = config.local_network().clone();
 
     spawn_logged_monitored_task!(
         async move {
@@ -351,7 +351,7 @@ impl<DB: Database> Subscriber<DB> {
                 known_workers.len()
             );
             // TODO: Can further parallelize this by worker if necessary. Maybe move the logic
-            // to NetworkClient.
+            // to LocalNetwork.
             // Only have one worker for now so will leave this for a future
             // optimization.
             let request = FetchBlocksRequest { digests, known_workers };

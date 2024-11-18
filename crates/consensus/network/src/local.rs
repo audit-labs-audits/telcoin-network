@@ -1,3 +1,4 @@
+//! Client implementation for local network messages between primary and worker.
 // Copyright (c) Telcoin, LLC
 // Copyright (c) Mysten Labs, Inc.
 // SPDX-License-Identifier: Apache-2.0
@@ -6,7 +7,7 @@ use crate::{
     error::LocalClientError,
     traits::{PrimaryToWorkerClient, WorkerToPrimaryClient},
 };
-use anemo::{Network, PeerId, Request};
+use anemo::{PeerId, Request};
 use consensus_network_types::{
     FetchBlocksRequest, FetchBlocksResponse, PrimaryToWorker, WorkerOthersBlockMessage,
     WorkerOwnBlockMessage, WorkerSynchronizeMessage, WorkerToPrimary,
@@ -16,9 +17,19 @@ use std::{collections::BTreeMap, sync::Arc, time::Duration};
 use tn_types::{traits::KeyPair, NetworkKeypair, NetworkPublicKey};
 use tn_utils::sync::notify_once::NotifyOnce;
 use tokio::{select, time::sleep};
-use tracing::error;
 
-/// NetworkClient provides the interface to send requests to other nodes, and call other components
+// // //
+//
+// TODO: replace the `LocalNetwork` with worker/primary implementations and add engine.
+// and get rid of this stupid loop crap with retry attempts. the only reason this is here
+// is because LocalNetwork does too much. code doesn't know if/when primary/worker start
+// so there's options and confusing logic. Just create the clients with the config on node startup.
+//
+// This is not so simple.
+//
+// // //
+
+/// LocalNetwork provides the interface to send requests to other nodes, and call other components
 /// directly if they live in the same process. It is used by both primary and worker(s).
 ///
 /// Currently this only supports local direct calls, and it will be extended to support remote
@@ -26,28 +37,29 @@ use tracing::error;
 ///
 /// TODO: investigate splitting this into Primary and Worker specific clients.
 #[derive(Debug, Clone)]
-pub struct NetworkClient {
+pub struct LocalNetwork {
     inner: Arc<RwLock<Inner>>,
     shutdown_notify: Arc<NotifyOnce>,
 }
 
 struct Inner {
+    /// The primary's peer id.
     primary_peer_id: PeerId,
-    primary_network: Option<Network>,
-    worker_network: BTreeMap<u16, Network>,
+    /// The type that holds logic for worker to primary requests.
     worker_to_primary_handler: Option<Arc<dyn WorkerToPrimary>>,
+    /// The type that holds logic for primary to worker requests.
     primary_to_worker_handler: BTreeMap<PeerId, Arc<dyn PrimaryToWorker>>,
+    /// Shutdown status.
     shutdown: bool,
 }
 
 impl std::fmt::Debug for Inner {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "NetworkClient::Inner for {}", self.primary_peer_id)?;
-        write!(f, "\t{} nodes in worker network", self.worker_network.len())
+        write!(f, "LocalNetwork::Inner for {}", self.primary_peer_id)
     }
 }
 
-impl NetworkClient {
+impl LocalNetwork {
     const GET_CLIENT_RETRIES: usize = 50;
     const GET_CLIENT_INTERVAL: Duration = Duration::from_millis(300);
 
@@ -55,8 +67,6 @@ impl NetworkClient {
         Self {
             inner: Arc::new(RwLock::new(Inner {
                 primary_peer_id,
-                primary_network: None,
-                worker_network: BTreeMap::new(),
                 worker_to_primary_handler: None,
                 primary_to_worker_handler: BTreeMap::new(),
                 shutdown: false,
@@ -69,7 +79,7 @@ impl NetworkClient {
         Self::new(PeerId(primary_network_keypair.public().0.into()))
     }
 
-    /// Create a new [NetworkClient] from the primary's network key.
+    /// Create a new [LocalNetwork] from the primary's network key.
     pub fn new_from_public_key(primary_network_public_key: &NetworkPublicKey) -> Self {
         Self::new(PeerId(primary_network_public_key.0.into()))
     }
@@ -77,53 +87,6 @@ impl NetworkClient {
     pub fn new_with_empty_id() -> Self {
         // ED25519_PUBLIC_KEY_LENGTH is 32 bytes.
         Self::new(PeerId([0u8; 32]))
-    }
-
-    pub fn set_primary_network(&self, network: Network) {
-        let mut inner = self.inner.write();
-        if inner.primary_network.is_some() {
-            error!("Primary network is already set");
-        }
-        inner.primary_network = Some(network);
-    }
-
-    pub fn set_worker_network(&self, worker_id: u16, network: Network) {
-        let mut inner = self.inner.write();
-        if inner.worker_network.insert(worker_id, network).is_some() {
-            error!("Worker {} network is already set", worker_id);
-        }
-    }
-
-    pub async fn get_primary_network(&self) -> Result<Network, anemo::rpc::Status> {
-        for _ in 0..Self::GET_CLIENT_RETRIES {
-            {
-                let inner = self.inner.read();
-                if inner.shutdown {
-                    return Err(anemo::rpc::Status::internal("This node has shutdown"));
-                }
-                if let Some(network) = &inner.primary_network {
-                    return Ok(network.clone());
-                }
-            }
-            sleep(Self::GET_CLIENT_INTERVAL).await;
-        }
-        Err(anemo::rpc::Status::internal("Primary has not started"))
-    }
-
-    pub async fn get_worker_network(&self, worker_id: u16) -> Result<Network, anemo::rpc::Status> {
-        for _ in 0..Self::GET_CLIENT_RETRIES {
-            {
-                let inner = self.inner.read();
-                if inner.shutdown {
-                    return Err(anemo::rpc::Status::internal("This node has shutdown"));
-                }
-                if let Some(network) = inner.worker_network.get(&worker_id) {
-                    return Ok(network.clone());
-                }
-            }
-            sleep(Self::GET_CLIENT_INTERVAL).await;
-        }
-        Err(anemo::rpc::Status::internal(format!("The worker {} has not started", worker_id)))
     }
 
     pub fn set_worker_to_primary_local_handler(&self, handler: Arc<dyn WorkerToPrimary>) {
@@ -191,7 +154,7 @@ impl NetworkClient {
 
 // TODO: extract common logic for cancelling on shutdown.
 
-impl PrimaryToWorkerClient for NetworkClient {
+impl PrimaryToWorkerClient for LocalNetwork {
     async fn synchronize(
         &self,
         worker_name: NetworkPublicKey,
@@ -226,7 +189,7 @@ impl PrimaryToWorkerClient for NetworkClient {
     }
 }
 
-impl WorkerToPrimaryClient for NetworkClient {
+impl WorkerToPrimaryClient for LocalNetwork {
     async fn report_own_block(
         &self,
         request: WorkerOwnBlockMessage,

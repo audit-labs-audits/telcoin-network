@@ -6,14 +6,14 @@
 use super::*;
 use async_trait::async_trait;
 use fastcrypto::encoding::{Encoding, Hex};
+use prometheus::Registry;
+use std::time::Duration;
+use tempfile::TempDir;
+use tn_block_validator::NoopBlockValidator;
 use tn_primary::{
     consensus::{LeaderSchedule, LeaderSwapTable},
     Primary,
 };
-
-use prometheus::Registry;
-use tempfile::TempDir;
-use tn_block_validator::NoopBlockValidator;
 use tn_storage::mem_db::MemDatabase;
 use tn_test_utils::CommitteeFixture;
 use tn_types::WorkerBlock;
@@ -41,7 +41,7 @@ impl BlockValidation for NilBatchValidator {
 //     let my_primary = fixture.authorities().next().unwrap();
 //     let myself = my_primary.worker(worker_id);
 //     let public_key = my_primary.public_key();
-//     let client = NetworkClient::new_from_keypair(&my_primary.primary_network_keypair());
+//     let client = LocalNetwork::new_from_keypair(&my_primary.primary_network_keypair());
 
 //     let parameters = Parameters {
 //         max_worker_tx_bytes_size: 200, // Two transactions.
@@ -114,7 +114,7 @@ impl BlockValidation for NilBatchValidator {
 //     let my_primary = fixture.authorities().next().unwrap();
 //     let myself = my_primary.worker(worker_id);
 //     let authority_public_key = my_primary.public_key();
-//     let client = NetworkClient::new_from_keypair(&my_primary.primary_network_keypair());
+//     let client = LocalNetwork::new_from_keypair(&my_primary.primary_network_keypair());
 
 //     let parameters = Parameters {
 //         max_worker_tx_bytes_size: 200, // Two transactions.
@@ -222,7 +222,7 @@ impl BlockValidation for NilBatchValidator {
 //     let my_primary = fixture.authorities().next().unwrap();
 //     let myself = my_primary.worker(worker_id);
 //     let authority_public_key = my_primary.public_key();
-//     let client = NetworkClient::new_from_keypair(&my_primary.primary_network_keypair());
+//     let client = LocalNetwork::new_from_keypair(&my_primary.primary_network_keypair());
 
 //     let parameters = Parameters {
 //         max_worker_tx_bytes_size: 200, // Two transactions.
@@ -355,8 +355,7 @@ async fn get_network_peers_from_admin_server() {
     let worker_1_parameters = config_1.config().parameters.clone();
 
     // Spawn a `Worker` instance for primary 1.
-    let worker = Worker::new(worker_id, config_1.clone());
-    worker.spawn(NoopBlockValidator, metrics_1.clone(), config_1);
+    let _worker = Worker::spawn(worker_id, NoopBlockValidator, metrics_1.clone(), config_1.clone());
 
     let primary_1_peer_id =
         Hex::encode(authority_1.primary_network_keypair().copy().public().0.as_bytes());
@@ -419,8 +418,7 @@ async fn get_network_peers_from_admin_server() {
     let worker_2_parameters = config_2.config().parameters.clone();
 
     // Spawn a `Worker` instance for primary 2.
-    let worker = Worker::new(worker_id, config_2.clone());
-    worker.spawn(NoopBlockValidator, metrics_2.clone(), config_2);
+    let _worker = Worker::spawn(worker_id, NoopBlockValidator, metrics_2.clone(), config_2.clone());
 
     // Wait for tasks to start. Sleeping longer here to ensure all primaries and workers
     // have  a chance to connect to each other.
