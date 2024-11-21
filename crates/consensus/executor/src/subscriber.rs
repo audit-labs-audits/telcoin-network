@@ -3,8 +3,6 @@
 // SPDX-License-Identifier: Apache-2.0
 use crate::errors::SubscriberResult;
 use consensus_metrics::spawn_logged_monitored_task;
-use consensus_network::{local::LocalNetwork, PrimaryToWorkerClient};
-use consensus_network_types::{ConsensusOutputRequest, FetchBlocksRequest, PrimaryToPrimaryClient};
 use fastcrypto::hash::Hash;
 use futures::{stream::FuturesOrdered, StreamExt};
 use reth_primitives::{Address, B256};
@@ -15,6 +13,8 @@ use std::{
     vec,
 };
 use tn_config::ConsensusConfig;
+use tn_network::{local::LocalNetwork, PrimaryToWorkerClient};
+use tn_network_types::{ConsensusOutputRequest, FetchBlocksRequest, PrimaryToPrimaryClient};
 use tn_primary::ConsensusBus;
 use tn_storage::{
     tables::{ConsensusBlockNumbersByDigest, ConsensusBlocks},
@@ -165,7 +165,6 @@ impl<DB: Database> Subscriber<DB> {
             }
         }
 
-        /*
         // XXXX catch up with peers...
         let mut clients: Vec<PrimaryToPrimaryClient<_>> = self
             .config
@@ -181,11 +180,12 @@ impl<DB: Database> Subscriber<DB> {
         for client in clients.iter_mut() {
             match client.request_consensus(ConsensusOutputRequest::default()).await {
                 Ok(res) => {}
-                Err(e) => tracing::error(),
+                Err(e) => {
+                    tracing::error!(target: "telcoin::subscriber", "error requesting peer consensus {e}")
+                }
             }
         }
         // XXXX
-        */
 
         let mut rx_sequence = self.consensus_bus.sequence().subscribe();
         // Listen to sequenced consensus message and process them.
