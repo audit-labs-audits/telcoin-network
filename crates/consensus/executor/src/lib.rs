@@ -5,15 +5,12 @@ mod errors;
 mod state;
 mod subscriber;
 
-mod metrics;
-
 pub use errors::{SubscriberError, SubscriberResult};
 use reth_primitives::B256;
 pub use state::ExecutionIndices;
 use tn_primary::ConsensusBus;
 use tn_storage::traits::Database;
 
-pub use crate::metrics::ExecutorMetrics;
 use crate::subscriber::spawn_subscriber;
 
 use async_trait::async_trait;

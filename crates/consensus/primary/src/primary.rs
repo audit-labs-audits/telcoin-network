@@ -50,6 +50,79 @@ pub struct Primary {
     network: Network,
 }
 
+/*
+/// Spawns a task to check and sync (catch up with the tip) consensus for this node.
+fn sync_consensus<DB: Database>(
+    network: Network,
+    config: ConsensusConfig<DB>,
+    consensus_bus: &ConsensusBus,
+) {
+    tokio::spawn(async move {
+        // Get the DB and load our last know consensus block.
+        let db = config.database();
+        let last_block = if let Some((_, last_block)) = db.last_record::<ConsensusBlocks>() {
+            last_block
+        } else {
+            ConsensusHeader::default()
+        };
+        let last_executed_block = if let Ok(Some(number)) =
+            db.get::<ConsensusBlockNumbersByDigest>(&last_executed_consensus_hash)
+        {
+            if let Ok(Some(block)) = db.get::<ConsensusBlocks>(&number) {
+                block
+            } else {
+                ConsensusHeader::default()
+            }
+        } else {
+            ConsensusHeader::default()
+        };
+        let mut last_parent = last_block.digest();
+        let mut last_number = last_block.number;
+        // First handle any consensus output messages that were restored due to a restart.
+        // This needs to happen before we start listening on rx_sequence and receive messages
+        // sequenced after these.
+        if last_executed_block.number < last_block.number {
+            let num_sub_dags = last_block.number - last_executed_block.number;
+            if num_sub_dags > 0 {
+                info!(target: "telcoin::subscriber",
+                    "Consensus output on its way to the executor was restored for {num_sub_dags} sub-dags",
+                );
+            }
+            consensus_bus.consensus_metrics().recovered_consensus_output.inc_by(num_sub_dags);
+            for number in last_executed_block.number + 1..=last_block.number {
+                if let Ok(Some(block)) = db.get::<ConsensusBlocks>(&number) {
+                    let future = Subscriber::fetch_blocks(
+                        self.inner.clone(),
+                        block.sub_dag,
+                        block.parent_hash,
+                        block.number,
+                    );
+                    waiting.push_back(future);
+
+                    consensus_bus.executor_metrics().subscriber_recovered_certificates_count.inc();
+                }
+            }
+        }
+
+        let mut clients: Vec<PrimaryToPrimaryClient<_>> = config
+            .committee()
+            .others_primaries_by_id(config.authority().id())
+            .into_iter()
+            .map(|(_, _, peer_id)| {
+                PrimaryToPrimaryClient::new(
+                    network.waiting_peer(anemo::PeerId(peer_id.0.to_bytes())),
+                )
+            })
+            .collect();
+        for client in clients.iter_mut() {
+            match client.request_consensus(ConsensusOutputRequest::default()).await {
+                Ok(res) => {}
+                Err(e) => tracing::error(),
+            }
+        }
+    });
+}*/
+
 impl Primary {
     /// Spawns the primary and returns the JoinHandles of its tasks, as well as a metered receiver
     /// for the Consensus.

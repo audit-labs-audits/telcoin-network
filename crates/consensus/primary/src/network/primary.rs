@@ -17,11 +17,15 @@ use std::{
 use anemo::{async_trait, types::response::StatusCode};
 use consensus_metrics::monitored_scope;
 use consensus_network_types::{
-    FetchCertificatesRequest, FetchCertificatesResponse, PrimaryToPrimary, RequestVoteRequest,
-    RequestVoteResponse, SendCertificateRequest, SendCertificateResponse,
+    ConsensusOutputRequest, ConsensusOutputResponse, FetchCertificatesRequest,
+    FetchCertificatesResponse, PrimaryToPrimary, RequestVoteRequest, RequestVoteResponse,
+    SendCertificateRequest, SendCertificateResponse,
 };
-use tn_storage::traits::Database;
-use tn_types::{error::DagError, validate_received_certificate_version};
+use tn_storage::{
+    tables::{ConsensusBlockNumbersByDigest, ConsensusBlocks},
+    traits::Database,
+};
+use tn_types::{error::DagError, validate_received_certificate_version, ConsensusHeader};
 use tracing::{debug, instrument, warn};
 
 use super::PrimaryReceiverHandler;
@@ -172,6 +176,74 @@ impl<DB: Database> PrimaryToPrimary for PrimaryReceiverHandler<DB> {
 
         // The requestor should be able to process certificates returned in this order without
         // any missing parents.
+        Ok(anemo::Response::new(response))
+    }
+
+    async fn request_consensus(
+        &self,
+        request: anemo::Request<ConsensusOutputRequest>,
+    ) -> Result<anemo::Response<ConsensusOutputResponse>, anemo::rpc::Status> {
+        fn get_header<DB: Database>(
+            db: &DB,
+            number: u64,
+        ) -> Result<ConsensusHeader, anemo::rpc::Status> {
+            match db.get::<ConsensusBlocks>(&number) {
+                Ok(Some(header)) => Ok(header),
+                Ok(None) => {
+                    return Err(anemo::rpc::Status::new_with_message(
+                        StatusCode::NotFound,
+                        format!("no consensus output found for {number} on peer"),
+                    ))
+                }
+                Err(e) => {
+                    return Err(anemo::rpc::Status::new_with_message(
+                        StatusCode::NotFound,
+                        format!("no consensus output found for {number} on peer: {e}"),
+                    ))
+                }
+            }
+        }
+
+        let _scope = monitored_scope("PrimaryReceiverHandler::request_consensus");
+        let body = request.into_body();
+        let output = match (body.number, body.hash) {
+            (_, Some(hash)) => {
+                let number = match self
+                    .consensus_config
+                    .database()
+                    .get::<ConsensusBlockNumbersByDigest>(&hash)
+                {
+                    Ok(Some(number)) => number,
+                    Ok(None) => {
+                        return Err(anemo::rpc::Status::new_with_message(
+                            StatusCode::NotFound,
+                            format!("no consensus output found for {hash} on peer"),
+                        ))
+                    }
+                    Err(e) => {
+                        return Err(anemo::rpc::Status::new_with_message(
+                            StatusCode::NotFound,
+                            format!("no consensus output found for {hash} on peer: {e}"),
+                        ))
+                    }
+                };
+                get_header(self.consensus_config.database(), number)?
+            }
+            (Some(number), _) => get_header(self.consensus_config.database(), number)?,
+            (None, None) => {
+                if let Some((_, header)) =
+                    self.consensus_config.database().last_record::<ConsensusBlocks>()
+                {
+                    header
+                } else {
+                    return Err(anemo::rpc::Status::new_with_message(
+                        StatusCode::NotFound,
+                        "no consensus output found on peer",
+                    ));
+                }
+            }
+        };
+        let response = ConsensusOutputResponse { output };
         Ok(anemo::Response::new(response))
     }
 }

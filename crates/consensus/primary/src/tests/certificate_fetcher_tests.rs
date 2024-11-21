@@ -5,8 +5,9 @@
 use crate::{certificate_fetcher::CertificateFetcher, synchronizer::Synchronizer, ConsensusBus};
 use anemo::async_trait;
 use consensus_network_types::{
-    FetchCertificatesRequest, FetchCertificatesResponse, PrimaryToPrimary, PrimaryToPrimaryServer,
-    RequestVoteRequest, RequestVoteResponse, SendCertificateRequest, SendCertificateResponse,
+    ConsensusOutputRequest, ConsensusOutputResponse, FetchCertificatesRequest,
+    FetchCertificatesResponse, PrimaryToPrimary, PrimaryToPrimaryServer, RequestVoteRequest,
+    RequestVoteResponse, SendCertificateRequest, SendCertificateResponse,
 };
 use eyre::Result;
 use fastcrypto::{hash::Hash, traits::KeyPair};
@@ -62,6 +63,13 @@ impl PrimaryToPrimary for NetworkProxy {
             .await
             .map_err(|e| anemo::rpc::Status::from_error(Box::new(e)))?;
         Ok(anemo::Response::new(self.response.lock().await.recv().await.unwrap()))
+    }
+
+    async fn request_consensus(
+        &self,
+        _request: anemo::Request<ConsensusOutputRequest>,
+    ) -> Result<anemo::Response<ConsensusOutputResponse>, anemo::rpc::Status> {
+        unimplemented!()
     }
 }
 

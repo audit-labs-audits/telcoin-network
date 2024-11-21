@@ -8,7 +8,7 @@
 use std::sync::Arc;
 
 use consensus_metrics::metered_channel::{self, channel_with_total_sender, MeteredMpscChannel};
-use tn_primary_metrics::{ChannelMetrics, ConsensusMetrics, Metrics};
+use tn_primary_metrics::{ChannelMetrics, ConsensusMetrics, ExecutorMetrics, Metrics};
 use tn_types::{
     Certificate, CommittedSubDag, ConsensusOutput, Header, Round, TnSender, CHANNEL_CAPACITY,
 };
@@ -47,13 +47,6 @@ struct ConsensusBusInner {
     /// NOTE: this does not mean the header was executed yet.
     committed_own_headers: MeteredMpscChannel<(Round, Vec<Round>)>,
 
-    /// Hold onto the consensus_metrics (mostly for testing)
-    consensus_metrics: Arc<ConsensusMetrics>,
-    /// Hold onto the primary metrics (allow early creation)
-    primary_metrics: Arc<Metrics>,
-    /// Hold onto the channel metrics.
-    channel_metrics: Arc<ChannelMetrics>,
-
     /// Outputs the sequence of ordered certificates to the application layer.
     sequence: MeteredMpscChannel<CommittedSubDag>,
 
@@ -71,6 +64,15 @@ struct ConsensusBusInner {
     consensus_output: broadcast::Sender<ConsensusOutput>,
     /// Hold onto consensus output with a consensus header to keep it open.
     _rx_consensus_output: broadcast::Receiver<ConsensusOutput>,
+
+    /// Hold onto the consensus_metrics (mostly for testing)
+    consensus_metrics: Arc<ConsensusMetrics>,
+    /// Hold onto the primary metrics (allow early creation)
+    primary_metrics: Arc<Metrics>,
+    /// Hold onto the channel metrics.
+    channel_metrics: Arc<ChannelMetrics>,
+    /// Hold onto the executor metrics.
+    executor_metrics: Arc<ExecutorMetrics>,
 }
 
 #[derive(Clone, Debug)]
@@ -94,6 +96,7 @@ impl ConsensusBus {
         let consensus_metrics = Arc::new(ConsensusMetrics::default());
         let primary_metrics = Arc::new(Metrics::default()); // Initialize the metrics
         let channel_metrics = Arc::new(ChannelMetrics::default());
+        let executor_metrics = Arc::new(ExecutorMetrics::default());
         let new_certificates = metered_channel::channel_sender(
             CHANNEL_CAPACITY,
             &primary_metrics.primary_channel_metrics.tx_new_certificates,
@@ -156,13 +159,14 @@ impl ConsensusBus {
 
                 tx_narwhal_round_updates,
                 _rx_narwhal_round_updates,
-                consensus_metrics,
-                primary_metrics,
-                channel_metrics,
                 tx_recent_blocks,
                 _rx_recent_blocks,
                 consensus_output,
                 _rx_consensus_output,
+                consensus_metrics,
+                primary_metrics,
+                channel_metrics,
+                executor_metrics,
             }),
         }
     }
@@ -237,21 +241,6 @@ impl ConsensusBus {
         &self.inner.sequence
     }
 
-    /// Hold onto the consensus_metrics (mostly for testing)
-    pub fn consensus_metrics(&self) -> Arc<ConsensusMetrics> {
-        self.inner.consensus_metrics.clone()
-    }
-
-    /// Hold onto the primary metrics (allow early creation)
-    pub fn primary_metrics(&self) -> Arc<Metrics> {
-        self.inner.primary_metrics.clone()
-    }
-
-    /// Hold onto the channel metrics (metrics for the sequence channel).
-    pub fn channel_metrics(&self) -> Arc<ChannelMetrics> {
-        self.inner.channel_metrics.clone()
-    }
-
     /// Track recent blocks.
     pub fn recent_blocks(&self) -> &watch::Sender<RecentBlocks> {
         &self.inner.tx_recent_blocks
@@ -268,5 +257,25 @@ impl ConsensusBus {
     /// execution module.
     pub fn subscribe_consensus_output(&self) -> broadcast::Receiver<ConsensusOutput> {
         self.inner.consensus_output.subscribe()
+    }
+
+    /// Hold onto the consensus_metrics (mostly for testing)
+    pub fn consensus_metrics(&self) -> Arc<ConsensusMetrics> {
+        self.inner.consensus_metrics.clone()
+    }
+
+    /// Hold onto the primary metrics (allow early creation)
+    pub fn primary_metrics(&self) -> Arc<Metrics> {
+        self.inner.primary_metrics.clone()
+    }
+
+    /// Hold onto the channel metrics (metrics for the sequence channel).
+    pub fn channel_metrics(&self) -> Arc<ChannelMetrics> {
+        self.inner.channel_metrics.clone()
+    }
+
+    /// Hold onto the executor metrics
+    pub fn executor_metrics(&self) -> &ExecutorMetrics {
+        &*self.inner.executor_metrics
     }
 }

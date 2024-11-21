@@ -10535,6 +10535,7 @@ dependencies = [
  "tn-config",
  "tn-node",
  "tn-primary",
+ "tn-primary-metrics",
  "tn-storage",
  "tn-test-utils",
  "tn-types",

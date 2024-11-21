@@ -157,3 +157,15 @@ impl From<HashSet<BlockHash>> for SyncStateRequest {
         Self { digests }
     }
 }
+
+/// Request a consensus chain header with consensus output.
+///
+/// If both number and hash are set they should match (no need to set them both).
+/// If neither number or hash are set then will return the latest consensus chain header.
+#[derive(Clone, Debug, Serialize, Deserialize, Default)]
+pub struct ConsensusOutputRequest {
+    /// Block number requesting if not None.
+    pub number: Option<u64>,
+    /// Block hash requesting if not None.
+    pub hash: Option<BlockHash>,
+}
