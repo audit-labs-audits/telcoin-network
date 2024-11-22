@@ -48,10 +48,16 @@ impl Executor {
         rx_shutdown: Noticer,
         consensus_bus: ConsensusBus,
         last_executed_consensus_hash: B256,
+        network: anemo::Network,
     ) -> SubscriberResult<JoinHandle<()>> {
         // Spawn the subscriber.
-        let subscriber_handle =
-            spawn_subscriber(config, rx_shutdown, consensus_bus, last_executed_consensus_hash);
+        let subscriber_handle = spawn_subscriber(
+            config,
+            rx_shutdown,
+            consensus_bus,
+            last_executed_consensus_hash,
+            network,
+        );
 
         // Return the handle.
         info!("Consensus subscriber successfully started");

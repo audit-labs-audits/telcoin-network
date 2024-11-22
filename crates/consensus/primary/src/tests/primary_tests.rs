@@ -45,8 +45,9 @@ async fn test_get_network_peers_from_admin_server() {
     let worker_1_keypair = authority_1.worker().keypair().copy();
 
     let cb_1 = ConsensusBus::new();
+    let mut primary_1 = Primary::new(config_1.clone(), &cb_1);
     // Spawn Primary 1
-    Primary::spawn(
+    primary_1.spawn(
         config_1.clone(),
         &cb_1,
         LeaderSchedule::new(committee.clone(), LeaderSwapTable::default()),
@@ -109,7 +110,8 @@ async fn test_get_network_peers_from_admin_server() {
 
     let cb_2 = ConsensusBus::new();
     // Spawn Primary 2
-    Primary::spawn(config_2, &cb_2, LeaderSchedule::new(committee, LeaderSwapTable::default()));
+    let mut primary_2 = Primary::new(config_2.clone(), &cb_2);
+    primary_2.spawn(config_2, &cb_2, LeaderSchedule::new(committee, LeaderSwapTable::default()));
 
     // Wait for tasks to start
     tokio::time::sleep(Duration::from_secs(1)).await;

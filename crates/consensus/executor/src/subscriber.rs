@@ -1,7 +1,7 @@
 // Copyright (c) Telcoin, LLC
 // Copyright (c) Mysten Labs, Inc.
 // SPDX-License-Identifier: Apache-2.0
-use crate::errors::SubscriberResult;
+use crate::{errors::SubscriberResult, SubscriberError};
 use consensus_metrics::spawn_logged_monitored_task;
 use fastcrypto::hash::Hash;
 use futures::{stream::FuturesOrdered, StreamExt};
@@ -13,7 +13,11 @@ use std::{
     vec,
 };
 use tn_config::ConsensusConfig;
-use tn_network::{local::LocalNetwork, PrimaryToWorkerClient};
+use tn_network::{
+    anemo_ext::{NetworkExt, WaitingPeer},
+    local::LocalNetwork,
+    PrimaryToWorkerClient,
+};
 use tn_network_types::{ConsensusOutputRequest, FetchBlocksRequest, PrimaryToPrimaryClient};
 use tn_primary::ConsensusBus;
 use tn_storage::{
@@ -47,6 +51,7 @@ struct Inner {
     worker_cache: WorkerCache,
     committee: Committee,
     client: LocalNetwork,
+    network: anemo::Network,
 }
 
 pub fn spawn_subscriber<DB: Database>(
@@ -54,6 +59,7 @@ pub fn spawn_subscriber<DB: Database>(
     rx_shutdown: Noticer,
     consensus_bus: ConsensusBus,
     last_executed_consensus_hash: B256,
+    network: anemo::Network,
 ) -> JoinHandle<()> {
     let authority_id = config.authority().id();
     let worker_cache = config.worker_cache().clone();
@@ -67,7 +73,7 @@ pub fn spawn_subscriber<DB: Database>(
                 rx_shutdown,
                 consensus_bus,
                 config,
-                inner: Arc::new(Inner { authority_id, committee, worker_cache, client }),
+                inner: Arc::new(Inner { authority_id, committee, worker_cache, client, network }),
             };
             subscriber.run(last_executed_consensus_hash).await.expect("Failed to run subscriber")
         },
@@ -110,6 +116,25 @@ impl<DB: Database> Subscriber<DB> {
         Ok(())
     }
 
+    /// Return the max consensus chain block number from peers.
+    async fn max_consensus_number(
+        clients: &mut [PrimaryToPrimaryClient<WaitingPeer>],
+    ) -> Option<u64> {
+        // Stupid filler, should work on the happy path but not good...
+        for client in clients.iter_mut() {
+            match client.request_consensus(ConsensusOutputRequest::default()).await {
+                Ok(res) => {
+                    let output = res.into_body().output;
+                    return Some(output.number);
+                }
+                Err(e) => {
+                    tracing::error!(target: "telcoin::subscriber", "error requesting peer consensus {e:?}")
+                }
+            }
+        }
+        None
+    }
+
     /// Main loop connecting to the consensus to listen to sequence messages.
     async fn run(self, last_executed_consensus_hash: B256) -> SubscriberResult<()> {
         // It's important to have the futures in ordered fashion as we want
@@ -120,7 +145,6 @@ impl<DB: Database> Subscriber<DB> {
         // fetched, no later certificate will be delivered.
         let mut waiting = FuturesOrdered::new();
 
-        // XXXX- moved to catch up...
         // Get the DB and load our last know consensus block.
         let db = self.config.database();
         let last_block = if let Some((_, last_block)) = db.last_record::<ConsensusBlocks>() {
@@ -173,19 +197,56 @@ impl<DB: Database> Subscriber<DB> {
             .into_iter()
             .map(|(_, _, peer_id)| {
                 PrimaryToPrimaryClient::new(
-                    network.waiting_peer(anemo::PeerId(peer_id.0.to_bytes())),
+                    self.inner.network.waiting_peer(anemo::PeerId(peer_id.0.to_bytes())),
                 )
             })
             .collect();
-        for client in clients.iter_mut() {
-            match client.request_consensus(ConsensusOutputRequest::default()).await {
-                Ok(res) => {}
-                Err(e) => {
-                    tracing::error!(target: "telcoin::subscriber", "error requesting peer consensus {e}")
+        let mut max_consensus_height =
+            Self::max_consensus_number(&mut clients).await.unwrap_or(last_block.number);
+        // Catch up to the current chain state if we need to.
+        let mut last_consensus_height = last_block.number;
+        while last_consensus_height < max_consensus_height {
+            for number in last_consensus_height + 1..=max_consensus_height {
+                let client = clients.get_mut(0).unwrap(); //XXXX- don't just use the first client...
+                let req = ConsensusOutputRequest { number: Some(number), hash: None };
+                match client.request_consensus(req).await {
+                    Ok(res) => {
+                        let output = res.into_body().output;
+                        // XXXX
+                        let parent_hash = last_parent;
+                        let number = last_number + 1;
+                        last_parent = ConsensusHeader::digest_from_parts(
+                            parent_hash,
+                            &output.sub_dag,
+                            number,
+                        );
+                        last_number += 1;
+                        if last_parent != output.digest() {
+                            tracing::error!(target: "telcoin::subscriber", "failed to execute consensus!");
+                            return Err(SubscriberError::UnexpectedProtocolMessage);
+                        }
+                        // XXXX should also verify that the block output is building on is in fact
+                        // the head of our chain.
+                        let consensus_output =
+                            self.fetch_blocks(output.sub_dag, parent_hash, number).await;
+                        self.save_consensus(consensus_output.clone())?;
+                        if let Err(e) =
+                            self.consensus_bus.consensus_output().send(consensus_output).await
+                        {
+                            error!(target: "telcoin::subscriber", "error broadcasting consensus output for authority {}: {}", self.inner.authority_id, e);
+                            return Ok(());
+                        }
+                    }
+                    Err(e) => {
+                        tracing::error!(target: "telcoin::subscriber", "error requesting peer consensus {e:?}")
+                    }
                 }
+                last_consensus_height = number;
             }
+            max_consensus_height =
+                Self::max_consensus_number(&mut clients).await.unwrap_or(last_block.number);
         }
-        // XXXX
+        // If we made it to here we whould be caught up, join into consensus now...
 
         let mut rx_sequence = self.consensus_bus.sequence().subscribe();
         // Listen to sequenced consensus message and process them.
@@ -193,6 +254,9 @@ impl<DB: Database> Subscriber<DB> {
             tokio::select! {
                 // Receive the ordered sequence of consensus messages from a consensus node.
                 Some(sub_dag) = rx_sequence.recv(), if waiting.len() < Self::MAX_PENDING_PAYLOADS => {
+                    // XXXX  sanity check sub_dag?  Maybe better to get rejections form execution below.  If
+                    // we are behind then we may get sub_dags we can not execute yet...
+
                     // We can schedule more then MAX_PENDING_PAYLOADS payloads but
                     // don't process more consensus messages when more
                     // then MAX_PENDING_PAYLOADS is pending

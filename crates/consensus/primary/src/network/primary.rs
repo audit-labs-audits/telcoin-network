@@ -190,13 +190,13 @@ impl<DB: Database> PrimaryToPrimary for PrimaryReceiverHandler<DB> {
             match db.get::<ConsensusBlocks>(&number) {
                 Ok(Some(header)) => Ok(header),
                 Ok(None) => {
-                    return Err(anemo::rpc::Status::new_with_message(
+                    Err(anemo::rpc::Status::new_with_message(
                         StatusCode::NotFound,
                         format!("no consensus output found for {number} on peer"),
                     ))
                 }
                 Err(e) => {
-                    return Err(anemo::rpc::Status::new_with_message(
+                    Err(anemo::rpc::Status::new_with_message(
                         StatusCode::NotFound,
                         format!("no consensus output found for {number} on peer: {e}"),
                     ))

@@ -32,6 +32,7 @@ mockall.workspace = true
 consensus-metrics.workspace = true
 tn-primary = { workspace = true }
 tn-primary-metrics = { workspace = true }
+anemo = { workspace = true }
 
 [dev-dependencies]
 indexmap.workspace = true

@@ -45,93 +45,15 @@ use tracing::info;
 #[path = "tests/primary_tests.rs"]
 pub mod primary_tests;
 
-pub struct Primary {
+pub struct Primary<DB> {
     /// The Primary's network.
     network: Network,
+    synchronizer: Arc<Synchronizer<DB>>,
+    peer_types: Option<HashMap<PeerId, String>>,
 }
 
-/*
-/// Spawns a task to check and sync (catch up with the tip) consensus for this node.
-fn sync_consensus<DB: Database>(
-    network: Network,
-    config: ConsensusConfig<DB>,
-    consensus_bus: &ConsensusBus,
-) {
-    tokio::spawn(async move {
-        // Get the DB and load our last know consensus block.
-        let db = config.database();
-        let last_block = if let Some((_, last_block)) = db.last_record::<ConsensusBlocks>() {
-            last_block
-        } else {
-            ConsensusHeader::default()
-        };
-        let last_executed_block = if let Ok(Some(number)) =
-            db.get::<ConsensusBlockNumbersByDigest>(&last_executed_consensus_hash)
-        {
-            if let Ok(Some(block)) = db.get::<ConsensusBlocks>(&number) {
-                block
-            } else {
-                ConsensusHeader::default()
-            }
-        } else {
-            ConsensusHeader::default()
-        };
-        let mut last_parent = last_block.digest();
-        let mut last_number = last_block.number;
-        // First handle any consensus output messages that were restored due to a restart.
-        // This needs to happen before we start listening on rx_sequence and receive messages
-        // sequenced after these.
-        if last_executed_block.number < last_block.number {
-            let num_sub_dags = last_block.number - last_executed_block.number;
-            if num_sub_dags > 0 {
-                info!(target: "telcoin::subscriber",
-                    "Consensus output on its way to the executor was restored for {num_sub_dags} sub-dags",
-                );
-            }
-            consensus_bus.consensus_metrics().recovered_consensus_output.inc_by(num_sub_dags);
-            for number in last_executed_block.number + 1..=last_block.number {
-                if let Ok(Some(block)) = db.get::<ConsensusBlocks>(&number) {
-                    let future = Subscriber::fetch_blocks(
-                        self.inner.clone(),
-                        block.sub_dag,
-                        block.parent_hash,
-                        block.number,
-                    );
-                    waiting.push_back(future);
-
-                    consensus_bus.executor_metrics().subscriber_recovered_certificates_count.inc();
-                }
-            }
-        }
-
-        let mut clients: Vec<PrimaryToPrimaryClient<_>> = config
-            .committee()
-            .others_primaries_by_id(config.authority().id())
-            .into_iter()
-            .map(|(_, _, peer_id)| {
-                PrimaryToPrimaryClient::new(
-                    network.waiting_peer(anemo::PeerId(peer_id.0.to_bytes())),
-                )
-            })
-            .collect();
-        for client in clients.iter_mut() {
-            match client.request_consensus(ConsensusOutputRequest::default()).await {
-                Ok(res) => {}
-                Err(e) => tracing::error(),
-            }
-        }
-    });
-}*/
-
-impl Primary {
-    /// Spawns the primary and returns the JoinHandles of its tasks, as well as a metered receiver
-    /// for the Consensus.
-    pub fn spawn<DB: Database>(
-        config: ConsensusConfig<DB>,
-        consensus_bus: &ConsensusBus,
-        leader_schedule: LeaderSchedule,
-        // TODO: don't return handles here - need to refactor tn_node::PrimaryNode
-    ) -> (Self, Vec<JoinHandle<()>>) {
+impl<DB: Database> Primary<DB> {
+    pub fn new(config: ConsensusConfig<DB>, consensus_bus: &ConsensusBus) -> Self {
         // Write the parameters to the logs.
         config.parameters().tracing();
 
@@ -191,11 +113,22 @@ impl Primary {
             peer_types.insert(peer_id, "other_worker".to_string());
             info!("Adding others worker with peer id {} and address {}", peer_id, address);
         }
+        Self { network, synchronizer, peer_types: Some(peer_types) }
+    }
 
+    /// Spawns the primary and returns the JoinHandles of its tasks, as well as a metered receiver
+    /// for the Consensus.
+    pub fn spawn(
+        &mut self,
+        config: ConsensusConfig<DB>,
+        consensus_bus: &ConsensusBus,
+        leader_schedule: LeaderSchedule,
+        // TODO: don't return handles here - need to refactor tn_node::PrimaryNode
+    ) -> Vec<JoinHandle<()>> {
         let (connection_monitor_handle, _) = tn_network::connectivity::ConnectionMonitor::spawn(
-            network.downgrade(),
+            self.network.downgrade(),
             consensus_bus.primary_metrics().network_connection_metrics.clone(),
-            peer_types,
+            self.peer_types.take().expect("peer types not set, was spawn called more than once?"),
             config.subscribe_shutdown(),
         );
 
@@ -207,15 +140,15 @@ impl Primary {
 
         let admin_handles = tn_network::admin::start_admin_server(
             config.parameters().network_admin_server.primary_network_admin_server_port,
-            network.clone(),
+            self.network.clone(),
             config.subscribe_shutdown(),
         );
 
         let core_handle = Certifier::spawn(
             config.clone(),
             consensus_bus.clone(),
-            synchronizer.clone(),
-            network.clone(),
+            self.synchronizer.clone(),
+            self.network.clone(),
         );
 
         // The `CertificateFetcher` waits to receive all the ancestors of a certificate before
@@ -223,11 +156,11 @@ impl Primary {
         let certificate_fetcher_handle = CertificateFetcher::spawn(
             config.authority().id(),
             config.committee().clone(),
-            network.clone(),
+            self.network.clone(),
             config.node_storage().certificate_store.clone(),
             consensus_bus.clone(),
             config.subscribe_shutdown(),
-            synchronizer,
+            self.synchronizer.clone(),
         );
 
         // When the `Synchronizer` collects enough parent certificates, the `Proposer` generates
@@ -254,7 +187,7 @@ impl Primary {
             config.authority().id(),
             consensus_bus,
             config.subscribe_shutdown(),
-            network.clone(),
+            self.network.clone(),
         );
         handles.push(state_handler_handle);
 
@@ -265,11 +198,11 @@ impl Primary {
             config.authority().primary_network_address()
         );
 
-        (Self { network }, handles)
+        handles
     }
 
     /// Start the anemo network for the primary.
-    fn start_network<DB: Database>(
+    fn start_network(
         config: &ConsensusConfig<DB>,
         synchronizer: Arc<Synchronizer<DB>>,
         consensus_bus: &ConsensusBus,

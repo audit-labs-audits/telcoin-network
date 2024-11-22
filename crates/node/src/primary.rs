@@ -35,7 +35,7 @@ struct PrimaryNodeInner<CDB> {
     /// The primary struct that holds handles and network.
     ///
     /// Option is some after the primary has started.
-    primary: Option<Primary>,
+    primary: Option<Primary<CDB>>,
     /// The handles for consensus.
     handles: FuturesUnordered<JoinHandle<()>>,
 }
@@ -124,16 +124,23 @@ impl<CDB: ConsensusDatabase> PrimaryNodeInner<CDB> {
         // Used for recovering after crashes/restarts
         last_executed_consensus_hash: B256,
     ) -> SubscriberResult<()> {
-        let (consensus_handles, leader_schedule) =
-            self.spawn_consensus(&self.consensus_bus, last_executed_consensus_hash).await?;
+        // XXXX
+        let mut primary = Primary::new(self.consensus_config.clone(), &self.consensus_bus);
+        let (consensus_handles, leader_schedule) = self
+            .spawn_consensus(
+                &self.consensus_bus,
+                last_executed_consensus_hash,
+                primary.network().clone(),
+            )
+            .await?;
 
         // already ensures node was NOT running, but clear to be sure
         self.handles.clear();
         self.handles.extend(consensus_handles);
 
         // start primary add extend handles
-        let (primary, handles) =
-            Primary::spawn(self.consensus_config.clone(), &self.consensus_bus, leader_schedule);
+        let handles =
+            primary.spawn(self.consensus_config.clone(), &self.consensus_bus, leader_schedule);
         self.handles.extend(handles);
 
         // Spawn the primary.
@@ -148,6 +155,7 @@ impl<CDB: ConsensusDatabase> PrimaryNodeInner<CDB> {
         &self,
         consensus_bus: &ConsensusBus,
         last_executed_consensus_hash: B256,
+        network: anemo::Network,
     ) -> SubscriberResult<(Vec<JoinHandle<()>>, LeaderSchedule)>
     where
         BlsPublicKey: VerifyingKey,
@@ -196,6 +204,7 @@ impl<CDB: ConsensusDatabase> PrimaryNodeInner<CDB> {
             self.consensus_config.subscribe_shutdown(),
             consensus_bus.clone(),
             last_executed_consensus_hash,
+            network,
         )?;
 
         let handles = vec![executor_handle, consensus_handle];

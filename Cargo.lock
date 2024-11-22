@@ -10469,6 +10469,7 @@ dependencies = [
 name = "tn-executor"
 version = "0.1.0"
 dependencies = [
+ "anemo",
  "async-trait",
  "bytes",
  "consensus-metrics",

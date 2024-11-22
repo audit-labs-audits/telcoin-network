@@ -276,6 +276,6 @@ impl ConsensusBus {
 
     /// Hold onto the executor metrics
     pub fn executor_metrics(&self) -> &ExecutorMetrics {
-        &*self.inner.executor_metrics
+        &self.inner.executor_metrics
     }
 }
