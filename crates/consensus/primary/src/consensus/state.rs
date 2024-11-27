@@ -91,12 +91,18 @@ impl ConsensusState {
                 })
                 .collect();
 
-            let leader = cert_store
+            // XXXX
+            if let Some(leader) = cert_store
                 .read(latest_sub_dag.leader())
-                .unwrap()
-                .expect("Certificate should be found in database");
+                .expect("failed to access the certificate store!")
+            {
+                Some(CommittedSubDag::from_commit(latest_sub_dag.clone(), certificates, leader))
+            } else {
+                None
+            }
+            //.expect("Certificate should be found in database");
 
-            Some(CommittedSubDag::from_commit(latest_sub_dag.clone(), certificates, leader))
+            //Some(CommittedSubDag::from_commit(latest_sub_dag.clone(), certificates, leader))
         } else {
             None
         };
@@ -228,7 +234,8 @@ impl ConsensusState {
                 }
             }
         } else {
-            panic!("Parent round not found in DAG for {certificate:?}!");
+            //XXXX panic!("Parent round not found in DAG for {certificate:?}!");
+            tracing::error!("Parent round not found in DAG for {certificate:?}!");
         }
     }
 
@@ -355,16 +362,45 @@ impl<DB: Database> Consensus<DB> {
     }
 
     async fn run_inner(mut self) -> Result<(), ConsensusError> {
+        //let sync_watch = self.consensus_bus.sync_status().subscribe();
+        // Wait for block chain sync to finish.
+        /* XXXX println!("XXXX WAIT on consensus");
+        let mut sw = sync_watch.borrow().clone();
+        while let SyncStatus::Init = sw {
+            let _ = sync_watch.changed().await; // XXXX
+            sw = sync_watch.borrow().clone();
+        }
+        if let SyncStatus::Synced(consensus_blocks) = sw {
+            if consensus_blocks > 10 {
+                // XXXX
+
+                self.state.last_round =
+                    self.consensus_bus.consensus_round_updates().borrow().clone(); //ConsensusRound::default();
+                self.state.gc_depth = Round::default();
+                self.state.last_committed.clear();
+                self.state.last_committed_sub_dag = None;
+            }
+        }
+        println!("XXXX START on consensus");*/
         // Listen to incoming certificates.
         let mut rx_new_certificates = self.consensus_bus.new_certificates().subscribe();
+        println!("XXXX pre loop on consensus");
         'main: loop {
+            //println!("XXXX LOOP on consensus");
             tokio::select! {
 
                 _ = &self.rx_shutdown => {
+                    //println!("XXXX clean shutdown on consensus");
                     return Ok(())
                 }
 
                 Some(certificate) = rx_new_certificates.recv() => {
+                    // See if we are syncing, if so skip some channel updates.
+                    // We want to be building the DAG up while syncing though so do that.
+                    /*XXXX let syncing = matches!(*sync_watch.borrow(), SyncStatus::Init);
+                    if syncing {
+                        continue;
+                    }*/
                     match certificate.epoch().cmp(&self.committee.epoch()) {
                         Ordering::Equal => {
                             // we can proceed.
@@ -405,9 +441,10 @@ impl<DB: Database> Consensus<DB> {
                             committed_certificates.push(certificate.clone());
                         }
 
-                        // NOTE: The size of the sub-dag can be arbitrarily large (depending on the network condition
-                        // and Byzantine leaders).
-                        self.consensus_bus.sequence().send(committed_sub_dag).await.map_err(|_|ConsensusError::ShuttingDown)?;
+                        // Don't send a committed sub dag if we are syncing- the sync process should take care of this.
+                            // NOTE: The size of the sub-dag can be arbitrarily large (depending on the network condition
+                            // and Byzantine leaders).
+                            self.consensus_bus.sequence().send(committed_sub_dag).await.map_err(|_|ConsensusError::ShuttingDown)?;
                     }
 
                     if !committed_certificates.is_empty(){
@@ -422,8 +459,8 @@ impl<DB: Database> Consensus<DB> {
 
                         assert_eq!(self.state.last_round.committed_round, leader_commit_round);
 
-                        self.consensus_bus.consensus_round_updates().send(self.state.last_round)
-                            .map_err(|_|ConsensusError::ShuttingDown)?;
+                            self.consensus_bus.consensus_round_updates().send(self.state.last_round)
+                                .map_err(|_|ConsensusError::ShuttingDown)?;
                     }
 
                     self.metrics

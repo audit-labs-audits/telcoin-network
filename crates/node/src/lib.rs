@@ -65,6 +65,7 @@ where
 
     let mut engine_state = engine.get_provider().await.canonical_state_stream();
     let eng_bus = primary.consensus_bus().await;
+
     // Spawn a task to update the consensus bus with new execution blocks as they are produced.
     tokio::spawn(async move {
         while let Some(latest) = engine_state.next().await {

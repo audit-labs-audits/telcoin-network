@@ -637,11 +637,11 @@ impl<DB: Database> Synchronizer<DB> {
                     .send(CertificateFetcherCommand::Ancestors(certificate.clone()))
                     .await
                     .map_err(|_| DagError::ShuttingDown)?;
-                return Err(DagError::TooNew(
+                /*XXXX return Err(DagError::TooNew(
                     certificate.digest().into(),
                     certificate.round(),
                     highest_processed_round,
-                ));
+                ));*/
             }
         }
 
@@ -904,11 +904,11 @@ impl<DB: Database> Synchronizer<DB> {
 
             error!(target: "primary::synchronizer", "processed certificate that is too new");
 
-            return Err(DagError::TooNew(
+            /*return Err(DagError::TooNew(
                 certificate.digest().into(),
                 certificate.round(),
                 highest_processed_round,
-            ));
+            ));*/
         }
 
         let (sender, receiver) = oneshot::channel();

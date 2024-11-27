@@ -160,7 +160,7 @@ pub struct Proposer<DB: Database> {
     pending_header: Option<PendingHeaderTask>,
 }
 
-impl<DB: Database + 'static> Proposer<DB> {
+impl<DB: Database> Proposer<DB> {
     /// Create a new instance of Self.
     ///
     /// The proposer's intervals and genesis certificate are created in this function.
@@ -672,6 +672,12 @@ impl<DB: Database + 'static> Proposer<DB> {
     fn propose_next_header(&mut self, reason: String) -> ProposerResult<PendingHeaderTask> {
         // Advance to the next round.
         self.round += 1;
+        //println!("XXXXX round: {}, updated_round", self.round);
+        let updated_round = *self.consensus_bus.narwhal_round_updates().borrow() + 1;
+        println!("XXXXX round: {}, updated_round: {updated_round}", self.round);
+        if updated_round > self.round {
+            self.round = updated_round;
+        }
         let _ = self.consensus_bus.narwhal_round_updates().send(self.round);
 
         // Update the metrics

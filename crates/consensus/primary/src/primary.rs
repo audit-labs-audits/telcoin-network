@@ -11,7 +11,7 @@ use crate::{
     proposer::Proposer,
     state_handler::StateHandler,
     synchronizer::Synchronizer,
-    ConsensusBus,
+    ConsensusBus, SyncStatus,
 };
 use anemo::{
     codegen::InboundRequestLayer,
@@ -168,7 +168,20 @@ impl<DB: Database> Primary<DB> {
         let proposer = Proposer::new(config.clone(), consensus_bus.clone(), None, leader_schedule);
 
         // TODO: include this with other handles
-        let _proposer_handle = spawn_logged_monitored_task!(proposer, "ProposerTask");
+        let mut sync_watch = consensus_bus.sync_status().subscribe();
+        let _proposer_handle = spawn_logged_monitored_task!(
+            async move {
+                // Wait for block chain sync to finish.
+                println!("XXXX WAIT on consensus (proposer)");
+                let mut sw = sync_watch.borrow().clone();
+                while let SyncStatus::Init = sw {
+                    let _ = sync_watch.changed().await; // XXXX
+                    sw = sync_watch.borrow().clone();
+                }
+                proposer.await
+            },
+            "ProposerTask"
+        );
 
         // TODO: all handles should return error
         //

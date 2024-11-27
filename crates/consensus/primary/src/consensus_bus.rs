@@ -19,6 +19,15 @@ use crate::{
     proposer::OurDigestMessage, RecentBlocks,
 };
 
+/// Has sync completed?
+#[derive(Copy, Clone, Debug)]
+pub enum SyncStatus {
+    /// Sync has not completed.
+    Init,
+    /// Sync is complete.  Contains the number of consensus blocks that were executed.
+    Synced(u64),
+}
+
 #[derive(Debug)]
 struct ConsensusBusInner {
     /// New certificates from the primary. The primary should send us new certificates
@@ -64,6 +73,11 @@ struct ConsensusBusInner {
     consensus_output: broadcast::Sender<ConsensusOutput>,
     /// Hold onto consensus output with a consensus header to keep it open.
     _rx_consensus_output: broadcast::Receiver<ConsensusOutput>,
+
+    /// Status of sync?
+    tx_sync_status: watch::Sender<SyncStatus>,
+    /// Hold onto the recent sync_status to keep it "open"
+    _rx_sync_status: watch::Receiver<SyncStatus>,
 
     /// Hold onto the consensus_metrics (mostly for testing)
     consensus_metrics: Arc<ConsensusMetrics>,
@@ -138,6 +152,7 @@ impl ConsensusBus {
 
         let (tx_narwhal_round_updates, _rx_narwhal_round_updates) = watch::channel(0u64);
         let (tx_recent_blocks, _rx_recent_blocks) = watch::channel(RecentBlocks::new(3));
+        let (tx_sync_status, _rx_sync_status) = watch::channel(SyncStatus::Init);
 
         let sequence =
             metered_channel::channel_sender(CHANNEL_CAPACITY, &channel_metrics.tx_sequence);
@@ -163,6 +178,8 @@ impl ConsensusBus {
                 _rx_recent_blocks,
                 consensus_output,
                 _rx_consensus_output,
+                tx_sync_status,
+                _rx_sync_status,
                 consensus_metrics,
                 primary_metrics,
                 channel_metrics,
@@ -257,6 +274,11 @@ impl ConsensusBus {
     /// execution module.
     pub fn subscribe_consensus_output(&self) -> broadcast::Receiver<ConsensusOutput> {
         self.inner.consensus_output.subscribe()
+    }
+
+    /// Status of initial sync operation.
+    pub fn sync_status(&self) -> &watch::Sender<SyncStatus> {
+        &self.inner.tx_sync_status
     }
 
     /// Hold onto the consensus_metrics (mostly for testing)
