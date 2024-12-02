@@ -82,7 +82,7 @@ impl CreateCommitteeArgs {
         network_genesis.validate()?;
 
         // updated genesis with registry information
-        //XXXXnetwork_genesis.construct_registry_genesis_accounts(self.consensus_registry.clone());
+        network_genesis.construct_registry_genesis_accounts(self.consensus_registry.clone());
 
         // update the config with new genesis information
         let config_path = self.config.clone().unwrap_or(data_dir.node_config_path());

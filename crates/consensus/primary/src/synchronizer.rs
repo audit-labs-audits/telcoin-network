@@ -904,7 +904,7 @@ impl<DB: Database> Synchronizer<DB> {
 
             error!(target: "primary::synchronizer", "processed certificate that is too new");
 
-            /*return Err(DagError::TooNew(
+            /*XXXX return Err(DagError::TooNew(
                 certificate.digest().into(),
                 certificate.round(),
                 highest_processed_round,
