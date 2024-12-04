@@ -119,13 +119,12 @@ impl<DB: Database> Certifier<DB> {
                 rx_own_certificate_broadcast,
             ));
         }
-        /*if let Some(cert) = highest_created_certificate {
-            println!("XXXX sending cert {cert:?}");
+        if let Some(cert) = highest_created_certificate {
             // Error can be ignored.
             if let Err(e) = tx_own_certificate_broadcast.send(cert) {
                 error!(target: "primary::certifier", ?e, "failed to broadcast highest created certificate during startup");
             }
-        }*/
+        }
 
         spawn_logged_monitored_task!(
             async move {

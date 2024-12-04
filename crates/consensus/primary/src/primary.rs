@@ -172,11 +172,10 @@ impl<DB: Database> Primary<DB> {
         let _proposer_handle = spawn_logged_monitored_task!(
             async move {
                 // Wait for block chain sync to finish.
-                println!("XXXX WAIT on consensus (proposer)");
-                let mut sw = sync_watch.borrow().clone();
+                let mut sw = *sync_watch.borrow();
                 while let SyncStatus::Init = sw {
-                    let _ = sync_watch.changed().await; // XXXX
-                    sw = sync_watch.borrow().clone();
+                    let _ = sync_watch.changed().await;
+                    sw = *sync_watch.borrow();
                 }
                 proposer.await
             },

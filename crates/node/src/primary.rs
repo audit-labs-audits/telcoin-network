@@ -124,7 +124,6 @@ impl<CDB: ConsensusDatabase> PrimaryNodeInner<CDB> {
         // Used for recovering after crashes/restarts
         last_executed_consensus_hash: B256,
     ) -> SubscriberResult<()> {
-        // XXXX
         let mut primary = Primary::new(self.consensus_config.clone(), &self.consensus_bus);
         let (consensus_handles, leader_schedule) = self
             .spawn_consensus(

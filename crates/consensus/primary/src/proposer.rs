@@ -672,9 +672,7 @@ impl<DB: Database> Proposer<DB> {
     fn propose_next_header(&mut self, reason: String) -> ProposerResult<PendingHeaderTask> {
         // Advance to the next round.
         self.round += 1;
-        //println!("XXXXX round: {}, updated_round", self.round);
         let updated_round = *self.consensus_bus.narwhal_round_updates().borrow() + 1;
-        println!("XXXXX round: {}, updated_round: {updated_round}", self.round);
         if updated_round > self.round {
             self.round = updated_round;
         }

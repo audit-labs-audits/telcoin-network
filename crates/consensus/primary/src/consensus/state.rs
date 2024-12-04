@@ -7,7 +7,7 @@
 
 use crate::{
     consensus::{bullshark::Bullshark, utils::gc_round, ConsensusError, ConsensusMetrics},
-    ConsensusBus,
+    ConsensusBus, SyncStatus,
 };
 use consensus_metrics::spawn_logged_monitored_task;
 use fastcrypto::hash::Hash;
@@ -64,7 +64,7 @@ impl ConsensusState {
         }
     }
 
-    pub fn new_from_store<DB: Database>(
+    fn new_from_store<DB: Database>(
         metrics: Arc<ConsensusMetrics>,
         last_committed_round: Round,
         gc_depth: Round,
@@ -83,26 +83,35 @@ impl ConsensusState {
         metrics.recovered_consensus_state.inc();
 
         let last_committed_sub_dag = if let Some(latest_sub_dag) = latest_sub_dag.as_ref() {
-            let certificates = latest_sub_dag
-                .certificates()
-                .iter()
-                .map(|s| {
-                    cert_store.read(*s).unwrap().expect("Certificate should be found in database")
-                })
-                .collect();
-
-            // XXXX
-            if let Some(leader) = cert_store
-                .read(latest_sub_dag.leader())
-                .expect("failed to access the certificate store!")
-            {
-                Some(CommittedSubDag::from_commit(latest_sub_dag.clone(), certificates, leader))
-            } else {
-                None
+            let mut certificates = Vec::new();
+            let mut missing_certs = false;
+            for cert in latest_sub_dag.certificates() {
+                if let Ok(Some(c)) = cert_store.read(cert)
+                //.unwrap().expect("Certificate should be found in database")
+                {
+                    certificates.push(c);
+                } else {
+                    missing_certs = true;
+                }
             }
-            //.expect("Certificate should be found in database");
+            /*let certificates = latest_sub_dag
+            .certificates()
+            .iter()
+            .map(|s| {
+                cert_store.read(*s).unwrap().expect("Certificate should be found in database")
+            })
+            .collect();*/
 
-            //Some(CommittedSubDag::from_commit(latest_sub_dag.clone(), certificates, leader))
+            if missing_certs {
+                None
+            } else {
+                cert_store
+                    .read(latest_sub_dag.leader())
+                    .expect("failed to access the certificate store!")
+                    .map(|leader| {
+                        CommittedSubDag::from_commit(latest_sub_dag.clone(), certificates, leader)
+                    })
+            }
         } else {
             None
         };
@@ -234,7 +243,6 @@ impl ConsensusState {
                 }
             }
         } else {
-            //XXXX panic!("Parent round not found in DAG for {certificate:?}!");
             tracing::error!("Parent round not found in DAG for {certificate:?}!");
         }
     }
@@ -362,45 +370,24 @@ impl<DB: Database> Consensus<DB> {
     }
 
     async fn run_inner(mut self) -> Result<(), ConsensusError> {
-        //let sync_watch = self.consensus_bus.sync_status().subscribe();
-        // Wait for block chain sync to finish.
-        /* XXXX println!("XXXX WAIT on consensus");
-        let mut sw = sync_watch.borrow().clone();
+        // This will block consensus unless we can participate.
+        let mut sync_watch = self.consensus_bus.sync_status().subscribe();
+        let mut sw = *sync_watch.borrow();
         while let SyncStatus::Init = sw {
-            let _ = sync_watch.changed().await; // XXXX
-            sw = sync_watch.borrow().clone();
+            let _ = sync_watch.changed().await;
+            sw = *sync_watch.borrow();
         }
-        if let SyncStatus::Synced(consensus_blocks) = sw {
-            if consensus_blocks > 10 {
-                // XXXX
 
-                self.state.last_round =
-                    self.consensus_bus.consensus_round_updates().borrow().clone(); //ConsensusRound::default();
-                self.state.gc_depth = Round::default();
-                self.state.last_committed.clear();
-                self.state.last_committed_sub_dag = None;
-            }
-        }
-        println!("XXXX START on consensus");*/
         // Listen to incoming certificates.
         let mut rx_new_certificates = self.consensus_bus.new_certificates().subscribe();
-        println!("XXXX pre loop on consensus");
         'main: loop {
-            //println!("XXXX LOOP on consensus");
             tokio::select! {
 
                 _ = &self.rx_shutdown => {
-                    //println!("XXXX clean shutdown on consensus");
                     return Ok(())
                 }
 
                 Some(certificate) = rx_new_certificates.recv() => {
-                    // See if we are syncing, if so skip some channel updates.
-                    // We want to be building the DAG up while syncing though so do that.
-                    /*XXXX let syncing = matches!(*sync_watch.borrow(), SyncStatus::Init);
-                    if syncing {
-                        continue;
-                    }*/
                     match certificate.epoch().cmp(&self.committee.epoch()) {
                         Ordering::Equal => {
                             // we can proceed.

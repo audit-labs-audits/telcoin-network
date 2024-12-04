@@ -10,7 +10,7 @@ use std::{
     collections::HashMap,
     path::{Path, PathBuf},
     process::{Child, Command},
-    time::{Duration, Instant},
+    time::Duration,
 };
 use tn_types::get_available_tcp_port;
 use tokio::runtime::Runtime;
@@ -37,6 +37,7 @@ fn run_restart_tests1(
     exe_path: &Path,
     temp_path: &Path,
     rpc_port2: u16,
+    delay_secs: u64,
 ) -> eyre::Result<Child> {
     let key = get_key("test-source");
     let to_account = address_from_word("testing");
@@ -68,10 +69,7 @@ fn run_restart_tests1(
     debug!(target: "restart-test", "killing child2...");
     kill_child(child2);
     debug!(target: "restart-test", "child2 dead :D sleeping...");
-    println!("XXXXXX she sleeps!");
-    let i = Instant::now();
-    std::thread::sleep(Duration::from_millis(70_000)); // XXXX 3000
-    println!("XXXXXX she wakes! {:?}", i.elapsed());
+    std::thread::sleep(Duration::from_secs(delay_secs));
 
     // This validator should be down now, confirm.
     if get_balance(&client_urls[2], &to_account.to_string(), 5).is_ok() {
@@ -108,7 +106,7 @@ fn run_restart_tests1(
         kill_child(&mut child2);
         return Err(Report::msg(format!("Expected a balance of {} got {bal}!", 20 * WEI_PER_TEL)));
     }
-
+    test_blocks_same(client_urls).unwrap();
     Ok(child2)
 }
 
@@ -161,7 +159,8 @@ fn test_restarts() -> eyre::Result<()> {
     let mut child2 = children[2].take().expect("missing child 2");
 
     // run restart tests1
-    let res1 = run_restart_tests1(&client_urls, &mut child2, &exe_path, &temp_path, rpc_ports[2]);
+    let res1 =
+        run_restart_tests1(&client_urls, &mut child2, &exe_path, &temp_path, rpc_ports[2], 3);
     let is_ok = res1.is_ok();
 
     // kill new child2 if successfully restarted

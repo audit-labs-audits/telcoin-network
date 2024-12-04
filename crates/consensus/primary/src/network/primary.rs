@@ -183,7 +183,7 @@ impl<DB: Database> PrimaryToPrimary for PrimaryReceiverHandler<DB> {
         &self,
         request: anemo::Request<ConsensusOutputRequest>,
     ) -> Result<anemo::Response<ConsensusOutputResponse>, anemo::rpc::Status> {
-        fn get_header<DB: Database>(
+        async fn get_header<DB: Database>(
             db: &DB,
             number: u64,
         ) -> Result<ConsensusHeader, anemo::rpc::Status> {
@@ -223,9 +223,9 @@ impl<DB: Database> PrimaryToPrimary for PrimaryReceiverHandler<DB> {
                         ))
                     }
                 };
-                get_header(self.consensus_config.database(), number)?
+                get_header(self.consensus_config.database(), number).await?
             }
-            (Some(number), _) => get_header(self.consensus_config.database(), number)?,
+            (Some(number), _) => get_header(self.consensus_config.database(), number).await?,
             (None, None) => {
                 if let Some((_, header)) =
                     self.consensus_config.database().last_record::<ConsensusBlocks>()

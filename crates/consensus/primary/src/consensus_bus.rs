@@ -25,7 +25,7 @@ pub enum SyncStatus {
     /// Sync has not completed.
     Init,
     /// Sync is complete.  Contains the number of consensus blocks that were executed.
-    Synced(u64),
+    Synced,
 }
 
 #[derive(Debug)]
@@ -279,6 +279,12 @@ impl ConsensusBus {
     /// Status of initial sync operation.
     pub fn sync_status(&self) -> &watch::Sender<SyncStatus> {
         &self.inner.tx_sync_status
+    }
+
+    /// Set status of initial sync operation to synced.
+    /// Provide this as a convenience for tests that may have a subset of crates.
+    pub fn sync_status_synced(&self) {
+        let _ = self.inner.tx_sync_status.send(SyncStatus::Synced);
     }
 
     /// Hold onto the consensus_metrics (mostly for testing)

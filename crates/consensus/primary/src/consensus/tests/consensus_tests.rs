@@ -65,6 +65,8 @@ async fn test_consensus_recovery_with_bullshark() {
 
     let cb = ConsensusBus::new();
     let mut rx_output = cb.sequence().subscribe();
+    // pretend we are synced and ready to go so test can run...
+    cb.sync_status_synced();
     let consensus_handle = Consensus::spawn(config.clone(), &cb, bullshark);
 
     // WHEN we feed all certificates to the consensus.
@@ -146,6 +148,8 @@ async fn test_consensus_recovery_with_bullshark() {
 
     let cb = ConsensusBus::new();
     let mut rx_output = cb.sequence().subscribe();
+    // pretend we are synced and ready to go so test can run...
+    cb.sync_status_synced();
     let consensus_handle = Consensus::spawn(config.clone(), &cb, bullshark);
 
     // WHEN we send same certificates but up to round 3 (inclusive)
@@ -200,6 +204,8 @@ async fn test_consensus_recovery_with_bullshark() {
 
     let cb = ConsensusBus::new();
     let mut rx_output = cb.sequence().subscribe();
+    // pretend we are synced and ready to go so test can run...
+    cb.sync_status_synced();
     let _consensus_handle = Consensus::spawn(config, &cb, bullshark);
 
     // WHEN send the certificates of round >= 5 to trigger a leader election for round 4
