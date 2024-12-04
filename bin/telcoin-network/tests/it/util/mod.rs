@@ -19,6 +19,7 @@ pub static IT_TEST_MUTEX: std::sync::Mutex<()> = std::sync::Mutex::new(());
 /// Execute genesis ceremony inside tempdir
 pub async fn create_validator_info(datadir: &str, address: &str) -> eyre::Result<()> {
     // init genesis
+    // Note, we speed up block times for tests.
     let init_command = CommandParser::<GenesisArgs>::parse_from([
         "tn",
         "init",
@@ -26,6 +27,10 @@ pub async fn create_validator_info(datadir: &str, address: &str) -> eyre::Result
         datadir,
         "--dev-funded-account",
         "test-source",
+        "--max-header-delay-ms",
+        "1000",
+        "--min-header-delay-ms",
+        "1000",
     ]);
     init_command.args.execute().await?;
 

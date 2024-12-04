@@ -126,8 +126,7 @@ fn run_restart_tests2(client_urls: &[String; 4]) -> eyre::Result<()> {
     Ok(())
 }
 
-#[test]
-fn test_restarts() -> eyre::Result<()> {
+fn do_restarts(delay: u64) -> eyre::Result<()> {
     let _guard = IT_TEST_MUTEX.lock();
     init_test_tracing();
     // the tmp dir should be removed once tmp_quard is dropped
@@ -160,7 +159,7 @@ fn test_restarts() -> eyre::Result<()> {
 
     // run restart tests1
     let res1 =
-        run_restart_tests1(&client_urls, &mut child2, &exe_path, &temp_path, rpc_ports[2], 3);
+        run_restart_tests1(&client_urls, &mut child2, &exe_path, &temp_path, rpc_ports[2], delay);
     let is_ok = res1.is_ok();
 
     // kill new child2 if successfully restarted
@@ -213,6 +212,19 @@ fn test_restarts() -> eyre::Result<()> {
 
     // contains res2 if failure
     final_result
+}
+
+/// Test a restart case with a short delay, the stopped node should rejoin consensus.
+#[test]
+fn test_restarts() -> eyre::Result<()> {
+    do_restarts(2)
+}
+
+/// Test a restart case with a long delay, the stopped node should not rejoin consensus but follow
+/// the consensus chain.
+#[test]
+fn test_restarts_delayed() -> eyre::Result<()> {
+    do_restarts(70)
 }
 
 /// Start a process running a validator node.

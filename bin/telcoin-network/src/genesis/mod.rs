@@ -16,7 +16,7 @@ use reth::dirs::MaybePlatformPath;
 use reth_chainspec::ChainSpec;
 use reth_primitives::{keccak256, Address, GenesisAccount, U256};
 use secp256k1::Secp256k1;
-use std::{path::PathBuf, sync::Arc};
+use std::{path::PathBuf, sync::Arc, time::Duration};
 use tn_config::{Config, ConfigFmt, ConfigTrait, NetworkGenesis, TelcoinDirs as _};
 use tn_node::dirs::{default_datadir_args, DataDirChainPath, DataDirPath};
 
@@ -91,6 +91,20 @@ pub struct Initialize {
     /// derived key. This is ONLY for dev testing, never use this for other chains.
     #[arg(long)]
     pub dev_funded_account: Option<String>,
+    /// Max delay for a node to produce a new header.
+    #[arg(long)]
+    pub max_header_delay_ms: Option<u64>,
+    /// Min delay for a node to produce a new header.
+    #[arg(long)]
+    pub min_header_delay_ms: Option<u64>,
+}
+
+impl Initialize {
+    fn is_empty(&self) -> bool {
+        self.dev_funded_account.is_none()
+            && self.max_header_delay_ms.is_none()
+            && self.min_header_delay_ms.is_none()
+    }
 }
 
 /// Take a string and return the deterministic account derived from it.  This is be used
@@ -127,12 +141,24 @@ impl GenesisArgs {
                 let config_path = self.config.clone().unwrap_or(datadir.node_config_path());
 
                 let mut tn_config: Config = Config::load_from_path(&config_path, ConfigFmt::YAML)?;
-                if let Some(acct_str) = &init.dev_funded_account {
-                    let addr = account_from_word(acct_str);
-                    tn_config.genesis.alloc.insert(
-                        addr,
-                        GenesisAccount::default().with_balance(U256::from(10).pow(U256::from(27))), // One Billion TEL
-                    );
+                if !init.is_empty() {
+                    // Changed a default config setting so update and save.
+                    if let Some(acct_str) = &init.dev_funded_account {
+                        let addr = account_from_word(acct_str);
+                        tn_config.genesis.alloc.insert(
+                            addr,
+                            GenesisAccount::default()
+                                .with_balance(U256::from(10).pow(U256::from(27))), // One Billion TEL
+                        );
+                    }
+                    if let Some(max_header_delay_ms) = init.max_header_delay_ms {
+                        tn_config.parameters.max_header_delay =
+                            Duration::from_millis(max_header_delay_ms);
+                    }
+                    if let Some(min_header_delay_ms) = init.min_header_delay_ms {
+                        tn_config.parameters.min_header_delay =
+                            Duration::from_millis(min_header_delay_ms);
+                    }
                     Config::store_path(config_path, tn_config.clone(), ConfigFmt::YAML)?;
                 }
 

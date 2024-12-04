@@ -132,7 +132,7 @@ impl<DB: Database> Subscriber<DB> {
         }
         let mut responses = 0;
         let mut outputs = HashMap::new();
-        // XXXX should probably have some timeouts and also try 2-3 times in case of a race
+        // TODO should probably have some timeouts and also try 2-3 times in case of a race
         // condition with peers.
         while let Some(res) = waiting.next().await {
             match res {
@@ -227,22 +227,12 @@ impl<DB: Database> Subscriber<DB> {
         let (last_consensus_epoch, last_consensus_round) =
             if let Some(commit) = self.config.node_storage().consensus_store.get_latest_sub_dag() {
                 // TODO- replace 0 with the epoch once we have them..
-                println!("XXXX using stored sub dag: 0, {}", commit.leader_round);
                 (0, commit.leader_round)
             } else {
-                println!(
-                    "XXXX using last sub dag: {}, {}",
-                    last_db_block.sub_dag.leader.epoch(),
-                    last_db_block.sub_dag.leader.round()
-                );
                 (last_db_block.sub_dag.leader.epoch(), last_db_block.sub_dag.leader.round())
             };
-        println!("XXXX epoch, round: {max_epoch}, {max_round}");
         if max_epoch == last_consensus_epoch
             && (last_consensus_round + self.config.parameters().gc_depth) > max_round
-        /*if max_epoch == last_db_block.sub_dag.leader.epoch()
-        && (last_db_block.sub_dag.leader.round() + self.config.parameters().gc_depth)
-            > max_round*/
         {
             tracing::info!(target: "telcoin::subscriber", "Node is attempting to rejoin consensus.");
             // We should be able to pick up consensus where we left off so not "catching up".
@@ -290,7 +280,7 @@ impl<DB: Database> Subscriber<DB> {
                     tracing::error!(target: "telcoin::subscriber", "failed to execute consensus!");
                     return Err(SubscriberError::UnexpectedProtocolMessage);
                 }
-                // XXXX should also verify that the block output is building on is in fact
+                // TODO should also verify that the block output is building on is in fact
                 // the head of our chain.
                 let consensus_output = self.fetch_blocks(output.sub_dag, parent_hash, number).await;
                 self.save_consensus(consensus_output.clone())?;
