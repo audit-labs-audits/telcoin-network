@@ -25,6 +25,21 @@ use tracing::{info, warn};
 /// The validators directory used to create genesis.
 pub const GENESIS_VALIDATORS_DIR: &str = "validators";
 
+const fn from_utf8(bytes: &[u8]) -> &str {
+    match std::str::from_utf8(bytes) {
+        Ok(s) => s,
+        Err(_) => panic!("bytes not valid utf8!"),
+    }
+}
+
+// We need to embed these files as defaults so we can run the binary vs tests.
+const CONSENSUS_REGISTRY_STORAGE: &str =
+    from_utf8(include_bytes!("../../../tn-contracts/deployments/consensus-registry-storage.yaml"));
+const CONSENSUS_REGISTRY: &str =
+    from_utf8(include_bytes!("../../../tn-contracts/artifacts/ConsensusRegistry.json"));
+const ERC1967_PROXY: &str =
+    from_utf8(include_bytes!("../../../tn-contracts/artifacts/ERC1967Proxy.json"));
+
 /// The struct for starting a network at genesis.
 pub struct NetworkGenesis {
     // /// The committee
@@ -65,11 +80,17 @@ impl NetworkGenesis {
     /// Read output file from Solidity GenerateConsensusRegistryStorage utility
     /// to fetch storage configuration for ConsensusRegistry at genesis
     pub fn construct_registry_genesis_accounts(&mut self, registry_cfg_path: Option<PathBuf>) {
-        let path = match registry_cfg_path {
-            Some(path) => path,
-            None => "../../tn-contracts/deployments/consensus-registry-storage.yaml".into(),
+        let registry_storage_yaml = match registry_cfg_path {
+            // Note, this is called outside of tests when creating a committee vs starting a node.
+            // A panic here when given an invalid file is probably fine.
+            Some(path) => fs::read_to_string(&path).unwrap_or_else(|_| {
+                panic!(
+                    "unable to read file supplied consensus registry file: {}",
+                    path.to_string_lossy()
+                )
+            }),
+            None => CONSENSUS_REGISTRY_STORAGE.to_string(),
         };
-        let registry_storage_yaml = fetch_file_content(path);
         let registry_storage_cfg: BTreeMap<String, String> =
             serde_yaml::from_str(&registry_storage_yaml).expect("yaml parsing failure");
         let mut registry_storage_cfg: BTreeMap<FixedBytes<32>, FixedBytes<32>> =
@@ -87,18 +108,16 @@ impl NetworkGenesis {
         }
 
         let registry_impl = Address::random();
-        let registry_standard_json =
-            fetch_file_content("../../tn-contracts/artifacts/ConsensusRegistry.json".into());
+        let registry_standard_json = CONSENSUS_REGISTRY;
         let registry_contract: ContractStandardJson =
-            serde_json::from_str(&registry_standard_json).expect("json parsing failure");
+            serde_json::from_str(registry_standard_json).expect("json parsing failure");
         let registry_bytecode = hex::decode(registry_contract.deployed_bytecode.object)
             .expect("invalid bytecode hexstring");
         let registry_proxy = Address::from_hex("0x07e17e17e17e17e17e17e17e17e17e17e17e17e1")
             .expect("invalid hex address");
-        let proxy_standard_json =
-            fetch_file_content("../../tn-contracts/artifacts/ERC1967Proxy.json".into());
+        let proxy_standard_json = ERC1967_PROXY;
         let proxy_contract: ContractStandardJson =
-            serde_json::from_str(&proxy_standard_json).expect("json parsing failure");
+            serde_json::from_str(proxy_standard_json).expect("json parsing failure");
         let proxy_bytecode = hex::decode(proxy_contract.deployed_bytecode.object)
             .expect("invalid bytecode hexstring");
         let registry_genesis_accounts = vec![
@@ -509,7 +528,11 @@ pub struct ContractStandardJson {
     pub deployed_bytecode: BytecodeObject,
 }
 
-pub fn fetch_file_content(relative_path: PathBuf) -> String {
+/// Fetch a file with a path relative to the CARGO MANIFEST dir and return it as a string.
+///
+/// Note this will ONLY work in tests or during builds, otherwise the required env variable
+/// will not be set.
+pub fn test_fetch_file_content_relative_to_manifest(relative_path: PathBuf) -> String {
     let mut file_path = std::path::PathBuf::from(
         std::env::var("CARGO_MANIFEST_DIR").expect("Missing CARGO_MANIFEST_DIR!"),
     );
@@ -521,7 +544,10 @@ pub fn fetch_file_content(relative_path: PathBuf) -> String {
 #[cfg(test)]
 mod tests {
     use super::NetworkGenesis;
-    use crate::{fetch_file_content, genesis::ContractStandardJson, TelcoinDirs, ValidatorInfo};
+    use crate::{
+        genesis::ContractStandardJson, test_fetch_file_content_relative_to_manifest, TelcoinDirs,
+        ValidatorInfo,
+    };
     use alloy::hex::{self, FromHex};
     use fastcrypto::traits::KeyPair;
     use rand::{rngs::StdRng, SeedableRng};
@@ -582,8 +608,9 @@ mod tests {
         let expected_registry_addr =
             Address::from_hex("0x07e17e17e17e17e17e17e17e17e17e17e17e17e1")
                 .expect("failed to parse address");
-        let proxy_standard_json =
-            fetch_file_content("../../tn-contracts/artifacts/ERC1967Proxy.json".into());
+        let proxy_standard_json = test_fetch_file_content_relative_to_manifest(
+            "../../tn-contracts/artifacts/ERC1967Proxy.json".into(),
+        );
         let proxy_contract: ContractStandardJson =
             serde_json::from_str(&proxy_standard_json).expect("failed to parse json");
         let proxy_bytecode = hex::decode(proxy_contract.deployed_bytecode.object)
