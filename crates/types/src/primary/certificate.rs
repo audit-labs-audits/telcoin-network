@@ -1,12 +1,7 @@
-use base64::{engine::general_purpose, Engine};
-use fastcrypto::{
-    hash::{Digest, Hash},
-    traits::AggregateAuthenticator,
-};
-use serde::{Deserialize, Serialize};
-use serde_with::serde_as;
-use std::{collections::VecDeque, fmt};
-
+//! Certificates and their digests.
+//!
+//! Certificates are issued by Primaries once their proposed headers are verified by a quorum (2f+1)
+//! of peers.
 use crate::{
     crypto::{
         self, to_intent_message, BlsAggregateSignature, BlsAggregateSignatureBytes, BlsPublicKey,
@@ -18,6 +13,15 @@ use crate::{
     serde::NarwhalBitmap,
     AuthorityIdentifier, Committee, Epoch, Header, Round, Stake, TimestampSec, WorkerCache,
 };
+use base64::{engine::general_purpose, Engine};
+use fastcrypto::{
+    hash::{Digest, Hash},
+    traits::AggregateAuthenticator,
+};
+use reth_primitives::BlockHash;
+use serde::{Deserialize, Serialize};
+use serde_with::serde_as;
+use std::{collections::VecDeque, fmt};
 
 /// Certificates are the output of consensus.
 /// The certificate issued after a successful round of consensus.
@@ -31,8 +35,10 @@ pub struct Certificate {
     /// Signatures of all authorities?
     #[serde_as(as = "NarwhalBitmap")]
     signed_authorities: roaring::RoaringBitmap,
-    /// Timestamp for certificate
-    pub created_at: TimestampSec,
+    /// Timestamp for certificate creation.
+    ///
+    /// This is only used for performance metrics. Consensus relies on the header's timestamp.
+    created_at: TimestampSec,
 }
 
 impl Certificate {
@@ -211,7 +217,7 @@ impl Certificate {
         };
 
         // Verify the signatures
-        let certificate_digest: Digest<{ crypto::DIGEST_LENGTH }> = Digest::from(self.digest());
+        let certificate_digest = self.digest();
         BlsAggregateSignature::try_from(aggregrate_signature_bytes)
             .map_err(|_| DagError::InvalidSignature)?
             .verify_secure(&to_intent_message(certificate_digest), &pks[..])
@@ -261,6 +267,8 @@ impl Certificate {
     }
 
     /// The time (sec) when the certificate was created.
+    ///
+    /// This is only used for performance metrics. Consensus relies on the header's timestamp.
     pub fn created_at(&self) -> &TimestampSec {
         &self.created_at
     }
@@ -299,6 +307,18 @@ impl Certificate {
     /// Only Used for testing.
     pub fn update_created_at_for_test(&mut self, timestamp: TimestampSec) {
         self.created_at = timestamp;
+    }
+}
+
+impl From<&[u8]> for Certificate {
+    fn from(value: &[u8]) -> Self {
+        crate::decode(value)
+    }
+}
+
+impl From<&Certificate> for Vec<u8> {
+    fn from(value: &Certificate) -> Self {
+        crate::encode(value)
     }
 }
 
@@ -388,6 +408,12 @@ impl Hash<{ crypto::DIGEST_LENGTH }> for Certificate {
 
     fn digest(&self) -> CertificateDigest {
         CertificateDigest(self.header.digest().0)
+    }
+}
+
+impl From<CertificateDigest> for BlockHash {
+    fn from(value: CertificateDigest) -> Self {
+        Self::from(value.0)
     }
 }
 
