@@ -205,6 +205,18 @@ impl Default for WorkerBlock {
     }
 }
 
+impl From<&SealedWorkerBlock> for Vec<u8> {
+    fn from(value: &SealedWorkerBlock) -> Self {
+        crate::encode(value)
+    }
+}
+
+impl From<&[u8]> for SealedWorkerBlock {
+    fn from(value: &[u8]) -> Self {
+        crate::decode(value)
+    }
+}
+
 /// Return the max gas per block in effect at timestamp.
 /// Currently allways 30,000,000 but can change in the future at a fork.
 pub fn max_worker_block_gas(_timestamp: u64) -> u64 {
