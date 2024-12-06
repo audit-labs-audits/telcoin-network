@@ -13,6 +13,7 @@ mod notifier;
 mod primary;
 mod serde;
 mod sync;
+mod task_manager;
 mod worker;
 #[macro_use]
 pub mod error;
@@ -27,4 +28,5 @@ pub use notifier::*;
 pub use primary::*;
 pub use reth_primitives::{BlockHash, TransactionSigned};
 pub use sync::*;
+pub use task_manager::*;
 pub use worker::*;

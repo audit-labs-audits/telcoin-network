@@ -1,6 +1,5 @@
-use clap::Parser as _;
+use clap::{Args, Parser as _};
 #[cfg(not(feature = "faucet"))]
-use reth_cli_commands::node::NoArgs;
 use reth_node_ethereum::{EthEvmConfig, EthExecutorProvider};
 use std::sync::Arc;
 #[cfg(feature = "faucet")]
@@ -11,6 +10,11 @@ use tn_node::launch_node;
 #[cfg(all(feature = "jemalloc", unix))]
 #[global_allocator]
 static ALLOC: tikv_jemallocator::Jemalloc = tikv_jemallocator::Jemalloc;
+
+/// No Additional arguments
+#[derive(Debug, Clone, Copy, Default, Args)]
+#[non_exhaustive]
+pub struct NoArgs;
 
 fn main() {
     #[cfg(not(feature = "faucet"))]
