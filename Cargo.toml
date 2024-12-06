@@ -11,6 +11,7 @@ members = [
     "crates/types",
     "crates/network",
     "crates/network-types",
+    "crates/network-libp2p",
 
     # consensus
     "crates/consensus/consensus-metrics",
@@ -198,6 +199,7 @@ tn-types = { path = "./crates/types" }
 tn-node = { path = "./crates/node" }
 tn-config = { path = "./crates/config" }
 tn-network = { path = "./crates/network" }
+tn-network-libp2p = { path = "./crates/network-libp2p" }
 tn-network-types = { path = "./crates/network-types" }
 tn-rpc = { path = "./crates/execution/tn-rpc" }
 
@@ -319,6 +321,8 @@ anemo-build = { git = "https://github.com/mystenlabs/anemo.git", rev = "e609f769
 anemo-cli = { git = "https://github.com/mystenlabs/anemo.git", rev = "e609f7697ed6169bf0760882a0b6c032a57e4f3b" }
 anemo-tower = { git = "https://github.com/mystenlabs/anemo.git", rev = "e609f7697ed6169bf0760882a0b6c032a57e4f3b" }
 tikv-jemallocator = "0.5.4"
+
+libp2p = { version = "0.54", features = [] }
 
 # [patch.crates-io]
 # alloy-sol-type-parser = { git = "https://github.com/alloy-rs/core", commit = "6bd4aeddc899c7649c2ce9be383fd5a3d4c0b691" }
