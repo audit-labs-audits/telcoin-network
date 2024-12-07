@@ -11,6 +11,12 @@ pub struct TaskManager {
     submanagers: Vec<(String, TaskManager)>,
 }
 
+impl Default for TaskManager {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl TaskManager {
     pub fn new() -> Self {
         Self { handles: Vec::new(), submanagers: Vec::new() }
@@ -42,17 +48,14 @@ impl TaskManager {
         tokio::select!(
             res = future_tasks.next() => {
                 match res {
-                    Some((Ok(_), name)) => {}
-                    Some((Err(join_err), name)) => {}
+                    Some((Ok(_), _name)) => {}
+                    Some((Err(_join_err), _name)) => {}
                     None => {}
                 }
 
             }
             res = future_managers.next() => {
-                match res {
-                    Some((_, name)) => {}
-                    None => {}
-                }
+                if let Some((_, _name)) = res {}
 
             }
         )
@@ -73,17 +76,14 @@ impl TaskManager {
             },
             res = future_tasks.next() => {
                 match res {
-                    Some((Ok(_), name)) => {}
-                    Some((Err(join_err), name)) => {}
+                    Some((Ok(_), _name)) => {}
+                    Some((Err(_join_err), _name)) => {}
                     None => {}
                 }
 
             }
             res = future_managers.next() => {
-                match res {
-                    Some((_, name)) => {}
-                    None => {}
-                }
+                if let Some((_, _name)) = res {}
 
             }
         }

@@ -10,8 +10,7 @@ use anemo::{types::response::StatusCode, Network};
 use async_trait::async_trait;
 use eyre::Result;
 use itertools::Itertools;
-use std::{collections::HashSet, time::Duration};
-use tn_block_validator::BlockValidation;
+use std::{collections::HashSet, sync::Arc, time::Duration};
 use tn_network::{local::LocalNetwork, WorkerToPrimaryClient as _};
 use tn_network_types::{
     FetchBlocksRequest, FetchBlocksResponse, PrimaryToWorker, RequestBlocksRequest,
@@ -22,7 +21,7 @@ use tn_storage::{
     tables::WorkerBlocks,
     traits::{Database, DbTxMut},
 };
-use tn_types::{now, Committee, SealedWorkerBlock, WorkerCache, WorkerId};
+use tn_types::{now, Committee, SealedWorkerBlock, WorkerBlockValidation, WorkerCache, WorkerId};
 use tracing::{debug, trace};
 
 #[cfg(test)]
@@ -31,7 +30,7 @@ pub mod handlers_tests;
 
 /// Defines how the network receiver handles incoming workers messages.
 #[derive(Clone)]
-pub struct WorkerReceiverHandler<V, DB> {
+pub struct WorkerReceiverHandler<DB> {
     /// This worker's id.
     pub id: WorkerId,
     /// The interface for communicating with this worker's primary.
@@ -39,11 +38,11 @@ pub struct WorkerReceiverHandler<V, DB> {
     /// Database for storing worker blocks received from peers.
     pub store: DB,
     /// The type that validates worker blocks received from peers.
-    pub validator: V,
+    pub validator: Arc<dyn WorkerBlockValidation>,
 }
 
 #[async_trait]
-impl<V: BlockValidation, DB: Database> WorkerToWorker for WorkerReceiverHandler<V, DB> {
+impl<DB: Database> WorkerToWorker for WorkerReceiverHandler<DB> {
     async fn report_block(
         &self,
         request: anemo::Request<WorkerBlockMessage>,
@@ -53,7 +52,7 @@ impl<V: BlockValidation, DB: Database> WorkerToWorker for WorkerReceiverHandler<
         let message = request.into_body();
         let WorkerBlockMessage { sealed_worker_block } = message;
         // validate batch - log error if invalid
-        if let Err(err) = self.validator.validate_block(sealed_worker_block.clone()).await {
+        if let Err(err) = self.validator.validate_block(sealed_worker_block.clone()) {
             return Err(anemo::rpc::Status::new_with_message(
                 StatusCode::BadRequest,
                 format!(
@@ -119,7 +118,7 @@ impl<V: BlockValidation, DB: Database> WorkerToWorker for WorkerReceiverHandler<
 }
 
 /// Defines how the network receiver handles incoming primary messages.
-pub struct PrimaryReceiverHandler<V, DB> {
+pub struct PrimaryReceiverHandler<DB> {
     /// The id of this worker.
     pub id: WorkerId,
     /// The committee information.
@@ -135,11 +134,11 @@ pub struct PrimaryReceiverHandler<V, DB> {
     /// Fetch certificate payloads from other workers.
     pub batch_fetcher: Option<WorkerBlockFetcher<DB>>,
     /// Validate incoming batches
-    pub validator: V,
+    pub validator: Arc<dyn WorkerBlockValidation>,
 }
 
 #[async_trait]
-impl<V: BlockValidation, DB: Database> PrimaryToWorker for PrimaryReceiverHandler<V, DB> {
+impl<DB: Database> PrimaryToWorker for PrimaryReceiverHandler<DB> {
     async fn synchronize(
         &self,
         request: anemo::Request<WorkerSynchronizeMessage>,
@@ -211,7 +210,7 @@ impl<V: BlockValidation, DB: Database> PrimaryToWorker for PrimaryReceiverHandle
         for sealed_block in sealed_blocks_from_response.into_iter() {
             if !message.is_certified {
                 // This block is not part of a certificate, so we need to validate it.
-                if let Err(err) = self.validator.validate_block(sealed_block.clone()).await {
+                if let Err(err) = self.validator.validate_block(sealed_block.clone()) {
                     return Err(anemo::rpc::Status::new_with_message(
                         StatusCode::BadRequest,
                         format!("Invalid worker block: {err}"),

@@ -3,18 +3,13 @@
 // SPDX-License-Identifier: Apache-2.0
 
 //! Hierarchical type to hold tasks spawned for a worker in the network.
-use crate::{engine::ExecutionNode, error::NodeError, try_join_all, FuturesUnordered};
+use crate::{error::NodeError, try_join_all, FuturesUnordered};
 use anemo::{Network, PeerId};
-use reth_db::{
-    database::Database,
-    database_metrics::{DatabaseMetadata, DatabaseMetrics},
-};
-use reth_evm::{execute::BlockExecutorProvider, ConfigureEvm};
 use std::{sync::Arc, time::Instant};
 use tn_config::ConsensusConfig;
 use tn_storage::traits::Database as ConsensusDatabase;
-use tn_types::WorkerId;
-use tn_worker::{metrics::Metrics, Worker};
+use tn_types::{WorkerBlockValidation, WorkerId};
+use tn_worker::{metrics::Metrics, quorum_waiter::QuorumWaiter, BlockProvider, Worker};
 use tokio::{sync::RwLock, task::JoinHandle};
 use tracing::{info, instrument};
 
@@ -35,17 +30,10 @@ impl<CDB: ConsensusDatabase> WorkerNodeInner<CDB> {
     /// Starts the worker node with the provided info. If the node is already running then this
     /// method will return an error instead.
     #[instrument(name = "worker", skip_all)]
-    async fn start<DB, Evm, CE>(
+    async fn start(
         &mut self,
-        // used to create the batch maker process
-        execution_node: &ExecutionNode<DB, Evm, CE>,
-    ) -> eyre::Result<()>
-    where
-        DB: Database + DatabaseMetadata + DatabaseMetrics + Clone + Unpin + 'static,
-        Evm: BlockExecutorProvider + Clone + 'static,
-        CE: ConfigureEvm,
-        CDB: ConsensusDatabase,
-    {
+        validator: Arc<dyn WorkerBlockValidation>,
+    ) -> eyre::Result<BlockProvider<CDB, QuorumWaiter>> {
         if self.is_running().await {
             return Err(NodeError::NodeAlreadyRunning.into());
         }
@@ -56,20 +44,15 @@ impl<CDB: ConsensusDatabase> WorkerNodeInner<CDB> {
 
         let metrics = Metrics::default();
 
-        let batch_validator = execution_node.new_block_validator().await;
-
         let (worker, handles, block_provider) =
-            Worker::spawn(self.id, batch_validator, metrics, self.consensus_config.clone());
-
-        // spawn batch maker for worker
-        execution_node.start_block_builder(self.id, block_provider.blocks_tx()).await?;
+            Worker::spawn(self.id, validator, metrics, self.consensus_config.clone());
 
         // now keep the handles
         self.handles.clear();
         self.handles.extend(handles);
         self.worker = Some(worker);
 
-        Ok(())
+        Ok(block_provider)
     }
 
     /// Will shutdown the worker node and wait until the node has shutdown by waiting on the
@@ -124,18 +107,12 @@ impl<CDB: ConsensusDatabase> WorkerNode<CDB> {
         Self { internal: Arc::new(RwLock::new(inner)) }
     }
 
-    pub async fn start<DB, Evm, CE>(
+    pub async fn start(
         &self,
-        // used to create the batch maker process
-        execution_node: &ExecutionNode<DB, Evm, CE>,
-    ) -> eyre::Result<()>
-    where
-        DB: Database + DatabaseMetadata + DatabaseMetrics + Clone + Unpin + 'static,
-        Evm: BlockExecutorProvider + Clone + 'static,
-        CE: ConfigureEvm,
-    {
+        validator: Arc<dyn WorkerBlockValidation>,
+    ) -> eyre::Result<BlockProvider<CDB, QuorumWaiter>> {
         let mut guard = self.internal.write().await;
-        guard.start(execution_node).await
+        guard.start(validator).await
     }
 
     pub async fn shutdown(&self) {

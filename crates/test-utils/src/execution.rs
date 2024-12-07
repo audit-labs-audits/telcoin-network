@@ -29,7 +29,6 @@ use reth_db::{
     DatabaseEnv,
 };
 use reth_evm::execute::{BlockExecutionOutput, BlockExecutorProvider, Executor as _};
-use reth_node_ethereum::{EthEvmConfig, EthExecutorProvider};
 use reth_transaction_pool::{PoolTransaction, TransactionOrigin, TransactionPool};
 use secp256k1::Secp256k1;
 use std::{str::FromStr, sync::Arc};
@@ -42,8 +41,7 @@ use tn_types::{adiri_genesis, now, ExecutionKeypair, TimestampSec, WorkerBlock};
 use tracing::debug;
 
 /// Convnenience type for testing Execution Node.
-pub type TestExecutionNode =
-    ExecutionNode<Arc<TempDatabase<DatabaseEnv>>, EthExecutorProvider, EthEvmConfig>;
+pub type TestExecutionNode = ExecutionNode<Arc<TempDatabase<DatabaseEnv>>>;
 
 /// A helper type to parse Args more easily.
 #[derive(Parser, Debug)]
@@ -69,13 +67,8 @@ pub fn default_test_execution_node(
         None, // optional args
     )?;
 
-    let evm_config = EthEvmConfig::default();
-
-    let block_executor =
-        EthExecutorProvider::new(Arc::clone(&builder.node_config.chain), evm_config);
-
     // create engine node
-    let engine = ExecutionNode::new(builder, block_executor, evm_config)?;
+    let engine = ExecutionNode::new(builder)?;
 
     Ok(engine)
 }
@@ -197,13 +190,8 @@ pub fn faucet_test_execution_node(
         opt_faucet_args: Some(faucet),
     };
 
-    let evm_config = EthEvmConfig::default();
-
-    let block_executor =
-        EthExecutorProvider::new(Arc::clone(&builder.node_config.chain), evm_config);
-
     // create engine node
-    let engine = ExecutionNode::new(builder, block_executor, evm_config)?;
+    let engine = ExecutionNode::new(builder)?;
 
     Ok(engine)
 }

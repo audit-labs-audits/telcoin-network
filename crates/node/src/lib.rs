@@ -8,7 +8,6 @@ use reth_db::{
     database::Database,
     database_metrics::{DatabaseMetadata, DatabaseMetrics},
 };
-use reth_evm::{execute::BlockExecutorProvider, ConfigureEvm};
 use reth_provider::CanonStateSubscriptions;
 use tn_config::{ConsensusConfig, KeyConfig, TelcoinDirs};
 use tn_storage::open_db;
@@ -26,23 +25,19 @@ pub mod worker;
 ///
 /// Worker, Primary, and Execution.
 #[instrument(level = "info", skip_all)]
-pub async fn launch_node<DB, Evm, CE, P>(
+pub async fn launch_node<DB, /* Evm, CE, */ P>(
     mut builder: TnBuilder<DB>,
-    executor: Evm,
-    evm_config: CE,
     tn_datadir: P,
 ) -> eyre::Result<()>
 where
     DB: Database + DatabaseMetadata + DatabaseMetrics + Clone + Unpin + 'static,
-    Evm: BlockExecutorProvider + Clone + 'static,
-    CE: ConfigureEvm,
     P: TelcoinDirs + 'static,
 {
     // config for validator keys
     let config = builder.tn_config.clone();
     // adjust rpc instance ports
     builder.node_config.adjust_instance_ports();
-    let engine = ExecutionNode::new(builder, executor, evm_config)?;
+    let engine = ExecutionNode::new(builder)?; //XXXX, executor, evm_config)?;
 
     info!(target: "telcoin::node", "execution engine created");
 
@@ -74,11 +69,23 @@ where
         }
     });
 
+    // used to retrieve the last executed certificate in case of restarts
+    let last_executed_consensus_hash =
+        engine.last_executed_output().await.expect("execution found HEAD");
     // start the primary
-    primary.start(&engine).await?;
+    primary.start(last_executed_consensus_hash).await?;
 
+    // create receiving channel before spawning primary to ensure messages are not lost
+    let consensus_output_rx = primary.consensus_bus().await.subscribe_consensus_output();
+    // start engine XXXX
+    engine.start_engine(consensus_output_rx).await?;
+
+    let validator = engine.new_block_validator().await;
     // start the worker
-    worker.start(&engine).await?;
+    let block_provider = worker.start(validator).await?;
+
+    // XXXX spawn batch maker for worker
+    engine.start_block_builder(*worker_id, block_provider.blocks_tx()).await?;
 
     // TODO: use value from CLI
     let terminate_early = false;

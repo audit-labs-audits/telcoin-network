@@ -185,7 +185,6 @@ pub fn parse_pubkey(value: &str) -> eyre::Result<PublicKey> {
 }
 
 #[cfg(test)]
-
 mod tests {
     use crate::FaucetArgs;
     use clap::Parser;

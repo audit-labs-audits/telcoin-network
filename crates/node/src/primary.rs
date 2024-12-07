@@ -3,15 +3,9 @@
 // SPDX-License-Identifier: Apache-2.0
 
 //! Hierarchical type to hold tasks spawned for a worker in the network.
-use crate::{engine::ExecutionNode, error::NodeError, try_join_all, FuturesUnordered};
+use crate::{error::NodeError, try_join_all, FuturesUnordered};
 use anemo::{Network, PeerId};
 use fastcrypto::traits::VerifyingKey;
-use reth_db::{
-    database::Database,
-    database_metrics::{DatabaseMetadata, DatabaseMetrics},
-};
-use reth_evm::{execute::BlockExecutorProvider, ConfigureEvm};
-use reth_primitives::B256;
 use std::{sync::Arc, time::Instant};
 use tn_config::ConsensusConfig;
 use tn_executor::{Executor, SubscriberResult};
@@ -21,7 +15,7 @@ use tn_primary::{
 };
 use tn_primary_metrics::Metrics;
 use tn_storage::traits::Database as ConsensusDatabase;
-use tn_types::{BlsPublicKey, DEFAULT_BAD_NODES_STAKE_THRESHOLD};
+use tn_types::{BlockHash, BlsPublicKey, DEFAULT_BAD_NODES_STAKE_THRESHOLD};
 use tokio::{sync::RwLock, task::JoinHandle};
 use tracing::{info, instrument};
 
@@ -49,16 +43,7 @@ impl<CDB: ConsensusDatabase> PrimaryNodeInner<CDB> {
     /// Starts the primary node with the provided info. If the node is already running then this
     /// method will return an error instead.
     #[instrument(name = "primary_node", skip_all)]
-    async fn start<DB, Evm, CE>(
-        &mut self,
-        // Execution components needed to spawn the EL Executor
-        execution_components: &ExecutionNode<DB, Evm, CE>,
-    ) -> eyre::Result<()>
-    where
-        DB: Database + DatabaseMetadata + DatabaseMetrics + Clone + Unpin + 'static,
-        Evm: BlockExecutorProvider + Clone + 'static,
-        CE: ConfigureEvm,
-    {
+    async fn start(&mut self, last_executed_consensus_hash: BlockHash) -> eyre::Result<()> {
         if self.is_running().await {
             return Err(NodeError::NodeAlreadyRunning.into());
         }
@@ -67,18 +52,8 @@ impl<CDB: ConsensusDatabase> PrimaryNodeInner<CDB> {
             self.consensus_config.key_config().primary_network_public_key().0.to_bytes(),
         ));
 
-        // used to retrieve the last executed certificate in case of restarts
-        let last_executed_consensus_hash =
-            execution_components.last_executed_output().await.expect("execution found HEAD");
-
-        // create receiving channel before spawning primary to ensure messages are not lost
-        let consensus_output_rx = self.consensus_bus.subscribe_consensus_output();
-
         // spawn primary and update `self`
         self.spawn_primary(last_executed_consensus_hash).await?;
-
-        // start engine
-        execution_components.start_engine(consensus_output_rx).await?;
 
         Ok(())
     }
@@ -122,7 +97,7 @@ impl<CDB: ConsensusDatabase> PrimaryNodeInner<CDB> {
     pub async fn spawn_primary(
         &mut self,
         // Used for recovering after crashes/restarts
-        last_executed_consensus_hash: B256,
+        last_executed_consensus_hash: BlockHash,
     ) -> SubscriberResult<()> {
         let mut primary = Primary::new(self.consensus_config.clone(), &self.consensus_bus);
         let (consensus_handles, leader_schedule) = self
@@ -153,7 +128,7 @@ impl<CDB: ConsensusDatabase> PrimaryNodeInner<CDB> {
     async fn spawn_consensus(
         &self,
         consensus_bus: &ConsensusBus,
-        last_executed_consensus_hash: B256,
+        last_executed_consensus_hash: BlockHash,
         network: anemo::Network,
     ) -> SubscriberResult<(Vec<JoinHandle<()>>, LeaderSchedule)>
     where
@@ -231,19 +206,12 @@ impl<CDB: ConsensusDatabase> PrimaryNode<CDB> {
         Self { internal: Arc::new(RwLock::new(inner)) }
     }
 
-    pub async fn start<DB, Evm, CE>(
-        &self,
-        // Execution components needed to spawn the EL Executor
-        execution_components: &ExecutionNode<DB, Evm, CE>,
-    ) -> eyre::Result<()>
+    pub async fn start(&self, last_executed_consensus_hash: BlockHash) -> eyre::Result<()>
     where
-        DB: Database + DatabaseMetadata + DatabaseMetrics + Clone + Unpin + 'static,
-        Evm: BlockExecutorProvider + Clone + 'static,
-        CE: ConfigureEvm,
         CDB: ConsensusDatabase,
     {
         let mut guard = self.internal.write().await;
-        guard.start(execution_components).await
+        guard.start(last_executed_consensus_hash).await
     }
 
     pub async fn shutdown(&self) {

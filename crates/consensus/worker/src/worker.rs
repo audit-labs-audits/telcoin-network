@@ -24,7 +24,6 @@ use anemo_tower::{
 };
 use consensus_metrics::spawn_logged_monitored_task;
 use std::{collections::HashMap, net::Ipv4Addr, sync::Arc};
-use tn_block_validator::BlockValidation;
 use tn_config::ConsensusConfig;
 use tn_network::{
     epoch_filter::{AllowedEpoch, EPOCH_HEADER_KEY},
@@ -36,7 +35,7 @@ use tn_network_types::WorkerToWorkerServer;
 use tn_storage::traits::Database;
 use tn_types::{
     traits::KeyPair as _, AuthorityIdentifier, Multiaddr, NetworkPublicKey, Noticer, Protocol,
-    WorkerId,
+    WorkerBlockValidation, WorkerId,
 };
 use tokio::task::JoinHandle;
 use tower::ServiceBuilder;
@@ -77,7 +76,7 @@ impl<DB: Database> Worker<DB> {
     /// Create an instance of `Self` and start all tasks to participate in consensus.
     pub fn spawn(
         id: WorkerId,
-        validator: impl BlockValidation,
+        validator: Arc<dyn WorkerBlockValidation>,
         metrics: Metrics,
         consensus_config: ConsensusConfig<DB>,
     ) -> (Self, Vec<JoinHandle<()>>, BlockProvider<DB, QuorumWaiter>) {
@@ -198,7 +197,7 @@ impl<DB: Database> Worker<DB> {
     fn start_network(
         id: WorkerId,
         consensus_config: &ConsensusConfig<DB>,
-        validator: impl BlockValidation,
+        validator: Arc<dyn WorkerBlockValidation>,
         metrics: &Metrics,
     ) -> Network {
         let mut worker_service = WorkerToWorkerServer::new(WorkerReceiverHandler {

@@ -14,8 +14,9 @@ use reth_db::{
     database::Database,
     database_metrics::{DatabaseMetadata, DatabaseMetrics},
 };
-use reth_evm::{execute::BlockExecutorProvider, ConfigureEvm};
+use reth_evm::execute::BlockExecutorProvider;
 use reth_node_builder::NodeConfig;
+use reth_node_ethereum::{EthEvmConfig, EthExecutorProvider};
 use reth_primitives::B256;
 use std::{net::SocketAddr, sync::Arc};
 use tn_config::Config;
@@ -25,9 +26,8 @@ mod worker;
 use self::inner::ExecutionNodeInner;
 use reth_provider::providers::BlockchainProvider;
 use reth_tasks::TaskExecutor;
-use tn_block_validator::BlockValidator;
 use tn_faucet::FaucetArgs;
-use tn_types::{ConsensusOutput, WorkerBlockSender, WorkerId};
+use tn_types::{ConsensusOutput, WorkerBlockSender, WorkerBlockValidation, WorkerId};
 use tokio::sync::{broadcast, RwLock};
 pub use worker::*;
 
@@ -55,24 +55,23 @@ pub struct TnBuilder<DB> {
 
 /// Wrapper for the inner execution node components.
 #[derive(Clone)]
-pub struct ExecutionNode<DB, Evm, CE>
+pub struct ExecutionNode<DB>
 where
     DB: Database + DatabaseMetrics + Clone + Unpin + 'static,
-    Evm: BlockExecutorProvider + Clone + 'static,
-    CE: ConfigureEvm,
 {
-    internal: Arc<RwLock<ExecutionNodeInner<DB, Evm, CE>>>,
+    internal: Arc<RwLock<ExecutionNodeInner<DB, EthExecutorProvider, EthEvmConfig>>>,
 }
 
-impl<DB, Evm, CE> ExecutionNode<DB, Evm, CE>
+impl<DB> ExecutionNode<DB>
 where
     DB: Database + DatabaseMetadata + DatabaseMetrics + Clone + Unpin + 'static,
-    Evm: BlockExecutorProvider + Clone + 'static,
-    CE: ConfigureEvm,
 {
     /// Create a new instance of `Self`.
-    pub fn new(tn_builder: TnBuilder<DB>, evm: Evm, evm_config: CE) -> eyre::Result<Self> {
-        let inner = ExecutionNodeInner::new(tn_builder, evm, evm_config)?;
+    pub fn new(tn_builder: TnBuilder<DB>) -> eyre::Result<Self> {
+        let evm_config = EthEvmConfig::default();
+        let executor =
+            EthExecutorProvider::new(Arc::clone(&tn_builder.node_config.chain), evm_config);
+        let inner = ExecutionNodeInner::new(tn_builder, executor, evm_config)?;
 
         Ok(ExecutionNode { internal: Arc::new(RwLock::new(inner)) })
     }
@@ -97,7 +96,7 @@ where
     }
 
     /// Batch validator
-    pub async fn new_block_validator(&self) -> BlockValidator<DB> {
+    pub async fn new_block_validator(&self) -> Arc<dyn WorkerBlockValidation> {
         let guard = self.internal.read().await;
         guard.new_block_validator()
     }
@@ -115,13 +114,15 @@ where
     }
 
     /// Return the node's EVM config.
-    pub async fn get_evm_config(&self) -> CE {
+    /// Used for tests.
+    pub async fn get_evm_config(&self) -> EthEvmConfig {
         let guard = self.internal.read().await;
         guard.get_evm_config()
     }
 
+    //Evm: BlockExecutorProvider + Clone + 'static,
     /// Return the node's evm-based block executor.
-    pub async fn get_block_executor(&self) -> Evm {
+    pub async fn get_block_executor(&self) -> impl BlockExecutorProvider {
         let guard = self.internal.read().await;
         guard.get_block_executor()
     }

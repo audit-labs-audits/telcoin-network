@@ -1,14 +1,15 @@
 //! Block validator
 
-use crate::error::BlockValidationError;
 use reth_db::database::Database;
 use reth_primitives::Header;
 use reth_provider::{providers::BlockchainProvider, HeaderProvider};
-use std::fmt::{Debug, Display};
-use tn_types::{max_worker_block_gas, max_worker_block_size, SealedWorkerBlock, TransactionSigned};
+use tn_types::{
+    max_worker_block_gas, max_worker_block_size, SealedWorkerBlock, TransactionSigned,
+    WorkerBlockValidation, WorkerBlockValidationError,
+};
 
 /// Type convenience for implementing block validation errors.
-type BlockValidationResult<T> = Result<T, BlockValidationError>;
+type BlockValidationResult<T> = Result<T, WorkerBlockValidationError>;
 
 /// Block validator
 #[derive(Clone)]
@@ -20,34 +21,20 @@ where
     blockchain_db: BlockchainProvider<DB>,
 }
 
-/// Defines the validation procedure for receiving either a new single transaction (from a client)
-/// of a block of transactions (from another validator).
-///
-/// Invalid transactions will not receive further processing.
 #[async_trait::async_trait]
-pub trait BlockValidation: Clone + Send + Sync + 'static {
-    type Error: Display + Debug + Send + Sync + 'static;
-    /// Determines if this block can be voted on
-    async fn validate_block(&self, b: SealedWorkerBlock) -> Result<(), Self::Error>;
-}
-
-#[async_trait::async_trait]
-impl<DB> BlockValidation for BlockValidator<DB>
+impl<DB> WorkerBlockValidation for BlockValidator<DB>
 where
     DB: Database + Sized + Clone + 'static,
 {
-    /// Error type for block validation
-    type Error = BlockValidationError;
-
     /// Validate a peer's worker block.
     ///
     /// Workers do not execute full blocks. This method validates the required information.
-    async fn validate_block(&self, sealed_block: SealedWorkerBlock) -> BlockValidationResult<()> {
+    fn validate_block(&self, sealed_block: SealedWorkerBlock) -> BlockValidationResult<()> {
         // ensure digest matches worker block
         let (block, digest) = sealed_block.split();
         let verified_hash = block.clone().seal_slow().digest();
         if digest != verified_hash {
-            return Err(BlockValidationError::InvalidDigest);
+            return Err(WorkerBlockValidationError::InvalidDigest);
         }
 
         // TODO: validate individual transactions against parent
@@ -60,8 +47,11 @@ where
         // first step towards validating parent's header
         let parent = self
             .blockchain_db
-            .header(&block.parent_hash)?
-            .ok_or(BlockValidationError::CanonicalChain { block_hash: block.parent_hash })?
+            .header(&block.parent_hash)
+            .map_err(|_| WorkerBlockValidationError::CanonicalChain {
+                block_hash: block.parent_hash,
+            })?
+            .ok_or(WorkerBlockValidationError::CanonicalChain { block_hash: block.parent_hash })?
             .seal(block.parent_hash);
 
         // validate timestamp vs parent
@@ -99,7 +89,7 @@ where
         parent: &Header,
     ) -> BlockValidationResult<()> {
         if timestamp <= parent.timestamp {
-            return Err(BlockValidationError::TimestampIsInPast {
+            return Err(WorkerBlockValidationError::TimestampIsInPast {
                 parent_timestamp: parent.timestamp,
                 timestamp,
             });
@@ -119,7 +109,7 @@ where
         // ensure total tx gas limit fits into block's gas limit
         let max_tx_gas = max_worker_block_gas(timestamp);
         if total_possible_gas > max_tx_gas {
-            return Err(BlockValidationError::HeaderMaxGasExceedsGasLimit {
+            return Err(WorkerBlockValidationError::HeaderMaxGasExceedsGasLimit {
                 total_possible_gas,
                 gas_limit: max_tx_gas,
             });
@@ -138,12 +128,12 @@ where
             .iter()
             .map(|tx| tx.size())
             .reduce(|total, size| total + size)
-            .ok_or(BlockValidationError::CalculateTransactionByteSize)?;
+            .ok_or(WorkerBlockValidationError::CalculateTransactionByteSize)?;
         let max_tx_bytes = max_worker_block_size(timestamp);
 
         // allow txs that equal max tx bytes
         if total_bytes > max_tx_bytes {
-            return Err(BlockValidationError::HeaderTransactionBytesExceedsMax(total_bytes));
+            return Err(WorkerBlockValidationError::HeaderTransactionBytesExceedsMax(total_bytes));
         }
 
         Ok(())
@@ -163,10 +153,8 @@ pub struct NoopBlockValidator;
 
 #[cfg(any(test, feature = "test-utils"))]
 #[async_trait::async_trait]
-impl BlockValidation for NoopBlockValidator {
-    type Error = BlockValidationError;
-
-    async fn validate_block(&self, _block: SealedWorkerBlock) -> Result<(), Self::Error> {
+impl WorkerBlockValidation for NoopBlockValidator {
+    fn validate_block(&self, _block: SealedWorkerBlock) -> Result<(), WorkerBlockValidationError> {
         Ok(())
     }
 }
@@ -306,14 +294,14 @@ mod tests {
     #[tokio::test]
     async fn test_valid_block() {
         let TestTools { valid_block, validator } = test_tools().await;
-        let result = validator.validate_block(valid_block.clone()).await;
+        let result = validator.validate_block(valid_block.clone());
         assert!(result.is_ok());
 
         // ensure non-serialized data does not affect validity
         let (mut worker_block, _) = valid_block.split();
         worker_block.received_at = Some(tn_types::now());
         let different_block = worker_block.seal_slow();
-        let result = validator.validate_block(different_block).await;
+        let result = validator.validate_block(different_block);
         assert!(result.is_ok());
     }
 
@@ -334,8 +322,8 @@ mod tests {
             received_at,
         };
         assert_matches!(
-            validator.validate_block(invalid_block.seal_slow()).await,
-            Err(BlockValidationError::CanonicalChain { block_hash }) if block_hash == wrong_parent_hash
+            validator.validate_block(invalid_block.seal_slow()),
+            Err(WorkerBlockValidationError::CanonicalChain { block_hash }) if block_hash == wrong_parent_hash
         );
     }
 
@@ -349,16 +337,16 @@ mod tests {
         worker_block.timestamp = wrong_timestamp;
 
         assert_matches!(
-            validator.validate_block(worker_block.clone().seal_slow()).await,
-            Err(BlockValidationError::TimestampIsInPast{parent_timestamp, timestamp}) if parent_timestamp == wrong_timestamp && timestamp == wrong_timestamp
+            validator.validate_block(worker_block.clone().seal_slow()),
+            Err(WorkerBlockValidationError::TimestampIsInPast{parent_timestamp, timestamp}) if parent_timestamp == wrong_timestamp && timestamp == wrong_timestamp
         );
 
         // test header timestamp before parent
         worker_block.timestamp = wrong_timestamp - 1;
 
         assert_matches!(
-            validator.validate_block(worker_block.seal_slow()).await,
-            Err(BlockValidationError::TimestampIsInPast{parent_timestamp, timestamp}) if parent_timestamp == wrong_timestamp && timestamp == wrong_timestamp - 1
+            validator.validate_block(worker_block.seal_slow()),
+            Err(WorkerBlockValidationError::TimestampIsInPast{parent_timestamp, timestamp}) if parent_timestamp == wrong_timestamp && timestamp == wrong_timestamp - 1
         );
     }
 
@@ -399,7 +387,7 @@ mod tests {
         assert_matches!(
             validator
                 .validate_block_gas(invalid_block.total_possible_gas(), invalid_block.timestamp),
-            Err(BlockValidationError::HeaderMaxGasExceedsGasLimit {
+            Err(WorkerBlockValidationError::HeaderMaxGasExceedsGasLimit {
                 total_possible_gas: _,
                 gas_limit: _
             })
@@ -461,8 +449,8 @@ mod tests {
         let invalid_block = block.clone().seal_slow();
 
         assert_matches!(
-            validator.validate_block(invalid_block).await,
-            Err(BlockValidationError::HeaderTransactionBytesExceedsMax(wrong)) if wrong == total_bytes
+            validator.validate_block(invalid_block),
+            Err(WorkerBlockValidationError::HeaderTransactionBytesExceedsMax(wrong)) if wrong == total_bytes
         );
 
         // Generate 1MB vec of 1s - total bytes are: 1_000_213
@@ -490,8 +478,8 @@ mod tests {
         block.transactions = invalid_txs;
         let invalid_block = block.seal_slow();
         assert_matches!(
-            validator.validate_block(invalid_block).await,
-            Err(BlockValidationError::HeaderTransactionBytesExceedsMax(wrong)) if wrong == too_big
+            validator.validate_block(invalid_block),
+            Err(WorkerBlockValidationError::HeaderTransactionBytesExceedsMax(wrong)) if wrong == too_big
         );
     }
 

@@ -60,7 +60,7 @@ async fn test_get_network_peers_from_admin_server() {
     let metrics_1 = Metrics::new_with_registry(&registry_1);
 
     // Spawn a `Worker` instance for primary 1.
-    let _ = Worker::spawn(worker_id, NoopBlockValidator, metrics_1, config_1.clone());
+    let _ = Worker::spawn(worker_id, Arc::new(NoopBlockValidator), metrics_1, config_1.clone());
 
     // Test getting all known peers for primary 1
     let resp = reqwest::get(format!(

@@ -25,7 +25,7 @@ use reth_transaction_pool::{
 use std::{collections::VecDeque, sync::Arc, time::Duration};
 use tempfile::TempDir;
 use tn_block_builder::{test_utils::execute_test_worker_block, BlockBuilder};
-use tn_block_validator::{BlockValidation, BlockValidator};
+use tn_block_validator::BlockValidator;
 use tn_engine::execute_consensus_output;
 use tn_network::local::LocalNetwork;
 use tn_network_types::MockWorkerToPrimary;
@@ -34,6 +34,7 @@ use tn_test_utils::{get_gas_price, test_genesis, TransactionFactory};
 use tn_types::{
     AutoSealConsensus, BuildArguments, Certificate, CommittedSubDag, Consensus, ConsensusHeader,
     ConsensusOutput, LastCanonicalUpdate, ReputationScores, SealedWorkerBlock, WorkerBlock,
+    WorkerBlockValidation,
 };
 use tn_worker::{
     metrics::WorkerMetrics,
@@ -219,7 +220,7 @@ async fn test_make_block_el_to_cl() {
     // ensure block validator succeeds
     let block_validator = BlockValidator::new(blockchain_db.clone());
 
-    let valid_block_result = block_validator.validate_block(sealed_block.clone()).await;
+    let valid_block_result = block_validator.validate_block(sealed_block.clone());
     assert!(valid_block_result.is_ok());
 
     // ensure expected transaction is in block
@@ -407,7 +408,7 @@ async fn test_block_builder_produces_valid_blocks() {
     // validate first block
     let block_validator = BlockValidator::new(blockchain_db.clone());
 
-    let valid_block_result = block_validator.validate_block(first_block.clone()).await;
+    let valid_block_result = block_validator.validate_block(first_block.clone());
     assert!(valid_block_result.is_ok());
 
     // ensure expected transaction is in block
@@ -428,7 +429,7 @@ async fn test_block_builder_produces_valid_blocks() {
     let _ = ack.send(Ok(()));
 
     // validate second block
-    let valid_block_result = block_validator.validate_block(next_block.clone()).await;
+    let valid_block_result = block_validator.validate_block(next_block.clone());
     assert!(valid_block_result.is_ok());
 
     // assert only transaction in block
@@ -655,7 +656,7 @@ async fn test_canonical_notification_updates_pool() {
     // validate block
     let block_validator = BlockValidator::new(blockchain_db);
 
-    let valid_block_result = block_validator.validate_block(first_block.clone()).await;
+    let valid_block_result = block_validator.validate_block(first_block.clone());
     assert!(valid_block_result.is_ok());
 
     // yield to try and give pool a chance to update

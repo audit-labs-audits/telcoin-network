@@ -1,7 +1,4 @@
 use clap::{Args, Parser as _};
-#[cfg(not(feature = "faucet"))]
-use reth_node_ethereum::{EthEvmConfig, EthExecutorProvider};
-use std::sync::Arc;
 #[cfg(feature = "faucet")]
 use tn_faucet::FaucetArgs;
 use tn_node::launch_node;
@@ -18,13 +15,8 @@ pub struct NoArgs;
 
 fn main() {
     #[cfg(not(feature = "faucet"))]
-    if let Err(err) =
-        telcoin_network::cli::Cli::<NoArgs>::parse().run(|builder, _, tn_datadir| async move {
-            let evm_config = EthEvmConfig::default();
-            let executor =
-                EthExecutorProvider::new(Arc::clone(&builder.node_config.chain), evm_config);
-            launch_node(builder, executor, evm_config, tn_datadir).await
-        })
+    if let Err(err) = telcoin_network::cli::Cli::<NoArgs>::parse()
+        .run(|builder, _, tn_datadir| async move { launch_node(builder, tn_datadir).await })
     {
         eprintln!("Error: {err:?}");
         std::process::exit(1);
@@ -34,10 +26,7 @@ fn main() {
     if let Err(err) = telcoin_network::cli::Cli::<FaucetArgs>::parse().run(
         |mut builder, faucet, tn_datadir| async move {
             builder.opt_faucet_args = Some(faucet);
-            let evm_config = EthEvmConfig::default();
-            let executor =
-                EthExecutorProvider::new(Arc::clone(&builder.node_config.chain), evm_config);
-            launch_node(builder, executor, evm_config, tn_datadir).await
+            launch_node(builder, tn_datadir).await
         },
     ) {
         eprintln!("Error: {err:?}");

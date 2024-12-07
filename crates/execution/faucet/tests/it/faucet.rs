@@ -327,7 +327,8 @@ async fn test_faucet_transfers_tel_with_google_kms() -> eyre::Result<()> {
     let recovered = pool_tx.transaction.transaction();
     assert_eq!(&tx_hash, recovered.hash_ref());
     assert_eq!(recovered.transaction.to(), Some(faucet_proxy_address));
-    Ok(assert_eq!(recovered.transaction.nonce(), 1))
+    assert_eq!(recovered.transaction.nonce(), 1);
+    Ok(())
 }
 
 #[tokio::test]
@@ -656,43 +657,34 @@ async fn test_faucet_transfers_stablecoin_with_google_kms() -> eyre::Result<()> 
 ///
 /// ```
 /// let kms_client: GoogleApi<KeyManagementServiceClient<GoogleAuthMiddleware>> =
-///   GoogleApi::from_function(
-///     KeyManagementServiceClient::new,
-///     "https://cloudkms.googleapis.com",
-///     None,
-///   )
-///   .await?;
-
-/// let validators = [
-///   "validator-1",
-///   "validator-2",
-///   "validator-3",
-///   "validator-4",
-/// ];
-
+///     GoogleApi::from_function(
+///         KeyManagementServiceClient::new,
+///         "https://cloudkms.googleapis.com",
+///         None,
+///     )
+///     .await?;
+///
+/// let validators = ["validator-1", "validator-2", "validator-3", "validator-4"];
+///
 /// let locations = "global";
 /// let key_rings = "adiri-testnet";
 /// // let crypto_keys = "validator-1";
 /// let crypto_key_versions = "1";
-
+///
 /// for v in validators {
-///   let name = format!(
-///     "projects/{}/locations/{}/keyRings/{}/cryptoKeys/{}/cryptoKeyVersions/{}",
-///     google_project_id, locations, key_rings, v, crypto_key_versions
-///   );
-
-///   let pubkey = kms_client
-///     .get()
-///     .get_public_key(tonic::Request::new(GetPublicKeyRequest {
-///         name,
-///         ..Default::default()
-///     }))
-///     .await?;
-
-///   println!("{v} public key:\n {:?}", pubkey.into_inner().pem);
+///     let name = format!(
+///         "projects/{}/locations/{}/keyRings/{}/cryptoKeys/{}/cryptoKeyVersions/{}",
+///         google_project_id, locations, key_rings, v, crypto_key_versions
+///     );
+///
+///     let pubkey = kms_client
+///         .get()
+///         .get_public_key(tonic::Request::new(GetPublicKeyRequest { name, ..Default::default() }))
+///         .await?;
+///
+///     println!("{v} public key:\n {:?}", pubkey.into_inner().pem);
 /// }
 /// ```
-
 #[test]
 #[ignore = "only useful for debugging purposes"]
 fn test_print_kms_wallets() -> eyre::Result<()> {

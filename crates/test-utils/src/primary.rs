@@ -52,7 +52,10 @@ impl<DB: Database> PrimaryNodeDetails<DB> {
             panic!("Tried to start a node that is already running");
         }
 
-        self.node.start(execution_components).await?;
+        // used to retrieve the last executed certificate in case of restarts
+        let last_executed_consensus_hash =
+            execution_components.last_executed_output().await.expect("execution found HEAD");
+        self.node.start(last_executed_consensus_hash).await?;
 
         // return receiver for execution engine
         Ok(())

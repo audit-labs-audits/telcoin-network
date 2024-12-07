@@ -31,7 +31,7 @@ pub trait PublishMessageId<'a>: From<&'a [u8]> {
 }
 
 // Implementation for worker gossip network.
-impl<'a> PublishMessageId<'a> for SealedWorkerBlock {
+impl PublishMessageId<'_> for SealedWorkerBlock {
     fn message_id(msg: &gossipsub::Message) -> BlockHash {
         let sealed_block = Self::from(msg.data.as_ref());
         sealed_block.digest()
@@ -39,7 +39,7 @@ impl<'a> PublishMessageId<'a> for SealedWorkerBlock {
 }
 
 // Implementation for primary gossip network.
-impl<'a> PublishMessageId<'a> for Certificate {
+impl PublishMessageId<'_> for Certificate {
     fn message_id(msg: &gossipsub::Message) -> BlockHash {
         let certificate = Self::from(msg.data.as_ref());
         certificate.digest().into()
@@ -47,7 +47,7 @@ impl<'a> PublishMessageId<'a> for Certificate {
 }
 
 // Implementation for consensus gossip network.
-impl<'a> PublishMessageId<'a> for ConsensusHeader {
+impl PublishMessageId<'_> for ConsensusHeader {
     fn message_id(msg: &gossipsub::Message) -> BlockHash {
         let header = Self::from(msg.data.as_ref());
         header.digest()

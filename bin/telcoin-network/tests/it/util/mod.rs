@@ -5,7 +5,6 @@ use reth::{
     CliContext,
 };
 use reth_chainspec::ChainSpec;
-use reth_node_ethereum::{EthEvmConfig, EthExecutorProvider};
 use std::{path::PathBuf, sync::Arc};
 use telcoin_network::{genesis::GenesisArgs, keytool::KeyArgs, node::NodeCommand};
 use tn_node::launch_node;
@@ -224,12 +223,7 @@ pub async fn spawn_local_testnet(
                         false, // don't overwrite chain with the default
                         |mut builder, faucet_args, tn_datadir| async move {
                             builder.opt_faucet_args = Some(faucet_args);
-                            let evm_config = EthEvmConfig::default();
-                            let executor = EthExecutorProvider::new(
-                                std::sync::Arc::clone(&builder.node_config.chain),
-                                evm_config,
-                            );
-                            launch_node(builder, executor, evm_config, tn_datadir).await
+                            launch_node(builder, tn_datadir).await
                         },
                     )
                     .await;

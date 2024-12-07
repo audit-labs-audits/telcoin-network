@@ -11624,6 +11624,7 @@ dependencies = [
  "alloy",
  "alloy-rlp",
  "anemo",
+ "async-trait",
  "base64 0.21.7",
  "bcs",
  "bincode",

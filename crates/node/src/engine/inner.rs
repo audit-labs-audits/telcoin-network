@@ -45,7 +45,10 @@ use tn_config::Config;
 use tn_engine::ExecutorEngine;
 use tn_faucet::{FaucetArgs, FaucetRpcExtApiServer as _};
 use tn_rpc::{TelcoinNetworkRpcExt, TelcoinNetworkRpcExtApiServer};
-use tn_types::{Consensus, ConsensusOutput, LastCanonicalUpdate, WorkerBlockSender, WorkerId};
+use tn_types::{
+    Consensus, ConsensusOutput, LastCanonicalUpdate, WorkerBlockSender, WorkerBlockValidation,
+    WorkerId,
+};
 use tokio::sync::{broadcast, mpsc::unbounded_channel};
 use tokio_stream::wrappers::BroadcastStream;
 use tracing::{debug, error, info};
@@ -404,9 +407,9 @@ where
     }
 
     /// Create a new block validator.
-    pub(super) fn new_block_validator(&self) -> BlockValidator<DB> {
+    pub(super) fn new_block_validator(&self) -> Arc<dyn WorkerBlockValidation> {
         // batch validator
-        BlockValidator::<DB>::new(self.blockchain_db.clone())
+        Arc::new(BlockValidator::<DB>::new(self.blockchain_db.clone()))
     }
 
     /// Fetch the last executed state from the database.
@@ -444,7 +447,7 @@ where
         self.blockchain_db.clone()
     }
 
-    /// Return the node's EVM config.
+    /// Return the node's evm-based block executor
     pub(super) fn get_evm_config(&self) -> CE {
         self.evm_config.clone()
     }
