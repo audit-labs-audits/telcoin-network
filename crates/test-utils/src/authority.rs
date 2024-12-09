@@ -11,7 +11,7 @@ use anemo::Network;
 use fastcrypto::{hash::Hash, traits::KeyPair as _};
 use jsonrpsee::http_client::HttpClient;
 use reth::primitives::Address;
-use std::{collections::HashMap, num::NonZeroUsize, sync::Arc, time::Duration};
+use std::{collections::HashMap, num::NonZeroUsize, sync::Arc};
 use tn_config::{Config, ConsensusConfig, KeyConfig};
 use tn_network::local::LocalNetwork;
 use tn_storage::traits::Database;
@@ -20,7 +20,6 @@ use tn_types::{
     HeaderBuilder, Multiaddr, NetworkKeypair, NetworkPublicKey, Round, Vote, WorkerCache, WorkerId,
 };
 use tokio::sync::RwLock;
-use tracing::info;
 
 /// The authority details hold all the necessary structs and details
 /// to identify and manage a specific authority.
@@ -130,7 +129,7 @@ impl<DB: Database> AuthorityDetails<DB> {
 
         internal.primary.start(&execution_components).await
     }
-
+    /* XXXX
     pub async fn stop_primary(&self) {
         let internal = self.internal.read().await;
 
@@ -140,6 +139,7 @@ impl<DB: Database> AuthorityDetails<DB> {
         // either implement with TaskManager or setup kill signal
         // internal.execution.shutdown_engine().await;
     }
+    */
 
     pub async fn start_all_workers(&self, preserve_store: bool) -> eyre::Result<()> {
         let mut internal = self.internal.write().await;
@@ -169,6 +169,7 @@ impl<DB: Database> AuthorityDetails<DB> {
         worker.start(preserve_store, &execution_engine).await
     }
 
+    /* XXXX
     pub async fn stop_worker(&self, id: WorkerId) {
         let internal = self.internal.read().await;
 
@@ -223,6 +224,7 @@ impl<DB: Database> AuthorityDetails<DB> {
         // now start again the node with the same workers
         self.start(preserve_store, Some(num_of_workers)).await
     }
+    */
 
     /// Returns the current primary node running as a clone. If the primary
     /// node stops and starts again and it's needed by the user then this
@@ -268,9 +270,9 @@ impl<DB: Database> AuthorityDetails<DB> {
         let mut workers = Vec::new();
 
         for worker in internal.workers.values() {
-            if worker.is_running().await {
-                workers.push(worker.clone());
-            }
+            // XXXX if worker.is_running().await {
+            workers.push(worker.clone());
+            //}
         }
 
         workers
@@ -288,6 +290,7 @@ impl<DB: Database> AuthorityDetails<DB> {
         Ok(client)
     }
 
+    /* XXXX
     /// This method will return true either when the primary or any of
     /// the workers is running. In order to make sure that we don't end up
     /// in intermediate states we want to make sure that everything has
@@ -317,6 +320,7 @@ impl<DB: Database> AuthorityDetails<DB> {
 
         false
     }
+    */
 
     /// Returns an owned primary WAN if it exists.
     pub async fn primary_network(&self) -> Option<Network> {

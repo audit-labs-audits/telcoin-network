@@ -18,7 +18,9 @@ use std::collections::HashMap;
 use tn_config::ConsensusConfig;
 use tn_storage::{mem_db::MemDatabase, open_db};
 use tn_test_utils::{CommitteeFixture, TelcoinTempDirs};
-use tn_types::{AuthorityIdentifier, TnReceiver, TnSender, DEFAULT_BAD_NODES_STAKE_THRESHOLD};
+use tn_types::{
+    AuthorityIdentifier, TaskManager, TnReceiver, TnSender, DEFAULT_BAD_NODES_STAKE_THRESHOLD,
+};
 #[allow(unused_imports)]
 use tokio::sync::mpsc::channel;
 use tracing::info;
@@ -450,7 +452,7 @@ async fn commit_one() {
 
     let cb = ConsensusBus::new();
     let mut rx_output = cb.sequence().subscribe();
-    let _consensus_handle = Consensus::spawn(config, &cb, bullshark);
+    Consensus::spawn(config, &cb, bullshark, &TaskManager::new());
     let cb_clone = cb.clone();
     tokio::spawn(async move {
         let mut rx_primary = cb_clone.committed_certificates().subscribe();
@@ -517,7 +519,7 @@ async fn dead_node() {
     let mut rx_output = cb.sequence().subscribe();
     // pretend we are synced and ready to go so test can run...
     cb.sync_status_synced();
-    let _consensus_handle = Consensus::spawn(config, &cb, bullshark);
+    Consensus::spawn(config, &cb, bullshark, &TaskManager::new());
     let cb_clone = cb.clone();
     tokio::spawn(async move {
         let mut rx_primary = cb_clone.committed_certificates().subscribe();
@@ -657,7 +659,7 @@ async fn not_enough_support() {
     let mut rx_output = cb.sequence().subscribe();
     // pretend we are synced and ready to go so test can run...
     cb.sync_status_synced();
-    let _consensus_handle = Consensus::spawn(config, &cb, bullshark);
+    Consensus::spawn(config, &cb, bullshark, &TaskManager::new());
     let cb_clone = cb.clone();
     tokio::spawn(async move {
         let mut rx_primary = cb_clone.committed_certificates().subscribe();
@@ -759,7 +761,7 @@ async fn missing_leader() {
     let mut rx_output = cb.sequence().subscribe();
     // pretend we are synced and ready to go so test can run...
     cb.sync_status_synced();
-    let _consensus_handle = Consensus::spawn(config, &cb, bullshark);
+    Consensus::spawn(config, &cb, bullshark, &TaskManager::new());
     let cb_clone = cb.clone();
     tokio::spawn(async move {
         let mut rx_primary = cb_clone.committed_certificates().subscribe();
@@ -830,7 +832,8 @@ async fn committed_round_after_restart() {
         let mut rx_output = cb.sequence().subscribe();
         // pretend we are synced and ready to go so test can run...
         cb.sync_status_synced();
-        let handle = Consensus::spawn(config.clone(), &cb, bullshark);
+        let task_manager = TaskManager::new();
+        Consensus::spawn(config.clone(), &cb, bullshark, &task_manager);
 
         // When `input_round` is 2 * r + 1, r > 1, the previous commit round would be 2 * (r - 1),
         // and the expected commit round after sending in certificates up to `input_round` would
@@ -867,7 +870,7 @@ async fn committed_round_after_restart() {
 
         // Shutdown consensus and wait for it to stop.
         fixture.notify_shutdown();
-        handle.await.unwrap();
+        task_manager.join().await;
     }
 }
 
@@ -1083,7 +1086,8 @@ async fn restart_with_new_committee() {
         let mut rx_output = cb.sequence().subscribe();
         // pretend we are synced and ready to go so test can run...
         cb.sync_status_synced();
-        let handle = Consensus::spawn(config.clone(), &cb, bullshark);
+        let task_manager = TaskManager::new();
+        Consensus::spawn(config.clone(), &cb, bullshark, &task_manager);
         let cb_clone = cb.clone();
         tokio::spawn(async move {
             let mut rx_primary = cb_clone.committed_certificates().subscribe();
@@ -1134,7 +1138,7 @@ async fn restart_with_new_committee() {
         config.shutdown();
 
         // Ensure consensus stopped.
-        handle.await.unwrap();
+        task_manager.join().await;
     }
 }
 

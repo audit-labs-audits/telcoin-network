@@ -20,7 +20,6 @@ use reth::{
     providers::{BlockReaderIdExt, ExecutionOutcome, StateProviderFactory},
     revm::database::StateProviderDatabase,
     rpc::types::AccessList,
-    tasks::TaskExecutor,
 };
 use reth_chainspec::{BaseFeeParams, ChainSpec};
 use reth_cli_commands::node::NoArgs;
@@ -37,7 +36,7 @@ use tempfile::tempdir;
 use tn_config::Config;
 use tn_faucet::FaucetArgs;
 use tn_node::engine::{ExecutionNode, TnBuilder};
-use tn_types::{adiri_genesis, now, ExecutionKeypair, TimestampSec, WorkerBlock};
+use tn_types::{adiri_genesis, now, ExecutionKeypair, TaskManager, TimestampSec, WorkerBlock};
 use tracing::debug;
 
 /// Convnenience type for testing Execution Node.
@@ -58,17 +57,15 @@ pub struct CommandParser<T: Args> {
 pub fn default_test_execution_node(
     opt_chain: Option<Arc<ChainSpec>>,
     opt_address: Option<Address>,
-    executor: TaskExecutor,
 ) -> eyre::Result<TestExecutionNode> {
     let (builder, _) = execution_builder::<NoArgs>(
         opt_chain,
         opt_address,
-        executor,
         None, // optional args
     )?;
 
     // create engine node
-    let engine = ExecutionNode::new(builder)?;
+    let engine = ExecutionNode::new(builder, &TaskManager::new())?;
 
     Ok(engine)
 }
@@ -77,7 +74,6 @@ pub fn default_test_execution_node(
 pub fn execution_builder<CliExt: clap::Args + fmt::Debug>(
     opt_chain: Option<Arc<ChainSpec>>,
     opt_address: Option<Address>,
-    task_executor: TaskExecutor,
     opt_args: Option<Vec<&str>>,
 ) -> eyre::Result<(TnBuilder<Arc<TempDatabase<DatabaseEnv>>>, CliExt)> {
     let default_args = ["telcoin-network", "--dev", "--chain", "adiri"];
@@ -149,7 +145,7 @@ pub fn execution_builder<CliExt: clap::Args + fmt::Debug>(
     // TODO: this a temporary approach until upstream reth supports public rpc hooks
     let opt_faucet_args = None;
 
-    let builder = TnBuilder { database, node_config, task_executor, tn_config, opt_faucet_args };
+    let builder = TnBuilder { database, node_config, tn_config, opt_faucet_args };
 
     Ok((builder, ext))
 }
@@ -164,7 +160,6 @@ pub fn faucet_test_execution_node(
     google_kms: bool,
     opt_chain: Option<Arc<ChainSpec>>,
     opt_address: Option<Address>,
-    executor: TaskExecutor,
     faucet_proxy_address: Address,
 ) -> eyre::Result<TestExecutionNode> {
     let faucet_args = ["--google-kms"];
@@ -177,21 +172,14 @@ pub fn faucet_test_execution_node(
         extended_args.map(|opt| [opt, vec!["--contract-address", &faucet]].concat().to_vec());
 
     // execution builder + faucet args
-    let (builder, faucet) =
-        execution_builder::<FaucetArgs>(opt_chain, opt_address, executor, extended_args)?;
+    let (builder, faucet) = execution_builder::<FaucetArgs>(opt_chain, opt_address, extended_args)?;
 
     // replace default builder's faucet args
-    let TnBuilder { database, node_config, task_executor, tn_config, .. } = builder;
-    let builder = TnBuilder {
-        database,
-        node_config,
-        task_executor,
-        tn_config,
-        opt_faucet_args: Some(faucet),
-    };
+    let TnBuilder { database, node_config, tn_config, .. } = builder;
+    let builder = TnBuilder { database, node_config, tn_config, opt_faucet_args: Some(faucet) };
 
     // create engine node
-    let engine = ExecutionNode::new(builder)?;
+    let engine = ExecutionNode::new(builder, &TaskManager::new())?;
 
     Ok(engine)
 }

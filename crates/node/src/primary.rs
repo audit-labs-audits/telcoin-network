@@ -3,10 +3,9 @@
 // SPDX-License-Identifier: Apache-2.0
 
 //! Hierarchical type to hold tasks spawned for a worker in the network.
-use crate::{error::NodeError, try_join_all, FuturesUnordered};
 use anemo::{Network, PeerId};
 use fastcrypto::traits::VerifyingKey;
-use std::{sync::Arc, time::Instant};
+use std::sync::Arc;
 use tn_config::ConsensusConfig;
 use tn_executor::{Executor, SubscriberResult};
 use tn_primary::{
@@ -15,9 +14,9 @@ use tn_primary::{
 };
 use tn_primary_metrics::Metrics;
 use tn_storage::traits::Database as ConsensusDatabase;
-use tn_types::{BlockHash, BlsPublicKey, DEFAULT_BAD_NODES_STAKE_THRESHOLD};
-use tokio::{sync::RwLock, task::JoinHandle};
-use tracing::{info, instrument};
+use tn_types::{BlockHash, BlsPublicKey, TaskManager, DEFAULT_BAD_NODES_STAKE_THRESHOLD};
+use tokio::sync::RwLock;
+use tracing::instrument;
 
 struct PrimaryNodeInner<CDB> {
     /// Consensus configuration.
@@ -30,8 +29,6 @@ struct PrimaryNodeInner<CDB> {
     ///
     /// Option is some after the primary has started.
     primary: Option<Primary<CDB>>,
-    /// The handles for consensus.
-    handles: FuturesUnordered<JoinHandle<()>>,
 }
 
 impl<CDB: ConsensusDatabase> PrimaryNodeInner<CDB> {
@@ -43,19 +40,19 @@ impl<CDB: ConsensusDatabase> PrimaryNodeInner<CDB> {
     /// Starts the primary node with the provided info. If the node is already running then this
     /// method will return an error instead.
     #[instrument(name = "primary_node", skip_all)]
-    async fn start(&mut self, last_executed_consensus_hash: BlockHash) -> eyre::Result<()> {
-        if self.is_running().await {
-            return Err(NodeError::NodeAlreadyRunning.into());
-        }
-
+    async fn start(
+        &mut self,
+        last_executed_consensus_hash: BlockHash,
+    ) -> eyre::Result<TaskManager> {
         self.own_peer_id = Some(PeerId(
             self.consensus_config.key_config().primary_network_public_key().0.to_bytes(),
         ));
 
+        let task_manager = TaskManager::new();
         // spawn primary and update `self`
-        self.spawn_primary(last_executed_consensus_hash).await?;
+        self.spawn_primary(last_executed_consensus_hash, &task_manager).await?;
 
-        Ok(())
+        Ok(task_manager)
     }
 
     /// Will shutdown the primary node and wait until the node has shutdown by waiting on the
@@ -63,33 +60,7 @@ impl<CDB: ConsensusDatabase> PrimaryNodeInner<CDB> {
     /// method will return immediately.
     #[instrument(level = "info", skip_all)]
     async fn shutdown(&mut self) {
-        if !self.is_running().await {
-            return;
-        }
-
-        // send the shutdown signal to the node
-        let now = Instant::now();
-
-        self.consensus_config.local_network().shutdown();
         self.consensus_config.shutdown();
-
-        // Now wait until handles have been completed
-        try_join_all(&mut self.handles).await.unwrap();
-
-        info!(
-            "Narwhal primary shutdown is complete - took {} seconds",
-            now.elapsed().as_secs_f64()
-        );
-    }
-
-    // Helper method useful to wait on the execution of the primary node
-    async fn wait(&mut self) {
-        try_join_all(&mut self.handles).await.unwrap();
-    }
-
-    /// Boolean if any of the join handles are not "finished".
-    async fn is_running(&self) -> bool {
-        self.handles.iter().any(|h| !h.is_finished())
     }
 
     /// Spawn a new primary. Optionally also spawn the consensus and a client executing
@@ -98,24 +69,24 @@ impl<CDB: ConsensusDatabase> PrimaryNodeInner<CDB> {
         &mut self,
         // Used for recovering after crashes/restarts
         last_executed_consensus_hash: BlockHash,
+        task_manager: &TaskManager,
     ) -> SubscriberResult<()> {
         let mut primary = Primary::new(self.consensus_config.clone(), &self.consensus_bus);
-        let (consensus_handles, leader_schedule) = self
+        let leader_schedule = self
             .spawn_consensus(
                 &self.consensus_bus,
                 last_executed_consensus_hash,
                 primary.network().clone(),
+                task_manager,
             )
             .await?;
 
-        // already ensures node was NOT running, but clear to be sure
-        self.handles.clear();
-        self.handles.extend(consensus_handles);
-
-        // start primary add extend handles
-        let handles =
-            primary.spawn(self.consensus_config.clone(), &self.consensus_bus, leader_schedule);
-        self.handles.extend(handles);
+        primary.spawn(
+            self.consensus_config.clone(),
+            &self.consensus_bus,
+            leader_schedule,
+            task_manager,
+        );
 
         // Spawn the primary.
         self.primary = Some(primary);
@@ -130,7 +101,8 @@ impl<CDB: ConsensusDatabase> PrimaryNodeInner<CDB> {
         consensus_bus: &ConsensusBus,
         last_executed_consensus_hash: BlockHash,
         network: anemo::Network,
-    ) -> SubscriberResult<(Vec<JoinHandle<()>>, LeaderSchedule)>
+        task_manager: &TaskManager,
+    ) -> SubscriberResult<LeaderSchedule>
     where
         BlsPublicKey: VerifyingKey,
     {
@@ -168,22 +140,25 @@ impl<CDB: ConsensusDatabase> PrimaryNodeInner<CDB> {
             leader_schedule.clone(),
             DEFAULT_BAD_NODES_STAKE_THRESHOLD,
         );
-        let consensus_handle =
-            Consensus::spawn(self.consensus_config.clone(), consensus_bus, ordering_engine);
+        Consensus::spawn(
+            self.consensus_config.clone(),
+            consensus_bus,
+            ordering_engine,
+            task_manager,
+        );
 
         // Spawn the client executing the transactions. It can also synchronize with the
         // subscriber handler if it missed some transactions.
-        let executor_handle = Executor::spawn(
+        Executor::spawn(
             self.consensus_config.clone(),
             self.consensus_config.subscribe_shutdown(),
             consensus_bus.clone(),
             last_executed_consensus_hash,
             network,
-        )?;
+            task_manager,
+        );
 
-        let handles = vec![executor_handle, consensus_handle];
-
-        Ok((handles, leader_schedule))
+        Ok(leader_schedule)
     }
 }
 
@@ -195,18 +170,13 @@ pub struct PrimaryNode<CDB> {
 impl<CDB: ConsensusDatabase> PrimaryNode<CDB> {
     pub fn new(consensus_config: ConsensusConfig<CDB>) -> PrimaryNode<CDB> {
         let consensus_bus = ConsensusBus::new();
-        let inner = PrimaryNodeInner {
-            consensus_config,
-            consensus_bus,
-            own_peer_id: None,
-            primary: None,
-            handles: FuturesUnordered::new(),
-        };
+        let inner =
+            PrimaryNodeInner { consensus_config, consensus_bus, own_peer_id: None, primary: None };
 
         Self { internal: Arc::new(RwLock::new(inner)) }
     }
 
-    pub async fn start(&self, last_executed_consensus_hash: BlockHash) -> eyre::Result<()>
+    pub async fn start(&self, last_executed_consensus_hash: BlockHash) -> eyre::Result<TaskManager>
     where
         CDB: ConsensusDatabase,
     {
@@ -217,16 +187,6 @@ impl<CDB: ConsensusDatabase> PrimaryNode<CDB> {
     pub async fn shutdown(&self) {
         let mut guard = self.internal.write().await;
         guard.shutdown().await
-    }
-
-    pub async fn is_running(&self) -> bool {
-        let guard = self.internal.read().await;
-        guard.is_running().await
-    }
-
-    pub async fn wait(&self) {
-        let mut guard = self.internal.write().await;
-        guard.wait().await
     }
 
     /// Return the consensus metrics.

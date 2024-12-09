@@ -305,14 +305,14 @@ mod tests {
         Address, BlockHashOrNumber, Bloom, B256, EMPTY_OMMER_ROOT_HASH, U256,
     };
     use reth_provider::{BlockIdReader, BlockNumReader, BlockReader, TransactionVariant};
-    use reth_tasks::TaskManager;
+    use reth_tasks::TaskSpawner as _;
     use reth_tracing::init_test_tracing;
     use std::{collections::VecDeque, str::FromStr as _, sync::Arc, time::Duration};
     use tn_block_builder::test_utils::execute_test_worker_block;
     use tn_test_utils::{default_test_execution_node, seeded_genesis_from_random_batches};
     use tn_types::{
         adiri_chain_spec_arc, adiri_genesis, max_worker_block_gas, now, BlockHash, Certificate,
-        CommittedSubDag, ConsensusHeader, ConsensusOutput, ReputationScores,
+        CommittedSubDag, ConsensusHeader, ConsensusOutput, ReputationScores, TaskManager,
     };
     use tokio::{sync::oneshot, time::timeout};
     use tokio_stream::wrappers::BroadcastStream;
@@ -359,10 +359,7 @@ mod tests {
         let chain = adiri_chain_spec_arc();
 
         // execution node components
-        let manager = TaskManager::current();
-        let executor = manager.executor();
-        let execution_node =
-            default_test_execution_node(Some(chain.clone()), None, executor.clone())?;
+        let execution_node = default_test_execution_node(Some(chain.clone()), None)?;
 
         let (to_engine, from_consensus) = tokio::sync::broadcast::channel(1);
         let consensus_output_stream = BroadcastStream::from(from_consensus);
@@ -389,10 +386,10 @@ mod tests {
         let (tx, rx) = oneshot::channel();
 
         // spawn engine task
-        executor.spawn_blocking(async move {
+        TaskManager::new().spawn_blocking(Box::pin(async move {
             let res = engine.await;
             let _ = tx.send(res);
-        });
+        }));
 
         let engine_task = timeout(Duration::from_secs(10), rx).await?;
         assert!(engine_task.is_ok());
@@ -512,10 +509,7 @@ mod tests {
         let chain: Arc<ChainSpec> = Arc::new(genesis.into());
 
         // create execution node components
-        let manager = TaskManager::current();
-        let executor = manager.executor();
-        let execution_node =
-            default_test_execution_node(Some(chain.clone()), None, executor.clone())?;
+        let execution_node = default_test_execution_node(Some(chain.clone()), None)?;
         let provider = execution_node.get_provider().await;
         let parent = chain.sealed_genesis_header();
 
@@ -657,10 +651,10 @@ mod tests {
         // spawn engine task
         //
         // one output already queued up, one output waiting in broadcast stream
-        executor.spawn_blocking(async move {
+        TaskManager::new().spawn_blocking(Box::pin(async move {
             let res = engine.await;
             let _ = tx.send(res);
-        });
+        }));
 
         let engine_task = timeout(Duration::from_secs(10), rx).await?;
         assert!(engine_task.is_ok());
@@ -821,10 +815,7 @@ mod tests {
         let chain: Arc<ChainSpec> = Arc::new(genesis.into());
 
         // create execution node components
-        let manager = TaskManager::current();
-        let executor = manager.executor();
-        let execution_node =
-            default_test_execution_node(Some(chain.clone()), None, executor.clone())?;
+        let execution_node = default_test_execution_node(Some(chain.clone()), None)?;
         let provider = execution_node.get_provider().await;
         let parent = chain.sealed_genesis_header();
 
@@ -987,10 +978,10 @@ mod tests {
         // spawn engine task
         //
         // one output already queued up, one output waiting in broadcast stream
-        executor.spawn_blocking(async move {
+        TaskManager::new().spawn_blocking(Box::pin(async move {
             let res = engine.await;
             let _ = tx.send(res);
-        });
+        }));
 
         let engine_task = timeout(Duration::from_secs(10), rx).await?;
         assert!(engine_task.is_ok());
@@ -1149,10 +1140,7 @@ mod tests {
         let chain: Arc<ChainSpec> = Arc::new(genesis.into());
 
         // create execution node components
-        let manager = TaskManager::current();
-        let executor = manager.executor();
-        let execution_node =
-            default_test_execution_node(Some(chain.clone()), None, executor.clone())?;
+        let execution_node = default_test_execution_node(Some(chain.clone()), None)?;
         let parent = chain.sealed_genesis_header();
 
         // execute batches to update headers with valid data
@@ -1284,10 +1272,10 @@ mod tests {
         // spawn engine task
         //
         // one output already queued up, one output waiting in broadcast stream
-        executor.spawn_blocking(async move {
+        TaskManager::new().spawn_blocking(Box::pin(async move {
             let res = engine.await;
             let _ = tx.send(res);
-        });
+        }));
 
         let engine_task = timeout(Duration::from_secs(10), rx).await?;
         assert!(engine_task.is_ok());

@@ -24,11 +24,11 @@ use tn_types::{
     ensure,
     error::{DagError, DagResult},
     AuthorityIdentifier, BlsSigner, Certificate, CertificateDigest, Committee, Header,
-    NetworkPublicKey, Noticer, TnReceiver, TnSender, Vote, CHANNEL_CAPACITY,
+    NetworkPublicKey, Noticer, TaskManager, TnReceiver, TnSender, Vote, CHANNEL_CAPACITY,
 };
 use tokio::{
     sync::{broadcast, oneshot},
-    task::{JoinHandle, JoinSet},
+    task::JoinSet,
 };
 use tracing::{debug, enabled, error, info, instrument, trace, warn};
 
@@ -77,13 +77,13 @@ pub struct Certifier<DB> {
 }
 
 impl<DB: Database> Certifier<DB> {
-    #[must_use]
     pub fn spawn(
         config: ConsensusConfig<DB>,
         consensus_bus: ConsensusBus,
         synchronizer: Arc<Synchronizer<DB>>,
         primary_network: anemo::Network,
-    ) -> JoinHandle<()> {
+        task_manager: &TaskManager,
+    ) {
         let rx_shutdown = config.subscribe_shutdown();
         let metrics = consensus_bus.primary_metrics().node_metrics.clone();
         // These channels are used internally to this module (file) and don't need to go in the
@@ -126,7 +126,7 @@ impl<DB: Database> Certifier<DB> {
             }
         }
 
-        spawn_logged_monitored_task!(
+        task_manager.spawn_task("certifier task", spawn_logged_monitored_task!(
             async move {
                 info!(target: "primary::certifier", "Certifier on node {} has started successfully.", config.authority().id());
                 Self {
@@ -148,7 +148,7 @@ impl<DB: Database> Certifier<DB> {
                 info!(target: "primary::certifier", "Certifier on node {} has shutdown.", config.authority().id());
             },
             "CertifierTask"
-        )
+        ));
     }
 
     /// Requests a vote for a Header from the given peer. Retries indefinitely until either a

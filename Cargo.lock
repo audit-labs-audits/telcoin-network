@@ -11647,6 +11647,7 @@ dependencies = [
  "reth-primitives",
  "reth-revm",
  "reth-rpc-types",
+ "reth-tasks",
  "roaring",
  "secp256k1 0.29.0",
  "serde",

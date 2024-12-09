@@ -4,12 +4,12 @@
 
 use crate::metrics::NetworkConnectionMetrics;
 use anemo::{types::PeerEvent, PeerId};
-use consensus_metrics::spawn_logged_monitored_task;
+use consensus_metrics::monitored_future;
 use dashmap::DashMap;
 use quinn_proto::ConnectionStats;
 use std::{collections::HashMap, sync::Arc, time::Duration};
-use tn_types::Noticer;
-use tokio::{task::JoinHandle, time};
+use tn_types::{Noticer, TaskManager};
+use tokio::time;
 
 const CONNECTION_STAT_COLLECTION_INTERVAL: Duration = Duration::from_secs(60);
 
@@ -34,11 +34,13 @@ impl ConnectionMonitor {
         connection_metrics: Arc<NetworkConnectionMetrics>,
         peer_id_types: HashMap<PeerId, String>,
         rx_shutdown: Noticer,
-    ) -> (JoinHandle<()>, Arc<DashMap<PeerId, ConnectionStatus>>) {
+        task_manager: &TaskManager,
+    ) -> Arc<DashMap<PeerId, ConnectionStatus>> {
         let connection_statuses_outer = Arc::new(DashMap::new());
         let connection_statuses = connection_statuses_outer.clone();
-        (
-            spawn_logged_monitored_task!(
+        task_manager.spawn_task(
+            "ConnectionMonitor",
+            monitored_future!(
                 Self {
                     network,
                     connection_metrics,
@@ -49,8 +51,8 @@ impl ConnectionMonitor {
                 .run(),
                 "ConnectionMonitor"
             ),
-            connection_statuses_outer,
-        )
+        );
+        connection_statuses_outer
     }
 
     async fn run(self) {
@@ -240,7 +242,7 @@ mod tests {
     use anemo::{Network, Request, Response};
     use bytes::Bytes;
     use std::{collections::HashMap, convert::Infallible, sync::Arc, time::Duration};
-    use tn_types::Notifier;
+    use tn_types::{Notifier, TaskManager};
     use tokio::time::{sleep, timeout};
     use tower::util::BoxCloneService;
 
@@ -267,11 +269,12 @@ mod tests {
         peer_types.insert(network_3.peer_id(), "other_network".to_string());
 
         // WHEN bring up the monitor
-        let (_h, statuses) = ConnectionMonitor::spawn(
+        let statuses = ConnectionMonitor::spawn(
             network_1.downgrade(),
             metrics.clone(),
             peer_types,
             Notifier::new().subscribe(),
+            &TaskManager::new(),
         );
 
         // THEN peer 2 should be already connected

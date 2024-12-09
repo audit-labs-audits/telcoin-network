@@ -43,10 +43,6 @@ impl<DB: Database> WorkerNodeDetails<DB> {
         preserve_store: bool,
         execution_node: &TestExecutionNode,
     ) -> eyre::Result<()> {
-        if self.is_running().await {
-            panic!("Worker with id {} is already running, can't start again", self.id);
-        }
-
         // Make the data store.
         let store_path = if preserve_store { self.store_path.clone() } else { temp_dir() };
 
@@ -57,19 +53,6 @@ impl<DB: Database> WorkerNodeDetails<DB> {
         self.store_path = store_path;
 
         Ok(())
-    }
-
-    pub(crate) async fn stop(&self) {
-        self.node.shutdown().await;
-        info!("Aborted worker node for id {}", self.id);
-    }
-
-    /// This method returns whether the node is still running or not. We
-    /// iterate over all the handlers and check whether there is still any
-    /// that is not finished. If we find at least one, then we report the
-    /// node as still running.
-    pub async fn is_running(&self) -> bool {
-        self.node.is_running().await
     }
 
     /// Return an owned wide-area [Network] if it is running.

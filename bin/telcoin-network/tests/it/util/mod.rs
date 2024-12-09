@@ -1,15 +1,11 @@
 use clap::Parser;
-use reth::{
-    providers::ExecutionOutcome,
-    tasks::{TaskExecutor, TaskManager},
-    CliContext,
-};
+use reth::{providers::ExecutionOutcome, tasks::TaskSpawner as _};
 use reth_chainspec::ChainSpec;
 use std::{path::PathBuf, sync::Arc};
 use telcoin_network::{genesis::GenesisArgs, keytool::KeyArgs, node::NodeCommand};
 use tn_node::launch_node;
 use tn_test_utils::{default_test_execution_node, execution_outcome_for_tests, CommandParser};
-use tn_types::{TransactionSigned, WorkerBlock};
+use tn_types::{TaskManager, TransactionSigned, WorkerBlock};
 use tokio::task::JoinHandle;
 use tracing::error;
 
@@ -107,7 +103,6 @@ pub async fn config_local_testnet(temp_path: PathBuf) -> eyre::Result<()> {
 
 /// Create validator info, genesis ceremony, and spawn node command with faucet active.
 pub async fn spawn_local_testnet(
-    task_executor: &TaskExecutor,
     chain: Arc<ChainSpec>,
     contract_address: &str,
 ) -> eyre::Result<Vec<JoinHandle<()>>> {
@@ -145,6 +140,7 @@ pub async fn spawn_local_testnet(
     ]);
     create_committee_command.args.execute().await?;
 
+    let task_executor = TaskManager::new();
     let mut node_handles = Vec::with_capacity(validators.len());
     for v in validators.into_iter() {
         let dir = temp_path.join(v);
@@ -208,8 +204,6 @@ pub async fn spawn_local_testnet(
             contract_address,
         ]);
 
-        let cli_ctx = CliContext { task_executor: task_executor.clone() };
-
         // update genesis with seeded accounts
         command.chain = chain.clone();
 
@@ -219,7 +213,6 @@ pub async fn spawn_local_testnet(
             Box::pin(async move {
                 let err = command
                     .execute(
-                        cli_ctx,
                         false, // don't overwrite chain with the default
                         |mut builder, faucet_args, tn_datadir| async move {
                             builder.opt_faucet_args = Some(faucet_args);
@@ -272,10 +265,7 @@ pub async fn get_contract_state_for_genesis(
     chain: Arc<ChainSpec>,
     raw_txs_to_execute: Vec<TransactionSigned>,
 ) -> eyre::Result<ExecutionOutcome> {
-    // create execution components
-    let manager = TaskManager::current();
-    let executor = manager.executor();
-    let execution_node = default_test_execution_node(Some(chain.clone()), None, executor)?;
+    let execution_node = default_test_execution_node(Some(chain.clone()), None)?;
     let provider = execution_node.get_provider().await;
     let block_executor = execution_node.get_block_executor().await;
 

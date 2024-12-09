@@ -22,7 +22,7 @@ use anemo_tower::{
     set_header::{SetRequestHeaderLayer, SetResponseHeaderLayer},
     trace::{DefaultMakeSpan, DefaultOnFailure, TraceLayer},
 };
-use consensus_metrics::spawn_logged_monitored_task;
+use consensus_metrics::monitored_future;
 use std::{collections::HashMap, net::Ipv4Addr, sync::Arc};
 use tn_config::ConsensusConfig;
 use tn_network::{
@@ -35,9 +35,8 @@ use tn_network_types::WorkerToWorkerServer;
 use tn_storage::traits::Database;
 use tn_types::{
     traits::KeyPair as _, AuthorityIdentifier, Multiaddr, NetworkPublicKey, Noticer, Protocol,
-    WorkerBlockValidation, WorkerId,
+    TaskManager, WorkerBlockValidation, WorkerId,
 };
-use tokio::task::JoinHandle;
 use tower::ServiceBuilder;
 use tracing::{error, info};
 
@@ -79,7 +78,8 @@ impl<DB: Database> Worker<DB> {
         validator: Arc<dyn WorkerBlockValidation>,
         metrics: Metrics,
         consensus_config: ConsensusConfig<DB>,
-    ) -> (Self, Vec<JoinHandle<()>>, BlockProvider<DB, QuorumWaiter>) {
+        task_manager: &TaskManager,
+    ) -> (Self, BlockProvider<DB, QuorumWaiter>) {
         let worker_name = consensus_config.key_config().worker_network_public_key();
         let worker_peer_id = PeerId(worker_name.0.to_bytes());
         info!("Boot worker node with id {} peer id {}", id, worker_peer_id,);
@@ -141,11 +141,12 @@ impl<DB: Database> Worker<DB> {
             peer_types.insert(PeerId(network_key.0.to_bytes()), "other_primary".to_string());
         }
 
-        let (connection_monitor_handle, _) = tn_network::connectivity::ConnectionMonitor::spawn(
+        let _ = tn_network::connectivity::ConnectionMonitor::spawn(
             network.downgrade(),
             metrics.network_connection_metrics.clone(),
             peer_types,
             consensus_config.subscribe_shutdown(),
+            task_manager,
         );
 
         // TODO: revisit this soon
@@ -160,10 +161,11 @@ impl<DB: Database> Worker<DB> {
             id, network_admin_server_base_port
         );
 
-        let admin_handles = tn_network::admin::start_admin_server(
+        tn_network::admin::start_admin_server(
             network_admin_server_base_port,
             network.clone(),
             consensus_config.subscribe_shutdown(),
+            task_manager,
         );
 
         let block_provider = Self::new_block_provider(
@@ -174,8 +176,11 @@ impl<DB: Database> Worker<DB> {
             network.clone(),
         );
 
-        let network_shutdown_handle =
-            Self::shutdown_network_listener(consensus_config.subscribe_shutdown(), network.clone());
+        Self::shutdown_network_listener(
+            consensus_config.subscribe_shutdown(),
+            network.clone(),
+            task_manager,
+        );
 
         // NOTE: This log entry is used to compute performance.
         info!(target: "worker::worker",
@@ -188,9 +193,7 @@ impl<DB: Database> Worker<DB> {
                 .transactions
         );
 
-        let mut handles = vec![connection_monitor_handle, network_shutdown_handle];
-        handles.extend(admin_handles);
-        (Self { _id: id, _consensus_config: consensus_config, network }, handles, block_provider)
+        (Self { _id: id, _consensus_config: consensus_config, network }, block_provider)
     }
 
     /// Start the anemo network for the primary.
@@ -297,17 +300,24 @@ impl<DB: Database> Worker<DB> {
 
     /// Spawns a task responsible for explicitly shutting down the network
     /// when a shutdown signal has been sent to the node.
-    fn shutdown_network_listener(rx_shutdown: Noticer, network: Network) -> JoinHandle<()> {
-        spawn_logged_monitored_task!(
-            async move {
-                rx_shutdown.await;
-                if let Err(e) = network.shutdown().await {
-                    error!(target: "worker::worker", "Error while shutting down network: {e}");
-                }
-                info!(target: "worker::worker", "Worker network server shutdown");
-            },
-            "WorkerShutdownNetworkListenerTask"
-        )
+    fn shutdown_network_listener(
+        rx_shutdown: Noticer,
+        network: Network,
+        task_manager: &TaskManager,
+    ) {
+        task_manager.spawn_task(
+            "worker shutdown network listener task",
+            monitored_future!(
+                async move {
+                    rx_shutdown.await;
+                    if let Err(e) = network.shutdown().await {
+                        error!(target: "worker::worker", "Error while shutting down network: {e}");
+                    }
+                    info!(target: "worker::worker", "Worker network server shutdown");
+                },
+                "WorkerShutdownNetworkListenerTask"
+            ),
+        );
     }
 
     fn add_peer_in_network(

@@ -183,8 +183,13 @@ async fn propose_header_and_form_certificate_v2() {
     // Spawn the core.
     let synchronizer = Arc::new(Synchronizer::new(primary.consensus_config(), &cb));
 
-    let _handle =
-        Certifier::spawn(primary.consensus_config(), cb.clone(), synchronizer, network.clone());
+    Certifier::spawn(
+        primary.consensus_config(),
+        cb.clone(),
+        synchronizer,
+        network.clone(),
+        &TaskManager::new(),
+    );
 
     // Propose header and ensure that a certificate is formed by pulling it out of the
     // consensus channel.
@@ -245,7 +250,13 @@ async fn propose_header_failure() {
     // Spawn the core.
     let synchronizer = Arc::new(Synchronizer::new(primary.consensus_config(), &cb));
 
-    let _handle = Certifier::spawn(primary.consensus_config(), cb.clone(), synchronizer, network);
+    Certifier::spawn(
+        primary.consensus_config(),
+        cb.clone(),
+        synchronizer,
+        network.clone(),
+        &TaskManager::new(),
+    );
 
     // Propose header and verify we get no certificate back.
     cb.headers().send(proposed_header).await.unwrap();
@@ -325,7 +336,13 @@ async fn run_vote_aggregator_with_param(
     let mut rx_new_certificates = cb.new_certificates().subscribe();
     // Spawn the core.
     let synchronizer = Arc::new(Synchronizer::new(primary.consensus_config(), &cb));
-    let _handle = Certifier::spawn(primary.consensus_config(), cb.clone(), synchronizer, network);
+    Certifier::spawn(
+        primary.consensus_config(),
+        cb.clone(),
+        synchronizer,
+        network,
+        &TaskManager::new(),
+    );
 
     // Send a proposed header.
     let proposed_digest = proposed_header.digest();
@@ -366,14 +383,16 @@ async fn test_shutdown_core() {
         .unwrap();
 
     // Spawn the core.
-    let handle = Certifier::spawn(
+    let task_manager = TaskManager::new();
+    Certifier::spawn(
         primary.consensus_config(),
         cb.clone(),
         synchronizer.clone(),
         network.clone(),
+        &task_manager,
     );
 
     // Shutdown the core.
     fixture.notify_shutdown();
-    assert!(handle.await.is_ok());
+    task_manager.join().await;
 }

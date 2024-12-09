@@ -5,7 +5,6 @@
 //! Cluster fixture to represent a local network.
 use crate::{authority::AuthorityDetails, default_test_execution_node, CommitteeFixture};
 use itertools::Itertools;
-use reth::tasks::TaskExecutor;
 use std::{collections::HashMap, time::Duration};
 use tn_storage::traits::Database;
 use tn_types::{Committee, WorkerId};
@@ -32,7 +31,7 @@ where
     ///
     /// Fields passed in via Parameters will be used, expect specified ports which have to be
     /// different for each instance. If None, the default Parameters will be used.
-    pub fn new<F>(executor: TaskExecutor, new_db: F) -> Self
+    pub fn new<F>(new_db: F) -> Self
     where
         F: Fn() -> DB,
     {
@@ -52,7 +51,6 @@ where
             let engine = default_test_execution_node(
                 None, // default: adiri chain
                 Some(authority_execution_address),
-                executor.clone(),
             )
             .expect("default test execution node");
 
@@ -154,6 +152,7 @@ where
         Ok(())
     }
 
+    /* XXXX
     /// This method stops the authority (both the primary and the worker nodes)
     /// with the provided id.
     pub async fn stop_node(&self, id: usize) {
@@ -165,6 +164,7 @@ where
         }
         // TODO: wait for the node's network port to be released?
     }
+    */
 
     /// Returns all the running authorities. Any authority that:
     /// * has been started ever
@@ -175,9 +175,9 @@ where
         let mut result = Vec::new();
 
         for authority in self.authorities.values() {
-            if authority.is_running().await {
-                result.push(authority.clone());
-            }
+            // XXXX if authority.is_running().await {
+            result.push(authority.clone());
+            //}
         }
 
         result

@@ -25,9 +25,8 @@ mod worker;
 
 use self::inner::ExecutionNodeInner;
 use reth_provider::providers::BlockchainProvider;
-use reth_tasks::TaskExecutor;
 use tn_faucet::FaucetArgs;
-use tn_types::{ConsensusOutput, WorkerBlockSender, WorkerBlockValidation, WorkerId};
+use tn_types::{ConsensusOutput, TaskManager, WorkerBlockSender, WorkerBlockValidation, WorkerId};
 use tokio::sync::{broadcast, RwLock};
 pub use worker::*;
 
@@ -38,12 +37,8 @@ pub use worker::*;
 pub struct TnBuilder<DB> {
     /// The database environment where all execution data is stored.
     pub database: DB,
-    /// THe node configuration.
+    /// The node configuration.
     pub node_config: NodeConfig,
-    /// Task executor to spawn tasks for the node.
-    ///
-    /// The executor drops tasks when the CLI's TaskManager is dropped.
-    pub task_executor: TaskExecutor,
     /// Telcoin Network config.
     ///
     /// TODO: consolidate configs
@@ -67,11 +62,11 @@ where
     DB: Database + DatabaseMetadata + DatabaseMetrics + Clone + Unpin + 'static,
 {
     /// Create a new instance of `Self`.
-    pub fn new(tn_builder: TnBuilder<DB>) -> eyre::Result<Self> {
+    pub fn new(tn_builder: TnBuilder<DB>, task_manager: &TaskManager) -> eyre::Result<Self> {
         let evm_config = EthEvmConfig::default();
         let executor =
             EthExecutorProvider::new(Arc::clone(&tn_builder.node_config.chain), evm_config);
-        let inner = ExecutionNodeInner::new(tn_builder, executor, evm_config)?;
+        let inner = ExecutionNodeInner::new(tn_builder, executor, evm_config, task_manager)?;
 
         Ok(ExecutionNode { internal: Arc::new(RwLock::new(inner)) })
     }
@@ -80,9 +75,10 @@ where
     pub async fn start_engine(
         &self,
         from_consensus: broadcast::Receiver<ConsensusOutput>,
+        task_manager: &TaskManager,
     ) -> eyre::Result<()> {
         let guard = self.internal.read().await;
-        guard.start_engine(from_consensus).await
+        guard.start_engine(from_consensus, task_manager).await
     }
 
     /// Batch maker
@@ -90,9 +86,10 @@ where
         &self,
         worker_id: WorkerId,
         block_provider_sender: WorkerBlockSender,
+        task_manager: &TaskManager,
     ) -> eyre::Result<()> {
         let mut guard = self.internal.write().await;
-        guard.start_block_builder(worker_id, block_provider_sender).await
+        guard.start_block_builder(worker_id, block_provider_sender, task_manager).await
     }
 
     /// Batch validator

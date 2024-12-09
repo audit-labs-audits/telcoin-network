@@ -29,10 +29,9 @@ use tn_storage::{
 };
 use tn_types::{
     AuthorityIdentifier, BlockHash, Certificate, CommittedSubDag, Committee, ConsensusHeader,
-    ConsensusOutput, NetworkPublicKey, Noticer, Timestamp, TnReceiver, TnSender, WorkerBlock,
-    WorkerCache, WorkerId,
+    ConsensusOutput, NetworkPublicKey, Noticer, TaskManager, Timestamp, TnReceiver, TnSender,
+    WorkerBlock, WorkerCache, WorkerId,
 };
-use tokio::task::JoinHandle;
 use tracing::{debug, error, info, warn};
 
 /// The `Subscriber` receives certificates sequenced by the consensus and waits until the
@@ -63,25 +62,38 @@ pub fn spawn_subscriber<DB: Database>(
     consensus_bus: ConsensusBus,
     last_executed_consensus_hash: B256,
     network: anemo::Network,
-) -> JoinHandle<()> {
+    task_manager: &TaskManager,
+) {
     let authority_id = config.authority().id();
     let worker_cache = config.worker_cache().clone();
     let committee = config.committee().clone();
     let client = config.local_network().clone();
 
-    spawn_logged_monitored_task!(
-        async move {
-            info!(target: "telcoin::subscriber", "Starting subscriber");
-            let subscriber = Subscriber {
-                rx_shutdown,
-                consensus_bus,
-                config,
-                inner: Arc::new(Inner { authority_id, committee, worker_cache, client, network }),
-            };
-            subscriber.run(last_executed_consensus_hash).await.expect("Failed to run subscriber")
-        },
-        "SubscriberTask"
-    )
+    task_manager.spawn_task(
+        "Subscriber",
+        spawn_logged_monitored_task!(
+            async move {
+                info!(target: "telcoin::subscriber", "Starting subscriber");
+                let subscriber = Subscriber {
+                    rx_shutdown,
+                    consensus_bus,
+                    config,
+                    inner: Arc::new(Inner {
+                        authority_id,
+                        committee,
+                        worker_cache,
+                        client,
+                        network,
+                    }),
+                };
+                subscriber
+                    .run(last_executed_consensus_hash)
+                    .await
+                    .expect("Failed to run subscriber")
+            },
+            "SubscriberTask"
+        ),
+    );
 }
 
 impl<DB: Database> Subscriber<DB> {

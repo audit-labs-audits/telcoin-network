@@ -18,8 +18,7 @@ use mockall::automock;
 use std::sync::Arc;
 use tn_config::ConsensusConfig;
 use tn_storage::{CertificateStore, ConsensusStore};
-use tn_types::{CertificateDigest, CommittedSubDag, ConsensusOutput, Noticer};
-use tokio::task::JoinHandle;
+use tn_types::{CertificateDigest, CommittedSubDag, ConsensusOutput, Noticer, TaskManager};
 use tracing::info;
 
 /// Convenience type representing a serialized transaction.
@@ -49,20 +48,20 @@ impl Executor {
         consensus_bus: ConsensusBus,
         last_executed_consensus_hash: B256,
         network: anemo::Network,
-    ) -> SubscriberResult<JoinHandle<()>> {
+        task_manager: &TaskManager,
+    ) {
         // Spawn the subscriber.
-        let subscriber_handle = spawn_subscriber(
+        spawn_subscriber(
             config,
             rx_shutdown,
             consensus_bus,
             last_executed_consensus_hash,
             network,
+            task_manager,
         );
 
         // Return the handle.
         info!("Consensus subscriber successfully started");
-
-        Ok(subscriber_handle)
     }
 }
 

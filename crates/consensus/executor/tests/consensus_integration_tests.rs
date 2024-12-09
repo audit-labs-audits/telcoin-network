@@ -10,7 +10,7 @@ use tn_primary::{
 
 use tn_storage::mem_db::MemDatabase;
 use tn_test_utils::CommitteeFixture;
-use tn_types::DEFAULT_BAD_NODES_STAKE_THRESHOLD;
+use tn_types::{TaskManager, DEFAULT_BAD_NODES_STAKE_THRESHOLD};
 
 use std::{collections::BTreeSet, sync::Arc};
 
@@ -55,7 +55,7 @@ async fn test_recovery() {
     let mut rx_output = cb.sequence().subscribe();
     // pretend we are synced and ready to go so test can run...
     cb.sync_status().send(tn_primary::SyncStatus::Synced).unwrap();
-    let _consensus_handle = Consensus::spawn(config_1, &cb, bullshark);
+    Consensus::spawn(config_1, &cb, bullshark, &TaskManager::new());
     tokio::spawn(async move {
         let mut rx_primary = cb_clone.committed_certificates().subscribe();
         while rx_primary.recv().await.is_some() {}

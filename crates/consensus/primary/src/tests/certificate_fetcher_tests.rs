@@ -19,8 +19,8 @@ use tn_storage::{mem_db::MemDatabase, traits::Database, CertificateStore};
 use tn_test_utils::{test_network, CommitteeFixture};
 use tn_types::{
     AuthorityIdentifier, BlockHash, BlsAggregateSignatureBytes, Certificate, CertificateDigest,
-    Epoch, Header, HeaderDigest, Round, SignatureVerificationState, SystemMessage, TimestampSec,
-    WorkerId,
+    Epoch, Header, HeaderDigest, Round, SignatureVerificationState, SystemMessage, TaskManager,
+    TimestampSec, WorkerId,
 };
 use tokio::{
     sync::{
@@ -197,7 +197,7 @@ async fn fetch_certificates_v1_basic() {
         .unwrap();
 
     // Make a certificate fetcher
-    let _certificate_fetcher_handle = CertificateFetcher::spawn(
+    CertificateFetcher::spawn(
         id,
         fixture.committee(),
         client_network.clone(),
@@ -205,6 +205,7 @@ async fn fetch_certificates_v1_basic() {
         cb.clone(),
         primary.consensus_config().subscribe_shutdown(),
         synchronizer.clone(),
+        &TaskManager::new(),
     );
 
     // Generate headers and certificates in successive rounds

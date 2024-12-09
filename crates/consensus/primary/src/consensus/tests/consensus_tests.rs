@@ -9,7 +9,8 @@ use fastcrypto::hash::Hash;
 use tn_storage::mem_db::MemDatabase;
 use tn_test_utils::CommitteeFixture;
 use tn_types::{
-    Certificate, ReputationScores, TnReceiver, TnSender, DEFAULT_BAD_NODES_STAKE_THRESHOLD,
+    Certificate, ReputationScores, TaskManager, TnReceiver, TnSender,
+    DEFAULT_BAD_NODES_STAKE_THRESHOLD,
 };
 
 use crate::{
@@ -67,7 +68,8 @@ async fn test_consensus_recovery_with_bullshark() {
     let mut rx_output = cb.sequence().subscribe();
     // pretend we are synced and ready to go so test can run...
     cb.sync_status_synced();
-    let consensus_handle = Consensus::spawn(config.clone(), &cb, bullshark);
+    let task_manager = TaskManager::new();
+    Consensus::spawn(config.clone(), &cb, bullshark, &task_manager);
 
     // WHEN we feed all certificates to the consensus.
     for certificate in certificates.iter() {
@@ -127,7 +129,7 @@ async fn test_consensus_recovery_with_bullshark() {
     }
 
     // AND shutdown consensus
-    consensus_handle.abort();
+    task_manager.abort();
 
     consensus_store.clear().unwrap();
     certificate_store.clear().unwrap();
@@ -150,7 +152,8 @@ async fn test_consensus_recovery_with_bullshark() {
     let mut rx_output = cb.sequence().subscribe();
     // pretend we are synced and ready to go so test can run...
     cb.sync_status_synced();
-    let consensus_handle = Consensus::spawn(config.clone(), &cb, bullshark);
+    let task_manager = TaskManager::new();
+    Consensus::spawn(config.clone(), &cb, bullshark, &task_manager);
 
     // WHEN we send same certificates but up to round 3 (inclusive)
     // Then we store all the certificates up to round 6 so we can let the recovery algorithm
@@ -190,7 +193,7 @@ async fn test_consensus_recovery_with_bullshark() {
     }
 
     // AND shutdown (crash) consensus
-    consensus_handle.abort();
+    task_manager.abort();
 
     let bad_nodes_stake_threshold = 0;
     let bullshark = Bullshark::new(
@@ -206,7 +209,7 @@ async fn test_consensus_recovery_with_bullshark() {
     let mut rx_output = cb.sequence().subscribe();
     // pretend we are synced and ready to go so test can run...
     cb.sync_status_synced();
-    let _consensus_handle = Consensus::spawn(config, &cb, bullshark);
+    Consensus::spawn(config, &cb, bullshark, &TaskManager::new());
 
     // WHEN send the certificates of round >= 5 to trigger a leader election for round 4
     // and start committing.

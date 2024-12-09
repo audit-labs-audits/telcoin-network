@@ -15,7 +15,9 @@ use std::{
 use tn_network::PrimaryToPrimaryRpc;
 use tn_primary_metrics::PrimaryMetrics;
 use tn_storage::{traits::Database, CertificateStore};
-use tn_types::{AuthorityIdentifier, Committee, NetworkPublicKey, Noticer, TnReceiver, TnSender};
+use tn_types::{
+    AuthorityIdentifier, Committee, NetworkPublicKey, Noticer, TaskManager, TnReceiver, TnSender,
+};
 
 use tn_network_types::{FetchCertificatesRequest, FetchCertificatesResponse};
 use tn_types::{
@@ -23,7 +25,7 @@ use tn_types::{
     validate_received_certificate_version, Certificate, Round,
 };
 use tokio::{
-    task::{JoinHandle, JoinSet},
+    task::JoinSet,
     time::{sleep, timeout, Instant},
 };
 use tracing::{debug, error, instrument, trace};
@@ -92,7 +94,6 @@ struct CertificateFetcherState<DB> {
 
 impl<DB: Database> CertificateFetcher<DB> {
     #[allow(clippy::too_many_arguments)]
-    #[must_use]
     pub fn spawn(
         authority_id: AuthorityIdentifier,
         committee: Committee,
@@ -101,7 +102,8 @@ impl<DB: Database> CertificateFetcher<DB> {
         consensus_bus: ConsensusBus,
         rx_shutdown: Noticer,
         synchronizer: Arc<Synchronizer<DB>>,
-    ) -> JoinHandle<()> {
+        task_manager: &TaskManager,
+    ) {
         let state = Arc::new(CertificateFetcherState {
             authority_id,
             network,
@@ -109,22 +111,25 @@ impl<DB: Database> CertificateFetcher<DB> {
             metrics: consensus_bus.primary_metrics().node_metrics.clone(),
         });
 
-        spawn_logged_monitored_task!(
-            async move {
-                Self {
-                    state,
-                    committee,
-                    certificate_store,
-                    consensus_bus,
-                    rx_shutdown,
-                    targets: BTreeMap::new(),
-                    fetch_certificates_task: JoinSet::new(),
-                }
-                .run()
-                .await;
-            },
-            "CertificateFetcherTask"
-        )
+        task_manager.spawn_task(
+            "certificate fetcher task",
+            spawn_logged_monitored_task!(
+                async move {
+                    Self {
+                        state,
+                        committee,
+                        certificate_store,
+                        consensus_bus,
+                        rx_shutdown,
+                        targets: BTreeMap::new(),
+                        fetch_certificates_task: JoinSet::new(),
+                    }
+                    .run()
+                    .await;
+                },
+                "CertificateFetcherTask"
+            ),
+        );
     }
 
     async fn run(&mut self) {

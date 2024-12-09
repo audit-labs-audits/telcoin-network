@@ -3,11 +3,10 @@
 // Copyright (c) Mysten Labs, Inc.
 // SPDX-License-Identifier: Apache-2.0
 use consensus_metrics::spawn_logged_monitored_task;
-use tn_types::{AuthorityIdentifier, Noticer, TnReceiver, TnSender};
+use tn_types::{AuthorityIdentifier, Noticer, TaskManager, TnReceiver, TnSender};
 
 use tap::TapFallible;
 use tn_types::{Certificate, Round};
-use tokio::task::JoinHandle;
 use tracing::{debug, error, info, warn};
 
 use crate::ConsensusBus;
@@ -25,21 +24,24 @@ pub struct StateHandler {
 }
 
 impl StateHandler {
-    #[must_use]
     pub fn spawn(
         authority_id: AuthorityIdentifier,
         consensus_bus: &ConsensusBus,
         rx_shutdown: Noticer,
         network: anemo::Network,
-    ) -> JoinHandle<()> {
+        task_manager: &TaskManager,
+    ) {
         let state_handler =
             Self { authority_id, consensus_bus: consensus_bus.clone(), rx_shutdown, network };
-        spawn_logged_monitored_task!(
-            async move {
-                state_handler.run().await;
-            },
-            "StateHandlerTask"
-        )
+        task_manager.spawn_task(
+            "state handler task",
+            spawn_logged_monitored_task!(
+                async move {
+                    state_handler.run().await;
+                },
+                "StateHandlerTask"
+            ),
+        );
     }
 
     async fn handle_sequenced(&mut self, commit_round: Round, certificates: Vec<Certificate>) {

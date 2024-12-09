@@ -3,10 +3,7 @@
 //! This module contains the logic for execution.
 
 use super::{TnBuilder, WorkerComponents, WorkerTxPool};
-use crate::{
-    engine::{WorkerNetwork, WorkerNode},
-    error::ExecutionError,
-};
+use crate::{engine::WorkerNetwork, error::ExecutionError};
 use eyre::eyre;
 use jsonrpsee::http_client::HttpClient;
 use reth::rpc::{
@@ -23,18 +20,19 @@ use reth_db::{
 };
 use reth_db_common::init::init_genesis;
 use reth_evm::{execute::BlockExecutorProvider, ConfigureEvm};
-use reth_node_builder::{common::WithConfigs, BuilderContext, NodeConfig};
+use reth_node_builder::{NodeConfig, RethTransactionPoolConfig};
 use reth_node_ethereum::EthEvmConfig;
 use reth_primitives::{
     constants::MIN_PROTOCOL_BASE_FEE, Address, BlockBody, SealedBlock, SealedBlockWithSenders, B256,
 };
 use reth_provider::{
     providers::{BlockchainProvider, StaticFileProvider},
-    BlockIdReader, BlockReader, CanonStateSubscriptions as _, DatabaseProviderFactory,
-    FinalizedBlockReader, HeaderProvider, ProviderFactory, TransactionVariant,
+    BlockIdReader, BlockReader, CanonStateSubscriptions as _, ChainSpecProvider,
+    DatabaseProviderFactory, FinalizedBlockReader, HeaderProvider, ProviderFactory,
+    TransactionVariant,
 };
 use reth_prune::PruneModes;
-use reth_tasks::TaskExecutor;
+use reth_tasks::TaskSpawner;
 use reth_transaction_pool::{
     blobstore::DiskFileBlobStore, TransactionPool, TransactionValidationTaskExecutor,
 };
@@ -46,8 +44,8 @@ use tn_engine::ExecutorEngine;
 use tn_faucet::{FaucetArgs, FaucetRpcExtApiServer as _};
 use tn_rpc::{TelcoinNetworkRpcExt, TelcoinNetworkRpcExtApiServer};
 use tn_types::{
-    Consensus, ConsensusOutput, LastCanonicalUpdate, WorkerBlockSender, WorkerBlockValidation,
-    WorkerId,
+    Consensus, ConsensusOutput, LastCanonicalUpdate, TaskManager, WorkerBlockSender,
+    WorkerBlockValidation, WorkerId,
 };
 use tokio::sync::{broadcast, mpsc::unbounded_channel};
 use tokio_stream::wrappers::BroadcastStream;
@@ -82,12 +80,6 @@ where
     evm_config: CE,
     /// The Evm configuration type.
     evm_executor: Evm,
-    /// The task executor is responsible for executing
-    /// and spawning tasks to the runtime.
-    ///
-    /// This type is owned by the current runtime and facilitates
-    /// a convenient way to spawn tasks that shutdown with the runtime.
-    task_executor: TaskExecutor,
     /// TODO: temporary solution until upstream reth supports public rpc hooks
     opt_faucet_args: Option<FaucetArgs>,
     /// Collection of execution components by worker.
@@ -106,10 +98,10 @@ where
         tn_builder: TnBuilder<DB>,
         evm_executor: Evm,
         evm_config: CE,
+        reth_task_executor: &TaskManager,
     ) -> eyre::Result<Self> {
         // deconstruct the builder
-        let TnBuilder { database, node_config, task_executor, tn_config, opt_faucet_args } =
-            tn_builder;
+        let TnBuilder { database, node_config, tn_config, opt_faucet_args } = tn_builder;
 
         // resolve the node's datadir
         let datadir = node_config.datadir();
@@ -138,7 +130,8 @@ where
         debug!(target: "tn::cli", "Spawning stages metrics listener task");
         let (sync_metrics_tx, sync_metrics_rx) = unbounded_channel();
         let sync_metrics_listener = reth_stages::MetricsListener::new(sync_metrics_rx);
-        task_executor.spawn_critical("stages metrics listener task", sync_metrics_listener);
+        reth_task_executor
+            .spawn_critical("stages metrics listener task", Box::pin(sync_metrics_listener));
 
         // get config from file
         let prune_config = node_config.prune_config(); //.or(reth_config.prune.clone());
@@ -169,7 +162,6 @@ where
             provider_factory,
             evm_config,
             evm_executor,
-            task_executor,
             opt_faucet_args,
             tn_config,
             workers: HashMap::default(),
@@ -183,6 +175,7 @@ where
     pub(super) async fn start_engine(
         &self,
         from_consensus: broadcast::Receiver<ConsensusOutput>,
+        task_manager: &TaskManager,
     ) -> eyre::Result<()> {
         let head = self.node_config.lookup_head(self.provider_factory.clone())?;
 
@@ -200,13 +193,16 @@ where
         );
 
         // spawn tn engine
-        self.task_executor.spawn_critical_blocking("consensus engine", async move {
-            let res = tn_engine.await;
-            match res {
-                Ok(_) => info!(target: "engine", "TN Engine exited gracefully"),
-                Err(e) => error!(target: "engine", ?e, "TN Engine error"),
-            }
-        });
+        task_manager.spawn_task(
+            "consensus engine",
+            Box::pin(async move {
+                let res = tn_engine.await;
+                match res {
+                    Ok(_) => info!(target: "engine", "TN Engine exited gracefully"),
+                    Err(e) => error!(target: "engine", ?e, "TN Engine error"),
+                }
+            }),
+        );
 
         Ok(())
     }
@@ -216,44 +212,48 @@ where
         &mut self,
         worker_id: WorkerId,
         block_provider_sender: WorkerBlockSender,
+        task_manager: &TaskManager,
     ) -> eyre::Result<()> {
         let head = self.node_config.lookup_head(self.provider_factory.clone())?;
 
-        let ctx = BuilderContext::<WorkerNode<DB, Evm>>::new(
+        /*XXXX        let ctx = BuilderContext::<WorkerNode<DB, Evm>>::new(
             head,
             self.blockchain_db.clone(),
-            self.task_executor.clone(),
+            self.reth_task_executor.clone(),
             WithConfigs {
                 config: self.node_config.clone(),
                 toml_config: reth_config::Config::default(), /* mostly unused peer and staging
                                                               * configs */
             },
-        );
+        );*/
 
         // inspired by reth's default eth tx pool:
         // - `EthereumPoolBuilder::default()`
         // - `components_builder.build_components()`
         // - `pool_builder.build_pool(&ctx)`
         let transaction_pool = {
-            let data_dir = ctx.config().datadir();
-            let pool_config = ctx.pool_config();
+            let data_dir = self.node_config.datadir();
+            let pool_config = self.node_config.txpool.pool_config();
             let blob_store = DiskFileBlobStore::open(data_dir.blobstore(), Default::default())?;
-            let validator = TransactionValidationTaskExecutor::eth_builder(ctx.chain_spec())
-                .with_head_timestamp(ctx.head().timestamp)
-                .kzg_settings(ctx.kzg_settings()?)
-                .with_local_transactions_config(pool_config.local_transactions_config.clone())
-                .with_additional_tasks(ctx.config().txpool.additional_validation_tasks)
-                .build_with_tasks(
-                    ctx.provider().clone(),
-                    ctx.task_executor().clone(),
-                    blob_store.clone(),
-                );
+            let validator =
+                TransactionValidationTaskExecutor::eth_builder(self.blockchain_db.chain_spec())
+                    .with_head_timestamp(head.timestamp)
+                    .kzg_settings(reth_primitives::revm_primitives::EnvKzgSettings::Default)
+                    .with_local_transactions_config(pool_config.local_transactions_config.clone())
+                    .with_additional_tasks(self.node_config.txpool.additional_validation_tasks)
+                    .build_with_tasks(
+                        self.blockchain_db.clone(),
+                        task_manager.clone(),
+                        blob_store.clone(),
+                    );
 
             let transaction_pool =
                 reth_transaction_pool::Pool::eth_pool(validator, blob_store, pool_config);
 
             info!(target: "tn::execution", "Transaction pool initialized");
 
+            /* XXXX
+            Should probably recreate this.  The reth function backup_local_tranractions_task's shutdown param can not be easily created.
             let transactions_path = data_dir.txpool_transactions();
             let transactions_backup_config =
                 reth_transaction_pool::maintain::LocalTransactionBackupConfig::with_local_txs_backup(transactions_path);
@@ -269,6 +269,7 @@ where
                     )
                 },
             );
+            */
 
             transaction_pool
         };
@@ -278,12 +279,12 @@ where
         use reth_transaction_pool::TransactionPoolExt as _;
         let mut tx_pool_latest = transaction_pool.block_info();
         tx_pool_latest.pending_basefee = MIN_PROTOCOL_BASE_FEE;
-        tx_pool_latest.last_seen_block_hash = ctx
-            .provider()
+        tx_pool_latest.last_seen_block_hash = self
+            .blockchain_db
             .finalized_block_hash()?
             .unwrap_or_else(|| self.tn_config.chain_spec().sealed_genesis_header().hash());
         tx_pool_latest.last_seen_block_number =
-            ctx.provider().finalized_block_number()?.unwrap_or_default();
+            self.blockchain_db.finalized_block_number()?.unwrap_or_default();
         transaction_pool.set_block_info(tx_pool_latest);
 
         let tip = match tx_pool_latest.last_seen_block_number {
@@ -355,7 +356,7 @@ where
             .with_provider(self.blockchain_db.clone())
             .with_pool(transaction_pool.clone())
             .with_network(network)
-            .with_executor(self.task_executor.clone())
+            .with_executor(task_manager.clone())
             .with_evm_config(EthEvmConfig::default()) // TODO: this should come from self
             .with_events(self.blockchain_db.clone());
 
@@ -368,7 +369,7 @@ where
 
         // extend TN namespace
         let engine_to_primary = (); // TODO: pass client/server here
-        let tn_ext = TelcoinNetworkRpcExt::new(ctx.chain_spec(), engine_to_primary);
+        let tn_ext = TelcoinNetworkRpcExt::new(self.blockchain_db.chain_spec(), engine_to_primary);
         if let Err(e) = server.merge_configured(tn_ext.into_rpc()) {
             error!(target: "tn::execution", "Error merging TN rpc module: {e:?}");
         }

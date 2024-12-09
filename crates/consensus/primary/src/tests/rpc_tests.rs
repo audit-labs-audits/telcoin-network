@@ -3,7 +3,6 @@
 // SPDX-License-Identifier: Apache-2.0
 
 use anemo::PeerId;
-use reth::tasks::TaskManager;
 use std::time::Duration;
 use tn_network::{PrimaryToPrimaryRpc, WorkerRpc};
 use tn_network_types::{FetchCertificatesRequest, RequestBlocksRequest};
@@ -14,9 +13,7 @@ use tn_types::AuthorityIdentifier;
 #[tokio::test]
 async fn test_server_authorizations() {
     // Set up primaries and workers with a committee.
-    let manager = TaskManager::current();
-    let executor = manager.executor();
-    let mut test_cluster = Cluster::new(executor, MemDatabase::default);
+    let mut test_cluster = Cluster::new(MemDatabase::default);
     test_cluster.start(Some(4), Some(1), None).await;
     // allow enough time for peers to establish connections
     tokio::time::sleep(Duration::from_secs(3)).await;
@@ -62,9 +59,7 @@ async fn test_server_authorizations() {
     }
 
     // Set up primaries and workers with a another committee.
-    let manager = TaskManager::current();
-    let executor = manager.executor();
-    let mut unreachable_cluster = Cluster::new(executor, MemDatabase::default);
+    let mut unreachable_cluster = Cluster::new(MemDatabase::default);
     unreachable_cluster.start(Some(4), Some(1), None).await;
     tokio::time::sleep(Duration::from_secs(3)).await;
 

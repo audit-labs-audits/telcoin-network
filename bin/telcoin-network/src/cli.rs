@@ -6,7 +6,6 @@ use crate::{
 };
 use clap::{value_parser, Parser, Subcommand};
 use futures::Future;
-use reth::CliRunner;
 use reth_chainspec::ChainSpec;
 use reth_cli_commands::node::NoArgs;
 use reth_db::DatabaseEnv;
@@ -120,7 +119,7 @@ impl<Ext: clap::Args + fmt::Debug> Cli<Ext> {
     ///     })
     ///     .unwrap();
     /// ````
-    pub fn run<L, Fut>(mut self, launcher: L) -> eyre::Result<()>
+    pub async fn run<L, Fut>(mut self, launcher: L) -> eyre::Result<()>
     where
         L: FnOnce(TnBuilder<Arc<DatabaseEnv>>, Ext, DataDirChainPath) -> Fut,
         Fut: Future<Output = eyre::Result<()>>,
@@ -131,13 +130,10 @@ impl<Ext: clap::Args + fmt::Debug> Cli<Ext> {
 
         let _guard = self.init_tracing()?;
 
-        let runner = CliRunner::default();
         match self.command {
-            Commands::Genesis(command) => runner.run_command_until_exit(|_| command.execute()),
-            Commands::Node(command) => {
-                runner.run_command_until_exit(|ctx| command.execute(ctx, true, launcher))
-            }
-            Commands::Keytool(command) => runner.run_command_until_exit(|_| command.execute()),
+            Commands::Genesis(command) => command.execute().await,
+            Commands::Node(command) => command.execute(true, launcher).await,
+            Commands::Keytool(command) => command.execute().await,
         }
     }
 
@@ -213,8 +209,8 @@ mod tests {
         assert!(log_dir.as_ref().ends_with(end), "{log_dir:?}");
     }
 
-    #[test]
-    fn parse_env_filter_directives() {
+    #[tokio::test]
+    async fn parse_env_filter_directives() {
         let temp_dir = tempfile::tempdir().unwrap();
 
         std::env::set_var("RUST_LOG", "info,evm=debug");
@@ -227,6 +223,6 @@ mod tests {
             "debug,net=trace",
         ])
         .unwrap();
-        assert!(tn.run(|_, _, _| async move { Ok(()) }).is_ok());
+        assert!(tn.run(|_, _, _| async move { Ok(()) }).await.is_ok());
     }
 }

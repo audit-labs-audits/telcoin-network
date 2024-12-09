@@ -9,7 +9,7 @@ use crate::{
     consensus::{bullshark::Bullshark, utils::gc_round, ConsensusError, ConsensusMetrics},
     ConsensusBus, SyncStatus,
 };
-use consensus_metrics::spawn_logged_monitored_task;
+use consensus_metrics::monitored_future;
 use fastcrypto::hash::Hash;
 use std::{
     cmp::{max, Ordering},
@@ -21,9 +21,8 @@ use tn_config::ConsensusConfig;
 use tn_storage::{traits::Database, CertificateStore};
 use tn_types::{
     AuthorityIdentifier, Certificate, CertificateDigest, CommittedSubDag, Committee,
-    ConsensusCommit, Noticer, Round, SequenceNumber, Timestamp, TnReceiver, TnSender,
+    ConsensusCommit, Noticer, Round, SequenceNumber, TaskManager, Timestamp, TnReceiver, TnSender,
 };
-use tokio::task::JoinHandle;
 use tracing::{debug, info, instrument};
 
 #[cfg(test)]
@@ -306,12 +305,12 @@ pub struct Consensus<DB> {
 }
 
 impl<DB: Database> Consensus<DB> {
-    #[must_use]
     pub fn spawn(
         consensus_config: ConsensusConfig<DB>,
         consensus_bus: &ConsensusBus,
         protocol: Bullshark<DB>,
-    ) -> JoinHandle<()> {
+        task_manager: &TaskManager,
+    ) {
         let metrics = consensus_bus.consensus_metrics();
         let rx_shutdown = consensus_config.subscribe_shutdown();
         // The consensus state (everything else is immutable).
@@ -356,7 +355,8 @@ impl<DB: Database> Consensus<DB> {
             state,
         };
 
-        spawn_logged_monitored_task!(s.run(), "Consensus", INFO)
+        task_manager
+            .spawn_task("Consensus".to_string(), monitored_future!(s.run(), "Consensus", INFO));
     }
 
     async fn run(self) {

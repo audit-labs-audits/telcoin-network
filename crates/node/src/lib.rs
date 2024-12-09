@@ -3,7 +3,7 @@
 
 use crate::{primary::PrimaryNode, worker::WorkerNode};
 use engine::{ExecutionNode, TnBuilder};
-use futures::{future::try_join_all, stream::FuturesUnordered, StreamExt};
+use futures::StreamExt;
 use reth_db::{
     database::Database,
     database_metrics::{DatabaseMetadata, DatabaseMetrics},
@@ -12,6 +12,7 @@ use reth_provider::CanonStateSubscriptions;
 use tn_config::{ConsensusConfig, KeyConfig, TelcoinDirs};
 use tn_storage::open_db;
 pub use tn_storage::NodeStorage;
+use tn_types::TaskManager;
 use tracing::{info, instrument};
 
 pub mod dirs;
@@ -37,7 +38,9 @@ where
     let config = builder.tn_config.clone();
     // adjust rpc instance ports
     builder.node_config.adjust_instance_ports();
-    let engine = ExecutionNode::new(builder)?; //XXXX, executor, evm_config)?;
+    let mut task_manager = TaskManager::new();
+    let engine_task_manager = TaskManager::new();
+    let engine = ExecutionNode::new(builder, &engine_task_manager)?;
 
     info!(target: "telcoin::node", "execution engine created");
 
@@ -62,7 +65,7 @@ where
     let eng_bus = primary.consensus_bus().await;
 
     // Spawn a task to update the consensus bus with new execution blocks as they are produced.
-    tokio::spawn(async move {
+    task_manager.spawn_task("latest block", async move {
         while let Some(latest) = engine_state.next().await {
             let latest_num_hash = latest.tip().block.num_hash();
             eng_bus.recent_blocks().send_modify(|blocks| blocks.push_latest(latest_num_hash));
@@ -73,28 +76,26 @@ where
     let last_executed_consensus_hash =
         engine.last_executed_output().await.expect("execution found HEAD");
     // start the primary
-    primary.start(last_executed_consensus_hash).await?;
+    let primary_task_manager = primary.start(last_executed_consensus_hash).await?;
 
     // create receiving channel before spawning primary to ensure messages are not lost
     let consensus_output_rx = primary.consensus_bus().await.subscribe_consensus_output();
-    // start engine XXXX
-    engine.start_engine(consensus_output_rx).await?;
 
     let validator = engine.new_block_validator().await;
     // start the worker
-    let block_provider = worker.start(validator).await?;
+    let (worker_task_manager, block_provider) = worker.start(validator).await?;
 
+    // start engine XXXX
+    engine.start_engine(consensus_output_rx, &engine_task_manager).await?;
     // XXXX spawn batch maker for worker
-    engine.start_block_builder(*worker_id, block_provider.blocks_tx()).await?;
+    engine
+        .start_block_builder(*worker_id, block_provider.blocks_tx(), &engine_task_manager)
+        .await?;
 
-    // TODO: use value from CLI
-    let terminate_early = false;
+    task_manager.add_task_manager("Primary", primary_task_manager);
+    task_manager.add_task_manager("Worker", worker_task_manager);
+    task_manager.add_task_manager("Engine", engine_task_manager);
 
-    if terminate_early {
-        Ok(())
-    } else {
-        // The pipeline has finished downloading blocks up to `--debug.tip` or
-        // `--debug.max-block`. Keep other node components alive for further usage.
-        futures::future::pending().await
-    }
+    task_manager.join_until_exit().await;
+    Ok(())
 }

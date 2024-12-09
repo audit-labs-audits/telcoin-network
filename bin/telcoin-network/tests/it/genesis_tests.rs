@@ -12,16 +12,12 @@ mod tests {
     use fastcrypto::traits::{KeyPair, ToFromBytes};
     use jsonrpsee::{core::client::ClientT, http_client::HttpClientBuilder, rpc_params};
     use rand::{rngs::StdRng, SeedableRng};
-    use reth::{
-        primitives::{Address, Bytes, GenesisAccount, U256},
-        tasks::TaskManager,
-    };
+    use reth::primitives::{Address, Bytes, GenesisAccount, U256};
     use reth_chainspec::ChainSpec;
     use std::{sync::Arc, time::Duration};
     use tn_config::{test_fetch_file_content_relative_to_manifest, ContractStandardJson};
     use tn_test_utils::TransactionFactory;
     use tn_types::{adiri_genesis, BlsKeypair, NetworkKeypair};
-    use tokio::runtime::Handle;
 
     #[tokio::test]
     async fn test_genesis_with_consensus_registry() {
@@ -214,10 +210,7 @@ mod tests {
         let genesis = real_genesis.extend_accounts(genesis_accounts.into_iter());
         let chain: Arc<ChainSpec> = Arc::new(genesis.into());
 
-        // task manager
-        let manager = TaskManager::new(Handle::current());
-        let task_executor = manager.executor();
-        spawn_local_testnet(&task_executor, chain, "0x0000000000000000000000000000000000000000")
+        spawn_local_testnet(chain, "0x0000000000000000000000000000000000000000")
             .await
             .expect("failed to spawn testnet");
         // allow time for nodes to start
