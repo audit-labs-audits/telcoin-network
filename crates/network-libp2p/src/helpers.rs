@@ -1,7 +1,6 @@
 //! Helper methods used for handling network communication.
 
-use crate::types::{NetworkCommand, PublishMessageId};
-use eyre::eyre;
+use crate::types::SwarmCommand;
 use libp2p::{
     gossipsub::{self},
     Multiaddr, Swarm, SwarmBuilder,
@@ -14,10 +13,10 @@ use tracing::error;
 /// This is a convenience function to keep publisher/subscriber network DRY.
 ///
 /// NOTE: the swarm tries to connect to the provided multiaddr.
-pub(crate) fn start_swarm<'a, M>(multiaddr: Multiaddr) -> eyre::Result<Swarm<gossipsub::Behaviour>>
-where
-    M: PublishMessageId<'a>,
-{
+pub(crate) fn start_swarm(
+    multiaddr: Multiaddr,
+    gossipsub_config: gossipsub::Config,
+) -> eyre::Result<Swarm<gossipsub::Behaviour>> {
     // generate a random ed25519 key
     let mut swarm = SwarmBuilder::with_new_identity()
         // tokio runtime
@@ -26,24 +25,6 @@ where
         .with_quic()
         // custom behavior
         .with_behaviour(|keypair| {
-            // To content-address message, we can take the hash of message and use it as an ID.
-            let message_id_fn = |message: &gossipsub::Message| {
-                let message_id = M::message_id(message);
-                gossipsub::MessageId::new(message_id.as_ref())
-            };
-
-            // Set a custom gossipsub configuration
-            let gossipsub_config = gossipsub::ConfigBuilder::default()
-                .heartbeat_interval(Duration::from_secs(10)) // This is set to aid debugging by not cluttering the log space
-                .validation_mode(gossipsub::ValidationMode::Strict) // this is default - enforce message signing
-                .message_id_fn(message_id_fn) // content-address messages. No two messages of the same content will be
-                // propagated.
-                .build()
-                .map_err(|e| {
-                    error!(?e, "gossipsub publish network");
-                    eyre!("failed to build gossipsub config for primary")
-                })?;
-
             // build a gossipsub network behaviour
             let network = gossipsub::Behaviour::new(
                 gossipsub::MessageAuthenticity::Signed(keypair.clone()),
@@ -62,47 +43,117 @@ where
     Ok(swarm)
 }
 
-/// Helper function for processing network commands.
+/// Helper function for publish swarm gossip config.
+pub fn subscriber_gossip_config() -> eyre::Result<gossipsub::Config> {
+    let config = gossipsub::ConfigBuilder::default()
+        // explicitly set heartbeat interval (default)
+        .heartbeat_interval(Duration::from_secs(1))
+        // explicitly set strict mode (default)
+        .validation_mode(gossipsub::ValidationMode::Strict)
+        // only listen to authorized publishers
+        .validate_messages()
+        .build()?;
+
+    Ok(config)
+}
+
+/// Helper function for publish swarm gossip config.
+pub fn publisher_gossip_config() -> eyre::Result<gossipsub::Config> {
+    let config = gossipsub::ConfigBuilder::default()
+        // explicitly set heartbeat interval (default)
+        .heartbeat_interval(Duration::from_secs(1))
+        // explicitly set strict mode (default)
+        .validation_mode(gossipsub::ValidationMode::Strict)
+        // support peer exchange
+        .do_px()
+        .prune_peers(6)
+        .build()?;
+
+    Ok(config)
+}
+
+/// Helper function for processing the network's swarm commands.
 ///
 /// This function calls methods on the swarm.
 #[inline]
-pub(crate) fn process_network_command(
-    command: NetworkCommand,
+pub(crate) fn process_swarm_command(
+    command: SwarmCommand,
     network: &mut Swarm<gossipsub::Behaviour>,
 ) {
     match command {
-        NetworkCommand::GetListener { reply } => {
+        SwarmCommand::GetListener { reply } => {
             let addrs = network.listeners().cloned().collect();
             if let Err(e) = reply.send(addrs) {
                 error!(target: "gossip-network", ?e, "GetListeners command failed");
             }
         }
-        NetworkCommand::AddExplicitPeer { peer_id, addr } => {
+        SwarmCommand::AddExplicitPeer { peer_id, addr } => {
             network.add_peer_address(peer_id, addr);
             network.behaviour_mut().add_explicit_peer(&peer_id);
         }
-        NetworkCommand::Dial { dial_opts, reply } => {
+        SwarmCommand::Dial { dial_opts, reply } => {
             let res = network.dial(dial_opts);
             if let Err(e) = reply.send(res) {
                 error!(target: "gossip-network", ?e, "AddExplicitPeer command failed");
             }
         }
-        NetworkCommand::LocalPeerId { reply } => {
+        SwarmCommand::LocalPeerId { reply } => {
             let peer_id = *network.local_peer_id();
             if let Err(e) = reply.send(peer_id) {
                 error!(target: "gossip-network", ?e, "LocalPeerId command failed");
             }
         }
-        NetworkCommand::Publish { topic, msg, reply } => {
+        SwarmCommand::Publish { topic, msg, reply } => {
             let res = network.behaviour_mut().publish(topic, msg);
             if let Err(e) = reply.send(res) {
                 error!(target: "gossip-network", ?e, "Publish command failed");
             }
         }
-        NetworkCommand::Subscribe { topic, reply } => {
+        SwarmCommand::Subscribe { topic, reply } => {
             let res = network.behaviour_mut().subscribe(&topic);
             if let Err(e) = reply.send(res) {
                 error!(target: "gossip-network", ?e, "Subscribe command failed");
+            }
+        }
+        SwarmCommand::ConnectedPeers { reply } => {
+            let res = network.connected_peers().cloned().collect();
+            if let Err(e) = reply.send(res) {
+                error!(target: "gossip-network", ?e, "ConnectedPeers command failed");
+            }
+        }
+        SwarmCommand::PeerScore { peer_id, reply } => {
+            let opt_score = network.behaviour_mut().peer_score(&peer_id);
+            if let Err(e) = reply.send(opt_score) {
+                error!(target: "gossip-network", ?e, "PeerScore command failed");
+            }
+        }
+        SwarmCommand::SetApplicationScore { peer_id, new_score, reply } => {
+            let bool = network.behaviour_mut().set_application_score(&peer_id, new_score);
+            if let Err(e) = reply.send(bool) {
+                error!(target: "gossip-network", ?e, "SetApplicationScore command failed");
+            }
+        }
+        SwarmCommand::AllPeers { reply } => {
+            let collection = network
+                .behaviour_mut()
+                .all_peers()
+                .map(|(peer_id, vec)| (*peer_id, vec.into_iter().cloned().collect()))
+                .collect();
+
+            if let Err(e) = reply.send(collection) {
+                error!(target: "gossip-network", ?e, "AllPeers command failed");
+            }
+        }
+        SwarmCommand::AllMeshPeers { reply } => {
+            let collection = network.behaviour_mut().all_mesh_peers().cloned().collect();
+            if let Err(e) = reply.send(collection) {
+                error!(target: "gossip-network", ?e, "AllMeshPeers command failed");
+            }
+        }
+        SwarmCommand::MeshPeers { topic, reply } => {
+            let collection = network.behaviour_mut().mesh_peers(&topic).cloned().collect();
+            if let Err(e) = reply.send(collection) {
+                error!(target: "gossip-network", ?e, "MeshPeers command failed");
             }
         }
     }

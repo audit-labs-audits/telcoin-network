@@ -1,12 +1,11 @@
 //! Constants and trait implementations for network compatibility.
 
-use fastcrypto::hash::Hash as _;
 use libp2p::{
-    gossipsub::{self, IdentTopic, MessageId, PublishError, SubscriptionError},
+    gossipsub::{IdentTopic, MessageId, PublishError, SubscriptionError, TopicHash},
     swarm::{dial_opts::DialOpts, DialError},
     Multiaddr, PeerId,
 };
-use tn_types::{BlockHash, Certificate, ConsensusHeader, SealedWorkerBlock};
+use std::collections::{HashMap, HashSet};
 use tokio::sync::{mpsc, oneshot};
 
 /// The topic for NVVs to subscribe to for published worker blocks.
@@ -16,47 +15,28 @@ pub const PRIMARY_CERT_TOPIC: &str = "tn_certificates";
 /// The topic for NVVs to subscribe to for published consensus chain.
 pub const CONSENSUS_HEADER_TOPIC: &str = "tn_consensus_headers";
 
-/// Convenience trait to make publish network generic over message types.
-///
-/// The function decodes the `[libp2p::Message]` data field and returns the digest. Using the digest
-/// for published message topics makes it easier for peers to recover missing data through the
-/// gossip network because the message id is the same as the data type's digest used to reach
-/// consensus.
-pub trait PublishMessageId<'a>: From<&'a [u8]> {
-    /// Create a message id for a published message to the gossip network.
+/// Commands for the swarm.
+#[derive(Debug)]
+//TODO: add <M> generic here so devs can only publish correct messages?
+pub enum NetworkCommand {
+    /// Update the list of authorized publishers.
     ///
-    /// Lifetimes are preferred for easier maintainability.
-    /// ie) encoding/decoding logic is defined in the type's impl of `From`
-    fn message_id(msg: &gossipsub::Message) -> BlockHash;
-}
-
-// Implementation for worker gossip network.
-impl<'a> PublishMessageId<'a> for SealedWorkerBlock {
-    fn message_id(msg: &gossipsub::Message) -> BlockHash {
-        let sealed_block = Self::from(msg.data.as_ref());
-        sealed_block.digest()
-    }
-}
-
-// Implementation for primary gossip network.
-impl<'a> PublishMessageId<'a> for Certificate {
-    fn message_id(msg: &gossipsub::Message) -> BlockHash {
-        let certificate = Self::from(msg.data.as_ref());
-        certificate.digest().into()
-    }
-}
-
-// Implementation for consensus gossip network.
-impl<'a> PublishMessageId<'a> for ConsensusHeader {
-    fn message_id(msg: &gossipsub::Message) -> BlockHash {
-        let header = Self::from(msg.data.as_ref());
-        header.digest()
-    }
+    /// This list is used to verify messages came from an authorized source.
+    /// Only valid for Subscriber implementations.
+    UpdateAuthorizedPublishers {
+        /// The unique set of authorized peers.
+        authorities: HashSet<PeerId>,
+        /// The acknowledgement that the set was updated.
+        reply: oneshot::Sender<eyre::Result<()>>,
+    },
+    /// Commands to manage the network's swarm.
+    Swarm(SwarmCommand),
 }
 
 /// Commands for the swarm.
 #[derive(Debug)]
-pub enum NetworkCommand {
+//TODO: add <M> generic here so devs can only publish correct messages?
+pub enum SwarmCommand {
     /// Listeners
     GetListener { reply: oneshot::Sender<Vec<Multiaddr>> },
     /// Add explicit peer to add.
@@ -90,6 +70,20 @@ pub enum NetworkCommand {
         msg: Vec<u8>,
         reply: oneshot::Sender<std::result::Result<MessageId, PublishError>>,
     },
+    /// Map of all known peers and their associated subscribed topics.
+    AllPeers { reply: oneshot::Sender<HashMap<PeerId, Vec<TopicHash>>> },
+    /// Collection of this node's connected peers.
+    ConnectedPeers { reply: oneshot::Sender<Vec<PeerId>> },
+    /// Collection of all mesh peers.
+    AllMeshPeers { reply: oneshot::Sender<Vec<PeerId>> },
+    /// Collection of all mesh peers by a certain topic hash.
+    MeshPeers { topic: TopicHash, reply: oneshot::Sender<Vec<PeerId>> },
+    /// The peer's score, if it exists.
+    PeerScore { peer_id: PeerId, reply: oneshot::Sender<Option<f64>> },
+    /// Set peer's application score.
+    ///
+    /// Peer's application score is P₅ of the peer scoring system.
+    SetApplicationScore { peer_id: PeerId, new_score: f64, reply: oneshot::Sender<bool> },
 }
 
 /// Network handle.
@@ -107,23 +101,35 @@ impl GossipNetworkHandle {
         Self { sender }
     }
 
+    /// Update the list of authorized publishers.
+    pub async fn update_authorized_publishers(
+        &self,
+        authorities: HashSet<PeerId>,
+    ) -> eyre::Result<()> {
+        let (reply, ack) = oneshot::channel();
+        self.sender.send(NetworkCommand::UpdateAuthorizedPublishers { authorities, reply }).await?;
+        ack.await?
+    }
+
     /// Request listeners from the swarm.
     pub async fn listeners(&self) -> eyre::Result<Vec<Multiaddr>> {
         let (reply, listeners) = oneshot::channel();
-        self.sender.send(NetworkCommand::GetListener { reply }).await?;
+        self.sender.send(NetworkCommand::Swarm(SwarmCommand::GetListener { reply })).await?;
         Ok(listeners.await?)
     }
 
     /// Add explicit peer.
     pub async fn add_explicit_peer(&self, peer_id: PeerId, addr: Multiaddr) -> eyre::Result<()> {
-        self.sender.send(NetworkCommand::AddExplicitPeer { peer_id, addr }).await?;
+        self.sender
+            .send(NetworkCommand::Swarm(SwarmCommand::AddExplicitPeer { peer_id, addr }))
+            .await?;
         Ok(())
     }
 
     /// Dial a peer.
     pub async fn dial(&self, dial_opts: DialOpts) -> eyre::Result<()> {
         let (reply, ack) = oneshot::channel();
-        self.sender.send(NetworkCommand::Dial { dial_opts, reply }).await?;
+        self.sender.send(NetworkCommand::Swarm(SwarmCommand::Dial { dial_opts, reply })).await?;
         let res = ack.await?;
         Ok(res?)
     }
@@ -131,23 +137,81 @@ impl GossipNetworkHandle {
     /// Get local peer id.
     pub async fn local_peer_id(&self) -> eyre::Result<PeerId> {
         let (reply, peer_id) = oneshot::channel();
-        self.sender.send(NetworkCommand::LocalPeerId { reply }).await?;
+        self.sender.send(NetworkCommand::Swarm(SwarmCommand::LocalPeerId { reply })).await?;
         Ok(peer_id.await?)
     }
 
     /// Subscribe to a topic.
     pub async fn subscribe(&self, topic: IdentTopic) -> eyre::Result<bool> {
         let (reply, already_subscribed) = oneshot::channel();
-        self.sender.send(NetworkCommand::Subscribe { topic, reply }).await?;
+        self.sender.send(NetworkCommand::Swarm(SwarmCommand::Subscribe { topic, reply })).await?;
         let res = already_subscribed.await?;
         Ok(res?)
     }
 
     /// Publish a message on a certain topic.
+    ///
+    /// TODO: make this <M> generic to prevent accidental publishing of incorrect messages.
     pub async fn publish(&self, topic: IdentTopic, msg: Vec<u8>) -> eyre::Result<MessageId> {
         let (reply, published) = oneshot::channel();
-        self.sender.send(NetworkCommand::Publish { topic, msg, reply }).await?;
+        self.sender
+            .send(NetworkCommand::Swarm(SwarmCommand::Publish { topic, msg, reply }))
+            .await?;
         let res = published.await?;
         Ok(res?)
+    }
+
+    /// Retrieve a collection of connected peers.
+    pub async fn connected_peers(&self) -> eyre::Result<Vec<PeerId>> {
+        let (reply, peers) = oneshot::channel();
+        self.sender.send(NetworkCommand::Swarm(SwarmCommand::ConnectedPeers { reply })).await?;
+        Ok(peers.await?)
+    }
+
+    /// Map of all known peers and their associated subscribed topics.
+    pub async fn all_peers(&self) -> eyre::Result<HashMap<PeerId, Vec<TopicHash>>> {
+        let (reply, all_peers) = oneshot::channel();
+        self.sender.send(NetworkCommand::Swarm(SwarmCommand::AllPeers { reply })).await?;
+        Ok(all_peers.await?)
+    }
+
+    /// Collection of all mesh peers.
+    pub async fn all_mesh_peers(&self) -> eyre::Result<Vec<PeerId>> {
+        let (reply, all_mesh_peers) = oneshot::channel();
+        self.sender.send(NetworkCommand::Swarm(SwarmCommand::AllMeshPeers { reply })).await?;
+        Ok(all_mesh_peers.await?)
+    }
+
+    /// Collection of all mesh peers by a certain topic hash.
+    pub async fn mesh_peers(&self, topic: TopicHash) -> eyre::Result<Vec<PeerId>> {
+        let (reply, mesh_peers) = oneshot::channel();
+        self.sender.send(NetworkCommand::Swarm(SwarmCommand::MeshPeers { topic, reply })).await?;
+        Ok(mesh_peers.await?)
+    }
+
+    /// Retrieve a specific peer's score, if it exists.
+    pub async fn peer_score(&self, peer_id: PeerId) -> eyre::Result<Option<f64>> {
+        let (reply, score) = oneshot::channel();
+        self.sender.send(NetworkCommand::Swarm(SwarmCommand::PeerScore { peer_id, reply })).await?;
+        Ok(score.await?)
+    }
+
+    /// Set the peer's application score.
+    ///
+    /// This is useful for reporting messages from a peer that fails decoding.
+    pub async fn set_application_score(
+        &self,
+        peer_id: PeerId,
+        new_score: f64,
+    ) -> eyre::Result<bool> {
+        let (reply, score) = oneshot::channel();
+        self.sender
+            .send(NetworkCommand::Swarm(SwarmCommand::SetApplicationScore {
+                peer_id,
+                new_score,
+                reply,
+            }))
+            .await?;
+        Ok(score.await?)
     }
 }
