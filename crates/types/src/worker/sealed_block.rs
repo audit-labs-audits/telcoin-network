@@ -240,15 +240,6 @@ pub trait WorkerBlockValidation: Send + Sync {
     fn validate_block(&self, b: SealedWorkerBlock) -> Result<(), WorkerBlockValidationError>;
 }
 
-/* XXXX impl<WB> WorkerBlockValidation for Arc<WB>
-where
-    WB: WorkerBlockValidation + Send,
-{
-    fn validate_block(&self, b: SealedWorkerBlock) -> Result<(), WorkerBlockValidationError> {
-        self.as_ref().validate_block(b)
-    }
-}*/
-
 /// Block validation error types
 #[derive(Error, Debug)]
 pub enum WorkerBlockValidationError {

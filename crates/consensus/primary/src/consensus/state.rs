@@ -356,7 +356,7 @@ impl<DB: Database> Consensus<DB> {
         };
 
         task_manager
-            .spawn_task("Consensus".to_string(), monitored_future!(s.run(), "Consensus", INFO));
+            .spawn_task("consensus".to_string(), monitored_future!(s.run(), "Consensus", INFO));
     }
 
     async fn run(self) {

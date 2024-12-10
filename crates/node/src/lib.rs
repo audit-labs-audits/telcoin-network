@@ -85,9 +85,9 @@ where
     // start the worker
     let (worker_task_manager, block_provider) = worker.start(validator).await?;
 
-    // start engine XXXX
+    // start engine
     engine.start_engine(consensus_output_rx, &engine_task_manager).await?;
-    // XXXX spawn batch maker for worker
+    // spawn block maker for worker
     engine
         .start_block_builder(*worker_id, block_provider.blocks_tx(), &engine_task_manager)
         .await?;
@@ -95,6 +95,8 @@ where
     task_manager.add_task_manager("Primary", primary_task_manager);
     task_manager.add_task_manager("Worker", worker_task_manager);
     task_manager.add_task_manager("Engine", engine_task_manager);
+
+    println!("TASKS\n{task_manager}");
 
     task_manager.join_until_exit().await;
     Ok(())

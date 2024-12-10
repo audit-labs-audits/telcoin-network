@@ -2,7 +2,7 @@
 // Copyright (c) Mysten Labs, Inc.
 // SPDX-License-Identifier: Apache-2.0
 use crate::{errors::SubscriberResult, SubscriberError};
-use consensus_metrics::spawn_logged_monitored_task;
+use consensus_metrics::monitored_future;
 use fastcrypto::hash::Hash;
 use futures::{
     stream::{FuturesOrdered, FuturesUnordered},
@@ -70,8 +70,8 @@ pub fn spawn_subscriber<DB: Database>(
     let client = config.local_network().clone();
 
     task_manager.spawn_task(
-        "Subscriber",
-        spawn_logged_monitored_task!(
+        "subscriber",
+        monitored_future!(
             async move {
                 info!(target: "telcoin::subscriber", "Starting subscriber");
                 let subscriber = Subscriber {

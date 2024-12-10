@@ -21,7 +21,6 @@ use gcloud_sdk::{
 };
 use jsonrpsee::{core::client::ClientT, http_client::HttpClientBuilder, rpc_params};
 use k256::{elliptic_curve::sec1::ToEncodedPoint, pkcs8::DecodePublicKey, PublicKey as PubKey};
-use reth::tasks::TaskManager;
 use reth_chainspec::ChainSpec;
 use reth_primitives::{public_key_to_address, Address, GenesisAccount, B256, U256};
 use reth_tracing::init_test_tracing;
@@ -30,7 +29,7 @@ use std::{str::FromStr, sync::Arc, time::Duration};
 use tn_config::{test_fetch_file_content_relative_to_manifest, ContractStandardJson};
 use tn_test_utils::TransactionFactory;
 use tn_types::adiri_genesis;
-use tokio::{runtime::Handle, task::JoinHandle, time::timeout};
+use tokio::{task::JoinHandle, time::timeout};
 use tracing::{debug, info};
 
 #[tokio::test]
@@ -312,13 +311,9 @@ async fn test_faucet_transfers_tel_and_xyz_with_google_kms_e2e() -> eyre::Result
     let genesis = real_genesis.extend_accounts(genesis_accounts.into_iter());
     let chain: Arc<ChainSpec> = Arc::new(genesis.into());
 
-    // task manager
-    let manager = TaskManager::new(Handle::current());
-    let task_executor = manager.executor();
-
     // create and launch validator nodes on local network,
     // use expected faucet contract address from `TransactionFactory::default` with nonce == 0
-    spawn_local_testnet(&task_executor, chain.clone(), &faucet_proxy_address.to_string()).await?;
+    spawn_local_testnet(chain.clone(), &faucet_proxy_address.to_string()).await?;
 
     info!(target: "faucet-test", "nodes started - sleeping for 10s...");
 

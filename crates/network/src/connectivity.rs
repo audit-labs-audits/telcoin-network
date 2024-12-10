@@ -39,7 +39,7 @@ impl ConnectionMonitor {
         let connection_statuses_outer = Arc::new(DashMap::new());
         let connection_statuses = connection_statuses_outer.clone();
         task_manager.spawn_task(
-            "ConnectionMonitor",
+            "connection monitor",
             monitored_future!(
                 Self {
                     network,

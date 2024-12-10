@@ -7,7 +7,7 @@
 
 use crate::{aggregators::VotesAggregator, synchronizer::Synchronizer, ConsensusBus};
 use anemo::{rpc::Status, Request, Response};
-use consensus_metrics::{monitored_future, spawn_logged_monitored_task};
+use consensus_metrics::monitored_future;
 use futures::{
     stream::{FuturesOrdered, FuturesUnordered},
     StreamExt,
@@ -126,7 +126,7 @@ impl<DB: Database> Certifier<DB> {
             }
         }
 
-        task_manager.spawn_task("certifier task", spawn_logged_monitored_task!(
+        task_manager.spawn_task("certifier task", monitored_future!(
             async move {
                 info!(target: "primary::certifier", "Certifier on node {} has started successfully.", config.authority().id());
                 Self {

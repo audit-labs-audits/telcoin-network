@@ -25,7 +25,7 @@ use anemo_tower::{
     set_header::{SetRequestHeaderLayer, SetResponseHeaderLayer},
     trace::{DefaultMakeSpan, DefaultOnFailure, TraceLayer},
 };
-use consensus_metrics::spawn_logged_monitored_task;
+use consensus_metrics::monitored_future;
 use fastcrypto::traits::KeyPair as _;
 use std::{collections::HashMap, net::Ipv4Addr, sync::Arc};
 use tn_config::ConsensusConfig;
@@ -174,7 +174,7 @@ impl<DB: Database> Primary<DB> {
         let mut sync_watch = consensus_bus.sync_status().subscribe();
         task_manager.spawn_task(
             "proposer task",
-            spawn_logged_monitored_task!(
+            monitored_future!(
                 async move {
                     // Wait for block chain sync to finish.
                     let mut sw = *sync_watch.borrow();

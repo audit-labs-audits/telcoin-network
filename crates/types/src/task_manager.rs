@@ -12,10 +12,21 @@ use futures::{future::BoxFuture, stream::FuturesUnordered, StreamExt};
 use parking_lot::Mutex;
 use tokio::task::JoinHandle;
 
+struct Task {
+    name: String,
+    handle: JoinHandle<()>,
+}
+
+#[derive(Clone)]
+struct Submanager {
+    name: String,
+    manager: TaskManager,
+}
+
 #[derive(Clone)]
 pub struct TaskManager {
-    handles: Arc<Mutex<Vec<(String, JoinHandle<()>)>>>,
-    submanagers: Vec<(String, TaskManager)>,
+    handles: Arc<Mutex<Vec<Task>>>,
+    submanagers: Vec<Submanager>,
 }
 
 impl Default for TaskManager {
@@ -38,81 +49,100 @@ impl TaskManager {
         let handle = tokio::spawn(async move {
             future.await;
         });
-        self.handles.lock().push((name, handle));
+        self.handles.lock().push(Task { name, handle });
     }
 
     pub fn add_task_manager<S: ToString>(&mut self, name: S, manager: TaskManager) {
-        self.submanagers.push((name.to_string(), manager));
+        self.submanagers.push(Submanager { name: name.to_string(), manager });
     }
 
     pub async fn join(self) {
-        let mut handles = self.handles.lock();
-        let mut future_tasks: FuturesUnordered<_> =
-            handles.drain(..).map(|(name, h)| async move { (h.await, name) }).collect();
-        drop(handles);
+        let mut future_tasks: FuturesUnordered<_> = {
+            let mut handles = self.handles.lock();
+            handles.drain(..).map(|task| async move { (task.handle.await, task.name) }).collect()
+        };
         let mut future_managers: FuturesUnordered<_> = self
             .submanagers
             .into_iter()
-            .map(|(name, m)| async move { (m.join().await, name) })
+            .map(|sub| async move { (sub.manager.join().await, sub.name) })
             .collect();
+        let fut_mans = async move {
+            if future_managers.is_empty() {
+                futures::future::pending().await
+            } else {
+                future_managers.next().await
+            }
+        };
         tokio::select!(
             res = future_tasks.next() => {
                 match res {
-                    Some((Ok(_), _name)) => {}
-                    Some((Err(_join_err), _name)) => {}
+                    Some((Ok(_), name)) => {
+                        tracing::error!("JOIN OK for {name}");
+                    }
+                    Some((Err(join_err), name)) => {
+                        tracing::error!("JOIN ERROR for {name}: {join_err}");
+                    }
                     None => {}
                 }
 
             }
-            res = future_managers.next() => {
+            res = fut_mans => {
                 if let Some((_, _name)) = res {}
-
             }
         )
     }
 
     pub async fn join_until_exit(self) {
-        let mut handles = self.handles.lock();
-        let mut future_tasks: FuturesUnordered<_> =
-            handles.drain(..).map(|(name, h)| async move { (h.await, name) }).collect();
-        drop(handles);
+        let mut future_tasks: FuturesUnordered<_> = {
+            let mut handles = self.handles.lock();
+            handles.drain(..).map(|task| async move { (task.handle.await, task.name) }).collect()
+        };
         let mut future_managers: FuturesUnordered<_> = self
             .submanagers
             .into_iter()
-            .map(|(name, m)| async move { (m.join().await, name) })
+            .map(|sub| async move { (sub.manager.join().await, sub.name) })
             .collect();
+        let fut_mans = async move {
+            if future_managers.is_empty() {
+                futures::future::pending().await
+            } else {
+                future_managers.next().await
+            }
+        };
 
-        loop {
-            tokio::select! {
-                _ = Self::exit() => {
-                    tracing::info!(target: "tn:cli", "Node exiting");
-                    break;
-                },
-                res = future_tasks.next() => {
-                    match res {
-                        Some((Ok(_), _name)) => {}
-                        Some((Err(join_err), _name)) => {
-                            tracing::error!("JOIN ERROR: {join_err}");
-                        }
-                        None => {}
+        tokio::select! {
+            _ = Self::exit() => {
+                tracing::info!(target: "tn:cli", "Node exiting");
+                //break;
+            },
+            res = future_tasks.next() => {
+                match res {
+                    Some((Ok(_), name)) => {
+                        tracing::error!("JOIN OK for {name}");
                     }
-
+                    Some((Err(join_err), name)) => {
+                        tracing::error!("JOIN ERROR for {name}: {join_err}");
+                    }
+                    None => {}
                 }
-                res = future_managers.next() => {
-                    if let Some((_, _name)) = res {}
 
-                }
+            }
+            res = fut_mans => {
+                if let Some((_, _name)) = res {}
+
             }
         }
     }
 
     /// Abort all of our direct tasks (not sub task managers though).
+    /// This is included for some tests, should not use in real code.
     pub fn abort(&self) {
-        for (_, handle) in self.handles.lock().iter() {
-            handle.abort();
+        for task in self.handles.lock().iter() {
+            task.handle.abort();
         }
     }
 
+    /// Will resolve when ctrl-c is pressed or a SIGTERM is received.
     async fn exit() {
         #[cfg(unix)]
         {
@@ -142,7 +172,15 @@ impl TaskManager {
 
 impl Display for TaskManager {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        todo!()
+        for task in self.handles.lock().iter() {
+            writeln!(f, "Task: {}", task.name)?;
+        }
+        for sub in &self.submanagers {
+            writeln!(f, "++++++++++++++++++++++++++++++++++++++++++++++++++++")?;
+            writeln!(f, "Sub Tasks: {}\n{}", sub.name, sub.manager)?;
+            writeln!(f, "++++++++++++++++++++++++++++++++++++++++++++++++++++")?;
+        }
+        Ok(())
     }
 }
 impl Debug for TaskManager {
@@ -193,7 +231,7 @@ impl reth_tasks::TaskSpawner for TaskManager {
         });
         let handle = tokio::runtime::Handle::current();
         let join_handle = tokio::task::spawn_blocking(move || handle.block_on(f));
-        self.handles.lock().push((name.to_string(), join_handle));
+        self.handles.lock().push(Task { name: name.to_string(), handle: join_handle });
         join
     }
 }

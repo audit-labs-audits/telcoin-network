@@ -4,7 +4,7 @@
 // SPDX-License-Identifier: Apache-2.0
 use crate::{synchronizer::Synchronizer, ConsensusBus};
 use anemo::Request;
-use consensus_metrics::{monitored_future, monitored_scope, spawn_logged_monitored_task};
+use consensus_metrics::{monitored_future, monitored_scope};
 use futures::{stream::FuturesUnordered, StreamExt};
 use rand::{rngs::ThreadRng, seq::SliceRandom};
 use std::{
@@ -113,7 +113,7 @@ impl<DB: Database> CertificateFetcher<DB> {
 
         task_manager.spawn_task(
             "certificate fetcher task",
-            spawn_logged_monitored_task!(
+            monitored_future!(
                 async move {
                     Self {
                         state,

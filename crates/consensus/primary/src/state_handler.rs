@@ -2,7 +2,7 @@
 // Copyright (c) Telcoin, LLC
 // Copyright (c) Mysten Labs, Inc.
 // SPDX-License-Identifier: Apache-2.0
-use consensus_metrics::spawn_logged_monitored_task;
+use consensus_metrics::monitored_future;
 use tn_types::{AuthorityIdentifier, Noticer, TaskManager, TnReceiver, TnSender};
 
 use tap::TapFallible;
@@ -35,7 +35,7 @@ impl StateHandler {
             Self { authority_id, consensus_bus: consensus_bus.clone(), rx_shutdown, network };
         task_manager.spawn_task(
             "state handler task",
-            spawn_logged_monitored_task!(
+            monitored_future!(
                 async move {
                     state_handler.run().await;
                 },
