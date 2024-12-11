@@ -48,19 +48,11 @@ impl<CDB: ConsensusDatabase> PrimaryNodeInner<CDB> {
             self.consensus_config.key_config().primary_network_public_key().0.to_bytes(),
         ));
 
-        let task_manager = TaskManager::new();
+        let task_manager = TaskManager::new("Primary Task Manager");
         // spawn primary and update `self`
         self.spawn_primary(last_executed_consensus_hash, &task_manager).await?;
 
         Ok(task_manager)
-    }
-
-    /// Will shutdown the primary node and wait until the node has shutdown by waiting on the
-    /// underlying components handles. If the node was not already running then the
-    /// method will return immediately.
-    #[instrument(level = "info", skip_all)]
-    async fn shutdown(&mut self) {
-        self.consensus_config.shutdown();
     }
 
     /// Spawn a new primary. Optionally also spawn the consensus and a client executing
@@ -151,7 +143,7 @@ impl<CDB: ConsensusDatabase> PrimaryNodeInner<CDB> {
         // subscriber handler if it missed some transactions.
         Executor::spawn(
             self.consensus_config.clone(),
-            self.consensus_config.subscribe_shutdown(),
+            self.consensus_config.shutdown().subscribe(),
             consensus_bus.clone(),
             last_executed_consensus_hash,
             network,
@@ -185,8 +177,8 @@ impl<CDB: ConsensusDatabase> PrimaryNode<CDB> {
     }
 
     pub async fn shutdown(&self) {
-        let mut guard = self.internal.write().await;
-        guard.shutdown().await
+        let guard = self.internal.write().await;
+        guard.consensus_config.shutdown().notify();
     }
 
     /// Return the consensus metrics.

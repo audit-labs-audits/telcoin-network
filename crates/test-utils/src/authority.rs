@@ -129,17 +129,6 @@ impl<DB: Database> AuthorityDetails<DB> {
 
         internal.primary.start(&execution_components).await
     }
-    /* XXXX
-    pub async fn stop_primary(&self) {
-        let internal = self.internal.read().await;
-
-        internal.primary.stop().await;
-
-        // TODO: spawned with task executor
-        // either implement with TaskManager or setup kill signal
-        // internal.execution.shutdown_engine().await;
-    }
-    */
 
     pub async fn start_all_workers(&self, preserve_store: bool) -> eyre::Result<()> {
         let mut internal = self.internal.write().await;
@@ -168,63 +157,6 @@ impl<DB: Database> AuthorityDetails<DB> {
 
         worker.start(preserve_store, &execution_engine).await
     }
-
-    /* XXXX
-    pub async fn stop_worker(&self, id: WorkerId) {
-        let internal = self.internal.read().await;
-
-        internal
-            .workers
-            .get(&id)
-            .unwrap_or_else(|| panic!("Worker with id {} not found ", id))
-            .stop()
-            .await;
-
-        // only log errors for now
-        // TODO: these are only spawned with TaskExecutor for now
-        // if let Err(e) = internal.execution.shutdown_worker(&id).await {
-        //     error!(?e);
-        // }
-    }
-
-    /// Stops all the nodes (primary & workers).
-    pub async fn stop_all(&self) {
-        let mut internal = self.internal.write().await;
-
-        if let Some(client) = internal.client.as_ref() {
-            client.shutdown();
-        }
-        internal.client = None;
-
-        internal.primary.stop().await;
-        info!("{} - primary stopped", self.name);
-        for (worker_id, worker) in internal.workers.iter() {
-            worker.stop().await;
-            info!("{} - worker {worker_id:} shut down", self.name);
-        }
-
-        // TODO: should this be shutdown between primary and worker?
-        // internal.execution.shutdown_all().await;
-        // info!("{} - execution node shutdown for authority", self.name);
-    }
-
-    /// Will restart the node with the current setup that has been chosen
-    /// (ex same number of nodes).
-    /// `preserve_store`: if true then the same storage will be used for the
-    /// node
-    /// `delay`: before starting again we'll wait for that long. If zero provided
-    /// then won't wait at all
-    pub async fn restart(&self, preserve_store: bool, delay: Duration) -> eyre::Result<()> {
-        let num_of_workers = self.workers().await.len();
-
-        self.stop_all().await;
-
-        tokio::time::sleep(delay).await;
-
-        // now start again the node with the same workers
-        self.start(preserve_store, Some(num_of_workers)).await
-    }
-    */
 
     /// Returns the current primary node running as a clone. If the primary
     /// node stops and starts again and it's needed by the user then this
@@ -264,15 +196,13 @@ impl<DB: Database> AuthorityDetails<DB> {
         self.workers().await.iter().map(|w| w.transactions_address.clone()).collect()
     }
 
-    /// Returns all the running workers
+    /// Returns all the workers
     async fn workers(&self) -> Vec<WorkerNodeDetails<DB>> {
         let internal = self.internal.read().await;
         let mut workers = Vec::new();
 
         for worker in internal.workers.values() {
-            // XXXX if worker.is_running().await {
             workers.push(worker.clone());
-            //}
         }
 
         workers
@@ -289,38 +219,6 @@ impl<DB: Database> AuthorityDetails<DB> {
         let client = internal.execution.worker_http_client(worker_id).await?;
         Ok(client)
     }
-
-    /* XXXX
-    /// This method will return true either when the primary or any of
-    /// the workers is running. In order to make sure that we don't end up
-    /// in intermediate states we want to make sure that everything has
-    /// stopped before we report something as not running (in case we want
-    /// to start them again).
-    pub async fn is_running(&self) -> bool {
-        let internal = self.internal.read().await;
-
-        if internal.primary.is_running().await {
-            return true;
-        }
-
-        // if internal.execution.engine_is_running().await {
-        //     return true;
-        // }
-
-        // // TODO: this only works for one worker for now
-        // if internal.execution.any_workers_running().await {
-        //     return true;
-        // }
-
-        for (_, worker) in internal.workers.iter() {
-            if worker.is_running().await {
-                return true;
-            }
-        }
-
-        false
-    }
-    */
 
     /// Returns an owned primary WAN if it exists.
     pub async fn primary_network(&self) -> Option<Network> {

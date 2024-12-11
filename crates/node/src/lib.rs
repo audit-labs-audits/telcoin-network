@@ -38,8 +38,8 @@ where
     let config = builder.tn_config.clone();
     // adjust rpc instance ports
     builder.node_config.adjust_instance_ports();
-    let mut task_manager = TaskManager::new();
-    let engine_task_manager = TaskManager::new();
+    let mut task_manager = TaskManager::new("Task Manager");
+    let mut engine_task_manager = TaskManager::new("Engine Task Manager");
     let engine = ExecutionNode::new(builder, &engine_task_manager)?;
 
     info!(target: "telcoin::node", "execution engine created");
@@ -65,10 +65,22 @@ where
     let eng_bus = primary.consensus_bus().await;
 
     // Spawn a task to update the consensus bus with new execution blocks as they are produced.
+    let latest_block_shutdown = consensus_config.shutdown().subscribe();
     task_manager.spawn_task("latest block", async move {
-        while let Some(latest) = engine_state.next().await {
-            let latest_num_hash = latest.tip().block.num_hash();
-            eng_bus.recent_blocks().send_modify(|blocks| blocks.push_latest(latest_num_hash));
+        loop {
+            tokio::select!(
+                _ = &latest_block_shutdown => {
+                    break;
+                }
+                latest = engine_state.next() => {
+                    if let Some(latest) = latest {
+                        let latest_num_hash = latest.tip().block.num_hash();
+                        eng_bus.recent_blocks().send_modify(|blocks| blocks.push_latest(latest_num_hash));
+                    } else {
+                        break;
+                    }
+                }
+            )
         }
     });
 
@@ -76,28 +88,42 @@ where
     let last_executed_consensus_hash =
         engine.last_executed_output().await.expect("execution found HEAD");
     // start the primary
-    let primary_task_manager = primary.start(last_executed_consensus_hash).await?;
+    let mut primary_task_manager = primary.start(last_executed_consensus_hash).await?;
 
     // create receiving channel before spawning primary to ensure messages are not lost
     let consensus_output_rx = primary.consensus_bus().await.subscribe_consensus_output();
 
     let validator = engine.new_block_validator().await;
     // start the worker
-    let (worker_task_manager, block_provider) = worker.start(validator).await?;
+    let (mut worker_task_manager, block_provider) = worker.start(validator).await?;
 
     // start engine
-    engine.start_engine(consensus_output_rx, &engine_task_manager).await?;
+    engine
+        .start_engine(
+            consensus_output_rx,
+            &engine_task_manager,
+            consensus_config.shutdown().subscribe(),
+        )
+        .await?;
     // spawn block maker for worker
     engine
-        .start_block_builder(*worker_id, block_provider.blocks_tx(), &engine_task_manager)
+        .start_block_builder(
+            *worker_id,
+            block_provider.blocks_tx(),
+            &engine_task_manager,
+            consensus_config.shutdown().subscribe(),
+        )
         .await?;
 
-    task_manager.add_task_manager("Primary", primary_task_manager);
-    task_manager.add_task_manager("Worker", worker_task_manager);
-    task_manager.add_task_manager("Engine", engine_task_manager);
+    primary_task_manager.update_tasks();
+    task_manager.add_task_manager(primary_task_manager);
+    worker_task_manager.update_tasks();
+    task_manager.add_task_manager(worker_task_manager);
+    engine_task_manager.update_tasks();
+    task_manager.add_task_manager(engine_task_manager);
 
     println!("TASKS\n{task_manager}");
 
-    task_manager.join_until_exit().await;
+    task_manager.join_until_exit(consensus_config.shutdown().clone()).await;
     Ok(())
 }

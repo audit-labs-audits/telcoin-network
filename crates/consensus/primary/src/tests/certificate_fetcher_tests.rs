@@ -203,9 +203,9 @@ async fn fetch_certificates_v1_basic() {
         client_network.clone(),
         certificate_store.clone(),
         cb.clone(),
-        primary.consensus_config().subscribe_shutdown(),
+        primary.consensus_config().shutdown().subscribe(),
         synchronizer.clone(),
-        &TaskManager::new(),
+        &TaskManager::default(),
     );
 
     // Generate headers and certificates in successive rounds

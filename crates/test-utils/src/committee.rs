@@ -142,7 +142,7 @@ impl<DB: Database> CommitteeFixture<DB> {
     /// Send a shutdown notfication to all authorities.
     pub fn notify_shutdown(&self) {
         for a in &self.authorities {
-            a.consensus_config().shutdown();
+            a.consensus_config().shutdown().notify();
         }
     }
 }

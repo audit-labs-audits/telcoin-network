@@ -128,7 +128,7 @@ impl<DB: Database> Primary<DB> {
             self.network.downgrade(),
             consensus_bus.primary_metrics().network_connection_metrics.clone(),
             self.peer_types.take().expect("peer types not set, was spawn called more than once?"),
-            config.subscribe_shutdown(),
+            config.shutdown().subscribe(),
             task_manager,
         );
 
@@ -141,7 +141,7 @@ impl<DB: Database> Primary<DB> {
         tn_network::admin::start_admin_server(
             config.parameters().network_admin_server.primary_network_admin_server_port,
             self.network.clone(),
-            config.subscribe_shutdown(),
+            config.shutdown().subscribe(),
             task_manager,
         );
 
@@ -161,7 +161,7 @@ impl<DB: Database> Primary<DB> {
             self.network.clone(),
             config.node_storage().certificate_store.clone(),
             consensus_bus.clone(),
-            config.subscribe_shutdown(),
+            config.shutdown().subscribe(),
             self.synchronizer.clone(),
             task_manager,
         );
@@ -193,7 +193,7 @@ impl<DB: Database> Primary<DB> {
         StateHandler::spawn(
             config.authority().id(),
             consensus_bus,
-            config.subscribe_shutdown(),
+            config.shutdown().subscribe(),
             self.network.clone(),
             task_manager,
         );

@@ -11,7 +11,7 @@ use std::num::NonZeroUsize;
 use tn_network_types::{MockPrimaryToPrimary, PrimaryToPrimaryServer, RequestVoteResponse};
 use tn_storage::mem_db::MemDatabase;
 use tn_test_utils::CommitteeFixture;
-use tn_types::{BlsKeypair, SignatureVerificationState, TnSender};
+use tn_types::{BlsKeypair, Notifier, SignatureVerificationState, TnSender};
 
 // // TODO: Remove after network has moved to CertificateV2
 // #[tokio::test(flavor = "current_thread", start_paused = true)]
@@ -188,7 +188,7 @@ async fn propose_header_and_form_certificate_v2() {
         cb.clone(),
         synchronizer,
         network.clone(),
-        &TaskManager::new(),
+        &TaskManager::default(),
     );
 
     // Propose header and ensure that a certificate is formed by pulling it out of the
@@ -255,7 +255,7 @@ async fn propose_header_failure() {
         cb.clone(),
         synchronizer,
         network.clone(),
-        &TaskManager::new(),
+        &TaskManager::default(),
     );
 
     // Propose header and verify we get no certificate back.
@@ -341,7 +341,7 @@ async fn run_vote_aggregator_with_param(
         cb.clone(),
         synchronizer,
         network,
-        &TaskManager::new(),
+        &TaskManager::default(),
     );
 
     // Send a proposed header.
@@ -383,7 +383,7 @@ async fn test_shutdown_core() {
         .unwrap();
 
     // Spawn the core.
-    let task_manager = TaskManager::new();
+    let mut task_manager = TaskManager::default();
     Certifier::spawn(
         primary.consensus_config(),
         cb.clone(),
@@ -394,5 +394,5 @@ async fn test_shutdown_core() {
 
     // Shutdown the core.
     fixture.notify_shutdown();
-    task_manager.join().await;
+    task_manager.join(Notifier::default()).await;
 }

@@ -32,7 +32,6 @@ use reth_provider::{
     TransactionVariant,
 };
 use reth_prune::PruneModes;
-use reth_tasks::TaskSpawner;
 use reth_transaction_pool::{
     blobstore::DiskFileBlobStore, TransactionPool, TransactionValidationTaskExecutor,
 };
@@ -44,7 +43,7 @@ use tn_engine::ExecutorEngine;
 use tn_faucet::{FaucetArgs, FaucetRpcExtApiServer as _};
 use tn_rpc::{TelcoinNetworkRpcExt, TelcoinNetworkRpcExtApiServer};
 use tn_types::{
-    Consensus, ConsensusOutput, LastCanonicalUpdate, TaskManager, WorkerBlockSender,
+    Consensus, ConsensusOutput, LastCanonicalUpdate, Noticer, TaskManager, WorkerBlockSender,
     WorkerBlockValidation, WorkerId,
 };
 use tokio::sync::{broadcast, mpsc::unbounded_channel};
@@ -130,8 +129,7 @@ where
         debug!(target: "tn::cli", "Spawning stages metrics listener task");
         let (sync_metrics_tx, sync_metrics_rx) = unbounded_channel();
         let sync_metrics_listener = reth_stages::MetricsListener::new(sync_metrics_rx);
-        reth_task_executor
-            .spawn_critical("stages metrics listener task", Box::pin(sync_metrics_listener));
+        reth_task_executor.spawn_task("stages metrics listener task", sync_metrics_listener);
 
         // get config from file
         let prune_config = node_config.prune_config(); //.or(reth_config.prune.clone());
@@ -176,6 +174,7 @@ where
         &self,
         from_consensus: broadcast::Receiver<ConsensusOutput>,
         task_manager: &TaskManager,
+        rx_shutdown: Noticer,
     ) -> eyre::Result<()> {
         let head = self.node_config.lookup_head(self.provider_factory.clone())?;
 
@@ -190,6 +189,7 @@ where
             self.node_config.debug.max_block,
             BroadcastStream::new(from_consensus),
             parent_header,
+            rx_shutdown,
         );
 
         // spawn tn engine
@@ -213,19 +213,9 @@ where
         worker_id: WorkerId,
         block_provider_sender: WorkerBlockSender,
         task_manager: &TaskManager,
+        rx_shutdown: Noticer,
     ) -> eyre::Result<()> {
         let head = self.node_config.lookup_head(self.provider_factory.clone())?;
-
-        /*XXXX        let ctx = BuilderContext::<WorkerNode<DB, Evm>>::new(
-            head,
-            self.blockchain_db.clone(),
-            self.reth_task_executor.clone(),
-            WithConfigs {
-                config: self.node_config.clone(),
-                toml_config: reth_config::Config::default(), /* mostly unused peer and staging
-                                                              * configs */
-            },
-        );*/
 
         // inspired by reth's default eth tx pool:
         // - `EthereumPoolBuilder::default()`
@@ -243,7 +233,7 @@ where
                     .with_additional_tasks(self.node_config.txpool.additional_validation_tasks)
                     .build_with_tasks(
                         self.blockchain_db.clone(),
-                        task_manager.clone(),
+                        task_manager.get_spawner(),
                         blob_store.clone(),
                     );
 
@@ -252,8 +242,11 @@ where
 
             info!(target: "tn::execution", "Transaction pool initialized");
 
-            /* XXXX
-            Should probably recreate this.  The reth function backup_local_tranractions_task's shutdown param can not be easily created.
+            /* TODO: replace this functionality to save and load the txn pool on start/stop
+               The reth function backup_local_tranractions_task's shutdown param can not be easily created.
+               The internal functions are not easy to just copy.
+               Basically this interface does not work when using your own TaskManager.  Best solution may be to
+               open a PR with Reth to fix this.
             let transactions_path = data_dir.txpool_transactions();
             let transactions_backup_config =
                 reth_transaction_pool::maintain::LocalTransactionBackupConfig::with_local_txs_backup(transactions_path);
@@ -330,9 +323,14 @@ where
         );
 
         // spawn block builder task
-        tokio::spawn(async move {
-            let res = block_builder.await;
-            info!(target: "tn::execution", ?res, "block builder task exited");
+        task_manager.spawn_task("block builder", async move {
+            tokio::select!(
+                _ = &rx_shutdown => {
+                }
+                res = block_builder => {
+                    info!(target: "tn::execution", ?res, "block builder task exited");
+                }
+            )
         });
 
         // let mut hooks = EngineHooks::new();
@@ -356,7 +354,7 @@ where
             .with_provider(self.blockchain_db.clone())
             .with_pool(transaction_pool.clone())
             .with_network(network)
-            .with_executor(task_manager.clone())
+            .with_executor(task_manager.get_spawner())
             .with_evm_config(EthEvmConfig::default()) // TODO: this should come from self
             .with_events(self.blockchain_db.clone());
 

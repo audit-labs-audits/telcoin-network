@@ -145,7 +145,7 @@ impl<DB: Database> Worker<DB> {
             network.downgrade(),
             metrics.network_connection_metrics.clone(),
             peer_types,
-            consensus_config.subscribe_shutdown(),
+            consensus_config.shutdown().subscribe(),
             task_manager,
         );
 
@@ -164,7 +164,7 @@ impl<DB: Database> Worker<DB> {
         tn_network::admin::start_admin_server(
             network_admin_server_base_port,
             network.clone(),
-            consensus_config.subscribe_shutdown(),
+            consensus_config.shutdown().subscribe(),
             task_manager,
         );
 
@@ -177,7 +177,7 @@ impl<DB: Database> Worker<DB> {
         );
 
         Self::shutdown_network_listener(
-            consensus_config.subscribe_shutdown(),
+            consensus_config.shutdown().subscribe(),
             network.clone(),
             task_manager,
         );

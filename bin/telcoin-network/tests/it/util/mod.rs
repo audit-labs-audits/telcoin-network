@@ -1,12 +1,11 @@
 use clap::Parser;
-use reth::{providers::ExecutionOutcome, tasks::TaskSpawner as _};
+use reth::providers::ExecutionOutcome;
 use reth_chainspec::ChainSpec;
 use std::{path::PathBuf, sync::Arc};
 use telcoin_network::{genesis::GenesisArgs, keytool::KeyArgs, node::NodeCommand};
 use tn_node::launch_node;
 use tn_test_utils::{default_test_execution_node, execution_outcome_for_tests, CommandParser};
 use tn_types::{TaskManager, TransactionSigned, WorkerBlock};
-use tokio::task::JoinHandle;
 use tracing::error;
 
 pub static IT_TEST_MUTEX: std::sync::Mutex<()> = std::sync::Mutex::new(());
@@ -105,7 +104,7 @@ pub async fn config_local_testnet(temp_path: PathBuf) -> eyre::Result<()> {
 pub async fn spawn_local_testnet(
     chain: Arc<ChainSpec>,
     contract_address: &str,
-) -> eyre::Result<Vec<JoinHandle<()>>> {
+) -> eyre::Result<()> {
     // create temp path for test
     let temp_path = tempfile::TempDir::new().expect("tempdir is okay").into_path();
 
@@ -140,8 +139,7 @@ pub async fn spawn_local_testnet(
     ]);
     create_committee_command.args.execute().await?;
 
-    let task_executor = TaskManager::new();
-    let mut node_handles = Vec::with_capacity(validators.len());
+    let task_executor = TaskManager::default();
     for v in validators.into_iter() {
         let dir = temp_path.join(v);
         let datadir = dir.to_str().expect("validator temp dir");
@@ -207,25 +205,21 @@ pub async fn spawn_local_testnet(
         // update genesis with seeded accounts
         command.chain = chain.clone();
 
-        // collect join handles
-        node_handles.push(task_executor.spawn_critical(
-            v,
-            Box::pin(async move {
-                let err = command
-                    .execute(
-                        false, // don't overwrite chain with the default
-                        |mut builder, faucet_args, tn_datadir| async move {
-                            builder.opt_faucet_args = Some(faucet_args);
-                            launch_node(builder, tn_datadir).await
-                        },
-                    )
-                    .await;
-                error!("{:?}", err);
-            }),
-        ));
+        task_executor.spawn_task(v, async move {
+            let err = command
+                .execute(
+                    false, // don't overwrite chain with the default
+                    |mut builder, faucet_args, tn_datadir| async move {
+                        builder.opt_faucet_args = Some(faucet_args);
+                        launch_node(builder, tn_datadir).await
+                    },
+                )
+                .await;
+            error!("{:?}", err);
+        });
     }
 
-    Ok(node_handles)
+    Ok(())
 }
 
 // imports for traits used in faucet tests only

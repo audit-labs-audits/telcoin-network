@@ -84,7 +84,7 @@ impl<DB: Database> Certifier<DB> {
         primary_network: anemo::Network,
         task_manager: &TaskManager,
     ) {
-        let rx_shutdown = config.subscribe_shutdown();
+        let rx_shutdown = config.shutdown().subscribe();
         let metrics = consensus_bus.primary_metrics().node_metrics.clone();
         // These channels are used internally to this module (file) and don't need to go in the
         // consensus bus. If this changes they can move.  Note there can be issues receiving

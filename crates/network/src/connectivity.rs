@@ -274,7 +274,7 @@ mod tests {
             metrics.clone(),
             peer_types,
             Notifier::new().subscribe(),
-            &TaskManager::new(),
+            &TaskManager::default(),
         );
 
         // THEN peer 2 should be already connected

@@ -312,7 +312,7 @@ impl<DB: Database> Consensus<DB> {
         task_manager: &TaskManager,
     ) {
         let metrics = consensus_bus.consensus_metrics();
-        let rx_shutdown = consensus_config.subscribe_shutdown();
+        let rx_shutdown = consensus_config.shutdown().subscribe();
         // The consensus state (everything else is immutable).
         let recovered_last_committed =
             consensus_config.node_storage().consensus_store.read_last_committed();
@@ -355,8 +355,7 @@ impl<DB: Database> Consensus<DB> {
             state,
         };
 
-        task_manager
-            .spawn_task("consensus".to_string(), monitored_future!(s.run(), "Consensus", INFO));
+        task_manager.spawn_task("consensus", monitored_future!(s.run(), "Consensus", INFO));
     }
 
     async fn run(self) {

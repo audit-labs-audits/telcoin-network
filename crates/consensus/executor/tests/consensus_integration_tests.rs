@@ -55,7 +55,7 @@ async fn test_recovery() {
     let mut rx_output = cb.sequence().subscribe();
     // pretend we are synced and ready to go so test can run...
     cb.sync_status().send(tn_primary::SyncStatus::Synced).unwrap();
-    Consensus::spawn(config_1, &cb, bullshark, &TaskManager::new());
+    Consensus::spawn(config_1, &cb, bullshark, &TaskManager::default());
     tokio::spawn(async move {
         let mut rx_primary = cb_clone.committed_certificates().subscribe();
         while rx_primary.recv().await.is_some() {}

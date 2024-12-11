@@ -31,7 +31,7 @@ impl<CDB: ConsensusDatabase> WorkerNodeInner<CDB> {
         &mut self,
         validator: Arc<dyn WorkerBlockValidation>,
     ) -> eyre::Result<(TaskManager, BlockProvider<CDB, QuorumWaiter>)> {
-        let task_manager = TaskManager::new();
+        let task_manager = TaskManager::new("Worker Task Manager");
         self.own_peer_id = Some(PeerId(
             self.consensus_config.key_config().primary_network_public_key().0.to_bytes(),
         ));

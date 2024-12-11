@@ -65,7 +65,7 @@ pub fn default_test_execution_node(
     )?;
 
     // create engine node
-    let engine = ExecutionNode::new(builder, &TaskManager::new())?;
+    let engine = ExecutionNode::new(builder, &TaskManager::default())?;
 
     Ok(engine)
 }
@@ -179,7 +179,7 @@ pub fn faucet_test_execution_node(
     let builder = TnBuilder { database, node_config, tn_config, opt_faucet_args: Some(faucet) };
 
     // create engine node
-    let engine = ExecutionNode::new(builder, &TaskManager::new())?;
+    let engine = ExecutionNode::new(builder, &TaskManager::default())?;
 
     Ok(engine)
 }

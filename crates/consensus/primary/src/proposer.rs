@@ -171,7 +171,7 @@ impl<DB: Database> Proposer<DB> {
         fatal_header_timeout: Option<Duration>,
         leader_schedule: LeaderSchedule,
     ) -> Self {
-        let rx_shutdown = config.subscribe_shutdown();
+        let rx_shutdown = config.shutdown().subscribe();
         let genesis = Certificate::genesis(config.committee());
         let fatal_header_timeout = fatal_header_timeout.unwrap_or(DEFAULT_FATAL_HEADER_TIMEOUT);
         // create min/max delay intervals

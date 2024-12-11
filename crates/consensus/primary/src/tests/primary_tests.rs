@@ -53,7 +53,7 @@ async fn test_get_network_peers_from_admin_server() {
         config_1.clone(),
         &cb_1,
         LeaderSchedule::new(committee.clone(), LeaderSwapTable::default()),
-        &TaskManager::new(),
+        &TaskManager::default(),
     );
 
     // Wait for tasks to start
@@ -68,7 +68,7 @@ async fn test_get_network_peers_from_admin_server() {
         Arc::new(NoopBlockValidator),
         metrics_1,
         config_1.clone(),
-        &TaskManager::new(),
+        &TaskManager::default(),
     );
 
     // Test getting all known peers for primary 1
@@ -124,7 +124,7 @@ async fn test_get_network_peers_from_admin_server() {
         config_2,
         &cb_2,
         LeaderSchedule::new(committee, LeaderSwapTable::default()),
-        &TaskManager::new(),
+        &TaskManager::default(),
     );
 
     // Wait for tasks to start

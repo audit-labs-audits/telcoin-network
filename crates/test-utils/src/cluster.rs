@@ -10,10 +10,6 @@ use tn_storage::traits::Database;
 use tn_types::{Committee, WorkerId};
 use tracing::info;
 
-#[cfg(test)]
-#[path = "tests/cluster_tests.rs"]
-pub mod cluster_tests;
-
 /// Test fixture that holds all information needed to run a local network.
 pub struct Cluster<DB> {
     fixture: CommitteeFixture<DB>,
@@ -152,32 +148,12 @@ where
         Ok(())
     }
 
-    /* XXXX
-    /// This method stops the authority (both the primary and the worker nodes)
-    /// with the provided id.
-    pub async fn stop_node(&self, id: usize) {
-        if let Some(node) = self.authorities.get(&id) {
-            node.stop_all().await;
-            info!("Aborted node for id {id}");
-        } else {
-            info!("Node with {id} not found - nothing to stop");
-        }
-        // TODO: wait for the node's network port to be released?
-    }
-    */
-
-    /// Returns all the running authorities. Any authority that:
-    /// * has been started ever
-    /// * or has been stopped
-    ///
-    /// will not be returned by this method.
+    /// Returns all the authorities (running or not).
     pub async fn authorities(&self) -> Vec<AuthorityDetails<DB>> {
         let mut result = Vec::new();
 
         for authority in self.authorities.values() {
-            // XXXX if authority.is_running().await {
             result.push(authority.clone());
-            //}
         }
 
         result
