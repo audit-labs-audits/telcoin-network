@@ -172,10 +172,7 @@ impl<DB: Database> Primary<DB> {
 
         // Only run the proposer task if we are a CVV.
         if let NodeMode::Cvv = *consensus_bus.node_mode().borrow() {
-            task_manager.spawn_task(
-                "proposer task",
-                monitored_future!(proposer, "ProposerTask"),
-            );
+            task_manager.spawn_task("proposer task", monitored_future!(proposer, "ProposerTask"));
         }
 
         // Keeps track of the latest consensus round and allows other tasks to clean up their their
