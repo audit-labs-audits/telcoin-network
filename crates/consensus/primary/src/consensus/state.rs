@@ -7,7 +7,7 @@
 
 use crate::{
     consensus::{bullshark::Bullshark, utils::gc_round, ConsensusError, ConsensusMetrics},
-    ConsensusBus, SyncStatus,
+    ConsensusBus, NodeMode,
 };
 use consensus_metrics::monitored_future;
 use fastcrypto::hash::Hash;
@@ -355,7 +355,10 @@ impl<DB: Database> Consensus<DB> {
             state,
         };
 
-        task_manager.spawn_task("consensus", monitored_future!(s.run(), "Consensus", INFO));
+        // Only run the consensus task if we are a CVV.
+        if let NodeMode::Cvv = *consensus_bus.node_mode().borrow() {
+            task_manager.spawn_task("consensus", monitored_future!(s.run(), "Consensus", INFO));
+        }
     }
 
     async fn run(self) {
@@ -369,14 +372,6 @@ impl<DB: Database> Consensus<DB> {
     }
 
     async fn run_inner(mut self) -> Result<(), ConsensusError> {
-        // This will block consensus unless we can participate.
-        let mut sync_watch = self.consensus_bus.sync_status().subscribe();
-        let mut sw = *sync_watch.borrow();
-        while let SyncStatus::Init = sw {
-            let _ = sync_watch.changed().await;
-            sw = *sync_watch.borrow();
-        }
-
         // Listen to incoming certificates.
         let mut rx_new_certificates = self.consensus_bus.new_certificates().subscribe();
         'main: loop {

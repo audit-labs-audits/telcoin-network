@@ -125,9 +125,7 @@ impl<DB: Database> AuthorityDetails<DB> {
     pub async fn start_primary(&self) -> eyre::Result<()> {
         let mut internal = self.internal.write().await;
 
-        let execution_components = internal.execution.clone();
-
-        internal.primary.start(&execution_components).await
+        internal.primary.start().await
     }
 
     pub async fn start_all_workers(&self, preserve_store: bool) -> eyre::Result<()> {

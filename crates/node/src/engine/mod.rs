@@ -17,7 +17,7 @@ use reth_db::{
 use reth_evm::execute::BlockExecutorProvider;
 use reth_node_builder::NodeConfig;
 use reth_node_ethereum::{EthEvmConfig, EthExecutorProvider};
-use reth_primitives::B256;
+use reth_primitives::{Header, B256};
 use std::{net::SocketAddr, sync::Arc};
 use tn_config::Config;
 mod inner;
@@ -106,6 +106,12 @@ where
     pub async fn last_executed_output(&self) -> eyre::Result<B256> {
         let guard = self.internal.read().await;
         guard.last_executed_output()
+    }
+
+    /// Return a vector of the last 'number' executed block headers.
+    pub async fn last_executed_blocks(&self, number: u64) -> eyre::Result<Vec<Header>> {
+        let guard = self.internal.read().await;
+        guard.last_executed_blocks(number)
     }
 
     /// Return an database provider.

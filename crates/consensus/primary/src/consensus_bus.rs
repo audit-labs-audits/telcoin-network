@@ -20,12 +20,13 @@ use crate::{
 };
 
 /// Has sync completed?
-#[derive(Copy, Clone, Debug)]
-pub enum SyncStatus {
-    /// Sync has not completed.
-    Init,
-    /// Sync is complete.  Contains the number of consensus blocks that were executed.
-    Synced,
+#[derive(Copy, Clone, Debug, Default)]
+pub enum NodeMode {
+    /// This is a full CVV that can participate in consensus.
+    #[default]
+    Cvv,
+    /// This node can only follow consensus via consensus output.
+    Nvv,
 }
 
 #[derive(Debug)]
@@ -75,9 +76,9 @@ struct ConsensusBusInner {
     _rx_consensus_output: broadcast::Receiver<ConsensusOutput>,
 
     /// Status of sync?
-    tx_sync_status: watch::Sender<SyncStatus>,
+    tx_sync_status: watch::Sender<NodeMode>,
     /// Hold onto the recent sync_status to keep it "open"
-    _rx_sync_status: watch::Receiver<SyncStatus>,
+    _rx_sync_status: watch::Receiver<NodeMode>,
 
     /// Hold onto the consensus_metrics (mostly for testing)
     consensus_metrics: Arc<ConsensusMetrics>,
@@ -152,7 +153,7 @@ impl ConsensusBus {
 
         let (tx_narwhal_round_updates, _rx_narwhal_round_updates) = watch::channel(0u64);
         let (tx_recent_blocks, _rx_recent_blocks) = watch::channel(RecentBlocks::new(3));
-        let (tx_sync_status, _rx_sync_status) = watch::channel(SyncStatus::Init);
+        let (tx_sync_status, _rx_sync_status) = watch::channel(NodeMode::default());
 
         let sequence =
             metered_channel::channel_sender(CHANNEL_CAPACITY, &channel_metrics.tx_sequence);
@@ -277,14 +278,8 @@ impl ConsensusBus {
     }
 
     /// Status of initial sync operation.
-    pub fn sync_status(&self) -> &watch::Sender<SyncStatus> {
+    pub fn node_mode(&self) -> &watch::Sender<NodeMode> {
         &self.inner.tx_sync_status
-    }
-
-    /// Set status of initial sync operation to synced.
-    /// Provide this as a convenience for tests that may have a subset of crates.
-    pub fn sync_status_synced(&self) {
-        let _ = self.inner.tx_sync_status.send(SyncStatus::Synced);
     }
 
     /// Hold onto the consensus_metrics (mostly for testing)

@@ -10,6 +10,7 @@ use reth_db::{
 };
 use reth_provider::CanonStateSubscriptions;
 use tn_config::{ConsensusConfig, KeyConfig, TelcoinDirs};
+use tn_primary::NodeMode;
 use tn_storage::open_db;
 pub use tn_storage::NodeStorage;
 use tn_types::TaskManager;
@@ -63,6 +64,23 @@ where
 
     let mut engine_state = engine.get_provider().await.canonical_state_stream();
     let eng_bus = primary.consensus_bus().await;
+    if tn_executor::subscriber::can_cvv(
+        eng_bus.clone(),
+        consensus_config.clone(),
+        primary.network().await.expect("no network"),
+    )
+    .await
+    {
+        eng_bus.node_mode().send_modify(|v| *v = NodeMode::Cvv);
+    } else {
+        eng_bus.node_mode().send_modify(|v| *v = NodeMode::Nvv);
+    }
+
+    // Prime the recent_blocks watch with latest executed blocks.
+    let block_capacity = eng_bus.recent_blocks().borrow().block_capacity();
+    for recent_block in engine.last_executed_blocks(block_capacity).await? {
+        eng_bus.recent_blocks().send_modify(|blocks| blocks.push_latest(recent_block.seal_slow()));
+    }
 
     // Spawn a task to update the consensus bus with new execution blocks as they are produced.
     let latest_block_shutdown = consensus_config.shutdown().subscribe();
@@ -74,8 +92,7 @@ where
                 }
                 latest = engine_state.next() => {
                     if let Some(latest) = latest {
-                        let latest_num_hash = latest.tip().block.num_hash();
-                        eng_bus.recent_blocks().send_modify(|blocks| blocks.push_latest(latest_num_hash));
+                        eng_bus.recent_blocks().send_modify(|blocks| blocks.push_latest(latest.tip().block.header.clone()));
                     } else {
                         break;
                     }
@@ -84,11 +101,8 @@ where
         }
     });
 
-    // used to retrieve the last executed certificate in case of restarts
-    let last_executed_consensus_hash =
-        engine.last_executed_output().await.expect("execution found HEAD");
     // start the primary
-    let mut primary_task_manager = primary.start(last_executed_consensus_hash).await?;
+    let mut primary_task_manager = primary.start().await?;
 
     // create receiving channel before spawning primary to ensure messages are not lost
     let consensus_output_rx = primary.consensus_bus().await.subscribe_consensus_output();

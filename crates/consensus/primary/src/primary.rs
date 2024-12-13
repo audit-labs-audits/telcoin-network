@@ -11,7 +11,7 @@ use crate::{
     proposer::Proposer,
     state_handler::StateHandler,
     synchronizer::Synchronizer,
-    ConsensusBus, SyncStatus,
+    ConsensusBus, NodeMode,
 };
 use anemo::{
     codegen::InboundRequestLayer,
@@ -170,23 +170,13 @@ impl<DB: Database> Primary<DB> {
         // a new header with new block digests from our workers and sends it to the `Certifier`.
         let proposer = Proposer::new(config.clone(), consensus_bus.clone(), None, leader_schedule);
 
-        // TODO: include this with other handles
-        let mut sync_watch = consensus_bus.sync_status().subscribe();
-        task_manager.spawn_task(
-            "proposer task",
-            monitored_future!(
-                async move {
-                    // Wait for block chain sync to finish.
-                    let mut sw = *sync_watch.borrow();
-                    while let SyncStatus::Init = sw {
-                        let _ = sync_watch.changed().await;
-                        sw = *sync_watch.borrow();
-                    }
-                    proposer.await
-                },
-                "ProposerTask"
-            ),
-        );
+        // Only run the proposer task if we are a CVV.
+        if let NodeMode::Cvv = *consensus_bus.node_mode().borrow() {
+            task_manager.spawn_task(
+                "proposer task",
+                monitored_future!(async move { proposer.await }, "ProposerTask"),
+            );
+        }
 
         // Keeps track of the latest consensus round and allows other tasks to clean up their their
         // internal state

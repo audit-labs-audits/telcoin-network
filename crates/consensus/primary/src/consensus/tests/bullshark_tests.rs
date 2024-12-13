@@ -460,8 +460,6 @@ async fn commit_one() {
         while rx_primary.recv().await.is_some() {}
     });
 
-    // pretend we are synced and ready to go so test can run...
-    cb.sync_status_synced();
     // Feed all certificates to the consensus. Only the last certificate should trigger
     // commits, so the task should not block.
     while let Some(certificate) = certificates.pop_front() {
@@ -518,8 +516,6 @@ async fn dead_node() {
 
     let cb = ConsensusBus::new();
     let mut rx_output = cb.sequence().subscribe();
-    // pretend we are synced and ready to go so test can run...
-    cb.sync_status_synced();
     Consensus::spawn(config, &cb, bullshark, &TaskManager::default());
     let cb_clone = cb.clone();
     tokio::spawn(async move {
@@ -658,8 +654,6 @@ async fn not_enough_support() {
 
     let cb = ConsensusBus::new();
     let mut rx_output = cb.sequence().subscribe();
-    // pretend we are synced and ready to go so test can run...
-    cb.sync_status_synced();
     Consensus::spawn(config, &cb, bullshark, &TaskManager::default());
     let cb_clone = cb.clone();
     tokio::spawn(async move {
@@ -760,8 +754,6 @@ async fn missing_leader() {
 
     let cb = ConsensusBus::new();
     let mut rx_output = cb.sequence().subscribe();
-    // pretend we are synced and ready to go so test can run...
-    cb.sync_status_synced();
     Consensus::spawn(config, &cb, bullshark, &TaskManager::default());
     let cb_clone = cb.clone();
     tokio::spawn(async move {
@@ -831,8 +823,6 @@ async fn committed_round_after_restart() {
         let cb = ConsensusBus::new();
         let mut rx_primary = cb.committed_certificates().subscribe();
         let mut rx_output = cb.sequence().subscribe();
-        // pretend we are synced and ready to go so test can run...
-        cb.sync_status_synced();
         let mut task_manager = TaskManager::default();
         Consensus::spawn(config.clone(), &cb, bullshark, &task_manager);
 
@@ -1085,8 +1075,6 @@ async fn restart_with_new_committee() {
 
         let cb = ConsensusBus::new();
         let mut rx_output = cb.sequence().subscribe();
-        // pretend we are synced and ready to go so test can run...
-        cb.sync_status_synced();
         let mut task_manager = TaskManager::default();
         Consensus::spawn(config.clone(), &cb, bullshark, &task_manager);
         let cb_clone = cb.clone();

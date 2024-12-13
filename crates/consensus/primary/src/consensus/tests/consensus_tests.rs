@@ -66,8 +66,6 @@ async fn test_consensus_recovery_with_bullshark() {
 
     let cb = ConsensusBus::new();
     let mut rx_output = cb.sequence().subscribe();
-    // pretend we are synced and ready to go so test can run...
-    cb.sync_status_synced();
     let task_manager = TaskManager::default();
     Consensus::spawn(config.clone(), &cb, bullshark, &task_manager);
 
@@ -150,8 +148,6 @@ async fn test_consensus_recovery_with_bullshark() {
 
     let cb = ConsensusBus::new();
     let mut rx_output = cb.sequence().subscribe();
-    // pretend we are synced and ready to go so test can run...
-    cb.sync_status_synced();
     let task_manager = TaskManager::default();
     Consensus::spawn(config.clone(), &cb, bullshark, &task_manager);
 
@@ -207,8 +203,6 @@ async fn test_consensus_recovery_with_bullshark() {
 
     let cb = ConsensusBus::new();
     let mut rx_output = cb.sequence().subscribe();
-    // pretend we are synced and ready to go so test can run...
-    cb.sync_status_synced();
     Consensus::spawn(config, &cb, bullshark, &TaskManager::default());
 
     // WHEN send the certificates of round >= 5 to trigger a leader election for round 4

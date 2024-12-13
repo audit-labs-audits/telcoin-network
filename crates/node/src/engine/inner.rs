@@ -23,7 +23,8 @@ use reth_evm::{execute::BlockExecutorProvider, ConfigureEvm};
 use reth_node_builder::{NodeConfig, RethTransactionPoolConfig};
 use reth_node_ethereum::EthEvmConfig;
 use reth_primitives::{
-    constants::MIN_PROTOCOL_BASE_FEE, Address, BlockBody, SealedBlock, SealedBlockWithSenders, B256,
+    constants::MIN_PROTOCOL_BASE_FEE, Address, BlockBody, Header, SealedBlock,
+    SealedBlockWithSenders, B256,
 };
 use reth_provider::{
     providers::{BlockchainProvider, StaticFileProvider},
@@ -193,16 +194,13 @@ where
         );
 
         // spawn tn engine
-        task_manager.spawn_task(
-            "consensus engine",
-            Box::pin(async move {
-                let res = tn_engine.await;
-                match res {
-                    Ok(_) => info!(target: "engine", "TN Engine exited gracefully"),
-                    Err(e) => error!(target: "engine", ?e, "TN Engine error"),
-                }
-            }),
-        );
+        task_manager.spawn_task("consensus engine", async move {
+            let res = tn_engine.await;
+            match res {
+                Ok(_) => info!(target: "engine", "TN Engine exited gracefully"),
+                Err(e) => error!(target: "engine", ?e, "TN Engine error"),
+            }
+        });
 
         Ok(())
     }
@@ -439,6 +437,25 @@ where
             .unwrap_or_else(Default::default);
 
         Ok(last_round_of_consensus)
+    }
+
+    /// Return a vector of the last 'number' executed block headers.
+    pub(super) fn last_executed_blocks(&self, number: u64) -> eyre::Result<Vec<Header>> {
+        let finalized_block_num =
+            self.blockchain_db.database_provider_ro()?.last_finalized_block_number()?.unwrap_or(0);
+        let start_num = if finalized_block_num > number { finalized_block_num - number } else { 0 };
+        let mut result = Vec::with_capacity(number as usize);
+        if start_num < finalized_block_num {
+            for block_num in start_num + 1..=finalized_block_num {
+                if let Some(header) =
+                    self.blockchain_db.database_provider_ro()?.header_by_number(block_num)?
+                {
+                    result.push(header);
+                }
+            }
+        }
+
+        Ok(result)
     }
 
     /// Return an database provider.

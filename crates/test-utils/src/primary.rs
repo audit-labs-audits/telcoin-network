@@ -10,8 +10,6 @@ use tn_primary::consensus::ConsensusMetrics;
 use tn_storage::traits::Database;
 use tn_types::AuthorityIdentifier;
 
-use crate::TestExecutionNode;
-
 #[derive(Clone)]
 pub struct PrimaryNodeDetails<DB> {
     pub id: usize,
@@ -41,14 +39,8 @@ impl<DB: Database> PrimaryNodeDetails<DB> {
     }
 
     /// TODO: this needs to be cleaned up
-    pub(crate) async fn start(
-        &mut self,
-        execution_components: &TestExecutionNode,
-    ) -> eyre::Result<()> {
-        // used to retrieve the last executed certificate in case of restarts
-        let last_executed_consensus_hash =
-            execution_components.last_executed_output().await.expect("execution found HEAD");
-        self.node.start(last_executed_consensus_hash).await?;
+    pub(crate) async fn start(&mut self) -> eyre::Result<()> {
+        self.node.start().await?;
 
         // return receiver for execution engine
         Ok(())
