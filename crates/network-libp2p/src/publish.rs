@@ -1,9 +1,13 @@
 //! Generic abstraction for publishing (flood) to the gossipsub network.
+//!
+//! This network impl is intended to send consensus data using floodsub.
+//!
+//! This network does not subscribe to the topics it publishes.
 
 use crate::{
-    helpers::{process_network_command, start_swarm},
+    helpers::{process_swarm_command, publisher_gossip_config, start_swarm},
     types::{
-        GossipNetworkHandle, NetworkCommand, PublishMessageId, CONSENSUS_HEADER_TOPIC,
+        GossipNetworkHandle, NetworkCommand, NetworkResult, CONSENSUS_HEADER_TOPIC,
         PRIMARY_CERT_TOPIC, WORKER_BLOCK_TOPIC,
     },
 };
@@ -13,9 +17,8 @@ use libp2p::{
     swarm::SwarmEvent,
     Multiaddr, Swarm,
 };
-use tn_types::{Certificate, ConsensusHeader, SealedWorkerBlock};
 use tokio::{
-    sync::mpsc::{self, Receiver},
+    sync::mpsc::{self, Receiver, Sender},
     task::JoinHandle,
 };
 use tracing::{info, trace, warn};
@@ -26,70 +29,80 @@ pub struct PublishNetwork {
     topic: IdentTopic,
     /// The gossip network for flood publishing sealed worker blocks.
     network: Swarm<gossipsub::Behaviour>,
+    /// The sender for network handles.
+    handle: Sender<NetworkCommand>,
     /// The receiver for processing network handle requests.
     commands: Receiver<NetworkCommand>,
 }
 
 impl PublishNetwork {
     /// Create a new instance of Self.
-    pub fn new<'a, M>(
+    pub fn new(
         topic: IdentTopic,
         multiaddr: Multiaddr,
-    ) -> eyre::Result<(Self, GossipNetworkHandle)>
-    where
-        M: PublishMessageId<'a>,
-    {
+        gossipsub_config: gossipsub::Config,
+    ) -> NetworkResult<Self> {
         // create handle
-        let (handle_tx, commands) = mpsc::channel(1);
-        let handle = GossipNetworkHandle::new(handle_tx);
+        let (handle, commands) = mpsc::channel(1);
 
         // create swarm and start listening
-        let swarm = start_swarm::<M>(multiaddr)?;
+        let swarm = start_swarm(multiaddr, gossipsub_config)?;
 
         // create Self
-        let network = Self { topic, network: swarm, commands };
+        let network = Self { topic, network: swarm, handle, commands };
 
-        Ok((network, handle))
+        Ok(network)
+    }
+
+    /// Return a [GossipNetworkHandle] to send commands to this network.
+    pub fn network_handle(&self) -> GossipNetworkHandle {
+        GossipNetworkHandle::new(self.handle.clone())
     }
 
     /// Create a new publish network for [SealedWorkerBlock].
     ///
     /// This type is used by worker to publish sealed blocks after they reach quorum.
-    pub fn new_for_worker(multiaddr: Multiaddr) -> eyre::Result<(Self, GossipNetworkHandle)> {
+    pub fn default_for_worker(multiaddr: Multiaddr) -> NetworkResult<Self> {
         // worker's default topic
         let topic = gossipsub::IdentTopic::new(WORKER_BLOCK_TOPIC);
-        Self::new::<SealedWorkerBlock>(topic, multiaddr)
+        // default publish gossipsub config
+        let gossipsub_config = publisher_gossip_config()?;
+        Self::new(topic, multiaddr, gossipsub_config)
     }
 
     /// Create a new publish network for [Certificate].
     ///
     /// This type is used by primary to publish certificates after headers reach quorum.
-    pub fn new_for_primary(multiaddr: Multiaddr) -> eyre::Result<(Self, GossipNetworkHandle)> {
+    pub fn default_for_primary(multiaddr: Multiaddr) -> NetworkResult<Self> {
         // primary's default topic
         let topic = gossipsub::IdentTopic::new(PRIMARY_CERT_TOPIC);
-        Self::new::<Certificate>(topic, multiaddr)
+        // default publish gossipsub config
+        let gossipsub_config = publisher_gossip_config()?;
+        Self::new(topic, multiaddr, gossipsub_config)
     }
 
     /// Create a new publish network for [ConsensusHeader].
     ///
     /// This type is used by consensus to publish consensus block headers after the subdag commits
     /// the latest round (finality).
-    pub fn new_for_consensus(multiaddr: Multiaddr) -> eyre::Result<(Self, GossipNetworkHandle)> {
+    pub fn default_for_consensus(multiaddr: Multiaddr) -> NetworkResult<Self> {
         // consensus header's default topic
         let topic = gossipsub::IdentTopic::new(CONSENSUS_HEADER_TOPIC);
-        Self::new::<ConsensusHeader>(topic, multiaddr)
+        // default publish gossipsub config
+        let gossipsub_config = publisher_gossip_config()?;
+        Self::new(topic, multiaddr, gossipsub_config)
     }
 
     /// Run the network loop to process incoming gossip.
-    pub fn run(mut self) -> JoinHandle<eyre::Result<()>> {
+    pub fn run(mut self) -> JoinHandle<NetworkResult<()>> {
         tokio::spawn(async move {
             loop {
                 tokio::select! {
                     event = self.network.select_next_some() => self.process_event(event).await?,
                     command = self.commands.recv() => match command {
-                        Some(c) => self.process_command(c).await,
+                        Some(c) => self.process_command(c),
                         None => {
-                            info!(target: "subscriber-network", topic=?self.topic, "subscriber shutting down...");
+                            info!(target: "publish-network", topic=?self.topic, "subscriber shutting down...");
                             return Ok(())
                         }
                     }
@@ -99,12 +112,19 @@ impl PublishNetwork {
     }
 
     /// Process commands for the swarm.
-    async fn process_command(&mut self, command: NetworkCommand) {
-        process_network_command(command, &mut self.network);
+    fn process_command(&mut self, command: NetworkCommand) {
+        match command {
+            NetworkCommand::UpdateAuthorizedPublishers { reply, .. } => {
+                // nothing to update
+                warn!(target: "publish-network", "attempt to update authorized publishers - this node doesn't subscribe");
+                let _ = reply.send(Ok(()));
+            }
+            NetworkCommand::Swarm(c) => process_swarm_command(c, &mut self.network),
+        }
     }
 
     /// Process events from the swarm.
-    async fn process_event(&mut self, event: SwarmEvent<gossipsub::Event>) -> eyre::Result<()> {
+    async fn process_event(&mut self, event: SwarmEvent<gossipsub::Event>) -> NetworkResult<()> {
         match event {
             SwarmEvent::Behaviour(gossip) => match gossip {
                 gossipsub::Event::Message { propagation_source, message_id, message } => {
@@ -205,42 +225,49 @@ impl PublishNetwork {
 #[cfg(test)]
 mod tests {
     use super::PublishNetwork;
-    use crate::{types::WORKER_BLOCK_TOPIC, SubscriberNetwork};
+    use crate::{
+        types::{NetworkResult, PRIMARY_CERT_TOPIC, WORKER_BLOCK_TOPIC},
+        SubscriberNetwork,
+    };
     use libp2p::{gossipsub::IdentTopic, Multiaddr};
-    use std::time::Duration;
+    use std::{collections::HashSet, time::Duration};
     use tn_test_utils::fixture_batch_with_transactions;
     use tokio::{sync::mpsc, time::timeout};
 
     #[tokio::test]
-    async fn test_publish_to_one_peer() -> eyre::Result<()> {
+    async fn test_publish_to_one_peer() -> NetworkResult<()> {
         // default any address
         let listen_on: Multiaddr = "/ip4/127.0.0.1/udp/0/quic-v1"
             .parse()
             .expect("multiaddr parsed for worker gossip publisher");
 
         // create publisher
-        let (worker_publish_network, worker_publish_network_handle) =
-            PublishNetwork::new_for_worker(listen_on.clone())?;
+        let cvv_network = PublishNetwork::default_for_worker(listen_on.clone())?;
+        let cvv = cvv_network.network_handle();
+
+        // spawn publish network
+        cvv_network.run();
+
+        // obtain publisher's peer id
+        let cvv_id = cvv.local_peer_id().await?;
 
         // create subscriber
         let (tx_sub, mut rx_sub) = mpsc::channel(1);
-        let (worker_subscriber_network, worker_subscriber_network_handle) =
-            SubscriberNetwork::new_for_worker(tx_sub, listen_on)?;
+        let nvv_network =
+            SubscriberNetwork::default_for_worker(tx_sub, listen_on, HashSet::from([cvv_id]))?;
+        let nvv = nvv_network.network_handle();
 
         // spawn subscriber network
-        worker_subscriber_network.run();
-
-        // spawn publish network
-        worker_publish_network.run();
+        nvv_network.run();
 
         // yield for network to start so listeners update
         tokio::task::yield_now().await;
 
-        let pub_listeners = worker_publish_network_handle.listeners().await?;
+        let pub_listeners = cvv.listeners().await?;
         let pub_addr = pub_listeners.first().expect("pub network is listening").clone();
 
         // dial publisher to exchange information
-        worker_subscriber_network_handle.dial(pub_addr.into()).await?;
+        nvv.dial(pub_addr.into()).await?;
 
         // allow enough time for peer info to exchange from dial
         //
@@ -251,11 +278,15 @@ mod tests {
         let random_block = fixture_batch_with_transactions(10);
         let sealed_block = random_block.seal_slow();
         let expected_result = Vec::from(&sealed_block);
-        let message_id = worker_publish_network_handle
-            .publish(IdentTopic::new(WORKER_BLOCK_TOPIC), expected_result.clone())
-            .await?;
-        let expected_message_id = libp2p::gossipsub::MessageId::new(sealed_block.digest.as_ref());
-        assert_eq!(message_id, expected_message_id);
+
+        // publish on wrong topic - no peers
+        let expected_failure =
+            cvv.publish(IdentTopic::new(PRIMARY_CERT_TOPIC), expected_result.clone()).await;
+        assert!(expected_failure.is_err());
+
+        // publish correct message
+        let _message_id =
+            cvv.publish(IdentTopic::new(WORKER_BLOCK_TOPIC), expected_result.clone()).await?;
 
         // wait for subscriber to forward
         let gossip_block = timeout(Duration::from_secs(5), rx_sub.recv())
