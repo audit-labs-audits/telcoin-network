@@ -49,3 +49,13 @@ When a peer is explicitly added to Gossipsub, it's included in the Gossipsub int
 Gossipsub messages use the data type's hash digest as the `MessagId`.
 However, `IWANT` and `IHAVE` messages are private, and another protocol type is needed to manage specific state sync requests.
 The gossip network is effective for broadcasting new blocks only.
+
+### Message Verification
+
+Staked validators are the only publishers on the gossipsub network.
+The source of the message is used to verify a staked node signed the message before propagating to other peers.
+If a peer sends an invalid message, the P₄ penalty is applied.
+
+Peer scores will be implemented in a follow up PR to track penalties for peers on the gossipsub network.
+Messages should be decoded in the applicaiton layer, and a P₅ penalty for peers who broadcast messages that fail to decode propeerly.
+Messages should only be published by known validators, so application penalties are expected to happen infrequently.
