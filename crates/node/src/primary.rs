@@ -3,7 +3,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 //! Hierarchical type to hold tasks spawned for a worker in the network.
-use anemo::{Network, PeerId};
+use anemo::Network;
 use fastcrypto::traits::VerifyingKey;
 use std::sync::Arc;
 use tn_config::ConsensusConfig;
@@ -23,12 +23,8 @@ struct PrimaryNodeInner<CDB> {
     consensus_config: ConsensusConfig<CDB>,
     /// Container for consensus channels.
     consensus_bus: ConsensusBus,
-    /// Peer ID used for local connections.
-    own_peer_id: Option<PeerId>,
     /// The primary struct that holds handles and network.
-    ///
-    /// Option is some after the primary has started.
-    primary: Option<Primary<CDB>>,
+    primary: Primary<CDB>,
 }
 
 impl<CDB: ConsensusDatabase> PrimaryNodeInner<CDB> {
@@ -41,10 +37,6 @@ impl<CDB: ConsensusDatabase> PrimaryNodeInner<CDB> {
     /// method will return an error instead.
     #[instrument(name = "primary_node", skip_all)]
     async fn start(&mut self) -> eyre::Result<TaskManager> {
-        self.own_peer_id = Some(PeerId(
-            self.consensus_config.key_config().primary_network_public_key().0.to_bytes(),
-        ));
-
         let task_manager = TaskManager::new("Primary Task Manager");
         // spawn primary and update `self`
         self.spawn_primary(&task_manager).await?;
@@ -55,20 +47,16 @@ impl<CDB: ConsensusDatabase> PrimaryNodeInner<CDB> {
     /// Spawn a new primary. Optionally also spawn the consensus and a client executing
     /// transactions.
     async fn spawn_primary(&mut self, task_manager: &TaskManager) -> SubscriberResult<()> {
-        let mut primary = Primary::new(self.consensus_config.clone(), &self.consensus_bus);
         let leader_schedule = self
-            .spawn_consensus(&self.consensus_bus, primary.network().clone(), task_manager)
+            .spawn_consensus(&self.consensus_bus, self.primary.network().clone(), task_manager)
             .await?;
 
-        primary.spawn(
+        self.primary.spawn(
             self.consensus_config.clone(),
             &self.consensus_bus,
             leader_schedule,
             task_manager,
         );
-
-        // Spawn the primary.
-        self.primary = Some(primary);
         Ok(())
     }
 
@@ -147,8 +135,9 @@ pub struct PrimaryNode<CDB> {
 impl<CDB: ConsensusDatabase> PrimaryNode<CDB> {
     pub fn new(consensus_config: ConsensusConfig<CDB>) -> PrimaryNode<CDB> {
         let consensus_bus = ConsensusBus::new();
-        let inner =
-            PrimaryNodeInner { consensus_config, consensus_bus, own_peer_id: None, primary: None };
+        let primary = Primary::new(consensus_config.clone(), &consensus_bus);
+
+        let inner = PrimaryNodeInner { consensus_config, consensus_bus, primary };
 
         Self { internal: Arc::new(RwLock::new(inner)) }
     }
@@ -182,7 +171,7 @@ impl<CDB: ConsensusDatabase> PrimaryNode<CDB> {
     }
 
     /// Return the WAN if the primary is runnig.
-    pub async fn network(&self) -> Option<Network> {
-        self.internal.read().await.primary.as_ref().map(|p| p.network().clone())
+    pub async fn network(&self) -> Network {
+        self.internal.read().await.primary.network().clone()
     }
 }

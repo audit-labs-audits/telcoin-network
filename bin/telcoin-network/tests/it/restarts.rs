@@ -106,7 +106,10 @@ fn run_restart_tests1(
         kill_child(&mut child2);
         return Err(Report::msg(format!("Expected a balance of {} got {bal}!", 20 * WEI_PER_TEL)));
     }
-    test_blocks_same(client_urls).unwrap();
+    test_blocks_same(client_urls).inspect_err(|e| {
+        kill_child(&mut child2);
+        error!(target: "restart-test", ?e);
+    })?;
     Ok(child2)
 }
 
@@ -216,7 +219,7 @@ fn do_restarts(delay: u64) -> eyre::Result<()> {
 
 /// Test a restart case with a short delay, the stopped node should rejoin consensus.
 #[test]
-fn test_restarts() -> eyre::Result<()> {
+fn test_restartstt() -> eyre::Result<()> {
     do_restarts(2)
 }
 

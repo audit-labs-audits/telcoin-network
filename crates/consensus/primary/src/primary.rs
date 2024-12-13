@@ -174,7 +174,7 @@ impl<DB: Database> Primary<DB> {
         if let NodeMode::Cvv = *consensus_bus.node_mode().borrow() {
             task_manager.spawn_task(
                 "proposer task",
-                monitored_future!(async move { proposer.await }, "ProposerTask"),
+                monitored_future!(proposer, "ProposerTask"),
             );
         }
 

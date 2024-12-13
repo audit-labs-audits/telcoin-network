@@ -219,7 +219,7 @@ impl<DB: Database> AuthorityDetails<DB> {
     }
 
     /// Returns an owned primary WAN if it exists.
-    pub async fn primary_network(&self) -> Option<Network> {
+    pub async fn primary_network(&self) -> Network {
         self.primary().await.network().await
     }
 

@@ -19,8 +19,7 @@ async fn test_server_authorizations() {
     tokio::time::sleep(Duration::from_secs(3)).await;
 
     let this_authority_id = test_cluster.authorities().await.first().unwrap().name;
-    let primary_network =
-        test_cluster.authorities().await.first().unwrap().primary_network().await.unwrap();
+    let primary_network = test_cluster.authorities().await.first().unwrap().primary_network().await;
     let worker_network =
         test_cluster.authorities().await.first().unwrap().worker_network(0).await.unwrap();
     let test_committee = test_cluster.committee.clone();

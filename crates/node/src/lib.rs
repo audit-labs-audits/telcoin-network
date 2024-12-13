@@ -67,7 +67,7 @@ where
     if tn_executor::subscriber::can_cvv(
         eng_bus.clone(),
         consensus_config.clone(),
-        primary.network().await.expect("no network"),
+        primary.network().await,
     )
     .await
     {

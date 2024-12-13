@@ -144,6 +144,30 @@ async fn max_consensus_number(
     None
 }
 
+fn last_executed_consensus_block<DB: Database>(
+    consensus_bus: &ConsensusBus,
+    config: &ConsensusConfig<DB>,
+) -> ConsensusHeader {
+    if let Some(last_executed_consensus_hash) =
+        consensus_bus.recent_blocks().borrow().latest_block().header().parent_beacon_block_root
+    {
+        let db = config.database();
+        if let Ok(Some(number)) =
+            db.get::<ConsensusBlockNumbersByDigest>(&last_executed_consensus_hash)
+        {
+            if let Ok(Some(block)) = db.get::<ConsensusBlocks>(&number) {
+                block
+            } else {
+                ConsensusHeader::default()
+            }
+        } else {
+            ConsensusHeader::default()
+        }
+    } else {
+        ConsensusHeader::default()
+    }
+}
+
 /// Return true if this node should be able to participate as a CVV, false otherwise.
 ///
 /// Call this if you should be a committe member.  Currently it will determine if you have recent
@@ -157,28 +181,7 @@ pub async fn can_cvv<DB: Database>(
 ) -> bool {
     // Get the DB and load our last executed consensus block (note there may be unexecuted
     // blocks, catch up will execute them).
-    let last_executed_consensus_hash = consensus_bus.recent_blocks().borrow().latest_block().hash();
-    let db = config.database();
-    let last_executed_block = if let Ok(Some(number)) =
-        db.get::<ConsensusBlockNumbersByDigest>(&last_executed_consensus_hash)
-    {
-        if let Ok(Some(block)) = db.get::<ConsensusBlocks>(&number) {
-            block
-        } else {
-            ConsensusHeader::default()
-        }
-    } else {
-        ConsensusHeader::default()
-    };
-    /*// Edge case, in case we don't hear from peers but have un-executed blocks...
-    // Not sure we should handle this, but it hurts nothing.
-    let (_, last_db_block) = db
-        .last_record::<ConsensusBlocks>()
-        .unwrap_or_else(|| (last_executed_block.number, last_executed_block.clone()));
-    // Note use last_executed_block here because
-    let mut last_parent = last_executed_block.digest();
-    let mut last_number = last_executed_block.number;
-    */
+    let last_executed_block = last_executed_consensus_block(&consensus_bus, &config);
 
     let mut clients: Vec<PrimaryToPrimaryClient<_>> = config
         .committee()
@@ -189,11 +192,13 @@ pub async fn can_cvv<DB: Database>(
         })
         .collect();
     let (_max_consensus_height, max_epoch, max_round) =
-        max_consensus_number(&mut clients).await.unwrap_or((
-            last_executed_block.number,
-            last_executed_block.sub_dag.leader.epoch(),
-            last_executed_block.sub_dag.leader.round(),
-        ));
+        max_consensus_number(&mut clients).await.unwrap_or_else(|| {
+            (
+                last_executed_block.number,
+                last_executed_block.sub_dag.leader.epoch(),
+                last_executed_block.sub_dag.leader.round(),
+            )
+        });
     tracing::info!(target: "telcoin::subscriber",
         "CATCH UP params {max_epoch}, {max_round}, leader epoch: {}, leader round: {}, gc: {}",
         last_executed_block.sub_dag.leader.epoch(),
@@ -256,28 +261,15 @@ impl<DB: Database> Subscriber<DB> {
     async fn follow_consensus(&self) -> SubscriberResult<(BlockHash, u64)> {
         // Get the DB and load our last executed consensus block (note there may be unexecuted
         // blocks, catch up will execute them).
-        let last_executed_consensus_hash =
-            self.consensus_bus.recent_blocks().borrow().latest_block().hash();
-        let db = self.config.database();
-        let last_executed_block = if let Ok(Some(number)) =
-            db.get::<ConsensusBlockNumbersByDigest>(&last_executed_consensus_hash)
-        {
-            if let Ok(Some(block)) = db.get::<ConsensusBlocks>(&number) {
-                block
-            } else {
-                ConsensusHeader::default()
-            }
-        } else {
-            ConsensusHeader::default()
-        };
+        let last_executed_block = last_executed_consensus_block(&self.consensus_bus, &self.config);
         // Edge case, in case we don't hear from peers but have un-executed blocks...
         // Not sure we should handle this, but it hurts nothing.
+        let db = self.config.database();
         let (_, last_db_block) = db
             .last_record::<ConsensusBlocks>()
             .unwrap_or_else(|| (last_executed_block.number, last_executed_block.clone()));
         // Note use last_executed_block here because
         let mut last_parent = last_executed_block.digest();
-        let mut last_number = last_executed_block.number;
 
         let mut clients: Vec<PrimaryToPrimaryClient<_>> = self
             .config
@@ -298,8 +290,8 @@ impl<DB: Database> Subscriber<DB> {
             ));
         tracing::info!(target: "telcoin::subscriber",
             "CATCH UP params {max_epoch}, {max_round}, leader epoch: {}, leader round: {}, gc: {}",
-            last_db_block.sub_dag.leader.epoch(),
-            last_db_block.sub_dag.leader.round(),
+            last_executed_block.sub_dag.leader.epoch(),
+            last_executed_block.sub_dag.leader.round(),
             self.config.parameters().gc_depth
         );
         tracing::info!(target: "telcoin::subscriber", "Node has fallen behind, can only follow consensus output now.");
@@ -335,10 +327,8 @@ impl<DB: Database> Subscriber<DB> {
                 };
                 tracing::debug!(target: "telcoin::subscriber", "trying to get consensus block {number}");
                 let parent_hash = last_parent;
-                let number = last_number + 1;
                 last_parent =
                     ConsensusHeader::digest_from_parts(parent_hash, &output.sub_dag, number);
-                last_number += 1;
                 if last_parent != output.digest() {
                     tracing::error!(target: "telcoin::subscriber", "failed to execute consensus!");
                     return Err(SubscriberError::UnexpectedProtocolMessage);
@@ -348,13 +338,9 @@ impl<DB: Database> Subscriber<DB> {
                 let consensus_output = self.fetch_blocks(output.sub_dag, parent_hash, number).await;
                 self.save_consensus(consensus_output.clone())?;
                 let last_round = consensus_output.leader_round();
-                if let Err(e) = self.consensus_bus.consensus_output().send(consensus_output).await {
-                    error!(target: "telcoin::subscriber", "error broadcasting consensus output for authority {}: {}", self.inner.authority_id, e);
-                    return Err(SubscriberError::ClosedChannel("consensus_output".to_string()));
-                }
-                last_consensus_height = number;
-                // We aren't doing consensus now but update these watches for other code that may
-                // need this.
+
+                // We aren't doing consensus now but still need to update these watches before we
+                // send the consensus output.
                 let _ = self.consensus_bus.consensus_round_updates().send(
                     ConsensusRound::new_with_gc_depth(
                         last_round,
@@ -362,9 +348,14 @@ impl<DB: Database> Subscriber<DB> {
                     ),
                 );
                 let _ = self.consensus_bus.narwhal_round_updates().send(last_round);
+
+                if let Err(e) = self.consensus_bus.consensus_output().send(consensus_output).await {
+                    error!(target: "telcoin::subscriber", "error broadcasting consensus output for authority {}: {}", self.inner.authority_id, e);
+                    return Err(SubscriberError::ClosedChannel("consensus_output".to_string()));
+                }
             }
-            let last_rounds_max = max_consensus_height;
-            while last_rounds_max == max_consensus_height {
+            last_consensus_height = max_consensus_height;
+            while last_consensus_height == max_consensus_height {
                 // Rest for bit then try see if chain has advanced and catch up if so.
                 tokio::time::sleep(Duration::from_secs(1)).await;
                 let (new_max_consensus_height, _, _) = max_consensus_number(&mut clients)
@@ -375,150 +366,13 @@ impl<DB: Database> Subscriber<DB> {
         }
     }
 
-    /// If the node can participate in consensus will resolve to Ok and return the hash and number
-    /// to build the consensus chain from.
-    ///
-    /// It will first handle any consensus output messages that were restored due to a restart
-    /// (these headers are already in our DB). It will then download and apply ConsensusOutputs
-    /// from the consensus chain suplied by our peers.  Will continue to follow our peers
-    /// consensus chain outpud once it has to "catch up".
-    ///
-    /// This function will either return or loop forever following the consensus chain.
-    /// It is very stupid and inefficient currently, it will get better once the consensus chain
-    /// is being "published" and it no longer has to pull blocks.
-    async fn catch_up(&self) -> SubscriberResult<(BlockHash, u64)> {
+    /// Return the block hash and number of the last executed consensus output.
+    async fn get_last_executed_consensus(&self) -> SubscriberResult<(BlockHash, u64)> {
         // Get the DB and load our last executed consensus block (note there may be unexecuted
         // blocks, catch up will execute them).
-        let last_executed_consensus_hash =
-            self.consensus_bus.recent_blocks().borrow().latest_block().hash();
-        let db = self.config.database();
-        let last_executed_block = if let Ok(Some(number)) =
-            db.get::<ConsensusBlockNumbersByDigest>(&last_executed_consensus_hash)
-        {
-            if let Ok(Some(block)) = db.get::<ConsensusBlocks>(&number) {
-                block
-            } else {
-                ConsensusHeader::default()
-            }
-        } else {
-            ConsensusHeader::default()
-        };
-        // Edge case, in case we don't hear from peers but have un-executed blocks...
-        // Not sure we should handle this, but it hurts nothing.
-        let (_, last_db_block) = db
-            .last_record::<ConsensusBlocks>()
-            .unwrap_or_else(|| (last_executed_block.number, last_executed_block.clone()));
-        // Note use last_executed_block here because
-        let last_parent = last_executed_block.digest();
-        let last_number = last_executed_block.number;
+        let last_executed_block = last_executed_consensus_block(&self.consensus_bus, &self.config);
 
-        let mut clients: Vec<PrimaryToPrimaryClient<_>> = self
-            .config
-            .committee()
-            .others_primaries_by_id(self.config.authority().id())
-            .into_iter()
-            .map(|(_, _, peer_id)| {
-                PrimaryToPrimaryClient::new(
-                    self.inner.network.waiting_peer(anemo::PeerId(peer_id.0.to_bytes())),
-                )
-            })
-            .collect();
-        let (_max_consensus_height, max_epoch, max_round) =
-            max_consensus_number(&mut clients).await.unwrap_or((
-                last_db_block.number,
-                last_db_block.sub_dag.leader.epoch(),
-                last_db_block.sub_dag.leader.round(),
-            ));
-        tracing::info!(target: "telcoin::subscriber",
-            "CATCH UP params {max_epoch}, {max_round}, leader epoch: {}, leader round: {}, gc: {}",
-            last_db_block.sub_dag.leader.epoch(),
-            last_db_block.sub_dag.leader.round(),
-            self.config.parameters().gc_depth
-        );
-        /*let (last_consensus_epoch, last_consensus_round) =
-        if let Some(commit) = self.config.node_storage().consensus_store.get_latest_sub_dag() {
-            // TODO- replace 0 with the epoch once we have them..
-            (0, commit.leader_round)
-        } else {
-            (last_db_block.sub_dag.leader.epoch(), last_db_block.sub_dag.leader.round())
-        };*/
-        Ok((last_parent, last_number))
-        /* XXXX if max_epoch == last_consensus_epoch
-            && (last_consensus_round + self.config.parameters().gc_depth) > max_round
-        {
-            return Ok((last_parent, last_number));
-        }
-        tracing::info!(target: "telcoin::subscriber", "Node has fallen behind, can only follow consensus output now.");
-        // Catch up to the current chain state if we need to.
-        let mut last_consensus_height = last_executed_block.number;
-        let clients_len = clients.len();
-        // infinate loop over consensus output
-        loop {
-            for number in last_consensus_height + 1..=max_consensus_height {
-                // Check if we already have this consensus output in our local DB.
-                // This will happen if we had outputs that were not applied before last shutdown
-                // (for instance). This will also allow us to pre load other
-                // consensus blocks as a future optimization.
-                let output = if let Ok(Some(block)) = db.get::<ConsensusBlocks>(&number) {
-                    block
-                } else {
-                    let mut try_num = 0;
-                    loop {
-                        // stop trying at some point?
-                        // rotate through clients attempting to get the headers.
-                        let client =
-                            clients.get_mut((number as usize + try_num) % clients_len).unwrap();
-                        let req = ConsensusOutputRequest { number: Some(number), hash: None };
-                        match client.request_consensus(req).await {
-                            Ok(res) => break res.into_body().output,
-                            Err(e) => {
-                                tracing::error!(target: "telcoin::subscriber", "error requesting peer consensus {e:?}");
-                                try_num += 1;
-                                continue;
-                            }
-                        }
-                    }
-                };
-                tracing::debug!(target: "telcoin::subscriber", "trying to get consensus block {number}");
-                let parent_hash = last_parent;
-                let number = last_number + 1;
-                last_parent =
-                    ConsensusHeader::digest_from_parts(parent_hash, &output.sub_dag, number);
-                last_number += 1;
-                if last_parent != output.digest() {
-                    tracing::error!(target: "telcoin::subscriber", "failed to execute consensus!");
-                    return Err(SubscriberError::UnexpectedProtocolMessage);
-                }
-                // TODO should also verify that the block output is building on is in fact
-                // the head of our chain.
-                let consensus_output = self.fetch_blocks(output.sub_dag, parent_hash, number).await;
-                self.save_consensus(consensus_output.clone())?;
-                let last_round = consensus_output.leader_round();
-                if let Err(e) = self.consensus_bus.consensus_output().send(consensus_output).await {
-                    error!(target: "telcoin::subscriber", "error broadcasting consensus output for authority {}: {}", self.inner.authority_id, e);
-                    return Err(SubscriberError::ClosedChannel("consensus_output".to_string()));
-                }
-                last_consensus_height = number;
-                // We aren't doing consensus now but update these watches for other code that may
-                // need this.
-                let _ = self.consensus_bus.consensus_round_updates().send(
-                    ConsensusRound::new_with_gc_depth(
-                        last_round,
-                        self.config.parameters().gc_depth,
-                    ),
-                );
-                let _ = self.consensus_bus.narwhal_round_updates().send(last_round);
-            }
-            let last_rounds_max = max_consensus_height;
-            while last_rounds_max == max_consensus_height {
-                // Rest for bit then try see if chain has advanced and catch up if so.
-                tokio::time::sleep(Duration::from_secs(1)).await;
-                let (new_max_consensus_height, _, _) = max_consensus_number(&mut clients)
-                    .await
-                    .unwrap_or((last_consensus_height, max_epoch, max_round));
-                max_consensus_height = new_max_consensus_height;
-            }
-        }*/
+        Ok((last_executed_block.digest(), last_executed_block.number))
     }
 
     /// Main loop connecting to the consensus to listen to sequence messages.
@@ -531,9 +385,7 @@ impl<DB: Database> Subscriber<DB> {
         // fetched, no later certificate will be delivered.
         let mut waiting = FuturesOrdered::new();
 
-        let (mut last_parent, mut last_number) = self.catch_up().await?;
-        // If we made it to here we can join into consensus now...
-        // Otherwise catch_up is just going to follow the consensus chain.
+        let (mut last_parent, mut last_number) = self.get_last_executed_consensus().await?;
 
         let mut rx_sequence = self.consensus_bus.sequence().subscribe();
         // Listen to sequenced consensus message and process them.

@@ -51,7 +51,7 @@ impl<DB: Database> PrimaryNodeDetails<DB> {
     }
 
     /// Return an owned wide-area [Network] if it is running.
-    pub async fn network(&self) -> Option<Network> {
+    pub async fn network(&self) -> Network {
         self.node.network().await
     }
 }

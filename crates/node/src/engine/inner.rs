@@ -443,7 +443,7 @@ where
     pub(super) fn last_executed_blocks(&self, number: u64) -> eyre::Result<Vec<Header>> {
         let finalized_block_num =
             self.blockchain_db.database_provider_ro()?.last_finalized_block_number()?.unwrap_or(0);
-        let start_num = if finalized_block_num > number { finalized_block_num - number } else { 0 };
+        let start_num = finalized_block_num.saturating_sub(number);
         let mut result = Vec::with_capacity(number as usize);
         if start_num < finalized_block_num {
             for block_num in start_num + 1..=finalized_block_num {
