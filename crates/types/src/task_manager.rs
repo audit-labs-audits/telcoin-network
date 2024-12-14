@@ -178,77 +178,38 @@ impl TaskManager {
             .drain(..)
             .map(|mut sub| async move { (sub.join(shutdown_ref.clone()).await, sub.name.clone()) })
             .collect();
-        let mut done = false;
         let rx_shutdown = shutdown.subscribe();
-        while !done {
-            done = true;
-            if future_managers.is_empty() {
-                tokio::select! {
-                    _ = Self::exit(do_exit) => {
-                        tracing::info!(target: "tn::tasks", "{}: Node exiting", self.name);
-                    },
-                    _ = &rx_shutdown => {
-                        tracing::info!(target: "tn::tasks", "{}: Node exiting, received shutdown notification", self.name);
-                    },
-                    new_task = self.new_task_rx.recv() => {
-                        if let Some(task) = new_task {
-                            done = false;
-                            self.tasks.push(task);
+        loop {
+            tokio::select! {
+                _ = Self::exit(do_exit) => {
+                    tracing::info!(target: "tn::tasks", "{}: Node exiting", self.name);
+                    break;
+                },
+                _ = &rx_shutdown => {
+                    tracing::info!(target: "tn::tasks", "{}: Node exiting, received shutdown notification", self.name);
+                    break;
+                },
+                Some(task) = self.new_task_rx.recv() => {
+                    self.tasks.push(task);
+                    continue;
+                },
+                res = self.tasks.next() => {
+                    match res {
+                        Some(Ok(name)) => {
+                            tracing::error!(target: "tn::tasks", "{}: {name} returned Ok, node exiting", self.name);
                         }
-                    },
-                    res = self.tasks.next() => {
-                        match res {
-                            Some(Ok(name)) => {
-                                tracing::error!(target: "tn::tasks", "{}: {name} returned Ok, node exiting", self.name);
-                            }
-                            Some(Err((name, join_err))) => {
-                                tracing::error!(target: "tn::tasks", "{}: {name} returned error {join_err}, node exiting", self.name);
-                            }
-                            None => {
-                                tracing::error!(target: "tn::tasks", "{}: Out of tasks! node exiting", self.name);
-                            }
+                        Some(Err((name, join_err))) => {
+                            tracing::error!(target: "tn::tasks", "{}: {name} returned error {join_err}, node exiting", self.name);
                         }
-
+                        None => {
+                            tracing::error!(target: "tn::tasks", "{}: Out of tasks! node exiting", self.name);
+                        }
                     }
+                    break;
                 }
-            } else {
-                tokio::select! {
-                    _ = Self::exit(do_exit) => {
-                        tracing::info!(target: "tn::tasks", "{}: Node exiting", self.name);
-                    },
-                    _ = &rx_shutdown => {
-                        tracing::info!(target: "tn::tasks", "{}: Node exiting, received shutdown notification", self.name);
-                    },
-                    new_task = self.new_task_rx.recv() => {
-                        if let Some(task) = new_task {
-                            done = false;
-                            self.tasks.push(task);
-                        }
-                    },
-                    res = self.tasks.next() => {
-                        match res {
-                            Some(Ok(name)) => {
-                                tracing::error!(target: "tn::tasks", "{}: {name} returned Ok, node exiting", self.name);
-                            }
-                            Some(Err((name, join_err))) => {
-                                tracing::error!(target: "tn::tasks", "{}: {name} returned error {join_err}, node exiting", self.name);
-                            }
-                            None => {
-                                tracing::error!(target: "tn::tasks", "{}: Out of tasks! node exiting", self.name);
-                            }
-                        }
-
-                    }
-                    res = future_managers.next() => {
-                        match res {
-                            Some((_, name)) => {
-                                tracing::error!(target: "tn::tasks", "{}: Sub-Task Manager {name} returned exited, node exiting", self.name);
-                            }
-                            None => {
-                                tracing::error!(target: "tn::tasks", "{}: Sub-Task Manager empty, node exiting", self.name);
-                            }
-                        }
-                    }
+                Some((_, name)) = future_managers.next() => {
+                    tracing::error!(target: "tn::tasks", "{}: Sub-Task Manager {name} returned exited, node exiting", self.name);
+                    break;
                 }
             }
         }

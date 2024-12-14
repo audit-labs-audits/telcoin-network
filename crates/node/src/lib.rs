@@ -27,10 +27,7 @@ pub mod worker;
 ///
 /// Worker, Primary, and Execution.
 #[instrument(level = "info", skip_all)]
-pub async fn launch_node<DB, /* Evm, CE, */ P>(
-    mut builder: TnBuilder<DB>,
-    tn_datadir: P,
-) -> eyre::Result<()>
+pub async fn launch_node<DB, P>(mut builder: TnBuilder<DB>, tn_datadir: P) -> eyre::Result<()>
 where
     DB: Database + DatabaseMetadata + DatabaseMetrics + Clone + Unpin + 'static,
     P: TelcoinDirs + 'static,
