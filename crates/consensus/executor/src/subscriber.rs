@@ -172,8 +172,8 @@ fn last_executed_consensus_block<DB: Database>(
 ///
 /// Call this if you should be a committe member.  Currently it will determine if you have recent
 /// enough DAG information to rejoin consensus or not.
-/// This logic will change in the future, currently if you can re-join consensus then you can only
-/// follow now.
+/// This logic will change in the future, currently if you can not re-join consensus then you can
+/// only follow now.
 pub async fn can_cvv<DB: Database>(
     consensus_bus: ConsensusBus,
     config: ConsensusConfig<DB>,
@@ -205,13 +205,16 @@ pub async fn can_cvv<DB: Database>(
         last_executed_block.sub_dag.leader.round(),
         config.parameters().gc_depth
     );
-    let (last_consensus_epoch, last_consensus_round) =
-        if let Some(commit) = config.node_storage().consensus_store.get_latest_sub_dag() {
-            // TODO- replace 0 with the epoch once we have them..
-            (0, commit.leader_round)
-        } else {
-            (last_executed_block.sub_dag.leader.epoch(), last_executed_block.sub_dag.leader.round())
-        };
+    let (last_consensus_epoch, last_consensus_round) = if let Some(commit) =
+        config.node_storage().consensus_store.get_latest_sub_dag()
+    {
+        // TODO- replace 0 with the epoch once we have them..
+        (0, commit.leader_round)
+    } else {
+        // Use 0, 0 here if we have no sub-dag instead of info from last_executed_block.
+        // On restart last_executed_block might fool us into thinking we are good to be an CVV...
+        (0, 0)
+    };
     if max_epoch == last_consensus_epoch
         && (last_consensus_round + config.parameters().gc_depth) > max_round
     {
@@ -219,6 +222,13 @@ pub async fn can_cvv<DB: Database>(
         // We should be able to pick up consensus where we left off.
         true
     } else {
+        let last_round = last_executed_block.sub_dag.leader_round();
+        // We aren't doing consensus now but still need to update these watches before we
+        // send the consensus output.
+        let _ = consensus_bus
+            .consensus_round_updates()
+            .send(ConsensusRound::new_with_gc_depth(last_round, config.parameters().gc_depth));
+        let _ = consensus_bus.narwhal_round_updates().send(last_round);
         false
     }
 }
