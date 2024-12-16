@@ -184,6 +184,10 @@ impl TaskManager {
                     continue;
                 },
                 res = self.tasks.next() => {
+                    // If any task self.tasks exits then this is an error.  Currently all managed tasks are
+                    // expected to run for the lifetime of the application (until shutdown is indicated).
+                    // If the manager changes to also manage tasks that do not live for the app lifetime then
+                    // some of these match arms will be expected for those tasks.
                     match res {
                         Some(Ok(name)) => {
                             tracing::error!(target: "tn::tasks", "{}: {name} returned Ok, node exiting", self.name);

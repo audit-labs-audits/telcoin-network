@@ -29,6 +29,12 @@ pub enum NodeMode {
     Nvv,
 }
 
+impl NodeMode {
+    pub fn is_cvv(&self) -> bool {
+        matches!(self, NodeMode::Cvv)
+    }
+}
+
 #[derive(Debug)]
 struct ConsensusBusInner {
     /// New certificates from the primary. The primary should send us new certificates

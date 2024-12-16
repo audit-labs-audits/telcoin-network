@@ -7,7 +7,7 @@
 
 use crate::{
     consensus::{bullshark::Bullshark, utils::gc_round, ConsensusError, ConsensusMetrics},
-    ConsensusBus, NodeMode,
+    ConsensusBus,
 };
 use consensus_metrics::monitored_future;
 use fastcrypto::hash::Hash;
@@ -356,7 +356,7 @@ impl<DB: Database> Consensus<DB> {
         };
 
         // Only run the consensus task if we are a CVV.
-        if let NodeMode::Cvv = *consensus_bus.node_mode().borrow() {
+        if consensus_bus.node_mode().borrow().is_cvv() {
             task_manager.spawn_task("consensus", monitored_future!(s.run(), "Consensus", INFO));
         }
     }

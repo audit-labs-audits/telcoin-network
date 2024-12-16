@@ -22,7 +22,7 @@ use tn_network::{
     PrimaryToWorkerClient,
 };
 use tn_network_types::{ConsensusOutputRequest, FetchBlocksRequest, PrimaryToPrimaryClient};
-use tn_primary::{consensus::ConsensusRound, ConsensusBus, NodeMode};
+use tn_primary::{consensus::ConsensusRound, ConsensusBus};
 use tn_storage::{
     tables::{ConsensusBlockNumbersByDigest, ConsensusBlocks},
     traits::{Database, DbTxMut},
@@ -75,7 +75,7 @@ pub fn spawn_subscriber<DB: Database>(
         config,
         inner: Arc::new(Inner { authority_id, committee, worker_cache, client, network }),
     };
-    if let NodeMode::Cvv = mode {
+    if mode.is_cvv() {
         task_manager.spawn_task(
             "subscriber consensus",
             monitored_future!(

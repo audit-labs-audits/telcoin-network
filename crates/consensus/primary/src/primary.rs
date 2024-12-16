@@ -11,7 +11,7 @@ use crate::{
     proposer::Proposer,
     state_handler::StateHandler,
     synchronizer::Synchronizer,
-    ConsensusBus, NodeMode,
+    ConsensusBus,
 };
 use anemo::{
     codegen::InboundRequestLayer,
@@ -171,7 +171,7 @@ impl<DB: Database> Primary<DB> {
         let proposer = Proposer::new(config.clone(), consensus_bus.clone(), None, leader_schedule);
 
         // Only run the proposer task if we are a CVV.
-        if let NodeMode::Cvv = *consensus_bus.node_mode().borrow() {
+        if consensus_bus.node_mode().borrow().is_cvv() {
             task_manager.spawn_task("proposer task", monitored_future!(proposer, "ProposerTask"));
         }
 
