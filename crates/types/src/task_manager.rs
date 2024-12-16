@@ -20,7 +20,7 @@ use crate::Notifier;
 /// Used for the futures that will resolve when tasks do.
 /// Allows us to hold a FuturesUnordered in directly in the TaskManager struct.
 struct TaskHandle {
-    handle: Option<JoinHandle<()>>,
+    handle: JoinHandle<()>,
     name: String,
 }
 
@@ -32,20 +32,12 @@ impl Future for TaskHandle {
         cx: &mut std::task::Context<'_>,
     ) -> std::task::Poll<Self::Output> {
         let this = self.get_mut();
-        if let Some(mut handle) = this.handle.take() {
-            match handle.poll_unpin(cx) {
-                Poll::Ready(res) => match res {
-                    Ok(_) => Poll::Ready(Ok(this.name.clone())),
-                    Err(err) => Poll::Ready(Err((this.name.clone(), err))),
-                },
-                Poll::Pending => {
-                    this.handle = Some(handle);
-                    Poll::Pending
-                }
-            }
-        } else {
-            // This is bad...
-            Poll::Pending
+        match this.handle.poll_unpin(cx) {
+            Poll::Ready(res) => match res {
+                Ok(_) => Poll::Ready(Ok(this.name.clone())),
+                Err(err) => Poll::Ready(Err((this.name.clone(), err))),
+            },
+            Poll::Pending => Poll::Pending,
         }
     }
 }
@@ -78,7 +70,7 @@ impl TaskManagerClone {
         let handle = tokio::spawn(async move {
             future.await;
         });
-        if let Err(err) = self.new_task_tx.try_send(TaskHandle { name, handle: Some(handle) }) {
+        if let Err(err) = self.new_task_tx.try_send(TaskHandle { name, handle }) {
             tracing::error!(target: "tn::tasks", "Task error sending joiner: {err}");
         }
     }
@@ -113,7 +105,7 @@ impl TaskManager {
         let handle = tokio::spawn(async move {
             future.await;
         });
-        self.tasks.push(TaskHandle { name, handle: Some(handle) });
+        self.tasks.push(TaskHandle { name, handle });
     }
 
     /// Return a clonable spawner (also implements Reth's TaskSpawner trait).
@@ -147,9 +139,7 @@ impl TaskManager {
     /// This is included for some tests, should not use in real code.
     pub fn abort(&self) {
         for task in self.tasks.iter() {
-            if let Some(handle) = &task.handle {
-                handle.abort();
-            }
+            task.handle.abort();
         }
     }
 
@@ -360,9 +350,8 @@ impl reth_tasks::TaskSpawner for TaskManagerClone {
         });
         let handle = tokio::runtime::Handle::current();
         let join_handle = tokio::task::spawn_blocking(move || handle.block_on(f));
-        if let Err(err) = self
-            .new_task_tx
-            .try_send(TaskHandle { name: name.to_string(), handle: Some(join_handle) })
+        if let Err(err) =
+            self.new_task_tx.try_send(TaskHandle { name: name.to_string(), handle: join_handle })
         {
             tracing::error!(target: "tn::tasks", "Task error sending joiner: {err}");
         }
