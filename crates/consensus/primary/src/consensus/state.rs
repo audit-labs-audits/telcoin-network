@@ -85,21 +85,12 @@ impl ConsensusState {
             let mut certificates = Vec::new();
             let mut missing_certs = false;
             for cert in latest_sub_dag.certificates() {
-                if let Ok(Some(c)) = cert_store.read(cert)
-                //.unwrap().expect("Certificate should be found in database")
-                {
+                if let Ok(Some(c)) = cert_store.read(cert) {
                     certificates.push(c);
                 } else {
                     missing_certs = true;
                 }
             }
-            /*let certificates = latest_sub_dag
-            .certificates()
-            .iter()
-            .map(|s| {
-                cert_store.read(*s).unwrap().expect("Certificate should be found in database")
-            })
-            .collect();*/
 
             if missing_certs {
                 None
