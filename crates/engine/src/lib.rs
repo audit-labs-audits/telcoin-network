@@ -33,10 +33,10 @@ use reth_provider::{
 };
 use std::{
     collections::VecDeque,
-    pin::Pin,
+    pin::{pin, Pin},
     task::{Context, Poll},
 };
-use tn_types::{BuildArguments, ConsensusOutput};
+use tn_types::{BuildArguments, ConsensusOutput, Noticer};
 use tokio::sync::oneshot;
 use tokio_stream::wrappers::BroadcastStream;
 use tracing::{error, info, trace, warn};
@@ -77,6 +77,8 @@ pub struct ExecutorEngine<BT, CE> {
     ///
     /// This information reflects the current finalized block number and hash.
     parent_header: SealedHeader,
+    /// Used to receive shutdown notification.
+    rx_shutdown: Noticer,
 }
 
 impl<BT, CE> ExecutorEngine<BT, CE>
@@ -103,6 +105,7 @@ where
         max_round: Option<u64>,
         consensus_output_stream: BroadcastStream<ConsensusOutput>,
         parent_header: SealedHeader,
+        rx_shutdown: Noticer,
     ) -> Self {
         Self {
             queued: Default::default(),
@@ -112,6 +115,7 @@ where
             max_round,
             consensus_output_stream,
             parent_header,
+            rx_shutdown,
         }
     }
 
@@ -204,6 +208,18 @@ where
 
     fn poll(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
         let this = self.get_mut();
+
+        // check for shutdown signal
+        if pin!(&this.rx_shutdown).poll(cx).is_ready() {
+            info!(target: "engine", "received shutdown signal...");
+            // only return if there are no current tasks and the queue is empty
+            // otherwise, let the loop continue so any remaining tasks and queued output is
+            // executed
+            // rx_shutdown should continue to poll ready so once the queue is clear should shutdown.
+            if this.pending_task.is_none() && this.queued.is_empty() {
+                return Poll::Ready(Ok(()));
+            }
+        }
 
         loop {
             // check if output is available from consensus to keep broadcast stream from "lagging"
@@ -305,14 +321,13 @@ mod tests {
         Address, BlockHashOrNumber, Bloom, B256, EMPTY_OMMER_ROOT_HASH, U256,
     };
     use reth_provider::{BlockIdReader, BlockNumReader, BlockReader, TransactionVariant};
-    use reth_tasks::TaskManager;
     use reth_tracing::init_test_tracing;
     use std::{collections::VecDeque, str::FromStr as _, sync::Arc, time::Duration};
     use tn_block_builder::test_utils::execute_test_worker_block;
     use tn_test_utils::{default_test_execution_node, seeded_genesis_from_random_batches};
     use tn_types::{
         adiri_chain_spec_arc, adiri_genesis, max_worker_block_gas, now, BlockHash, Certificate,
-        CommittedSubDag, ConsensusHeader, ConsensusOutput, ReputationScores,
+        CommittedSubDag, ConsensusHeader, ConsensusOutput, Notifier, ReputationScores, TaskManager,
     };
     use tokio::{sync::oneshot, time::timeout};
     use tokio_stream::wrappers::BroadcastStream;
@@ -359,10 +374,7 @@ mod tests {
         let chain = adiri_chain_spec_arc();
 
         // execution node components
-        let manager = TaskManager::current();
-        let executor = manager.executor();
-        let execution_node =
-            default_test_execution_node(Some(chain.clone()), None, executor.clone())?;
+        let execution_node = default_test_execution_node(Some(chain.clone()), None)?;
 
         let (to_engine, from_consensus) = tokio::sync::broadcast::channel(1);
         let consensus_output_stream = BroadcastStream::from(from_consensus);
@@ -371,12 +383,14 @@ mod tests {
         let max_round = None;
         let genesis_header = chain.sealed_genesis_header();
 
+        let shutdown = Notifier::default();
         let engine = ExecutorEngine::new(
             provider.clone(),
             evm_config,
             max_round,
             consensus_output_stream,
             genesis_header.clone(),
+            shutdown.subscribe(),
         );
 
         // send output
@@ -389,10 +403,10 @@ mod tests {
         let (tx, rx) = oneshot::channel();
 
         // spawn engine task
-        executor.spawn_blocking(async move {
+        TaskManager::default().spawn_blocking(Box::pin(async move {
             let res = engine.await;
             let _ = tx.send(res);
-        });
+        }));
 
         let engine_task = timeout(Duration::from_secs(10), rx).await?;
         assert!(engine_task.is_ok());
@@ -512,10 +526,7 @@ mod tests {
         let chain: Arc<ChainSpec> = Arc::new(genesis.into());
 
         // create execution node components
-        let manager = TaskManager::current();
-        let executor = manager.executor();
-        let execution_node =
-            default_test_execution_node(Some(chain.clone()), None, executor.clone())?;
+        let execution_node = default_test_execution_node(Some(chain.clone()), None)?;
         let provider = execution_node.get_provider().await;
         let parent = chain.sealed_genesis_header();
 
@@ -633,12 +644,14 @@ mod tests {
         let max_round = None;
         let parent = chain.sealed_genesis_header();
 
+        let shutdown = Notifier::default();
         let mut engine = ExecutorEngine::new(
             blockchain.clone(),
             evm_config,
             max_round,
             consensus_output_stream,
             parent,
+            shutdown.subscribe(),
         );
 
         // queue the first output - simulate already received from channel
@@ -657,10 +670,10 @@ mod tests {
         // spawn engine task
         //
         // one output already queued up, one output waiting in broadcast stream
-        executor.spawn_blocking(async move {
+        TaskManager::default().spawn_blocking(Box::pin(async move {
             let res = engine.await;
             let _ = tx.send(res);
-        });
+        }));
 
         let engine_task = timeout(Duration::from_secs(10), rx).await?;
         assert!(engine_task.is_ok());
@@ -821,10 +834,7 @@ mod tests {
         let chain: Arc<ChainSpec> = Arc::new(genesis.into());
 
         // create execution node components
-        let manager = TaskManager::current();
-        let executor = manager.executor();
-        let execution_node =
-            default_test_execution_node(Some(chain.clone()), None, executor.clone())?;
+        let execution_node = default_test_execution_node(Some(chain.clone()), None)?;
         let provider = execution_node.get_provider().await;
         let parent = chain.sealed_genesis_header();
 
@@ -963,12 +973,14 @@ mod tests {
         let max_round = None;
         let parent = chain.sealed_genesis_header();
 
+        let shutdown = Notifier::default();
         let mut engine = ExecutorEngine::new(
             blockchain.clone(),
             evm_config,
             max_round,
             consensus_output_stream,
             parent,
+            shutdown.subscribe(),
         );
 
         // queue the first output - simulate already received from channel
@@ -987,10 +999,10 @@ mod tests {
         // spawn engine task
         //
         // one output already queued up, one output waiting in broadcast stream
-        executor.spawn_blocking(async move {
+        TaskManager::default().spawn_blocking(Box::pin(async move {
             let res = engine.await;
             let _ = tx.send(res);
-        });
+        }));
 
         let engine_task = timeout(Duration::from_secs(10), rx).await?;
         assert!(engine_task.is_ok());
@@ -1149,10 +1161,7 @@ mod tests {
         let chain: Arc<ChainSpec> = Arc::new(genesis.into());
 
         // create execution node components
-        let manager = TaskManager::current();
-        let executor = manager.executor();
-        let execution_node =
-            default_test_execution_node(Some(chain.clone()), None, executor.clone())?;
+        let execution_node = default_test_execution_node(Some(chain.clone()), None)?;
         let parent = chain.sealed_genesis_header();
 
         // execute batches to update headers with valid data
@@ -1263,12 +1272,14 @@ mod tests {
         let max_round = Some(1);
         let parent = chain.sealed_genesis_header();
 
+        let shutdown = Notifier::default();
         let mut engine = ExecutorEngine::new(
             blockchain.clone(),
             evm_config,
             max_round,
             consensus_output_stream,
             parent,
+            shutdown.subscribe(),
         );
 
         // queue both output - simulate already received from channel
@@ -1284,10 +1295,10 @@ mod tests {
         // spawn engine task
         //
         // one output already queued up, one output waiting in broadcast stream
-        executor.spawn_blocking(async move {
+        TaskManager::default().spawn_blocking(Box::pin(async move {
             let res = engine.await;
             let _ = tx.send(res);
-        });
+        }));
 
         let engine_task = timeout(Duration::from_secs(10), rx).await?;
         assert!(engine_task.is_ok());

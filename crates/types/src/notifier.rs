@@ -19,27 +19,28 @@ pub struct Noticer {
 /// Will hand out a future on a subscribe() call that will resolve after
 /// notify() if called.  Can manage any number of "subscribers".
 /// Once notify() if called the resolved subscribers will be cleared.
-#[derive(Debug)]
+#[derive(Clone, Debug)]
 pub struct Notifier {
-    noticers: Vec<Noticer>,
+    noticers: Arc<Mutex<Vec<Noticer>>>,
 }
 
 impl Notifier {
     /// Create a new empty Notifier.
     pub fn new() -> Self {
-        Self { noticers: Vec::new() }
+        Self { noticers: Arc::new(Mutex::new(Vec::new())) }
     }
 
     /// Get a Noticer that will resolve once this Notifier is notified.
-    pub fn subscribe(&mut self) -> Noticer {
+    pub fn subscribe(&self) -> Noticer {
         let noticer = Noticer { lock: Arc::new(Mutex::new((false, None))) };
-        self.noticers.push(noticer.clone());
+        self.noticers.lock().push(noticer.clone());
         noticer
     }
 
     /// Resolve all the subscribed Noticers.
-    pub fn notify(&mut self) {
-        for n in self.noticers.iter_mut() {
+    pub fn notify(&self) {
+        let mut noticers = self.noticers.lock();
+        for n in noticers.iter_mut() {
             let mut guard = n.lock.lock();
             let wake = guard.1.take();
             guard.0 = true;
@@ -48,7 +49,7 @@ impl Notifier {
             }
         }
         // Done with these, they can all resolve now.
-        self.noticers.clear();
+        noticers.clear();
     }
 }
 
@@ -105,7 +106,7 @@ mod test {
         let b2_clone = b2.clone();
         let b3 = Arc::new(Mutex::new(false));
         let b3_clone = b3.clone();
-        let mut notifier = Notifier::new();
+        let notifier = Notifier::new();
         let n1 = notifier.subscribe();
         let n2 = notifier.subscribe();
         let n3 = notifier.subscribe();

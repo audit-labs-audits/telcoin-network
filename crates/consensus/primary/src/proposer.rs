@@ -160,7 +160,7 @@ pub struct Proposer<DB: Database> {
     pending_header: Option<PendingHeaderTask>,
 }
 
-impl<DB: Database + 'static> Proposer<DB> {
+impl<DB: Database> Proposer<DB> {
     /// Create a new instance of Self.
     ///
     /// The proposer's intervals and genesis certificate are created in this function.
@@ -171,7 +171,7 @@ impl<DB: Database + 'static> Proposer<DB> {
         fatal_header_timeout: Option<Duration>,
         leader_schedule: LeaderSchedule,
     ) -> Self {
-        let rx_shutdown = config.subscribe_shutdown();
+        let rx_shutdown = config.shutdown().subscribe();
         let genesis = Certificate::genesis(config.committee());
         let fatal_header_timeout = fatal_header_timeout.unwrap_or(DEFAULT_FATAL_HEADER_TIMEOUT);
         // create min/max delay intervals
@@ -255,7 +255,7 @@ impl<DB: Database + 'static> Proposer<DB> {
             digests.iter().map(|m| (m.digest, (m.worker_id, m.timestamp))).collect(),
             system_messages.clone(),
             parents.iter().map(|x| x.digest()).collect(),
-            consensus_bus.recent_blocks().borrow().latest_block(),
+            consensus_bus.recent_blocks().borrow().latest_block_num_hash(),
         );
 
         // update metrics before sending/storing header
@@ -672,6 +672,10 @@ impl<DB: Database + 'static> Proposer<DB> {
     fn propose_next_header(&mut self, reason: String) -> ProposerResult<PendingHeaderTask> {
         // Advance to the next round.
         self.round += 1;
+        let updated_round = *self.consensus_bus.narwhal_round_updates().borrow() + 1;
+        if updated_round > self.round {
+            self.round = updated_round;
+        }
         let _ = self.consensus_bus.narwhal_round_updates().send(self.round);
 
         // Update the metrics

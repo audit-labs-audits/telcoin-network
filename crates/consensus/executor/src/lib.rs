@@ -3,17 +3,13 @@
 // SPDX-License-Identifier: Apache-2.0
 mod errors;
 mod state;
-mod subscriber;
-
-mod metrics;
+pub mod subscriber;
 
 pub use errors::{SubscriberError, SubscriberResult};
-use reth_primitives::B256;
 pub use state::ExecutionIndices;
 use tn_primary::ConsensusBus;
 use tn_storage::traits::Database;
 
-pub use crate::metrics::ExecutorMetrics;
 use crate::subscriber::spawn_subscriber;
 
 use async_trait::async_trait;
@@ -21,8 +17,7 @@ use mockall::automock;
 use std::sync::Arc;
 use tn_config::ConsensusConfig;
 use tn_storage::{CertificateStore, ConsensusStore};
-use tn_types::{CertificateDigest, CommittedSubDag, ConsensusOutput, Noticer};
-use tokio::task::JoinHandle;
+use tn_types::{CertificateDigest, CommittedSubDag, ConsensusOutput, Noticer, TaskManager};
 use tracing::info;
 
 /// Convenience type representing a serialized transaction.
@@ -50,16 +45,14 @@ impl Executor {
         config: ConsensusConfig<DB>,
         rx_shutdown: Noticer,
         consensus_bus: ConsensusBus,
-        last_executed_consensus_hash: B256,
-    ) -> SubscriberResult<JoinHandle<()>> {
+        network: anemo::Network,
+        task_manager: &TaskManager,
+    ) {
         // Spawn the subscriber.
-        let subscriber_handle =
-            spawn_subscriber(config, rx_shutdown, consensus_bus, last_executed_consensus_hash);
+        spawn_subscriber(config, rx_shutdown, consensus_bus, network, task_manager);
 
         // Return the handle.
         info!("Consensus subscriber successfully started");
-
-        Ok(subscriber_handle)
     }
 }
 

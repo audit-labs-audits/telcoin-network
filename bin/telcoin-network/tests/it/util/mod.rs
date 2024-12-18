@@ -1,17 +1,11 @@
 use clap::Parser;
-use reth::{
-    providers::ExecutionOutcome,
-    tasks::{TaskExecutor, TaskManager},
-    CliContext,
-};
+use reth::providers::ExecutionOutcome;
 use reth_chainspec::ChainSpec;
-use reth_node_ethereum::{EthEvmConfig, EthExecutorProvider};
 use std::{path::PathBuf, sync::Arc};
 use telcoin_network::{genesis::GenesisArgs, keytool::KeyArgs, node::NodeCommand};
 use tn_node::launch_node;
 use tn_test_utils::{default_test_execution_node, execution_outcome_for_tests, CommandParser};
-use tn_types::{TransactionSigned, WorkerBlock};
-use tokio::task::JoinHandle;
+use tn_types::{TaskManager, TransactionSigned, WorkerBlock};
 use tracing::error;
 
 pub static IT_TEST_MUTEX: std::sync::Mutex<()> = std::sync::Mutex::new(());
@@ -19,6 +13,7 @@ pub static IT_TEST_MUTEX: std::sync::Mutex<()> = std::sync::Mutex::new(());
 /// Execute genesis ceremony inside tempdir
 pub async fn create_validator_info(datadir: &str, address: &str) -> eyre::Result<()> {
     // init genesis
+    // Note, we speed up block times for tests.
     let init_command = CommandParser::<GenesisArgs>::parse_from([
         "tn",
         "init",
@@ -26,6 +21,10 @@ pub async fn create_validator_info(datadir: &str, address: &str) -> eyre::Result
         datadir,
         "--dev-funded-account",
         "test-source",
+        "--max-header-delay-ms",
+        "1000",
+        "--min-header-delay-ms",
+        "1000",
     ]);
     init_command.args.execute().await?;
 
@@ -103,10 +102,9 @@ pub async fn config_local_testnet(temp_path: PathBuf) -> eyre::Result<()> {
 
 /// Create validator info, genesis ceremony, and spawn node command with faucet active.
 pub async fn spawn_local_testnet(
-    task_executor: &TaskExecutor,
     chain: Arc<ChainSpec>,
     contract_address: &str,
-) -> eyre::Result<Vec<JoinHandle<()>>> {
+) -> eyre::Result<()> {
     // create temp path for test
     let temp_path = tempfile::TempDir::new().expect("tempdir is okay").into_path();
 
@@ -141,7 +139,7 @@ pub async fn spawn_local_testnet(
     ]);
     create_committee_command.args.execute().await?;
 
-    let mut node_handles = Vec::with_capacity(validators.len());
+    let task_executor = TaskManager::default();
     for v in validators.into_iter() {
         let dir = temp_path.join(v);
         let datadir = dir.to_str().expect("validator temp dir");
@@ -204,36 +202,24 @@ pub async fn spawn_local_testnet(
             contract_address,
         ]);
 
-        let cli_ctx = CliContext { task_executor: task_executor.clone() };
-
         // update genesis with seeded accounts
         command.chain = chain.clone();
 
-        // collect join handles
-        node_handles.push(task_executor.spawn_critical(
-            v,
-            Box::pin(async move {
-                let err = command
-                    .execute(
-                        cli_ctx,
-                        false, // don't overwrite chain with the default
-                        |mut builder, faucet_args, tn_datadir| async move {
-                            builder.opt_faucet_args = Some(faucet_args);
-                            let evm_config = EthEvmConfig::default();
-                            let executor = EthExecutorProvider::new(
-                                std::sync::Arc::clone(&builder.node_config.chain),
-                                evm_config,
-                            );
-                            launch_node(builder, executor, evm_config, tn_datadir).await
-                        },
-                    )
-                    .await;
-                error!("{:?}", err);
-            }),
-        ));
+        task_executor.spawn_task(v, async move {
+            let err = command
+                .execute(
+                    false, // don't overwrite chain with the default
+                    |mut builder, faucet_args, tn_datadir| async move {
+                        builder.opt_faucet_args = Some(faucet_args);
+                        launch_node(builder, tn_datadir).await
+                    },
+                )
+                .await;
+            error!("{:?}", err);
+        });
     }
 
-    Ok(node_handles)
+    Ok(())
 }
 
 // imports for traits used in faucet tests only
@@ -273,10 +259,7 @@ pub async fn get_contract_state_for_genesis(
     chain: Arc<ChainSpec>,
     raw_txs_to_execute: Vec<TransactionSigned>,
 ) -> eyre::Result<ExecutionOutcome> {
-    // create execution components
-    let manager = TaskManager::current();
-    let executor = manager.executor();
-    let execution_node = default_test_execution_node(Some(chain.clone()), None, executor)?;
+    let execution_node = default_test_execution_node(Some(chain.clone()), None)?;
     let provider = execution_node.get_provider().await;
     let block_executor = execution_node.get_block_executor().await;
 

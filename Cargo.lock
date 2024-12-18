@@ -11234,7 +11234,6 @@ dependencies = [
  "reth-primitives",
  "reth-provider",
  "reth-revm",
- "reth-tasks",
  "reth-tracing",
  "reth-trie",
  "thiserror",
@@ -11250,6 +11249,7 @@ dependencies = [
 name = "tn-executor"
 version = "0.1.0"
 dependencies = [
+ "anemo",
  "async-trait",
  "bytes",
  "consensus-metrics",
@@ -11267,6 +11267,7 @@ dependencies = [
  "tn-network-types",
  "tn-node",
  "tn-primary",
+ "tn-primary-metrics",
  "tn-storage",
  "tn-test-utils",
  "tn-types",
@@ -11433,7 +11434,6 @@ dependencies = [
  "reth-rpc-types",
  "reth-stages",
  "reth-static-file",
- "reth-tasks",
  "reth-tracing",
  "reth-transaction-pool",
  "serde-reflection",
@@ -11622,6 +11622,7 @@ dependencies = [
  "alloy",
  "alloy-rlp",
  "anemo",
+ "async-trait",
  "base64 0.21.7",
  "bcs",
  "bincode",
@@ -11644,6 +11645,7 @@ dependencies = [
  "reth-primitives",
  "reth-revm",
  "reth-rpc-types",
+ "reth-tasks",
  "roaring",
  "secp256k1 0.29.0",
  "serde",

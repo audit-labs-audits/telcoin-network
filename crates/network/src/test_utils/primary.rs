@@ -2,10 +2,10 @@
 use anemo::async_trait;
 use std::collections::HashMap;
 use tn_network_types::{
-    FetchBlocksRequest, FetchBlocksResponse, FetchCertificatesRequest, FetchCertificatesResponse,
-    PrimaryToPrimary, PrimaryToPrimaryServer, PrimaryToWorker, PrimaryToWorkerServer,
-    RequestVoteRequest, RequestVoteResponse, SendCertificateRequest, SendCertificateResponse,
-    WorkerSynchronizeMessage,
+    ConsensusOutputRequest, ConsensusOutputResponse, FetchBlocksRequest, FetchBlocksResponse,
+    FetchCertificatesRequest, FetchCertificatesResponse, PrimaryToPrimary, PrimaryToPrimaryServer,
+    PrimaryToWorker, PrimaryToWorkerServer, RequestVoteRequest, RequestVoteResponse,
+    SendCertificateRequest, SendCertificateResponse, WorkerSynchronizeMessage,
 };
 use tn_types::{traits::KeyPair as _, Multiaddr, NetworkKeypair};
 
@@ -61,6 +61,13 @@ impl PrimaryToPrimary for PrimaryToPrimaryMockServer {
         &self,
         _request: anemo::Request<FetchCertificatesRequest>,
     ) -> Result<anemo::Response<FetchCertificatesResponse>, anemo::rpc::Status> {
+        unimplemented!()
+    }
+
+    async fn request_consensus(
+        &self,
+        _request: anemo::Request<ConsensusOutputRequest>,
+    ) -> Result<anemo::Response<ConsensusOutputResponse>, anemo::rpc::Status> {
         unimplemented!()
     }
 }

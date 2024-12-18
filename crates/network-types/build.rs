@@ -60,6 +60,15 @@ fn build_anemo_services(out_dir: &Path) {
                 .codec_path(codec_path)
                 .build(),
         )
+        .method(
+            anemo_build::manual::Method::builder()
+                .name("request_consensus")
+                .route_name("RequestConsensus")
+                .request_type("crate::ConsensusOutputRequest")
+                .response_type("crate::ConsensusOutputResponse")
+                .codec_path(codec_path)
+                .build(),
+        )
         .build();
 
     let primary_to_worker = anemo_build::manual::Service::builder()

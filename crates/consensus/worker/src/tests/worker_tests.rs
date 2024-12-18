@@ -56,8 +56,9 @@ async fn get_network_peers_from_admin_server() {
     let _ = std::fs::create_dir_all(temp_dir.path());
 
     let cb_1 = tn_primary::ConsensusBus::new();
+    let mut primary_1 = Primary::new(config_1.clone(), &cb_1);
     // Spawn Primary 1
-    Primary::spawn(
+    primary_1.spawn(
         config_1.clone(),
         &cb_1,
         LeaderSchedule::new(committee.clone(), LeaderSwapTable::default()),
@@ -119,8 +120,9 @@ async fn get_network_peers_from_admin_server() {
     let worker_2_keypair = authority_2.worker().keypair().copy();
 
     let cb_2 = tn_primary::ConsensusBus::new();
+    let mut primary_2 = Primary::new(config_2.clone(), &cb_2);
     // Spawn Primary 2
-    Primary::spawn(
+    primary_2.spawn(
         config_2.clone(),
         &cb_2,
         LeaderSchedule::new(committee.clone(), LeaderSwapTable::default()),

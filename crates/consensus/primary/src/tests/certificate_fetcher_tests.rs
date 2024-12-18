@@ -11,15 +11,16 @@ use itertools::Itertools;
 use once_cell::sync::OnceCell;
 use std::{collections::BTreeSet, sync::Arc, time::Duration};
 use tn_network_types::{
-    FetchCertificatesRequest, FetchCertificatesResponse, PrimaryToPrimary, PrimaryToPrimaryServer,
-    RequestVoteRequest, RequestVoteResponse, SendCertificateRequest, SendCertificateResponse,
+    ConsensusOutputRequest, ConsensusOutputResponse, FetchCertificatesRequest,
+    FetchCertificatesResponse, PrimaryToPrimary, PrimaryToPrimaryServer, RequestVoteRequest,
+    RequestVoteResponse, SendCertificateRequest, SendCertificateResponse,
 };
 use tn_storage::{mem_db::MemDatabase, traits::Database, CertificateStore};
 use tn_test_utils::{test_network, CommitteeFixture};
 use tn_types::{
     AuthorityIdentifier, BlockHash, BlsAggregateSignatureBytes, Certificate, CertificateDigest,
-    Epoch, Header, HeaderDigest, Round, SignatureVerificationState, SystemMessage, TimestampSec,
-    WorkerId,
+    Epoch, Header, HeaderDigest, Round, SignatureVerificationState, SystemMessage, TaskManager,
+    TimestampSec, WorkerId,
 };
 use tokio::{
     sync::{
@@ -62,6 +63,13 @@ impl PrimaryToPrimary for NetworkProxy {
             .await
             .map_err(|e| anemo::rpc::Status::from_error(Box::new(e)))?;
         Ok(anemo::Response::new(self.response.lock().await.recv().await.unwrap()))
+    }
+
+    async fn request_consensus(
+        &self,
+        _request: anemo::Request<ConsensusOutputRequest>,
+    ) -> Result<anemo::Response<ConsensusOutputResponse>, anemo::rpc::Status> {
+        unimplemented!()
     }
 }
 
@@ -189,14 +197,15 @@ async fn fetch_certificates_v1_basic() {
         .unwrap();
 
     // Make a certificate fetcher
-    let _certificate_fetcher_handle = CertificateFetcher::spawn(
+    CertificateFetcher::spawn(
         id,
         fixture.committee(),
         client_network.clone(),
         certificate_store.clone(),
         cb.clone(),
-        primary.consensus_config().subscribe_shutdown(),
+        primary.consensus_config().shutdown().subscribe(),
         synchronizer.clone(),
+        &TaskManager::default(),
     );
 
     // Generate headers and certificates in successive rounds

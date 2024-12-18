@@ -13,9 +13,6 @@ pub enum NodeError {
     #[error("Failure while booting node: {0}")]
     NodeBootstrapError(#[from] SubscriberError),
 
-    #[error("Node is already running")]
-    NodeAlreadyRunning,
-
     /// Error when creating a new registry
     #[error(transparent)]
     Registry(#[from] prometheus::Error),

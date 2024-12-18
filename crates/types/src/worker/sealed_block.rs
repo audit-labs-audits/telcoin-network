@@ -5,6 +5,8 @@
 //! Blocks hold transactions and other data. This type is used to represent worker proposals that
 //! have reached quorum.
 
+use std::fmt::Debug;
+
 use crate::{adiri_chain_spec, crypto, encode, now, TimestampSec};
 use fastcrypto::hash::HashFunction;
 use reth_primitives::{
@@ -227,4 +229,54 @@ pub fn max_worker_block_gas(_timestamp: u64) -> u64 {
 /// Currently allways 1,000,000 but can change in the future at a fork.
 pub fn max_worker_block_size(_timestamp: u64) -> usize {
     1_000_000
+}
+
+/// Defines the validation procedure for receiving either a new single transaction (from a client)
+/// of a block of transactions (from another validator).
+///
+/// Invalid transactions will not receive further processing.
+pub trait WorkerBlockValidation: Send + Sync {
+    /// Determines if this block can be voted on
+    fn validate_block(&self, b: SealedWorkerBlock) -> Result<(), WorkerBlockValidationError>;
+}
+
+/// Block validation error types
+#[derive(Error, Debug)]
+pub enum WorkerBlockValidationError {
+    /// The sealed worker block hash does not match this worker's calculated digest.
+    #[error("Invalid digest for sealed worker block.")]
+    InvalidDigest,
+    /// Ensure proposed block is after parent.
+    #[error("Peer's header proposed before parent block timestamp.")]
+    TimestampIsInPast {
+        /// The parent block's timestamp.
+        parent_timestamp: u64,
+        /// The block's timestamp.
+        timestamp: u64,
+    },
+    /// Canonical chain header cannot be found.
+    #[error("Canonical chain header {block_hash} can't be found for peer block's parent")]
+    CanonicalChain {
+        /// The block hash of the missing canonical chain header.
+        block_hash: BlockHash,
+    },
+
+    /// Error when the max gas included in the header exceeds the block's gas limit.
+    #[error("Peer's block total possible gas ({total_possible_gas}) is greater than block's gas limit ({gas_limit})")]
+    HeaderMaxGasExceedsGasLimit {
+        /// The total possible gas used in the block header measured by included transactions max
+        /// gas.
+        total_possible_gas: u64,
+        /// The gas limit in the block header.
+        gas_limit: u64,
+    },
+    /// Error while calculating max possible gas from icluded transactions.
+    #[error("Unable to reduce max possible gas limit for peer's block")]
+    CalculateMaxPossibleGas,
+    /// Error while calculating size (in bytes) of icluded transactions.
+    #[error("Unable to reduce size of transactions (in bytes) for peer's block")]
+    CalculateTransactionByteSize,
+    /// Error when peer's transaction list exceeds the maximum bytes allowed.
+    #[error("Peer's transactions exceed max byte size: {0}")]
+    HeaderTransactionBytesExceedsMax(usize),
 }

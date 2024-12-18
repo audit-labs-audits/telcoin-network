@@ -25,7 +25,7 @@ use anemo_tower::{
     set_header::{SetRequestHeaderLayer, SetResponseHeaderLayer},
     trace::{DefaultMakeSpan, DefaultOnFailure, TraceLayer},
 };
-use consensus_metrics::spawn_logged_monitored_task;
+use consensus_metrics::monitored_future;
 use fastcrypto::traits::KeyPair as _;
 use std::{collections::HashMap, net::Ipv4Addr, sync::Arc};
 use tn_config::ConsensusConfig;
@@ -36,8 +36,7 @@ use tn_network::{
 };
 use tn_network_types::PrimaryToPrimaryServer;
 use tn_storage::traits::Database;
-use tn_types::{traits::EncodeDecodeBase64, Multiaddr, NetworkPublicKey, Protocol};
-use tokio::task::JoinHandle;
+use tn_types::{traits::EncodeDecodeBase64, Multiaddr, NetworkPublicKey, Protocol, TaskManager};
 use tower::ServiceBuilder;
 use tracing::info;
 
@@ -45,20 +44,15 @@ use tracing::info;
 #[path = "tests/primary_tests.rs"]
 pub mod primary_tests;
 
-pub struct Primary {
+pub struct Primary<DB> {
     /// The Primary's network.
     network: Network,
+    synchronizer: Arc<Synchronizer<DB>>,
+    peer_types: Option<HashMap<PeerId, String>>,
 }
 
-impl Primary {
-    /// Spawns the primary and returns the JoinHandles of its tasks, as well as a metered receiver
-    /// for the Consensus.
-    pub fn spawn<DB: Database>(
-        config: ConsensusConfig<DB>,
-        consensus_bus: &ConsensusBus,
-        leader_schedule: LeaderSchedule,
-        // TODO: don't return handles here - need to refactor tn_node::PrimaryNode
-    ) -> (Self, Vec<JoinHandle<()>>) {
+impl<DB: Database> Primary<DB> {
+    pub fn new(config: ConsensusConfig<DB>, consensus_bus: &ConsensusBus) -> Self {
         // Write the parameters to the logs.
         config.parameters().tracing();
 
@@ -118,12 +112,24 @@ impl Primary {
             peer_types.insert(peer_id, "other_worker".to_string());
             info!("Adding others worker with peer id {} and address {}", peer_id, address);
         }
+        Self { network, synchronizer, peer_types: Some(peer_types) }
+    }
 
-        let (connection_monitor_handle, _) = tn_network::connectivity::ConnectionMonitor::spawn(
-            network.downgrade(),
+    /// Spawns the primary and returns the JoinHandles of its tasks, as well as a metered receiver
+    /// for the Consensus.
+    pub fn spawn(
+        &mut self,
+        config: ConsensusConfig<DB>,
+        consensus_bus: &ConsensusBus,
+        leader_schedule: LeaderSchedule,
+        task_manager: &TaskManager,
+    ) {
+        let _ = tn_network::connectivity::ConnectionMonitor::spawn(
+            self.network.downgrade(),
             consensus_bus.primary_metrics().network_connection_metrics.clone(),
-            peer_types,
-            config.subscribe_shutdown(),
+            self.peer_types.take().expect("peer types not set, was spawn called more than once?"),
+            config.shutdown().subscribe(),
+            task_manager,
         );
 
         info!(
@@ -132,58 +138,52 @@ impl Primary {
             config.parameters().network_admin_server.primary_network_admin_server_port
         );
 
-        let admin_handles = tn_network::admin::start_admin_server(
+        tn_network::admin::start_admin_server(
             config.parameters().network_admin_server.primary_network_admin_server_port,
-            network.clone(),
-            config.subscribe_shutdown(),
+            self.network.clone(),
+            config.shutdown().subscribe(),
+            task_manager,
         );
 
-        let core_handle = Certifier::spawn(
+        Certifier::spawn(
             config.clone(),
             consensus_bus.clone(),
-            synchronizer.clone(),
-            network.clone(),
+            self.synchronizer.clone(),
+            self.network.clone(),
+            task_manager,
         );
 
         // The `CertificateFetcher` waits to receive all the ancestors of a certificate before
         // looping it back to the `Synchronizer` for further processing.
-        let certificate_fetcher_handle = CertificateFetcher::spawn(
+        CertificateFetcher::spawn(
             config.authority().id(),
             config.committee().clone(),
-            network.clone(),
+            self.network.clone(),
             config.node_storage().certificate_store.clone(),
             consensus_bus.clone(),
-            config.subscribe_shutdown(),
-            synchronizer,
+            config.shutdown().subscribe(),
+            self.synchronizer.clone(),
+            task_manager,
         );
 
         // When the `Synchronizer` collects enough parent certificates, the `Proposer` generates
         // a new header with new block digests from our workers and sends it to the `Certifier`.
         let proposer = Proposer::new(config.clone(), consensus_bus.clone(), None, leader_schedule);
 
-        // TODO: include this with other handles
-        let _proposer_handle = spawn_logged_monitored_task!(proposer, "ProposerTask");
-
-        // TODO: all handles should return error
-        //
-        // can't include proposer handle yet
-        let mut handles = vec![
-            core_handle,
-            certificate_fetcher_handle,
-            // proposer_handle,
-            connection_monitor_handle,
-        ];
-        handles.extend(admin_handles);
+        // Only run the proposer task if we are a CVV.
+        if consensus_bus.node_mode().borrow().is_cvv() {
+            task_manager.spawn_task("proposer task", monitored_future!(proposer, "ProposerTask"));
+        }
 
         // Keeps track of the latest consensus round and allows other tasks to clean up their their
         // internal state
-        let state_handler_handle = StateHandler::spawn(
+        StateHandler::spawn(
             config.authority().id(),
             consensus_bus,
-            config.subscribe_shutdown(),
-            network.clone(),
+            config.shutdown().subscribe(),
+            self.network.clone(),
+            task_manager,
         );
-        handles.push(state_handler_handle);
 
         // NOTE: This log entry is used to compute performance.
         info!(
@@ -191,12 +191,10 @@ impl Primary {
             config.authority().id(),
             config.authority().primary_network_address()
         );
-
-        (Self { network }, handles)
     }
 
     /// Start the anemo network for the primary.
-    fn start_network<DB: Database>(
+    fn start_network(
         config: &ConsensusConfig<DB>,
         synchronizer: Arc<Synchronizer<DB>>,
         consensus_bus: &ConsensusBus,

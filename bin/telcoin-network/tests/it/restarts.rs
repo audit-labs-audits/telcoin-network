@@ -37,6 +37,7 @@ fn run_restart_tests1(
     exe_path: &Path,
     temp_path: &Path,
     rpc_port2: u16,
+    delay_secs: u64,
 ) -> eyre::Result<Child> {
     let key = get_key("test-source");
     let to_account = address_from_word("testing");
@@ -68,7 +69,7 @@ fn run_restart_tests1(
     debug!(target: "restart-test", "killing child2...");
     kill_child(child2);
     debug!(target: "restart-test", "child2 dead :D sleeping...");
-    std::thread::sleep(Duration::from_millis(3000));
+    std::thread::sleep(Duration::from_secs(delay_secs));
 
     // This validator should be down now, confirm.
     if get_balance(&client_urls[2], &to_account.to_string(), 5).is_ok() {
@@ -105,7 +106,10 @@ fn run_restart_tests1(
         kill_child(&mut child2);
         return Err(Report::msg(format!("Expected a balance of {} got {bal}!", 20 * WEI_PER_TEL)));
     }
-
+    test_blocks_same(client_urls).inspect_err(|e| {
+        kill_child(&mut child2);
+        error!(target: "restart-test", ?e);
+    })?;
     Ok(child2)
 }
 
@@ -125,8 +129,7 @@ fn run_restart_tests2(client_urls: &[String; 4]) -> eyre::Result<()> {
     Ok(())
 }
 
-#[test]
-fn test_restarts() -> eyre::Result<()> {
+fn do_restarts(delay: u64) -> eyre::Result<()> {
     let _guard = IT_TEST_MUTEX.lock();
     init_test_tracing();
     // the tmp dir should be removed once tmp_quard is dropped
@@ -158,7 +161,8 @@ fn test_restarts() -> eyre::Result<()> {
     let mut child2 = children[2].take().expect("missing child 2");
 
     // run restart tests1
-    let res1 = run_restart_tests1(&client_urls, &mut child2, &exe_path, &temp_path, rpc_ports[2]);
+    let res1 =
+        run_restart_tests1(&client_urls, &mut child2, &exe_path, &temp_path, rpc_ports[2], delay);
     let is_ok = res1.is_ok();
 
     // kill new child2 if successfully restarted
@@ -211,6 +215,19 @@ fn test_restarts() -> eyre::Result<()> {
 
     // contains res2 if failure
     final_result
+}
+
+/// Test a restart case with a short delay, the stopped node should rejoin consensus.
+#[test]
+fn test_restartstt() -> eyre::Result<()> {
+    do_restarts(2)
+}
+
+/// Test a restart case with a long delay, the stopped node should not rejoin consensus but follow
+/// the consensus chain.
+#[test]
+fn test_restarts_delayed() -> eyre::Result<()> {
+    do_restarts(70)
 }
 
 /// Start a process running a validator node.
@@ -311,7 +328,10 @@ fn get_block(node: &str, block_number: Option<u64>) -> eyre::Result<HashMap<Stri
     } else {
         RawValue::from_string("[\"latest\", true]".to_string())?
     };
-    let block = call_rpc(node, "eth_getBlockByNumber", Some(&params), 5)?;
+    let mut block = call_rpc(node, "eth_getBlockByNumber", Some(&params), 5)?;
+    while block.is_empty() {
+        block = call_rpc(node, "eth_getBlockByNumber", Some(&params), 5)?;
+    }
     Ok(serde_json::from_str(&block)?)
 }
 

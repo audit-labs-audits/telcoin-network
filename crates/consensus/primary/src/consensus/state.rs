@@ -9,7 +9,7 @@ use crate::{
     consensus::{bullshark::Bullshark, utils::gc_round, ConsensusError, ConsensusMetrics},
     ConsensusBus,
 };
-use consensus_metrics::spawn_logged_monitored_task;
+use consensus_metrics::monitored_future;
 use fastcrypto::hash::Hash;
 use std::{
     cmp::{max, Ordering},
@@ -21,9 +21,8 @@ use tn_config::ConsensusConfig;
 use tn_storage::{traits::Database, CertificateStore};
 use tn_types::{
     AuthorityIdentifier, Certificate, CertificateDigest, CommittedSubDag, Committee,
-    ConsensusCommit, Noticer, Round, SequenceNumber, Timestamp, TnReceiver, TnSender,
+    ConsensusCommit, Noticer, Round, SequenceNumber, TaskManager, Timestamp, TnReceiver, TnSender,
 };
-use tokio::task::JoinHandle;
 use tracing::{debug, info, instrument};
 
 #[cfg(test)]
@@ -64,7 +63,7 @@ impl ConsensusState {
         }
     }
 
-    pub fn new_from_store<DB: Database>(
+    fn new_from_store<DB: Database>(
         metrics: Arc<ConsensusMetrics>,
         last_committed_round: Round,
         gc_depth: Round,
@@ -83,20 +82,26 @@ impl ConsensusState {
         metrics.recovered_consensus_state.inc();
 
         let last_committed_sub_dag = if let Some(latest_sub_dag) = latest_sub_dag.as_ref() {
-            let certificates = latest_sub_dag
-                .certificates()
-                .iter()
-                .map(|s| {
-                    cert_store.read(*s).unwrap().expect("Certificate should be found in database")
-                })
-                .collect();
+            let mut certificates = Vec::new();
+            let mut missing_certs = false;
+            for cert in latest_sub_dag.certificates() {
+                if let Ok(Some(c)) = cert_store.read(cert) {
+                    certificates.push(c);
+                } else {
+                    missing_certs = true;
+                }
+            }
 
-            let leader = cert_store
-                .read(latest_sub_dag.leader())
-                .unwrap()
-                .expect("Certificate should be found in database");
-
-            Some(CommittedSubDag::from_commit(latest_sub_dag.clone(), certificates, leader))
+            if missing_certs {
+                None
+            } else {
+                cert_store
+                    .read(latest_sub_dag.leader())
+                    .expect("failed to access the certificate store!")
+                    .map(|leader| {
+                        CommittedSubDag::from_commit(latest_sub_dag.clone(), certificates, leader)
+                    })
+            }
         } else {
             None
         };
@@ -228,7 +233,7 @@ impl ConsensusState {
                 }
             }
         } else {
-            panic!("Parent round not found in DAG for {certificate:?}!");
+            tracing::error!("Parent round not found in DAG for {certificate:?}!");
         }
     }
 
@@ -291,14 +296,14 @@ pub struct Consensus<DB> {
 }
 
 impl<DB: Database> Consensus<DB> {
-    #[must_use]
     pub fn spawn(
         consensus_config: ConsensusConfig<DB>,
         consensus_bus: &ConsensusBus,
         protocol: Bullshark<DB>,
-    ) -> JoinHandle<()> {
+        task_manager: &TaskManager,
+    ) {
         let metrics = consensus_bus.consensus_metrics();
-        let rx_shutdown = consensus_config.subscribe_shutdown();
+        let rx_shutdown = consensus_config.shutdown().subscribe();
         // The consensus state (everything else is immutable).
         let recovered_last_committed =
             consensus_config.node_storage().consensus_store.read_last_committed();
@@ -341,7 +346,10 @@ impl<DB: Database> Consensus<DB> {
             state,
         };
 
-        spawn_logged_monitored_task!(s.run(), "Consensus", INFO)
+        // Only run the consensus task if we are a CVV.
+        if consensus_bus.node_mode().borrow().is_cvv() {
+            task_manager.spawn_task("consensus", monitored_future!(s.run(), "Consensus", INFO));
+        }
     }
 
     async fn run(self) {
@@ -405,9 +413,10 @@ impl<DB: Database> Consensus<DB> {
                             committed_certificates.push(certificate.clone());
                         }
 
-                        // NOTE: The size of the sub-dag can be arbitrarily large (depending on the network condition
-                        // and Byzantine leaders).
-                        self.consensus_bus.sequence().send(committed_sub_dag).await.map_err(|_|ConsensusError::ShuttingDown)?;
+                        // Don't send a committed sub dag if we are syncing- the sync process should take care of this.
+                            // NOTE: The size of the sub-dag can be arbitrarily large (depending on the network condition
+                            // and Byzantine leaders).
+                            self.consensus_bus.sequence().send(committed_sub_dag).await.map_err(|_|ConsensusError::ShuttingDown)?;
                     }
 
                     if !committed_certificates.is_empty(){
@@ -422,8 +431,8 @@ impl<DB: Database> Consensus<DB> {
 
                         assert_eq!(self.state.last_round.committed_round, leader_commit_round);
 
-                        self.consensus_bus.consensus_round_updates().send(self.state.last_round)
-                            .map_err(|_|ConsensusError::ShuttingDown)?;
+                            self.consensus_bus.consensus_round_updates().send(self.state.last_round)
+                                .map_err(|_|ConsensusError::ShuttingDown)?;
                     }
 
                     self.metrics

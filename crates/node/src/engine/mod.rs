@@ -14,9 +14,10 @@ use reth_db::{
     database::Database,
     database_metrics::{DatabaseMetadata, DatabaseMetrics},
 };
-use reth_evm::{execute::BlockExecutorProvider, ConfigureEvm};
+use reth_evm::execute::BlockExecutorProvider;
 use reth_node_builder::NodeConfig;
-use reth_primitives::B256;
+use reth_node_ethereum::{EthEvmConfig, EthExecutorProvider};
+use reth_primitives::{Header, B256};
 use std::{net::SocketAddr, sync::Arc};
 use tn_config::Config;
 mod inner;
@@ -24,10 +25,10 @@ mod worker;
 
 use self::inner::ExecutionNodeInner;
 use reth_provider::providers::BlockchainProvider;
-use reth_tasks::TaskExecutor;
-use tn_block_validator::BlockValidator;
 use tn_faucet::FaucetArgs;
-use tn_types::{ConsensusOutput, WorkerBlockSender, WorkerId};
+use tn_types::{
+    ConsensusOutput, Noticer, TaskManager, WorkerBlockSender, WorkerBlockValidation, WorkerId,
+};
 use tokio::sync::{broadcast, RwLock};
 pub use worker::*;
 
@@ -38,12 +39,8 @@ pub use worker::*;
 pub struct TnBuilder<DB> {
     /// The database environment where all execution data is stored.
     pub database: DB,
-    /// THe node configuration.
+    /// The node configuration.
     pub node_config: NodeConfig,
-    /// Task executor to spawn tasks for the node.
-    ///
-    /// The executor drops tasks when the CLI's TaskManager is dropped.
-    pub task_executor: TaskExecutor,
     /// Telcoin Network config.
     ///
     /// TODO: consolidate configs
@@ -55,24 +52,23 @@ pub struct TnBuilder<DB> {
 
 /// Wrapper for the inner execution node components.
 #[derive(Clone)]
-pub struct ExecutionNode<DB, Evm, CE>
+pub struct ExecutionNode<DB>
 where
     DB: Database + DatabaseMetrics + Clone + Unpin + 'static,
-    Evm: BlockExecutorProvider + Clone + 'static,
-    CE: ConfigureEvm,
 {
-    internal: Arc<RwLock<ExecutionNodeInner<DB, Evm, CE>>>,
+    internal: Arc<RwLock<ExecutionNodeInner<DB, EthExecutorProvider, EthEvmConfig>>>,
 }
 
-impl<DB, Evm, CE> ExecutionNode<DB, Evm, CE>
+impl<DB> ExecutionNode<DB>
 where
     DB: Database + DatabaseMetadata + DatabaseMetrics + Clone + Unpin + 'static,
-    Evm: BlockExecutorProvider + Clone + 'static,
-    CE: ConfigureEvm,
 {
     /// Create a new instance of `Self`.
-    pub fn new(tn_builder: TnBuilder<DB>, evm: Evm, evm_config: CE) -> eyre::Result<Self> {
-        let inner = ExecutionNodeInner::new(tn_builder, evm, evm_config)?;
+    pub fn new(tn_builder: TnBuilder<DB>, task_manager: &TaskManager) -> eyre::Result<Self> {
+        let evm_config = EthEvmConfig::default();
+        let executor =
+            EthExecutorProvider::new(Arc::clone(&tn_builder.node_config.chain), evm_config);
+        let inner = ExecutionNodeInner::new(tn_builder, executor, evm_config, task_manager)?;
 
         Ok(ExecutionNode { internal: Arc::new(RwLock::new(inner)) })
     }
@@ -81,9 +77,11 @@ where
     pub async fn start_engine(
         &self,
         from_consensus: broadcast::Receiver<ConsensusOutput>,
+        task_manager: &TaskManager,
+        rx_shutdown: Noticer,
     ) -> eyre::Result<()> {
         let guard = self.internal.read().await;
-        guard.start_engine(from_consensus).await
+        guard.start_engine(from_consensus, task_manager, rx_shutdown).await
     }
 
     /// Batch maker
@@ -91,13 +89,15 @@ where
         &self,
         worker_id: WorkerId,
         block_provider_sender: WorkerBlockSender,
+        task_manager: &TaskManager,
+        rx_shutdown: Noticer,
     ) -> eyre::Result<()> {
         let mut guard = self.internal.write().await;
-        guard.start_block_builder(worker_id, block_provider_sender).await
+        guard.start_block_builder(worker_id, block_provider_sender, task_manager, rx_shutdown).await
     }
 
     /// Batch validator
-    pub async fn new_block_validator(&self) -> BlockValidator<DB> {
+    pub async fn new_block_validator(&self) -> Arc<dyn WorkerBlockValidation> {
         let guard = self.internal.read().await;
         guard.new_block_validator()
     }
@@ -108,6 +108,12 @@ where
         guard.last_executed_output()
     }
 
+    /// Return a vector of the last 'number' executed block headers.
+    pub async fn last_executed_blocks(&self, number: u64) -> eyre::Result<Vec<Header>> {
+        let guard = self.internal.read().await;
+        guard.last_executed_blocks(number)
+    }
+
     /// Return an database provider.
     pub async fn get_provider(&self) -> BlockchainProvider<DB> {
         let guard = self.internal.read().await;
@@ -115,13 +121,15 @@ where
     }
 
     /// Return the node's EVM config.
-    pub async fn get_evm_config(&self) -> CE {
+    /// Used for tests.
+    pub async fn get_evm_config(&self) -> EthEvmConfig {
         let guard = self.internal.read().await;
         guard.get_evm_config()
     }
 
+    //Evm: BlockExecutorProvider + Clone + 'static,
     /// Return the node's evm-based block executor.
-    pub async fn get_block_executor(&self) -> Evm {
+    pub async fn get_block_executor(&self) -> impl BlockExecutorProvider {
         let guard = self.internal.read().await;
         guard.get_block_executor()
     }

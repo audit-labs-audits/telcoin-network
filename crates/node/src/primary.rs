@@ -3,16 +3,9 @@
 // SPDX-License-Identifier: Apache-2.0
 
 //! Hierarchical type to hold tasks spawned for a worker in the network.
-use crate::{engine::ExecutionNode, error::NodeError, try_join_all, FuturesUnordered};
-use anemo::{Network, PeerId};
+use anemo::Network;
 use fastcrypto::traits::VerifyingKey;
-use reth_db::{
-    database::Database,
-    database_metrics::{DatabaseMetadata, DatabaseMetrics},
-};
-use reth_evm::{execute::BlockExecutorProvider, ConfigureEvm};
-use reth_primitives::B256;
-use std::{sync::Arc, time::Instant};
+use std::sync::Arc;
 use tn_config::ConsensusConfig;
 use tn_executor::{Executor, SubscriberResult};
 use tn_primary::{
@@ -21,23 +14,17 @@ use tn_primary::{
 };
 use tn_primary_metrics::Metrics;
 use tn_storage::traits::Database as ConsensusDatabase;
-use tn_types::{BlsPublicKey, DEFAULT_BAD_NODES_STAKE_THRESHOLD};
-use tokio::{sync::RwLock, task::JoinHandle};
-use tracing::{info, instrument};
+use tn_types::{BlsPublicKey, TaskManager, DEFAULT_BAD_NODES_STAKE_THRESHOLD};
+use tokio::sync::RwLock;
+use tracing::instrument;
 
 struct PrimaryNodeInner<CDB> {
     /// Consensus configuration.
     consensus_config: ConsensusConfig<CDB>,
     /// Container for consensus channels.
     consensus_bus: ConsensusBus,
-    /// Peer ID used for local connections.
-    own_peer_id: Option<PeerId>,
     /// The primary struct that holds handles and network.
-    ///
-    /// Option is some after the primary has started.
-    primary: Option<Primary>,
-    /// The handles for consensus.
-    handles: FuturesUnordered<JoinHandle<()>>,
+    primary: Primary<CDB>,
 }
 
 impl<CDB: ConsensusDatabase> PrimaryNodeInner<CDB> {
@@ -49,95 +36,27 @@ impl<CDB: ConsensusDatabase> PrimaryNodeInner<CDB> {
     /// Starts the primary node with the provided info. If the node is already running then this
     /// method will return an error instead.
     #[instrument(name = "primary_node", skip_all)]
-    async fn start<DB, Evm, CE>(
-        &mut self,
-        // Execution components needed to spawn the EL Executor
-        execution_components: &ExecutionNode<DB, Evm, CE>,
-    ) -> eyre::Result<()>
-    where
-        DB: Database + DatabaseMetadata + DatabaseMetrics + Clone + Unpin + 'static,
-        Evm: BlockExecutorProvider + Clone + 'static,
-        CE: ConfigureEvm,
-    {
-        if self.is_running().await {
-            return Err(NodeError::NodeAlreadyRunning.into());
-        }
-
-        self.own_peer_id = Some(PeerId(
-            self.consensus_config.key_config().primary_network_public_key().0.to_bytes(),
-        ));
-
-        // used to retrieve the last executed certificate in case of restarts
-        let last_executed_consensus_hash =
-            execution_components.last_executed_output().await.expect("execution found HEAD");
-
-        // create receiving channel before spawning primary to ensure messages are not lost
-        let consensus_output_rx = self.consensus_bus.subscribe_consensus_output();
-
+    async fn start(&mut self) -> eyre::Result<TaskManager> {
+        let task_manager = TaskManager::new("Primary Task Manager");
         // spawn primary and update `self`
-        self.spawn_primary(last_executed_consensus_hash).await?;
+        self.spawn_primary(&task_manager).await?;
 
-        // start engine
-        execution_components.start_engine(consensus_output_rx).await?;
-
-        Ok(())
-    }
-
-    /// Will shutdown the primary node and wait until the node has shutdown by waiting on the
-    /// underlying components handles. If the node was not already running then the
-    /// method will return immediately.
-    #[instrument(level = "info", skip_all)]
-    async fn shutdown(&mut self) {
-        if !self.is_running().await {
-            return;
-        }
-
-        // send the shutdown signal to the node
-        let now = Instant::now();
-
-        self.consensus_config.local_network().shutdown();
-        self.consensus_config.shutdown();
-
-        // Now wait until handles have been completed
-        try_join_all(&mut self.handles).await.unwrap();
-
-        info!(
-            "Narwhal primary shutdown is complete - took {} seconds",
-            now.elapsed().as_secs_f64()
-        );
-    }
-
-    // Helper method useful to wait on the execution of the primary node
-    async fn wait(&mut self) {
-        try_join_all(&mut self.handles).await.unwrap();
-    }
-
-    /// Boolean if any of the join handles are not "finished".
-    async fn is_running(&self) -> bool {
-        self.handles.iter().any(|h| !h.is_finished())
+        Ok(task_manager)
     }
 
     /// Spawn a new primary. Optionally also spawn the consensus and a client executing
     /// transactions.
-    pub async fn spawn_primary(
-        &mut self,
-        // Used for recovering after crashes/restarts
-        last_executed_consensus_hash: B256,
-    ) -> SubscriberResult<()> {
-        let (consensus_handles, leader_schedule) =
-            self.spawn_consensus(&self.consensus_bus, last_executed_consensus_hash).await?;
+    async fn spawn_primary(&mut self, task_manager: &TaskManager) -> SubscriberResult<()> {
+        let leader_schedule = self
+            .spawn_consensus(&self.consensus_bus, self.primary.network().clone(), task_manager)
+            .await?;
 
-        // already ensures node was NOT running, but clear to be sure
-        self.handles.clear();
-        self.handles.extend(consensus_handles);
-
-        // start primary add extend handles
-        let (primary, handles) =
-            Primary::spawn(self.consensus_config.clone(), &self.consensus_bus, leader_schedule);
-        self.handles.extend(handles);
-
-        // Spawn the primary.
-        self.primary = Some(primary);
+        self.primary.spawn(
+            self.consensus_config.clone(),
+            &self.consensus_bus,
+            leader_schedule,
+            task_manager,
+        );
         Ok(())
     }
 
@@ -147,8 +66,9 @@ impl<CDB: ConsensusDatabase> PrimaryNodeInner<CDB> {
     async fn spawn_consensus(
         &self,
         consensus_bus: &ConsensusBus,
-        last_executed_consensus_hash: B256,
-    ) -> SubscriberResult<(Vec<JoinHandle<()>>, LeaderSchedule)>
+        network: anemo::Network,
+        task_manager: &TaskManager,
+    ) -> SubscriberResult<LeaderSchedule>
     where
         BlsPublicKey: VerifyingKey,
     {
@@ -186,21 +106,24 @@ impl<CDB: ConsensusDatabase> PrimaryNodeInner<CDB> {
             leader_schedule.clone(),
             DEFAULT_BAD_NODES_STAKE_THRESHOLD,
         );
-        let consensus_handle =
-            Consensus::spawn(self.consensus_config.clone(), consensus_bus, ordering_engine);
+        Consensus::spawn(
+            self.consensus_config.clone(),
+            consensus_bus,
+            ordering_engine,
+            task_manager,
+        );
 
         // Spawn the client executing the transactions. It can also synchronize with the
         // subscriber handler if it missed some transactions.
-        let executor_handle = Executor::spawn(
+        Executor::spawn(
             self.consensus_config.clone(),
-            self.consensus_config.subscribe_shutdown(),
+            self.consensus_config.shutdown().subscribe(),
             consensus_bus.clone(),
-            last_executed_consensus_hash,
-        )?;
+            network,
+            task_manager,
+        );
 
-        let handles = vec![executor_handle, consensus_handle];
-
-        Ok((handles, leader_schedule))
+        Ok(leader_schedule)
     }
 }
 
@@ -212,45 +135,24 @@ pub struct PrimaryNode<CDB> {
 impl<CDB: ConsensusDatabase> PrimaryNode<CDB> {
     pub fn new(consensus_config: ConsensusConfig<CDB>) -> PrimaryNode<CDB> {
         let consensus_bus = ConsensusBus::new();
-        let inner = PrimaryNodeInner {
-            consensus_config,
-            consensus_bus,
-            own_peer_id: None,
-            primary: None,
-            handles: FuturesUnordered::new(),
-        };
+        let primary = Primary::new(consensus_config.clone(), &consensus_bus);
+
+        let inner = PrimaryNodeInner { consensus_config, consensus_bus, primary };
 
         Self { internal: Arc::new(RwLock::new(inner)) }
     }
 
-    pub async fn start<DB, Evm, CE>(
-        &self,
-        // Execution components needed to spawn the EL Executor
-        execution_components: &ExecutionNode<DB, Evm, CE>,
-    ) -> eyre::Result<()>
+    pub async fn start(&self) -> eyre::Result<TaskManager>
     where
-        DB: Database + DatabaseMetadata + DatabaseMetrics + Clone + Unpin + 'static,
-        Evm: BlockExecutorProvider + Clone + 'static,
-        CE: ConfigureEvm,
         CDB: ConsensusDatabase,
     {
         let mut guard = self.internal.write().await;
-        guard.start(execution_components).await
+        guard.start().await
     }
 
     pub async fn shutdown(&self) {
-        let mut guard = self.internal.write().await;
-        guard.shutdown().await
-    }
-
-    pub async fn is_running(&self) -> bool {
-        let guard = self.internal.read().await;
-        guard.is_running().await
-    }
-
-    pub async fn wait(&self) {
-        let mut guard = self.internal.write().await;
-        guard.wait().await
+        let guard = self.internal.write().await;
+        guard.consensus_config.shutdown().notify();
     }
 
     /// Return the consensus metrics.
@@ -269,7 +171,7 @@ impl<CDB: ConsensusDatabase> PrimaryNode<CDB> {
     }
 
     /// Return the WAN if the primary is runnig.
-    pub async fn network(&self) -> Option<Network> {
-        self.internal.read().await.primary.as_ref().map(|p| p.network().clone())
+    pub async fn network(&self) -> Network {
+        self.internal.read().await.primary.network().clone()
     }
 }

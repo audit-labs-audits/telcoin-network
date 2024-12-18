@@ -65,7 +65,7 @@ async fn synchronize() {
         request_batches_timeout: Duration::from_secs(999),
         network: Some(send_network),
         batch_fetcher: None,
-        validator: NoopBlockValidator,
+        validator: Arc::new(NoopBlockValidator),
     };
 
     // Verify the batch is not in store
@@ -103,7 +103,7 @@ async fn synchronize_when_batch_exists() {
         request_batches_timeout: Duration::from_secs(999),
         network: Some(send_network),
         batch_fetcher: None,
-        validator: NoopBlockValidator,
+        validator: Arc::new(NoopBlockValidator),
     };
 
     // Store the batch.

@@ -210,8 +210,8 @@ mod tests {
     /// and save it.
     ///
     /// TODO: better unit test for arg methods.
-    #[test]
-    fn test_generate_keypairs() {
+    #[tokio::test]
+    async fn test_generate_keypairs() {
         // use tempdir
         let tempdir = tempdir().expect("tempdir created").into_path();
         let tn = Cli::<NoArgs>::try_parse_from([
@@ -228,7 +228,7 @@ mod tests {
         ])
         .expect("cli parsed");
 
-        tn.run(|_, _, _| async move { Ok(()) }).expect("generate keys command");
+        tn.run(|_, _, _| async move { Ok(()) }).await.expect("generate keys command");
 
         Config::load_from_path::<Config>(
             tempdir.join("telcoin-network.yaml").as_path(),

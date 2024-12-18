@@ -1,10 +1,9 @@
 //! Configuration for consensus network (primary and worker).
 use anemo::Config as AnemoConfig;
-use parking_lot::Mutex;
 use std::sync::Arc;
 use tn_network::local::LocalNetwork;
 use tn_storage::{traits::Database, NodeStorage};
-use tn_types::{Authority, Committee, Noticer, Notifier, WorkerCache};
+use tn_types::{Authority, Committee, Notifier, WorkerCache};
 
 use crate::{Config, ConfigFmt, ConfigTrait as _, KeyConfig, Parameters, TelcoinDirs};
 
@@ -24,7 +23,7 @@ struct ConsensusConfigInner<DB> {
 pub struct ConsensusConfig<DB> {
     inner: Arc<ConsensusConfigInner<DB>>,
     worker_cache: Option<Arc<WorkerCache>>,
-    shutdown: Arc<Mutex<Notifier>>,
+    shutdown: Notifier,
 }
 
 impl<DB> ConsensusConfig<DB>
@@ -98,7 +97,7 @@ where
 
         let tn_datadir = Arc::new(tn_datadir);
         let worker_cache = worker_cache.take().map(Arc::new);
-        let shutdown = Arc::new(Mutex::new(Notifier::new()));
+        let shutdown = Notifier::new();
         let anemo_config = Self::create_anemo_config();
         Ok(Self {
             inner: Arc::new(ConsensusConfigInner {
@@ -151,14 +150,10 @@ where
         config
     }
 
-    /// Return a Noticer that will signal when shutdown has occurred.
-    pub fn subscribe_shutdown(&self) -> Noticer {
-        self.shutdown.lock().subscribe()
-    }
-
-    /// Sends the shudown signal to all subscribers of the configs shutdown Noticer.
-    pub fn shutdown(&self) {
-        self.shutdown.lock().notify();
+    /// Returns a reference to the shutdown Noticer.
+    /// Can use this subscribe to the shutdown event or send it.
+    pub fn shutdown(&self) -> &Notifier {
+        &self.shutdown
     }
 
     pub fn config(&self) -> &Config {

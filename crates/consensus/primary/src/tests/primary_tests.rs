@@ -29,7 +29,9 @@ use tn_test_utils::{
     fixture_batch_with_transactions, make_optimal_signed_certificates, test_network,
     CommitteeFixture,
 };
-use tn_types::{now, AuthorityIdentifier, Certificate, Committee, SignatureVerificationState};
+use tn_types::{
+    now, AuthorityIdentifier, Certificate, Committee, SignatureVerificationState, TaskManager,
+};
 use tn_worker::{metrics::Metrics, Worker};
 use tokio::time::timeout;
 
@@ -45,11 +47,13 @@ async fn test_get_network_peers_from_admin_server() {
     let worker_1_keypair = authority_1.worker().keypair().copy();
 
     let cb_1 = ConsensusBus::new();
+    let mut primary_1 = Primary::new(config_1.clone(), &cb_1);
     // Spawn Primary 1
-    Primary::spawn(
+    primary_1.spawn(
         config_1.clone(),
         &cb_1,
         LeaderSchedule::new(committee.clone(), LeaderSwapTable::default()),
+        &TaskManager::default(),
     );
 
     // Wait for tasks to start
@@ -59,7 +63,13 @@ async fn test_get_network_peers_from_admin_server() {
     let metrics_1 = Metrics::new_with_registry(&registry_1);
 
     // Spawn a `Worker` instance for primary 1.
-    let _ = Worker::spawn(worker_id, NoopBlockValidator, metrics_1, config_1.clone());
+    let _ = Worker::spawn(
+        worker_id,
+        Arc::new(NoopBlockValidator),
+        metrics_1,
+        config_1.clone(),
+        &TaskManager::default(),
+    );
 
     // Test getting all known peers for primary 1
     let resp = reqwest::get(format!(
@@ -109,7 +119,13 @@ async fn test_get_network_peers_from_admin_server() {
 
     let cb_2 = ConsensusBus::new();
     // Spawn Primary 2
-    Primary::spawn(config_2, &cb_2, LeaderSchedule::new(committee, LeaderSwapTable::default()));
+    let mut primary_2 = Primary::new(config_2.clone(), &cb_2);
+    primary_2.spawn(
+        config_2,
+        &cb_2,
+        LeaderSchedule::new(committee, LeaderSwapTable::default()),
+        &TaskManager::default(),
+    );
 
     // Wait for tasks to start
     tokio::time::sleep(Duration::from_secs(1)).await;

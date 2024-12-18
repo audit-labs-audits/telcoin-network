@@ -2,7 +2,8 @@
 use serde::{Deserialize, Serialize};
 use std::collections::{BTreeMap, HashMap};
 use tn_types::{
-    BlockHash, Certificate, CertificateDigest, Vote, WorkerBlock, WorkerId, WorkerInfo,
+    BlockHash, Certificate, CertificateDigest, ConsensusHeader, Vote, WorkerBlock, WorkerId,
+    WorkerInfo,
 };
 
 /// Response from peers after receiving a certificate.
@@ -65,4 +66,11 @@ pub struct VerifyExecutionResponse {
     ///
     /// TODO: should this return anything else?
     pub valid: bool,
+}
+
+/// Response containing nodes requested consensus output.
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct ConsensusOutputResponse {
+    /// Consensus chain header containing output.
+    pub output: ConsensusHeader,
 }

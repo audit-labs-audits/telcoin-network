@@ -218,45 +218,41 @@ mod tests {
 
     /// Test the response from the following request to Google Cloud KMS
     /// ```rust
-    ///     let kms_client: GoogleApi<KeyManagementServiceClient<GoogleAuthMiddleware>> =
+    /// let kms_client: GoogleApi<KeyManagementServiceClient<GoogleAuthMiddleware>> =
     ///     GoogleApi::from_function(
     ///         KeyManagementServiceClient::new,
     ///         "https://cloudkms.googleapis.com",
     ///         None,
     ///     )
     ///     .await?;
-
-    ///     let locations = "global";
-    ///     let key_rings = "adiri-testnet";
-    ///     let crypto_keys = "validator-1";
-    ///     let crypto_key_versions = "1";
-
-    ///     let name = format!(
-    ///         "projects/{}/locations/{}/keyRings/{}/cryptoKeys/{}/cryptoKeyVersions/{}",
-    ///         google_project_id, locations, key_rings, crypto_keys, crypto_key_versions
-    ///     );
-
-    ///     let digest_bytes = keccak256("this is a test").0.to_vec();
-    ///     let digest = Some(Digest::Sha256(digest_bytes));
-    ///     let digest = Some(KMSDigest { digest });
-
-    ///     // note: signed_data.message.signature is used as `response` in test
-    ///     let signed_data = kms_client
-    ///         .get()
-    ///         .asymmetric_sign(tonic::Request::new(AsymmetricSignRequest {
-    ///            name,
-    ///            digest,
-    ///            ..Default::default()
-    ///        }))
-    ///        .await?;
     ///
-    ///     // note: pubkey.message.pem is used as `pem_public_key` in test
-    ///     let pubkey = kms_client
-    ///        .get()
-    ///        .get_public_key(tonic::Request::new(GetPublicKeyRequest {
-    ///            name,
-    ///        }))
-    ///        .await?;
+    /// let locations = "global";
+    /// let key_rings = "adiri-testnet";
+    /// let crypto_keys = "validator-1";
+    /// let crypto_key_versions = "1";
+    ///
+    /// let name = format!(
+    ///     "projects/{}/locations/{}/keyRings/{}/cryptoKeys/{}/cryptoKeyVersions/{}",
+    ///     google_project_id, locations, key_rings, crypto_keys, crypto_key_versions
+    /// );
+    ///
+    /// let digest_bytes = keccak256("this is a test").0.to_vec();
+    /// let digest = Some(Digest::Sha256(digest_bytes));
+    /// let digest = Some(KMSDigest { digest });
+    ///
+    /// // note: signed_data.message.signature is used as `response` in test
+    /// let signed_data = kms_client
+    ///     .get()
+    ///     .asymmetric_sign(tonic::Request::new(AsymmetricSignRequest {
+    ///         name,
+    ///         digest,
+    ///         ..Default::default()
+    ///     }))
+    ///     .await?;
+    ///
+    /// // note: pubkey.message.pem is used as `pem_public_key` in test
+    /// let pubkey =
+    ///     kms_client.get().get_public_key(tonic::Request::new(GetPublicKeyRequest { name })).await?;
     /// ```
     #[test]
     fn test_google_kms_signature() {

@@ -15,7 +15,6 @@ use reth::{
     builder::NodeConfig,
     dirs::MaybePlatformPath,
     prometheus_exporter::install_prometheus_recorder,
-    CliContext,
 };
 use reth_chainspec::ChainSpec;
 use reth_cli_commands::node::NoArgs;
@@ -141,7 +140,6 @@ impl<Ext: clap::Args + fmt::Debug> NodeCommand<Ext> {
     #[instrument(level = "info", skip_all)]
     pub async fn execute<L, Fut>(
         mut self,
-        ctx: CliContext,
         load_config: bool, /* If false will not attempt to load a previously saved config-
                             * useful for testing. */
         launcher: L,
@@ -236,13 +234,7 @@ impl<Ext: clap::Args + fmt::Debug> NodeCommand<Ext> {
             Arc::new(init_db(db_path.clone(), node_config.db.database_args())?.with_metrics());
 
         // TODO: temporary solution until upstream reth supports public rpc hooks
-        let builder = TnBuilder {
-            database,
-            node_config,
-            task_executor: ctx.task_executor,
-            tn_config,
-            opt_faucet_args: None,
-        };
+        let builder = TnBuilder { database, node_config, tn_config, opt_faucet_args: None };
 
         if let Some(metrics_socket) = self.consensus_metrics {
             start_prometheus_server(metrics_socket);

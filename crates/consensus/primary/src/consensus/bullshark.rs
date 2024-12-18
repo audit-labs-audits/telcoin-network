@@ -356,13 +356,16 @@ impl<DB: Database> Bullshark<DB> {
     fn linked(&self, leader: &Certificate, prev_leader: &Certificate, dag: &Dag) -> bool {
         let mut parents = vec![leader];
         for r in (prev_leader.round()..leader.round()).rev() {
-            parents = dag
-                .get(&r)
-                .expect("We should have the whole history by now")
-                .values()
-                .filter(|(digest, _)| parents.iter().any(|x| x.header().parents().contains(digest)))
-                .map(|(_, certificate)| certificate)
-                .collect();
+            parents = if let Some(r) = dag.get(&r) {
+                r.values()
+                    .filter(|(digest, _)| {
+                        parents.iter().any(|x| x.header().parents().contains(digest))
+                    })
+                    .map(|(_, certificate)| certificate)
+                    .collect()
+            } else {
+                vec![]
+            };
         }
         parents.contains(&prev_leader)
     }

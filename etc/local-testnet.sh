@@ -56,7 +56,7 @@ for ((i=0; i<$LENGTH; i++)); do
     fi
 
     echo "creating datadir for ${VALIDATOR}"
-    target/${RELEASE}/telcoin-network genesis init --datadir "${DATADIR}" --dev-funded-account test-source
+    target/${RELEASE}/telcoin-network genesis init --datadir "${DATADIR}" --dev-funded-account test-source --max-header-delay-ms 1000 --min-header-delay-ms 1000
 
     echo "creating validator keys"
     target/${RELEASE}/telcoin-network keytool generate validator --datadir "${DATADIR}" --address "${ADDRESS}"

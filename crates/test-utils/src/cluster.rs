@@ -5,15 +5,10 @@
 //! Cluster fixture to represent a local network.
 use crate::{authority::AuthorityDetails, default_test_execution_node, CommitteeFixture};
 use itertools::Itertools;
-use reth::tasks::TaskExecutor;
 use std::{collections::HashMap, time::Duration};
 use tn_storage::traits::Database;
 use tn_types::{Committee, WorkerId};
 use tracing::info;
-
-#[cfg(test)]
-#[path = "tests/cluster_tests.rs"]
-pub mod cluster_tests;
 
 /// Test fixture that holds all information needed to run a local network.
 pub struct Cluster<DB> {
@@ -32,7 +27,7 @@ where
     ///
     /// Fields passed in via Parameters will be used, expect specified ports which have to be
     /// different for each instance. If None, the default Parameters will be used.
-    pub fn new<F>(executor: TaskExecutor, new_db: F) -> Self
+    pub fn new<F>(new_db: F) -> Self
     where
         F: Fn() -> DB,
     {
@@ -52,7 +47,6 @@ where
             let engine = default_test_execution_node(
                 None, // default: adiri chain
                 Some(authority_execution_address),
-                executor.clone(),
             )
             .expect("default test execution node");
 
@@ -154,30 +148,12 @@ where
         Ok(())
     }
 
-    /// This method stops the authority (both the primary and the worker nodes)
-    /// with the provided id.
-    pub async fn stop_node(&self, id: usize) {
-        if let Some(node) = self.authorities.get(&id) {
-            node.stop_all().await;
-            info!("Aborted node for id {id}");
-        } else {
-            info!("Node with {id} not found - nothing to stop");
-        }
-        // TODO: wait for the node's network port to be released?
-    }
-
-    /// Returns all the running authorities. Any authority that:
-    /// * has been started ever
-    /// * or has been stopped
-    ///
-    /// will not be returned by this method.
+    /// Returns all the authorities (running or not).
     pub async fn authorities(&self) -> Vec<AuthorityDetails<DB>> {
         let mut result = Vec::new();
 
         for authority in self.authorities.values() {
-            if authority.is_running().await {
-                result.push(authority.clone());
-            }
+            result.push(authority.clone());
         }
 
         result

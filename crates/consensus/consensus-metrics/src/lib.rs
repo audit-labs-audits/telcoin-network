@@ -104,6 +104,14 @@ macro_rules! monitored_future {
         monitored_future!(futures, $fut, "", INFO, false)
     }};
 
+    ($fut: expr, $name: expr, $logging_level: ident) => {{
+        monitored_future!(futures, $fut, $name, $logging_level, false)
+    }};
+
+    ($fut: expr, $name: expr) => {{
+        monitored_future!(futures, $fut, $name, INFO, false)
+    }};
+
     ($metric: ident, $fut: expr, $name: expr, $logging_level: ident, $logging_enabled: expr) => {{
         let location: &str = if $name.is_empty() {
             concat!(file!(), ':', line!())

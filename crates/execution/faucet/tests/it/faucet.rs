@@ -24,7 +24,6 @@ use reth_primitives::{
     alloy_primitives::U160, public_key_to_address, Address, GenesisAccount, B256, U256,
 };
 use reth_provider::ExecutionOutcome;
-use reth_tasks::TaskManager;
 use reth_tracing::init_test_tracing;
 use reth_transaction_pool::TransactionPool;
 use secp256k1::PublicKey;
@@ -39,7 +38,8 @@ use tn_test_utils::{
     TransactionFactory,
 };
 use tn_types::{
-    adiri_genesis, error::BlockSealError, SealedWorkerBlock, TransactionSigned, WorkerBlock,
+    adiri_genesis, error::BlockSealError, Notifier, SealedWorkerBlock, TaskManager,
+    TransactionSigned, WorkerBlock,
 };
 use tn_worker::{
     metrics::WorkerMetrics,
@@ -251,17 +251,9 @@ async fn test_faucet_transfers_tel_with_google_kms() -> eyre::Result<()> {
     let genesis = real_genesis.extend_accounts(genesis_accounts.into_iter());
     let chain: Arc<ChainSpec> = Arc::new(genesis.into());
 
-    let manager = TaskManager::current();
-    let executor = manager.executor();
-
     // create engine node
-    let execution_node = faucet_test_execution_node(
-        true,
-        Some(chain.clone()),
-        None,
-        executor,
-        faucet_proxy_address,
-    )?;
+    let execution_node =
+        faucet_test_execution_node(true, Some(chain.clone()), None, faucet_proxy_address)?;
 
     let worker_id = 0;
     let (to_worker, mut next_batch) = tokio::sync::mpsc::channel(1);
@@ -274,8 +266,16 @@ async fn test_faucet_transfers_tel_with_google_kms() -> eyre::Result<()> {
     let block_provider =
         BlockProvider::new(0, qw.clone(), Arc::new(node_metrics), client, store.clone(), timeout);
 
+    let shutdown = Notifier::default();
     // start batch maker
-    execution_node.start_block_builder(worker_id, block_provider.blocks_tx()).await?;
+    execution_node
+        .start_block_builder(
+            worker_id,
+            block_provider.blocks_tx(),
+            &TaskManager::default(),
+            shutdown.subscribe(),
+        )
+        .await?;
 
     // create client
     let client = execution_node.worker_http_client(&worker_id).await?.expect("worker rpc client");
@@ -327,7 +327,8 @@ async fn test_faucet_transfers_tel_with_google_kms() -> eyre::Result<()> {
     let recovered = pool_tx.transaction.transaction();
     assert_eq!(&tx_hash, recovered.hash_ref());
     assert_eq!(recovered.transaction.to(), Some(faucet_proxy_address));
-    Ok(assert_eq!(recovered.transaction.nonce(), 1))
+    assert_eq!(recovered.transaction.nonce(), 1);
+    Ok(())
 }
 
 #[tokio::test]
@@ -572,17 +573,16 @@ async fn test_faucet_transfers_stablecoin_with_google_kms() -> eyre::Result<()> 
     let genesis = real_genesis.extend_accounts(genesis_accounts.into_iter());
     let chain = Arc::new(genesis.into());
 
-    let manager = TaskManager::current();
-    let executor = manager.executor();
-
     // create engine node
-    let execution_node =
-        faucet_test_execution_node(true, Some(chain), None, executor, faucet_proxy_address)?;
+    let execution_node = faucet_test_execution_node(true, Some(chain), None, faucet_proxy_address)?;
 
+    let shutdown = Notifier::default();
     // start batch maker
     let worker_id = 0;
     let (to_worker, mut next_batch) = tokio::sync::mpsc::channel(2);
-    execution_node.start_block_builder(worker_id, to_worker).await?;
+    execution_node
+        .start_block_builder(worker_id, to_worker, &TaskManager::default(), shutdown.subscribe())
+        .await?;
 
     let user_address = Address::random();
     let client = execution_node.worker_http_client(&worker_id).await?.expect("worker rpc client");
@@ -656,43 +656,34 @@ async fn test_faucet_transfers_stablecoin_with_google_kms() -> eyre::Result<()> 
 ///
 /// ```
 /// let kms_client: GoogleApi<KeyManagementServiceClient<GoogleAuthMiddleware>> =
-///   GoogleApi::from_function(
-///     KeyManagementServiceClient::new,
-///     "https://cloudkms.googleapis.com",
-///     None,
-///   )
-///   .await?;
-
-/// let validators = [
-///   "validator-1",
-///   "validator-2",
-///   "validator-3",
-///   "validator-4",
-/// ];
-
+///     GoogleApi::from_function(
+///         KeyManagementServiceClient::new,
+///         "https://cloudkms.googleapis.com",
+///         None,
+///     )
+///     .await?;
+///
+/// let validators = ["validator-1", "validator-2", "validator-3", "validator-4"];
+///
 /// let locations = "global";
 /// let key_rings = "adiri-testnet";
 /// // let crypto_keys = "validator-1";
 /// let crypto_key_versions = "1";
-
+///
 /// for v in validators {
-///   let name = format!(
-///     "projects/{}/locations/{}/keyRings/{}/cryptoKeys/{}/cryptoKeyVersions/{}",
-///     google_project_id, locations, key_rings, v, crypto_key_versions
-///   );
-
-///   let pubkey = kms_client
-///     .get()
-///     .get_public_key(tonic::Request::new(GetPublicKeyRequest {
-///         name,
-///         ..Default::default()
-///     }))
-///     .await?;
-
-///   println!("{v} public key:\n {:?}", pubkey.into_inner().pem);
+///     let name = format!(
+///         "projects/{}/locations/{}/keyRings/{}/cryptoKeys/{}/cryptoKeyVersions/{}",
+///         google_project_id, locations, key_rings, v, crypto_key_versions
+///     );
+///
+///     let pubkey = kms_client
+///         .get()
+///         .get_public_key(tonic::Request::new(GetPublicKeyRequest { name, ..Default::default() }))
+///         .await?;
+///
+///     println!("{v} public key:\n {:?}", pubkey.into_inner().pem);
 /// }
 /// ```
-
 #[test]
 #[ignore = "only useful for debugging purposes"]
 fn test_print_kms_wallets() -> eyre::Result<()> {
@@ -773,9 +764,7 @@ async fn get_contract_state_for_genesis(
     raw_txs_to_execute: Vec<TransactionSigned>,
 ) -> eyre::Result<ExecutionOutcome> {
     // create execution components
-    let manager = TaskManager::current();
-    let executor = manager.executor();
-    let execution_node = default_test_execution_node(Some(chain.clone()), None, executor)?;
+    let execution_node = default_test_execution_node(Some(chain.clone()), None)?;
     let provider = execution_node.get_provider().await;
     let block_executor = execution_node.get_block_executor().await;
 
