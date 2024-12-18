@@ -328,7 +328,10 @@ fn get_block(node: &str, block_number: Option<u64>) -> eyre::Result<HashMap<Stri
     } else {
         RawValue::from_string("[\"latest\", true]".to_string())?
     };
-    let block = call_rpc(node, "eth_getBlockByNumber", Some(&params), 5)?;
+    let mut block = call_rpc(node, "eth_getBlockByNumber", Some(&params), 5)?;
+    while block.is_empty() {
+        block = call_rpc(node, "eth_getBlockByNumber", Some(&params), 5)?;
+    }
     Ok(serde_json::from_str(&block)?)
 }
 
