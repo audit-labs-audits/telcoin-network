@@ -98,8 +98,7 @@ impl<DB: Database> Inner<DB> {
             DagError::TooOld(certificate.digest().into(), certificate.round(), gc_round)
         );
         // Verify the certificate (and the embedded header).
-        certificate
-            .verify(self.consensus_config.committee(), self.consensus_config.worker_cache())
+        certificate.verify(self.consensus_config.committee(), self.consensus_config.worker_cache())
     }
 
     async fn append_certificate_in_aggregator(&self, certificate: Certificate) -> DagResult<()> {
