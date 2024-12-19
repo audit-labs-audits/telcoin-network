@@ -24,7 +24,7 @@ use tn_test_utils::{
 };
 use tn_types::{
     error::DagError, BlsAggregateSignatureBytes, Certificate, Committee, Round,
-    SignatureVerificationState, TnReceiver, TnSender,
+    SignatureVerificationState, TaskManager, TnReceiver, TnSender,
 };
 
 #[tokio::test]
@@ -38,6 +38,8 @@ async fn accept_certificates() {
     let mut rx_parents = cb.parents().subscribe();
     // Make a synchronizer.
     let synchronizer = Arc::new(Synchronizer::new(primary.consensus_config(), &cb));
+    let task_manager = TaskManager::default();
+    synchronizer.spawn(&task_manager);
 
     // Send 3 certificates to the Synchronizer.
     let certificates: Vec<_> =
@@ -91,6 +93,8 @@ async fn accept_suspended_certificates() {
 
     let cb = ConsensusBus::new();
     let synchronizer = Arc::new(Synchronizer::new(primary.consensus_config(), &cb));
+    let task_manager = TaskManager::default();
+    synchronizer.spawn(&task_manager);
 
     // Make fake certificates.
     let committee = fixture.committee();
@@ -158,6 +162,8 @@ async fn synchronizer_recover_basic() {
     let cb = ConsensusBus::new();
     // Make Synchronizer.
     let synchronizer = Arc::new(Synchronizer::new(primary.consensus_config(), &cb));
+    let task_manager = TaskManager::default();
+    synchronizer.spawn(&task_manager);
 
     // Send 3 certificates to Synchronizer.
     let certificates: Vec<_> =
@@ -181,7 +187,9 @@ async fn synchronizer_recover_basic() {
 
     let cb = ConsensusBus::new();
     let mut rx_parents = cb.parents().subscribe();
-    let _synchronizer = Arc::new(Synchronizer::new(primary.consensus_config(), &cb));
+    let synchronizer = Arc::new(Synchronizer::new(primary.consensus_config(), &cb));
+    let task_manager = TaskManager::default();
+    synchronizer.spawn(&task_manager);
 
     // Ensure the Synchronizer sends the parent certificates to the proposer.
 
@@ -213,6 +221,8 @@ async fn synchronizer_recover_partial_certs() {
     let cb = ConsensusBus::new();
     // Make a synchronizer.
     let synchronizer = Arc::new(Synchronizer::new(primary.consensus_config(), &cb));
+    let task_manager = TaskManager::default();
+    synchronizer.spawn(&task_manager);
 
     // Send 1 certificate.
     let certificates: Vec<Certificate> =
@@ -229,6 +239,8 @@ async fn synchronizer_recover_partial_certs() {
     let cb = ConsensusBus::new();
     let mut rx_parents = cb.parents().subscribe();
     let synchronizer = Arc::new(Synchronizer::new(primary.consensus_config(), &cb));
+    let task_manager = TaskManager::default();
+    synchronizer.spawn(&task_manager);
 
     // Send remaining 2f certs.
     for cert in certificates.clone().into_iter().take(2) {
@@ -258,6 +270,8 @@ async fn synchronizer_recover_previous_round() {
     let cb = ConsensusBus::new();
     // Make a synchronizer.
     let synchronizer = Arc::new(Synchronizer::new(primary.consensus_config(), &cb));
+    let task_manager = TaskManager::default();
+    synchronizer.spawn(&task_manager);
 
     // Send 3 certificates from round 1, and 2 certificates from round 2 to Synchronizer.
     let genesis_certs = Certificate::genesis(&committee);
@@ -282,7 +296,9 @@ async fn synchronizer_recover_previous_round() {
 
     let cb = ConsensusBus::new();
     let mut rx_parents = cb.parents().subscribe();
-    let _synchronizer = Arc::new(Synchronizer::new(primary.consensus_config(), &cb));
+    let synchronizer = Arc::new(Synchronizer::new(primary.consensus_config(), &cb));
+    let task_manager = TaskManager::default();
+    synchronizer.spawn(&task_manager);
 
     // the recovery flow sends message that contains the parents for the last round for which we
     // have a quorum of certificates, in this case is round 1.
@@ -304,6 +320,8 @@ async fn deliver_certificate_using_store() {
 
     let cb = ConsensusBus::new();
     let synchronizer = Synchronizer::new(primary.consensus_config(), &cb);
+    let task_manager = TaskManager::default();
+    synchronizer.spawn(&task_manager);
 
     // create some certificates in a complete DAG form
     let genesis_certs = Certificate::genesis(&committee);
@@ -337,6 +355,8 @@ async fn deliver_certificate_not_found_parents() {
     let cb = ConsensusBus::new();
     let mut rx_certificate_fetcher = cb.certificate_fetcher().subscribe();
     let synchronizer = Synchronizer::new(primary.consensus_config(), &cb);
+    let task_manager = TaskManager::default();
+    synchronizer.spawn(&task_manager);
 
     // create some certificates in a complete DAG form
     let genesis_certs = Certificate::genesis(&committee);
@@ -378,6 +398,8 @@ async fn sanitize_fetched_certificates() {
 
     let cb = ConsensusBus::new();
     let synchronizer = Synchronizer::new(primary.consensus_config(), &cb);
+    let task_manager = TaskManager::default();
+    synchronizer.spawn(&task_manager);
 
     // create some certificates in a complete DAG form
     let genesis_certs = Certificate::genesis(&committee);
@@ -468,6 +490,8 @@ async fn sync_batches_drops_old() {
 
     let cb = ConsensusBus::new();
     let synchronizer = Arc::new(Synchronizer::new(primary.consensus_config(), &cb));
+    let task_manager = TaskManager::default();
+    synchronizer.spawn(&task_manager);
 
     let mut certificates = HashMap::new();
     for _ in 0..3 {
@@ -519,6 +543,8 @@ async fn gc_suspended_certificates() {
     let cb = ConsensusBus::new();
     let mut rx_new_certificates = cb.new_certificates().subscribe();
     let synchronizer = Arc::new(Synchronizer::new(primary.consensus_config(), &cb));
+    let task_manager = TaskManager::default();
+    synchronizer.spawn(&task_manager);
 
     // Make 5 rounds of fake certificates.
     let committee: Committee = fixture.committee();

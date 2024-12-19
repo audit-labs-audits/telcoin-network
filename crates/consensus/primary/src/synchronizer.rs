@@ -8,8 +8,8 @@ use crate::{
     ConsensusBus,
 };
 use consensus_metrics::{
-    metered_channel::{channel_with_total, MeteredMpscChannel},
-    monitored_scope, spawn_logged_monitored_task,
+    metered_channel::{channel_with_total_sender, MeteredMpscChannel},
+    monitored_future, monitored_scope, spawn_logged_monitored_task,
 };
 use fastcrypto::hash::Hash as _;
 use futures::{stream::FuturesOrdered, StreamExt};
@@ -24,14 +24,14 @@ use std::{
     time::Duration,
 };
 use tn_config::ConsensusConfig;
-use tn_network::{local::LocalNetwork, PrimaryToWorkerClient, RetryConfig};
+use tn_network::{PrimaryToWorkerClient, RetryConfig};
 use tn_network_types::WorkerSynchronizeMessage;
-use tn_storage::{traits::Database, CertificateStore, PayloadStore};
+use tn_storage::traits::Database;
 use tn_types::{
     ensure,
     error::{AcceptNotification, DagError, DagResult},
-    AuthorityIdentifier, Certificate, CertificateDigest, Committee, Header, Round,
-    SignatureVerificationState, TnReceiver, TnSender, WorkerCache, CHANNEL_CAPACITY,
+    Certificate, CertificateDigest, Committee, Header, Round, SignatureVerificationState,
+    TaskManager, TnReceiver, TnSender, CHANNEL_CAPACITY,
 };
 use tn_utils::sync::notify_once::NotifyOnce;
 use tokio::{
@@ -52,27 +52,14 @@ pub mod synchronizer_tests;
 const NEW_CERTIFICATE_ROUND_LIMIT: Round = 1000;
 
 struct Inner<DB> {
-    // The id of this primary.
-    authority_id: AuthorityIdentifier,
-    // Committee of the current epoch.
-    committee: Committee,
-    // The worker information cache.
-    worker_cache: WorkerCache,
-    // The depth of the garbage collector.
-    gc_depth: Round,
+    // Node config.
+    consensus_config: ConsensusConfig<DB>,
     // Highest round that has been GC'ed.
     gc_round: AtomicU64,
     // Highest round of certificate accepted into the certificate store.
     highest_processed_round: AtomicU64,
     // Highest round of verfied certificate that has been received.
     highest_received_round: AtomicU64,
-    // Client for fetching payloads.
-    client: LocalNetwork,
-    // The persistent storage tables.
-    certificate_store: CertificateStore<DB>,
-    // The persistent store of the available batch digests produced either via our own workers
-    // or others workers.
-    payload_store: PayloadStore<DB>,
     // Send certificates to be accepted into a separate task that runs
     // `process_certificates_with_lock()` in a loop.
     // See comment above `process_certificates_with_lock()` for why this is necessary.
@@ -98,9 +85,9 @@ impl<DB: Database> Inner<DB> {
     /// Checks if the certificate is valid and can potentially be accepted into the DAG.
     fn sanitize_certificate(&self, certificate: Certificate) -> DagResult<Certificate> {
         ensure!(
-            self.committee.epoch() == certificate.epoch(),
+            self.consensus_config.committee().epoch() == certificate.epoch(),
             DagError::InvalidEpoch {
-                expected: self.committee.epoch(),
+                expected: self.consensus_config.committee().epoch(),
                 received: certificate.epoch()
             }
         );
@@ -111,7 +98,8 @@ impl<DB: Database> Inner<DB> {
             DagError::TooOld(certificate.digest().into(), certificate.round(), gc_round)
         );
         // Verify the certificate (and the embedded header).
-        certificate.verify(&self.committee, &self.worker_cache)
+        certificate
+            .verify(self.consensus_config.committee(), self.consensus_config.worker_cache())
     }
 
     async fn append_certificate_in_aggregator(&self, certificate: Certificate) -> DagResult<()> {
@@ -121,7 +109,7 @@ impl<DB: Database> Inner<DB> {
             .lock()
             .entry(certificate.round())
             .or_insert_with(|| Box::new(CertificatesAggregator::new()))
-            .append(certificate.clone(), &self.committee)
+            .append(certificate.clone(), self.consensus_config.committee())
         else {
             return Ok(());
         };
@@ -162,8 +150,11 @@ impl<DB: Database> Inner<DB> {
         // Validate that certificates are accepted in causal order.
         // This should be relatively cheap because of certificate store caching.
         if certificate.round() > self.gc_round.load(Ordering::Acquire) + 1 {
-            let existence =
-                self.certificate_store.multi_contains(certificate.header().parents().iter())?;
+            let existence = self
+                .consensus_config
+                .node_storage()
+                .certificate_store
+                .multi_contains(certificate.header().parents().iter())?;
             for (digest, exists) in certificate.header().parents().iter().zip(existence.iter()) {
                 if !*exists {
                     panic!("Parent {digest:?} not found for {certificate:?}!")
@@ -185,7 +176,9 @@ impl<DB: Database> Inner<DB> {
         }
 
         // Store the certificate and make it available as parent to other certificates.
-        self.certificate_store
+        self.consensus_config
+            .node_storage()
+            .certificate_store
             .write(certificate.clone())
             .expect("Writing certificate to storage cannot fail!");
 
@@ -197,8 +190,12 @@ impl<DB: Database> Inner<DB> {
             .highest_processed_round
             .fetch_max(certificate.round(), Ordering::AcqRel)
             .max(certificate.round());
-        let certificate_source =
-            if self.authority_id.eq(&certificate.origin()) { "own" } else { "other" };
+        let certificate_source = if self.consensus_config.authority().id().eq(&certificate.origin())
+        {
+            "own"
+        } else {
+            "other"
+        };
         self.consensus_bus
             .primary_metrics()
             .node_metrics
@@ -244,7 +241,11 @@ impl<DB: Database> Inner<DB> {
             return Ok(Vec::new());
         }
 
-        let existence = self.certificate_store.multi_contains(header.parents().iter())?;
+        let existence = self
+            .consensus_config
+            .node_storage()
+            .certificate_store
+            .multi_contains(header.parents().iter())?;
         let mut unknown: Vec<_> = header
             .parents()
             .iter()
@@ -275,8 +276,11 @@ impl<DB: Database> Inner<DB> {
             return Ok(result);
         }
 
-        let existence =
-            self.certificate_store.multi_contains(certificate.header().parents().iter())?;
+        let existence = self
+            .consensus_config
+            .node_storage()
+            .certificate_store
+            .multi_contains(certificate.header().parents().iter())?;
         for (digest, exists) in certificate.header().parents().iter().zip(existence.iter()) {
             if !*exists {
                 result.push(*digest);
@@ -296,6 +300,387 @@ impl<DB: Database> Inner<DB> {
     async fn get_suspended_stats(&self) -> (usize, usize) {
         let state = self.state.lock().await;
         (state.num_suspended(), state.num_missing())
+    }
+
+    /// Long running task to perform garbage collection on DAG.
+    /// This will run a task managed by the task manager.
+    async fn garbage_collection(&self) {
+        const FETCH_TRIGGER_TIMEOUT: Duration = Duration::from_secs(30);
+        let mut rx_consensus_round_updates =
+            self.consensus_bus.consensus_round_updates().subscribe();
+        loop {
+            let Ok(result) =
+                timeout(FETCH_TRIGGER_TIMEOUT, rx_consensus_round_updates.changed()).await
+            else {
+                // When consensus commit has not happened for 30s, it is possible that no
+                // new certificate is received by this primary or
+                // created in the network, so fetching should
+                // definitely be started. For other reasons of
+                // timing out, there is no harm to start fetching either.
+                if let Err(e) = self
+                    .consensus_bus
+                    .certificate_fetcher()
+                    .send(CertificateFetcherCommand::Kick)
+                    .await
+                {
+                    error!(target: "primary::synchronizer::gc", ?e, "failed to send on tx_certificate_fetcher");
+                    return;
+                }
+                self.consensus_bus.primary_metrics().node_metrics.synchronizer_gc_timeout.inc();
+                warn!(target: "primary::synchronizer::gc", "No consensus commit happened for {:?}, triggering certificate fetching.", FETCH_TRIGGER_TIMEOUT);
+                continue;
+            };
+
+            if let Err(e) = result {
+                error!(target: "primary::synchronizer::gc", ?e, "failed to received rx_consensus_round_updates - shutting down...");
+                return;
+            }
+
+            let _scope = monitored_scope("Synchronizer::gc_iteration");
+            let gc_round = rx_consensus_round_updates.borrow().gc_round;
+            // this is the only task updating gc_round
+            self.gc_round.store(gc_round, Ordering::Release);
+            self.certificates_aggregators.lock().retain(|k, _| k > &gc_round);
+            // Accept certificates at and below gc round, if there is any.
+            let mut state = self.state.lock().await;
+            while let Some(((round, digest), suspended_cert)) = state.run_gc_once(gc_round) {
+                assert!(round <= gc_round, "Never gc certificates above gc_round as this can lead to missing causal history in DAG");
+
+                let suspended_children_certs = state.accept_children(round, digest);
+                // Acceptance must be in causal order.
+                for suspended in
+                    suspended_cert.into_iter().chain(suspended_children_certs.into_iter())
+                {
+                    match self.accept_suspended_certificate(&state, suspended).await {
+                        Ok(()) => {
+                            trace!(target: "primary::synchronizer::gc", "accepted suspended cert")
+                        }
+                        Err(DagError::ShuttingDown) => {
+                            error!(target: "primary::synchronizer::gc", "error accepting suspended cert - shutting down...");
+                            return;
+                        }
+                        Err(e) => {
+                            error!(target: "primary::synchronizer::gc", ?e, "error accepting suspended cert - PANIC");
+                            panic!("Unexpected error accepting certificate during GC! {e}")
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    /// Long running task to accept incoming certificates.
+    /// This will run a task managed by the task manager.
+    async fn accept_certificates(&self) {
+        let mut rx_certificate_acceptor = self.tx_certificate_acceptor.subscribe();
+        loop {
+            let Some((certificates, result_sender, early_suspend)) =
+                rx_certificate_acceptor.recv().await
+            else {
+                error!(target: "primary::synchronizer::accept_certificates", "error on rx_certificate_acceptor.recv() - synchronizer is shutting down...");
+                return;
+            };
+
+            // ensure cert sigs are verified
+            for certificate in &certificates {
+                assert!(
+                    matches!(
+                        certificate.signature_verification_state(),
+                        SignatureVerificationState::VerifiedDirectly(_)
+                        | SignatureVerificationState::VerifiedIndirectly(_)
+                    ),
+                    "Never accept certificates that have not been verified either directly or indirectly."
+                );
+            }
+
+            // Ignore error if receiver has been dropped.
+            let _ = result_sender
+                .send(self.process_certificates_with_lock(certificates, early_suspend).await);
+        }
+    }
+
+    /// Long running task to synchronize blocks.
+    /// This will run a task managed by the task manager.
+    /// Note that due to internal implementation details this has to recieve an
+    /// Inner wrapped in an Arc vs &self.
+    async fn synchronize_blocks(inner: Arc<Inner<DB>>) {
+        let mut rx_batch_tasks = inner.tx_batch_tasks.subscribe();
+        let mut batch_tasks: JoinSet<DagResult<()>> = JoinSet::new();
+
+        loop {
+            tokio::select! {
+                result = rx_batch_tasks.recv() => {
+                    let (header, max_age) = match result {
+                        Some(r) => r,
+                        None => {
+                            // exit loop if the channel has been closed
+                            break;
+                        }
+                    };
+
+                    let inner_clone = inner.clone();
+                    batch_tasks.spawn(async move {
+                        inner_clone.sync_batches_internal(&header, max_age, true).await
+                    });
+                },
+                Some(result) = batch_tasks.join_next() => {
+                    if let Err(e) = result  {
+                        error!(target: "primary::synchronizer::synchronize_blocks", ?e, "error when synchronizing blocks")
+                    }
+                }
+            }
+        }
+    }
+
+    /// This function checks if a certificate has all parents and can be accepted into storage.
+    /// If yes, writing the certificate to storage and sending it to consensus need to happen
+    /// atomically. Otherwise, there will be divergence between certificate storage and consensus
+    /// DAG. A certificate that is sent to consensus must have all of its parents already in
+    /// the consensu DAG.
+    ///
+    /// Because of the atomicity requirement, this function cannot be made cancellation safe.
+    /// So it is run in a loop inside a separate task, connected to `Synchronizer` via a channel.
+    #[instrument(level = "debug", skip_all)]
+    async fn process_certificates_with_lock(
+        &self,
+        certificates: Vec<Certificate>,
+        early_suspend: bool,
+    ) -> DagResult<()> {
+        let _scope = monitored_scope("Synchronizer::process_certificates_with_lock");
+
+        // We re-check here in case we already have in pipeline the same certificate for processing
+        // more that once.
+        let digests = certificates.iter().map(|c| c.digest()).collect_vec();
+        let exists = self
+            .consensus_config
+            .node_storage()
+            .certificate_store
+            .multi_contains(digests.iter())?;
+        let certificates = certificates
+            .into_iter()
+            .zip(exists.into_iter())
+            .filter_map(|(c, exist)| {
+                if exist {
+                    debug!("Skip processing certificate {:?}", c);
+                    self.consensus_bus
+                        .primary_metrics()
+                        .node_metrics
+                        .duplicate_certificates_processed
+                        .inc();
+                    return None;
+                }
+                Some(c)
+            })
+            .collect_vec();
+        if certificates.is_empty() {
+            return Ok(());
+        }
+
+        // The state lock must be held for the rest of the function, to ensure updating state,
+        // writing certificates into storage and sending certificates to consensus are atomic.
+        // The atomicity makes sure the internal state is consistent with DAG in certificate store,
+        // and certificates are sent to consensus in causal order.
+        // It is possible to reduce the critical section below, but it seems unnecessary for now.
+        let mut state = self.state.lock().await;
+
+        // Returns Ok(()) if all input certificates are accepted, or a suspended error for the last
+        // suspended certificate. It is ok to not return all suspended errors for suspended
+        // certificates, because the accept notification is only used when trying to accept a
+        // single certificate.
+        //
+        // TODO: simplify the logic here by separating try_accept_certificate() and notify_accept().
+        // let mut result = Ok(());
+        let mut result = Ok(());
+
+        for certificate in certificates {
+            debug!(target: "primary::synchronizer", ?certificate, "processing certificate with lock");
+            let digest = certificate.digest();
+
+            // Ensure parents are checked if !early_suspend.
+            // See comments above `try_accept_fetched_certificate()` for details.
+            if early_suspend {
+                // Re-check if the certificate has been suspended, which can happen before the lock
+                // is acquired.
+                if let Some(notify) = state.check_suspended(&digest) {
+                    trace!(target: "primary::synchronizer", "Certificate {digest:?} is still suspended. Skip processing.");
+                    self.consensus_bus
+                        .primary_metrics()
+                        .node_metrics
+                        .certificates_suspended
+                        .with_label_values(&["dedup_locked"])
+                        .inc();
+                    result = Err(DagError::Suspended(notify));
+                    continue;
+                }
+            }
+
+            // Ensure either we have all the ancestors of this certificate, or the parents have been
+            // garbage collected. If we don't, the synchronizer will start fetching
+            // missing certificates.
+            if certificate.round() > self.gc_round.load(Ordering::Acquire) + 1 {
+                let missing_parents = self.get_missing_parents(&certificate).await?;
+                if !missing_parents.is_empty() {
+                    debug!("Processing certificate {:?} suspended: missing ancestors", certificate);
+                    self.consensus_bus
+                        .primary_metrics()
+                        .node_metrics
+                        .certificates_suspended
+                        .with_label_values(&["missing_parents"])
+                        .inc();
+                    // There is no upper round limit to suspended certificates. Currently there is
+                    // no memory usage issue and this will speed up catching up.
+                    // But we can revisit later.
+                    let notify = state.insert(certificate, missing_parents, !early_suspend);
+                    self.consensus_bus
+                        .primary_metrics()
+                        .node_metrics
+                        .certificates_currently_suspended
+                        .set(state.num_suspended() as i64);
+                    result = Err(DagError::Suspended(notify));
+                    continue;
+                }
+            }
+
+            // TODO: batch write accepted certificates.
+            let suspended_certs = state.accept_children(certificate.round(), certificate.digest());
+            // Accept in causal order.
+            self.accept_certificate_internal(&state, certificate).await?;
+            for suspended in suspended_certs {
+                self.accept_suspended_certificate(&state, suspended).await?;
+            }
+        }
+
+        self.consensus_bus
+            .primary_metrics()
+            .node_metrics
+            .certificates_currently_suspended
+            .set(state.num_suspended() as i64);
+
+        result
+    }
+
+    async fn sync_batches_internal(
+        &self,
+        header: &Header,
+        max_age: Round,
+        is_certified: bool,
+    ) -> DagResult<()> {
+        let authority_id = self.consensus_config.authority().id();
+        if header.author() == authority_id {
+            debug!(target: "primary::synchronizer", "skipping sync_gatches for header - no need to sync payload from own workers");
+            return Ok(());
+        }
+
+        // Clone the round updates channel so we can get update notifications specific to
+        // this RPC handler.
+        let mut rx_consensus_round_updates =
+            self.consensus_bus.consensus_round_updates().subscribe();
+        let mut consensus_round = rx_consensus_round_updates.borrow().committed_round;
+        ensure!(
+            header.round() >= consensus_round.saturating_sub(max_age),
+            DagError::TooOld(
+                header.digest().into(),
+                header.round(),
+                consensus_round.saturating_sub(max_age)
+            )
+        );
+
+        let mut missing = HashMap::new();
+        for (digest, (worker_id, _)) in header.payload().iter() {
+            // Check whether we have the batch. If one of our worker has the batch, the primary
+            // stores the pair (digest, worker_id) in its own storage. It is important
+            // to verify that we received the batch from the correct worker id to
+            // prevent the following attack:
+            //      1. A Bad node sends a batch X to 2f good nodes through their worker #0.
+            //      2. The bad node proposes a malformed block containing the batch X and claiming
+            //         it comes from worker #1.
+            //      3. The 2f good nodes do not need to sync and thus don't notice that the header
+            //         is malformed. The bad node together with the 2f good nodes thus certify a
+            //         block containing the batch X.
+            //      4. The last good node will never be able to sync as it will keep sending its
+            //         sync requests to workers #1 (rather than workers #0). Also, clients will
+            //         never be able to retrieve batch X as they will be querying worker #1.
+            if !self.consensus_config.node_storage().payload_store.contains(*digest, *worker_id)? {
+                missing.entry(*worker_id).or_insert_with(Vec::new).push(*digest);
+            }
+        }
+
+        // Build Synchronize requests to workers.
+        let mut synchronize_handles = Vec::new();
+        for (worker_id, digests) in missing {
+            let worker_name = self
+                .consensus_config
+                .worker_cache()
+                .worker(
+                    self.consensus_config
+                        .committee()
+                        .authority(&authority_id)
+                        .unwrap()
+                        .protocol_key(),
+                    &worker_id,
+                )
+                .expect("Author of valid header is not in the worker cache")
+                .name;
+            let client = self.consensus_config.local_network().clone();
+            let retry_config = RetryConfig::default(); // 30s timeout
+            let handle = retry_config.retry(move || {
+                let digests = digests.clone();
+                let message = WorkerSynchronizeMessage {
+                    digests: digests.clone(),
+                    target: header.author(),
+                    is_certified,
+                };
+                let client = client.clone();
+                let worker_name = worker_name.clone();
+                async move {
+                    let result = client.synchronize(worker_name, message).await.map_err(|e| {
+                        backoff::Error::transient(DagError::NetworkError(format!("{e:?}")))
+                    });
+                    if result.is_ok() {
+                        for digest in &digests {
+                            self.consensus_config
+                                .node_storage()
+                                .payload_store
+                                .write(digest, &worker_id)
+                                .map_err(|e| backoff::Error::permanent(DagError::StoreError(e)))?
+                        }
+                    }
+                    result
+                }
+            });
+            synchronize_handles.push(handle);
+        }
+
+        // Wait until results are back, or this request gets too old to continue.
+        let mut wait_synchronize = futures::future::try_join_all(synchronize_handles);
+        loop {
+            tokio::select! {
+                results = &mut wait_synchronize => {
+                    break results
+                        .map(|_| ())
+                        .map_err(|e| DagError::NetworkError(format!("error synchronizing batches: {e:?}")))
+                },
+                // This aborts based on consensus round and not narwhal round. When this function
+                // is used as part of handling vote requests, this may cause us to wait a bit
+                // longer than needed to give up on synchronizing batches for headers that are
+                // too old to receive a vote. This shouldn't be a big deal (the requester can
+                // always abort their request at any point too), however if the extra resources
+                // used to attempt to synchronize batches for longer than strictly needed become
+                // problematic, this function could be augmented to also support cancellation based
+                // on narwhal round.
+                Ok(()) = rx_consensus_round_updates.changed() => {
+                    consensus_round = rx_consensus_round_updates.borrow().committed_round;
+                    ensure!(
+                        header.round() >= consensus_round.saturating_sub(max_age),
+                        DagError::TooOld(
+                            header.digest().into(),
+                            header.round(),
+                            consensus_round.saturating_sub(max_age),
+                        )
+                    );
+                },
+            }
+        }
     }
 }
 
@@ -321,29 +706,23 @@ impl<DB: Database> Synchronizer<DB> {
         let node_store = consensus_config.node_storage();
         let highest_processed_round = node_store.certificate_store.highest_round_number();
         let gc_round = consensus_bus.consensus_round_updates().borrow().gc_round;
-        let (tx_certificate_acceptor, mut rx_certificate_acceptor) = channel_with_total(
+        let tx_certificate_acceptor = channel_with_total_sender(
             CHANNEL_CAPACITY,
             &primary_channel_metrics.tx_certificate_acceptor,
             &primary_channel_metrics.tx_certificate_acceptor_total,
         );
 
-        let (tx_batch_tasks, mut rx_batch_tasks) = channel_with_total(
+        let tx_batch_tasks = channel_with_total_sender(
             CHANNEL_CAPACITY,
             &primary_channel_metrics.tx_batch_tasks,
             &primary_channel_metrics.tx_batch_tasks_total,
         );
 
         let inner = Arc::new(Inner {
-            authority_id: consensus_config.authority().id(),
-            committee: committee.clone(),
-            worker_cache: consensus_config.worker_cache().clone(),
-            gc_depth: consensus_config.parameters().gc_depth,
+            consensus_config,
             gc_round: AtomicU64::new(gc_round),
             highest_processed_round: AtomicU64::new(highest_processed_round),
             highest_received_round: AtomicU64::new(0),
-            client: consensus_config.local_network().clone(),
-            certificate_store: consensus_config.node_storage().certificate_store.clone(),
-            payload_store: consensus_config.node_storage().payload_store.clone(),
             tx_certificate_acceptor,
             consensus_bus: consensus_bus.clone(),
             genesis,
@@ -352,11 +731,18 @@ impl<DB: Database> Synchronizer<DB> {
             state: tokio::sync::Mutex::new(State::default()),
         });
 
+        Self { inner }
+    }
+
+    pub fn spawn(&self, task_manager: &TaskManager) {
         // Start a task to recover parent certificates for proposer.
-        let inner_proposer = inner.clone();
+        // This is a short running task not managed by the task_manager.
+        let inner_proposer = self.inner.clone();
         spawn_logged_monitored_task!(
             async move {
                 let last_round_certificates = inner_proposer
+                    .consensus_config
+                    .node_storage()
                     .certificate_store
                     .last_two_rounds_certs()
                     .expect("Failed recovering certificates in primary core");
@@ -378,166 +764,54 @@ impl<DB: Database> Synchronizer<DB> {
 
         // Start a task to update gc_round, gc in-memory data, and trigger certificate catchup
         // if no gc / consensus commit happened for 30s.
-        let weak_inner = Arc::downgrade(&inner);
-        let mut rx_consensus_round_updates = consensus_bus.consensus_round_updates().subscribe();
-        spawn_logged_monitored_task!(
-            async move {
-                const FETCH_TRIGGER_TIMEOUT: Duration = Duration::from_secs(30);
-                //let mut rx_consensus_round_updates = rx_consensus_round_updates.clone();
-                loop {
-                    let Ok(result) =
-                        timeout(FETCH_TRIGGER_TIMEOUT, rx_consensus_round_updates.changed()).await
-                    else {
-                        // When consensus commit has not happened for 30s, it is possible that no
-                        // new certificate is received by this primary or
-                        // created in the network, so fetching should
-                        // definitely be started. For other reasons of
-                        // timing out, there is no harm to start fetching either.
-                        let Some(inner) = weak_inner.upgrade() else {
-                            error!(target: "primary::synchronizer::gc", "failed to upgrade weak pointer while re-fetching rx_consensus_round_updates - shutting down");
-                            return;
-                        };
-                        if let Err(e) = inner
-                            .consensus_bus
-                            .certificate_fetcher()
-                            .send(CertificateFetcherCommand::Kick)
-                            .await
-                        {
-                            error!(target: "primary::synchronizer::gc", ?e, "failed to send on tx_certificate_fetcher");
-                            return;
-                        }
-                        inner
-                            .consensus_bus
-                            .primary_metrics()
-                            .node_metrics
-                            .synchronizer_gc_timeout
-                            .inc();
-                        warn!(target: "primary::synchronizer::gc", "No consensus commit happened for {:?}, triggering certificate fetching.", FETCH_TRIGGER_TIMEOUT);
-                        continue;
-                    };
+        let inner = self.inner.clone();
+        let rx_shutdown = self.inner.consensus_config.shutdown().subscribe();
+        task_manager.spawn_task(
+            "synchronizer GC",
+            monitored_future!(
+                async move {
+                    tokio::select! {
+                        _ = inner.garbage_collection() => {}  // This task should run for life of program.
+                        _ = &rx_shutdown => {}  // App is shutting down.
 
-                    if let Err(e) = result {
-                        error!(target: "primary::synchronizer::gc", ?e, "failed to received rx_consensus_round_updates - shutting down...");
-                        return;
                     }
-
-                    let _scope = monitored_scope("Synchronizer::gc_iteration");
-                    let gc_round = rx_consensus_round_updates.borrow().gc_round;
-                    let Some(inner) = weak_inner.upgrade() else {
-                        error!(target: "primary::synchronizer::gc", "failed to upgrade weak pointer - shutting down");
-                        return;
-                    };
-                    // this is the only task updating gc_round
-                    inner.gc_round.store(gc_round, Ordering::Release);
-                    inner.certificates_aggregators.lock().retain(|k, _| k > &gc_round);
-                    // Accept certificates at and below gc round, if there is any.
-                    let mut state = inner.state.lock().await;
-                    while let Some(((round, digest), suspended_cert)) = state.run_gc_once(gc_round)
-                    {
-                        assert!(round <= gc_round, "Never gc certificates above gc_round as this can lead to missing causal history in DAG");
-
-                        let suspended_children_certs = state.accept_children(round, digest);
-                        // Acceptance must be in causal order.
-                        for suspended in
-                            suspended_cert.into_iter().chain(suspended_children_certs.into_iter())
-                        {
-                            match inner.accept_suspended_certificate(&state, suspended).await {
-                                Ok(()) => {
-                                    trace!(target: "primary::synchronizer::gc", "accepted suspended cert")
-                                }
-                                Err(DagError::ShuttingDown) => {
-                                    error!(target: "primary::synchronizer::gc", "error accepting suspended cert - shutting down...");
-                                    return;
-                                }
-                                Err(e) => {
-                                    error!(target: "primary::synchronizer::gc", ?e, "error accepting suspended cert - PANIC");
-                                    panic!("Unexpected error accepting certificate during GC! {e}")
-                                }
-                            }
-                        }
-                    }
-                }
-            },
-            "Synchronizer::GarbageCollection"
+                },
+                "Synchronizer::GarbageCollection"
+            ),
         );
 
         // Start a task to accept certificates. See comment above `process_certificates_with_lock()`
         // for why this task is needed.
-        let weak_inner = Arc::downgrade(&inner);
-        spawn_logged_monitored_task!(
-            async move {
-                loop {
-                    let Some((certificates, result_sender, early_suspend)) =
-                        rx_certificate_acceptor.recv().await
-                    else {
-                        error!(target: "primary::synchronizer::accept_certificates", "error on rx_certificate_acceptor.recv() - synchronizer is shutting down...");
-                        return;
-                    };
-
-                    // ensure cert sigs are verified
-                    for certificate in &certificates {
-                        assert!(
-                            matches!(
-                                certificate.signature_verification_state(),
-                                SignatureVerificationState::VerifiedDirectly(_)
-                                | SignatureVerificationState::VerifiedIndirectly(_)
-                            ),
-                            "Never accept certificates that have not been verified either directly or indirectly."
-                        );
+        let inner = self.inner.clone();
+        let rx_shutdown = self.inner.consensus_config.shutdown().subscribe();
+        task_manager.spawn_task(
+            "synchronizer accept certificates",
+            monitored_future!(
+                async move {
+                    tokio::select! {
+                        _ = inner.accept_certificates() => {}  // This task should run for life of program.
+                        _ = &rx_shutdown => {}  // App is shutting down.
                     }
-
-                    let Some(inner) = weak_inner.upgrade() else {
-                        error!(target: "primary::synchronizer::accept_certificates", "failed to upgrade weak pointer - shutting down");
-                        return;
-                    };
-                    // Ignore error if receiver has been dropped.
-                    let _ = result_sender.send(
-                        Self::process_certificates_with_lock(&inner, certificates, early_suspend)
-                            .await,
-                    );
-                }
-            },
-            "Synchronizer::AcceptCertificates"
+                },
+                "Synchronizer::AcceptCertificates"
+            ),
         );
 
         // Start a task to async download batches if needed
-        let weak_inner = Arc::downgrade(&inner);
-        spawn_logged_monitored_task!(
-            async move {
-                let mut batch_tasks: JoinSet<DagResult<()>> = JoinSet::new();
-
-                loop {
+        let inner = self.inner.clone();
+        let rx_shutdown = self.inner.consensus_config.shutdown().subscribe();
+        task_manager.spawn_task(
+            "synchronize blocks",
+            monitored_future!(
+                async move {
                     tokio::select! {
-                        result = rx_batch_tasks.recv() => {
-                            let (header, max_age) = match result {
-                                Some(r) => r,
-                                None => {
-                                    // exit loop if the channel has been closed
-                                    break;
-                                }
-                            };
-
-                            let Some(inner) = weak_inner.upgrade() else {
-                                error!(target: "primary::synchronizer::synchronize_blocks", "failed to upgrade weak pointer - shutting down");
-                                return;
-                            };
-
-                            batch_tasks.spawn(async move {
-                                Synchronizer::sync_batches_internal(inner.clone(), &header, max_age, true).await
-                            });
-                        },
-                        Some(result) = batch_tasks.join_next() => {
-                            if let Err(e) = result  {
-                                error!(target: "primary::synchronizer::synchronize_blocks", ?e, "error when synchronizing blocks")
-                            }
-                        }
+                        _ = Inner::synchronize_blocks(inner) => {}  // This task should run for life of program.
+                        _ = &rx_shutdown => {}  // App is shutting down.
                     }
-                }
-            },
-            "Synchronizer::SyncrhonizeBlocks"
+                },
+                "Synchronizer::SyncrhonizeBlocks"
+            ),
         );
-
-        Self { inner }
     }
 
     /// Validates the certificate and accepts it into the DAG, if the certificate can be verified
@@ -616,7 +890,7 @@ impl<DB: Database> Synchronizer<DB> {
         let _accept_scope =
             monitored_scope("Synchronizer::try_accept_fetched_certificates::accept");
 
-        let max_age = self.inner.gc_depth.saturating_sub(1);
+        let max_age = self.inner.consensus_config.parameters().gc_depth.saturating_sub(1);
         let highest_processed_round = self.inner.highest_processed_round.load(Ordering::Acquire);
         for certificate in &certificates {
             // Instruct workers to download any missing batches referenced in this certificate.
@@ -659,17 +933,18 @@ impl<DB: Database> Synchronizer<DB> {
     /// Accepts a certificate produced by this primary. This is not expected to fail unless
     /// the primary is shutting down.
     pub async fn accept_own_certificate(&self, certificate: Certificate) -> DagResult<()> {
+        let authority = self.inner.consensus_config.authority().id();
         // Process the new certificate.
         match self.process_certificate_internal(certificate.clone(), false, false).await {
             Ok(_) => {
-                trace!(target: "primary::synchronizer", authority=?self.inner.authority_id, ?certificate, "successfully processed certificate")
+                trace!(target: "primary::synchronizer", ?authority, ?certificate, "successfully processed certificate")
             }
             result @ Err(DagError::ShuttingDown) => {
-                error!(target: "primary::synchronizer", authority=?self.inner.authority_id, ?certificate, ?result, "failed to process certificate internally - shutting down...");
+                error!(target: "primary::synchronizer", ?authority, ?certificate, ?result, "failed to process certificate internally - shutting down...");
                 return Err(DagError::ShuttingDown);
             }
             Err(e) => {
-                error!(target: "primary::synchronizer", authority=?self.inner.authority_id, ?certificate, "failed to process certificate internally - PANIC");
+                error!(target: "primary::synchronizer", ?authority, ?certificate, "failed to process certificate internally - PANIC");
                 panic!("Failed to process locally-created certificate: {e}")
             }
         };
@@ -817,7 +1092,7 @@ impl<DB: Database> Synchronizer<DB> {
     ) -> DagResult<()> {
         let _scope = monitored_scope("Synchronizer::process_certificate_internal");
         let digest = certificate.digest();
-        if self.inner.certificate_store.contains(&digest)? {
+        if self.inner.consensus_config.node_storage().certificate_store.contains(&digest)? {
             trace!(target: "primary::synchronizer", "Certificate {digest:?} has already been processed. Skip processing.");
             self.inner
                 .consensus_bus
@@ -850,7 +1125,11 @@ impl<DB: Database> Synchronizer<DB> {
         debug!(target: "primary::synchronizer", round=certificate.round(), ?certificate, "processing certificate");
 
         let certificate_source =
-            if self.inner.authority_id.eq(&certificate.origin()) { "own" } else { "other" };
+            if self.inner.consensus_config.authority().id().eq(&certificate.origin()) {
+                "own"
+            } else {
+                "other"
+            };
         let highest_received_round = self
             .inner
             .highest_received_round
@@ -886,7 +1165,7 @@ impl<DB: Database> Synchronizer<DB> {
         // batches and its parents) are available. We can thus continue the processing of
         // the certificate without blocking on block synchronization.
         let header = certificate.header().clone();
-        let max_age = self.inner.gc_depth.saturating_sub(1);
+        let max_age = self.inner.consensus_config.parameters().gc_depth.saturating_sub(1);
         self.inner
             .tx_batch_tasks
             .send((header.clone(), max_age))
@@ -921,140 +1200,12 @@ impl<DB: Database> Synchronizer<DB> {
         Ok(())
     }
 
-    /// This function checks if a certificate has all parents and can be accepted into storage.
-    /// If yes, writing the certificate to storage and sending it to consensus need to happen
-    /// atomically. Otherwise, there will be divergence between certificate storage and consensus
-    /// DAG. A certificate that is sent to consensus must have all of its parents already in
-    /// the consensu DAG.
-    ///
-    /// Because of the atomicity requirement, this function cannot be made cancellation safe.
-    /// So it is run in a loop inside a separate task, connected to `Synchronizer` via a channel.
-    #[instrument(level = "debug", skip_all)]
-    async fn process_certificates_with_lock(
-        inner: &Inner<DB>,
-        certificates: Vec<Certificate>,
-        early_suspend: bool,
-    ) -> DagResult<()> {
-        let _scope = monitored_scope("Synchronizer::process_certificates_with_lock");
-
-        // We re-check here in case we already have in pipeline the same certificate for processing
-        // more that once.
-        let digests = certificates.iter().map(|c| c.digest()).collect_vec();
-        let exists = inner.certificate_store.multi_contains(digests.iter())?;
-        let certificates = certificates
-            .into_iter()
-            .zip(exists.into_iter())
-            .filter_map(|(c, exist)| {
-                if exist {
-                    debug!("Skip processing certificate {:?}", c);
-                    inner
-                        .consensus_bus
-                        .primary_metrics()
-                        .node_metrics
-                        .duplicate_certificates_processed
-                        .inc();
-                    return None;
-                }
-                Some(c)
-            })
-            .collect_vec();
-        if certificates.is_empty() {
-            return Ok(());
-        }
-
-        // The state lock must be held for the rest of the function, to ensure updating state,
-        // writing certificates into storage and sending certificates to consensus are atomic.
-        // The atomicity makes sure the internal state is consistent with DAG in certificate store,
-        // and certificates are sent to consensus in causal order.
-        // It is possible to reduce the critical section below, but it seems unnecessary for now.
-        let mut state = inner.state.lock().await;
-
-        // Returns Ok(()) if all input certificates are accepted, or a suspended error for the last
-        // suspended certificate. It is ok to not return all suspended errors for suspended
-        // certificates, because the accept notification is only used when trying to accept a
-        // single certificate.
-        //
-        // TODO: simplify the logic here by separating try_accept_certificate() and notify_accept().
-        // let mut result = Ok(());
-        let mut result = Ok(());
-
-        for certificate in certificates {
-            debug!(target: "primary::synchronizer", ?certificate, "processing certificate with lock");
-            let digest = certificate.digest();
-
-            // Ensure parents are checked if !early_suspend.
-            // See comments above `try_accept_fetched_certificate()` for details.
-            if early_suspend {
-                // Re-check if the certificate has been suspended, which can happen before the lock
-                // is acquired.
-                if let Some(notify) = state.check_suspended(&digest) {
-                    trace!(target: "primary::synchronizer", "Certificate {digest:?} is still suspended. Skip processing.");
-                    inner
-                        .consensus_bus
-                        .primary_metrics()
-                        .node_metrics
-                        .certificates_suspended
-                        .with_label_values(&["dedup_locked"])
-                        .inc();
-                    result = Err(DagError::Suspended(notify));
-                    continue;
-                }
-            }
-
-            // Ensure either we have all the ancestors of this certificate, or the parents have been
-            // garbage collected. If we don't, the synchronizer will start fetching
-            // missing certificates.
-            if certificate.round() > inner.gc_round.load(Ordering::Acquire) + 1 {
-                let missing_parents = inner.get_missing_parents(&certificate).await?;
-                if !missing_parents.is_empty() {
-                    debug!("Processing certificate {:?} suspended: missing ancestors", certificate);
-                    inner
-                        .consensus_bus
-                        .primary_metrics()
-                        .node_metrics
-                        .certificates_suspended
-                        .with_label_values(&["missing_parents"])
-                        .inc();
-                    // There is no upper round limit to suspended certificates. Currently there is
-                    // no memory usage issue and this will speed up catching up.
-                    // But we can revisit later.
-                    let notify = state.insert(certificate, missing_parents, !early_suspend);
-                    inner
-                        .consensus_bus
-                        .primary_metrics()
-                        .node_metrics
-                        .certificates_currently_suspended
-                        .set(state.num_suspended() as i64);
-                    result = Err(DagError::Suspended(notify));
-                    continue;
-                }
-            }
-
-            // TODO: batch write accepted certificates.
-            let suspended_certs = state.accept_children(certificate.round(), certificate.digest());
-            // Accept in causal order.
-            inner.accept_certificate_internal(&state, certificate).await?;
-            for suspended in suspended_certs {
-                inner.accept_suspended_certificate(&state, suspended).await?;
-            }
-        }
-
-        inner
-            .consensus_bus
-            .primary_metrics()
-            .node_metrics
-            .certificates_currently_suspended
-            .set(state.num_suspended() as i64);
-
-        result
-    }
-
     /// Synchronizes batches in the given header with other nodes (through our workers).
     /// Blocks until either synchronization is complete, or the current consensus rounds advances
     /// past the max allowed age. (`max_age == 0` means the header's round must match current
     /// round.)
     pub async fn sync_header_batches(&self, header: &Header, max_age: Round) -> DagResult<()> {
-        Synchronizer::sync_batches_internal(self.inner.clone(), header, max_age, false).await
+        self.inner.sync_batches_internal(header, max_age, false).await
     }
 
     // TODO: Add batching support to synchronizer and use this call from executor.
@@ -1067,125 +1218,6 @@ impl<DB: Database> Synchronizer<DB> {
     //     Synchronizer::sync_batches_internal(self.inner.clone(), header, max_age, true)
     //         .await
     // }
-
-    async fn sync_batches_internal(
-        inner: Arc<Inner<DB>>,
-        header: &Header,
-        max_age: Round,
-        is_certified: bool,
-    ) -> DagResult<()> {
-        if header.author() == inner.authority_id {
-            debug!(target: "primary::synchronizer", "skipping sync_gatches for header - no need to sync payload from own workers");
-            return Ok(());
-        }
-
-        // Clone the round updates channel so we can get update notifications specific to
-        // this RPC handler.
-        let mut rx_consensus_round_updates =
-            inner.consensus_bus.consensus_round_updates().subscribe();
-        let mut consensus_round = rx_consensus_round_updates.borrow().committed_round;
-        ensure!(
-            header.round() >= consensus_round.saturating_sub(max_age),
-            DagError::TooOld(
-                header.digest().into(),
-                header.round(),
-                consensus_round.saturating_sub(max_age)
-            )
-        );
-
-        let mut missing = HashMap::new();
-        for (digest, (worker_id, _)) in header.payload().iter() {
-            // Check whether we have the batch. If one of our worker has the batch, the primary
-            // stores the pair (digest, worker_id) in its own storage. It is important
-            // to verify that we received the batch from the correct worker id to
-            // prevent the following attack:
-            //      1. A Bad node sends a batch X to 2f good nodes through their worker #0.
-            //      2. The bad node proposes a malformed block containing the batch X and claiming
-            //         it comes from worker #1.
-            //      3. The 2f good nodes do not need to sync and thus don't notice that the header
-            //         is malformed. The bad node together with the 2f good nodes thus certify a
-            //         block containing the batch X.
-            //      4. The last good node will never be able to sync as it will keep sending its
-            //         sync requests to workers #1 (rather than workers #0). Also, clients will
-            //         never be able to retrieve batch X as they will be querying worker #1.
-            if !inner.payload_store.contains(*digest, *worker_id)? {
-                missing.entry(*worker_id).or_insert_with(Vec::new).push(*digest);
-            }
-        }
-
-        // Build Synchronize requests to workers.
-        let mut synchronize_handles = Vec::new();
-        for (worker_id, digests) in missing {
-            let inner = inner.clone();
-            let worker_name = inner
-                .worker_cache
-                .worker(
-                    inner.committee.authority(&inner.authority_id).unwrap().protocol_key(),
-                    &worker_id,
-                )
-                .expect("Author of valid header is not in the worker cache")
-                .name;
-            let client = inner.client.clone();
-            let retry_config = RetryConfig::default(); // 30s timeout
-            let handle = retry_config.retry(move || {
-                let digests = digests.clone();
-                let message = WorkerSynchronizeMessage {
-                    digests: digests.clone(),
-                    target: header.author(),
-                    is_certified,
-                };
-                let client = client.clone();
-                let worker_name = worker_name.clone();
-                let inner = inner.clone();
-                async move {
-                    let result = client.synchronize(worker_name, message).await.map_err(|e| {
-                        backoff::Error::transient(DagError::NetworkError(format!("{e:?}")))
-                    });
-                    if result.is_ok() {
-                        for digest in &digests {
-                            inner
-                                .payload_store
-                                .write(digest, &worker_id)
-                                .map_err(|e| backoff::Error::permanent(DagError::StoreError(e)))?
-                        }
-                    }
-                    result
-                }
-            });
-            synchronize_handles.push(handle);
-        }
-
-        // Wait until results are back, or this request gets too old to continue.
-        let mut wait_synchronize = futures::future::try_join_all(synchronize_handles);
-        loop {
-            tokio::select! {
-                results = &mut wait_synchronize => {
-                    break results
-                        .map(|_| ())
-                        .map_err(|e| DagError::NetworkError(format!("error synchronizing batches: {e:?}")))
-                },
-                // This aborts based on consensus round and not narwhal round. When this function
-                // is used as part of handling vote requests, this may cause us to wait a bit
-                // longer than needed to give up on synchronizing batches for headers that are
-                // too old to receive a vote. This shouldn't be a big deal (the requester can
-                // always abort their request at any point too), however if the extra resources
-                // used to attempt to synchronize batches for longer than strictly needed become
-                // problematic, this function could be augmented to also support cancellation based
-                // on narwhal round.
-                Ok(()) = rx_consensus_round_updates.changed() => {
-                    consensus_round = rx_consensus_round_updates.borrow().committed_round;
-                    ensure!(
-                        header.round() >= consensus_round.saturating_sub(max_age),
-                        DagError::TooOld(
-                            header.digest().into(),
-                            header.round(),
-                            consensus_round.saturating_sub(max_age),
-                        )
-                    );
-                },
-            }
-        }
-    }
 
     /// Returns the parent certificates of the given header, waits for availability if needed.
     pub async fn notify_read_parent_certificates(
@@ -1204,7 +1236,14 @@ impl<DB: Database> Synchronizer<DB> {
             let mut cert_notifications: FuturesOrdered<_> = header
                 .parents()
                 .iter()
-                .map(|digest| async { self.inner.certificate_store.notify_read(*digest).await })
+                .map(|digest| async {
+                    self.inner
+                        .consensus_config
+                        .node_storage()
+                        .certificate_store
+                        .notify_read(*digest)
+                        .await
+                })
                 .collect();
             while let Some(result) = cert_notifications.next().await {
                 parents.push(result?);

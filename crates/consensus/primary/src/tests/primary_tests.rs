@@ -191,6 +191,8 @@ async fn test_request_vote_has_missing_parents() {
 
     let cb = ConsensusBus::new();
     let synchronizer = Arc::new(Synchronizer::new(target.consensus_config(), &cb));
+    let task_manager = TaskManager::default();
+    synchronizer.spawn(&task_manager);
     let handler = PrimaryReceiverHandler::new(
         target.consensus_config(),
         synchronizer.clone(),
@@ -300,6 +302,8 @@ async fn test_request_vote_accept_missing_parents() {
 
     let cb = ConsensusBus::new();
     let synchronizer = Arc::new(Synchronizer::new(target.consensus_config(), &cb));
+    let task_manager = TaskManager::default();
+    synchronizer.spawn(&task_manager);
     let handler = PrimaryReceiverHandler::new(
         target.consensus_config(),
         synchronizer.clone(),
@@ -400,6 +404,8 @@ async fn test_request_vote_missing_batches() {
 
     let cb = ConsensusBus::new();
     let synchronizer = Arc::new(Synchronizer::new(primary.consensus_config(), &cb));
+    let task_manager = TaskManager::default();
+    synchronizer.spawn(&task_manager);
     let handler = PrimaryReceiverHandler::new(
         primary.consensus_config(),
         synchronizer.clone(),
@@ -489,6 +495,8 @@ async fn test_request_vote_already_voted() {
 
     let cb = ConsensusBus::new();
     let synchronizer = Arc::new(Synchronizer::new(primary.consensus_config(), &cb));
+    let task_manager = TaskManager::default();
+    synchronizer.spawn(&task_manager);
 
     let handler = PrimaryReceiverHandler::new(
         primary.consensus_config(),
@@ -608,6 +616,8 @@ async fn test_fetch_certificates_handler() {
 
     let cb = ConsensusBus::new();
     let synchronizer = Arc::new(Synchronizer::new(primary.consensus_config(), &cb));
+    let task_manager = TaskManager::default();
+    synchronizer.spawn(&task_manager);
     let handler = PrimaryReceiverHandler::new(
         primary.consensus_config(),
         synchronizer.clone(),
@@ -721,6 +731,8 @@ async fn test_request_vote_created_at_in_future() {
 
     let cb = ConsensusBus::new();
     let synchronizer = Arc::new(Synchronizer::new(primary.consensus_config(), &cb));
+    let task_manager = TaskManager::default();
+    synchronizer.spawn(&task_manager);
     let handler = PrimaryReceiverHandler::new(
         primary.consensus_config(),
         synchronizer.clone(),
