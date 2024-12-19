@@ -14,7 +14,7 @@ use std::{
 };
 use tn_types::get_available_tcp_port;
 use tokio::runtime::Runtime;
-use tracing::{debug, error};
+use tracing::{debug, error, info};
 
 /// One unit of TEL (10^18) measured in wei.
 const WEI_PER_TEL: u128 = 1_000_000_000_000_000_000;
@@ -219,7 +219,7 @@ fn do_restarts(delay: u64) -> eyre::Result<()> {
 
 /// Test a restart case with a short delay, the stopped node should rejoin consensus.
 #[test]
-fn test_restartstt() -> eyre::Result<()> {
+fn test_restarts() -> eyre::Result<()> {
     do_restarts(2)
 }
 
@@ -283,6 +283,7 @@ fn test_blocks_same(client_urls: &[String; 4]) -> eyre::Result<()> {
 fn get_balance(node: &str, address: &str, retries: usize) -> eyre::Result<u128> {
     let params = RawValue::from_string(format!("[\"{address}\", \"latest\"]"))?;
     let res_str = call_rpc(node, "eth_getBalance", Some(&params), retries)?;
+    info!(target: "restart-test", "get_balance for {node}: parsing string {res_str}");
     let tel = u128::from_str_radix(&res_str[2..], 16)?;
     debug!(target: "restart-test", "get_balance for {node}: {tel:?}");
     Ok(tel)
