@@ -174,6 +174,8 @@ fn last_executed_consensus_block<DB: Database>(
 /// enough DAG information to rejoin consensus or not.
 /// This logic will change in the future, currently if you can not re-join consensus then you can
 /// only follow now.
+/// This function also sets some of the round watches on the consensus bus to proper defaults on
+/// startup.
 pub async fn can_cvv<DB: Database>(
     consensus_bus: ConsensusBus,
     config: ConsensusConfig<DB>,
@@ -182,6 +184,13 @@ pub async fn can_cvv<DB: Database>(
     // Get the DB and load our last executed consensus block (note there may be unexecuted
     // blocks, catch up will execute them).
     let last_executed_block = last_executed_consensus_block(&consensus_bus, &config);
+
+    // Set some of the round watches to the current default.
+    let last_round = last_executed_block.sub_dag.leader_round();
+    let _ = consensus_bus
+        .consensus_round_updates()
+        .send(ConsensusRound::new_with_gc_depth(last_round, config.parameters().gc_depth));
+    let _ = consensus_bus.narwhal_round_updates().send(last_round);
 
     let mut clients: Vec<PrimaryToPrimaryClient<_>> = config
         .committee()
@@ -222,13 +231,7 @@ pub async fn can_cvv<DB: Database>(
         // We should be able to pick up consensus where we left off.
         true
     } else {
-        let last_round = last_executed_block.sub_dag.leader_round();
-        // We aren't doing consensus now but still need to update these watches before we
-        // send the consensus output.
-        let _ = consensus_bus
-            .consensus_round_updates()
-            .send(ConsensusRound::new_with_gc_depth(last_round, config.parameters().gc_depth));
-        let _ = consensus_bus.narwhal_round_updates().send(last_round);
+        tracing::info!(target: "telcoin::subscriber", "Node has fallen to far behind to rejoin consensus, just following now.");
         false
     }
 }

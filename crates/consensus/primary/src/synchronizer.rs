@@ -52,32 +52,28 @@ pub mod synchronizer_tests;
 const NEW_CERTIFICATE_ROUND_LIMIT: Round = 1000;
 
 struct Inner<DB> {
-    // Node config.
+    /// Node config.
     consensus_config: ConsensusConfig<DB>,
-    // Highest round that has been GC'ed.
+    /// Highest round that has been GC'ed.
     gc_round: AtomicU64,
-    // Highest round of certificate accepted into the certificate store.
+    /// Highest round of certificate accepted into the certificate store.
     highest_processed_round: AtomicU64,
-    // Highest round of verfied certificate that has been received.
+    /// Highest round of verfied certificate that has been received.
     highest_received_round: AtomicU64,
-    // Send certificates to be accepted into a separate task that runs
-    // `process_certificates_with_lock()` in a loop.
-    // See comment above `process_certificates_with_lock()` for why this is necessary.
+    /// Send certificates to be accepted into a separate task that runs
+    /// `process_certificates_with_lock()` in a loop.
+    /// See comment above `process_certificates_with_lock()` for why this is necessary.
     tx_certificate_acceptor:
         MeteredMpscChannel<(Vec<Certificate>, oneshot::Sender<DagResult<()>>, bool)>,
     consensus_bus: ConsensusBus,
-    // Genesis digests and contents.
+    /// Genesis digests and contents.
     genesis: HashMap<CertificateDigest, Certificate>,
-    // A background task that synchronizes batches. A tuple of a header and the maximum accepted
-    // age is sent over.
+    /// A background task that synchronizes batches. A tuple of a header and the maximum accepted
+    /// age is sent over.
     tx_batch_tasks: MeteredMpscChannel<(Header, u64)>,
-    // Aggregates certificates to use as parents for new headers.
+    /// Aggregates certificates to use as parents for new headers.
     certificates_aggregators: Mutex<BTreeMap<Round, Box<CertificatesAggregator>>>,
-    // State for tracking suspended certificates and when they can be accepted.
-    //
-    // TODO: tokio::sync::Mutex seems to be very slow to acquire here. Switch to
-    // parking_log::Mutex. This requires making sure no await is used inside
-    // accept_certificate_internal().
+    /// State for tracking suspended certificates and when they can be accepted.
     state: tokio::sync::Mutex<State>,
 }
 
@@ -540,7 +536,6 @@ impl<DB: Database> Inner<DB> {
                 }
             }
 
-            // TODO: batch write accepted certificates.
             let suspended_certs = state.accept_children(certificate.round(), certificate.digest());
             // Accept in causal order.
             self.accept_certificate_internal(&state, certificate).await?;
