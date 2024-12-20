@@ -115,8 +115,7 @@ impl<DB: Database> Primary<DB> {
         Self { network, synchronizer, peer_types: Some(peer_types) }
     }
 
-    /// Spawns the primary and returns the JoinHandles of its tasks, as well as a metered receiver
-    /// for the Consensus.
+    /// Spawns the primary.
     pub fn spawn(
         &mut self,
         config: ConsensusConfig<DB>,
@@ -124,6 +123,7 @@ impl<DB: Database> Primary<DB> {
         leader_schedule: LeaderSchedule,
         task_manager: &TaskManager,
     ) {
+        self.synchronizer.spawn(task_manager);
         let _ = tn_network::connectivity::ConnectionMonitor::spawn(
             self.network.downgrade(),
             consensus_bus.primary_metrics().network_connection_metrics.clone(),

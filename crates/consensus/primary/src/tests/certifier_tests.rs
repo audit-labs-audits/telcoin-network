@@ -183,12 +183,14 @@ async fn propose_header_and_form_certificate_v2() {
     // Spawn the core.
     let synchronizer = Arc::new(Synchronizer::new(primary.consensus_config(), &cb));
 
+    let task_manager = TaskManager::default();
+    synchronizer.spawn(&task_manager);
     Certifier::spawn(
         primary.consensus_config(),
         cb.clone(),
         synchronizer,
         network.clone(),
-        &TaskManager::default(),
+        &task_manager,
     );
 
     // Propose header and ensure that a certificate is formed by pulling it out of the
@@ -250,12 +252,14 @@ async fn propose_header_failure() {
     // Spawn the core.
     let synchronizer = Arc::new(Synchronizer::new(primary.consensus_config(), &cb));
 
+    let task_manager = TaskManager::default();
+    synchronizer.spawn(&task_manager);
     Certifier::spawn(
         primary.consensus_config(),
         cb.clone(),
         synchronizer,
         network.clone(),
-        &TaskManager::default(),
+        &task_manager,
     );
 
     // Propose header and verify we get no certificate back.
@@ -336,13 +340,9 @@ async fn run_vote_aggregator_with_param(
     let mut rx_new_certificates = cb.new_certificates().subscribe();
     // Spawn the core.
     let synchronizer = Arc::new(Synchronizer::new(primary.consensus_config(), &cb));
-    Certifier::spawn(
-        primary.consensus_config(),
-        cb.clone(),
-        synchronizer,
-        network,
-        &TaskManager::default(),
-    );
+    let task_manager = TaskManager::default();
+    synchronizer.spawn(&task_manager);
+    Certifier::spawn(primary.consensus_config(), cb.clone(), synchronizer, network, &task_manager);
 
     // Send a proposed header.
     let proposed_digest = proposed_header.digest();
@@ -384,6 +384,7 @@ async fn test_shutdown_core() {
 
     // Spawn the core.
     let mut task_manager = TaskManager::default();
+    synchronizer.spawn(&task_manager);
     Certifier::spawn(
         primary.consensus_config(),
         cb.clone(),

@@ -178,6 +178,8 @@ async fn fetch_certificates_v1_basic() {
     let cb = ConsensusBus::new();
     // Make a synchronizer for certificates.
     let synchronizer = Arc::new(Synchronizer::new(primary.consensus_config(), &cb));
+    let task_manager = TaskManager::default();
+    synchronizer.spawn(&task_manager);
 
     let fake_primary_addr = fake_primary.network_address().to_anemo_address().unwrap();
     let fake_route =
@@ -205,7 +207,7 @@ async fn fetch_certificates_v1_basic() {
         cb.clone(),
         primary.consensus_config().shutdown().subscribe(),
         synchronizer.clone(),
-        &TaskManager::default(),
+        &task_manager,
     );
 
     // Generate headers and certificates in successive rounds
