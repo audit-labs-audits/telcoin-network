@@ -272,8 +272,7 @@ impl<DB: Database> Subscriber<DB> {
     }
 
     async fn follow_consensus(&self) -> SubscriberResult<(BlockHash, u64)> {
-        // Get the DB and load our last executed consensus block (note there may be unexecuted
-        // blocks, catch up will execute them).
+        // Get the DB and load our last executed consensus block.
         let last_executed_block = last_executed_consensus_block(&self.consensus_bus, &self.config);
         // Edge case, in case we don't hear from peers but have un-executed blocks...
         // Not sure we should handle this, but it hurts nothing.
@@ -311,6 +310,9 @@ impl<DB: Database> Subscriber<DB> {
         // Catch up to the current chain state if we need to.
         let mut last_consensus_height = last_executed_block.number;
         let clients_len = clients.len();
+        let mut rx_recent_blocks = self.consensus_bus.recent_blocks().subscribe();
+        let mut latest_exec_block_num =
+            self.consensus_bus.recent_blocks().borrow().latest_block_num_hash();
         // infinate loop over consensus output
         loop {
             for number in last_consensus_height + 1..=max_consensus_height {
@@ -351,6 +353,34 @@ impl<DB: Database> Subscriber<DB> {
                 let consensus_output = self.fetch_blocks(output.sub_dag, parent_hash, number).await;
                 self.save_consensus(consensus_output.clone())?;
                 let last_round = consensus_output.leader_round();
+
+                let base_execution_block =
+                    consensus_output.sub_dag.leader.header().latest_execution_block;
+                let base_execution_block_num =
+                    consensus_output.sub_dag.leader.header().latest_execution_block_num;
+                // We need to make sure execution has caught up so we can verify we have not forked.
+                // This will force the follow function to not outrun execution...  this is probably
+                // fine. Also once we can follow gossiped consensus output this will not really be
+                // an issue (except during initial catch up).
+                while base_execution_block_num > latest_exec_block_num.number {
+                    rx_recent_blocks.changed().await.map_err(|e| {
+                        SubscriberError::NodeExecutionError(format!(
+                            "recent blocks changed failed: {e}"
+                        ))
+                    })?;
+                    latest_exec_block_num =
+                        self.consensus_bus.recent_blocks().borrow().latest_block_num_hash();
+                }
+                if !self.consensus_bus.recent_blocks().borrow().contains_hash(base_execution_block)
+                {
+                    // We seem to have forked, so die.
+                    return Err(SubscriberError::NodeExecutionError(
+                        format!("consensus_output has a parent not in our chain, missing {}/{} recents: {:?}!",
+                            base_execution_block_num,
+                            base_execution_block,
+                            self.consensus_bus.recent_blocks().borrow())
+                    ));
+                }
 
                 // We aren't doing consensus now but still need to update these watches before we
                 // send the consensus output.
