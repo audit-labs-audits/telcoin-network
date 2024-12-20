@@ -133,6 +133,39 @@ impl<DB: Database> PrimaryReceiverHandler<DB> {
                 header.author()
             ))
         );
+        let mut rx_recent_blocks = self.consensus_bus.recent_blocks().subscribe();
+        let mut latest_block_num =
+            self.consensus_bus.recent_blocks().borrow().latest_block_num_hash();
+        // Make sure we are within a few blocks of this headers block number.
+        ensure!(
+            header.latest_execution_block_num <= latest_block_num.number + 3,
+            DagError::NetworkError(format!(
+                "Header latest execution block {}/{} is too far ahead of us, we are at block {}",
+                header.latest_execution_block_num,
+                header.latest_execution_block,
+                latest_block_num.number
+            ))
+        );
+        // If we are a little behind then wait to catch up...
+        while header.latest_execution_block_num > latest_block_num.number {
+            rx_recent_blocks.changed().await.map_err(|e| {
+                DagError::ClosedChannel(format!("recent blocks changed failed: {e}"))
+            })?;
+            latest_block_num = self.consensus_bus.recent_blocks().borrow().latest_block_num_hash();
+        }
+        ensure!(
+            self.consensus_bus
+                .recent_blocks()
+                .borrow()
+                .contains_hash(header.latest_execution_block),
+            // Note, errors are currently "flattened" bus if/when we return better errors may want
+            // to make this specific in case we want to take action on this (i.e. are
+            // we on our own fork?).
+            DagError::NetworkError(format!(
+                "Header latest execution block {}/{} must be a block we have executed recently",
+                header.latest_execution_block_num, header.latest_execution_block
+            ))
+        );
 
         debug!("Processing vote request for {:?} round:{:?}", header, header.round());
 

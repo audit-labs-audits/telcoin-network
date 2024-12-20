@@ -458,6 +458,48 @@ where
         Ok(result)
     }
 
+    /// Return a vector of the last 'number' executed block headers.
+    /// These are the execution blocks finalized after consensus output, i.e. it
+    /// skips all the "intermediate" blocks and is just the final block from a consensus output.
+    pub(super) fn last_executed_output_blocks(&self, number: u64) -> eyre::Result<Vec<Header>> {
+        let finalized_block_num =
+            self.blockchain_db.database_provider_ro()?.last_finalized_block_number()?.unwrap_or(0);
+        //let start_num = finalized_block_num.saturating_sub(number);
+        let mut result = Vec::with_capacity(number as usize);
+        if number > 0 {
+            let mut block_num = finalized_block_num;
+            let mut last_nonce;
+            if let Some(header) =
+                self.blockchain_db.database_provider_ro()?.header_by_number(block_num)?
+            {
+                last_nonce = header.nonce;
+                result.push(header);
+            } else {
+                return Err(eyre::Error::msg(format!("Unable to read block {block_num}")));
+            }
+            let mut blocks = 1;
+            while blocks < number {
+                if block_num == 0 {
+                    break;
+                }
+                block_num -= 1;
+                if let Some(header) =
+                    self.blockchain_db.database_provider_ro()?.header_by_number(block_num)?
+                {
+                    if header.nonce != last_nonce {
+                        last_nonce = header.nonce;
+                        result.push(header);
+                        blocks += 1;
+                    }
+                } else {
+                    return Err(eyre::Error::msg(format!("Unable to read block {block_num}")));
+                }
+            }
+        }
+        result.reverse();
+        Ok(result)
+    }
+
     /// Return an database provider.
     pub(super) fn get_provider(&self) -> BlockchainProvider<DB> {
         self.blockchain_db.clone()

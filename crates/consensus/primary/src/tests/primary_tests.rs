@@ -14,6 +14,7 @@ use fastcrypto::{
 };
 use itertools::Itertools;
 use prometheus::Registry;
+use reth_primitives::Header;
 use std::{
     collections::{BTreeSet, HashMap, HashSet},
     num::NonZeroUsize,
@@ -190,6 +191,10 @@ async fn test_request_vote_has_missing_parents() {
     let payload_store = target.consensus_config().node_storage().payload_store.clone();
 
     let cb = ConsensusBus::new();
+    // Need a dummy parent so we can request a vote.
+    let dummy_parent = Header::default().seal_slow();
+    let dummy_hash = dummy_parent.hash();
+    cb.recent_blocks().send_modify(|blocks| blocks.push_latest(dummy_parent));
     let synchronizer = Arc::new(Synchronizer::new(target.consensus_config(), &cb));
     let task_manager = TaskManager::default();
     synchronizer.spawn(&task_manager);
@@ -217,6 +222,7 @@ async fn test_request_vote_has_missing_parents() {
         .header_builder(&fixture.committee())
         .author(author_id)
         .round(3)
+        .latest_execution_block(dummy_hash)
         .parents(round_2_certs.iter().map(|c| c.digest()).collect())
         .with_payload_batch(fixture_batch_with_transactions(10), 0, 0)
         .build()
@@ -301,6 +307,10 @@ async fn test_request_vote_accept_missing_parents() {
     let payload_store = target.consensus_config().node_storage().payload_store.clone();
 
     let cb = ConsensusBus::new();
+    // Need a dummy parent so we can request a vote.
+    let dummy_parent = Header::default().seal_slow();
+    let dummy_hash = dummy_parent.hash();
+    cb.recent_blocks().send_modify(|blocks| blocks.push_latest(dummy_parent));
     let synchronizer = Arc::new(Synchronizer::new(target.consensus_config(), &cb));
     let task_manager = TaskManager::default();
     synchronizer.spawn(&task_manager);
@@ -331,6 +341,7 @@ async fn test_request_vote_accept_missing_parents() {
         .author(author_id)
         .round(3)
         .parents(round_2_certs.iter().map(|c| c.digest()).collect())
+        .latest_execution_block(dummy_hash)
         .with_payload_batch(fixture_batch_with_transactions(10), 0, 0)
         .build()
         .unwrap();
@@ -403,6 +414,10 @@ async fn test_request_vote_missing_batches() {
     let payload_store = primary.consensus_config().node_storage().payload_store.clone();
 
     let cb = ConsensusBus::new();
+    // Need a dummy parent so we can request a vote.
+    let dummy_parent = Header::default().seal_slow();
+    let dummy_hash = dummy_parent.hash();
+    cb.recent_blocks().send_modify(|blocks| blocks.push_latest(dummy_parent));
     let synchronizer = Arc::new(Synchronizer::new(primary.consensus_config(), &cb));
     let task_manager = TaskManager::default();
     synchronizer.spawn(&task_manager);
@@ -434,6 +449,7 @@ async fn test_request_vote_missing_batches() {
     let test_header = author
         .header_builder(&fixture.committee())
         .round(2)
+        .latest_execution_block(dummy_hash)
         .parents(certificates.keys().cloned().collect())
         .with_payload_batch(fixture_batch_with_transactions(10), 0, 0)
         .build()
@@ -494,6 +510,10 @@ async fn test_request_vote_already_voted() {
     let payload_store = primary.consensus_config().node_storage().payload_store.clone();
 
     let cb = ConsensusBus::new();
+    // Need a dummy parent so we can request a vote.
+    let dummy_parent = Header::default().seal_slow();
+    let dummy_hash = dummy_parent.hash();
+    cb.recent_blocks().send_modify(|blocks| blocks.push_latest(dummy_parent));
     let synchronizer = Arc::new(Synchronizer::new(primary.consensus_config(), &cb));
     let task_manager = TaskManager::default();
     synchronizer.spawn(&task_manager);
@@ -543,6 +563,7 @@ async fn test_request_vote_already_voted() {
         .header_builder(&fixture.committee())
         .round(2)
         .parents(certificates.keys().cloned().collect())
+        .latest_execution_block(dummy_hash)
         .with_payload_batch(fixture_batch_with_transactions(10), 0, 0)
         .build()
         .unwrap();
@@ -583,6 +604,7 @@ async fn test_request_vote_already_voted() {
         .header_builder(&fixture.committee())
         .round(2)
         .parents(certificates.keys().cloned().collect())
+        .latest_execution_block(dummy_hash)
         .with_payload_batch(fixture_batch_with_transactions(10), 0, 0)
         .build()
         .unwrap();
@@ -730,6 +752,10 @@ async fn test_request_vote_created_at_in_future() {
     let payload_store = primary.consensus_config().node_storage().payload_store.clone();
 
     let cb = ConsensusBus::new();
+    // Need a dummy parent so we can request a vote.
+    let dummy_parent = Header::default().seal_slow();
+    let dummy_hash = dummy_parent.hash();
+    cb.recent_blocks().send_modify(|blocks| blocks.push_latest(dummy_parent));
     let synchronizer = Arc::new(Synchronizer::new(primary.consensus_config(), &cb));
     let task_manager = TaskManager::default();
     synchronizer.spawn(&task_manager);
@@ -782,6 +808,7 @@ async fn test_request_vote_created_at_in_future() {
         .header_builder(&fixture.committee())
         .round(2)
         .parents(certificates.keys().cloned().collect())
+        .latest_execution_block(dummy_hash)
         .with_payload_batch(fixture_batch_with_transactions(10), 0, 0)
         .created_at(created_at)
         .build()
@@ -808,6 +835,7 @@ async fn test_request_vote_created_at_in_future() {
     let test_header = author
         .header_builder(&fixture.committee())
         .round(2)
+        .latest_execution_block(dummy_hash)
         .parents(certificates.keys().cloned().collect())
         .with_payload_batch(fixture_batch_with_transactions(10), 0, 0)
         .created_at(created_at)

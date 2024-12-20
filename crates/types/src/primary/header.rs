@@ -241,9 +241,8 @@ impl HeaderBuilder {
             system_messages: self.system_messages.unwrap_or_default(),
             parents: self.parents.unwrap(),
             digest: OnceCell::default(),
-            // Fake data for tests.  This is used by tests...
-            latest_execution_block: BlockHash::default(),
-            latest_execution_block_num: 0,
+            latest_execution_block: self.latest_execution_block.unwrap_or_default(),
+            latest_execution_block_num: self.latest_execution_block_num.unwrap_or_default(),
         };
 
         // TODO: return error here
