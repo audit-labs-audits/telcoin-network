@@ -75,7 +75,7 @@ where
 
     // Prime the recent_blocks watch with latest executed blocks.
     let block_capacity = eng_bus.recent_blocks().borrow().block_capacity();
-    for recent_block in engine.last_executed_blocks(block_capacity).await? {
+    for recent_block in engine.last_executed_output_blocks(block_capacity).await? {
         eng_bus.recent_blocks().send_modify(|blocks| blocks.push_latest(recent_block.seal_slow()));
     }
 

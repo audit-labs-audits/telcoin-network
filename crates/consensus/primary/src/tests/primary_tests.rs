@@ -14,6 +14,7 @@ use fastcrypto::{
 };
 use itertools::Itertools;
 use prometheus::Registry;
+use reth_primitives::Header;
 use std::{
     collections::{BTreeSet, HashMap, HashSet},
     num::NonZeroUsize,
@@ -30,7 +31,8 @@ use tn_test_utils::{
     CommitteeFixture,
 };
 use tn_types::{
-    now, AuthorityIdentifier, Certificate, Committee, SignatureVerificationState, TaskManager,
+    now, AuthorityIdentifier, BlockHash, Certificate, Committee, SignatureVerificationState,
+    TaskManager,
 };
 use tn_worker::{metrics::Metrics, Worker};
 use tokio::time::timeout;
@@ -174,6 +176,169 @@ async fn test_get_network_peers_from_admin_server() {
 }
 
 #[tokio::test(flavor = "current_thread", start_paused = true)]
+async fn test_request_vote_has_missing_execution_block() {
+    reth_tracing::init_test_tracing();
+    const NUM_PARENTS: usize = 10;
+    let fixture = CommitteeFixture::builder(MemDatabase::default)
+        .randomize_ports(true)
+        .committee_size(NonZeroUsize::new(NUM_PARENTS).unwrap())
+        .build();
+    let target = fixture.authorities().next().unwrap();
+    let author = fixture.authorities().nth(2).unwrap();
+    let author_id = author.id();
+    let network = test_network(target.primary_network_keypair(), target.network_address());
+
+    let certificate_store = target.consensus_config().node_storage().certificate_store.clone();
+    let payload_store = target.consensus_config().node_storage().payload_store.clone();
+
+    let cb = ConsensusBus::new();
+    // Need a dummy parent so we can request a vote.
+    let dummy_parent = Header::default().seal_slow();
+    cb.recent_blocks().send_modify(|blocks| blocks.push_latest(dummy_parent));
+    let synchronizer = Arc::new(Synchronizer::new(target.consensus_config(), &cb));
+    let task_manager = TaskManager::default();
+    synchronizer.spawn(&task_manager);
+    let handler = PrimaryReceiverHandler::new(
+        target.consensus_config(),
+        synchronizer.clone(),
+        cb.clone(),
+        Default::default(),
+    );
+
+    // Make some mock certificates that are parents of our new header.
+    let committee: Committee = fixture.committee();
+    let genesis =
+        Certificate::genesis(&committee).iter().map(|x| x.digest()).collect::<BTreeSet<_>>();
+    let ids: Vec<_> = fixture.authorities().map(|a| (a.id(), a.keypair().copy())).collect();
+    let (certificates, _next_parents) =
+        make_optimal_signed_certificates(1..=3, &genesis, &committee, ids.as_slice());
+    let all_certificates = certificates.into_iter().collect_vec();
+    let round_2_certs = all_certificates[NUM_PARENTS..(NUM_PARENTS * 2)].to_vec();
+    let round_2_parents = round_2_certs[..(NUM_PARENTS / 2)].to_vec();
+
+    // Create a test header.
+    let test_header = author
+        .header_builder(&fixture.committee())
+        .author(author_id)
+        .round(3)
+        .latest_execution_block(BlockHash::default()) // dummy_hash would be correct here but this is the test...
+        .parents(round_2_certs.iter().map(|c| c.digest()).collect())
+        .with_payload_batch(fixture_batch_with_transactions(10), 0, 0)
+        .build()
+        .unwrap();
+
+    // Write some certificates from round 2 into the store, and leave out the rest to test
+    // headers with some parents but not all available. Round 1 certificates should be written
+    // into the storage as parents of round 2 certificates. But to test phase 2 they are left out.
+    for cert in round_2_parents {
+        for (digest, (worker_id, _)) in cert.header().payload() {
+            payload_store.write(digest, worker_id).unwrap();
+        }
+        certificate_store.write(cert.clone()).unwrap();
+    }
+
+    // Trying to build on off of a missing execution block, will be an error.
+    let mut request = anemo::Request::new(RequestVoteRequest {
+        header: test_header.clone(),
+        parents: Vec::new(),
+    });
+    assert!(request.extensions_mut().insert(network.downgrade()).is_none());
+    assert!(request
+        .extensions_mut()
+        .insert(anemo::PeerId(author.primary_network_public_key().0.to_bytes()))
+        .is_none());
+
+    let result = timeout(Duration::from_secs(5), handler.request_vote(request)).await;
+    let result = result.unwrap();
+    assert!(result.is_err(), "{:?}", result);
+}
+
+#[tokio::test(flavor = "current_thread", start_paused = true)]
+async fn test_request_vote_older_execution_block() {
+    reth_tracing::init_test_tracing();
+    const NUM_PARENTS: usize = 10;
+    let fixture = CommitteeFixture::builder(MemDatabase::default)
+        .randomize_ports(true)
+        .committee_size(NonZeroUsize::new(NUM_PARENTS).unwrap())
+        .build();
+    let target = fixture.authorities().next().unwrap();
+    let author = fixture.authorities().nth(2).unwrap();
+    let author_id = author.id();
+    let network = test_network(target.primary_network_keypair(), target.network_address());
+
+    let certificate_store = target.consensus_config().node_storage().certificate_store.clone();
+    let payload_store = target.consensus_config().node_storage().payload_store.clone();
+
+    let cb = ConsensusBus::new();
+    // Need a dummy parent so we can request a vote.
+    let dummy_parent = Header::default().seal_slow();
+    let dummy_hash = dummy_parent.hash();
+    // This will be an "older" execution block, test this still works.
+    cb.recent_blocks().send_modify(|blocks| blocks.push_latest(dummy_parent));
+    let mut dummy = Header { nonce: 110, ..Default::default() };
+    dummy.nonce = 110;
+    cb.recent_blocks().send_modify(|blocks| blocks.push_latest(dummy.seal_slow()));
+    dummy = Header { nonce: 120, ..Default::default() };
+    cb.recent_blocks().send_modify(|blocks| blocks.push_latest(dummy.seal_slow()));
+    let synchronizer = Arc::new(Synchronizer::new(target.consensus_config(), &cb));
+    let task_manager = TaskManager::default();
+    synchronizer.spawn(&task_manager);
+    let handler = PrimaryReceiverHandler::new(
+        target.consensus_config(),
+        synchronizer.clone(),
+        cb.clone(),
+        Default::default(),
+    );
+
+    // Make some mock certificates that are parents of our new header.
+    let committee: Committee = fixture.committee();
+    let genesis =
+        Certificate::genesis(&committee).iter().map(|x| x.digest()).collect::<BTreeSet<_>>();
+    let ids: Vec<_> = fixture.authorities().map(|a| (a.id(), a.keypair().copy())).collect();
+    let (certificates, _next_parents) =
+        make_optimal_signed_certificates(1..=3, &genesis, &committee, ids.as_slice());
+    let all_certificates = certificates.into_iter().collect_vec();
+    let round_2_certs = all_certificates[NUM_PARENTS..(NUM_PARENTS * 2)].to_vec();
+    let round_2_parents = round_2_certs[..(NUM_PARENTS / 2)].to_vec();
+
+    // Create a test header.
+    let test_header = author
+        .header_builder(&fixture.committee())
+        .author(author_id)
+        .round(3)
+        .latest_execution_block(dummy_hash)
+        .parents(round_2_certs.iter().map(|c| c.digest()).collect())
+        .with_payload_batch(fixture_batch_with_transactions(10), 0, 0)
+        .build()
+        .unwrap();
+
+    // Write some certificates from round 2 into the store, and leave out the rest to test
+    // headers with some parents but not all available. Round 1 certificates should be written
+    // into the storage as parents of round 2 certificates. But to test phase 2 they are left out.
+    for cert in round_2_parents {
+        for (digest, (worker_id, _)) in cert.header().payload() {
+            payload_store.write(digest, worker_id).unwrap();
+        }
+        certificate_store.write(cert.clone()).unwrap();
+    }
+
+    // Trying to build on off of a missing execution block, will be an error.
+    let mut request = anemo::Request::new(RequestVoteRequest {
+        header: test_header.clone(),
+        parents: Vec::new(),
+    });
+    assert!(request.extensions_mut().insert(network.downgrade()).is_none());
+    assert!(request
+        .extensions_mut()
+        .insert(anemo::PeerId(author.primary_network_public_key().0.to_bytes()))
+        .is_none());
+
+    let result = timeout(Duration::from_secs(5), handler.request_vote(request)).await;
+    let result = result.unwrap();
+    assert!(result.is_ok(), "{:?}", result);
+}
+
+#[tokio::test(flavor = "current_thread", start_paused = true)]
 async fn test_request_vote_has_missing_parents() {
     reth_tracing::init_test_tracing();
     const NUM_PARENTS: usize = 10;
@@ -190,6 +355,10 @@ async fn test_request_vote_has_missing_parents() {
     let payload_store = target.consensus_config().node_storage().payload_store.clone();
 
     let cb = ConsensusBus::new();
+    // Need a dummy parent so we can request a vote.
+    let dummy_parent = Header::default().seal_slow();
+    let dummy_hash = dummy_parent.hash();
+    cb.recent_blocks().send_modify(|blocks| blocks.push_latest(dummy_parent));
     let synchronizer = Arc::new(Synchronizer::new(target.consensus_config(), &cb));
     let task_manager = TaskManager::default();
     synchronizer.spawn(&task_manager);
@@ -217,6 +386,7 @@ async fn test_request_vote_has_missing_parents() {
         .header_builder(&fixture.committee())
         .author(author_id)
         .round(3)
+        .latest_execution_block(dummy_hash)
         .parents(round_2_certs.iter().map(|c| c.digest()).collect())
         .with_payload_batch(fixture_batch_with_transactions(10), 0, 0)
         .build()
@@ -301,6 +471,10 @@ async fn test_request_vote_accept_missing_parents() {
     let payload_store = target.consensus_config().node_storage().payload_store.clone();
 
     let cb = ConsensusBus::new();
+    // Need a dummy parent so we can request a vote.
+    let dummy_parent = Header::default().seal_slow();
+    let dummy_hash = dummy_parent.hash();
+    cb.recent_blocks().send_modify(|blocks| blocks.push_latest(dummy_parent));
     let synchronizer = Arc::new(Synchronizer::new(target.consensus_config(), &cb));
     let task_manager = TaskManager::default();
     synchronizer.spawn(&task_manager);
@@ -331,6 +505,7 @@ async fn test_request_vote_accept_missing_parents() {
         .author(author_id)
         .round(3)
         .parents(round_2_certs.iter().map(|c| c.digest()).collect())
+        .latest_execution_block(dummy_hash)
         .with_payload_batch(fixture_batch_with_transactions(10), 0, 0)
         .build()
         .unwrap();
@@ -403,6 +578,10 @@ async fn test_request_vote_missing_batches() {
     let payload_store = primary.consensus_config().node_storage().payload_store.clone();
 
     let cb = ConsensusBus::new();
+    // Need a dummy parent so we can request a vote.
+    let dummy_parent = Header::default().seal_slow();
+    let dummy_hash = dummy_parent.hash();
+    cb.recent_blocks().send_modify(|blocks| blocks.push_latest(dummy_parent));
     let synchronizer = Arc::new(Synchronizer::new(primary.consensus_config(), &cb));
     let task_manager = TaskManager::default();
     synchronizer.spawn(&task_manager);
@@ -434,6 +613,7 @@ async fn test_request_vote_missing_batches() {
     let test_header = author
         .header_builder(&fixture.committee())
         .round(2)
+        .latest_execution_block(dummy_hash)
         .parents(certificates.keys().cloned().collect())
         .with_payload_batch(fixture_batch_with_transactions(10), 0, 0)
         .build()
@@ -494,6 +674,10 @@ async fn test_request_vote_already_voted() {
     let payload_store = primary.consensus_config().node_storage().payload_store.clone();
 
     let cb = ConsensusBus::new();
+    // Need a dummy parent so we can request a vote.
+    let dummy_parent = Header::default().seal_slow();
+    let dummy_hash = dummy_parent.hash();
+    cb.recent_blocks().send_modify(|blocks| blocks.push_latest(dummy_parent));
     let synchronizer = Arc::new(Synchronizer::new(primary.consensus_config(), &cb));
     let task_manager = TaskManager::default();
     synchronizer.spawn(&task_manager);
@@ -543,6 +727,7 @@ async fn test_request_vote_already_voted() {
         .header_builder(&fixture.committee())
         .round(2)
         .parents(certificates.keys().cloned().collect())
+        .latest_execution_block(dummy_hash)
         .with_payload_batch(fixture_batch_with_transactions(10), 0, 0)
         .build()
         .unwrap();
@@ -583,6 +768,7 @@ async fn test_request_vote_already_voted() {
         .header_builder(&fixture.committee())
         .round(2)
         .parents(certificates.keys().cloned().collect())
+        .latest_execution_block(dummy_hash)
         .with_payload_batch(fixture_batch_with_transactions(10), 0, 0)
         .build()
         .unwrap();
@@ -730,6 +916,10 @@ async fn test_request_vote_created_at_in_future() {
     let payload_store = primary.consensus_config().node_storage().payload_store.clone();
 
     let cb = ConsensusBus::new();
+    // Need a dummy parent so we can request a vote.
+    let dummy_parent = Header::default().seal_slow();
+    let dummy_hash = dummy_parent.hash();
+    cb.recent_blocks().send_modify(|blocks| blocks.push_latest(dummy_parent));
     let synchronizer = Arc::new(Synchronizer::new(primary.consensus_config(), &cb));
     let task_manager = TaskManager::default();
     synchronizer.spawn(&task_manager);
@@ -782,6 +972,7 @@ async fn test_request_vote_created_at_in_future() {
         .header_builder(&fixture.committee())
         .round(2)
         .parents(certificates.keys().cloned().collect())
+        .latest_execution_block(dummy_hash)
         .with_payload_batch(fixture_batch_with_transactions(10), 0, 0)
         .created_at(created_at)
         .build()
@@ -808,6 +999,7 @@ async fn test_request_vote_created_at_in_future() {
     let test_header = author
         .header_builder(&fixture.committee())
         .round(2)
+        .latest_execution_block(dummy_hash)
         .parents(certificates.keys().cloned().collect())
         .with_payload_batch(fixture_batch_with_transactions(10), 0, 0)
         .created_at(created_at)

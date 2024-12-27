@@ -114,6 +114,14 @@ where
         guard.last_executed_blocks(number)
     }
 
+    /// Return a vector of the last 'number' executed block headers.
+    /// These are the execution blocks finalized after consensus output, i.e. it
+    /// skips all the "intermediate" blocks and is just the final block from a consensus output.
+    pub async fn last_executed_output_blocks(&self, number: u64) -> eyre::Result<Vec<Header>> {
+        let guard = self.internal.read().await;
+        guard.last_executed_output_blocks(number)
+    }
+
     /// Return an database provider.
     pub async fn get_provider(&self) -> BlockchainProvider<DB> {
         let guard = self.internal.read().await;

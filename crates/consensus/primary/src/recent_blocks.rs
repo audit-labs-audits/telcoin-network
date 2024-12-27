@@ -6,6 +6,7 @@
 use std::collections::VecDeque;
 
 use reth_primitives::{BlockNumHash, SealedHeader};
+use tn_types::BlockHash;
 
 /// Tracks 'num_blocks' most recently executed block hashes and numbers.
 #[derive(Clone, Debug)]
@@ -41,5 +42,15 @@ impl RecentBlocks {
     /// Return the hash and number of the last executed block.
     pub fn latest_block(&self) -> SealedHeader {
         self.blocks.back().cloned().unwrap_or_else(Default::default)
+    }
+
+    /// Is hash a recent block we have executed?
+    pub fn contains_hash(&self, hash: BlockHash) -> bool {
+        for block in &self.blocks {
+            if block.hash() == hash {
+                return true;
+            }
+        }
+        false
     }
 }
