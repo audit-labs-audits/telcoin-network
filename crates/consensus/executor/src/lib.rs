@@ -59,9 +59,6 @@ impl Executor {
 pub async fn get_restored_consensus_output<DB: Database>(
     consensus_store: Arc<ConsensusStore<DB>>,
     certificate_store: CertificateStore<DB>,
-    // execution_state: &State,
-
-    // TODO: assume DB looks up finalized block num hash here
     last_executed_sub_dag_index: u64,
 ) -> Result<Vec<CommittedSubDag>, SubscriberError> {
     // We can safely recover from the `last_executed_sub_dag_index + 1` as we have the guarantee

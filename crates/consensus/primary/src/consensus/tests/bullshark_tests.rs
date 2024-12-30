@@ -543,7 +543,7 @@ async fn dead_node() {
     let mut sequence = committed.into_iter();
     for i in 1..=27 {
         let output = sequence.next().unwrap();
-        let expected = ((i - 1) / ids.len() as u64) + 1;
+        let expected = ((i - 1) / ids.len() as u32) + 1;
         assert_eq!(output.round(), expected);
     }
     let output = sequence.next().unwrap();
@@ -916,7 +916,7 @@ async fn delayed_certificates_are_rejected() {
 
 #[tokio::test]
 async fn submitting_equivocating_certificate_should_error() {
-    const NUM_SUB_DAGS_PER_SCHEDULE: u64 = 100;
+    const NUM_SUB_DAGS_PER_SCHEDULE: u32 = 100;
 
     let fixture = CommitteeFixture::builder(MemDatabase::default).build();
     let committee = fixture.committee();
@@ -972,7 +972,7 @@ async fn submitting_equivocating_certificate_should_error() {
 /// Advance the DAG for 50 rounds, while we change "schedule" for every 5 subdag commits.
 #[tokio::test]
 async fn reset_consensus_scores_on_every_schedule_change() {
-    const NUM_SUB_DAGS_PER_SCHEDULE: u64 = 5;
+    const NUM_SUB_DAGS_PER_SCHEDULE: u32 = 5;
 
     let fixture = CommitteeFixture::builder(MemDatabase::default).build();
     let committee = fixture.committee();
@@ -1009,29 +1009,26 @@ async fn reset_consensus_scores_on_every_schedule_change() {
     // ensure the leaders of rounds 2 and 4 have been committed
     let mut current_score = 0;
     for sub_dag in all_subdags {
-        // The first commit has all zero scores
-        if sub_dag.sub_dag_index == 1 {
-            assert!(sub_dag.reputation_score.all_zero());
-        } else if sub_dag.sub_dag_index % NUM_SUB_DAGS_PER_SCHEDULE == 0 {
+        if (sub_dag.leader.round() / 2) % NUM_SUB_DAGS_PER_SCHEDULE == 0 {
             // On every 5th commit we reset the scores and count from the beginning with
             // scores updated to 1, as we expect now every node to have voted for the previous
             // leader.
             for score in sub_dag.reputation_score.scores_per_authority.values() {
                 assert_eq!(*score as usize, 1);
             }
-            current_score = 1;
+            current_score = 2;
         } else {
-            // On every other commit the scores get calculated incrementally with +1 score
-            // for every commit.
-            current_score += 1;
-
             for score in sub_dag.reputation_score.scores_per_authority.values() {
                 assert_eq!(*score, current_score);
             }
 
-            if (sub_dag.sub_dag_index + 1) % NUM_SUB_DAGS_PER_SCHEDULE == 0 {
+            // On every other commit the scores get calculated incrementally with +1 score
+            // for every commit.
+            current_score += 1;
+
+            if ((sub_dag.leader.round() / 2) + 1) % NUM_SUB_DAGS_PER_SCHEDULE == 0 {
                 // if this is going to be the last score update for the current schedule, then
-                // make sure that the `fina_of_schedule` will be true
+                // make sure that the `final_of_schedule` will be true
                 assert!(sub_dag.reputation_score.final_of_schedule);
             } else {
                 assert!(!sub_dag.reputation_score.final_of_schedule);
@@ -1193,7 +1190,7 @@ async fn garbage_collection_basic() {
             // collection has run. In this case no certificate of round 1 should exist.
             if sub_dag.leader.round() == 6 {
                 assert_eq!(
-                    state.dag.iter().filter(|(round, _)| **round <= 2_u64).count(),
+                    state.dag.iter().filter(|(round, _)| **round <= 2).count(),
                     0,
                     "Didn't expect to still have certificates from round 1 and 2"
                 );
@@ -1279,7 +1276,7 @@ async fn slow_node() {
 
     // We expect everything to have been cleaned up by standard gc until round 2 (included)
     assert_eq!(
-        state.dag.iter().filter(|(round, _)| **round <= 2_u64).count(),
+        state.dag.iter().filter(|(round, _)| **round <= 2).count(),
         0,
         "Didn't expect to still have certificates from round 1 and 2"
     );

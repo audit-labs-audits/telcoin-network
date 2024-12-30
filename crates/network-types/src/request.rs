@@ -78,7 +78,7 @@ impl FetchCertificatesRequest {
                 let mut serialized = Vec::new();
                 rounds
                     .into_iter()
-                    .map(|v| u32::try_from(v - gc_round).unwrap())
+                    .map(|v| v - gc_round)
                     .collect::<RoaringBitmap>()
                     .serialize_into(&mut serialized)
                     .unwrap();

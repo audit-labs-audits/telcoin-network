@@ -158,7 +158,7 @@ impl<DB: Database> PrimaryReceiverHandler<DB> {
                 .recent_blocks()
                 .borrow()
                 .contains_hash(header.latest_execution_block),
-            // Note, errors are currently "flattened" bus if/when we return better errors may want
+            // Note, errors are currently "flattened" but if/when we return better errors may want
             // to make this specific in case we want to take action on this (i.e. are
             // we on our own fork?).
             DagError::NetworkError(format!(

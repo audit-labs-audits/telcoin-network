@@ -49,9 +49,9 @@ impl<DB: Database> ConsensusStore<DB> {
         for (id, round) in last_committed.iter() {
             txn.insert::<LastCommitted>(id, round)?;
         }
-        txn.insert::<CommittedSubDagTable>(&sub_dag.sub_dag_index, &commit)?;
+        txn.insert::<CommittedSubDagTable>(&sub_dag.leader.nonce(), &commit)?;
         txn.commit()?;
-        self.gc_rounds(sub_dag.sub_dag_index)?;
+        self.gc_rounds(sub_dag.leader.nonce())?;
         Ok(())
     }
 
@@ -121,9 +121,8 @@ impl<DB: Database> ConsensusStore<DB> {
             // found a final of schedule score, so we'll return that
             if commit.reputation_score().final_of_schedule {
                 debug!(
-                    "Found latest final reputation scores: {:?} from commit {:?}",
+                    "Found latest final reputation scores: {:?} from commit",
                     commit.reputation_score(),
-                    commit.sub_dag_index()
                 );
                 return Some(commit);
             }

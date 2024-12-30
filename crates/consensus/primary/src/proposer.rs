@@ -403,7 +403,8 @@ impl<DB: Database> Proposer<DB> {
         // NOTE: committee size is asserted >1 during Committee::load()
         if (next_round % 2 == 0
             && self.leader_schedule.leader(next_round).id() == self.authority_id)
-            || (next_round % 2 != 0 && self.committee.leader(next_round).id() == self.authority_id)
+            || (next_round % 2 != 0
+                && self.committee.leader(next_round as u64).id() == self.authority_id)
         {
             Duration::ZERO
         } else {

@@ -67,7 +67,7 @@ impl ConsensusOutput {
     }
     /// The subdag index (`SequenceNumber`).
     pub fn nonce(&self) -> SequenceNumber {
-        self.sub_dag.sub_dag_index
+        self.sub_dag.leader.nonce()
     }
     /// Execution address of the leader for the round.
     ///
@@ -124,9 +124,9 @@ impl Display for ConsensusOutput {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         write!(
             f,
-            "ConsensusOutput(round={:?}, sub_dag_index={:?}, timestamp={:?}, digest={:?})",
-            self.sub_dag.leader_round(),
-            self.sub_dag.sub_dag_index,
+            "ConsensusOutput(epoch={:?}, round={:?}, timestamp={:?}, digest={:?})",
+            self.sub_dag.leader.epoch(),
+            self.sub_dag.leader.round(),
             self.sub_dag.commit_timestamp(),
             self.digest()
         )
@@ -139,8 +139,6 @@ pub struct CommittedSubDag {
     pub certificates: Vec<Certificate>,
     /// The leader certificate responsible of committing this sub-dag.
     pub leader: Certificate,
-    /// The index associated with this CommittedSubDag
-    pub sub_dag_index: SequenceNumber,
     /// The so far calculated reputation score for nodes
     pub reputation_score: ReputationScores,
     /// The timestamp that should identify this commit. This is guaranteed to be monotonically
@@ -169,7 +167,7 @@ impl CommittedSubDag {
             leader.header().created_at(), previous_sub_dag_ts, commit_timestamp);
         }
 
-        Self { certificates, leader, sub_dag_index, reputation_score, commit_timestamp }
+        Self { certificates, leader, reputation_score, commit_timestamp }
     }
 
     pub fn from_commit(
@@ -180,7 +178,6 @@ impl CommittedSubDag {
         Self {
             certificates,
             leader,
-            sub_dag_index: commit.sub_dag_index(),
             reputation_score: commit.reputation_score(),
             commit_timestamp: commit.commit_timestamp(),
         }
@@ -229,7 +226,6 @@ impl Hash<{ crypto::DIGEST_LENGTH }> for CommittedSubDag {
             hasher.update(cert.digest());
         }
         hasher.update(self.leader.digest());
-        hasher.update(encode(&self.sub_dag_index));
         // skip reputation for stable hashes
         hasher.update(encode(&self.commit_timestamp));
         ConsensusOutputDigest(hasher.finalize().into())
@@ -252,8 +248,6 @@ pub struct ConsensusCommit {
     pub leader: CertificateDigest,
     /// The round of the leader
     pub leader_round: Round,
-    /// Sequence number of the CommittedSubDag
-    pub sub_dag_index: SequenceNumber,
     /// The so far calculated reputation score for nodes
     pub reputation_score: ReputationScores,
     /// The timestamp that should identify this commit. This is guaranteed to be monotonically
@@ -267,7 +261,6 @@ impl ConsensusCommit {
             certificates: sub_dag.certificates.iter().map(|x| x.digest()).collect(),
             leader: sub_dag.leader.digest(),
             leader_round: sub_dag.leader.round(),
-            sub_dag_index: sub_dag.sub_dag_index,
             reputation_score: sub_dag.reputation_score.clone(),
             commit_timestamp: sub_dag.commit_timestamp,
         }
@@ -283,10 +276,6 @@ impl ConsensusCommit {
 
     pub fn leader_round(&self) -> Round {
         self.leader_round
-    }
-
-    pub fn sub_dag_index(&self) -> SequenceNumber {
-        self.sub_dag_index
     }
 
     pub fn reputation_score(&self) -> ReputationScores {

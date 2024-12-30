@@ -29,8 +29,8 @@ use tn_storage::{
 };
 use tn_types::{
     AuthorityIdentifier, BlockHash, Certificate, CommittedSubDag, Committee, ConsensusHeader,
-    ConsensusOutput, NetworkPublicKey, Noticer, TaskManager, Timestamp, TnReceiver, TnSender,
-    WorkerBlock, WorkerCache, WorkerId,
+    ConsensusOutput, Epoch, NetworkPublicKey, Noticer, Round, TaskManager, Timestamp, TnReceiver,
+    TnSender, WorkerBlock, WorkerCache, WorkerId,
 };
 use tracing::{debug, error, info, warn};
 
@@ -103,7 +103,7 @@ pub fn spawn_subscriber<DB: Database>(
 /// Returns the max consensus chain block number, epoch and round from peers.
 async fn max_consensus_number(
     clients: &mut [PrimaryToPrimaryClient<WaitingPeer>],
-) -> Option<(u64, u64, u64)> {
+) -> Option<(u64, Epoch, Round)> {
     let mut waiting = FuturesUnordered::new();
     // Ask all our peers for their latest consensus height.
     let threshhold = ((clients.len() + 1) * 2) / 3;

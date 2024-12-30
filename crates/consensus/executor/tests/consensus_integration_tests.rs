@@ -39,7 +39,7 @@ async fn test_recovery() {
     let (_, certificate) = tn_test_utils::mock_certificate(&committee, ids[1], 5, next_parents);
     certificates.push_back(certificate);
 
-    const NUM_SUB_DAGS_PER_SCHEDULE: u64 = 100;
+    const NUM_SUB_DAGS_PER_SCHEDULE: u32 = 100;
     let metrics = Arc::new(ConsensusMetrics::default());
     let bullshark = Bullshark::new(
         committee.clone(),
@@ -73,7 +73,7 @@ async fn test_recovery() {
     let expected_committed_sub_dags = 2;
     for i in 1..=expected_committed_sub_dags {
         let sub_dag = rx_output.recv().await.unwrap();
-        assert_eq!(sub_dag.sub_dag_index, i);
+        assert_eq!(sub_dag.leader.round(), i * 2);
     }
 
     // Now assume that we want to recover from a crash. We are testing all the recovery cases
@@ -82,8 +82,9 @@ async fn test_recovery() {
         let consensus_output = get_restored_consensus_output(
             consensus_store.clone(),
             certificate_store.clone(),
-            // &execution_state,
-            last_executed_certificate_index,
+            last_executed_certificate_index as u64 * 2, /* Note when we have more that epoc 0
+                                                         * this
+                                                         * may break... */
         )
         .await
         .expect("consensus output is restored from storage");

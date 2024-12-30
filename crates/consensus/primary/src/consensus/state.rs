@@ -21,7 +21,7 @@ use tn_config::ConsensusConfig;
 use tn_storage::{traits::Database, CertificateStore};
 use tn_types::{
     AuthorityIdentifier, Certificate, CertificateDigest, CommittedSubDag, Committee,
-    ConsensusCommit, Noticer, Round, SequenceNumber, TaskManager, Timestamp, TnReceiver, TnSender,
+    ConsensusCommit, Noticer, Round, TaskManager, Timestamp, TnReceiver, TnSender,
 };
 use tracing::{debug, info, instrument};
 
@@ -52,6 +52,7 @@ pub struct ConsensusState {
 }
 
 impl ConsensusState {
+    /// Create a new empty ConsensusState.  Used for tests.
     pub fn new(metrics: Arc<ConsensusMetrics>, gc_depth: Round) -> Self {
         Self {
             last_round: ConsensusRound::default(),
@@ -236,11 +237,6 @@ impl ConsensusState {
             tracing::error!("Parent round not found in DAG for {certificate:?}!");
         }
     }
-
-    /// Provides the next index to be used for the next produced sub dag
-    pub fn next_sub_dag_index(&self) -> SequenceNumber {
-        self.last_committed_sub_dag.as_ref().map(|s| s.sub_dag_index).unwrap_or_default() + 1
-    }
 }
 
 /// Holds information about a committed round in consensus.
@@ -394,7 +390,7 @@ impl<DB: Database> Consensus<DB> {
                     // Output the sequence in the right order.
                     let mut i = 0;
                     for committed_sub_dag in committed_sub_dags {
-                         tracing::debug!("Commit in Sequence {:?}", committed_sub_dag.sub_dag_index);
+                         tracing::debug!("Commit in Sequence {:?}", committed_sub_dag.leader.nonce());
 
                         for certificate in &committed_sub_dag.certificates {
                             i+=1;
@@ -413,10 +409,9 @@ impl<DB: Database> Consensus<DB> {
                             committed_certificates.push(certificate.clone());
                         }
 
-                        // Don't send a committed sub dag if we are syncing- the sync process should take care of this.
-                            // NOTE: The size of the sub-dag can be arbitrarily large (depending on the network condition
-                            // and Byzantine leaders).
-                            self.consensus_bus.sequence().send(committed_sub_dag).await.map_err(|_|ConsensusError::ShuttingDown)?;
+                        // NOTE: The size of the sub-dag can be arbitrarily large (depending on the network condition
+                        // and Byzantine leaders).
+                        self.consensus_bus.sequence().send(committed_sub_dag).await.map_err(|_|ConsensusError::ShuttingDown)?;
                     }
 
                     if !committed_certificates.is_empty(){

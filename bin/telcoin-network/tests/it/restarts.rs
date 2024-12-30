@@ -205,6 +205,13 @@ fn do_restarts(delay: u64) -> eyre::Result<()> {
 
     // test blocks are the same if res2 is okay - otherwise use error from res2
     let final_result = if res2.is_ok() { test_blocks_same(&client_urls) } else { res2 };
+    if final_result.is_err() {
+        if let Err(e) = test_blocks_same(&client_urls) {
+            eprintln!("BLOCKS also NOT the same! {e}");
+        } else {
+            eprintln!("BLOCKS WERE THE SAME")
+        }
+    }
 
     // kill children before returnin final_result
     for child in children.iter_mut() {

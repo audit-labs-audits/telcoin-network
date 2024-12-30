@@ -31,7 +31,7 @@ impl<CDB: ConsensusDatabase> PrimaryNodeInner<CDB> {
     /// The window where the schedule change takes place in consensus. It represents number
     /// of committed sub dags.
     /// TODO: move this to node properties
-    const CONSENSUS_SCHEDULE_CHANGE_SUB_DAGS: u64 = 300;
+    const CONSENSUS_SCHEDULE_CHANGE_SUB_DAGS: u32 = 300;
 
     /// Starts the primary node with the provided info. If the node is already running then this
     /// method will return an error instead.

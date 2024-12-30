@@ -17,7 +17,7 @@ pub struct ExecutionIndices {
 }
 
 impl ExecutionIndices {
-    pub fn end_for_commit(commit_round: u64) -> Self {
+    pub fn end_for_commit(commit_round: Round) -> Self {
         ExecutionIndices {
             last_committed_round: commit_round,
             sub_dag_index: SequenceNumber::MAX,

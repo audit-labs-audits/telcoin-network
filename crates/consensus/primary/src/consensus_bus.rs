@@ -157,7 +157,7 @@ impl ConsensusBus {
             &primary_metrics.primary_channel_metrics.tx_committed_own_headers_total,
         );
 
-        let (tx_narwhal_round_updates, _rx_narwhal_round_updates) = watch::channel(0u64);
+        let (tx_narwhal_round_updates, _rx_narwhal_round_updates) = watch::channel(0u32);
         let (tx_recent_blocks, _rx_recent_blocks) = watch::channel(RecentBlocks::new(3));
         let (tx_sync_status, _rx_sync_status) = watch::channel(NodeMode::default());
 
@@ -235,7 +235,7 @@ impl ConsensusBus {
     }
 
     /// Signals a new narwhal round
-    pub fn narwhal_round_updates(&self) -> &watch::Sender<u64> {
+    pub fn narwhal_round_updates(&self) -> &watch::Sender<Round> {
         &self.inner.tx_narwhal_round_updates
     }
 
