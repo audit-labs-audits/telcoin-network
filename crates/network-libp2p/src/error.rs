@@ -2,6 +2,7 @@
 
 use libp2p::{
     gossipsub::{ConfigBuilderError, PublishError, SubscriptionError},
+    request_response::OutboundFailure,
     swarm::DialError,
     TransportError,
 };
@@ -15,6 +16,9 @@ pub enum NetworkError {
     /// Swarm error dialing a peer.
     #[error(transparent)]
     Dial(#[from] DialError),
+    /// Dial attempt currently ongoing for peer.
+    #[error("Peer already dialed")]
+    RedialAttempt,
     /// Gossipsub error publishing message.
     #[error(transparent)]
     Publish(#[from] PublishError),
@@ -39,6 +43,27 @@ pub enum NetworkError {
     /// Failed to build swarm with peer scoring enabled.
     #[error("{0}")]
     EnablePeerScoreBehavior(String),
+    /// Error conversion from [std::io::Error]
+    #[error(transparent)]
+    StdIo(#[from] std::io::Error),
+    /// Error converted from [std::num::TryFromIntError]
+    #[error(transparent)]
+    TryFromIntError(#[from] std::num::TryFromIntError),
+    /// Libp2p `ResponseChannel` already closed due to timeout or loss of connection.
+    #[error("Response channel closed.")]
+    SendResponse,
+    /// The oneshot channel for a request was lost. This is not expected to happen.
+    #[error("Pending request channel lost. Unable to return peer's response to original caller.")]
+    PendingRequestChannelLost,
+    /// Failed to send request/response outbound to peer.
+    #[error("Outbound failure: {0}")]
+    Outbound(#[from] OutboundFailure),
+    /// Failed to create gossipsub behavior.
+    #[error("{0}")]
+    GossipBehavior(&'static str),
+    /// Failed to build swarm with behavior.
+    #[error("SwarmBuilder::with_behaviour failed somehow.")]
+    BuildSwarm,
 }
 
 impl From<oneshot::error::RecvError> for NetworkError {
