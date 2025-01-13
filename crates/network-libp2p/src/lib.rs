@@ -1,9 +1,10 @@
 //! Peer-to-peer network interface for Telcoin Network built using libp2p.
 
+mod codec;
+mod consensus;
 pub mod error;
-mod helpers;
-mod publish;
-mod subscribe;
+mod messages;
 pub mod types;
-pub use publish::*;
-pub use subscribe::*;
+
+// export message types
+pub use messages::{PrimaryRequest, PrimaryResponse, WorkerRequest, WorkerResponse};
