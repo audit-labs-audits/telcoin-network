@@ -70,7 +70,7 @@ struct Inner<DB> {
     genesis: HashMap<CertificateDigest, Certificate>,
     /// A background task that synchronizes batches. A tuple of a header and the maximum accepted
     /// age is sent over.
-    tx_batch_tasks: MeteredMpscChannel<(Header, u32)>,
+    tx_batch_tasks: MeteredMpscChannel<(Header, Round)>,
     /// Aggregates certificates to use as parents for new headers.
     certificates_aggregators: Mutex<BTreeMap<Round, Box<CertificatesAggregator>>>,
     /// State for tracking suspended certificates and when they can be accepted.
