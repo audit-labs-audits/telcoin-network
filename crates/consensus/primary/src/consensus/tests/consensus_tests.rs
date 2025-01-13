@@ -6,6 +6,7 @@ use std::{collections::BTreeSet, sync::Arc};
 
 use fastcrypto::hash::Hash;
 
+use reth_primitives::{Header, B256};
 use tn_storage::mem_db::MemDatabase;
 use tn_test_utils::CommitteeFixture;
 use tn_types::{
@@ -65,6 +66,8 @@ async fn test_consensus_recovery_with_bullshark() {
     );
 
     let cb = ConsensusBus::new();
+    let dummy_parent = Header::default().seal(B256::default());
+    cb.recent_blocks().send_modify(|blocks| blocks.push_latest(dummy_parent));
     let mut rx_output = cb.sequence().subscribe();
     let task_manager = TaskManager::default();
     Consensus::spawn(config.clone(), &cb, bullshark, &task_manager);
@@ -97,6 +100,7 @@ async fn test_consensus_recovery_with_bullshark() {
     'main: while let Some(sub_dag) = rx_output.recv().await {
         score_no_crash = sub_dag.reputation_score.clone();
         assert_eq!(sub_dag.leader.round(), consensus_index_counter);
+        consensus_store.write_subdag_for_test(consensus_index_counter as u64, sub_dag.clone());
         for output in sub_dag.certificates {
             assert!(output.round() <= 6);
 
@@ -129,8 +133,8 @@ async fn test_consensus_recovery_with_bullshark() {
     // AND shutdown consensus
     task_manager.abort();
 
-    consensus_store.clear().unwrap();
     certificate_store.clear().unwrap();
+    consensus_store.clear_consensus_chain_for_test();
 
     let leader_schedule = LeaderSchedule::from_store(
         committee.clone(),
@@ -147,6 +151,8 @@ async fn test_consensus_recovery_with_bullshark() {
     );
 
     let cb = ConsensusBus::new();
+    let dummy_parent = Header::default().seal(B256::default());
+    cb.recent_blocks().send_modify(|blocks| blocks.push_latest(dummy_parent));
     let mut rx_output = cb.sequence().subscribe();
     let task_manager = TaskManager::default();
     Consensus::spawn(config.clone(), &cb, bullshark, &task_manager);
@@ -174,6 +180,7 @@ async fn test_consensus_recovery_with_bullshark() {
 
     'main: while let Some(sub_dag) = rx_output.recv().await {
         assert_eq!(sub_dag.leader.round(), consensus_index_counter);
+        consensus_store.write_subdag_for_test(consensus_index_counter as u64, sub_dag.clone());
         for output in sub_dag.certificates {
             assert!(output.round() <= 2);
 
@@ -202,6 +209,8 @@ async fn test_consensus_recovery_with_bullshark() {
     );
 
     let cb = ConsensusBus::new();
+    let dummy_parent = Header::default().seal(B256::default());
+    cb.recent_blocks().send_modify(|blocks| blocks.push_latest(dummy_parent));
     let mut rx_output = cb.sequence().subscribe();
     Consensus::spawn(config, &cb, bullshark, &TaskManager::default());
 
@@ -220,6 +229,7 @@ async fn test_consensus_recovery_with_bullshark() {
     'main: while let Some(sub_dag) = rx_output.recv().await {
         score_with_crash = sub_dag.reputation_score.clone();
         assert_eq!(score_with_crash.total_authorities(), 4);
+        consensus_store.write_subdag_for_test(consensus_index_counter as u64, sub_dag.clone());
 
         for output in sub_dag.certificates {
             assert!(output.round() >= 2);

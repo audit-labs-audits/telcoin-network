@@ -278,9 +278,6 @@ impl<DB: Database> Bullshark<DB> {
                 state.last_committed_sub_dag.as_ref(),
             );
 
-            // Persist the update.
-            self.store.write_consensus_state(&state.last_committed, &sub_dag)?;
-
             // Update the last sub dag
             state.last_committed_sub_dag = Some(sub_dag.clone());
 

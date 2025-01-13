@@ -197,7 +197,7 @@ impl LeaderSchedule {
                 LeaderSwapTable::new(
                     &committee,
                     commit.leader_round(),
-                    &commit.reputation_score(),
+                    &commit.reputation_score,
                     bad_nodes_stake_threshold,
                 )
             },

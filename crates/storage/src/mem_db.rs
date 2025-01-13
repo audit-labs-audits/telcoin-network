@@ -168,8 +168,8 @@ impl Default for MemDatabase {
         db.open_table::<crate::tables::CertificateDigestByOrigin>();
         db.open_table::<crate::tables::Payload>();
         db.open_table::<crate::tables::WorkerBlocks>();
-        db.open_table::<crate::tables::LastCommitted>();
-        db.open_table::<crate::tables::CommittedSubDag>();
+        db.open_table::<crate::tables::ConsensusBlocks>();
+        db.open_table::<crate::tables::ConsensusBlockNumbersByDigest>();
         db
     }
 }

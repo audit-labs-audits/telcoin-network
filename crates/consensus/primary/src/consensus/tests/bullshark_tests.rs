@@ -12,6 +12,7 @@ use crate::{
 };
 #[allow(unused_imports)]
 use fastcrypto::traits::KeyPair;
+use reth_primitives::{Header, B256};
 #[cfg(test)]
 use std::collections::BTreeSet;
 use std::collections::HashMap;
@@ -455,6 +456,8 @@ async fn commit_one() {
     let mut rx_output = cb.sequence().subscribe();
     Consensus::spawn(config, &cb, bullshark, &TaskManager::default());
     let cb_clone = cb.clone();
+    let dummy_parent = Header::default().seal(B256::default());
+    cb.recent_blocks().send_modify(|blocks| blocks.push_latest(dummy_parent));
     tokio::spawn(async move {
         let mut rx_primary = cb_clone.committed_certificates().subscribe();
         while rx_primary.recv().await.is_some() {}
@@ -515,6 +518,8 @@ async fn dead_node() {
     );
 
     let cb = ConsensusBus::new();
+    let dummy_parent = Header::default().seal(B256::default());
+    cb.recent_blocks().send_modify(|blocks| blocks.push_latest(dummy_parent));
     let mut rx_output = cb.sequence().subscribe();
     Consensus::spawn(config, &cb, bullshark, &TaskManager::default());
     let cb_clone = cb.clone();
@@ -653,6 +658,8 @@ async fn not_enough_support() {
     );
 
     let cb = ConsensusBus::new();
+    let dummy_parent = Header::default().seal(B256::default());
+    cb.recent_blocks().send_modify(|blocks| blocks.push_latest(dummy_parent));
     let mut rx_output = cb.sequence().subscribe();
     Consensus::spawn(config, &cb, bullshark, &TaskManager::default());
     let cb_clone = cb.clone();
@@ -753,6 +760,8 @@ async fn missing_leader() {
     );
 
     let cb = ConsensusBus::new();
+    let dummy_parent = Header::default().seal(B256::default());
+    cb.recent_blocks().send_modify(|blocks| blocks.push_latest(dummy_parent));
     let mut rx_output = cb.sequence().subscribe();
     Consensus::spawn(config, &cb, bullshark, &TaskManager::default());
     let cb_clone = cb.clone();
@@ -821,6 +830,8 @@ async fn committed_round_after_restart() {
         );
 
         let cb = ConsensusBus::new();
+        let dummy_parent = Header::default().seal(B256::default());
+        cb.recent_blocks().send_modify(|blocks| blocks.push_latest(dummy_parent));
         let mut rx_primary = cb.committed_certificates().subscribe();
         let mut rx_output = cb.sequence().subscribe();
         let mut task_manager = TaskManager::default();
@@ -831,7 +842,7 @@ async fn committed_round_after_restart() {
         // be 2 * r.
 
         let last_committed_round = cb.consensus_round_updates().borrow().committed_round as usize;
-        assert_eq!(last_committed_round, input_round.saturating_sub(3),);
+        assert_eq!(last_committed_round, input_round.saturating_sub(3));
         info!("Consensus started at last_committed_round={last_committed_round}");
 
         // Feed certificates from two rounds into consensus.
@@ -847,6 +858,7 @@ async fn committed_round_after_restart() {
         if input_round > 1 {
             let committed = rx_output.recv().await.unwrap();
             info!("Received output from consensus, committed_round={}", committed.leader.round());
+            store.write_subdag_for_test(input_round as u64, committed);
             let (round, _certs) = rx_primary.recv().await.unwrap();
             info!("Received committed certificates from consensus, committed_round={round}",);
         }
@@ -1058,7 +1070,6 @@ async fn restart_with_new_committee() {
         )
         .unwrap();
         let store = config.node_storage().consensus_store.clone();
-        store.clear().unwrap();
         config.node_storage().certificate_store.clear().unwrap();
         let metrics = Arc::new(ConsensusMetrics::default());
         let bullshark = Bullshark::new(
@@ -1071,6 +1082,8 @@ async fn restart_with_new_committee() {
         );
 
         let cb = ConsensusBus::new();
+        let dummy_parent = Header::default().seal(B256::default());
+        cb.recent_blocks().send_modify(|blocks| blocks.push_latest(dummy_parent));
         let mut rx_output = cb.sequence().subscribe();
         let mut task_manager = TaskManager::default();
         Consensus::spawn(config.clone(), &cb, bullshark, &task_manager);

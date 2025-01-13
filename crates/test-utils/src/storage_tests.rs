@@ -5,7 +5,7 @@
 //! Put them here to avoid circular dependancies with storage/test-utils (via ConsensusConfig).
 
 use std::{
-    collections::{BTreeSet, HashMap, HashSet},
+    collections::{BTreeSet, HashSet},
     time::Instant,
 };
 
@@ -117,7 +117,7 @@ async fn test_consensus_store_read_latest_final_reputation_scores() {
             None,
         );
 
-        store.write_consensus_state(&HashMap::new(), &sub_dag).unwrap();
+        store.write_subdag_for_test(sequence_number, sub_dag);
     }
 
     // WHEN we try to read the final schedule. The one of sub dag sequence 12 should be returned
@@ -138,13 +138,13 @@ async fn test_consensus_store_read_latest_final_reputation_scores() {
         let sub_dag =
             CommittedSubDag::new(vec![], Certificate::default(), sequence_number, scores, None);
 
-        store.write_consensus_state(&HashMap::new(), &sub_dag).unwrap();
+        store.write_subdag_for_test(sequence_number, sub_dag);
     }
 
     // WHEN we try to read the final schedule. The one of sub dag sequence 20 should be returned
     let commit = store.read_latest_commit_with_final_reputation_scores().unwrap();
 
-    assert!(commit.reputation_score().final_of_schedule);
+    assert!(commit.reputation_score.final_of_schedule);
 }
 
 #[tokio::test]

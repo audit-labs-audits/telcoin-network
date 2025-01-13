@@ -2,6 +2,7 @@
 // Copyright (c) Mysten Labs, Inc.
 // SPDX-License-Identifier: Apache-2.0
 use fastcrypto::hash::Hash;
+use reth_primitives::{Header, B256};
 use tn_executor::get_restored_consensus_output;
 use tn_primary::{
     consensus::{Bullshark, Consensus, ConsensusMetrics, LeaderSchedule, LeaderSwapTable},
@@ -53,8 +54,10 @@ async fn test_recovery() {
     let cb = ConsensusBus::new();
     let cb_clone = cb.clone();
     let mut rx_output = cb.sequence().subscribe();
+    let dummy_parent = Header::default().seal(B256::default());
+    cb.recent_blocks().send_modify(|blocks| blocks.push_latest(dummy_parent));
     // pretend we are synced and ready to go so test can run...
-    cb.node_mode().send(tn_primary::NodeMode::Cvv).unwrap();
+    cb.node_mode().send(tn_primary::NodeMode::CvvActive).unwrap();
     Consensus::spawn(config_1, &cb, bullshark, &TaskManager::default());
     tokio::spawn(async move {
         let mut rx_primary = cb_clone.committed_certificates().subscribe();
@@ -74,6 +77,8 @@ async fn test_recovery() {
     for i in 1..=expected_committed_sub_dags {
         let sub_dag = rx_output.recv().await.unwrap();
         assert_eq!(sub_dag.leader.round(), i * 2);
+        //consensus_store.write_subdag_for_test((i as u64 - 1) * 2, sub_dag);
+        consensus_store.write_subdag_for_test(i as u64 * 2, sub_dag);
     }
 
     // Now assume that we want to recover from a crash. We are testing all the recovery cases
@@ -81,7 +86,6 @@ async fn test_recovery() {
     for last_executed_certificate_index in 0..=expected_committed_sub_dags {
         let consensus_output = get_restored_consensus_output(
             consensus_store.clone(),
-            certificate_store.clone(),
             last_executed_certificate_index as u64 * 2, /* Note when we have more that epoc 0
                                                          * this
                                                          * may break... */

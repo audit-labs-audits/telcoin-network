@@ -842,6 +842,13 @@ where
                 return Poll::Ready(Ok(()));
             }
 
+            if !this.consensus_bus.node_mode().borrow().is_active_cvv() {
+                // TODO Note this will need to become smarter...
+                // We will not be able to go back to active mode since only shutdown polled.
+                // Fixing this ASAP.
+                return Poll::Pending;
+            }
+
             // check for new digests from workers and send ack back to worker
             //
             // ack to worker implies that the block is recorded on the primary

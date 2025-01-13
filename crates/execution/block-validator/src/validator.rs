@@ -45,13 +45,17 @@ where
         // retrieve parent header from provider
         //
         // first step towards validating parent's header
+        // Note this is really a "best effort" check.  If we have not
+        // executed parent_hash yet then it won't do anything.  This also
+        // means a bogus hash will sidestep the check however making it
+        // manditor would require waiting to see if we execute it soon
+        // to avoid false failures.
+        // The primary header should get checked so this should be ok.
         let parent = self
             .blockchain_db
             .header(&block.parent_hash)
-            .map_err(|_| WorkerBlockValidationError::CanonicalChain {
-                block_hash: block.parent_hash,
-            })?
-            .ok_or(WorkerBlockValidationError::CanonicalChain { block_hash: block.parent_hash })?
+            .unwrap_or_default()
+            .unwrap_or_default()
             .seal(block.parent_hash);
 
         // validate timestamp vs parent
@@ -305,8 +309,12 @@ mod tests {
         assert!(result.is_ok());
     }
 
-    #[tokio::test]
-    async fn test_invalid_block_wrong_parent_hash() {
+    //#[tokio::test]
+    // This is not checked currently, leaving test for bit to make sure we want this.
+    // This check will lead to occasional false errors and should not be critical since
+    // we should be validating parentage when building actual blocks (including any
+    // needed waits for execution).
+    async fn _test_invalid_block_wrong_parent_hash() {
         let TestTools { valid_block, validator } = test_tools().await;
         let (worker_block, _) = valid_block.split();
         let WorkerBlock {

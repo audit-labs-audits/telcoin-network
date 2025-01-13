@@ -4,10 +4,7 @@
 //! The ouput from consensus (bullshark)
 //! See test_utils output_tests.rs for this modules tests.
 
-use crate::{
-    crypto, encode, Certificate, CertificateDigest, ReputationScores, Round, TimestampSec,
-    WorkerBlock,
-};
+use crate::{crypto, encode, Certificate, ReputationScores, Round, TimestampSec, WorkerBlock};
 use fastcrypto::hash::{Digest, Hash, HashFunction};
 use reth_primitives::{Address, BlockHash, B256};
 use serde::{Deserialize, Serialize};
@@ -170,19 +167,6 @@ impl CommittedSubDag {
         Self { certificates, leader, reputation_score, commit_timestamp }
     }
 
-    pub fn from_commit(
-        commit: ConsensusCommit,
-        certificates: Vec<Certificate>,
-        leader: Certificate,
-    ) -> Self {
-        Self {
-            certificates,
-            leader,
-            reputation_score: commit.reputation_score(),
-            commit_timestamp: commit.commit_timestamp(),
-        }
-    }
-
     pub fn len(&self) -> usize {
         self.certificates.len()
     }
@@ -237,53 +221,6 @@ impl Hash<{ crypto::DIGEST_LENGTH }> for CommittedSubDag {
 impl From<ConsensusOutputDigest> for B256 {
     fn from(value: ConsensusOutputDigest) -> Self {
         B256::from_slice(value.as_ref())
-    }
-}
-
-#[derive(Serialize, Deserialize, Clone, Debug)]
-pub struct ConsensusCommit {
-    /// The sequence of committed certificates' digests.
-    pub certificates: Vec<CertificateDigest>,
-    /// The leader certificate's digest responsible of committing this sub-dag.
-    pub leader: CertificateDigest,
-    /// The round of the leader
-    pub leader_round: Round,
-    /// The so far calculated reputation score for nodes
-    pub reputation_score: ReputationScores,
-    /// The timestamp that should identify this commit. This is guaranteed to be monotonically
-    /// incremented
-    pub commit_timestamp: TimestampSec,
-}
-
-impl ConsensusCommit {
-    pub fn from_sub_dag(sub_dag: &CommittedSubDag) -> Self {
-        Self {
-            certificates: sub_dag.certificates.iter().map(|x| x.digest()).collect(),
-            leader: sub_dag.leader.digest(),
-            leader_round: sub_dag.leader.round(),
-            reputation_score: sub_dag.reputation_score.clone(),
-            commit_timestamp: sub_dag.commit_timestamp,
-        }
-    }
-
-    pub fn certificates(&self) -> Vec<CertificateDigest> {
-        self.certificates.clone()
-    }
-
-    pub fn leader(&self) -> CertificateDigest {
-        self.leader
-    }
-
-    pub fn leader_round(&self) -> Round {
-        self.leader_round
-    }
-
-    pub fn reputation_score(&self) -> ReputationScores {
-        self.reputation_score.clone()
-    }
-
-    pub fn commit_timestamp(&self) -> TimestampSec {
-        self.commit_timestamp
     }
 }
 

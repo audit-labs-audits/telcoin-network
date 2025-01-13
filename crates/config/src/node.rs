@@ -197,7 +197,7 @@ impl Parameters {
         Duration::from_secs(5)
     }
 
-    fn default_gc_depth() -> u32 {
+    pub fn default_gc_depth() -> u32 {
         50
     }
 
