@@ -72,6 +72,7 @@ pub fn spawn_subscriber<DB: Database>(
     let committee = config.committee().clone();
     let client = config.local_network().clone();
 
+    let mode = *consensus_bus.node_mode().borrow();
     let subscriber = Subscriber {
         rx_shutdown,
         consensus_bus,
@@ -80,18 +81,19 @@ pub fn spawn_subscriber<DB: Database>(
         execute_missing: Arc::new(Mutex::new(false)),
     };
     let sub_clone = subscriber.clone();
-    //if mode.is_cvv() {
-    task_manager.spawn_task(
-        "subscriber consensus",
-        monitored_future!(
-            async move {
-                info!(target: "telcoin::subscriber", "Starting subscriber");
-                sub_clone.run().await.expect("Failed to run subscriber")
-            },
-            "SubscriberTask"
-        ),
-    );
-    //} else {
+    if mode.is_cvv() {
+        task_manager.spawn_task(
+            "subscriber consensus",
+            monitored_future!(
+                async move {
+                    info!(target: "telcoin::subscriber", "Starting subscriber");
+                    sub_clone.run().await.expect("Failed to run subscriber")
+                },
+                "SubscriberTask"
+            ),
+        );
+    }
+    // Keep follow consensus warm even if a CVV, might need it.
     task_manager.spawn_task(
         "subscriber follow consensus",
         monitored_future!(
@@ -102,7 +104,6 @@ pub fn spawn_subscriber<DB: Database>(
             "SubscriberFollowTask"
         ),
     );
-    //}
 }
 
 /// Returns the max consensus chain block number, epoch and round from peers.
