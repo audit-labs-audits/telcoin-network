@@ -173,8 +173,6 @@ impl<DB: Database> Primary<DB> {
                 Proposer::new(config.clone(), consensus_bus.clone(), None, leader_schedule);
 
             proposer.spawn(task_manager);
-            //task_manager.spawn_task("proposer task", monitored_future!(proposer,
-            // "ProposerTask"));
         }
 
         // Keeps track of the latest consensus round and allows other tasks to clean up their their
