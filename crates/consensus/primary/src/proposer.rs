@@ -25,28 +25,25 @@ use crate::{
     error::{ProposerError, ProposerResult},
     ConsensusBus,
 };
+use consensus_metrics::monitored_future;
 use fastcrypto::hash::Hash as _;
-use futures::FutureExt;
 use std::{
     cmp::Ordering,
     collections::{BTreeMap, VecDeque},
-    future::Future,
-    pin::{pin, Pin},
     sync::Arc,
-    task::{Context, Poll},
 };
 use tn_config::ConsensusConfig;
 use tn_primary_metrics::PrimaryMetrics;
 use tn_storage::{traits::Database, ProposerStore};
 use tn_types::{
     now, AuthorityIdentifier, BlockHash, Certificate, Committee, Epoch, Header, Noticer, Round,
-    SystemMessage, TimestampSec, TnReceiver, TnSender, WorkerId,
+    SystemMessage, TaskManager, TimestampSec, TnReceiver, TnSender, WorkerId,
 };
 use tokio::{
-    sync::oneshot::{self, error::RecvError},
+    sync::oneshot,
     time::{sleep, Duration, Interval},
 };
-use tracing::{debug, enabled, error, trace, warn};
+use tracing::{debug, enabled, error, info, trace, warn};
 
 /// Type alias for the async task that creates, stores, and sends the proposer's new header.
 type PendingHeaderTask = oneshot::Receiver<ProposerResult<Header>>;
@@ -152,12 +149,6 @@ pub struct Proposer<DB: Database> {
     leader_schedule: LeaderSchedule,
     /// Flag if enough conditions are met to advance the round.
     advance_round: bool,
-    /// The optional pending header that the proposer has decided to build.
-    ///
-    /// This value is `Some` when conditions are met to propose the next header.
-    /// The task within is responsible for creating, storing, and sending the new header
-    /// to the `Certifier`.
-    pending_header: Option<PendingHeaderTask>,
 }
 
 impl<DB: Database> Proposer<DB> {
@@ -204,7 +195,6 @@ impl<DB: Database> Proposer<DB> {
             proposed_headers: BTreeMap::new(),
             leader_schedule,
             advance_round: true,
-            pending_header: None,
         }
     }
 
@@ -785,12 +775,9 @@ impl<DB: Database> Proposer<DB> {
     /// proposed header, and indicate round should not be advanced yet.
     ///
     /// This is the only time `Self::header_resend_timeout` gets reset.
-    fn handle_proposal_result(
-        &mut self,
-        result: std::result::Result<ProposerResult<Header>, RecvError>,
-    ) -> ProposerResult<()> {
+    fn handle_proposal_result(&mut self, result: ProposerResult<Header>) -> ProposerResult<()> {
         // receive result from oneshot channel
-        let header = result.map_err(Into::into).and_then(|res| res)?;
+        let header = result?;
 
         // track latest header
         self.opt_latest_header = Some(header.clone());
@@ -807,211 +794,184 @@ impl<DB: Database> Proposer<DB> {
 
         Ok(())
     }
-}
 
-/// The Future impl for proposer.
-///
-/// The future does the following:
-/// - listen for shutdown receiver
-/// - receive system messages to include in next proposed header
-/// - receive own workers' block digests for proposing in own header
-/// - receive a quorum of parents from the synchronizer for the previous round
-/// - handle this primary's own committed headers
-/// - propose the next header when conditions are right
-/// - return an error if unable to send next header to certifier
-impl<DB> Future for Proposer<DB>
-where
-    DB: Database,
-{
-    type Output = ProposerResult<()>;
+    pub fn spawn(mut self, task_manager: &TaskManager) {
+        task_manager.spawn_task(
+            "proposer task",
+            monitored_future!(
+                async move {
+                    info!(target: "primary::proposer", "Starting proposer");
+                    self.run().await.expect("Failed to run subscriber")
+                },
+                "ProposerTask"
+            ),
+        );
+    }
 
-    fn poll(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
-        let this = self.get_mut();
+    /// Run the proposer task.
+    /// Returns Ok on shutdown or an error to indicate a fatal condition.
+    async fn run(&mut self) -> ProposerResult<()> {
+        let mut rx_our_digests = self.consensus_bus.our_digests().subscribe();
+        let mut rx_parents = self.consensus_bus.parents().subscribe();
+        let mut rx_committed_own_headers = self.consensus_bus.committed_own_headers().subscribe();
 
+        let (_tx, mut pending_header_never) = oneshot::channel();
+        let mut pending_header: &mut PendingHeaderTask = &mut pending_header_never;
+        let (_tx, rx) = oneshot::channel();
+        let mut pending_header_actual: PendingHeaderTask = rx;
+        let mut header_in_flight = false; // Only one header currently allowed at a time.
+        let mut max_delay_timed_out = false;
+        let mut min_delay_timed_out = false;
         loop {
-            // tick intervals to ensure they advance
-            let max_delay_timed_out = this.max_delay_interval.poll_tick(cx).is_ready();
-            let min_delay_timed_out = this.min_delay_interval.poll_tick(cx).is_ready();
-
-            // check for shutdown signal
-            //
-            // okay to shutdown here because other primary tasks are expected to shutdown too
-            // ie) no point completing the proposal if certifier is down
-            if pin!(&this.rx_shutdown).poll(cx).is_ready() {
-                warn!(target: "primary::proposer", authority=?this.authority_id, round=this.round, "received shutdown signal...");
-                return Poll::Ready(Ok(()));
-            }
-
-            if !this.consensus_bus.node_mode().borrow().is_active_cvv() {
-                // TODO Note this will need to become smarter...
-                // We will not be able to go back to active mode since only shutdown polled.
-                // Fixing this ASAP.
-                return Poll::Pending;
-            }
-
-            // check for new digests from workers and send ack back to worker
-            //
-            // ack to worker implies that the block is recorded on the primary
-            // and will be tracked until the block is included
-            // ie) primary will attempt to propose this digest until it is
-            // committed/sequenced in the DAG or the epoch concludes
-            //
-            // NOTE: this will not persist primary restarts
-            while let Poll::Ready(Some(msg)) =
-                this.consensus_bus.our_digests().borrow_subscriber().poll_recv(cx)
-            {
-                debug!(target: "primary::proposer", authority=?this.authority_id, round=this.round, "received digest");
-
-                // parse message into parts
-                let (ack, digest) = msg.process();
-                let _ = ack.send(());
-                this.digests.push_back(digest);
-            }
-
-            // check for new parent certificates
-            // synchronizer sends collection of certificates when there is quorum (2f+1)
-            //
-            // TODO: synchronizer will send empty Vec<Certificate> for old round
-            // - this node round: 11
-            // - synchronizer receives certs from restarted node at round 10
-            // - this debug goes off with empty vec for round 10 (during restart it test)
-            {
-                // Silly borrow checker games...
-                let mut rx_parents = this.consensus_bus.parents().borrow_subscriber();
-                while let Poll::Ready(Some((certs, round))) = rx_parents.poll_recv(cx) {
-                    drop(rx_parents);
-                    debug!(target: "primary::proposer", authority=?this.authority_id, this_round=this.round, parent_round=round, num_parents=certs.len(), "received parents");
-                    this.process_parents(certs, round)?;
-                    rx_parents = this.consensus_bus.parents().borrow_subscriber();
-                }
-            }
-
-            {
-                // Same Silly borrow checker games...
-                let mut rx_committed_own_headers =
-                    this.consensus_bus.committed_own_headers().borrow_subscriber();
-                // check for previous headers that were committed
-                while let Poll::Ready(Some((commit_round, committed_headers))) =
-                    rx_committed_own_headers.poll_recv(cx)
-                {
-                    drop(rx_committed_own_headers);
-                    debug!(target: "primary::proposer", authority=?this.authority_id, round=this.round, "received committed update for own header");
-                    this.process_committed_headers(commit_round, committed_headers);
-                    rx_committed_own_headers =
-                        this.consensus_bus.committed_own_headers().borrow_subscriber();
-                }
-            }
-
-            // poll receiver that returns proposed header result
-            //
-            // if the pending header needs more time, break loop and return pending
-            // NOTE: proposer only holds one pending header at a time
-            if let Some(mut receiver) = this.pending_header.take() {
-                match receiver.poll_unpin(cx) {
-                    Poll::Ready(res) => {
-                        debug!(target: "primary::proposer", authority=?this.authority_id, "pending header task complete!");
-                        this.handle_proposal_result(res)?;
-
-                        // continue the loop to propose the next header
-                        continue;
+            if !self.consensus_bus.node_mode().borrow().is_active_cvv() {
+                // If not an active CVV then don't propose anything.
+                // TODO- send txns to a committee member.
+                // Sleep in case we become active later.
+                tokio::select! {
+                    _ = tokio::time::sleep(Duration::from_secs(1)) => {}
+                    _ = &self.rx_shutdown => {
+                        return Ok(())
                     }
-                    Poll::Pending => {
-                        // if still pending, check the fatal header timeout
-                        //
-                        // if fatal_header_timeout interval expires, then proposer was unable to
-                        // send to certifier which is considered fatal and
-                        // should never happen
-                        //
-                        // the only way this interval expires is if tx_headers.send() hangs
-                        if this.fatal_header_timeout.poll_tick(cx).is_ready() {
-                            error!(target: "primary::proposer", round=this.round, "header_resent_timeout triggered");
-                            return Poll::Ready(Err(ProposerError::FatalHeaderTimeout(
-                                this.fatal_header_timeout.period(),
-                            )));
+                }
+            } else {
+                tokio::select! {
+                    _ = &self.rx_shutdown => {
+                        return Ok(())
+                    }
+                    // check for new digests from workers and send ack back to worker
+                    //
+                    // ack to worker implies that the block is recorded on the primary
+                    // and will be tracked until the block is included
+                    // ie) primary will attempt to propose this digest until it is
+                    // committed/sequenced in the DAG or the epoch concludes
+                    //
+                    // NOTE: this will not persist primary restarts
+                    Some(msg) = rx_our_digests.recv() =>
+                    {
+                        debug!(target: "primary::proposer", authority=?self.authority_id, round=self.round, "received digest");
+
+                        // parse message into parts
+                        let (ack, digest) = msg.process();
+                        let _ = ack.send(());
+                        self.digests.push_back(digest);
+                    }
+                    // check for new parent certificates
+                    // synchronizer sends collection of certificates when there is quorum (2f+1)
+                    //
+                    // TODO: synchronizer will send empty Vec<Certificate> for old round
+                    // - this node round: 11
+                    // - synchronizer receives certs from restarted node at round 10
+                    // - this debug goes off with empty vec for round 10 (during restart it test)
+                    Some((certs, round)) = rx_parents.recv() => {
+                        debug!(target: "primary::proposer", authority=?self.authority_id, this_round=self.round, parent_round=round, num_parents=certs.len(), "received parents");
+                        self.process_parents(certs, round)?;
+                    }
+                    Some((commit_round, committed_headers)) = rx_committed_own_headers.recv() => {
+                        debug!(target: "primary::proposer", authority=?self.authority_id, round=self.round, "received committed update for own header");
+                        self.process_committed_headers(commit_round, committed_headers);
+                    }
+                    res = pending_header => {
+                        if let Ok(res) = res {
+                            debug!(target: "primary::proposer", authority=?self.authority_id, "pending header task complete!");
+                            self.handle_proposal_result(res)?;
                         }
-
-                        this.pending_header = Some(receiver);
-
-                        // skip checking conditions for proposing next header
-                        // since only one header is proposed at a time, there is no need to check
-                        // intervals, parents, execution progress, etc.
-                        break;
+                        header_in_flight = false;
+                    }
+                    // if still pending, check the fatal header timeout
+                    //
+                    // if fatal_header_timeout interval expires, then proposer was unable to
+                    // send to certifier which is considered fatal and
+                    // should never happen
+                    //
+                    // the only way this interval expires is if tx_headers.send() hangs
+                    _ = self.fatal_header_timeout.tick() => {
+                        warn!(target: "primary::proposer", round=self.round, "header_resent_timeout triggered- do we have a quorum of validators?");
+                    }
+                    // tick intervals to ensure they advance
+                    _ = self.max_delay_interval.tick() => {
+                        max_delay_timed_out = true;
+                    }
+                    _ = self.min_delay_interval.tick() => {
+                        min_delay_timed_out = true;
                     }
                 }
-            }
-
-            // proposer doesn't have a pending header
-            // Check if conditions are met for proposing a new header
-            //
-            // New headers are proposed when:
-            //
-            // 1) a quorum of parents (certificates) received for the current round
-            // 2) the execution layer successfully executed the previous round (parent
-            //    `BlockNumHash`)
-            // 3) One of the following:
-            // - the interval expired:
-            //      - this primary timed out on the leader
-            //      - or quit trying to gather enough votes for the leader
-            // - the worker created enough blocks (header_num_of_batches_threshold)
-            //      - this is happy path
-            //      - vote for leader or leader already has enough votes to trigger commit
-            let enough_parents = !this.last_parents.is_empty();
-            let enough_digests = this.digests.len() >= this.header_num_of_batches_threshold;
-
-            // evaluate conditions for bool value
-            let should_create_header = (max_delay_timed_out
-                || ((enough_digests || min_delay_timed_out) && this.advance_round))
-                && enough_parents;
-
-            debug!(
-                target: "primary::proposer",
-                authority=?this.authority_id,
-                round=this.round,
-                enough_parents,
-                enough_digests,
-                this.advance_round,
-                min_delay_timed_out,
-                max_delay_timed_out,
-                should_create_header,
-                pending_header=this.pending_header.is_some(),
-                "polled...",
-            );
-
-            // if both conditions are met, create the next header
-            if should_create_header {
-                if max_delay_timed_out {
-                    // expect this interval to expire occassionally
-                    //
-                    // if it expires too often, it either means some validators are Byzantine or
-                    // that the network is experiencing periods of asynchrony
-                    //
-                    // periods of asynchrony possibly caused by misconfigured `max_header_delay`
-                    warn!(target: "primary::proposer", interval=?this.max_delay_interval.period(), "max delay interval expired for round {}", this.round);
+                // Need to reset pending_header to the proper value.
+                if header_in_flight {
+                    pending_header = &mut pending_header_actual;
+                    // continue the loop, don't try to propose a header since we are already working
+                    // on one.
+                    continue;
+                } else {
+                    pending_header = &mut pending_header_never
                 }
 
-                // obtain reason for metrics
-                let reason = if max_delay_timed_out {
-                    "max_timeout"
-                } else if enough_digests {
-                    "threshold_size_reached"
-                } else {
-                    "min_timeout"
-                };
+                // proposer doesn't have a pending header
+                // Check if conditions are met for proposing a new header
+                //
+                // New headers are proposed when:
+                //
+                // 1) a quorum of parents (certificates) received for the current round
+                // 2) the execution layer successfully executed the previous round (parent
+                //    `BlockNumHash`)
+                // 3) One of the following:
+                // - the interval expired:
+                //      - this primary timed out on the leader
+                //      - or quit trying to gather enough votes for the leader
+                // - the worker created enough blocks (header_num_of_batches_threshold)
+                //      - this is happy path
+                //      - vote for leader or leader already has enough votes to trigger commit
+                let enough_parents = !self.last_parents.is_empty();
+                let enough_digests = self.digests.len() >= self.header_num_of_batches_threshold;
 
-                debug!(target: "primary::proposer", authority=?this.authority_id, ?reason, "proposing next header!");
+                // evaluate conditions for bool value
+                let should_create_header = (max_delay_timed_out
+                    || ((enough_digests || min_delay_timed_out) && self.advance_round))
+                    && enough_parents;
 
-                // propose header
-                let pending_header = this.propose_next_header(reason.to_string())?;
-                this.pending_header = Some(pending_header);
+                debug!(
+                    target: "primary::proposer",
+                    authority=?self.authority_id,
+                    round=self.round,
+                    enough_parents,
+                    enough_digests,
+                    self.advance_round,
+                    min_delay_timed_out,
+                    max_delay_timed_out,
+                    should_create_header,
+                    "polled...",
+                );
 
-                // ensure everything is caught up before poll pending
-                continue;
+                // if both conditions are met, create the next header
+                if should_create_header {
+                    if max_delay_timed_out {
+                        // expect this interval to expire occassionally
+                        //
+                        // if it expires too often, it either means some validators are Byzantine or
+                        // that the network is experiencing periods of asynchrony
+                        //
+                        // periods of asynchrony possibly caused by misconfigured `max_header_delay`
+                        warn!(target: "primary::proposer", interval=?self.max_delay_interval.period(), "max delay interval expired for round {}", self.round);
+                    }
+
+                    // obtain reason for metrics
+                    let reason = if max_delay_timed_out {
+                        "max_timeout"
+                    } else if enough_digests {
+                        "threshold_size_reached"
+                    } else {
+                        "min_timeout"
+                    };
+
+                    debug!(target: "primary::proposer", authority=?self.authority_id, ?reason, "proposing next header!");
+
+                    // propose header
+                    pending_header_actual = self.propose_next_header(reason.to_string())?;
+                    pending_header = &mut pending_header_actual;
+                    header_in_flight = true;
+                    max_delay_timed_out = false;
+                    min_delay_timed_out = false;
+                }
             }
-
-            // unable to propose header
-            break;
         }
-
-        Poll::Pending
     }
 }

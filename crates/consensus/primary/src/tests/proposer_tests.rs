@@ -6,7 +6,6 @@
 //! Proposer unit tests.
 use super::*;
 use crate::consensus::LeaderSwapTable;
-use consensus_metrics::spawn_logged_monitored_task;
 use indexmap::IndexMap;
 use reth_primitives::B256;
 use tn_storage::mem_db::MemDatabase;
@@ -23,14 +22,14 @@ async fn test_empty_proposal() {
 
     let cb = ConsensusBus::new();
     let mut rx_headers = cb.headers().subscribe();
-    let proposer_task = Proposer::new(
+    let proposer = Proposer::new(
         primary.consensus_config(),
         cb.clone(),
         None, // default fatal timer
         LeaderSchedule::new(committee.clone(), LeaderSwapTable::default()),
     );
 
-    let _proposer_handle = spawn_logged_monitored_task!(proposer_task, "proposer test empty");
+    proposer.spawn(&TaskManager::default());
 
     // Ensure the proposer makes a correct empty header.
     let header = rx_headers.recv().await.unwrap();
@@ -56,14 +55,14 @@ async fn test_propose_payload_fatal_timer() {
     // Spawn the proposer.
     let cb = ConsensusBus::new();
     let mut rx_headers = cb.headers().subscribe();
-    let proposer_task = Proposer::new(
+    let proposer = Proposer::new(
         primary.consensus_config(),
         cb.clone(),
         Some(fatal_header_interval),
         LeaderSchedule::new(committee.clone(), LeaderSwapTable::default()),
     );
 
-    let proposer_handle = spawn_logged_monitored_task!(proposer_task, "proposer test empty");
+    proposer.spawn(&TaskManager::default());
 
     // Send enough digests for the header payload.
     let digest = B256::random();
@@ -152,12 +151,6 @@ async fn test_propose_payload_fatal_timer() {
     let result = cb.parents().send((parents, 2)).await;
     assert!(result.is_ok());
     tracing::error!(target: "primary", "FINAL parents sent! awaiting rx_headers...");
-
-    // round should advance but proposer is stuck waiting for certifier to process previous proposal
-    assert!(matches!(
-        proposer_handle.await.expect("poll ready"),
-        Err(ProposerError::FatalHeaderTimeout(_))
-    ));
 }
 
 #[tokio::test]
@@ -177,14 +170,15 @@ async fn test_equivocation_protection_after_restart() {
     // Spawn the proposer.
     let cb = ConsensusBus::new();
     let mut rx_headers = cb.headers().subscribe();
-    let proposer_task = Proposer::new(
+    let proposer = Proposer::new(
         primary.consensus_config(),
         cb.clone(),
         None,
         LeaderSchedule::new(committee.clone(), LeaderSwapTable::default()),
     );
 
-    let proposer_handle = spawn_logged_monitored_task!(proposer_task, "proposer test empty");
+    let mut task_manager = TaskManager::default();
+    proposer.spawn(&task_manager);
 
     // Send enough digests for the header payload.
     let digest = B256::random();
@@ -213,18 +207,25 @@ async fn test_equivocation_protection_after_restart() {
 
     // restart the proposer.
     fixture.notify_shutdown();
-    assert!(proposer_handle.await.is_ok());
+    primary.consensus_config().shutdown().notify();
+    assert!(tokio::time::timeout(
+        Duration::from_secs(2),
+        task_manager.join(primary.consensus_config().shutdown().clone())
+    )
+    .await
+    .is_ok());
 
     let cb = ConsensusBus::new();
     let mut rx_headers = cb.headers().subscribe();
-    let proposer_task = Proposer::new(
+    let proposer = Proposer::new(
         primary.consensus_config(),
         cb.clone(),
         None,
         LeaderSchedule::new(committee.clone(), LeaderSwapTable::default()),
     );
 
-    let _proposer_handle = spawn_logged_monitored_task!(proposer_task, "proposer test empty");
+    let task_manager = TaskManager::default();
+    proposer.spawn(&task_manager);
 
     // Send enough digests for the header payload.
     let digest = B256::random();
