@@ -77,7 +77,6 @@ async fn test_recovery() {
     for i in 1..=expected_committed_sub_dags {
         let sub_dag = rx_output.recv().await.unwrap();
         assert_eq!(sub_dag.leader.round(), i * 2);
-        //consensus_store.write_subdag_for_test((i as u64 - 1) * 2, sub_dag);
         consensus_store.write_subdag_for_test(i as u64 * 2, sub_dag);
     }
 

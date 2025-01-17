@@ -40,7 +40,7 @@ pub type StoreResult<T> = eyre::Result<T>;
 
 /// The number of rounds of certificates and sub dags to save before garbage collecting them out of
 /// the DB.
-pub const ROUNDS_TO_KEEP: u64 = 64;
+pub const ROUNDS_TO_KEEP: u32 = 64;
 
 /// The datastore column family names.
 const LAST_PROPOSED_CF: &str = "last_proposed";
