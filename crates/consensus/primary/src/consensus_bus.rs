@@ -32,7 +32,7 @@ pub enum NodeMode {
     CvvInactive,
     /// Node that is following consensus output but is not staked and will never
     /// join a committee.
-    Obsever,
+    Observer,
 }
 
 impl NodeMode {
@@ -48,7 +48,7 @@ impl NodeMode {
 
     /// True if this node is only an obsever and will never participate in an committee.
     pub fn is_observer(&self) -> bool {
-        matches!(self, NodeMode::Obsever)
+        matches!(self, NodeMode::Observer)
     }
 }
 

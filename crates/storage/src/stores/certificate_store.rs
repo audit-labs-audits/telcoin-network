@@ -260,13 +260,13 @@ impl<DB: Database> CertificateStore<DB> {
 
     /// Deletes all certs for a round before round.
     fn gc_rounds(&self, target_round: Round) -> StoreResult<()> {
-        if target_round as u64 <= ROUNDS_TO_KEEP {
+        if target_round <= ROUNDS_TO_KEEP {
             return Ok(());
         }
-        let target_round = target_round as u64 - ROUNDS_TO_KEEP;
+        let target_round = target_round - ROUNDS_TO_KEEP;
         let mut certs = Vec::new();
         for ((round, origin), digest) in self.db.iter::<CertificateDigestByRound>() {
-            if (round as u64) < target_round {
+            if round < target_round {
                 certs.push((round, origin, digest));
             } else {
                 // We are done, all following rounds will be greater.

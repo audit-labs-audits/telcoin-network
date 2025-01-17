@@ -2,7 +2,7 @@
 
 use reth_db::database::Database;
 use reth_primitives::Header;
-use reth_provider::{providers::BlockchainProvider, HeaderProvider};
+use reth_provider::{providers::BlockchainProvider, BlockIdReader, HeaderProvider};
 use tn_types::{
     max_worker_block_gas, max_worker_block_size, SealedWorkerBlock, TransactionSigned,
     WorkerBlockValidation, WorkerBlockValidationError,
@@ -42,24 +42,30 @@ where
         // obtain info for validation
         let transactions = block.transactions();
 
-        // retrieve parent header from provider
-        //
         // first step towards validating parent's header
         // Note this is really a "best effort" check.  If we have not
-        // executed parent_hash yet then it won't do anything.  This also
-        // means a bogus hash will sidestep the check however making it
-        // manditor would require waiting to see if we execute it soon
-        // to avoid false failures.
+        // executed parent_hash yet then it will use the last executed block if
+        // available.  Making it manditory would require waiting to see
+        // if we execute it soon to avoid false failures.
         // The primary header should get checked so this should be ok.
-        let parent = self
-            .blockchain_db
-            .header(&block.parent_hash)
-            .unwrap_or_default()
-            .unwrap_or_default()
-            .seal(block.parent_hash);
+        let parent =
+            self.blockchain_db.header(&block.parent_hash).unwrap_or_default().unwrap_or_else(
+                || {
+                    let finalized_block_num_hash =
+                        self.blockchain_db.finalized_block_num_hash().unwrap_or_default();
+                    if let Some(finalized_block_num_hash) = finalized_block_num_hash {
+                        self.blockchain_db
+                            .header(&finalized_block_num_hash.hash)
+                            .unwrap_or_default()
+                            .unwrap_or_default()
+                    } else {
+                        Header::default()
+                    }
+                },
+            );
 
         // validate timestamp vs parent
-        self.validate_against_parent_timestamp(block.timestamp, parent.header())?;
+        self.validate_against_parent_timestamp(block.timestamp, &parent)?;
 
         // validate gas limit
         self.validate_block_gas(block.total_possible_gas(), block.timestamp)?;

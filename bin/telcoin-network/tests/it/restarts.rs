@@ -1,6 +1,10 @@
 use crate::util::{config_local_testnet, IT_TEST_MUTEX};
 use ethereum_tx_sign::{LegacyTransaction, Transaction};
 use eyre::Report;
+use nix::{
+    sys::signal::{self, Signal},
+    unistd::Pid,
+};
 use rand::{rngs::StdRng, SeedableRng};
 use reth_primitives::{alloy_primitives, keccak256, Address};
 use reth_tracing::init_test_tracing;
@@ -21,10 +25,7 @@ const WEI_PER_TEL: u128 = 1_000_000_000_000_000_000;
 
 /// Helper function to shutdown child processes and log errors.
 fn kill_child(child: &mut Child) {
-    use nix::{
-        sys::signal::{self, Signal},
-        unistd::Pid,
-    };
+    // The code below will send SIGKILL without the use of nix.
     //if let Err(e) = child.kill() {
     //    error!(target: "restart-test", ?e, "error killing child");
     //}
