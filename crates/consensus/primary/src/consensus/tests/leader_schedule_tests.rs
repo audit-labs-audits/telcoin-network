@@ -2,11 +2,7 @@
 // Copyright (c) Mysten Labs, Inc.
 // SPDX-License-Identifier: Apache-2.0
 
-use std::{
-    collections::{BTreeSet, HashMap},
-    num::NonZeroUsize,
-    sync::Arc,
-};
+use std::{collections::BTreeSet, num::NonZeroUsize, sync::Arc};
 
 use reth_tracing::init_test_tracing;
 use tempfile::TempDir;
@@ -186,7 +182,7 @@ async fn test_leader_schedule_from_store() {
 
     let sub_dag = CommittedSubDag::new(vec![], Certificate::default(), 0, scores, None);
 
-    store.write_consensus_state(&HashMap::new(), &sub_dag).unwrap();
+    store.write_subdag_for_test(0, sub_dag);
 
     // WHEN
     let schedule = LeaderSchedule::from_store(committee, store, 33);

@@ -348,8 +348,9 @@ mod tests {
         // TODO: this does not use a "real" `ConsensusOutput` certificate
         //
         // refactor with valid data once test util helpers are in place
-        let leader = Certificate::default();
-        let sub_dag_index = 1;
+        let mut leader = Certificate::default();
+        let sub_dag_index = 0;
+        leader.header.round = sub_dag_index as u32;
         let reputation_scores = ReputationScores::default();
         let previous_sub_dag = None;
         let beneficiary = Address::from_str("0x5555555555555555555555555555555555555555")
@@ -581,6 +582,7 @@ mod tests {
         // update timestamp
         leader_1.update_created_at_for_test(timestamp);
         let sub_dag_index_1 = 1;
+        leader_1.header.round = sub_dag_index_1 as u32;
         let reputation_scores = ReputationScores::default();
         let previous_sub_dag = None;
         let mut batch_digests_1: VecDeque<BlockHash> =
@@ -608,6 +610,7 @@ mod tests {
         // update timestamp
         leader_2.update_created_at_for_test(timestamp + 2);
         let sub_dag_index_2 = 2;
+        leader_2.header.round = sub_dag_index_2 as u32;
         let reputation_scores = ReputationScores::default();
         let previous_sub_dag = Some(subdag_1.as_ref());
         let batch_digests_2: VecDeque<BlockHash> = batches_2.iter().map(|b| b.digest()).collect();
@@ -909,13 +912,16 @@ mod tests {
         let mut leader_1 = Certificate::default();
         // update timestamp
         leader_1.update_created_at_for_test(timestamp);
-        let sub_dag_index_1 = 1;
+        let sub_dag_index_1: u64 = 1;
+        leader_1.header.round = sub_dag_index_1 as u32;
         let reputation_scores = ReputationScores::default();
         let previous_sub_dag = None;
         let mut batch_digests_1: VecDeque<BlockHash> =
             batches_1.iter().map(|b| b.digest()).collect();
+        let mut cert_1 = Certificate::default();
+        cert_1.header.round = 1;
         let subdag_1 = Arc::new(CommittedSubDag::new(
-            vec![Certificate::default()],
+            vec![cert_1],
             leader_1,
             sub_dag_index_1,
             reputation_scores,
@@ -937,11 +943,14 @@ mod tests {
         // update timestamp
         leader_2.update_created_at_for_test(timestamp + 2);
         let sub_dag_index_2 = 2;
+        leader_2.header.round = sub_dag_index_2 as u32;
         let reputation_scores = ReputationScores::default();
         let previous_sub_dag = Some(subdag_1.as_ref());
         let batch_digests_2: VecDeque<BlockHash> = batches_2.iter().map(|b| b.digest()).collect();
+        let mut cert_2 = Certificate::default();
+        cert_2.header.round = 2;
         let subdag_2 = CommittedSubDag::new(
-            vec![Certificate::default()],
+            vec![cert_2],
             leader_2,
             sub_dag_index_2,
             reputation_scores,
@@ -1213,6 +1222,7 @@ mod tests {
         // update timestamp
         leader_1.update_created_at_for_test(timestamp);
         let sub_dag_index_1 = 1;
+        leader_1.header.round = sub_dag_index_1 as u32;
         let reputation_scores = ReputationScores::default();
         let previous_sub_dag = None;
         let batch_digests_1: VecDeque<BlockHash> = batches_1.iter().map(|b| b.digest()).collect();
@@ -1240,6 +1250,7 @@ mod tests {
         // update timestamp
         leader_2.update_created_at_for_test(timestamp + 2);
         let sub_dag_index_2 = 2;
+        leader_2.header.round = sub_dag_index_2 as u32;
         let reputation_scores = ReputationScores::default();
         let previous_sub_dag = Some(subdag_1.as_ref());
         let batch_digests_2: VecDeque<BlockHash> = batches_2.iter().map(|b| b.digest()).collect();

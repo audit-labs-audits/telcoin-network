@@ -19,7 +19,7 @@ pub fn process_certificates(c: &mut Criterion) {
     let mut consensus_group = c.benchmark_group("processing certificates");
     consensus_group.sampling_mode(SamplingMode::Flat);
 
-    static BATCH_SIZES: [u64; 4] = [100, 500, 1000, 5000];
+    static BATCH_SIZES: [u32; 4] = [100, 500, 1000, 5000];
 
     let fixture = CommitteeFixture::builder(MemDatabase::default).build();
     let committee = fixture.committee();
