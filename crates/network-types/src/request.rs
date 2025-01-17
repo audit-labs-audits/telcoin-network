@@ -1,4 +1,5 @@
 //! Request message types
+
 use reth_primitives::SealedHeader;
 use roaring::RoaringBitmap;
 use serde::{Deserialize, Serialize};

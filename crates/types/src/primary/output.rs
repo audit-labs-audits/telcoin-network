@@ -1,9 +1,7 @@
-// Copyright (c) Telcoin, LLC
-// SPDX-License-Identifier: Apache-2.0
-
 //! The ouput from consensus (bullshark)
 //! See test_utils output_tests.rs for this modules tests.
 
+use super::ConsensusHeader;
 use crate::{crypto, encode, Certificate, ReputationScores, Round, TimestampSec, WorkerBlock};
 use fastcrypto::hash::{Digest, Hash, HashFunction};
 use reth_primitives::{Address, BlockHash, B256};
@@ -15,8 +13,6 @@ use std::{
 };
 use tokio::sync::mpsc;
 use tracing::warn;
-
-use super::ConsensusHeader;
 
 /// A global sequence number assigned to every CommittedSubDag.
 pub type SequenceNumber = u64;

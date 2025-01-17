@@ -1,6 +1,5 @@
-// Copyright (c) Telcoin, LLC
-// Copyright (c) Mysten Labs, Inc.
-// SPDX-License-Identifier: Apache-2.0
+//! Subscriber handles consensus output.
+
 use crate::{errors::SubscriberResult, SubscriberError};
 use consensus_metrics::monitored_future;
 use fastcrypto::hash::Hash;

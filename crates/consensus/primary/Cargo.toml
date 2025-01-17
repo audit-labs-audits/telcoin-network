@@ -70,16 +70,3 @@ bytes = { workspace = true }
 reth-tracing = { workspace = true }
 tn-block-validator = { workspace = true, features = ["test-utils"] }
 reth = { workspace = true }
-
-[features]
-default = []
-benchmark = []
-test-utils = []
-
-[lib]
-bench = false
-
-[[bench]]
-name = "process_certificates"
-harness = false
-required-features = ["benchmark"]

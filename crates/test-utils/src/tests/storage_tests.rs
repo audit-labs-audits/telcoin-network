@@ -1,6 +1,3 @@
-// Copyright (c) Telcoin, LLC
-// SPDX-License-Identifier: Apache-2.0
-
 //! Tests for the storage crate that need to use test-utils.
 //! Put them here to avoid circular dependancies with storage/test-utils (via ConsensusConfig).
 

@@ -1,9 +1,4 @@
-// Copyright (c) 2021, Facebook, Inc. and its affiliates
-// Copyright (c) Telcoin, LLC
-// Copyright (c) Mysten Labs, Inc.
-// SPDX-License-Identifier: Apache-2.0
-
-#![allow(clippy::mutable_key_type)]
+//! The state of consensus
 
 use crate::{
     consensus::{bullshark::Bullshark, utils::gc_round, ConsensusError, ConsensusMetrics},
@@ -383,7 +378,6 @@ impl<DB: Database> Consensus<DB> {
             let mut committed_certificates = Vec::new();
 
             // Output the sequence in the right order.
-            let mut i = 0;
             for committed_sub_dag in committed_sub_dags {
                 // We need to make sure execution has caught up so we can verify we have not forked.
                 // This will force the follow function to not outrun execution...  this is probably
@@ -412,19 +406,6 @@ impl<DB: Database> Consensus<DB> {
                 tracing::debug!(target: "telcoin::consensus_state", "Commit in Sequence {:?}", committed_sub_dag.leader.nonce());
 
                 for certificate in &committed_sub_dag.certificates {
-                    i += 1;
-
-                    if i % 5_000 == 0 {
-                        #[cfg(not(feature = "benchmark"))]
-                        tracing::debug!(target: "telcoin::consensus_state", "Committed {}", certificate.header());
-                    }
-
-                    #[cfg(feature = "benchmark")]
-                    for digest in certificate.header().payload().keys() {
-                        // NOTE: This log entry is used to compute performance.
-                        tracing::info!("Committed {} -> {:?}", certificate.header(), digest);
-                    }
-
                     committed_certificates.push(certificate.clone());
                 }
 

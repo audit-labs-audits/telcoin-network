@@ -1,8 +1,3 @@
-// Copyright (c) Telcoin, LLC
-// Copyright(C) Facebook, Inc. and its affiliates.
-// Copyright (c) Mysten Labs, Inc.
-// SPDX-License-Identifier: Apache-2.0
-
 //! The Proposer is responsible for proposing the primary's next header when certain conditions are
 //! met.
 //!
@@ -345,12 +340,6 @@ impl<DB: Database> Proposer<DB> {
         proposer_store
             .write_last_proposed(header)
             .map_err(|e| ProposerError::StoreError(e.to_string()))?;
-
-        #[cfg(feature = "benchmark")]
-        for digest in header.payload().keys() {
-            // NOTE: This log entry is used to compute performance.
-            tracing::info!(target: "primary::proposer", "Created {} -> {:?}", header, digest);
-        }
 
         // Send the new header to the `Certifier` that will broadcast and certify it.
         let result = consensus_bus.headers().send(header.clone()).await.map_err(|e| e.into());
