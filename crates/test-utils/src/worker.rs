@@ -43,7 +43,7 @@ impl<DB: Database> WorkerNodeDetails<DB> {
 
         info!(target: "cluster::worker", "starting worker-{} for authority {}", self.id, self.name);
 
-        self.node.start(execution_node.new_block_validator().await).await?;
+        self.node.start(execution_node.new_batch_validator().await).await?;
 
         self.store_path = store_path;
 
@@ -77,7 +77,7 @@ impl WorkerFixture {
 
     pub fn new_network(&self, router: anemo::Router) -> anemo::Network {
         anemo::Network::bind(self.info().worker_address.to_anemo_address().unwrap())
-            .server_name("narwhal")
+            .server_name("tn-test")
             .private_key(self.keypair().private().0.to_bytes())
             .start(router)
             .unwrap()

@@ -11,14 +11,14 @@ use fastcrypto::encoding::{Encoding, Hex};
 use prometheus::Registry;
 use std::time::Duration;
 use tempfile::TempDir;
-use tn_block_validator::NoopBlockValidator;
+use tn_batch_validator::NoopBatchValidator;
 use tn_primary::{
     consensus::{LeaderSchedule, LeaderSwapTable},
     Primary,
 };
 use tn_storage::mem_db::MemDatabase;
 use tn_test_utils::CommitteeFixture;
-use tn_types::SealedWorkerBlock;
+use tn_types::SealedBatch;
 
 // A test validator that rejects every batch
 #[derive(Clone)]
@@ -29,7 +29,7 @@ struct NilBatchValidator;
 impl BlockValidation for NilBatchValidator {
     type Error = eyre::Report;
 
-    async fn validate_block(&self, _txs: SealedWorkerBlock) -> Result<(), Self::Error> {
+    async fn validate_batch(&self, _txs: SealedBatch) -> Result<(), Self::Error> {
         eyre::bail!("Invalid batch");
     }
 }
@@ -37,7 +37,6 @@ impl BlockValidation for NilBatchValidator {
 #[ignore]
 #[tokio::test]
 async fn get_network_peers_from_admin_server() {
-    // reth_tracing::init_test_tracing();
     let fixture = CommitteeFixture::builder(MemDatabase::default).randomize_ports(true).build();
     let committee = fixture.committee();
     let authority_1 = fixture.authorities().next().unwrap();
@@ -69,7 +68,7 @@ async fn get_network_peers_from_admin_server() {
     let worker_1_parameters = config_1.config().parameters.clone();
 
     // Spawn a `Worker` instance for primary 1.
-    let _worker = Worker::spawn(worker_id, NoopBlockValidator, metrics_1.clone(), config_1.clone());
+    let _worker = Worker::spawn(worker_id, NoopBatchValidator, metrics_1.clone(), config_1.clone());
 
     let primary_1_peer_id =
         Hex::encode(authority_1.primary_network_keypair().copy().public().0.as_bytes());
@@ -133,7 +132,7 @@ async fn get_network_peers_from_admin_server() {
     let worker_2_parameters = config_2.config().parameters.clone();
 
     // Spawn a `Worker` instance for primary 2.
-    let _worker = Worker::spawn(worker_id, NoopBlockValidator, metrics_2.clone(), config_2.clone());
+    let _worker = Worker::spawn(worker_id, NoopBatchValidator, metrics_2.clone(), config_2.clone());
 
     // Wait for tasks to start. Sleeping longer here to ensure all primaries and workers
     // have  a chance to connect to each other.

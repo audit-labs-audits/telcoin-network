@@ -11117,7 +11117,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "1f3ccbac311fea05f86f61904b462b55fb3df8837a366dfc601a0161d0532f20"
 
 [[package]]
-name = "tn-block-builder"
+name = "tn-batch-builder"
 version = "0.1.0"
 dependencies = [
  "alloy-rlp",
@@ -11142,12 +11142,11 @@ dependencies = [
  "reth-prune",
  "reth-stages",
  "reth-tasks",
- "reth-tracing",
  "reth-transaction-pool",
  "tempfile",
  "thiserror",
- "tn-block-builder",
- "tn-block-validator",
+ "tn-batch-builder",
+ "tn-batch-validator",
  "tn-engine",
  "tn-network",
  "tn-network-types",
@@ -11160,7 +11159,7 @@ dependencies = [
 ]
 
 [[package]]
-name = "tn-block-validator"
+name = "tn-batch-validator"
 version = "0.1.0"
 dependencies = [
  "alloy-rlp",
@@ -11180,7 +11179,6 @@ dependencies = [
  "reth-provider",
  "reth-prune",
  "reth-revm",
- "reth-tracing",
  "reth-trie",
  "thiserror",
  "tn-test-utils",
@@ -11230,10 +11228,9 @@ dependencies = [
  "reth-primitives",
  "reth-provider",
  "reth-revm",
- "reth-tracing",
  "reth-trie",
  "thiserror",
- "tn-block-builder",
+ "tn-batch-builder",
  "tn-test-utils",
  "tn-types",
  "tokio",
@@ -11298,7 +11295,6 @@ dependencies = [
  "reth-provider",
  "reth-rpc",
  "reth-tasks",
- "reth-tracing",
  "reth-transaction-pool",
  "secp256k1 0.29.0",
  "serde",
@@ -11437,14 +11433,13 @@ dependencies = [
  "reth-rpc-types",
  "reth-stages",
  "reth-static-file",
- "reth-tracing",
  "reth-transaction-pool",
  "serde-reflection",
  "serde_yaml",
  "tempfile",
  "thiserror",
- "tn-block-builder",
- "tn-block-validator",
+ "tn-batch-builder",
+ "tn-batch-validator",
  "tn-config",
  "tn-engine",
  "tn-executor",
@@ -11493,11 +11488,10 @@ dependencies = [
  "reqwest 0.12.7",
  "reth",
  "reth-primitives",
- "reth-tracing",
  "tap",
  "tempfile",
  "thiserror",
- "tn-block-validator",
+ "tn-batch-validator",
  "tn-config",
  "tn-executor",
  "tn-network",
@@ -11595,13 +11589,12 @@ dependencies = [
  "reth-primitives",
  "reth-stages",
  "reth-tasks",
- "reth-tracing",
  "reth-transaction-pool",
  "secp256k1 0.29.0",
  "telcoin-network",
  "tempfile",
- "tn-block-builder",
- "tn-block-validator",
+ "tn-batch-builder",
+ "tn-batch-validator",
  "tn-config",
  "tn-engine",
  "tn-faucet",
@@ -11694,11 +11687,10 @@ dependencies = [
  "itertools 0.10.5",
  "prometheus",
  "rand 0.8.5",
- "reth-tracing",
  "tap",
  "tempfile",
  "thiserror",
- "tn-block-validator",
+ "tn-batch-validator",
  "tn-config",
  "tn-network",
  "tn-network-types",

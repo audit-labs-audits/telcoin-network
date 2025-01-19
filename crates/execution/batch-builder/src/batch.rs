@@ -1,4 +1,4 @@
-//! The logic for building worker blocks.
+//! The logic for building batches.
 //!
 //! Transactions are pulled from the worker's pending pool and added to the block without being
 //! executed. Block size is measured in bytes and a transaction's max gas limit. The block is sealed
@@ -8,20 +8,17 @@
 
 use reth_primitives::{IntoRecoveredTransaction, TxHash};
 use reth_transaction_pool::TransactionPool;
-use tn_types::{
-    max_worker_block_gas, max_worker_block_size, now, PendingBlockConfig, WorkerBlock,
-    WorkerBlockBuilderArgs,
-};
+use tn_types::{max_batch_gas, max_batch_size, now, Batch, BatchBuilderArgs, PendingBlockConfig};
 use tracing::{debug, warn};
 
 /// The output from building the next block.
 ///
 /// Contains information needed to update the transaction pool.
 #[derive(Debug)]
-pub struct BlockBuilderOutput {
-    /// The block info for the worker to propose.
-    pub(crate) worker_block: WorkerBlock,
-    /// The transaction hashes mined in this worker's block.
+pub struct BatchBuilderOutput {
+    /// The batch info for the worker to propose.
+    pub(crate) batch: Batch,
+    /// The transaction hashes mined in this worker's batch.
     ///
     /// NOTE: canonical changes update `ChangedAccount` and changed senders.
     /// Only the mined transactions are removed from the pool. Account nonce and state
@@ -33,9 +30,9 @@ pub struct BlockBuilderOutput {
     pub(crate) mined_transactions: Vec<TxHash>,
 }
 
-/// Construct an TN worker block using the best transactions from the pool.
+/// Construct an TN batch using the best transactions from the pool.
 ///
-/// Returns the [`BlockBuilderOutput`] and cannot fail. The worker block continues to add
+/// Returns the [`BatchBuilderOutput`] and cannot fail. The batch continues to add
 /// transactions to the proposed block until either:
 /// - accumulated transaction gas limit reached (measured by tx.gas_limit())
 /// - max byte size of transactions (measured by tx.size())
@@ -44,20 +41,20 @@ pub struct BlockBuilderOutput {
 /// with very high gas limits. It's impossible to know the amount of gas a transaction
 /// will use without executing it, and the worker does not execute transactions.
 #[inline]
-pub fn build_worker_block<P>(args: WorkerBlockBuilderArgs<P>) -> BlockBuilderOutput
+pub fn build_batch<P>(args: BatchBuilderArgs<P>) -> BatchBuilderOutput
 where
     P: TransactionPool,
 {
-    let WorkerBlockBuilderArgs { pool, block_config } = args;
-    let gas_limit = max_worker_block_gas(block_config.parent_info.tip.timestamp);
-    let max_size = max_worker_block_size(block_config.parent_info.tip.timestamp);
-    let PendingBlockConfig { beneficiary, parent_info } = block_config;
+    let BatchBuilderArgs { pool, batch_config } = args;
+    let gas_limit = max_batch_gas(batch_config.parent_info.tip.timestamp);
+    let max_size = max_batch_size(batch_config.parent_info.tip.timestamp);
+    let PendingBlockConfig { beneficiary, parent_info } = batch_config;
 
     // NOTE: this obtains a `read` lock on the tx pool
     // pull best transactions and rely on watch channel to ensure basefee is current
     let mut best_txs = pool.best_transactions();
 
-    // NOTE: worker blocks always build off the latest finalized block
+    // NOTE: batches always build off the latest finalized block
     let parent_hash = parent_info.tip.hash();
 
     // collect data for successful transactions
@@ -79,7 +76,7 @@ where
             // current iteration  all dependents for this transaction are now considered invalid
             // before continuing loop
             best_txs.mark_invalid(&pool_tx);
-            debug!(target: "worker::block_builder", ?pool_tx, "marking tx invalid due to gas constraint");
+            debug!(target: "worker::batch_builder", ?pool_tx, "marking tx invalid due to gas constraint");
             continue;
         }
 
@@ -95,7 +92,7 @@ where
             // current iteration  all dependents for this transaction are now considered invalid
             // before continuing loop
             best_txs.mark_invalid(&pool_tx);
-            debug!(target: "worker::block_builder", ?pool_tx, "marking tx invalid due to bytes constraint");
+            debug!(target: "worker::batch_builder", ?pool_tx, "marking tx invalid due to bytes constraint");
             continue;
         }
 
@@ -108,20 +105,20 @@ where
         transactions.push(tx.into_signed());
     }
 
-    // TODO: use ms for worker block and sec for final block?
+    // TODO: use ms for batch and sec for final block?
     //
-    // sometimes worker block are produced too quickly in certain configs (<1s diff)
+    // sometimes batch are produced too quickly in certain configs (<1s diff)
     // resulting in batch timestamp == parent timestamp
     //
     // TODO: check for this error at the quorum waiter level?
     let mut timestamp = now();
     if timestamp == parent_info.tip.timestamp {
-        warn!(target: "worker::block_builder", "new block timestamp same as parent - setting offset by 1sec");
+        warn!(target: "worker::batch_builder", "new block timestamp same as parent - setting offset by 1sec");
         timestamp = parent_info.tip.timestamp + 1;
     }
 
-    // worker block
-    let worker_block = WorkerBlock {
+    // batch
+    let batch = Batch {
         transactions,
         parent_hash,
         beneficiary,
@@ -131,5 +128,5 @@ where
     };
 
     // return output
-    BlockBuilderOutput { worker_block, mined_transactions }
+    BatchBuilderOutput { batch, mined_transactions }
 }

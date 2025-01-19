@@ -1,15 +1,15 @@
 //! Error types for Telcoin Network Block Builder.
 
 use reth_errors::{CanonicalError, ProviderError, RethError};
-use tn_types::WorkerBlockConversionError;
+use tn_types::BatchConversionError;
 use tokio::sync::{mpsc, oneshot};
 
 /// Result alias for [`TNEngineError`].
-pub(crate) type BlockBuilderResult<T> = Result<T, BlockBuilderError>;
+pub(crate) type BatchBuilderResult<T> = Result<T, BatchBuilderError>;
 
 /// Core error variants when executing the output from consensus and extending the canonical block.
 #[derive(Debug, thiserror::Error)]
-pub enum BlockBuilderError {
+pub enum BatchBuilderError {
     /// Error from Reth
     #[error(transparent)]
     Reth(#[from] RethError),
@@ -18,7 +18,7 @@ pub enum BlockBuilderError {
     Provider(#[from] ProviderError),
     /// Error converting batch to `SealedBlockWithSenders`.
     #[error(transparent)]
-    Batch(#[from] WorkerBlockConversionError),
+    Batch(#[from] BatchConversionError),
     /// The next batch digest is missing.
     #[error("Missing next batch digest for recovered sealed block with senders.")]
     NextBatchDigestMissing,
@@ -35,17 +35,17 @@ pub enum BlockBuilderError {
     #[error("Fatal error: failed to send built block to worker.")]
     WorkerChannelClosed,
     /// Fatal db error with worker while trying to reach quorum.
-    #[error("Fatal error: worker block provider db error")]
+    #[error("Fatal error: batch provider db error")]
     FatalDBFailure,
 }
 
-impl From<oneshot::error::RecvError> for BlockBuilderError {
+impl From<oneshot::error::RecvError> for BatchBuilderError {
     fn from(_: oneshot::error::RecvError) -> Self {
         Self::AckChannelClosed
     }
 }
 
-impl<T> From<mpsc::error::SendError<T>> for BlockBuilderError {
+impl<T> From<mpsc::error::SendError<T>> for BatchBuilderError {
     fn from(_: mpsc::error::SendError<T>) -> Self {
         Self::WorkerChannelClosed
     }

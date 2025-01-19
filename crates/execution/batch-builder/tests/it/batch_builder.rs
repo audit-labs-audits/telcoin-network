@@ -1,6 +1,6 @@
-//! Block builder (EL) collects transactions and creates blocks.
+//! Batch builder (EL) collects transactions and creates batches.
 //!
-//! Block builder (CL) receives the block from EL and forwards it to the Quorum Waiter for votes
+//! Batch builder (CL) receives the batch from EL and forwards it to the Quorum Waiter for votes
 //! from peers.
 
 use assert_matches::assert_matches;
@@ -24,22 +24,22 @@ use reth_transaction_pool::{
 };
 use std::{collections::VecDeque, sync::Arc, time::Duration};
 use tempfile::TempDir;
-use tn_block_builder::{test_utils::execute_test_worker_block, BlockBuilder};
-use tn_block_validator::BlockValidator;
+use tn_batch_builder::{test_utils::execute_test_batch, BatchBuilder};
+use tn_batch_validator::BatchValidator;
 use tn_engine::execute_consensus_output;
 use tn_network::local::LocalNetwork;
 use tn_network_types::MockWorkerToPrimary;
-use tn_storage::{open_db, tables::WorkerBlocks, traits::Database};
+use tn_storage::{open_db, tables::Batches, traits::Database};
 use tn_test_utils::{get_gas_price, test_genesis, TransactionFactory};
 use tn_types::{
-    AutoSealConsensus, BuildArguments, Certificate, CommittedSubDag, Consensus, ConsensusHeader,
-    ConsensusOutput, LastCanonicalUpdate, ReputationScores, SealedWorkerBlock, WorkerBlock,
-    WorkerBlockValidation,
+    AutoSealConsensus, Batch, BatchValidation, BuildArguments, Certificate, CommittedSubDag,
+    Consensus, ConsensusHeader, ConsensusOutput, LastCanonicalUpdate, ReputationScores,
+    SealedBatch,
 };
 use tn_worker::{
     metrics::WorkerMetrics,
     quorum_waiter::{QuorumWaiterError, QuorumWaiterTrait},
-    BlockProvider,
+    BatchProvider,
 };
 use tokio::time::timeout;
 use tracing::debug;
@@ -47,9 +47,9 @@ use tracing::debug;
 #[derive(Clone, Debug)]
 struct TestMakeBlockQuorumWaiter();
 impl QuorumWaiterTrait for TestMakeBlockQuorumWaiter {
-    fn verify_block(
+    fn verify_batch(
         &self,
-        _block: SealedWorkerBlock,
+        _batch: SealedBatch,
         _timeout: Duration,
     ) -> tokio::task::JoinHandle<Result<(), QuorumWaiterError>> {
         tokio::spawn(async move { Ok(()) })
@@ -57,9 +57,7 @@ impl QuorumWaiterTrait for TestMakeBlockQuorumWaiter {
 }
 
 #[tokio::test]
-async fn test_make_block_el_to_cl() {
-    // reth_tracing::init_test_tracing();
-
+async fn test_make_batch_el_to_cl() {
     //
     //=== Consensus Layer
     //
@@ -71,12 +69,12 @@ async fn test_make_block_el_to_cl() {
 
     // Mock the primary client to always succeed.
     let mut mock_server = MockWorkerToPrimary::new();
-    mock_server.expect_report_own_block().returning(|_| Ok(anemo::Response::new(())));
+    mock_server.expect_report_own_batch().returning(|_| Ok(anemo::Response::new(())));
     network_client.set_worker_to_primary_local_handler(Arc::new(mock_server));
 
     let qw = TestMakeBlockQuorumWaiter();
     let timeout = Duration::from_secs(5);
-    let block_provider = BlockProvider::new(
+    let batch_provider = BatchProvider::new(
         0,
         qw.clone(),
         Arc::new(node_metrics),
@@ -138,13 +136,13 @@ async fn test_make_block_el_to_cl() {
         pending_block_blob_fee: tx_pool_latest.pending_blob_fee,
     };
 
-    // build execution block proposer
-    let block_builder = BlockBuilder::new(
+    // build execution batch proposer
+    let batch_builder = BatchBuilder::new(
         blockchain_db.clone(),
         txpool.clone(),
         blockchain_db.canonical_state_stream(),
         latest_canon_state,
-        block_provider.blocks_tx(),
+        batch_provider.batches_tx(),
         address,
         Duration::from_secs(1),
     );
@@ -198,56 +196,56 @@ async fn test_make_block_el_to_cl() {
     debug!("pool_size(): {:?}", txpool.pool_size());
     assert_eq!(pending_pool_len, 3);
 
-    // spawn block_builder once worker is ready
-    let _block_builder = tokio::spawn(Box::pin(block_builder));
+    // spawn batch_builder once worker is ready
+    let _batch_builder = tokio::spawn(Box::pin(batch_builder));
 
     //
-    //=== Test block flow
+    //=== Test batch flow
     //
 
-    // wait for new block
-    let mut sealed_block = None;
+    // wait for new batch
+    let mut sealed_batch = None;
     for _ in 0..5 {
         let _ = tokio::time::sleep(Duration::from_secs(1)).await;
-        // Ensure the block is stored
-        if let Some((digest, wb)) = store.iter::<WorkerBlocks>().next() {
-            sealed_block = Some(SealedWorkerBlock::new(wb, digest));
+        // Ensure the batch is stored
+        if let Some((digest, wb)) = store.iter::<Batches>().next() {
+            sealed_batch = Some(SealedBatch::new(wb, digest));
             break;
         }
     }
-    let sealed_block = sealed_block.unwrap();
+    let sealed_batch = sealed_batch.unwrap();
 
-    // ensure block validator succeeds
-    let block_validator = BlockValidator::new(blockchain_db.clone());
+    // ensure batch validator succeeds
+    let batch_validator = BatchValidator::new(blockchain_db.clone());
 
-    let valid_block_result = block_validator.validate_block(sealed_block.clone());
-    assert!(valid_block_result.is_ok());
+    let valid_batch_result = batch_validator.validate_batch(sealed_batch.clone());
+    assert!(valid_batch_result.is_ok());
 
-    // ensure expected transaction is in block
-    let expected_block = WorkerBlock {
+    // ensure expected transaction is in batch
+    let expected_batch = Batch {
         transactions: vec![transaction1.clone(), transaction2.clone(), transaction3.clone()],
         received_at: None,
-        ..*sealed_block.block()
+        ..*sealed_batch.batch()
     }
     .seal_slow();
 
-    let block_txs = sealed_block.block().transactions();
-    assert_eq!(block_txs, expected_block.block().transactions());
+    let batch_txs = sealed_batch.batch().transactions();
+    assert_eq!(batch_txs, expected_batch.batch().transactions());
 
     // ensure enough time passes for store to pass
     let _ = tokio::time::sleep(std::time::Duration::from_secs(1)).await;
-    let first_batch = store.iter::<WorkerBlocks>().next();
+    let first_batch = store.iter::<Batches>().next();
     debug!("first batch? {:?}", first_batch);
 
     // Ensure the batch is stored
     let batch_from_store = store
-        .get::<WorkerBlocks>(&expected_block.digest())
+        .get::<Batches>(&expected_batch.digest())
         .expect("store searched for batch")
         .expect("batch in store");
     assert_eq!(batch_from_store.beneficiary, address);
 
     // txpool should be empty after mining
-    // test_make_block_no_ack_txs_in_pool_still tests for txs in pool without mining event
+    // test_make_batch_no_ack_txs_in_pool_still tests for txs in pool without mining event
     let pending_pool_len = txpool.pool_size().pending;
     debug!("pool_size(): {:?}", txpool.pool_size());
     assert_eq!(pending_pool_len, 0);
@@ -255,11 +253,10 @@ async fn test_make_block_el_to_cl() {
 
 /// Create 4 transactions.
 ///
-/// First 3 mined in first block.
-/// Before a canonical state change, mine the 4th transaction in the next block.
+/// First 3 mined in first batch.
+/// Before a canonical state change, mine the 4th transaction in the next batch.
 #[tokio::test]
-async fn test_block_builder_produces_valid_blocks() {
-    // reth_tracing::init_test_tracing();
+async fn test_batch_builder_produces_valid_batchess() {
     //
     //=== Execution Layer
     //
@@ -312,10 +309,10 @@ async fn test_block_builder_produces_valid_blocks() {
         pending_block_blob_fee: tx_pool_latest.pending_blob_fee,
     };
 
-    let (to_worker, mut from_block_builder) = tokio::sync::mpsc::channel(2);
+    let (to_worker, mut from_batch_builder) = tokio::sync::mpsc::channel(2);
 
-    // build execution block proposer
-    let block_builder = BlockBuilder::new(
+    // build execution batch proposer
+    let batch_builder = BatchBuilder::new(
         blockchain_db.clone(),
         txpool.clone(),
         blockchain_db.canonical_state_stream(),
@@ -371,21 +368,21 @@ async fn test_block_builder_produces_valid_blocks() {
     debug!("pool_size(): {:?}", txpool.pool_size());
     assert_eq!(pending_pool_len, 3);
 
-    // spawn block_builder once worker is ready
-    let _block_builder = tokio::spawn(Box::pin(block_builder));
+    // spawn batch_builder once worker is ready
+    let _batch_builder = tokio::spawn(Box::pin(batch_builder));
 
     //
-    //=== Test block flow
+    //=== Test batch flow
     //
 
-    // plenty of time for block production
+    // plenty of time for batch production
     let duration = std::time::Duration::from_secs(5);
 
-    // receive next block
-    let (first_block, ack) = timeout(duration, from_block_builder.recv())
+    // receive next batch
+    let (first_batch, ack) = timeout(duration, from_batch_builder.recv())
         .await
-        .expect("block builder's sender didn't drop")
-        .expect("worker block was built");
+        .expect("batch builder's sender didn't drop")
+        .expect("batch was built");
 
     // submit new transaction before sending ack
     let expected_tx_hash = tx_factory
@@ -405,38 +402,38 @@ async fn test_block_builder_produces_valid_blocks() {
     // send ack to mine first 3 transactions
     let _ = ack.send(Ok(()));
 
-    // validate first block
-    let block_validator = BlockValidator::new(blockchain_db.clone());
+    // validate first batch
+    let batch_validator = BatchValidator::new(blockchain_db.clone());
 
-    let valid_block_result = block_validator.validate_block(first_block.clone());
-    assert!(valid_block_result.is_ok());
+    let valid_batch_result = batch_validator.validate_batch(first_batch.clone());
+    assert!(valid_batch_result.is_ok());
 
-    // ensure expected transaction is in block
-    let expected_block = WorkerBlock {
+    // ensure expected transaction is in batch
+    let expected_batch = Batch {
         transactions: vec![transaction1.clone(), transaction2.clone(), transaction3.clone()],
         received_at: None,
-        ..*first_block.block()
+        ..*first_batch.batch()
     };
-    let block_txs = first_block.block().transactions();
-    assert_eq!(block_txs, expected_block.transactions());
+    let batch_txs = first_batch.batch().transactions();
+    assert_eq!(batch_txs, expected_batch.transactions());
 
     // receive next block
-    let (next_block, ack) = timeout(duration, from_block_builder.recv())
+    let (next_batch, ack) = timeout(duration, from_batch_builder.recv())
         .await
         .expect("block builder's sender didn't drop")
-        .expect("worker block was built");
+        .expect("batch was built");
     // send ack to mine block
     let _ = ack.send(Ok(()));
 
     // validate second block
-    let valid_block_result = block_validator.validate_block(next_block.clone());
-    assert!(valid_block_result.is_ok());
+    let valid_batch_result = batch_validator.validate_batch(next_batch.clone());
+    assert!(valid_batch_result.is_ok());
 
     // assert only transaction in block
-    assert_eq!(next_block.block().transactions().len(), 1);
+    assert_eq!(next_batch.batch().transactions().len(), 1);
 
     // confirm 4th transaction hash matches one submitted
-    let tx = next_block.block().transactions().first().expect("block transactions length is one");
+    let tx = next_batch.batch().transactions().first().expect("block transactions length is one");
     assert_eq!(tx.hash(), expected_tx_hash);
 
     // yield to try and give pool a chance to update
@@ -453,7 +450,6 @@ async fn test_block_builder_produces_valid_blocks() {
 /// Before a canonical state change, mine the 4th transaction in the next block.
 #[tokio::test]
 async fn test_canonical_notification_updates_pool() {
-    // reth_tracing::init_test_tracing();
     //
     //=== Execution Layer
     //
@@ -521,10 +517,10 @@ async fn test_canonical_notification_updates_pool() {
         pending_block_blob_fee: tx_pool_latest.pending_blob_fee,
     };
 
-    let (to_worker, mut from_block_builder) = tokio::sync::mpsc::channel(2);
+    let (to_worker, mut from_batch_builder) = tokio::sync::mpsc::channel(2);
 
     // build execution block proposer
-    let block_builder = BlockBuilder::new(
+    let batch_builder = BatchBuilder::new(
         blockchain_db.clone(),
         txpool.clone(),
         blockchain_db.canonical_state_stream(),
@@ -580,8 +576,8 @@ async fn test_canonical_notification_updates_pool() {
     debug!("pool_size(): {:?}", txpool.pool_size());
     assert_eq!(pending_pool_len, 0);
 
-    // spawn block_builder once worker is ready
-    let _block_builder = tokio::spawn(Box::pin(block_builder));
+    // spawn batch_builder once worker is ready
+    let _batch_builder = tokio::spawn(Box::pin(batch_builder));
 
     //
     //=== Test block flow
@@ -602,16 +598,16 @@ async fn test_canonical_notification_updates_pool() {
     let queued_pool_len = txpool.pool_size().queued;
     assert_eq!(queued_pool_len, 1);
 
-    // ensure expected transaction is in block
-    let mut first_block = WorkerBlock {
+    // ensure expected transaction is in batch
+    let mut first_batch = Batch {
         transactions: vec![transaction1.clone(), transaction2.clone(), transaction3.clone()],
         ..Default::default()
     };
 
-    execute_test_worker_block(&mut first_block, &chain.sealed_genesis_header());
+    execute_test_batch(&mut first_batch, &chain.sealed_genesis_header());
 
-    // execute worker block - create output for consistency
-    let block_digests = VecDeque::from([first_block.digest()]);
+    // execute batch - create output for consistency
+    let batch_digests = VecDeque::from([first_batch.digest()]);
     let output = ConsensusOutput {
         sub_dag: CommittedSubDag::new(
             vec![Certificate::default()],
@@ -621,9 +617,9 @@ async fn test_canonical_notification_updates_pool() {
             None,
         )
         .into(),
-        blocks: vec![vec![first_block]],
+        batches: vec![vec![first_batch]],
         beneficiary: address,
-        block_digests,
+        batch_digests,
         parent_hash: ConsensusHeader::default().digest(),
         number: 0,
     };
@@ -645,19 +641,19 @@ async fn test_canonical_notification_updates_pool() {
     let duration = std::time::Duration::from_secs(5);
 
     // receive next block
-    let (first_block, ack) = timeout(duration, from_block_builder.recv())
+    let (first_batch, ack) = timeout(duration, from_batch_builder.recv())
         .await
         .expect("block builder's sender didn't drop")
-        .expect("worker block was built");
+        .expect("batch was built");
 
     // send ack to mine transaction
     let _ = ack.send(Ok(()));
 
-    // validate block
-    let block_validator = BlockValidator::new(blockchain_db);
+    // validate batch
+    let batch_validator = BatchValidator::new(blockchain_db);
 
-    let valid_block_result = block_validator.validate_block(first_block.clone());
-    assert!(valid_block_result.is_ok());
+    let valid_batch_result = batch_validator.validate_batch(first_batch.clone());
+    assert!(valid_batch_result.is_ok());
 
     // yield to try and give pool a chance to update
     tokio::task::yield_now().await;

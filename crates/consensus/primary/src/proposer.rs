@@ -10,8 +10,8 @@
 //! broadcast to voting peers. Headers are stored in the `ProposerStore` before they are sent to the
 //! Certifier.
 //!
-//! The Proposer is also responsible for processing Worker block's that reach quorum.
-//! Collections of worker blocks that reach quorum are included in each header. If the Proposer's
+//! The Proposer is also responsible for processing batch's that reach quorum.
+//! Collections of batches that reach quorum are included in each header. If the Proposer's
 //! header fails to be committed, then block digests from the failed round are included in the next
 //! header once the Proposer's round advances.
 
@@ -492,7 +492,7 @@ impl<DB: Database> Proposer<DB> {
                 // late (or just joined the network).
                 self.round = round;
                 // broadcast new round
-                let _ = self.consensus_bus.narwhal_round_updates().send(self.round);
+                let _ = self.consensus_bus.primary_round_updates().send(self.round);
                 self.last_parents = parents;
                 // Reset advance flag.
                 self.advance_round = false;
@@ -571,7 +571,7 @@ impl<DB: Database> Proposer<DB> {
     /// removed after adding the expired header's proposed block digests and system messages to
     /// the beginning of the queue.
     ///
-    /// This method ensures worker blocks that were previously proposed but weren't committed are
+    /// This method ensures batches that were previously proposed but weren't committed are
     /// added back to the queue so their transactions are included in the next proposal.
     fn process_committed_headers(&mut self, commit_round: Round, committed_headers: Vec<Round>) {
         // remove committed headers from pending
@@ -635,7 +635,7 @@ impl<DB: Database> Proposer<DB> {
             // TODO: observe this warning and possibly reduce it to a debug
             warn!(
                 target: "primary::proposer",
-                "Repropose {num_digests_to_resend} worker blocks and {num_system_messages_to_resend} system messages in undelivered headers {retransmit_rounds:?} at commit round {commit_round:?}, remaining headers {}",
+                "Repropose {num_digests_to_resend} batches and {num_system_messages_to_resend} system messages in undelivered headers {retransmit_rounds:?} at commit round {commit_round:?}, remaining headers {}",
                 self.proposed_headers.len()
             );
 
@@ -662,11 +662,11 @@ impl<DB: Database> Proposer<DB> {
     fn propose_next_header(&mut self, reason: String) -> ProposerResult<PendingHeaderTask> {
         // Advance to the next round.
         self.round += 1;
-        let updated_round = *self.consensus_bus.narwhal_round_updates().borrow() + 1;
+        let updated_round = *self.consensus_bus.primary_round_updates().borrow() + 1;
         if updated_round > self.round {
             self.round = updated_round;
         }
-        let _ = self.consensus_bus.narwhal_round_updates().send(self.round);
+        let _ = self.consensus_bus.primary_round_updates().send(self.round);
 
         // Update the metrics
         self.consensus_bus.primary_metrics().node_metrics.current_round.set(self.round as i64);

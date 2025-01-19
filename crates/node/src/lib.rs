@@ -42,14 +42,14 @@ where
 
     info!(target: "telcoin::node", "execution engine created");
 
-    let narwhal_db_path = tn_datadir.narwhal_db_path();
+    let consensus_db_path = tn_datadir.consensus_db_path();
 
-    tracing::info!(target: "telcoin::cli", "opening node storage at {:?}", narwhal_db_path);
+    tracing::info!(target: "telcoin::cli", "opening node storage at {:?}", consensus_db_path);
 
     // open storage for consensus
     // In case the DB dir does not yet exist.
-    let _ = std::fs::create_dir_all(&narwhal_db_path);
-    let db = open_db(&narwhal_db_path);
+    let _ = std::fs::create_dir_all(&consensus_db_path);
+    let db = open_db(&consensus_db_path);
     let node_storage = NodeStorage::reopen(db);
     tracing::info!(target: "telcoin::cli", "node storage open");
     let key_config = KeyConfig::new(&tn_datadir)?;
@@ -105,7 +105,7 @@ where
     // start the primary
     let mut primary_task_manager = primary.start().await?;
 
-    let validator = engine.new_block_validator().await;
+    let validator = engine.new_batch_validator().await;
     // start the worker
     let (mut worker_task_manager, block_provider) = worker.start(validator).await?;
 
@@ -119,9 +119,9 @@ where
         .await?;
     // spawn block maker for worker
     engine
-        .start_block_builder(
+        .start_batch_builder(
             *worker_id,
-            block_provider.blocks_tx(),
+            block_provider.batches_tx(),
             &engine_task_manager,
             consensus_config.shutdown().subscribe(),
         )

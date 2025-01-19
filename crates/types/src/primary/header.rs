@@ -1,8 +1,8 @@
 use crate::{
     crypto, encode,
     error::{DagError, DagResult},
-    now, AuthorityIdentifier, CertificateDigest, Committee, Epoch, Round, TimestampSec, VoteDigest,
-    WorkerBlock, WorkerCache, WorkerId,
+    now, AuthorityIdentifier, Batch, CertificateDigest, Committee, Epoch, Round, TimestampSec,
+    VoteDigest, WorkerCache, WorkerId,
 };
 use alloy_rlp::MaxEncodedLenAssoc;
 use base64::{engine::general_purpose, Engine};
@@ -40,7 +40,6 @@ pub enum SystemMessage {
 #[builder(pattern = "owned", build_fn(skip))]
 pub struct Header {
     /// Primary that created the header. Must be the same primary that broadcasted the header.
-    /// Validation is at: https://github.com/MystenLabs/sui/blob/f0b80d9eeef44edd9fbe606cee16717622b68651/narwhal/primary/src/primary.rs#L713-L719
     pub author: AuthorityIdentifier,
     /// The round for this header
     pub round: Round,
@@ -258,7 +257,7 @@ impl HeaderBuilder {
     /// Helper method to directly set values of the payload
     pub fn with_payload_batch(
         mut self,
-        worker_block: WorkerBlock,
+        batch: Batch,
         worker_id: WorkerId,
         created_at: TimestampSec,
     ) -> Self {
@@ -267,7 +266,7 @@ impl HeaderBuilder {
         }
         let payload = self.payload.as_mut().unwrap();
 
-        payload.insert(worker_block.digest(), (worker_id, created_at));
+        payload.insert(batch.digest(), (worker_id, created_at));
 
         self
     }
