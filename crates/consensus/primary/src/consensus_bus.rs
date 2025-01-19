@@ -1,24 +1,19 @@
-// Copyright (c) Telcoin, LLC
-// SPDX-License-Identifier: Apache-2.0
-
 //! Implement a container for channels used internally by consensus.
 //! This allows easier examination of message flow and avoids excessives channel passing as
 //! arguments.
 
-use std::sync::Arc;
-
+use crate::{
+    certificate_fetcher::CertificateFetcherCommand, consensus::ConsensusRound,
+    proposer::OurDigestMessage, RecentBlocks,
+};
 use consensus_metrics::metered_channel::{self, channel_with_total_sender, MeteredMpscChannel};
+use std::sync::Arc;
 use tn_config::Parameters;
 use tn_primary_metrics::{ChannelMetrics, ConsensusMetrics, ExecutorMetrics, Metrics};
 use tn_types::{
     Certificate, CommittedSubDag, ConsensusOutput, Header, Round, TnSender, CHANNEL_CAPACITY,
 };
 use tokio::sync::{broadcast, watch};
-
-use crate::{
-    certificate_fetcher::CertificateFetcherCommand, consensus::ConsensusRound,
-    proposer::OurDigestMessage, RecentBlocks,
-};
 
 /// Has sync completed?
 #[derive(Copy, Clone, Debug, Default)]
@@ -83,10 +78,10 @@ struct ConsensusBusInner {
     /// Outputs the sequence of ordered certificates to the application layer.
     sequence: MeteredMpscChannel<CommittedSubDag>,
 
-    /// Signals a new narwhal round
-    tx_narwhal_round_updates: watch::Sender<Round>,
+    /// Signals a new round
+    tx_primary_round_updates: watch::Sender<Round>,
     /// Hold onto the primary metrics (allow early creation)
-    _rx_narwhal_round_updates: watch::Receiver<Round>,
+    _rx_primary_round_updates: watch::Receiver<Round>,
 
     /// Watch tracking most recent blocks
     tx_recent_blocks: watch::Sender<RecentBlocks>,
@@ -186,7 +181,7 @@ impl ConsensusBus {
             &primary_metrics.primary_channel_metrics.tx_committed_own_headers_total,
         );
 
-        let (tx_narwhal_round_updates, _rx_narwhal_round_updates) = watch::channel(0u32);
+        let (tx_primary_round_updates, _rx_primary_round_updates) = watch::channel(0u32);
 
         let (tx_recent_blocks, _rx_recent_blocks) =
             watch::channel(RecentBlocks::new(recent_blocks as usize));
@@ -210,8 +205,8 @@ impl ConsensusBus {
                 committed_own_headers,
                 sequence,
 
-                tx_narwhal_round_updates,
-                _rx_narwhal_round_updates,
+                tx_primary_round_updates,
+                _rx_primary_round_updates,
                 tx_recent_blocks,
                 _rx_recent_blocks,
                 consensus_output,
@@ -265,9 +260,9 @@ impl ConsensusBus {
         &self.inner.tx_consensus_round_updates
     }
 
-    /// Signals a new narwhal round
-    pub fn narwhal_round_updates(&self) -> &watch::Sender<Round> {
-        &self.inner.tx_narwhal_round_updates
+    /// Signals a new round
+    pub fn primary_round_updates(&self) -> &watch::Sender<Round> {
+        &self.inner.tx_primary_round_updates
     }
 
     /// Batches' digests from our workers.

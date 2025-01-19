@@ -1,9 +1,5 @@
-// Copyright (c) Telcoin, LLC
-// Copyright(C) Facebook, Inc. and its affiliates.
-// Copyright (c) Mysten Labs, Inc.
-// SPDX-License-Identifier: Apache-2.0
-
 //! Proposer unit tests.
+
 use super::*;
 use crate::consensus::LeaderSwapTable;
 use indexmap::IndexMap;
@@ -14,7 +10,6 @@ use tn_types::{BlockHash, CHANNEL_CAPACITY};
 
 #[tokio::test]
 async fn test_empty_proposal() {
-    reth_tracing::init_test_tracing();
     let fixture = CommitteeFixture::builder(MemDatabase::default).build();
     let committee = fixture.committee();
     let worker_cache = fixture.worker_cache();
@@ -42,7 +37,6 @@ async fn test_empty_proposal() {
 
 #[tokio::test]
 async fn test_propose_payload_fatal_timer() {
-    reth_tracing::init_test_tracing();
     let fixture = CommitteeFixture::builder(MemDatabase::default).build();
     let committee = fixture.committee();
     let worker_cache = fixture.worker_cache();
@@ -155,7 +149,6 @@ async fn test_propose_payload_fatal_timer() {
 
 #[tokio::test]
 async fn test_equivocation_protection_after_restart() {
-    reth_tracing::init_test_tracing();
     let fixture = CommitteeFixture::builder(MemDatabase::default).build();
     let committee = fixture.committee();
     let worker_cache = fixture.worker_cache();

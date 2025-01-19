@@ -1,6 +1,5 @@
-// Copyright (c) Telcoin, LLC
-// Copyright (c) Mysten Labs, Inc.
-// SPDX-License-Identifier: Apache-2.0
+//! Subscriber handles consensus output.
+
 use crate::{errors::SubscriberResult, SubscriberError};
 use consensus_metrics::monitored_future;
 use fastcrypto::hash::Hash;
@@ -21,16 +20,16 @@ use tn_network::{
     local::LocalNetwork,
     PrimaryToWorkerClient,
 };
-use tn_network_types::{ConsensusOutputRequest, FetchBlocksRequest, PrimaryToPrimaryClient};
+use tn_network_types::{ConsensusOutputRequest, FetchBatchesRequest, PrimaryToPrimaryClient};
 use tn_primary::{consensus::ConsensusRound, ConsensusBus};
 use tn_storage::{
     tables::{ConsensusBlockNumbersByDigest, ConsensusBlocks},
     traits::{Database, DbTxMut},
 };
 use tn_types::{
-    AuthorityIdentifier, BlockHash, Certificate, CommittedSubDag, Committee, ConsensusHeader,
-    ConsensusOutput, Epoch, NetworkPublicKey, Noticer, Round, TaskManager, Timestamp, TnReceiver,
-    TnSender, WorkerBlock, WorkerCache, WorkerId,
+    AuthorityIdentifier, Batch, BlockHash, Certificate, CommittedSubDag, Committee,
+    ConsensusHeader, ConsensusOutput, Epoch, NetworkPublicKey, Noticer, Round, TaskManager,
+    Timestamp, TnReceiver, TnSender, WorkerCache, WorkerId,
 };
 use tokio::sync::Mutex;
 use tracing::{debug, error, info, warn};
@@ -200,7 +199,7 @@ pub async fn can_cvv<DB: Database>(
         last_consensus_round,
         config.parameters().gc_depth,
     ));
-    let _ = consensus_bus.narwhal_round_updates().send(last_consensus_round);
+    let _ = consensus_bus.primary_round_updates().send(last_consensus_round);
 
     let mut clients: Vec<PrimaryToPrimaryClient<_>> = config
         .committee()
@@ -291,7 +290,7 @@ impl<DB: Database> Subscriber<DB> {
             for consensus_block_number in last_executed_block.number + 1..=last_db_block.number {
                 if let Some(consensus_block) = db.get::<ConsensusBlocks>(&consensus_block_number)? {
                     let consensus_output = self
-                        .fetch_blocks(
+                        .fetch_batches(
                             consensus_block.sub_dag,
                             consensus_block.parent_hash,
                             consensus_block.number,
@@ -325,7 +324,7 @@ impl<DB: Database> Subscriber<DB> {
                             self.config.parameters().gc_depth,
                         ),
                     );
-                    let _ = self.consensus_bus.narwhal_round_updates().send(last_round);
+                    let _ = self.consensus_bus.primary_round_updates().send(last_round);
 
                     info!(target: "telcoin::subscriber", "executing previous consensus output for round {}, consensus_block {}", consensus_output.leader_round(), consensus_output.number);
                     if let Err(e) =
@@ -398,8 +397,9 @@ impl<DB: Database> Subscriber<DB> {
                         loop {
                             // stop trying at some point?
                             // rotate through clients attempting to get the headers.
-                            let client =
-                                clients.get_mut((number as usize + try_num) % clients_len).unwrap();
+                            let client = clients
+                                .get_mut((number as usize + try_num) % clients_len)
+                                .expect("client found by index");
                             let req = ConsensusOutputRequest { number: Some(number), hash: None };
                             match client.request_consensus(req).await {
                                 Ok(res) => break res.into_body().output,
@@ -421,7 +421,7 @@ impl<DB: Database> Subscriber<DB> {
                     // TODO should also verify that the block output is building on is in fact
                     // the head of our chain.
                     let consensus_output =
-                        self.fetch_blocks(output.sub_dag, parent_hash, number).await;
+                        self.fetch_batches(output.sub_dag, parent_hash, number).await;
                     self.save_consensus(consensus_output.clone())?;
                     let last_round = consensus_output.leader_round();
 
@@ -466,7 +466,7 @@ impl<DB: Database> Subscriber<DB> {
                             self.config.parameters().gc_depth,
                         ),
                     );
-                    let _ = self.consensus_bus.narwhal_round_updates().send(last_round);
+                    let _ = self.consensus_bus.primary_round_updates().send(last_round);
 
                     if let Err(e) =
                         self.consensus_bus.consensus_output().send(consensus_output).await
@@ -530,7 +530,7 @@ impl<DB: Database> Subscriber<DB> {
                         let number = last_number + 1;
                         last_parent = ConsensusHeader::digest_from_parts(parent_hash, &sub_dag, number);
                         last_number += 1;
-                        waiting.push_back(self.fetch_blocks(sub_dag, parent_hash, number));
+                        waiting.push_back(self.fetch_batches(sub_dag, parent_hash, number));
                     },
 
                     // Receive consensus messages after all transaction data is downloaded
@@ -569,13 +569,13 @@ impl<DB: Database> Subscriber<DB> {
     /// Returns ordered vector of futures for downloading blocks for certificates
     /// Order of futures returned follows order of blocks in the certificates.
     /// See BlockFetcher for more details.
-    async fn fetch_blocks(
+    async fn fetch_batches(
         &self,
         deliver: CommittedSubDag,
         parent_hash: B256,
         number: u64,
     ) -> ConsensusOutput {
-        let num_blocks = deliver.num_blocks();
+        let num_blocks = deliver.num_primary_blocks();
         let num_certs = deliver.len();
 
         // get the execution address of the authority or use zero address
@@ -591,9 +591,9 @@ impl<DB: Database> Subscriber<DB> {
             debug!("No blocks to fetch, payload is empty");
             return ConsensusOutput {
                 sub_dag: Arc::new(deliver),
-                blocks: vec![],
+                batches: vec![],
                 beneficiary: address,
-                block_digests: VecDeque::new(),
+                batch_digests: VecDeque::new(),
                 parent_hash,
                 number,
             };
@@ -602,9 +602,9 @@ impl<DB: Database> Subscriber<DB> {
         let sub_dag = Arc::new(deliver);
         let mut subscriber_output = ConsensusOutput {
             sub_dag: sub_dag.clone(),
-            blocks: Vec::with_capacity(num_certs),
+            batches: Vec::with_capacity(num_certs),
             beneficiary: address,
-            block_digests: VecDeque::new(),
+            batch_digests: VecDeque::new(),
             parent_hash,
             number,
         };
@@ -623,7 +623,7 @@ impl<DB: Database> Subscriber<DB> {
                         self.inner
                             .committee
                             .authority(&self.inner.authority_id)
-                            .unwrap()
+                            .expect("own workers in worker cache")
                             .protocol_key(),
                         worker_id,
                     )
@@ -633,7 +633,7 @@ impl<DB: Database> Subscriber<DB> {
                 let (batch_set, worker_set) =
                     batch_digests_and_workers.entry(own_worker_name).or_default();
                 batch_set.insert(*digest);
-                subscriber_output.block_digests.push_back(*digest);
+                subscriber_output.batch_digests.push_back(*digest);
                 worker_set.extend(workers);
             }
         }
@@ -647,7 +647,7 @@ impl<DB: Database> Subscriber<DB> {
             .executor_metrics()
             .committed_subdag_block_count
             .observe(num_blocks as f64);
-        let fetched_batches = self.fetch_blocks_from_workers(batch_digests_and_workers).await;
+        let fetched_batches = self.fetch_batches_from_workers(batch_digests_and_workers).await;
         drop(fetched_batches_timer);
 
         // Map all fetched batches to their respective certificates and submit as
@@ -674,7 +674,7 @@ impl<DB: Database> Subscriber<DB> {
                 );
                 output_batches.push(batch.clone());
             }
-            subscriber_output.blocks.push(output_batches);
+            subscriber_output.batches.push(output_batches);
         }
         subscriber_output
     }
@@ -705,16 +705,16 @@ impl<DB: Database> Subscriber<DB> {
             .collect()
     }
 
-    async fn fetch_blocks_from_workers(
+    async fn fetch_batches_from_workers(
         &self,
-        block_digests_and_workers: HashMap<
+        batch_digests_and_workers: HashMap<
             NetworkPublicKey,
             (HashSet<BlockHash>, HashSet<NetworkPublicKey>),
         >,
-    ) -> HashMap<BlockHash, WorkerBlock> {
+    ) -> HashMap<BlockHash, Batch> {
         let mut fetched_blocks = HashMap::new();
 
-        for (worker_name, (digests, known_workers)) in block_digests_and_workers {
+        for (worker_name, (digests, known_workers)) in batch_digests_and_workers {
             debug!(
                 "Attempting to fetch {} digests from {} known workers, {worker_name}'s",
                 digests.len(),
@@ -724,10 +724,10 @@ impl<DB: Database> Subscriber<DB> {
             // to LocalNetwork.
             // Only have one worker for now so will leave this for a future
             // optimization.
-            let request = FetchBlocksRequest { digests, known_workers };
+            let request = FetchBatchesRequest { digests, known_workers };
             let blocks = loop {
-                match self.inner.client.fetch_blocks(worker_name.clone(), request.clone()).await {
-                    Ok(resp) => break resp.blocks,
+                match self.inner.client.fetch_batches(worker_name.clone(), request.clone()).await {
+                    Ok(resp) => break resp.batches,
                     Err(e) => {
                         error!("Failed to fetch blocks from worker {worker_name}: {e:?}");
                         // Loop forever on failure. During shutdown, this should get cancelled.
@@ -737,7 +737,7 @@ impl<DB: Database> Subscriber<DB> {
                 }
             };
             for (digest, block) in blocks {
-                self.record_fetched_block_metrics(&block, &digest);
+                self.record_fetched_batch_metrics(&block, &digest);
                 fetched_blocks.insert(digest, block);
             }
         }
@@ -745,8 +745,8 @@ impl<DB: Database> Subscriber<DB> {
         fetched_blocks
     }
 
-    fn record_fetched_block_metrics(&self, block: &WorkerBlock, digest: &BlockHash) {
-        if let Some(received_at) = block.received_at() {
+    fn record_fetched_batch_metrics(&self, batch: &Batch, digest: &BlockHash) {
+        if let Some(received_at) = batch.received_at() {
             let remote_duration = received_at.elapsed().as_secs_f64();
             debug!(
                 "Batch was fetched for execution after being received from another worker {}s ago.",
@@ -758,7 +758,7 @@ impl<DB: Database> Subscriber<DB> {
                 .with_label_values(&["other"])
                 .observe(remote_duration);
         } else {
-            let local_duration = block.created_at().elapsed().as_secs_f64();
+            let local_duration = batch.created_at().elapsed().as_secs_f64();
             debug!(
                 "Batch was fetched for execution after being created locally {}s ago.",
                 local_duration
@@ -770,7 +770,7 @@ impl<DB: Database> Subscriber<DB> {
                 .observe(local_duration);
         };
 
-        let block_fetch_duration = block.created_at().elapsed().as_secs_f64();
+        let block_fetch_duration = batch.created_at().elapsed().as_secs_f64();
         self.consensus_bus.executor_metrics().block_execution_latency.observe(block_fetch_duration);
         debug!(
             "Block {:?} took {} seconds since it has been created to when it has been fetched for execution",

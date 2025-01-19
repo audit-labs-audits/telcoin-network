@@ -1,9 +1,4 @@
-// Copyright (c) 2021, Facebook, Inc. and its affiliates
-// Copyright (c) Telcoin, LLC
-// Copyright (c) Mysten Labs, Inc.
-// SPDX-License-Identifier: Apache-2.0
-
-#![allow(clippy::mutable_key_type)]
+//! The state of consensus
 
 use crate::{
     consensus::{bullshark::Bullshark, utils::gc_round, ConsensusError, ConsensusMetrics},
@@ -113,7 +108,7 @@ impl ConsensusState {
         info!("Recreating dag from last GC round: {}", gc_round);
 
         // get all certificates at rounds > gc_round
-        let certificates = cert_store.after_round(gc_round + 1).unwrap();
+        let certificates = cert_store.after_round(gc_round + 1).expect("database available");
 
         let mut num_certs = 0;
         for cert in &certificates {
@@ -383,7 +378,6 @@ impl<DB: Database> Consensus<DB> {
             let mut committed_certificates = Vec::new();
 
             // Output the sequence in the right order.
-            let mut i = 0;
             for committed_sub_dag in committed_sub_dags {
                 // We need to make sure execution has caught up so we can verify we have not forked.
                 // This will force the follow function to not outrun execution...  this is probably
@@ -412,19 +406,6 @@ impl<DB: Database> Consensus<DB> {
                 tracing::debug!(target: "telcoin::consensus_state", "Commit in Sequence {:?}", committed_sub_dag.leader.nonce());
 
                 for certificate in &committed_sub_dag.certificates {
-                    i += 1;
-
-                    if i % 5_000 == 0 {
-                        #[cfg(not(feature = "benchmark"))]
-                        tracing::debug!(target: "telcoin::consensus_state", "Committed {}", certificate.header());
-                    }
-
-                    #[cfg(feature = "benchmark")]
-                    for digest in certificate.header().payload().keys() {
-                        // NOTE: This log entry is used to compute performance.
-                        tracing::info!("Committed {} -> {:?}", certificate.header(), digest);
-                    }
-
                     committed_certificates.push(certificate.clone());
                 }
 
@@ -440,8 +421,11 @@ impl<DB: Database> Consensus<DB> {
             if !committed_certificates.is_empty() {
                 // Highest committed certificate round is the leader round / commit round
                 // expected by primary.
-                let leader_commit_round =
-                    committed_certificates.iter().map(|c| c.round()).max().unwrap();
+                let leader_commit_round = committed_certificates
+                    .iter()
+                    .map(|c| c.round())
+                    .max()
+                    .expect("committed_certificates isn't empty");
 
                 self.consensus_bus
                     .committed_certificates()

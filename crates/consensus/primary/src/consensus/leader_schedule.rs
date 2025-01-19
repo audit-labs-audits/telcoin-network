@@ -1,7 +1,6 @@
-// Copyright (c) Telcoin, LLC
-// Copyright (c) Mysten Labs, Inc.
-// SPDX-License-Identifier: Apache-2.0
+//! Leader schedule for identifying the next leader for the round.
 
+use super::Dag;
 use parking_lot::RwLock;
 use rand::{rngs::StdRng, seq::SliceRandom, SeedableRng};
 use std::{
@@ -10,12 +9,10 @@ use std::{
     sync::Arc,
 };
 use tn_storage::{traits::Database, ConsensusStore};
-use tn_types::{Authority, AuthorityIdentifier, Committee, Stake};
-
-use tn_types::{Certificate, ReputationScores, Round};
+use tn_types::{
+    Authority, AuthorityIdentifier, Certificate, Committee, ReputationScores, Round, Stake,
+};
 use tracing::{debug, trace};
-
-use super::Dag;
 
 #[cfg(test)]
 #[path = "tests/leader_schedule_tests.rs"]
@@ -89,7 +86,10 @@ impl LeaderSwapTable {
                 "Good node on round {}: {} -> {}",
                 round,
                 good_node.hostname(),
-                reputation_scores.scores_per_authority.get(&good_node.id()).unwrap()
+                reputation_scores
+                    .scores_per_authority
+                    .get(&good_node.id())
+                    .expect("good node in scores per authority")
             );
         });
 
@@ -98,7 +98,10 @@ impl LeaderSwapTable {
                 "Bad node on round {}: {} -> {}",
                 round,
                 bad_node.hostname(),
-                reputation_scores.scores_per_authority.get(&bad_node.id()).unwrap()
+                reputation_scores
+                    .scores_per_authority
+                    .get(&bad_node.id())
+                    .expect("bad node in scores by authority")
             );
         });
 

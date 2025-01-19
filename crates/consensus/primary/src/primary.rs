@@ -1,7 +1,4 @@
-// Copyright (c) Telcoin, LLC
-// Copyright (c) 2021, Facebook, Inc. and its affiliates
-// Copyright (c) Mysten Labs, Inc.
-// SPDX-License-Identifier: Apache-2.0
+//! The Primary type
 
 use crate::{
     certificate_fetcher::CertificateFetcher,
@@ -26,7 +23,8 @@ use anemo_tower::{
     trace::{DefaultMakeSpan, DefaultOnFailure, TraceLayer},
 };
 use fastcrypto::traits::KeyPair as _;
-use std::{collections::HashMap, net::Ipv4Addr, sync::Arc, time::Duration};
+use std::time::Duration;
+use std::{collections::HashMap, sync::Arc};
 use tn_config::ConsensusConfig;
 use tn_network::{
     epoch_filter::{AllowedEpoch, EPOCH_HEADER_KEY},
@@ -35,7 +33,7 @@ use tn_network::{
 };
 use tn_network_types::PrimaryToPrimaryServer;
 use tn_storage::traits::Database;
-use tn_types::{traits::EncodeDecodeBase64, Multiaddr, NetworkPublicKey, Protocol, TaskManager};
+use tn_types::{traits::EncodeDecodeBase64, Multiaddr, NetworkPublicKey, TaskManager};
 use tower::ServiceBuilder;
 use tracing::info;
 
@@ -96,7 +94,10 @@ impl<DB: Database> Primary<DB> {
         // (peer count from admin server)
         //
         // Add my workers
-        for worker in config.worker_cache().our_workers(config.authority().protocol_key()).unwrap()
+        for worker in config
+            .worker_cache()
+            .our_workers(config.authority().protocol_key())
+            .expect("own workers in worker cache")
         {
             let (peer_id, address) =
                 Self::add_peer_in_network(&network, worker.name, &worker.worker_address);
@@ -201,8 +202,6 @@ impl<DB: Database> Primary<DB> {
     ) -> Network {
         // Spawn the network receiver listening to messages from the other primaries.
         let address = config.authority().primary_network_address();
-        let address =
-            address.replace(0, |_protocol| Some(Protocol::Ip4(Ipv4Addr::UNSPECIFIED))).unwrap();
         let mut primary_service = PrimaryToPrimaryServer::new(PrimaryReceiverHandler::new(
             config.clone(),
             synchronizer,

@@ -1,12 +1,8 @@
-// Copyright (c) Telcoin, LLC
-// Copyright (c) 2021, Facebook, Inc. and its affiliates
-// Copyright (c) Mysten Labs, Inc.
-// SPDX-License-Identifier: Apache-2.0
-
 //! Primary Receiver Handler is the entrypoint for peer network requests.
 //!
 //! This module includes implementations for when the primary receives network
 //! requests from it's own workers and other primaries.
+
 use crate::{synchronizer::Synchronizer, ConsensusBus};
 use fastcrypto::hash::Hash;
 use parking_lot::Mutex;
@@ -28,7 +24,6 @@ use tn_types::{
     Header, NetworkPublicKey, Round, Vote,
 };
 use tracing::{debug, error, warn};
-mod engine;
 mod primary;
 mod worker;
 
@@ -374,11 +369,11 @@ impl<DB: Database> PrimaryReceiverHandler<DB> {
         let mut parent_digests = self.parent_digests.lock();
 
         // Check that the header is not too old.
-        let narwhal_round = *self.consensus_bus.narwhal_round_updates().borrow();
-        let limit_round = narwhal_round.saturating_sub(HEADER_AGE_LIMIT);
+        let primary_round = *self.consensus_bus.primary_round_updates().borrow();
+        let limit_round = primary_round.saturating_sub(HEADER_AGE_LIMIT);
         ensure!(
             limit_round <= header.round(),
-            DagError::TooOld(header.digest().into(), header.round(), narwhal_round)
+            DagError::TooOld(header.digest().into(), header.round(), primary_round)
         );
 
         // Drop old entries from parent_digests.

@@ -1,18 +1,11 @@
-// Copyright (c) Telcoin, LLC
-// Copyright (c) Mysten Labs, Inc.
-// SPDX-License-Identifier: Apache-2.0
-
-use std::{collections::BTreeSet, num::NonZeroUsize, sync::Arc};
-
-use reth_tracing::init_test_tracing;
-use tempfile::TempDir;
-use tn_storage::{mem_db::MemDatabase, open_db, ConsensusStore};
-use tn_types::AuthorityIdentifier;
-
-use tn_test_utils::{mock_certificate, CommitteeFixture};
-use tn_types::{Certificate, CommittedSubDag, ReputationScores, Round};
+//! Leader schedule tests
 
 use crate::consensus::{Dag, LeaderSchedule, LeaderSwapTable};
+use std::{collections::BTreeSet, num::NonZeroUsize, sync::Arc};
+use tempfile::TempDir;
+use tn_storage::{mem_db::MemDatabase, open_db, ConsensusStore};
+use tn_test_utils::{mock_certificate, CommitteeFixture};
+use tn_types::{AuthorityIdentifier, Certificate, CommittedSubDag, ReputationScores, Round};
 
 #[tokio::test]
 async fn test_leader_swap_table() {
@@ -157,7 +150,6 @@ async fn test_leader_schedule() {
 /// TODO: this test is failing - I think it's due to bad stake threshold
 #[tokio::test]
 async fn test_leader_schedule_from_store() {
-    init_test_tracing();
     // GIVEN
     let fixture = CommitteeFixture::builder(MemDatabase::default).build();
     let committee = fixture.committee();

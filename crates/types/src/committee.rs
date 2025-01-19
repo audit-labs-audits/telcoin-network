@@ -1,7 +1,4 @@
-// Copyright (c) 2021, Facebook, Inc. and its affiliates
-// Copyright (c) Telcoin, LLC
-// Copyright (c) Mysten Labs, Inc.
-// SPDX-License-Identifier: Apache-2.0
+//! Committee of validators reach consensus.
 
 use crate::{
     crypto::{BlsPublicKey, BlsPublicKeyBytes, NetworkPublicKey},
@@ -256,7 +253,7 @@ impl Committee {
         // If N = 3f + 1 + k (0 <= k < 3)
         // then (2 N + 3) / 3 = 2f + 1 + (2k + 2)/3 = 2f + 1 + k = N - f
         let total_votes: Stake = self.total_stake();
-        NonZeroU64::new(2 * total_votes / 3 + 1).unwrap()
+        NonZeroU64::new(2 * total_votes / 3 + 1).expect("arithmetic always produces result above 0")
     }
 
     fn calculate_validity_threshold(&self) -> NonZeroU64 {

@@ -1,21 +1,15 @@
-// Copyright (c) 2021, Facebook, Inc. and its affiliates
-// Copyright (c) Telcoin, LLC
-// Copyright (c) Mysten Labs, Inc.
-// SPDX-License-Identifier: Apache-2.0
-#![allow(clippy::mutable_key_type)]
+//! Bullshark tests
 
 use super::*;
-
 use crate::{
-    consensus::{make_consensus_store, Consensus, NUM_SUB_DAGS_PER_SCHEDULE},
+    consensus::{
+        consensus_utils::{make_consensus_store, NUM_SUB_DAGS_PER_SCHEDULE},
+        Consensus,
+    },
     ConsensusBus,
 };
-#[allow(unused_imports)]
-use fastcrypto::traits::KeyPair;
 use reth_primitives::{Header, B256};
-#[cfg(test)]
-use std::collections::BTreeSet;
-use std::collections::HashMap;
+use std::collections::{BTreeSet, HashMap};
 use tn_config::ConsensusConfig;
 use tn_storage::{mem_db::MemDatabase, open_db};
 use tn_test_utils::{CommitteeFixture, TelcoinTempDirs};
@@ -23,8 +17,6 @@ use tn_types::{
     AuthorityIdentifier, Notifier, TaskManager, TnReceiver, TnSender,
     DEFAULT_BAD_NODES_STAKE_THRESHOLD,
 };
-#[allow(unused_imports)]
-use tokio::sync::mpsc::channel;
 use tracing::info;
 
 #[tokio::test]
@@ -98,8 +90,7 @@ async fn commit_one_with_leader_schedule_change() {
     ];
 
     for mut test_case in test_cases {
-        println!("Running test case \"{}\"", test_case.description);
-
+        tracing::debug!("Running test case \"{}\"", test_case.description);
         // GIVEN
         let fixture = CommitteeFixture::builder(MemDatabase::default).build();
         let committee = fixture.committee();

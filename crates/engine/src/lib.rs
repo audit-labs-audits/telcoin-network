@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: MIT or Apache-2.0
 //! Execute output from consensus layer to extend the canonical chain.
 //!
 //! The engine listens to a stream of output from consensus and constructs a new block.
@@ -321,12 +322,11 @@ mod tests {
         Address, BlockHashOrNumber, Bloom, B256, EMPTY_OMMER_ROOT_HASH, U256,
     };
     use reth_provider::{BlockIdReader, BlockNumReader, BlockReader, TransactionVariant};
-    use reth_tracing::init_test_tracing;
     use std::{collections::VecDeque, str::FromStr as _, sync::Arc, time::Duration};
-    use tn_block_builder::test_utils::execute_test_worker_block;
+    use tn_batch_builder::test_utils::execute_test_batch;
     use tn_test_utils::{default_test_execution_node, seeded_genesis_from_random_batches};
     use tn_types::{
-        adiri_chain_spec_arc, adiri_genesis, max_worker_block_gas, now, BlockHash, Certificate,
+        adiri_chain_spec_arc, adiri_genesis, max_batch_gas, now, BlockHash, Certificate,
         CommittedSubDag, ConsensusHeader, ConsensusOutput, Notifier, ReputationScores, TaskManager,
     };
     use tokio::{sync::oneshot, time::timeout};
@@ -337,7 +337,6 @@ mod tests {
     /// transactions.
     #[tokio::test]
     async fn test_empty_output_executes() -> eyre::Result<()> {
-        init_test_tracing();
         //=== Consensus
         //
         // create consensus output bc transactions in batches
@@ -364,9 +363,9 @@ mod tests {
                 previous_sub_dag,
             )
             .into(),
-            blocks: Default::default(), // empty
+            batches: Default::default(), // empty
             beneficiary,
-            block_digests: Default::default(), // empty
+            batch_digests: Default::default(), // empty
             parent_hash: ConsensusHeader::default().digest(),
             number: 0,
         };
@@ -470,7 +469,7 @@ mod tests {
         assert_eq!(expected_block.number, expected_block_height);
 
         // mix hash is xor bitwise with worker sealed block's hash and consensus output
-        // just use consensus output hash if no worker blocks in the round
+        // just use consensus output hash if no batches in the round
         let consensus_output_hash = B256::from(consensus_output.digest());
         assert_eq!(expected_block.mix_hash, consensus_output_hash);
         // bloom expected to be the same bc all proposed transactions should be good
@@ -511,7 +510,6 @@ mod tests {
     /// parents is currently valid.
     #[tokio::test]
     async fn test_queued_output_executes_after_sending_channel_closed() -> eyre::Result<()> {
-        init_test_tracing();
         // create batches for consensus output
         let mut batches_1 = tn_test_utils::batches(4); // create 4 batches
         let mut batches_2 = tn_test_utils::batches(4); // create 4 batches
@@ -547,7 +545,7 @@ mod tests {
             batch.base_fee_per_gas = Some(inc_base_fee);
 
             // actually execute the block now
-            execute_test_worker_block(batch, &parent);
+            execute_test_batch(batch, &parent);
             debug!("{idx}\n{:?}\n", batch);
         }
 
@@ -563,7 +561,7 @@ mod tests {
             batch.base_fee_per_gas = Some(inc_base_fee);
 
             // actually execute the block now
-            execute_test_worker_block(batch, &parent);
+            execute_test_batch(batch, &parent);
             debug!("{idx}\n{:?}\n", batch);
         }
         // Reload all_batches so we can calculate mix_hash properly later.
@@ -598,9 +596,9 @@ mod tests {
             .expect("beneficiary address from str");
         let consensus_output_1 = ConsensusOutput {
             sub_dag: subdag_1.clone(),
-            blocks: vec![batches_1],
+            batches: vec![batches_1],
             beneficiary: beneficiary_1,
-            block_digests: batch_digests_1.clone(),
+            batch_digests: batch_digests_1.clone(),
             parent_hash: ConsensusHeader::default().digest(),
             number: 0,
         };
@@ -626,9 +624,9 @@ mod tests {
             .expect("beneficiary address from str");
         let consensus_output_2 = ConsensusOutput {
             sub_dag: subdag_2,
-            blocks: vec![batches_2],
+            batches: vec![batches_2],
             beneficiary: beneficiary_2,
-            block_digests: batch_digests_2.clone(),
+            batch_digests: batch_digests_2.clone(),
             parent_hash: consensus_output_1.consensus_header_hash(),
             number: 1,
         };
@@ -777,7 +775,7 @@ mod tests {
                 assert_ne!(block.number, 1);
             }
 
-            // mix hash is xor worker block's hash and consensus output digest
+            // mix hash is xor batch's hash and consensus output digest
             let expected_mix_hash = all_batches[idx].digest() ^ output_digest;
             assert_eq!(block.mix_hash, expected_mix_hash);
             // bloom expected to be the same bc all proposed transactions should be good
@@ -788,7 +786,7 @@ mod tests {
             // gas limit should come from batch
             //
             // TODO: ensure batch validation prevents peer workers from changing this value
-            assert_eq!(block.gas_limit, max_worker_block_gas(block.number));
+            assert_eq!(block.gas_limit, max_batch_gas(block.number));
             // difficulty should match the batch's index within consensus output
             assert_eq!(block.difficulty, U256::from(expected_batch_index));
             // assert batch digest match extra data
@@ -813,7 +811,6 @@ mod tests {
     /// parents is currently valid.
     #[tokio::test]
     async fn test_execution_succeeds_with_duplicate_transactions() -> eyre::Result<()> {
-        init_test_tracing();
         // create batches for consensus output
         let mut batches_1 = tn_test_utils::batches(4); // create 4 batches
         let mut batches_2 = tn_test_utils::batches(4); // create 4 batches
@@ -857,7 +854,7 @@ mod tests {
             batch.base_fee_per_gas = Some(inc_base_fee);
 
             // actually execute the block now
-            execute_test_worker_block(batch, &parent);
+            execute_test_batch(batch, &parent);
             debug!("{idx}\n{:?}\n", batch);
         }
 
@@ -873,7 +870,7 @@ mod tests {
             batch.base_fee_per_gas = Some(inc_base_fee);
 
             // actually execute the block now
-            execute_test_worker_block(batch, &parent);
+            execute_test_batch(batch, &parent);
             debug!("{idx}\n{:?}\n", batch);
         }
         // Reload all_batches so we can calculate mix_hash properly later.
@@ -931,9 +928,9 @@ mod tests {
             .expect("beneficiary address from str");
         let consensus_output_1 = ConsensusOutput {
             sub_dag: subdag_1.clone(),
-            blocks: vec![batches_1],
+            batches: vec![batches_1],
             beneficiary: beneficiary_1,
-            block_digests: batch_digests_1.clone(),
+            batch_digests: batch_digests_1.clone(),
             parent_hash: ConsensusHeader::default().digest(),
             number: 0,
         };
@@ -961,9 +958,9 @@ mod tests {
             .expect("beneficiary address from str");
         let consensus_output_2 = ConsensusOutput {
             sub_dag: subdag_2,
-            blocks: vec![batches_2],
+            batches: vec![batches_2],
             beneficiary: beneficiary_2,
-            block_digests: batch_digests_2.clone(),
+            batch_digests: batch_digests_2.clone(),
             parent_hash: consensus_output_1.consensus_header_hash(),
             number: 1,
         };
@@ -1071,7 +1068,7 @@ mod tests {
                 assert!(block.senders.is_empty());
                 assert!(block.body.is_empty());
                 // gas used should NOT be the same as bc duplicate transaction are ignored
-                assert_ne!(block.gas_used, max_worker_block_gas(block.number));
+                assert_ne!(block.gas_used, max_batch_gas(block.number));
                 // gas used should be zero bc all transactions were duplicates
                 assert_eq!(block.gas_used, 0);
             } else {
@@ -1127,7 +1124,7 @@ mod tests {
                 assert_eq!(block.parent_hash, expected_parent);
             }
 
-            // mix hash is xor worker block's hash and consensus output digest
+            // mix hash is xor batch's hash and consensus output digest
             let expected_mix_hash = all_batches[idx].digest() ^ output_digest;
             assert_eq!(block.mix_hash, expected_mix_hash);
             // bloom expected to be the same bc all proposed transactions should be good
@@ -1138,7 +1135,7 @@ mod tests {
             // gas limit should come from batch
             //
             // TODO: ensure batch validation prevents peer workers from changing this value
-            assert_eq!(block.gas_limit, max_worker_block_gas(block.number));
+            assert_eq!(block.gas_limit, max_batch_gas(block.number));
             // difficulty should match the batch's index within consensus output
             assert_eq!(block.difficulty, U256::from(expected_batch_index));
             // assert batch digest match extra data
@@ -1154,7 +1151,6 @@ mod tests {
 
     #[tokio::test]
     async fn test_max_round_terminates_early() -> eyre::Result<()> {
-        init_test_tracing();
         // create batches for consensus output
         let mut batches_1 = tn_test_utils::batches(4); // create 4 batches
         let mut batches_2 = tn_test_utils::batches(4); // create 4 batches
@@ -1189,7 +1185,7 @@ mod tests {
             batch.base_fee_per_gas = Some(inc_base_fee);
 
             // actually execute the block now
-            execute_test_worker_block(batch, &parent);
+            execute_test_batch(batch, &parent);
             debug!("{idx}\n{:?}\n", batch);
         }
 
@@ -1205,7 +1201,7 @@ mod tests {
             batch.base_fee_per_gas = Some(inc_base_fee);
 
             // actually execute the block now
-            execute_test_worker_block(batch, &parent);
+            execute_test_batch(batch, &parent);
             debug!("{idx}\n{:?}\n", batch);
         }
 
@@ -1237,9 +1233,9 @@ mod tests {
             .expect("beneficiary address from str");
         let consensus_output_1 = ConsensusOutput {
             sub_dag: subdag_1.clone(),
-            blocks: vec![batches_1],
+            batches: vec![batches_1],
             beneficiary: beneficiary_1,
-            block_digests: batch_digests_1,
+            batch_digests: batch_digests_1,
             parent_hash: ConsensusHeader::default().digest(),
             number: 0,
         };
@@ -1266,9 +1262,9 @@ mod tests {
             .expect("beneficiary address from str");
         let consensus_output_2 = ConsensusOutput {
             sub_dag: subdag_2,
-            blocks: vec![batches_2],
+            batches: vec![batches_2],
             beneficiary: beneficiary_2,
-            block_digests: batch_digests_2,
+            batch_digests: batch_digests_2,
             parent_hash: consensus_output_1.consensus_header_hash(),
             number: 1,
         };

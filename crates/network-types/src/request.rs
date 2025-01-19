@@ -1,4 +1,5 @@
 //! Request message types
+
 use reth_primitives::SealedHeader;
 use roaring::RoaringBitmap;
 use serde::{Deserialize, Serialize};
@@ -81,7 +82,9 @@ impl FetchCertificatesRequest {
                     .map(|v| v - gc_round)
                     .collect::<RoaringBitmap>()
                     .serialize_into(&mut serialized)
-                    .unwrap();
+                    .expect(
+                        "rounds serialize into roaring bitmap for FetchCertificatesRequest bounds",
+                    );
                 (k, serialized)
             })
             .collect();
@@ -97,7 +100,7 @@ impl FetchCertificatesRequest {
 /// Used by the primary to request that the worker fetch the missing blocks and reply
 /// with all of the content.
 #[derive(Clone, Debug, Serialize, Deserialize)]
-pub struct FetchBlocksRequest {
+pub struct FetchBatchesRequest {
     /// Missing block digests to fetch from peers.
     pub digests: HashSet<BlockHash>,
     /// The network public key of the peers.
@@ -108,9 +111,9 @@ pub struct FetchBlocksRequest {
 
 /// Used by primary to bulk request blocks from workers local store.
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq, Default)]
-pub struct RequestBlocksRequest {
-    /// Vec of requested blocks' digests
-    pub block_digests: Vec<BlockHash>,
+pub struct RequestBatchesRequest {
+    /// Vec of requested batches' digests
+    pub batch_digests: Vec<BlockHash>,
 }
 
 /// Primary to engine request to verify a peer's latest execution result.
