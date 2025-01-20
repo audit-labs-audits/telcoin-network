@@ -5,6 +5,10 @@ Execution layer (EL) produces EVM blocks compatible with Ethereum.
 
 Requires Rust 1.81
 
+### Supported Platforms
+
+The Telcoin Network protocol client supports Linux and MacOS operating systems. For Windows users, use WSL to run a Linux environment in which the client compiles and runs properly.
+
 ## Quick Start
 
 Check out the repo and update the submodules:
