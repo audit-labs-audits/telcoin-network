@@ -23,8 +23,7 @@ use anemo_tower::{
     trace::{DefaultMakeSpan, DefaultOnFailure, TraceLayer},
 };
 use fastcrypto::traits::KeyPair as _;
-use std::time::Duration;
-use std::{collections::HashMap, sync::Arc};
+use std::{collections::HashMap, sync::Arc, time::Duration};
 use tn_config::ConsensusConfig;
 use tn_network::{
     epoch_filter::{AllowedEpoch, EPOCH_HEADER_KEY},
@@ -170,8 +169,7 @@ impl<DB: Database> Primary<DB> {
         if consensus_bus.node_mode().borrow().is_cvv() {
             // When the `Synchronizer` collects enough parent certificates, the `Proposer` generates
             // a new header with new block digests from our workers and sends it to the `Certifier`.
-            let proposer =
-                Proposer::new(config.clone(), consensus_bus.clone(), None, leader_schedule);
+            let proposer = Proposer::new(config.clone(), consensus_bus.clone(), leader_schedule);
 
             proposer.spawn(task_manager);
         }

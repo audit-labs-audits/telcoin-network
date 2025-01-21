@@ -84,10 +84,6 @@ struct ProposerDigest {
 #[path = "tests/proposer_tests.rs"]
 pub mod proposer_tests;
 
-/// The default amount of time the proposer should wait after trying to forward the proposed header
-/// to the certifier before returning an error.
-const DEFAULT_FATAL_HEADER_TIMEOUT: Duration = Duration::from_secs(60);
-
 /// The proposer creates new headers and send them to the core for broadcasting and further
 /// processing.
 pub struct Proposer<DB: Database> {
@@ -110,9 +106,6 @@ pub struct Proposer<DB: Database> {
     min_delay_interval: Interval,
     /// The maximum interval measured for conditions like having leader in parents.
     max_delay_interval: Interval,
-    /// The maximum delay the proposer will wait to send to certifier. This interval expires if the
-    /// proposer cannot send to certifier within a certain amount of time.
-    fatal_header_timeout: Interval,
     /// The latest header.
     opt_latest_header: Option<Header>,
     /// Receiver for shutdown.
@@ -154,18 +147,13 @@ impl<DB: Database> Proposer<DB> {
     pub fn new(
         config: ConsensusConfig<DB>,
         consensus_bus: ConsensusBus,
-        fatal_header_timeout: Option<Duration>,
         leader_schedule: LeaderSchedule,
     ) -> Self {
         let rx_shutdown = config.shutdown().subscribe();
         let genesis = Certificate::genesis(config.committee());
-        let fatal_header_timeout = fatal_header_timeout.unwrap_or(DEFAULT_FATAL_HEADER_TIMEOUT);
         // create min/max delay intervals
         let min_delay_interval = tokio::time::interval(config.parameters().min_header_delay);
         let max_delay_interval = tokio::time::interval(config.parameters().max_header_delay);
-        let mut fatal_header_timeout = tokio::time::interval(fatal_header_timeout);
-        // reset interval because first tick completes immediately
-        fatal_header_timeout.reset();
 
         Self {
             authority_id: config.authority().id(),
@@ -176,7 +164,6 @@ impl<DB: Database> Proposer<DB> {
             max_header_delay: config.parameters().max_header_delay,
             min_delay_interval,
             max_delay_interval,
-            fatal_header_timeout,
             opt_latest_header: None,
             rx_shutdown,
             consensus_bus,
@@ -318,8 +305,6 @@ impl<DB: Database> Proposer<DB> {
     }
 
     /// Store the header in the `ProposerStore` and send to `Certifier`.
-    ///
-    /// If `fatal_header_timeout` expires, this method is responsible. All other code is sync.
     async fn store_and_send_header(
         header: &Header,
         proposer_store: ProposerStore<DB>,
@@ -770,8 +755,6 @@ impl<DB: Database> Proposer<DB> {
 
         // track latest header
         self.opt_latest_header = Some(header.clone());
-        // reset interval for header timeout
-        self.fatal_header_timeout.reset();
         // Reset advance flag.
         self.advance_round = false;
         // reschedule intervals
@@ -797,6 +780,17 @@ impl<DB: Database> Proposer<DB> {
         );
     }
 
+    /// Wrapper async function to either query the pending header or never resolve.
+    async fn pending_header(
+        pending_header: &mut Option<PendingHeaderTask>,
+    ) -> ProposerResult<Header> {
+        if let Some(pending_header) = pending_header {
+            pending_header.await?
+        } else {
+            std::future::pending().await
+        }
+    }
+
     /// Run the proposer task.
     /// Returns Ok on shutdown or an error to indicate a fatal condition.
     async fn run(&mut self) -> ProposerResult<()> {
@@ -804,11 +798,7 @@ impl<DB: Database> Proposer<DB> {
         let mut rx_parents = self.consensus_bus.parents().subscribe();
         let mut rx_committed_own_headers = self.consensus_bus.committed_own_headers().subscribe();
 
-        let (_tx, mut pending_header_never) = oneshot::channel();
-        let mut pending_header: &mut PendingHeaderTask = &mut pending_header_never;
-        let (_tx, rx) = oneshot::channel();
-        let mut pending_header_actual: PendingHeaderTask = rx;
-        let mut header_in_flight = false; // Only one header currently allowed at a time.
+        let mut pending_header = None;
         let mut max_delay_timed_out = false;
         let mut min_delay_timed_out = false;
         loop {
@@ -859,22 +849,10 @@ impl<DB: Database> Proposer<DB> {
                         debug!(target: "primary::proposer", authority=?self.authority_id, round=self.round, "received committed update for own header");
                         self.process_committed_headers(commit_round, committed_headers);
                     }
-                    res = pending_header => {
-                        if let Ok(res) = res {
-                            debug!(target: "primary::proposer", authority=?self.authority_id, "pending header task complete!");
-                            self.handle_proposal_result(res)?;
-                        }
-                        header_in_flight = false;
-                    }
-                    // if still pending, check the fatal header timeout
-                    //
-                    // if fatal_header_timeout interval expires, then proposer was unable to
-                    // send to certifier which is considered fatal and
-                    // should never happen
-                    //
-                    // the only way this interval expires is if tx_headers.send() hangs
-                    _ = self.fatal_header_timeout.tick() => {
-                        warn!(target: "primary::proposer", round=self.round, "header_resent_timeout triggered- do we have a quorum of validators?");
+                    res = Self::pending_header(&mut pending_header) => {
+                        pending_header = None;
+                        debug!(target: "primary::proposer", authority=?self.authority_id, "pending header task complete!");
+                        self.handle_proposal_result(res)?;
                     }
                     // tick intervals to ensure they advance
                     _ = self.max_delay_interval.tick() => {
@@ -884,14 +862,10 @@ impl<DB: Database> Proposer<DB> {
                         min_delay_timed_out = true;
                     }
                 }
-                // Need to reset pending_header to the proper value.
-                if header_in_flight {
-                    pending_header = &mut pending_header_actual;
+                if pending_header.is_some() {
                     // continue the loop, don't try to propose a header since we are already working
                     // on one.
                     continue;
-                } else {
-                    pending_header = &mut pending_header_never
                 }
 
                 // proposer doesn't have a pending header
@@ -930,7 +904,7 @@ impl<DB: Database> Proposer<DB> {
                     "polled...",
                 );
 
-                // if both conditions are met, create the next header
+                // if all conditions are met, create the next header
                 if should_create_header {
                     if max_delay_timed_out {
                         // expect this interval to expire occassionally
@@ -954,9 +928,7 @@ impl<DB: Database> Proposer<DB> {
                     debug!(target: "primary::proposer", authority=?self.authority_id, ?reason, "proposing next header!");
 
                     // propose header
-                    pending_header_actual = self.propose_next_header(reason.to_string())?;
-                    pending_header = &mut pending_header_actual;
-                    header_in_flight = true;
+                    pending_header = Some(self.propose_next_header(reason.to_string())?);
                     max_delay_timed_out = false;
                     min_delay_timed_out = false;
                 }
