@@ -1,4 +1,4 @@
-.PHONY: help attest udeps check test test-faucet fmt clippy docker-login docker-adiri docker-push docker-builder docker-builder-init up down validators init-submodules update-tn-contracts revert-submodule
+.PHONY: help attest udeps check test test-faucet fmt clippy docker-login docker-adiri docker-push docker-builder docker-builder-init up down validators pr init-submodules update-tn-contracts revert-submodule
 
 # full path for the Makefile
 ROOT_DIR:=$(shell dirname $(realpath $(firstword $(MAKEFILE_LIST))))
@@ -134,3 +134,13 @@ revert-submodule:
 	$(eval COMMIT_SHA := $(shell git ls-tree HEAD tn-contracts | awk '{print $$3}'))
 	@echo "Checking out $(COMMIT_SHA)"
 	cd tn-contracts && git checkout $(COMMIT_SHA)
+
+# workspace tests that don't require faucet credentials
+public-tests:
+	cargo test --workspace --exclude tn-faucet --no-fail-fast -- --show-output ;
+
+# local checks to ensure PR is ready
+pr:
+	make fmt && \
+	make clippy && \
+	make public-tests
