@@ -21,7 +21,7 @@ use tn_network::{
     PrimaryToWorkerClient,
 };
 use tn_network_types::{ConsensusOutputRequest, FetchBatchesRequest, PrimaryToPrimaryClient};
-use tn_primary::{consensus::ConsensusRound, ConsensusBus};
+use tn_primary::{consensus::ConsensusRound, ConsensusBus, NodeMode};
 use tn_storage::{
     tables::{ConsensusBlockNumbersByDigest, ConsensusBlocks},
     traits::{Database, DbTxMut},
@@ -476,18 +476,32 @@ impl<DB: Database> Subscriber<DB> {
                     }
                 }
                 last_consensus_height = max_consensus_height;
-                while last_consensus_height == max_consensus_height {
-                    // Rest for bit then try see if chain has advanced and catch up if so.
-                    tokio::select! {
-                        _ = tokio::time::sleep(Duration::from_secs(1)) => {}
-                        _ = &self.rx_shutdown => {
-                            return Ok(())
-                        }
-                    }
+                if self.consensus_bus.node_mode().borrow().is_cvv() {
                     let (new_max_consensus_height, _, _) = max_consensus_number(&mut clients)
                         .await
                         .unwrap_or((last_consensus_height, max_epoch, max_round));
                     max_consensus_height = new_max_consensus_height;
+                    if last_consensus_height == max_consensus_height {
+                        // We are caught up so try to jump back into consensus
+                        if self.consensus_bus.node_mode().send(NodeMode::CvvActive).is_err() {
+                            // Lost our watch?  We are done.
+                            return Ok(());
+                        }
+                    }
+                } else {
+                    while last_consensus_height == max_consensus_height {
+                        // Rest for bit then try see if chain has advanced and catch up if so.
+                        tokio::select! {
+                            _ = tokio::time::sleep(Duration::from_secs(1)) => {}
+                            _ = &self.rx_shutdown => {
+                                return Ok(())
+                            }
+                        }
+                        let (new_max_consensus_height, _, _) = max_consensus_number(&mut clients)
+                            .await
+                            .unwrap_or((last_consensus_height, max_epoch, max_round));
+                        max_consensus_height = new_max_consensus_height;
+                    }
                 }
             }
         }
