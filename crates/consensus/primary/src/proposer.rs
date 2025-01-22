@@ -747,8 +747,6 @@ impl<DB: Database> Proposer<DB> {
     /// The oneshot channel is ready, indicating a result from the header proposal process. Update
     /// `self` to track latest header, reset the header timeout, min/max delay intervals, insert the
     /// proposed header, and indicate round should not be advanced yet.
-    ///
-    /// This is the only time `Self::header_resend_timeout` gets reset.
     fn handle_proposal_result(&mut self, result: ProposerResult<Header>) -> ProposerResult<()> {
         // receive result from oneshot channel
         let header = result?;
@@ -887,9 +885,9 @@ impl<DB: Database> Proposer<DB> {
                 let enough_digests = self.digests.len() >= self.header_num_of_batches_threshold;
 
                 // evaluate conditions for bool value
-                let should_create_header = (max_delay_timed_out
-                    || ((enough_digests || min_delay_timed_out) && self.advance_round))
-                    && enough_parents;
+                let should_create_header = enough_parents
+                    && (max_delay_timed_out
+                        || (self.advance_round && (enough_digests || min_delay_timed_out)));
 
                 debug!(
                     target: "primary::proposer",
