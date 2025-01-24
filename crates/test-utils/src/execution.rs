@@ -65,7 +65,7 @@ pub fn default_test_execution_node(
     )?;
 
     // create engine node
-    let engine = ExecutionNode::new(builder, &TaskManager::default())?;
+    let engine = ExecutionNode::new(&builder, &TaskManager::default())?;
 
     Ok(engine)
 }
@@ -145,7 +145,8 @@ pub fn execution_builder<CliExt: clap::Args + fmt::Debug>(
     // TODO: this a temporary approach until upstream reth supports public rpc hooks
     let opt_faucet_args = None;
 
-    let builder = TnBuilder { database, node_config, tn_config, opt_faucet_args };
+    let builder =
+        TnBuilder { database, node_config, tn_config, opt_faucet_args, consensus_metrics: None };
 
     Ok((builder, ext))
 }
@@ -176,10 +177,16 @@ pub fn faucet_test_execution_node(
 
     // replace default builder's faucet args
     let TnBuilder { database, node_config, tn_config, .. } = builder;
-    let builder = TnBuilder { database, node_config, tn_config, opt_faucet_args: Some(faucet) };
+    let builder = TnBuilder {
+        database,
+        node_config,
+        tn_config,
+        opt_faucet_args: Some(faucet),
+        consensus_metrics: None,
+    };
 
     // create engine node
-    let engine = ExecutionNode::new(builder, &TaskManager::default())?;
+    let engine = ExecutionNode::new(&builder, &TaskManager::default())?;
 
     Ok(engine)
 }

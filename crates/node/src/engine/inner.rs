@@ -95,13 +95,14 @@ where
 {
     /// Create a new instance of `Self`.
     pub(super) fn new(
-        tn_builder: TnBuilder<DB>,
+        tn_builder: &TnBuilder<DB>,
         evm_executor: Evm,
         evm_config: CE,
         reth_task_executor: &TaskManager,
     ) -> eyre::Result<Self> {
         // deconstruct the builder
-        let TnBuilder { database, node_config, tn_config, opt_faucet_args } = tn_builder;
+        let TnBuilder { database, node_config, tn_config, opt_faucet_args, consensus_metrics: _ } =
+            tn_builder;
 
         // resolve the node's datadir
         let datadir = node_config.datadir();
@@ -156,13 +157,13 @@ where
 
         Ok(Self {
             address,
-            node_config,
+            node_config: node_config.clone(),
             blockchain_db,
             provider_factory,
             evm_config,
             evm_executor,
-            opt_faucet_args,
-            tn_config,
+            opt_faucet_args: opt_faucet_args.clone(),
+            tn_config: tn_config.clone(),
             workers: HashMap::default(),
         })
     }

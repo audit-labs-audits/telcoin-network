@@ -12,7 +12,7 @@ use reth_primitives::{Header, B256};
 use std::collections::{BTreeSet, HashMap};
 use tn_config::ConsensusConfig;
 use tn_storage::{mem_db::MemDatabase, open_db};
-use tn_test_utils::{CommitteeFixture, TelcoinTempDirs};
+use tn_test_utils::CommitteeFixture;
 use tn_types::{
     AuthorityIdentifier, Notifier, TaskManager, TnReceiver, TnSender,
     DEFAULT_BAD_NODES_STAKE_THRESHOLD,
@@ -1053,7 +1053,6 @@ async fn restart_with_new_committee() {
         let config = fixture.authorities().next().unwrap().consensus_config();
         let config = ConsensusConfig::new_with_committee(
             config.config().clone(),
-            TelcoinTempDirs::default(),
             config.node_storage().clone(),
             config.key_config().clone(),
             committee.clone(),

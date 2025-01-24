@@ -127,7 +127,7 @@ fn account_from_word(key_word: &str) -> reth_primitives::alloy_primitives::Addre
 
 impl GenesisArgs {
     /// Execute command
-    pub async fn execute(&self) -> eyre::Result<()> {
+    pub fn execute(&self) -> eyre::Result<()> {
         // // create datadir
         // let datadir = self.data_dir();
         // // creates a default config if none exists
@@ -171,13 +171,13 @@ impl GenesisArgs {
             }
             // add validator to the committee file
             CeremonySubcommand::AddValidator(args) => {
-                args.execute().await?;
+                args.execute()?;
             }
             CeremonySubcommand::Validate(args) => {
-                args.execute().await?;
+                args.execute()?;
             }
             CeremonySubcommand::CreateCommittee(args) => {
-                args.execute().await?;
+                args.execute()?;
             }
         }
 

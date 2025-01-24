@@ -5,7 +5,6 @@ use crate::{
     version::{LONG_VERSION, SHORT_VERSION},
 };
 use clap::{value_parser, Parser, Subcommand};
-use futures::Future;
 use reth_chainspec::ChainSpec;
 use reth_cli_commands::node::NoArgs;
 use reth_db::DatabaseEnv;
@@ -119,10 +118,9 @@ impl<Ext: clap::Args + fmt::Debug> Cli<Ext> {
     ///     })
     ///     .unwrap();
     /// ````
-    pub async fn run<L, Fut>(mut self, launcher: L) -> eyre::Result<()>
+    pub fn run<L>(mut self, launcher: L) -> eyre::Result<()>
     where
-        L: FnOnce(TnBuilder<Arc<DatabaseEnv>>, Ext, DataDirChainPath) -> Fut,
-        Fut: Future<Output = eyre::Result<()>>,
+        L: FnOnce(TnBuilder<Arc<DatabaseEnv>>, Ext, DataDirChainPath) -> eyre::Result<()>,
     {
         // add network name to logs dir
         self.logs.log_file_directory =
@@ -131,9 +129,9 @@ impl<Ext: clap::Args + fmt::Debug> Cli<Ext> {
         let _guard = self.init_tracing()?;
 
         match self.command {
-            Commands::Genesis(command) => command.execute().await,
-            Commands::Node(command) => command.execute(true, launcher).await,
-            Commands::Keytool(command) => command.execute().await,
+            Commands::Genesis(command) => command.execute(),
+            Commands::Node(command) => command.execute(true, launcher),
+            Commands::Keytool(command) => command.execute(),
         }
     }
 
@@ -223,6 +221,6 @@ mod tests {
             "debug,net=trace",
         ])
         .unwrap();
-        assert!(tn.run(|_, _, _| async move { Ok(()) }).await.is_ok());
+        assert!(tn.run(|_, _, _| { Ok(()) }).is_ok());
     }
 }

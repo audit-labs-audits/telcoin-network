@@ -16,7 +16,7 @@ use tn_config::ConsensusConfig;
 use tn_storage::{traits::Database, CertificateStore};
 use tn_types::{
     AuthorityIdentifier, Certificate, CertificateDigest, CommittedSubDag, Committee, Noticer,
-    Round, TaskManager, Timestamp, TnReceiver, TnSender, DEFAULT_BAD_NODES_STAKE_THRESHOLD,
+    Round, TaskManager, Timestamp, TnReceiver, TnSender,
 };
 use tracing::{debug, info, instrument};
 
@@ -257,8 +257,6 @@ pub struct Consensus<DB> {
     committee: Committee,
     /// The chanell "bus" for consensus (container for consesus channel and watches).
     consensus_bus: ConsensusBus,
-    /// Consensud config.
-    consensus_config: ConsensusConfig<DB>,
 
     /// Receiver for shutdown.
     rx_shutdown: Noticer,
@@ -321,7 +319,6 @@ impl<DB: Database> Consensus<DB> {
         let s = Self {
             committee: consensus_config.committee().clone(),
             consensus_bus: consensus_bus.clone(),
-            consensus_config,
             rx_shutdown,
             protocol,
             metrics,
@@ -349,7 +346,6 @@ impl<DB: Database> Consensus<DB> {
         // Clone the bus or the borrow checker will yell at us...
         let bus_clone = self.consensus_bus.clone();
         let mut rx_new_certificates = bus_clone.new_certificates().subscribe();
-        let mut rx_node_mode = bus_clone.node_mode().subscribe();
         self.active = bus_clone.node_mode().borrow().is_active_cvv();
 
         // Listen to incoming certificates.
@@ -362,25 +358,6 @@ impl<DB: Database> Consensus<DB> {
                 Some(certificate) = rx_new_certificates.recv() => {
                     self.new_certificate(certificate).await?;
                 },
-                mode_res = rx_node_mode.changed() => {
-                    // If the watch is dropped we must be done?  This should not really happen...
-                    if mode_res.is_err() {
-                        return Ok(());
-                    }
-                    if self.consensus_bus.node_mode().borrow().is_active_cvv() {
-                        if !self.active { // Make sure this is not a phantom change, etc.
-                            // We changed are now an active CVV so lets reload the leader schedule
-                            // and try to do our job.
-                            self.protocol.leader_schedule.reload_from_store(
-                                self.consensus_config.node_storage().consensus_store.clone(),
-                                DEFAULT_BAD_NODES_STAKE_THRESHOLD,
-                            );
-                        }
-                        self.active = true;
-                    } else {
-                        self.active = false;
-                    }
-                }
             }
         }
     }

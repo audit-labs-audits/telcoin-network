@@ -423,6 +423,19 @@ impl<DB: Database> Subscriber<DB> {
                     let consensus_output =
                         self.fetch_batches(output.sub_dag, parent_hash, number).await;
                     self.save_consensus(consensus_output.clone())?;
+
+                    // If we want to rejoin consensus eventually then save certs.
+                    let _ = self
+                        .config
+                        .node_storage()
+                        .certificate_store
+                        .write(consensus_output.sub_dag.leader.clone());
+                    let _ = self
+                        .config
+                        .node_storage()
+                        .certificate_store
+                        .write_all(consensus_output.sub_dag.certificates.clone());
+
                     let last_round = consensus_output.leader_round();
 
                     let base_execution_block =
@@ -483,10 +496,14 @@ impl<DB: Database> Subscriber<DB> {
                     max_consensus_height = new_max_consensus_height;
                     if last_consensus_height == max_consensus_height {
                         // We are caught up so try to jump back into consensus
+                        info!(target: "telcoin::subscriber", "attempting to rejoin consensus, consensus block height {last_consensus_height}");
                         if self.consensus_bus.node_mode().send(NodeMode::CvvActive).is_err() {
                             // Lost our watch?  We are done.
                             return Ok(());
                         }
+                        // Set restart flag and trigger shutdown.
+                        self.consensus_bus.set_restart();
+                        self.config.shutdown().notify();
                     }
                 } else {
                     while last_consensus_height == max_consensus_height {

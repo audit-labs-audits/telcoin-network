@@ -110,9 +110,10 @@ pub struct PrimaryNode<CDB> {
 }
 
 impl<CDB: ConsensusDatabase> PrimaryNode<CDB> {
-    pub fn new(consensus_config: ConsensusConfig<CDB>) -> PrimaryNode<CDB> {
-        let consensus_bus =
-            ConsensusBus::new_with_recent_blocks(consensus_config.config().parameters.gc_depth);
+    pub fn new(
+        consensus_config: ConsensusConfig<CDB>,
+        consensus_bus: ConsensusBus,
+    ) -> PrimaryNode<CDB> {
         let primary = Primary::new(consensus_config.clone(), &consensus_bus);
 
         let inner = PrimaryNodeInner { consensus_config, consensus_bus, primary };
