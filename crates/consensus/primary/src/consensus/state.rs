@@ -326,23 +326,13 @@ impl<DB: Database> Consensus<DB> {
             active: false,
         };
 
-        // Only run the consensus task if we are a CVV.
-        if consensus_bus.node_mode().borrow().is_cvv() {
+        // Only run the consensus task if we are an active CVV.
+        if consensus_bus.node_mode().borrow().is_active_cvv() {
             task_manager.spawn_task("consensus", monitored_future!(s.run(), "Consensus", INFO));
         }
     }
 
-    async fn run(self) {
-        match self.run_inner().await {
-            Ok(_) => {}
-            Err(err @ ConsensusError::ShuttingDown) => {
-                debug!(target: "telcoin::consensus_state", "{:?}", err)
-            }
-            Err(err) => panic!("Failed to run consensus: {:?}", err),
-        }
-    }
-
-    async fn run_inner(mut self) -> Result<(), ConsensusError> {
+    async fn run(mut self) -> Result<(), ConsensusError> {
         // Clone the bus or the borrow checker will yell at us...
         let bus_clone = self.consensus_bus.clone();
         let mut rx_new_certificates = bus_clone.new_certificates().subscribe();

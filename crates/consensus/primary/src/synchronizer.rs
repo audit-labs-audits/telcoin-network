@@ -1182,12 +1182,18 @@ impl<DB: Database> Synchronizer<DB> {
         }
 
         let (sender, receiver) = oneshot::channel();
-        self.inner
+        if self
+            .inner
             .tx_certificate_acceptor
             .send((vec![certificate], sender, early_suspend))
             .await
-            .expect("Synchronizer should shut down before certificate acceptor task.");
-        receiver.await.expect("Synchronizer should shut down before certificate acceptor task.")?;
+            .is_err()
+        {
+            warn!(target: "primary::synchronizer", "Synchronizer should shut down before certificate acceptor task.");
+        }
+        if receiver.await.is_err() {
+            warn!(target: "primary::synchronizer", "Synchronizer should shut down before certificate acceptor task.");
+        }
         Ok(())
     }
 

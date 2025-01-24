@@ -44,7 +44,7 @@ where
         .build()
         .expect("failed to build a tokio runtime");
 
-    runtime.block_on(async move {
+    let res = runtime.block_on(async move {
         if let Some(metrics_socket) = builder.consensus_metrics {
             start_prometheus_server(metrics_socket);
         }
@@ -98,14 +98,14 @@ where
             tokio::select!(
                 _ = &latest_block_shutdown => {
                     break;
+                }
+                latest = engine_state.next() => {
+                    if let Some(latest) = latest {
+                        consensus_bus_clone.recent_blocks().send_modify(|blocks| blocks.push_latest(latest.tip().block.header.clone()));
+                    } else {
+                        break;
                     }
-                    latest = engine_state.next() => {
-                        if let Some(latest) = latest {
-                            consensus_bus_clone.recent_blocks().send_modify(|blocks| blocks.push_latest(latest.tip().block.header.clone()));
-                        } else {
-                            break;
-                        }
-                    }
+                }
             )
         }
     });
@@ -150,8 +150,12 @@ where
     task_manager.join_until_exit(consensus_config.shutdown().clone()).await;
     let running = consensus_bus.restart();
     consensus_bus.clear_restart();
+    info!(target:"tn", "TASKS complete, restart: {running}");
     Ok(running)
-    })
+    });
+    // Kick over the runtime- don't let errant tasks block the Drop.
+    runtime.shutdown_background();
+    res
 }
 
 /// Launch all components for the node.
