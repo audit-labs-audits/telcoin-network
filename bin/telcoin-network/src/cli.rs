@@ -111,13 +111,11 @@ impl<Ext: clap::Args + fmt::Debug> Cli<Ext> {
     ///     pub enable: bool,
     /// }
     ///
-    /// fn main() {
-    ///     if let Err(err) = telcoin_network::cli::Cli::<MyArgs>::parse()
-    ///         .run(|builder, _, tn_datadir| launch_node(builder, tn_datadir))
-    ///     {
-    ///         eprintln!("Error: {err:?}");
-    ///         std::process::exit(1);
-    ///     }
+    /// if let Err(err) = telcoin_network::cli::Cli::<MyArgs>::parse()
+    ///     .run(|builder, _, tn_datadir| launch_node(builder, tn_datadir))
+    /// {
+    ///     eprintln!("Error: {err:?}");
+    ///     std::process::exit(1);
     /// }
     /// ```
     pub fn run<L>(mut self, launcher: L) -> eyre::Result<()>
