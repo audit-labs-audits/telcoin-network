@@ -1191,8 +1191,11 @@ impl<DB: Database> Synchronizer<DB> {
         {
             warn!(target: "primary::synchronizer", "Synchronizer should shut down before certificate acceptor task.");
         }
-        if receiver.await.is_err() {
-            warn!(target: "primary::synchronizer", "Synchronizer should shut down before certificate acceptor task.");
+        match receiver.await {
+            Ok(r) => r?,
+            Err(_) => {
+                warn!(target: "primary::synchronizer", "Synchronizer should shut down before certificate acceptor task.")
+            }
         }
         Ok(())
     }
