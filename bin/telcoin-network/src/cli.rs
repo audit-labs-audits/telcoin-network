@@ -103,21 +103,23 @@ impl<Ext: clap::Args + fmt::Debug> Cli<Ext> {
     ///
     /// ```no_run
     /// use clap::Parser;
-    /// use reth::cli::Cli;
+    /// use telcoin_network::cli::Cli;
+    /// use tn_node::launch_node;
     ///
     /// #[derive(Debug, Parser)]
     /// pub struct MyArgs {
     ///     pub enable: bool,
     /// }
     ///
-    /// Cli::parse()
-    ///     .run(|builder, my_args: MyArgs| async move {
-    ///         // launch the node
-    ///
-    ///         Ok(())
-    ///     })
-    ///     .unwrap();
-    /// ````
+    /// fn main() {
+    ///     if let Err(err) = telcoin_network::cli::Cli::<MyArgs>::parse()
+    ///         .run(|builder, _, tn_datadir| launch_node(builder, tn_datadir))
+    ///     {
+    ///         eprintln!("Error: {err:?}");
+    ///         std::process::exit(1);
+    ///     }
+    /// }
+    /// ```
     pub fn run<L>(mut self, launcher: L) -> eyre::Result<()>
     where
         L: FnOnce(TnBuilder<Arc<DatabaseEnv>>, Ext, DataDirChainPath) -> eyre::Result<()>,

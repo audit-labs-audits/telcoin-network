@@ -6,11 +6,12 @@ use consensus_metrics::start_prometheus_server;
 use engine::{ExecutionNode, TnBuilder};
 use futures::StreamExt;
 use reth_db::{
-    database::Database,
     database_metrics::{DatabaseMetadata, DatabaseMetrics},
+    Database,
 };
 use reth_provider::CanonStateSubscriptions;
 use tn_config::{ConsensusConfig, KeyConfig, TelcoinDirs};
+use tn_node_traits::TelcoinNode;
 use tn_primary::{ConsensusBus, NodeMode};
 pub use tn_storage::NodeStorage;
 use tn_storage::{open_db, DatabaseType};
@@ -31,7 +32,7 @@ pub fn launch_node_inner<DB, P>(
     db: DatabaseType,
 ) -> eyre::Result<bool>
 where
-    DB: Database + DatabaseMetadata + DatabaseMetrics + Clone + Unpin + 'static,
+    DB: Database + DatabaseMetrics + DatabaseMetadata + Clone + Unpin + 'static,
     P: TelcoinDirs + 'static,
 {
     // Create a tokio runtime each time this is called.
@@ -53,7 +54,7 @@ where
     let config = builder.tn_config.clone();
     let mut task_manager = TaskManager::new("Task Manager");
     let mut engine_task_manager = TaskManager::new("Engine Task Manager");
-    let engine = ExecutionNode::new(builder, &engine_task_manager)?;
+    let engine = ExecutionNode::<TelcoinNode<DB>>::new(builder, &engine_task_manager)?;
 
     info!(target: "telcoin::node", "execution engine created");
 
@@ -75,7 +76,7 @@ where
     for recent_block in engine.last_executed_output_blocks(block_capacity).await? {
         consensus_bus
             .recent_blocks()
-            .send_modify(|blocks| blocks.push_latest(recent_block.seal_slow()));
+            .send_modify(|blocks| blocks.push_latest(recent_block));
     }
 
     if tn_executor::subscriber::can_cvv(
