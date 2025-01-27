@@ -14,7 +14,6 @@ DEV_FUNDS=""
 
 #
 while [ "$1" != "" ]; do
-echo "opt: $1"
     case $1 in
         --start )
                 START=true
@@ -22,7 +21,6 @@ echo "opt: $1"
         --dev-funds )
                 shift
                 DEV_FUNDS=$1
-                echo "df: $DEV_FUNDS"
                 ;;
         * )     echo "Invalid option: $1"
                 exit 1

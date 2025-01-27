@@ -913,7 +913,7 @@ impl<DB: Database> Synchronizer<DB> {
         let (sender, receiver) = oneshot::channel();
         self.inner
             .tx_certificate_acceptor
-            .send((certificates, sender, false))
+            .send((certificates, sender, true))
             .await
             .expect("Synchronizer should shut down before certificate acceptor task.");
         receiver.await.expect("Synchronizer should shut down before certificate acceptor task.")?;
