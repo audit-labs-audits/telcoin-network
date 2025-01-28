@@ -122,7 +122,9 @@ impl<DB: Database> Primary<DB> {
         leader_schedule: LeaderSchedule,
         task_manager: &TaskManager,
     ) {
-        self.synchronizer.spawn(task_manager);
+        if consensus_bus.node_mode().borrow().is_active_cvv() {
+            self.synchronizer.spawn(task_manager);
+        }
         let _ = tn_network::connectivity::ConnectionMonitor::spawn(
             self.network.downgrade(),
             consensus_bus.primary_metrics().network_connection_metrics.clone(),

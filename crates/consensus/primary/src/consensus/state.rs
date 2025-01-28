@@ -269,6 +269,10 @@ pub struct Consensus<DB> {
 
     /// Inner state
     state: ConsensusState,
+
+    /// Are we an active CVV?
+    /// An active CVV is participating in consensus (not catching up or following as an NVV).
+    active: bool,
 }
 
 impl<DB: Database> Consensus<DB> {
@@ -320,28 +324,22 @@ impl<DB: Database> Consensus<DB> {
             protocol,
             metrics,
             state,
+            active: false,
         };
 
-        // Only run the consensus task if we are a CVV.
-        if consensus_bus.node_mode().borrow().is_cvv() {
+        // Only run the consensus task if we are an active CVV.
+        // Active means we are participating in consensus.
+        if consensus_bus.node_mode().borrow().is_active_cvv() {
             task_manager.spawn_task("consensus", monitored_future!(s.run(), "Consensus", INFO));
         }
     }
 
-    async fn run(self) {
-        match self.run_inner().await {
-            Ok(_) => {}
-            Err(err @ ConsensusError::ShuttingDown) => {
-                debug!(target: "telcoin::consensus_state", "{:?}", err)
-            }
-            Err(err) => panic!("Failed to run consensus: {:?}", err),
-        }
-    }
-
-    async fn run_inner(mut self) -> Result<(), ConsensusError> {
+    async fn run(mut self) -> Result<(), ConsensusError> {
         // Clone the bus or the borrow checker will yell at us...
         let bus_clone = self.consensus_bus.clone();
         let mut rx_new_certificates = bus_clone.new_certificates().subscribe();
+        self.active = bus_clone.node_mode().borrow().is_active_cvv();
+
         // Listen to incoming certificates.
         loop {
             tokio::select! {
@@ -371,7 +369,7 @@ impl<DB: Database> Consensus<DB> {
         // Process the certificate using the selected consensus protocol.
         let (_, committed_sub_dags) =
             self.protocol.process_certificate(&mut self.state, certificate)?;
-        if self.consensus_bus.node_mode().borrow().is_active_cvv() {
+        if self.active {
             // We extract a list of headers from this specific validator that
             // have been agreed upon, and signal this back to the narwhal sub-system
             // to be used to re-send batches that have not made it to a commit.
