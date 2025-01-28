@@ -78,7 +78,6 @@ pub fn spawn_subscriber<DB: Database>(
         inner: Arc::new(Inner { authority_id, committee, worker_cache, client, network }),
         execute_missing: Arc::new(Mutex::new(false)),
     };
-    let sub_clone = subscriber.clone();
     if mode.is_active_cvv() {
         // If we are active then partcipate in consensus.
         task_manager.spawn_task(
@@ -86,7 +85,7 @@ pub fn spawn_subscriber<DB: Database>(
             monitored_future!(
                 async move {
                     info!(target: "telcoin::subscriber", "Starting subscriber");
-                    sub_clone.run().await
+                    subscriber.run().await
                 },
                 "SubscriberTask"
             ),
@@ -373,7 +372,7 @@ impl<DB: Database> Subscriber<DB> {
         let mut rx_recent_blocks = self.consensus_bus.recent_blocks().subscribe();
         let mut latest_exec_block_num =
             self.consensus_bus.recent_blocks().borrow().latest_block_num_hash();
-        // infinate loop over consensus output
+        // infinite loop over consensus output
         loop {
             // Otherwise just follow along...
             for number in last_consensus_height + 1..=max_consensus_height {
@@ -381,7 +380,7 @@ impl<DB: Database> Subscriber<DB> {
                 // Check if we already have this consensus output in our local DB.
                 // This will also allow us to pre load other consensus blocks as a future
                 // optimization.
-                let output = if let Ok(Some(block)) = db.get::<ConsensusBlocks>(&number) {
+                let consensus_header = if let Ok(Some(block)) = db.get::<ConsensusBlocks>(&number) {
                     block
                 } else {
                     let mut try_num = 0;
@@ -403,16 +402,19 @@ impl<DB: Database> Subscriber<DB> {
                     }
                 };
                 let parent_hash = last_parent;
-                last_parent =
-                    ConsensusHeader::digest_from_parts(parent_hash, &output.sub_dag, number);
-                if last_parent != output.digest() {
+                last_parent = ConsensusHeader::digest_from_parts(
+                    parent_hash,
+                    &consensus_header.sub_dag,
+                    number,
+                );
+                if last_parent != consensus_header.digest() {
                     tracing::error!(target: "telcoin::subscriber", "failed to execute consensus!");
                     return Err(SubscriberError::UnexpectedProtocolMessage);
                 }
                 // TODO should also verify that the block output is building on is in fact
                 // the head of our chain.
                 let consensus_output =
-                    self.fetch_batches(output.sub_dag, parent_hash, number).await;
+                    self.fetch_batches(consensus_header.sub_dag, parent_hash, number).await;
                 self.save_consensus(consensus_output.clone())?;
 
                 // If we want to rejoin consensus eventually then save certs.
@@ -548,9 +550,9 @@ impl<DB: Database> Subscriber<DB> {
                 // then send to the execution layer for final block production.
                 //
                 // NOTE: this broadcasts to all subscribers, but lagging receivers will lose messages
-                Some(message) = waiting.next() => {
-                    self.save_consensus(message.clone())?;
-                    if let Err(e) = self.consensus_bus.consensus_output().send(message).await {
+                Some(output) = waiting.next() => {
+                    self.save_consensus(output.clone())?;
+                    if let Err(e) = self.consensus_bus.consensus_output().send(output).await {
                         error!(target: "telcoin::subscriber", "error broadcasting consensus output for authority {}: {}", self.inner.authority_id, e);
                         return Ok(());
                     }
@@ -619,25 +621,24 @@ impl<DB: Database> Subscriber<DB> {
 
         for cert in &sub_dag.certificates {
             for (digest, (worker_id, _)) in cert.header().payload().iter() {
-                let own_worker_name = self
-                    .inner
-                    .worker_cache
-                    .worker(
-                        self.inner
-                            .committee
-                            .authority(&self.inner.authority_id)
-                            .expect("own workers in worker cache")
-                            .protocol_key(),
-                        worker_id,
-                    )
-                    .unwrap_or_else(|_| panic!("worker_id {worker_id} is not in the worker cache"))
-                    .name;
-                let workers = Self::workers_for_certificate(&self.inner, cert, worker_id);
-                let (batch_set, worker_set) =
-                    batch_digests_and_workers.entry(own_worker_name).or_default();
-                batch_set.insert(*digest);
-                subscriber_output.batch_digests.push_back(*digest);
-                worker_set.extend(workers);
+                if let Ok(own_worker) = self.inner.worker_cache.worker(
+                    self.inner
+                        .committee
+                        .authority(&self.inner.authority_id)
+                        .expect("own workers in worker cache")
+                        .protocol_key(),
+                    worker_id,
+                ) {
+                    let own_worker_name = own_worker.name;
+                    let workers = Self::workers_for_certificate(&self.inner, cert, worker_id);
+                    let (batch_set, worker_set) =
+                        batch_digests_and_workers.entry(own_worker_name).or_default();
+                    batch_set.insert(*digest);
+                    subscriber_output.batch_digests.push_back(*digest);
+                    worker_set.extend(workers);
+                } else {
+                    error!(target: "telcoin::subscriber", "failed to find a local worker for {worker_id}, malicious certificate?");
+                }
             }
         }
 

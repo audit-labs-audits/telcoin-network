@@ -26,6 +26,15 @@ pub mod metrics;
 pub mod primary;
 pub mod worker;
 
+/// Inner working of launch_node().
+///
+/// This will bring up a tokio runtime and start the app within it.
+/// It also will shutdown this runtime, potentially violently, to make
+/// sure any lefteover tasks are ended.  This allows it to be called more
+/// than once per program execution to support changing modes of the
+/// running node.
+/// If it returns Ok(true) this indicates a mode change occurred and a restart
+/// is required.
 pub fn launch_node_inner<DB, P>(
     builder: &TnBuilder<DB>,
     tn_datadir: &P,
@@ -50,109 +59,109 @@ where
             start_prometheus_server(metrics_socket);
         }
 
-    // config for validator keys
-    let config = builder.tn_config.clone();
-    let mut task_manager = TaskManager::new("Task Manager");
-    let mut engine_task_manager = TaskManager::new("Engine Task Manager");
-    let engine = ExecutionNode::<TelcoinNode<DB>>::new(builder, &engine_task_manager)?;
+        // config for validator keys
+        let config = builder.tn_config.clone();
+        let mut task_manager = TaskManager::new("Task Manager");
+        let mut engine_task_manager = TaskManager::new("Engine Task Manager");
+        let engine = ExecutionNode::<TelcoinNode<DB>>::new(builder, &engine_task_manager)?;
 
-    info!(target: "telcoin::node", "execution engine created");
+        info!(target: "telcoin::node", "execution engine created");
 
-    let node_storage = NodeStorage::reopen(db);
-    tracing::info!(target: "telcoin::cli", "node storage open");
-    let key_config = KeyConfig::new(tn_datadir)?;
-    let consensus_config = ConsensusConfig::new(config, tn_datadir, node_storage, key_config)?;
+        let node_storage = NodeStorage::reopen(db);
+        tracing::info!(target: "telcoin::cli", "node storage open");
+        let key_config = KeyConfig::new(tn_datadir)?;
+        let consensus_config = ConsensusConfig::new(config, tn_datadir, node_storage, key_config)?;
 
-    let (worker_id, _worker_info) = consensus_config.config().workers().first_worker()?;
-    let worker = WorkerNode::new(*worker_id, consensus_config.clone());
-    let consensus_bus =
-        ConsensusBus::new_with_recent_blocks(consensus_config.config().parameters.gc_depth);
-    let primary = PrimaryNode::new(consensus_config.clone(), consensus_bus.clone());
+        let (worker_id, _worker_info) = consensus_config.config().workers().first_worker()?;
+        let worker = WorkerNode::new(*worker_id, consensus_config.clone());
+        let consensus_bus =
+            ConsensusBus::new_with_recent_blocks(consensus_config.config().parameters.gc_depth);
+        let primary = PrimaryNode::new(consensus_config.clone(), consensus_bus.clone());
 
-    let mut engine_state = engine.get_provider().await.canonical_state_stream();
+        let mut engine_state = engine.get_provider().await.canonical_state_stream();
 
-    // Prime the recent_blocks watch with latest executed blocks.
-    let block_capacity = consensus_bus.recent_blocks().borrow().block_capacity();
-    for recent_block in engine.last_executed_output_blocks(block_capacity).await? {
-        consensus_bus
-            .recent_blocks()
-            .send_modify(|blocks| blocks.push_latest(recent_block));
-    }
+        // Prime the recent_blocks watch with latest executed blocks.
+        let block_capacity = consensus_bus.recent_blocks().borrow().block_capacity();
+        for recent_block in engine.last_executed_output_blocks(block_capacity).await? {
+            consensus_bus
+                .recent_blocks()
+                .send_modify(|blocks| blocks.push_latest(recent_block));
+        }
 
-    if tn_executor::subscriber::can_cvv(
-        consensus_bus.clone(),
-        consensus_config.clone(),
-        primary.network().await,
-    )
-    .await
-    {
-        consensus_bus.node_mode().send_modify(|v| *v = NodeMode::CvvActive);
-    } else {
-        consensus_bus.node_mode().send_modify(|v| *v = NodeMode::CvvInactive);
-    }
+        if tn_executor::subscriber::can_cvv(
+            consensus_bus.clone(),
+            consensus_config.clone(),
+            primary.network().await,
+        )
+        .await
+        {
+            consensus_bus.node_mode().send_modify(|v| *v = NodeMode::CvvActive);
+        } else {
+            consensus_bus.node_mode().send_modify(|v| *v = NodeMode::CvvInactive);
+        }
 
-    // Spawn a task to update the consensus bus with new execution blocks as they are produced.
-    let latest_block_shutdown = consensus_config.shutdown().subscribe();
-    let consensus_bus_clone = consensus_bus.clone();
-    task_manager.spawn_task("latest block", async move {
-        loop {
-            tokio::select!(
-                _ = &latest_block_shutdown => {
-                    break;
-                }
-                latest = engine_state.next() => {
-                    if let Some(latest) = latest {
-                        consensus_bus_clone.recent_blocks().send_modify(|blocks| blocks.push_latest(latest.tip().block.header.clone()));
-                    } else {
+        // Spawn a task to update the consensus bus with new execution blocks as they are produced.
+        let latest_block_shutdown = consensus_config.shutdown().subscribe();
+        let consensus_bus_clone = consensus_bus.clone();
+        task_manager.spawn_task("latest block", async move {
+            loop {
+                tokio::select!(
+                    _ = &latest_block_shutdown => {
                         break;
                     }
-                }
+                    latest = engine_state.next() => {
+                        if let Some(latest) = latest {
+                            consensus_bus_clone.recent_blocks().send_modify(|blocks| blocks.push_latest(latest.tip().block.header.clone()));
+                        } else {
+                            break;
+                        }
+                    }
+                )
+            }
+        });
+
+        // create receiving channel before spawning primary to ensure messages are not lost
+        let consensus_output_rx = consensus_bus.subscribe_consensus_output();
+
+        // start the primary
+        let mut primary_task_manager = primary.start().await?;
+
+        let validator = engine.new_batch_validator().await;
+        // start the worker
+        let (mut worker_task_manager, block_provider) = worker.start(validator).await?;
+
+        // start engine
+        engine
+            .start_engine(
+                consensus_output_rx,
+                &engine_task_manager,
+                consensus_config.shutdown().subscribe(),
             )
-        }
-    });
+            .await?;
+        // spawn block maker for worker
+        engine
+            .start_batch_builder(
+                *worker_id,
+                block_provider.batches_tx(),
+                &engine_task_manager,
+                consensus_config.shutdown().subscribe(),
+            )
+            .await?;
 
-    // create receiving channel before spawning primary to ensure messages are not lost
-    let consensus_output_rx = consensus_bus.subscribe_consensus_output();
+        primary_task_manager.update_tasks();
+        task_manager.add_task_manager(primary_task_manager);
+        worker_task_manager.update_tasks();
+        task_manager.add_task_manager(worker_task_manager);
+        engine_task_manager.update_tasks();
+        task_manager.add_task_manager(engine_task_manager);
 
-    // start the primary
-    let mut primary_task_manager = primary.start().await?;
+        info!(target:"tn", tasks=?task_manager, "TASKS");
 
-    let validator = engine.new_batch_validator().await;
-    // start the worker
-    let (mut worker_task_manager, block_provider) = worker.start(validator).await?;
-
-    // start engine
-    engine
-        .start_engine(
-            consensus_output_rx,
-            &engine_task_manager,
-            consensus_config.shutdown().subscribe(),
-        )
-        .await?;
-    // spawn block maker for worker
-    engine
-        .start_batch_builder(
-            *worker_id,
-            block_provider.batches_tx(),
-            &engine_task_manager,
-            consensus_config.shutdown().subscribe(),
-        )
-        .await?;
-
-    primary_task_manager.update_tasks();
-    task_manager.add_task_manager(primary_task_manager);
-    worker_task_manager.update_tasks();
-    task_manager.add_task_manager(worker_task_manager);
-    engine_task_manager.update_tasks();
-    task_manager.add_task_manager(engine_task_manager);
-
-    info!(target:"tn", tasks=?task_manager, "TASKS");
-
-    task_manager.join_until_exit(consensus_config.shutdown().clone()).await;
-    let running = consensus_bus.restart();
-    consensus_bus.clear_restart();
-    info!(target:"tn", "TASKS complete, restart: {running}");
-    Ok(running)
+        task_manager.join_until_exit(consensus_config.shutdown().clone()).await;
+        let running = consensus_bus.restart();
+        consensus_bus.clear_restart();
+        info!(target:"tn", "TASKS complete, restart: {running}");
+        Ok(running)
     });
     // Kick over the runtime- don't let errant tasks block the Drop.
     runtime.shutdown_background();
@@ -162,6 +171,9 @@ where
 /// Launch all components for the node.
 ///
 /// Worker, Primary, and Execution.
+/// This will possibly "loop" to launch multiple times in response to
+/// a nodes mode changes.  This ensures a clean state and fresh tasks
+/// when switching modes.
 #[instrument(level = "info", skip_all)]
 pub fn launch_node<DB, P>(mut builder: TnBuilder<DB>, tn_datadir: P) -> eyre::Result<()>
 where

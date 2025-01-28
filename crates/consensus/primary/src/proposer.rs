@@ -828,11 +828,6 @@ impl<DB: Database> Proposer<DB> {
                 }
                 // check for new parent certificates
                 // synchronizer sends collection of certificates when there is quorum (2f+1)
-                //
-                // TODO: synchronizer will send empty Vec<Certificate> for old round
-                // - this node round: 11
-                // - synchronizer receives certs from restarted node at round 10
-                // - this debug goes off with empty vec for round 10 (during restart it test)
                 Some((certs, round)) = rx_parents.recv() => {
                     debug!(target: "primary::proposer", authority=?self.authority_id, this_round=self.round, parent_round=round, num_parents=certs.len(), "received parents");
                     self.process_parents(certs, round)?;

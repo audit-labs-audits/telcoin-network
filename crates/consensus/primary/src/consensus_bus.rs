@@ -107,7 +107,7 @@ struct ConsensusBusInner {
     /// Hold onto the executor metrics.
     executor_metrics: Arc<ExecutorMetrics>,
 
-    /// Flag to indicate a node restart after a shutdown.
+    /// Flag to indicate a node should restart after a shutdown.
     restart: AtomicBool,
 }
 
