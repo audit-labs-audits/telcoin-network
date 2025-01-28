@@ -112,7 +112,7 @@ impl ConsensusState {
 
         let mut num_certs = 0;
         for cert in &certificates {
-            if Self::try_insert_in_dag(&mut dag, last_committed, gc_round, cert)? {
+            if Self::try_insert_in_dag(&mut dag, last_committed, gc_round, cert, false)? {
                 info!("Inserted certificate: {:?}", cert);
                 num_certs += 1;
             }
@@ -129,6 +129,7 @@ impl ConsensusState {
             &self.last_committed,
             self.last_round.gc_round,
             certificate,
+            true,
         )
     }
 
@@ -138,6 +139,7 @@ impl ConsensusState {
         last_committed: &HashMap<AuthorityIdentifier, Round>,
         gc_round: Round,
         certificate: &Certificate,
+        check_parents: bool,
     ) -> Result<bool, ConsensusError> {
         if certificate.round() <= gc_round {
             debug!(target: "telcoin::consensus_state",
@@ -146,7 +148,9 @@ impl ConsensusState {
             );
             return Ok(false);
         }
-        Self::check_parents(certificate, dag, gc_round);
+        if check_parents {
+            Self::check_parents(certificate, dag, gc_round)?;
+        }
 
         // Always insert the certificate even if it is below last committed round of its origin,
         // to allow verifying parent existence.
@@ -197,25 +201,31 @@ impl ConsensusState {
         self.dag.retain(|r, _| *r > self.last_round.gc_round);
     }
 
-    // Checks that the provided certificate's parents exist and crashes if not.
-    fn check_parents(certificate: &Certificate, dag: &Dag, gc_round: Round) {
+    // Checks that the provided certificate's parents exist return an error if they do not.
+    fn check_parents(
+        certificate: &Certificate,
+        dag: &Dag,
+        gc_round: Round,
+    ) -> Result<(), ConsensusError> {
         let round = certificate.round();
         // Skip checking parents if they are GC'ed.
         // Also not checking genesis parents for simplicity.
         if round <= gc_round + 1 {
-            return;
+            return Ok(());
         }
         if let Some(round_table) = dag.get(&(round - 1)) {
             let store_parents: BTreeSet<&CertificateDigest> =
                 round_table.iter().map(|(_, (digest, _))| digest).collect();
             for parent_digest in certificate.header().parents() {
                 if !store_parents.contains(parent_digest) {
-                    panic!("Parent digest {parent_digest:?} not found in DAG for {certificate:?}!");
+                    return Err(ConsensusError::MissingParent(*parent_digest, certificate.clone()));
                 }
             }
         } else {
             tracing::error!(target: "telcoin::consensus_state", "Parent round not found in DAG for {certificate:?}!");
+            return Err(ConsensusError::MissingParentRound(certificate.clone()));
         }
+        Ok(())
     }
 }
 
