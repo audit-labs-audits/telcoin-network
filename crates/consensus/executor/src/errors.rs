@@ -48,4 +48,7 @@ pub enum SubscriberError {
 
     #[error("Client transaction invalid: {0}")]
     ClientExecutionError(String),
+
+    #[error("Attempts to query all peers has failed")]
+    ClientRequestsFailed,
 }
