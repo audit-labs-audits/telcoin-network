@@ -11659,6 +11659,24 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "a8f112729512f8e442d81f95a8a7ddf2b7c6b8a1a6f509a95864142b30cab2d3"
 
 [[package]]
+name = "state-sync"
+version = "0.1.0"
+dependencies = [
+ "anemo",
+ "consensus-metrics",
+ "eyre",
+ "futures",
+ "tn-config",
+ "tn-network",
+ "tn-network-types",
+ "tn-primary",
+ "tn-storage",
+ "tn-types",
+ "tokio",
+ "tracing",
+]
+
+[[package]]
 name = "static_assertions"
 version = "1.1.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -12241,6 +12259,7 @@ dependencies = [
  "mockall",
  "prometheus",
  "serde",
+ "state-sync",
  "tempfile",
  "thiserror 1.0.69",
  "tn-config",
@@ -12419,6 +12438,7 @@ dependencies = [
  "reth-trie-db",
  "serde-reflection",
  "serde_yaml",
+ "state-sync",
  "tempfile",
  "thiserror 1.0.69",
  "tn-batch-builder",

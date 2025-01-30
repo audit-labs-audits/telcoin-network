@@ -43,9 +43,7 @@ impl<CDB: ConsensusDatabase> PrimaryNodeInner<CDB> {
     /// Spawn a new primary. Optionally also spawn the consensus and a client executing
     /// transactions.
     async fn spawn_primary(&mut self, task_manager: &TaskManager) -> SubscriberResult<()> {
-        let leader_schedule = self
-            .spawn_consensus(&self.consensus_bus, self.primary.network().clone(), task_manager)
-            .await?;
+        let leader_schedule = self.spawn_consensus(&self.consensus_bus, task_manager).await?;
 
         self.primary.spawn(
             self.consensus_config.clone(),
@@ -62,7 +60,6 @@ impl<CDB: ConsensusDatabase> PrimaryNodeInner<CDB> {
     async fn spawn_consensus(
         &self,
         consensus_bus: &ConsensusBus,
-        network: anemo::Network,
         task_manager: &TaskManager,
     ) -> SubscriberResult<LeaderSchedule>
     where
@@ -96,7 +93,6 @@ impl<CDB: ConsensusDatabase> PrimaryNodeInner<CDB> {
             self.consensus_config.clone(),
             self.consensus_config.shutdown().subscribe(),
             consensus_bus.clone(),
-            network,
             task_manager,
         );
 

@@ -10,12 +10,13 @@ use reth_db::{
     Database,
 };
 use reth_provider::CanonStateSubscriptions;
+use state_sync::spawn_state_sync;
 use tn_config::{ConsensusConfig, KeyConfig, TelcoinDirs};
 use tn_node_traits::TelcoinNode;
 use tn_primary::{ConsensusBus, NodeMode};
 pub use tn_storage::NodeStorage;
-use tn_storage::{open_db, DatabaseType};
-use tn_types::TaskManager;
+use tn_storage::{open_db, tables::ConsensusBlocks, traits::Database as _, DatabaseType};
+use tn_types::{ConsensusHeader, TaskManager};
 use tokio::runtime::Builder;
 use tracing::{info, instrument};
 
@@ -64,10 +65,11 @@ where
         let mut task_manager = TaskManager::new("Task Manager");
         let mut engine_task_manager = TaskManager::new("Engine Task Manager");
         let engine = ExecutionNode::<TelcoinNode<DB>>::new(builder, &engine_task_manager)?;
+        let mut state_sync_task_manager = TaskManager::new("State Sync Task Manager");
 
         info!(target: "telcoin::node", "execution engine created");
 
-        let node_storage = NodeStorage::reopen(db);
+        let node_storage = NodeStorage::reopen(db.clone());
         tracing::info!(target: "telcoin::cli", "node storage open");
         let key_config = KeyConfig::new(tn_datadir)?;
         let consensus_config = ConsensusConfig::new(config, tn_datadir, node_storage, key_config)?;
@@ -88,7 +90,13 @@ where
                 .send_modify(|blocks| blocks.push_latest(recent_block));
         }
 
-        if tn_executor::subscriber::can_cvv(
+        // Prime the last consensus header from the DB.
+        let (_, last_db_block) = db
+            .last_record::<ConsensusBlocks>()
+            .unwrap_or_else(|| (0, ConsensusHeader::default()));
+        consensus_bus.last_consensus_header().send(last_db_block)?;
+
+        if state_sync::can_cvv(
             consensus_bus.clone(),
             consensus_config.clone(),
             primary.network().await,
@@ -119,6 +127,13 @@ where
                 )
             }
         });
+
+        spawn_state_sync(
+            consensus_config.clone(),
+            consensus_bus.clone(),
+            primary.network().await,
+            &state_sync_task_manager,
+        );
 
         // create receiving channel before spawning primary to ensure messages are not lost
         let consensus_output_rx = consensus_bus.subscribe_consensus_output();
@@ -154,6 +169,8 @@ where
         task_manager.add_task_manager(worker_task_manager);
         engine_task_manager.update_tasks();
         task_manager.add_task_manager(engine_task_manager);
+        state_sync_task_manager.update_tasks();
+        task_manager.add_task_manager(state_sync_task_manager);
 
         info!(target:"tn", tasks=?task_manager, "TASKS");
 

@@ -39,11 +39,10 @@ impl Executor {
         config: ConsensusConfig<DB>,
         rx_shutdown: Noticer,
         consensus_bus: ConsensusBus,
-        network: anemo::Network,
         task_manager: &TaskManager,
     ) {
         // Spawn the subscriber.
-        spawn_subscriber(config, rx_shutdown, consensus_bus, network, task_manager);
+        spawn_subscriber(config, rx_shutdown, consensus_bus, task_manager);
 
         // Return the handle.
         info!("Consensus subscriber successfully started");
