@@ -27,8 +27,8 @@ use tn_storage::{
 };
 use tn_types::{
     Address, AuthorityIdentifier, Batch, BlockHash, Certificate, CommittedSubDag, Committee,
-    ConsensusHeader, ConsensusOutput, Epoch, NetworkPublicKey, Noticer, Round, TaskManager,
-    Timestamp, TnReceiver, TnSender, WorkerCache, WorkerId, B256,
+    ConsensusHeader, ConsensusOutput, NetworkPublicKey, Noticer, TaskManager, Timestamp,
+    TnReceiver, TnSender, WorkerCache, WorkerId, B256,
 };
 use tokio::sync::Mutex;
 use tracing::{debug, error, info, warn};
@@ -124,9 +124,9 @@ pub fn spawn_subscriber<DB: Database>(
 /// Returns the max consensus chain block number, epoch and round from peers.
 ///
 /// Will allow three seconds per client and three attempts to get the consensus info.
-async fn max_consensus_number(
+async fn max_consensus_header(
     clients: &mut [PrimaryToPrimaryClient<WaitingPeer>],
-) -> Option<(u64, Epoch, Round)> {
+) -> Option<ConsensusHeader> {
     let mut attempt = 1;
     let threshhold = ((clients.len() + 1) * 2) / 3;
     let num_peers = clients.len();
@@ -155,11 +155,7 @@ async fn max_consensus_number(
                         if (*count + 1) >= threshhold {
                             tracing::info!(target: "telcoin::subscriber", "reached consensus on current chain height of {} with {} out of {num_peers} peers agreeing out of {responses} responses",
                             output.number, (*count + 1));
-                            return Some((
-                                output.number,
-                                output.sub_dag.leader.epoch(),
-                                output.sub_dag.leader.round(),
-                            ));
+                            return Some(output);
                         }
                         *count += 1;
                     } else {
@@ -240,14 +236,10 @@ pub async fn can_cvv<DB: Database>(
             PrimaryToPrimaryClient::new(network.waiting_peer(anemo::PeerId(peer_id.0.to_bytes())))
         })
         .collect();
-    let (_max_consensus_height, max_epoch, max_round) =
-        max_consensus_number(&mut clients).await.unwrap_or_else(|| {
-            (
-                last_executed_block.number,
-                last_executed_block.sub_dag.leader.epoch(),
-                last_executed_block.sub_dag.leader.round(),
-            )
-        });
+    let max_consensus_header =
+        max_consensus_header(&mut clients).await.unwrap_or_else(|| last_executed_block.clone());
+    let max_epoch = max_consensus_header.sub_dag.leader.epoch();
+    let max_round = max_consensus_header.sub_dag.leader.round();
     tracing::info!(target: "telcoin::subscriber",
         "CATCH UP params {max_epoch}, {max_round}, leader epoch: {last_consensus_epoch}, leader round: {last_consensus_round}, gc: {}",
         config.parameters().gc_depth
@@ -386,12 +378,10 @@ impl<DB: Database> Subscriber<DB> {
         let db = self.config.database();
         let (_, last_db_block) =
             db.last_record::<ConsensusBlocks>().unwrap_or_else(|| (0, ConsensusHeader::default()));
-        let Some((max_consensus_height, _max_epoch, _max_round)) =
-            max_consensus_number(clients).await
-        else {
+        let Some(max_consensus) = max_consensus_header(clients).await else {
             return Ok(last_db_block);
         };
-        self.catch_up_consensus_from_to(clients, last_db_block, max_consensus_height).await
+        self.catch_up_consensus_from_to(clients, last_db_block, max_consensus).await
     }
 
     /// Applies consensus output "from" (exclusive) to height "max_consensus_height" (inclusive).
@@ -401,13 +391,14 @@ impl<DB: Database> Subscriber<DB> {
         &self,
         clients: &mut [PrimaryToPrimaryClient<WaitingPeer>],
         from: ConsensusHeader,
-        max_consensus_height: u64,
+        max_consensus: ConsensusHeader,
     ) -> SubscriberResult<ConsensusHeader> {
         // Note use last_executed_block here because
         let mut last_parent = from.digest();
 
         // Catch up to the current chain state if we need to.
         let last_consensus_height = from.number;
+        let max_consensus_height = max_consensus.number;
         if last_consensus_height >= max_consensus_height {
             return Ok(from);
         }
@@ -422,7 +413,9 @@ impl<DB: Database> Subscriber<DB> {
             // Check if we already have this consensus output in our local DB.
             // This will also allow us to pre load other consensus blocks as a future
             // optimization.
-            let consensus_header = if let Ok(Some(block)) = db.get::<ConsensusBlocks>(&number) {
+            let consensus_header = if number == max_consensus_height {
+                max_consensus.clone()
+            } else if let Ok(Some(block)) = db.get::<ConsensusBlocks>(&number) {
                 block
             } else {
                 let mut try_num = 0;
@@ -545,24 +538,25 @@ impl<DB: Database> Subscriber<DB> {
         let mut last_consensus_height = last_consensus_header.number;
         // loop over consensus output until we catch up
         loop {
-            let (max_consensus_height, _, _) =
-                max_consensus_number(&mut clients).await.unwrap_or((last_consensus_height, 0, 0));
-            if last_consensus_height == max_consensus_height {
-                // We are caught up so try to jump back into consensus
-                info!(target: "telcoin::subscriber", "attempting to rejoin consensus, consensus block height {last_consensus_height}");
-                // Set restart flag and trigger shutdown by returning.
-                self.consensus_bus.set_restart();
-                let _ = self.consensus_bus.node_mode().send(NodeMode::CvvActive);
-                return Ok(());
+            if let Some(max_consensus) = max_consensus_header(&mut clients).await {
+                if last_consensus_height
+                    >= max_consensus.number - (self.config.parameters().gc_depth as u64 / 3)
+                {
+                    // We are caught up enough so try to jump back into consensus
+                    info!(target: "telcoin::subscriber", "attempting to rejoin consensus, consensus block height {last_consensus_height}");
+                    // Set restart flag and trigger shutdown by returning.
+                    self.consensus_bus.set_restart();
+                    let _ = self.consensus_bus.node_mode().send(NodeMode::CvvActive);
+                    return Ok(());
+                }
+                last_consensus_header = self
+                    .catch_up_consensus_from_to(&mut clients, last_consensus_header, max_consensus)
+                    .await?;
+                last_consensus_height = last_consensus_header.number;
+            } else {
+                // We seem to have lost our peers, so for now error out and exit node.
+                return Err(SubscriberError::ClientRequestsFailed);
             }
-            last_consensus_header = self
-                .catch_up_consensus_from_to(
-                    &mut clients,
-                    last_consensus_header,
-                    max_consensus_height,
-                )
-                .await?;
-            last_consensus_height = last_consensus_header.number;
         }
     }
 
@@ -576,6 +570,7 @@ impl<DB: Database> Subscriber<DB> {
         let mut max_consensus_height = last_consensus_height;
         // infinite loop over consensus output
         loop {
+            let mut max_consensus = None;
             while last_consensus_height == max_consensus_height {
                 // Rest for bit then try see if chain has advanced and catch up if so.
                 tokio::select! {
@@ -584,18 +579,17 @@ impl<DB: Database> Subscriber<DB> {
                         return Ok(())
                     }
                 }
-                let (new_max_consensus_height, _, _) = max_consensus_number(&mut clients)
-                    .await
-                    .unwrap_or((last_consensus_height, 0, 0));
-                max_consensus_height = new_max_consensus_height;
+                max_consensus = max_consensus_header(&mut clients).await;
+                max_consensus_height = max_consensus
+                    .as_ref()
+                    .map(|header| header.number)
+                    .unwrap_or(last_consensus_height);
             }
-            last_consensus_header = self
-                .catch_up_consensus_from_to(
-                    &mut clients,
-                    last_consensus_header,
-                    max_consensus_height,
-                )
-                .await?;
+            if let Some(max_consensus) = max_consensus {
+                last_consensus_header = self
+                    .catch_up_consensus_from_to(&mut clients, last_consensus_header, max_consensus)
+                    .await?;
+            }
             last_consensus_height = last_consensus_header.number;
             max_consensus_height = last_consensus_height;
         }
