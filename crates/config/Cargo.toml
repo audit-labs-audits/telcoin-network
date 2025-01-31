@@ -28,6 +28,7 @@ serde_json = { workspace = true }
 reth-chainspec = { workspace = true }
 humantime-serde = { workspace = true }
 anemo = { workspace = true }
+libp2p = { workspace = true }
 
 [dev-dependencies]
 tempfile = { workspace = true }

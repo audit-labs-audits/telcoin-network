@@ -782,6 +782,7 @@ async fn test_request_vote_already_voted() {
     );
 }
 
+// NOTE: this is unit tested in primary::state_sync
 #[tokio::test]
 async fn test_fetch_certificates_handler() {
     let fixture = CommitteeFixture::builder(MemDatabase::default)

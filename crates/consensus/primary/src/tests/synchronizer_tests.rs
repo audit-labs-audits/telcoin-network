@@ -7,7 +7,6 @@ use crate::{
     ConsensusBus,
 };
 use fastcrypto::{hash::Hash, traits::KeyPair};
-use futures::{stream::FuturesUnordered, StreamExt};
 use itertools::Itertools;
 use std::{
     collections::{BTreeSet, HashMap},
@@ -15,15 +14,30 @@ use std::{
     sync::Arc,
     time::Duration,
 };
-use tn_storage::mem_db::MemDatabase;
+use tn_storage::{mem_db::MemDatabase, traits::Database};
 use tn_test_utils::{
-    fixture_batch_with_transactions, make_optimal_signed_certificates, mock_signed_certificate,
+    fixture_batch_with_transactions, make_optimal_signed_certificates, signed_cert_for_test,
     CommitteeFixture,
 };
 use tn_types::{
-    error::DagError, BlsAggregateSignatureBytes, Certificate, Committee, Round,
-    SignatureVerificationState, TaskManager, TnReceiver, TnSender,
+    error::{CertificateError, HeaderError},
+    BlsAggregateSignatureBytes, Certificate, Committee, Round, SignatureVerificationState,
+    TaskManager, TnReceiver, TnSender,
 };
+
+/// Try to accept certificate. Sleep if error.
+/// WARNING: This is an infinite loop. Caller must handle timeout.
+async fn try_accept_or_sleep<DB: Database>(
+    synchronizer: Arc<Synchronizer<DB>>,
+    certs: &[Certificate],
+) {
+    for cert in certs {
+        while let Err(e) = synchronizer.try_accept_certificate(cert.clone()).await {
+            tracing::warn!("error: {e:?} - sleeping...");
+            tokio::time::sleep(Duration::from_millis(500)).await;
+        }
+    }
+}
 
 #[tokio::test]
 async fn accept_certificates() {
@@ -103,15 +117,14 @@ async fn accept_suspended_certificates() {
     let certificates = certificates.into_iter().collect_vec();
 
     // Try to accept certificates from round 2 to 5. All of them should be suspended.
-    let accept = FuturesUnordered::new();
     for cert in &certificates[NUM_AUTHORITIES..] {
         match synchronizer.try_accept_certificate(cert.clone()).await {
             Ok(()) => panic!("Unexpected acceptance of {cert:?}"),
-            Err(DagError::Suspended(notify)) => {
-                accept.push(async move { notify.wait().await });
+            Err(CertificateError::Suspended) => {
+                // expected
                 continue;
             }
-            Err(e) => panic!("Unexpected error {e}"),
+            Err(e) => panic!("Unexpected error: {e}"),
         }
     }
 
@@ -123,8 +136,12 @@ async fn accept_suspended_certificates() {
         }
     }
 
-    // Wait for all notifications to arrive.
-    accept.collect::<Vec<()>>().await;
+    // more than enough time
+    let max_timeout = Duration::from_secs(5);
+    // Try to accept certificates from round 2 and above again. All of them should be accepted.
+    tokio::time::timeout(max_timeout, try_accept_or_sleep(synchronizer.clone(), &certificates))
+        .await
+        .expect("suspended certificates accepted within time");
 
     // Try to accept certificates from round 2 and above again. All of them should be accepted.
     for cert in &certificates[NUM_AUTHORITIES..] {
@@ -135,7 +152,7 @@ async fn accept_suspended_certificates() {
     }
 
     // Create a certificate > 1000 rounds above the highest local round.
-    let (_digest, cert) = mock_signed_certificate(
+    let (_digest, cert) = signed_cert_for_test(
         keys.as_slice(),
         certificates.last().cloned().unwrap().origin(),
         2000,
@@ -145,7 +162,7 @@ async fn accept_suspended_certificates() {
     // The certificate should not be accepted or suspended.
     match synchronizer.try_accept_certificate(cert.clone()).await {
         Ok(()) => panic!("Unexpected success!"),
-        Err(DagError::TooNew(_, _, _)) => {}
+        Err(CertificateError::TooNew(_, _, _)) => {}
         Err(e) => panic!("Unexpected error {e}!"),
     }
 }
@@ -519,7 +536,7 @@ async fn sync_batches_drops_old() {
         let _ = cb.consensus_round_updates().send(ConsensusRound::new(30, 0));
     });
     match synchronizer.sync_header_batches(&test_header, 10).await {
-        Err(DagError::TooOld(_, _, _)) => (),
+        Err(HeaderError::TooOld(_, _, _)) => (),
         result => panic!("unexpected result {result:?}"),
     }
 }
@@ -551,12 +568,10 @@ async fn gc_suspended_certificates() {
     let certificates = certificates.into_iter().collect_vec();
 
     // Try to aceept certificates from round 2 and above. All of them should be suspended.
-    let accept = FuturesUnordered::new();
     for cert in &certificates[NUM_AUTHORITIES..] {
         match synchronizer.try_accept_certificate(cert.clone()).await {
             Ok(()) => panic!("Unexpected acceptance of {cert:?}"),
-            Err(DagError::Suspended(notify)) => {
-                accept.push(async move { notify.wait().await });
+            Err(CertificateError::Suspended) => {
                 continue;
             }
             Err(e) => panic!("Unexpected error {e}"),
@@ -588,9 +603,9 @@ async fn gc_suspended_certificates() {
                 ),
             )
         }
-        match synchronizer.try_accept_fetched_certificate(verified_cert).await {
+        match synchronizer.try_accept_certificate(verified_cert).await {
             Ok(()) => panic!("Unexpected acceptance of {cert:?}"),
-            Err(DagError::Suspended(_)) => {
+            Err(CertificateError::Suspended) => {
                 continue;
             }
             Err(e) => panic!("Unexpected error {e}"),
@@ -604,8 +619,14 @@ async fn gc_suspended_certificates() {
     // At commit round 8, round 3 becomes the GC round.
     let _ = cb.consensus_round_updates().send(ConsensusRound::new(8, gc_round(8, GC_DEPTH)));
 
-    // Wait for all notifications to arrive.
-    accept.collect::<Vec<()>>().await;
+    // more than enough time
+    let max_timeout = Duration::from_secs(5);
+    tokio::time::timeout(
+        max_timeout,
+        try_accept_or_sleep(synchronizer.clone(), &certificates[NUM_AUTHORITIES..]),
+    )
+    .await
+    .expect("suspended certificates accepted within time");
 
     // Expected to receive:
     // Round 2~4 certificates will be accepted because of GC.

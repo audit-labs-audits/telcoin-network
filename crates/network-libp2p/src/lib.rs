@@ -4,8 +4,13 @@
 mod codec;
 mod consensus;
 pub mod error;
-mod messages;
 pub mod types;
 
-// export message types
-pub use messages::{PrimaryRequest, PrimaryResponse, WorkerRequest, WorkerResponse};
+// export types
+pub use codec::{TNCodec, TNMessage};
+pub use consensus::ConsensusNetwork;
+
+// re-export specific libp2p types
+pub use libp2p::{
+    gossipsub::Message as GossipMessage, identity::PeerId, request_response::ResponseChannel,
+};

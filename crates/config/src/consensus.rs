@@ -1,11 +1,17 @@
 //! Configuration for consensus network (primary and worker).
 use anemo::Config as AnemoConfig;
-use std::sync::Arc;
+use libp2p::PeerId;
+use std::{
+    collections::{HashMap, HashSet},
+    sync::Arc,
+};
 use tn_network::local::LocalNetwork;
 use tn_storage::{traits::Database, NodeStorage};
-use tn_types::{Authority, Committee, Notifier, WorkerCache};
+use tn_types::{Authority, AuthorityIdentifier, Committee, Notifier, WorkerCache};
 
-use crate::{Config, ConfigFmt, ConfigTrait as _, KeyConfig, Parameters, TelcoinDirs};
+use crate::{
+    Config, ConfigFmt, ConfigTrait as _, KeyConfig, NetworkConfig, Parameters, TelcoinDirs,
+};
 
 #[derive(Debug)]
 struct ConsensusConfigInner<DB> {
@@ -16,6 +22,8 @@ struct ConsensusConfigInner<DB> {
     authority: Authority,
     local_network: LocalNetwork,
     anemo_config: AnemoConfig,
+    network_config: NetworkConfig,
+    authority_map: AuthorityMapping,
 }
 
 #[derive(Debug, Clone)]
@@ -89,6 +97,9 @@ where
         let worker_cache = worker_cache.take().map(Arc::new);
         let shutdown = Notifier::new();
         let anemo_config = Self::create_anemo_config();
+        let network_config = NetworkConfig::default();
+        let authority_map = AuthorityMapping::new(&committee, &network_config);
+
         Ok(Self {
             inner: Arc::new(ConsensusConfigInner {
                 config,
@@ -98,6 +109,8 @@ where
                 authority,
                 local_network,
                 anemo_config,
+                network_config,
+                authority_map,
             }),
             worker_cache,
             shutdown,
@@ -188,5 +201,54 @@ where
 
     pub fn anemo_config(&self) -> &AnemoConfig {
         &self.inner.anemo_config
+    }
+
+    pub fn network_config(&self) -> &NetworkConfig {
+        &self.inner.network_config
+    }
+
+    /// Committee network peer ids.
+    pub fn committee_peer_ids(&self) -> HashSet<PeerId> {
+        self.inner.authority_map.peer_id_to_authority.keys().copied().collect()
+    }
+
+    /// Return the libp2p network [PeerId] for an authority.
+    pub fn peer_id_for_authority(&self, authority_id: &AuthorityIdentifier) -> Option<PeerId> {
+        self.inner.authority_map.authority_to_peer_id.get(authority_id).copied()
+    }
+
+    /// Return the [AuthorityIdentifier] for a libp2p network [PeerId].
+    pub fn authority_for_peer_id(&self, peer_id: &PeerId) -> Option<AuthorityIdentifier> {
+        self.inner.authority_map.peer_id_to_authority.get(peer_id).copied()
+    }
+}
+
+/// Authority mappings between authority id (used by consensus) and peer id (used by network).
+#[derive(Debug)]
+pub struct AuthorityMapping {
+    /// Map the [AuthorityIdentifier] to the network [PeerId].
+    authority_to_peer_id: HashMap<AuthorityIdentifier, PeerId>,
+    /// Map the [PeerId] to the network [AuthorityIdentifier].
+    peer_id_to_authority: HashMap<PeerId, AuthorityIdentifier>,
+}
+
+impl AuthorityMapping {
+    /// Create a new instance of [Self].
+    pub fn new(committee: &Committee, network_config: &NetworkConfig) -> Self {
+        let authority_to_peer_id: HashMap<AuthorityIdentifier, PeerId> = committee
+            .authorities()
+            .map(|a| {
+                let fc = a.network_key();
+                let peer_id = network_config
+                    .ed25519_fastcrypto_to_libp2p(&fc)
+                    .expect("fastcrypto to libp2p PeerId always works");
+                (a.id(), peer_id)
+            })
+            .collect();
+
+        let peer_id_to_authority =
+            authority_to_peer_id.iter().map(|(a, p_id)| (*p_id, *a)).collect();
+
+        Self { authority_to_peer_id, peer_id_to_authority }
     }
 }

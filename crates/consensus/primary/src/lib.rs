@@ -2,8 +2,11 @@
 //! Primary actors
 
 #![warn(future_incompatible, nonstandard_style, rust_2018_idioms, rust_2021_compatibility)]
+// TEMPORARY UNTIL LIBP2P INTEGRATED
+#![allow(dead_code)]
 
 mod aggregators;
+mod anemo_network;
 mod certificate_fetcher;
 mod certifier;
 pub mod consensus;
@@ -12,6 +15,7 @@ mod network;
 mod primary;
 mod proposer;
 mod state_handler;
+mod state_sync;
 mod synchronizer;
 
 #[cfg(test)]

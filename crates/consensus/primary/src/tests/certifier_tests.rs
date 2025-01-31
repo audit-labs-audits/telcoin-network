@@ -11,7 +11,7 @@ use tn_test_utils::CommitteeFixture;
 use tn_types::{BlsKeypair, Notifier, SignatureVerificationState, TnSender};
 
 #[tokio::test(flavor = "current_thread")]
-async fn propose_header_and_form_certificate_v2() {
+async fn propose_header_to_form_certificate() {
     let fixture = CommitteeFixture::builder(MemDatabase::default).randomize_ports(true).build();
     let committee = fixture.committee();
     let primary = fixture.authorities().last().unwrap();

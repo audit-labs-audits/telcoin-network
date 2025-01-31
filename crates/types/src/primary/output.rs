@@ -47,8 +47,6 @@ pub struct ConsensusOutput {
 
 impl ConsensusOutput {
     /// The leader for the round
-    ///
-    /// TODO: need the address for the authority
     pub fn leader(&self) -> &Certificate {
         &self.sub_dag.leader
     }
@@ -128,7 +126,7 @@ impl Display for ConsensusOutput {
     }
 }
 
-#[derive(Serialize, Deserialize, Clone, Debug)]
+#[derive(PartialEq, Serialize, Deserialize, Clone, Debug)]
 pub struct CommittedSubDag {
     /// The sequence of committed certificates.
     pub certificates: Vec<Certificate>,

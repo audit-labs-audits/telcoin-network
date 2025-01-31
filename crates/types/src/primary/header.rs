@@ -1,6 +1,6 @@
 use crate::{
     crypto, encode,
-    error::{DagError, DagResult},
+    error::{HeaderError, HeaderResult},
     now, AuthorityIdentifier, Batch, BlockHash, BlockNumHash, BlockNumber, CertificateDigest,
     Committee, Epoch, Round, TimestampSec, VoteDigest, WorkerCache, WorkerId,
 };
@@ -99,24 +99,21 @@ impl Header {
     /// Ensure the header is valid based on the current committee and workercache.
     ///
     /// The digest is calculated with the sealed header, so the EL data is also verified.
-    pub fn validate(&self, committee: &Committee, worker_cache: &WorkerCache) -> DagResult<()> {
+    pub fn validate(&self, committee: &Committee, worker_cache: &WorkerCache) -> HeaderResult<()> {
         // Ensure the header is from the correct epoch.
         if self.epoch != committee.epoch() {
-            return Err(DagError::InvalidEpoch {
-                expected: committee.epoch(),
-                received: self.epoch,
-            });
+            return Err(HeaderError::InvalidEpoch { theirs: self.epoch, ours: committee.epoch() });
         }
 
         // Ensure the header digest is well formed.
         if Hash::digest(self) != self.digest() {
-            return Err(DagError::InvalidHeaderDigest);
+            return Err(HeaderError::InvalidHeaderDigest);
         }
 
         // Ensure the authority has voting rights.
         let voting_rights = committee.stake_by_id(self.author);
         if voting_rights == 0 {
-            return Err(DagError::UnknownAuthority(self.author.to_string()));
+            return Err(HeaderError::UnknownAuthority(self.author.to_string()));
         }
 
         // Ensure all worker ids are correct.
@@ -125,39 +122,11 @@ impl Header {
                 .worker(
                     committee
                         .authority(&self.author)
-                        .expect("own worker in worker cache")
+                        .ok_or(HeaderError::UnknownAuthority(self.author.to_string()))?
                         .protocol_key(),
                     worker_id,
                 )
-                .map_err(|_| DagError::HeaderHasBadWorkerIds(self.digest()))?;
-        }
-
-        // Ensure system messages are valid.
-        let mut has_dkg_message = false;
-        let mut has_dkg_confirmation = false;
-        for m in self.system_messages.iter() {
-            match m {
-                SystemMessage::DkgMessage(msg) => {
-                    if msg.sender != self.author.0 {
-                        return Err(DagError::InvalidSystemMessage);
-                    }
-                    // A header must have no more than one DkgMessage.
-                    if has_dkg_message {
-                        return Err(DagError::DuplicateSystemMessage);
-                    }
-                    has_dkg_message = true;
-                }
-                SystemMessage::DkgConfirmation(conf) => {
-                    if conf.sender != self.author.0 {
-                        return Err(DagError::InvalidSystemMessage);
-                    }
-                    // A header must have no more than one DkgConfirmation.
-                    if has_dkg_confirmation {
-                        return Err(DagError::DuplicateSystemMessage);
-                    }
-                    has_dkg_confirmation = true;
-                }
-            }
+                .map_err(|_| HeaderError::UnkownWorkerId)?;
         }
 
         Ok(())
@@ -243,7 +212,7 @@ impl HeaderBuilder {
             round: self.round.expect("round set for header builder"),
             epoch: self.epoch.expect("epoch set for header builder"),
             created_at: self.created_at.unwrap_or(0),
-            payload: self.payload.expect("payload set for header builder"),
+            payload: self.payload.unwrap_or_default(),
             system_messages: self.system_messages.unwrap_or_default(),
             parents: self.parents.expect("parents set for header builder"),
             digest: OnceCell::default(),
@@ -330,12 +299,14 @@ impl fmt::Debug for Header {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> Result<(), fmt::Error> {
         write!(
             f,
-            "{}: B{}(v{}, e{}, {}wbs)",
+            "{}: B{}(v{}, e{}, {}wbs, exec: {} - {})",
             self.digest(),
             self.round(),
             self.author(),
             self.epoch(),
             self.payload().len(),
+            self.latest_execution_block_num,
+            self.latest_execution_block,
         )
     }
 }

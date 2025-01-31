@@ -49,11 +49,38 @@ impl<DB: Database> CommitteeFixture<DB> {
             .clone()
     }
 
+    /// Return a reference to the first authority in the committee.
+    pub fn first_authority(&self) -> &AuthorityFixture<DB> {
+        self.authorities().next().expect("4 nodes in committee fixture")
+    }
+
+    /// Return a reference to [AuthorityFixture] based on index.
+    ///
+    /// NOTE: it is the caller's responsibility to handle errors.
+    pub fn authority_fixture_by_idx(&self, idx: usize) -> Option<&AuthorityFixture<DB>> {
+        self.authorities.get(idx)
+    }
+
+    /// Return a reference to the last authority in the committee.
+    pub fn last_authority(&self) -> &AuthorityFixture<DB> {
+        self.authorities.last().expect("4 nodes in committee fixture")
+    }
+
+    /// Return a [HeaderBuilder] from the last authority in the committee.
+    ///
+    /// See [AuthorityFixture::header_builder()] for more information.
+    pub fn header_builder_last_authority(&self) -> HeaderBuilder {
+        self.last_authority().header_builder(&self.committee())
+    }
+
     /// Return a header from the last authority in the committee.
     ///
     /// See [AuthorityFixture::header()] for more information.
-    pub fn header(&self) -> Header {
-        self.authorities.last().unwrap().header(&self.committee())
+    pub fn header_from_last_authority(&self) -> Header {
+        self.authorities
+            .last()
+            .expect("4 authorities in committee fixture")
+            .header(&self.committee())
     }
 
     /// Return a `Vec<Header>` - one [Header] per authority in the committee.
