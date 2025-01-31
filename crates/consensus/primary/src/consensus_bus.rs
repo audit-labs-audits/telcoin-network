@@ -11,7 +11,8 @@ use std::sync::{atomic::AtomicBool, Arc};
 use tn_config::Parameters;
 use tn_primary_metrics::{ChannelMetrics, ConsensusMetrics, ExecutorMetrics, Metrics};
 use tn_types::{
-    Certificate, CommittedSubDag, ConsensusOutput, Header, Round, TnSender, CHANNEL_CAPACITY,
+    Certificate, CommittedSubDag, ConsensusHeader, ConsensusOutput, Header, Round, TnSender,
+    CHANNEL_CAPACITY,
 };
 use tokio::sync::{broadcast, watch};
 
@@ -88,10 +89,20 @@ struct ConsensusBusInner {
     /// Hold onto the recent blocks watch to keep it "open"
     _rx_recent_blocks: watch::Receiver<RecentBlocks>,
 
+    /// Watch tracking most recently seen consensus header.
+    tx_last_consensus_header: watch::Sender<ConsensusHeader>,
+    /// Hold onto the consensus header watch to keep it "open"
+    _rx_last_consensus_header: watch::Receiver<ConsensusHeader>,
+
     /// Consensus output with a consensus header.
     consensus_output: broadcast::Sender<ConsensusOutput>,
     /// Hold onto consensus output with a consensus header to keep it open.
     _rx_consensus_output: broadcast::Receiver<ConsensusOutput>,
+    /// Consensus header.  Note this can be used to create consensus output to execute for non
+    /// validators.
+    consensus_header: broadcast::Sender<ConsensusHeader>,
+    /// Hold onto consensus header to keep it open.
+    _rx_consensus_header: broadcast::Receiver<ConsensusHeader>,
 
     /// Status of sync?
     tx_sync_status: watch::Sender<NodeMode>,
@@ -185,6 +196,8 @@ impl ConsensusBus {
         );
 
         let (tx_primary_round_updates, _rx_primary_round_updates) = watch::channel(0u32);
+        let (tx_last_consensus_header, _rx_last_consensus_header) =
+            watch::channel(ConsensusHeader::default());
 
         let (tx_recent_blocks, _rx_recent_blocks) =
             watch::channel(RecentBlocks::new(recent_blocks as usize));
@@ -194,6 +207,7 @@ impl ConsensusBus {
             metered_channel::channel_sender(CHANNEL_CAPACITY, &channel_metrics.tx_sequence);
 
         let (consensus_output, _rx_consensus_output) = broadcast::channel(CHANNEL_CAPACITY);
+        let (consensus_header, _rx_consensus_header) = broadcast::channel(CHANNEL_CAPACITY);
 
         Self {
             inner: Arc::new(ConsensusBusInner {
@@ -212,8 +226,12 @@ impl ConsensusBus {
                 _rx_primary_round_updates,
                 tx_recent_blocks,
                 _rx_recent_blocks,
+                tx_last_consensus_header,
+                _rx_last_consensus_header,
                 consensus_output,
                 _rx_consensus_output,
+                consensus_header,
+                _rx_consensus_header,
                 tx_sync_status,
                 _rx_sync_status,
                 consensus_metrics,
@@ -300,6 +318,11 @@ impl ConsensusBus {
         &self.inner.tx_recent_blocks
     }
 
+    /// Track the latest consensus header.
+    pub fn last_consensus_header(&self) -> &watch::Sender<ConsensusHeader> {
+        &self.inner.tx_last_consensus_header
+    }
+
     /// Broadcast channel with consensus output (includes the consensus chain block).
     /// This also provides the ConsesusHeader, use this for block execution.
     pub fn consensus_output(&self) -> &impl TnSender<ConsensusOutput> {
@@ -311,6 +334,12 @@ impl ConsensusBus {
     /// execution module.
     pub fn subscribe_consensus_output(&self) -> broadcast::Receiver<ConsensusOutput> {
         self.inner.consensus_output.subscribe()
+    }
+
+    /// Broadcast channel with consensus header.
+    /// This is useful pre-consensus output when not participating in consensus.
+    pub fn consensus_header(&self) -> &impl TnSender<ConsensusHeader> {
+        &self.inner.consensus_header
     }
 
     /// Status of initial sync operation.

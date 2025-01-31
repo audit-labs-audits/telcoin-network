@@ -12,6 +12,7 @@ members = [
     "crates/network",
     "crates/network-types",
     "crates/network-libp2p",
+    "crates/state-sync",
 
     # consensus
     "crates/consensus/consensus-metrics",
@@ -216,6 +217,7 @@ tn-network = { path = "./crates/network" }
 tn-network-libp2p = { path = "./crates/network-libp2p" }
 tn-network-types = { path = "./crates/network-types" }
 tn-rpc = { path = "./crates/execution/tn-rpc" }
+state-sync = { path = "./crates/state-sync" }
 
 # optional
 tn-faucet = { path = "./crates/execution/faucet" }

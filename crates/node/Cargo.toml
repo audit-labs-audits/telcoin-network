@@ -46,6 +46,7 @@ tn-primary-metrics = { workspace = true }
 
 anemo = { workspace = true }
 reqwest = { workspace = true }
+state-sync = { workspace = true }
 dirs-next = "2.0.0"
 
 # engine
