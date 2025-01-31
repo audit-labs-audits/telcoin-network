@@ -13,46 +13,26 @@ use tn_types::{AuthorityIdentifier, BlsKeypair, Certificate, SignatureVerificati
 #[test]
 fn test_empty_certificate_verification() {
     let fixture = CommitteeFixture::builder(MemDatabase::default).build();
-
     let committee = fixture.committee();
-    let header = fixture.header();
-    // You should not be allowed to create a certificate that does not satisfying quorum
-    // requirements
-    assert!(Certificate::new_unverified(&committee, header.clone(), Vec::new()).is_err());
+    let header = fixture.header_from_last_authority();
 
-    let certificate = Certificate::new_unsigned(&committee, header, Vec::new()).unwrap();
+    // 3 Signers satisfies the 2F + 1 signed stake requirement
+    let votes = fixture
+        .authorities()
+        .take(3)
+        .map(|a| (a.id(), a.vote(&header).signature().clone()))
+        .collect();
+
+    let certificate =
+        Certificate::new_unsigned(&committee, header, votes).expect("new unsigned cert");
     assert!(certificate.verify(&committee, &fixture.worker_cache()).is_err());
 }
 
-// #[test]
-// fn test_valid_certificate_v1_verification() {
-//     let fixture = CommitteeFixture::builder().build();
-//     let cert_v1_protocol_config = get_protocol_config(28);
-//     let committee = fixture.committee();
-//     let header = fixture.header(&cert_v1_protocol_config);
-
-//     let mut signatures = Vec::new();
-
-//     // 3 Signers satisfies the 2F + 1 signed stake requirement
-//     for authority in fixture.authorities().take(3) {
-//         let vote = authority.vote(&header);
-//         signatures.push((vote.author(), vote.signature().clone()));
-//     }
-
-//     let certificate =
-//         Certificate::new_unverified(&cert_v1_protocol_config, &committee, header, signatures)
-//             .unwrap();
-
-//     assert!(certificate
-//         .verify(&committee, &fixture.worker_cache())
-//         .is_ok());
-// }
-
 #[test]
-fn test_valid_certificate_v2_verification() {
+fn test_valid_certificate_verification() {
     let fixture = CommitteeFixture::builder(MemDatabase::default).build();
     let committee = fixture.committee();
-    let header = fixture.header();
+    let header = fixture.header_from_last_authority();
 
     let mut signatures = Vec::new();
 
@@ -63,7 +43,6 @@ fn test_valid_certificate_v2_verification() {
     }
 
     let certificate = Certificate::new_unverified(&committee, header, signatures).unwrap();
-
     let verified_certificate = certificate.verify(&committee, &fixture.worker_cache());
 
     assert!(verified_certificate.is_ok());
@@ -77,7 +56,7 @@ fn test_valid_certificate_v2_verification() {
 fn test_certificate_insufficient_signatures() {
     let fixture = CommitteeFixture::builder(MemDatabase::default).build();
     let committee = fixture.committee();
-    let header = fixture.header();
+    let header = fixture.header_from_last_authority();
 
     let mut signatures = Vec::new();
 
@@ -98,7 +77,7 @@ fn test_certificate_insufficient_signatures() {
 fn test_certificate_validly_repeated_public_keys() {
     let fixture = CommitteeFixture::builder(MemDatabase::default).build();
     let committee = fixture.committee();
-    let header = fixture.header();
+    let header = fixture.header_from_last_authority();
 
     let mut signatures = Vec::new();
 
@@ -122,7 +101,7 @@ fn test_certificate_validly_repeated_public_keys() {
 fn test_unknown_signature_in_certificate() {
     let fixture = CommitteeFixture::builder(MemDatabase::default).build();
     let committee = fixture.committee();
-    let header = fixture.header();
+    let header = fixture.header_from_last_authority();
 
     let mut signatures = Vec::new();
 
@@ -150,7 +129,7 @@ proptest::proptest! {
             .committee_size(NonZeroUsize::new(committee_size).unwrap())
             .build();
         let committee = fixture.committee();
-        let header = fixture.header();
+        let header = fixture.header_from_last_authority();
 
         let mut signatures = Vec::new();
 

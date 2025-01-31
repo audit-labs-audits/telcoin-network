@@ -6255,9 +6255,9 @@ dependencies = [
 
 [[package]]
 name = "native-tls"
-version = "0.2.12"
+version = "0.2.13"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "a8614eb2c83d59d1c8cc974dd3f920198647674a0a035e1af1fa58707e317466"
+checksum = "0dab59f8e050d5df8e4dd87d9206fb6f65a483e20ac9fda365ade4fab353196c"
 dependencies = [
  "libc",
  "log",
@@ -6309,9 +6309,9 @@ dependencies = [
 
 [[package]]
 name = "netlink-proto"
-version = "0.11.4"
+version = "0.11.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "b2741a6c259755922e3ed29ebce3b299cc2160c4acae94b465b5938ab02c2bbe"
+checksum = "72452e012c2f8d612410d89eea01e2d9b56205274abb35d53f60200b2ec41d60"
 dependencies = [
  "bytes",
  "futures",
@@ -6671,9 +6671,9 @@ checksum = "c08d65885ee38876c4f86fa503fb49d7b507c2b62552df7c70b2fce627e06381"
 
 [[package]]
 name = "openssl"
-version = "0.10.68"
+version = "0.10.69"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "6174bc48f102d208783c2c84bf931bb75927a617866870de8a4ea85597f871f5"
+checksum = "f5e534d133a060a3c19daec1eb3e98ec6f4685978834f2dbadfe2ec215bab64e"
 dependencies = [
  "bitflags 2.8.0",
  "cfg-if",
@@ -10878,9 +10878,9 @@ dependencies = [
 
 [[package]]
 name = "rustls-pki-types"
-version = "1.10.1"
+version = "1.11.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "d2bf47e6ff922db3825eb750c4e2ff784c6ff8fb9e13046ef6a1d1c5401b0b37"
+checksum = "917ce264624a4b4db1c364dcc35bfca9ded014d0a958cd47ad3e960e988ea51c"
 dependencies = [
  "web-time",
 ]
@@ -12187,6 +12187,7 @@ dependencies = [
  "eyre",
  "fastcrypto",
  "humantime-serde",
+ "libp2p",
  "parking_lot",
  "rand",
  "reth-chainspec",
@@ -12334,13 +12335,12 @@ dependencies = [
 name = "tn-network-libp2p"
 version = "0.1.0"
 dependencies = [
+ "assert_matches",
  "async-trait",
  "bcs",
  "eyre",
- "fastcrypto",
  "futures",
  "libp2p",
- "roaring",
  "serde",
  "snap",
  "thiserror 1.0.69",
@@ -12470,6 +12470,7 @@ version = "0.1.0"
 dependencies = [
  "anemo",
  "anemo-tower",
+ "assert_matches",
  "async-trait",
  "backoff",
  "bytes",
@@ -12492,6 +12493,8 @@ dependencies = [
  "rand",
  "reqwest 0.12.12",
  "reth",
+ "roaring",
+ "serde",
  "tap",
  "tempfile",
  "thiserror 1.0.69",
@@ -12499,6 +12502,7 @@ dependencies = [
  "tn-config",
  "tn-executor",
  "tn-network",
+ "tn-network-libp2p",
  "tn-network-types",
  "tn-node",
  "tn-primary-metrics",
@@ -12562,7 +12566,7 @@ dependencies = [
  "tn-utils",
  "tokio",
  "tracing",
- "uint 0.9.5",
+ "uint 0.10.0",
 ]
 
 [[package]]
@@ -12635,6 +12639,7 @@ dependencies = [
  "fastcrypto-tbls",
  "futures",
  "indexmap 2.7.1",
+ "libp2p",
  "match_opt",
  "multiaddr",
  "once_cell",

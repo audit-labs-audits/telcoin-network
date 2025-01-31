@@ -1,6 +1,6 @@
 //! Constants and trait implementations for network compatibility.
 
-use crate::{codec::TNMessage, error::NetworkError};
+use crate::{codec::TNMessage, error::NetworkError, GossipMessage};
 use libp2p::{
     core::transport::ListenerId,
     gossipsub::{IdentTopic, MessageId, PublishError, SubscriptionError, TopicHash},
@@ -13,8 +13,32 @@ use tokio::sync::{mpsc, oneshot};
 /// The result for network operations.
 pub type NetworkResult<T> = Result<T, NetworkError>;
 
-/// The topic for NVVs to subscribe to for published batches.
-pub const WORKER_BLOCK_TOPIC: &str = "tn_batches";
+/// Helper trait to cast lib-specific results into RPC messages.
+pub trait IntoResponse<M> {
+    /// Convert a [Result] into a [TNMessage] type.
+    fn into_response(self) -> M;
+}
+
+impl<M, E> IntoResponse<M> for Result<M, E>
+where
+    M: TNMessage + IntoRpcError<E>,
+{
+    fn into_response(self) -> M {
+        match self {
+            Ok(msg) => msg,
+            Err(e) => M::into_error(e),
+        }
+    }
+}
+
+/// Convenience trait for casting lib-specific error types to RPC application-layer error messages.
+pub trait IntoRpcError<E> {
+    /// Convert application-layer error into message.
+    fn into_error(error: E) -> Self;
+}
+
+/// The topic for NVVs to subscribe to for published worker batches.
+pub const WORKER_BATCH_TOPIC: &str = "tn_batches";
 /// The topic for NVVs to subscribe to for published primary certificates.
 pub const PRIMARY_CERT_TOPIC: &str = "tn_certificates";
 /// The topic for NVVs to subscribe to for published consensus chain.
@@ -25,13 +49,17 @@ pub const CONSENSUS_HEADER_TOPIC: &str = "tn_consensus_headers";
 pub enum NetworkEvent<Req, Res> {
     /// Direct request from peer.
     Request {
+        /// The peer that made the request.
+        peer: PeerId,
         /// The network request type.
         request: Req,
         /// The network response channel.
         channel: ResponseChannel<Res>,
+        /// The oneshot channel if the request gets cancelled at the network level.
+        cancel: oneshot::Receiver<()>,
     },
     /// Gossip message received.
-    Gossip(Vec<u8>),
+    Gossip(GossipMessage),
 }
 
 /// Commands for the swarm.
@@ -126,6 +154,8 @@ where
     ///
     /// Peer's application score is P₅ of the peer scoring system.
     SetApplicationScore { peer_id: PeerId, new_score: f64, reply: oneshot::Sender<bool> },
+    /// Return the number of pending outbound requests.
+    PendingRequestCount { reply: oneshot::Sender<usize> },
 }
 
 /// Network handle.
@@ -294,4 +324,37 @@ where
         self.sender.send(NetworkCommand::SendResponse { response, channel, reply }).await?;
         res.await?.map_err(|_| NetworkError::SendResponse)
     }
+
+    /// Return the number of pending requests.
+    ///
+    /// Mostly helpful for testing, but could be useful for managing outbound requests.
+    pub async fn get_pending_request_count(&self) -> NetworkResult<usize> {
+        let (reply, count) = oneshot::channel();
+        self.sender.send(NetworkCommand::PendingRequestCount { reply }).await?;
+        count.await.map_err(Into::into)
+    }
+}
+
+/// Helper macro for sending oneshot replies and logging errors.
+///
+/// The arguments are:
+/// 1) oneshot::Sender
+/// 2) value to send through oneshot channel
+/// 3) string error message
+/// 4) `key = value` for additional logging (Optional)
+#[macro_export]
+macro_rules! send_or_log_error {
+    // basic case: Takes a result expression and an error message string
+    ($reply:expr, $result:expr, $error_msg:expr) => {
+        if let Err(e) = $reply.send($result) {
+            error!(target: "network", ?e, $error_msg);
+        }
+    };
+
+    // optional case that allows specifying additional error context
+    ($reply:expr, $result:expr, $error_msg:expr, $($field:ident = $value:expr),+ $(,)?) => {
+        if let Err(e) = $reply.send($result) {
+            error!(target: "network", ?e, $($field = ?$value,)+ $error_msg);
+        }
+    };
 }

@@ -21,7 +21,10 @@ use tn_storage::{
     tables::{ConsensusBlockNumbersByDigest, ConsensusBlocks},
     traits::Database,
 };
-use tn_types::{error::DagError, validate_received_certificate_version, ConsensusHeader};
+use tn_types::{
+    error::{CertificateError, DagError},
+    validate_received_certificate, ConsensusHeader,
+};
 use tracing::{debug, instrument, warn};
 
 /// Maximum duration to fetch certificates from local storage.
@@ -35,17 +38,17 @@ impl<DB: Database> PrimaryToPrimary for PrimaryReceiverHandler<DB> {
         request: anemo::Request<SendCertificateRequest>,
     ) -> Result<anemo::Response<SendCertificateResponse>, anemo::rpc::Status> {
         let _scope = monitored_scope("PrimaryReceiverHandler::send_certificate");
-        let certificate = validate_received_certificate_version(request.into_body().certificate)
-            .map_err(|err| {
+        let certificate =
+            validate_received_certificate(request.into_body().certificate).map_err(|err| {
                 anemo::rpc::Status::new_with_message(
                     StatusCode::BadRequest,
                     format!("Invalid certifcate: {err}"),
                 )
             })?;
 
-        match self.synchronizer.try_accept_certificate(certificate).await {
+        match self.synchronizer.try_accept_certificate(certificate).await.map_err(Into::into) {
             Ok(()) => Ok(anemo::Response::new(SendCertificateResponse { accepted: true })),
-            Err(DagError::Suspended(_)) => {
+            Err(DagError::Certificate(CertificateError::Suspended)) => {
                 Ok(anemo::Response::new(SendCertificateResponse { accepted: false }))
             }
             Err(e) => Err(anemo::rpc::Status::internal(e.to_string())),

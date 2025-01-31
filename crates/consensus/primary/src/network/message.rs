@@ -1,13 +1,27 @@
-//! Messages for the primary protocol.
+//! Messages exchanged between primaries.
 
-// TODO: remove this attribute after replacing network layer
-#![allow(unused)]
-
-use crate::{codec::TNMessage, types::NetworkResult};
+use crate::error::{PrimaryNetworkError, PrimaryNetworkResult};
 use roaring::RoaringBitmap;
 use serde::{Deserialize, Serialize};
 use std::collections::{BTreeMap, BTreeSet};
-use tn_types::{AuthorityIdentifier, Certificate, CertificateDigest, Header, Round, Vote};
+use tn_network_libp2p::{types::IntoRpcError, TNMessage};
+use tn_types::{
+    AuthorityIdentifier, BlockHash, Certificate, CertificateDigest, ConsensusHeader, Header, Round,
+    Vote,
+};
+
+/// Primary messages on the gossip network.
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+pub enum PrimaryGossip {
+    /// A new certificate broadcast from peer.
+    ///
+    /// Certificates are small and okay to gossip uncompressed:
+    /// - 3 signatures ~= 0.3kb
+    /// - 99 signatures ~= 3.5kb
+    ///
+    /// NOTE: `snappy` is slightly larger than uncompressed.
+    Certificate(Certificate),
+}
 
 // impl TNMessage trait for types
 impl TNMessage for PrimaryRequest {}
@@ -16,14 +30,6 @@ impl TNMessage for PrimaryResponse {}
 /// Requests from Primary.
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub enum PrimaryRequest {
-    /// A new certificate broadcast from peer.
-    ///
-    /// NOTE: expect no response
-    /// TODO: gossip this instead
-    NewCertificate {
-        /// The certificate from this peer.
-        certificate: Certificate,
-    },
     /// Primary request for vote on new header.
     Vote {
         /// This primary's header for the round.
@@ -37,8 +43,19 @@ pub enum PrimaryRequest {
         /// Inner type with specific helper methods for requesting missing certificates.
         inner: MissingCertificatesRequest,
     },
+    /// Request a consensus chain header with consensus output.
+    ///
+    /// If both number and hash are set they should match (no need to set them both).
+    /// If neither number or hash are set then will return the latest consensus chain header.
+    ConsensusHeader {
+        /// Block number requesting if not None.
+        number: Option<u64>,
+        /// Block hash requesting if not None.
+        hash: Option<BlockHash>,
+    },
 }
 
+// unit test for this struct in primary::src::tests::network_tests::test_missing_certs_request
 /// Used by the primary to fetch certificates from other primaries.
 #[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub struct MissingCertificatesRequest {
@@ -58,7 +75,7 @@ impl MissingCertificatesRequest {
     /// lower boundary and their GC round.
     pub fn get_bounds(
         &self,
-    ) -> NetworkResult<(Round, BTreeMap<AuthorityIdentifier, BTreeSet<Round>>)> {
+    ) -> PrimaryNetworkResult<(Round, BTreeMap<AuthorityIdentifier, BTreeSet<Round>>)> {
         let skip_rounds: BTreeMap<AuthorityIdentifier, BTreeSet<Round>> = self
             .skip_rounds
             .iter()
@@ -69,7 +86,7 @@ impl MissingCertificatesRequest {
                     .collect::<BTreeSet<Round>>();
                 Ok((*k, rounds))
             })
-            .collect::<NetworkResult<BTreeMap<_, _>>>()?;
+            .collect::<PrimaryNetworkResult<BTreeMap<_, _>>>()?;
         Ok((self.exclusive_lower_bound, skip_rounds))
     }
 
@@ -80,7 +97,7 @@ impl MissingCertificatesRequest {
         mut self,
         gc_round: Round,
         skip_rounds: BTreeMap<AuthorityIdentifier, BTreeSet<Round>>,
-    ) -> NetworkResult<Self> {
+    ) -> PrimaryNetworkResult<Self> {
         self.exclusive_lower_bound = gc_round;
         self.skip_rounds = skip_rounds
             .into_iter()
@@ -94,7 +111,7 @@ impl MissingCertificatesRequest {
 
                 Ok((k, serialized))
             })
-            .collect::<NetworkResult<Vec<_>>>()?;
+            .collect::<PrimaryNetworkResult<Vec<_>>>()?;
 
         Ok(self)
     }
@@ -115,45 +132,42 @@ impl MissingCertificatesRequest {
 /// Response to primary requests.
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub enum PrimaryResponse {
-    /// The peer's vote if successfule. If the peer was unable to verify parents, the missing
-    /// certificate digests are included.
-    Vote {
-        /// The vote, if the peer considered the proposed header valid.
-        vote: Option<Vote>,
-        /// Missing certificate digests for peer to vote.
-        ///
-        /// The peer needs to process these certificates before it can vote for this primary's
-        /// header.
-        missing: Vec<CertificateDigest>,
-    },
-    /// The requested missing certificates.
-    MissingCertificates {
-        /// The collection of missing certificates.
-        certificates: Vec<Certificate>,
-    },
+    /// The peer's vote if the peer considered the proposed header valid.
+    Vote(Vote),
+    /// The requested certificates requested by a peer.
+    RequestedCertificates(Vec<Certificate>),
+    /// Missing certificates in order to vote.
+    ///
+    /// If the peer was unable to verify parents for a proposed header, they respond requesting
+    /// the missing certificate by digest.
+    MissingParents(Vec<CertificateDigest>),
+    /// The requested consensus header.
+    ConsensusHeader(ConsensusHeader),
+    /// RPC error while handling request.
+    ///
+    /// This is an application-layer error response.
+    Error(PrimaryRPCError),
 }
 
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn test_missing_certs_request() {
-        let max = 10;
-        let expected_gc_round = 3;
-        let expected_skip_rounds: BTreeMap<_, _> = [
-            (AuthorityIdentifier(0), BTreeSet::from([4, 5, 6, 7])),
-            (AuthorityIdentifier(2), BTreeSet::from([6, 7, 8])),
-        ]
-        .into_iter()
-        .collect();
-        let missing_req = MissingCertificatesRequest::default()
-            .set_bounds(expected_gc_round, expected_skip_rounds.clone())
-            .expect("boundary set")
-            .set_max_items(max);
-        let (decoded_gc_round, decoded_skip_rounds) =
-            missing_req.get_bounds().expect("decode missing bounds");
-        assert_eq!(expected_gc_round, decoded_gc_round);
-        assert_eq!(expected_skip_rounds, decoded_skip_rounds);
+impl PrimaryResponse {
+    /// Helper method if the response is an error.
+    pub fn is_err(&self) -> bool {
+        matches!(self, PrimaryResponse::Error(_))
     }
 }
+
+impl IntoRpcError<PrimaryNetworkError> for PrimaryResponse {
+    fn into_error(error: PrimaryNetworkError) -> Self {
+        Self::Error(PrimaryRPCError(error.to_string()))
+    }
+}
+
+impl From<PrimaryRPCError> for PrimaryResponse {
+    fn from(value: PrimaryRPCError) -> Self {
+        Self::Error(value)
+    }
+}
+
+/// Application-specific error type while handling Primary request.
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
+pub struct PrimaryRPCError(String);

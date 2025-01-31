@@ -47,7 +47,7 @@ impl Default for PrimaryInfo {
 
         Self {
             network_key: NetworkPublicKey::insecure_default(),
-            network_address: format!("/ip4/{}/udp/{}", &host, primary_udp_port)
+            network_address: format!("/ip4/{}/udp/{}/quic-v1", &host, primary_udp_port)
                 .parse()
                 .expect("multiaddr parsed for primary"),
             worker_network_key: NetworkPublicKey::insecure_default(),

@@ -9,7 +9,7 @@ use crate::{
         BlsSignature, ValidatorAggregateSignature,
     },
     ensure,
-    error::{DagError, DagResult},
+    error::{CertificateError, CertificateResult, DagError, DagResult, HeaderError},
     now,
     serde::CertificateSignatures,
     AuthorityIdentifier, BlockHash, Committee, Epoch, Header, Round, Stake, TimestampSec,
@@ -188,11 +188,14 @@ impl Certificate {
         self,
         committee: &Committee,
         worker_cache: &WorkerCache,
-    ) -> DagResult<Certificate> {
-        // Ensure the header is from the correct epoch.
+    ) -> CertificateResult<Certificate> {
+        // ensure the header is from the correct epoch
         ensure!(
             self.epoch() == committee.epoch(),
-            DagError::InvalidEpoch { expected: committee.epoch(), received: self.epoch() }
+            CertificateError::from(HeaderError::InvalidEpoch {
+                theirs: self.epoch(),
+                ours: committee.epoch()
+            })
         );
 
         // Genesis certificates are always valid.
@@ -205,34 +208,42 @@ impl Certificate {
 
         let (weight, pks) = self.signed_by(committee);
 
-        ensure!(weight >= committee.quorum_threshold(), DagError::CertificateRequiresQuorum);
+        ensure!(weight >= committee.quorum_threshold(), CertificateError::Inquorate);
 
         let verified_cert = self.verify_signature(pks)?;
 
         Ok(verified_cert)
     }
 
-    fn verify_signature(mut self, pks: Vec<BlsPublicKey>) -> DagResult<Certificate> {
+    fn verify_signature(mut self, pks: Vec<BlsPublicKey>) -> CertificateResult<Certificate> {
         let aggregrate_signature_bytes = match self.signature_verification_state {
             SignatureVerificationState::VerifiedIndirectly(_)
             | SignatureVerificationState::VerifiedDirectly(_)
             | SignatureVerificationState::Genesis => return Ok(self),
             SignatureVerificationState::Unverified(ref bytes) => bytes,
             SignatureVerificationState::Unsigned(_) => {
-                return Err(DagError::CertificateRequiresQuorum);
+                return Err(CertificateError::Inquorate);
             }
         };
 
         // Verify the signatures
         let certificate_digest = self.digest();
-        BlsAggregateSignature::try_from(aggregrate_signature_bytes)
-            .map_err(|_| DagError::InvalidSignature)?
-            .verify_secure(&to_intent_message(certificate_digest), &pks[..])
-            .map_err(|_| DagError::InvalidSignature)?;
+        BlsAggregateSignature::try_from(aggregrate_signature_bytes)?
+            .verify_secure(&to_intent_message(certificate_digest), &pks[..])?;
 
         self.signature_verification_state =
             SignatureVerificationState::VerifiedDirectly(aggregrate_signature_bytes.clone());
 
+        Ok(self)
+    }
+
+    /// Validate certificate was received and ready for verification.
+    pub fn validate_received(mut self) -> CertificateResult<Self> {
+        self.set_signature_verification_state(SignatureVerificationState::Unverified(
+            self.aggregated_signature()
+                .ok_or(CertificateError::RecoverBlsAggregateSignatureBytes)?
+                .clone(),
+        ));
         Ok(self)
     }
 
@@ -334,11 +345,25 @@ impl From<&Certificate> for Vec<u8> {
     }
 }
 
-// Holds BlsAggregateSignatureBytes but with the added layer to specify the
-// signatures verification state. This will be used to take advantage of the
+// This will be used to take advantage of the
 // certificate chain that is formed via the DAG by only verifying the
 // leaves of the certificate chain when they are fetched from validators
 // during catchup.
+/// SignatureVerificationState stores both the verification status and signature bytes together.
+/// While this creates some data redundancy with signed_authorities, keeping them coupled provides
+/// important benefits:
+/// - atomic state updates: changes to verification status are guaranteed to reference the exact
+///   signature bytes that were verified. this prevents state/signature mismatches that could occur
+///   if stored separately.
+///
+/// - verification integrity: the verification status can only transition while operating on the
+///   specific signature bytes that were validated. this maintains a clear chain of trust through
+///   the verification process.
+///
+/// - impossible to have invalid states like:
+///    - `VerifiedDirectly` status with different signature bytes than what was actually verified
+///    - an unsigned state containing signature bytes
+///    - a verified state with missing/corrupted signature bytes
 #[derive(Clone, Serialize, Deserialize, Debug)]
 pub enum SignatureVerificationState {
     // This state occurs when the certificate has not yet received a quorum of
@@ -365,17 +390,18 @@ impl Default for SignatureVerificationState {
     }
 }
 
-// Certificate version is validated against network protocol version. If CertificateV1
-// is being used then the cert will also be marked as Unverifed as this certificate
-// is assumed to be received from the network. This SignatureVerificationState is
-// why the modified certificate is being returned.
-pub fn validate_received_certificate_version(
+/// Process certificate received by setting the verification state.
+///
+/// Recover signature bytes from the aggregated signature and set the signature verification state
+/// to unverified.
+pub fn validate_received_certificate(
     mut certificate: Certificate,
-) -> eyre::Result<Certificate> {
-    // CertificateV1 was received from the network so we need to mark
-    // certificate aggregated signature state as unverified.
+) -> CertificateResult<Certificate> {
     certificate.set_signature_verification_state(SignatureVerificationState::Unverified(
-        certificate.aggregated_signature().ok_or(eyre::eyre!("Invalid signature"))?.clone(),
+        certificate
+            .aggregated_signature()
+            .ok_or(CertificateError::RecoverBlsAggregateSignatureBytes)?
+            .clone(),
     ));
     Ok(certificate)
 }
