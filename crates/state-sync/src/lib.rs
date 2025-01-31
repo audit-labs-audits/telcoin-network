@@ -265,6 +265,7 @@ async fn spawn_stream_consensus_headers<DB: Database>(
     let mut last_consensus_header =
         catch_up_consensus(&config, &consensus_bus, &mut clients).await?;
     let mut last_consensus_height = last_consensus_header.number;
+    consensus_bus.last_consensus_header().send(last_consensus_header.clone())?;
     // infinite loop over consensus output
     loop {
         // Rest for bit then try see if chain has advanced and catch up if so.
