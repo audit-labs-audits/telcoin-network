@@ -17,7 +17,7 @@ use tn_storage::{
     tables::{Batches, ConsensusBlockNumbersByDigest, ConsensusBlocks},
     traits::{Database, DbTxMut},
 };
-use tn_types::{ConsensusHeader, ConsensusOutput, TaskManager, TnSender};
+use tn_types::{ConsensusHeader, ConsensusOutput, TaskManagerClone, TnSender};
 use tracing::info;
 
 /// Return true if this node should be able to participate as a CVV, false otherwise.
@@ -60,6 +60,7 @@ pub async fn can_cvv<DB: Database>(
         max_consensus_header(&mut clients).await.unwrap_or_else(|| last_executed_block.clone());
     let max_epoch = max_consensus_header.sub_dag.leader.epoch();
     let max_round = max_consensus_header.sub_dag.leader.round();
+    let _ = consensus_bus.last_consensus_header().send(max_consensus_header);
     tracing::info!(target: "telcoin::subscriber",
         "CATCH UP params {max_epoch}, {max_round}, leader epoch: {last_consensus_epoch}, leader round: {last_consensus_round}, gc: {}",
         config.parameters().gc_depth
@@ -81,7 +82,7 @@ pub fn spawn_state_sync<DB: Database>(
     config: ConsensusConfig<DB>,
     consensus_bus: ConsensusBus,
     network: anemo::Network,
-    task_manager: &TaskManager,
+    task_manager: TaskManagerClone,
 ) {
     let mode = *consensus_bus.node_mode().borrow();
     match mode {
@@ -101,7 +102,7 @@ pub fn spawn_state_sync<DB: Database>(
                 ),
             );
             task_manager.spawn_task(
-                "state sync: stream continous consensus headers",
+                "state sync: stream consensus headers",
                 monitored_future!(
                     async move {
                         info!(target: "telcoin::state-sync", "Starting state sync: stream consensus header from peers");
@@ -265,7 +266,6 @@ async fn spawn_stream_consensus_headers<DB: Database>(
     let mut last_consensus_header =
         catch_up_consensus(&config, &consensus_bus, &mut clients).await?;
     let mut last_consensus_height = last_consensus_header.number;
-    consensus_bus.last_consensus_header().send(last_consensus_header.clone())?;
     // infinite loop over consensus output
     loop {
         // Rest for bit then try see if chain has advanced and catch up if so.
@@ -279,6 +279,7 @@ async fn spawn_stream_consensus_headers<DB: Database>(
             header = max_consensus_header(&mut clients) => {
                 match header {
                     Some(max_consensus) => {
+                        consensus_bus.last_consensus_header().send(max_consensus.clone())?;
                         if max_consensus.number > last_consensus_height {
                             consensus_bus.last_consensus_header().send(max_consensus.clone())?;
                             last_consensus_header = catch_up_consensus_from_to(
@@ -390,6 +391,7 @@ async fn catch_up_consensus<DB: Database>(
     let Some(max_consensus) = max_consensus_header(clients).await else {
         return Ok(last_db_block);
     };
+    consensus_bus.last_consensus_header().send(max_consensus.clone())?;
     catch_up_consensus_from_to(config, consensus_bus, clients, last_db_block, max_consensus).await
 }
 

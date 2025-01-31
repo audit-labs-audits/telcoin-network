@@ -4,6 +4,7 @@
 mod errors;
 pub mod subscriber;
 use crate::subscriber::spawn_subscriber;
+use anemo::Network;
 use async_trait::async_trait;
 pub use errors::{SubscriberError, SubscriberResult};
 use mockall::automock;
@@ -40,9 +41,10 @@ impl Executor {
         rx_shutdown: Noticer,
         consensus_bus: ConsensusBus,
         task_manager: &TaskManager,
+        network: Network,
     ) {
         // Spawn the subscriber.
-        spawn_subscriber(config, rx_shutdown, consensus_bus, task_manager);
+        spawn_subscriber(config, rx_shutdown, consensus_bus, task_manager, network);
 
         // Return the handle.
         info!("Consensus subscriber successfully started");

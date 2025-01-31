@@ -94,6 +94,7 @@ impl<CDB: ConsensusDatabase> PrimaryNodeInner<CDB> {
             self.consensus_config.shutdown().subscribe(),
             consensus_bus.clone(),
             task_manager,
+            self.primary.network().clone(),
         );
 
         Ok(leader_schedule)

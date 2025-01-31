@@ -10,7 +10,6 @@ use reth_db::{
     Database,
 };
 use reth_provider::CanonStateSubscriptions;
-use state_sync::spawn_state_sync;
 use tn_config::{ConsensusConfig, KeyConfig, TelcoinDirs};
 use tn_node_traits::TelcoinNode;
 use tn_primary::{ConsensusBus, NodeMode};
@@ -65,7 +64,6 @@ where
         let mut task_manager = TaskManager::new("Task Manager");
         let mut engine_task_manager = TaskManager::new("Engine Task Manager");
         let engine = ExecutionNode::<TelcoinNode<DB>>::new(builder, &engine_task_manager)?;
-        let mut state_sync_task_manager = TaskManager::new("State Sync Task Manager");
 
         info!(target: "telcoin::node", "execution engine created");
 
@@ -128,12 +126,6 @@ where
             }
         });
 
-        spawn_state_sync(
-            consensus_config.clone(),
-            consensus_bus.clone(),
-            primary.network().await,
-            &state_sync_task_manager,
-        );
 
         // create receiving channel before spawning primary to ensure messages are not lost
         let consensus_output_rx = consensus_bus.subscribe_consensus_output();
@@ -169,8 +161,6 @@ where
         task_manager.add_task_manager(worker_task_manager);
         engine_task_manager.update_tasks();
         task_manager.add_task_manager(engine_task_manager);
-        state_sync_task_manager.update_tasks();
-        task_manager.add_task_manager(state_sync_task_manager);
 
         info!(target:"tn", tasks=?task_manager, "TASKS");
 

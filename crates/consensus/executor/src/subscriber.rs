@@ -1,11 +1,13 @@
 //! Subscriber handles consensus output.
 
 use crate::{errors::SubscriberResult, SubscriberError};
+use anemo::Network;
 use consensus_metrics::monitored_future;
 use fastcrypto::hash::Hash;
 use futures::{stream::FuturesOrdered, StreamExt};
 use state_sync::{
-    get_missing_consensus, last_executed_consensus_block, save_consensus, stream_missing_consensus,
+    get_missing_consensus, last_executed_consensus_block, save_consensus, spawn_state_sync,
+    stream_missing_consensus,
 };
 use std::{
     collections::{HashMap, HashSet, VecDeque},
@@ -20,8 +22,8 @@ use tn_primary::{consensus::ConsensusRound, ConsensusBus, NodeMode};
 use tn_storage::traits::Database;
 use tn_types::{
     Address, AuthorityIdentifier, Batch, BlockHash, Certificate, CommittedSubDag, Committee,
-    ConsensusHeader, ConsensusOutput, NetworkPublicKey, Noticer, TaskManager, Timestamp,
-    TnReceiver, TnSender, WorkerCache, WorkerId, B256,
+    ConsensusHeader, ConsensusOutput, NetworkPublicKey, Noticer, TaskManager, TaskManagerClone,
+    Timestamp, TnReceiver, TnSender, WorkerCache, WorkerId, B256,
 };
 use tracing::{debug, error, info, warn};
 
@@ -52,6 +54,7 @@ pub fn spawn_subscriber<DB: Database>(
     rx_shutdown: Noticer,
     consensus_bus: ConsensusBus,
     task_manager: &TaskManager,
+    network: Network,
 ) {
     let authority_id = config.authority().id();
     let worker_cache = config.worker_cache().clone();
@@ -80,26 +83,28 @@ pub fn spawn_subscriber<DB: Database>(
             );
         }
         NodeMode::CvvInactive => {
+            let clone = task_manager.get_spawner();
             // If we are not active but are a CVV then catch up and rejoin.
             task_manager.spawn_task(
                 "subscriber catch up and rejoin consensus",
                 monitored_future!(
                     async move {
                         info!(target: "telcoin::subscriber", "Starting subscriber: Catch up and rejoin");
-                        subscriber.catch_up_rejoin_consensus().await
+                        subscriber.catch_up_rejoin_consensus(clone, network).await
                     },
                     "SubscriberFollowTask"
                 ),
             );
         }
         NodeMode::Observer => {
+            let clone = task_manager.get_spawner();
             // If we are not active then just follow consensus.
             task_manager.spawn_task(
                 "subscriber follow consensus",
                 monitored_future!(
                     async move {
                         info!(target: "telcoin::subscriber", "Starting subscriber: Follower");
-                        subscriber.follow_consensus().await
+                        subscriber.follow_consensus(clone, network).await
                     },
                     "SubscriberFollowTask"
                 ),
@@ -157,16 +162,19 @@ impl<DB: Database> Subscriber<DB> {
     }
 
     /// Catch up to current consensus and then try to rejoin as an active CVV.
-    async fn catch_up_rejoin_consensus(&self) -> SubscriberResult<()> {
+    async fn catch_up_rejoin_consensus(
+        &self,
+        tasks: TaskManagerClone,
+        network: Network,
+    ) -> SubscriberResult<()> {
         // Get a receiver than stream any missing headers so we don't miss them.
         let mut rx_consensus_headers = self.consensus_bus.consensus_header().subscribe();
         stream_missing_consensus(&self.config, &self.consensus_bus).await?;
+        spawn_state_sync(self.config.clone(), self.consensus_bus.clone(), network, tasks);
         while let Some(consensus_header) = rx_consensus_headers.recv().await {
             let consensus_header_number = consensus_header.number;
             self.handle_consensus_header(consensus_header).await?;
-            // If we are within three blocks then we should be good enough to rejoin consensus.
-            if consensus_header_number
-                >= self.consensus_bus.last_consensus_header().borrow().number - 3
+            if consensus_header_number == self.consensus_bus.last_consensus_header().borrow().number
             {
                 // We are caught up enough so try to jump back into consensus
                 info!(target: "telcoin::subscriber", "attempting to rejoin consensus, consensus block height {consensus_header_number}");
@@ -180,10 +188,15 @@ impl<DB: Database> Subscriber<DB> {
     }
 
     /// Follow along with consensus output but do not try to join consensus.
-    async fn follow_consensus(&self) -> SubscriberResult<()> {
+    async fn follow_consensus(
+        &self,
+        tasks: TaskManagerClone,
+        network: Network,
+    ) -> SubscriberResult<()> {
         // Get a receiver than stream any missing headers so we don't miss them.
         let mut rx_consensus_headers = self.consensus_bus.consensus_header().subscribe();
         stream_missing_consensus(&self.config, &self.consensus_bus).await?;
+        spawn_state_sync(self.config.clone(), self.consensus_bus.clone(), network, tasks);
         while let Some(consensus_header) = rx_consensus_headers.recv().await {
             self.handle_consensus_header(consensus_header).await?;
         }
