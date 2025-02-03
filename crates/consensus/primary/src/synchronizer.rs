@@ -1,7 +1,7 @@
 //! Synchronize data between peers and workers
 
 use crate::{
-    aggregators::CertificatesAggregator, certificate_fetcher::CertificateFetcherCommand,
+    aggregators::CertificatesAggregatorManager, certificate_fetcher::CertificateFetcherCommand,
     ConsensusBus,
 };
 use consensus_metrics::{
@@ -11,7 +11,6 @@ use consensus_metrics::{
 use fastcrypto::hash::Hash as _;
 use futures::{stream::FuturesOrdered, StreamExt};
 use itertools::Itertools;
-use parking_lot::Mutex;
 use std::{
     collections::{BTreeMap, HashMap, HashSet, VecDeque},
     sync::{
@@ -72,7 +71,7 @@ struct Inner<DB> {
     /// age is sent over.
     tx_batch_tasks: MeteredMpscChannel<(Header, Round)>,
     /// Aggregates certificates to use as parents for new headers.
-    certificates_aggregators: Mutex<BTreeMap<Round, Box<CertificatesAggregator>>>,
+    certificates_aggregators: CertificatesAggregatorManager,
     /// State for tracking suspended certificates and when they can be accepted.
     state: tokio::sync::Mutex<State>,
 }
@@ -88,25 +87,6 @@ impl<DB: Database> Inner<DB> {
         );
         // Verify the certificate (and the embedded header).
         certificate.verify(self.consensus_config.committee(), self.consensus_config.worker_cache())
-    }
-
-    async fn append_certificate_in_aggregator(&self, certificate: Certificate) -> DagResult<()> {
-        // Check if we have enough certificates to enter a new dag round and propose a header.
-        let Some(parents) = self
-            .certificates_aggregators
-            .lock()
-            .entry(certificate.round())
-            .or_insert_with(|| Box::new(CertificatesAggregator::new()))
-            .append(certificate.clone(), self.consensus_config.committee())
-        else {
-            return Ok(());
-        };
-        // Send it to the `Proposer`.
-        self.consensus_bus
-            .parents()
-            .send((parents, certificate.round()))
-            .await
-            .map_err(|_| DagError::ShuttingDown)
     }
 
     async fn accept_suspended_certificate(
@@ -199,7 +179,11 @@ impl<DB: Database> Inner<DB> {
 
         // Append the certificate to the aggregator of the
         // corresponding round.
-        if let Err(e) = self.append_certificate_in_aggregator(certificate.clone()).await {
+        if let Err(e) = self
+            .certificates_aggregators
+            .append_certificate(certificate.clone(), self.consensus_config.committee())
+            .await
+        {
             warn!("Failed to aggregate certificate {} for header: {}", digest, e);
             return Err(DagError::ShuttingDown);
         }
@@ -294,11 +278,9 @@ impl<DB: Database> Inner<DB> {
     // This will run a task managed by the task manager.
     async fn garbage_collection(&self) {
         const FETCH_TRIGGER_TIMEOUT: Duration = Duration::from_secs(30);
-        let mut rx_consensus_round_updates =
-            self.consensus_bus.consensus_round_updates().subscribe();
+        let mut rx_gc_round_updates = self.consensus_bus.gc_round_updates().subscribe();
         loop {
-            let Ok(result) =
-                timeout(FETCH_TRIGGER_TIMEOUT, rx_consensus_round_updates.changed()).await
+            let Ok(result) = timeout(FETCH_TRIGGER_TIMEOUT, rx_gc_round_updates.changed()).await
             else {
                 // When consensus commit has not happened for 30s, it is possible that no
                 // new certificate is received by this primary or
@@ -320,15 +302,15 @@ impl<DB: Database> Inner<DB> {
             };
 
             if let Err(e) = result {
-                error!(target: "primary::synchronizer::gc", ?e, "failed to received rx_consensus_round_updates - shutting down...");
+                error!(target: "primary::synchronizer::gc", ?e, "failed to received rx_gc_round_updates - shutting down...");
                 return;
             }
 
             let _scope = monitored_scope("Synchronizer::gc_iteration");
-            let gc_round = rx_consensus_round_updates.borrow().gc_round;
+            let gc_round = *rx_gc_round_updates.borrow_and_update();
             // this is the only task updating gc_round
             self.gc_round.store(gc_round, Ordering::Release);
-            self.certificates_aggregators.lock().retain(|k, _| k > &gc_round);
+            self.certificates_aggregators.garbage_collect(&gc_round);
             // Accept certificates at and below gc round, if there is any.
             let mut state = self.state.lock().await;
             while let Some(((round, digest), suspended_cert)) = state.run_gc_once(gc_round) {
@@ -569,15 +551,15 @@ impl<DB: Database> Inner<DB> {
 
         // Clone the round updates channel so we can get update notifications specific to
         // this RPC handler.
-        let mut rx_consensus_round_updates =
-            self.consensus_bus.consensus_round_updates().subscribe();
-        let mut consensus_round = rx_consensus_round_updates.borrow().committed_round;
+        let mut rx_committed_round_updates =
+            self.consensus_bus.committed_round_updates().subscribe();
+        let mut committed_round = *rx_committed_round_updates.borrow();
         ensure!(
-            header.round() >= consensus_round.saturating_sub(max_age),
+            header.round() >= committed_round.saturating_sub(max_age),
             HeaderError::TooOld(
                 header.digest(),
                 header.round(),
-                consensus_round.saturating_sub(max_age)
+                committed_round.saturating_sub(max_age)
             )
         );
 
@@ -664,14 +646,14 @@ impl<DB: Database> Inner<DB> {
                 // used to attempt to synchronize batches for longer than strictly needed become
                 // problematic, this function could be augmented to also support cancellation based
                 // on primary round.
-                Ok(()) = rx_consensus_round_updates.changed() => {
-                    consensus_round = rx_consensus_round_updates.borrow().committed_round;
+                Ok(()) = rx_committed_round_updates.changed() => {
+                    committed_round = *rx_committed_round_updates.borrow_and_update();
                     ensure!(
-                        header.round() >= consensus_round.saturating_sub(max_age),
+                        header.round() >= committed_round.saturating_sub(max_age),
                         HeaderError::TooOld(
                             header.digest(),
                             header.round(),
-                            consensus_round.saturating_sub(max_age),
+                            committed_round.saturating_sub(max_age),
                         )
                     );
                 },
@@ -701,7 +683,7 @@ impl<DB: Database> Synchronizer<DB> {
         let genesis = Self::make_genesis(committee);
         let node_store = consensus_config.node_storage();
         let highest_processed_round = node_store.certificate_store.highest_round_number();
-        let gc_round = consensus_bus.consensus_round_updates().borrow().gc_round;
+        let gc_round = *consensus_bus.gc_round_updates().borrow();
         let tx_certificate_acceptor = channel_with_total_sender(
             CHANNEL_CAPACITY,
             &primary_channel_metrics.tx_certificate_acceptor,
@@ -723,7 +705,7 @@ impl<DB: Database> Synchronizer<DB> {
             consensus_bus: consensus_bus.clone(),
             genesis,
             tx_batch_tasks,
-            certificates_aggregators: Mutex::new(BTreeMap::new()),
+            certificates_aggregators: CertificatesAggregatorManager::new(consensus_bus.clone()),
             state: tokio::sync::Mutex::new(State::default()),
         });
 
@@ -743,8 +725,13 @@ impl<DB: Database> Synchronizer<DB> {
                     .last_two_rounds_certs()
                     .expect("Failed recovering certificates in primary core");
                 for certificate in last_round_certificates {
-                    if let Err(e) =
-                        inner_proposer.append_certificate_in_aggregator(certificate).await
+                    if let Err(e) = inner_proposer
+                        .certificates_aggregators
+                        .append_certificate(
+                            certificate,
+                            inner_proposer.consensus_config.committee(),
+                        )
+                        .await
                     {
                         debug!(
                             target: "primary::synchronizer",
