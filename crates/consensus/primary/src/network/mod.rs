@@ -66,7 +66,7 @@ where
                     event = self.network_events.recv() => {
                         match event {
                             Some(e) => self.process_network_event(e),
-                            None => todo!(),
+                            None => break,
                         }
                     }
                 )
@@ -193,7 +193,7 @@ where
                 }
 
                 // match on error to lower peer score
-                todo!();
+                //todo!();
             }
         });
     }
