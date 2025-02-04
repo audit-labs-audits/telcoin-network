@@ -5,7 +5,7 @@ use crate::{
     certificate_fetcher::CertificateFetcher,
     certifier::Certifier,
     consensus::LeaderSchedule,
-    network::{PrimaryRequest, PrimaryResponse},
+    network::{PrimaryNetwork, PrimaryRequest, PrimaryResponse},
     proposer::Proposer,
     state_handler::StateHandler,
     synchronizer::Synchronizer,
@@ -31,13 +31,10 @@ use tn_network::{
     failpoints::FailpointsMakeCallbackHandler,
     metrics::MetricsMakeCallbackHandler,
 };
-use tn_network_libp2p::{
-    types::{NetworkEvent, NetworkHandle},
-    ResponseChannel,
-};
+use tn_network_libp2p::types::{NetworkEvent, NetworkHandle};
 use tn_network_types::PrimaryToPrimaryServer;
 use tn_storage::traits::Database;
-use tn_types::{traits::EncodeDecodeBase64, Multiaddr, NetworkPublicKey, TaskManager, TnSender};
+use tn_types::{traits::EncodeDecodeBase64, Multiaddr, NetworkPublicKey, TaskManager};
 use tokio::sync::mpsc;
 use tower::ServiceBuilder;
 use tracing::info;
@@ -53,7 +50,7 @@ pub struct Primary<DB> {
     synchronizer: Arc<Synchronizer<DB>>,
     peer_types: Option<HashMap<PeerId, String>>,
     // Hold onto the network event stream until spawn "takes" it.
-    network_event_stream: Option<mpsc::Receiver<NetworkEvent<PrimaryRequest, PrimaryResponse>>>,
+    primary_network: Option<PrimaryNetwork<DB>>,
 }
 
 impl<DB: Database> Primary<DB> {
@@ -86,6 +83,13 @@ impl<DB: Database> Primary<DB> {
 
         let synchronizer = Arc::new(Synchronizer::new(config.clone(), consensus_bus));
         let network = Self::start_network(&config, synchronizer.clone(), consensus_bus);
+        let primary_network = PrimaryNetwork::new(
+            network_event_stream,
+            network_p2p_handle.clone(),
+            config.clone(),
+            consensus_bus.clone(),
+            synchronizer.clone(),
+        );
 
         let mut peer_types = HashMap::new();
 
@@ -130,7 +134,7 @@ impl<DB: Database> Primary<DB> {
             network_p2p_handle,
             synchronizer,
             peer_types: Some(peer_types),
-            network_event_stream: Some(network_event_stream),
+            primary_network: Some(primary_network),
         }
     }
 
@@ -205,17 +209,8 @@ impl<DB: Database> Primary<DB> {
             self.network.clone(),
             task_manager,
         );
-        let rx_shutdown = config.shutdown().subscribe();
-        let consensus_bus_clone = consensus_bus.clone();
-        let config_clone = config.clone();
-        let network_event_stream =
-            self.network_event_stream.take().expect("no network event stream!");
-        task_manager.spawn_task("consensus network event stream", async move {
-            tokio::select!(
-                _ = rx_shutdown => {}
-                r = Self::handle_network_events(network_event_stream, config_clone, consensus_bus_clone) => {r}
-            )
-        });
+        let primary_network = self.primary_network.take().expect("no network event stream!");
+        primary_network.spawn(task_manager);
 
         // NOTE: This log entry is used to compute performance.
         info!(
@@ -223,41 +218,6 @@ impl<DB: Database> Primary<DB> {
             config.authority().id(),
             config.authority().primary_network_address()
         );
-    }
-
-    /// Create the loop that reads the network event stream and either handles requests
-    /// or posts gossip to the consensus bus.
-    async fn handle_network_events(
-        mut network_event_stream: mpsc::Receiver<NetworkEvent<PrimaryRequest, PrimaryResponse>>,
-        config: ConsensusConfig<DB>,
-        consensus_bus: ConsensusBus,
-    ) {
-        while let Some(event) = network_event_stream.recv().await {
-            match event {
-                NetworkEvent::Request { peer, request, channel, cancel } => tokio::select!(
-                    _ = cancel => {}
-                    _ = Self::event(peer, request, channel, config.clone(), consensus_bus.clone()) => {}
-                ),
-                NetworkEvent::Gossip(message) => {
-                    let _ = consensus_bus.consensus_network_gossip().send(message).await;
-                }
-            }
-        }
-    }
-
-    /// Entry point called when a request is made.
-    async fn event(
-        _peer: tn_network_libp2p::PeerId,
-        request: PrimaryRequest,
-        _channel: ResponseChannel<PrimaryResponse>,
-        _config: ConsensusConfig<DB>,
-        _consensus_bus: ConsensusBus,
-    ) {
-        match request {
-            PrimaryRequest::Vote { header: _, parents: _ } => todo!(),
-            PrimaryRequest::MissingCertificates { inner: _ } => todo!(),
-            PrimaryRequest::ConsensusHeader { number: _, hash: _ } => todo!(),
-        }
     }
 
     /// Start the anemo network for the primary.
