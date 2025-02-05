@@ -25,7 +25,7 @@ use tn_types::{
     ensure,
     error::{CertificateError, HeaderError, HeaderResult},
     now, try_decode, AuthorityIdentifier, BlockHash, Certificate, CertificateDigest,
-    ConsensusHeader, Header, Round, SignatureVerificationState, Vote,
+    ConsensusHeader, Header, Round, SignatureVerificationState, TnSender, Vote,
 };
 use tracing::{debug, error, warn};
 
@@ -88,6 +88,7 @@ where
     /// the certificate can be retrieved and timesout after some time. It's important to give up
     /// after enough time to limit the DoS attack surface. Peers who timeout must lose reputation.
     pub(super) async fn process_gossip(&self, msg: &GossipMessage) -> PrimaryNetworkResult<()> {
+        let msg_clone = msg.clone();
         // deconstruct message
         let GossipMessage { data, .. } = msg;
 
@@ -101,6 +102,9 @@ where
                 self.synchronizer.try_accept_certificate(valid_cert).await?;
             }
         }
+        // Send the raw gossip out to whoever else might need it.
+        // This should probably be multiple more focussed channels but sorting this out now.
+        let _ = self.consensus_bus.consensus_network_gossip().try_send(msg_clone);
 
         Ok(())
     }
