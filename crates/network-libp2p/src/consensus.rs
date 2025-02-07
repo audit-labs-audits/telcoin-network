@@ -390,7 +390,7 @@ where
                 send_or_log_error!(reply, peer_id, "LocalPeerId");
             }
             NetworkCommand::Publish { topic, msg, reply } => {
-                let res = self.swarm.behaviour_mut().gossipsub.publish(topic, msg);
+                let res = self.swarm.behaviour_mut().gossipsub.publish(topic.clone(), msg);
                 send_or_log_error!(reply, res, "Publish");
             }
             NetworkCommand::Subscribe { topic, reply } => {

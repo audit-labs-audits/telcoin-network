@@ -1,9 +1,8 @@
 //! RPC tests
 
-use anemo::PeerId;
 use std::time::Duration;
-use tn_network::{PrimaryToPrimaryRpc, WorkerRpc};
-use tn_network_types::{FetchCertificatesRequest, RequestBatchesRequest};
+use tn_network::WorkerRpc;
+use tn_network_types::RequestBatchesRequest;
 use tn_storage::mem_db::MemDatabase;
 use tn_test_utils::cluster::Cluster;
 use tn_types::AuthorityIdentifier;
@@ -17,7 +16,6 @@ async fn test_server_authorizations() {
     tokio::time::sleep(Duration::from_secs(3)).await;
 
     let this_authority_id = test_cluster.authorities().await.first().unwrap().name;
-    let primary_network = test_cluster.authorities().await.first().unwrap().primary_network().await;
     let worker_network =
         test_cluster.authorities().await.first().unwrap().worker_network(0).await.unwrap();
     let test_committee = test_cluster.committee.clone();
@@ -33,14 +31,6 @@ async fn test_server_authorizations() {
 
         // retrieve peer's network key
         let target_authority = test_committee.authority(&target_id).unwrap();
-        let primary_target_name = target_authority.network_key();
-        let request = anemo::Request::new(FetchCertificatesRequest::default())
-            .with_timeout(Duration::from_secs(5));
-        primary_network
-            .fetch_certificates(&primary_target_name, request)
-            .await
-            .expect("fetch certs from target primary");
-
         let worker_target_name = test_worker_cache
             .workers
             .get(target_authority.protocol_key())
@@ -67,18 +57,6 @@ async fn test_server_authorizations() {
 
         let unreachable_authority =
             unreachable_committee.authority(&AuthorityIdentifier(0)).unwrap();
-        let primary_target_name = unreachable_authority.network_key();
-        let primary_peer_id: PeerId = PeerId(primary_target_name.0.to_bytes());
-        let primary_address = unreachable_authority.primary_network_address();
-
-        primary_network
-            .connect_with_peer_id(primary_address.to_anemo_address().unwrap(), primary_peer_id)
-            .await
-            .unwrap();
-        let request = anemo::Request::new(FetchCertificatesRequest::default())
-            .with_timeout(Duration::from_secs(5));
-        // Removing the AllowedPeers RequireAuthorizationLayer for primary should make this succeed.
-        assert!(primary_network.fetch_certificates(&primary_target_name, request).await.is_err());
 
         let worker_target_name = unreachable_worker_cache
             .workers

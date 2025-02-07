@@ -170,4 +170,4 @@ impl From<PrimaryRPCError> for PrimaryResponse {
 
 /// Application-specific error type while handling Primary request.
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
-pub struct PrimaryRPCError(String);
+pub struct PrimaryRPCError(pub String);

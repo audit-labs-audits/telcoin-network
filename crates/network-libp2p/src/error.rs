@@ -68,6 +68,9 @@ pub enum NetworkError {
     /// Temporary error - used when converting fastcrypto -> libp2p key
     #[error(transparent)]
     Ed25519Decode(#[from] DecodingError),
+    /// Request/response RPC Error
+    #[error("{0}")]
+    RPCError(String),
 }
 
 impl From<oneshot::error::RecvError> for NetworkError {

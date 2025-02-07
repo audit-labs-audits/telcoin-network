@@ -11,7 +11,7 @@ use reth_db::{
 };
 use reth_provider::CanonStateSubscriptions;
 use tn_config::{ConsensusConfig, KeyConfig, TelcoinDirs};
-use tn_network_libp2p::ConsensusNetwork;
+use tn_network_libp2p::{types::IdentTopic, ConsensusNetwork};
 use tn_node_traits::TelcoinNode;
 use tn_primary::{ConsensusBus, NodeMode};
 pub use tn_storage::NodeStorage;
@@ -23,7 +23,6 @@ use tracing::{info, instrument};
 pub mod dirs;
 pub mod engine;
 mod error;
-pub mod metrics;
 pub mod primary;
 pub mod worker;
 
@@ -92,16 +91,13 @@ where
                 }
             )
         });
-        /* Need to replace anemo before we can take over the address...
+        consensus_network_handle.subscribe(IdentTopic::new("tn-primary")).await?;
         let my_authority = consensus_config.authority();
         consensus_network_handle.start_listening(my_authority.primary_network_address().inner()).await?;
-        for authority in consensus_config.committee().authorities() {
-            if my_authority.id() != authority.id() {
-                let peer_id = consensus_config.peer_id_for_authority(&authority.id()).expect("missing peer id!");
-                consensus_network_handle.dial(peer_id, authority.primary_network_address().inner()).await?;
-            }
+        for (authority_id, addr, _) in consensus_config.committee().others_primaries_by_id(consensus_config.authority().id()) {
+            let peer_id = consensus_config.peer_id_for_authority(&authority_id).expect("missing peer id!");
+            consensus_network_handle.dial(peer_id, addr.inner()).await?;
         }
-        */
         let primary = PrimaryNode::new(consensus_config.clone(), consensus_bus.clone(), consensus_network_handle, rx_event_stream);
 
         let mut engine_state = engine.get_provider().await.canonical_state_stream();
@@ -123,7 +119,7 @@ where
         if state_sync::can_cvv(
             consensus_bus.clone(),
             consensus_config.clone(),
-            primary.network().await,
+            primary.network_handle().await,
         )
         .await
         {

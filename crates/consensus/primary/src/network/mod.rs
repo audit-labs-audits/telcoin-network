@@ -16,7 +16,8 @@ use tn_storage::traits::Database;
 use tn_types::{BlockHash, Certificate, Header, Noticer, TaskManager};
 use tokio::sync::{mpsc, oneshot};
 use tracing::{error, warn};
-mod handler;
+pub mod client;
+pub mod handler;
 mod message;
 
 #[cfg(test)]
@@ -24,9 +25,9 @@ mod message;
 mod network_tests;
 
 /// Convenience type for Primary network.
-type Req = PrimaryRequest;
+pub(crate) type Req = PrimaryRequest;
 /// Convenience type for Primary network.
-type Res = PrimaryResponse;
+pub(crate) type Res = PrimaryResponse;
 
 /// Handle inter-node communication between primaries.
 pub struct PrimaryNetwork<DB> {
@@ -45,7 +46,7 @@ where
     DB: Database,
 {
     /// Create a new instance of Self.
-    pub(crate) fn new(
+    pub fn new(
         network_events: mpsc::Receiver<NetworkEvent<Req, Res>>,
         network_handle: NetworkHandle<Req, Res>,
         consensus_config: ConsensusConfig<DB>,
@@ -58,7 +59,7 @@ where
     }
 
     /// Run the network.
-    pub(crate) fn spawn(mut self, task_manager: &TaskManager) {
+    pub fn spawn(mut self, task_manager: &TaskManager) {
         task_manager.spawn_task("latest block", async move {
             loop {
                 tokio::select!(

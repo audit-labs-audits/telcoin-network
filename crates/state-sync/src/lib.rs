@@ -10,9 +10,12 @@ use std::{collections::HashMap, time::Duration};
 use consensus_metrics::monitored_future;
 use futures::{stream::FuturesUnordered, StreamExt};
 use tn_config::ConsensusConfig;
-use tn_network::anemo_ext::{NetworkExt, WaitingPeer};
-use tn_network_types::{ConsensusOutputRequest, PrimaryToPrimaryClient};
-use tn_primary::{consensus::ConsensusRound, ConsensusBus, NodeMode};
+use tn_network_libp2p::types::NetworkHandle;
+use tn_primary::{
+    consensus::ConsensusRound,
+    network::{client::NetworkClient, PrimaryRequest, PrimaryResponse},
+    ConsensusBus, NodeMode,
+};
 use tn_storage::{
     tables::{Batches, ConsensusBlockNumbersByDigest, ConsensusBlocks},
     traits::{Database, DbTxMut},
@@ -31,7 +34,7 @@ use tracing::info;
 pub async fn can_cvv<DB: Database>(
     consensus_bus: ConsensusBus,
     config: ConsensusConfig<DB>,
-    network: anemo::Network,
+    network: NetworkHandle<PrimaryRequest, PrimaryResponse>,
 ) -> bool {
     // Get the DB and load our last executed consensus block (note there may be unexecuted
     // blocks, catch up will execute them).
@@ -48,12 +51,13 @@ pub async fn can_cvv<DB: Database>(
     ));
     let _ = consensus_bus.primary_round_updates().send(last_consensus_round);
 
-    let mut clients: Vec<PrimaryToPrimaryClient<_>> = config
+    let mut clients: Vec<NetworkClient> = config
         .committee()
         .others_primaries_by_id(config.authority().id())
         .into_iter()
-        .map(|(_, _, peer_id)| {
-            PrimaryToPrimaryClient::new(network.waiting_peer(anemo::PeerId(peer_id.0.to_bytes())))
+        .map(|(auth_id, _, _)| {
+            let peer_id = config.peer_id_for_authority(&auth_id).expect("missing peer id!");
+            NetworkClient::new(network.clone(), peer_id)
         })
         .collect();
     let max_consensus_header =
@@ -81,7 +85,7 @@ pub async fn can_cvv<DB: Database>(
 pub fn spawn_state_sync<DB: Database>(
     config: ConsensusConfig<DB>,
     consensus_bus: ConsensusBus,
-    network: anemo::Network,
+    network: NetworkHandle<PrimaryRequest, PrimaryResponse>,
     task_manager: TaskManagerClone,
 ) {
     let mode = *consensus_bus.node_mode().borrow();
@@ -258,9 +262,9 @@ async fn spawn_track_recent_consensus<DB: Database>(
 async fn spawn_stream_consensus_headers<DB: Database>(
     config: ConsensusConfig<DB>,
     consensus_bus: ConsensusBus,
-    network: anemo::Network,
+    network: NetworkHandle<PrimaryRequest, PrimaryResponse>,
 ) -> eyre::Result<()> {
-    let mut clients = get_clients(&config, &network);
+    let mut clients = get_clients(&config, network.clone());
     let rx_shutdown = config.shutdown().subscribe();
 
     let mut last_consensus_header =
@@ -309,9 +313,7 @@ async fn spawn_stream_consensus_headers<DB: Database>(
 /// Returns the latest consensus header from a quorum of peers.
 ///
 /// Will allow three seconds per client and three attempts to get the consensus info.
-async fn max_consensus_header(
-    clients: &mut [PrimaryToPrimaryClient<WaitingPeer>],
-) -> Option<ConsensusHeader> {
+async fn max_consensus_header(clients: &mut [NetworkClient]) -> Option<ConsensusHeader> {
     let mut attempt = 1;
     let threshhold = ((clients.len() + 1) * 2) / 3;
     let num_peers = clients.len();
@@ -326,25 +328,24 @@ async fn max_consensus_header(
             waiting.push(tokio::time::timeout(
                 Duration::from_secs(3), /* Three seconds should be plenty of time to get the
                                          * consensus header. */
-                client.request_consensus(ConsensusOutputRequest::default()),
+                client.request_consensus(None, None),
             ));
         }
         let mut responses = 0;
         let mut outputs = HashMap::new();
         while let Some(res) = waiting.next().await {
             match res {
-                Ok(Ok(res)) => {
+                Ok(Ok(consensus_header)) => {
                     responses += 1;
-                    let output = res.into_body().output;
-                    if let Some((_, count)) = outputs.get_mut(&output.digest()) {
+                    if let Some((_, count)) = outputs.get_mut(&consensus_header.digest()) {
                         if (*count + 1) >= threshhold {
                             tracing::info!(target: "telcoin::state-sync", "reached consensus on current chain height of {} with {} out of {num_peers} peers agreeing out of {responses} responses",
-                            output.number, (*count + 1));
-                            return Some(output);
+                            consensus_header.number, (*count + 1));
+                            return Some(consensus_header);
                         }
                         *count += 1;
                     } else {
-                        outputs.insert(output.digest(), (output, 1_usize));
+                        outputs.insert(consensus_header.digest(), (consensus_header, 1_usize));
                     }
                 }
                 Ok(Err(e)) => {
@@ -365,14 +366,15 @@ async fn max_consensus_header(
 /// This should go away with libp2p.
 fn get_clients<DB: Database>(
     config: &ConsensusConfig<DB>,
-    network: &anemo::Network,
-) -> Vec<PrimaryToPrimaryClient<WaitingPeer>> {
+    network: NetworkHandle<PrimaryRequest, PrimaryResponse>,
+) -> Vec<NetworkClient> {
     config
         .committee()
         .others_primaries_by_id(config.authority().id())
         .into_iter()
-        .map(|(_, _, peer_id)| {
-            PrimaryToPrimaryClient::new(network.waiting_peer(anemo::PeerId(peer_id.0.to_bytes())))
+        .map(|(auth_id, _, _)| {
+            let peer_id = config.peer_id_for_authority(&auth_id).expect("missing peer id!");
+            NetworkClient::new(network.clone(), peer_id)
         })
         .collect()
 }
@@ -383,7 +385,7 @@ fn get_clients<DB: Database>(
 async fn catch_up_consensus<DB: Database>(
     config: &ConsensusConfig<DB>,
     consensus_bus: &ConsensusBus,
-    clients: &mut [PrimaryToPrimaryClient<WaitingPeer>],
+    clients: &mut [NetworkClient],
 ) -> eyre::Result<ConsensusHeader> {
     let db = config.database();
     let (_, last_db_block) =
@@ -401,7 +403,7 @@ async fn catch_up_consensus<DB: Database>(
 async fn catch_up_consensus_from_to<DB: Database>(
     config: &ConsensusConfig<DB>,
     consensus_bus: &ConsensusBus,
-    clients: &mut [PrimaryToPrimaryClient<WaitingPeer>],
+    clients: &mut [NetworkClient],
     from: ConsensusHeader,
     max_consensus: ConsensusHeader,
 ) -> eyre::Result<ConsensusHeader> {
@@ -439,9 +441,8 @@ async fn catch_up_consensus_from_to<DB: Database>(
                 let client = clients
                     .get_mut((number as usize + try_num) % clients_len)
                     .expect("client found by index");
-                let req = ConsensusOutputRequest { number: Some(number), hash: None };
-                match client.request_consensus(req).await {
-                    Ok(res) => break res.into_body().output,
+                match client.request_consensus(Some(number), None).await {
+                    Ok(header) => break header,
                     Err(e) => {
                         tracing::error!(target: "telcoin::state-sync", "error requesting peer consensus {e:?}");
                         try_num += 1;

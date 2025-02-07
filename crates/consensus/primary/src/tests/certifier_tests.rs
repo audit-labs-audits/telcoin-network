@@ -213,7 +213,13 @@ async fn run_vote_aggregator_with_param(
     let synchronizer = Arc::new(Synchronizer::new(primary.consensus_config(), &cb));
     let task_manager = TaskManager::default();
     synchronizer.spawn(&task_manager);
-    Certifier::spawn(primary.consensus_config(), cb.clone(), synchronizer, network, &task_manager);
+    Certifier::spawn(
+        primary.consensus_config(),
+        cb.clone(),
+        synchronizer,
+        NetworkHandle::new_for_test(),
+        &task_manager,
+    );
 
     // Send a proposed header.
     let proposed_digest = proposed_header.digest();
@@ -237,21 +243,11 @@ async fn run_vote_aggregator_with_param(
 #[tokio::test]
 async fn test_shutdown_core() {
     let fixture = CommitteeFixture::builder(MemDatabase::default).build();
-    let committee = fixture.committee();
     let primary = fixture.authorities().next().unwrap();
-    let network_key = primary.primary_network_keypair().copy().private().0.to_bytes();
-    let id: AuthorityIdentifier = primary.id();
 
     let cb = ConsensusBus::new();
     // Make a synchronizer for the core.
     let synchronizer = Arc::new(Synchronizer::new(primary.consensus_config(), &cb));
-
-    let own_address = committee.primary_by_id(&id).unwrap().to_anemo_address().unwrap();
-    let network = anemo::Network::bind(own_address)
-        .server_name("conensus-test")
-        .private_key(network_key)
-        .start(anemo::Router::new())
-        .unwrap();
 
     // Spawn the core.
     let mut task_manager = TaskManager::default();
@@ -260,7 +256,7 @@ async fn test_shutdown_core() {
         primary.consensus_config(),
         cb.clone(),
         synchronizer.clone(),
-        network.clone(),
+        NetworkHandle::new_for_test(),
         &task_manager,
     );
 

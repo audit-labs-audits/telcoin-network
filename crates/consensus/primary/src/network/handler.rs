@@ -48,7 +48,7 @@ const MAX_NUM_SKIP_ROUNDS: usize = 1000;
 
 /// The type that handles requests from peers.
 #[derive(Clone)]
-pub(super) struct RequestHandler<DB> {
+pub struct RequestHandler<DB> {
     /// Consensus config with access to database.
     consensus_config: ConsensusConfig<DB>,
     /// Inner-processs channel bus.
@@ -110,7 +110,7 @@ where
     }
 
     /// Evaluate request to possibly issue a vote in support of peer's header.
-    pub(super) async fn vote(
+    pub(crate) async fn vote(
         &self,
         peer: PeerId,
         header: Header,
@@ -261,7 +261,7 @@ where
             // - note: this is always in secs, so this would prevent sub-sec block production which
             //   is a goal
             ensure!(
-                header.created_at() > parent.header().created_at(),
+                header.created_at() >= parent.header().created_at(),
                 HeaderError::InvalidParentTimestamp {
                     header: *header.created_at(),
                     parent: *parent.created_at()
@@ -479,7 +479,7 @@ where
     /// - limiting total processing time
     /// - processing certificates in chunks
     /// - validating request parameters
-    pub(super) async fn retrieve_missing_certs(
+    pub async fn retrieve_missing_certs(
         &self,
         request: MissingCertificatesRequest,
     ) -> PrimaryNetworkResult<PrimaryResponse> {

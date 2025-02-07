@@ -3,7 +3,18 @@
 use super::*;
 use tn_network::test_utils::WorkerToWorkerMockServer;
 use tn_storage::mem_db::MemDatabase;
-use tn_test_utils::{batch, test_network, CommitteeFixture};
+use tn_test_utils::{batch, CommitteeFixture};
+use tn_types::{traits::KeyPair, Multiaddr, NetworkKeypair};
+
+fn test_network(keypair: NetworkKeypair, address: &Multiaddr) -> anemo::Network {
+    let address = address.to_anemo_address().unwrap();
+    let network_key = keypair.private().0.to_bytes();
+    anemo::Network::bind(address)
+        .server_name("tn-test")
+        .private_key(network_key)
+        .start(anemo::Router::new())
+        .unwrap()
+}
 
 #[tokio::test]
 async fn wait_for_quorum() {

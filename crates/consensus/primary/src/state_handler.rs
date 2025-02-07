@@ -1,12 +1,15 @@
 //! Filter consensus results to update execution state.
 
-use crate::ConsensusBus;
+use crate::{
+    network::{PrimaryRequest, PrimaryResponse},
+    ConsensusBus,
+};
 use consensus_metrics::monitored_future;
-use tap::TapFallible;
+use tn_network_libp2p::types::NetworkHandle;
 use tn_types::{
     AuthorityIdentifier, Certificate, Noticer, Round, TaskManager, TnReceiver, TnSender,
 };
-use tracing::{debug, error, info, warn};
+use tracing::{debug, error, info};
 
 /// Updates Narwhal system state based on certificates received from consensus.
 pub struct StateHandler {
@@ -17,7 +20,7 @@ pub struct StateHandler {
     /// Channel to signal committee changes.
     rx_shutdown: Noticer,
 
-    network: anemo::Network,
+    network: NetworkHandle<PrimaryRequest, PrimaryResponse>,
 }
 
 impl StateHandler {
@@ -25,7 +28,7 @@ impl StateHandler {
         authority_id: AuthorityIdentifier,
         consensus_bus: &ConsensusBus,
         rx_shutdown: Noticer,
-        network: anemo::Network,
+        network: NetworkHandle<PrimaryRequest, PrimaryResponse>,
         task_manager: &TaskManager,
     ) {
         let state_handler =
@@ -80,12 +83,12 @@ impl StateHandler {
                 },
 
                 _ = &self.rx_shutdown => {
-                    // shutdown network
-                    let _ = self.network.shutdown().await.tap_err(|err|{
-                        error!(target: "primary::state_handler", "Error while shutting down network: {err}")
-                    });
+                    // XXXX shutdown network
+                    //let _ = self.network.shutdown().await.tap_err(|err|{
+                    //    error!(target: "primary::state_handler", "Error while shutting down network: {err}")
+                    //});
 
-                    warn!(target: "primary::state_handler", "Network has shutdown");
+                    //warn!(target: "primary::state_handler", "Network has shutdown");
 
                     return;
                 }

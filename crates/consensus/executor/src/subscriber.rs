@@ -1,7 +1,6 @@
 //! Subscriber handles consensus output.
 
 use crate::{errors::SubscriberResult, SubscriberError};
-use anemo::Network;
 use consensus_metrics::monitored_future;
 use fastcrypto::hash::Hash;
 use futures::{stream::FuturesOrdered, StreamExt};
@@ -17,8 +16,13 @@ use std::{
 };
 use tn_config::ConsensusConfig;
 use tn_network::{local::LocalNetwork, PrimaryToWorkerClient};
+use tn_network_libp2p::types::NetworkHandle;
 use tn_network_types::FetchBatchesRequest;
-use tn_primary::{consensus::ConsensusRound, ConsensusBus, NodeMode};
+use tn_primary::{
+    consensus::ConsensusRound,
+    network::{PrimaryRequest, PrimaryResponse},
+    ConsensusBus, NodeMode,
+};
 use tn_storage::traits::Database;
 use tn_types::{
     Address, AuthorityIdentifier, Batch, BlockHash, Certificate, CommittedSubDag, Committee,
@@ -54,7 +58,7 @@ pub fn spawn_subscriber<DB: Database>(
     rx_shutdown: Noticer,
     consensus_bus: ConsensusBus,
     task_manager: &TaskManager,
-    network: Network,
+    network: NetworkHandle<PrimaryRequest, PrimaryResponse>,
 ) {
     let authority_id = config.authority().id();
     let worker_cache = config.worker_cache().clone();
@@ -165,7 +169,7 @@ impl<DB: Database> Subscriber<DB> {
     async fn catch_up_rejoin_consensus(
         &self,
         tasks: TaskManagerClone,
-        network: Network,
+        network: NetworkHandle<PrimaryRequest, PrimaryResponse>,
     ) -> SubscriberResult<()> {
         // Get a receiver than stream any missing headers so we don't miss them.
         let mut rx_consensus_headers = self.consensus_bus.consensus_header().subscribe();
@@ -191,7 +195,7 @@ impl<DB: Database> Subscriber<DB> {
     async fn follow_consensus(
         &self,
         tasks: TaskManagerClone,
-        network: Network,
+        network: NetworkHandle<PrimaryRequest, PrimaryResponse>,
     ) -> SubscriberResult<()> {
         // Get a receiver than stream any missing headers so we don't miss them.
         let mut rx_consensus_headers = self.consensus_bus.consensus_header().subscribe();

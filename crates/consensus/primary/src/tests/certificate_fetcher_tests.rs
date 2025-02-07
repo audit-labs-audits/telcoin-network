@@ -8,6 +8,7 @@ use indexmap::IndexMap;
 use itertools::Itertools;
 use once_cell::sync::OnceCell;
 use std::{collections::BTreeSet, sync::Arc, time::Duration};
+use tn_network_libp2p::types::NetworkHandle;
 use tn_network_types::{
     ConsensusOutputRequest, ConsensusOutputResponse, FetchCertificatesRequest,
     FetchCertificatesResponse, PrimaryToPrimary, PrimaryToPrimaryServer, RequestVoteRequest,
@@ -158,9 +159,9 @@ async fn fetch_certificates_basic() {
     let fake_primary = fixture.authorities().nth(1).unwrap();
 
     // FetchCertificateProxy -> test
-    let (tx_fetch_req, mut rx_fetch_req) = mpsc::channel(1000);
+    //let (tx_fetch_req, mut rx_fetch_req) = mpsc::channel(1000);
     // test -> FetchCertificateProxy
-    let (tx_fetch_resp, rx_fetch_resp) = mpsc::channel(1000);
+    //let (tx_fetch_resp, rx_fetch_resp) = mpsc::channel(1000);
 
     let certificate_store = primary.consensus_config().node_storage().certificate_store.clone();
     let payload_store = primary.consensus_config().node_storage().payload_store.clone();
@@ -173,7 +174,7 @@ async fn fetch_certificates_basic() {
     let task_manager = TaskManager::default();
     synchronizer.spawn(&task_manager);
 
-    let fake_primary_addr = fake_primary.network_address().to_anemo_address().unwrap();
+    /*let fake_primary_addr = fake_primary.network_address().to_anemo_address().unwrap();
     let fake_route =
         anemo::Router::new().add_rpc_service(PrimaryToPrimaryServer::new(NetworkProxy {
             request: tx_fetch_req,
@@ -188,16 +189,15 @@ async fn fetch_certificates_basic() {
     client_network
         .connect_with_peer_id(fake_primary_addr, fake_server_network.peer_id())
         .await
-        .unwrap();
+        .unwrap();*/
+    let (sender, fake_receiver) = mpsc::channel(1000);
+    let client_network: NetworkHandle<PrimaryRequest, PrimaryResponse> = NetworkHandle::new(sender);
 
     // Make a certificate fetcher
     CertificateFetcher::spawn(
-        id,
-        fixture.committee(),
-        client_network.clone(),
-        certificate_store.clone(),
+        primary.consensus_config(),
+        client_network,
         cb.clone(),
-        primary.consensus_config().shutdown().subscribe(),
         synchronizer.clone(),
         &task_manager,
     );
@@ -253,7 +253,7 @@ async fn fetch_certificates_basic() {
         .is_empty());
 
     // Verify the fetch request.
-    let mut req = rx_fetch_req.recv().await.unwrap();
+    let mut req = fake_receiver.recv().await.unwrap(); //rx_fetch_req.recv().await.unwrap();
     let (lower_bound, skip_rounds) = req.get_bounds();
     assert_eq!(lower_bound, 0);
     assert_eq!(skip_rounds.len(), fixture.authorities().count());

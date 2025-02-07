@@ -16,7 +16,7 @@ mod primary;
 mod proposer;
 mod state_handler;
 mod state_sync;
-mod synchronizer;
+pub mod synchronizer;
 
 #[cfg(test)]
 #[path = "tests/certificate_tests.rs"]

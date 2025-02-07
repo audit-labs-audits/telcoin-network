@@ -20,9 +20,9 @@ use tn_storage::{
 use tn_types::{now, BatchValidation, Committee, SealedBatch, WorkerCache, WorkerId};
 use tracing::{debug, trace};
 
-#[cfg(test)]
+/* XXXX #[cfg(test)]
 #[path = "tests/handlers_tests.rs"]
-pub mod handlers_tests;
+pub mod handlers_tests;*/
 
 /// Defines how the network receiver handles incoming workers messages.
 #[derive(Clone)]

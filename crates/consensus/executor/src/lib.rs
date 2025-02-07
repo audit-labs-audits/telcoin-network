@@ -4,13 +4,16 @@
 mod errors;
 pub mod subscriber;
 use crate::subscriber::spawn_subscriber;
-use anemo::Network;
 use async_trait::async_trait;
 pub use errors::{SubscriberError, SubscriberResult};
 use mockall::automock;
 use std::sync::Arc;
 use tn_config::ConsensusConfig;
-use tn_primary::ConsensusBus;
+use tn_network_libp2p::types::NetworkHandle;
+use tn_primary::{
+    network::{PrimaryRequest, PrimaryResponse},
+    ConsensusBus,
+};
 use tn_storage::{traits::Database, ConsensusStore};
 use tn_types::{CommittedSubDag, ConsensusOutput, Noticer, TaskManager};
 use tracing::info;
@@ -41,7 +44,7 @@ impl Executor {
         rx_shutdown: Noticer,
         consensus_bus: ConsensusBus,
         task_manager: &TaskManager,
-        network: Network,
+        network: NetworkHandle<PrimaryRequest, PrimaryResponse>,
     ) {
         // Spawn the subscriber.
         spawn_subscriber(config, rx_shutdown, consensus_bus, task_manager, network);

@@ -1,5 +1,4 @@
 //! Hierarchical type to hold tasks spawned for a worker in the network.
-use anemo::Network;
 use fastcrypto::traits::VerifyingKey;
 use std::sync::Arc;
 use tn_config::ConsensusConfig;
@@ -96,7 +95,7 @@ impl<CDB: ConsensusDatabase> PrimaryNodeInner<CDB> {
             self.consensus_config.shutdown().subscribe(),
             consensus_bus.clone(),
             task_manager,
-            self.primary.network().clone(),
+            self.primary.network_handle().clone(),
         );
 
         Ok(leader_schedule)
@@ -155,13 +154,8 @@ impl<CDB: ConsensusDatabase> PrimaryNode<CDB> {
         self.internal.read().await.consensus_bus.clone()
     }
 
-    /// Return the WAN if the primary is runnig.
-    pub async fn network(&self) -> Network {
-        self.internal.read().await.primary.network().clone()
-    }
-
     /// Return the WAN handke if the primary p2p is runnig.
     pub async fn network_handle(&self) -> NetworkHandle<PrimaryRequest, PrimaryResponse> {
-        self.internal.read().await.primary.network_p2p().clone()
+        self.internal.read().await.primary.network_handle().clone()
     }
 }

@@ -1,6 +1,5 @@
 //! Primary fixture for the cluster
 
-use anemo::Network;
 use std::sync::Arc;
 use tn_config::ConsensusConfig;
 use tn_network_libp2p::ConsensusNetwork;
@@ -59,10 +58,5 @@ impl<DB: Database> PrimaryNodeDetails<DB> {
 
     pub fn node(&self) -> &PrimaryNode<DB> {
         &self.node
-    }
-
-    /// Return an owned wide-area [Network] if it is running.
-    pub async fn network(&self) -> Network {
-        self.node.network().await
     }
 }
