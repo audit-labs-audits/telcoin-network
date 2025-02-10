@@ -400,11 +400,6 @@ async fn test_request_vote_has_missing_parents() {
     let result =
         timeout(Duration::from_secs(5), handler.vote(peer, test_header, Vec::new())).await.unwrap();
     assert!(result.is_err(), "{:?}", result);
-    /* XXXX error? assert_eq!(
-        // Returned error should be unretriable.
-        anemo::types::response::StatusCode::BadRequest,
-        result.err().unwrap().status()
-    );*/
 }
 
 #[tokio::test(flavor = "current_thread", start_paused = true)]
@@ -571,10 +566,6 @@ async fn test_request_vote_missing_batches() {
 
     client.set_primary_to_worker_local_handler(worker_peer_id, Arc::new(mock_server));
 
-    /* XXXX let _worker_network = worker.new_network(anemo::Router::new());
-    let address = worker_address.to_anemo_address().unwrap();
-    network.connect_with_peer_id(address, worker_peer_id).await.unwrap();*/
-
     // Verify Handler synchronizes missing batches and generates a Vote.
     let _vote = timeout(Duration::from_secs(5), handler.vote(peer, test_header, Vec::new()))
         .await
@@ -638,10 +629,6 @@ async fn test_request_vote_already_voted() {
     mock_server.expect_synchronize().returning(|_| Ok(anemo::Response::new(())));
 
     client.set_primary_to_worker_local_handler(worker_peer_id, Arc::new(mock_server));
-
-    /* XXXX let _worker_network = worker.new_network(anemo::Router::new());
-    let address = worker_address.to_anemo_address().unwrap();
-    network.connect_with_peer_id(address, worker_peer_id).await.unwrap();*/
 
     // Verify Handler generates a Vote.
     let test_header = author
@@ -851,10 +838,6 @@ async fn test_request_vote_created_at_in_future() {
     mock_server.expect_synchronize().returning(|_| Ok(anemo::Response::new(())));
 
     client.set_primary_to_worker_local_handler(worker_peer_id, Arc::new(mock_server));
-
-    /* XXXX let _worker_network = worker.new_network(anemo::Router::new());
-    let address = worker_address.to_anemo_address().unwrap();
-    network.connect_with_peer_id(address, worker_peer_id).await.unwrap();*/
 
     // Verify Handler generates a Vote.
 
