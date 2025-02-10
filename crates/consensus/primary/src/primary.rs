@@ -94,15 +94,6 @@ impl<DB: Database> Primary<DB> {
             config.parameters().network_admin_server.primary_network_admin_server_port
         );
 
-        // XXXX This seems to be an artifact of anem, if we need an admin server then should define
-        // a buid a new one.
-        /*tn_network::admin::start_admin_server(
-            config.parameters().network_admin_server.primary_network_admin_server_port,
-            self.network.clone(),
-            config.shutdown().subscribe(),
-            task_manager,
-        );*/
-
         Certifier::spawn(
             config.clone(),
             consensus_bus.clone(),

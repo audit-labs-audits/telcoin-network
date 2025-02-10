@@ -20,7 +20,8 @@ use tn_storage::{
 use tn_types::{now, BatchValidation, Committee, SealedBatch, WorkerCache, WorkerId};
 use tracing::{debug, trace};
 
-/* XXXX #[cfg(test)]
+/* TODO restore these when worker moves to libp2p XXXX (should not make it to main)
+#[cfg(test)]
 #[path = "tests/handlers_tests.rs"]
 pub mod handlers_tests;*/
 

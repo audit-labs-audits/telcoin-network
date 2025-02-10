@@ -48,7 +48,16 @@ impl NetworkClient {
         match res {
             PrimaryResponse::Vote(vote) => Ok(vote),
             PrimaryResponse::Error(PrimaryRPCError(s)) => Err(NetworkError::RPCError(s)),
-            _ => Err(NetworkError::RPCError("Got wrong response, not a vote!".to_string())),
+            PrimaryResponse::RequestedCertificates(_vec) => Err(NetworkError::RPCError(
+                "Got wrong response, not a vote is requested certificates!".to_string(),
+            )),
+            PrimaryResponse::MissingParents(_vec) => Err(NetworkError::RPCError(
+                "Got wrong response, not a vote is missing parents!".to_string(),
+            )),
+            PrimaryResponse::ConsensusHeader(_consensus_header) => Err(NetworkError::RPCError(
+                "Got wrong response, not a vote is consensus header!".to_string(),
+            )),
+            //_ => Err(NetworkError::RPCError("Got wrong response, not a vote!".to_string())),
         }
     }
 

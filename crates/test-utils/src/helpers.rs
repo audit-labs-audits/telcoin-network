@@ -11,20 +11,12 @@ use std::{
     collections::{BTreeSet, HashMap, VecDeque},
     ops::RangeInclusive,
 };
-//use tn_config::ConsensusConfig;
-//use tn_network_libp2p::{types::NetworkHandle, ConsensusNetwork};
-//use tn_primary::{
-//    network::{PrimaryNetwork, PrimaryRequest, PrimaryResponse},
-//    ConsensusBus,
-//};
-//use tn_storage::traits::Database;
 use tn_types::{
     adiri_chain_spec_arc, to_intent_message, Address, AuthorityIdentifier, Batch, BlockHash,
     BlsKeypair, BlsSignature, Bytes, Certificate, CertificateDigest, Committee, Epoch, ExecHeader,
     HeaderBuilder, ProtocolSignature, Round, Stake, TimestampSec, TransactionSigned, WorkerId,
     U256,
 };
-//use tokio::sync::mpsc;
 
 pub const VOTES_CF: &str = "votes";
 pub const HEADERS_CF: &str = "headers";
@@ -100,38 +92,6 @@ pub fn ensure_test_environment() {
     #[cfg(not(target_os = "windows"))]
     fdlimit::raise_fd_limit().expect("Could not raise ulimit");
 }
-
-/* XXXX pub fn test_network<DB: Database>(
-    config: ConsensusConfig<DB>,
-    consensus_bus: &ConsensusBus,
-    synchronizer: Arc<tn_primary::synchronizer::Synchronizer<DB>>,
-) -> NetworkHandle<PrimaryRequest, PrimaryResponse> {
-    let (event_stream, rx_event_stream) = mpsc::channel(1000);
-    let consensus_network = ConsensusNetwork::new_for_primary(&config, event_stream)
-        .expect("p2p network create failed!");
-    let network_handle = consensus_network.network_handle();
-    let rx_shutdown = config.shutdown().subscribe();
-    let task_manager = TaskManager::default();
-    task_manager.spawn_task("consensus network run loop", async move {
-        tokio::select!(
-            _ = &rx_shutdown => {
-                Ok(())
-            }
-            res = consensus_network.run() => {
-                res
-            }
-        )
-    });
-    PrimaryNetwork::new(
-        rx_event_stream,
-        network_handle.clone(),
-        config.clone(),
-        consensus_bus.clone(),
-        synchronizer,
-    )
-    .spawn(&task_manager);
-    network_handle
-}*/
 
 ////////////////////////////////////////////////////////////////
 // Keys, Committee

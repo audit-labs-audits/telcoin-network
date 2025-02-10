@@ -4,11 +4,13 @@ use super::*;
 use crate::ConsensusBus;
 use fastcrypto::traits::KeyPair;
 use rand::{rngs::StdRng, SeedableRng};
-use std::num::NonZeroUsize;
+use std::{collections::HashMap, num::NonZeroUsize};
+use tn_network_libp2p::types::NetworkCommand;
 use tn_network_types::{MockPrimaryToPrimary, PrimaryToPrimaryServer, RequestVoteResponse};
 use tn_storage::mem_db::MemDatabase;
 use tn_test_utils::CommitteeFixture;
 use tn_types::{BlsKeypair, Notifier, SignatureVerificationState, TnSender};
+use tokio::sync::mpsc;
 
 #[tokio::test(flavor = "current_thread")]
 async fn propose_header_to_form_certificate() {
@@ -20,37 +22,17 @@ async fn propose_header_to_form_certificate() {
     // Create a fake header.
     let proposed_header = primary.header(&committee);
 
-    // Set up network.
-    let network = primary.new_network(anemo::Router::new());
+    // Set up network handle- this is all we need to simulate then network for the certifier.
+    let (sender, mut network_rx) = mpsc::channel(100);
+    let network: NetworkHandle<PrimaryRequest, PrimaryResponse> = NetworkHandle::new(sender);
 
     // Set up remote primaries responding with votes.
-    let mut peer_networks = Vec::new();
+    let mut peer_votes = HashMap::new();
     for peer in fixture.authorities().filter(|a| a.id() != id) {
-        let address = committee.primary(&peer.primary_public_key()).unwrap();
         let name = peer.id();
         let vote = Vote::new(&proposed_header, &name, peer.consensus_config().key_config()).await;
-        let mut mock_server = MockPrimaryToPrimary::new();
-        let mut mock_seq = mockall::Sequence::new();
-        // Verify errors are retried.
-        mock_server.expect_request_vote().times(3).in_sequence(&mut mock_seq).returning(
-            move |_request| {
-                Err(anemo::rpc::Status::new(anemo::types::response::StatusCode::Unknown))
-            },
-        );
-        mock_server.expect_request_vote().times(1).in_sequence(&mut mock_seq).return_once(
-            move |_request| {
-                Ok(anemo::Response::new(RequestVoteResponse {
-                    vote: Some(vote),
-                    missing: Vec::new(),
-                }))
-            },
-        );
-        let routes = anemo::Router::new().add_rpc_service(PrimaryToPrimaryServer::new(mock_server));
-        peer_networks.push(peer.new_network(routes));
-
-        let address = address.to_anemo_address().unwrap();
-        let peer_id = anemo::PeerId(peer.primary_network_keypair().public().0.to_bytes());
-        network.connect_with_peer_id(address, peer_id).await.unwrap();
+        let id = primary.consensus_config().peer_id_for_authority(&name).unwrap();
+        peer_votes.insert(id, vote);
     }
 
     let cb = ConsensusBus::new();
@@ -72,6 +54,23 @@ async fn propose_header_to_form_certificate() {
     // consensus channel.
     let proposed_digest = proposed_header.digest();
     cb.headers().send(proposed_header).await.unwrap();
+    // Wait for the vote requests and send the votes back.
+    while let Some(req) = network_rx.recv().await {
+        match req {
+            NetworkCommand::SendRequest { peer, request, reply } => match request {
+                PrimaryRequest::Vote { header: _, parents: _ } => {
+                    if let Some(vote) = peer_votes.remove(&peer) {
+                        reply.send(Ok(PrimaryResponse::Vote(vote))).unwrap();
+                    }
+                }
+                _ => {}
+            },
+            _ => {}
+        }
+        if peer_votes.is_empty() {
+            break;
+        }
+    }
     let certificate = tokio::time::timeout(Duration::from_secs(10), rx_new_certificates.recv())
         .await
         .unwrap()
@@ -83,42 +82,18 @@ async fn propose_header_to_form_certificate() {
     ));
 }
 
-#[tokio::test(flavor = "current_thread", start_paused = true)]
+#[tokio::test(flavor = "current_thread")]
 async fn propose_header_failure() {
     let fixture = CommitteeFixture::builder(MemDatabase::default).randomize_ports(true).build();
     let committee = fixture.committee();
     let primary = fixture.authorities().last().unwrap();
-    let network_key = primary.primary_network_keypair().copy().private().0.to_bytes();
-    let authority_id = primary.id();
 
     // Create a fake header.
     let proposed_header = primary.header(&committee);
 
-    // Set up network.
-    let own_address = committee.primary_by_id(&authority_id).unwrap().to_anemo_address().unwrap();
-    let network = anemo::Network::bind(own_address)
-        .server_name("tn-test")
-        .private_key(network_key)
-        .start(anemo::Router::new())
-        .unwrap();
-
-    // Set up remote primaries responding with votes.
-    let mut primary_networks = Vec::new();
-    for primary in fixture.authorities().filter(|a| a.id() != authority_id) {
-        let address = committee.primary(&primary.primary_public_key()).unwrap();
-        let mut mock_server = MockPrimaryToPrimary::new();
-        mock_server.expect_request_vote().returning(move |_request| {
-            Err(anemo::rpc::Status::new(
-                anemo::types::response::StatusCode::BadRequest, // unretriable
-            ))
-        });
-        let routes = anemo::Router::new().add_rpc_service(PrimaryToPrimaryServer::new(mock_server));
-        primary_networks.push(primary.new_network(routes));
-
-        let address = address.to_anemo_address().unwrap();
-        let peer_id = anemo::PeerId(primary.primary_network_keypair().public().0.to_bytes());
-        network.connect_with_peer_id(address, peer_id).await.unwrap();
-    }
+    // Set up network handle- this is all we need to simulate then network for the certifier.
+    let (sender, mut network_rx) = mpsc::channel(100);
+    let network: NetworkHandle<PrimaryRequest, PrimaryResponse> = NetworkHandle::new(sender);
 
     let cb = ConsensusBus::new();
     let mut rx_new_certificates = cb.new_certificates().subscribe();
@@ -137,6 +112,25 @@ async fn propose_header_failure() {
 
     // Propose header and verify we get no certificate back.
     cb.headers().send(proposed_header).await.unwrap();
+
+    // Wait for the vote requests and send back errors.
+    let mut i = 0;
+    while let Some(req) = network_rx.recv().await {
+        match req {
+            NetworkCommand::SendRequest { peer: _, request, reply } => match request {
+                PrimaryRequest::Vote { header: _, parents: _ } => {
+                    reply.send(Err(NetworkError::RPCError("bad vote".to_string()))).unwrap();
+                }
+                _ => {}
+            },
+            _ => {}
+        }
+        i += 1;
+        if i >= 3 {
+            break;
+        }
+    }
+
     if let Ok(result) =
         tokio::time::timeout(Duration::from_secs(5), rx_new_certificates.recv()).await
     {

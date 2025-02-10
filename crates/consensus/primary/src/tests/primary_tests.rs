@@ -2,25 +2,18 @@
 
 use super::Primary;
 use crate::{
-    consensus::{LeaderSchedule, LeaderSwapTable},
     network::{handler::RequestHandler, MissingCertificatesRequest, PrimaryResponse},
     synchronizer::Synchronizer,
     ConsensusBus,
 };
-use fastcrypto::{
-    encoding::{Encoding, Hex},
-    hash::Hash,
-    traits::KeyPair as _,
-};
+use fastcrypto::{hash::Hash, traits::KeyPair as _};
 use itertools::Itertools;
-use prometheus::Registry;
 use std::{
     collections::{BTreeSet, HashMap, HashSet},
     num::NonZeroUsize,
     sync::Arc,
     time::Duration,
 };
-use tn_batch_validator::NoopBatchValidator;
 use tn_config::ConsensusConfig;
 use tn_network_libp2p::ConsensusNetwork;
 use tn_network_types::MockPrimaryToWorker;
@@ -32,7 +25,6 @@ use tn_types::{
     now, AuthorityIdentifier, BlockHash, Certificate, Committee, ExecHeader, SealedHeader,
     SignatureVerificationState, TaskManager,
 };
-use tn_worker::{metrics::Metrics, Worker};
 use tokio::{sync::mpsc, time::timeout};
 
 fn get_bus_and_primary<DB: Database>(config: ConsensusConfig<DB>) -> (ConsensusBus, Primary<DB>) {
@@ -44,142 +36,6 @@ fn get_bus_and_primary<DB: Database>(config: ConsensusConfig<DB>) -> (ConsensusB
 
     let primary = Primary::new(config, &consensus_bus, consensus_network_handle, rx_event_stream);
     (consensus_bus, primary)
-}
-
-// XXXX- these seems like old cruft from anemo? #[tokio::test]
-async fn test_get_network_peers_from_admin_server() {
-    let fixture = CommitteeFixture::builder(MemDatabase::default).randomize_ports(true).build();
-    let committee = fixture.committee();
-    let authority_1 = fixture.authorities().next().unwrap();
-    let config_1 = authority_1.consensus_config();
-    let primary_1_parameters = config_1.config().parameters.clone();
-
-    let worker_id = 0;
-    let worker_1_keypair = authority_1.worker().keypair().copy();
-
-    let (cb_1, mut primary_1) = get_bus_and_primary(config_1.clone());
-    // Spawn Primary 1
-    primary_1.spawn(
-        config_1.clone(),
-        &cb_1,
-        LeaderSchedule::new(committee.clone(), LeaderSwapTable::default()),
-        &TaskManager::default(),
-    );
-
-    // Wait for tasks to start
-    tokio::time::sleep(Duration::from_secs(2)).await;
-
-    let registry_1 = Registry::new();
-    let metrics_1 = Metrics::new_with_registry(&registry_1);
-
-    // Spawn a `Worker` instance for primary 1.
-    let _ = Worker::spawn(
-        worker_id,
-        Arc::new(NoopBatchValidator),
-        metrics_1,
-        config_1.clone(),
-        &TaskManager::default(),
-    );
-
-    // Test getting all known peers for primary 1
-    let resp = reqwest::get(format!(
-        "http://127.0.0.1:{}/known_peers",
-        primary_1_parameters.network_admin_server.primary_network_admin_server_port
-    ))
-    .await
-    .unwrap()
-    .json::<Vec<String>>()
-    .await
-    .unwrap();
-
-    // Assert we returned 7 peers (3 other primaries + 1 workers + 1*3 other workers)
-    assert_eq!(7, resp.len());
-
-    // Test getting all connected peers for primary 1
-    let mut resp = reqwest::get(format!(
-        "http://127.0.0.1:{}/peers",
-        primary_1_parameters.network_admin_server.primary_network_admin_server_port
-    ))
-    .await
-    .unwrap()
-    .json::<Vec<String>>()
-    .await
-    .unwrap();
-
-    let mut i = 0;
-    while i < 10 && resp.is_empty() {
-        i += 1;
-        std::thread::sleep(Duration::from_millis(1000));
-        resp = reqwest::get(format!(
-            "http://127.0.0.1:{}/peers",
-            primary_1_parameters.network_admin_server.primary_network_admin_server_port
-        ))
-        .await
-        .unwrap()
-        .json::<Vec<String>>()
-        .await
-        .unwrap();
-    }
-    // Assert we returned 1 peers (only 1 worker spawned)
-    assert_eq!(1, resp.len());
-
-    let authority_2 = fixture.authorities().nth(1).unwrap();
-    let config_2 = authority_2.consensus_config();
-    let primary_2_parameters = config_2.config().parameters.clone();
-
-    // Spawn Primary 2
-    let (cb_2, mut primary_2) = get_bus_and_primary(config_2.clone());
-    primary_2.spawn(
-        config_2,
-        &cb_2,
-        LeaderSchedule::new(committee, LeaderSwapTable::default()),
-        &TaskManager::default(),
-    );
-
-    // Wait for tasks to start
-    tokio::time::sleep(Duration::from_secs(1)).await;
-
-    let primary_1_peer_id =
-        Hex::encode(authority_1.primary_network_keypair().copy().public().0.as_bytes());
-    let primary_2_peer_id =
-        Hex::encode(authority_2.primary_network_keypair().copy().public().0.as_bytes());
-    let worker_1_peer_id = Hex::encode(worker_1_keypair.copy().public().0.as_bytes());
-
-    // Test getting all connected peers for primary 1
-    let resp = reqwest::get(format!(
-        "http://127.0.0.1:{}/peers",
-        primary_1_parameters.network_admin_server.primary_network_admin_server_port
-    ))
-    .await
-    .unwrap()
-    .json::<Vec<String>>()
-    .await
-    .unwrap();
-
-    // Assert we returned 2 peers (1 other primary spawned + 1 worker spawned)
-    assert_eq!(2, resp.len());
-
-    // Assert peer ids are correct
-    let expected_peer_ids = [&primary_2_peer_id, &worker_1_peer_id];
-    assert!(expected_peer_ids.iter().all(|e| resp.contains(e)));
-
-    // Test getting all connected peers for primary 2
-    let resp = reqwest::get(format!(
-        "http://127.0.0.1:{}/peers",
-        primary_2_parameters.network_admin_server.primary_network_admin_server_port
-    ))
-    .await
-    .unwrap()
-    .json::<Vec<String>>()
-    .await
-    .unwrap();
-
-    // Assert we returned 2 peers (1 other primary spawned + 1 other worker)
-    assert_eq!(2, resp.len());
-
-    // Assert peer ids are correct
-    let expected_peer_ids = [&primary_1_peer_id, &worker_1_peer_id];
-    assert!(expected_peer_ids.iter().all(|e| resp.contains(e)));
 }
 
 #[tokio::test(flavor = "current_thread", start_paused = true)]

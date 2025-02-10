@@ -13,7 +13,10 @@ use futures::{
 };
 use std::{cmp::min, sync::Arc, time::Duration};
 use tn_config::{ConsensusConfig, KeyConfig};
-use tn_network_libp2p::types::{NetworkHandle, NetworkResult};
+use tn_network_libp2p::{
+    error::NetworkError,
+    types::{NetworkHandle, NetworkResult},
+};
 use tn_primary_metrics::PrimaryMetrics;
 use tn_storage::{traits::Database, CertificateStore};
 use tn_types::{
@@ -25,9 +28,9 @@ use tn_types::{
 use tokio::sync::broadcast;
 use tracing::{debug, enabled, error, info, instrument, trace, warn};
 
-/* XXXX #[cfg(test)]
+#[cfg(test)]
 #[path = "tests/certifier_tests.rs"]
-pub mod certifier_tests;*/
+pub mod certifier_tests;
 
 /// This component is responisble for proposing headers to peers, collecting votes on headers,
 /// and certifying headers into certificates.
@@ -179,13 +182,14 @@ impl<DB: Database> Certifier<DB> {
                     break vote;
                 }
                 Err(error) => {
-                    error!(target: "primary::certifier", ?authority, ?error, ?header, "bad request for requested vote");
-                    /* XXXX if status.status() == anemo::types::response::StatusCode::BadRequest {
-                        error!(target: "primary::certifier", ?authority, ?status, ?header, "fatal request for requested vote");
+                    if let NetworkError::RPCError(error) = error {
+                        error!(target: "primary::certifier", ?authority, ?error, ?header, "fatal request for requested vote");
                         return Err(DagError::NetworkError(format!(
-                            "irrecoverable error requesting vote for {header}: {status:?}"
+                            "irrecoverable error requesting vote for {header}: {error}"
                         )));
-                    }*/
+                    } else {
+                        error!(target: "primary::certifier", ?authority, ?error, ?header, "network error requesting vote");
+                    }
                     missing_parents = Vec::new();
                 }
             }

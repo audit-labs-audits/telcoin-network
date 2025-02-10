@@ -29,9 +29,9 @@ use tokio::{
 };
 use tracing::{debug, error, instrument, trace};
 
-/* XXXX #[cfg(test)]
+#[cfg(test)]
 #[path = "tests/certificate_fetcher_tests.rs"]
-pub mod certificate_fetcher_tests;*/
+pub mod certificate_fetcher_tests;
 
 // Maximum number of certificates to fetch with one request.
 const MAX_CERTIFICATES_TO_FETCH: usize = 2_000;
