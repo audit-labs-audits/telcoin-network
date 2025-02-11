@@ -6,7 +6,6 @@
 #![allow(dead_code)]
 
 mod aggregators;
-mod anemo_network;
 mod certificate_fetcher;
 mod certifier;
 pub mod consensus;

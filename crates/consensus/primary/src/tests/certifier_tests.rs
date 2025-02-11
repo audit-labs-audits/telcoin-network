@@ -6,7 +6,6 @@ use fastcrypto::traits::KeyPair;
 use rand::{rngs::StdRng, SeedableRng};
 use std::{collections::HashMap, num::NonZeroUsize};
 use tn_network_libp2p::types::NetworkCommand;
-use tn_network_types::{MockPrimaryToPrimary, PrimaryToPrimaryServer, RequestVoteResponse};
 use tn_storage::mem_db::MemDatabase;
 use tn_test_utils::CommitteeFixture;
 use tn_types::{BlsKeypair, Notifier, SignatureVerificationState, TnSender};
@@ -168,13 +167,13 @@ async fn run_vote_aggregator_with_param(
     // Create a fake header.
     let proposed_header = primary.header(&committee);
 
-    // Set up network.
-    let network = primary.new_network(anemo::Router::new());
+    // Set up network handle- this is all we need to simulate then network for the certifier.
+    let (sender, mut network_rx) = mpsc::channel(100);
+    let network: NetworkHandle<PrimaryRequest, PrimaryResponse> = NetworkHandle::new(sender);
 
     // Set up remote primaries responding with votes.
-    let mut peer_networks = Vec::new();
+    let mut peer_votes = HashMap::new();
     for (i, peer) in fixture.authorities().filter(|a| a.id() != id).enumerate() {
-        let address = committee.primary(&peer.primary_public_key()).unwrap();
         let name = peer.id();
         // Create bad signature for a number of byzantines.
         let vote = if i < num_byzantine {
@@ -183,22 +182,8 @@ async fn run_vote_aggregator_with_param(
         } else {
             Vote::new(&proposed_header, &name, peer.consensus_config().key_config()).await
         };
-        let mut mock_server = MockPrimaryToPrimary::new();
-        let mut mock_seq = mockall::Sequence::new();
-        mock_server.expect_request_vote().times(1).in_sequence(&mut mock_seq).return_once(
-            move |_request| {
-                Ok(anemo::Response::new(RequestVoteResponse {
-                    vote: Some(vote),
-                    missing: Vec::new(),
-                }))
-            },
-        );
-        let routes = anemo::Router::new().add_rpc_service(PrimaryToPrimaryServer::new(mock_server));
-        peer_networks.push(peer.new_network(routes));
-
-        let address = address.to_anemo_address().unwrap();
-        let peer_id = anemo::PeerId(peer.primary_network_keypair().public().0.to_bytes());
-        network.connect_with_peer_id(address, peer_id).await.unwrap();
+        let id = primary.consensus_config().peer_id_for_authority(&name).unwrap();
+        peer_votes.insert(id, vote);
     }
 
     let cb = ConsensusBus::new();
@@ -207,17 +192,28 @@ async fn run_vote_aggregator_with_param(
     let synchronizer = Arc::new(Synchronizer::new(primary.consensus_config(), &cb));
     let task_manager = TaskManager::default();
     synchronizer.spawn(&task_manager);
-    Certifier::spawn(
-        primary.consensus_config(),
-        cb.clone(),
-        synchronizer,
-        NetworkHandle::new_for_test(),
-        &task_manager,
-    );
+    Certifier::spawn(primary.consensus_config(), cb.clone(), synchronizer, network, &task_manager);
 
     // Send a proposed header.
     let proposed_digest = proposed_header.digest();
     cb.headers().send(proposed_header).await.unwrap();
+    // Wait for the vote requests and send the votes back.
+    while let Some(req) = network_rx.recv().await {
+        match req {
+            NetworkCommand::SendRequest { peer, request, reply } => match request {
+                PrimaryRequest::Vote { header: _, parents: _ } => {
+                    if let Some(vote) = peer_votes.remove(&peer) {
+                        reply.send(Ok(PrimaryResponse::Vote(vote))).unwrap();
+                    }
+                }
+                _ => {}
+            },
+            _ => {}
+        }
+        if peer_votes.is_empty() {
+            break;
+        }
+    }
 
     if expect_cert {
         // A cert is expected, checks that the header digest matches.

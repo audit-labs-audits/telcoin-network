@@ -35,6 +35,7 @@ bytes = { workspace = true }
 anyhow = { workspace = true }
 eyre = { workspace = true }
 thiserror = { workspace = true }
+async-trait = { workspace = true }
 
 [dev-dependencies]
 tn-test-utils = { workspace = true }

@@ -29,6 +29,7 @@ reth-metrics = { workspace = true }
 metrics = { workspace = true }
 thiserror = { workspace = true }
 alloy-rlp = { workspace = true }
+async-trait = { workspace = true }
 
 [dev-dependencies]
 # unit tests

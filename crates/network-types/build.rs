@@ -26,48 +26,6 @@ fn build_anemo_services(out_dir: &Path) {
 
     let codec_path = "crate::codec::anemo::BcsSnappyCodec";
 
-    let primary_to_primary = anemo_build::manual::Service::builder()
-        .name("PrimaryToPrimary")
-        .package("tn")
-        .attributes(automock_attribute.clone())
-        .method(
-            anemo_build::manual::Method::builder()
-                .name("send_certificate")
-                .route_name("SendCertificate")
-                .request_type("crate::SendCertificateRequest")
-                .response_type("crate::SendCertificateResponse")
-                .codec_path(codec_path)
-                .build(),
-        )
-        .method(
-            anemo_build::manual::Method::builder()
-                .name("request_vote")
-                .route_name("RequestVote")
-                .request_type("crate::RequestVoteRequest")
-                .response_type("crate::RequestVoteResponse")
-                .codec_path(codec_path)
-                .build(),
-        )
-        .method(
-            anemo_build::manual::Method::builder()
-                .name("fetch_certificates")
-                .route_name("FetchCertificates")
-                .request_type("crate::FetchCertificatesRequest")
-                .response_type("crate::FetchCertificatesResponse")
-                .codec_path(codec_path)
-                .build(),
-        )
-        .method(
-            anemo_build::manual::Method::builder()
-                .name("request_consensus")
-                .route_name("RequestConsensus")
-                .request_type("crate::ConsensusOutputRequest")
-                .response_type("crate::ConsensusOutputResponse")
-                .codec_path(codec_path)
-                .build(),
-        )
-        .build();
-
     let primary_to_worker = anemo_build::manual::Service::builder()
         .name("PrimaryToWorker")
         .package("tn")
@@ -87,36 +45,6 @@ fn build_anemo_services(out_dir: &Path) {
                 .route_name("FetchBatches")
                 .request_type("crate::FetchBatchesRequest")
                 .response_type("crate::FetchBatchResponse")
-                .codec_path(codec_path)
-                .build(),
-        )
-        .build();
-
-    let primary_to_engine = anemo_build::manual::Service::builder()
-        .name("PrimaryToEngine")
-        .package("tn")
-        .attributes(automock_attribute.clone())
-        .method(
-            anemo_build::manual::Method::builder()
-                .name("verify_execution")
-                .route_name("VerifyExecution")
-                .request_type("crate::VerifyExecutionRequest")
-                .response_type("crate::VerifyExecutionResponse")
-                .codec_path(codec_path)
-                .build(),
-        )
-        .build();
-
-    let engine_to_primary = anemo_build::manual::Service::builder()
-        .name("EngineToPrimary")
-        .package("tn")
-        .attributes(automock_attribute.clone())
-        .method(
-            anemo_build::manual::Method::builder()
-                .name("canonical_update")
-                .route_name("CanonicalUpdate")
-                .request_type("crate::CanonicalUpdateMessage")
-                .response_type("()")
                 .codec_path(codec_path)
                 .build(),
         )
@@ -171,12 +99,9 @@ fn build_anemo_services(out_dir: &Path) {
         .build();
 
     anemo_build::manual::Builder::new().out_dir(out_dir).compile(&[
-        primary_to_primary,
         primary_to_worker,
         worker_to_primary,
         worker_to_worker,
-        engine_to_primary,
-        primary_to_engine,
     ]);
 }
 

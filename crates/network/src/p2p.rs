@@ -1,13 +1,12 @@
 use crate::{
-    traits::{PrimaryToPrimaryRpc, ReliableNetwork, WorkerRpc},
+    traits::{ReliableNetwork, WorkerRpc},
     CancelOnDropHandler, RetryConfig,
 };
 use anemo::PeerId;
 use eyre::{format_err, Result};
 use std::time::Duration;
 use tn_network_types::{
-    BatchMessage, FetchCertificatesRequest, FetchCertificatesResponse, PrimaryToPrimaryClient,
-    RequestBatchesRequest, RequestBatchesResponse, WorkerToWorkerClient,
+    BatchMessage, RequestBatchesRequest, RequestBatchesResponse, WorkerToWorkerClient,
 };
 use tn_types::NetworkPublicKey;
 
@@ -54,24 +53,6 @@ where
 //
 // Primary-to-Primary
 //
-
-impl PrimaryToPrimaryRpc for anemo::Network {
-    async fn fetch_certificates(
-        &self,
-        peer: &NetworkPublicKey,
-        request: impl anemo::types::request::IntoRequest<FetchCertificatesRequest> + Send,
-    ) -> Result<FetchCertificatesResponse> {
-        let peer_id = PeerId(peer.0.to_bytes());
-        let peer = self
-            .peer(peer_id)
-            .ok_or_else(|| format_err!("Network has no connection with peer {peer_id}"))?;
-        let response = PrimaryToPrimaryClient::new(peer)
-            .fetch_certificates(request)
-            .await
-            .map_err(|e| format_err!("Network error {:?}", e))?;
-        Ok(response.into_body())
-    }
-}
 
 impl ReliableNetwork<BatchMessage> for anemo::Network {
     type Response = ();

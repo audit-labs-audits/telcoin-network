@@ -2,75 +2,13 @@
 use anemo::async_trait;
 use std::collections::HashMap;
 use tn_network_types::{
-    ConsensusOutputRequest, ConsensusOutputResponse, FetchBatchResponse, FetchBatchesRequest,
-    FetchCertificatesRequest, FetchCertificatesResponse, PrimaryToPrimary, PrimaryToPrimaryServer,
-    PrimaryToWorker, PrimaryToWorkerServer, RequestVoteRequest, RequestVoteResponse,
-    SendCertificateRequest, SendCertificateResponse, WorkerSynchronizeMessage,
+    FetchBatchResponse, FetchBatchesRequest, PrimaryToWorker, PrimaryToWorkerServer,
+    WorkerSynchronizeMessage,
 };
 use tn_types::{traits::KeyPair as _, Multiaddr, NetworkKeypair};
 
 use tokio::sync::mpsc::{channel, Receiver, Sender};
 use tracing::info;
-
-#[derive(Clone)]
-pub struct PrimaryToPrimaryMockServer {
-    sender: Sender<SendCertificateRequest>,
-}
-
-impl PrimaryToPrimaryMockServer {
-    pub fn spawn(
-        network_keypair: NetworkKeypair,
-        address: Multiaddr,
-    ) -> (Receiver<SendCertificateRequest>, anemo::Network) {
-        let addr = address.to_anemo_address().unwrap();
-        let (sender, receiver) = channel(1);
-        let service = PrimaryToPrimaryServer::new(Self { sender });
-
-        let routes = anemo::Router::new().add_rpc_service(service);
-        let network = anemo::Network::bind(addr)
-            .server_name("tn-test")
-            .private_key(network_keypair.private().0.to_bytes())
-            .start(routes)
-            .unwrap();
-        info!("starting network on: {}", network.local_addr());
-        (receiver, network)
-    }
-}
-
-#[async_trait]
-impl PrimaryToPrimary for PrimaryToPrimaryMockServer {
-    async fn send_certificate(
-        &self,
-        request: anemo::Request<SendCertificateRequest>,
-    ) -> Result<anemo::Response<SendCertificateResponse>, anemo::rpc::Status> {
-        let message = request.into_body();
-
-        self.sender.send(message).await.unwrap();
-
-        Ok(anemo::Response::new(SendCertificateResponse { accepted: true }))
-    }
-
-    async fn request_vote(
-        &self,
-        _request: anemo::Request<RequestVoteRequest>,
-    ) -> Result<anemo::Response<RequestVoteResponse>, anemo::rpc::Status> {
-        unimplemented!()
-    }
-
-    async fn fetch_certificates(
-        &self,
-        _request: anemo::Request<FetchCertificatesRequest>,
-    ) -> Result<anemo::Response<FetchCertificatesResponse>, anemo::rpc::Status> {
-        unimplemented!()
-    }
-
-    async fn request_consensus(
-        &self,
-        _request: anemo::Request<ConsensusOutputRequest>,
-    ) -> Result<anemo::Response<ConsensusOutputResponse>, anemo::rpc::Status> {
-        unimplemented!()
-    }
-}
 
 pub struct PrimaryToWorkerMockServer {
     // TODO: refactor tests to use mockall for this.

@@ -1,11 +1,10 @@
 //! The Primary type
 
 use crate::{
-    anemo_network::WorkerReceiverHandler,
     certificate_fetcher::CertificateFetcher,
     certifier::Certifier,
     consensus::LeaderSchedule,
-    network::{PrimaryNetwork, PrimaryRequest, PrimaryResponse},
+    network::{PrimaryNetwork, PrimaryRequest, PrimaryResponse, WorkerReceiverHandler},
     proposer::Proposer,
     state_handler::StateHandler,
     synchronizer::Synchronizer,

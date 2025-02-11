@@ -8,7 +8,7 @@ pub mod admin;
 pub mod anemo_ext;
 pub mod connectivity;
 pub mod epoch_filter;
-mod error;
+pub mod error;
 pub mod failpoints;
 pub mod local;
 pub mod metrics;
@@ -20,10 +20,7 @@ mod traits;
 
 pub use crate::{
     retry::RetryConfig,
-    traits::{
-        PrimaryToPrimaryRpc, PrimaryToWorkerClient, ReliableNetwork, WorkerRpc,
-        WorkerToPrimaryClient,
-    },
+    traits::{PrimaryToWorkerClient, ReliableNetwork, WorkerRpc, WorkerToPrimaryClient},
 };
 
 /// This adapter will make a [`tokio::task::JoinHandle`] abort its handled task when the handle is

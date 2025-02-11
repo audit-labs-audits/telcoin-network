@@ -3,10 +3,31 @@ use super::*;
 use crate::quorum_waiter::QuorumWaiterError;
 use std::sync::Mutex;
 use tempfile::TempDir;
-use tn_network_types::MockWorkerToPrimary;
+use tn_network::{error::LocalClientError, WorkerToPrimaryClient};
+use tn_network_types::WorkerOthersBatchMessage;
 use tn_storage::open_db;
 use tn_test_utils::transaction;
 use tn_types::Batch;
+
+/// Dumb mock to just return Ok on calls for tests.
+pub struct MockWorkerToPrimary();
+
+#[async_trait::async_trait]
+impl WorkerToPrimaryClient for MockWorkerToPrimary {
+    async fn report_own_batch(
+        &self,
+        _request: WorkerOwnBatchMessage,
+    ) -> Result<(), LocalClientError> {
+        Ok(())
+    }
+
+    async fn report_others_batch(
+        &self,
+        _request: WorkerOthersBatchMessage,
+    ) -> Result<(), LocalClientError> {
+        Ok(())
+    }
+}
 
 #[derive(Clone, Debug)]
 struct TestMakeBlockQuorumWaiter(Arc<Mutex<Option<SealedBatch>>>);
@@ -37,8 +58,7 @@ async fn make_batch() {
     let node_metrics = WorkerMetrics::default();
 
     // Mock the primary client to always succeed.
-    let mut mock_server = MockWorkerToPrimary::new();
-    mock_server.expect_report_own_batch().returning(|_| Ok(anemo::Response::new(())));
+    let mock_server = MockWorkerToPrimary();
     client.set_worker_to_primary_local_handler(Arc::new(mock_server));
 
     // Spawn a `BatchProvider` instance.

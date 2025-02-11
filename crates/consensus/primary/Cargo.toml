@@ -51,6 +51,7 @@ anemo-tower = { workspace = true }
 tn-network-libp2p = { workspace = true }
 roaring = { workspace = true }
 serde = { workspace = true }
+async-trait = { workspace = true }
 
 [dev-dependencies]
 async-trait = { workspace = true }

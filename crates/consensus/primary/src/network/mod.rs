@@ -3,17 +3,19 @@
 //! This module includes implementations for when the primary receives network
 //! requests from it's own workers and other primaries.
 
-use crate::{synchronizer::Synchronizer, ConsensusBus};
+use crate::{proposer::OurDigestMessage, synchronizer::Synchronizer, ConsensusBus};
 use handler::RequestHandler;
 pub use message::{MissingCertificatesRequest, PrimaryRequest, PrimaryResponse};
 use std::sync::Arc;
 use tn_config::ConsensusConfig;
+use tn_network::{error::LocalClientError, WorkerToPrimaryClient};
 use tn_network_libp2p::{
     types::{IntoResponse as _, NetworkEvent, NetworkHandle},
     GossipMessage, PeerId, ResponseChannel,
 };
-use tn_storage::traits::Database;
-use tn_types::{BlockHash, Certificate, Header, Noticer, TaskManager};
+use tn_network_types::{WorkerOthersBatchMessage, WorkerOwnBatchMessage};
+use tn_storage::{traits::Database, PayloadStore};
+use tn_types::{BlockHash, Certificate, Header, Noticer, TaskManager, TnSender};
 use tokio::sync::{mpsc, oneshot};
 use tracing::{error, warn};
 pub mod client;
@@ -197,5 +199,55 @@ where
                 //todo!();
             }
         });
+    }
+}
+
+/// Defines how the network receiver handles incoming workers messages.
+#[derive(Clone)]
+pub(super) struct WorkerReceiverHandler<DB> {
+    consensus_bus: ConsensusBus,
+    payload_store: PayloadStore<DB>,
+}
+
+impl<DB: Database> WorkerReceiverHandler<DB> {
+    /// Create a new instance of Self.
+    pub fn new(consensus_bus: ConsensusBus, payload_store: PayloadStore<DB>) -> Self {
+        Self { consensus_bus, payload_store }
+    }
+}
+
+#[async_trait::async_trait]
+impl<DB: Database> WorkerToPrimaryClient for WorkerReceiverHandler<DB> {
+    async fn report_own_batch(
+        &self,
+        message: WorkerOwnBatchMessage,
+    ) -> Result<(), LocalClientError> {
+        let (tx_ack, rx_ack) = oneshot::channel();
+        let response = self
+            .consensus_bus
+            .our_digests()
+            .send(OurDigestMessage {
+                digest: message.digest,
+                worker_id: message.worker_id,
+                timestamp: message.timestamp,
+                ack_channel: tx_ack,
+            })
+            .await
+            .map_err(|e| LocalClientError::Internal(e.to_string()))?;
+
+        // If we are ok, then wait for the ack
+        rx_ack.await.map_err(|e| LocalClientError::Internal(e.to_string()))?;
+
+        Ok(response)
+    }
+
+    async fn report_others_batch(
+        &self,
+        message: WorkerOthersBatchMessage,
+    ) -> Result<(), LocalClientError> {
+        self.payload_store
+            .write(&message.digest, &message.worker_id)
+            .map_err(|e| LocalClientError::Internal(e.to_string()))?;
+        Ok(())
     }
 }

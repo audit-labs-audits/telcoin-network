@@ -2,9 +2,8 @@ use crate::{error::LocalClientError, CancelOnDropHandler};
 use eyre::Result;
 use std::future::Future;
 use tn_network_types::{
-    FetchBatchResponse, FetchBatchesRequest, FetchCertificatesRequest, FetchCertificatesResponse,
-    RequestBatchesRequest, RequestBatchesResponse, WorkerOthersBatchMessage, WorkerOwnBatchMessage,
-    WorkerSynchronizeMessage,
+    FetchBatchResponse, FetchBatchesRequest, RequestBatchesRequest, RequestBatchesResponse,
+    WorkerOthersBatchMessage, WorkerOwnBatchMessage, WorkerSynchronizeMessage,
 };
 use tn_types::NetworkPublicKey;
 
@@ -31,14 +30,6 @@ pub trait ReliableNetwork<Request: Clone + Send + Sync> {
     }
 }
 
-pub trait PrimaryToPrimaryRpc {
-    fn fetch_certificates(
-        &self,
-        peer: &NetworkPublicKey,
-        request: impl anemo::types::request::IntoRequest<FetchCertificatesRequest> + Send,
-    ) -> impl Future<Output = Result<FetchCertificatesResponse>>;
-}
-
 pub trait PrimaryToWorkerClient {
     fn synchronize(
         &self,
@@ -53,16 +44,18 @@ pub trait PrimaryToWorkerClient {
     ) -> impl Future<Output = Result<FetchBatchResponse, LocalClientError>>;
 }
 
-pub trait WorkerToPrimaryClient {
-    fn report_own_batch(
+// async_trait for object safety, get rid of when possible.
+#[async_trait::async_trait]
+pub trait WorkerToPrimaryClient: Send + Sync + 'static {
+    async fn report_own_batch(
         &self,
         request: WorkerOwnBatchMessage,
-    ) -> impl Future<Output = Result<(), LocalClientError>>;
+    ) -> Result<(), LocalClientError>;
 
-    fn report_others_batch(
+    async fn report_others_batch(
         &self,
         request: WorkerOthersBatchMessage,
-    ) -> impl Future<Output = Result<(), LocalClientError>>;
+    ) -> Result<(), LocalClientError>;
 }
 
 pub trait WorkerRpc {
