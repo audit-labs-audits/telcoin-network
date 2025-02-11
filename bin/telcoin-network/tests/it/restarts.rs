@@ -163,7 +163,7 @@ fn do_restarts(delay: u64) -> eyre::Result<()> {
         client_urls[i].push_str(&format!(":{rpc_port}"));
         *child = Some(start_validator(i, &exe_path, &temp_path, rpc_port));
     }
-    // XXXX
+    // Let the nodes start- we should consider an admin port or some way to indicate this is done.
     std::thread::sleep(Duration::from_secs(10));
 
     // pass &mut to `run_restart_tests1` to shutdown child in case of error
@@ -211,8 +211,8 @@ fn do_restarts(delay: u64) -> eyre::Result<()> {
     for (i, child) in children.iter_mut().enumerate() {
         *child = Some(start_validator(i, &exe_path, &temp_path, rpc_ports[i]));
     }
-    // XXXX
-    std::thread::sleep(Duration::from_secs(10));
+    // Let the nodes start- we should consider an admin port or some way to indicate this is done.
+    std::thread::sleep(Duration::from_secs(5));
 
     info!(target: "restart-test", "Running restart tests 2");
     let res2 = run_restart_tests2(&client_urls);

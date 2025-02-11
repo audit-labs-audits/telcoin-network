@@ -4,7 +4,7 @@ use tn_network_libp2p::{
     PeerId,
 };
 use tn_network_types::FetchCertificatesRequest;
-use tn_types::{encode, BlockHash, Certificate, ConsensusHeader, Header, Vote};
+use tn_types::{encode, BlockHash, Certificate, ConsensusHeader, Header};
 
 use crate::network::message::PrimaryRPCError;
 
@@ -37,27 +37,28 @@ impl NetworkClient {
         Ok(())
     }
 
+    /// Request a vote for header from the peer.
+    /// Can return a response of Vote or MissingParents, other responses will be an error.
     pub async fn request_vote(
         &self,
         header: Header,
         parents: Vec<Certificate>,
-    ) -> NetworkResult<Vote> {
+    ) -> NetworkResult<PrimaryResponse> {
         let request = PrimaryRequest::Vote { header, parents };
         let res = self.network_handle.send_request(request, self.peer).await?;
         let res = res.await??;
         match res {
-            PrimaryResponse::Vote(vote) => Ok(vote),
+            PrimaryResponse::Vote(vote) => Ok(PrimaryResponse::Vote(vote)),
             PrimaryResponse::Error(PrimaryRPCError(s)) => Err(NetworkError::RPCError(s)),
             PrimaryResponse::RequestedCertificates(_vec) => Err(NetworkError::RPCError(
                 "Got wrong response, not a vote is requested certificates!".to_string(),
             )),
-            PrimaryResponse::MissingParents(_vec) => Err(NetworkError::RPCError(
-                "Got wrong response, not a vote is missing parents!".to_string(),
-            )),
+            PrimaryResponse::MissingParents(parents) => {
+                Ok(PrimaryResponse::MissingParents(parents))
+            }
             PrimaryResponse::ConsensusHeader(_consensus_header) => Err(NetworkError::RPCError(
                 "Got wrong response, not a vote is consensus header!".to_string(),
             )),
-            //_ => Err(NetworkError::RPCError("Got wrong response, not a vote!".to_string())),
         }
     }
 
