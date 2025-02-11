@@ -50,30 +50,6 @@ fn build_anemo_services(out_dir: &Path) {
         )
         .build();
 
-    let worker_to_primary = anemo_build::manual::Service::builder()
-        .name("WorkerToPrimary")
-        .package("tn")
-        .attributes(automock_attribute.clone())
-        .method(
-            anemo_build::manual::Method::builder()
-                .name("report_own_batch")
-                .route_name("ReportOwnBatch")
-                .request_type("crate::WorkerOwnBatchMessage")
-                .response_type("()")
-                .codec_path(codec_path)
-                .build(),
-        )
-        .method(
-            anemo_build::manual::Method::builder()
-                .name("report_others_batch")
-                .route_name("ReportOthersBatch")
-                .request_type("crate::WorkerOthersBatchMessage")
-                .response_type("()")
-                .codec_path(codec_path)
-                .build(),
-        )
-        .build();
-
     let worker_to_worker = anemo_build::manual::Service::builder()
         .name("WorkerToWorker")
         .package("tn")
@@ -98,11 +74,9 @@ fn build_anemo_services(out_dir: &Path) {
         )
         .build();
 
-    anemo_build::manual::Builder::new().out_dir(out_dir).compile(&[
-        primary_to_worker,
-        worker_to_primary,
-        worker_to_worker,
-    ]);
+    anemo_build::manual::Builder::new()
+        .out_dir(out_dir)
+        .compile(&[primary_to_worker, worker_to_worker]);
 }
 
 #[rustversion::nightly]
