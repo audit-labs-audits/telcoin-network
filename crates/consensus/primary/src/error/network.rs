@@ -1,17 +1,15 @@
 //! Error types for primary's network task.
 
+use super::CertManagerError;
 use tn_storage::StoreError;
-use tn_types::{
-    error::{CertificateError, HeaderError},
-    BcsError, BlockHash,
-};
+use tn_types::{error::HeaderError, BcsError, BlockHash};
 
 /// Result alias for results that possibly return [`PrimaryNetworkError`].
 pub type PrimaryNetworkResult<T> = Result<T, PrimaryNetworkError>;
 
 /// Core error variants when executing the output from consensus and extending the canonical block.
 #[derive(Debug, thiserror::Error)]
-pub enum PrimaryNetworkError {
+pub(crate) enum PrimaryNetworkError {
     /// Error while processing a peer's request for vote.
     #[error("Error processing header vote request: {0}")]
     InvalidHeader(#[from] HeaderError),
@@ -20,7 +18,7 @@ pub enum PrimaryNetworkError {
     Decode(#[from] BcsError),
     /// Error processing certificate.
     #[error("Failed to process certificate: {0}")]
-    Certificate(#[from] CertificateError),
+    Certificate(#[from] CertManagerError),
     /// Error conversion from [std::io::Error]
     #[error(transparent)]
     StdIo(#[from] std::io::Error),

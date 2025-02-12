@@ -3,7 +3,7 @@
 use super::Primary;
 use crate::{
     network::{handler::RequestHandler, MissingCertificatesRequest, PrimaryResponse},
-    synchronizer::Synchronizer,
+    state_sync::StateSynchronizer,
     ConsensusBus,
 };
 use fastcrypto::{hash::Hash, traits::KeyPair as _};
@@ -58,7 +58,7 @@ async fn test_request_vote_has_missing_execution_block() {
     // Need a dummy parent so we can request a vote.
     let dummy_parent = SealedHeader::seal(ExecHeader::default());
     cb.recent_blocks().send_modify(|blocks| blocks.push_latest(dummy_parent));
-    let synchronizer = Arc::new(Synchronizer::new(target.consensus_config(), &cb));
+    let synchronizer = StateSynchronizer::new(target.consensus_config(), cb.clone());
     let task_manager = TaskManager::default();
     synchronizer.spawn(&task_manager);
     let handler = RequestHandler::new(target.consensus_config(), cb.clone(), synchronizer.clone());
@@ -128,7 +128,7 @@ async fn test_request_vote_older_execution_block() {
     cb.recent_blocks().send_modify(|blocks| blocks.push_latest(SealedHeader::seal(dummy)));
     dummy = ExecHeader { nonce: 120_u64.into(), ..Default::default() };
     cb.recent_blocks().send_modify(|blocks| blocks.push_latest(SealedHeader::seal(dummy)));
-    let synchronizer = Arc::new(Synchronizer::new(target.consensus_config(), &cb));
+    let synchronizer = StateSynchronizer::new(target.consensus_config(), cb.clone());
     let task_manager = TaskManager::default();
     synchronizer.spawn(&task_manager);
     let handler = RequestHandler::new(target.consensus_config(), cb.clone(), synchronizer.clone());
@@ -192,7 +192,7 @@ async fn test_request_vote_has_missing_parents() {
     let dummy_parent = SealedHeader::seal(ExecHeader::default());
     let dummy_hash = dummy_parent.hash();
     cb.recent_blocks().send_modify(|blocks| blocks.push_latest(dummy_parent));
-    let synchronizer = Arc::new(Synchronizer::new(target.consensus_config(), &cb));
+    let synchronizer = StateSynchronizer::new(target.consensus_config(), cb.clone());
     let task_manager = TaskManager::default();
     synchronizer.spawn(&task_manager);
     let handler = RequestHandler::new(target.consensus_config(), cb.clone(), synchronizer.clone());
@@ -279,7 +279,7 @@ async fn test_request_vote_accept_missing_parents() {
     let dummy_parent = SealedHeader::seal(ExecHeader::default());
     let dummy_hash = dummy_parent.hash();
     cb.recent_blocks().send_modify(|blocks| blocks.push_latest(dummy_parent));
-    let synchronizer = Arc::new(Synchronizer::new(target.consensus_config(), &cb));
+    let synchronizer = StateSynchronizer::new(target.consensus_config(), cb.clone());
     let task_manager = TaskManager::default();
     synchronizer.spawn(&task_manager);
     let handler = RequestHandler::new(target.consensus_config(), cb.clone(), synchronizer.clone());
@@ -371,7 +371,7 @@ async fn test_request_vote_missing_batches() {
     let dummy_parent = SealedHeader::seal(ExecHeader::default());
     let dummy_hash = dummy_parent.hash();
     cb.recent_blocks().send_modify(|blocks| blocks.push_latest(dummy_parent));
-    let synchronizer = Arc::new(Synchronizer::new(primary.consensus_config(), &cb));
+    let synchronizer = StateSynchronizer::new(primary.consensus_config(), cb.clone());
     let task_manager = TaskManager::default();
     synchronizer.spawn(&task_manager);
     let handler = RequestHandler::new(primary.consensus_config(), cb.clone(), synchronizer.clone());
@@ -451,7 +451,7 @@ async fn test_request_vote_already_voted() {
     let dummy_parent = SealedHeader::seal(ExecHeader::default());
     let dummy_hash = dummy_parent.hash();
     cb.recent_blocks().send_modify(|blocks| blocks.push_latest(dummy_parent));
-    let synchronizer = Arc::new(Synchronizer::new(primary.consensus_config(), &cb));
+    let synchronizer = StateSynchronizer::new(primary.consensus_config(), cb.clone());
     let task_manager = TaskManager::default();
     synchronizer.spawn(&task_manager);
 
@@ -545,7 +545,7 @@ async fn test_fetch_certificates_handler() {
     let certificate_store = primary.consensus_config().node_storage().certificate_store.clone();
 
     let cb = ConsensusBus::new();
-    let synchronizer = Arc::new(Synchronizer::new(primary.consensus_config(), &cb));
+    let synchronizer = StateSynchronizer::new(primary.consensus_config(), cb.clone());
     let task_manager = TaskManager::default();
     synchronizer.spawn(&task_manager);
     let handler = RequestHandler::new(primary.consensus_config(), cb.clone(), synchronizer.clone());
@@ -661,7 +661,7 @@ async fn test_request_vote_created_at_in_future() {
     let dummy_parent = SealedHeader::seal(ExecHeader::default());
     let dummy_hash = dummy_parent.hash();
     cb.recent_blocks().send_modify(|blocks| blocks.push_latest(dummy_parent));
-    let synchronizer = Arc::new(Synchronizer::new(primary.consensus_config(), &cb));
+    let synchronizer = StateSynchronizer::new(primary.consensus_config(), cb.clone());
     let task_manager = TaskManager::default();
     synchronizer.spawn(&task_manager);
     let handler = RequestHandler::new(primary.consensus_config(), cb.clone(), synchronizer.clone());

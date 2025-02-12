@@ -37,7 +37,7 @@ async fn propose_header_to_form_certificate() {
     let cb = ConsensusBus::new();
     let mut rx_new_certificates = cb.new_certificates().subscribe();
     // Spawn the core.
-    let synchronizer = Arc::new(Synchronizer::new(primary.consensus_config(), &cb));
+    let synchronizer = StateSynchronizer::new(primary.consensus_config(), cb.clone());
 
     let task_manager = TaskManager::default();
     synchronizer.spawn(&task_manager);
@@ -97,7 +97,7 @@ async fn propose_header_failure() {
     let cb = ConsensusBus::new();
     let mut rx_new_certificates = cb.new_certificates().subscribe();
     // Spawn the core.
-    let synchronizer = Arc::new(Synchronizer::new(primary.consensus_config(), &cb));
+    let synchronizer = StateSynchronizer::new(primary.consensus_config(), cb.clone());
 
     let task_manager = TaskManager::default();
     synchronizer.spawn(&task_manager);
@@ -189,7 +189,7 @@ async fn run_vote_aggregator_with_param(
     let cb = ConsensusBus::new();
     let mut rx_new_certificates = cb.new_certificates().subscribe();
     // Spawn the core.
-    let synchronizer = Arc::new(Synchronizer::new(primary.consensus_config(), &cb));
+    let synchronizer = StateSynchronizer::new(primary.consensus_config(), cb.clone());
     let task_manager = TaskManager::default();
     synchronizer.spawn(&task_manager);
     Certifier::spawn(primary.consensus_config(), cb.clone(), synchronizer, network, &task_manager);
@@ -237,7 +237,7 @@ async fn test_shutdown_core() {
 
     let cb = ConsensusBus::new();
     // Make a synchronizer for the core.
-    let synchronizer = Arc::new(Synchronizer::new(primary.consensus_config(), &cb));
+    let synchronizer = StateSynchronizer::new(primary.consensus_config(), cb.clone());
 
     // Spawn the core.
     let mut task_manager = TaskManager::default();

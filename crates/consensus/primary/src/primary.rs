@@ -7,7 +7,7 @@ use crate::{
     network::{PrimaryNetwork, PrimaryRequest, PrimaryResponse, WorkerReceiverHandler},
     proposer::Proposer,
     state_handler::StateHandler,
-    synchronizer::Synchronizer,
+    state_sync::StateSynchronizer,
     ConsensusBus,
 };
 use anemo::PeerId;
@@ -26,16 +26,16 @@ pub mod primary_tests;
 pub struct Primary<DB> {
     /// The Primary's network.
     network_handle: NetworkHandle<PrimaryRequest, PrimaryResponse>,
-    synchronizer: Arc<Synchronizer<DB>>,
     // Hold onto the network event stream until spawn "takes" it.
     primary_network: Option<PrimaryNetwork<DB>>,
+    state_sync: StateSynchronizer<DB>,
 }
 
 impl<DB: Database> Primary<DB> {
     pub fn new(
         config: ConsensusConfig<DB>,
         consensus_bus: &ConsensusBus,
-        network_p2p_handle: NetworkHandle<PrimaryRequest, PrimaryResponse>,
+        network_handle: NetworkHandle<PrimaryRequest, PrimaryResponse>,
         network_event_stream: mpsc::Receiver<NetworkEvent<PrimaryRequest, PrimaryResponse>>,
     ) -> Self {
         // Write the parameters to the logs.
@@ -59,20 +59,16 @@ impl<DB: Database> Primary<DB> {
             .local_network()
             .set_worker_to_primary_local_handler(Arc::new(worker_receiver_handler));
 
-        let synchronizer = Arc::new(Synchronizer::new(config.clone(), consensus_bus));
+        let state_sync = StateSynchronizer::new(config.clone(), consensus_bus.clone());
         let primary_network = PrimaryNetwork::new(
             network_event_stream,
-            network_p2p_handle.clone(),
+            network_handle.clone(),
             config.clone(),
             consensus_bus.clone(),
-            synchronizer.clone(),
+            state_sync.clone(),
         );
 
-        Self {
-            network_handle: network_p2p_handle,
-            synchronizer,
-            primary_network: Some(primary_network),
-        }
+        Self { network_handle, primary_network: Some(primary_network), state_sync }
     }
 
     /// Spawns the primary.
@@ -84,7 +80,7 @@ impl<DB: Database> Primary<DB> {
         task_manager: &TaskManager,
     ) {
         if consensus_bus.node_mode().borrow().is_active_cvv() {
-            self.synchronizer.spawn(task_manager);
+            self.state_sync.spawn(task_manager);
         }
 
         info!(
@@ -96,7 +92,7 @@ impl<DB: Database> Primary<DB> {
         Certifier::spawn(
             config.clone(),
             consensus_bus.clone(),
-            self.synchronizer.clone(),
+            self.state_sync.clone(),
             self.network_handle.clone(),
             task_manager,
         );
@@ -107,7 +103,7 @@ impl<DB: Database> Primary<DB> {
             config.clone(),
             self.network_handle.clone(),
             consensus_bus.clone(),
-            self.synchronizer.clone(),
+            self.state_sync.clone(),
             task_manager,
         );
 

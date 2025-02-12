@@ -1,6 +1,6 @@
-//! Synchronize state between primaries.
+//! Collect certificates from storage for peers who are missing them.
 //!
-//! This module primarily deals with Certificate synchronization.
+//! This module is used when retrieving certificates from local storage for peers.
 
 use crate::{
     error::{PrimaryNetworkError, PrimaryNetworkResult},
@@ -17,8 +17,8 @@ use tokio::time::Instant;
 use tracing::{debug, warn};
 
 #[cfg(test)]
-#[path = "tests/state_sync_tests.rs"]
-pub mod state_sync_tests;
+#[path = "../tests/cert_collector_tests.rs"]
+mod cert_collector_tests;
 
 /// Time-bounded iterator to retrieve certificates from the database.
 pub(crate) struct CertificateCollector<DB> {
@@ -139,7 +139,11 @@ where
     fn max_limits_reached(&self) -> bool {
         self.items_returned >= self.max_items
             || self.start_time.elapsed()
-                >= self.config.network_config().sync_config().max_cert_collection_duration
+                >= self
+                    .config
+                    .network_config()
+                    .sync_config()
+                    .max_db_read_time_for_fetching_certificates
     }
 }
 

@@ -4,7 +4,7 @@
 
 use crate::{
     certificate_fetcher::CertificateFetcherCommand, consensus::ConsensusRound,
-    proposer::OurDigestMessage, RecentBlocks,
+    proposer::OurDigestMessage, state_sync::CertificateManagerCommand, RecentBlocks,
 };
 use consensus_metrics::metered_channel::{self, channel_with_total_sender, MeteredMpscChannel};
 use std::sync::{atomic::AtomicBool, Arc};
@@ -88,6 +88,9 @@ struct ConsensusBusInner {
 
     /// Outputs the sequence of ordered certificates to the application layer.
     sequence: MeteredMpscChannel<CommittedSubDag>,
+
+    /// Messages to the Certificate Manager.
+    certificate_manager: MeteredMpscChannel<CertificateManagerCommand>,
 
     /// Signals a new round
     tx_primary_round_updates: watch::Sender<Round>,
@@ -211,6 +214,12 @@ impl ConsensusBus {
             &primary_metrics.primary_channel_metrics.tx_committed_own_headers_total,
         );
 
+        let certificate_manager = channel_with_total_sender(
+            CHANNEL_CAPACITY,
+            &primary_metrics.primary_channel_metrics.tx_certificate_acceptor,
+            &primary_metrics.primary_channel_metrics.tx_certificate_acceptor_total,
+        );
+
         let (tx_primary_round_updates, _rx_primary_round_updates) = watch::channel(0u32);
         let (tx_last_consensus_header, _rx_last_consensus_header) =
             watch::channel(ConsensusHeader::default());
@@ -242,6 +251,7 @@ impl ConsensusBus {
                 headers,
                 committed_own_headers,
                 sequence,
+                certificate_manager,
 
                 tx_primary_round_updates,
                 _rx_primary_round_updates,
@@ -339,6 +349,14 @@ impl ConsensusBus {
     /// Can only be subscribed to once.
     pub fn sequence(&self) -> &impl TnSender<CommittedSubDag> {
         &self.inner.sequence
+    }
+
+    /// Channel for forwarding newly received certificates for verification.
+    ///
+    /// These channels are used to communicate with the long-running CertificateManager task.
+    /// Can only be subscribed to once.
+    pub(crate) fn certificate_manager(&self) -> &impl TnSender<CertificateManagerCommand> {
+        &self.inner.certificate_manager
     }
 
     /// Track recent blocks.

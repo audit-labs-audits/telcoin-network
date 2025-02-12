@@ -2,10 +2,9 @@
 
 use super::{message::MissingCertificatesRequest, PrimaryResponse};
 use crate::{
-    error::{PrimaryNetworkError, PrimaryNetworkResult},
+    error::{CertManagerError, PrimaryNetworkError, PrimaryNetworkResult},
     network::message::PrimaryGossip,
-    state_sync::CertificateCollector,
-    synchronizer::Synchronizer,
+    state_sync::{CertificateCollector, StateSynchronizer},
     ConsensusBus,
 };
 use fastcrypto::hash::Hash;
@@ -25,26 +24,9 @@ use tn_types::{
     ensure,
     error::{CertificateError, HeaderError, HeaderResult},
     now, try_decode, AuthorityIdentifier, BlockHash, Certificate, CertificateDigest,
-    ConsensusHeader, Header, Round, SignatureVerificationState, TnSender, Vote,
+    ConsensusHeader, Header, Round, SignatureVerificationState, TnSender as _, Vote,
 };
 use tracing::{debug, error, warn};
-
-/// The maximum number of rounds that a proposed header can be behind.
-const MAX_HEADER_AGE_LIMIT: Round = 3;
-
-/// The tolerable amount of time to wait if a header is proposed before the current time. This
-/// accounts for small drifts in time keeping between nodes. The timestamp for headers is currently
-/// measured in secs.
-const MAX_HEADER_TIME_DRIFT_TOLERANCE: u64 = 1;
-
-/// Maximum duration to fetch certificates from local storage.
-const FETCH_CERTIFICATES_MAX_HANDLER_TIME: Duration = Duration::from_secs(10);
-
-/// Maximum number of certificates to process in a single batch before yielding.
-const MAX_NUM_MISSING_CERTS: usize = 50;
-
-/// Maximum number of rounds to skip per authority.
-const MAX_NUM_SKIP_ROUNDS: usize = 1000;
 
 /// The type that handles requests from peers.
 #[derive(Clone)]
@@ -53,8 +35,8 @@ pub struct RequestHandler<DB> {
     consensus_config: ConsensusConfig<DB>,
     /// Inner-processs channel bus.
     consensus_bus: ConsensusBus,
-    /// Synchronizer has ability to fetch missing data from peers.
-    synchronizer: Arc<Synchronizer<DB>>,
+    /// Synchronize state between peers.
+    state_sync: StateSynchronizer<DB>,
     /// The digests of parents that are currently being requested from peers.
     ///
     /// Missing parents are requested from peers. This is a local map to track in-flight requests
@@ -72,14 +54,9 @@ where
     pub fn new(
         consensus_config: ConsensusConfig<DB>,
         consensus_bus: ConsensusBus,
-        synchronizer: Arc<Synchronizer<DB>>,
+        state_sync: StateSynchronizer<DB>,
     ) -> Self {
-        Self {
-            consensus_config,
-            consensus_bus,
-            synchronizer,
-            requested_parents: Default::default(),
-        }
+        Self { consensus_config, consensus_bus, state_sync, requested_parents: Default::default() }
     }
 
     /// Process gossip from the committee.
@@ -98,8 +75,8 @@ where
         match gossip {
             PrimaryGossip::Certificate(cert) => {
                 // process certificate
-                let valid_cert = cert.validate_received()?;
-                self.synchronizer.try_accept_certificate(valid_cert).await?;
+                let unverified_cert = cert.validate_received().map_err(CertManagerError::from)?;
+                self.state_sync.process_peer_certificate(unverified_cert).await?;
             }
         }
         // Send the raw gossip out to whoever else might need it.
@@ -239,7 +216,7 @@ where
         // that never arrive.
         //
         // NOTE: this check is necessary for correctness.
-        let parents = self.synchronizer.notify_read_parent_certificates(&header).await?;
+        let parents = self.state_sync.notify_read_parent_certificates(&header).await?;
 
         // Verify parent certs. Ensure the parents:
         // - are from the previous round
@@ -278,22 +255,27 @@ where
         }
 
         // verify aggregate signatures form quorum
-        ensure!(stake >= committee.quorum_threshold(), CertificateError::Inquorate.into());
+        let threshold = committee.quorum_threshold();
+        ensure!(
+            stake >= threshold,
+            CertManagerError::from(CertificateError::Inquorate { stake, threshold }).into()
+        );
 
         // parents valid - now verify batches
-        //
-        // TODO: can this be parallelized?
-        // Need to ensure an invalid parent attack shuts down batch sync
-        //
-        // TODO: this is called during Synchronizer::process_certificate_internal
-        // - does this need to be called again?
-        self.synchronizer.sync_header_batches(&header, 0).await?;
+        // NOTE: this blocks until batches become available
+        self.state_sync.sync_header_batches(&header, false, 0).await?;
 
         // verify header was created in the past
         let now = now();
         if &now < header.created_at() {
             // wait if the difference is small enough
-            if *header.created_at() - now <= MAX_HEADER_TIME_DRIFT_TOLERANCE {
+            if *header.created_at() - now
+                <= self
+                    .consensus_config
+                    .network_config()
+                    .sync_config()
+                    .max_header_time_drift_tolerance
+            {
                 tokio::time::sleep(Duration::from_secs(*header.created_at() - now)).await;
             } else {
                 // created_at is too far in the future
@@ -394,24 +376,26 @@ where
 
     /// Helper method to retrieve parents for header.
     ///
-    /// Certificates are considered "known" if they are in local storage, suspended, or already
+    /// Certificates are considered "known" if they are in local storage, pending, or already
     /// requested from a peer.
     async fn check_for_missing_parents(
         &self,
         header: &Header,
     ) -> HeaderResult<Vec<CertificateDigest>> {
-        // check synchronizer state for parents
-        let mut unknown_certs = self.synchronizer.get_unknown_parent_digests(header).await?;
+        // identify parents that are neither in storage nor pending
+        let mut unknown_certs = self.state_sync.identify_unkown_parents(header).await?;
 
         // ensure header is not too old
-        let limit = self
-            .consensus_bus
-            .primary_round_updates()
-            .borrow()
-            .saturating_sub(MAX_HEADER_AGE_LIMIT);
+        let limit = self.consensus_bus.primary_round_updates().borrow().saturating_sub(
+            self.consensus_config.network_config().sync_config().max_proposed_header_age_limit,
+        );
         ensure!(
             limit <= header.round(),
-            HeaderError::TooOld(header.digest(), header.round(), limit)
+            HeaderError::TooOld {
+                digest: header.digest(),
+                header_round: header.round(),
+                max_round: limit,
+            }
         );
 
         // lock to ensure consistency between limit_round and where parent_digests are gc'ed
@@ -466,7 +450,7 @@ where
 
         // try to accept
         for parent in parents {
-            self.synchronizer.try_accept_certificate(parent).await?;
+            self.state_sync.process_peer_certificate(parent).await?;
         }
 
         Ok(())
@@ -479,7 +463,7 @@ where
     /// - limiting total processing time
     /// - processing certificates in chunks
     /// - validating request parameters
-    pub async fn retrieve_missing_certs(
+    pub(crate) async fn retrieve_missing_certs(
         &self,
         request: MissingCertificatesRequest,
     ) -> PrimaryNetworkResult<PrimaryResponse> {
