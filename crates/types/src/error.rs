@@ -1,8 +1,8 @@
 //! Error types whenn validating types during consensus.
 
 use crate::{
-    crypto, BlockHash, CertificateDigest, Epoch, HeaderDigest, Round, TimestampSec, VoteDigest,
-    WorkerId,
+    crypto, BlockHash, CertificateDigest, Epoch, HeaderDigest, Round, SendError, TimestampSec,
+    VoteDigest, WorkerId,
 };
 use fastcrypto::{error::FastCryptoError, hash::Digest};
 use libp2p::PeerId;
@@ -146,6 +146,9 @@ pub enum DagError {
 
     #[error("Operation was canceled")]
     Canceled,
+
+    #[error("{0}")]
+    CertManager(String),
 }
 
 impl<T> From<tokio::sync::mpsc::error::TrySendError<T>> for DagError {
@@ -239,8 +242,8 @@ pub enum HeaderError {
     #[error("Storage failure: {0}")]
     Storage(#[from] StoreError),
     /// The proposed header's round is too far behind.
-    #[error("Header {0} for round {1} is too old for GC round {2}")]
-    TooOld(HeaderDigest, Round, Round),
+    #[error("Header {digest} for round {header_round} is too old for max round {max_round}")]
+    TooOld { digest: HeaderDigest, header_round: Round, max_round: Round },
     /// The header contains a parent with an invalid aggregate BLS signature.
     #[error("Header's parent missing aggregate BLS signature")]
     ParentMissingSignature,
@@ -268,12 +271,12 @@ pub enum HeaderError {
     /// peer.
     #[error("Already voted for a header in a later round for this peer. This header's round: {theirs}. Last voted for round: {ours}.")]
     AlreadyVotedForLaterRound { theirs: Round, ours: Round },
-
-    /// TODO: this is temporary
-    ///
-    /// Failed to convert libp2p::PeerId to fastcrypto::ed25519
-    #[error("Failed to convert libp2p::PeerId into fastcrypto::ed25519")]
-    PeerId,
+    /// mpsc sender dropped while processig the certificate
+    #[error("Failed to process header - TN sender error: {0}")]
+    TNSend(String),
+    /// Oneshot channel dropped for pending certificate result.
+    #[error("Failed to return pending certificate manager result.")]
+    PendingCertificateOneshot,
 }
 
 /// Result alias for [`CertificateError`].
@@ -282,8 +285,8 @@ pub type CertificateResult<T> = Result<T, CertificateError>;
 /// Core error variants when verifying and processing a Certificate.
 #[derive(Debug, Error)]
 pub enum CertificateError {
-    /// Processing was suspended to retrieve parent certificates.
-    #[error("Processing was suspended to retrieve parent certificates")]
+    /// TODO: REMOVE THIS
+    #[error("The certificate is suspended until missing parents recovered.")]
     Suspended,
     /// Error retrieving value from storage.
     #[error("Storage failure: {0}")]
@@ -292,14 +295,11 @@ pub enum CertificateError {
     #[error(transparent)]
     Header(#[from] HeaderError),
     /// The weight of the certificate's signatures does not reach quorum (2f + 1)
-    #[error("The weight of the aggregate signatures fails to reach quorum.")]
-    Inquorate,
+    #[error("The weight of the aggregate signatures fails to reach quorum. Stake: {stake} - threshold: {threshold}")]
+    Inquorate { stake: u64, threshold: u64 },
     /// The BLS aggregate signature is invalid
     #[error("Invalid aggregate signature")]
     InvalidSignature(#[from] FastCryptoError),
-    /// mpsc sender dropped while processig the certificate
-    #[error("Failed to process certificate - TN sender error")]
-    TNSend,
     /// The certificates's round is too far behind.
     #[error("Certificate {0} for round {1} is too old for GC round {2}")]
     TooOld(CertificateDigest, Round, Round),
@@ -312,8 +312,17 @@ pub enum CertificateError {
     /// Certificate signature verification state returned `Genesis`
     #[error("Failed to recover BlsAggregateSignatureBytes from certificate signature")]
     RecoverBlsAggregateSignatureBytes,
+    /// Certificate is unsigned.
+    #[error("Certificate verification state is unsigned")]
+    Unsigned,
 
     /// TODO: Refactor this out - only used to debug notify and suspend
     #[error("Certificate suspended: {0}")]
     DebugSuspend(String),
+}
+
+impl<T: std::fmt::Debug> From<SendError<T>> for HeaderError {
+    fn from(e: SendError<T>) -> Self {
+        Self::TNSend(e.to_string())
+    }
 }

@@ -183,7 +183,30 @@ impl Certificate {
         (weight, pks)
     }
 
-    /// Verifies the validity of the certificate.
+    /// Validate the certificate and verify signatures against the committee.
+    ///
+    /// The method returns a certificate with verified signature state.
+    ///
+    /// [SignatureVerificationState] stores both the verification status and signature bytes
+    /// together. While this creates some data redundancy with signed_authorities, keeping them
+    /// coupled provides important benefits:
+    ///
+    /// 1. Atomic State Updates - Changes to verification status are guaranteed to reference the
+    ///    exact signature bytes that were verified. This prevents state/signature mismatches that
+    ///    could occur if stored separately.
+    ///
+    /// 2. Verification Integrity - The verification status can only transition while operating on
+    ///    the specific signature bytes that were validated. This maintains a clear chain of trust
+    ///    through the verification process.
+    ///
+    /// 3. Invariant Preservation - Makes it impossible to have invalid states like:
+    ///    - VerifiedDirectly status with different signature bytes than what was actually verified
+    ///    - An Unsigned state containing signature bytes
+    ///    - A Verified state with missing/corrupted signature bytes
+    ///
+    /// While storing signatures in both places uses more memory, the strong correctness guarantees
+    /// outweigh the storage cost for certificate verification where maintaining cryptographic
+    /// integrity is critical.
     pub fn verify(
         self,
         committee: &Committee,
@@ -208,21 +231,24 @@ impl Certificate {
 
         let (weight, pks) = self.signed_by(committee);
 
-        ensure!(weight >= committee.quorum_threshold(), CertificateError::Inquorate);
+        let threshold = committee.quorum_threshold();
+        ensure!(weight >= threshold, CertificateError::Inquorate { stake: weight, threshold });
 
         let verified_cert = self.verify_signature(pks)?;
 
         Ok(verified_cert)
     }
 
+    /// Check the verification state and try to verify directly.
     fn verify_signature(mut self, pks: Vec<BlsPublicKey>) -> CertificateResult<Certificate> {
+        // get signature from verification state
         let aggregrate_signature_bytes = match self.signature_verification_state {
             SignatureVerificationState::VerifiedIndirectly(_)
             | SignatureVerificationState::VerifiedDirectly(_)
             | SignatureVerificationState::Genesis => return Ok(self),
             SignatureVerificationState::Unverified(ref bytes) => bytes,
             SignatureVerificationState::Unsigned(_) => {
-                return Err(CertificateError::Inquorate);
+                return Err(CertificateError::Unsigned);
             }
         };
 
@@ -307,6 +333,16 @@ impl Certificate {
     /// This is the aggregate signature of all authorities for the certificate.
     pub fn signed_authorities(&self) -> &roaring::RoaringBitmap {
         &self.signed_authorities
+    }
+
+    /// Helper method if the certificate's verification state is verified.
+    pub fn is_verified(&self) -> bool {
+        matches!(
+            self.signature_verification_state,
+            SignatureVerificationState::VerifiedDirectly(_)
+                | SignatureVerificationState::VerifiedIndirectly(_)
+                | SignatureVerificationState::Genesis
+        )
     }
 
     // Used for testing.
