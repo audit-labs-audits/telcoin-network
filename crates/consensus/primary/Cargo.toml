@@ -36,7 +36,6 @@ tap = { workspace = true }
 
 fastcrypto = { workspace = true }
 fastcrypto-tbls = { workspace = true }
-tn-network = { workspace = true }
 tn-network-types = { workspace = true }
 tn-types = { workspace = true }
 tn-config = { workspace = true }
@@ -44,9 +43,6 @@ tn-storage = { workspace = true }
 tn-utils = { workspace = true }
 consensus-metrics = { workspace = true }
 tn-primary-metrics = { workspace = true }
-
-anemo = { workspace = true }
-anemo-tower = { workspace = true }
 
 tn-network-libp2p = { workspace = true }
 roaring = { workspace = true }

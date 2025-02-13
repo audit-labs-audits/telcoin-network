@@ -2,14 +2,13 @@
 use crate::{
     Config, ConfigFmt, ConfigTrait as _, KeyConfig, NetworkConfig, Parameters, TelcoinDirs,
 };
-use anemo::Config as AnemoConfig;
 use fastcrypto::hash::Hash as _;
 use libp2p::PeerId;
 use std::{
     collections::{HashMap, HashSet},
     sync::Arc,
 };
-use tn_network::local::LocalNetwork;
+use tn_network_types::local::LocalNetwork;
 use tn_storage::{traits::Database, NodeStorage};
 use tn_types::{
     Authority, AuthorityIdentifier, Certificate, CertificateDigest, Committee, Notifier,
@@ -24,7 +23,6 @@ struct ConsensusConfigInner<DB> {
     key_config: KeyConfig,
     authority: Authority,
     local_network: LocalNetwork,
-    anemo_config: AnemoConfig,
     network_config: NetworkConfig,
     authority_map: AuthorityMapping,
     genesis: HashMap<CertificateDigest, Certificate>,
@@ -100,7 +98,6 @@ where
 
         let worker_cache = worker_cache.take().map(Arc::new);
         let shutdown = Notifier::new();
-        let anemo_config = Self::create_anemo_config();
         let network_config = NetworkConfig::default();
         let authority_map = AuthorityMapping::new(&committee, &network_config);
         let genesis = Certificate::genesis(&committee)
@@ -116,7 +113,6 @@ where
                 key_config,
                 authority,
                 local_network,
-                anemo_config,
                 network_config,
                 authority_map,
                 genesis,
@@ -124,41 +120,6 @@ where
             worker_cache,
             shutdown,
         })
-    }
-
-    /// The configurable variables for anemo p2p network.
-    ///
-    /// Used for cosensus by both the primary and workers.
-    fn create_anemo_config() -> AnemoConfig {
-        let mut quic_config = anemo::QuicConfig::default();
-        // Allow more concurrent streams for burst activity.
-        quic_config.max_concurrent_bidi_streams = Some(10_000);
-        // Increase send and receive buffer sizes on the worker, since the worker is
-        // responsible for broadcasting and fetching payloads.
-        // With 200MiB buffer size and ~500ms RTT, the max throughput ~400MiB.
-        quic_config.stream_receive_window = Some(100 << 20);
-        quic_config.receive_window = Some(200 << 20);
-        quic_config.send_window = Some(200 << 20);
-        quic_config.crypto_buffer_size = Some(1 << 20);
-        quic_config.socket_receive_buffer_size = Some(20 << 20);
-        quic_config.socket_send_buffer_size = Some(20 << 20);
-        quic_config.allow_failed_socket_buffer_size_setting = true;
-        quic_config.max_idle_timeout_ms = Some(30_000);
-        // Enable keep alives every 5s
-        quic_config.keep_alive_interval_ms = Some(5_000);
-        let mut config = anemo::Config::default();
-        config.quic = Some(quic_config);
-        // Set the max_frame_size to be 1 GB to work around the issue of there being too many
-        // delegation events in the epoch change txn.
-        config.max_frame_size = Some(1 << 30);
-        // Set a default timeout of 300s for all RPC requests
-        config.inbound_request_timeout_ms = Some(300_000);
-        config.outbound_request_timeout_ms = Some(300_000);
-        config.shutdown_idle_timeout_ms = Some(1_000);
-        config.connectivity_check_interval_ms = Some(2_000);
-        config.connection_backoff_ms = Some(1_000);
-        config.max_connection_backoff_ms = Some(20_000);
-        config
     }
 
     /// Returns a reference to the shutdown Noticer.
@@ -181,6 +142,14 @@ where
 
     pub fn worker_cache(&self) -> &WorkerCache {
         self.worker_cache.as_ref().expect("invalid config- missing worker cache!")
+    }
+
+    pub fn worker_cache_clone(&self) -> Arc<WorkerCache> {
+        if let Some(wc) = &self.worker_cache {
+            wc.clone()
+        } else {
+            panic!("invalid config- missing worker cache!");
+        }
     }
 
     pub fn set_worker_cache(&mut self, worker_cache: WorkerCache) {
@@ -210,10 +179,6 @@ where
 
     pub fn local_network(&self) -> &LocalNetwork {
         &self.inner.local_network
-    }
-
-    pub fn anemo_config(&self) -> &AnemoConfig {
-        &self.inner.anemo_config
     }
 
     pub fn network_config(&self) -> &NetworkConfig {

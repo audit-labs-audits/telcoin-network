@@ -26,8 +26,9 @@ use tempfile::TempDir;
 use tn_batch_builder::{test_utils::execute_test_batch, BatchBuilder};
 use tn_batch_validator::BatchValidator;
 use tn_engine::execute_consensus_output;
-use tn_network::{error::LocalClientError, local::LocalNetwork, WorkerToPrimaryClient};
-use tn_network_types::{WorkerOthersBatchMessage, WorkerOwnBatchMessage};
+use tn_network_types::{
+    local::LocalNetwork, WorkerOthersBatchMessage, WorkerOwnBatchMessage, WorkerToPrimaryClient,
+};
 use tn_node_traits::{BuildArguments, TNExecution, TelcoinNode};
 use tn_storage::{open_db, tables::Batches, traits::Database};
 use tn_test_utils::{get_gas_price, test_genesis, TransactionFactory};
@@ -49,17 +50,11 @@ pub struct MockWorkerToPrimary();
 
 #[async_trait::async_trait]
 impl WorkerToPrimaryClient for MockWorkerToPrimary {
-    async fn report_own_batch(
-        &self,
-        _request: WorkerOwnBatchMessage,
-    ) -> Result<(), LocalClientError> {
+    async fn report_own_batch(&self, _request: WorkerOwnBatchMessage) -> eyre::Result<()> {
         Ok(())
     }
 
-    async fn report_others_batch(
-        &self,
-        _request: WorkerOthersBatchMessage,
-    ) -> Result<(), LocalClientError> {
+    async fn report_others_batch(&self, _request: WorkerOthersBatchMessage) -> eyre::Result<()> {
         Ok(())
     }
 }

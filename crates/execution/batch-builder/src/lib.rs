@@ -438,7 +438,7 @@ mod tests {
     use std::{str::FromStr, time::Duration};
     use tempfile::TempDir;
     use tn_engine::execute_consensus_output;
-    use tn_network::local::LocalNetwork;
+    use tn_network_types::local::LocalNetwork;
     use tn_node_traits::{BuildArguments, TNExecution, TelcoinNode};
     use tn_storage::{open_db, tables::Batches, traits::Database};
     use tn_test_utils::{adiri_genesis_seeded, get_gas_price, TransactionFactory};

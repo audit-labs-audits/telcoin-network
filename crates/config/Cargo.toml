@@ -16,7 +16,7 @@ authors = [
 thiserror = { workspace = true }
 tracing = { workspace = true }
 fastcrypto = { workspace = true }
-tn-network = { workspace = true }
+tn-network-types = { workspace = true }
 tn-storage = { workspace = true }
 tn-types = { workspace = true }
 eyre = { workspace = true }
@@ -27,7 +27,6 @@ serde_yaml = { workspace = true }
 serde_json = { workspace = true }
 reth-chainspec = { workspace = true }
 humantime-serde = { workspace = true }
-anemo = { workspace = true }
 libp2p = { workspace = true }
 
 [dev-dependencies]

@@ -21,13 +21,11 @@ tap = { workspace = true }
 thiserror = { workspace = true }
 tokio = { workspace = true, features = ["sync", "rt", "macros"] }
 tonic = { workspace = true }
-tower = { workspace = true }
 tracing = { workspace = true }
 itertools = { workspace = true }
 
 tn-storage = { workspace = true }
 fastcrypto = { workspace = true, features = ["copy_key"] }
-tn-network = { workspace = true }
 tn-network-types = { workspace = true }
 tn-types = { workspace = true }
 tn-config = { workspace = true }
@@ -35,11 +33,11 @@ prometheus = { workspace = true }
 consensus-metrics = { workspace = true }
 tn-primary-metrics = { workspace = true }
 
-anemo = { workspace = true }
-anemo-tower = { workspace = true }
 eyre = { workspace = true }
 anyhow = { workspace = true }
 tn-batch-validator = { workspace = true }
+tn-network-libp2p = { workspace = true }
+serde = { workspace = true }
 
 [dev-dependencies]
 tn-batch-validator = { workspace = true, features = ["test-utils"] }
@@ -48,5 +46,4 @@ tempfile = { workspace = true }
 tn-test-utils = { workspace = true }
 tn-node = { workspace = true }
 tn-primary = { workspace = true }
-tn-network = { workspace = true, features = ["test-utils"] }
 bytes = { workspace = true }

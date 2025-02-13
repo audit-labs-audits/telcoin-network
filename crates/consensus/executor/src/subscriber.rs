@@ -15,9 +15,8 @@ use std::{
     vec,
 };
 use tn_config::ConsensusConfig;
-use tn_network::{local::LocalNetwork, PrimaryToWorkerClient};
 use tn_network_libp2p::types::NetworkHandle;
-use tn_network_types::FetchBatchesRequest;
+use tn_network_types::{local::LocalNetwork, FetchBatchesRequest, PrimaryToWorkerClient};
 use tn_primary::{
     consensus::ConsensusRound,
     network::{PrimaryRequest, PrimaryResponse},

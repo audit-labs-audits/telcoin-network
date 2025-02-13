@@ -5,7 +5,7 @@
 use crate::{
     codec::{TNCodec, TNMessage},
     error::NetworkError,
-    send_or_log_error,
+    network_public_key_to_libp2p, send_or_log_error,
     types::{NetworkCommand, NetworkEvent, NetworkHandle, NetworkResult},
 };
 use futures::StreamExt as _;
@@ -121,7 +121,8 @@ where
     {
         let topics = vec![IdentTopic::new("tn-primary")];
         let network_key = config.key_config().primary_network_keypair().as_ref().to_vec();
-        Self::new(config, event_stream, topics, network_key)
+        let authorized_publishers = config.committee_peer_ids();
+        Self::new(config, event_stream, topics, network_key, authorized_publishers)
     }
 
     /// Convenience method for spawning a worker network instance.
@@ -132,9 +133,15 @@ where
     where
         DB: tn_storage::traits::Database,
     {
-        let topics = vec![IdentTopic::new("tn-primary")];
+        let topics = vec![IdentTopic::new("tn-worker")];
         let network_key = config.key_config().worker_network_keypair().as_ref().to_vec();
-        Self::new(config, event_stream, topics, network_key)
+        let authorized_publishers = config
+            .worker_cache()
+            .all_workers()
+            .iter()
+            .map(|(id, _)| network_public_key_to_libp2p(id))
+            .collect();
+        Self::new(config, event_stream, topics, network_key, authorized_publishers)
     }
 
     /// Create a new instance of Self.
@@ -143,6 +150,7 @@ where
         event_stream: mpsc::Sender<NetworkEvent<Req, Res>>,
         topics: Vec<IdentTopic>,
         mut ed25519_private_key_bytes: Vec<u8>,
+        authorized_publishers: HashSet<PeerId>,
     ) -> NetworkResult<Self>
     where
         DB: tn_storage::traits::Database,
@@ -189,7 +197,6 @@ where
             .build();
 
         let (handle, commands) = tokio::sync::mpsc::channel(100);
-        let authorized_publishers = config.committee_peer_ids();
         let config = config.network_config().libp2p_config().clone();
 
         Ok(Self {

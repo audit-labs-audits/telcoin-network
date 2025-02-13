@@ -57,9 +57,15 @@ where
 
     // peer1
     let network_key_1 = config_1.key_config().primary_network_keypair().as_ref().to_vec();
-    let peer1_network =
-        ConsensusNetwork::<Req, Res>::new(&config_1, tx1, topics.clone(), network_key_1)
-            .expect("peer1 network created");
+    let authorized_publishers = config_1.committee_peer_ids();
+    let peer1_network = ConsensusNetwork::<Req, Res>::new(
+        &config_1,
+        tx1,
+        topics.clone(),
+        network_key_1,
+        authorized_publishers,
+    )
+    .expect("peer1 network created");
     let network_handle_1 = peer1_network.network_handle();
     let peer1 = NetworkPeer {
         config: config_1,
@@ -70,9 +76,15 @@ where
 
     // peer2
     let network_key_2 = config_2.key_config().primary_network_keypair().as_ref().to_vec();
-    let peer2_network =
-        ConsensusNetwork::<Req, Res>::new(&config_2, tx2, topics.clone(), network_key_2)
-            .expect("peer2 network created");
+    let authorized_publishers = config_2.committee_peer_ids();
+    let peer2_network = ConsensusNetwork::<Req, Res>::new(
+        &config_2,
+        tx2,
+        topics.clone(),
+        network_key_2,
+        authorized_publishers,
+    )
+    .expect("peer2 network created");
     let network_handle_2 = peer2_network.network_handle();
     let peer2 = NetworkPeer {
         config: config_2,

@@ -1,13 +1,45 @@
 // SPDX-License-Identifier: Apache-2.0
 //! Network messages for anemo communication
 
-mod codec;
+pub mod local;
 mod notify;
-mod proto;
 mod request;
 mod response;
-pub use codec::*;
+pub mod retry;
+use libp2p::PeerId;
 pub use notify::*;
-pub use proto::*;
 pub use request::*;
 pub use response::*;
+use tn_types::NetworkPublicKey;
+
+// async_trait for object safety, get rid of when possible.
+#[async_trait::async_trait]
+pub trait WorkerToPrimaryClient: Send + Sync + 'static {
+    async fn report_own_batch(&self, request: WorkerOwnBatchMessage) -> eyre::Result<()>;
+
+    async fn report_others_batch(&self, request: WorkerOthersBatchMessage) -> eyre::Result<()>;
+}
+
+// async_trait for object safety, get rid of when possible.
+#[async_trait::async_trait]
+pub trait PrimaryToWorkerClient: Send + Sync + 'static {
+    async fn synchronize(
+        &self,
+        worker_name: NetworkPublicKey,
+        message: WorkerSynchronizeMessage,
+    ) -> eyre::Result<()>;
+
+    async fn fetch_batches(
+        &self,
+        worker_name: NetworkPublicKey,
+        request: FetchBatchesRequest,
+    ) -> eyre::Result<FetchBatchResponse>;
+}
+
+/// Convert an existing NetworkPublicKey into a libp2p PeerId.
+pub fn network_public_key_to_libp2p(fastcrypto: &NetworkPublicKey) -> PeerId {
+    let bytes = fastcrypto.as_ref().to_vec();
+    let ed_public_key = libp2p::identity::ed25519::PublicKey::try_from_bytes(&bytes)
+        .expect("invalid public key, not able to convert to peer id!");
+    libp2p::PeerId::from_public_key(&ed_public_key.into())
+}

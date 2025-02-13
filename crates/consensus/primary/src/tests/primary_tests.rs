@@ -15,8 +15,7 @@ use std::{
     time::Duration,
 };
 use tn_config::ConsensusConfig;
-use tn_network_libp2p::ConsensusNetwork;
-use tn_network_types::MockPrimaryToWorker;
+use tn_network_libp2p::{network_public_key_to_libp2p, ConsensusNetwork};
 use tn_storage::{mem_db::MemDatabase, traits::Database};
 use tn_test_utils::{
     fixture_batch_with_transactions, make_optimal_signed_certificates, CommitteeFixture,
@@ -28,7 +27,7 @@ use tn_types::{
 use tokio::{sync::mpsc, time::timeout};
 
 fn get_bus_and_primary<DB: Database>(config: ConsensusConfig<DB>) -> (ConsensusBus, Primary<DB>) {
-    let (event_stream, rx_event_stream) = mpsc::channel(1000);
+    let (event_stream, rx_event_stream) = mpsc::channel(100);
     let consensus_bus = ConsensusBus::new_with_args(config.config().parameters.gc_depth);
     let consensus_network = ConsensusNetwork::new_for_primary(&config, event_stream)
         .expect("p2p network create failed!");
@@ -409,7 +408,7 @@ async fn test_request_vote_missing_batches() {
     let author_id = author.id();
     let worker = primary.worker();
     let _worker_address = &worker.info().worker_address;
-    let worker_peer_id = anemo::PeerId(worker.keypair().public().0.to_bytes());
+    let worker_peer_id = network_public_key_to_libp2p(&worker.keypair().public());
     let mut mock_server = MockPrimaryToWorker::new();
     mock_server
         .expect_synchronize()
@@ -479,7 +478,7 @@ async fn test_request_vote_already_voted() {
     // Set up mock worker.
     let worker = primary.worker();
     let _worker_address = &worker.info().worker_address;
-    let worker_peer_id = anemo::PeerId(worker.keypair().public().0.to_bytes());
+    let worker_peer_id = network_public_key_to_libp2p(&worker.keypair().public());
     let mut mock_server = MockPrimaryToWorker::new();
     // Always Synchronize successfully.
     mock_server.expect_synchronize().returning(|_| Ok(anemo::Response::new(())));
@@ -688,7 +687,7 @@ async fn test_request_vote_created_at_in_future() {
     // Set up mock worker.
     let worker = primary.worker();
     let _worker_address = &worker.info().worker_address;
-    let worker_peer_id = anemo::PeerId(worker.keypair().public().0.to_bytes());
+    let worker_peer_id = network_public_key_to_libp2p(&worker.keypair().public());
     let mut mock_server = MockPrimaryToWorker::new();
     // Always Synchronize successfully.
     mock_server.expect_synchronize().returning(|_| Ok(anemo::Response::new(())));

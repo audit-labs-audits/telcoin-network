@@ -6,8 +6,7 @@ use consensus_metrics::monitored_scope;
 use futures::{stream::FuturesOrdered, StreamExt as _};
 use std::collections::HashMap;
 use tn_config::ConsensusConfig;
-use tn_network::{PrimaryToWorkerClient as _, RetryConfig};
-use tn_network_types::WorkerSynchronizeMessage;
+use tn_network_types::{retry::RetryConfig, PrimaryToWorkerClient as _, WorkerSynchronizeMessage};
 use tn_storage::traits::Database;
 use tn_types::{
     error::{DagError, HeaderError, HeaderResult},

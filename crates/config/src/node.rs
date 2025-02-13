@@ -168,7 +168,7 @@ pub struct Parameters {
     /// Properties for the prometheus metrics
     #[serde(default = "PrometheusMetricsParameters::default")]
     pub prometheus_metrics: PrometheusMetricsParameters,
-    /// Network admin server ports for primary & worker.
+    /// Network admin server ports for primary & worker. XXXX
     #[serde(default = "NetworkAdminServerParameters::default")]
     pub network_admin_server: NetworkAdminServerParameters,
     /// Anemo network settings.

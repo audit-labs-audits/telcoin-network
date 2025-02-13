@@ -1,7 +1,6 @@
 //! Fetch batches from peers
 
-use crate::metrics::WorkerMetrics;
-use anemo::Network;
+use crate::{metrics::WorkerMetrics, network::WorkerNetworkHandle};
 use async_trait::async_trait;
 use futures::{stream::FuturesUnordered, FutureExt, StreamExt};
 use itertools::Itertools;
@@ -12,8 +11,8 @@ use std::{
     sync::Arc,
     time::Duration,
 };
-use tn_network::WorkerRpc;
-use tn_network_types::{RequestBatchesRequest, RequestBatchesResponse};
+use tn_network_libp2p::network_public_key_to_libp2p;
+use tn_network_types::RequestBatchesResponse;
 use tn_storage::{
     tables::Batches,
     traits::{Database, DbTxMut},
@@ -38,16 +37,11 @@ pub struct BatchFetcher<DB> {
 impl<DB: Database> BatchFetcher<DB> {
     pub fn new(
         name: NetworkPublicKey,
-        network: Network,
+        network: WorkerNetworkHandle,
         batch_store: DB,
         metrics: Arc<WorkerMetrics>,
     ) -> Self {
-        Self {
-            name,
-            network: Arc::new(RequestBatchesNetworkImpl { network }),
-            batch_store,
-            metrics,
-        }
+        Self { name, network: Arc::new(network), batch_store, metrics }
     }
 
     /// Bulk fetches payload from local storage and remote workers.
@@ -231,11 +225,7 @@ impl<DB: Database> BatchFetcher<DB> {
 
         let RequestBatchesResponse { batches, is_size_limit_reached: _ } = self
             .network
-            .request_batches(
-                digests_to_fetch.clone().into_iter().collect(),
-                worker.clone(),
-                timeout,
-            )
+            .request_batches(digests_to_fetch.clone().into_iter().collect(), &worker, timeout)
             .await?;
         for batch in batches {
             let batch_digest = batch.digest();
@@ -278,26 +268,23 @@ pub trait RequestBatchesNetwork: Send + Sync {
     async fn request_batches(
         &self,
         batch_digests: Vec<BlockHash>,
-        worker: NetworkPublicKey,
+        worker: &NetworkPublicKey,
         timeout: Duration,
     ) -> eyre::Result<RequestBatchesResponse>;
 }
 
-struct RequestBatchesNetworkImpl {
-    network: anemo::Network,
-}
-
 #[async_trait]
-impl RequestBatchesNetwork for RequestBatchesNetworkImpl {
+impl RequestBatchesNetwork for WorkerNetworkHandle {
     async fn request_batches(
         &self,
         batch_digests: Vec<BlockHash>,
-        worker: NetworkPublicKey,
+        worker: &NetworkPublicKey,
         timeout: Duration,
     ) -> eyre::Result<RequestBatchesResponse> {
-        let request =
-            anemo::Request::new(RequestBatchesRequest { batch_digests }).with_timeout(timeout);
-        self.network.request_batches(&worker, request).await
+        let peer_id = network_public_key_to_libp2p(worker);
+        let res =
+            tokio::time::timeout(timeout, self.request_batches(peer_id, batch_digests)).await??;
+        Ok(res)
     }
 }
 
@@ -561,7 +548,7 @@ mod tests {
         async fn request_batches(
             &self,
             digests: Vec<BlockHash>,
-            worker: NetworkPublicKey,
+            worker: &NetworkPublicKey,
             _timeout: Duration,
         ) -> eyre::Result<RequestBatchesResponse> {
             // Use this to simulate server side response size limit in RequestBlocks

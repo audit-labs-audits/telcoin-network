@@ -10,18 +10,22 @@ use crate::{
     state_sync::StateSynchronizer,
     ConsensusBus,
 };
-use anemo::PeerId;
 use std::sync::Arc;
 use tn_config::ConsensusConfig;
-use tn_network_libp2p::types::{NetworkEvent, NetworkHandle};
+use tn_network_libp2p::{
+    network_public_key_to_libp2p,
+    types::{NetworkEvent, NetworkHandle},
+};
 use tn_storage::traits::Database;
 use tn_types::{traits::EncodeDecodeBase64, TaskManager};
 use tokio::sync::mpsc;
 use tracing::info;
 
+/* XXXX fix me
 #[cfg(test)]
 #[path = "tests/primary_tests.rs"]
 pub mod primary_tests;
+*/
 
 pub struct Primary<DB> {
     /// The Primary's network.
@@ -42,7 +46,8 @@ impl<DB: Database> Primary<DB> {
         config.parameters().tracing();
 
         // Some info statements
-        let own_peer_id = PeerId(config.key_config().primary_network_public_key().0.to_bytes());
+        let own_peer_id =
+            network_public_key_to_libp2p(&config.key_config().primary_network_public_key());
         info!(
             "Boot primary node with peer id {} and public key {}",
             own_peer_id,

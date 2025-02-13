@@ -7,11 +7,11 @@ use crate::{proposer::OurDigestMessage, state_sync::StateSynchronizer, Consensus
 use handler::RequestHandler;
 pub use message::{MissingCertificatesRequest, PrimaryRequest, PrimaryResponse};
 use tn_config::ConsensusConfig;
-use tn_network::{error::LocalClientError, WorkerToPrimaryClient};
 use tn_network_libp2p::{
     types::{IntoResponse as _, NetworkEvent, NetworkHandle},
     GossipMessage, PeerId, ResponseChannel,
 };
+use tn_network_types::WorkerToPrimaryClient;
 use tn_network_types::{WorkerOthersBatchMessage, WorkerOwnBatchMessage};
 use tn_storage::{traits::Database, PayloadStore};
 use tn_types::{BlockHash, Certificate, Header, Noticer, TaskManager, TnSender};
@@ -61,7 +61,7 @@ where
 
     /// Run the network.
     pub fn spawn(mut self, task_manager: &TaskManager) {
-        task_manager.spawn_task("latest block", async move {
+        task_manager.spawn_task("primary network events", async move {
             loop {
                 tokio::select!(
                     _ = &self.shutdown_rx => break,
@@ -217,10 +217,7 @@ impl<DB: Database> WorkerReceiverHandler<DB> {
 
 #[async_trait::async_trait]
 impl<DB: Database> WorkerToPrimaryClient for WorkerReceiverHandler<DB> {
-    async fn report_own_batch(
-        &self,
-        message: WorkerOwnBatchMessage,
-    ) -> Result<(), LocalClientError> {
+    async fn report_own_batch(&self, message: WorkerOwnBatchMessage) -> eyre::Result<()> {
         let (tx_ack, rx_ack) = oneshot::channel();
         let response = self
             .consensus_bus
@@ -231,22 +228,16 @@ impl<DB: Database> WorkerToPrimaryClient for WorkerReceiverHandler<DB> {
                 timestamp: message.timestamp,
                 ack_channel: tx_ack,
             })
-            .await
-            .map_err(|e| LocalClientError::Internal(e.to_string()))?;
+            .await?;
 
         // If we are ok, then wait for the ack
-        rx_ack.await.map_err(|e| LocalClientError::Internal(e.to_string()))?;
+        rx_ack.await?;
 
         Ok(response)
     }
 
-    async fn report_others_batch(
-        &self,
-        message: WorkerOthersBatchMessage,
-    ) -> Result<(), LocalClientError> {
-        self.payload_store
-            .write(&message.digest, &message.worker_id)
-            .map_err(|e| LocalClientError::Internal(e.to_string()))?;
+    async fn report_others_batch(&self, message: WorkerOthersBatchMessage) -> eyre::Result<()> {
+        self.payload_store.write(&message.digest, &message.worker_id)?;
         Ok(())
     }
 }

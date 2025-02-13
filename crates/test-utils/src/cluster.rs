@@ -2,9 +2,9 @@
 
 use crate::{authority::AuthorityDetails, default_test_execution_node, CommitteeFixture};
 use itertools::Itertools;
-use std::{collections::HashMap, time::Duration};
+use std::collections::HashMap;
 use tn_storage::traits::Database;
-use tn_types::{Committee, WorkerId};
+use tn_types::Committee;
 use tracing::info;
 
 /// Test fixture that holds all information needed to run a local network.
@@ -55,94 +55,6 @@ where
         }
 
         Self { fixture, authorities: nodes, committee }
-    }
-
-    /// Starts a cluster by the defined number of authorities. The authorities
-    /// will be started sequentially started from the one with id zero up to
-    /// the provided number `authorities_number`. If none number is provided, then
-    /// the maximum number of authorities will be started.
-    ///
-    /// If a number higher than the available ones in the committee is provided then
-    /// the method will panic.
-    ///
-    /// The workers_per_authority dictates how many workers per authority should
-    /// also be started (the same number will be started for each authority). If none
-    /// is provided then the maximum number of workers will be started.
-    /// If the `boot_wait_time` is provided then between node starts we'll wait for this
-    /// time before the next node is started. This is useful to simulate staggered
-    /// node starts. If none is provided then the nodes will be started immediately
-    /// the one after the other.
-    pub async fn start(
-        &mut self,
-        authorities_number: Option<usize>,
-        workers_per_authority: Option<usize>,
-        boot_wait_time: Option<Duration>,
-    ) {
-        let max_authorities = self.committee.size();
-        let authorities = authorities_number.unwrap_or(max_authorities);
-
-        if authorities > max_authorities {
-            panic!("Provided nodes number is greater than the maximum allowed");
-        }
-
-        for id in 0..authorities {
-            info!("Spinning up node: {id}");
-            self.start_node(id, false, workers_per_authority)
-                .await
-                .expect("node started successfully for authority");
-
-            if let Some(d) = boot_wait_time {
-                // we don't want to wait after the last node has been boostraped
-                if id < authorities - 1 {
-                    info!(
-                        "#### Will wait for {} seconds before starting the next node ####",
-                        d.as_secs()
-                    );
-                    tokio::time::sleep(d).await;
-                }
-            }
-        }
-    }
-
-    /// Starts the authority node by the defined id - if not already running - and
-    /// the details are returned. If the node is already running then a panic
-    /// is thrown instead.
-    ///
-    /// When the preserve_store is true, then the started authority will use the
-    /// same path that has been used the last time when started (both the primary
-    /// and the workers).
-    ///
-    /// This is basically a way to use the same storage between node restarts.
-    /// When the preserve_store is false, then authority will start with an empty
-    /// storage.
-    ///
-    /// If the `workers_per_authority` is provided then the corresponding number of
-    /// workers will be started per authority. Otherwise if not provided, then maximum
-    /// number of workers will be started per authority.
-    pub async fn start_node(
-        &mut self,
-        id: usize,
-        preserve_store: bool,
-        workers_per_authority: Option<usize>,
-    ) -> eyre::Result<()> {
-        let authority = self
-            .authorities
-            .get_mut(&id)
-            .unwrap_or_else(|| panic!("Authority with id {} not found", id));
-
-        // start the primary
-        authority.start_primary().await?;
-
-        // start the workers
-        if let Some(workers) = workers_per_authority {
-            for worker_id in 0..workers {
-                authority.start_worker(worker_id as WorkerId, preserve_store).await?;
-            }
-        } else {
-            authority.start_all_workers(preserve_store).await?;
-        }
-
-        Ok(())
     }
 
     /// Returns all the authorities (running or not).

@@ -3,8 +3,8 @@ use super::*;
 use crate::quorum_waiter::QuorumWaiterError;
 use std::sync::Mutex;
 use tempfile::TempDir;
-use tn_network::{error::LocalClientError, WorkerToPrimaryClient};
 use tn_network_types::WorkerOthersBatchMessage;
+use tn_network_types::WorkerToPrimaryClient;
 use tn_storage::open_db;
 use tn_test_utils::transaction;
 use tn_types::Batch;
@@ -14,17 +14,11 @@ pub struct MockWorkerToPrimary();
 
 #[async_trait::async_trait]
 impl WorkerToPrimaryClient for MockWorkerToPrimary {
-    async fn report_own_batch(
-        &self,
-        _request: WorkerOwnBatchMessage,
-    ) -> Result<(), LocalClientError> {
+    async fn report_own_batch(&self, _request: WorkerOwnBatchMessage) -> eyre::Result<()> {
         Ok(())
     }
 
-    async fn report_others_batch(
-        &self,
-        _request: WorkerOthersBatchMessage,
-    ) -> Result<(), LocalClientError> {
+    async fn report_others_batch(&self, _request: WorkerOthersBatchMessage) -> eyre::Result<()> {
         Ok(())
     }
 }

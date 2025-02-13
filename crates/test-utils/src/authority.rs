@@ -3,12 +3,11 @@
 use crate::{
     primary::PrimaryNodeDetails, worker::WorkerNodeDetails, TestExecutionNode, WorkerFixture,
 };
-use anemo::Network;
 use fastcrypto::{hash::Hash, traits::KeyPair as _};
 use jsonrpsee::http_client::HttpClient;
 use std::{collections::HashMap, num::NonZeroUsize, sync::Arc};
 use tn_config::{Config, ConsensusConfig, KeyConfig};
-use tn_network::local::LocalNetwork;
+use tn_network_types::local::LocalNetwork;
 use tn_storage::traits::Database;
 use tn_types::{
     Address, Authority, AuthorityIdentifier, BlsKeypair, BlsPublicKey, Certificate, Committee,
@@ -38,7 +37,7 @@ pub struct AuthorityDetails<DB> {
 struct AuthorityDetailsInternal<DB> {
     client: Option<LocalNetwork>,
     primary: PrimaryNodeDetails<DB>,
-    workers: HashMap<WorkerId, WorkerNodeDetails<DB>>,
+    workers: HashMap<WorkerId, WorkerNodeDetails>,
     execution: TestExecutionNode,
 }
 
@@ -63,7 +62,6 @@ impl<DB: Database> AuthorityDetails<DB> {
         {
             let worker = WorkerNodeDetails::new(
                 worker_id,
-                name,
                 consensus_config.clone(),
                 addresses.transactions.clone(),
             );
@@ -84,36 +82,6 @@ impl<DB: Database> AuthorityDetails<DB> {
             .clone()
     }
 
-    /// Starts the node's primary and workers. If the num_of_workers is provided
-    /// then only those ones will be started. Otherwise all the available workers
-    /// will be started instead.
-    ///
-    /// If the preserve_store value is true then the previous node's storage
-    /// will be preserved. If false then the node will  start with a fresh
-    /// (empty) storage.
-    ///
-    /// When a worker/primary is started, the authority's [ExecutionNode] is used
-    /// to construct the necessary components.
-    pub async fn start(
-        &self,
-        preserve_store: bool,
-        num_of_workers: Option<usize>,
-    ) -> eyre::Result<()> {
-        self.start_primary().await?;
-
-        let workers_to_start;
-        {
-            let internal = self.internal.read().await;
-            workers_to_start = num_of_workers.unwrap_or(internal.workers.len());
-        }
-
-        for id in 0..workers_to_start {
-            self.start_worker(id as WorkerId, preserve_store).await?;
-        }
-
-        Ok(())
-    }
-
     /// Starts the primary node. If the preserve_store value is true then the
     /// previous node's storage will be preserved. If false then the node will
     /// start with a fresh (empty) storage.
@@ -121,34 +89,6 @@ impl<DB: Database> AuthorityDetails<DB> {
         let mut internal = self.internal.write().await;
 
         internal.primary.start().await
-    }
-
-    pub async fn start_all_workers(&self, preserve_store: bool) -> eyre::Result<()> {
-        let mut internal = self.internal.write().await;
-
-        let execution_engine = internal.execution.clone();
-
-        for (_id, worker) in internal.workers.iter_mut() {
-            worker.start(preserve_store, &execution_engine).await?;
-        }
-
-        Ok(())
-    }
-
-    /// Starts the worker node by the provided id. If worker is not found then
-    /// a panic is raised. If the preserve_store value is true then the
-    /// previous node's storage will be preserved. If false then the node will
-    /// start with a fresh (empty) storage.
-    pub async fn start_worker(&self, id: WorkerId, preserve_store: bool) -> eyre::Result<()> {
-        let mut internal = self.internal.write().await;
-        let execution_engine = internal.execution.clone();
-
-        let worker = internal
-            .workers
-            .get_mut(&id)
-            .unwrap_or_else(|| panic!("Worker with id {} not found ", id));
-
-        worker.start(preserve_store, &execution_engine).await
     }
 
     /// Returns the current primary node running as a clone. If the primary
@@ -163,7 +103,7 @@ impl<DB: Database> AuthorityDetails<DB> {
     /// Returns the worker with the provided id. If not found then a panic
     /// is raised instead. If the worker is stopped and started again then
     /// the worker will need to be fetched again via this method.
-    pub async fn worker(&self, id: WorkerId) -> WorkerNodeDetails<DB> {
+    pub async fn worker(&self, id: WorkerId) -> WorkerNodeDetails {
         let internal = self.internal.read().await;
 
         internal
@@ -190,7 +130,7 @@ impl<DB: Database> AuthorityDetails<DB> {
     }
 
     /// Returns all the workers
-    async fn workers(&self) -> Vec<WorkerNodeDetails<DB>> {
+    async fn workers(&self) -> Vec<WorkerNodeDetails> {
         let internal = self.internal.read().await;
         let mut workers = Vec::new();
 
@@ -211,11 +151,6 @@ impl<DB: Database> AuthorityDetails<DB> {
         let internal = self.internal.read().await;
         let client = internal.execution.worker_http_client(worker_id).await?;
         Ok(client)
-    }
-
-    /// Returns an owned worker WAN if it exists.
-    pub async fn worker_network(&self, worker_id: WorkerId) -> Option<Network> {
-        self.worker(worker_id).await.network().await
     }
 }
 
@@ -258,15 +193,6 @@ impl<DB: Database> AuthorityFixture<DB> {
     /// The authority's [Address] for execution layer.
     pub fn execution_address(&self) -> Address {
         self.authority.execution_address()
-    }
-
-    /// Create a new anemo network for consensus.
-    pub fn new_network(&self, router: anemo::Router) -> anemo::Network {
-        anemo::Network::bind(self.authority.primary_network_address().to_anemo_address().unwrap())
-            .server_name("tn-test")
-            .private_key(self.primary_network_keypair().private().0.to_bytes())
-            .start(router)
-            .unwrap()
     }
 
     /// A reference to the authority's [Multiaddr] on the consensus network.

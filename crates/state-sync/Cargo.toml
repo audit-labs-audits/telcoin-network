@@ -23,6 +23,5 @@ tn-network-libp2p = { workspace = true }
 
 consensus-metrics.workspace = true
 tn-primary = { workspace = true }
-anemo = { workspace = true }
 
 [dev-dependencies]
