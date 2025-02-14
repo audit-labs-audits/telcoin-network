@@ -2,7 +2,10 @@
 
 use crate::{
     aggregators::VotesAggregator,
-    network::{client::NetworkClient, PrimaryRequest, PrimaryResponse},
+    network::{
+        client::{NetworkClient, RequestVoteResult},
+        PrimaryRequest, PrimaryResponse,
+    },
     state_sync::StateSynchronizer,
     ConsensusBus,
 };
@@ -177,15 +180,14 @@ impl<DB: Database> Certifier<DB> {
             };
 
             match client.request_vote(header.clone(), parents).await {
-                Ok(PrimaryResponse::Vote(vote)) => {
+                Ok(RequestVoteResult::Vote(vote)) => {
                     debug!(target: "primary::certifier", ?authority, ?vote, "Ok response received after request vote");
                     break vote;
                 }
-                Ok(PrimaryResponse::MissingParents(parents)) => {
+                Ok(RequestVoteResult::MissingParents(parents)) => {
                     debug!(target: "primary::certifier", ?authority, ?parents, "Ok missing parents response received after request vote");
                     missing_parents = parents;
                 }
-                Ok(_) => panic!("invalid response, this should have been an error!"),
                 Err(error) => {
                     if let NetworkError::RPCError(error) = error {
                         error!(target: "primary::certifier", ?authority, ?error, ?header, "fatal request for requested vote");

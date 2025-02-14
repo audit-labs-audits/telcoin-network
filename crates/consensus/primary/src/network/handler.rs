@@ -30,7 +30,7 @@ use tracing::{debug, error, warn};
 
 /// The type that handles requests from peers.
 #[derive(Clone)]
-pub struct RequestHandler<DB> {
+pub(crate) struct RequestHandler<DB> {
     /// Consensus config with access to database.
     consensus_config: ConsensusConfig<DB>,
     /// Inner-processs channel bus.
@@ -51,7 +51,7 @@ where
     DB: Database,
 {
     /// Create a new instance of Self.
-    pub fn new(
+    pub(crate) fn new(
         consensus_config: ConsensusConfig<DB>,
         consensus_bus: ConsensusBus,
         state_sync: StateSynchronizer<DB>,

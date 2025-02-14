@@ -185,7 +185,7 @@ where
 
     /// Create a handle to no where for test setup.
     pub fn new_for_test() -> Self {
-        let (sender, _) = mpsc::channel(10_000);
+        let (sender, _) = mpsc::channel(100);
         Self { sender }
     }
 
