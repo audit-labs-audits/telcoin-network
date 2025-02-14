@@ -61,7 +61,6 @@ async fn synchronize() {
         batch_fetcher: None,
         validator: Arc::new(NoopBatchValidator),
     };
-    //let handler = RequestHandler::new(target.consensus_config(), cb.clone(), synchronizer.clone());
 
     // Verify the batch is not in store
     assert!(store.get::<Batches>(&digest).unwrap().is_none());

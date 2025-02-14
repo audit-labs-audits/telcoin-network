@@ -4,7 +4,7 @@ use tn_network_libp2p::{
     PeerId,
 };
 use tn_network_types::FetchCertificatesRequest;
-use tn_types::{encode, BlockHash, Certificate, ConsensusHeader, Header};
+use tn_types::{encode, BlockHash, Certificate, CertificateDigest, ConsensusHeader, Header, Vote};
 
 use crate::network::message::PrimaryRPCError;
 
@@ -22,6 +22,18 @@ impl std::fmt::Debug for NetworkClient {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(f, "Primary Network Client[{}]", self.peer)
     }
+}
+
+/// Responses to a vote request.
+#[derive(Clone, Debug, PartialEq)]
+pub enum RequestVoteResult {
+    /// The peer's vote if the peer considered the proposed header valid.
+    Vote(Vote),
+    /// Missing certificates in order to vote.
+    ///
+    /// If the peer was unable to verify parents for a proposed header, they respond requesting
+    /// the missing certificate by digest.
+    MissingParents(Vec<CertificateDigest>),
 }
 
 impl NetworkClient {
@@ -43,18 +55,18 @@ impl NetworkClient {
         &self,
         header: Header,
         parents: Vec<Certificate>,
-    ) -> NetworkResult<PrimaryResponse> {
+    ) -> NetworkResult<RequestVoteResult> {
         let request = PrimaryRequest::Vote { header, parents };
         let res = self.network_handle.send_request(request, self.peer).await?;
         let res = res.await??;
         match res {
-            PrimaryResponse::Vote(vote) => Ok(PrimaryResponse::Vote(vote)),
+            PrimaryResponse::Vote(vote) => Ok(RequestVoteResult::Vote(vote)),
             PrimaryResponse::Error(PrimaryRPCError(s)) => Err(NetworkError::RPCError(s)),
             PrimaryResponse::RequestedCertificates(_vec) => Err(NetworkError::RPCError(
                 "Got wrong response, not a vote is requested certificates!".to_string(),
             )),
             PrimaryResponse::MissingParents(parents) => {
-                Ok(PrimaryResponse::MissingParents(parents))
+                Ok(RequestVoteResult::MissingParents(parents))
             }
             PrimaryResponse::ConsensusHeader(_consensus_header) => Err(NetworkError::RPCError(
                 "Got wrong response, not a vote is consensus header!".to_string(),

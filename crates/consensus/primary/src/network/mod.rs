@@ -59,7 +59,7 @@ where
     }
 
     /// Run the network.
-    pub fn spawn(mut self, task_manager: &TaskManager) {
+    pub(crate) fn spawn(mut self, task_manager: &TaskManager) {
         task_manager.spawn_task("primary network events", async move {
             loop {
                 tokio::select!(
