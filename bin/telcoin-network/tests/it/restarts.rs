@@ -96,14 +96,12 @@ fn run_restart_tests1(
         kill_child(&mut child2);
         return Err(Report::msg(format!("Expected a balance of {} got {bal}!", 10 * WEI_PER_TEL)));
     }
-    std::thread::sleep(Duration::from_secs(5));
     send_tel(&client_urls[0], &key, to_account, 10 * WEI_PER_TEL, 250, 21000, 1).inspect_err(
         |e| {
             kill_child(&mut child2);
             error!(target: "restart-test", ?e);
         },
     )?;
-    std::thread::sleep(Duration::from_secs(5));
     let bal = get_balance_above_with_retry(&client_urls[2], &to_account.to_string(), bal)
         .inspect_err(|e| {
             kill_child(&mut child2);
