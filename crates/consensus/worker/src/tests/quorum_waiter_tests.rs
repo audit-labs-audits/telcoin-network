@@ -1,6 +1,6 @@
 //! Unit tests for the worker's quorum waiter.
 
-use crate::WorkerRequest;
+use crate::{WorkerRequest, WorkerResponse};
 
 use super::*;
 use tn_network_libp2p::types::{NetworkCommand, NetworkHandle};
@@ -36,6 +36,20 @@ async fn wait_for_quorum() {
     // Forward the batch along with the handlers to the `QuorumWaiter`.
     let attest_handle = quorum_waiter.verify_batch(sealed_batch.clone(), Duration::from_secs(10));
 
+    for _i in 0..3 {
+        match network_rx.recv().await {
+            Some(NetworkCommand::SendRequest {
+                peer: _,
+                request: WorkerRequest::ReportBatch { sealed_batch: in_batch },
+                reply,
+            }) => {
+                assert_eq!(in_batch, sealed_batch);
+                reply.send(Ok(WorkerResponse::ReportBatch)).unwrap();
+            }
+            Some(_) => panic!("failed to get a batch!"),
+            None => panic!("failed to get a batch!"),
+        }
+    }
     // Wait for the `QuorumWaiter` to gather enough acknowledgements and output the batch.
     assert!(attest_handle.await.unwrap().is_ok());
 
@@ -45,35 +59,22 @@ async fn wait_for_quorum() {
     // Forward the batch along with the handlers to the `QuorumWaiter`.
     let attest2_handle = quorum_waiter.verify_batch(sealed_batch2.clone(), Duration::from_secs(10));
 
-    // Wait for the `QuorumWaiter` to gather enough acknowledgements and output the batch.
-    //assert!(attest2_handle.await.unwrap().is_ok());
-    attest2_handle.await.unwrap().unwrap();
-
     // Ensure the other listeners correctly received the batches.
     for _i in 0..3 {
         match network_rx.recv().await {
             Some(NetworkCommand::SendRequest {
                 peer: _,
                 request: WorkerRequest::ReportBatch { sealed_batch: in_batch },
-                reply: _,
+                reply,
             }) => {
-                assert_eq!(in_batch, sealed_batch)
+                assert_eq!(in_batch, sealed_batch2);
+                reply.send(Ok(WorkerResponse::ReportBatch)).unwrap();
             }
             Some(_) => panic!("failed to get a batch!"),
             None => panic!("failed to get a batch!"),
         }
     }
-    for _i in 0..3 {
-        match network_rx.recv().await {
-            Some(NetworkCommand::SendRequest {
-                peer: _,
-                request: WorkerRequest::ReportBatch { sealed_batch: in_batch },
-                reply: _,
-            }) => {
-                assert_eq!(in_batch, sealed_batch2)
-            }
-            Some(_) => panic!("failed to get a batch!"),
-            None => panic!("failed to get a batch!"),
-        }
-    }
+
+    // Wait for the `QuorumWaiter` to gather enough acknowledgements and output the batch.
+    attest2_handle.await.unwrap().unwrap();
 }

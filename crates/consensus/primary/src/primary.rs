@@ -21,11 +21,9 @@ use tn_types::{traits::EncodeDecodeBase64, TaskManager};
 use tokio::sync::mpsc;
 use tracing::info;
 
-/* XXXX fix me
 #[cfg(test)]
 #[path = "tests/primary_tests.rs"]
 pub mod primary_tests;
-*/
 
 pub struct Primary<DB> {
     /// The Primary's network.
@@ -87,12 +85,6 @@ impl<DB: Database> Primary<DB> {
         if consensus_bus.node_mode().borrow().is_active_cvv() {
             self.state_sync.spawn(task_manager);
         }
-
-        info!(
-            "Primary {} listening to network admin messages on 127.0.0.1:{}",
-            config.authority().id(),
-            config.parameters().network_admin_server.primary_network_admin_server_port
-        );
 
         Certifier::spawn(
             config.clone(),

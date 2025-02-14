@@ -140,12 +140,6 @@ impl Worker {
             network_handle.clone(),
         );
 
-        /* XXXX Self::shutdown_network_listener(
-            consensus_config.shutdown().subscribe(),
-            network_handle.clone(),
-            task_manager,
-        );*/
-
         // NOTE: This log entry is used to compute performance.
         info!(target: "worker::worker",
             "Worker {} successfully booted on {}",
@@ -159,30 +153,6 @@ impl Worker {
 
         batch_provider
     }
-
-    /* XXXX
-    /// Spawns a task responsible for explicitly shutting down the network
-    /// when a shutdown signal has been sent to the node.
-    fn shutdown_network_listener(
-        rx_shutdown: Noticer,
-        network_handle: NetworkHandle<WorkerRequest, WorkerResponse>,
-        task_manager: &TaskManager,
-    ) {
-        task_manager.spawn_task(
-            "worker shutdown network listener task",
-            monitored_future!(
-                async move {
-                    rx_shutdown.await;
-                    if let Err(e) = network.shutdown().await {
-                        error!(target: "worker::worker", "Error while shutting down network: {e}");
-                    }
-                    info!(target: "worker::worker", "Worker network server shutdown");
-                },
-                "WorkerShutdownNetworkListenerTask"
-            ),
-        );
-    }
-    */
 
     /// Builds a new batch provider responsible for handling client transactions.
     fn new_batch_provider<DB: Database>(

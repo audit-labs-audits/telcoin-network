@@ -87,7 +87,7 @@ impl QuorumWaiter {
 
     /// Helper function. It waits for a future to complete and then delivers a value.
     async fn waiter(
-        wait_for: JoinHandle<Result<(), NetworkError>>, //CancelOnDropHandler<eyre::Result<anemo::Response<()>>>,
+        wait_for: JoinHandle<Result<(), NetworkError>>, /* CancelOnDropHandler<eyre::Result<anemo::Response<()>>>, */
         deliver: Stake,
     ) -> Result<Stake, WaiterError> {
         match wait_for.await {
@@ -124,7 +124,7 @@ impl QuorumWaiterTrait for QuorumWaiter {
                 let (primary_names, worker_names): (Vec<_>, Vec<_>) = workers.into_iter().unzip();
 
                 let handlers = inner.network.report_batch_to_peers(
-                    worker_names.iter().map(|n| network_public_key_to_libp2p(n)).collect(),
+                    worker_names.iter().map(network_public_key_to_libp2p).collect(),
                     sealed_batch,
                 );
                 let _timer = inner.metrics.batch_broadcast_quorum_latency.start_timer();

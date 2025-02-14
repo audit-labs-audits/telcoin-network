@@ -1,7 +1,13 @@
 // SPDX-License-Identifier: Apache-2.0
 //! Library for managing all components used by a full-node in a single process.
 
-use std::time::Duration;
+use std::{
+    sync::{
+        atomic::{AtomicU32, Ordering},
+        Arc,
+    },
+    time::Duration,
+};
 
 use crate::{primary::PrimaryNode, worker::WorkerNode};
 use consensus_metrics::start_prometheus_server;
@@ -53,6 +59,7 @@ fn dial_primary(
     handle: NetworkHandle<PrimaryRequest, PrimaryResponse>,
     peer_id: PeerId,
     peer_addr: tn_network_libp2p::Multiaddr,
+    connected_count: Arc<AtomicU32>,
 ) {
     tokio::spawn(async move {
         let mut backoff = 1;
@@ -63,6 +70,7 @@ fn dial_primary(
                 backoff += backoff;
             }
         }
+        connected_count.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
     });
 }
 
@@ -71,6 +79,7 @@ fn dial_worker(
     handle: WorkerNetworkHandle,
     peer_id: PeerId,
     peer_addr: tn_network_libp2p::Multiaddr,
+    connected_count: Arc<AtomicU32>,
 ) {
     tokio::spawn(async move {
         let mut backoff = 1;
@@ -81,6 +90,7 @@ fn dial_worker(
                 backoff += backoff;
             }
         }
+        connected_count.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
     });
 }
 
@@ -167,18 +177,25 @@ where
         consensus_network_handle.subscribe(IdentTopic::new("tn-primary")).await?;
         let my_authority = consensus_config.authority();
         consensus_network_handle.start_listening(my_authority.primary_network_address().inner()).await?;
-        let worker_address = worker_address(&worker_id, &consensus_config);
+        let worker_address = worker_address(worker_id, &consensus_config);
         worker_network_handle.start_listening(worker_address.inner()).await?;
         let worker_network_handle = WorkerNetworkHandle::new(worker_network_handle);
+        let peers_connected = Arc::new(AtomicU32::new(0));
+        let workers_connected = Arc::new(AtomicU32::new(0));
         for (authority_id, addr, _) in consensus_config.committee().others_primaries_by_id(consensus_config.authority().id()) {
             let peer_id = consensus_config.peer_id_for_authority(&authority_id).expect("missing peer id!");
-            dial_primary(consensus_network_handle.clone(), peer_id, addr.inner());
+            dial_primary(consensus_network_handle.clone(), peer_id, addr.inner(), peers_connected.clone());
         }
         for (id, addr) in consensus_config.worker_cache().all_workers() {
             if addr != worker_address {
                 let peer_id = network_public_key_to_libp2p(&id);
-                dial_worker(worker_network_handle.clone(), peer_id, addr.inner());
+                dial_worker(worker_network_handle.clone(), peer_id, addr.inner(), workers_connected.clone());
             }
+        }
+        let quorum = ((consensus_config.committee().size() * 2) / 3) as u32;
+        // Wait until we are connected to a quorum of peers (note this assumes we are a validator...).
+        while peers_connected.load(Ordering::Relaxed) < quorum || workers_connected.load(Ordering::Relaxed) < quorum {
+            tokio::time::sleep(Duration::from_millis(500)).await;
         }
         let primary = PrimaryNode::new(consensus_config.clone(), consensus_bus.clone(), consensus_network_handle, rx_event_stream);
 

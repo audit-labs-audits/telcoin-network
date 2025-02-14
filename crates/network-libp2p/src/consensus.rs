@@ -371,7 +371,11 @@ where
             }
             NetworkCommand::Dial { peer_id, peer_addr, reply } => {
                 if let hash_map::Entry::Vacant(entry) = self.pending_dials.entry(peer_id) {
-                    match self.swarm.dial(peer_addr.with(Protocol::P2p(peer_id))) {
+                    // Add the peer we are dialing so we can easily reconnect after a timeout, etc.
+                    // Can use "peer_addr.with(Protocol::P2p(peer_id))})" as the dial parameter
+                    // without adding the peer but libp2p won't remember it.
+                    self.swarm.add_peer_address(peer_id, peer_addr);
+                    match self.swarm.dial(peer_id) {
                         Ok(()) => {
                             entry.insert(reply);
                         }

@@ -11,8 +11,7 @@ use tn_network_libp2p::{
     types::{IntoResponse as _, NetworkEvent, NetworkHandle},
     GossipMessage, PeerId, ResponseChannel,
 };
-use tn_network_types::WorkerToPrimaryClient;
-use tn_network_types::{WorkerOthersBatchMessage, WorkerOwnBatchMessage};
+use tn_network_types::{WorkerOthersBatchMessage, WorkerOwnBatchMessage, WorkerToPrimaryClient};
 use tn_storage::{traits::Database, PayloadStore};
 use tn_types::{BlockHash, Certificate, Header, Noticer, TaskManager, TnSender};
 use tokio::sync::{mpsc, oneshot};

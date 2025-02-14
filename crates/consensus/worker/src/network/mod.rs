@@ -338,7 +338,7 @@ impl<DB: Database> PrimaryToWorkerClient for PrimaryReceiverHandler<DB> {
 
         let response = tokio::time::timeout(
             self.request_batches_timeout,
-            network.request_batches(peer.clone(), missing.iter().cloned().collect()),
+            network.request_batches(peer, missing.iter().cloned().collect()),
         )
         .await??;
 

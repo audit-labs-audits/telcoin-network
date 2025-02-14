@@ -219,7 +219,7 @@ where
 
             // forward to worker and wait for ack that quorum was reached
             if let Err(e) = to_worker.send((batch.seal_slow(), ack)).await {
-                error!(target: "worker::batch_builder", ?e, "failed to send next block to worker");
+                error!(target: "worker::batch_builder", ?e, "failed to send next batch to worker");
                 // try to return error if worker channel closed
                 let _ = result.send(Err(e.into()));
                 return;
@@ -237,7 +237,7 @@ where
                             }
                         }
                         Err(error) => {
-                            error!(target: "worker::batch_builder", ?error, "error while sealing block");
+                            error!(target: "worker::batch_builder", ?error, "error while sealing batch");
                             let converted = match error {
                                 BlockSealError::FatalDBFailure => {
                                     // fatal - return error

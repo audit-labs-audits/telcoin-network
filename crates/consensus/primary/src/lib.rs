@@ -20,12 +20,6 @@ mod state_sync;
 #[path = "tests/certificate_tests.rs"]
 mod certificate_tests;
 
-/* XXXX- need with libp2p?
-#[cfg(test)]
-#[path = "tests/rpc_tests.rs"]
-mod rpc_tests;
-*/
-
 pub use crate::primary::Primary;
 
 mod consensus_bus;
