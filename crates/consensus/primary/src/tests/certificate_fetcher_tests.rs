@@ -108,7 +108,7 @@ async fn fetch_certificates_basic() {
     // Make a certificate fetcher
     CertificateFetcher::spawn(
         primary.consensus_config(),
-        client_network,
+        client_network.into(),
         cb.clone(),
         synchronizer.clone(),
         &task_manager,

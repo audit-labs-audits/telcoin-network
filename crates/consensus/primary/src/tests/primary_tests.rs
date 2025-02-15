@@ -2,7 +2,9 @@
 
 use super::Primary;
 use crate::{
-    network::{handler::RequestHandler, MissingCertificatesRequest, PrimaryResponse},
+    network::{
+        handler::RequestHandler, MissingCertificatesRequest, PrimaryNetwork, PrimaryResponse,
+    },
     state_sync::StateSynchronizer,
     ConsensusBus,
 };
@@ -29,14 +31,26 @@ use tn_types::{
 };
 use tokio::{sync::mpsc, time::timeout};
 
-fn get_bus_and_primary<DB: Database>(config: ConsensusConfig<DB>) -> (ConsensusBus, Primary<DB>) {
+fn get_bus_and_primary<DB: Database>(
+    config: ConsensusConfig<DB>,
+    task_manager: &TaskManager,
+) -> (ConsensusBus, Primary<DB>) {
     let (event_stream, rx_event_stream) = mpsc::channel(100);
     let consensus_bus = ConsensusBus::new_with_args(config.config().parameters.gc_depth);
     let consensus_network = ConsensusNetwork::new_for_primary(&config, event_stream)
         .expect("p2p network create failed!");
     let consensus_network_handle = consensus_network.network_handle();
+    let state_sync = StateSynchronizer::new(config.clone(), consensus_bus.clone());
+    let primary_network = PrimaryNetwork::new(
+        rx_event_stream,
+        consensus_network_handle.clone().into(),
+        config.clone(),
+        consensus_bus.clone(),
+        state_sync.clone(),
+    );
+    primary_network.spawn(task_manager);
 
-    let primary = Primary::new(config, &consensus_bus, consensus_network_handle, rx_event_stream);
+    let primary = Primary::new(config, &consensus_bus, consensus_network_handle.into(), state_sync);
     (consensus_bus, primary)
 }
 

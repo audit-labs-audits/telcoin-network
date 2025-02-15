@@ -6,7 +6,7 @@
 mod batch_fetcher;
 mod batch_provider;
 mod network;
-pub use network::{WorkerNetworkHandle, WorkerRequest, WorkerResponse};
+pub use network::{WorkerNetwork, WorkerNetworkHandle, WorkerRequest, WorkerResponse};
 pub mod quorum_waiter;
 mod worker;
 

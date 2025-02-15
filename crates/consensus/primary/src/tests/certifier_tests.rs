@@ -1,11 +1,14 @@
 //! Certifier tests
 
 use super::*;
-use crate::ConsensusBus;
+use crate::{
+    network::{PrimaryRequest, PrimaryResponse},
+    ConsensusBus,
+};
 use fastcrypto::traits::KeyPair;
 use rand::{rngs::StdRng, SeedableRng};
 use std::{collections::HashMap, num::NonZeroUsize};
-use tn_network_libp2p::types::NetworkCommand;
+use tn_network_libp2p::types::{NetworkCommand, NetworkHandle};
 use tn_storage::mem_db::MemDatabase;
 use tn_test_utils::CommitteeFixture;
 use tn_types::{BlsKeypair, Notifier, SignatureVerificationState, TnSender};
@@ -45,7 +48,7 @@ async fn propose_header_to_form_certificate() {
         primary.consensus_config(),
         cb.clone(),
         synchronizer,
-        network.clone(),
+        network.clone().into(),
         &task_manager,
     );
 
@@ -105,7 +108,7 @@ async fn propose_header_failure() {
         primary.consensus_config(),
         cb.clone(),
         synchronizer,
-        network.clone(),
+        network.clone().into(),
         &task_manager,
     );
 
@@ -192,7 +195,13 @@ async fn run_vote_aggregator_with_param(
     let synchronizer = StateSynchronizer::new(primary.consensus_config(), cb.clone());
     let task_manager = TaskManager::default();
     synchronizer.spawn(&task_manager);
-    Certifier::spawn(primary.consensus_config(), cb.clone(), synchronizer, network, &task_manager);
+    Certifier::spawn(
+        primary.consensus_config(),
+        cb.clone(),
+        synchronizer,
+        network.into(),
+        &task_manager,
+    );
 
     // Send a proposed header.
     let proposed_digest = proposed_header.digest();
@@ -246,7 +255,7 @@ async fn test_shutdown_core() {
         primary.consensus_config(),
         cb.clone(),
         synchronizer.clone(),
-        NetworkHandle::new_for_test(),
+        NetworkHandle::new_for_test().into(),
         &task_manager,
     );
 
