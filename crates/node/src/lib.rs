@@ -136,7 +136,7 @@ async fn start_networks<DB: TNDatabase>(
     consensus_network_handle
         .start_listening(my_authority.primary_network_address().inner())
         .await?;
-    let worker_address = worker_address(worker_id, &consensus_config);
+    let worker_address = worker_address(worker_id, consensus_config);
     worker_network_handle.start_listening(worker_address.inner()).await?;
     let consensus_network_handle = PrimaryNetworkHandle::new(consensus_network_handle);
     let worker_network_handle = WorkerNetworkHandle::new(worker_network_handle);
