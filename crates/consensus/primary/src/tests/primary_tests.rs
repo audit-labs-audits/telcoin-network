@@ -441,7 +441,7 @@ async fn test_request_vote_missing_batches() {
     // Set up mock worker.
     let worker = primary.worker();
     let _worker_address = &worker.info().worker_address;
-    let worker_peer_id = network_public_key_to_libp2p(&worker.keypair().public());
+    let worker_peer_id = network_public_key_to_libp2p(worker.keypair().public());
     let mock_server = MockPrimaryToWorkerClient {};
 
     client.set_primary_to_worker_local_handler(worker_peer_id, Arc::new(mock_server));
@@ -503,7 +503,7 @@ async fn test_request_vote_already_voted() {
     // Set up mock worker.
     let worker = primary.worker();
     let _worker_address = &worker.info().worker_address;
-    let worker_peer_id = network_public_key_to_libp2p(&worker.keypair().public());
+    let worker_peer_id = network_public_key_to_libp2p(worker.keypair().public());
     let mock_server = MockPrimaryToWorkerClient {};
 
     client.set_primary_to_worker_local_handler(worker_peer_id, Arc::new(mock_server));
@@ -710,7 +710,7 @@ async fn test_request_vote_created_at_in_future() {
     // Set up mock worker.
     let worker = primary.worker();
     let _worker_address = &worker.info().worker_address;
-    let worker_peer_id = network_public_key_to_libp2p(&worker.keypair().public());
+    let worker_peer_id = network_public_key_to_libp2p(worker.keypair().public());
     let mock_server = MockPrimaryToWorkerClient {};
 
     client.set_primary_to_worker_local_handler(worker_peer_id, Arc::new(mock_server));

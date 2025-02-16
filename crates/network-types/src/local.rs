@@ -134,12 +134,20 @@ impl PrimaryToWorkerClient for LocalNetwork {
 #[async_trait::async_trait]
 impl WorkerToPrimaryClient for LocalNetwork {
     async fn report_own_batch(&self, request: WorkerOwnBatchMessage) -> eyre::Result<()> {
-        let c = self.get_worker_to_primary_handler().await.expect("worker to primary not set!");
-        c.report_own_batch(request).await
+        if let Some(c) = self.get_worker_to_primary_handler().await {
+            c.report_own_batch(request).await?;
+        } else {
+            tracing::warn!(target = "local_network", "working to primary handler not set yet!");
+        }
+        Ok(())
     }
 
     async fn report_others_batch(&self, request: WorkerOthersBatchMessage) -> eyre::Result<()> {
-        let c = self.get_worker_to_primary_handler().await.expect("worker to primary not set!");
-        c.report_others_batch(request).await
+        if let Some(c) = self.get_worker_to_primary_handler().await {
+            c.report_others_batch(request).await?;
+        } else {
+            tracing::warn!(target = "local_network", "working to primary handler not set yet!");
+        }
+        Ok(())
     }
 }

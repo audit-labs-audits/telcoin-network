@@ -165,33 +165,24 @@ async fn fetch_certificates_basic() {
     // Verify the fetch request.
     let mut first_batch_len = 0;
     let mut first_batch_resp = vec![];
-    if let Some(req) = fake_receiver.recv().await {
-        match req {
-            NetworkCommand::SendRequest { peer: _, request, reply } => match request {
-                PrimaryRequest::MissingCertificates { inner } => {
-                    let (lower_bound, skip_rounds) = inner.get_bounds().unwrap();
-                    assert_eq!(lower_bound, 0);
-                    assert_eq!(skip_rounds.len(), fixture.authorities().count());
-                    for rounds in skip_rounds.values() {
-                        assert_eq!(rounds, &(1..2).collect());
-                    }
-
-                    // Send back another 62 certificates.
-                    first_batch_len = 62;
-                    first_batch_resp = certificates
-                        .iter()
-                        .skip(num_written)
-                        .take(first_batch_len)
-                        .cloned()
-                        .collect_vec();
-                    reply
-                        .send(Ok(PrimaryResponse::RequestedCertificates(first_batch_resp.clone())))
-                        .unwrap();
-                }
-                _ => {}
-            },
-            _ => {}
+    if let Some(NetworkCommand::SendRequest {
+        peer: _,
+        request: PrimaryRequest::MissingCertificates { inner },
+        reply,
+    }) = fake_receiver.recv().await
+    {
+        let (lower_bound, skip_rounds) = inner.get_bounds().unwrap();
+        assert_eq!(lower_bound, 0);
+        assert_eq!(skip_rounds.len(), fixture.authorities().count());
+        for rounds in skip_rounds.values() {
+            assert_eq!(rounds, &(1..2).collect());
         }
+
+        // Send back another 62 certificates.
+        first_batch_len = 62;
+        first_batch_resp =
+            certificates.iter().skip(num_written).take(first_batch_len).cloned().collect_vec();
+        reply.send(Ok(PrimaryResponse::RequestedCertificates(first_batch_resp.clone()))).unwrap();
     }
 
     // The certificates up to index 66 (4 + 62) should be written to store eventually by core.

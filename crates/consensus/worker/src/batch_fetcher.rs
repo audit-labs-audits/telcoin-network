@@ -563,7 +563,7 @@ mod tests {
                 digests.chunks(MAX_READ_BLOCK_DIGESTS).map(|chunk| chunk.to_vec()).collect_vec();
             for digests_chunk in digests_chunks {
                 for digest in digests_chunk {
-                    if let Some(batch) = self.data.get(&worker).unwrap().get(&digest) {
+                    if let Some(batch) = self.data.get(worker).unwrap().get(&digest) {
                         if total_size < MAX_REQUEST_BATCHES_RESPONSE_SIZE {
                             batches.push(batch.clone());
                             total_size += batch.size();

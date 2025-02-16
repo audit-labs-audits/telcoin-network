@@ -58,16 +58,15 @@ async fn propose_header_to_form_certificate() {
     cb.headers().send(proposed_header).await.unwrap();
     // Wait for the vote requests and send the votes back.
     while let Some(req) = network_rx.recv().await {
-        match req {
-            NetworkCommand::SendRequest { peer, request, reply } => match request {
-                PrimaryRequest::Vote { header: _, parents: _ } => {
-                    if let Some(vote) = peer_votes.remove(&peer) {
-                        reply.send(Ok(PrimaryResponse::Vote(vote))).unwrap();
-                    }
-                }
-                _ => {}
-            },
-            _ => {}
+        if let NetworkCommand::SendRequest {
+            peer,
+            request: PrimaryRequest::Vote { header: _, parents: _ },
+            reply,
+        } = req
+        {
+            if let Some(vote) = peer_votes.remove(&peer) {
+                reply.send(Ok(PrimaryResponse::Vote(vote))).unwrap();
+            }
         }
         if peer_votes.is_empty() {
             break;
@@ -118,14 +117,13 @@ async fn propose_header_failure() {
     // Wait for the vote requests and send back errors.
     let mut i = 0;
     while let Some(req) = network_rx.recv().await {
-        match req {
-            NetworkCommand::SendRequest { peer: _, request, reply } => match request {
-                PrimaryRequest::Vote { header: _, parents: _ } => {
-                    reply.send(Err(NetworkError::RPCError("bad vote".to_string()))).unwrap();
-                }
-                _ => {}
-            },
-            _ => {}
+        if let NetworkCommand::SendRequest {
+            peer: _,
+            request: PrimaryRequest::Vote { header: _, parents: _ },
+            reply,
+        } = req
+        {
+            reply.send(Err(NetworkError::RPCError("bad vote".to_string()))).unwrap();
         }
         i += 1;
         if i >= 3 {
@@ -208,16 +206,15 @@ async fn run_vote_aggregator_with_param(
     cb.headers().send(proposed_header).await.unwrap();
     // Wait for the vote requests and send the votes back.
     while let Some(req) = network_rx.recv().await {
-        match req {
-            NetworkCommand::SendRequest { peer, request, reply } => match request {
-                PrimaryRequest::Vote { header: _, parents: _ } => {
-                    if let Some(vote) = peer_votes.remove(&peer) {
-                        reply.send(Ok(PrimaryResponse::Vote(vote))).unwrap();
-                    }
-                }
-                _ => {}
-            },
-            _ => {}
+        if let NetworkCommand::SendRequest {
+            peer,
+            request: PrimaryRequest::Vote { header: _, parents: _ },
+            reply,
+        } = req
+        {
+            if let Some(vote) = peer_votes.remove(&peer) {
+                reply.send(Ok(PrimaryResponse::Vote(vote))).unwrap();
+            }
         }
         if peer_votes.is_empty() {
             break;
