@@ -438,7 +438,7 @@ mod tests {
     use std::{str::FromStr, time::Duration};
     use tempfile::TempDir;
     use tn_engine::execute_consensus_output;
-    use tn_network_types::local::LocalNetwork;
+    use tn_network_types::{local::LocalNetwork, MockWorkerToPrimaryHang};
     use tn_node_traits::{BuildArguments, TNExecution, TelcoinNode};
     use tn_storage::{open_db, tables::Batches, traits::Database};
     use tn_test_utils::{adiri_genesis_seeded, get_gas_price, TransactionFactory};
@@ -516,6 +516,8 @@ mod tests {
             reth_transaction_pool::Pool::eth_pool(validator, blob_store, PoolConfig::default());
         let address = Address::from(U160::from(33));
         let client = LocalNetwork::new_with_empty_id();
+        let worker_to_primary = Arc::new(MockWorkerToPrimaryHang {});
+        client.set_worker_to_primary_local_handler(worker_to_primary);
         let temp_dir = TempDir::new().unwrap();
         let store = open_db(temp_dir.path());
         let qw = TestMakeBlockQuorumWaiter();

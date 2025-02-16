@@ -43,6 +43,7 @@ tempfile = { workspace = true }
 reth-provider = { workspace = true, features = ["test-utils"] }
 reth-consensus = { workspace = true }
 eyre = { workspace = true }
+tn-network-libp2p = { workspace = true }
 
 # integration tests
 prometheus = { workspace = true }

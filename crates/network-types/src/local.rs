@@ -114,9 +114,12 @@ impl PrimaryToWorkerClient for LocalNetwork {
         request: WorkerSynchronizeMessage,
     ) -> eyre::Result<()> {
         let peer_id = network_public_key_to_libp2p(&worker_name);
-        let c =
-            self.get_primary_to_worker_handler(peer_id).await.expect("primary to worker not set!");
-        c.synchronize(worker_name, request).await
+        if let Some(c) = self.get_primary_to_worker_handler(peer_id).await {
+            c.synchronize(worker_name, request).await
+        } else {
+            tracing::warn!(target = "local_network", "primary to worker handler not set yet!");
+            Err(eyre::eyre!("primary to worker not set yet"))
+        }
     }
 
     async fn fetch_batches(
@@ -125,9 +128,12 @@ impl PrimaryToWorkerClient for LocalNetwork {
         request: FetchBatchesRequest,
     ) -> eyre::Result<FetchBatchResponse> {
         let peer_id = network_public_key_to_libp2p(&worker_name);
-        let c =
-            self.get_primary_to_worker_handler(peer_id).await.expect("primary to worker not set!");
-        c.fetch_batches(worker_name, request).await
+        if let Some(c) = self.get_primary_to_worker_handler(peer_id).await {
+            c.fetch_batches(worker_name, request).await
+        } else {
+            tracing::warn!(target = "local_network", "primary to worker handler not set yet!");
+            Err(eyre::eyre!("primary to worker not set yet"))
+        }
     }
 }
 

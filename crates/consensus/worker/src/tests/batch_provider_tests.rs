@@ -3,24 +3,10 @@ use super::*;
 use crate::quorum_waiter::QuorumWaiterError;
 use std::sync::Mutex;
 use tempfile::TempDir;
-use tn_network_types::{WorkerOthersBatchMessage, WorkerToPrimaryClient};
+use tn_network_types::MockWorkerToPrimary;
 use tn_storage::open_db;
 use tn_test_utils::transaction;
 use tn_types::Batch;
-
-/// Dumb mock to just return Ok on calls for tests.
-pub struct MockWorkerToPrimary();
-
-#[async_trait::async_trait]
-impl WorkerToPrimaryClient for MockWorkerToPrimary {
-    async fn report_own_batch(&self, _request: WorkerOwnBatchMessage) -> eyre::Result<()> {
-        Ok(())
-    }
-
-    async fn report_others_batch(&self, _request: WorkerOthersBatchMessage) -> eyre::Result<()> {
-        Ok(())
-    }
-}
 
 #[derive(Clone, Debug)]
 struct TestMakeBlockQuorumWaiter(Arc<Mutex<Option<SealedBatch>>>);
