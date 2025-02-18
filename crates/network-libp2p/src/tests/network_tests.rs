@@ -7,7 +7,7 @@ use common::{TestPrimaryRequest, TestPrimaryResponse, TestWorkerRequest, TestWor
 use tn_config::ConsensusConfig;
 use tn_storage::mem_db::MemDatabase;
 use tn_test_utils::{fixture_batch_with_transactions, CommitteeFixture};
-use tn_types::{Certificate, Header};
+use tn_types::{libp2p_to_fastcrypto, Certificate, Header};
 use tokio::{sync::mpsc, time::timeout};
 
 /// A peer on TN
@@ -552,14 +552,8 @@ fn test_peer_id_to_from_fastcrypto() {
     let fastcrypto_to_libp2p = config.committee_peer_ids();
     // assert libp2p -> fastcrypto works
     for key in fastcrypto_to_libp2p.iter() {
-        let fc_key = config
-            .network_config()
-            .ed25519_libp2p_to_fastcrypto(key)
-            .expect("libp2p to fastcrypto ed25519 key");
-        let libp2p_key_again = config
-            .network_config()
-            .ed25519_fastcrypto_to_libp2p(&fc_key)
-            .expect("fastcrypto to libp2p ed25519 key");
+        let fc_key = libp2p_to_fastcrypto(key);
+        let libp2p_key_again = network_public_key_to_libp2p(&fc_key);
         // sanity check - cast back to original type
         assert_eq!(fc_key.as_ref(), &libp2p_key_again.as_ref().digest()[4..]);
     }

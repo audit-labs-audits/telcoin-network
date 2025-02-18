@@ -2,7 +2,7 @@
 
 use libp2p::{request_response::ProtocolSupport, StreamProtocol};
 use std::time::Duration;
-use tn_types::{traits::ToFromBytes as _, NetworkPublicKey, Round};
+use tn_types::Round;
 
 /// The container for all network configurations.
 #[derive(Debug, Default)]
@@ -24,29 +24,6 @@ impl NetworkConfig {
     /// Return a reference to the [LibP2pConfig].
     pub fn libp2p_config(&self) -> &LibP2pConfig {
         &self.libp2p_config
-    }
-
-    /// Helper method to convert fastcrypto -> libp2p ed25519.
-    pub fn ed25519_fastcrypto_to_libp2p(
-        &self,
-        fastcrypto: &NetworkPublicKey,
-    ) -> Option<libp2p::PeerId> {
-        let bytes = fastcrypto.as_ref().to_vec();
-        let ed_public_key = libp2p::identity::ed25519::PublicKey::try_from_bytes(&bytes).ok();
-        ed_public_key.map(|k| libp2p::PeerId::from_public_key(&k.into()))
-    }
-
-    /// Helper method to convert libp2p -> fastcrypto ed25519.
-    pub fn ed25519_libp2p_to_fastcrypto(
-        &self,
-        peer_id: &libp2p::PeerId,
-    ) -> Option<fastcrypto::ed25519::Ed25519PublicKey> {
-        let bytes = peer_id.as_ref().digest();
-        // skip first 4 bytes:
-        // - 2 bytes: pubkey type (TN is ed25519 only)
-        // - 1 byte: overhead for multihash type
-        // - 1 byte: pubkey size
-        fastcrypto::ed25519::Ed25519PublicKey::from_bytes(&bytes[4..]).ok()
     }
 }
 

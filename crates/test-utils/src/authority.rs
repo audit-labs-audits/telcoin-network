@@ -102,18 +102,16 @@ impl<DB: Database> AuthorityFixture<DB> {
     }
 
     /// Generate a new [AuthorityFixture].
-    pub(crate) fn generate<P>(
+    pub(crate) fn generate(
         number_of_workers: NonZeroUsize,
-        mut get_port: P,
         authority: Authority,
-        primary_keypair: BlsKeypair,
-        key_config: KeyConfig,
+        keys: (BlsKeypair, KeyConfig),
         committee: Committee,
         db: DB,
-    ) -> Self
-    where
-        P: FnMut(&str) -> u16,
-    {
+        worker: WorkerFixture,
+        worker_cache: WorkerCache,
+    ) -> Self {
+        let (primary_keypair, key_config) = keys;
         // Make sure our keys are correct.
         assert_eq!(&key_config.primary_public_key(), authority.protocol_key());
         assert_eq!(key_config.primary_network_public_key(), authority.network_key());
@@ -135,16 +133,10 @@ impl<DB: Database> AuthorityFixture<DB> {
             node_config,
             key_config.clone(),
             committee,
-            None,
+            worker_cache,
         )
         .expect("failed to generate config!");
 
-        let worker = WorkerFixture::generate(key_config.clone(), authority.id().0, &mut get_port);
-
         Self { authority, worker, consensus_config, primary_keypair }
-    }
-
-    pub(crate) fn set_worker_cache(&mut self, worker_cache: WorkerCache) {
-        self.consensus_config.set_worker_cache(worker_cache);
     }
 }

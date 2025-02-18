@@ -9,10 +9,9 @@ use crate::{
 };
 use std::sync::Arc;
 use tn_config::ConsensusConfig;
-use tn_network_libp2p::network_public_key_to_libp2p;
 use tn_network_types::local::LocalNetwork;
 use tn_storage::traits::Database;
-use tn_types::{BatchValidation, WorkerId};
+use tn_types::{network_public_key_to_libp2p, BatchValidation, WorkerId};
 use tracing::info;
 
 /// The default channel capacity for each channel of the worker.
@@ -21,6 +20,7 @@ pub const CHANNEL_CAPACITY: usize = 1_000;
 /// The main worker struct that holds all information needed for worker.
 pub struct Worker {}
 
+// TODO Issue 221- make the BatchProvider the Worker.
 impl Worker {
     /// Spawn the worker.
     ///
