@@ -13,13 +13,10 @@ use tn_network_libp2p::{
 use tn_network_types::{
     FetchBatchResponse, FetchBatchesRequest, PrimaryToWorkerClient, WorkerSynchronizeMessage,
 };
-use tn_storage::{
-    tables::Batches,
-    traits::{Database, DbTxMut},
-};
+use tn_storage::tables::Batches;
 use tn_types::{
-    encode, network_public_key_to_libp2p, now, BatchValidation, BlockHash, Committee,
-    NetworkPublicKey, Noticer, SealedBatch, TaskManager, WorkerCache, WorkerId,
+    encode, network_public_key_to_libp2p, now, BatchValidation, BlockHash, Committee, Database,
+    DbTxMut, NetworkPublicKey, Noticer, SealedBatch, TaskManager, WorkerCache, WorkerId,
 };
 use tokio::{
     sync::{mpsc, oneshot},

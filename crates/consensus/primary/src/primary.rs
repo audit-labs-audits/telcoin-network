@@ -11,8 +11,7 @@ use crate::{
 };
 use std::sync::Arc;
 use tn_config::ConsensusConfig;
-use tn_storage::traits::Database;
-use tn_types::{network_public_key_to_libp2p, traits::EncodeDecodeBase64, TaskManager};
+use tn_types::{network_public_key_to_libp2p, traits::EncodeDecodeBase64, Database, TaskManager};
 use tracing::info;
 
 #[cfg(test)]

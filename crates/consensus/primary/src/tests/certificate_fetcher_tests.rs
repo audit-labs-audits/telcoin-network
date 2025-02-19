@@ -12,10 +12,11 @@ use fastcrypto::hash::Hash;
 use itertools::Itertools;
 use std::{collections::BTreeSet, time::Duration};
 use tn_network_libp2p::types::{NetworkCommand, NetworkHandle};
-use tn_storage::{mem_db::MemDatabase, traits::Database, CertificateStore};
+use tn_storage::{mem_db::MemDatabase, CertificateStore};
 use tn_test_utils::CommitteeFixture;
 use tn_types::{
-    BlsAggregateSignatureBytes, Certificate, Header, SignatureVerificationState, TaskManager,
+    BlsAggregateSignatureBytes, Certificate, Database, Header, SignatureVerificationState,
+    TaskManager,
 };
 use tokio::{
     sync::mpsc::{self, error::TryRecvError},

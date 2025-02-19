@@ -4,10 +4,10 @@ use crate::WorkerFixture;
 use fastcrypto::{hash::Hash, traits::KeyPair as _};
 use std::num::NonZeroUsize;
 use tn_config::{Config, ConsensusConfig, KeyConfig};
-use tn_storage::traits::Database;
 use tn_types::{
     Address, Authority, AuthorityIdentifier, BlsKeypair, BlsPublicKey, Certificate, Committee,
-    Header, HeaderBuilder, Multiaddr, NetworkKeypair, NetworkPublicKey, Round, Vote, WorkerCache,
+    Database, Header, HeaderBuilder, Multiaddr, NetworkKeypair, NetworkPublicKey, Round, Vote,
+    WorkerCache,
 };
 
 /// Fixture representing an validator node within the network.

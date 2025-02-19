@@ -1,8 +1,7 @@
 //! Hierarchical type to hold tasks spawned for a worker in the network.
 use std::sync::Arc;
 use tn_config::ConsensusConfig;
-use tn_storage::traits::Database as ConsensusDatabase;
-use tn_types::{BatchValidation, WorkerId};
+use tn_types::{BatchValidation, Database as ConsensusDatabase, WorkerId};
 use tn_worker::{
     metrics::Metrics, quorum_waiter::QuorumWaiter, BatchProvider, Worker, WorkerNetworkHandle,
 };

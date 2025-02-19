@@ -21,13 +21,13 @@ use tn_network_libp2p::ConsensusNetwork;
 use tn_network_types::{
     FetchBatchResponse, FetchBatchesRequest, PrimaryToWorkerClient, WorkerSynchronizeMessage,
 };
-use tn_storage::{mem_db::MemDatabase, traits::Database};
+use tn_storage::mem_db::MemDatabase;
 use tn_test_utils::{
     fixture_batch_with_transactions, make_optimal_signed_certificates, CommitteeFixture,
 };
 use tn_types::{
     network_public_key_to_libp2p, now, AuthorityIdentifier, BlockHash, Certificate, Committee,
-    ExecHeader, NetworkPublicKey, SealedHeader, SignatureVerificationState, TaskManager,
+    Database, ExecHeader, NetworkPublicKey, SealedHeader, SignatureVerificationState, TaskManager,
 };
 use tokio::{sync::mpsc, time::timeout};
 

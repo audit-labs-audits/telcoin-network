@@ -10,8 +10,7 @@ use crate::{
 use std::sync::Arc;
 use tn_config::ConsensusConfig;
 use tn_network_types::local::LocalNetwork;
-use tn_storage::traits::Database;
-use tn_types::{network_public_key_to_libp2p, BatchValidation, WorkerId};
+use tn_types::{network_public_key_to_libp2p, BatchValidation, Database, WorkerId};
 use tracing::info;
 
 /// The default channel capacity for each channel of the worker.

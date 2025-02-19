@@ -7,10 +7,9 @@ use futures::{stream::FuturesOrdered, StreamExt as _};
 use std::collections::HashMap;
 use tn_config::{ConsensusConfig, RetryConfig};
 use tn_network_types::{PrimaryToWorkerClient as _, WorkerSynchronizeMessage};
-use tn_storage::traits::Database;
 use tn_types::{
     error::{DagError, HeaderError, HeaderResult},
-    Certificate, CertificateDigest, Header, Round, TnSender as _,
+    Certificate, CertificateDigest, Database, Header, Round, TnSender as _,
 };
 use tokio::sync::oneshot;
 use tracing::debug;

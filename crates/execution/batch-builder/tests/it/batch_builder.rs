@@ -28,11 +28,11 @@ use tn_batch_validator::BatchValidator;
 use tn_engine::execute_consensus_output;
 use tn_network_types::{local::LocalNetwork, MockWorkerToPrimary};
 use tn_node_traits::{BuildArguments, TNExecution, TelcoinNode};
-use tn_storage::{open_db, tables::Batches, traits::Database};
+use tn_storage::{open_db, tables::Batches};
 use tn_test_utils::{get_gas_price, test_genesis, TransactionFactory};
 use tn_types::{
     Address, Batch, BatchValidation, BlockBody, Bytes, Certificate, CommittedSubDag,
-    ConsensusHeader, ConsensusOutput, LastCanonicalUpdate, ReputationScores, SealedBatch,
+    ConsensusHeader, ConsensusOutput, Database, LastCanonicalUpdate, ReputationScores, SealedBatch,
     SealedBlock, U160, U256,
 };
 use tn_worker::{

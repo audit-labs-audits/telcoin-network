@@ -14,11 +14,10 @@ use std::{
     sync::Arc,
     time::Duration,
 };
-use tn_storage::{
-    tables::Batches,
-    traits::{Database, DbTxMut},
+use tn_storage::tables::Batches;
+use tn_types::{
+    network_public_key_to_libp2p, now, Batch, BlockHash, Database, DbTxMut, NetworkPublicKey,
 };
-use tn_types::{network_public_key_to_libp2p, now, Batch, BlockHash, NetworkPublicKey};
 use tokio::{
     select,
     time::{sleep, sleep_until, Instant},

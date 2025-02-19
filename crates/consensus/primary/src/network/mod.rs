@@ -17,9 +17,9 @@ use tn_network_types::{
     FetchCertificatesRequest, WorkerOthersBatchMessage, WorkerOwnBatchMessage,
     WorkerToPrimaryClient,
 };
-use tn_storage::{traits::Database, PayloadStore};
+use tn_storage::PayloadStore;
 use tn_types::{
-    encode, BlockHash, Certificate, CertificateDigest, ConsensusHeader, Header, Noticer,
+    encode, BlockHash, Certificate, CertificateDigest, ConsensusHeader, Database, Header, Noticer,
     TaskManager, TnSender, Vote,
 };
 use tokio::sync::{mpsc, oneshot};

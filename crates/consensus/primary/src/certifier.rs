@@ -15,12 +15,12 @@ use std::{cmp::min, sync::Arc, time::Duration};
 use tn_config::{ConsensusConfig, KeyConfig};
 use tn_network_libp2p::{error::NetworkError, types::NetworkResult};
 use tn_primary_metrics::PrimaryMetrics;
-use tn_storage::{traits::Database, CertificateStore};
+use tn_storage::CertificateStore;
 use tn_types::{
     ensure,
     error::{DagError, DagResult},
-    AuthorityIdentifier, Certificate, CertificateDigest, Committee, Header, Noticer, TaskManager,
-    TnReceiver, TnSender, Vote, CHANNEL_CAPACITY,
+    AuthorityIdentifier, Certificate, CertificateDigest, Committee, Database, Header, Noticer,
+    TaskManager, TnReceiver, TnSender, Vote, CHANNEL_CAPACITY,
 };
 use tokio::sync::broadcast;
 use tracing::{debug, enabled, error, info, instrument, trace, warn};
@@ -64,11 +64,11 @@ impl<DB: Database> Certifier<DB> {
         config: ConsensusConfig<DB>,
         consensus_bus: ConsensusBus,
         state_sync: StateSynchronizer<DB>,
-        network: PrimaryNetworkHandle,
+        primary_network: PrimaryNetworkHandle,
         task_manager: &TaskManager,
     ) {
         let rx_shutdown = config.shutdown().subscribe();
-        let metrics = consensus_bus.primary_metrics().node_metrics.clone();
+        let primary_metrics = consensus_bus.primary_metrics().node_metrics.clone();
         // These channels are used internally to this module (file) and don't need to go in the
         // consensus bus. If this changes they can move.  Note there can be issues receiving
         // certs over the broadcast if not subscribed early.
@@ -95,7 +95,11 @@ impl<DB: Database> Certifier<DB> {
             trace!(target:"primary::synchronizer::broadcast_certificates", ?name, "spawning sender for peer");
             task_manager.spawn_task(
                 format!("broadcast certificates to {name}"),
-                Self::push_certificates(network.clone(), name, rx_own_certificate_broadcast),
+                Self::push_certificates(
+                    primary_network.clone(),
+                    name,
+                    rx_own_certificate_broadcast,
+                ),
             );
         }
         if let Some(cert) = highest_created_certificate {
@@ -117,8 +121,8 @@ impl<DB: Database> Certifier<DB> {
                     rx_shutdown,
                     consensus_bus,
                     config: config.clone(),
-                    network,
-                    metrics,
+                    network: primary_network,
+                    metrics: primary_metrics,
                     tx_own_certificate_broadcast: tx_own_certificate_broadcast.clone(),
                 }
                 .run()

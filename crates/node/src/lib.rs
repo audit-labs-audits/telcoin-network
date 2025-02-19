@@ -26,8 +26,11 @@ use tn_primary::{
     ConsensusBus, NodeMode, StateSynchronizer,
 };
 pub use tn_storage::NodeStorage;
-use tn_storage::{open_db, tables::ConsensusBlocks, traits::Database as TNDatabase, DatabaseType};
-use tn_types::{network_public_key_to_libp2p, BatchValidation, ConsensusHeader, TaskManager};
+use tn_storage::{open_db, tables::ConsensusBlocks, DatabaseType};
+use tn_types::{
+    network_public_key_to_libp2p, BatchValidation, ConsensusHeader, Database as TNDatabase,
+    TaskManager,
+};
 use tn_worker::{WorkerNetwork, WorkerNetworkHandle};
 use tokio::{runtime::Builder, sync::mpsc};
 use tracing::{info, instrument};

@@ -3,8 +3,8 @@ use std::sync::Arc;
 use tn_config::ConsensusConfig;
 use tn_network_libp2p::GossipMessage;
 use tn_network_types::{WorkerOthersBatchMessage, WorkerToPrimaryClient};
-use tn_storage::{tables::Batches, traits::Database};
-use tn_types::{now, try_decode, BatchValidation, BlockHash, SealedBatch, WorkerId};
+use tn_storage::tables::Batches;
+use tn_types::{now, try_decode, BatchValidation, BlockHash, Database, SealedBatch, WorkerId};
 
 use super::{
     error::{WorkerNetworkError, WorkerNetworkResult},

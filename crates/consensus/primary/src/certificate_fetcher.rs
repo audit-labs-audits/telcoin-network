@@ -18,10 +18,10 @@ use tn_config::ConsensusConfig;
 use tn_network_libp2p::PeerId;
 use tn_network_types::{FetchCertificatesRequest, FetchCertificatesResponse};
 use tn_primary_metrics::PrimaryMetrics;
-use tn_storage::{traits::Database, CertificateStore};
+use tn_storage::CertificateStore;
 use tn_types::{
-    validate_received_certificate, AuthorityIdentifier, Certificate, Committee, Noticer, Round,
-    TaskManager, TnReceiver, TnSender,
+    validate_received_certificate, AuthorityIdentifier, Certificate, Committee, Database, Noticer,
+    Round, TaskManager, TnReceiver, TnSender,
 };
 use tokio::{
     task::JoinSet,

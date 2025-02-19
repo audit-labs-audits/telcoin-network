@@ -9,8 +9,9 @@ use tn_primary::{
     ConsensusBus, Primary, StateSynchronizer,
 };
 use tn_primary_metrics::Metrics;
-use tn_storage::traits::Database as ConsensusDatabase;
-use tn_types::{BlsPublicKey, TaskManager, DEFAULT_BAD_NODES_STAKE_THRESHOLD};
+use tn_types::{
+    BlsPublicKey, Database as ConsensusDatabase, TaskManager, DEFAULT_BAD_NODES_STAKE_THRESHOLD,
+};
 use tokio::sync::RwLock;
 use tracing::instrument;
 

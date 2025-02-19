@@ -9,10 +9,10 @@ use std::{
     sync::Arc,
 };
 use tn_network_types::local::LocalNetwork;
-use tn_storage::{traits::Database, NodeStorage};
+use tn_storage::NodeStorage;
 use tn_types::{
     network_public_key_to_libp2p, Authority, AuthorityIdentifier, Certificate, CertificateDigest,
-    Committee, Multiaddr, Notifier, WorkerCache, WorkerId,
+    Committee, Database, Multiaddr, Notifier, WorkerCache, WorkerId,
 };
 
 #[derive(Debug)]

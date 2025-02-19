@@ -19,11 +19,10 @@ use tn_network_types::{local::LocalNetwork, FetchBatchesRequest, PrimaryToWorker
 use tn_primary::{
     consensus::ConsensusRound, network::PrimaryNetworkHandle, ConsensusBus, NodeMode,
 };
-use tn_storage::traits::Database;
 use tn_types::{
     Address, AuthorityIdentifier, Batch, BlockHash, Certificate, CommittedSubDag, Committee,
-    ConsensusHeader, ConsensusOutput, NetworkPublicKey, Noticer, TaskManager, TaskManagerClone,
-    Timestamp, TnReceiver, TnSender, WorkerCache, WorkerId, B256,
+    ConsensusHeader, ConsensusOutput, Database, NetworkPublicKey, Noticer, TaskManager,
+    TaskManagerClone, Timestamp, TnReceiver, TnSender, WorkerCache, WorkerId, B256,
 };
 use tracing::{debug, error, info, warn};
 
