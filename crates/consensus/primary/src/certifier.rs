@@ -2,10 +2,7 @@
 
 use crate::{
     aggregators::VotesAggregator,
-    network::{
-        client::{NetworkClient, RequestVoteResult},
-        PrimaryRequest, PrimaryResponse,
-    },
+    network::{PrimaryNetworkHandle, RequestVoteResult},
     state_sync::StateSynchronizer,
     ConsensusBus,
 };
@@ -16,10 +13,7 @@ use futures::{
 };
 use std::{cmp::min, sync::Arc, time::Duration};
 use tn_config::{ConsensusConfig, KeyConfig};
-use tn_network_libp2p::{
-    error::NetworkError,
-    types::{NetworkHandle, NetworkResult},
-};
+use tn_network_libp2p::{error::NetworkError, types::NetworkResult};
 use tn_primary_metrics::PrimaryMetrics;
 use tn_storage::{traits::Database, CertificateStore};
 use tn_types::{
@@ -58,7 +52,7 @@ pub struct Certifier<DB> {
     /// Consensus config.
     config: ConsensusConfig<DB>,
     /// A network sender to send the batches to the other workers.
-    network: NetworkHandle<PrimaryRequest, PrimaryResponse>,
+    network: PrimaryNetworkHandle,
     /// Metrics handler
     metrics: Arc<PrimaryMetrics>,
     /// Send own certificates to be broadcasted to all other peers.
@@ -70,7 +64,7 @@ impl<DB: Database> Certifier<DB> {
         config: ConsensusConfig<DB>,
         consensus_bus: ConsensusBus,
         state_sync: StateSynchronizer<DB>,
-        network: NetworkHandle<PrimaryRequest, PrimaryResponse>,
+        network: PrimaryNetworkHandle,
         task_manager: &TaskManager,
     ) {
         let rx_shutdown = config.shutdown().subscribe();
@@ -101,12 +95,7 @@ impl<DB: Database> Certifier<DB> {
             trace!(target:"primary::synchronizer::broadcast_certificates", ?name, "spawning sender for peer");
             task_manager.spawn_task(
                 format!("broadcast certificates to {name}"),
-                Self::push_certificates(
-                    network.clone(),
-                    name,
-                    rx_own_certificate_broadcast,
-                    config.clone(),
-                ),
+                Self::push_certificates(network.clone(), name, rx_own_certificate_broadcast),
             );
         }
         if let Some(cert) = highest_created_certificate {
@@ -150,7 +139,6 @@ impl<DB: Database> Certifier<DB> {
     ) -> DagResult<Vote> {
         debug!(target: "primary::certifier", ?authority, ?header, "requesting vote for header...");
         let peer_id = self.config.peer_id_for_authority(&authority).expect("missing peer id!");
-        let client = NetworkClient::new(self.network.clone(), peer_id);
 
         let mut missing_parents: Vec<CertificateDigest> = Vec::new();
         let mut attempt: u32 = 0;
@@ -179,7 +167,7 @@ impl<DB: Database> Certifier<DB> {
                 parents
             };
 
-            match client.request_vote(header.clone(), parents).await {
+            match self.network.request_vote(peer_id, header.clone(), parents).await {
                 Ok(RequestVoteResult::Vote(vote)) => {
                     debug!(target: "primary::certifier", ?authority, ?vote, "Ok response received after request vote");
                     break vote;
@@ -350,14 +338,11 @@ impl<DB: Database> Certifier<DB> {
     /// Pushes new certificates received from the rx_own_certificate_broadcast channel
     /// to the target peer continuously. Only exits when the primary is shutting down.
     async fn push_certificates(
-        network: NetworkHandle<PrimaryRequest, PrimaryResponse>,
+        network: PrimaryNetworkHandle,
         authority_id: AuthorityIdentifier,
         mut rx_own_certificate_broadcast: broadcast::Receiver<Certificate>,
-        config: ConsensusConfig<DB>,
     ) {
         const PUSH_TIMEOUT: Duration = Duration::from_secs(10);
-        let peer_id = config.peer_id_for_authority(&authority_id).expect("missing peer id!");
-        let client = NetworkClient::new(network, peer_id);
         // Older broadcasts return early, so the last broadcast must be the latest certificate.
         // This will contain at most certificates created within the last PUSH_TIMEOUT.
         let mut requests = FuturesOrdered::new();
@@ -368,10 +353,10 @@ impl<DB: Database> Certifier<DB> {
         let mut backoff_multiplier: u32 = 0;
 
         async fn send_certificate(
-            client: NetworkClient,
+            network: &PrimaryNetworkHandle,
             cert: Certificate,
         ) -> (Certificate, NetworkResult<()>) {
-            let resp = client.publish_certificate(cert.clone()).await;
+            let resp = network.publish_certificate(cert.clone()).await;
             (cert, resp)
         }
 
@@ -393,7 +378,7 @@ impl<DB: Database> Certifier<DB> {
                         }
                     };
                     trace!(target: "primary::certifier", authority=?authority_id, ?cert, "successfully received own cert broadcast");
-                    requests.push_back(send_certificate(client.clone(), cert));
+                    requests.push_back(send_certificate(&network, cert));
                 }
                 Some((cert, resp)) = requests.next() => {
                     trace!(target: "primary::certifier", authority=?authority_id, ?resp, ?cert, "next cert request");
@@ -404,7 +389,7 @@ impl<DB: Database> Certifier<DB> {
                         Err(_) => {
                             if requests.is_empty() {
                                 // Retry broadcasting the latest certificate, to help the network stay alive.
-                                requests.push_back(send_certificate(client.clone(), cert));
+                                requests.push_back(send_certificate(&network, cert));
                                 min(backoff_multiplier * 2 + 1, MAX_BACKOFF_MULTIPLIER)
                             } else {
                                 // TODO: add backoff and retries for transient & retriable errors.

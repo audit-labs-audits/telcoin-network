@@ -10,6 +10,7 @@ use std::{
     fmt::{Display, Formatter},
     fs,
     path::{Path, PathBuf},
+    sync::Arc,
 };
 use tn_types::{
     adiri_genesis, hex, keccak256, verify_proof_of_possession_bls, Address, BlsPublicKey,
@@ -253,7 +254,7 @@ impl NetworkGenesis {
             })
             .collect();
 
-        let worker_cache = WorkerCache { epoch: 0, workers };
+        let worker_cache = WorkerCache { epoch: 0, workers: Arc::new(workers) };
 
         Ok(worker_cache)
     }

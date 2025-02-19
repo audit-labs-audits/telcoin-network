@@ -1,28 +1,8 @@
 //! Worker fixture for the cluster
 
 use fastcrypto::traits::KeyPair as _;
-use tn_config::{ConsensusConfig, KeyConfig};
-use tn_node::worker::WorkerNode;
-use tn_storage::traits::Database;
-use tn_types::{Multiaddr, NetworkKeypair, WorkerId, WorkerInfo};
-
-#[derive(Clone)]
-pub struct WorkerNodeDetails {
-    pub id: WorkerId,
-    pub transactions_address: Multiaddr,
-}
-
-impl WorkerNodeDetails {
-    pub(crate) fn new<DB: Database>(
-        id: WorkerId,
-        consensus_config: ConsensusConfig<DB>,
-        transactions_address: Multiaddr,
-    ) -> Self {
-        let _node = WorkerNode::new(id, consensus_config);
-
-        Self { id, transactions_address }
-    }
-}
+use tn_config::KeyConfig;
+use tn_types::{NetworkKeypair, WorkerId, WorkerInfo};
 
 /// Fixture representing a worker for an [AuthorityFixture].
 ///

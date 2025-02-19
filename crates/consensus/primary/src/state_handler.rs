@@ -1,11 +1,7 @@
 //! Filter consensus results to update execution state.
 
-use crate::{
-    network::{PrimaryRequest, PrimaryResponse},
-    ConsensusBus,
-};
+use crate::{network::PrimaryNetworkHandle, ConsensusBus};
 use consensus_metrics::monitored_future;
-use tn_network_libp2p::types::NetworkHandle;
 use tn_types::{
     AuthorityIdentifier, Certificate, Noticer, Round, TaskManager, TnReceiver, TnSender,
 };
@@ -20,7 +16,7 @@ pub struct StateHandler {
     /// Channel to signal committee changes.
     rx_shutdown: Noticer,
 
-    network: NetworkHandle<PrimaryRequest, PrimaryResponse>,
+    network: PrimaryNetworkHandle,
 }
 
 impl StateHandler {
@@ -28,7 +24,7 @@ impl StateHandler {
         authority_id: AuthorityIdentifier,
         consensus_bus: &ConsensusBus,
         rx_shutdown: Noticer,
-        network: NetworkHandle<PrimaryRequest, PrimaryResponse>,
+        network: PrimaryNetworkHandle,
         task_manager: &TaskManager,
     ) {
         let state_handler =

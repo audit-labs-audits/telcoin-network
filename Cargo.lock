@@ -11958,6 +11958,7 @@ dependencies = [
  "tn-batch-builder",
  "tn-batch-validator",
  "tn-engine",
+ "tn-network-libp2p",
  "tn-network-types",
  "tn-node-traits",
  "tn-storage",
@@ -11994,6 +11995,7 @@ dependencies = [
 name = "tn-config"
 version = "0.1.0"
 dependencies = [
+ "backoff",
  "eyre",
  "fastcrypto",
  "humantime-serde",
@@ -12136,7 +12138,6 @@ name = "tn-network-types"
 version = "0.1.0"
 dependencies = [
  "async-trait",
- "backoff",
  "bcs",
  "bytes",
  "eyre",

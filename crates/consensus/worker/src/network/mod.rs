@@ -2,26 +2,24 @@ use std::{collections::HashSet, sync::Arc, time::Duration};
 
 use error::WorkerNetworkError;
 use handler::RequestHandler;
-use message::{WorkerGossip, WorkerRPCError};
+use message::{RequestBatchesResponse, WorkerGossip, WorkerRPCError};
 pub use message::{WorkerRequest, WorkerResponse};
 use tn_config::ConsensusConfig;
 use tn_network_libp2p::{
     error::NetworkError,
-    network_public_key_to_libp2p,
     types::{IdentTopic, NetworkEvent, NetworkHandle, NetworkResult},
     GossipMessage, Multiaddr, PeerId, ResponseChannel,
 };
 use tn_network_types::{
-    FetchBatchResponse, FetchBatchesRequest, PrimaryToWorkerClient, RequestBatchesResponse,
-    WorkerSynchronizeMessage,
+    FetchBatchResponse, FetchBatchesRequest, PrimaryToWorkerClient, WorkerSynchronizeMessage,
 };
 use tn_storage::{
     tables::Batches,
     traits::{Database, DbTxMut},
 };
 use tn_types::{
-    encode, now, BatchValidation, BlockHash, Committee, NetworkPublicKey, Noticer, SealedBatch,
-    TaskManager, WorkerCache, WorkerId,
+    encode, network_public_key_to_libp2p, now, BatchValidation, BlockHash, Committee,
+    NetworkPublicKey, Noticer, SealedBatch, TaskManager, WorkerCache, WorkerId,
 };
 use tokio::{
     sync::{mpsc, oneshot},
@@ -33,7 +31,7 @@ use crate::batch_fetcher::BatchFetcher;
 
 mod error;
 mod handler;
-mod message;
+pub(crate) mod message;
 
 /// Convenience type for Primary network.
 pub(crate) type Req = WorkerRequest;

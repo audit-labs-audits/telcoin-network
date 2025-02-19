@@ -1,13 +1,13 @@
 //! Client implementation for local network messages between primary and worker.
 use crate::{
-    network_public_key_to_libp2p, FetchBatchResponse, FetchBatchesRequest, PrimaryToWorkerClient,
-    WorkerOthersBatchMessage, WorkerOwnBatchMessage, WorkerSynchronizeMessage,
-    WorkerToPrimaryClient,
+    FetchBatchResponse, FetchBatchesRequest, PrimaryToWorkerClient, WorkerOthersBatchMessage,
+    WorkerOwnBatchMessage, WorkerSynchronizeMessage, WorkerToPrimaryClient,
 };
 use libp2p::PeerId;
 use parking_lot::RwLock;
 use std::{collections::BTreeMap, sync::Arc};
 use tn_types::{
+    network_public_key_to_libp2p,
     traits::{InsecureDefault, KeyPair},
     NetworkKeypair, NetworkPublicKey,
 };
@@ -114,9 +114,12 @@ impl PrimaryToWorkerClient for LocalNetwork {
         request: WorkerSynchronizeMessage,
     ) -> eyre::Result<()> {
         let peer_id = network_public_key_to_libp2p(&worker_name);
-        let c =
-            self.get_primary_to_worker_handler(peer_id).await.expect("primary to worker not set!");
-        c.synchronize(worker_name, request).await
+        if let Some(c) = self.get_primary_to_worker_handler(peer_id).await {
+            c.synchronize(worker_name, request).await
+        } else {
+            tracing::warn!(target = "local_network", "primary to worker handler not set yet!");
+            Err(eyre::eyre!("primary to worker not set yet"))
+        }
     }
 
     async fn fetch_batches(
@@ -125,21 +128,32 @@ impl PrimaryToWorkerClient for LocalNetwork {
         request: FetchBatchesRequest,
     ) -> eyre::Result<FetchBatchResponse> {
         let peer_id = network_public_key_to_libp2p(&worker_name);
-        let c =
-            self.get_primary_to_worker_handler(peer_id).await.expect("primary to worker not set!");
-        c.fetch_batches(worker_name, request).await
+        if let Some(c) = self.get_primary_to_worker_handler(peer_id).await {
+            c.fetch_batches(worker_name, request).await
+        } else {
+            tracing::warn!(target = "local_network", "primary to worker handler not set yet!");
+            Err(eyre::eyre!("primary to worker not set yet"))
+        }
     }
 }
 
 #[async_trait::async_trait]
 impl WorkerToPrimaryClient for LocalNetwork {
     async fn report_own_batch(&self, request: WorkerOwnBatchMessage) -> eyre::Result<()> {
-        let c = self.get_worker_to_primary_handler().await.expect("worker to primary not set!");
-        c.report_own_batch(request).await
+        if let Some(c) = self.get_worker_to_primary_handler().await {
+            c.report_own_batch(request).await?;
+        } else {
+            tracing::warn!(target = "local_network", "working to primary handler not set yet!");
+        }
+        Ok(())
     }
 
     async fn report_others_batch(&self, request: WorkerOthersBatchMessage) -> eyre::Result<()> {
-        let c = self.get_worker_to_primary_handler().await.expect("worker to primary not set!");
-        c.report_others_batch(request).await
+        if let Some(c) = self.get_worker_to_primary_handler().await {
+            c.report_others_batch(request).await?;
+        } else {
+            tracing::warn!(target = "local_network", "working to primary handler not set yet!");
+        }
+        Ok(())
     }
 }

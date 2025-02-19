@@ -31,7 +31,6 @@ async-trait = { workspace = true }
 eyre = { workspace = true }
 libp2p = { workspace = true }
 parking_lot = { workspace = true }
-backoff = { workspace = true }
 
 [build-dependencies]
 rustversion = "1.0.9"

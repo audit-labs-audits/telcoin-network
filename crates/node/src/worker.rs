@@ -1,14 +1,12 @@
 //! Hierarchical type to hold tasks spawned for a worker in the network.
 use std::sync::Arc;
 use tn_config::ConsensusConfig;
-use tn_network_libp2p::{network_public_key_to_libp2p, types::NetworkEvent, PeerId};
 use tn_storage::traits::Database as ConsensusDatabase;
-use tn_types::{BatchValidation, TaskManager, WorkerId};
+use tn_types::{BatchValidation, WorkerId};
 use tn_worker::{
     metrics::Metrics, quorum_waiter::QuorumWaiter, BatchProvider, Worker, WorkerNetworkHandle,
-    WorkerRequest, WorkerResponse,
 };
-use tokio::sync::{mpsc, RwLock};
+use tokio::sync::RwLock;
 use tracing::instrument;
 
 pub struct WorkerNodeInner<CDB> {
@@ -16,8 +14,6 @@ pub struct WorkerNodeInner<CDB> {
     id: WorkerId,
     /// The consensus configuration.
     consensus_config: ConsensusConfig<CDB>,
-    /// Peer ID used for local connections.
-    own_peer_id: Option<PeerId>,
 }
 
 impl<CDB: ConsensusDatabase> WorkerNodeInner<CDB> {
@@ -28,26 +24,18 @@ impl<CDB: ConsensusDatabase> WorkerNodeInner<CDB> {
         &mut self,
         validator: Arc<dyn BatchValidation>,
         network_handle: WorkerNetworkHandle,
-        network_event_stream: mpsc::Receiver<NetworkEvent<WorkerRequest, WorkerResponse>>,
-    ) -> eyre::Result<(TaskManager, BatchProvider<CDB, QuorumWaiter>)> {
-        let task_manager = TaskManager::new("Worker Task Manager");
-        self.own_peer_id = Some(network_public_key_to_libp2p(
-            &self.consensus_config.key_config().primary_network_public_key(),
-        ));
-
+    ) -> eyre::Result<BatchProvider<CDB, QuorumWaiter>> {
         let metrics = Metrics::default();
 
-        let batch_provider = Worker::spawn(
+        let batch_provider = Worker::new_batch_provider(
             self.id,
             validator,
             metrics,
             self.consensus_config.clone(),
-            &task_manager,
             network_handle,
-            network_event_stream,
         );
 
-        Ok((task_manager, batch_provider))
+        Ok(batch_provider)
     }
 }
 
@@ -58,7 +46,7 @@ pub struct WorkerNode<CDB> {
 
 impl<CDB: ConsensusDatabase> WorkerNode<CDB> {
     pub fn new(id: WorkerId, consensus_config: ConsensusConfig<CDB>) -> WorkerNode<CDB> {
-        let inner = WorkerNodeInner { id, consensus_config, own_peer_id: None };
+        let inner = WorkerNodeInner { id, consensus_config };
 
         Self { internal: Arc::new(RwLock::new(inner)) }
     }
@@ -67,9 +55,8 @@ impl<CDB: ConsensusDatabase> WorkerNode<CDB> {
         &self,
         validator: Arc<dyn BatchValidation>,
         network_handle: WorkerNetworkHandle,
-        network_event_stream: mpsc::Receiver<NetworkEvent<WorkerRequest, WorkerResponse>>,
-    ) -> eyre::Result<(TaskManager, BatchProvider<CDB, QuorumWaiter>)> {
+    ) -> eyre::Result<BatchProvider<CDB, QuorumWaiter>> {
         let mut guard = self.internal.write().await;
-        guard.start(validator, network_handle, network_event_stream).await
+        guard.start(validator, network_handle).await
     }
 }

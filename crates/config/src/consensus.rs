@@ -11,8 +11,8 @@ use std::{
 use tn_network_types::local::LocalNetwork;
 use tn_storage::{traits::Database, NodeStorage};
 use tn_types::{
-    Authority, AuthorityIdentifier, Certificate, CertificateDigest, Committee, Notifier,
-    WorkerCache,
+    network_public_key_to_libp2p, Authority, AuthorityIdentifier, Certificate, CertificateDigest,
+    Committee, Multiaddr, Notifier, WorkerCache, WorkerId,
 };
 
 #[derive(Debug)]
@@ -31,7 +31,7 @@ struct ConsensusConfigInner<DB> {
 #[derive(Debug, Clone)]
 pub struct ConsensusConfig<DB> {
     inner: Arc<ConsensusConfigInner<DB>>,
-    worker_cache: Option<Arc<WorkerCache>>,
+    worker_cache: WorkerCache,
     shutdown: Notifier,
 }
 
@@ -71,7 +71,7 @@ where
         );
 
         tracing::info!(target: "telcoin::consensus_config", "worker cache loaded");
-        Self::new_with_committee(config, node_storage, key_config, committee, Some(worker_cache))
+        Self::new_with_committee(config, node_storage, key_config, committee, worker_cache)
     }
 
     /// Create a new config with a committe.
@@ -83,7 +83,7 @@ where
         node_storage: NodeStorage<DB>,
         key_config: KeyConfig,
         committee: Committee,
-        mut worker_cache: Option<WorkerCache>,
+        worker_cache: WorkerCache,
     ) -> eyre::Result<Self> {
         let local_network =
             LocalNetwork::new_from_public_key(config.validator_info.primary_network_key());
@@ -96,10 +96,9 @@ where
             })
             .clone();
 
-        let worker_cache = worker_cache.take().map(Arc::new);
         let shutdown = Notifier::new();
         let network_config = NetworkConfig::default();
-        let authority_map = AuthorityMapping::new(&committee, &network_config);
+        let authority_map = AuthorityMapping::new(&committee);
         let genesis = Certificate::genesis(&committee)
             .into_iter()
             .map(|cert| (cert.digest(), cert))
@@ -141,20 +140,11 @@ where
     }
 
     pub fn worker_cache(&self) -> &WorkerCache {
-        self.worker_cache.as_ref().expect("invalid config- missing worker cache!")
+        &self.worker_cache
     }
 
-    pub fn worker_cache_clone(&self) -> Arc<WorkerCache> {
-        if let Some(wc) = &self.worker_cache {
-            wc.clone()
-        } else {
-            panic!("invalid config- missing worker cache!");
-        }
-    }
-
-    pub fn set_worker_cache(&mut self, worker_cache: WorkerCache) {
-        assert!(self.worker_cache.is_none(), "Can not change the working cache on a config!");
-        self.worker_cache = Some(Arc::new(worker_cache));
+    pub fn worker_cache_clone(&self) -> WorkerCache {
+        self.worker_cache.clone()
     }
 
     pub fn node_storage(&self) -> &NodeStorage<DB> {
@@ -199,6 +189,15 @@ where
     pub fn authority_for_peer_id(&self, peer_id: &PeerId) -> Option<AuthorityIdentifier> {
         self.inner.authority_map.peer_id_to_authority.get(peer_id).copied()
     }
+
+    /// Retrieve the worker's network address by id.
+    /// Note, will panic if id is not valid (not found in our worker cache).
+    pub fn worker_address(&self, id: &WorkerId) -> Multiaddr {
+        self.worker_cache()
+            .worker(self.authority().protocol_key(), id)
+            .expect("Our public key or worker id is not in the worker cache")
+            .worker_address
+    }
 }
 
 /// Authority mappings between authority id (used by consensus) and peer id (used by network).
@@ -212,14 +211,12 @@ pub struct AuthorityMapping {
 
 impl AuthorityMapping {
     /// Create a new instance of [Self].
-    pub fn new(committee: &Committee, network_config: &NetworkConfig) -> Self {
+    pub fn new(committee: &Committee) -> Self {
         let authority_to_peer_id: HashMap<AuthorityIdentifier, PeerId> = committee
             .authorities()
             .map(|a| {
                 let fc = a.network_key();
-                let peer_id = network_config
-                    .ed25519_fastcrypto_to_libp2p(&fc)
-                    .expect("fastcrypto to libp2p PeerId always works");
+                let peer_id = network_public_key_to_libp2p(&fc);
                 (a.id(), peer_id)
             })
             .collect();

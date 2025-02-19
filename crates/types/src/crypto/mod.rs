@@ -14,6 +14,7 @@ use fastcrypto::{
     hash::{Blake2b256, HashFunction},
     traits::{AggregateAuthenticator, KeyPair, Signer, ToFromBytes, VerifyingKey},
 };
+use libp2p::PeerId;
 use std::future::Future;
 // This re-export allows using the trait-defined APIs
 pub use fastcrypto::traits;
@@ -201,6 +202,25 @@ impl ValidatorAggregateSignature for BlsAggregateSignature {
 /// IntentScope::ConsensusDigest and the app id is AppId::Consensus.
 pub fn to_intent_message<T>(value: T) -> IntentMessage<T> {
     IntentMessage::new(Intent::consensus(IntentScope::ConsensusDigest), value)
+}
+
+/// Convert an existing NetworkPublicKey into a libp2p PeerId.
+pub fn network_public_key_to_libp2p(fastcrypto: &NetworkPublicKey) -> PeerId {
+    let bytes = fastcrypto.as_ref().to_vec();
+    let ed_public_key = libp2p::identity::ed25519::PublicKey::try_from_bytes(&bytes)
+        .expect("invalid public key, not able to convert to peer id!");
+    libp2p::PeerId::from_public_key(&ed_public_key.into())
+}
+
+/// Helper method to convert libp2p -> fastcrypto ed25519.
+pub fn libp2p_to_fastcrypto(peer_id: &PeerId) -> fastcrypto::ed25519::Ed25519PublicKey {
+    let bytes = peer_id.as_ref().digest();
+    // skip first 4 bytes:
+    // - 2 bytes: pubkey type (TN is ed25519 only)
+    // - 1 byte: overhead for multihash type
+    // - 1 byte: pubkey size
+    fastcrypto::ed25519::Ed25519PublicKey::from_bytes(&bytes[4..])
+        .expect("invalid public key, not able to convert to fast cyrpto!")
 }
 
 #[cfg(test)]

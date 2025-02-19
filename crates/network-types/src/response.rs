@@ -1,9 +1,7 @@
 //! Response message types
 use serde::{Deserialize, Serialize};
-use std::collections::{BTreeMap, HashMap};
-use tn_types::{
-    Batch, BlockHash, Certificate, CertificateDigest, ConsensusHeader, Vote, WorkerId, WorkerInfo,
-};
+use std::collections::HashMap;
+use tn_types::{Batch, BlockHash, Certificate, CertificateDigest, ConsensusHeader, Vote};
 
 /// Response from peers after receiving a certificate.
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -34,24 +32,6 @@ pub struct FetchCertificatesResponse {
 pub struct FetchBatchResponse {
     /// The missing batches fetched from peers.
     pub batches: HashMap<BlockHash, Batch>,
-}
-
-/// Information for the workers.
-#[derive(Clone, Serialize, Deserialize, Eq, PartialEq, Debug)]
-pub struct WorkerInfoResponse {
-    /// Map of workers' id and their network addresses.
-    pub workers: BTreeMap<WorkerId, WorkerInfo>,
-}
-
-//=== Worker
-
-#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
-pub struct RequestBatchesResponse {
-    /// Requested batches.
-    pub batches: Vec<Batch>,
-    /// If true, the primary should request the batches from the workers again.
-    /// This may not be something that can be trusted from a remote worker.
-    pub is_size_limit_reached: bool,
 }
 
 //=== Engine
