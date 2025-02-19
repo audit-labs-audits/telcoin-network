@@ -26,6 +26,7 @@ use std::{
     time::Duration,
 };
 use tn_config::{ConsensusConfig, LibP2pConfig};
+use tn_types::network_public_key_to_libp2p;
 use tokio::sync::{
     mpsc::{self, Receiver, Sender},
     oneshot,
@@ -121,7 +122,8 @@ where
     {
         let topics = vec![IdentTopic::new("tn-primary")];
         let network_key = config.key_config().primary_network_keypair().as_ref().to_vec();
-        Self::new(config, event_stream, topics, network_key)
+        let authorized_publishers = config.committee_peer_ids();
+        Self::new(config, event_stream, topics, network_key, authorized_publishers)
     }
 
     /// Convenience method for spawning a worker network instance.
@@ -132,9 +134,15 @@ where
     where
         DB: tn_storage::traits::Database,
     {
-        let topics = vec![IdentTopic::new("tn-primary")];
+        let topics = vec![IdentTopic::new("tn-worker")];
         let network_key = config.key_config().worker_network_keypair().as_ref().to_vec();
-        Self::new(config, event_stream, topics, network_key)
+        let authorized_publishers = config
+            .worker_cache()
+            .all_workers()
+            .iter()
+            .map(|(id, _)| network_public_key_to_libp2p(id))
+            .collect();
+        Self::new(config, event_stream, topics, network_key, authorized_publishers)
     }
 
     /// Create a new instance of Self.
@@ -143,6 +151,7 @@ where
         event_stream: mpsc::Sender<NetworkEvent<Req, Res>>,
         topics: Vec<IdentTopic>,
         mut ed25519_private_key_bytes: Vec<u8>,
+        authorized_publishers: HashSet<PeerId>,
     ) -> NetworkResult<Self>
     where
         DB: tn_storage::traits::Database,
@@ -189,7 +198,6 @@ where
             .build();
 
         let (handle, commands) = tokio::sync::mpsc::channel(100);
-        let authorized_publishers = config.committee_peer_ids();
         let config = config.network_config().libp2p_config().clone();
 
         Ok(Self {
@@ -364,7 +372,11 @@ where
             }
             NetworkCommand::Dial { peer_id, peer_addr, reply } => {
                 if let hash_map::Entry::Vacant(entry) = self.pending_dials.entry(peer_id) {
-                    match self.swarm.dial(peer_addr.with(Protocol::P2p(peer_id))) {
+                    // Add the peer we are dialing so we can easily reconnect after a timeout, etc.
+                    // Can use "peer_addr.with(Protocol::P2p(peer_id))})" as the dial parameter
+                    // without adding the peer but libp2p won't remember it.
+                    self.swarm.add_peer_address(peer_id, peer_addr);
+                    match self.swarm.dial(peer_id) {
                         Ok(()) => {
                             entry.insert(reply);
                         }

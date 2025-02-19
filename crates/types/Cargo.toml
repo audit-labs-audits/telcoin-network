@@ -39,7 +39,6 @@ tracing = { workspace = true }
 eyre = { workspace = true }
 fastcrypto = { workspace = true, features = ["copy_key"] }
 fastcrypto-tbls = { workspace = true }
-anemo = { workspace = true }
 once_cell = { workspace = true }
 match_opt = { workspace = true }
 multiaddr = { workspace = true }

@@ -2,7 +2,7 @@
 
 use crate::{
     error::{CertManagerError, CertManagerResult},
-    network::{client::NetworkClient, PrimaryRequest, PrimaryResponse},
+    network::PrimaryNetworkHandle,
     state_sync::StateSynchronizer,
     ConsensusBus,
 };
@@ -15,7 +15,7 @@ use std::{
     time::Duration,
 };
 use tn_config::ConsensusConfig;
-use tn_network_libp2p::{types::NetworkHandle, PeerId};
+use tn_network_libp2p::PeerId;
 use tn_network_types::{FetchCertificatesRequest, FetchCertificatesResponse};
 use tn_primary_metrics::PrimaryMetrics;
 use tn_storage::{traits::Database, CertificateStore};
@@ -84,7 +84,7 @@ struct CertificateFetcherState<DB> {
     /// Identity of the current authority.
     authority_id: AuthorityIdentifier,
     /// Network client to fetch certificates from other primaries.
-    network: NetworkHandle<PrimaryRequest, PrimaryResponse>,
+    network: PrimaryNetworkHandle,
     /// Accepts Certificates into local storage.
     state_sync: StateSynchronizer<DB>,
     /// The metrics handler
@@ -96,7 +96,7 @@ struct CertificateFetcherState<DB> {
 impl<DB: Database> CertificateFetcher<DB> {
     pub fn spawn(
         config: ConsensusConfig<DB>,
-        network: NetworkHandle<PrimaryRequest, PrimaryResponse>,
+        network: PrimaryNetworkHandle,
         consensus_bus: ConsensusBus,
         state_sync: StateSynchronizer<DB>,
         task_manager: &TaskManager,
@@ -347,7 +347,7 @@ async fn run_fetch_task<DB: Database>(
 #[instrument(level = "debug", skip_all)]
 async fn fetch_certificates_helper<DB: Database>(
     name: AuthorityIdentifier,
-    network: NetworkHandle<PrimaryRequest, PrimaryResponse>,
+    network: PrimaryNetworkHandle,
     committee: &Committee,
     request: FetchCertificatesRequest,
     config: ConsensusConfig<DB>,
@@ -371,11 +371,11 @@ async fn fetch_certificates_helper<DB: Database>(
         // Loop until one peer returns with certificates, or no peer does.
         loop {
             if let Some(peer) = peers.pop() {
-                let client = NetworkClient::new(network.clone(), peer);
                 let request_clone = request.clone();
+                let network_clone = network.clone();
                 fut.push(monitored_future!(async move {
                     debug!(target: "primary::cert_fetcher", "Sending out fetch request in parallel to {peer}");
-                    let result = client.fetch_certificates(request_clone).await;
+                    let result = network_clone.fetch_certificates(peer, request_clone).await;
                     if let Ok(certificates) = &result {
                         debug!(target: "primary::cert_fetcher", "Fetched {} certificates from peer {peer}", certificates.len());
                     }

@@ -1,6 +1,14 @@
 // SPDX-License-Identifier: Apache-2.0
 //! Library for managing all components used by a full-node in a single process.
 
+use std::{
+    sync::{
+        atomic::{AtomicU32, Ordering},
+        Arc,
+    },
+    time::Duration,
+};
+
 use crate::{primary::PrimaryNode, worker::WorkerNode};
 use consensus_metrics::start_prometheus_server;
 use engine::{ExecutionNode, TnBuilder};
@@ -11,12 +19,16 @@ use reth_db::{
 };
 use reth_provider::CanonStateSubscriptions;
 use tn_config::{ConsensusConfig, KeyConfig, TelcoinDirs};
-use tn_network_libp2p::{types::IdentTopic, ConsensusNetwork};
+use tn_network_libp2p::{types::IdentTopic, ConsensusNetwork, PeerId};
 use tn_node_traits::TelcoinNode;
-use tn_primary::{ConsensusBus, NodeMode};
+use tn_primary::{
+    network::{PrimaryNetwork, PrimaryNetworkHandle},
+    ConsensusBus, NodeMode, StateSynchronizer,
+};
 pub use tn_storage::NodeStorage;
-use tn_storage::{open_db, tables::ConsensusBlocks, traits::Database as _, DatabaseType};
-use tn_types::{ConsensusHeader, TaskManager};
+use tn_storage::{open_db, tables::ConsensusBlocks, traits::Database as TNDatabase, DatabaseType};
+use tn_types::{network_public_key_to_libp2p, BatchValidation, ConsensusHeader, TaskManager};
+use tn_worker::{WorkerNetwork, WorkerNetworkHandle};
 use tokio::{runtime::Builder, sync::mpsc};
 use tracing::{info, instrument};
 
@@ -25,6 +37,149 @@ pub mod engine;
 mod error;
 pub mod primary;
 pub mod worker;
+
+/// Spawn a task to dial a primary peer and to keep trying on failure.
+fn dial_primary(
+    handle: PrimaryNetworkHandle,
+    peer_id: PeerId,
+    peer_addr: tn_network_libp2p::Multiaddr,
+    connected_count: Arc<AtomicU32>,
+) {
+    tokio::spawn(async move {
+        let mut backoff = 1;
+        while let Err(e) = handle.dial(peer_id, peer_addr.clone()).await {
+            tracing::warn!(target: "telcoin::node", "failed to dial primary {peer_id} at {peer_addr}: {e}");
+            tokio::time::sleep(Duration::from_secs(backoff)).await;
+            if backoff < 120 {
+                backoff += backoff;
+            }
+        }
+        connected_count.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+    });
+}
+
+/// Spawn a task to dial a worker peer and to keep trying on failure.
+fn dial_worker(
+    handle: WorkerNetworkHandle,
+    peer_id: PeerId,
+    peer_addr: tn_network_libp2p::Multiaddr,
+    connected_count: Arc<AtomicU32>,
+) {
+    tokio::spawn(async move {
+        let mut backoff = 1;
+        while let Err(e) = handle.dial(peer_id, peer_addr.clone()).await {
+            tracing::warn!(target: "telcoin::node", "failed to dial worker {peer_id} at {peer_addr}: {e}");
+            tokio::time::sleep(Duration::from_secs(backoff)).await;
+            if backoff < 120 {
+                backoff += backoff;
+            }
+        }
+        connected_count.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+    });
+}
+
+/// Start up the primary and worker libp2p networks and return handles to use it.
+/// This will also dial initial peers and the networks should be ready to use once it resolves.
+async fn start_networks<DB: TNDatabase>(
+    consensus_config: &ConsensusConfig<DB>,
+    consensus_bus: &ConsensusBus,
+    task_manager: &TaskManager,
+    worker_id: &u16,
+    validator: Arc<dyn BatchValidation>,
+    state_sync: StateSynchronizer<DB>,
+) -> eyre::Result<(PrimaryNetworkHandle, WorkerNetworkHandle)> {
+    let (event_stream, rx_event_stream) = mpsc::channel(1000);
+    let (worker_event_stream, rx_worker_event_stream) = mpsc::channel(1000);
+    let consensus_network = ConsensusNetwork::new_for_primary(consensus_config, event_stream)
+        .expect("primry p2p network create failed!");
+    let worker_network = ConsensusNetwork::new_for_worker(consensus_config, worker_event_stream)
+        .expect("worker p2p network create failed!");
+    let consensus_network_handle = consensus_network.network_handle();
+    let worker_network_handle = worker_network.network_handle();
+    let rx_shutdown = consensus_config.shutdown().subscribe();
+    task_manager.spawn_task("primary network run loop", async move {
+        tokio::select!(
+            _ = &rx_shutdown => {
+                Ok(())
+            }
+            res = consensus_network.run() => {
+                res
+            }
+        )
+    });
+    let rx_shutdown = consensus_config.shutdown().subscribe();
+    task_manager.spawn_task("worker network run loop", async move {
+        tokio::select!(
+            _ = &rx_shutdown => {
+                Ok(())
+            }
+            res = worker_network.run() => {
+               res
+            }
+        )
+    });
+    consensus_network_handle.subscribe(IdentTopic::new("tn-primary")).await?;
+    let my_authority = consensus_config.authority();
+    consensus_network_handle
+        .start_listening(my_authority.primary_network_address().inner())
+        .await?;
+    let worker_address = consensus_config.worker_address(worker_id);
+    worker_network_handle.start_listening(worker_address.inner()).await?;
+    let consensus_network_handle = PrimaryNetworkHandle::new(consensus_network_handle);
+    let worker_network_handle = WorkerNetworkHandle::new(worker_network_handle);
+    let peers_connected = Arc::new(AtomicU32::new(0));
+    let workers_connected = Arc::new(AtomicU32::new(0));
+    for (authority_id, addr, _) in
+        consensus_config.committee().others_primaries_by_id(consensus_config.authority().id())
+    {
+        let peer_id =
+            consensus_config.peer_id_for_authority(&authority_id).expect("missing peer id!");
+        dial_primary(
+            consensus_network_handle.clone(),
+            peer_id,
+            addr.inner(),
+            peers_connected.clone(),
+        );
+    }
+    for (id, addr) in consensus_config.worker_cache().all_workers() {
+        if addr != worker_address {
+            let peer_id = network_public_key_to_libp2p(&id);
+            dial_worker(
+                worker_network_handle.clone(),
+                peer_id,
+                addr.inner(),
+                workers_connected.clone(),
+            );
+        }
+    }
+    let quorum = consensus_config.committee().quorum_threshold() as u32;
+    // Wait until we are connected to a quorum of peers (note this assumes we are a validator...).
+    while peers_connected.load(Ordering::Relaxed) < quorum
+        || workers_connected.load(Ordering::Relaxed) < quorum
+    {
+        tokio::time::sleep(Duration::from_millis(500)).await;
+    }
+    let primary_network = PrimaryNetwork::new(
+        rx_event_stream,
+        consensus_network_handle.clone(),
+        consensus_config.clone(),
+        consensus_bus.clone(),
+        state_sync,
+    );
+    primary_network.spawn(task_manager);
+
+    // Receive incoming messages from other workers.
+    WorkerNetwork::new(
+        rx_worker_event_stream,
+        worker_network_handle.clone(),
+        consensus_config.clone(),
+        *worker_id,
+        validator,
+    )
+    .spawn(task_manager);
+
+    Ok((consensus_network_handle, worker_network_handle))
+}
 
 /// Inner working of launch_node().
 ///
@@ -64,6 +219,7 @@ where
         let mut task_manager = TaskManager::new("Task Manager");
         let mut engine_task_manager = TaskManager::new("Engine Task Manager");
         let engine = ExecutionNode::<TelcoinNode<DB>>::new(builder, &engine_task_manager)?;
+        let validator = engine.new_batch_validator().await;
 
         info!(target: "telcoin::node", "execution engine created");
 
@@ -74,31 +230,19 @@ where
 
         let (worker_id, _worker_info) = consensus_config.config().workers().first_worker()?;
         let worker = WorkerNode::new(*worker_id, consensus_config.clone());
-        let (event_stream, rx_event_stream) = mpsc::channel(1000);
         let consensus_bus =
-            ConsensusBus::new_with_args(consensus_config.config().parameters.gc_depth);
-        let consensus_network = ConsensusNetwork::new_for_primary(&consensus_config, event_stream)
-            .expect("p2p network create failed!");
-        let consensus_network_handle = consensus_network.network_handle();
-        let rx_shutdown = consensus_config.shutdown().subscribe();
-        task_manager.spawn_task("consensus network run loop", async move {
-            tokio::select!(
-                _ = &rx_shutdown => {
-                    Ok(())
-                }
-                res = consensus_network.run() => {
-                    res
-                }
-            )
-        });
-        consensus_network_handle.subscribe(IdentTopic::new("tn-primary")).await?;
-        let my_authority = consensus_config.authority();
-        consensus_network_handle.start_listening(my_authority.primary_network_address().inner()).await?;
-        for (authority_id, addr, _) in consensus_config.committee().others_primaries_by_id(consensus_config.authority().id()) {
-            let peer_id = consensus_config.peer_id_for_authority(&authority_id).expect("missing peer id!");
-            consensus_network_handle.dial(peer_id, addr.inner()).await?;
-        }
-        let primary = PrimaryNode::new(consensus_config.clone(), consensus_bus.clone(), consensus_network_handle, rx_event_stream);
+                    ConsensusBus::new_with_args(consensus_config.config().parameters.gc_depth);
+        let state_sync = StateSynchronizer::new(consensus_config.clone(), consensus_bus.clone());
+
+        let (primary_network_handle, worker_network_handle) =
+            start_networks(&consensus_config, &consensus_bus, &task_manager, worker_id, validator.clone(), state_sync.clone()).await?;
+
+        let primary = PrimaryNode::new(
+                consensus_config.clone(),
+                consensus_bus.clone(),
+                primary_network_handle,
+                state_sync,
+            );
 
         let mut engine_state = engine.get_provider().await.canonical_state_stream();
 
@@ -155,9 +299,8 @@ where
         // start the primary
         let mut primary_task_manager = primary.start().await?;
 
-        let validator = engine.new_batch_validator().await;
         // start the worker
-        let (mut worker_task_manager, block_provider) = worker.start(validator).await?;
+        let batch_provider = worker.start(validator, worker_network_handle).await?;
 
         // start engine
         engine
@@ -171,7 +314,7 @@ where
         engine
             .start_batch_builder(
                 *worker_id,
-                block_provider.batches_tx(),
+                batch_provider.batches_tx(),
                 &engine_task_manager,
                 consensus_config.shutdown().subscribe(),
             )
@@ -179,8 +322,6 @@ where
 
         primary_task_manager.update_tasks();
         task_manager.add_task_manager(primary_task_manager);
-        worker_task_manager.update_tasks();
-        task_manager.add_task_manager(worker_task_manager);
         engine_task_manager.update_tasks();
         task_manager.add_task_manager(engine_task_manager);
 

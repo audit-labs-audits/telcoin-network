@@ -2,10 +2,8 @@
 
 mod authority;
 pub use authority::*;
-pub mod cluster;
 mod execution;
 pub use execution::*;
-mod primary;
 mod worker;
 pub use worker::*;
 

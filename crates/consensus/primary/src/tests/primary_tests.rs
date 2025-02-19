@@ -2,7 +2,9 @@
 
 use super::Primary;
 use crate::{
-    network::{handler::RequestHandler, MissingCertificatesRequest, PrimaryResponse},
+    network::{
+        handler::RequestHandler, MissingCertificatesRequest, PrimaryNetwork, PrimaryResponse,
+    },
     state_sync::StateSynchronizer,
     ConsensusBus,
 };
@@ -16,25 +18,39 @@ use std::{
 };
 use tn_config::ConsensusConfig;
 use tn_network_libp2p::ConsensusNetwork;
-use tn_network_types::MockPrimaryToWorker;
+use tn_network_types::{
+    FetchBatchResponse, FetchBatchesRequest, PrimaryToWorkerClient, WorkerSynchronizeMessage,
+};
 use tn_storage::{mem_db::MemDatabase, traits::Database};
 use tn_test_utils::{
     fixture_batch_with_transactions, make_optimal_signed_certificates, CommitteeFixture,
 };
 use tn_types::{
-    now, AuthorityIdentifier, BlockHash, Certificate, Committee, ExecHeader, SealedHeader,
-    SignatureVerificationState, TaskManager,
+    network_public_key_to_libp2p, now, AuthorityIdentifier, BlockHash, Certificate, Committee,
+    ExecHeader, NetworkPublicKey, SealedHeader, SignatureVerificationState, TaskManager,
 };
 use tokio::{sync::mpsc, time::timeout};
 
-fn get_bus_and_primary<DB: Database>(config: ConsensusConfig<DB>) -> (ConsensusBus, Primary<DB>) {
-    let (event_stream, rx_event_stream) = mpsc::channel(1000);
+fn get_bus_and_primary<DB: Database>(
+    config: ConsensusConfig<DB>,
+    task_manager: &TaskManager,
+) -> (ConsensusBus, Primary<DB>) {
+    let (event_stream, rx_event_stream) = mpsc::channel(100);
     let consensus_bus = ConsensusBus::new_with_args(config.config().parameters.gc_depth);
     let consensus_network = ConsensusNetwork::new_for_primary(&config, event_stream)
         .expect("p2p network create failed!");
     let consensus_network_handle = consensus_network.network_handle();
+    let state_sync = StateSynchronizer::new(config.clone(), consensus_bus.clone());
+    let primary_network = PrimaryNetwork::new(
+        rx_event_stream,
+        consensus_network_handle.clone().into(),
+        config.clone(),
+        consensus_bus.clone(),
+        state_sync.clone(),
+    );
+    primary_network.spawn(task_manager);
 
-    let primary = Primary::new(config, &consensus_bus, consensus_network_handle, rx_event_stream);
+    let primary = Primary::new(config, &consensus_bus, consensus_network_handle.into(), state_sync);
     (consensus_bus, primary)
 }
 
@@ -349,6 +365,25 @@ async fn test_request_vote_accept_missing_parents() {
     assert!(result.is_ok(), "{:?}", result);
 }
 
+struct MockPrimaryToWorkerClient {}
+#[async_trait::async_trait]
+impl PrimaryToWorkerClient for MockPrimaryToWorkerClient {
+    async fn synchronize(
+        &self,
+        _worker_name: NetworkPublicKey,
+        _message: WorkerSynchronizeMessage,
+    ) -> eyre::Result<()> {
+        Ok(())
+    }
+
+    async fn fetch_batches(
+        &self,
+        _worker_name: NetworkPublicKey,
+        _request: FetchBatchesRequest,
+    ) -> eyre::Result<FetchBatchResponse> {
+        Err(eyre::eyre!("not implemented"))
+    }
+}
 #[tokio::test]
 async fn test_request_vote_missing_batches() {
     let fixture = CommitteeFixture::builder(MemDatabase::default)
@@ -402,23 +437,12 @@ async fn test_request_vote_missing_batches() {
         .with_payload_batch(fixture_batch_with_transactions(10), 0, 0)
         .build()
         .unwrap();
-    let test_digests: HashSet<_> =
-        test_header.payload().iter().map(|(digest, _)| digest).cloned().collect();
 
     // Set up mock worker.
-    let author_id = author.id();
     let worker = primary.worker();
     let _worker_address = &worker.info().worker_address;
-    let worker_peer_id = anemo::PeerId(worker.keypair().public().0.to_bytes());
-    let mut mock_server = MockPrimaryToWorker::new();
-    mock_server
-        .expect_synchronize()
-        .withf(move |request| {
-            let digests: HashSet<_> = request.body().digests.iter().cloned().collect();
-            digests == test_digests && request.body().target == author_id
-        })
-        .times(1)
-        .return_once(|_| Ok(anemo::Response::new(())));
+    let worker_peer_id = network_public_key_to_libp2p(worker.keypair().public());
+    let mock_server = MockPrimaryToWorkerClient {};
 
     client.set_primary_to_worker_local_handler(worker_peer_id, Arc::new(mock_server));
 
@@ -479,10 +503,8 @@ async fn test_request_vote_already_voted() {
     // Set up mock worker.
     let worker = primary.worker();
     let _worker_address = &worker.info().worker_address;
-    let worker_peer_id = anemo::PeerId(worker.keypair().public().0.to_bytes());
-    let mut mock_server = MockPrimaryToWorker::new();
-    // Always Synchronize successfully.
-    mock_server.expect_synchronize().returning(|_| Ok(anemo::Response::new(())));
+    let worker_peer_id = network_public_key_to_libp2p(worker.keypair().public());
+    let mock_server = MockPrimaryToWorkerClient {};
 
     client.set_primary_to_worker_local_handler(worker_peer_id, Arc::new(mock_server));
 
@@ -688,10 +710,8 @@ async fn test_request_vote_created_at_in_future() {
     // Set up mock worker.
     let worker = primary.worker();
     let _worker_address = &worker.info().worker_address;
-    let worker_peer_id = anemo::PeerId(worker.keypair().public().0.to_bytes());
-    let mut mock_server = MockPrimaryToWorker::new();
-    // Always Synchronize successfully.
-    mock_server.expect_synchronize().returning(|_| Ok(anemo::Response::new(())));
+    let worker_peer_id = network_public_key_to_libp2p(worker.keypair().public());
+    let mock_server = MockPrimaryToWorkerClient {};
 
     client.set_primary_to_worker_local_handler(worker_peer_id, Arc::new(mock_server));
 

@@ -1,7 +1,6 @@
 //! Wait for a quorum of acks from workers before sharing with the primary.
 
-use crate::metrics::WorkerMetrics;
-use anemo::types::response::StatusCode;
+use crate::{metrics::WorkerMetrics, network::WorkerNetworkHandle};
 use consensus_metrics::monitored_future;
 use futures::stream::{futures_unordered::FuturesUnordered, StreamExt as _};
 use std::{
@@ -11,9 +10,10 @@ use std::{
     time::{Duration, Instant},
 };
 use thiserror::Error;
-use tn_network::{CancelOnDropHandler, ReliableNetwork};
-use tn_network_types::BatchMessage;
-use tn_types::{Authority, Committee, SealedBatch, Stake, WorkerCache, WorkerId};
+use tn_network_libp2p::error::NetworkError;
+use tn_types::{
+    network_public_key_to_libp2p, Authority, Committee, SealedBatch, Stake, WorkerCache, WorkerId,
+};
 use tokio::task::JoinHandle;
 
 #[cfg(test)]
@@ -54,7 +54,7 @@ struct QuorumWaiterInner {
     /// The worker information cache.
     worker_cache: WorkerCache,
     /// A network sender to broadcast the batches to the other workers.
-    network: anemo::Network,
+    network: WorkerNetworkHandle,
     /// Record metrics for quorum waiter.
     metrics: Arc<WorkerMetrics>,
 }
@@ -72,7 +72,7 @@ impl QuorumWaiter {
         id: WorkerId,
         committee: Committee,
         worker_cache: WorkerCache,
-        network: anemo::Network,
+        network: WorkerNetworkHandle,
         metrics: Arc<WorkerMetrics>,
     ) -> Self {
         Self {
@@ -89,17 +89,22 @@ impl QuorumWaiter {
 
     /// Helper function. It waits for a future to complete and then delivers a value.
     async fn waiter(
-        wait_for: CancelOnDropHandler<eyre::Result<anemo::Response<()>>>,
+        wait_for: JoinHandle<Result<(), NetworkError>>,
         deliver: Stake,
     ) -> Result<Stake, WaiterError> {
         match wait_for.await {
             Ok(r) => {
-                let status = r.status();
-                match status {
-                    StatusCode::Success => Ok(deliver),
-                    StatusCode::BadRequest => Err(WaiterError::Rejected(deliver)),
+                match r {
+                    Ok(_) => Ok(deliver),
+                    Err(NetworkError::RPCError(msg)) => {
+                        tracing::error!(target = "worker::quorum_waiter", "RPCError: {msg}");
+                        Err(WaiterError::Rejected(deliver))
+                    }
                     // Non-exhaustive enum...
-                    _ => Err(WaiterError::Rpc(status, deliver)),
+                    Err(err) => {
+                        tracing::error!(target = "worker::quorum_waiter", "Network error: {err}");
+                        Err(WaiterError::Network(deliver))
+                    }
                 }
             }
             Err(_) => Err(WaiterError::Network(deliver)),
@@ -124,9 +129,12 @@ impl QuorumWaiterTrait for QuorumWaiter {
                     .into_iter()
                     .map(|(name, info)| (name, info.name))
                     .collect();
-                let (primary_names, worker_names): (Vec<_>, _) = workers.into_iter().unzip();
-                let message = BatchMessage { sealed_batch };
-                let handlers = inner.network.broadcast(worker_names, &message);
+                let (primary_names, worker_names): (Vec<_>, Vec<_>) = workers.into_iter().unzip();
+
+                let handlers = inner.network.report_batch_to_peers(
+                    worker_names.iter().map(network_public_key_to_libp2p).collect(),
+                    sealed_batch,
+                );
                 let _timer = inner.metrics.batch_broadcast_quorum_latency.start_timer();
 
                 // Collect all the handlers to receive acknowledgements.
@@ -190,9 +198,6 @@ impl QuorumWaiterTrait for QuorumWaiter {
                             Err(WaiterError::Network(stake)) => {
                                 available_stake -= stake;
                             }
-                            Err(WaiterError::Rpc(_, stake)) => {
-                                available_stake -= stake;
-                            }
                         }
                     } else {
                         // Ran out of Peers and did not reach quorum...
@@ -233,7 +238,7 @@ pub enum QuorumWaiterError {
     #[error("Network Error")]
     Network,
     #[error("RPC Status Error {0}")]
-    Rpc(StatusCode),
+    Rpc(String),
 }
 
 #[derive(Clone, Debug, Error)]
@@ -242,6 +247,4 @@ enum WaiterError {
     Rejected(Stake),
     #[error("Network Error")]
     Network(Stake),
-    #[error("RPC Status Error {0}")]
-    Rpc(StatusCode, Stake),
 }

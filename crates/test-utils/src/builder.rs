@@ -1,5 +1,7 @@
 //! The builder responsible for creating all aspects of the committee fixture.
 
+use crate::WorkerFixture;
+
 use super::{AuthorityFixture, CommitteeFixture};
 use rand::{
     rngs::{OsRng, StdRng},
@@ -9,6 +11,7 @@ use std::{
     collections::{BTreeMap, VecDeque},
     marker::PhantomData,
     num::NonZeroUsize,
+    sync::Arc,
 };
 use tn_config::KeyConfig;
 use tn_storage::traits::Database;
@@ -133,30 +136,51 @@ where
         for (i, (_, (primary_keypair, key_config, authority))) in authorities.iter_mut().enumerate()
         {
             authority.initialise((i as u16).into());
-            committee_info.push((primary_keypair.copy(), key_config.clone(), authority.clone()));
+            let worker = WorkerFixture::generate(key_config.clone(), authority.id().0, |host| {
+                if self.randomize_ports {
+                    get_available_udp_port(host).unwrap_or(DEFAULT_PRIMARY_PORT)
+                } else {
+                    0
+                }
+            });
+            committee_info.push((
+                primary_keypair.copy(),
+                key_config.clone(),
+                authority.clone(),
+                worker,
+            ));
         }
         // Make the committee so we can give it the AuthorityFixtures below.
         let committee = Committee::new_for_test(
             authorities.into_iter().map(|(k, (_, _, a))| (k, a)).collect(),
             0,
         );
+        // Build our worker cache.  This is map of authorities to it's worker (one per authority).
+        let worker_cache = WorkerCache {
+            epoch: self.epoch,
+            workers: Arc::new(
+                committee_info
+                    .iter()
+                    .map(|(primary_keypair, _key_config, _authority, worker)| {
+                        let mut worker_index = BTreeMap::new();
+                        worker_index.insert(0, worker.info().clone());
+                        (primary_keypair.public().clone(), WorkerIndex(worker_index.clone()))
+                    })
+                    .collect(),
+            ),
+        };
+        // All the authorities use the same worker cache.
         let mut authorities: Vec<AuthorityFixture<DB>> = committee_info
             .into_iter()
-            .map(|(primary_keypair, key_config, authority)| {
+            .map(|(primary_keypair, key_config, authority, worker)| {
                 AuthorityFixture::generate(
                     self.number_of_workers,
-                    |host| {
-                        if self.randomize_ports {
-                            get_available_udp_port(host).unwrap_or(DEFAULT_PRIMARY_PORT)
-                        } else {
-                            0
-                        }
-                    },
                     authority,
-                    primary_keypair,
-                    key_config,
+                    (primary_keypair, key_config),
                     committee.clone(),
                     (self.new_db)(),
+                    worker,
+                    worker_cache.clone(),
                 )
             })
             .collect();
@@ -166,23 +190,6 @@ where
         // same order.
         // These are probably already sorted but this does not hurt and the comment is helpful.
         authorities.sort_by_key(|a1| a1.primary_public_key());
-
-        // Build our worker cache.  This is map of authorities to it's worker (one per authority).
-        let worker_cache = WorkerCache {
-            epoch: self.epoch,
-            workers: authorities
-                .iter()
-                .map(|a| {
-                    let mut worker_index = BTreeMap::new();
-                    worker_index.insert(0, a.worker().info().clone());
-                    (a.primary_public_key(), WorkerIndex(worker_index.clone()))
-                })
-                .collect(),
-        };
-        // All the authorities use the same worker cache.
-        for a in authorities.iter_mut() {
-            a.set_worker_cache(worker_cache.clone());
-        }
 
         CommitteeFixture { authorities, committee }
     }

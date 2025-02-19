@@ -15,14 +15,11 @@ mod primary;
 mod proposer;
 mod state_handler;
 mod state_sync;
+pub use state_sync::StateSynchronizer;
 
 #[cfg(test)]
 #[path = "tests/certificate_tests.rs"]
 mod certificate_tests;
-
-#[cfg(test)]
-#[path = "tests/rpc_tests.rs"]
-mod rpc_tests;
 
 pub use crate::primary::Primary;
 
