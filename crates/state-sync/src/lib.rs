@@ -13,11 +13,8 @@ use tn_config::ConsensusConfig;
 use tn_network::anemo_ext::{NetworkExt, WaitingPeer};
 use tn_network_types::{ConsensusOutputRequest, PrimaryToPrimaryClient};
 use tn_primary::{consensus::ConsensusRound, ConsensusBus, NodeMode};
-use tn_storage::{
-    tables::{Batches, ConsensusBlockNumbersByDigest, ConsensusBlocks},
-    traits::{Database, DbTxMut},
-};
-use tn_types::{ConsensusHeader, ConsensusOutput, TaskManagerClone, TnSender};
+use tn_storage::tables::{Batches, ConsensusBlockNumbersByDigest, ConsensusBlocks};
+use tn_types::{ConsensusHeader, ConsensusOutput, Database, DbTxMut, TaskManagerClone, TnSender};
 use tracing::info;
 
 /// Return true if this node should be able to participate as a CVV, false otherwise.

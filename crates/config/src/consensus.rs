@@ -10,9 +10,9 @@ use std::{
     sync::Arc,
 };
 use tn_network::local::LocalNetwork;
-use tn_storage::{traits::Database, NodeStorage};
+use tn_storage::NodeStorage;
 use tn_types::{
-    Authority, AuthorityIdentifier, Certificate, CertificateDigest, Committee, Notifier,
+    Authority, AuthorityIdentifier, Certificate, CertificateDigest, Committee, Database, Notifier,
     WorkerCache,
 };
 

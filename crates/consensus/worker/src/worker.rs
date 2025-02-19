@@ -29,10 +29,9 @@ use tn_network::{
     metrics::MetricsMakeCallbackHandler,
 };
 use tn_network_types::WorkerToWorkerServer;
-use tn_storage::traits::Database;
 use tn_types::{
-    traits::KeyPair as _, AuthorityIdentifier, BatchValidation, Multiaddr, NetworkPublicKey,
-    Noticer, Protocol, TaskManager, WorkerId,
+    traits::KeyPair as _, AuthorityIdentifier, BatchValidation, Database, Multiaddr,
+    NetworkPublicKey, Noticer, Protocol, TaskManager, WorkerId,
 };
 use tower::ServiceBuilder;
 use tracing::{error, info};
