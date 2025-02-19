@@ -11995,6 +11995,7 @@ dependencies = [
 name = "tn-config"
 version = "0.1.0"
 dependencies = [
+ "backoff",
  "eyre",
  "fastcrypto",
  "humantime-serde",
@@ -12137,7 +12138,6 @@ name = "tn-network-types"
 version = "0.1.0"
 dependencies = [
  "async-trait",
- "backoff",
  "bcs",
  "bytes",
  "eyre",

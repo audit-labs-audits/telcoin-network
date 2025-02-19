@@ -16,6 +16,7 @@ use std::{
     collections::{BTreeMap, HashSet},
     fmt,
     str::FromStr,
+    sync::Arc,
 };
 
 use super::DEFAULT_WORKER_PORT;
@@ -158,9 +159,6 @@ impl WorkerIndex {
 /// The collection of all workers organized by authority public keys
 /// that comprise the [Committee] for a specific [Epoch].
 ///
-/// TODO: remove default? Added for compatibility with [ConfigTrait].
-/// Probably a better way to do this.
-///
 /// TODO: why isn't this a part of [Committee]?
 /// It's always needed by members of the committee.
 #[derive(Clone, Serialize, Deserialize, Debug, Default)]
@@ -168,7 +166,7 @@ pub struct WorkerCache {
     /// The epoch number for workers
     pub epoch: Epoch,
     /// The authority to worker index.
-    pub workers: BTreeMap<BlsPublicKey, WorkerIndex>,
+    pub workers: Arc<BTreeMap<BlsPublicKey, WorkerIndex>>,
 }
 
 impl std::fmt::Display for WorkerIndex {

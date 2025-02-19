@@ -5,8 +5,6 @@ pub mod local;
 mod notify;
 mod request;
 mod response;
-pub mod retry;
-use libp2p::PeerId;
 pub use notify::*;
 pub use request::*;
 pub use response::*;
@@ -62,12 +60,4 @@ pub trait PrimaryToWorkerClient: Send + Sync + 'static {
         worker_name: NetworkPublicKey,
         request: FetchBatchesRequest,
     ) -> eyre::Result<FetchBatchResponse>;
-}
-
-/// Convert an existing NetworkPublicKey into a libp2p PeerId.
-pub fn network_public_key_to_libp2p(fastcrypto: &NetworkPublicKey) -> PeerId {
-    let bytes = fastcrypto.as_ref().to_vec();
-    let ed_public_key = libp2p::identity::ed25519::PublicKey::try_from_bytes(&bytes)
-        .expect("invalid public key, not able to convert to peer id!");
-    libp2p::PeerId::from_public_key(&ed_public_key.into())
 }

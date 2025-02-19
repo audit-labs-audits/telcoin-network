@@ -20,7 +20,6 @@ use reth_db::{
 use reth_provider::CanonStateSubscriptions;
 use tn_config::{ConsensusConfig, KeyConfig, TelcoinDirs};
 use tn_network_libp2p::{types::IdentTopic, ConsensusNetwork, PeerId};
-use tn_network_types::network_public_key_to_libp2p;
 use tn_node_traits::TelcoinNode;
 use tn_primary::{
     network::{PrimaryNetwork, PrimaryNetworkHandle},
@@ -28,7 +27,7 @@ use tn_primary::{
 };
 pub use tn_storage::NodeStorage;
 use tn_storage::{open_db, tables::ConsensusBlocks, traits::Database as TNDatabase, DatabaseType};
-use tn_types::{BatchValidation, ConsensusHeader, Multiaddr, TaskManager, WorkerId};
+use tn_types::{network_public_key_to_libp2p, BatchValidation, ConsensusHeader, TaskManager};
 use tn_worker::{WorkerNetwork, WorkerNetworkHandle};
 use tokio::{runtime::Builder, sync::mpsc};
 use tracing::{info, instrument};
@@ -38,18 +37,6 @@ pub mod engine;
 mod error;
 pub mod primary;
 pub mod worker;
-
-/// Retrieve the worker's network address by id.
-fn worker_address<DB: TNDatabase>(
-    id: &WorkerId,
-    consensus_config: &ConsensusConfig<DB>,
-) -> Multiaddr {
-    consensus_config
-        .worker_cache()
-        .worker(consensus_config.authority().protocol_key(), id)
-        .expect("Our public key or worker id is not in the worker cache")
-        .worker_address
-}
 
 /// Spawn a task to dial a primary peer and to keep trying on failure.
 fn dial_primary(
@@ -136,7 +123,7 @@ async fn start_networks<DB: TNDatabase>(
     consensus_network_handle
         .start_listening(my_authority.primary_network_address().inner())
         .await?;
-    let worker_address = worker_address(worker_id, consensus_config);
+    let worker_address = consensus_config.worker_address(worker_id);
     worker_network_handle.start_listening(worker_address.inner()).await?;
     let consensus_network_handle = PrimaryNetworkHandle::new(consensus_network_handle);
     let worker_network_handle = WorkerNetworkHandle::new(worker_network_handle);
@@ -165,7 +152,7 @@ async fn start_networks<DB: TNDatabase>(
             );
         }
     }
-    let quorum = ((consensus_config.committee().size() * 2) / 3) as u32;
+    let quorum = consensus_config.committee().quorum_threshold() as u32;
     // Wait until we are connected to a quorum of peers (note this assumes we are a validator...).
     while peers_connected.load(Ordering::Relaxed) < quorum
         || workers_connected.load(Ordering::Relaxed) < quorum

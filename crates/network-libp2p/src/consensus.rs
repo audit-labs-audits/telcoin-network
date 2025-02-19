@@ -5,7 +5,7 @@
 use crate::{
     codec::{TNCodec, TNMessage},
     error::NetworkError,
-    network_public_key_to_libp2p, send_or_log_error,
+    send_or_log_error,
     types::{NetworkCommand, NetworkEvent, NetworkHandle, NetworkResult},
 };
 use futures::StreamExt as _;
@@ -26,6 +26,7 @@ use std::{
     time::Duration,
 };
 use tn_config::{ConsensusConfig, LibP2pConfig};
+use tn_types::network_public_key_to_libp2p;
 use tokio::sync::{
     mpsc::{self, Receiver, Sender},
     oneshot,

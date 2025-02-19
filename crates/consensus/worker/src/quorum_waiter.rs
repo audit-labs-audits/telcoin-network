@@ -10,8 +10,10 @@ use std::{
     time::{Duration, Instant},
 };
 use thiserror::Error;
-use tn_network_libp2p::{error::NetworkError, network_public_key_to_libp2p};
-use tn_types::{Authority, Committee, SealedBatch, Stake, WorkerCache, WorkerId};
+use tn_network_libp2p::error::NetworkError;
+use tn_types::{
+    network_public_key_to_libp2p, Authority, Committee, SealedBatch, Stake, WorkerCache, WorkerId,
+};
 use tokio::task::JoinHandle;
 
 #[cfg(test)]
@@ -87,16 +89,22 @@ impl QuorumWaiter {
 
     /// Helper function. It waits for a future to complete and then delivers a value.
     async fn waiter(
-        wait_for: JoinHandle<Result<(), NetworkError>>, /* CancelOnDropHandler<eyre::Result<anemo::Response<()>>>, */
+        wait_for: JoinHandle<Result<(), NetworkError>>,
         deliver: Stake,
     ) -> Result<Stake, WaiterError> {
         match wait_for.await {
             Ok(r) => {
                 match r {
                     Ok(_) => Ok(deliver),
-                    Err(NetworkError::RPCError(_)) => Err(WaiterError::Rejected(deliver)),
+                    Err(NetworkError::RPCError(msg)) => {
+                        tracing::error!(target = "worker::quorum_waiter", "RPCError: {msg}");
+                        Err(WaiterError::Rejected(deliver))
+                    }
                     // Non-exhaustive enum...
-                    _ => Err(WaiterError::Network(deliver)),
+                    Err(err) => {
+                        tracing::error!(target = "worker::quorum_waiter", "Network error: {err}");
+                        Err(WaiterError::Network(deliver))
+                    }
                 }
             }
             Err(_) => Err(WaiterError::Network(deliver)),

@@ -361,8 +361,7 @@ async fn max_consensus_header(
     }
 }
 
-/// Get a vector of clients to each peer.
-/// This should go away with libp2p.
+/// Get a vector of peer ids to each peer.
 fn get_peers<DB: Database>(config: &ConsensusConfig<DB>) -> Vec<PeerId> {
     config
         .committee()

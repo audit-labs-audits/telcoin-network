@@ -11,9 +11,8 @@ use crate::{
 };
 use std::sync::Arc;
 use tn_config::ConsensusConfig;
-use tn_network_libp2p::network_public_key_to_libp2p;
 use tn_storage::traits::Database;
-use tn_types::{traits::EncodeDecodeBase64, TaskManager};
+use tn_types::{network_public_key_to_libp2p, traits::EncodeDecodeBase64, TaskManager};
 use tracing::info;
 
 #[cfg(test)]
@@ -51,7 +50,6 @@ impl<DB: Database> Primary<DB> {
             config.node_storage().payload_store.clone(),
         );
 
-        // TODO: remove this
         config
             .local_network()
             .set_worker_to_primary_local_handler(Arc::new(worker_receiver_handler));

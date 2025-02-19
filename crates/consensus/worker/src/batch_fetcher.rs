@@ -1,6 +1,9 @@
 //! Fetch batches from peers
 
-use crate::{metrics::WorkerMetrics, network::WorkerNetworkHandle};
+use crate::{
+    metrics::WorkerMetrics,
+    network::{message::RequestBatchesResponse, WorkerNetworkHandle},
+};
 use async_trait::async_trait;
 use futures::{stream::FuturesUnordered, FutureExt, StreamExt};
 use itertools::Itertools;
@@ -11,13 +14,11 @@ use std::{
     sync::Arc,
     time::Duration,
 };
-use tn_network_libp2p::network_public_key_to_libp2p;
-use tn_network_types::RequestBatchesResponse;
 use tn_storage::{
     tables::Batches,
     traits::{Database, DbTxMut},
 };
-use tn_types::{now, Batch, BlockHash, NetworkPublicKey};
+use tn_types::{network_public_key_to_libp2p, now, Batch, BlockHash, NetworkPublicKey};
 use tokio::{
     select,
     time::{sleep, sleep_until, Instant},

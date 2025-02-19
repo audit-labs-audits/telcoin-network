@@ -2,7 +2,7 @@ use tn_network_libp2p::error::NetworkError;
 use tn_types::{BatchValidationError, BcsError};
 use tokio::time::error::Elapsed;
 
-/// Result alias for results that possibly return [`PrimaryNetworkError`].
+/// Result alias for results that possibly return [`WorkerNetworkError`].
 pub type WorkerNetworkResult<T> = Result<T, WorkerNetworkError>;
 
 /// Core error variants when executing the output from consensus and extending the canonical block.

@@ -1,13 +1,13 @@
 //! Client implementation for local network messages between primary and worker.
 use crate::{
-    network_public_key_to_libp2p, FetchBatchResponse, FetchBatchesRequest, PrimaryToWorkerClient,
-    WorkerOthersBatchMessage, WorkerOwnBatchMessage, WorkerSynchronizeMessage,
-    WorkerToPrimaryClient,
+    FetchBatchResponse, FetchBatchesRequest, PrimaryToWorkerClient, WorkerOthersBatchMessage,
+    WorkerOwnBatchMessage, WorkerSynchronizeMessage, WorkerToPrimaryClient,
 };
 use libp2p::PeerId;
 use parking_lot::RwLock;
 use std::{collections::BTreeMap, sync::Arc};
 use tn_types::{
+    network_public_key_to_libp2p,
     traits::{InsecureDefault, KeyPair},
     NetworkKeypair, NetworkPublicKey,
 };

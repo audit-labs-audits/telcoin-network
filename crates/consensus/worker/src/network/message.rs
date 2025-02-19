@@ -1,7 +1,15 @@
 use serde::{Deserialize, Serialize};
 use tn_network_libp2p::TNMessage;
-use tn_network_types::RequestBatchesResponse;
-use tn_types::{BlockHash, SealedBatch};
+use tn_types::{Batch, BlockHash, SealedBatch};
+
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
+pub struct RequestBatchesResponse {
+    /// Requested batches.
+    pub batches: Vec<Batch>,
+    /// If true, the primary should request the batches from the workers again.
+    /// This may not be something that can be trusted from a remote worker.
+    pub is_size_limit_reached: bool,
+}
 
 /// Worker messages on the gossip network.
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
