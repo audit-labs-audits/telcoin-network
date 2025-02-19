@@ -7,7 +7,6 @@ use prometheus::{
     Registry,
 };
 use std::sync::Arc;
-use tn_network::metrics::{NetworkConnectionMetrics, NetworkMetrics};
 
 const LATENCY_SEC_BUCKETS: &[f64] = &[
     0.001, 0.005, 0.01, 0.05, 0.1, 0.15, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9, 1.0, 1.2, 1.4,
@@ -19,9 +18,6 @@ const LATENCY_SEC_BUCKETS: &[f64] = &[
 pub struct Metrics {
     pub worker_metrics: Arc<WorkerMetrics>,
     pub channel_metrics: Arc<WorkerChannelMetrics>,
-    pub inbound_network_metrics: Arc<NetworkMetrics>,
-    pub outbound_network_metrics: Arc<NetworkMetrics>,
-    pub network_connection_metrics: Arc<NetworkConnectionMetrics>,
 }
 
 impl Metrics {
@@ -32,23 +28,7 @@ impl Metrics {
         // Channel metrics
         let channel_metrics = Arc::new(WorkerChannelMetrics::try_new(registry)?);
 
-        // The metrics used for communicating over the network
-        let inbound_network_metrics =
-            Arc::new(NetworkMetrics::try_new("worker", "inbound", registry)?);
-        let outbound_network_metrics =
-            Arc::new(NetworkMetrics::try_new("worker", "outbound", registry)?);
-
-        // Network metrics for the worker connection
-        let network_connection_metrics =
-            Arc::new(NetworkConnectionMetrics::try_new("worker", registry)?);
-
-        Ok(Metrics {
-            worker_metrics,
-            channel_metrics,
-            inbound_network_metrics,
-            outbound_network_metrics,
-            network_connection_metrics,
-        })
+        Ok(Metrics { worker_metrics, channel_metrics })
     }
 
     pub fn new_with_registry(registry: &Registry) -> Self {

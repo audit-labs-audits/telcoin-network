@@ -1,12 +1,11 @@
 //! Filter consensus results to update execution state.
 
-use crate::ConsensusBus;
+use crate::{network::PrimaryNetworkHandle, ConsensusBus};
 use consensus_metrics::monitored_future;
-use tap::TapFallible;
 use tn_types::{
     AuthorityIdentifier, Certificate, Noticer, Round, TaskManager, TnReceiver, TnSender,
 };
-use tracing::{debug, error, info, warn};
+use tracing::{debug, error, info};
 
 /// Updates Narwhal system state based on certificates received from consensus.
 pub struct StateHandler {
@@ -17,7 +16,7 @@ pub struct StateHandler {
     /// Channel to signal committee changes.
     rx_shutdown: Noticer,
 
-    network: anemo::Network,
+    network: PrimaryNetworkHandle,
 }
 
 impl StateHandler {
@@ -25,7 +24,7 @@ impl StateHandler {
         authority_id: AuthorityIdentifier,
         consensus_bus: &ConsensusBus,
         rx_shutdown: Noticer,
-        network: anemo::Network,
+        network: PrimaryNetworkHandle,
         task_manager: &TaskManager,
     ) {
         let state_handler =
@@ -69,10 +68,7 @@ impl StateHandler {
 
     async fn run(mut self) {
         info!(target: "primary::state_handler", "StateHandler on node {} has started successfully.", self.authority_id);
-        // This clone into a variable is D-U-M, subscribe should return an owned object but here we
-        // are.
-        let committed_certificates = self.consensus_bus.committed_certificates().clone();
-        let mut rx_committed_certificates = committed_certificates.subscribe();
+        let mut rx_committed_certificates = self.consensus_bus.committed_certificates().subscribe();
         loop {
             tokio::select! {
                 Some((commit_round, certificates)) = rx_committed_certificates.recv() => {
@@ -80,13 +76,6 @@ impl StateHandler {
                 },
 
                 _ = &self.rx_shutdown => {
-                    // shutdown network
-                    let _ = self.network.shutdown().await.tap_err(|err|{
-                        error!(target: "primary::state_handler", "Error while shutting down network: {err}")
-                    });
-
-                    warn!(target: "primary::state_handler", "Network has shutdown");
-
                     return;
                 }
             }

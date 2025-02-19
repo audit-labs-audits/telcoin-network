@@ -1,7 +1,11 @@
 //! Certifier broadcasts headers and certificates for this primary.
 
-use crate::{aggregators::VotesAggregator, state_sync::StateSynchronizer, ConsensusBus};
-use anemo::{rpc::Status, Request, Response};
+use crate::{
+    aggregators::VotesAggregator,
+    network::{PrimaryNetworkHandle, RequestVoteResult},
+    state_sync::StateSynchronizer,
+    ConsensusBus,
+};
 use consensus_metrics::monitored_future;
 use futures::{
     stream::{FuturesOrdered, FuturesUnordered},
@@ -9,17 +13,14 @@ use futures::{
 };
 use std::{cmp::min, sync::Arc, time::Duration};
 use tn_config::{ConsensusConfig, KeyConfig};
-use tn_network::anemo_ext::{NetworkExt, WaitingPeer};
-use tn_network_types::{
-    PrimaryToPrimaryClient, RequestVoteRequest, SendCertificateRequest, SendCertificateResponse,
-};
+use tn_network_libp2p::{error::NetworkError, types::NetworkResult};
 use tn_primary_metrics::PrimaryMetrics;
 use tn_storage::CertificateStore;
 use tn_types::{
     ensure,
     error::{DagError, DagResult},
-    AuthorityIdentifier, Certificate, CertificateDigest, Committee, Database, Header,
-    NetworkPublicKey, Noticer, TaskManager, TnReceiver, TnSender, Vote, CHANNEL_CAPACITY,
+    AuthorityIdentifier, Certificate, CertificateDigest, Committee, Database, Header, Noticer,
+    TaskManager, TnReceiver, TnSender, Vote, CHANNEL_CAPACITY,
 };
 use tokio::sync::broadcast;
 use tracing::{debug, enabled, error, info, instrument, trace, warn};
@@ -48,8 +49,10 @@ pub struct Certifier<DB> {
     rx_shutdown: Noticer,
     /// Consensus channels.
     consensus_bus: ConsensusBus,
+    /// Consensus config.
+    config: ConsensusConfig<DB>,
     /// A network sender to send the batches to the other workers.
-    network: anemo::Network,
+    network: PrimaryNetworkHandle,
     /// Metrics handler
     metrics: Arc<PrimaryMetrics>,
     /// Send own certificates to be broadcasted to all other peers.
@@ -61,7 +64,7 @@ impl<DB: Database> Certifier<DB> {
         config: ConsensusConfig<DB>,
         consensus_bus: ConsensusBus,
         state_sync: StateSynchronizer<DB>,
-        primary_network: anemo::Network,
+        primary_network: PrimaryNetworkHandle,
         task_manager: &TaskManager,
     ) {
         let rx_shutdown = config.shutdown().subscribe();
@@ -74,13 +77,11 @@ impl<DB: Database> Certifier<DB> {
 
         // prevents race condition during startup when first proposed header fails during
         // tx_own_certificate_broadcast.send()
-        let broadcast_targets: Vec<(_, _, _)> = config
+        let broadcast_targets: Vec<(_, _)> = config
             .committee()
             .others_primaries_by_id(config.authority().id())
             .into_iter()
-            .map(|(name, _addr, network_key)| {
-                (name, tx_own_certificate_broadcast.subscribe(), network_key)
-            })
+            .map(|(name, _addr, _network_key)| (name, tx_own_certificate_broadcast.subscribe()))
             .collect();
 
         let highest_created_certificate = config
@@ -90,14 +91,13 @@ impl<DB: Database> Certifier<DB> {
             .expect("certificate store available");
 
         // TODO- these tasks to send to each peer should be replaced with a libp2p pub/sub topic.
-        for (name, rx_own_certificate_broadcast, network_key) in broadcast_targets.into_iter() {
+        for (name, rx_own_certificate_broadcast) in broadcast_targets.into_iter() {
             trace!(target:"primary::synchronizer::broadcast_certificates", ?name, "spawning sender for peer");
             task_manager.spawn_task(
                 format!("broadcast certificates to {name}"),
                 Self::push_certificates(
                     primary_network.clone(),
                     name,
-                    network_key,
                     rx_own_certificate_broadcast,
                 ),
             );
@@ -120,6 +120,7 @@ impl<DB: Database> Certifier<DB> {
                     signature_service: config.key_config().clone(),
                     rx_shutdown,
                     consensus_bus,
+                    config: config.clone(),
                     network: primary_network,
                     metrics: primary_metrics,
                     tx_own_certificate_broadcast: tx_own_certificate_broadcast.clone(),
@@ -138,14 +139,10 @@ impl<DB: Database> Certifier<DB> {
     async fn request_vote(
         &self,
         authority: AuthorityIdentifier,
-        target: NetworkPublicKey,
         header: Header,
     ) -> DagResult<Vote> {
         debug!(target: "primary::certifier", ?authority, ?header, "requesting vote for header...");
-        let peer_id = anemo::PeerId(target.0.to_bytes());
-        let peer = self.network.waiting_peer(peer_id);
-
-        let mut client = PrimaryToPrimaryClient::new(peer);
+        let peer_id = self.config.peer_id_for_authority(&authority).expect("missing peer id!");
 
         let mut missing_parents: Vec<CertificateDigest> = Vec::new();
         let mut attempt: u32 = 0;
@@ -174,26 +171,23 @@ impl<DB: Database> Certifier<DB> {
                 parents
             };
 
-            let request =
-                anemo::Request::new(RequestVoteRequest { header: header.clone(), parents })
-                    .with_timeout(Duration::from_secs(30));
-            match client.request_vote(request).await {
-                Ok(response) => {
-                    let response = response.into_body();
-                    debug!(target: "primary::certifier", ?authority, ?response, "Ok response received after request vote");
-                    if response.vote.is_some() {
-                        break response.vote.expect("response vote is_some");
-                    }
-                    missing_parents = response.missing;
+            match self.network.request_vote(peer_id, header.clone(), parents).await {
+                Ok(RequestVoteResult::Vote(vote)) => {
+                    debug!(target: "primary::certifier", ?authority, ?vote, "Ok response received after request vote");
+                    break vote;
                 }
-                Err(status) => {
-                    // TODO: why does this error out so much?
-                    error!(target: "primary::certifier", ?authority, ?status, ?header, "bad request for requested vote");
-                    if status.status() == anemo::types::response::StatusCode::BadRequest {
-                        error!(target: "primary::certifier", ?authority, ?status, ?header, "fatal request for requested vote");
+                Ok(RequestVoteResult::MissingParents(parents)) => {
+                    debug!(target: "primary::certifier", ?authority, ?parents, "Ok missing parents response received after request vote");
+                    missing_parents = parents;
+                }
+                Err(error) => {
+                    if let NetworkError::RPCError(error) = error {
+                        error!(target: "primary::certifier", ?authority, ?error, ?header, "fatal request for requested vote");
                         return Err(DagError::NetworkError(format!(
-                            "irrecoverable error requesting vote for {header}: {status:?}"
+                            "irrecoverable error requesting vote for {header}: {error}"
                         )));
+                    } else {
+                        error!(target: "primary::certifier", ?authority, ?error, ?header, "network error requesting vote");
                     }
                     missing_parents = Vec::new();
                 }
@@ -281,9 +275,9 @@ impl<DB: Database> Certifier<DB> {
             .into_iter()
             .map(|(name, _, network_key)| (name, network_key));
         let mut requests: FuturesUnordered<_> = peers
-            .map(|(name, target)| {
+            .map(|(name, _target)| {
                 let header = header.clone();
-                self.request_vote(name, target, header)
+                self.request_vote(name, header)
             })
             .collect();
         loop {
@@ -348,15 +342,11 @@ impl<DB: Database> Certifier<DB> {
     /// Pushes new certificates received from the rx_own_certificate_broadcast channel
     /// to the target peer continuously. Only exits when the primary is shutting down.
     async fn push_certificates(
-        network: anemo::Network,
+        network: PrimaryNetworkHandle,
         authority_id: AuthorityIdentifier,
-        network_key: NetworkPublicKey,
         mut rx_own_certificate_broadcast: broadcast::Receiver<Certificate>,
     ) {
         const PUSH_TIMEOUT: Duration = Duration::from_secs(10);
-        let peer_id = anemo::PeerId(network_key.0.to_bytes());
-        let peer = network.waiting_peer(peer_id);
-        let client = PrimaryToPrimaryClient::new(peer);
         // Older broadcasts return early, so the last broadcast must be the latest certificate.
         // This will contain at most certificates created within the last PUSH_TIMEOUT.
         let mut requests = FuturesOrdered::new();
@@ -367,11 +357,10 @@ impl<DB: Database> Certifier<DB> {
         let mut backoff_multiplier: u32 = 0;
 
         async fn send_certificate(
-            mut client: PrimaryToPrimaryClient<WaitingPeer>,
-            request: Request<SendCertificateRequest>,
+            network: &PrimaryNetworkHandle,
             cert: Certificate,
-        ) -> (Certificate, Result<Response<SendCertificateResponse>, Status>) {
-            let resp = client.send_certificate(request).await;
+        ) -> (Certificate, NetworkResult<()>) {
+            let resp = network.publish_certificate(cert.clone()).await;
             (cert, resp)
         }
 
@@ -393,8 +382,7 @@ impl<DB: Database> Certifier<DB> {
                         }
                     };
                     trace!(target: "primary::certifier", authority=?authority_id, ?cert, "successfully received own cert broadcast");
-                    let request = Request::new(SendCertificateRequest { certificate: cert.clone() }).with_timeout(PUSH_TIMEOUT);
-                    requests.push_back(send_certificate(client.clone(),request, cert));
+                    requests.push_back(send_certificate(&network, cert));
                 }
                 Some((cert, resp)) = requests.next() => {
                     trace!(target: "primary::certifier", authority=?authority_id, ?resp, ?cert, "next cert request");
@@ -405,8 +393,7 @@ impl<DB: Database> Certifier<DB> {
                         Err(_) => {
                             if requests.is_empty() {
                                 // Retry broadcasting the latest certificate, to help the network stay alive.
-                                let request = Request::new(SendCertificateRequest { certificate: cert.clone() }).with_timeout(PUSH_TIMEOUT);
-                                requests.push_back(send_certificate(client.clone(), request, cert));
+                                requests.push_back(send_certificate(&network, cert));
                                 min(backoff_multiplier * 2 + 1, MAX_BACKOFF_MULTIPLIER)
                             } else {
                                 // TODO: add backoff and retries for transient & retriable errors.

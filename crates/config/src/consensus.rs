@@ -2,18 +2,17 @@
 use crate::{
     Config, ConfigFmt, ConfigTrait as _, KeyConfig, NetworkConfig, Parameters, TelcoinDirs,
 };
-use anemo::Config as AnemoConfig;
 use fastcrypto::hash::Hash as _;
 use libp2p::PeerId;
 use std::{
     collections::{HashMap, HashSet},
     sync::Arc,
 };
-use tn_network::local::LocalNetwork;
+use tn_network_types::local::LocalNetwork;
 use tn_storage::NodeStorage;
 use tn_types::{
-    Authority, AuthorityIdentifier, Certificate, CertificateDigest, Committee, Database, Notifier,
-    WorkerCache,
+    network_public_key_to_libp2p, Authority, AuthorityIdentifier, Certificate, CertificateDigest,
+    Committee, Database, Multiaddr, Notifier, WorkerCache, WorkerId,
 };
 
 #[derive(Debug)]
@@ -24,7 +23,6 @@ struct ConsensusConfigInner<DB> {
     key_config: KeyConfig,
     authority: Authority,
     local_network: LocalNetwork,
-    anemo_config: AnemoConfig,
     network_config: NetworkConfig,
     authority_map: AuthorityMapping,
     genesis: HashMap<CertificateDigest, Certificate>,
@@ -33,7 +31,7 @@ struct ConsensusConfigInner<DB> {
 #[derive(Debug, Clone)]
 pub struct ConsensusConfig<DB> {
     inner: Arc<ConsensusConfigInner<DB>>,
-    worker_cache: Option<Arc<WorkerCache>>,
+    worker_cache: WorkerCache,
     shutdown: Notifier,
 }
 
@@ -73,7 +71,7 @@ where
         );
 
         tracing::info!(target: "telcoin::consensus_config", "worker cache loaded");
-        Self::new_with_committee(config, node_storage, key_config, committee, Some(worker_cache))
+        Self::new_with_committee(config, node_storage, key_config, committee, worker_cache)
     }
 
     /// Create a new config with a committe.
@@ -85,7 +83,7 @@ where
         node_storage: NodeStorage<DB>,
         key_config: KeyConfig,
         committee: Committee,
-        mut worker_cache: Option<WorkerCache>,
+        worker_cache: WorkerCache,
     ) -> eyre::Result<Self> {
         let local_network =
             LocalNetwork::new_from_public_key(config.validator_info.primary_network_key());
@@ -98,11 +96,9 @@ where
             })
             .clone();
 
-        let worker_cache = worker_cache.take().map(Arc::new);
         let shutdown = Notifier::new();
-        let anemo_config = Self::create_anemo_config();
         let network_config = NetworkConfig::default();
-        let authority_map = AuthorityMapping::new(&committee, &network_config);
+        let authority_map = AuthorityMapping::new(&committee);
         let genesis = Certificate::genesis(&committee)
             .into_iter()
             .map(|cert| (cert.digest(), cert))
@@ -116,7 +112,6 @@ where
                 key_config,
                 authority,
                 local_network,
-                anemo_config,
                 network_config,
                 authority_map,
                 genesis,
@@ -124,41 +119,6 @@ where
             worker_cache,
             shutdown,
         })
-    }
-
-    /// The configurable variables for anemo p2p network.
-    ///
-    /// Used for cosensus by both the primary and workers.
-    fn create_anemo_config() -> AnemoConfig {
-        let mut quic_config = anemo::QuicConfig::default();
-        // Allow more concurrent streams for burst activity.
-        quic_config.max_concurrent_bidi_streams = Some(10_000);
-        // Increase send and receive buffer sizes on the worker, since the worker is
-        // responsible for broadcasting and fetching payloads.
-        // With 200MiB buffer size and ~500ms RTT, the max throughput ~400MiB.
-        quic_config.stream_receive_window = Some(100 << 20);
-        quic_config.receive_window = Some(200 << 20);
-        quic_config.send_window = Some(200 << 20);
-        quic_config.crypto_buffer_size = Some(1 << 20);
-        quic_config.socket_receive_buffer_size = Some(20 << 20);
-        quic_config.socket_send_buffer_size = Some(20 << 20);
-        quic_config.allow_failed_socket_buffer_size_setting = true;
-        quic_config.max_idle_timeout_ms = Some(30_000);
-        // Enable keep alives every 5s
-        quic_config.keep_alive_interval_ms = Some(5_000);
-        let mut config = anemo::Config::default();
-        config.quic = Some(quic_config);
-        // Set the max_frame_size to be 1 GB to work around the issue of there being too many
-        // delegation events in the epoch change txn.
-        config.max_frame_size = Some(1 << 30);
-        // Set a default timeout of 300s for all RPC requests
-        config.inbound_request_timeout_ms = Some(300_000);
-        config.outbound_request_timeout_ms = Some(300_000);
-        config.shutdown_idle_timeout_ms = Some(1_000);
-        config.connectivity_check_interval_ms = Some(2_000);
-        config.connection_backoff_ms = Some(1_000);
-        config.max_connection_backoff_ms = Some(20_000);
-        config
     }
 
     /// Returns a reference to the shutdown Noticer.
@@ -180,12 +140,11 @@ where
     }
 
     pub fn worker_cache(&self) -> &WorkerCache {
-        self.worker_cache.as_ref().expect("invalid config- missing worker cache!")
+        &self.worker_cache
     }
 
-    pub fn set_worker_cache(&mut self, worker_cache: WorkerCache) {
-        assert!(self.worker_cache.is_none(), "Can not change the working cache on a config!");
-        self.worker_cache = Some(Arc::new(worker_cache));
+    pub fn worker_cache_clone(&self) -> WorkerCache {
+        self.worker_cache.clone()
     }
 
     pub fn node_storage(&self) -> &NodeStorage<DB> {
@@ -212,10 +171,6 @@ where
         &self.inner.local_network
     }
 
-    pub fn anemo_config(&self) -> &AnemoConfig {
-        &self.inner.anemo_config
-    }
-
     pub fn network_config(&self) -> &NetworkConfig {
         &self.inner.network_config
     }
@@ -234,6 +189,15 @@ where
     pub fn authority_for_peer_id(&self, peer_id: &PeerId) -> Option<AuthorityIdentifier> {
         self.inner.authority_map.peer_id_to_authority.get(peer_id).copied()
     }
+
+    /// Retrieve the worker's network address by id.
+    /// Note, will panic if id is not valid (not found in our worker cache).
+    pub fn worker_address(&self, id: &WorkerId) -> Multiaddr {
+        self.worker_cache()
+            .worker(self.authority().protocol_key(), id)
+            .expect("Our public key or worker id is not in the worker cache")
+            .worker_address
+    }
 }
 
 /// Authority mappings between authority id (used by consensus) and peer id (used by network).
@@ -247,14 +211,12 @@ pub struct AuthorityMapping {
 
 impl AuthorityMapping {
     /// Create a new instance of [Self].
-    pub fn new(committee: &Committee, network_config: &NetworkConfig) -> Self {
+    pub fn new(committee: &Committee) -> Self {
         let authority_to_peer_id: HashMap<AuthorityIdentifier, PeerId> = committee
             .authorities()
             .map(|a| {
                 let fc = a.network_key();
-                let peer_id = network_config
-                    .ed25519_fastcrypto_to_libp2p(&fc)
-                    .expect("fastcrypto to libp2p PeerId always works");
+                let peer_id = network_public_key_to_libp2p(&fc);
                 (a.id(), peer_id)
             })
             .collect();

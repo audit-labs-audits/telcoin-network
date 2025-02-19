@@ -5,7 +5,6 @@ use fastcrypto::traits::KeyPair as KeyPairTrait;
 use reth_chainspec::ChainSpec;
 use serde::{Deserialize, Serialize};
 use std::{
-    num::NonZeroU32,
     path::{Path, PathBuf},
     time::Duration,
 };
@@ -168,12 +167,6 @@ pub struct Parameters {
     /// Properties for the prometheus metrics
     #[serde(default = "PrometheusMetricsParameters::default")]
     pub prometheus_metrics: PrometheusMetricsParameters,
-    /// Network admin server ports for primary & worker.
-    #[serde(default = "NetworkAdminServerParameters::default")]
-    pub network_admin_server: NetworkAdminServerParameters,
-    /// Anemo network settings.
-    #[serde(default = "AnemoParameters::default")]
-    pub anemo: AnemoParameters,
     /// Worker timeout when request vote from peers.
     #[serde(default = "Parameters::default_batch_vote_timeout")]
     pub batch_vote_timeout: Duration,
@@ -242,77 +235,6 @@ impl Default for NetworkAdminServerParameters {
     }
 }
 
-impl NetworkAdminServerParameters {
-    fn with_available_port(&self) -> Self {
-        let mut params = self.clone();
-        let default = Self::default();
-        params.primary_network_admin_server_port = default.primary_network_admin_server_port;
-        params.worker_network_admin_server_base_port =
-            default.worker_network_admin_server_base_port;
-        params
-    }
-}
-
-/// Parameters for the anemo network settings.
-///
-/// These settings affect consensus network messaging between nodes.
-#[derive(Clone, Debug, Default, Deserialize, Serialize, PartialEq)]
-pub struct AnemoParameters {
-    /// Per-peer rate-limits (in requests/sec) for the PrimaryToPrimary service.
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub send_certificate_rate_limit: Option<NonZeroU32>,
-
-    /// Per-peer rate-limits (in requests/sec) for the WorkerToWorker service.
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub report_batch_rate_limit: Option<NonZeroU32>,
-
-    /// The amount of requests a worker can make to peers for a missing batch.
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub request_batches_rate_limit: Option<NonZeroU32>,
-
-    /// Size in bytes above which network messages are considered excessively large. Excessively
-    /// large messages will still be handled, but logged and reported in metrics for debugging.
-    ///
-    /// If unspecified, this will default to 8 MiB.
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub excessive_message_size: Option<usize>,
-}
-
-impl AnemoParameters {
-    /// Set the limit for the amount of certificates a peer can send.
-    ///
-    /// By default, at most 20 certificates can be sent concurrently to a peer.
-    pub fn send_certificate_rate_limit(&self) -> u32 {
-        self.send_certificate_rate_limit
-            .unwrap_or(NonZeroU32::new(20).expect("20 cast as u32"))
-            .get()
-    }
-
-    /// Set the limit for the amount of batches that can be broadcast concurrently.
-    ///
-    /// By default, at most 100 batches can be broadcasted concurrently.
-    pub fn report_batch_rate_limit(&self) -> u32 {
-        self.report_batch_rate_limit.unwrap_or(NonZeroU32::new(200).expect("200 cast as u32")).get()
-    }
-
-    /// Set the limit for amount of requests to send a peer for batches.
-    ///
-    /// As of 11/02/2023, when one worker is actively fetching, each peer receives
-    /// 20~30 requests per second.
-    pub fn request_batches_rate_limit(&self) -> u32 {
-        self.request_batches_rate_limit
-            .unwrap_or(NonZeroU32::new(100).expect("100 cast as u32"))
-            .get()
-    }
-
-    /// Set the limit for excessive message size.
-    pub fn excessive_message_size(&self) -> usize {
-        const EXCESSIVE_MESSAGE_SIZE: usize = 8 << 20;
-
-        self.excessive_message_size.unwrap_or(EXCESSIVE_MESSAGE_SIZE)
-    }
-}
-
 /// Prometheus metrics multiaddr.
 #[derive(Clone, Debug, Deserialize, Serialize, PartialEq)]
 pub struct PrometheusMetricsParameters {
@@ -358,8 +280,6 @@ impl Default for Parameters {
             max_batch_delay: Parameters::default_max_batch_delay(),
             max_concurrent_requests: Parameters::default_max_concurrent_requests(),
             prometheus_metrics: PrometheusMetricsParameters::default(),
-            network_admin_server: NetworkAdminServerParameters::default(),
-            anemo: AnemoParameters::default(),
             batch_vote_timeout: Parameters::default_batch_vote_timeout(),
         }
     }
@@ -371,7 +291,6 @@ impl Parameters {
     pub fn with_available_ports(&self) -> Self {
         let mut params = self.clone();
         params.prometheus_metrics = params.prometheus_metrics.with_available_port();
-        params.network_admin_server = params.network_admin_server.with_available_port();
         params
     }
 
@@ -387,14 +306,6 @@ impl Parameters {
         info!("Max batch delay set to {} ms", self.max_batch_delay.as_millis());
         info!("Max concurrent requests set to {}", self.max_concurrent_requests);
         info!("Prometheus metrics server will run on {}", self.prometheus_metrics.socket_addr);
-        info!(
-            "Primary network admin server will run on 127.0.0.1:{}",
-            self.network_admin_server.primary_network_admin_server_port
-        );
-        info!(
-            "Worker network admin server will run starting on base port 127.0.0.1:{}",
-            self.network_admin_server.worker_network_admin_server_base_port
-        );
     }
 }
 

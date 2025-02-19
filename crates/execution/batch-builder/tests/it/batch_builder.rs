@@ -26,8 +26,7 @@ use tempfile::TempDir;
 use tn_batch_builder::{test_utils::execute_test_batch, BatchBuilder};
 use tn_batch_validator::BatchValidator;
 use tn_engine::execute_consensus_output;
-use tn_network::local::LocalNetwork;
-use tn_network_types::MockWorkerToPrimary;
+use tn_network_types::{local::LocalNetwork, MockWorkerToPrimary};
 use tn_node_traits::{BuildArguments, TNExecution, TelcoinNode};
 use tn_storage::{open_db, tables::Batches};
 use tn_test_utils::{get_gas_price, test_genesis, TransactionFactory};
@@ -68,8 +67,7 @@ async fn test_make_batch_el_to_cl() {
     let node_metrics = WorkerMetrics::default();
 
     // Mock the primary client to always succeed.
-    let mut mock_server = MockWorkerToPrimary::new();
-    mock_server.expect_report_own_batch().returning(|_| Ok(anemo::Response::new(())));
+    let mock_server = MockWorkerToPrimary();
     network_client.set_worker_to_primary_local_handler(Arc::new(mock_server));
 
     let qw = TestMakeBlockQuorumWaiter();

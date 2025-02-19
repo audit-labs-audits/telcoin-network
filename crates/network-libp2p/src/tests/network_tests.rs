@@ -7,7 +7,7 @@ use common::{TestPrimaryRequest, TestPrimaryResponse, TestWorkerRequest, TestWor
 use tn_config::ConsensusConfig;
 use tn_storage::mem_db::MemDatabase;
 use tn_test_utils::{fixture_batch_with_transactions, CommitteeFixture};
-use tn_types::{Certificate, Header};
+use tn_types::{libp2p_to_fastcrypto, Certificate, Header};
 use tokio::{sync::mpsc, time::timeout};
 
 /// A peer on TN
@@ -57,9 +57,15 @@ where
 
     // peer1
     let network_key_1 = config_1.key_config().primary_network_keypair().as_ref().to_vec();
-    let peer1_network =
-        ConsensusNetwork::<Req, Res>::new(&config_1, tx1, topics.clone(), network_key_1)
-            .expect("peer1 network created");
+    let authorized_publishers = config_1.committee_peer_ids();
+    let peer1_network = ConsensusNetwork::<Req, Res>::new(
+        &config_1,
+        tx1,
+        topics.clone(),
+        network_key_1,
+        authorized_publishers,
+    )
+    .expect("peer1 network created");
     let network_handle_1 = peer1_network.network_handle();
     let peer1 = NetworkPeer {
         config: config_1,
@@ -70,9 +76,15 @@ where
 
     // peer2
     let network_key_2 = config_2.key_config().primary_network_keypair().as_ref().to_vec();
-    let peer2_network =
-        ConsensusNetwork::<Req, Res>::new(&config_2, tx2, topics.clone(), network_key_2)
-            .expect("peer2 network created");
+    let authorized_publishers = config_2.committee_peer_ids();
+    let peer2_network = ConsensusNetwork::<Req, Res>::new(
+        &config_2,
+        tx2,
+        topics.clone(),
+        network_key_2,
+        authorized_publishers,
+    )
+    .expect("peer2 network created");
     let network_handle_2 = peer2_network.network_handle();
     let peer2 = NetworkPeer {
         config: config_2,
@@ -540,14 +552,8 @@ fn test_peer_id_to_from_fastcrypto() {
     let fastcrypto_to_libp2p = config.committee_peer_ids();
     // assert libp2p -> fastcrypto works
     for key in fastcrypto_to_libp2p.iter() {
-        let fc_key = config
-            .network_config()
-            .ed25519_libp2p_to_fastcrypto(key)
-            .expect("libp2p to fastcrypto ed25519 key");
-        let libp2p_key_again = config
-            .network_config()
-            .ed25519_fastcrypto_to_libp2p(&fc_key)
-            .expect("fastcrypto to libp2p ed25519 key");
+        let fc_key = libp2p_to_fastcrypto(key);
+        let libp2p_key_again = network_public_key_to_libp2p(&fc_key);
         // sanity check - cast back to original type
         assert_eq!(fc_key.as_ref(), &libp2p_key_again.as_ref().digest()[4..]);
     }

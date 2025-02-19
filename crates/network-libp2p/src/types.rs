@@ -3,12 +3,14 @@
 use crate::{codec::TNMessage, error::NetworkError, GossipMessage};
 use libp2p::{
     core::transport::ListenerId,
-    gossipsub::{IdentTopic, MessageId, PublishError, SubscriptionError, TopicHash},
+    gossipsub::{MessageId, PublishError, SubscriptionError, TopicHash},
     request_response::ResponseChannel,
     Multiaddr, PeerId, TransportError,
 };
 use std::collections::{HashMap, HashSet};
 use tokio::sync::{mpsc, oneshot};
+
+pub use libp2p::gossipsub::IdentTopic;
 
 /// The result for network operations.
 pub type NetworkResult<T> = Result<T, NetworkError>;
@@ -178,6 +180,12 @@ where
 {
     /// Create a new instance of Self.
     pub fn new(sender: mpsc::Sender<NetworkCommand<Req, Res>>) -> Self {
+        Self { sender }
+    }
+
+    /// Create a handle to no where for test setup.
+    pub fn new_for_test() -> Self {
+        let (sender, _) = mpsc::channel(100);
         Self { sender }
     }
 

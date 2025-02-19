@@ -1052,7 +1052,7 @@ async fn restart_with_new_committee() {
             config.node_storage().clone(),
             config.key_config().clone(),
             committee.clone(),
-            Some(config.worker_cache().clone()),
+            config.worker_cache().clone(),
         )
         .unwrap();
         let store = config.node_storage().consensus_store.clone();

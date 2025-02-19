@@ -4,10 +4,8 @@ use crate::execution::TransactionFactory;
 use fastcrypto::{hash::Hash, traits::KeyPair as _};
 use indexmap::IndexMap;
 use rand::{
-    distributions::Bernoulli,
-    prelude::Distribution,
-    rngs::{OsRng, StdRng},
-    thread_rng, Rng, RngCore, SeedableRng,
+    distributions::Bernoulli, prelude::Distribution, rngs::StdRng, thread_rng, Rng, RngCore,
+    SeedableRng,
 };
 use std::{
     collections::{BTreeSet, HashMap, VecDeque},
@@ -16,8 +14,8 @@ use std::{
 use tn_types::{
     adiri_chain_spec_arc, to_intent_message, Address, AuthorityIdentifier, Batch, BlockHash,
     BlsKeypair, BlsSignature, Bytes, Certificate, CertificateDigest, Committee, Epoch, ExecHeader,
-    HeaderBuilder, Multiaddr, NetworkKeypair, ProtocolSignature, Round, Stake, TimestampSec,
-    TransactionSigned, WorkerId, U256,
+    HeaderBuilder, ProtocolSignature, Round, Stake, TimestampSec, TransactionSigned, WorkerId,
+    U256,
 };
 
 pub const VOTES_CF: &str = "votes";
@@ -93,22 +91,6 @@ pub fn ensure_test_environment() {
     // Also we can't do this in Windows, apparently.
     #[cfg(not(target_os = "windows"))]
     fdlimit::raise_fd_limit().expect("Could not raise ulimit");
-}
-
-pub fn test_network(keypair: NetworkKeypair, address: &Multiaddr) -> anemo::Network {
-    let address = address.to_anemo_address().unwrap();
-    let network_key = keypair.private().0.to_bytes();
-    anemo::Network::bind(address)
-        .server_name("tn-test")
-        .private_key(network_key)
-        .start(anemo::Router::new())
-        .unwrap()
-}
-
-pub fn random_network() -> anemo::Network {
-    let network_key = NetworkKeypair::generate(&mut StdRng::from_rng(OsRng).unwrap());
-    let address = "/ip4/127.0.0.1/udp/0/quic-v1".parse().unwrap();
-    test_network(network_key, &address)
 }
 
 ////////////////////////////////////////////////////////////////

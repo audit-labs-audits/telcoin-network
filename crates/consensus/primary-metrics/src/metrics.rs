@@ -8,7 +8,6 @@ use prometheus::{
     IntGaugeVec, Registry,
 };
 use std::sync::Arc;
-use tn_network::metrics::{NetworkConnectionMetrics, NetworkMetrics};
 
 const LATENCY_SEC_BUCKETS: &[f64] = &[
     0.001, 0.005, 0.01, 0.05, 0.1, 0.15, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9, 1.0, 1.2, 1.4,
@@ -18,38 +17,19 @@ const LATENCY_SEC_BUCKETS: &[f64] = &[
 
 #[derive(Clone, Debug)]
 pub struct Metrics {
-    pub inbound_network_metrics: Arc<NetworkMetrics>,
-    pub outbound_network_metrics: Arc<NetworkMetrics>,
     pub primary_channel_metrics: Arc<PrimaryChannelMetrics>,
     pub node_metrics: Arc<PrimaryMetrics>,
-    pub network_connection_metrics: Arc<NetworkConnectionMetrics>,
 }
 
 impl Metrics {
     fn try_new(registry: &Registry) -> Result<Self, prometheus::Error> {
-        // The metrics used for communicating over the network
-        let inbound_network_metrics =
-            Arc::new(NetworkMetrics::try_new("primary", "inbound", registry)?);
-        let outbound_network_metrics =
-            Arc::new(NetworkMetrics::try_new("primary", "outbound", registry)?);
-
         // The metrics used for measuring the occupancy of the channels in the primary
         let primary_channel_metrics = Arc::new(PrimaryChannelMetrics::try_new(registry)?);
 
         // Essential/core metrics across the primary node
         let node_metrics = Arc::new(PrimaryMetrics::try_new(registry)?);
 
-        // Network metrics for the primary connection
-        let network_connection_metrics =
-            Arc::new(NetworkConnectionMetrics::try_new("primary", registry)?);
-
-        Ok(Metrics {
-            node_metrics,
-            primary_channel_metrics,
-            inbound_network_metrics,
-            outbound_network_metrics,
-            network_connection_metrics,
-        })
+        Ok(Metrics { node_metrics, primary_channel_metrics })
     }
 }
 

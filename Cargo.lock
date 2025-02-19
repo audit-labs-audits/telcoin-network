@@ -897,70 +897,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "anemo"
-version = "0.0.0"
-source = "git+https://github.com/mystenlabs/anemo.git?rev=e609f7697ed6169bf0760882a0b6c032a57e4f3b#e609f7697ed6169bf0760882a0b6c032a57e4f3b"
-dependencies = [
- "anyhow",
- "async-trait",
- "bincode",
- "bytes",
- "ed25519 1.5.3",
- "futures",
- "hex",
- "http 1.2.0",
- "matchit 0.5.0",
- "pin-project-lite",
- "pkcs8 0.9.0",
- "quinn",
- "quinn-proto",
- "rand",
- "rcgen 0.13.2",
- "ring 0.17.8",
- "rustls 0.23.21",
- "rustls-webpki 0.102.8",
- "serde",
- "serde_json",
- "socket2",
- "tap",
- "thiserror 1.0.69",
- "tokio",
- "tokio-util",
- "tower 0.4.13",
- "tracing",
- "x509-parser 0.14.0",
-]
-
-[[package]]
-name = "anemo-build"
-version = "0.0.0"
-source = "git+https://github.com/mystenlabs/anemo.git?rev=e609f7697ed6169bf0760882a0b6c032a57e4f3b#e609f7697ed6169bf0760882a0b6c032a57e4f3b"
-dependencies = [
- "prettyplease",
- "proc-macro2",
- "quote",
- "syn 2.0.96",
-]
-
-[[package]]
-name = "anemo-tower"
-version = "0.0.0"
-source = "git+https://github.com/mystenlabs/anemo.git?rev=e609f7697ed6169bf0760882a0b6c032a57e4f3b#e609f7697ed6169bf0760882a0b6c032a57e4f3b"
-dependencies = [
- "anemo",
- "bytes",
- "dashmap 5.5.3",
- "futures",
- "governor",
- "nonzero_ext",
- "pin-project-lite",
- "tokio",
- "tower 0.4.13",
- "tracing",
- "uuid",
-]
-
-[[package]]
 name = "anes"
 version = "0.1.6"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1248,46 +1184,18 @@ dependencies = [
 
 [[package]]
 name = "asn1-rs"
-version = "0.5.2"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "7f6fd5ddaf0351dff5b8da21b2fb4ff8e08ddd02857f0bf69c47639106c0fff0"
-dependencies = [
- "asn1-rs-derive 0.4.0",
- "asn1-rs-impl 0.1.0",
- "displaydoc",
- "nom",
- "num-traits",
- "rusticata-macros",
- "thiserror 1.0.69",
- "time",
-]
-
-[[package]]
-name = "asn1-rs"
 version = "0.6.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "5493c3bedbacf7fd7382c6346bbd66687d12bbaad3a89a2d2c303ee6cf20b048"
 dependencies = [
- "asn1-rs-derive 0.5.1",
- "asn1-rs-impl 0.2.0",
+ "asn1-rs-derive",
+ "asn1-rs-impl",
  "displaydoc",
  "nom",
  "num-traits",
  "rusticata-macros",
  "thiserror 1.0.69",
  "time",
-]
-
-[[package]]
-name = "asn1-rs-derive"
-version = "0.4.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "726535892e8eae7e70657b4c8ea93d26b8553afb1ce617caee529ef96d7dee6c"
-dependencies = [
- "proc-macro2",
- "quote",
- "syn 1.0.109",
- "synstructure 0.12.6",
 ]
 
 [[package]]
@@ -1299,18 +1207,7 @@ dependencies = [
  "proc-macro2",
  "quote",
  "syn 2.0.96",
- "synstructure 0.13.1",
-]
-
-[[package]]
-name = "asn1-rs-impl"
-version = "0.1.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "2777730b2039ac0f95f093556e61b6d26cebed5393ca6f152717777cec3a42ed"
-dependencies = [
- "proc-macro2",
- "quote",
- "syn 1.0.109",
+ "synstructure",
 ]
 
 [[package]]
@@ -1517,7 +1414,7 @@ dependencies = [
  "http-body 0.4.6",
  "hyper 0.14.32",
  "itoa",
- "matchit 0.7.3",
+ "matchit",
  "memchr",
  "mime",
  "percent-encoding",
@@ -1550,26 +1447,6 @@ dependencies = [
  "mime",
  "rustversion",
  "tower-layer",
- "tower-service",
-]
-
-[[package]]
-name = "axum-server"
-version = "0.5.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "447f28c85900215cc1bea282f32d4a2f22d55c5a300afdfbc661c8d6a632e063"
-dependencies = [
- "arc-swap",
- "bytes",
- "futures-util",
- "http 0.2.12",
- "http-body 0.4.6",
- "hyper 0.14.32",
- "pin-project-lite",
- "rustls 0.21.12",
- "rustls-pemfile 1.0.4",
- "tokio",
- "tokio-rustls 0.24.1",
  "tower-service",
 ]
 
@@ -1936,7 +1813,7 @@ dependencies = [
  "proc-macro2",
  "quote",
  "syn 2.0.96",
- "synstructure 0.13.1",
+ "synstructure",
 ]
 
 [[package]]
@@ -2890,25 +2767,11 @@ dependencies = [
 
 [[package]]
 name = "der-parser"
-version = "8.2.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "dbd676fbbab537128ef0278adb5576cf363cff6aa22a7b24effe97347cfab61e"
-dependencies = [
- "asn1-rs 0.5.2",
- "displaydoc",
- "nom",
- "num-bigint",
- "num-traits",
- "rusticata-macros",
-]
-
-[[package]]
-name = "der-parser"
 version = "9.0.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "5cd0a5c643689626bec213c4d8bd4d96acc8ffdb4ad4bb6bc16abf27d5f4b553"
 dependencies = [
- "asn1-rs 0.6.2",
+ "asn1-rs",
  "displaydoc",
  "nom",
  "num-bigint",
@@ -3174,19 +3037,8 @@ dependencies = [
  "elliptic-curve",
  "rfc6979",
  "serdect",
- "signature 2.2.0",
+ "signature",
  "spki 0.7.3",
-]
-
-[[package]]
-name = "ed25519"
-version = "1.5.3"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "91cff35c70bba8a626e3185d8cd48cc11b5437e1a5bcd15b9b5fa3c64b6dfee7"
-dependencies = [
- "pkcs8 0.9.0",
- "signature 1.6.4",
- "zeroize",
 ]
 
 [[package]]
@@ -3196,7 +3048,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "115531babc129696a58c64a4fef0a8bf9e9698629fb97e9e40767d235cfbcd53"
 dependencies = [
  "pkcs8 0.10.2",
- "signature 2.2.0",
+ "signature",
 ]
 
 [[package]]
@@ -3221,7 +3073,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "4a3daa8e81a3963a60642bcc1f90a670680bd4a77535faa384e9d1c79d620871"
 dependencies = [
  "curve25519-dalek",
- "ed25519 2.2.3",
+ "ed25519",
  "rand_core",
  "serde",
  "sha2 0.10.8",
@@ -3477,7 +3329,7 @@ dependencies = [
  "serde_with 2.3.3",
  "sha2 0.10.8",
  "sha3 0.10.8",
- "signature 2.2.0",
+ "signature",
  "static_assertions",
  "thiserror 1.0.69",
  "tokio",
@@ -5229,7 +5081,7 @@ dependencies = [
  "once_cell",
  "serdect",
  "sha2 0.10.8",
- "signature 2.2.0",
+ "signature",
 ]
 
 [[package]]
@@ -5601,12 +5453,12 @@ dependencies = [
  "futures-rustls",
  "libp2p-core",
  "libp2p-identity",
- "rcgen 0.11.3",
+ "rcgen",
  "ring 0.17.8",
  "rustls 0.23.21",
  "rustls-webpki 0.101.7",
  "thiserror 1.0.69",
- "x509-parser 0.16.0",
+ "x509-parser",
  "yasna",
 ]
 
@@ -5850,12 +5702,6 @@ checksum = "8263075bb86c5a1b1427b5ae862e8889656f126e9f77c484496e8b47cf5c5558"
 dependencies = [
  "regex-automata 0.1.10",
 ]
-
-[[package]]
-name = "matchit"
-version = "0.5.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "73cbba799671b762df5a175adf59ce145165747bb891505c43d09aefbbf38beb"
 
 [[package]]
 name = "matchit"
@@ -6593,20 +6439,11 @@ dependencies = [
 
 [[package]]
 name = "oid-registry"
-version = "0.6.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "9bedf36ffb6ba96c2eb7144ef6270557b52e54b20c0a8e1eb2ff99a6c6959bff"
-dependencies = [
- "asn1-rs 0.5.2",
-]
-
-[[package]]
-name = "oid-registry"
 version = "0.7.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "a8d8034d9489cdaf79228eb9f6a3b8d7bb32ba00d6645ebd48eef4077ceb5bd9"
 dependencies = [
- "asn1-rs 0.6.2",
+ "asn1-rs",
 ]
 
 [[package]]
@@ -7161,16 +6998,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "prettyplease"
-version = "0.2.29"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "6924ced06e1f7dfe3fa48d57b9f74f55d8915f5036121bef647ef4b204895fac"
-dependencies = [
- "proc-macro2",
- "syn 2.0.96",
-]
-
-[[package]]
 name = "primeorder"
 version = "0.13.6"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -7707,19 +7534,6 @@ checksum = "52c4f3084aa3bc7dfbba4eff4fab2a54db4324965d8872ab933565e6fbd83bc6"
 dependencies = [
  "pem",
  "ring 0.16.20",
- "time",
- "yasna",
-]
-
-[[package]]
-name = "rcgen"
-version = "0.13.2"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "75e669e5202259b5314d1ea5397316ad400819437857b90861765f24c4cf80a2"
-dependencies = [
- "pem",
- "ring 0.17.8",
- "rustls-pki-types",
  "time",
  "yasna",
 ]
@@ -10682,7 +10496,7 @@ dependencies = [
  "pkcs8 0.9.0",
  "rand_core",
  "sha2 0.10.8",
- "signature 2.2.0",
+ "signature",
  "subtle",
  "zeroize",
 ]
@@ -11488,12 +11302,6 @@ dependencies = [
 
 [[package]]
 name = "signature"
-version = "1.6.4"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "74233d3b3b2f6d4b006dc19dee745e73e2a6bfb6f93607cd3b02bd5b00797d7c"
-
-[[package]]
-name = "signature"
 version = "2.2.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "77549399552de45a898a580c1b41d445bf730df867cc44e6c0233bbc4b8329de"
@@ -11661,12 +11469,11 @@ checksum = "a8f112729512f8e442d81f95a8a7ddf2b7c6b8a1a6f509a95864142b30cab2d3"
 name = "state-sync"
 version = "0.1.0"
 dependencies = [
- "anemo",
  "consensus-metrics",
  "eyre",
  "futures",
  "tn-config",
- "tn-network",
+ "tn-network-libp2p",
  "tn-network-types",
  "tn-primary",
  "tn-storage",
@@ -11787,18 +11594,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "0bf256ce5efdfa370213c1dabab5935a12e49f2c58d15e9eac2870d3b4f27263"
 dependencies = [
  "futures-core",
-]
-
-[[package]]
-name = "synstructure"
-version = "0.12.6"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "f36bdaa60a83aca3921b5259d5400cbf5e90fc51931376a9bd4a0eb79aa7210f"
-dependencies = [
- "proc-macro2",
- "quote",
- "syn 1.0.109",
- "unicode-xid",
 ]
 
 [[package]]
@@ -11928,7 +11723,6 @@ dependencies = [
  "tikv-jemallocator",
  "tn-config",
  "tn-faucet",
- "tn-network",
  "tn-node",
  "tn-test-utils",
  "tn-types",
@@ -12137,8 +11931,9 @@ name = "tn-batch-builder"
 version = "0.1.0"
 dependencies = [
  "alloy-rlp",
- "anemo",
  "assert_matches",
+ "async-trait",
+ "eyre",
  "fastcrypto",
  "futures-util",
  "metrics 0.23.0",
@@ -12163,7 +11958,7 @@ dependencies = [
  "tn-batch-builder",
  "tn-batch-validator",
  "tn-engine",
- "tn-network",
+ "tn-network-libp2p",
  "tn-network-types",
  "tn-node-traits",
  "tn-storage",
@@ -12200,7 +11995,7 @@ dependencies = [
 name = "tn-config"
 version = "0.1.0"
 dependencies = [
- "anemo",
+ "backoff",
  "eyre",
  "fastcrypto",
  "humantime-serde",
@@ -12213,7 +12008,7 @@ dependencies = [
  "serde_yaml",
  "tempfile",
  "thiserror 1.0.69",
- "tn-network",
+ "tn-network-types",
  "tn-storage",
  "tn-types",
  "tracing",
@@ -12249,7 +12044,6 @@ dependencies = [
 name = "tn-executor"
 version = "0.1.0"
 dependencies = [
- "anemo",
  "async-trait",
  "bytes",
  "consensus-metrics",
@@ -12263,7 +12057,7 @@ dependencies = [
  "tempfile",
  "thiserror 1.0.69",
  "tn-config",
- "tn-network",
+ "tn-network-libp2p",
  "tn-network-types",
  "tn-node",
  "tn-primary",
@@ -12307,7 +12101,6 @@ dependencies = [
  "serde_json",
  "tempfile",
  "tn-config",
- "tn-network",
  "tn-network-types",
  "tn-storage",
  "tn-test-utils",
@@ -12316,36 +12109,6 @@ dependencies = [
  "tokio",
  "tokio-stream",
  "tonic 0.10.2",
- "tracing",
-]
-
-[[package]]
-name = "tn-network"
-version = "0.1.0"
-dependencies = [
- "anemo",
- "anemo-tower",
- "anyhow",
- "axum",
- "axum-server",
- "backoff",
- "bytes",
- "consensus-metrics",
- "dashmap 6.1.0",
- "eyre",
- "futures",
- "parking_lot",
- "prometheus",
- "quinn-proto",
- "rand",
- "thiserror 1.0.69",
- "tn-network-types",
- "tn-test-utils",
- "tn-types",
- "tn-utils",
- "tokio",
- "tokio-stream",
- "tower 0.4.13",
  "tracing",
 ]
 
@@ -12374,12 +12137,14 @@ dependencies = [
 name = "tn-network-types"
 version = "0.1.0"
 dependencies = [
- "anemo",
- "anemo-build",
+ "async-trait",
  "bcs",
  "bytes",
+ "eyre",
  "indexmap 2.7.1",
+ "libp2p",
  "mockall",
+ "parking_lot",
  "reth-primitives",
  "roaring",
  "rustversion",
@@ -12394,9 +12159,7 @@ dependencies = [
 name = "tn-node"
 version = "0.1.0"
 dependencies = [
- "anemo",
  "assert_matches",
- "axum",
  "cfg-if",
  "clap",
  "consensus-metrics",
@@ -12446,7 +12209,6 @@ dependencies = [
  "tn-engine",
  "tn-executor",
  "tn-faucet",
- "tn-network",
  "tn-network-libp2p",
  "tn-network-types",
  "tn-node-traits",
@@ -12488,8 +12250,6 @@ dependencies = [
 name = "tn-primary"
 version = "0.1.0"
 dependencies = [
- "anemo",
- "anemo-tower",
  "assert_matches",
  "async-trait",
  "backoff",
@@ -12519,7 +12279,6 @@ dependencies = [
  "tn-batch-validator",
  "tn-config",
  "tn-executor",
- "tn-network",
  "tn-network-libp2p",
  "tn-network-types",
  "tn-node",
@@ -12541,7 +12300,6 @@ version = "0.1.0"
 dependencies = [
  "consensus-metrics",
  "prometheus",
- "tn-network",
  "tracing",
 ]
 
@@ -12592,7 +12350,6 @@ name = "tn-test-utils"
 version = "0.1.0"
 dependencies = [
  "alloy",
- "anemo",
  "clap",
  "consensus-metrics",
  "criterion",
@@ -12626,7 +12383,6 @@ dependencies = [
  "tn-config",
  "tn-engine",
  "tn-faucet",
- "tn-network",
  "tn-network-libp2p",
  "tn-network-types",
  "tn-node",
@@ -12648,7 +12404,6 @@ version = "0.1.0"
 dependencies = [
  "alloy",
  "alloy-rlp",
- "anemo",
  "base64 0.21.7",
  "bcs",
  "bincode",
@@ -12702,8 +12457,6 @@ dependencies = [
 name = "tn-worker"
 version = "0.1.0"
 dependencies = [
- "anemo",
- "anemo-tower",
  "anyhow",
  "arc-swap",
  "async-trait",
@@ -12717,12 +12470,13 @@ dependencies = [
  "itertools 0.10.5",
  "prometheus",
  "rand",
+ "serde",
  "tap",
  "tempfile",
  "thiserror 1.0.69",
  "tn-batch-validator",
  "tn-config",
- "tn-network",
+ "tn-network-libp2p",
  "tn-network-types",
  "tn-node",
  "tn-primary",
@@ -12732,7 +12486,6 @@ dependencies = [
  "tn-types",
  "tokio",
  "tonic 0.10.2",
- "tower 0.4.13",
  "tracing",
 ]
 
@@ -14040,34 +13793,16 @@ dependencies = [
 
 [[package]]
 name = "x509-parser"
-version = "0.14.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "e0ecbeb7b67ce215e40e3cc7f2ff902f94a223acf44995934763467e7b1febc8"
-dependencies = [
- "asn1-rs 0.5.2",
- "base64 0.13.1",
- "data-encoding",
- "der-parser 8.2.0",
- "lazy_static",
- "nom",
- "oid-registry 0.6.1",
- "rusticata-macros",
- "thiserror 1.0.69",
- "time",
-]
-
-[[package]]
-name = "x509-parser"
 version = "0.16.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "fcbc162f30700d6f3f82a24bf7cc62ffe7caea42c0b2cba8bf7f3ae50cf51f69"
 dependencies = [
- "asn1-rs 0.6.2",
+ "asn1-rs",
  "data-encoding",
- "der-parser 9.0.0",
+ "der-parser",
  "lazy_static",
  "nom",
- "oid-registry 0.7.1",
+ "oid-registry",
  "rusticata-macros",
  "thiserror 1.0.69",
  "time",
@@ -14133,7 +13868,7 @@ dependencies = [
  "proc-macro2",
  "quote",
  "syn 2.0.96",
- "synstructure 0.13.1",
+ "synstructure",
 ]
 
 [[package]]
@@ -14175,7 +13910,7 @@ dependencies = [
  "proc-macro2",
  "quote",
  "syn 2.0.96",
- "synstructure 0.13.1",
+ "synstructure",
 ]
 
 [[package]]

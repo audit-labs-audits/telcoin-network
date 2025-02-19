@@ -212,7 +212,7 @@ mod tests {
         spawn_local_testnet(chain, "0x0000000000000000000000000000000000000000")
             .expect("failed to spawn testnet");
         // allow time for nodes to start
-        tokio::time::sleep(Duration::from_secs(10)).await;
+        tokio::time::sleep(Duration::from_secs(15)).await;
 
         let rpc_url = "http://127.0.0.1:8545".to_string();
         let client =

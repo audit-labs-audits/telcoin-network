@@ -51,7 +51,6 @@ prometheus = { workspace = true }
 fastcrypto = { workspace = true }
 consensus-metrics = { workspace = true }
 tn-test-utils = { workspace = true }
-tn-network = { workspace = true }
 tn-network-types = { workspace = true }
 tn-worker = { workspace = true }
 tn-storage = { workspace = true }

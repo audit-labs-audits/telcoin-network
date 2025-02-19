@@ -36,7 +36,7 @@ where
     DB: Database,
 {
     /// Create a new instance of Self.
-    pub(crate) fn new(config: ConsensusConfig<DB>, consensus_bus: ConsensusBus) -> Self {
+    pub fn new(config: ConsensusConfig<DB>, consensus_bus: ConsensusBus) -> Self {
         let header_validator = HeaderValidator::new(config.clone(), consensus_bus.clone());
         // load highest round number from the certificate store
         let highest_process_round =

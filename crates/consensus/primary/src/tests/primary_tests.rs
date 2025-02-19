@@ -1,187 +1,57 @@
 //! Primary tests
 
-use super::{Primary, PrimaryReceiverHandler};
+use super::Primary;
 use crate::{
-    consensus::{LeaderSchedule, LeaderSwapTable},
+    network::{
+        handler::RequestHandler, MissingCertificatesRequest, PrimaryNetwork, PrimaryResponse,
+    },
     state_sync::StateSynchronizer,
     ConsensusBus,
 };
-use fastcrypto::{
-    encoding::{Encoding, Hex},
-    hash::Hash,
-    traits::KeyPair as _,
-};
+use fastcrypto::{hash::Hash, traits::KeyPair as _};
 use itertools::Itertools;
-use prometheus::Registry;
 use std::{
     collections::{BTreeSet, HashMap, HashSet},
     num::NonZeroUsize,
     sync::Arc,
     time::Duration,
 };
-use tn_batch_validator::NoopBatchValidator;
 use tn_config::ConsensusConfig;
 use tn_network_libp2p::ConsensusNetwork;
 use tn_network_types::{
-    FetchCertificatesRequest, MockPrimaryToWorker, PrimaryToPrimary, RequestVoteRequest,
+    FetchBatchResponse, FetchBatchesRequest, PrimaryToWorkerClient, WorkerSynchronizeMessage,
 };
 use tn_storage::mem_db::MemDatabase;
 use tn_test_utils::{
-    fixture_batch_with_transactions, make_optimal_signed_certificates, test_network,
-    CommitteeFixture,
+    fixture_batch_with_transactions, make_optimal_signed_certificates, CommitteeFixture,
 };
 use tn_types::{
-    now, AuthorityIdentifier, BlockHash, Certificate, Committee, Database, ExecHeader,
-    SealedHeader, SignatureVerificationState, TaskManager,
+    network_public_key_to_libp2p, now, AuthorityIdentifier, BlockHash, Certificate, Committee,
+    Database, ExecHeader, NetworkPublicKey, SealedHeader, SignatureVerificationState, TaskManager,
 };
-use tn_worker::{metrics::Metrics, Worker};
 use tokio::{sync::mpsc, time::timeout};
 
-fn get_bus_and_primary<DB: Database>(config: ConsensusConfig<DB>) -> (ConsensusBus, Primary<DB>) {
-    let (event_stream, rx_event_stream) = mpsc::channel(1000);
+fn get_bus_and_primary<DB: Database>(
+    config: ConsensusConfig<DB>,
+    task_manager: &TaskManager,
+) -> (ConsensusBus, Primary<DB>) {
+    let (event_stream, rx_event_stream) = mpsc::channel(100);
     let consensus_bus = ConsensusBus::new_with_args(config.config().parameters.gc_depth);
     let consensus_network = ConsensusNetwork::new_for_primary(&config, event_stream)
         .expect("p2p network create failed!");
     let consensus_network_handle = consensus_network.network_handle();
+    let state_sync = StateSynchronizer::new(config.clone(), consensus_bus.clone());
+    let primary_network = PrimaryNetwork::new(
+        rx_event_stream,
+        consensus_network_handle.clone().into(),
+        config.clone(),
+        consensus_bus.clone(),
+        state_sync.clone(),
+    );
+    primary_network.spawn(task_manager);
 
-    let primary = Primary::new(config, &consensus_bus, consensus_network_handle, rx_event_stream);
+    let primary = Primary::new(config, &consensus_bus, consensus_network_handle.into(), state_sync);
     (consensus_bus, primary)
-}
-
-#[tokio::test]
-async fn test_get_network_peers_from_admin_server() {
-    let fixture = CommitteeFixture::builder(MemDatabase::default).randomize_ports(true).build();
-    let committee = fixture.committee();
-    let authority_1 = fixture.authorities().next().unwrap();
-    let config_1 = authority_1.consensus_config();
-    let primary_1_parameters = config_1.config().parameters.clone();
-
-    let worker_id = 0;
-    let worker_1_keypair = authority_1.worker().keypair().copy();
-
-    let (cb_1, mut primary_1) = get_bus_and_primary(config_1.clone());
-    // Spawn Primary 1
-    primary_1.spawn(
-        config_1.clone(),
-        &cb_1,
-        LeaderSchedule::new(committee.clone(), LeaderSwapTable::default()),
-        &TaskManager::default(),
-    );
-
-    // Wait for tasks to start
-    tokio::time::sleep(Duration::from_secs(2)).await;
-
-    let registry_1 = Registry::new();
-    let metrics_1 = Metrics::new_with_registry(&registry_1);
-
-    // Spawn a `Worker` instance for primary 1.
-    let _ = Worker::spawn(
-        worker_id,
-        Arc::new(NoopBatchValidator),
-        metrics_1,
-        config_1.clone(),
-        &TaskManager::default(),
-    );
-
-    // Test getting all known peers for primary 1
-    let resp = reqwest::get(format!(
-        "http://127.0.0.1:{}/known_peers",
-        primary_1_parameters.network_admin_server.primary_network_admin_server_port
-    ))
-    .await
-    .unwrap()
-    .json::<Vec<String>>()
-    .await
-    .unwrap();
-
-    // Assert we returned 7 peers (3 other primaries + 1 workers + 1*3 other workers)
-    assert_eq!(7, resp.len());
-
-    // Test getting all connected peers for primary 1
-    let mut resp = reqwest::get(format!(
-        "http://127.0.0.1:{}/peers",
-        primary_1_parameters.network_admin_server.primary_network_admin_server_port
-    ))
-    .await
-    .unwrap()
-    .json::<Vec<String>>()
-    .await
-    .unwrap();
-
-    let mut i = 0;
-    while i < 10 && resp.is_empty() {
-        i += 1;
-        std::thread::sleep(Duration::from_millis(1000));
-        resp = reqwest::get(format!(
-            "http://127.0.0.1:{}/peers",
-            primary_1_parameters.network_admin_server.primary_network_admin_server_port
-        ))
-        .await
-        .unwrap()
-        .json::<Vec<String>>()
-        .await
-        .unwrap();
-    }
-    // Assert we returned 1 peers (only 1 worker spawned)
-    assert_eq!(1, resp.len());
-
-    let authority_2 = fixture.authorities().nth(1).unwrap();
-    let config_2 = authority_2.consensus_config();
-    let primary_2_parameters = config_2.config().parameters.clone();
-
-    // Spawn Primary 2
-    let (cb_2, mut primary_2) = get_bus_and_primary(config_2.clone());
-    primary_2.spawn(
-        config_2,
-        &cb_2,
-        LeaderSchedule::new(committee, LeaderSwapTable::default()),
-        &TaskManager::default(),
-    );
-
-    // Wait for tasks to start
-    tokio::time::sleep(Duration::from_secs(1)).await;
-
-    let primary_1_peer_id =
-        Hex::encode(authority_1.primary_network_keypair().copy().public().0.as_bytes());
-    let primary_2_peer_id =
-        Hex::encode(authority_2.primary_network_keypair().copy().public().0.as_bytes());
-    let worker_1_peer_id = Hex::encode(worker_1_keypair.copy().public().0.as_bytes());
-
-    // Test getting all connected peers for primary 1
-    let resp = reqwest::get(format!(
-        "http://127.0.0.1:{}/peers",
-        primary_1_parameters.network_admin_server.primary_network_admin_server_port
-    ))
-    .await
-    .unwrap()
-    .json::<Vec<String>>()
-    .await
-    .unwrap();
-
-    // Assert we returned 2 peers (1 other primary spawned + 1 worker spawned)
-    assert_eq!(2, resp.len());
-
-    // Assert peer ids are correct
-    let expected_peer_ids = [&primary_2_peer_id, &worker_1_peer_id];
-    assert!(expected_peer_ids.iter().all(|e| resp.contains(e)));
-
-    // Test getting all connected peers for primary 2
-    let resp = reqwest::get(format!(
-        "http://127.0.0.1:{}/peers",
-        primary_2_parameters.network_admin_server.primary_network_admin_server_port
-    ))
-    .await
-    .unwrap()
-    .json::<Vec<String>>()
-    .await
-    .unwrap();
-
-    // Assert we returned 2 peers (1 other primary spawned + 1 other worker)
-    assert_eq!(2, resp.len());
-
-    // Assert peer ids are correct
-    let expected_peer_ids = [&primary_1_peer_id, &worker_1_peer_id];
-    assert!(expected_peer_ids.iter().all(|e| resp.contains(e)));
 }
 
 #[tokio::test(flavor = "current_thread", start_paused = true)]
@@ -194,7 +64,8 @@ async fn test_request_vote_has_missing_execution_block() {
     let target = fixture.authorities().next().unwrap();
     let author = fixture.authorities().nth(2).unwrap();
     let author_id = author.id();
-    let network = test_network(target.primary_network_keypair(), target.network_address());
+    let peer =
+        target.consensus_config().peer_id_for_authority(&author_id).expect("missing peer id!");
 
     let certificate_store = target.consensus_config().node_storage().certificate_store.clone();
     let payload_store = target.consensus_config().node_storage().payload_store.clone();
@@ -206,12 +77,7 @@ async fn test_request_vote_has_missing_execution_block() {
     let synchronizer = StateSynchronizer::new(target.consensus_config(), cb.clone());
     let task_manager = TaskManager::default();
     synchronizer.spawn(&task_manager);
-    let handler = PrimaryReceiverHandler::new(
-        target.consensus_config(),
-        synchronizer.clone(),
-        cb.clone(),
-        Default::default(),
-    );
+    let handler = RequestHandler::new(target.consensus_config(), cb.clone(), synchronizer.clone());
 
     // Make some mock certificates that are parents of our new header.
     let committee: Committee = fixture.committee();
@@ -246,17 +112,7 @@ async fn test_request_vote_has_missing_execution_block() {
     }
 
     // Trying to build on off of a missing execution block, will be an error.
-    let mut request = anemo::Request::new(RequestVoteRequest {
-        header: test_header.clone(),
-        parents: Vec::new(),
-    });
-    assert!(request.extensions_mut().insert(network.downgrade()).is_none());
-    assert!(request
-        .extensions_mut()
-        .insert(anemo::PeerId(author.primary_network_public_key().0.to_bytes()))
-        .is_none());
-
-    let result = timeout(Duration::from_secs(5), handler.request_vote(request)).await;
+    let result = timeout(Duration::from_secs(5), handler.vote(peer, test_header, Vec::new())).await;
     let result = result.unwrap();
     assert!(result.is_err(), "{:?}", result);
 }
@@ -271,7 +127,8 @@ async fn test_request_vote_older_execution_block() {
     let target = fixture.authorities().next().unwrap();
     let author = fixture.authorities().nth(2).unwrap();
     let author_id = author.id();
-    let network = test_network(target.primary_network_keypair(), target.network_address());
+    let peer =
+        target.consensus_config().peer_id_for_authority(&author_id).expect("missing peer id!");
 
     let certificate_store = target.consensus_config().node_storage().certificate_store.clone();
     let payload_store = target.consensus_config().node_storage().payload_store.clone();
@@ -290,12 +147,7 @@ async fn test_request_vote_older_execution_block() {
     let synchronizer = StateSynchronizer::new(target.consensus_config(), cb.clone());
     let task_manager = TaskManager::default();
     synchronizer.spawn(&task_manager);
-    let handler = PrimaryReceiverHandler::new(
-        target.consensus_config(),
-        synchronizer.clone(),
-        cb.clone(),
-        Default::default(),
-    );
+    let handler = RequestHandler::new(target.consensus_config(), cb.clone(), synchronizer.clone());
 
     // Make some mock certificates that are parents of our new header.
     let committee: Committee = fixture.committee();
@@ -330,17 +182,7 @@ async fn test_request_vote_older_execution_block() {
     }
 
     // Trying to build on off of a missing execution block, will be an error.
-    let mut request = anemo::Request::new(RequestVoteRequest {
-        header: test_header.clone(),
-        parents: Vec::new(),
-    });
-    assert!(request.extensions_mut().insert(network.downgrade()).is_none());
-    assert!(request
-        .extensions_mut()
-        .insert(anemo::PeerId(author.primary_network_public_key().0.to_bytes()))
-        .is_none());
-
-    let result = timeout(Duration::from_secs(5), handler.request_vote(request)).await;
+    let result = timeout(Duration::from_secs(5), handler.vote(peer, test_header, Vec::new())).await;
     let result = result.unwrap();
     assert!(result.is_ok(), "{:?}", result);
 }
@@ -355,7 +197,8 @@ async fn test_request_vote_has_missing_parents() {
     let target = fixture.authorities().next().unwrap();
     let author = fixture.authorities().nth(2).unwrap();
     let author_id = author.id();
-    let network = test_network(target.primary_network_keypair(), target.network_address());
+    let peer =
+        target.consensus_config().peer_id_for_authority(&author_id).expect("missing peer id!");
 
     let certificate_store = target.consensus_config().node_storage().certificate_store.clone();
     let payload_store = target.consensus_config().node_storage().payload_store.clone();
@@ -368,12 +211,7 @@ async fn test_request_vote_has_missing_parents() {
     let synchronizer = StateSynchronizer::new(target.consensus_config(), cb.clone());
     let task_manager = TaskManager::default();
     synchronizer.spawn(&task_manager);
-    let handler = PrimaryReceiverHandler::new(
-        target.consensus_config(),
-        synchronizer.clone(),
-        cb.clone(),
-        Default::default(),
-    );
+    let handler = RequestHandler::new(target.consensus_config(), cb.clone(), synchronizer.clone());
 
     // Make some mock certificates that are parents of our new header.
     let committee: Committee = fixture.committee();
@@ -409,55 +247,31 @@ async fn test_request_vote_has_missing_parents() {
     }
 
     // TEST PHASE 1: Handler should report missing parent certificates to caller.
-    let mut request = anemo::Request::new(RequestVoteRequest {
-        header: test_header.clone(),
-        parents: Vec::new(),
-    });
-    assert!(request.extensions_mut().insert(network.downgrade()).is_none());
-    assert!(request
-        .extensions_mut()
-        .insert(anemo::PeerId(author.primary_network_public_key().0.to_bytes()))
-        .is_none());
-    let result = handler.request_vote(request).await;
+    let missing = if let PrimaryResponse::MissingParents(missing) =
+        handler.vote(peer, test_header.clone(), Vec::new()).await.unwrap()
+    {
+        missing
+    } else {
+        panic!("Response not missing!");
+    };
 
     let expected_missing: HashSet<_> = round_2_missing.iter().map(|c| c.digest()).collect();
-    let received_missing: HashSet<_> = result.unwrap().into_body().missing.into_iter().collect();
+    let received_missing: HashSet<_> = missing.into_iter().collect();
     assert_eq!(expected_missing, received_missing);
 
     // TEST PHASE 2: Handler should not return additional unknown digests.
-    let mut request = anemo::Request::new(RequestVoteRequest {
-        header: test_header.clone(),
-        parents: Vec::new(),
-    });
-    assert!(request.extensions_mut().insert(network.downgrade()).is_none());
-    assert!(request
-        .extensions_mut()
-        .insert(anemo::PeerId(author.primary_network_public_key().0.to_bytes()))
-        .is_none());
     // No additional missing parents will be requested.
-    let result = timeout(Duration::from_secs(5), handler.request_vote(request)).await;
+    let result =
+        timeout(Duration::from_secs(5), handler.vote(peer, test_header.clone(), Vec::new())).await;
     assert!(result.is_err(), "{:?}", result);
 
     // TEST PHASE 3: Handler should return error if header is too old.
     // Increase round threshold.
     let _ = cb.primary_round_updates().send(100);
-    let mut request = anemo::Request::new(RequestVoteRequest {
-        header: test_header.clone(),
-        parents: Vec::new(),
-    });
-    assert!(request.extensions_mut().insert(network.downgrade()).is_none());
-    assert!(request
-        .extensions_mut()
-        .insert(anemo::PeerId(author.primary_network_public_key().0.to_bytes()))
-        .is_none());
     // Because round 1 certificates are not in store, the missing parents will not be accepted yet.
-    let result = handler.request_vote(request).await;
+    let result =
+        timeout(Duration::from_secs(5), handler.vote(peer, test_header, Vec::new())).await.unwrap();
     assert!(result.is_err(), "{:?}", result);
-    assert_eq!(
-        // Returned error should be unretriable.
-        anemo::types::response::StatusCode::BadRequest,
-        result.err().unwrap().status()
-    );
 }
 
 #[tokio::test(flavor = "current_thread", start_paused = true)]
@@ -470,7 +284,8 @@ async fn test_request_vote_accept_missing_parents() {
     let target = fixture.authorities().next().unwrap();
     let author = fixture.authorities().nth(2).unwrap();
     let author_id = author.id();
-    let network = test_network(target.primary_network_keypair(), target.network_address());
+    let peer =
+        target.consensus_config().peer_id_for_authority(&author_id).expect("missing peer id!");
 
     let certificate_store = target.consensus_config().node_storage().certificate_store.clone();
     let payload_store = target.consensus_config().node_storage().payload_store.clone();
@@ -483,12 +298,7 @@ async fn test_request_vote_accept_missing_parents() {
     let synchronizer = StateSynchronizer::new(target.consensus_config(), cb.clone());
     let task_manager = TaskManager::default();
     synchronizer.spawn(&task_manager);
-    let handler = PrimaryReceiverHandler::new(
-        target.consensus_config(),
-        synchronizer.clone(),
-        cb.clone(),
-        Default::default(),
-    );
+    let handler = RequestHandler::new(target.consensus_config(), cb.clone(), synchronizer.clone());
 
     // Make some mock certificates that are parents of our new header.
     let committee: Committee = fixture.committee();
@@ -536,36 +346,44 @@ async fn test_request_vote_accept_missing_parents() {
     }
 
     // TEST PHASE 1: Handler should report missing parent certificates to caller.
-    let mut request = anemo::Request::new(RequestVoteRequest {
-        header: test_header.clone(),
-        parents: Vec::new(),
-    });
-    assert!(request.extensions_mut().insert(network.downgrade()).is_none());
-    assert!(request
-        .extensions_mut()
-        .insert(anemo::PeerId(author.primary_network_public_key().0.to_bytes()))
-        .is_none());
-    let result = handler.request_vote(request).await;
+    let missing = if let PrimaryResponse::MissingParents(missing) =
+        handler.vote(peer, test_header.clone(), Vec::new()).await.unwrap()
+    {
+        missing
+    } else {
+        panic!("Response not missing!");
+    };
 
     let expected_missing: HashSet<_> = round_2_missing.iter().map(|c| c.digest()).collect();
-    let received_missing: HashSet<_> = result.unwrap().into_body().missing.into_iter().collect();
+    let received_missing: HashSet<_> = missing.into_iter().collect();
     assert_eq!(expected_missing, received_missing);
 
     // TEST PHASE 2: Handler should process missing parent certificates and succeed.
-    let mut request = anemo::Request::new(RequestVoteRequest {
-        header: test_header,
-        parents: round_2_missing.clone(),
-    });
-    assert!(request.extensions_mut().insert(network.downgrade()).is_none());
-    assert!(request
-        .extensions_mut()
-        .insert(anemo::PeerId(author.primary_network_public_key().0.to_bytes()))
-        .is_none());
-
-    let result = timeout(Duration::from_secs(5), handler.request_vote(request)).await.unwrap();
+    let result = timeout(Duration::from_secs(5), handler.vote(peer, test_header, round_2_missing))
+        .await
+        .unwrap();
     assert!(result.is_ok(), "{:?}", result);
 }
 
+struct MockPrimaryToWorkerClient {}
+#[async_trait::async_trait]
+impl PrimaryToWorkerClient for MockPrimaryToWorkerClient {
+    async fn synchronize(
+        &self,
+        _worker_name: NetworkPublicKey,
+        _message: WorkerSynchronizeMessage,
+    ) -> eyre::Result<()> {
+        Ok(())
+    }
+
+    async fn fetch_batches(
+        &self,
+        _worker_name: NetworkPublicKey,
+        _request: FetchBatchesRequest,
+    ) -> eyre::Result<FetchBatchResponse> {
+        Err(eyre::eyre!("not implemented"))
+    }
+}
 #[tokio::test]
 async fn test_request_vote_missing_batches() {
     let fixture = CommitteeFixture::builder(MemDatabase::default)
@@ -575,7 +393,9 @@ async fn test_request_vote_missing_batches() {
     let primary = fixture.authorities().next().unwrap();
     let authority_id = primary.id();
     let author = fixture.authorities().nth(2).unwrap();
-    let network = test_network(primary.primary_network_keypair(), primary.network_address());
+    let author_id = author.id();
+    let peer =
+        primary.consensus_config().peer_id_for_authority(&author_id).expect("missing peer id!");
     let client = primary.consensus_config().local_network().clone();
 
     let certificate_store = primary.consensus_config().node_storage().certificate_store.clone();
@@ -589,12 +409,7 @@ async fn test_request_vote_missing_batches() {
     let synchronizer = StateSynchronizer::new(primary.consensus_config(), cb.clone());
     let task_manager = TaskManager::default();
     synchronizer.spawn(&task_manager);
-    let handler = PrimaryReceiverHandler::new(
-        primary.consensus_config(),
-        synchronizer.clone(),
-        cb.clone(),
-        Default::default(),
-    );
+    let handler = RequestHandler::new(primary.consensus_config(), cb.clone(), synchronizer.clone());
 
     // Make some mock certificates that are parents of our new header.
     let mut certificates = HashMap::new();
@@ -622,43 +437,20 @@ async fn test_request_vote_missing_batches() {
         .with_payload_batch(fixture_batch_with_transactions(10), 0, 0)
         .build()
         .unwrap();
-    let test_digests: HashSet<_> =
-        test_header.payload().iter().map(|(digest, _)| digest).cloned().collect();
 
     // Set up mock worker.
-    let author_id = author.id();
     let worker = primary.worker();
-    let worker_address = &worker.info().worker_address;
-    let worker_peer_id = anemo::PeerId(worker.keypair().public().0.to_bytes());
-    let mut mock_server = MockPrimaryToWorker::new();
-    mock_server
-        .expect_synchronize()
-        .withf(move |request| {
-            let digests: HashSet<_> = request.body().digests.iter().cloned().collect();
-            digests == test_digests && request.body().target == author_id
-        })
-        .times(1)
-        .return_once(|_| Ok(anemo::Response::new(())));
+    let _worker_address = &worker.info().worker_address;
+    let worker_peer_id = network_public_key_to_libp2p(worker.keypair().public());
+    let mock_server = MockPrimaryToWorkerClient {};
 
     client.set_primary_to_worker_local_handler(worker_peer_id, Arc::new(mock_server));
 
-    let _worker_network = worker.new_network(anemo::Router::new());
-    let address = worker_address.to_anemo_address().unwrap();
-    network.connect_with_peer_id(address, worker_peer_id).await.unwrap();
-
     // Verify Handler synchronizes missing batches and generates a Vote.
-    let mut request = anemo::Request::new(RequestVoteRequest {
-        header: test_header.clone(),
-        parents: Vec::new(),
-    });
-    assert!(request.extensions_mut().insert(network.downgrade()).is_none());
-    assert!(request
-        .extensions_mut()
-        .insert(anemo::PeerId(author.primary_network_public_key().0.to_bytes()))
-        .is_none());
-
-    let response = handler.request_vote(request).await.unwrap();
-    assert!(response.body().vote.is_some());
+    let _vote = timeout(Duration::from_secs(5), handler.vote(peer, test_header, Vec::new()))
+        .await
+        .unwrap()
+        .unwrap();
 }
 
 #[tokio::test]
@@ -670,7 +462,9 @@ async fn test_request_vote_already_voted() {
     let primary = fixture.authorities().next().unwrap();
     let id = primary.id();
     let author = fixture.authorities().nth(2).unwrap();
-    let network = test_network(primary.primary_network_keypair(), primary.network_address());
+    let author_id = author.id();
+    let peer =
+        primary.consensus_config().peer_id_for_authority(&author_id).expect("missing peer id!");
     let client = primary.consensus_config().local_network().clone();
 
     let certificate_store = primary.consensus_config().node_storage().certificate_store.clone();
@@ -685,12 +479,7 @@ async fn test_request_vote_already_voted() {
     let task_manager = TaskManager::default();
     synchronizer.spawn(&task_manager);
 
-    let handler = PrimaryReceiverHandler::new(
-        primary.consensus_config(),
-        synchronizer.clone(),
-        cb.clone(),
-        Default::default(),
-    );
+    let handler = RequestHandler::new(primary.consensus_config(), cb.clone(), synchronizer.clone());
 
     // Make some mock certificates that are parents of our new header.
     let mut certificates = HashMap::new();
@@ -713,17 +502,11 @@ async fn test_request_vote_already_voted() {
 
     // Set up mock worker.
     let worker = primary.worker();
-    let worker_address = &worker.info().worker_address;
-    let worker_peer_id = anemo::PeerId(worker.keypair().public().0.to_bytes());
-    let mut mock_server = MockPrimaryToWorker::new();
-    // Always Synchronize successfully.
-    mock_server.expect_synchronize().returning(|_| Ok(anemo::Response::new(())));
+    let _worker_address = &worker.info().worker_address;
+    let worker_peer_id = network_public_key_to_libp2p(worker.keypair().public());
+    let mock_server = MockPrimaryToWorkerClient {};
 
     client.set_primary_to_worker_local_handler(worker_peer_id, Arc::new(mock_server));
-
-    let _worker_network = worker.new_network(anemo::Router::new());
-    let address = worker_address.to_anemo_address().unwrap();
-    network.connect_with_peer_id(address, worker_peer_id).await.unwrap();
 
     // Verify Handler generates a Vote.
     let test_header = author
@@ -734,37 +517,29 @@ async fn test_request_vote_already_voted() {
         .with_payload_batch(fixture_batch_with_transactions(10), 0, 0)
         .build()
         .unwrap();
-    let mut request = anemo::Request::new(RequestVoteRequest {
-        header: test_header.clone(),
-        parents: Vec::new(),
-    });
-    assert!(request.extensions_mut().insert(network.downgrade()).is_none());
-    assert!(request
-        .extensions_mut()
-        .insert(anemo::PeerId(author.primary_network_public_key().0.to_bytes()))
-        .is_none());
 
-    let response = tokio::time::timeout(Duration::from_secs(10), handler.request_vote(request))
-        .await
-        .unwrap()
-        .unwrap();
-    assert!(response.body().vote.is_some());
-    let vote = response.into_body().vote.unwrap();
+    let vote = if let PrimaryResponse::Vote(vote) = tokio::time::timeout(
+        Duration::from_secs(10),
+        handler.vote(peer, test_header.clone(), Vec::new()),
+    )
+    .await
+    .unwrap()
+    .unwrap()
+    {
+        vote
+    } else {
+        panic!("not a vote!");
+    };
 
     // Verify the same request gets the same vote back successfully.
-    let mut request = anemo::Request::new(RequestVoteRequest {
-        header: test_header.clone(),
-        parents: Vec::new(),
-    });
-    assert!(request.extensions_mut().insert(network.downgrade()).is_none());
-    assert!(request
-        .extensions_mut()
-        .insert(anemo::PeerId(author.primary_network_public_key().0.to_bytes()))
-        .is_none());
-
-    let response = handler.request_vote(request).await.unwrap();
-    assert!(response.body().vote.is_some());
-    assert_eq!(vote.digest(), response.into_body().vote.unwrap().digest());
+    let vote2 = if let PrimaryResponse::Vote(vote) =
+        handler.vote(peer, test_header, Vec::new()).await.unwrap()
+    {
+        vote
+    } else {
+        panic!("not a vote!");
+    };
+    assert_eq!(vote.digest(), vote2.digest());
 
     // Verify a different request for the same round receives an error.
     let test_header = author
@@ -775,22 +550,9 @@ async fn test_request_vote_already_voted() {
         .with_payload_batch(fixture_batch_with_transactions(10), 0, 0)
         .build()
         .unwrap();
-    let mut request = anemo::Request::new(RequestVoteRequest {
-        header: test_header.clone(),
-        parents: Vec::new(),
-    });
-    assert!(request.extensions_mut().insert(network.downgrade()).is_none());
-    assert!(request
-        .extensions_mut()
-        .insert(anemo::PeerId(author.primary_network_public_key().0.to_bytes()))
-        .is_none());
 
-    let response = handler.request_vote(request).await;
-    assert_eq!(
-        // Returned error should not be retriable.
-        anemo::types::response::StatusCode::BadRequest,
-        response.err().unwrap().status()
-    );
+    let response = handler.vote(peer, test_header, Vec::new()).await;
+    assert!(response.is_err());
 }
 
 // NOTE: this is unit tested in primary::state_sync
@@ -808,12 +570,7 @@ async fn test_fetch_certificates_handler() {
     let synchronizer = StateSynchronizer::new(primary.consensus_config(), cb.clone());
     let task_manager = TaskManager::default();
     synchronizer.spawn(&task_manager);
-    let handler = PrimaryReceiverHandler::new(
-        primary.consensus_config(),
-        synchronizer.clone(),
-        cb.clone(),
-        Default::default(),
-    );
+    let handler = RequestHandler::new(primary.consensus_config(), cb.clone(), synchronizer.clone());
 
     let mut current_round: Vec<_> = Certificate::genesis(&fixture.committee())
         .into_iter()
@@ -884,7 +641,7 @@ async fn test_fetch_certificates_handler() {
         (1, vec![vec![], vec![], vec![3], vec![3]], 5, vec![2, 2, 2, 4]),
     ];
     for (lower_bound_round, skip_rounds_vec, max_items, expected_rounds) in test_cases {
-        let req = FetchCertificatesRequest::default()
+        let missing_req = MissingCertificatesRequest::default()
             .set_bounds(
                 lower_bound_round,
                 authorities
@@ -893,13 +650,14 @@ async fn test_fetch_certificates_handler() {
                     .zip(skip_rounds_vec.into_iter().map(|rounds| rounds.into_iter().collect()))
                     .collect(),
             )
+            .expect("boundary set")
             .set_max_items(max_items);
-        let resp =
-            handler.fetch_certificates(anemo::Request::new(req.clone())).await.unwrap().into_body();
-        assert_eq!(
-            resp.certificates.iter().map(|cert| cert.round()).collect_vec(),
-            expected_rounds
-        );
+        let resp = handler.retrieve_missing_certs(missing_req).await.unwrap();
+        if let PrimaryResponse::RequestedCertificates(certs) = resp {
+            assert_eq!(certs.iter().map(|cert| cert.round()).collect_vec(), expected_rounds);
+        } else {
+            panic!("did not get certs response!");
+        }
     }
 }
 
@@ -912,7 +670,9 @@ async fn test_request_vote_created_at_in_future() {
     let primary = fixture.authorities().next().unwrap();
     let id = primary.id();
     let author = fixture.authorities().nth(2).unwrap();
-    let network = test_network(primary.primary_network_keypair(), primary.network_address());
+    let author_id = author.id();
+    let peer =
+        primary.consensus_config().peer_id_for_authority(&author_id).expect("missing peer id!");
     let client = primary.consensus_config().local_network().clone();
 
     let certificate_store = primary.consensus_config().node_storage().certificate_store.clone();
@@ -926,12 +686,7 @@ async fn test_request_vote_created_at_in_future() {
     let synchronizer = StateSynchronizer::new(primary.consensus_config(), cb.clone());
     let task_manager = TaskManager::default();
     synchronizer.spawn(&task_manager);
-    let handler = PrimaryReceiverHandler::new(
-        primary.consensus_config(),
-        synchronizer.clone(),
-        cb.clone(),
-        Default::default(),
-    );
+    let handler = RequestHandler::new(primary.consensus_config(), cb.clone(), synchronizer.clone());
 
     // Make some mock certificates that are parents of our new header.
     let mut certificates = HashMap::new();
@@ -954,17 +709,11 @@ async fn test_request_vote_created_at_in_future() {
 
     // Set up mock worker.
     let worker = primary.worker();
-    let worker_address = &worker.info().worker_address;
-    let worker_peer_id = anemo::PeerId(worker.keypair().public().0.to_bytes());
-    let mut mock_server = MockPrimaryToWorker::new();
-    // Always Synchronize successfully.
-    mock_server.expect_synchronize().returning(|_| Ok(anemo::Response::new(())));
+    let _worker_address = &worker.info().worker_address;
+    let worker_peer_id = network_public_key_to_libp2p(worker.keypair().public());
+    let mock_server = MockPrimaryToWorkerClient {};
 
     client.set_primary_to_worker_local_handler(worker_peer_id, Arc::new(mock_server));
-
-    let _worker_network = worker.new_network(anemo::Router::new());
-    let address = worker_address.to_anemo_address().unwrap();
-    network.connect_with_peer_id(address, worker_peer_id).await.unwrap();
 
     // Verify Handler generates a Vote.
 
@@ -981,18 +730,8 @@ async fn test_request_vote_created_at_in_future() {
         .build()
         .unwrap();
 
-    let mut request = anemo::Request::new(RequestVoteRequest {
-        header: test_header.clone(),
-        parents: Vec::new(),
-    });
-    assert!(request.extensions_mut().insert(network.downgrade()).is_none());
-    assert!(request
-        .extensions_mut()
-        .insert(anemo::PeerId(author.primary_network_public_key().0.to_bytes()))
-        .is_none());
-
     // For such a future header we get back an error
-    assert!(handler.request_vote(request).await.is_err());
+    assert!(handler.vote(peer, test_header, Vec::new()).await.is_err());
 
     // Verify Handler generates a Vote.
 
@@ -1009,17 +748,12 @@ async fn test_request_vote_created_at_in_future() {
         .build()
         .unwrap();
 
-    let mut request = anemo::Request::new(RequestVoteRequest {
-        header: test_header.clone(),
-        parents: Vec::new(),
-    });
-    assert!(request.extensions_mut().insert(network.downgrade()).is_none());
-    assert!(request
-        .extensions_mut()
-        .insert(anemo::PeerId(author.primary_network_public_key().0.to_bytes()))
-        .is_none());
-
-    let response = handler.request_vote(request).await.unwrap();
-    assert!(response.body().vote.is_some());
+    let _vote = if let PrimaryResponse::Vote(vote) =
+        handler.vote(peer, test_header, Vec::new()).await.unwrap()
+    {
+        vote
+    } else {
+        panic!("not a vote!");
+    };
     assert!(created_at <= now());
 }

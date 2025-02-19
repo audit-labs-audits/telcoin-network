@@ -13,4 +13,5 @@ pub use consensus::ConsensusNetwork;
 // re-export specific libp2p types
 pub use libp2p::{
     gossipsub::Message as GossipMessage, identity::PeerId, request_response::ResponseChannel,
+    Multiaddr,
 };

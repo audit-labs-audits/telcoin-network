@@ -1,9 +1,10 @@
 //! Hierarchical type to hold tasks spawned for a worker in the network.
-use anemo::{Network, PeerId};
 use std::sync::Arc;
 use tn_config::ConsensusConfig;
-use tn_types::{BatchValidation, Database as ConsensusDatabase, TaskManager, WorkerId};
-use tn_worker::{metrics::Metrics, quorum_waiter::QuorumWaiter, BatchProvider, Worker};
+use tn_types::{BatchValidation, Database as ConsensusDatabase, WorkerId};
+use tn_worker::{
+    metrics::Metrics, quorum_waiter::QuorumWaiter, BatchProvider, Worker, WorkerNetworkHandle,
+};
 use tokio::sync::RwLock;
 use tracing::instrument;
 
@@ -12,10 +13,6 @@ pub struct WorkerNodeInner<CDB> {
     id: WorkerId,
     /// The consensus configuration.
     consensus_config: ConsensusConfig<CDB>,
-    /// Peer ID used for local connections.
-    own_peer_id: Option<PeerId>,
-    /// Keep the worker around.
-    worker: Option<Worker<CDB>>,
 }
 
 impl<CDB: ConsensusDatabase> WorkerNodeInner<CDB> {
@@ -25,26 +22,19 @@ impl<CDB: ConsensusDatabase> WorkerNodeInner<CDB> {
     async fn start(
         &mut self,
         validator: Arc<dyn BatchValidation>,
-    ) -> eyre::Result<(TaskManager, BatchProvider<CDB, QuorumWaiter>)> {
-        let task_manager = TaskManager::new("Worker Task Manager");
-        self.own_peer_id = Some(PeerId(
-            self.consensus_config.key_config().primary_network_public_key().0.to_bytes(),
-        ));
-
+        network_handle: WorkerNetworkHandle,
+    ) -> eyre::Result<BatchProvider<CDB, QuorumWaiter>> {
         let metrics = Metrics::default();
 
-        let (worker, batch_provider) = Worker::spawn(
+        let batch_provider = Worker::new_batch_provider(
             self.id,
             validator,
             metrics,
             self.consensus_config.clone(),
-            &task_manager,
+            network_handle,
         );
 
-        // now keep the handles
-        self.worker = Some(worker);
-
-        Ok((task_manager, batch_provider))
+        Ok(batch_provider)
     }
 }
 
@@ -55,7 +45,7 @@ pub struct WorkerNode<CDB> {
 
 impl<CDB: ConsensusDatabase> WorkerNode<CDB> {
     pub fn new(id: WorkerId, consensus_config: ConsensusConfig<CDB>) -> WorkerNode<CDB> {
-        let inner = WorkerNodeInner { id, consensus_config, own_peer_id: None, worker: None };
+        let inner = WorkerNodeInner { id, consensus_config };
 
         Self { internal: Arc::new(RwLock::new(inner)) }
     }
@@ -63,13 +53,9 @@ impl<CDB: ConsensusDatabase> WorkerNode<CDB> {
     pub async fn start(
         &self,
         validator: Arc<dyn BatchValidation>,
-    ) -> eyre::Result<(TaskManager, BatchProvider<CDB, QuorumWaiter>)> {
+        network_handle: WorkerNetworkHandle,
+    ) -> eyre::Result<BatchProvider<CDB, QuorumWaiter>> {
         let mut guard = self.internal.write().await;
-        guard.start(validator).await
-    }
-
-    /// Return the WAN if the worker is runnig.
-    pub async fn network(&self) -> Option<Network> {
-        self.internal.read().await.worker.as_ref().map(|w| w.network().clone())
+        guard.start(validator, network_handle).await
     }
 }

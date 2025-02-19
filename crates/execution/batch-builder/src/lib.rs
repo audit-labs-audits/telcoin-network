@@ -219,7 +219,7 @@ where
 
             // forward to worker and wait for ack that quorum was reached
             if let Err(e) = to_worker.send((batch.seal_slow(), ack)).await {
-                error!(target: "worker::batch_builder", ?e, "failed to send next block to worker");
+                error!(target: "worker::batch_builder", ?e, "failed to send next batch to worker");
                 // try to return error if worker channel closed
                 let _ = result.send(Err(e.into()));
                 return;
@@ -237,7 +237,7 @@ where
                             }
                         }
                         Err(error) => {
-                            error!(target: "worker::batch_builder", ?error, "error while sealing block");
+                            error!(target: "worker::batch_builder", ?error, "error while sealing batch");
                             let converted = match error {
                                 BlockSealError::FatalDBFailure => {
                                     // fatal - return error
@@ -438,7 +438,7 @@ mod tests {
     use std::{str::FromStr, time::Duration};
     use tempfile::TempDir;
     use tn_engine::execute_consensus_output;
-    use tn_network::local::LocalNetwork;
+    use tn_network_types::{local::LocalNetwork, MockWorkerToPrimaryHang};
     use tn_node_traits::{BuildArguments, TNExecution, TelcoinNode};
     use tn_storage::{open_db, tables::Batches};
     use tn_test_utils::{adiri_genesis_seeded, get_gas_price, TransactionFactory};
@@ -516,6 +516,8 @@ mod tests {
             reth_transaction_pool::Pool::eth_pool(validator, blob_store, PoolConfig::default());
         let address = Address::from(U160::from(33));
         let client = LocalNetwork::new_with_empty_id();
+        let worker_to_primary = Arc::new(MockWorkerToPrimaryHang {});
+        client.set_worker_to_primary_local_handler(worker_to_primary);
         let temp_dir = TempDir::new().unwrap();
         let store = open_db(temp_dir.path());
         let qw = TestMakeBlockQuorumWaiter();

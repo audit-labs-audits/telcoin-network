@@ -9,7 +9,6 @@ members = [
     "crates/test-utils",
     "crates/tn-utils",
     "crates/types",
-    "crates/network",
     "crates/network-types",
     "crates/network-libp2p",
     "crates/state-sync",
@@ -216,7 +215,6 @@ tn-types = { path = "./crates/types" }
 tn-node = { path = "./crates/node" }
 tn-node-traits = { path = "./crates/execution/node-traits" }
 tn-config = { path = "./crates/config" }
-tn-network = { path = "./crates/network" }
 tn-network-libp2p = { path = "./crates/network-libp2p" }
 tn-network-types = { path = "./crates/network-types" }
 tn-rpc = { path = "./crates/execution/tn-rpc" }
@@ -335,10 +333,6 @@ backoff = { version = "0.4.0", features = [
     "tokio_1",
 ] }
 
-anemo = { git = "https://github.com/mystenlabs/anemo.git", rev = "e609f7697ed6169bf0760882a0b6c032a57e4f3b" }
-anemo-build = { git = "https://github.com/mystenlabs/anemo.git", rev = "e609f7697ed6169bf0760882a0b6c032a57e4f3b" }
-anemo-cli = { git = "https://github.com/mystenlabs/anemo.git", rev = "e609f7697ed6169bf0760882a0b6c032a57e4f3b" }
-anemo-tower = { git = "https://github.com/mystenlabs/anemo.git", rev = "e609f7697ed6169bf0760882a0b6c032a57e4f3b" }
 tikv-jemallocator = "0.6"
 
 libp2p = { version = "0.54", features = [] }

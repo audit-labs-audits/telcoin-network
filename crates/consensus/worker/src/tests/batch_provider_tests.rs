@@ -37,8 +37,7 @@ async fn make_batch() {
     let node_metrics = WorkerMetrics::default();
 
     // Mock the primary client to always succeed.
-    let mut mock_server = MockWorkerToPrimary::new();
-    mock_server.expect_report_own_batch().returning(|_| Ok(anemo::Response::new(())));
+    let mock_server = MockWorkerToPrimary();
     client.set_worker_to_primary_local_handler(Arc::new(mock_server));
 
     // Spawn a `BatchProvider` instance.

@@ -163,6 +163,8 @@ fn do_restarts(delay: u64) -> eyre::Result<()> {
         client_urls[i].push_str(&format!(":{rpc_port}"));
         *child = Some(start_validator(i, &exe_path, &temp_path, rpc_port));
     }
+    // Let the nodes start- we should consider an admin port or some way to indicate this is done.
+    std::thread::sleep(Duration::from_secs(10));
 
     // pass &mut to `run_restart_tests1` to shutdown child in case of error
     let mut child2 = children[2].take().expect("missing child 2");
@@ -209,6 +211,8 @@ fn do_restarts(delay: u64) -> eyre::Result<()> {
     for (i, child) in children.iter_mut().enumerate() {
         *child = Some(start_validator(i, &exe_path, &temp_path, rpc_ports[i]));
     }
+    // Let the nodes start- we should consider an admin port or some way to indicate this is done.
+    std::thread::sleep(Duration::from_secs(5));
 
     info!(target: "restart-test", "Running restart tests 2");
     let res2 = run_restart_tests2(&client_urls);
@@ -310,7 +314,7 @@ fn get_positive_balance_with_retry(node: &str, address: &str) -> eyre::Result<u1
 fn get_balance_above_with_retry(node: &str, address: &str, above: u128) -> eyre::Result<u128> {
     let mut bal = get_balance(node, address, 5).unwrap_or(0);
     let mut i = 0;
-    while i < 35 && bal <= above {
+    while i < 30 && bal <= above {
         std::thread::sleep(Duration::from_millis(1200));
         i += 1;
         bal = get_balance(node, address, 5).unwrap_or(0);
@@ -453,7 +457,7 @@ fn call_rpc(
             let client = jsonrpc::Client::with_transport(trans.build());
             let req = client.build_request(command, params);
             let mut resp = client.send_request(req.clone());
-            let mut i = 1;
+            let mut i = 0;
             while i < retries && resp.is_err() {
                 std::thread::sleep(Duration::from_millis(1000));
                 resp = client.send_request(req.clone());

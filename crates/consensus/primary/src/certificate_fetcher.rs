@@ -2,10 +2,10 @@
 
 use crate::{
     error::{CertManagerError, CertManagerResult},
+    network::PrimaryNetworkHandle,
     state_sync::StateSynchronizer,
     ConsensusBus,
 };
-use anemo::Request;
 use consensus_metrics::{monitored_future, monitored_scope};
 use futures::{stream::FuturesUnordered, StreamExt};
 use rand::{rngs::ThreadRng, seq::SliceRandom};
@@ -14,13 +14,14 @@ use std::{
     sync::Arc,
     time::Duration,
 };
-use tn_network::PrimaryToPrimaryRpc;
+use tn_config::ConsensusConfig;
+use tn_network_libp2p::PeerId;
 use tn_network_types::{FetchCertificatesRequest, FetchCertificatesResponse};
 use tn_primary_metrics::PrimaryMetrics;
 use tn_storage::CertificateStore;
 use tn_types::{
-    validate_received_certificate, AuthorityIdentifier, Certificate, Committee, Database,
-    NetworkPublicKey, Noticer, Round, TaskManager, TnReceiver, TnSender,
+    validate_received_certificate, AuthorityIdentifier, Certificate, Committee, Database, Noticer,
+    Round, TaskManager, TnReceiver, TnSender,
 };
 use tokio::{
     task::JoinSet,
@@ -83,30 +84,33 @@ struct CertificateFetcherState<DB> {
     /// Identity of the current authority.
     authority_id: AuthorityIdentifier,
     /// Network client to fetch certificates from other primaries.
-    network: anemo::Network,
+    network: PrimaryNetworkHandle,
     /// Accepts Certificates into local storage.
     state_sync: StateSynchronizer<DB>,
     /// The metrics handler
     metrics: Arc<PrimaryMetrics>,
+    /// The config.
+    config: ConsensusConfig<DB>,
 }
 
 impl<DB: Database> CertificateFetcher<DB> {
-    #[allow(clippy::too_many_arguments)]
     pub fn spawn(
-        authority_id: AuthorityIdentifier,
-        committee: Committee,
-        network: anemo::Network,
-        certificate_store: CertificateStore<DB>,
+        config: ConsensusConfig<DB>,
+        network: PrimaryNetworkHandle,
         consensus_bus: ConsensusBus,
-        rx_shutdown: Noticer,
         state_sync: StateSynchronizer<DB>,
         task_manager: &TaskManager,
     ) {
+        let authority_id = config.authority().id();
+        let committee = config.committee().clone();
+        let certificate_store = config.node_storage().certificate_store.clone();
+        let rx_shutdown = config.shutdown().subscribe();
         let state = Arc::new(CertificateFetcherState {
             authority_id,
             network,
             state_sync,
             metrics: consensus_bus.primary_metrics().node_metrics.clone(),
+            config: config.clone(),
         });
 
         task_manager.spawn_task(
@@ -316,8 +320,14 @@ async fn run_fetch_task<DB: Database>(
     let request = FetchCertificatesRequest::default()
         .set_bounds(gc_round, written_rounds)
         .set_max_items(MAX_CERTIFICATES_TO_FETCH);
-    let Some(response) =
-        fetch_certificates_helper(state.authority_id, &state.network, &committee, request).await
+    let Some(response) = fetch_certificates_helper(
+        state.authority_id,
+        state.network.clone(),
+        &committee,
+        request,
+        state.config.clone(),
+    )
+    .await
     else {
         error!(target: "primary::cert_fetcher", "error awaiting fetch_certificates_helper");
         return Err(CertManagerError::NoCertificateFetched);
@@ -335,20 +345,21 @@ async fn run_fetch_task<DB: Database>(
 /// Fetches certificates from other primaries concurrently, with ~5 sec interval between each
 /// request. Terminates after the 1st successful response is received.
 #[instrument(level = "debug", skip_all)]
-async fn fetch_certificates_helper(
+async fn fetch_certificates_helper<DB: Database>(
     name: AuthorityIdentifier,
-    network: &anemo::Network,
+    network: PrimaryNetworkHandle,
     committee: &Committee,
     request: FetchCertificatesRequest,
+    config: ConsensusConfig<DB>,
 ) -> Option<FetchCertificatesResponse> {
     let _scope = monitored_scope("FetchingCertificatesFromPeers");
     trace!(target: "primary::cert_fetcher", "Start sending fetch certificates requests");
     // TODO: make this a config parameter.
     let request_interval = PARALLEL_FETCH_REQUEST_INTERVAL_SECS;
-    let mut peers: Vec<NetworkPublicKey> = committee
+    let mut peers: Vec<PeerId> = committee
         .others_primaries_by_id(name)
         .into_iter()
-        .map(|(_, _, network_key)| network_key)
+        .map(|(auth_id, _, _)| config.peer_id_for_authority(&auth_id).expect("missing peer id!"))
         .collect();
     peers.shuffle(&mut ThreadRng::default());
     let fetch_timeout = PARALLEL_FETCH_REQUEST_INTERVAL_SECS
@@ -360,13 +371,13 @@ async fn fetch_certificates_helper(
         // Loop until one peer returns with certificates, or no peer does.
         loop {
             if let Some(peer) = peers.pop() {
-                let request = Request::new(request.clone())
-                    .with_timeout(PARALLEL_FETCH_REQUEST_INTERVAL_SECS * 2);
+                let request_clone = request.clone();
+                let network_clone = network.clone();
                 fut.push(monitored_future!(async move {
                     debug!(target: "primary::cert_fetcher", "Sending out fetch request in parallel to {peer}");
-                    let result = network.fetch_certificates(&peer, request).await;
-                    if let Ok(resp) = &result {
-                        debug!(target: "primary::cert_fetcher", "Fetched {} certificates from peer {peer}", resp.certificates.len());
+                    let result = network_clone.fetch_certificates(peer, request_clone).await;
+                    if let Ok(certificates) = &result {
+                        debug!(target: "primary::cert_fetcher", "Fetched {} certificates from peer {peer}", certificates.len());
                     }
                     result
                 }));
@@ -374,12 +385,12 @@ async fn fetch_certificates_helper(
             let mut interval = Box::pin(sleep(request_interval));
             tokio::select! {
                 res = fut.next() => match res {
-                    Some(Ok(resp)) => {
-                        if resp.certificates.is_empty() {
+                    Some(Ok(certificates)) => {
+                        if certificates.is_empty() {
                             // Issue request to another primary immediately.
                             continue;
                         }
-                        return Some(resp);
+                        return Some(FetchCertificatesResponse { certificates });
                     }
                     Some(Err(e)) => {
                         debug!(target: "primary::cert_fetcher", "Failed to fetch certificates: {e}");
@@ -402,7 +413,7 @@ async fn fetch_certificates_helper(
         }
     };
     match timeout(fetch_timeout, fetch_callback).await {
-        Ok(result) => result,
+        Ok(response) => response,
         Err(e) => {
             debug!(target: "primary::cert_fetcher", "Timed out fetching certificates: {e}");
             None

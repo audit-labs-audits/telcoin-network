@@ -1,227 +1,14 @@
 //! Authority fixture for the cluster
 
-use crate::{
-    primary::PrimaryNodeDetails, worker::WorkerNodeDetails, TestExecutionNode, WorkerFixture,
-};
-use anemo::Network;
+use crate::WorkerFixture;
 use fastcrypto::{hash::Hash, traits::KeyPair as _};
-use jsonrpsee::http_client::HttpClient;
-use std::{collections::HashMap, num::NonZeroUsize, sync::Arc};
+use std::num::NonZeroUsize;
 use tn_config::{Config, ConsensusConfig, KeyConfig};
-use tn_network::local::LocalNetwork;
 use tn_types::{
     Address, Authority, AuthorityIdentifier, BlsKeypair, BlsPublicKey, Certificate, Committee,
     Database, Header, HeaderBuilder, Multiaddr, NetworkKeypair, NetworkPublicKey, Round, Vote,
-    WorkerCache, WorkerId,
+    WorkerCache,
 };
-use tokio::sync::RwLock;
-
-/// The authority details hold all the necessary structs and details
-/// to identify and manage a specific authority.
-///
-/// An authority is composed of its primary node and the worker nodes. Via this struct
-/// we can manage the nodes one by one or in batch fashion (ex stop_all).
-/// The Authority can be cloned and reused across the instances as its
-/// internals are thread safe. So changes made from one instance will be
-/// reflected to another.
-#[allow(dead_code)]
-#[derive(Clone)]
-pub struct AuthorityDetails<DB> {
-    pub id: usize,
-    pub name: AuthorityIdentifier,
-    pub public_key: BlsPublicKey,
-    internal: Arc<RwLock<AuthorityDetailsInternal<DB>>>,
-}
-
-/// Inner type for authority's details.
-struct AuthorityDetailsInternal<DB> {
-    client: Option<LocalNetwork>,
-    primary: PrimaryNodeDetails<DB>,
-    workers: HashMap<WorkerId, WorkerNodeDetails<DB>>,
-    execution: TestExecutionNode,
-}
-
-impl<DB: Database> AuthorityDetails<DB> {
-    pub fn new(
-        id: usize,
-        name: AuthorityIdentifier,
-        consensus_config: ConsensusConfig<DB>,
-        execution: TestExecutionNode,
-    ) -> Self {
-        // Create all the nodes we have in the committee
-        let public_key = consensus_config.key_config().primary_public_key();
-
-        let primary = PrimaryNodeDetails::new(id, name, consensus_config.clone());
-
-        // Create all the workers - even if we don't intend to start them all. Those
-        // act as place holder setups. That gives us the power in a clear way manage
-        // the nodes independently.
-        let mut workers = HashMap::new();
-        for (worker_id, addresses) in
-            consensus_config.worker_cache().workers.get(&public_key).unwrap().0.clone()
-        {
-            let worker = WorkerNodeDetails::new(
-                worker_id,
-                name,
-                consensus_config.clone(),
-                addresses.transactions.clone(),
-            );
-            workers.insert(worker_id, worker);
-        }
-
-        let internal = AuthorityDetailsInternal { client: None, primary, workers, execution };
-
-        Self { id, public_key, name, internal: Arc::new(RwLock::new(internal)) }
-    }
-
-    pub async fn client(&self) -> LocalNetwork {
-        let internal = self.internal.read().await;
-        internal
-            .client
-            .as_ref()
-            .expect("Requested network client which has not been initialised yet")
-            .clone()
-    }
-
-    /// Starts the node's primary and workers. If the num_of_workers is provided
-    /// then only those ones will be started. Otherwise all the available workers
-    /// will be started instead.
-    ///
-    /// If the preserve_store value is true then the previous node's storage
-    /// will be preserved. If false then the node will  start with a fresh
-    /// (empty) storage.
-    ///
-    /// When a worker/primary is started, the authority's [ExecutionNode] is used
-    /// to construct the necessary components.
-    pub async fn start(
-        &self,
-        preserve_store: bool,
-        num_of_workers: Option<usize>,
-    ) -> eyre::Result<()> {
-        self.start_primary().await?;
-
-        let workers_to_start;
-        {
-            let internal = self.internal.read().await;
-            workers_to_start = num_of_workers.unwrap_or(internal.workers.len());
-        }
-
-        for id in 0..workers_to_start {
-            self.start_worker(id as WorkerId, preserve_store).await?;
-        }
-
-        Ok(())
-    }
-
-    /// Starts the primary node. If the preserve_store value is true then the
-    /// previous node's storage will be preserved. If false then the node will
-    /// start with a fresh (empty) storage.
-    pub async fn start_primary(&self) -> eyre::Result<()> {
-        let mut internal = self.internal.write().await;
-
-        internal.primary.start().await
-    }
-
-    pub async fn start_all_workers(&self, preserve_store: bool) -> eyre::Result<()> {
-        let mut internal = self.internal.write().await;
-
-        let execution_engine = internal.execution.clone();
-
-        for (_id, worker) in internal.workers.iter_mut() {
-            worker.start(preserve_store, &execution_engine).await?;
-        }
-
-        Ok(())
-    }
-
-    /// Starts the worker node by the provided id. If worker is not found then
-    /// a panic is raised. If the preserve_store value is true then the
-    /// previous node's storage will be preserved. If false then the node will
-    /// start with a fresh (empty) storage.
-    pub async fn start_worker(&self, id: WorkerId, preserve_store: bool) -> eyre::Result<()> {
-        let mut internal = self.internal.write().await;
-        let execution_engine = internal.execution.clone();
-
-        let worker = internal
-            .workers
-            .get_mut(&id)
-            .unwrap_or_else(|| panic!("Worker with id {} not found ", id));
-
-        worker.start(preserve_store, &execution_engine).await
-    }
-
-    /// Returns the current primary node running as a clone. If the primary
-    /// node stops and starts again and it's needed by the user then this
-    /// method should be called again to get the latest one.
-    pub async fn primary(&self) -> PrimaryNodeDetails<DB> {
-        let internal = self.internal.read().await;
-
-        internal.primary.clone()
-    }
-
-    /// Returns the worker with the provided id. If not found then a panic
-    /// is raised instead. If the worker is stopped and started again then
-    /// the worker will need to be fetched again via this method.
-    pub async fn worker(&self, id: WorkerId) -> WorkerNodeDetails<DB> {
-        let internal = self.internal.read().await;
-
-        internal
-            .workers
-            .get(&id)
-            .unwrap_or_else(|| panic!("Worker with id {} not found ", id))
-            .clone()
-    }
-
-    /// Return the current execution node running. If the authority restarts, this
-    /// method should be called again to ensure the latest reference is used.
-    pub async fn execution_components(&self) -> eyre::Result<TestExecutionNode> {
-        let internal = self.internal.read().await;
-        Ok(internal.execution.clone())
-    }
-
-    /// Helper method to return transaction addresses of
-    /// all the worker nodes.
-    ///
-    /// Important: only the addresses of the running workers will
-    /// be returned.
-    pub async fn worker_transaction_addresses(&self) -> Vec<Multiaddr> {
-        self.workers().await.iter().map(|w| w.transactions_address.clone()).collect()
-    }
-
-    /// Returns all the workers
-    async fn workers(&self) -> Vec<WorkerNodeDetails<DB>> {
-        let internal = self.internal.read().await;
-        let mut workers = Vec::new();
-
-        for worker in internal.workers.values() {
-            workers.push(worker.clone());
-        }
-
-        workers
-    }
-
-    /// This method returns a new client to send transactions to the dictated
-    /// worker identified by the `worker_id`. If the worker_id is not found then
-    /// an error is returned.
-    pub async fn new_transactions_client(
-        &self,
-        worker_id: &WorkerId,
-    ) -> eyre::Result<Option<HttpClient>> {
-        let internal = self.internal.read().await;
-        let client = internal.execution.worker_http_client(worker_id).await?;
-        Ok(client)
-    }
-
-    /// Returns an owned primary WAN if it exists.
-    pub async fn primary_network(&self) -> Network {
-        self.primary().await.network().await
-    }
-
-    /// Returns an owned worker WAN if it exists.
-    pub async fn worker_network(&self, worker_id: WorkerId) -> Option<Network> {
-        self.worker(worker_id).await.network().await
-    }
-}
 
 /// Fixture representing an validator node within the network.
 ///
@@ -262,15 +49,6 @@ impl<DB: Database> AuthorityFixture<DB> {
     /// The authority's [Address] for execution layer.
     pub fn execution_address(&self) -> Address {
         self.authority.execution_address()
-    }
-
-    /// Create a new anemo network for consensus.
-    pub fn new_network(&self, router: anemo::Router) -> anemo::Network {
-        anemo::Network::bind(self.authority.primary_network_address().to_anemo_address().unwrap())
-            .server_name("tn-test")
-            .private_key(self.primary_network_keypair().private().0.to_bytes())
-            .start(router)
-            .unwrap()
     }
 
     /// A reference to the authority's [Multiaddr] on the consensus network.
@@ -324,18 +102,16 @@ impl<DB: Database> AuthorityFixture<DB> {
     }
 
     /// Generate a new [AuthorityFixture].
-    pub(crate) fn generate<P>(
+    pub(crate) fn generate(
         number_of_workers: NonZeroUsize,
-        mut get_port: P,
         authority: Authority,
-        primary_keypair: BlsKeypair,
-        key_config: KeyConfig,
+        keys: (BlsKeypair, KeyConfig),
         committee: Committee,
         db: DB,
-    ) -> Self
-    where
-        P: FnMut(&str) -> u16,
-    {
+        worker: WorkerFixture,
+        worker_cache: WorkerCache,
+    ) -> Self {
+        let (primary_keypair, key_config) = keys;
         // Make sure our keys are correct.
         assert_eq!(&key_config.primary_public_key(), authority.protocol_key());
         assert_eq!(key_config.primary_network_public_key(), authority.network_key());
@@ -357,16 +133,10 @@ impl<DB: Database> AuthorityFixture<DB> {
             node_config,
             key_config.clone(),
             committee,
-            None,
+            worker_cache,
         )
         .expect("failed to generate config!");
 
-        let worker = WorkerFixture::generate(key_config.clone(), authority.id().0, &mut get_port);
-
         Self { authority, worker, consensus_config, primary_keypair }
-    }
-
-    pub(crate) fn set_worker_cache(&mut self, worker_cache: WorkerCache) {
-        self.consensus_config.set_worker_cache(worker_cache);
     }
 }

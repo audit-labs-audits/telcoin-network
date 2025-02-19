@@ -24,7 +24,7 @@ use std::{str::FromStr, sync::Arc, time::Duration};
 use tempfile::TempDir;
 use tn_config::{test_fetch_file_content_relative_to_manifest, ContractStandardJson};
 use tn_faucet::Drip;
-use tn_network::local::LocalNetwork;
+use tn_network_types::local::LocalNetwork;
 use tn_storage::open_db;
 use tn_test_utils::{
     default_test_execution_node, execution_outcome_for_tests, faucet_test_execution_node,

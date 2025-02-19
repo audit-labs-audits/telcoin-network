@@ -3,18 +3,28 @@
 //! This module includes implementations for when the primary receives network
 //! requests from it's own workers and other primaries.
 
-use crate::{state_sync::StateSynchronizer, ConsensusBus};
+use crate::{proposer::OurDigestMessage, state_sync::StateSynchronizer, ConsensusBus};
 use handler::RequestHandler;
 pub use message::{MissingCertificatesRequest, PrimaryRequest, PrimaryResponse};
+use message::{PrimaryGossip, PrimaryRPCError};
 use tn_config::ConsensusConfig;
 use tn_network_libp2p::{
-    types::{IntoResponse as _, NetworkEvent, NetworkHandle},
-    GossipMessage, PeerId, ResponseChannel,
+    error::NetworkError,
+    types::{IdentTopic, IntoResponse as _, NetworkEvent, NetworkHandle, NetworkResult},
+    GossipMessage, Multiaddr, PeerId, ResponseChannel,
 };
-use tn_types::{BlockHash, Certificate, Database, Header, Noticer, TaskManager};
+use tn_network_types::{
+    FetchCertificatesRequest, WorkerOthersBatchMessage, WorkerOwnBatchMessage,
+    WorkerToPrimaryClient,
+};
+use tn_storage::PayloadStore;
+use tn_types::{
+    encode, BlockHash, Certificate, CertificateDigest, ConsensusHeader, Database, Header, Noticer,
+    TaskManager, TnSender, Vote,
+};
 use tokio::sync::{mpsc, oneshot};
 use tracing::{error, warn};
-mod handler;
+pub mod handler;
 mod message;
 
 #[cfg(test)]
@@ -22,16 +32,111 @@ mod message;
 mod network_tests;
 
 /// Convenience type for Primary network.
-type Req = PrimaryRequest;
+pub(crate) type Req = PrimaryRequest;
 /// Convenience type for Primary network.
-type Res = PrimaryResponse;
+pub(crate) type Res = PrimaryResponse;
+
+/// Primary network specific handle.
+#[derive(Clone)]
+pub struct PrimaryNetworkHandle {
+    handle: NetworkHandle<Req, Res>,
+}
+
+impl From<NetworkHandle<Req, Res>> for PrimaryNetworkHandle {
+    fn from(handle: NetworkHandle<Req, Res>) -> Self {
+        Self { handle }
+    }
+}
+
+impl PrimaryNetworkHandle {
+    pub fn new(handle: NetworkHandle<Req, Res>) -> Self {
+        Self { handle }
+    }
+
+    /// Dial a peer.
+    ///
+    /// Return swarm error to caller.
+    pub async fn dial(&self, peer_id: PeerId, peer_addr: Multiaddr) -> NetworkResult<()> {
+        self.handle.dial(peer_id, peer_addr).await
+    }
+
+    /// Publish a certificate to the consensus network.
+    /// NOTE: this is a publish, it is not specific to this client but here for convience.
+    pub async fn publish_certificate(&self, certificate: Certificate) -> NetworkResult<()> {
+        let data = encode(&PrimaryGossip::Certificate(certificate));
+        self.handle.publish(IdentTopic::new("tn-primary"), data).await?;
+        Ok(())
+    }
+
+    /// Request a vote for header from the peer.
+    /// Can return a response of Vote or MissingParents, other responses will be an error.
+    pub async fn request_vote(
+        &self,
+        peer: PeerId,
+        header: Header,
+        parents: Vec<Certificate>,
+    ) -> NetworkResult<RequestVoteResult> {
+        let request = PrimaryRequest::Vote { header, parents };
+        let res = self.handle.send_request(request, peer).await?;
+        let res = res.await??;
+        match res {
+            PrimaryResponse::Vote(vote) => Ok(RequestVoteResult::Vote(vote)),
+            PrimaryResponse::Error(PrimaryRPCError(s)) => Err(NetworkError::RPCError(s)),
+            PrimaryResponse::RequestedCertificates(_vec) => Err(NetworkError::RPCError(
+                "Got wrong response, not a vote is requested certificates!".to_string(),
+            )),
+            PrimaryResponse::MissingParents(parents) => {
+                Ok(RequestVoteResult::MissingParents(parents))
+            }
+            PrimaryResponse::ConsensusHeader(_consensus_header) => Err(NetworkError::RPCError(
+                "Got wrong response, not a vote is consensus header!".to_string(),
+            )),
+        }
+    }
+
+    pub async fn fetch_certificates(
+        &self,
+        peer: PeerId,
+        request: FetchCertificatesRequest,
+    ) -> NetworkResult<Vec<Certificate>> {
+        let FetchCertificatesRequest { exclusive_lower_bound, skip_rounds, max_items } = request;
+        let request = PrimaryRequest::MissingCertificates {
+            inner: MissingCertificatesRequest { exclusive_lower_bound, skip_rounds, max_items },
+        };
+        let res = self.handle.send_request(request, peer).await?;
+        let res = res.await??;
+        match res {
+            PrimaryResponse::RequestedCertificates(certs) => Ok(certs),
+            PrimaryResponse::Error(PrimaryRPCError(s)) => Err(NetworkError::RPCError(s)),
+            _ => Err(NetworkError::RPCError("Got wrong response, not a certificate!".to_string())),
+        }
+    }
+
+    pub async fn request_consensus(
+        &self,
+        peer: PeerId,
+        number: Option<u64>,
+        hash: Option<BlockHash>,
+    ) -> NetworkResult<ConsensusHeader> {
+        let request = PrimaryRequest::ConsensusHeader { number, hash };
+        let res = self.handle.send_request(request, peer).await?;
+        let res = res.await??;
+        match res {
+            PrimaryResponse::ConsensusHeader(header) => Ok(header),
+            PrimaryResponse::Error(PrimaryRPCError(s)) => Err(NetworkError::RPCError(s)),
+            _ => Err(NetworkError::RPCError(
+                "Got wrong response, not a consensus header!".to_string(),
+            )),
+        }
+    }
+}
 
 /// Handle inter-node communication between primaries.
 pub struct PrimaryNetwork<DB> {
     /// Receiver for network events.
     network_events: mpsc::Receiver<NetworkEvent<Req, Res>>,
     /// Network handle to send commands.
-    network_handle: NetworkHandle<Req, Res>,
+    network_handle: PrimaryNetworkHandle,
     /// Request handler to process requests and return responses.
     request_handler: RequestHandler<DB>,
     /// Shutdown notification.
@@ -43,21 +148,26 @@ where
     DB: Database,
 {
     /// Create a new instance of Self.
-    pub(crate) fn new(
+    pub fn new(
         network_events: mpsc::Receiver<NetworkEvent<Req, Res>>,
-        network_handle: NetworkHandle<Req, Res>,
+        network_handle: PrimaryNetworkHandle,
         consensus_config: ConsensusConfig<DB>,
         consensus_bus: ConsensusBus,
         state_sync: StateSynchronizer<DB>,
     ) -> Self {
         let shutdown_rx = consensus_config.shutdown().subscribe();
-        let request_handler = RequestHandler::new(consensus_config, consensus_bus, state_sync);
+        let request_handler =
+            RequestHandler::new(consensus_config, consensus_bus, state_sync.clone());
         Self { network_events, network_handle, request_handler, shutdown_rx }
     }
 
+    pub fn handle(&self) -> &PrimaryNetworkHandle {
+        &self.network_handle
+    }
+
     /// Run the network.
-    pub(crate) fn spawn(mut self, task_manager: &TaskManager) {
-        task_manager.spawn_task("latest block", async move {
+    pub fn spawn(mut self, task_manager: &TaskManager) {
+        task_manager.spawn_task("primary network events", async move {
             loop {
                 tokio::select!(
                     _ = &self.shutdown_rx => break,
@@ -111,7 +221,7 @@ where
             tokio::select! {
                 vote = request_handler.vote(peer, header, parents) => {
                     let response = vote.into_response();
-                    let _ = network_handle.send_response(response, channel).await;
+                    let _ = network_handle.handle.send_response(response, channel).await;
                 }
                 // cancel notification from network layer
                 _ = cancel => (),
@@ -138,7 +248,7 @@ where
                     // TODO: penalize peer's reputation for bad request
                     // if response.is_err() { }
 
-                    let _ = network_handle.send_response(response, channel).await;
+                    let _ = network_handle.handle.send_response(response, channel).await;
                 }
                 // cancel notification from network layer
                 _ = cancel => (),
@@ -165,7 +275,7 @@ where
                         let response = header.into_response();
                         // TODO: penalize peer's reputation for bad request
                         // if response.is_err() { }
-                        let _ = network_handle.send_response(response, channel).await;
+                        let _ = network_handle.handle.send_response(response, channel).await;
                     }
                 // cancel notification from network layer
                 _ = cancel => (),
@@ -185,7 +295,9 @@ where
                 //
                 // NOTE: the network ensures the peer id is present before forwarding the msg
                 if let Some(peer_id) = msg.source {
-                    if let Err(e) = network_handle.set_application_score(peer_id, -100.0).await {
+                    if let Err(e) =
+                        network_handle.handle.set_application_score(peer_id, -100.0).await
+                    {
                         error!(target: "primary::network", ?e, "failed to penalize malicious peer")
                     }
                 }
@@ -195,4 +307,57 @@ where
             }
         });
     }
+}
+
+/// Defines how the network receiver handles incoming workers messages.
+#[derive(Clone)]
+pub(super) struct WorkerReceiverHandler<DB> {
+    consensus_bus: ConsensusBus,
+    payload_store: PayloadStore<DB>,
+}
+
+impl<DB: Database> WorkerReceiverHandler<DB> {
+    /// Create a new instance of Self.
+    pub fn new(consensus_bus: ConsensusBus, payload_store: PayloadStore<DB>) -> Self {
+        Self { consensus_bus, payload_store }
+    }
+}
+
+#[async_trait::async_trait]
+impl<DB: Database> WorkerToPrimaryClient for WorkerReceiverHandler<DB> {
+    async fn report_own_batch(&self, message: WorkerOwnBatchMessage) -> eyre::Result<()> {
+        let (tx_ack, rx_ack) = oneshot::channel();
+        let response = self
+            .consensus_bus
+            .our_digests()
+            .send(OurDigestMessage {
+                digest: message.digest,
+                worker_id: message.worker_id,
+                timestamp: message.timestamp,
+                ack_channel: tx_ack,
+            })
+            .await?;
+
+        // If we are ok, then wait for the ack
+        rx_ack.await?;
+
+        Ok(response)
+    }
+
+    async fn report_others_batch(&self, message: WorkerOthersBatchMessage) -> eyre::Result<()> {
+        self.payload_store.write(&message.digest, &message.worker_id)?;
+        Ok(())
+    }
+}
+
+/// Responses to a vote request.
+#[derive(Clone, Debug, PartialEq)]
+pub enum RequestVoteResult {
+    /// The peer's vote if the peer considered the proposed header valid.
+    Vote(Vote),
+    /// Missing certificates in order to vote.
+    ///
+    /// If the peer was unable to verify parents for a proposed header, they respond requesting
+    /// the missing certificate by digest.
+    MissingParents(Vec<CertificateDigest>),
 }
