@@ -10,7 +10,9 @@ use message::{PrimaryGossip, PrimaryRPCError};
 use tn_config::ConsensusConfig;
 use tn_network_libp2p::{
     error::NetworkError,
-    types::{IdentTopic, IntoResponse as _, NetworkEvent, NetworkHandle, NetworkResult},
+    types::{
+        IdentTopic, IntoResponse as _, NetworkCommand, NetworkEvent, NetworkHandle, NetworkResult,
+    },
     GossipMessage, Multiaddr, PeerId, ResponseChannel,
 };
 use tn_network_types::{
@@ -49,8 +51,14 @@ impl From<NetworkHandle<Req, Res>> for PrimaryNetworkHandle {
 }
 
 impl PrimaryNetworkHandle {
+    /// Create a new instance of Self.
     pub fn new(handle: NetworkHandle<Req, Res>) -> Self {
         Self { handle }
+    }
+
+    //// Convenience method for creating a new Self for tests.
+    pub fn new_for_test(sender: mpsc::Sender<NetworkCommand<Req, Res>>) -> Self {
+        Self { handle: NetworkHandle::new(sender) }
     }
 
     /// Dial a peer.
