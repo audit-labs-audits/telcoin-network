@@ -15,6 +15,7 @@ mod primary;
 mod proposer;
 mod state_handler;
 mod state_sync;
+
 pub use state_sync::StateSynchronizer;
 
 #[cfg(test)]

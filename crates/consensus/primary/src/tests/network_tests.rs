@@ -94,7 +94,6 @@ async fn test_vote_succeeds() -> eyre::Result<()> {
     let header = committee
         .header_builder_last_authority()
         .latest_execution_block(parent.hash())
-        .latest_execution_block_num(parent.number)
         .created_at(1) // parent is 0
         .build()?;
 
@@ -122,7 +121,6 @@ async fn test_vote_fails_too_many_parents() -> eyre::Result<()> {
     let header = committee
         .header_builder_last_authority()
         .latest_execution_block(parent.hash())
-        .latest_execution_block_num(parent.number)
         .created_at(1) // parent is 0
         .build()?;
 
@@ -147,7 +145,6 @@ async fn test_vote_fails_wrong_authority_network_key() -> eyre::Result<()> {
     let header = committee
         .header_builder_last_authority()
         .latest_execution_block(parent.hash())
-        .latest_execution_block_num(parent.number)
         .created_at(1) // parent is 0
         .build()?;
 
@@ -178,7 +175,6 @@ async fn test_vote_fails_invalid_genesis_parent() -> eyre::Result<()> {
     let header = committee
         .header_builder_last_authority()
         .latest_execution_block(parent.hash())
-        .latest_execution_block_num(parent.number)
         .created_at(1) // parent is 0
         .parents(wrong_genesis)
         .build()?;
@@ -204,7 +200,7 @@ async fn test_vote_fails_unknown_execution_result() -> eyre::Result<()> {
     // process vote
     let res = handler.vote(peer_id, header, parents).await;
     debug!(target: "primary::handler_tests", ?res);
-    assert_matches!(res, Err(PrimaryNetworkError::InvalidHeader(HeaderError::UnknownExecutionResult(wrong_num, wrong_hash))) if wrong_num == 0 && wrong_hash == BlockHash::ZERO);
+    assert_matches!(res, Err(PrimaryNetworkError::InvalidHeader(HeaderError::UnknownExecutionResult(wrong_hash))) if wrong_hash == BlockHash::ZERO);
     Ok(())
 }
 
@@ -242,7 +238,6 @@ async fn test_vote_fails_invalid_timestamp() -> eyre::Result<()> {
     let header = committee
         .header_builder_last_authority()
         .latest_execution_block(parent.hash())
-        .latest_execution_block_num(parent.number)
         .created_at(wrong_time)
         .build()?;
 
@@ -267,7 +262,6 @@ async fn test_vote_fails_wrong_epoch() -> eyre::Result<()> {
     let header = committee
         .header_builder_last_authority()
         .latest_execution_block(parent.hash())
-        .latest_execution_block_num(parent.number)
         .created_at(1) // parent is 0
         .epoch(wrong_epoch)
         .build()?;
@@ -294,7 +288,6 @@ async fn test_vote_fails_unknown_authority() -> eyre::Result<()> {
         .header_builder_last_authority()
         .author(wrong_authority)
         .latest_execution_block(parent.hash())
-        .latest_execution_block_num(parent.number)
         .created_at(1) // parent is 0
         .build()?;
 

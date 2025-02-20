@@ -7,17 +7,24 @@ use crate::{
     proposer::OurDigestMessage, state_sync::CertificateManagerCommand, RecentBlocks,
 };
 use consensus_metrics::metered_channel::{self, channel_with_total_sender, MeteredMpscChannel};
-use std::sync::{atomic::AtomicBool, Arc};
+use std::{
+    error::Error,
+    sync::{atomic::AtomicBool, Arc},
+    time::{Duration, Instant},
+};
 use tn_config::Parameters;
 use tn_network_libp2p::GossipMessage;
 use tn_primary_metrics::{ChannelMetrics, ConsensusMetrics, ExecutorMetrics, Metrics};
 use tn_types::{
-    Certificate, CommittedSubDag, ConsensusHeader, ConsensusOutput, Header, Round, TnSender,
-    CHANNEL_CAPACITY,
+    BlockHash, Certificate, CommittedSubDag, ConsensusHeader, ConsensusOutput, Header, Round,
+    TnSender, CHANNEL_CAPACITY,
 };
-use tokio::sync::{
-    broadcast,
-    watch::{self},
+use tokio::{
+    sync::{
+        broadcast,
+        watch::{self, error::RecvError},
+    },
+    time::error::Elapsed,
 };
 
 /// Has sync completed?
@@ -441,5 +448,49 @@ impl ConsensusBus {
         self.gc_round_updates().send(gc_round)?;
         self.committed_round_updates().send(committed_round)?;
         Ok(())
+    }
+
+    /// Will try for a max of timeout Duration to execute block.
+    ///
+    /// On success then block was executed and is in recent_blocks otherwise time
+    /// ran out or recent_blocks was closed (app is shutting down).
+    /// Note, this uses recent blocks so will NOT be successful if asked to wait for block hash
+    /// that was produced before recent blocks.
+    pub async fn wait_for_execution(
+        &self,
+        block: BlockHash,
+        mut timeout: Duration,
+    ) -> Result<(), WaitForExecutionElapsed> {
+        let mut watch_execution_result = self.recent_blocks().subscribe();
+        let mut now = Instant::now();
+        while !self.recent_blocks().borrow().contains_hash(block) {
+            tokio::time::timeout(timeout, watch_execution_result.changed()).await??;
+            timeout = timeout.saturating_sub(Instant::now().duration_since(now));
+            now = Instant::now();
+        }
+        Ok(())
+    }
+}
+
+/// Error for wait_for_execution().
+#[derive(Copy, Clone, Debug)]
+pub struct WaitForExecutionElapsed();
+
+impl From<Elapsed> for WaitForExecutionElapsed {
+    fn from(_: Elapsed) -> Self {
+        Self()
+    }
+}
+
+impl From<RecvError> for WaitForExecutionElapsed {
+    fn from(_: RecvError) -> Self {
+        Self()
+    }
+}
+
+impl Error for WaitForExecutionElapsed {}
+impl std::fmt::Display for WaitForExecutionElapsed {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{self:?}")
     }
 }

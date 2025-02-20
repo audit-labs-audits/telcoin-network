@@ -409,8 +409,6 @@ async fn catch_up_consensus_from_to<DB: Database>(
         return Ok(from);
     }
     let peers_len = peers.len();
-    let mut rx_recent_blocks = consensus_bus.recent_blocks().subscribe();
-    let mut latest_exec_block_num = consensus_bus.recent_blocks().borrow().latest_block_num_hash();
     let db = config.database();
     let mut result_header = from;
     for number in last_consensus_height + 1..=max_consensus_height {
@@ -452,25 +450,23 @@ async fn catch_up_consensus_from_to<DB: Database>(
         }
 
         let base_execution_block = consensus_header.sub_dag.leader.header().latest_execution_block;
-        let base_execution_block_num =
-            consensus_header.sub_dag.leader.header().latest_execution_block_num;
         // We need to make sure execution has caught up so we can verify we have not
         // forked. This will force the follow function to not outrun
         // execution...  this is probably fine. Also once we can
         // follow gossiped consensus output this will not really be
         // an issue (except during initial catch up).
-        while base_execution_block_num > latest_exec_block_num.number {
-            rx_recent_blocks
-                .changed()
-                .await
-                .map_err(|e| eyre::eyre!("recent blocks changed failed: {e}"))?;
-            latest_exec_block_num = consensus_bus.recent_blocks().borrow().latest_block_num_hash();
-        }
-        if !consensus_bus.recent_blocks().borrow().contains_hash(base_execution_block) {
+        if consensus_bus
+            .wait_for_execution(
+                base_execution_block,
+                Duration::from_secs(10), /* Spend no more than 10 seconds for execution to catch
+                                          * then assume an error. */
+            )
+            .await
+            .is_err()
+        {
             // We seem to have forked, so die.
             return Err(eyre::eyre!(
-                "consensus_output has a parent not in our chain, missing {}/{} recents: {:?}!",
-                base_execution_block_num,
+                "consensus_output has a parent not in our chain, missing {} recents: {:?}!",
                 base_execution_block,
                 consensus_bus.recent_blocks().borrow()
             ));

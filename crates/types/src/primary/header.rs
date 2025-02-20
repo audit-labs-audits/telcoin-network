@@ -1,8 +1,8 @@
 use crate::{
     crypto, encode,
     error::{HeaderError, HeaderResult},
-    now, AuthorityIdentifier, Batch, BlockHash, BlockNumHash, BlockNumber, CertificateDigest,
-    Committee, Epoch, Round, TimestampSec, VoteDigest, WorkerCache, WorkerId,
+    now, AuthorityIdentifier, Batch, BlockHash, BlockNumHash, CertificateDigest, Committee, Epoch,
+    Round, TimestampSec, VoteDigest, WorkerCache, WorkerId,
 };
 use base64::{engine::general_purpose, Engine};
 use derive_builder::Builder;
@@ -53,11 +53,9 @@ pub struct Header {
     pub parents: BTreeSet<CertificateDigest>,
     /// Hash of the latest known execution block when this Header was build.
     /// This may be our parent block or may not but it does include our latest
-    /// execution result in a signed and validates structure which validates
+    /// execution result in a signed and validated structure which validates
     /// this execution block as well.
     pub latest_execution_block: BlockHash,
-    /// Number of the latest known execution block when this Header was build.
-    pub latest_execution_block_num: BlockNumber,
     /// The [HeaderDigest].
     #[serde(skip)]
     pub digest: OnceCell<HeaderDigest>,
@@ -84,7 +82,6 @@ impl Header {
             parents,
             digest: OnceCell::default(),
             latest_execution_block: latest_execution_block.hash,
-            latest_execution_block_num: latest_execution_block.number,
         };
         let digest = Hash::digest(&header);
         header.digest.set(digest).expect("digest oncecell empty for new header");
@@ -185,11 +182,6 @@ impl Header {
         self.parents.clear();
     }
 
-    /// Return the latest known block number/hash this header was built from.
-    pub fn latest_execution_block_num_hash(&self) -> BlockNumHash {
-        BlockNumHash { hash: self.latest_execution_block, number: self.latest_execution_block_num }
-    }
-
     /// The nonce of this header used during execution.
     pub fn nonce(&self) -> u64 {
         ((self.epoch as u64) << 32) | self.round as u64
@@ -217,7 +209,6 @@ impl HeaderBuilder {
             parents: self.parents.expect("parents set for header builder"),
             digest: OnceCell::default(),
             latest_execution_block: self.latest_execution_block.unwrap_or_default(),
-            latest_execution_block_num: self.latest_execution_block_num.unwrap_or_default(),
         };
 
         // TODO: return error here
@@ -299,13 +290,12 @@ impl fmt::Debug for Header {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> Result<(), fmt::Error> {
         write!(
             f,
-            "{}: B{}(v{}, e{}, {}wbs, exec: {} - {})",
+            "{}: B{}(v{}, e{}, {}wbs, exec: {})",
             self.digest(),
             self.round(),
             self.author(),
             self.epoch(),
             self.payload().len(),
-            self.latest_execution_block_num,
             self.latest_execution_block,
         )
     }

@@ -233,8 +233,8 @@ pub enum HeaderError {
     #[error("Watch channel for execution results dropped.")]
     ClosedWatchChannel,
     /// The proposed header contains a different execution result.
-    #[error("Peer's execution result for block {0}: {1:?}")]
-    UnknownExecutionResult(u64, BlockHash),
+    #[error("Peer's execution result for block {0:?}")]
+    UnknownExecutionResult(BlockHash),
     /// Invalid parent for genesis.
     #[error("Invalid parent for genesis: {0}")]
     InvalidGenesisParent(CertificateDigest),
