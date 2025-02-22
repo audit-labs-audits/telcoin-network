@@ -7,7 +7,7 @@
 //! if not directly participating in consesus.
 
 use super::{CommittedSubDag, ConsensusOutput};
-use crate::{crypto, BlockHash, Certificate, B256};
+use crate::{crypto, error::CertificateResult, BlockHash, Certificate, Committee, B256};
 use fastcrypto::hash::{Hash, HashFunction};
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
@@ -51,6 +51,13 @@ impl ConsensusHeader {
         hasher.update(sub_dag.digest());
         hasher.update(number.to_le_bytes());
         BlockHash::from_slice(&hasher.finalize().digest)
+    }
+
+    /// Verify that all of the contained certificates are valid and signed by a quorum of committee.
+    pub fn verify_certificates(self, committee: &Committee) -> CertificateResult<Self> {
+        let Self { parent_hash, sub_dag, number, extra } = self;
+        let sub_dag = sub_dag.verify_certificates(committee)?;
+        Ok(Self { parent_hash, sub_dag, number, extra })
     }
 }
 

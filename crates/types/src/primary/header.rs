@@ -51,11 +51,11 @@ pub struct Header {
     pub system_messages: Vec<SystemMessage>,
     /// Parent certificates for this Header.
     pub parents: BTreeSet<CertificateDigest>,
-    /// Hash of the latest known execution block when this Header was build.
+    /// Hash and number of the latest known execution block when this Header was build.
     /// This may be our parent block or may not but it does include our latest
     /// execution result in a signed and validated structure which validates
     /// this execution block as well.
-    pub latest_execution_block: BlockHash,
+    pub latest_execution_block: BlockNumHash,
     /// The [HeaderDigest].
     #[serde(skip)]
     pub digest: OnceCell<HeaderDigest>,
@@ -81,7 +81,7 @@ impl Header {
             system_messages,
             parents,
             digest: OnceCell::default(),
-            latest_execution_block: latest_execution_block.hash,
+            latest_execution_block,
         };
         let digest = Hash::digest(&header);
         header.digest.set(digest).expect("digest oncecell empty for new header");
@@ -290,7 +290,7 @@ impl fmt::Debug for Header {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> Result<(), fmt::Error> {
         write!(
             f,
-            "{}: B{}(v{}, e{}, {}wbs, exec: {})",
+            "{}: B{}(v{}, e{}, {}wbs, exec: {:?})",
             self.digest(),
             self.round(),
             self.author(),

@@ -129,16 +129,7 @@ where
         // NOTE: this doesn't hurt anything since this node shouldn't vote until execution is caught
         // up
         // ensure execution results match if this succeeds.
-        if self
-            .consensus_bus
-            .wait_for_execution(
-                header.latest_execution_block,
-                Duration::from_secs(5), /* Spend no more than 5 seconds for execution to catch
-                                         * then assume an error. */
-            )
-            .await
-            .is_err()
-        {
+        if self.consensus_bus.wait_for_execution(header.latest_execution_block).await.is_err() {
             error!(
                 target: "primary",
                 peer_hash = ?header.latest_execution_block,

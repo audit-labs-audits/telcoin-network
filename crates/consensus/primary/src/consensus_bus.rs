@@ -10,13 +10,12 @@ use consensus_metrics::metered_channel::{self, channel_with_total_sender, Metere
 use std::{
     error::Error,
     sync::{atomic::AtomicBool, Arc},
-    time::{Duration, Instant},
 };
 use tn_config::Parameters;
 use tn_network_libp2p::GossipMessage;
 use tn_primary_metrics::{ChannelMetrics, ConsensusMetrics, ExecutorMetrics, Metrics};
 use tn_types::{
-    BlockHash, Certificate, CommittedSubDag, ConsensusHeader, ConsensusOutput, Header, Round,
+    BlockNumHash, Certificate, CommittedSubDag, ConsensusHeader, ConsensusOutput, Header, Round,
     TnSender, CHANNEL_CAPACITY,
 };
 use tokio::{
@@ -450,25 +449,29 @@ impl ConsensusBus {
         Ok(())
     }
 
-    /// Will try for a max of timeout Duration to execute block.
+    /// Will resolve once we have executed block.
     ///
-    /// On success then block was executed and is in recent_blocks otherwise time
-    /// ran out or recent_blocks was closed (app is shutting down).
-    /// Note, this uses recent blocks so will NOT be successful if asked to wait for block hash
-    /// that was produced before recent blocks.
+    /// Return an error if we do not execute the requested block by block number.
+    /// Note if the chain is not advancing this may never return.
     pub async fn wait_for_execution(
         &self,
-        block: BlockHash,
-        mut timeout: Duration,
+        block: BlockNumHash,
     ) -> Result<(), WaitForExecutionElapsed> {
         let mut watch_execution_result = self.recent_blocks().subscribe();
-        let mut now = Instant::now();
-        while !self.recent_blocks().borrow().contains_hash(block) {
-            tokio::time::timeout(timeout, watch_execution_result.changed()).await??;
-            timeout = timeout.saturating_sub(Instant::now().duration_since(now));
-            now = Instant::now();
+        let target_number = block.number;
+        let mut current_number = self.recent_blocks().borrow().latest_block_num_hash().number;
+        while current_number < target_number {
+            watch_execution_result.changed().await?;
+            current_number = self.recent_blocks().borrow().latest_block_num_hash().number;
         }
-        Ok(())
+        if self.recent_blocks().borrow().contains_hash(block.hash) {
+            // Once we see our hash, should happen when current_number == target_number- trust
+            // digesting for this, we are done.
+            Ok(())
+        } else {
+            // Failed to find our block at it's number.
+            Err(WaitForExecutionElapsed())
+        }
     }
 }
 

@@ -239,6 +239,20 @@ impl Certificate {
         Ok(verified_cert)
     }
 
+    /// Performs a signature verification of a certificate against committee.
+    /// Will clear the state first and revalidate even if it appears to be valid.
+    pub fn verify_cert(mut self, committee: &Committee) -> CertificateResult<Certificate> {
+        self = self.validate_received()?;
+        let (weight, pks) = self.signed_by(committee);
+
+        let threshold = committee.quorum_threshold();
+        ensure!(weight >= threshold, CertificateError::Inquorate { stake: weight, threshold });
+
+        let verified_cert = self.verify_signature(pks)?;
+
+        Ok(verified_cert)
+    }
+
     /// Check the verification state and try to verify directly.
     fn verify_signature(mut self, pks: Vec<BlsPublicKey>) -> CertificateResult<Certificate> {
         // get signature from verification state

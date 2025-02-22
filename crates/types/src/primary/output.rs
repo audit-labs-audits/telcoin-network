@@ -3,8 +3,8 @@
 
 use super::ConsensusHeader;
 use crate::{
-    crypto, encode, Address, Batch, BlockHash, Certificate, ReputationScores, Round, TimestampSec,
-    B256,
+    crypto, encode, error::CertificateResult, Address, Batch, BlockHash, Certificate, Committee,
+    ReputationScores, Round, TimestampSec, B256,
 };
 use fastcrypto::hash::{Digest, Hash, HashFunction};
 use serde::{Deserialize, Serialize};
@@ -191,6 +191,14 @@ impl CommittedSubDag {
             return *self.leader.header().created_at();
         }
         self.commit_timestamp
+    }
+
+    /// Verify that all of the contained certificates are valid and signed by a quorum of committee.
+    pub fn verify_certificates(self, committee: &Committee) -> CertificateResult<Self> {
+        let Self { certificates, leader, reputation_score, commit_timestamp } = self;
+        let leader = leader.verify_cert(committee)?;
+        // XXXX also make sure the parent certs are good.
+        Ok(Self { certificates, leader, reputation_score, commit_timestamp })
     }
 }
 

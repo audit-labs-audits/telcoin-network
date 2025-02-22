@@ -11,7 +11,6 @@ use std::{
     collections::{BTreeMap, BTreeSet, HashMap},
     fmt::Debug,
     sync::Arc,
-    time::Duration,
 };
 use tn_config::ConsensusConfig;
 use tn_storage::CertificateStore;
@@ -391,16 +390,7 @@ impl<DB: Database> Consensus<DB> {
                 // fine. Also once we can follow gossiped consensus output this will not really be
                 // an issue (except during initial catch up).
                 let base_execution_block = committed_sub_dag.leader.header.latest_execution_block;
-                if self
-                    .consensus_bus
-                    .wait_for_execution(
-                        base_execution_block,
-                        Duration::from_secs(15), /* Spend no more than 15 seconds for execution
-                                                  * to catch then assume an error. */
-                    )
-                    .await
-                    .is_err()
-                {
+                if self.consensus_bus.wait_for_execution(base_execution_block).await.is_err() {
                     // This seems to be a bogus sub dag, we are out of sync...
                     tracing::error!(target: "telcoin::consensus_state", "Got a bogus sub dag from bullshark, we are out of sync!");
                     self.consensus_bus.node_mode().send_modify(|v| *v = NodeMode::CvvInactive);

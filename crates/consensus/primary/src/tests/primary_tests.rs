@@ -24,7 +24,7 @@ use tn_test_utils::{
     fixture_batch_with_transactions, make_optimal_signed_certificates, CommitteeFixture,
 };
 use tn_types::{
-    network_public_key_to_libp2p, now, AuthorityIdentifier, BlockHash, Certificate, Committee,
+    network_public_key_to_libp2p, now, AuthorityIdentifier, BlockNumHash, Certificate, Committee,
     Database, ExecHeader, SealedHeader, SignatureVerificationState, TaskManager,
 };
 use tokio::{sync::mpsc, time::timeout};
@@ -93,7 +93,7 @@ async fn test_request_vote_has_missing_execution_block() {
         .header_builder(&fixture.committee())
         .author(author_id)
         .round(3)
-        .latest_execution_block(BlockHash::default()) // dummy_hash would be correct here but this is the test...
+        .latest_execution_block(BlockNumHash::default()) // dummy_hash would be correct here but this is the test...
         .parents(round_2_certs.iter().map(|c| c.digest()).collect())
         .with_payload_batch(fixture_batch_with_transactions(10), 0, 0)
         .build()
@@ -163,7 +163,7 @@ async fn test_request_vote_older_execution_block() {
         .header_builder(&fixture.committee())
         .author(author_id)
         .round(3)
-        .latest_execution_block(dummy_hash)
+        .latest_execution_block(BlockNumHash::new(0, dummy_hash))
         .parents(round_2_certs.iter().map(|c| c.digest()).collect())
         .with_payload_batch(fixture_batch_with_transactions(10), 0, 0)
         .build()
@@ -228,7 +228,7 @@ async fn test_request_vote_has_missing_parents() {
         .header_builder(&fixture.committee())
         .author(author_id)
         .round(3)
-        .latest_execution_block(dummy_hash)
+        .latest_execution_block(BlockNumHash::new(0, dummy_hash))
         .parents(round_2_certs.iter().map(|c| c.digest()).collect())
         .with_payload_batch(fixture_batch_with_transactions(10), 0, 0)
         .build()
@@ -318,7 +318,7 @@ async fn test_request_vote_accept_missing_parents() {
         .author(author_id)
         .round(3)
         .parents(round_2_certs.iter().map(|c| c.digest()).collect())
-        .latest_execution_block(dummy_hash)
+        .latest_execution_block(BlockNumHash::new(0, dummy_hash))
         .with_payload_batch(fixture_batch_with_transactions(10), 0, 0)
         .build()
         .unwrap();
@@ -411,7 +411,7 @@ async fn test_request_vote_missing_batches() {
     let test_header = author
         .header_builder(&fixture.committee())
         .round(2)
-        .latest_execution_block(dummy_hash)
+        .latest_execution_block(BlockNumHash::new(0, dummy_hash))
         .parents(certificates.keys().cloned().collect())
         .with_payload_batch(fixture_batch_with_transactions(10), 0, 0)
         .build()
@@ -492,7 +492,7 @@ async fn test_request_vote_already_voted() {
         .header_builder(&fixture.committee())
         .round(2)
         .parents(certificates.keys().cloned().collect())
-        .latest_execution_block(dummy_hash)
+        .latest_execution_block(BlockNumHash::new(0, dummy_hash))
         .with_payload_batch(fixture_batch_with_transactions(10), 0, 0)
         .build()
         .unwrap();
@@ -525,7 +525,7 @@ async fn test_request_vote_already_voted() {
         .header_builder(&fixture.committee())
         .round(2)
         .parents(certificates.keys().cloned().collect())
-        .latest_execution_block(dummy_hash)
+        .latest_execution_block(BlockNumHash::new(0, dummy_hash))
         .with_payload_batch(fixture_batch_with_transactions(10), 0, 0)
         .build()
         .unwrap();
@@ -703,7 +703,7 @@ async fn test_request_vote_created_at_in_future() {
         .header_builder(&fixture.committee())
         .round(2)
         .parents(certificates.keys().cloned().collect())
-        .latest_execution_block(dummy_hash)
+        .latest_execution_block(BlockNumHash::new(0, dummy_hash))
         .with_payload_batch(fixture_batch_with_transactions(10), 0, 0)
         .created_at(created_at)
         .build()
@@ -720,7 +720,7 @@ async fn test_request_vote_created_at_in_future() {
     let test_header = author
         .header_builder(&fixture.committee())
         .round(2)
-        .latest_execution_block(dummy_hash)
+        .latest_execution_block(BlockNumHash::new(0, dummy_hash))
         .parents(certificates.keys().cloned().collect())
         .with_payload_batch(fixture_batch_with_transactions(10), 0, 0)
         .created_at(created_at)

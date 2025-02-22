@@ -13,8 +13,8 @@ use tn_storage::mem_db::MemDatabase;
 use tn_test_utils::CommitteeFixture;
 use tn_types::{
     error::HeaderError, network_public_key_to_libp2p, now, traits::InsecureDefault,
-    AuthorityIdentifier, BlockHash, Certificate, CertificateDigest, ExecHeader, SealedHeader,
-    TaskManager,
+    AuthorityIdentifier, BlockHash, BlockHeader, BlockNumHash, Certificate, CertificateDigest,
+    ExecHeader, SealedHeader, TaskManager,
 };
 use tracing::debug;
 
@@ -93,7 +93,7 @@ async fn test_vote_succeeds() -> eyre::Result<()> {
     // create valid header proposed by last peer in the committee for round 1
     let header = committee
         .header_builder_last_authority()
-        .latest_execution_block(parent.hash())
+        .latest_execution_block(BlockNumHash::new(parent.number(), parent.hash()))
         .created_at(1) // parent is 0
         .build()?;
 
@@ -120,7 +120,7 @@ async fn test_vote_fails_too_many_parents() -> eyre::Result<()> {
     // create valid header proposed by last peer in the committee for round 1
     let header = committee
         .header_builder_last_authority()
-        .latest_execution_block(parent.hash())
+        .latest_execution_block(BlockNumHash::new(parent.number(), parent.hash()))
         .created_at(1) // parent is 0
         .build()?;
 
@@ -144,7 +144,7 @@ async fn test_vote_fails_wrong_authority_network_key() -> eyre::Result<()> {
     // create valid header proposed by last peer in the committee for round 1
     let header = committee
         .header_builder_last_authority()
-        .latest_execution_block(parent.hash())
+        .latest_execution_block(BlockNumHash::new(parent.number(), parent.hash()))
         .created_at(1) // parent is 0
         .build()?;
 
@@ -174,7 +174,7 @@ async fn test_vote_fails_invalid_genesis_parent() -> eyre::Result<()> {
     // create header proposed by last peer in the committee for round 1
     let header = committee
         .header_builder_last_authority()
-        .latest_execution_block(parent.hash())
+        .latest_execution_block(BlockNumHash::new(parent.number(), parent.hash()))
         .created_at(1) // parent is 0
         .parents(wrong_genesis)
         .build()?;
@@ -200,7 +200,7 @@ async fn test_vote_fails_unknown_execution_result() -> eyre::Result<()> {
     // process vote
     let res = handler.vote(peer_id, header, parents).await;
     debug!(target: "primary::handler_tests", ?res);
-    assert_matches!(res, Err(PrimaryNetworkError::InvalidHeader(HeaderError::UnknownExecutionResult(wrong_hash))) if wrong_hash == BlockHash::ZERO);
+    assert_matches!(res, Err(PrimaryNetworkError::InvalidHeader(HeaderError::UnknownExecutionResult(wrong_hash))) if wrong_hash.hash == BlockHash::ZERO);
     Ok(())
 }
 
@@ -216,7 +216,7 @@ async fn test_vote_fails_invalid_header_digest() -> eyre::Result<()> {
     // create header proposed by last peer in the committee for round 1
     let mut header = committee.header_from_last_authority();
     // change values so digest doesn't match
-    header.latest_execution_block = BlockHash::random();
+    header.latest_execution_block = BlockNumHash::new(0, BlockHash::random());
 
     // process vote
     let res = handler.vote(peer_id, header, parents).await;
@@ -237,7 +237,7 @@ async fn test_vote_fails_invalid_timestamp() -> eyre::Result<()> {
     let wrong_time = now() + 100000; // too far in the future
     let header = committee
         .header_builder_last_authority()
-        .latest_execution_block(parent.hash())
+        .latest_execution_block(BlockNumHash::new(parent.number(), parent.hash()))
         .created_at(wrong_time)
         .build()?;
 
@@ -261,7 +261,7 @@ async fn test_vote_fails_wrong_epoch() -> eyre::Result<()> {
     let wrong_epoch = 3;
     let header = committee
         .header_builder_last_authority()
-        .latest_execution_block(parent.hash())
+        .latest_execution_block(BlockNumHash::new(parent.number(), parent.hash()))
         .created_at(1) // parent is 0
         .epoch(wrong_epoch)
         .build()?;
@@ -287,7 +287,7 @@ async fn test_vote_fails_unknown_authority() -> eyre::Result<()> {
     let header = committee
         .header_builder_last_authority()
         .author(wrong_authority)
-        .latest_execution_block(parent.hash())
+        .latest_execution_block(BlockNumHash::new(parent.number(), parent.hash()))
         .created_at(1) // parent is 0
         .build()?;
 
