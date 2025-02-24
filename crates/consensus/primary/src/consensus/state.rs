@@ -374,7 +374,6 @@ impl<DB: Database> Consensus<DB> {
                 return Ok(());
             }
         }
-        let mut rx_recent_blocks = self.consensus_bus.recent_blocks().subscribe();
         // Process the certificate using the selected consensus protocol.
         let (_, committed_sub_dags) =
             self.protocol.process_certificate(&mut self.state, certificate)?;
@@ -390,26 +389,14 @@ impl<DB: Database> Consensus<DB> {
                 // This will force the follow function to not outrun execution...  this is probably
                 // fine. Also once we can follow gossiped consensus output this will not really be
                 // an issue (except during initial catch up).
-                let base_execution_block_num =
-                    committed_sub_dag.leader.header.latest_execution_block_num;
-                let mut latest_exec_block_num =
-                    self.consensus_bus.recent_blocks().borrow().latest_block_num_hash();
-                while base_execution_block_num > latest_exec_block_num.number {
-                    rx_recent_blocks.changed().await.map_err(|_e| {
-                        // Lost the channel should be shutting down.
-                        ConsensusError::ShuttingDown
-                    })?;
-                    latest_exec_block_num =
-                        self.consensus_bus.recent_blocks().borrow().latest_block_num_hash();
-                }
                 let base_execution_block = committed_sub_dag.leader.header.latest_execution_block;
-                if !self.consensus_bus.recent_blocks().borrow().contains_hash(base_execution_block)
-                {
+                if self.consensus_bus.wait_for_execution(base_execution_block).await.is_err() {
                     // This seems to be a bogus sub dag, we are out of sync...
                     tracing::error!(target: "telcoin::consensus_state", "Got a bogus sub dag from bullshark, we are out of sync!");
                     self.consensus_bus.node_mode().send_modify(|v| *v = NodeMode::CvvInactive);
                     break;
                 }
+
                 tracing::debug!(target: "telcoin::consensus_state", "Commit in Sequence {:?}", committed_sub_dag.leader.nonce());
 
                 for certificate in &committed_sub_dag.certificates {

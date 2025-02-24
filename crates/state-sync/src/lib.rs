@@ -5,7 +5,7 @@
 //! This code will be re-written to work with libp2p and should become
 //! less hacky.
 
-use std::{collections::HashMap, time::Duration};
+use std::time::Duration;
 
 use consensus_metrics::monitored_future;
 use futures::{stream::FuturesUnordered, StreamExt};
@@ -15,7 +15,9 @@ use tn_primary::{
     consensus::ConsensusRound, network::PrimaryNetworkHandle, ConsensusBus, NodeMode,
 };
 use tn_storage::tables::{Batches, ConsensusBlockNumbersByDigest, ConsensusBlocks};
-use tn_types::{ConsensusHeader, ConsensusOutput, Database, DbTxMut, TaskManagerClone, TnSender};
+use tn_types::{
+    Committee, ConsensusHeader, ConsensusOutput, Database, DbTxMut, TaskManagerClone, TnSender,
+};
 use tracing::info;
 
 /// Return true if this node should be able to participate as a CVV, false otherwise.
@@ -52,8 +54,9 @@ pub async fn can_cvv<DB: Database>(
         .into_iter()
         .map(|(auth_id, _, _)| config.peer_id_for_authority(&auth_id).expect("missing peer id!"))
         .collect();
-    let max_consensus_header =
-        max_consensus_header(&network, &peers).await.unwrap_or_else(|| last_executed_block.clone());
+    let max_consensus_header = max_consensus_header(&network, &peers, config.committee())
+        .await
+        .unwrap_or_else(|| last_executed_block.clone());
     let max_epoch = max_consensus_header.sub_dag.leader.epoch();
     let max_round = max_consensus_header.sub_dag.leader.round();
     let _ = consensus_bus.last_consensus_header().send(max_consensus_header);
@@ -272,7 +275,7 @@ async fn spawn_stream_consensus_headers<DB: Database>(
             }
         }
         tokio::select! {
-            header = max_consensus_header(&network, &peers) => {
+            header = max_consensus_header(&network, &peers, config.committee()) => {
                 match header {
                     Some(max_consensus) => {
                         consensus_bus.last_consensus_header().send(max_consensus.clone())?;
@@ -309,53 +312,48 @@ async fn spawn_stream_consensus_headers<DB: Database>(
 async fn max_consensus_header(
     network: &PrimaryNetworkHandle,
     peers: &[PeerId],
+    committee: &Committee,
 ) -> Option<ConsensusHeader> {
-    let mut attempt = 1;
-    let threshhold = ((peers.len() + 1) * 2) / 3;
-    let num_peers = peers.len();
-    loop {
-        if attempt > 3 {
-            // We can try three times to get the consensus height.
-            return None;
-        }
-        let mut waiting = FuturesUnordered::new();
-        // Ask all our peers for their latest consensus height.
-        for peer in peers.iter() {
-            waiting.push(tokio::time::timeout(
-                Duration::from_secs(3), /* Three seconds should be plenty of time to get the
-                                         * consensus header. */
-                network.request_consensus(*peer, None, None),
-            ));
-        }
-        let mut responses = 0;
-        let mut outputs = HashMap::new();
-        while let Some(res) = waiting.next().await {
-            match res {
-                Ok(Ok(consensus_header)) => {
-                    responses += 1;
-                    if let Some((_, count)) = outputs.get_mut(&consensus_header.digest()) {
-                        if (*count + 1) >= threshhold {
-                            tracing::info!(target: "telcoin::state-sync", "reached consensus on current chain height of {} with {} out of {num_peers} peers agreeing out of {responses} responses",
-                            consensus_header.number, (*count + 1));
-                            return Some(consensus_header);
-                        }
-                        *count += 1;
+    let mut result: Option<ConsensusHeader> = None;
+    let mut waiting = FuturesUnordered::new();
+    // Ask all our peers for their latest consensus height.
+    for peer in peers.iter() {
+        waiting.push(tokio::time::timeout(
+            Duration::from_secs(3), /* Three seconds should be plenty of time to get the
+                                     * consensus header. */
+            network.request_consensus(*peer, None, None),
+        ));
+    }
+    while let Some(res) = waiting.next().await {
+        match res {
+            Ok(Ok(consensus_header)) => {
+                // Validate all the certificates in this consensus header.
+                let consensus_header = consensus_header.verify_certificates(committee).ok()?;
+                result = if let Some(last) = result {
+                    let (epoch, last_epoch) =
+                        (consensus_header.sub_dag.leader.epoch(), last.sub_dag.leader.epoch());
+                    let (round, last_round) =
+                        (consensus_header.sub_dag.leader.round(), last.sub_dag.leader.round());
+                    if epoch > last_epoch || (epoch == last_epoch && round > last_round) {
+                        Some(consensus_header)
                     } else {
-                        outputs.insert(consensus_header.digest(), (consensus_header, 1_usize));
+                        Some(last)
                     }
-                }
-                Ok(Err(e)) => {
-                    // An error with one peer should not derail us...  But log it.
-                    tracing::error!(target: "telcoin::state-sync", "error requesting peer consensus {e:?}")
-                }
-                Err(e) => {
-                    // An error with one peer should not derail us...  But log it.
-                    tracing::error!(target: "telcoin::state-sync", "error requesting peer consensus {e:?}")
-                }
+                } else {
+                    Some(consensus_header)
+                };
+            }
+            Ok(Err(e)) => {
+                // An error with one peer should not derail us...  But log it.
+                tracing::error!(target: "telcoin::state-sync", "error requesting peer consensus {e:?}")
+            }
+            Err(e) => {
+                // An error with one peer should not derail us...  But log it.
+                tracing::error!(target: "telcoin::state-sync", "error requesting peer consensus {e:?}")
             }
         }
-        attempt += 1;
     }
+    result
 }
 
 /// Get a vector of peer ids to each peer.
@@ -380,7 +378,7 @@ async fn catch_up_consensus<DB: Database>(
     let db = config.database();
     let (_, last_db_block) =
         db.last_record::<ConsensusBlocks>().unwrap_or_else(|| (0, ConsensusHeader::default()));
-    let Some(max_consensus) = max_consensus_header(network, peers).await else {
+    let Some(max_consensus) = max_consensus_header(network, peers, config.committee()).await else {
         return Ok(last_db_block);
     };
     consensus_bus.last_consensus_header().send(max_consensus.clone())?;
@@ -409,8 +407,6 @@ async fn catch_up_consensus_from_to<DB: Database>(
         return Ok(from);
     }
     let peers_len = peers.len();
-    let mut rx_recent_blocks = consensus_bus.recent_blocks().subscribe();
-    let mut latest_exec_block_num = consensus_bus.recent_blocks().borrow().latest_block_num_hash();
     let db = config.database();
     let mut result_header = from;
     for number in last_consensus_height + 1..=max_consensus_height {
@@ -434,7 +430,17 @@ async fn catch_up_consensus_from_to<DB: Database>(
                     .get((number as usize + try_num) % peers_len)
                     .expect("peer found by index");
                 match network.request_consensus(peer, Some(number), None).await {
-                    Ok(header) => break header,
+                    Ok(header) => {
+                        // Validate all the certificates in this consensus header.
+                        match header.verify_certificates(config.committee()) {
+                            Ok(header) => break header,
+                            Err(e) => {
+                                tracing::error!(target: "telcoin::state-sync", "received an invalid consensus header {e:?}");
+                                try_num += 1;
+                                continue;
+                            }
+                        }
+                    }
                     Err(e) => {
                         tracing::error!(target: "telcoin::state-sync", "error requesting peer consensus {e:?}");
                         try_num += 1;
@@ -452,26 +458,15 @@ async fn catch_up_consensus_from_to<DB: Database>(
         }
 
         let base_execution_block = consensus_header.sub_dag.leader.header().latest_execution_block;
-        let base_execution_block_num =
-            consensus_header.sub_dag.leader.header().latest_execution_block_num;
         // We need to make sure execution has caught up so we can verify we have not
         // forked. This will force the follow function to not outrun
         // execution...  this is probably fine. Also once we can
         // follow gossiped consensus output this will not really be
         // an issue (except during initial catch up).
-        while base_execution_block_num > latest_exec_block_num.number {
-            rx_recent_blocks
-                .changed()
-                .await
-                .map_err(|e| eyre::eyre!("recent blocks changed failed: {e}"))?;
-            latest_exec_block_num = consensus_bus.recent_blocks().borrow().latest_block_num_hash();
-        }
-        if !consensus_bus.recent_blocks().borrow().contains_hash(base_execution_block) {
+        if consensus_bus.wait_for_execution(base_execution_block).await.is_err() {
             // We seem to have forked, so die.
             return Err(eyre::eyre!(
-                "consensus_output has a parent not in our chain, missing {}/{} recents: {:?}!",
-                base_execution_block_num,
-                base_execution_block,
+                "consensus_output has a parent not in our chain, missing {base_execution_block:?} recents: {:?}!",
                 consensus_bus.recent_blocks().borrow()
             ));
         }

@@ -7,17 +7,23 @@ use crate::{
     proposer::OurDigestMessage, state_sync::CertificateManagerCommand, RecentBlocks,
 };
 use consensus_metrics::metered_channel::{self, channel_with_total_sender, MeteredMpscChannel};
-use std::sync::{atomic::AtomicBool, Arc};
+use std::{
+    error::Error,
+    sync::{atomic::AtomicBool, Arc},
+};
 use tn_config::Parameters;
 use tn_network_libp2p::GossipMessage;
 use tn_primary_metrics::{ChannelMetrics, ConsensusMetrics, ExecutorMetrics, Metrics};
 use tn_types::{
-    Certificate, CommittedSubDag, ConsensusHeader, ConsensusOutput, Header, Round, TnSender,
-    CHANNEL_CAPACITY,
+    BlockNumHash, Certificate, CommittedSubDag, ConsensusHeader, ConsensusOutput, Header, Round,
+    TnSender, CHANNEL_CAPACITY,
 };
-use tokio::sync::{
-    broadcast,
-    watch::{self},
+use tokio::{
+    sync::{
+        broadcast,
+        watch::{self, error::RecvError},
+    },
+    time::error::Elapsed,
 };
 
 /// Has sync completed?
@@ -441,5 +447,53 @@ impl ConsensusBus {
         self.gc_round_updates().send(gc_round)?;
         self.committed_round_updates().send(committed_round)?;
         Ok(())
+    }
+
+    /// Will resolve once we have executed block.
+    ///
+    /// Return an error if we do not execute the requested block by block number.
+    /// Note if the chain is not advancing this may never return.
+    pub async fn wait_for_execution(
+        &self,
+        block: BlockNumHash,
+    ) -> Result<(), WaitForExecutionElapsed> {
+        let mut watch_execution_result = self.recent_blocks().subscribe();
+        let target_number = block.number;
+        let mut current_number = self.recent_blocks().borrow().latest_block_num_hash().number;
+        while current_number < target_number {
+            watch_execution_result.changed().await?;
+            current_number = self.recent_blocks().borrow().latest_block_num_hash().number;
+        }
+        if self.recent_blocks().borrow().contains_hash(block.hash) {
+            // Once we see our hash, should happen when current_number == target_number- trust
+            // digesting for this, we are done.
+            Ok(())
+        } else {
+            // Failed to find our block at it's number.
+            Err(WaitForExecutionElapsed())
+        }
+    }
+}
+
+/// Error for wait_for_execution().
+#[derive(Copy, Clone, Debug)]
+pub struct WaitForExecutionElapsed();
+
+impl From<Elapsed> for WaitForExecutionElapsed {
+    fn from(_: Elapsed) -> Self {
+        Self()
+    }
+}
+
+impl From<RecvError> for WaitForExecutionElapsed {
+    fn from(_: RecvError) -> Self {
+        Self()
+    }
+}
+
+impl Error for WaitForExecutionElapsed {}
+impl std::fmt::Display for WaitForExecutionElapsed {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{self:?}")
     }
 }

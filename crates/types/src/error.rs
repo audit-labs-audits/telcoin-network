@@ -1,7 +1,7 @@
 //! Error types whenn validating types during consensus.
 
 use crate::{
-    crypto, BlockHash, CertificateDigest, Epoch, HeaderDigest, Round, SendError, TimestampSec,
+    crypto, BlockNumHash, CertificateDigest, Epoch, HeaderDigest, Round, SendError, TimestampSec,
     VoteDigest, WorkerId,
 };
 use fastcrypto::{error::FastCryptoError, hash::Digest};
@@ -233,8 +233,8 @@ pub enum HeaderError {
     #[error("Watch channel for execution results dropped.")]
     ClosedWatchChannel,
     /// The proposed header contains a different execution result.
-    #[error("Peer's execution result for block {0}: {1:?}")]
-    UnknownExecutionResult(u64, BlockHash),
+    #[error("Peer's execution result for block {0:?}")]
+    UnknownExecutionResult(BlockNumHash),
     /// Invalid parent for genesis.
     #[error("Invalid parent for genesis: {0}")]
     InvalidGenesisParent(CertificateDigest),
