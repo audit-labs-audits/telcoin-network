@@ -1,15 +1,16 @@
 //! The ouput from consensus (bullshark)
 //! See test_utils output_tests.rs for this modules tests.
 
-use super::ConsensusHeader;
+use super::{CertificateDigest, ConsensusHeader, SignatureVerificationState};
 use crate::{
-    crypto, encode, error::CertificateResult, Address, Batch, BlockHash, Certificate, Committee,
-    ReputationScores, Round, TimestampSec, B256,
+    crypto, encode,
+    error::{CertificateError, CertificateResult},
+    Address, Batch, BlockHash, Certificate, Committee, ReputationScores, Round, TimestampSec, B256,
 };
 use fastcrypto::hash::{Digest, Hash, HashFunction};
 use serde::{Deserialize, Serialize};
 use std::{
-    collections::VecDeque,
+    collections::{HashSet, VecDeque},
     fmt::{self, Display, Formatter},
     sync::Arc,
 };
@@ -195,10 +196,35 @@ impl CommittedSubDag {
 
     /// Verify that all of the contained certificates are valid and signed by a quorum of committee.
     pub fn verify_certificates(self, committee: &Committee) -> CertificateResult<Self> {
-        let Self { certificates, leader, reputation_score, commit_timestamp } = self;
+        let Self { mut certificates, leader, reputation_score, commit_timestamp } = self;
         let leader = leader.verify_cert(committee)?;
-        // XXXX also make sure the parent certs are good.
-        Ok(Self { certificates, leader, reputation_score, commit_timestamp })
+        let mut verified_certs: HashSet<CertificateDigest> =
+            leader.header.parents().iter().copied().collect();
+        let mut new_certs = Vec::new();
+        // Verify all the certs in the sub dag- we may directly apply these, save them or submit to
+        // bullshark so check them all. The leader is directly verified against the committe
+        // then any cert that is referenced from the leader is considered in-directly
+        // verified.  We just go ahead and directly verify any cert not in the leader
+        // sub dag to keep things simple (any of these certs will be remembered for indirect
+        // verification as well).
+        for mut cert in certificates.drain(..) {
+            let digest = cert.digest();
+            if verified_certs.contains(&digest) {
+                cert.set_signature_verification_state(
+                    SignatureVerificationState::VerifiedIndirectly(
+                        cert.aggregated_signature()
+                            .ok_or(CertificateError::RecoverBlsAggregateSignatureBytes)?
+                            .clone(),
+                    ),
+                );
+                new_certs.push(cert);
+            } else {
+                let cert = cert.verify_cert(committee)?;
+                verified_certs.insert(cert.digest());
+                new_certs.push(cert);
+            }
+        }
+        Ok(Self { certificates: new_certs, leader, reputation_score, commit_timestamp })
     }
 }
 

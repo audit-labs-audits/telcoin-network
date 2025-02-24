@@ -327,7 +327,7 @@ async fn max_consensus_header(
     while let Some(res) = waiting.next().await {
         match res {
             Ok(Ok(consensus_header)) => {
-                // XXXX - validate the leader cert now...
+                // Validate all the certificates in this consensus header.
                 let consensus_header = consensus_header.verify_certificates(committee).ok()?;
                 result = if let Some(last) = result {
                     let (epoch, last_epoch) =
@@ -430,7 +430,17 @@ async fn catch_up_consensus_from_to<DB: Database>(
                     .get((number as usize + try_num) % peers_len)
                     .expect("peer found by index");
                 match network.request_consensus(peer, Some(number), None).await {
-                    Ok(header) => break header,
+                    Ok(header) => {
+                        // Validate all the certificates in this consensus header.
+                        match header.verify_certificates(config.committee()) {
+                            Ok(header) => break header,
+                            Err(e) => {
+                                tracing::error!(target: "telcoin::state-sync", "received an invalid consensus header {e:?}");
+                                try_num += 1;
+                                continue;
+                            }
+                        }
+                    }
                     Err(e) => {
                         tracing::error!(target: "telcoin::state-sync", "error requesting peer consensus {e:?}");
                         try_num += 1;
