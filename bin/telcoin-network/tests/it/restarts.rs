@@ -212,7 +212,7 @@ fn do_restarts(delay: u64) -> eyre::Result<()> {
         *child = Some(start_validator(i, &exe_path, &temp_path, rpc_ports[i]));
     }
     // Let the nodes start- we should consider an admin port or some way to indicate this is done.
-    std::thread::sleep(Duration::from_secs(5));
+    std::thread::sleep(Duration::from_secs(6));
 
     info!(target: "restart-test", "Running restart tests 2");
     let res2 = run_restart_tests2(&client_urls);
