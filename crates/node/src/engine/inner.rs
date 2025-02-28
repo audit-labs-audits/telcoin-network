@@ -372,7 +372,6 @@ where
     ) -> eyre::Result<Vec<SealedHeader>> {
         let finalized_block_num =
             self.blockchain_db.database_provider_ro()?.last_block_number().unwrap_or(0);
-        //self.blockchain_db.database_provider_ro()?.last_finalized_block_number()?.unwrap_or(0);
         let mut result = Vec::with_capacity(number as usize);
         if number > 0 {
             let mut block_num = finalized_block_num;
