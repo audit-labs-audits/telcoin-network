@@ -7,7 +7,7 @@ use crate::consensus::{
 use fastcrypto::hash::Hash;
 use std::{collections::VecDeque, sync::Arc};
 use tn_storage::ConsensusStore;
-use tn_types::{Certificate, CommittedSubDag, Committee, Database, ReputationScores, Round, Stake};
+use tn_types::{Certificate, CommittedSubDag, Committee, ReputationScores, Round, Stake};
 use tokio::time::Instant;
 use tracing::{debug, error_span};
 
@@ -23,7 +23,7 @@ pub struct Bullshark<DB> {
     /// The committee information.
     pub committee: Committee,
     /// Persistent storage to safe ensure crash-recovery.
-    pub store: Arc<ConsensusStore<DB>>,
+    pub store: DB,
     /// The most recent round of inserted certificate
     pub max_inserted_certificate_round: Round,
     pub metrics: Arc<ConsensusMetrics>,
@@ -38,11 +38,11 @@ pub struct Bullshark<DB> {
     pub bad_nodes_stake_threshold: u64,
 }
 
-impl<DB: Database> Bullshark<DB> {
+impl<DB: ConsensusStore> Bullshark<DB> {
     /// Create a new Bullshark consensus instance.
     pub fn new(
         committee: Committee,
-        store: Arc<ConsensusStore<DB>>,
+        store: DB,
         metrics: Arc<ConsensusMetrics>,
         num_sub_dags_per_schedule: u32,
         leader_schedule: LeaderSchedule,

@@ -12,19 +12,18 @@ use fastcrypto::hash::Hash;
 use itertools::Itertools;
 use std::{collections::BTreeSet, time::Duration};
 use tn_network_libp2p::types::{NetworkCommand, NetworkHandle};
-use tn_storage::{mem_db::MemDatabase, CertificateStore};
+use tn_storage::{mem_db::MemDatabase, CertificateStore, PayloadStore};
 use tn_test_utils::CommitteeFixture;
 use tn_types::{
-    BlsAggregateSignatureBytes, Certificate, Database, Header, SignatureVerificationState,
-    TaskManager,
+    BlsAggregateSignatureBytes, Certificate, Header, SignatureVerificationState, TaskManager,
 };
 use tokio::{
     sync::mpsc::{self, error::TryRecvError},
     time::sleep,
 };
 
-async fn verify_certificates_in_store<DB: Database>(
-    certificate_store: &CertificateStore<DB>,
+async fn verify_certificates_in_store<DB: CertificateStore>(
+    certificate_store: &DB,
     certificates: &[Certificate],
     expected_verified_directly_count: u64,
     expected_verified_indirectly_count: u64,
@@ -75,8 +74,8 @@ async fn verify_certificates_in_store<DB: Database>(
     );
 }
 
-fn verify_certificates_not_in_store<DB: Database>(
-    certificate_store: &CertificateStore<DB>,
+fn verify_certificates_not_in_store<DB: CertificateStore>(
+    certificate_store: &DB,
     certificates: &[Certificate],
 ) {
     let found_certificates =
@@ -92,8 +91,8 @@ async fn fetch_certificates_basic() {
     let fixture = CommitteeFixture::builder(MemDatabase::default).randomize_ports(true).build();
     let primary = fixture.authorities().next().unwrap();
 
-    let certificate_store = primary.consensus_config().node_storage().certificate_store.clone();
-    let payload_store = primary.consensus_config().node_storage().payload_store.clone();
+    let certificate_store = primary.consensus_config().node_storage().clone();
+    let payload_store = primary.consensus_config().node_storage().clone();
 
     // Signal rounds
 
@@ -134,7 +133,7 @@ async fn fetch_certificates_basic() {
 
     // Avoid any sort of missing payload by pre-populating the batch
     for (digest, (worker_id, _)) in headers.iter().flat_map(|h| h.payload().iter()) {
-        payload_store.write(digest, worker_id).unwrap();
+        payload_store.write_payload(digest, worker_id).unwrap();
     }
 
     let total_certificates = fixture.authorities().count() * rounds as usize;

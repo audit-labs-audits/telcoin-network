@@ -1,8 +1,7 @@
 //! Randomized tests
 
 use crate::consensus::{
-    consensus_utils::make_consensus_store, Bullshark, ConsensusMetrics, ConsensusState,
-    LeaderSchedule, LeaderSwapTable,
+    Bullshark, ConsensusMetrics, ConsensusState, LeaderSchedule, LeaderSwapTable,
 };
 use fastcrypto::hash::{Hash, HashFunction};
 use futures::{stream::FuturesUnordered, StreamExt};
@@ -21,8 +20,7 @@ use std::{
 use tn_storage::{mem_db::MemDatabase, open_db, ConsensusStore};
 use tn_test_utils::{mock_certificate_with_rand, CommitteeFixture};
 use tn_types::{
-    Authority, AuthorityIdentifier, Certificate, CertificateDigest, Committee, Database, Round,
-    Stake,
+    Authority, AuthorityIdentifier, Certificate, CertificateDigest, Committee, Round, Stake,
 };
 use tokio::sync::mpsc::channel;
 
@@ -159,7 +157,7 @@ async fn bullshark_randomised_tests() {
 
     // Create a single store to be re-used across Bullshark instances to avoid hitting
     // a "too many files open" issue.
-    let store = make_consensus_store(open_db(tn_test_utils::temp_dir()));
+    let store = open_db(tn_test_utils::temp_dir());
 
     // Run the actual tests via separate tasks
     loop {
@@ -456,7 +454,7 @@ pub fn make_certificates_with_parameters(
 /// Creates various execution plans (`test_iterations` in total) by permuting the order we feed the
 /// DAG certificates to consensus and compare the output to ensure is the same.
 #[allow(clippy::too_many_arguments)]
-fn generate_and_run_execution_plans<DB: Database>(
+fn generate_and_run_execution_plans<DB: ConsensusStore>(
     original_certificates: VecDeque<Certificate>,
     test_iterations: u64,
     committee: Committee,
@@ -464,7 +462,7 @@ fn generate_and_run_execution_plans<DB: Database>(
     dag_rounds: Round,
     run_id: u64,
     modes: FailureModes,
-    store: Arc<ConsensusStore<DB>>,
+    store: DB,
 ) {
     let mut executed_plans = HashSet::new();
     let mut committed_certificates = Vec::new();

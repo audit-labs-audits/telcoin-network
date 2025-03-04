@@ -86,7 +86,7 @@ pub mod proposer_tests;
 
 /// The proposer creates new headers and send them to the core for broadcasting and further
 /// processing.
-pub struct Proposer<DB: Database> {
+pub struct Proposer<DB: ProposerStore> {
     /// The id of this primary.
     authority_id: AuthorityIdentifier,
     /// The committee information.
@@ -115,7 +115,7 @@ pub struct Proposer<DB: Database> {
     /// consensus channels
     consensus_bus: ConsensusBus,
     /// The proposer store for persisting the last header.
-    proposer_store: ProposerStore<DB>,
+    proposer_store: DB,
     /// The current round of the dag.
     round: Round,
     /// Last time the round has been updated
@@ -167,7 +167,7 @@ impl<DB: Database> Proposer<DB> {
             opt_latest_header: None,
             rx_shutdown,
             consensus_bus,
-            proposer_store: config.node_storage().proposer_store.clone(),
+            proposer_store: config.node_storage().clone(),
             round: 0,
             last_round_timestamp: None,
             last_parents: genesis,
@@ -191,7 +191,7 @@ impl<DB: Database> Proposer<DB> {
         current_round: Round,
         current_epoch: Epoch,
         authority_id: AuthorityIdentifier,
-        proposer_store: ProposerStore<DB>,
+        proposer_store: DB,
         consensus_bus: &ConsensusBus,
         parents: Vec<Certificate>,
         digests: VecDeque<ProposerDigest>,
@@ -295,7 +295,7 @@ impl<DB: Database> Proposer<DB> {
     /// -
     async fn repropose_header(
         header: Header,
-        proposer_store: ProposerStore<DB>,
+        proposer_store: DB,
         consensus_bus: &ConsensusBus,
         reason: String,
     ) -> ProposerResult<Header> {
@@ -307,7 +307,7 @@ impl<DB: Database> Proposer<DB> {
     /// Store the header in the `ProposerStore` and send to `Certifier`.
     async fn store_and_send_header(
         header: &Header,
-        proposer_store: ProposerStore<DB>,
+        proposer_store: DB,
         consensus_bus: &ConsensusBus,
         reason: &str,
     ) -> ProposerResult<()> {

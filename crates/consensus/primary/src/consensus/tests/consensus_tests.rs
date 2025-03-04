@@ -6,7 +6,7 @@ use crate::{
 };
 use fastcrypto::hash::Hash;
 use std::{collections::BTreeSet, sync::Arc};
-use tn_storage::mem_db::MemDatabase;
+use tn_storage::{mem_db::MemDatabase, CertificateStore, ConsensusStore};
 use tn_test_utils::CommitteeFixture;
 use tn_types::{
     Certificate, ExecHeader, ReputationScores, SealedHeader, TaskManager, TnReceiver, TnSender,
@@ -32,8 +32,8 @@ async fn test_consensus_recovery_with_bullshark() {
     let fixture = CommitteeFixture::builder(MemDatabase::default).build();
     let committee = fixture.committee();
     let config = fixture.authorities().next().unwrap().consensus_config().clone();
-    let consensus_store = config.node_storage().consensus_store.clone();
-    let certificate_store = config.node_storage().certificate_store.clone();
+    let consensus_store = config.node_storage().clone();
+    let certificate_store = config.node_storage().clone();
 
     // config.set_consensus_bad_nodes_stake_threshold(33);
 

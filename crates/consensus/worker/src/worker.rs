@@ -40,7 +40,7 @@ impl Worker {
         let batch_fetcher = BatchFetcher::new(
             worker_name,
             network_handle.clone(),
-            consensus_config.node_storage().batch_store.clone(),
+            consensus_config.node_storage().clone(),
             node_metrics.clone(),
         );
         consensus_config.local_network().set_primary_to_worker_local_handler(

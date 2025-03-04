@@ -19,7 +19,7 @@ use std::{
 use tn_config::ConsensusConfig;
 use tn_network_libp2p::ConsensusNetwork;
 use tn_network_types::MockPrimaryToWorkerClient;
-use tn_storage::mem_db::MemDatabase;
+use tn_storage::{mem_db::MemDatabase, CertificateStore, PayloadStore};
 use tn_test_utils::{
     fixture_batch_with_transactions, make_optimal_signed_certificates, CommitteeFixture,
 };
@@ -65,8 +65,8 @@ async fn test_request_vote_has_missing_execution_block() {
     let peer =
         target.consensus_config().peer_id_for_authority(&author_id).expect("missing peer id!");
 
-    let certificate_store = target.consensus_config().node_storage().certificate_store.clone();
-    let payload_store = target.consensus_config().node_storage().payload_store.clone();
+    let certificate_store = target.consensus_config().node_storage().clone();
+    let payload_store = target.consensus_config().node_storage().clone();
 
     let cb = ConsensusBus::new();
     // Need a dummy parent so we can request a vote.
@@ -104,7 +104,7 @@ async fn test_request_vote_has_missing_execution_block() {
     // into the storage as parents of round 2 certificates. But to test phase 2 they are left out.
     for cert in round_2_parents {
         for (digest, (worker_id, _)) in cert.header().payload() {
-            payload_store.write(digest, worker_id).unwrap();
+            payload_store.write_payload(digest, worker_id).unwrap();
         }
         certificate_store.write(cert.clone()).unwrap();
     }
@@ -128,8 +128,8 @@ async fn test_request_vote_older_execution_block() {
     let peer =
         target.consensus_config().peer_id_for_authority(&author_id).expect("missing peer id!");
 
-    let certificate_store = target.consensus_config().node_storage().certificate_store.clone();
-    let payload_store = target.consensus_config().node_storage().payload_store.clone();
+    let certificate_store = target.consensus_config().node_storage().clone();
+    let payload_store = target.consensus_config().node_storage().clone();
 
     let cb = ConsensusBus::new();
     // Need a dummy parent so we can request a vote.
@@ -174,7 +174,7 @@ async fn test_request_vote_older_execution_block() {
     // into the storage as parents of round 2 certificates. But to test phase 2 they are left out.
     for cert in round_2_parents {
         for (digest, (worker_id, _)) in cert.header().payload() {
-            payload_store.write(digest, worker_id).unwrap();
+            payload_store.write_payload(digest, worker_id).unwrap();
         }
         certificate_store.write(cert.clone()).unwrap();
     }
@@ -198,8 +198,8 @@ async fn test_request_vote_has_missing_parents() {
     let peer =
         target.consensus_config().peer_id_for_authority(&author_id).expect("missing peer id!");
 
-    let certificate_store = target.consensus_config().node_storage().certificate_store.clone();
-    let payload_store = target.consensus_config().node_storage().payload_store.clone();
+    let certificate_store = target.consensus_config().node_storage().clone();
+    let payload_store = target.consensus_config().node_storage().clone();
 
     let cb = ConsensusBus::new();
     // Need a dummy parent so we can request a vote.
@@ -239,7 +239,7 @@ async fn test_request_vote_has_missing_parents() {
     // into the storage as parents of round 2 certificates. But to test phase 2 they are left out.
     for cert in round_2_parents {
         for (digest, (worker_id, _)) in cert.header().payload() {
-            payload_store.write(digest, worker_id).unwrap();
+            payload_store.write_payload(digest, worker_id).unwrap();
         }
         certificate_store.write(cert.clone()).unwrap();
     }
@@ -285,8 +285,8 @@ async fn test_request_vote_accept_missing_parents() {
     let peer =
         target.consensus_config().peer_id_for_authority(&author_id).expect("missing peer id!");
 
-    let certificate_store = target.consensus_config().node_storage().certificate_store.clone();
-    let payload_store = target.consensus_config().node_storage().payload_store.clone();
+    let certificate_store = target.consensus_config().node_storage().clone();
+    let payload_store = target.consensus_config().node_storage().clone();
 
     let cb = ConsensusBus::new();
     // Need a dummy parent so we can request a vote.
@@ -328,19 +328,19 @@ async fn test_request_vote_accept_missing_parents() {
     // should be able to get accepted.
     for cert in round_1_certs {
         for (digest, (worker_id, _)) in cert.header().payload() {
-            payload_store.write(digest, worker_id).unwrap();
+            payload_store.write_payload(digest, worker_id).unwrap();
         }
         certificate_store.write(cert.clone()).unwrap();
     }
     for cert in round_2_parents {
         for (digest, (worker_id, _)) in cert.header().payload() {
-            payload_store.write(digest, worker_id).unwrap();
+            payload_store.write_payload(digest, worker_id).unwrap();
         }
         certificate_store.write(cert.clone()).unwrap();
     }
     // Populate new header payload so they don't have to be retrieved.
     for (digest, (worker_id, _)) in test_header.payload() {
-        payload_store.write(digest, worker_id).unwrap();
+        payload_store.write_payload(digest, worker_id).unwrap();
     }
 
     // TEST PHASE 1: Handler should report missing parent certificates to caller.
@@ -377,8 +377,8 @@ async fn test_request_vote_missing_batches() {
         primary.consensus_config().peer_id_for_authority(&author_id).expect("missing peer id!");
     let client = primary.consensus_config().local_network().clone();
 
-    let certificate_store = primary.consensus_config().node_storage().certificate_store.clone();
-    let payload_store = primary.consensus_config().node_storage().payload_store.clone();
+    let certificate_store = primary.consensus_config().node_storage().clone();
+    let payload_store = primary.consensus_config().node_storage().clone();
 
     let cb = ConsensusBus::new();
     // Need a dummy parent so we can request a vote.
@@ -405,7 +405,7 @@ async fn test_request_vote_missing_batches() {
         certificates.insert(digest, certificate.clone());
         certificate_store.write(certificate.clone()).unwrap();
         for (digest, (worker_id, _)) in certificate.header().payload() {
-            payload_store.write(digest, worker_id).unwrap();
+            payload_store.write_payload(digest, worker_id).unwrap();
         }
     }
     let test_header = author
@@ -446,8 +446,8 @@ async fn test_request_vote_already_voted() {
         primary.consensus_config().peer_id_for_authority(&author_id).expect("missing peer id!");
     let client = primary.consensus_config().local_network().clone();
 
-    let certificate_store = primary.consensus_config().node_storage().certificate_store.clone();
-    let payload_store = primary.consensus_config().node_storage().payload_store.clone();
+    let certificate_store = primary.consensus_config().node_storage().clone();
+    let payload_store = primary.consensus_config().node_storage().clone();
 
     let cb = ConsensusBus::new();
     // Need a dummy parent so we can request a vote.
@@ -475,7 +475,7 @@ async fn test_request_vote_already_voted() {
         certificates.insert(digest, certificate.clone());
         certificate_store.write(certificate.clone()).unwrap();
         for (digest, (worker_id, _)) in certificate.header().payload() {
-            payload_store.write(digest, worker_id).unwrap();
+            payload_store.write_payload(digest, worker_id).unwrap();
         }
     }
 
@@ -543,7 +543,7 @@ async fn test_fetch_certificates_handler() {
         .build();
     let primary = fixture.authorities().next().unwrap();
 
-    let certificate_store = primary.consensus_config().node_storage().certificate_store.clone();
+    let certificate_store = primary.consensus_config().node_storage().clone();
 
     let cb = ConsensusBus::new();
     let synchronizer = StateSynchronizer::new(primary.consensus_config(), cb.clone());
@@ -654,8 +654,8 @@ async fn test_request_vote_created_at_in_future() {
         primary.consensus_config().peer_id_for_authority(&author_id).expect("missing peer id!");
     let client = primary.consensus_config().local_network().clone();
 
-    let certificate_store = primary.consensus_config().node_storage().certificate_store.clone();
-    let payload_store = primary.consensus_config().node_storage().payload_store.clone();
+    let certificate_store = primary.consensus_config().node_storage().clone();
+    let payload_store = primary.consensus_config().node_storage().clone();
 
     let cb = ConsensusBus::new();
     // Need a dummy parent so we can request a vote.
@@ -682,7 +682,7 @@ async fn test_request_vote_created_at_in_future() {
         certificates.insert(digest, certificate.clone());
         certificate_store.write(certificate.clone()).unwrap();
         for (digest, (worker_id, _)) in certificate.header().payload() {
-            payload_store.write(digest, worker_id).unwrap();
+            payload_store.write_payload(digest, worker_id).unwrap();
         }
     }
 

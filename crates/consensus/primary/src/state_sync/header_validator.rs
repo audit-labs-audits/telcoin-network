@@ -7,6 +7,7 @@ use futures::{stream::FuturesOrdered, StreamExt as _};
 use std::collections::HashMap;
 use tn_config::{ConsensusConfig, RetryConfig};
 use tn_network_types::{PrimaryToWorkerClient as _, WorkerSynchronizeMessage};
+use tn_storage::{CertificateStore, PayloadStore};
 use tn_types::{
     error::{DagError, HeaderError, HeaderResult},
     Certificate, CertificateDigest, Database, Header, Round, TnSender as _,
@@ -53,7 +54,7 @@ where
             let mut cert_notifications: FuturesOrdered<_> = header
                 .parents()
                 .iter()
-                .map(|digest| self.config.node_storage().certificate_store.notify_read(*digest))
+                .map(|digest| self.config.node_storage().notify_read(*digest))
                 .collect();
             while let Some(result) = cert_notifications.next().await {
                 parents.push(result?);
@@ -111,7 +112,7 @@ where
             // be included in headers if they originated from the claimed worker. This prevents
             // malicious nodes from exploiting worker ID mismatches to create unresolvable
             // synchronization states.
-            if !self.config.node_storage().payload_store.contains(*digest, *worker_id)? {
+            if !self.config.node_storage().contains_payload(*digest, *worker_id)? {
                 missing.entry(*worker_id).or_insert_with(Vec::new).push(*digest);
             }
         }
@@ -151,8 +152,7 @@ where
                         for digest in &digests {
                             self.config
                                 .node_storage()
-                                .payload_store
-                                .write(digest, &worker_id)
+                                .write_payload(digest, &worker_id)
                                 .map_err(|e| backoff::Error::permanent(DagError::StoreError(e)))?
                         }
                     }
@@ -221,8 +221,7 @@ where
         }
 
         // check database
-        let existence =
-            self.config.node_storage().certificate_store.multi_contains(header.parents().iter())?;
+        let existence = self.config.node_storage().multi_contains(header.parents().iter())?;
         let unknown: Vec<_> = header
             .parents()
             .iter()

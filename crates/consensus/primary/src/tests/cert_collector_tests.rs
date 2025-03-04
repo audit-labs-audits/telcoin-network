@@ -3,7 +3,7 @@
 use crate::{network::MissingCertificatesRequest, state_sync::CertificateCollector};
 use fastcrypto::hash::Hash;
 use std::{collections::BTreeSet, num::NonZeroUsize};
-use tn_storage::mem_db::MemDatabase;
+use tn_storage::{mem_db::MemDatabase, CertificateStore};
 use tn_test_utils::CommitteeFixture;
 use tn_types::{AuthorityIdentifier, Certificate, SignatureVerificationState};
 
@@ -16,7 +16,7 @@ fn test_certificate_iterator() {
         .build();
     let primary = fixture.authorities().next().expect("primary in committee fixture");
     let consensus_config = primary.consensus_config();
-    let certificate_store = primary.consensus_config().node_storage().certificate_store.clone();
+    let certificate_store = primary.consensus_config().node_storage().clone();
 
     // setup dummy data
     let mut current_round: Vec<_> = Certificate::genesis(&fixture.committee())

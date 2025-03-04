@@ -62,7 +62,7 @@ where
         sealed_batch: SealedBatch,
     ) -> WorkerNetworkResult<()> {
         let client = self.consensus_config.local_network().clone();
-        let store = self.consensus_config.node_storage().batch_store.clone();
+        let store = self.consensus_config.node_storage().clone();
         // validate batch - log error if invalid
         self.validator.validate_batch(sealed_batch.clone())?;
 
@@ -90,7 +90,7 @@ where
     ) -> WorkerNetworkResult<RequestBatchesResponse> {
         const MAX_REQUEST_BATCHES_RESPONSE_SIZE: usize = 6_000_000;
         const BATCH_DIGESTS_READ_CHUNK_SIZE: usize = 200;
-        let store = self.consensus_config.node_storage().batch_store.clone();
+        let store = self.consensus_config.node_storage().clone();
 
         let digests_chunks = batch_digests
             .chunks(BATCH_DIGESTS_READ_CHUNK_SIZE)

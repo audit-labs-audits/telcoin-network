@@ -26,7 +26,6 @@ use tn_primary::{
     network::{PrimaryNetwork, PrimaryNetworkHandle},
     ConsensusBus, NodeMode, StateSynchronizer,
 };
-pub use tn_storage::NodeStorage;
 use tn_storage::{open_db, tables::ConsensusBlocks, DatabaseType};
 use tn_types::{
     network_public_key_to_libp2p, BatchValidation, ConsensusHeader, Database as TNDatabase,
@@ -223,7 +222,7 @@ where
 
         info!(target: "telcoin::node", "execution engine created");
 
-        let node_storage = NodeStorage::reopen(db.clone());
+        let node_storage = db.clone();
         tracing::info!(target: "telcoin::cli", "node storage open");
         let key_config = KeyConfig::new(tn_datadir)?;
         let consensus_config = ConsensusConfig::new(config, tn_datadir, node_storage, key_config)?;

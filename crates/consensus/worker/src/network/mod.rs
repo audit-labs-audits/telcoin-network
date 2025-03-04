@@ -53,7 +53,6 @@ impl WorkerNetworkHandle {
     }
 
     /// Publish a certificate to the consensus network.
-    /// NOTE: this is a publish, it is not specific to this client but here for convience.
     pub async fn publish_batch(&self, batch_digest: BlockHash) -> NetworkResult<()> {
         let data = encode(&WorkerGossip::Batch(batch_digest));
         self.handle.publish(IdentTopic::new("tn-worker"), data).await?;

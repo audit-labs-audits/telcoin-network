@@ -7,7 +7,6 @@ use crate::subscriber::spawn_subscriber;
 use async_trait::async_trait;
 pub use errors::{SubscriberError, SubscriberResult};
 use mockall::automock;
-use std::sync::Arc;
 use tn_config::ConsensusConfig;
 use tn_primary::{network::PrimaryNetworkHandle, ConsensusBus};
 use tn_storage::ConsensusStore;
@@ -54,8 +53,8 @@ impl Executor {
 ///
 /// The next subdag after the passed `last_executed_sub_dag_index` is used. Callers must ensure that
 /// the value passed is the last fully-executed subdag index.
-pub async fn get_restored_consensus_output<DB: Database>(
-    consensus_store: Arc<ConsensusStore<DB>>,
+pub async fn get_restored_consensus_output<DB: ConsensusStore>(
+    consensus_store: DB,
     last_executed_sub_dag_index: u64,
 ) -> Result<Vec<CommittedSubDag>, SubscriberError> {
     let restore_sub_dag_index_from = last_executed_sub_dag_index + 1;
