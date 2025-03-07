@@ -279,9 +279,10 @@ impl<DB: Database> Subscriber<DB> {
         }
     }
 
-    /// Returns ordered vector of futures for downloading blocks for certificates
-    /// Order of futures returned follows order of blocks in the certificates.
-    /// See BlockFetcher for more details.
+    /// Turn a CommittedSubDag with consensus header info into ConsensusOutput.
+    /// It will retrieve any missing Batches so the ConsensusOutput will be ready
+    /// to execute.
+    /// XXXX- infallible?
     async fn fetch_batches(
         &self,
         deliver: CommittedSubDag,
@@ -296,7 +297,8 @@ impl<DB: Database> Subscriber<DB> {
         let address = if let Some(authority) = leader {
             authority.execution_address()
         } else {
-            warn!("Execution address missing for {}", &deliver.leader.origin());
+            // XXXX how can we execute a leader from an unknown auth?
+            warn!(target: "subscriber", "Execution address missing for {}", &deliver.leader.origin());
             Address::ZERO
         };
 
@@ -308,7 +310,7 @@ impl<DB: Database> Subscriber<DB> {
             false
         };
         if num_blocks == 0 {
-            debug!("No blocks to fetch, payload is empty");
+            debug!(target: "subscriber", "No blocks to fetch, payload is empty");
             return ConsensusOutput {
                 sub_dag: Arc::new(deliver),
                 batches: vec![],
