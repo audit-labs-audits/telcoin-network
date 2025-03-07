@@ -38,7 +38,6 @@ impl Worker {
         let node_metrics = metrics.worker_metrics.clone();
 
         let batch_fetcher = BatchFetcher::new(
-            worker_name,
             network_handle.clone(),
             consensus_config.node_storage().clone(),
             node_metrics.clone(),

@@ -74,6 +74,9 @@ pub enum NetworkError {
     /// If a request is made to "any" peer and no peers are currently connected.
     #[error("No connected peers")]
     NoPeers,
+    /// Response violated the protocol.
+    #[error("Protocol error: {0}")]
+    ProtocolError(String),
 }
 
 impl From<oneshot::error::RecvError> for NetworkError {

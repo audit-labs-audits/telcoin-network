@@ -1,6 +1,7 @@
 use std::{collections::HashSet, sync::Arc, time::Duration};
 
 use error::WorkerNetworkError;
+use futures::{stream::FuturesUnordered, StreamExt};
 use handler::RequestHandler;
 use message::{RequestBatchesResponse, WorkerGossip, WorkerRPCError};
 pub use message::{WorkerRequest, WorkerResponse};
@@ -98,15 +99,94 @@ impl WorkerNetworkHandle {
         peer_id: PeerId,
         batch_digests: Vec<BlockHash>,
     ) -> NetworkResult<RequestBatchesResponse> {
-        let request = WorkerRequest::RequestBatches { batch_digests };
+        let request = WorkerRequest::RequestBatches { batch_digests: batch_digests.clone() };
         let res = self.handle.send_request(request, peer_id).await?;
         let res = res.await??;
         match res {
             WorkerResponse::ReportBatch => Err(NetworkError::RPCError(
                 "Got wrong response, not a request batchs is report batch!".to_string(),
             )),
-            WorkerResponse::RequestBatches(response) => Ok(response),
+            WorkerResponse::RequestBatches(RequestBatchesResponse {
+                batches,
+                mut is_size_limit_reached,
+            }) => {
+                for batch in &batches {
+                    let batch_digest = batch.digest();
+                    if !batch_digests.contains(&batch_digest) {
+                        let msg = format!(
+                            "Peer {peer_id} returned batch with digest \
+                            {batch_digest} which is not part of the requested digests: {batch_digests:?}"
+                        );
+                        return Err(NetworkError::ProtocolError(msg));
+                    }
+                }
+                let (batch_digests_len, batches_len) = (batch_digests.len(), batches.len());
+                if batches_len < batch_digests_len {
+                    // If we did not get everything make sure to set is_size_limit_reached to true.
+                    is_size_limit_reached = true;
+                }
+                if !is_size_limit_reached && batch_digests_len != batches_len {
+                    let msg = format!(
+                        "Peer {peer_id} returned is size limit FALSE but did not include all the requested batches:
+                        requested: {batch_digests:?} recieved: {batches:?}"
+                    );
+                    return Err(NetworkError::ProtocolError(msg));
+                }
+                if is_size_limit_reached && batch_digests_len == batches_len {
+                    let msg = format!(
+                        "Peer {peer_id} returned is size limit TRUE but DID include all the requested batches:
+                        requested: {batch_digests:?}"
+                    );
+                    return Err(NetworkError::ProtocolError(msg));
+                }
+                Ok(RequestBatchesResponse { batches, is_size_limit_reached })
+            }
             WorkerResponse::Error(WorkerRPCError(s)) => Err(NetworkError::RPCError(s)),
+        }
+    }
+
+    /// Request a group of batches by hashes.
+    /// Sends request to all our connected peers at once and returns Ok when we
+    /// get a valid response or Err if no one responds with the batches.
+    pub async fn request_batches_from_all(
+        &self,
+        batch_digests: Vec<BlockHash>,
+    ) -> NetworkResult<RequestBatchesResponse> {
+        let peers = self.handle.connected_peers().await?;
+        let mut futures = FuturesUnordered::new();
+        for peer in peers {
+            futures.push(self.request_batches(peer, batch_digests.clone()));
+        }
+        let mut all_batches = Vec::new();
+        while let Some(res) = futures.next().await {
+            match res {
+                Ok(RequestBatchesResponse { batches, is_size_limit_reached }) => {
+                    if is_size_limit_reached {
+                        for batch in &batches {
+                            if !all_batches.contains(batch) {
+                                all_batches.push(batch.clone());
+                            }
+                        }
+                        if all_batches.len() == batch_digests.len() {
+                            return Ok(RequestBatchesResponse {
+                                batches: all_batches,
+                                is_size_limit_reached: false,
+                            });
+                        }
+                    } else {
+                        return Ok(RequestBatchesResponse { batches, is_size_limit_reached });
+                    }
+                }
+                Err(e) => {
+                    // Another worker might succeed so just log this.
+                    warn!(target: "worker::network", ?e, "error requesting batches")
+                }
+            }
+        }
+        if all_batches.is_empty() {
+            Err(NetworkError::RPCError("Unable to get batches from any peers!".to_string()))
+        } else {
+            Ok(RequestBatchesResponse { batches: all_batches, is_size_limit_reached: true })
         }
     }
 }
@@ -387,7 +467,7 @@ impl<DB: Database> PrimaryToWorkerClient for PrimaryReceiverHandler<DB> {
                 "fetch_batches() is unsupported via RPC interface, please call via local worker handler instead".to_string(),
             ));
         };
-        let batches = batch_fetcher.fetch(request.digests, request.known_workers).await;
+        let batches = batch_fetcher.fetch(request.digests).await;
         Ok(FetchBatchResponse { batches })
     }
 }
