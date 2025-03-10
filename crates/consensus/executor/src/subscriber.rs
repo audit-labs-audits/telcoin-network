@@ -15,7 +15,7 @@ use std::{
     vec,
 };
 use tn_config::ConsensusConfig;
-use tn_network_types::{local::LocalNetwork, FetchBatchesRequest, PrimaryToWorkerClient};
+use tn_network_types::{local::LocalNetwork, PrimaryToWorkerClient};
 use tn_primary::{
     consensus::ConsensusRound, network::PrimaryNetworkHandle, ConsensusBus, NodeMode,
 };
@@ -446,13 +446,8 @@ impl<DB: Database> Subscriber<DB> {
                 digests.len(),
                 known_workers.len()
             );
-            // TODO: Can further parallelize this by worker if necessary. Maybe move the logic
-            // to LocalNetwork.
-            // Only have one worker for now so will leave this for a future
-            // optimization.
-            let request = FetchBatchesRequest { digests, known_workers };
             let blocks = loop {
-                match self.inner.client.fetch_batches(worker_name.clone(), request.clone()).await {
+                match self.inner.client.fetch_batches(digests.clone()).await {
                     Ok(resp) => break resp.batches,
                     Err(e) => {
                         error!("Failed to fetch blocks from worker {worker_name}: {e:?}");
@@ -509,7 +504,6 @@ impl<DB: Database> Subscriber<DB> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use fastcrypto::traits::KeyPair as _;
     use indexmap::IndexMap;
     use std::{collections::BTreeSet, ops::RangeInclusive};
     use tn_network_libp2p::types::{MessageId, NetworkCommand};
@@ -519,8 +513,8 @@ mod tests {
     use tn_storage::mem_db::MemDatabase;
     use tn_test_utils::CommitteeFixture;
     use tn_types::{
-        network_public_key_to_libp2p, CertificateDigest, ExecHeader, HeaderBuilder, Round,
-        SealedHeader, TimestampSec, DEFAULT_BAD_NODES_STAKE_THRESHOLD,
+        CertificateDigest, ExecHeader, HeaderBuilder, Round, SealedHeader, TimestampSec,
+        DEFAULT_BAD_NODES_STAKE_THRESHOLD,
     };
     use tokio::sync::mpsc;
 
@@ -642,9 +636,8 @@ mod tests {
         // Set up mock worker.
         let worker = primary.worker();
         let _worker_address = &worker.info().worker_address;
-        let worker_peer_id = network_public_key_to_libp2p(worker.keypair().public());
         let mock_client = Arc::new(MockPrimaryToWorkerClient { batches });
-        config.local_network().set_primary_to_worker_local_handler(worker_peer_id, mock_client);
+        config.local_network().set_primary_to_worker_local_handler(mock_client);
 
         let metrics = Arc::new(ConsensusMetrics::default());
         let leader_schedule = LeaderSchedule::from_store(

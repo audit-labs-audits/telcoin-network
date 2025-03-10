@@ -48,19 +48,15 @@ pub fn new_worker<DB: Database>(
         consensus_config.node_storage().clone(),
         node_metrics.clone(),
     );
-    consensus_config.local_network().set_primary_to_worker_local_handler(
-        worker_peer_id,
-        Arc::new(PrimaryReceiverHandler {
-            id,
-            committee: consensus_config.committee().clone(),
-            worker_cache: consensus_config.worker_cache().clone(),
+    consensus_config.local_network().set_primary_to_worker_local_handler(Arc::new(
+        PrimaryReceiverHandler {
             store: consensus_config.database().clone(),
             request_batches_timeout: consensus_config.parameters().sync_retry_delay,
             network: Some(network_handle.clone()),
             batch_fetcher: Some(batch_fetcher),
             validator,
-        }),
-    );
+        },
+    ));
     let batch_provider = new_worker_internal(
         id,
         &consensus_config,

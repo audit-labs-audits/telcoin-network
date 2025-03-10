@@ -24,8 +24,8 @@ use tn_test_utils::{
     fixture_batch_with_transactions, make_optimal_signed_certificates, CommitteeFixture,
 };
 use tn_types::{
-    network_public_key_to_libp2p, now, AuthorityIdentifier, BlockNumHash, Certificate, Committee,
-    Database, ExecHeader, SealedHeader, SignatureVerificationState, TaskManager,
+    now, AuthorityIdentifier, BlockNumHash, Certificate, Committee, Database, ExecHeader,
+    SealedHeader, SignatureVerificationState, TaskManager,
 };
 use tokio::{sync::mpsc, time::timeout};
 
@@ -420,10 +420,9 @@ async fn test_request_vote_missing_batches() {
     // Set up mock worker.
     let worker = primary.worker();
     let _worker_address = &worker.info().worker_address;
-    let worker_peer_id = network_public_key_to_libp2p(worker.keypair().public());
     let mock_server = MockPrimaryToWorkerClient::default();
 
-    client.set_primary_to_worker_local_handler(worker_peer_id, Arc::new(mock_server));
+    client.set_primary_to_worker_local_handler(Arc::new(mock_server));
 
     // Verify Handler synchronizes missing batches and generates a Vote.
     let _vote = timeout(Duration::from_secs(5), handler.vote(peer, test_header, Vec::new()))
@@ -482,10 +481,9 @@ async fn test_request_vote_already_voted() {
     // Set up mock worker.
     let worker = primary.worker();
     let _worker_address = &worker.info().worker_address;
-    let worker_peer_id = network_public_key_to_libp2p(worker.keypair().public());
     let mock_server = MockPrimaryToWorkerClient::default();
 
-    client.set_primary_to_worker_local_handler(worker_peer_id, Arc::new(mock_server));
+    client.set_primary_to_worker_local_handler(Arc::new(mock_server));
 
     // Verify Handler generates a Vote.
     let test_header = author
@@ -689,10 +687,9 @@ async fn test_request_vote_created_at_in_future() {
     // Set up mock worker.
     let worker = primary.worker();
     let _worker_address = &worker.info().worker_address;
-    let worker_peer_id = network_public_key_to_libp2p(worker.keypair().public());
     let mock_server = MockPrimaryToWorkerClient::default();
 
-    client.set_primary_to_worker_local_handler(worker_peer_id, Arc::new(mock_server));
+    client.set_primary_to_worker_local_handler(Arc::new(mock_server));
 
     // Verify Handler generates a Vote.
 
