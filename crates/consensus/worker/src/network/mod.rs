@@ -60,7 +60,8 @@ impl WorkerNetworkHandle {
 
     /// Report a new batch to a peer.
     async fn report_batch(&self, peer_id: PeerId, sealed_batch: SealedBatch) -> NetworkResult<()> {
-        // XXXX Can we sign and verify sig on reciept to avoid any spoofing?
+        // TODO- issue 237- should we sign these batches and check the sig before accepting any
+        // batches during consensus?
         let request = WorkerRequest::ReportBatch { sealed_batch };
         let res = self.handle.send_request(request, peer_id).await?;
         let res = res.await??;

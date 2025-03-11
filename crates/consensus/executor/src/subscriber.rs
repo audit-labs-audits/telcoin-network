@@ -11,7 +11,6 @@ use state_sync::{
 use std::{
     collections::{HashMap, HashSet, VecDeque},
     sync::Arc,
-    time::Duration,
     vec,
 };
 use tn_config::ConsensusConfig;
@@ -21,11 +20,11 @@ use tn_primary::{
 };
 use tn_storage::CertificateStore;
 use tn_types::{
-    Address, AuthorityIdentifier, Batch, BlockHash, Certificate, CommittedSubDag, Committee,
-    ConsensusHeader, ConsensusOutput, Database, NetworkPublicKey, Noticer, TaskManager,
-    TaskManagerClone, Timestamp, TnReceiver, TnSender, WorkerCache, WorkerId, B256,
+    AuthorityIdentifier, Batch, BlockHash, CommittedSubDag, Committee, ConsensusHeader,
+    ConsensusOutput, Database, Noticer, TaskManager, TaskManagerClone, Timestamp, TnReceiver,
+    TnSender, B256,
 };
-use tracing::{debug, error, info, warn};
+use tracing::{debug, error, info};
 
 /// The `Subscriber` receives certificates sequenced by the consensus and waits until the
 /// downloaded all the transactions references by the certificates; it then
@@ -44,7 +43,6 @@ pub struct Subscriber<DB> {
 
 struct Inner {
     authority_id: AuthorityIdentifier,
-    worker_cache: WorkerCache,
     committee: Committee,
     client: LocalNetwork,
 }
@@ -57,7 +55,6 @@ pub fn spawn_subscriber<DB: Database>(
     network: PrimaryNetworkHandle,
 ) {
     let authority_id = config.authority().id();
-    let worker_cache = config.worker_cache().clone();
     let committee = config.committee().clone();
     let client = config.local_network().clone();
 
@@ -66,7 +63,7 @@ pub fn spawn_subscriber<DB: Database>(
         rx_shutdown,
         consensus_bus,
         config,
-        inner: Arc::new(Inner { authority_id, committee, worker_cache, client }),
+        inner: Arc::new(Inner { authority_id, committee, client }),
     };
     match mode {
         // If we are active then partcipate in consensus.
@@ -129,7 +126,7 @@ impl<DB: Database> Subscriber<DB> {
                 consensus_header.parent_hash,
                 consensus_header.number,
             )
-            .await;
+            .await?;
         save_consensus(self.config.database(), consensus_output.clone())?;
 
         // If we want to rejoin consensus eventually then save certs.
@@ -256,14 +253,21 @@ impl<DB: Database> Subscriber<DB> {
                 //
                 // NOTE: this broadcasts to all subscribers, but lagging receivers will lose messages
                 Some(output) = waiting.next() => {
-                    debug!(target: "subscriber", output=?output.digest(), "saving next output");
-                    save_consensus(self.config.database(), output.clone())?;
-                    debug!(target: "subscriber", "broadcasting output...");
-                    if let Err(e) = self.consensus_bus.consensus_output().send(output).await {
-                        error!(target: "subscriber", "error broadcasting consensus output for authority {}: {}", self.inner.authority_id, e);
-                        return Ok(());
+                    match output {
+                        Ok(output) => {
+                            debug!(target: "subscriber", output=?output.digest(), "saving next output");
+                            save_consensus(self.config.database(), output.clone())?;
+                            debug!(target: "subscriber", "broadcasting output...");
+                            if let Err(e) = self.consensus_bus.consensus_output().send(output).await {
+                                error!(target: "subscriber", "error broadcasting consensus output for authority {}: {}", self.inner.authority_id, e);
+                                return Ok(());
+                            }
+                            debug!("output broadcast successfully");
+                        }
+                        Err(e) => {
+                            error!(target: "subscriber", "error fetching batches: {e}");
+                        }
                     }
-                    debug!(target: "subscriber", "output broadcast successfully");
                 },
 
                 _ = &self.rx_shutdown => {
@@ -282,24 +286,27 @@ impl<DB: Database> Subscriber<DB> {
     /// Turn a CommittedSubDag with consensus header info into ConsensusOutput.
     /// It will retrieve any missing Batches so the ConsensusOutput will be ready
     /// to execute.
-    /// XXXX- infallible?
+    /// Note, an error here is BAD and will most likely cause node shutdown (clean).  Do
+    /// not provide a bogus sub dag...
     async fn fetch_batches(
         &self,
         deliver: CommittedSubDag,
         parent_hash: B256,
         number: u64,
-    ) -> ConsensusOutput {
+    ) -> SubscriberResult<ConsensusOutput> {
         let num_blocks = deliver.num_primary_blocks();
         let num_certs = deliver.len();
 
         // get the execution address of the authority or use zero address
-        let leader = self.inner.committee.authority(&deliver.leader.origin());
+        let leader = self
+            .inner
+            .committee
+            .authority_at_epoch(deliver.leader_epoch(), &deliver.leader.origin());
         let address = if let Some(authority) = leader {
             authority.execution_address()
         } else {
-            // XXXX how can we execute a leader from an unknown auth?
-            warn!(target: "subscriber", "Execution address missing for {}", &deliver.leader.origin());
-            Address::ZERO
+            error!(target: "subscriber", "Execution address missing for {}", &deliver.leader.origin());
+            return Err(SubscriberError::UnexpectedAuthority(deliver.leader.origin()));
         };
 
         let early_finalize = if self.consensus_bus.node_mode().borrow().is_active_cvv() {
@@ -311,7 +318,7 @@ impl<DB: Database> Subscriber<DB> {
         };
         if num_blocks == 0 {
             debug!(target: "subscriber", "No blocks to fetch, payload is empty");
-            return ConsensusOutput {
+            return Ok(ConsensusOutput {
                 sub_dag: Arc::new(deliver),
                 batches: vec![],
                 beneficiary: address,
@@ -320,7 +327,7 @@ impl<DB: Database> Subscriber<DB> {
                 number,
                 extra: B256::default(),
                 early_finalize,
-            };
+            });
         }
 
         let sub_dag = Arc::new(deliver);
@@ -335,31 +342,12 @@ impl<DB: Database> Subscriber<DB> {
             early_finalize,
         };
 
-        let mut batch_digests_and_workers: HashMap<
-            NetworkPublicKey,
-            (HashSet<BlockHash>, HashSet<NetworkPublicKey>),
-        > = HashMap::new();
+        let mut batch_set: HashSet<BlockHash> = HashSet::new();
 
         for cert in &sub_dag.certificates {
-            for (digest, (worker_id, _)) in cert.header().payload().iter() {
-                if let Ok(own_worker) = self.inner.worker_cache.worker(
-                    self.inner
-                        .committee
-                        .authority(&self.inner.authority_id)
-                        .expect("own workers in worker cache")
-                        .protocol_key(),
-                    worker_id,
-                ) {
-                    let own_worker_name = own_worker.name;
-                    let workers = Self::workers_for_certificate(&self.inner, cert, worker_id);
-                    let (batch_set, worker_set) =
-                        batch_digests_and_workers.entry(own_worker_name).or_default();
-                    batch_set.insert(*digest);
-                    subscriber_output.batch_digests.push_back(*digest);
-                    worker_set.extend(workers);
-                } else {
-                    error!(target: "subscriber", "failed to find a local worker for {worker_id}, malicious certificate?");
-                }
+            for (digest, _) in cert.header().payload().iter() {
+                batch_set.insert(*digest);
+                subscriber_output.batch_digests.push_back(*digest);
             }
         }
 
@@ -372,7 +360,7 @@ impl<DB: Database> Subscriber<DB> {
             .executor_metrics()
             .committed_subdag_block_count
             .observe(num_blocks as f64);
-        let fetched_batches = self.fetch_batches_from_workers(batch_digests_and_workers).await;
+        let fetched_batches = self.fetch_batches_from_peers(batch_set).await?;
         drop(fetched_batches_timer);
 
         // Map all fetched batches to their respective certificates and submit as
@@ -389,9 +377,10 @@ impl<DB: Database> Subscriber<DB> {
 
             for (digest, (_, _)) in cert.header().payload().iter() {
                 self.consensus_bus.executor_metrics().subscriber_processed_blocks.inc();
-                let batch = fetched_batches
-                    .get(digest)
-                    .expect("[Protocol violation] Batch not found in fetched batches from workers of certificate signers");
+                let Some(batch) = fetched_batches.get(digest) else {
+                    error!(target: "subscriber", "[Protocol violation] Batch not found in fetched batches from workers of certificate signers");
+                    return Err(SubscriberError::ClientRequestsFailed);
+                };
 
                 debug!(target: "subscriber",
                     "Adding fetched batch {digest} from certificate {} to consensus output",
@@ -402,68 +391,29 @@ impl<DB: Database> Subscriber<DB> {
             subscriber_output.batches.push(output_batches);
         }
         debug!(target: "subscriber", "returning output to subscriber");
-        subscriber_output
+        Ok(subscriber_output)
     }
 
-    fn workers_for_certificate(
-        inner: &Inner,
-        certificate: &Certificate,
-        worker_id: &WorkerId,
-    ) -> Vec<NetworkPublicKey> {
-        // Can include own authority and worker, but worker will always check local storage when
-        // fetching paylods.
-        let authorities = certificate.signed_authorities_with_committee(&inner.committee);
-        authorities
-            .into_iter()
-            .filter_map(|authority| {
-                let worker = inner.worker_cache.worker(&authority, worker_id);
-                match worker {
-                    Ok(worker) => Some(worker.name),
-                    Err(err) => {
-                        error!(target: "subscriber",
-                            "Worker {} not found for authority {}: {:?}",
-                            worker_id, authority, err
-                        );
-                        None
-                    }
-                }
-            })
-            .collect()
-    }
-
-    async fn fetch_batches_from_workers(
+    async fn fetch_batches_from_peers(
         &self,
-        batch_digests_and_workers: HashMap<
-            NetworkPublicKey,
-            (HashSet<BlockHash>, HashSet<NetworkPublicKey>),
-        >,
-    ) -> HashMap<BlockHash, Batch> {
+        batch_digests: HashSet<BlockHash>,
+    ) -> SubscriberResult<HashMap<BlockHash, Batch>> {
         let mut fetched_blocks = HashMap::new();
 
-        for (worker_name, (digests, known_workers)) in batch_digests_and_workers {
-            debug!(
-                "Attempting to fetch {} digests from {} known workers, {worker_name}'s",
-                digests.len(),
-                known_workers.len()
-            );
-            let blocks = loop {
-                match self.inner.client.fetch_batches(digests.clone()).await {
-                    Ok(resp) => break resp.batches,
-                    Err(e) => {
-                        error!("Failed to fetch blocks from worker {worker_name}: {e:?}");
-                        // Loop forever on failure. During shutdown, this should get cancelled.
-                        tokio::time::sleep(Duration::from_secs(1)).await;
-                        continue;
-                    }
-                }
-            };
-            for (digest, block) in blocks {
-                self.record_fetched_batch_metrics(&block, &digest);
-                fetched_blocks.insert(digest, block);
+        debug!("Attempting to fetch {} digests peers", batch_digests.len(),);
+        let blocks = match self.inner.client.fetch_batches(batch_digests.clone()).await {
+            Ok(resp) => resp,
+            Err(e) => {
+                error!("Failed to fetch batches from peers: {e:?}");
+                return Err(SubscriberError::ClientRequestsFailed);
             }
+        };
+        for (digest, block) in blocks.batches.into_iter() {
+            self.record_fetched_batch_metrics(&block, &digest);
+            fetched_blocks.insert(digest, block);
         }
 
-        fetched_blocks
+        Ok(fetched_blocks)
     }
 
     fn record_fetched_batch_metrics(&self, batch: &Batch, digest: &BlockHash) {
@@ -513,8 +463,8 @@ mod tests {
     use tn_storage::mem_db::MemDatabase;
     use tn_test_utils::CommitteeFixture;
     use tn_types::{
-        CertificateDigest, ExecHeader, HeaderBuilder, Round, SealedHeader, TimestampSec,
-        DEFAULT_BAD_NODES_STAKE_THRESHOLD,
+        Certificate, CertificateDigest, ExecHeader, HeaderBuilder, Round, SealedHeader,
+        TimestampSec, WorkerId, DEFAULT_BAD_NODES_STAKE_THRESHOLD,
     };
     use tokio::sync::mpsc;
 
