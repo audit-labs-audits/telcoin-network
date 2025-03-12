@@ -12,8 +12,8 @@ use futures::future::join_all;
 use tempfile::TempDir;
 use tn_storage::{mem_db::MemDatabase, open_db, CertificateStore, ConsensusStore, ProposerStore};
 use tn_types::{
-    AuthorityIdentifier, Certificate, CertificateDigest, CommittedSubDag, Database, Header,
-    HeaderBuilder, ReputationScores, Round,
+    AuthorityIdentifier, Certificate, CertificateDigest, CommittedSubDag, Header, HeaderBuilder,
+    ReputationScores, Round,
 };
 
 pub fn create_header_for_round(round: Round) -> Header {
@@ -29,10 +29,6 @@ pub fn create_header_for_round(round: Round) -> Header {
         .with_payload_batch(fixture_batch_with_transactions(10), 0, 0)
         .build()
         .unwrap()
-}
-
-fn new_store<DB: Database>(db: DB) -> CertificateStore<DB> {
-    CertificateStore::new(db)
 }
 
 // helper method that creates certificates for the provided
@@ -60,7 +56,7 @@ fn certificates(rounds: Round) -> Vec<Certificate> {
 #[tokio::test]
 async fn test_proposer_store_writes() {
     let temp_dir = TempDir::new().unwrap();
-    let store = ProposerStore::new(open_db(temp_dir.path()));
+    let store = open_db(temp_dir.path());
     let header_1 = create_header_for_round(1);
 
     let out = store.write_last_proposed(&header_1);
@@ -80,7 +76,7 @@ async fn test_proposer_store_writes() {
 #[tokio::test]
 async fn test_proposer_store_reads() {
     let temp_dir = TempDir::new().unwrap();
-    let store = ProposerStore::new(open_db(temp_dir.path()));
+    let store = open_db(temp_dir.path());
 
     let should_not_exist = store.get_last_proposed().unwrap();
     assert_eq!(should_not_exist, None);
@@ -97,8 +93,7 @@ async fn test_proposer_store_reads() {
 async fn test_consensus_store_read_latest_final_reputation_scores() {
     // GIVEN
     let temp_dir = TempDir::new().unwrap();
-    let db = open_db(temp_dir.path());
-    let store = ConsensusStore::new(db);
+    let store = open_db(temp_dir.path());
     let fixture = CommitteeFixture::builder(MemDatabase::default).build();
     let committee = fixture.committee();
 
@@ -145,10 +140,10 @@ async fn test_consensus_store_read_latest_final_reputation_scores() {
 #[tokio::test]
 async fn test_certificate_store_write_and_read() {
     let db = open_db(temp_dir());
-    test_write_and_read_by_store_type(new_store(db)).await;
+    test_write_and_read_by_store_type(db).await;
 }
 
-async fn test_write_and_read_by_store_type<DB: Database>(store: CertificateStore<DB>) {
+async fn test_write_and_read_by_store_type<DB: CertificateStore>(store: DB) {
     // GIVEN
     // create certificates for 10 rounds
     let certs = certificates(10);
@@ -187,10 +182,10 @@ async fn test_write_and_read_by_store_type<DB: Database>(store: CertificateStore
 #[tokio::test]
 async fn test_certificate_store_write_all_and_read_all() {
     let db = open_db(temp_dir());
-    test_write_all_and_read_all_by_store_type(new_store(db)).await;
+    test_write_all_and_read_all_by_store_type(db).await;
 }
 
-async fn test_write_all_and_read_all_by_store_type<DB: Database>(store: CertificateStore<DB>) {
+async fn test_write_all_and_read_all_by_store_type<DB: CertificateStore>(store: DB) {
     // GIVEN
     // create certificates for 10 rounds
     let certs = certificates(10);
@@ -215,8 +210,7 @@ async fn test_write_all_and_read_all_by_store_type<DB: Database>(store: Certific
 #[tokio::test]
 async fn test_certificate_store_next_round_number() {
     // GIVEN
-    let db = open_db(temp_dir());
-    let store = new_store(db);
+    let store = open_db(temp_dir());
 
     // Create certificates for round 1, 2, 4, 6, 9, 10.
     let cert = certificates(1).first().unwrap().clone();
@@ -244,8 +238,7 @@ async fn test_certificate_store_next_round_number() {
 #[tokio::test]
 async fn test_certificate_store_last_two_rounds() {
     // GIVEN
-    let db = open_db(temp_dir());
-    let store = new_store(db);
+    let store = open_db(temp_dir());
 
     // create certificates for 50 rounds
     let certs = certificates(50);
@@ -278,8 +271,7 @@ async fn test_certificate_store_last_two_rounds() {
 #[tokio::test]
 async fn test_certificate_store_last_round_in_empty_store() {
     // GIVEN
-    let db = open_db(temp_dir());
-    let store = new_store(db);
+    let store = open_db(temp_dir());
 
     // WHEN
     let result = store.last_two_rounds_certs().unwrap();
@@ -297,8 +289,7 @@ async fn test_certificate_store_last_round_in_empty_store() {
 #[tokio::test]
 async fn test_certificate_store_after_round() {
     // GIVEN
-    let db = open_db(temp_dir());
-    let store = new_store(db);
+    let store = open_db(temp_dir());
     let total_rounds = 100;
 
     // create certificates for 50 rounds
@@ -362,8 +353,7 @@ async fn test_certificate_store_after_round() {
 
 #[tokio::test]
 async fn test_certificate_store_notify_read() {
-    let db = open_db(temp_dir());
-    let store = new_store(db);
+    let store = open_db(temp_dir());
 
     // run the tests a few times
     for _ in 0..10 {
@@ -416,8 +406,7 @@ async fn test_certificate_store_notify_read() {
 
 #[tokio::test]
 async fn test_certificate_store_write_all_and_clear() {
-    let db = open_db(temp_dir());
-    let store = new_store(db);
+    let store = open_db(temp_dir());
 
     // create certificates for 10 rounds
     let certs = certificates(10);
@@ -426,13 +415,13 @@ async fn test_certificate_store_write_all_and_clear() {
     store.write_all(certs).unwrap();
 
     // confirm store is not empty
-    assert!(!store.is_empty());
+    assert!(!store.is_empty_certs());
 
     // now clear the store
     store.clear().unwrap();
 
     // now confirm that store is empty
-    assert!(store.is_empty());
+    assert!(store.is_empty_certs());
 }
 
 /// Test new store.
@@ -444,8 +433,7 @@ async fn test_certificate_store_write_all_and_clear() {
 /// ```
 #[tokio::test]
 async fn test_certificate_store_delete_store() {
-    let db = open_db(temp_dir());
-    let store = new_store(db);
+    let store = open_db(temp_dir());
     // GIVEN
     // create certificates for 10 rounds
     let certs = certificates(10);
@@ -466,8 +454,7 @@ async fn test_certificate_store_delete_store() {
 
 #[tokio::test]
 async fn test_certificate_store_delete_all_store() {
-    let db = open_db(temp_dir());
-    let store = new_store(db);
+    let store = open_db(temp_dir());
     // GIVEN
     // create certificates for 10 rounds
     let certs = certificates(10);

@@ -90,7 +90,6 @@ pub trait Database: Send + Sync + Clone + Unpin + 'static {
     /// and either lands on the key or the first one greater than
     /// the key.
     fn skip_to<T: Table>(&self, key: &T::Key) -> eyre::Result<DBIter<'_, T>>;
-    //) -> eyre::Result<Box<dyn Iterator<Item = (T::Key, T::Value)> + '_>>;
 
     /// Iterates over all the keys in reverse.
     fn reverse_iter<T: Table>(&self) -> DBIter<'_, T>;

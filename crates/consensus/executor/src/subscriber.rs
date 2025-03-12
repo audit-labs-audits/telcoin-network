@@ -19,6 +19,7 @@ use tn_network_types::{local::LocalNetwork, FetchBatchesRequest, PrimaryToWorker
 use tn_primary::{
     consensus::ConsensusRound, network::PrimaryNetworkHandle, ConsensusBus, NodeMode,
 };
+use tn_storage::CertificateStore;
 use tn_types::{
     Address, AuthorityIdentifier, Batch, BlockHash, Certificate, CommittedSubDag, Committee,
     ConsensusHeader, ConsensusOutput, Database, NetworkPublicKey, Noticer, TaskManager,
@@ -132,16 +133,8 @@ impl<DB: Database> Subscriber<DB> {
         save_consensus(self.config.database(), consensus_output.clone())?;
 
         // If we want to rejoin consensus eventually then save certs.
-        let _ = self
-            .config
-            .node_storage()
-            .certificate_store
-            .write(consensus_output.sub_dag.leader.clone());
-        let _ = self
-            .config
-            .node_storage()
-            .certificate_store
-            .write_all(consensus_output.sub_dag.certificates.clone());
+        let _ = self.config.node_storage().write(consensus_output.sub_dag.leader.clone());
+        let _ = self.config.node_storage().write_all(consensus_output.sub_dag.certificates.clone());
 
         let last_round = consensus_output.leader_round();
 
@@ -608,7 +601,7 @@ mod tests {
         let committee = fixture.committee();
         let primary = fixture.authorities().next().unwrap();
         let config = primary.consensus_config().clone();
-        let consensus_store = config.node_storage().consensus_store.clone();
+        let consensus_store = config.node_storage().clone();
         let task_manager = TaskManager::new("subscriber tests");
         let rx_shutdown = config.shutdown().subscribe();
         let consensus_bus = ConsensusBus::new();

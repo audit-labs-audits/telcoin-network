@@ -6,32 +6,27 @@ use tn_utils::fail_point;
 
 pub const LAST_PROPOSAL_KEY: ProposerKey = 0;
 
-/// The storage for the proposer
-#[derive(Clone)]
-pub struct ProposerStore<DB> {
-    /// Holds the Last Header that was proposed by the Proposer.
-    last_proposed: DB,
+pub trait ProposerStore {
+    /// Inserts a proposed header into the store
+    fn write_last_proposed(&self, header: &Header) -> StoreResult<()>;
+
+    /// Get the last header
+    fn get_last_proposed(&self) -> StoreResult<Option<Header>>;
 }
 
-impl<DB: Database> ProposerStore<DB> {
-    pub fn new(last_proposed: DB) -> ProposerStore<DB> {
-        Self { last_proposed }
-    }
-
-    /// Inserts a proposed header into the store
+impl<DB: Database> ProposerStore for DB {
     #[allow(clippy::let_and_return)]
-    pub fn write_last_proposed(&self, header: &Header) -> StoreResult<()> {
+    fn write_last_proposed(&self, header: &Header) -> StoreResult<()> {
         fail_point!("proposer-store-before-write");
 
-        let result = self.last_proposed.insert::<LastProposed>(&LAST_PROPOSAL_KEY, header);
+        let result = self.insert::<LastProposed>(&LAST_PROPOSAL_KEY, header);
 
         fail_point!("proposer-store-after-write");
         result
     }
 
-    /// Get the last header
-    pub fn get_last_proposed(&self) -> StoreResult<Option<Header>> {
-        self.last_proposed.get::<LastProposed>(&LAST_PROPOSAL_KEY)
+    fn get_last_proposed(&self) -> StoreResult<Option<Header>> {
+        self.get::<LastProposed>(&LAST_PROPOSAL_KEY)
     }
 }
 

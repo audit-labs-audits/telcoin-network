@@ -5,7 +5,7 @@ use std::collections::HashMap;
 use crate::{consensus::ConsensusRound, state_sync::HeaderValidator, ConsensusBus};
 use assert_matches::assert_matches;
 use fastcrypto::hash::Hash as _;
-use tn_storage::mem_db::MemDatabase;
+use tn_storage::{mem_db::MemDatabase, CertificateStore, PayloadStore};
 use tn_test_utils::{fixture_batch_with_transactions, CommitteeFixture};
 use tn_types::error::HeaderError;
 
@@ -15,8 +15,8 @@ async fn test_sync_batches_drops_old_rounds() -> eyre::Result<()> {
     let committee = fixture.committee();
     let primary = fixture.authorities().next().unwrap();
     let author = fixture.authorities().nth(2).unwrap();
-    let certificate_store = primary.consensus_config().node_storage().certificate_store.clone();
-    let payload_store = primary.consensus_config().node_storage().payload_store.clone();
+    let certificate_store = primary.consensus_config().node_storage().clone();
+    let payload_store = primary.consensus_config().node_storage().clone();
     let cb = ConsensusBus::new();
     let header_validator = HeaderValidator::new(primary.consensus_config(), cb.clone());
 
@@ -35,7 +35,7 @@ async fn test_sync_batches_drops_old_rounds() -> eyre::Result<()> {
             certificate_store.write(cert.clone()).expect("write cert to storage");
             // write to payload store
             for (digest, (worker_id, _)) in cert.header().payload() {
-                payload_store.write(digest, worker_id).unwrap();
+                payload_store.write_payload(digest, worker_id).unwrap();
             }
             (digest, cert)
         })

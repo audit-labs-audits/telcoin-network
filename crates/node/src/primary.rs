@@ -68,14 +68,14 @@ impl<CDB: ConsensusDatabase> PrimaryNodeInner<CDB> {
     {
         let leader_schedule = LeaderSchedule::from_store(
             self.consensus_config.committee().clone(),
-            self.consensus_config.node_storage().consensus_store.clone(),
+            self.consensus_config.node_storage().clone(),
             DEFAULT_BAD_NODES_STAKE_THRESHOLD,
         );
 
         // Spawn the consensus core who only sequences transactions.
         let ordering_engine = Bullshark::new(
             self.consensus_config.committee().clone(),
-            self.consensus_config.node_storage().consensus_store.clone(),
+            self.consensus_config.node_storage().clone(),
             self.consensus_bus.consensus_metrics().clone(),
             Self::CONSENSUS_SCHEDULE_CHANGE_SUB_DAGS,
             leader_schedule.clone(),

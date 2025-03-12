@@ -14,6 +14,7 @@ use consensus_metrics::monitored_scope;
 use fastcrypto::hash::Hash as _;
 use std::collections::{HashSet, VecDeque};
 use tn_config::ConsensusConfig;
+use tn_storage::CertificateStore;
 use tn_types::{
     error::{CertificateError, HeaderError},
     Certificate, CertificateDigest, Database, TnReceiver as _, TnSender as _,
@@ -177,11 +178,8 @@ where
         }
 
         // check storage
-        let existence = self
-            .config
-            .node_storage()
-            .certificate_store
-            .multi_contains(certificate.header().parents().iter())?;
+        let existence =
+            self.config.node_storage().multi_contains(certificate.header().parents().iter())?;
         let missing_parents: HashSet<_> = certificate
             .header()
             .parents()
@@ -228,7 +226,7 @@ where
         debug!(target: "primary::cert_manager", ?certificates, "accepting {:?} certificates", certificates.len());
 
         // write certificates to storage
-        self.config.node_storage().certificate_store.write_all(certificates.clone())?;
+        self.config.node_storage().write_all(certificates.clone())?;
 
         for cert in certificates.into_iter() {
             // Update metrics for accepted certificates.
@@ -296,7 +294,6 @@ where
         let last_round_certificates = self
             .config
             .node_storage()
-            .certificate_store
             .last_two_rounds_certs()
             .expect("Failed recovering certificates in primary core");
 

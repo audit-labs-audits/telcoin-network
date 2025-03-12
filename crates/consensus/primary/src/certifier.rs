@@ -40,7 +40,7 @@ pub struct Certifier<DB> {
     /// The committee information.
     committee: Committee,
     /// The persistent storage keyed to certificates.
-    certificate_store: CertificateStore<DB>,
+    certificate_store: DB,
     /// Handles synchronization with other nodes and our workers.
     state_sync: StateSynchronizer<DB>,
     /// Service to sign headers.
@@ -86,7 +86,6 @@ impl<DB: Database> Certifier<DB> {
 
         let highest_created_certificate = config
             .node_storage()
-            .certificate_store
             .last_round(config.authority().id())
             .expect("certificate store available");
 
@@ -115,7 +114,7 @@ impl<DB: Database> Certifier<DB> {
                 Self {
                     authority_id: config.authority().id(),
                     committee: config.committee().clone(),
-                    certificate_store: config.node_storage().certificate_store.clone(),
+                    certificate_store: config.node_storage().clone(),
                     state_sync,
                     signature_service: config.key_config().clone(),
                     rx_shutdown,

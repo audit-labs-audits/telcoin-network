@@ -127,10 +127,9 @@ impl<DB: Database> AuthorityFixture<DB> {
         config.validator_info.primary_info.network_address =
             authority.primary_network_address().clone();
 
-        let node_config = tn_node::NodeStorage::reopen(db);
         let consensus_config = ConsensusConfig::new_with_committee(
             config,
-            node_config,
+            db,
             key_config.clone(),
             committee,
             worker_cache,

@@ -44,10 +44,8 @@ impl<DB: Database> Primary<DB> {
             config.authority().protocol_key().encode_base64(),
         );
 
-        let worker_receiver_handler = WorkerReceiverHandler::new(
-            consensus_bus.clone(),
-            config.node_storage().payload_store.clone(),
-        );
+        let worker_receiver_handler =
+            WorkerReceiverHandler::new(consensus_bus.clone(), config.node_storage().clone());
 
         config
             .local_network()

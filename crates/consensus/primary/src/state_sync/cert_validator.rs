@@ -11,6 +11,7 @@ use consensus_metrics::monitored_scope;
 use fastcrypto::hash::Hash as _;
 use std::{collections::HashSet, time::Instant};
 use tn_config::ConsensusConfig;
+use tn_storage::CertificateStore;
 use tn_types::{
     error::CertificateError, Certificate, CertificateDigest, Database, Round,
     SignatureVerificationState, TnSender as _,
@@ -111,7 +112,7 @@ where
 
         // see if certificate already processed
         let digest = certificate.digest();
-        if self.config.node_storage().certificate_store.contains(&digest)? {
+        if self.config.node_storage().contains(&digest)? {
             trace!(target: "primary::cert_validator", "Certificate {digest:?} has already been processed. Skip processing.");
             self.consensus_bus
                 .primary_metrics()

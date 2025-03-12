@@ -63,7 +63,7 @@ pub(crate) struct CertificateFetcher<DB> {
     /// The committee information.
     committee: Committee,
     /// Persistent storage for certificates. Read-only usage.
-    certificate_store: CertificateStore<DB>,
+    certificate_store: DB,
     /// Used to get Receiver for signal of round changes.
     consensus_bus: ConsensusBus,
     /// Receiver for shutdown.
@@ -103,7 +103,7 @@ impl<DB: Database> CertificateFetcher<DB> {
     ) {
         let authority_id = config.authority().id();
         let committee = config.committee().clone();
-        let certificate_store = config.node_storage().certificate_store.clone();
+        let certificate_store = config.node_storage().clone();
         let rx_shutdown = config.shutdown().subscribe();
         let state = Arc::new(CertificateFetcherState {
             authority_id,

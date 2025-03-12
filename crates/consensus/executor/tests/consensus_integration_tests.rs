@@ -7,7 +7,7 @@ use tn_primary::{
     consensus::{Bullshark, Consensus, ConsensusMetrics, LeaderSchedule, LeaderSwapTable},
     ConsensusBus,
 };
-use tn_storage::mem_db::MemDatabase;
+use tn_storage::{mem_db::MemDatabase, CertificateStore, ConsensusStore};
 use tn_test_utils::CommitteeFixture;
 use tn_types::{
     Certificate, ExecHeader, SealedHeader, TaskManager, TnReceiver, TnSender, B256,
@@ -19,8 +19,8 @@ async fn test_recovery() {
     // Setup consensus
     let fixture = CommitteeFixture::builder(MemDatabase::default).build();
     let config_1 = fixture.authorities().next().unwrap().consensus_config();
-    let consensus_store = config_1.node_storage().consensus_store.clone();
-    let certificate_store = config_1.node_storage().certificate_store.clone();
+    let consensus_store = config_1.node_storage().clone();
+    let certificate_store = config_1.node_storage().clone();
     let committee = fixture.committee();
 
     // Make certificates for rounds 1 up to 4.

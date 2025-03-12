@@ -349,12 +349,12 @@ where
 #[derive(Clone)]
 pub(super) struct WorkerReceiverHandler<DB> {
     consensus_bus: ConsensusBus,
-    payload_store: PayloadStore<DB>,
+    payload_store: DB,
 }
 
-impl<DB: Database> WorkerReceiverHandler<DB> {
+impl<DB: PayloadStore> WorkerReceiverHandler<DB> {
     /// Create a new instance of Self.
-    pub fn new(consensus_bus: ConsensusBus, payload_store: PayloadStore<DB>) -> Self {
+    pub fn new(consensus_bus: ConsensusBus, payload_store: DB) -> Self {
         Self { consensus_bus, payload_store }
     }
 }
@@ -381,7 +381,7 @@ impl<DB: Database> WorkerToPrimaryClient for WorkerReceiverHandler<DB> {
     }
 
     async fn report_others_batch(&self, message: WorkerOthersBatchMessage) -> eyre::Result<()> {
-        self.payload_store.write(&message.digest, &message.worker_id)?;
+        self.payload_store.write_payload(&message.digest, &message.worker_id)?;
         Ok(())
     }
 }

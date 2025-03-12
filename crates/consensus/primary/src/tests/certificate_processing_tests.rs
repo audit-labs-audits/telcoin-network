@@ -13,7 +13,7 @@ use crate::{
 use assert_matches::assert_matches;
 use fastcrypto::{hash::Hash as _, traits::KeyPair};
 use std::{collections::BTreeSet, time::Duration};
-use tn_storage::mem_db::MemDatabase;
+use tn_storage::{mem_db::MemDatabase, CertificateStore};
 use tn_test_utils::{
     make_optimal_signed_certificates, signed_cert_for_test, AuthorityFixture, CommitteeFixture,
 };
@@ -86,7 +86,7 @@ async fn test_accept_valid_certs() -> eyre::Result<()> {
     let TestTypes { validator, manager, cb, fixture, task_manager, .. } = create_all_test_types();
     // test types uses last authority for config
     let primary = fixture.authorities().last().unwrap();
-    let certificate_store = primary.consensus_config().node_storage().certificate_store.clone();
+    let certificate_store = primary.consensus_config().node_storage().clone();
 
     // spawn manager task
     task_manager.spawn_task("manager", manager.run());
@@ -211,7 +211,7 @@ async fn test_gc_pending_certs() -> eyre::Result<()> {
 
     // cert store
     let primary = fixture.authorities().last().unwrap();
-    let certificate_store = primary.consensus_config().node_storage().certificate_store.clone();
+    let certificate_store = primary.consensus_config().node_storage().clone();
 
     // spawn manager task
     task_manager.spawn_task("manager", manager.run());
@@ -279,7 +279,7 @@ async fn test_node_restart_syncs_state() -> eyre::Result<()> {
     let TestTypes { validator, manager, fixture, task_manager, .. } = create_all_test_types();
     // test types uses last authority for config
     let primary = fixture.authorities().last().unwrap();
-    let certificate_store = primary.consensus_config().node_storage().certificate_store.clone();
+    let certificate_store = primary.consensus_config().node_storage().clone();
 
     // spawn manager task
     task_manager.spawn_task("manager", manager.run());

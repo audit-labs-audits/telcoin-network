@@ -1,7 +1,7 @@
 //! Leader schedule tests
 
 use crate::consensus::{Dag, LeaderSchedule, LeaderSwapTable};
-use std::{collections::BTreeSet, num::NonZeroUsize, sync::Arc};
+use std::{collections::BTreeSet, num::NonZeroUsize};
 use tempfile::TempDir;
 use tn_storage::{mem_db::MemDatabase, open_db, ConsensusStore};
 use tn_test_utils::{mock_certificate, CommitteeFixture};
@@ -155,7 +155,7 @@ async fn test_leader_schedule_from_store() {
     let committee = fixture.committee();
     let authority_ids: Vec<AuthorityIdentifier> = fixture.authorities().map(|a| a.id()).collect();
     let temp_dir = TempDir::new().unwrap();
-    let store = Arc::new(ConsensusStore::new(open_db(temp_dir.path())));
+    let store = open_db(temp_dir.path());
 
     // Create a leader schedule with a default swap table, so no authority will be swapped and find
     // the leader at position 2. We expect the leader of round 2 to be the authority of position

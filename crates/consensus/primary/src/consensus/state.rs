@@ -13,7 +13,7 @@ use std::{
     sync::Arc,
 };
 use tn_config::ConsensusConfig;
-use tn_storage::CertificateStore;
+use tn_storage::{CertificateStore, ConsensusStore};
 use tn_types::{
     AuthorityIdentifier, Certificate, CertificateDigest, CommittedSubDag, Committee, Database,
     Noticer, Round, TaskManager, Timestamp, TnReceiver, TnSender,
@@ -65,7 +65,7 @@ impl ConsensusState {
         gc_depth: Round,
         recovered_last_committed: HashMap<AuthorityIdentifier, Round>,
         latest_sub_dag: Option<CommittedSubDag>,
-        cert_store: CertificateStore<DB>,
+        cert_store: DB,
     ) -> Self {
         let last_round = ConsensusRound::new_with_gc_depth(last_committed_round, gc_depth);
 
@@ -98,8 +98,8 @@ impl ConsensusState {
     }
 
     #[instrument(level = "info", skip_all)]
-    pub fn construct_dag_from_cert_store<DB: Database>(
-        cert_store: &CertificateStore<DB>,
+    pub fn construct_dag_from_cert_store<DB: CertificateStore>(
+        cert_store: &DB,
         last_committed: &HashMap<AuthorityIdentifier, Round>,
         gc_round: Round,
     ) -> Result<Dag, ConsensusError> {
@@ -295,14 +295,13 @@ impl<DB: Database> Consensus<DB> {
         let metrics = consensus_bus.consensus_metrics();
         let rx_shutdown = consensus_config.shutdown().subscribe();
         // The consensus state (everything else is immutable).
-        let recovered_last_committed =
-            consensus_config.node_storage().consensus_store.read_last_committed();
+        let recovered_last_committed = consensus_config.node_storage().read_last_committed();
         let last_committed_round = recovered_last_committed
             .iter()
             .max_by(|a, b| a.1.cmp(b.1))
             .map(|(_k, v)| *v)
             .unwrap_or_else(|| 0);
-        let latest_sub_dag = consensus_config.node_storage().consensus_store.get_latest_sub_dag();
+        let latest_sub_dag = consensus_config.node_storage().get_latest_sub_dag();
         if let Some(sub_dag) = &latest_sub_dag {
             assert_eq!(
                 sub_dag.leader_round(),
@@ -319,7 +318,7 @@ impl<DB: Database> Consensus<DB> {
             consensus_config.parameters().gc_depth,
             recovered_last_committed,
             latest_sub_dag,
-            consensus_config.node_storage().certificate_store.clone(),
+            consensus_config.node_storage().clone(),
         );
 
         consensus_bus

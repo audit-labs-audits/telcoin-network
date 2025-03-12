@@ -16,7 +16,10 @@ use std::{
 };
 use tn_config::ConsensusConfig;
 use tn_network_libp2p::{GossipMessage, PeerId};
-use tn_storage::tables::{ConsensusBlockNumbersByDigest, ConsensusBlocks};
+use tn_storage::{
+    tables::{ConsensusBlockNumbersByDigest, ConsensusBlocks},
+    VoteDigestStore,
+};
 use tn_types::{
     ensure,
     error::{CertificateError, HeaderError, HeaderResult},
@@ -281,8 +284,7 @@ where
         let previous_vote = self
             .consensus_config
             .node_storage()
-            .vote_digest_store
-            .read(&header.author())
+            .read_vote_info(&header.author())
             .map_err(HeaderError::Storage)?;
         if let Some(vote_info) = previous_vote {
             ensure!(
@@ -339,7 +341,7 @@ where
         debug!(target: "primary", "Created vote {vote:?} for {} at round {}", header, header.round());
 
         // Update the vote digest store with the vote we just sent.
-        self.consensus_config.node_storage().vote_digest_store.write(&vote)?;
+        self.consensus_config.node_storage().write_vote(&vote)?;
 
         Ok(PrimaryResponse::Vote(vote))
     }

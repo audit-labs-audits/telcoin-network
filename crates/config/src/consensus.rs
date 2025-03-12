@@ -9,7 +9,6 @@ use std::{
     sync::Arc,
 };
 use tn_network_types::local::LocalNetwork;
-use tn_storage::NodeStorage;
 use tn_types::{
     network_public_key_to_libp2p, Authority, AuthorityIdentifier, Certificate, CertificateDigest,
     Committee, Database, Multiaddr, Notifier, WorkerCache, WorkerId,
@@ -19,7 +18,7 @@ use tn_types::{
 struct ConsensusConfigInner<DB> {
     config: Config,
     committee: Committee,
-    node_storage: NodeStorage<DB>,
+    node_storage: DB,
     key_config: KeyConfig,
     authority: Authority,
     local_network: LocalNetwork,
@@ -42,7 +41,7 @@ where
     pub fn new<TND: TelcoinDirs + 'static>(
         config: Config,
         tn_datadir: &TND,
-        node_storage: NodeStorage<DB>,
+        node_storage: DB,
         key_config: KeyConfig,
     ) -> eyre::Result<Self> {
         // load committee from file
@@ -80,7 +79,7 @@ where
     /// The method is exposed publicly for testing ONLY.
     pub fn new_with_committee(
         config: Config,
-        node_storage: NodeStorage<DB>,
+        node_storage: DB,
         key_config: KeyConfig,
         committee: Committee,
         worker_cache: WorkerCache,
@@ -147,7 +146,7 @@ where
         self.worker_cache.clone()
     }
 
-    pub fn node_storage(&self) -> &NodeStorage<DB> {
+    pub fn node_storage(&self) -> &DB {
         &self.inner.node_storage
     }
 
@@ -164,7 +163,7 @@ where
     }
 
     pub fn database(&self) -> &DB {
-        &self.inner.node_storage.batch_store
+        &self.inner.node_storage
     }
 
     pub fn local_network(&self) -> &LocalNetwork {
