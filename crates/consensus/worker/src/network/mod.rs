@@ -149,6 +149,14 @@ impl WorkerNetworkHandle {
         batch_digests: Vec<BlockHash>,
     ) -> NetworkResult<RequestBatchesResponse> {
         let peers = self.handle.connected_peers().await?;
+        if batch_digests.is_empty() || peers.is_empty() {
+            // Nothing to do, either no digests requested or no one to ask.
+            // Return nothing.
+            return Ok(RequestBatchesResponse {
+                batches: vec![],
+                is_size_limit_reached: !batch_digests.is_empty(),
+            });
+        }
         let mut futures = FuturesUnordered::new();
         for peer in peers {
             futures.push(self.request_batches(peer, batch_digests.clone()));

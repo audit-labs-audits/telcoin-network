@@ -14,10 +14,8 @@ use thiserror::Error;
 use tn_network_libp2p::error::NetworkError;
 use tn_storage::tables::Batches;
 use tn_types::{now, Batch, BlockHash, Database, DbTxMut};
-use tokio::time::{error::Elapsed, sleep};
+use tokio::time::error::Elapsed;
 use tracing::debug;
-
-const WORKER_RETRY_INTERVAL: Duration = Duration::from_secs(1);
 
 pub struct BatchFetcher<DB> {
     network: Arc<dyn RequestBatchesNetwork>,
@@ -33,7 +31,7 @@ impl<DB: Database> BatchFetcher<DB> {
     /// Bulk fetches payload from local storage and remote workers.
     /// This function performs infinite retries and until all batches are available.
     pub async fn fetch(&self, digests: HashSet<BlockHash>) -> HashMap<BlockHash, Batch> {
-        debug!("Attempting to fetch {} digests from peers", digests.len(),);
+        debug!(target: "batch_fetcher", "Attempting to fetch {} digests from peers", digests.len(),);
 
         let mut remaining_digests = digests;
         let mut fetched_batches = HashMap::new();
@@ -69,12 +67,12 @@ impl<DB: Database> BatchFetcher<DB> {
                     updated_new_batches.insert(*digest, batch.clone());
                     // Also persist the batches, so they are available after restarts.
                     if let Err(e) = txn.insert::<Batches>(digest, &batch) {
-                        tracing::error!("failed to insert batch! We can not continue.. {e}");
+                        tracing::error!(target: "batch_fetcher", "failed to insert batch! We can not continue.. {e}");
                         panic!("failed to insert batch! We can not continue.. {e}");
                     }
                 }
                 if let Err(e) = txn.commit() {
-                    tracing::error!("failed to commit batch! We can not continue.. {e}");
+                    tracing::error!(target: "batch_fetcher", "failed to commit batch! We can not continue.. {e}");
                     panic!("failed to commit batch! We can not continue.. {e}");
                 }
                 fetched_batches.extend(updated_new_batches.iter().map(|(d, b)| (*d, (*b).clone())));
@@ -83,9 +81,6 @@ impl<DB: Database> BatchFetcher<DB> {
                     return fetched_batches;
                 }
             }
-            // After all known connected peers have been tried, restart the outer loop to fetch
-            // from local storage then remote workers again.
-            sleep(WORKER_RETRY_INTERVAL).await;
         }
     }
 
@@ -97,7 +92,7 @@ impl<DB: Database> BatchFetcher<DB> {
 
         // Continue to bulk request from local worker until no remaining digests
         // are available.
-        debug!("Local attempt to fetch {} digests", digests.len());
+        debug!(target: "batch_fetcher", "Local attempt to fetch {} digests", digests.len());
         if let Ok(local_batches) = self.batch_store.multi_get::<Batches>(digests.iter()) {
             for (digest, batch) in digests.into_iter().zip(local_batches.into_iter()) {
                 if let Some(batch) = batch {
