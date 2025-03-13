@@ -3,7 +3,7 @@ use std::sync::Arc;
 use tn_config::ConsensusConfig;
 use tn_types::{BatchValidation, Database as ConsensusDatabase, WorkerId};
 use tn_worker::{
-    metrics::Metrics, quorum_waiter::QuorumWaiter, BatchProvider, Worker, WorkerNetworkHandle,
+    metrics::Metrics, new_worker, quorum_waiter::QuorumWaiter, Worker, WorkerNetworkHandle,
 };
 use tokio::sync::RwLock;
 use tracing::instrument;
@@ -23,16 +23,11 @@ impl<CDB: ConsensusDatabase> WorkerNodeInner<CDB> {
         &mut self,
         validator: Arc<dyn BatchValidation>,
         network_handle: WorkerNetworkHandle,
-    ) -> eyre::Result<BatchProvider<CDB, QuorumWaiter>> {
+    ) -> eyre::Result<Worker<CDB, QuorumWaiter>> {
         let metrics = Metrics::default();
 
-        let batch_provider = Worker::new_batch_provider(
-            self.id,
-            validator,
-            metrics,
-            self.consensus_config.clone(),
-            network_handle,
-        );
+        let batch_provider =
+            new_worker(self.id, validator, metrics, self.consensus_config.clone(), network_handle);
 
         Ok(batch_provider)
     }
@@ -54,7 +49,7 @@ impl<CDB: ConsensusDatabase> WorkerNode<CDB> {
         &self,
         validator: Arc<dyn BatchValidation>,
         network_handle: WorkerNetworkHandle,
-    ) -> eyre::Result<BatchProvider<CDB, QuorumWaiter>> {
+    ) -> eyre::Result<Worker<CDB, QuorumWaiter>> {
         let mut guard = self.internal.write().await;
         guard.start(validator, network_handle).await
     }

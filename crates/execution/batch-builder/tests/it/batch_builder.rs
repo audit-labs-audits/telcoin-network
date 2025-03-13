@@ -39,7 +39,7 @@ use tn_types::{
 use tn_worker::{
     metrics::WorkerMetrics,
     quorum_waiter::{QuorumWaiterError, QuorumWaiterTrait},
-    BatchProvider,
+    Worker,
 };
 use tokio::time::timeout;
 use tracing::debug;
@@ -73,14 +73,8 @@ async fn test_make_batch_el_to_cl() {
 
     let qw = TestMakeBlockQuorumWaiter();
     let timeout = Duration::from_secs(5);
-    let batch_provider = BatchProvider::new(
-        0,
-        qw.clone(),
-        Arc::new(node_metrics),
-        network_client,
-        store.clone(),
-        timeout,
-    );
+    let batch_provider =
+        Worker::new(0, qw.clone(), Arc::new(node_metrics), network_client, store.clone(), timeout);
 
     //
     //=== Execution Layer

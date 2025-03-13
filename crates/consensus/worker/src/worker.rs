@@ -1,111 +1,229 @@
-//! The main worker type
+//! The receiving side of the execution layer's `BatchProvider`.
+//!
+//! Consensus `BatchProvider` takes a batch from the EL, stores it,
+//! and sends it to the quorum waiter for broadcasting to peers.
 
 use crate::{
     batch_fetcher::BatchFetcher,
-    batch_provider::BatchProvider,
     metrics::{Metrics, WorkerMetrics},
-    network::{PrimaryReceiverHandler, WorkerNetworkHandle},
-    quorum_waiter::QuorumWaiter,
+    network::PrimaryReceiverHandler,
+    quorum_waiter::{QuorumWaiter, QuorumWaiterTrait},
+    WorkerNetworkHandle,
 };
-use std::sync::Arc;
+use std::{sync::Arc, time::Duration};
 use tn_config::ConsensusConfig;
-use tn_network_types::local::LocalNetwork;
-use tn_types::{network_public_key_to_libp2p, BatchValidation, Database, WorkerId};
-use tracing::info;
+use tn_network_types::{local::LocalNetwork, WorkerOwnBatchMessage, WorkerToPrimaryClient};
+use tn_storage::tables::Batches;
+use tn_types::{
+    error::BlockSealError, network_public_key_to_libp2p, BatchSender, BatchValidation, Database,
+    SealedBatch, WorkerId,
+};
+use tracing::{error, info};
+
+#[cfg(test)]
+#[path = "tests/batch_provider_tests.rs"]
+pub mod batch_provider_tests;
 
 /// The default channel capacity for each channel of the worker.
 pub const CHANNEL_CAPACITY: usize = 1_000;
 
-/// The main worker struct that holds all information needed for worker.
-pub struct Worker {}
+/// Spawn the worker.
+///
+/// Create an instance of `Self` and start all tasks to participate in consensus.
+pub fn new_worker<DB: Database>(
+    id: WorkerId,
+    validator: Arc<dyn BatchValidation>,
+    metrics: Metrics,
+    consensus_config: ConsensusConfig<DB>,
+    network_handle: WorkerNetworkHandle,
+) -> Worker<DB, QuorumWaiter> {
+    let worker_name = consensus_config.key_config().worker_network_public_key();
+    let worker_peer_id = network_public_key_to_libp2p(&worker_name);
+    info!(target: "worker::worker", "Boot worker node with id {} peer id {:?}", id, worker_peer_id,);
 
-// TODO Issue 221- make the BatchProvider the Worker.
-impl Worker {
-    /// Spawn the worker.
-    ///
-    /// Create an instance of `Self` and start all tasks to participate in consensus.
-    pub fn new_batch_provider<DB: Database>(
-        id: WorkerId,
-        validator: Arc<dyn BatchValidation>,
-        metrics: Metrics,
-        consensus_config: ConsensusConfig<DB>,
-        network_handle: WorkerNetworkHandle,
-    ) -> BatchProvider<DB, QuorumWaiter> {
-        let worker_name = consensus_config.key_config().worker_network_public_key();
-        let worker_peer_id = network_public_key_to_libp2p(&worker_name);
-        info!("Boot worker node with id {} peer id {:?}", id, worker_peer_id,);
+    let node_metrics = metrics.worker_metrics.clone();
 
-        let node_metrics = metrics.worker_metrics.clone();
+    let batch_fetcher = BatchFetcher::new(
+        network_handle.clone(),
+        consensus_config.node_storage().clone(),
+        node_metrics.clone(),
+    );
+    consensus_config.local_network().set_primary_to_worker_local_handler(Arc::new(
+        PrimaryReceiverHandler {
+            store: consensus_config.database().clone(),
+            request_batches_timeout: consensus_config.parameters().sync_retry_delay,
+            network: Some(network_handle.clone()),
+            batch_fetcher: Some(batch_fetcher),
+            validator,
+        },
+    ));
+    let batch_provider = new_worker_internal(
+        id,
+        &consensus_config,
+        node_metrics,
+        consensus_config.local_network().clone(),
+        network_handle.clone(),
+    );
 
-        let batch_fetcher = BatchFetcher::new(
-            worker_name,
-            network_handle.clone(),
-            consensus_config.node_storage().clone(),
-            node_metrics.clone(),
-        );
-        consensus_config.local_network().set_primary_to_worker_local_handler(
-            worker_peer_id,
-            Arc::new(PrimaryReceiverHandler {
-                id,
-                committee: consensus_config.committee().clone(),
-                worker_cache: consensus_config.worker_cache().clone(),
-                store: consensus_config.database().clone(),
-                request_batches_timeout: consensus_config.parameters().sync_retry_delay,
-                network: Some(network_handle.clone()),
-                batch_fetcher: Some(batch_fetcher),
-                validator,
-            }),
-        );
-        let batch_provider = Self::new_batch_provider_internal(
-            id,
-            &consensus_config,
-            node_metrics,
-            consensus_config.local_network().clone(),
-            network_handle.clone(),
-        );
+    // NOTE: This log entry is used to compute performance.
+    info!(target: "worker::worker",
+        "Worker {} successfully booted on {}",
+        id,
+        consensus_config
+            .worker_cache()
+            .worker(consensus_config.authority().protocol_key(), &id)
+            .expect("Our public key or worker id is not in the worker cache")
+            .transactions
+    );
 
-        // NOTE: This log entry is used to compute performance.
-        info!(target: "worker::worker",
-            "Worker {} successfully booted on {}",
-            id,
-            consensus_config
-                .worker_cache()
-                .worker(consensus_config.authority().protocol_key(), &id)
-                .expect("Our public key or worker id is not in the worker cache")
-                .transactions
-        );
+    batch_provider
+}
 
-        batch_provider
+/// Builds a new batch provider responsible for handling client transactions.
+fn new_worker_internal<DB: Database>(
+    id: WorkerId,
+    consensus_config: &ConsensusConfig<DB>,
+    node_metrics: Arc<WorkerMetrics>,
+    client: LocalNetwork,
+    network_handle: WorkerNetworkHandle,
+) -> Worker<DB, QuorumWaiter> {
+    info!(target: "worker::worker", "Starting handler for transactions");
+
+    // The `QuorumWaiter` waits for 2f authorities to acknowledge receiving the batch
+    // before forwarding the batch to the `Processor`
+    let quorum_waiter = QuorumWaiter::new(
+        consensus_config.authority().clone(),
+        id,
+        consensus_config.committee().clone(),
+        consensus_config.worker_cache().clone(),
+        network_handle,
+        node_metrics.clone(),
+    );
+
+    Worker::new(
+        id,
+        quorum_waiter,
+        node_metrics,
+        client,
+        consensus_config.database().clone(),
+        consensus_config.parameters().batch_vote_timeout,
+    )
+}
+
+/// Process batch from EL into sealed batches for CL.
+#[derive(Clone)]
+pub struct Worker<DB, QW> {
+    /// Our worker's id.
+    id: WorkerId,
+    /// Use `QuorumWaiter` to attest to batches.
+    quorum_waiter: QW,
+    /// Metrics handler
+    node_metrics: Arc<WorkerMetrics>,
+    /// The network client to send our batches to the primary.
+    client: LocalNetwork,
+    /// The batch store to store our own batches.
+    store: DB,
+    /// Channel sender for alternate batch submision if not calling seal directly.
+    tx_batches: BatchSender,
+    /// The amount of time to wait on a reply from peer before timing out.
+    timeout: Duration,
+}
+
+impl<DB, QW> std::fmt::Debug for Worker<DB, QW> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "BatchProvider for worker {}", self.id)
     }
+}
 
-    /// Builds a new batch provider responsible for handling client transactions.
-    fn new_batch_provider_internal<DB: Database>(
+impl<DB: Database, QW: QuorumWaiterTrait> Worker<DB, QW> {
+    pub fn new(
         id: WorkerId,
-        consensus_config: &ConsensusConfig<DB>,
+        quorum_waiter: QW,
         node_metrics: Arc<WorkerMetrics>,
         client: LocalNetwork,
-        network_handle: WorkerNetworkHandle,
-    ) -> BatchProvider<DB, QuorumWaiter> {
-        info!(target: "worker::worker", "Starting handler for transactions");
+        store: DB,
+        timeout: Duration,
+    ) -> Self {
+        let (tx_batches, mut rx_batches) = tokio::sync::mpsc::channel(1000);
+        let this = Self { id, quorum_waiter, node_metrics, client, store, tx_batches, timeout };
+        let this_clone = this.clone();
+        // Spawn a little task to accept batches from a channel and seal them that way.
+        // Allows the engine to remain removed from the worker.
+        tokio::spawn(async move {
+            while let Some((batch, tx)) = rx_batches.recv().await {
+                let res = this_clone.seal(batch).await;
+                if tx.send(res).is_err() {
+                    error!(target: "worker::batch_provider", "Error sending result to channel caller!  Channel closed.");
+                }
+            }
+        });
+        this
+    }
 
-        // The `QuorumWaiter` waits for 2f authorities to acknowledge receiving the batch
-        // before forwarding the batch to the `Processor`
-        let quorum_waiter = QuorumWaiter::new(
-            consensus_config.authority().clone(),
-            id,
-            consensus_config.committee().clone(),
-            consensus_config.worker_cache().clone(),
-            network_handle,
-            node_metrics.clone(),
-        );
+    pub fn batches_tx(&self) -> BatchSender {
+        self.tx_batches.clone()
+    }
 
-        BatchProvider::new(
-            id,
-            quorum_waiter,
-            node_metrics,
-            client,
-            consensus_config.database().clone(),
-            consensus_config.parameters().batch_vote_timeout,
-        )
+    /// Seal and broadcast the current batch.
+    pub async fn seal(&self, sealed_batch: SealedBatch) -> Result<(), BlockSealError> {
+        let size = sealed_batch.size();
+
+        self.node_metrics
+            .created_batch_size
+            .with_label_values(&["latest batch size"])
+            .observe(size as f64);
+
+        let batch_attest_handle =
+            self.quorum_waiter.verify_batch(sealed_batch.clone(), self.timeout);
+
+        // Wait for our batch to reach quorum or fail to do so.
+        match batch_attest_handle.await {
+            Ok(res) => {
+                match res {
+                    Ok(_) => {} // batch reached quorum!
+                    Err(e) => {
+                        return Err(match e {
+                            crate::quorum_waiter::QuorumWaiterError::QuorumRejected => {
+                                BlockSealError::QuorumRejected
+                            }
+                            crate::quorum_waiter::QuorumWaiterError::AntiQuorum => {
+                                BlockSealError::AntiQuorum
+                            }
+                            crate::quorum_waiter::QuorumWaiterError::Timeout => {
+                                BlockSealError::Timeout
+                            }
+                            crate::quorum_waiter::QuorumWaiterError::Network
+                            | crate::quorum_waiter::QuorumWaiterError::Rpc(_) => {
+                                BlockSealError::FailedQuorum
+                            }
+                        })
+                    }
+                }
+            }
+            Err(e) => {
+                error!(target: "worker::batch_provider", "Join error attempting batch quorum! {e}");
+                return Err(BlockSealError::FailedQuorum);
+            }
+        }
+
+        // Now save it to disk
+        let (batch, digest) = sealed_batch.split();
+
+        if let Err(e) = self.store.insert::<Batches>(&digest, &batch) {
+            error!(target: "worker::batch_provider", "Store failed with error: {:?}", e);
+            return Err(BlockSealError::FatalDBFailure);
+        }
+
+        // Send the batch to the primary.
+        let message =
+            WorkerOwnBatchMessage { worker_id: self.id, digest, timestamp: batch.created_at() };
+        if let Err(err) = self.client.report_own_batch(message).await {
+            error!(target: "worker::batch_provider", "Failed to report our batch: {err:?}");
+            // Should we return an error here?  Doing so complicates some tests but also the batch
+            // is sealed, etc. If we can not report our own batch is this a
+            // showstopper?
+        }
+
+        Ok(())
     }
 }

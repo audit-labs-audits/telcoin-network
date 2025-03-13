@@ -112,6 +112,8 @@ where
             // be included in headers if they originated from the claimed worker. This prevents
             // malicious nodes from exploiting worker ID mismatches to create unresolvable
             // synchronization states.
+            // Note on this note- the soure of batches is now agnostic so this may not be a DOS
+            // anymore, still seems like a useful check though...
             if !self.config.node_storage().contains_payload(*digest, *worker_id)? {
                 missing.entry(*worker_id).or_insert_with(Vec::new).push(*digest);
             }
@@ -120,19 +122,6 @@ where
         // Build Synchronize requests to workers.
         let mut synchronize_handles = Vec::new();
         for (worker_id, digests) in missing {
-            let worker_name = self
-                .config
-                .worker_cache()
-                .worker(
-                    self.config
-                        .committee()
-                        .authority(&authority_id)
-                        .ok_or(HeaderError::UnkownWorkerId)?
-                        .protocol_key(),
-                    &worker_id,
-                )
-                .map_err(|_| HeaderError::UnkownWorkerId)?
-                .name;
             let client = self.config.local_network().clone();
             let retry_config = RetryConfig::default(); // 30s timeout
             let handle = retry_config.retry(move || {
@@ -143,9 +132,8 @@ where
                     is_certified,
                 };
                 let client = client.clone();
-                let worker_name = worker_name.clone();
                 async move {
-                    let result = client.synchronize(worker_name, message).await.map_err(|e| {
+                    let result = client.synchronize(message).await.map_err(|e| {
                         backoff::Error::transient(DagError::NetworkError(format!("{e:?}")))
                     });
                     if result.is_ok() {

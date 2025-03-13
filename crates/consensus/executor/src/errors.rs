@@ -3,7 +3,7 @@
 use std::fmt::Debug;
 use thiserror::Error;
 use tn_storage::StoreError;
-use tn_types::{CertificateDigest, WorkerId};
+use tn_types::{AuthorityIdentifier, CertificateDigest, WorkerId};
 
 /// Return an error if the condition is false.
 #[macro_export(local_inner_macros)]
@@ -30,6 +30,9 @@ pub enum SubscriberError {
 
     #[error("Consensus referenced unexpected worker id {0}")]
     UnexpectedWorkerId(WorkerId),
+
+    #[error("Consensus referenced unexpected authority {0}")]
+    UnexpectedAuthority(AuthorityIdentifier),
 
     #[error("Connection with the transaction executor dropped")]
     ExecutorConnectionDropped,

@@ -45,7 +45,7 @@ async fn make_batch() {
     let qw = TestMakeBlockQuorumWaiter::new_test();
     let timeout = Duration::from_secs(5);
     let batch_provider =
-        BatchProvider::new(id, qw.clone(), Arc::new(node_metrics), client, store.clone(), timeout);
+        Worker::new(id, qw.clone(), Arc::new(node_metrics), client, store.clone(), timeout);
 
     // Send enough transactions to seal a batch.
     let tx = transaction();

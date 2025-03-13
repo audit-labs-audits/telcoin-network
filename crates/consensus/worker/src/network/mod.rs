@@ -1,6 +1,7 @@
 use std::{collections::HashSet, sync::Arc, time::Duration};
 
 use error::WorkerNetworkError;
+use futures::{stream::FuturesUnordered, StreamExt};
 use handler::RequestHandler;
 use message::{RequestBatchesResponse, WorkerGossip, WorkerRPCError};
 pub use message::{WorkerRequest, WorkerResponse};
@@ -10,13 +11,11 @@ use tn_network_libp2p::{
     types::{IdentTopic, NetworkEvent, NetworkHandle, NetworkResult},
     GossipMessage, Multiaddr, PeerId, ResponseChannel,
 };
-use tn_network_types::{
-    FetchBatchResponse, FetchBatchesRequest, PrimaryToWorkerClient, WorkerSynchronizeMessage,
-};
+use tn_network_types::{FetchBatchResponse, PrimaryToWorkerClient, WorkerSynchronizeMessage};
 use tn_storage::tables::Batches;
 use tn_types::{
-    encode, network_public_key_to_libp2p, now, BatchValidation, BlockHash, Committee, Database,
-    DbTxMut, NetworkPublicKey, Noticer, SealedBatch, TaskManager, WorkerCache, WorkerId,
+    encode, now, BatchValidation, BlockHash, Database, DbTxMut, Noticer, SealedBatch, TaskManager,
+    WorkerId,
 };
 use tokio::{
     sync::{mpsc, oneshot},
@@ -52,7 +51,7 @@ impl WorkerNetworkHandle {
         self.handle.dial(peer_id, peer_addr).await
     }
 
-    /// Publish a certificate to the consensus network.
+    /// Publish a batch digest to the worker network.
     pub async fn publish_batch(&self, batch_digest: BlockHash) -> NetworkResult<()> {
         let data = encode(&WorkerGossip::Batch(batch_digest));
         self.handle.publish(IdentTopic::new("tn-worker"), data).await?;
@@ -60,11 +59,9 @@ impl WorkerNetworkHandle {
     }
 
     /// Report a new batch to a peer.
-    pub async fn report_batch(
-        &self,
-        peer_id: PeerId,
-        sealed_batch: SealedBatch,
-    ) -> NetworkResult<()> {
+    async fn report_batch(&self, peer_id: PeerId, sealed_batch: SealedBatch) -> NetworkResult<()> {
+        // TODO- issue 237- should we sign these batches and check the sig before accepting any
+        // batches during consensus?
         let request = WorkerRequest::ReportBatch { sealed_batch };
         let res = self.handle.send_request(request, peer_id).await?;
         let res = res.await??;
@@ -77,7 +74,7 @@ impl WorkerNetworkHandle {
         }
     }
 
-    /// Report a new batch to a peer.
+    /// Report a new batch to peers.
     pub fn report_batch_to_peers(
         &self,
         peer_ids: Vec<PeerId>,
@@ -98,15 +95,102 @@ impl WorkerNetworkHandle {
         peer_id: PeerId,
         batch_digests: Vec<BlockHash>,
     ) -> NetworkResult<RequestBatchesResponse> {
-        let request = WorkerRequest::RequestBatches { batch_digests };
+        let request = WorkerRequest::RequestBatches { batch_digests: batch_digests.clone() };
         let res = self.handle.send_request(request, peer_id).await?;
         let res = res.await??;
         match res {
             WorkerResponse::ReportBatch => Err(NetworkError::RPCError(
-                "Got wrong response, not a request batchs is report batch!".to_string(),
+                "Got wrong response, not a request batches is report batch!".to_string(),
             )),
-            WorkerResponse::RequestBatches(response) => Ok(response),
+            WorkerResponse::RequestBatches(RequestBatchesResponse {
+                batches,
+                mut is_size_limit_reached,
+            }) => {
+                for batch in &batches {
+                    let batch_digest = batch.digest();
+                    if !batch_digests.contains(&batch_digest) {
+                        let msg = format!(
+                            "Peer {peer_id} returned batch with digest \
+                            {batch_digest} which is not part of the requested digests: {batch_digests:?}"
+                        );
+                        return Err(NetworkError::ProtocolError(msg));
+                    }
+                }
+                let (batch_digests_len, batches_len) = (batch_digests.len(), batches.len());
+                if batches_len < batch_digests_len {
+                    // If we did not get everything make sure to set is_size_limit_reached to true.
+                    is_size_limit_reached = true;
+                }
+                if !is_size_limit_reached && batch_digests_len != batches_len {
+                    let msg = format!(
+                        "Peer {peer_id} returned is size limit FALSE but did not include all the requested batches:
+                        requested: {batch_digests:?} recieved: {batches:?}"
+                    );
+                    return Err(NetworkError::ProtocolError(msg));
+                }
+                if is_size_limit_reached && batch_digests_len == batches_len {
+                    let msg = format!(
+                        "Peer {peer_id} returned is size limit TRUE but DID include all the requested batches:
+                        requested: {batch_digests:?}"
+                    );
+                    return Err(NetworkError::ProtocolError(msg));
+                }
+                Ok(RequestBatchesResponse { batches, is_size_limit_reached })
+            }
             WorkerResponse::Error(WorkerRPCError(s)) => Err(NetworkError::RPCError(s)),
+        }
+    }
+
+    /// Request a group of batches by hashes.
+    /// Sends request to all our connected peers at once and returns Ok when we
+    /// get a valid response or Err if no one responds with the batches.
+    pub async fn request_batches_from_all(
+        &self,
+        batch_digests: Vec<BlockHash>,
+    ) -> NetworkResult<RequestBatchesResponse> {
+        let peers = self.handle.connected_peers().await?;
+        if batch_digests.is_empty() || peers.is_empty() {
+            // Nothing to do, either no digests requested or no one to ask.
+            // Return nothing.
+            return Ok(RequestBatchesResponse {
+                batches: vec![],
+                is_size_limit_reached: !batch_digests.is_empty(),
+            });
+        }
+        let mut futures = FuturesUnordered::new();
+        for peer in peers {
+            futures.push(self.request_batches(peer, batch_digests.clone()));
+        }
+        let mut all_batches = Vec::new();
+        while let Some(res) = futures.next().await {
+            match res {
+                Ok(RequestBatchesResponse { batches, is_size_limit_reached }) => {
+                    if is_size_limit_reached {
+                        for batch in &batches {
+                            if !all_batches.contains(batch) {
+                                all_batches.push(batch.clone());
+                            }
+                        }
+                        if all_batches.len() == batch_digests.len() {
+                            return Ok(RequestBatchesResponse {
+                                batches: all_batches,
+                                is_size_limit_reached: false,
+                            });
+                        }
+                    } else {
+                        return Ok(RequestBatchesResponse { batches, is_size_limit_reached });
+                    }
+                }
+                Err(e) => {
+                    // Another worker might succeed so just log this.
+                    warn!(target: "worker::network", ?e, "error requesting batches")
+                }
+            }
+        }
+        if all_batches.is_empty() {
+            Err(NetworkError::RPCError("Unable to get batches from any peers!".to_string()))
+        } else {
+            Ok(RequestBatchesResponse { batches: all_batches, is_size_limit_reached: true })
         }
     }
 }
@@ -260,12 +344,6 @@ where
 
 /// Defines how the network receiver handles incoming primary messages.
 pub struct PrimaryReceiverHandler<DB> {
-    /// The id of this worker.
-    pub id: WorkerId,
-    /// The committee information.
-    pub committee: Committee,
-    /// The worker information cache.
-    pub worker_cache: WorkerCache,
     /// The batch store
     pub store: DB,
     /// Timeout on RequestBatches RPC.
@@ -280,11 +358,7 @@ pub struct PrimaryReceiverHandler<DB> {
 
 #[async_trait::async_trait]
 impl<DB: Database> PrimaryToWorkerClient for PrimaryReceiverHandler<DB> {
-    async fn synchronize(
-        &self,
-        _worker_name: NetworkPublicKey,
-        message: WorkerSynchronizeMessage,
-    ) -> eyre::Result<()> {
+    async fn synchronize(&self, message: WorkerSynchronizeMessage) -> eyre::Result<()> {
         let Some(network) = self.network.as_ref() else {
             return Err(eyre::eyre!(
                 "synchronize() is unsupported via RPC interface, please call via local worker handler instead".to_string(),
@@ -310,38 +384,14 @@ impl<DB: Database> PrimaryToWorkerClient for PrimaryReceiverHandler<DB> {
             return Ok(());
         }
 
-        let worker_name = match self.worker_cache.worker(
-            self.committee
-                .authority(&message.target)
-                .expect("own workers in worker cache")
-                .protocol_key(),
-            &self.id,
-        ) {
-            Ok(worker_info) => worker_info.name,
-            Err(e) => {
-                return Err(eyre::eyre!(
-                    "The primary asked worker to sync with an unknown node: {e}"
-                ));
-            }
-        };
-        let peer = network_public_key_to_libp2p(&worker_name);
-
-        // Attempt to retrieve missing batches.
-        // Retried at a higher level in Synchronizer::sync_batches_internal().
-        debug!("Sending RequestBatchesRequest to {worker_name}");
-
         let response = tokio::time::timeout(
             self.request_batches_timeout,
-            network.request_batches(peer, missing.iter().cloned().collect()),
+            network.request_batches_from_all(missing.iter().cloned().collect()),
         )
         .await??;
 
-        let sealed_batches_from_response: Vec<SealedBatch> = missing
-            .iter()
-            .cloned()
-            .zip(response.batches)
-            .map(|(digest, batch)| SealedBatch::new(batch, digest))
-            .collect();
+        let sealed_batches_from_response: Vec<SealedBatch> =
+            response.batches.into_iter().map(|b| b.seal_slow()).collect();
 
         for sealed_batch in sealed_batches_from_response.into_iter() {
             if !message.is_certified {
@@ -368,6 +418,10 @@ impl<DB: Database> PrimaryToWorkerClient for PrimaryReceiverHandler<DB> {
                 tx.commit().map_err(|e| {
                     WorkerNetworkError::Internal(format!("failed to commit batch: {e:?}"))
                 })?;
+            } else {
+                return Err(eyre::eyre!(format!(
+                    "failed to synchronize batches- received a batch {digest} we did not request!"
+                )));
             }
         }
 
@@ -377,17 +431,13 @@ impl<DB: Database> PrimaryToWorkerClient for PrimaryReceiverHandler<DB> {
         Err(eyre::eyre!("failed to synchronize batches!".to_string()))
     }
 
-    async fn fetch_batches(
-        &self,
-        _worker_name: NetworkPublicKey,
-        request: FetchBatchesRequest,
-    ) -> eyre::Result<FetchBatchResponse> {
+    async fn fetch_batches(&self, digests: HashSet<BlockHash>) -> eyre::Result<FetchBatchResponse> {
         let Some(batch_fetcher) = self.batch_fetcher.as_ref() else {
             return Err(eyre::eyre!(
                 "fetch_batches() is unsupported via RPC interface, please call via local worker handler instead".to_string(),
             ));
         };
-        let batches = batch_fetcher.fetch(request.digests, request.known_workers).await;
+        let batches = batch_fetcher.fetch(digests).await;
         Ok(FetchBatchResponse { batches })
     }
 }

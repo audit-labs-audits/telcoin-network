@@ -1,15 +1,15 @@
 //! Client implementation for local network messages between primary and worker.
 use crate::{
-    FetchBatchResponse, FetchBatchesRequest, PrimaryToWorkerClient, WorkerOthersBatchMessage,
-    WorkerOwnBatchMessage, WorkerSynchronizeMessage, WorkerToPrimaryClient,
+    FetchBatchResponse, PrimaryToWorkerClient, WorkerOthersBatchMessage, WorkerOwnBatchMessage,
+    WorkerSynchronizeMessage, WorkerToPrimaryClient,
 };
 use libp2p::PeerId;
 use parking_lot::RwLock;
-use std::{collections::BTreeMap, sync::Arc};
+use std::{collections::HashSet, sync::Arc};
 use tn_types::{
     network_public_key_to_libp2p,
     traits::{InsecureDefault, KeyPair},
-    NetworkKeypair, NetworkPublicKey,
+    BlockHash, NetworkKeypair, NetworkPublicKey,
 };
 
 // // //
@@ -41,7 +41,7 @@ struct Inner {
     /// The type that holds logic for worker to primary requests.
     worker_to_primary_handler: Option<Arc<dyn WorkerToPrimaryClient>>,
     /// The type that holds logic for primary to worker requests.
-    primary_to_worker_handler: BTreeMap<PeerId, Arc<dyn PrimaryToWorkerClient>>,
+    primary_to_worker_handler: Option<Arc<dyn PrimaryToWorkerClient>>,
 }
 
 impl std::fmt::Debug for Inner {
@@ -56,7 +56,7 @@ impl LocalNetwork {
             inner: Arc::new(RwLock::new(Inner {
                 primary_peer_id,
                 worker_to_primary_handler: None,
-                primary_to_worker_handler: BTreeMap::new(),
+                primary_to_worker_handler: None,
             })),
         }
     }
@@ -79,57 +79,36 @@ impl LocalNetwork {
         inner.worker_to_primary_handler = Some(handler);
     }
 
-    pub fn set_primary_to_worker_local_handler(
-        &self,
-        worker_id: PeerId,
-        handler: Arc<dyn PrimaryToWorkerClient>,
-    ) {
+    pub fn set_primary_to_worker_local_handler(&self, handler: Arc<dyn PrimaryToWorkerClient>) {
         let mut inner = self.inner.write();
-        inner.primary_to_worker_handler.insert(worker_id, handler);
+        inner.primary_to_worker_handler = Some(handler);
     }
 
-    async fn get_primary_to_worker_handler(
-        &self,
-        peer_id: PeerId,
-    ) -> Option<Arc<dyn PrimaryToWorkerClient>> {
+    async fn get_primary_to_worker_handler(&self) -> Option<Arc<dyn PrimaryToWorkerClient>> {
         let inner = self.inner.read();
-        inner.primary_to_worker_handler.get(&peer_id).cloned()
+        inner.primary_to_worker_handler.clone()
     }
 
     async fn get_worker_to_primary_handler(&self) -> Option<Arc<dyn WorkerToPrimaryClient>> {
         let inner = self.inner.read();
-        if let Some(handler) = &inner.worker_to_primary_handler {
-            Some(handler.clone())
-        } else {
-            None
-        }
+        inner.worker_to_primary_handler.clone()
     }
 }
 
 #[async_trait::async_trait]
 impl PrimaryToWorkerClient for LocalNetwork {
-    async fn synchronize(
-        &self,
-        worker_name: NetworkPublicKey,
-        request: WorkerSynchronizeMessage,
-    ) -> eyre::Result<()> {
-        let peer_id = network_public_key_to_libp2p(&worker_name);
-        if let Some(c) = self.get_primary_to_worker_handler(peer_id).await {
-            c.synchronize(worker_name, request).await
+    async fn synchronize(&self, request: WorkerSynchronizeMessage) -> eyre::Result<()> {
+        if let Some(c) = self.get_primary_to_worker_handler().await {
+            c.synchronize(request).await
         } else {
             tracing::warn!(target = "local_network", "primary to worker handler not set yet!");
             Err(eyre::eyre!("primary to worker not set yet"))
         }
     }
 
-    async fn fetch_batches(
-        &self,
-        worker_name: NetworkPublicKey,
-        request: FetchBatchesRequest,
-    ) -> eyre::Result<FetchBatchResponse> {
-        let peer_id = network_public_key_to_libp2p(&worker_name);
-        if let Some(c) = self.get_primary_to_worker_handler(peer_id).await {
-            c.fetch_batches(worker_name, request).await
+    async fn fetch_batches(&self, digests: HashSet<BlockHash>) -> eyre::Result<FetchBatchResponse> {
+        if let Some(c) = self.get_primary_to_worker_handler().await {
+            c.fetch_batches(digests).await
         } else {
             tracing::warn!(target = "local_network", "primary to worker handler not set yet!");
             Err(eyre::eyre!("primary to worker not set yet"))

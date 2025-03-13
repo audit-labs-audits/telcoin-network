@@ -5,7 +5,8 @@ use super::{CertificateDigest, ConsensusHeader, SignatureVerificationState};
 use crate::{
     crypto, encode,
     error::{CertificateError, CertificateResult},
-    Address, Batch, BlockHash, Certificate, Committee, ReputationScores, Round, TimestampSec, B256,
+    Address, Batch, BlockHash, Certificate, Committee, Epoch, ReputationScores, Round,
+    TimestampSec, B256,
 };
 use fastcrypto::hash::{Digest, Hash, HashFunction};
 use serde::{Deserialize, Serialize};
@@ -187,6 +188,11 @@ impl CommittedSubDag {
     /// The Certificate's round.
     pub fn leader_round(&self) -> Round {
         self.leader.round()
+    }
+
+    /// The Certificate's epoch.
+    pub fn leader_epoch(&self) -> Epoch {
+        self.leader.epoch()
     }
 
     pub fn commit_timestamp(&self) -> TimestampSec {
