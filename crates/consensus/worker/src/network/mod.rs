@@ -148,7 +148,7 @@ impl WorkerNetworkHandle {
         &self,
         batch_digests: Vec<BlockHash>,
     ) -> NetworkResult<RequestBatchesResponse> {
-        let peers = self.handle.connected_peers().await?;
+        let mut peers = self.handle.connected_peers().await?;
         if batch_digests.is_empty() || peers.is_empty() {
             // Nothing to do, either no digests requested or no one to ask.
             // Return nothing.
@@ -157,33 +157,51 @@ impl WorkerNetworkHandle {
                 is_size_limit_reached: !batch_digests.is_empty(),
             });
         }
-        let mut futures = FuturesUnordered::new();
-        for peer in peers {
-            futures.push(self.request_batches(peer, batch_digests.clone()));
-        }
+        let mut remaining_digests = batch_digests;
+        let num_peers = peers.len();
         let mut all_batches = Vec::new();
-        while let Some(res) = futures.next().await {
-            match res {
-                Ok(RequestBatchesResponse { batches, is_size_limit_reached }) => {
-                    if is_size_limit_reached {
-                        for batch in &batches {
-                            if !all_batches.contains(batch) {
-                                all_batches.push(batch.clone());
+        // Attempt to try different batches with different peers.
+        // Ideally this will work first time and spread out the network traffic.
+        // It is possible for this algorithm to send same batches to the same peer,
+        // it is not that precise but should mix up things sufficiently to get batches
+        // if peers have them.
+        for _ in 0..num_peers {
+            let mut batch_of_batches = Vec::with_capacity(num_peers);
+            (0..num_peers).for_each(|_| batch_of_batches.push(vec![]));
+            peers.rotate_left(1); // Change which peers we ask for which batches.
+            for (i, batch) in remaining_digests.iter().enumerate() {
+                batch_of_batches
+                    .get_mut(i % num_peers)
+                    .expect("missing index we just created!")
+                    .push(*batch);
+            }
+            let mut futures = FuturesUnordered::new();
+            for (peer, batch_digests) in peers.iter().zip(batch_of_batches.into_iter()) {
+                if !batch_digests.is_empty() {
+                    futures.push(self.request_batches(*peer, batch_digests));
+                }
+            }
+            while let Some(res) = futures.next().await {
+                match res {
+                    Ok(RequestBatchesResponse { batches, is_size_limit_reached: _ }) => {
+                        for batch in batches {
+                            if !all_batches.contains(&batch) {
+                                let batch_digest = batch.digest();
+                                remaining_digests.retain(|d| *d != batch_digest);
+                                all_batches.push(batch);
                             }
                         }
-                        if all_batches.len() == batch_digests.len() {
+                        if remaining_digests.is_empty() {
                             return Ok(RequestBatchesResponse {
                                 batches: all_batches,
                                 is_size_limit_reached: false,
                             });
                         }
-                    } else {
-                        return Ok(RequestBatchesResponse { batches, is_size_limit_reached });
                     }
-                }
-                Err(e) => {
-                    // Another worker might succeed so just log this.
-                    warn!(target: "worker::network", ?e, "error requesting batches")
+                    Err(e) => {
+                        // Another worker might succeed so just log this.
+                        warn!(target: "worker::network", ?e, "error requesting batches")
+                    }
                 }
             }
         }
