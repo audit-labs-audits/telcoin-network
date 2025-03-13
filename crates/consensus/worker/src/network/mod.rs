@@ -419,10 +419,9 @@ impl<DB: Database> PrimaryToWorkerClient for PrimaryReceiverHandler<DB> {
                     WorkerNetworkError::Internal(format!("failed to commit batch: {e:?}"))
                 })?;
             } else {
-                return Err(eyre::eyre!(
+                return Err(eyre::eyre!(format!(
                     "failed to synchronize batches- received a batch {digest} we did not request!"
-                        .to_string()
-                ));
+                )));
             }
         }
 
