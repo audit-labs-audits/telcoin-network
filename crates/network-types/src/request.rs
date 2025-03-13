@@ -3,9 +3,7 @@
 use roaring::RoaringBitmap;
 use serde::{Deserialize, Serialize};
 use std::collections::{BTreeMap, BTreeSet, HashSet};
-use tn_types::{
-    AuthorityIdentifier, BlockHash, Certificate, Header, NetworkPublicKey, Round, SealedHeader,
-};
+use tn_types::{AuthorityIdentifier, BlockHash, Certificate, Header, Round, SealedHeader};
 use tracing::warn;
 
 /// Request for broadcasting certificates to peers.
@@ -96,16 +94,6 @@ impl FetchCertificatesRequest {
         self.max_items = max_items;
         self
     }
-}
-
-/// Used by the primary to request that the worker fetch the missing blocks and reply
-/// with all of the content.
-#[derive(Clone, Debug, Serialize, Deserialize)]
-pub struct FetchBatchesRequest {
-    /// Missing block digests to fetch from peers.
-    pub digests: HashSet<BlockHash>,
-    /// The network public key of the peers.
-    pub known_workers: HashSet<NetworkPublicKey>,
 }
 
 //=== Workers

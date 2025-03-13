@@ -14,6 +14,7 @@ use std::{
     process::{Child, Command},
     time::Duration,
 };
+use tn_test_utils::init_test_tracing;
 use tn_types::{get_available_tcp_port, keccak256, Address};
 use tokio::runtime::Runtime;
 use tracing::{error, info};
@@ -138,6 +139,7 @@ fn run_restart_tests2(client_urls: &[String; 4]) -> eyre::Result<()> {
 
 fn do_restarts(delay: u64) -> eyre::Result<()> {
     let _guard = IT_TEST_MUTEX.lock();
+    init_test_tracing();
     info!(target: "restart-test", "do_restarts, delay: {delay}");
     // the tmp dir should be removed once tmp_quard is dropped
     let tmp_guard = tempfile::TempDir::new().expect("tempdir is okay");

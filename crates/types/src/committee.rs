@@ -289,6 +289,22 @@ impl Committee {
         self.authorities_by_id.get(identifier)
     }
 
+    /// Provided an identifier it returns the corresponding authority.
+    /// Use the epoch.  This is a placeholder until epochs are
+    /// implemented- it may not make sense to live here but for now is a way
+    /// to start tracking places that need this.
+    pub fn authority_at_epoch(
+        &self,
+        epoch: Epoch,
+        identifier: &AuthorityIdentifier,
+    ) -> Option<&Authority> {
+        if epoch == self.epoch {
+            self.authorities_by_id.get(identifier)
+        } else {
+            None
+        }
+    }
+
     /// Provided an identifier it returns the corresponding authority - if is not found then it
     /// panics
     pub fn authority_safe(&self, identifier: &AuthorityIdentifier) -> &Authority {
