@@ -4,11 +4,13 @@ use tn_config::ConsensusConfig;
 use tn_network_libp2p::GossipMessage;
 use tn_network_types::{WorkerOthersBatchMessage, WorkerToPrimaryClient};
 use tn_storage::tables::Batches;
-use tn_types::{now, try_decode, BatchValidation, BlockHash, Database, SealedBatch, WorkerId};
+use tn_types::{
+    now, try_decode, Batch, BatchValidation, BlockHash, Database, SealedBatch, WorkerId,
+};
 
 use super::{
     error::{WorkerNetworkError, WorkerNetworkResult},
-    message::{RequestBatchesResponse, WorkerGossip},
+    message::WorkerGossip,
 };
 
 /// The type that handles requests from peers.
@@ -87,7 +89,7 @@ where
     pub(crate) async fn process_request_batches(
         &self,
         batch_digests: Vec<BlockHash>,
-    ) -> WorkerNetworkResult<RequestBatchesResponse> {
+    ) -> WorkerNetworkResult<Vec<Batch>> {
         const MAX_REQUEST_BATCHES_RESPONSE_SIZE: usize = 6_000_000;
         const BATCH_DIGESTS_READ_CHUNK_SIZE: usize = 200;
         let store = self.consensus_config.node_storage().clone();
@@ -98,7 +100,6 @@ where
             .collect_vec();
         let mut batches = Vec::new();
         let mut total_size = 0;
-        let mut is_size_limit_reached = false;
 
         for digests_chunks in digests_chunks {
             let stored_batches =
@@ -112,12 +113,11 @@ where
                     batches.push(stored_batch);
                     total_size += batch_size;
                 } else {
-                    is_size_limit_reached = true;
                     break;
                 }
             }
         }
 
-        Ok(RequestBatchesResponse { batches, is_size_limit_reached })
+        Ok(batches)
     }
 }

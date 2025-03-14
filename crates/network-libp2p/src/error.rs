@@ -77,6 +77,9 @@ pub enum NetworkError {
     /// Response violated the protocol.
     #[error("Protocol error: {0}")]
     ProtocolError(String),
+    /// A network operation timed out.
+    #[error("Timed Out")]
+    Timeout,
 }
 
 impl From<oneshot::error::RecvError> for NetworkError {
