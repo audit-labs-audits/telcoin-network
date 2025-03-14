@@ -21,8 +21,7 @@ pub(crate) enum ProposerError {
     OneshotChannelClosed,
     /// Sending error for the proposer to certifier.
     #[error("Proposer failed to send header to certifier.")]
-    //CertifierSender(#[from] mpsc::error::SendError<Header>),
-    CertifierSender(#[from] tn_types::SendError<Header>),
+    CertifierSender(#[from] Box<tn_types::SendError<Header>>),
     /// Error writing to the proposer store.
     #[error("Failed to write new header to proposer store: {0}")]
     StoreError(String),

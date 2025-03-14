@@ -317,7 +317,8 @@ impl<DB: Database> Proposer<DB> {
             .map_err(|e| ProposerError::StoreError(e.to_string()))?;
 
         // Send the new header to the `Certifier` that will broadcast and certify it.
-        let result = consensus_bus.headers().send(header.clone()).await.map_err(|e| e.into());
+        let result =
+            consensus_bus.headers().send(header.clone()).await.map_err(|e| Box::new(e).into());
         let num_digests = header.payload().len();
         consensus_bus
             .primary_metrics()

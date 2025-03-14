@@ -957,7 +957,7 @@ async fn submitting_equivocating_certificate_should_error() {
         let err = bullshark.process_certificate(&mut state, certificate.clone()).unwrap_err();
         match err {
             ConsensusError::CertificateEquivocation(this_cert, _) => {
-                assert_eq!(this_cert, certificate);
+                assert_eq!(*this_cert, certificate);
             }
             err => panic!("Unexpected error returned: {err}"),
         }

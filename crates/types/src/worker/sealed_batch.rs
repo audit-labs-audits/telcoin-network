@@ -4,24 +4,13 @@
 //! have reached quorum.
 
 use crate::{
-    adiri_chain_spec, crypto, encode, now, Address, BlockHash, ExecHeader, SealedBlock,
-    TimestampSec, MIN_PROTOCOL_BASE_FEE,
+    adiri_chain_spec, crypto, encode, now, Address, BlockHash, ExecHeader, TimestampSec,
+    MIN_PROTOCOL_BASE_FEE,
 };
 use fastcrypto::hash::HashFunction;
 use serde::{Deserialize, Serialize};
 use std::fmt::Debug;
 use thiserror::Error;
-
-/// Batch validation error types
-#[derive(Error, Debug, Clone)]
-pub enum BatchConversionError {
-    /// Errors from BlockExecution
-    #[error("Failed to recover signers for sealed batch:\n{0:?}\n")]
-    RecoverSigners(SealedBlock),
-    /// Failed to decode transaction bytes
-    #[error("RLP error decoding transaction: {0}")]
-    DecodeTransaction(#[from] alloy_rlp::Error),
-}
 
 /// The batch for workers to communicate for consensus.
 #[derive(Clone, Serialize, Deserialize, Debug, PartialEq, Eq)]

@@ -3,7 +3,10 @@
 use crate::error::{PrimaryNetworkError, PrimaryNetworkResult};
 use roaring::RoaringBitmap;
 use serde::{Deserialize, Serialize};
-use std::collections::{BTreeMap, BTreeSet};
+use std::{
+    collections::{BTreeMap, BTreeSet},
+    sync::Arc,
+};
 use tn_network_libp2p::{types::IntoRpcError, TNMessage};
 use tn_types::{
     AuthorityIdentifier, BlockHash, Certificate, CertificateDigest, ConsensusHeader, Header, Round,
@@ -11,7 +14,7 @@ use tn_types::{
 };
 
 /// Primary messages on the gossip network.
-#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, PartialEq, Serialize, Deserialize)]
 pub enum PrimaryGossip {
     /// A new certificate broadcast from peer.
     ///
@@ -20,7 +23,7 @@ pub enum PrimaryGossip {
     /// - 99 signatures ~= 3.5kb
     ///
     /// NOTE: `snappy` is slightly larger than uncompressed.
-    Certificate(Certificate),
+    Certificate(Box<Certificate>),
     /// Consensus output reached- publish the consensus chain height and new block hash.
     Consenus(u64, BlockHash),
 }
@@ -35,7 +38,7 @@ pub enum PrimaryRequest {
     /// Primary request for vote on new header.
     Vote {
         /// This primary's header for the round.
-        header: Header,
+        header: Arc<Header>,
         /// Parent certificates provided by the requesting peer in case the primary's peer is
         /// missing them. The peer requires parent certs in order to vote.
         parents: Vec<Certificate>,
@@ -144,7 +147,7 @@ pub enum PrimaryResponse {
     /// the missing certificate by digest.
     MissingParents(Vec<CertificateDigest>),
     /// The requested consensus header.
-    ConsensusHeader(ConsensusHeader),
+    ConsensusHeader(Arc<ConsensusHeader>),
     /// RPC error while handling request.
     ///
     /// This is an application-layer error response.

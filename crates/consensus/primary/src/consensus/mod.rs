@@ -30,16 +30,16 @@ pub enum ConsensusError {
     StoreError(#[from] StoreError),
 
     #[error("Certificate {0:?} equivocates with earlier certificate {1:?}")]
-    CertificateEquivocation(Certificate, Certificate),
+    CertificateEquivocation(Box<Certificate>, Box<Certificate>),
 
     #[error("System shutting down")]
     ShuttingDown,
 
     #[error("Parent digest {0:?} not found in DAG for {1:?}!")]
-    MissingParent(CertificateDigest, Certificate),
+    MissingParent(CertificateDigest, Box<Certificate>),
 
     #[error("Parent round not found in DAG for {0:?}!")]
-    MissingParentRound(Certificate),
+    MissingParentRound(Box<Certificate>),
 }
 
 #[derive(Debug, PartialEq, Eq)]

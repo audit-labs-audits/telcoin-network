@@ -159,7 +159,7 @@ pub enum Commands<Ext: clap::Args + fmt::Debug = NoArgs> {
 
     /// Start the node
     #[command(name = "node")]
-    Node(node::NodeCommand<Ext>),
+    Node(Box<node::NodeCommand<Ext>>),
 }
 
 #[cfg(test)]
