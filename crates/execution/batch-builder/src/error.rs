@@ -2,7 +2,6 @@
 
 use reth_errors::{CanonicalError, ProviderError, RethError};
 use reth_transaction_pool::error::PoolTransactionError;
-use tn_types::BatchConversionError;
 use tokio::sync::{mpsc, oneshot};
 
 /// Result alias for [`TNEngineError`].
@@ -17,9 +16,6 @@ pub enum BatchBuilderError {
     /// Error retrieving data from Provider.
     #[error(transparent)]
     Provider(#[from] ProviderError),
-    /// Error converting batch to `SealedBlockWithSenders`.
-    #[error(transparent)]
-    Batch(#[from] BatchConversionError),
     /// The next batch digest is missing.
     #[error("Missing next batch digest for recovered sealed block with senders.")]
     NextBatchDigestMissing,

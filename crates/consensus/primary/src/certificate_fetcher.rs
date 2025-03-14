@@ -44,7 +44,7 @@ const PARALLEL_FETCH_REQUEST_ADDITIONAL_TIMEOUT: Duration = Duration::from_secs(
 #[derive(Clone, Debug)]
 pub enum CertificateFetcherCommand {
     /// Fetch the certificate and its ancestors.
-    Ancestors(Certificate),
+    Ancestors(Arc<Certificate>),
     /// Fetch once from a random primary.
     Kick,
 }

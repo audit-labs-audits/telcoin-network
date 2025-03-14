@@ -4,7 +4,6 @@ use reth_blockchain_tree::error::InsertBlockError;
 use reth_errors::{CanonicalError, ProviderError, RethError};
 use reth_revm::primitives::EVMError;
 use reth_rpc_eth_types::EthApiError;
-use tn_types::BatchConversionError;
 use tokio::sync::oneshot;
 
 /// Result alias for [`TNEngineError`].
@@ -25,9 +24,6 @@ pub enum TnEngineError {
     /// Error recovering transaction from bytes.
     #[error(transparent)]
     RecoverTransactionBytes(#[from] EthApiError),
-    /// Error converting block to `SealedBlockWithSenders`.
-    #[error(transparent)]
-    Block(#[from] BatchConversionError),
     /// The next block digest is missing.
     #[error("Missing next block digest for recovered sealed block with senders.")]
     NextBlockDigestMissing,

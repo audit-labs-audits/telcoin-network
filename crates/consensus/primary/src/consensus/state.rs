@@ -162,8 +162,8 @@ impl ConsensusState {
             // we want to error only if we try to insert a different certificate in the dag
             if existing_certificate.digest() != certificate.digest() {
                 return Err(ConsensusError::CertificateEquivocation(
-                    certificate.clone(),
-                    existing_certificate,
+                    Box::new(certificate.clone()),
+                    Box::new(existing_certificate),
                 ));
             }
         }
@@ -218,12 +218,15 @@ impl ConsensusState {
                 round_table.iter().map(|(_, (digest, _))| digest).collect();
             for parent_digest in certificate.header().parents() {
                 if !store_parents.contains(parent_digest) {
-                    return Err(ConsensusError::MissingParent(*parent_digest, certificate.clone()));
+                    return Err(ConsensusError::MissingParent(
+                        *parent_digest,
+                        Box::new(certificate.clone()),
+                    ));
                 }
             }
         } else {
             tracing::error!(target: "telcoin::consensus_state", "Parent round not found in DAG for {certificate:?}!");
-            return Err(ConsensusError::MissingParentRound(certificate.clone()));
+            return Err(ConsensusError::MissingParentRound(Box::new(certificate.clone())));
         }
         Ok(())
     }
