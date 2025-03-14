@@ -77,10 +77,7 @@ impl<Req, Res> TNCodec<Req, Res> {
 
         // ensure message length within bounds
         if length > self.max_chunk_size {
-            return Err(std::io::Error::new(
-                std::io::ErrorKind::Other,
-                "prefix indicates message size is too large",
-            ));
+            return Err(std::io::Error::other("prefix indicates message size is too large"));
         }
 
         // resize buffer to reported message size
@@ -101,8 +98,7 @@ impl<Req, Res> TNCodec<Req, Res> {
         snappy_decoder.read_exact(&mut self.decode_buffer)?;
 
         // decode bytes
-        bcs::from_bytes(&self.decode_buffer)
-            .map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, e))
+        bcs::from_bytes(&self.decode_buffer).map_err(std::io::Error::other)
     }
 
     /// Convenience method to keep WRITE logic DRY.
@@ -121,15 +117,12 @@ impl<Req, Res> TNCodec<Req, Res> {
         // encode into allocated buffer
         encode_into_buffer(&mut self.decode_buffer, &msg).map_err(|e| {
             let error = format!("encode into buffer: {}", e);
-            std::io::Error::new(std::io::ErrorKind::Other, error)
+            std::io::Error::other(error)
         })?;
 
         // ensure encoded bytes are within bounds
         if self.decode_buffer.len() > self.max_chunk_size {
-            return Err(std::io::Error::new(
-                std::io::ErrorKind::Other,
-                "encode data > max_chunk_size",
-            ));
+            return Err(std::io::Error::other("encode data > max_chunk_size"));
         }
 
         // length prefix for uncompressed bytes

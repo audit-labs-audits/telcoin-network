@@ -9,7 +9,7 @@ use crate::{
 };
 use consensus_metrics::monitored_scope;
 use fastcrypto::hash::Hash as _;
-use std::{collections::HashSet, time::Instant};
+use std::{collections::HashSet, sync::Arc, time::Instant};
 use tn_config::ConsensusConfig;
 use tn_storage::CertificateStore;
 use tn_types::{
@@ -242,7 +242,7 @@ where
             {
                 self.consensus_bus
                     .certificate_fetcher()
-                    .send(CertificateFetcherCommand::Ancestors(cert.clone()))
+                    .send(CertificateFetcherCommand::Ancestors(Arc::new(cert.clone())))
                     .await?;
 
                 error!(target: "primary::cert_validator", "processed certificate that is too new");

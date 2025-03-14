@@ -1,9 +1,6 @@
 //! Fetch batches from peers
 
-use crate::{
-    metrics::WorkerMetrics,
-    network::{message::RequestBatchesResponse, WorkerNetworkHandle},
-};
+use crate::{metrics::WorkerMetrics, network::WorkerNetworkHandle};
 use async_trait::async_trait;
 use std::{
     collections::{HashMap, HashSet},
@@ -118,7 +115,7 @@ impl<DB: Database> BatchFetcher<DB> {
             return Ok(fetched_batches);
         }
 
-        let RequestBatchesResponse { batches, is_size_limit_reached: _ } = self
+        let batches = self
             .network
             .request_batches_from_all(digests_to_fetch.clone().into_iter().collect(), timeout)
             .await?;
@@ -148,7 +145,7 @@ trait RequestBatchesNetwork: Send + Sync {
         &self,
         batch_digests: Vec<BlockHash>,
         timeout: Duration,
-    ) -> Result<RequestBatchesResponse, RequestBatchesNetworkError>;
+    ) -> Result<Vec<Batch>, RequestBatchesNetworkError>;
 }
 
 #[async_trait]
@@ -157,9 +154,8 @@ impl RequestBatchesNetwork for WorkerNetworkHandle {
         &self,
         batch_digests: Vec<BlockHash>,
         timeout: Duration,
-    ) -> Result<RequestBatchesResponse, RequestBatchesNetworkError> {
-        let res =
-            tokio::time::timeout(timeout, self.request_batches_from_all(batch_digests)).await??;
+    ) -> Result<Vec<Batch>, RequestBatchesNetworkError> {
+        let res = tokio::time::timeout(timeout, self.request_batches(batch_digests)).await??;
         Ok(res)
     }
 }
@@ -414,7 +410,6 @@ mod tests {
                                 const MAX_REQUEST_BATCHES_RESPONSE_SIZE: usize = 2;
                                 const MAX_READ_BLOCK_DIGESTS: usize = 5;
 
-                                let mut is_size_limit_reached = false;
                                 let mut batches = Vec::new();
                                 let mut total_size = 0;
 
@@ -431,18 +426,13 @@ mod tests {
                                                 batches.push(batch.clone());
                                                 total_size += batch.size();
                                             } else {
-                                                is_size_limit_reached = true;
                                                 break;
                                             }
                                         }
                                     }
                                 }
 
-                                reply
-                                    .send(Ok(WorkerResponse::RequestBatches(
-                                        RequestBatchesResponse { batches, is_size_limit_reached },
-                                    )))
-                                    .unwrap();
+                                reply.send(Ok(WorkerResponse::RequestBatches(batches))).unwrap();
                             }
                             _ => {}
                         },

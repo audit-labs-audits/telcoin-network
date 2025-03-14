@@ -477,7 +477,7 @@ where
             (None, None) => self.get_latest_output()?,
         };
 
-        Ok(PrimaryResponse::ConsensusHeader(header))
+        Ok(PrimaryResponse::ConsensusHeader(Arc::new(header)))
     }
 
     /// Retrieve the consensus header by number.

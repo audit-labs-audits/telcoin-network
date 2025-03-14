@@ -12,7 +12,10 @@ use crate::{
 };
 use consensus_metrics::monitored_scope;
 use fastcrypto::hash::Hash as _;
-use std::collections::{HashSet, VecDeque};
+use std::{
+    collections::{HashSet, VecDeque},
+    sync::Arc,
+};
 use tn_config::ConsensusConfig;
 use tn_storage::CertificateStore;
 use tn_types::{
@@ -203,7 +206,7 @@ where
             // start fetching parents
             self.consensus_bus
                 .certificate_fetcher()
-                .send(CertificateFetcherCommand::Ancestors(certificate.clone()))
+                .send(CertificateFetcherCommand::Ancestors(Arc::new(certificate.clone())))
                 .await?;
         }
 

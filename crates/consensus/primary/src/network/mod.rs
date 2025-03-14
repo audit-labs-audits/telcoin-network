@@ -3,6 +3,8 @@
 //! This module includes implementations for when the primary receives network
 //! requests from it's own workers and other primaries.
 
+use std::sync::Arc;
+
 use crate::{proposer::OurDigestMessage, state_sync::StateSynchronizer, ConsensusBus};
 use handler::RequestHandler;
 pub use message::{MissingCertificatesRequest, PrimaryRequest, PrimaryResponse};
@@ -70,7 +72,7 @@ impl PrimaryNetworkHandle {
 
     /// Publish a certificate to the consensus network.
     pub async fn publish_certificate(&self, certificate: Certificate) -> NetworkResult<()> {
-        let data = encode(&PrimaryGossip::Certificate(certificate));
+        let data = encode(&PrimaryGossip::Certificate(Box::new(certificate)));
         self.handle.publish(IdentTopic::new("tn-primary"), data).await?;
         Ok(())
     }
@@ -94,7 +96,7 @@ impl PrimaryNetworkHandle {
         header: Header,
         parents: Vec<Certificate>,
     ) -> NetworkResult<RequestVoteResult> {
-        let request = PrimaryRequest::Vote { header, parents };
+        let request = PrimaryRequest::Vote { header: Arc::new(header), parents };
         let res = self.handle.send_request(request, peer).await?;
         let res = res.await??;
         match res {
@@ -140,7 +142,7 @@ impl PrimaryNetworkHandle {
         let res = self.handle.send_request(request, peer).await?;
         let res = res.await??;
         match res {
-            PrimaryResponse::ConsensusHeader(header) => Ok(header),
+            PrimaryResponse::ConsensusHeader(header) => Ok(Arc::unwrap_or_clone(header)),
             PrimaryResponse::Error(PrimaryRPCError(s)) => Err(NetworkError::RPCError(s)),
             _ => Err(NetworkError::RPCError(
                 "Got wrong response, not a consensus header!".to_string(),
@@ -160,7 +162,7 @@ impl PrimaryNetworkHandle {
             let res = self.handle.send_request_any(request.clone()).await?;
             let res = res.await?;
             if let Ok(PrimaryResponse::ConsensusHeader(header)) = res {
-                return Ok(header);
+                return Ok(Arc::unwrap_or_clone(header));
             }
         }
         Err(NetworkError::RPCError("Could not get the consensus header!".to_string()))
@@ -224,7 +226,13 @@ where
         match event {
             NetworkEvent::Request { peer, request, channel, cancel } => match request {
                 PrimaryRequest::Vote { header, parents } => {
-                    self.process_vote_request(peer, header, parents, channel, cancel);
+                    self.process_vote_request(
+                        peer,
+                        Arc::unwrap_or_clone(header),
+                        parents,
+                        channel,
+                        cancel,
+                    );
                 }
                 PrimaryRequest::MissingCertificates { inner } => {
                     self.process_request_for_missing_certs(peer, inner, channel, cancel)
