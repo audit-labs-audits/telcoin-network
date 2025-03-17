@@ -47,41 +47,32 @@ where
     /// Batch.
     pub(super) async fn process_gossip(&self, msg: &GossipMessage) -> WorkerNetworkResult<()> {
         // deconstruct message
-        let GossipMessage { data, source, sequence_number: _, topic: _ } = msg;
+        let GossipMessage { data, source: _, sequence_number: _, topic: _ } = msg;
 
         // gossip is uncompressed
         let gossip = try_decode(data)?;
 
         match gossip {
             WorkerGossip::Batch(batch_hash) => {
-                // Only accept batch gossip from the committee
-                if let Some(source) = source {
-                    if self.consensus_config.committee_peer_ids().contains(source) {
-                        // Retrieve the block...
-                        let store = self.consensus_config.node_storage();
-                        if !matches!(store.get::<Batches>(&batch_hash), Ok(Some(_))) {
-                            // If we don't have this batch already then try to get it.
-                            // If we are CVV then we should already have it.
-                            // This allows non-CVVs to pre fetch batches they will soon need.
-                            match self.network_handle.request_batches(vec![batch_hash]).await {
-                                Ok(batches) => {
-                                    if let Some(batch) = batches.first() {
-                                        store.insert::<Batches>(&batch.digest(), batch).map_err(
-                                            |e| {
-                                                WorkerNetworkError::Internal(format!(
-                                                    "failed to write to batch store: {e}"
-                                                ))
-                                            },
-                                        )?;
-                                    }
-                                }
-                                Err(e) => {
-                                    tracing::error!(target: "worker:network", "failed to get gossipped batch {batch_hash}: {e}");
-                                }
+                // Retrieve the block...
+                let store = self.consensus_config.node_storage();
+                if !matches!(store.get::<Batches>(&batch_hash), Ok(Some(_))) {
+                    // If we don't have this batch already then try to get it.
+                    // If we are CVV then we should already have it.
+                    // This allows non-CVVs to pre fetch batches they will soon need.
+                    match self.network_handle.request_batches(vec![batch_hash]).await {
+                        Ok(batches) => {
+                            if let Some(batch) = batches.first() {
+                                store.insert::<Batches>(&batch.digest(), batch).map_err(|e| {
+                                    WorkerNetworkError::Internal(format!(
+                                        "failed to write to batch store: {e}"
+                                    ))
+                                })?;
                             }
                         }
-                    } else {
-                        tracing::warn!(target: "worker:network", "recieved batch gossip from a non-committee member! peer: {source}");
+                        Err(e) => {
+                            tracing::error!(target: "worker:network", "failed to get gossipped batch {batch_hash}: {e}");
+                        }
                     }
                 }
             }
