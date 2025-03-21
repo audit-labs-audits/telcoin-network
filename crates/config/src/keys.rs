@@ -8,7 +8,7 @@ use reth_chainspec::ChainSpec;
 use std::sync::Arc;
 use tn_types::{
     encode,
-    traits::{AllowedRng, EncodeDecodeBase64 as _, KeyPair, Signer, ToFromBytes},
+    traits::{AllowedRng, KeyPair, Signer, ToFromBytes},
     BlsKeypair, BlsPublicKey, BlsSignature, BlsSigner, DefaultHashFunction, Intent, IntentMessage,
     IntentScope, NetworkKeypair, NetworkPublicKey, ProtocolSignature as _,
 };
@@ -24,13 +24,24 @@ struct KeyConfigInner {
     worker_network_keypair: NetworkKeypair,
 }
 
-// TODO: audit the use of this struct for leaking private keys, etc...
+/// Basic implementation of a key manager.  This version will read a BLS key
+/// from a file (which is not ideal).  It is intended to be an interface that
+/// can later expand to be backed with something more secure (like an HSM).
+/// It should NOT expose the BLS private key, even though it is currently read
+/// from a file this will not always be the case and all code needing signatures
+/// MUST go through KeyConfig.
+/// NOTE: The two network keys (primary and worker) are derived from the BLS key
+/// and are exposed to other code.  This is required to work with libp2p which
+/// wants the actual private key.  This method of deriving the key is an attempt
+/// to provide some protection to the key- even though it will exist in memory it
+/// does NOT need to be stored on disk or otherwise saved.
 #[derive(Debug, Clone)]
 pub struct KeyConfig {
     inner: Arc<KeyConfigInner>,
 }
 
 impl KeyConfig {
+    /// Read a key config file that contains the primary BLS key in Base 58 format.
     pub fn read_config<TND: TelcoinDirs>(tn_datadir: &TND) -> eyre::Result<Self> {
         // TODO: find a better way to manage keys
         //
@@ -38,8 +49,8 @@ impl KeyConfig {
         let validator_keypath = tn_datadir.validator_keys_path();
         tracing::info!(target: "telcoin::consensus_config", "loading validator keys at {:?}", validator_keypath);
         let contents = std::fs::read_to_string(tn_datadir.validator_keys_path().join(BLS_KEYFILE))?;
-        let primary_keypair =
-            BlsKeypair::decode_base64(contents.as_str().trim()).map_err(|e| eyre::eyre!(e))?;
+        let bytes = bs58::decode(contents.as_str().trim()).into_vec()?;
+        let primary_keypair = BlsKeypair::from_bytes(&bytes)?;
         let primary_network_keypair =
             Self::generate_network_keypair(&primary_keypair, "primary network keypair");
         let worker_network_keypair =
@@ -64,7 +75,7 @@ impl KeyConfig {
             Self::generate_network_keypair(&primary_keypair, "primary network keypair");
         let worker_network_keypair =
             Self::generate_network_keypair(&primary_keypair, "worker network keypair");
-        let contents = primary_keypair.encode_base64();
+        let contents = bs58::encode(primary_keypair.as_bytes()).into_string();
         std::fs::write(tn_datadir.validator_keys_path().join(BLS_KEYFILE), contents)?;
         Ok(Self {
             inner: Arc::new(KeyConfigInner {
@@ -156,6 +167,8 @@ impl KeyConfig {
         Ok(sig)
     }
 
+    /// Derive a NetworkKeypair from a BLS signatur, seed string and blake2 hash.
+    /// This is deterministic for a given keypair and seed_str.
     fn generate_network_keypair(primary_keypair: &BlsKeypair, seed_str: &str) -> NetworkKeypair {
         let mut hasher = DefaultHashFunction::new();
         hasher.update(primary_keypair.sign(seed_str.as_bytes()).as_bytes());
