@@ -1,6 +1,6 @@
 //! Cryptographic keys used by the node.
 
-use crate::{TelcoinDirs, BLS_KEYFILE};
+use crate::{TelcoinDirs, BLS_KEYFILE, PRIMARY_NETWORK_SEED_FILE, WORKER_NETWORK_SEED_FILE};
 use blake2::Digest;
 use rand::{rngs::StdRng, SeedableRng};
 use rand_chacha::ChaCha20Rng;
@@ -49,12 +49,19 @@ impl KeyConfig {
         let validator_keypath = tn_datadir.validator_keys_path();
         tracing::info!(target: "telcoin::consensus_config", "loading validator keys at {:?}", validator_keypath);
         let contents = std::fs::read_to_string(tn_datadir.validator_keys_path().join(BLS_KEYFILE))?;
+        let primary_seed = std::fs::read_to_string(
+            tn_datadir.validator_keys_path().join(PRIMARY_NETWORK_SEED_FILE),
+        )
+        .unwrap_or_else(|_| "primary network keypair".to_string());
+        let worker_seed = std::fs::read_to_string(
+            tn_datadir.validator_keys_path().join(WORKER_NETWORK_SEED_FILE),
+        )
+        .unwrap_or_else(|_| "worker network keypair".to_string());
         let bytes = bs58::decode(contents.as_str().trim()).into_vec()?;
         let primary_keypair = BlsKeypair::from_bytes(&bytes)?;
         let primary_network_keypair =
-            Self::generate_network_keypair(&primary_keypair, "primary network keypair");
-        let worker_network_keypair =
-            Self::generate_network_keypair(&primary_keypair, "worker network keypair");
+            Self::generate_network_keypair(&primary_keypair, &primary_seed);
+        let worker_network_keypair = Self::generate_network_keypair(&primary_keypair, &worker_seed);
         Ok(Self {
             inner: Arc::new(KeyConfigInner {
                 primary_keypair,
@@ -67,16 +74,24 @@ impl KeyConfig {
     /// Generate a new random primary BLS key and save to the config file.
     /// Note, this is not very secure in that it is writing the private key to a file...
     pub fn generate_and_save<TND: TelcoinDirs>(tn_datadir: &TND) -> eyre::Result<Self> {
-        // TODO: discuss with @Utku
         let rng = ChaCha20Rng::from_entropy();
         // note: StdRng uses ChaCha12
         let primary_keypair = BlsKeypair::generate(&mut StdRng::from_rng(rng)?);
+        let primary_seed = "primary network keypair";
+        let worker_seed = "worker network keypair";
         let primary_network_keypair =
-            Self::generate_network_keypair(&primary_keypair, "primary network keypair");
-        let worker_network_keypair =
-            Self::generate_network_keypair(&primary_keypair, "worker network keypair");
+            Self::generate_network_keypair(&primary_keypair, primary_seed);
+        let worker_network_keypair = Self::generate_network_keypair(&primary_keypair, worker_seed);
         let contents = bs58::encode(primary_keypair.as_bytes()).into_string();
         std::fs::write(tn_datadir.validator_keys_path().join(BLS_KEYFILE), contents)?;
+        std::fs::write(
+            tn_datadir.validator_keys_path().join(PRIMARY_NETWORK_SEED_FILE),
+            primary_seed,
+        )?;
+        std::fs::write(
+            tn_datadir.validator_keys_path().join(WORKER_NETWORK_SEED_FILE),
+            worker_seed,
+        )?;
         Ok(Self {
             inner: Arc::new(KeyConfigInner {
                 primary_keypair,
@@ -167,7 +182,7 @@ impl KeyConfig {
         Ok(sig)
     }
 
-    /// Derive a NetworkKeypair from a BLS signatur, seed string and blake2 hash.
+    /// Derive a NetworkKeypair from a BLS signature, seed string and [DefaultHashFunction].
     /// This is deterministic for a given keypair and seed_str.
     fn generate_network_keypair(primary_keypair: &BlsKeypair, seed_str: &str) -> NetworkKeypair {
         let mut hasher = DefaultHashFunction::new();

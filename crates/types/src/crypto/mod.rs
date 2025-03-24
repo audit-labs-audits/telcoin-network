@@ -15,11 +15,11 @@ use fastcrypto::{
     traits::{AggregateAuthenticator, KeyPair, Signer, ToFromBytes, VerifyingKey},
 };
 use libp2p::PeerId;
-use std::{fmt, future::Future, ops::Deref};
+use std::future::Future;
 // This re-export allows using the trait-defined APIs
 pub use fastcrypto::traits;
 use reth_chainspec::ChainSpec;
-use serde::{Deserialize, Serialize};
+use serde::Serialize;
 mod intent;
 mod network;
 use crate::encode;
@@ -43,16 +43,6 @@ pub type BlsAggregateSignatureBytes = bls12381::min_sig::BLS12381AggregateSignat
 pub type BlsPrivateKey = bls12381::min_sig::BLS12381PrivateKey;
 /// Validator's main protocol keypair.
 pub type BlsKeypair = bls12381::min_sig::BLS12381KeyPair;
-//
-// NETWORK
-//
-/// Public key used to sign network messages between peers during consensus.
-#[derive(Clone, Debug, PartialEq, Eq, Hash, PartialOrd, Ord)]
-pub struct NetworkPublicKey(libp2p::identity::PublicKey);
-/// Keypair used to sign network messages between peers during consensus.
-pub type NetworkKeypair = libp2p::identity::Keypair;
-/// Signature using network key.
-pub type NetworkSignature = Vec<u8>;
 
 //
 // EXECUTION
@@ -66,86 +56,6 @@ pub type ExecutionKeypair = secp256k1::Keypair;
 pub type DefaultHashFunction = blake2::Blake2b<U32>;
 pub const DIGEST_LENGTH: usize = 32;
 pub const INTENT_MESSAGE_LENGTH: usize = INTENT_PREFIX_LENGTH + DIGEST_LENGTH;
-
-impl NetworkPublicKey {}
-
-impl From<libp2p::identity::PublicKey> for NetworkPublicKey {
-    fn from(value: libp2p::identity::PublicKey) -> Self {
-        Self(value)
-    }
-}
-
-impl From<NetworkPublicKey> for libp2p::identity::PublicKey {
-    fn from(value: NetworkPublicKey) -> Self {
-        value.0
-    }
-}
-
-impl Deref for NetworkPublicKey {
-    type Target = libp2p::identity::PublicKey;
-
-    fn deref(&self) -> &Self::Target {
-        &self.0
-    }
-}
-
-impl Serialize for NetworkPublicKey {
-    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
-    where
-        S: serde::Serializer,
-    {
-        if serializer.is_human_readable() {
-            serializer.serialize_str(&bs58::encode(self.encode_protobuf()).into_string())
-        } else {
-            serializer.serialize_bytes(&self.encode_protobuf()[..])
-        }
-    }
-}
-
-impl<'de> Deserialize<'de> for NetworkPublicKey {
-    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
-    where
-        D: serde::Deserializer<'de>,
-    {
-        use serde::de::*;
-
-        struct NetworkPublicKeyVisitor;
-
-        impl Visitor<'_> for NetworkPublicKeyVisitor {
-            type Value = NetworkPublicKey;
-
-            fn expecting(&self, f: &mut fmt::Formatter) -> fmt::Result {
-                write!(f, "valid network public key")
-            }
-
-            fn visit_bytes<E>(self, v: &[u8]) -> Result<Self::Value, E>
-            where
-                E: Error,
-            {
-                Ok(NetworkPublicKey(
-                    libp2p::identity::PublicKey::try_decode_protobuf(v)
-                        .map_err(|_| Error::invalid_value(Unexpected::Bytes(v), &self))?,
-                ))
-            }
-
-            fn visit_str<E>(self, v: &str) -> Result<Self::Value, E>
-            where
-                E: Error,
-            {
-                let bytes = bs58::decode(v)
-                    .into_vec()
-                    .map_err(|_| Error::invalid_value(Unexpected::Str(v), &self))?;
-                self.visit_bytes(&bytes)
-            }
-        }
-
-        if deserializer.is_human_readable() {
-            deserializer.deserialize_str(NetworkPublicKeyVisitor)
-        } else {
-            deserializer.deserialize_bytes(NetworkPublicKeyVisitor)
-        }
-    }
-}
 
 /// Trait to implement Bls key signing.  This allows us to maintain private keys in a
 /// secure enclave and provide a signing service.
