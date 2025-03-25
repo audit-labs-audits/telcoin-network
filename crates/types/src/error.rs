@@ -1,10 +1,9 @@
 //! Error types whenn validating types during consensus.
 
 use crate::{
-    crypto, BlockNumHash, CertificateDigest, Epoch, HeaderDigest, Round, SendError, TimestampSec,
-    VoteDigest, WorkerId,
+    crypto, BlockNumHash, CertificateDigest, Digest, Epoch, HeaderDigest, Round, SendError,
+    TimestampSec, VoteDigest, WorkerId,
 };
-use fastcrypto::hash::Digest;
 use libp2p::PeerId;
 use std::sync::Arc;
 use thiserror::Error;

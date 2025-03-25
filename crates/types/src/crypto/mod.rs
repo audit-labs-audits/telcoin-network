@@ -7,7 +7,7 @@
 //! - use generic schemes (avoid using the algo's `Struct`` impl functions)
 //! - change type aliases to update codebase with new crypto
 
-use std::future::Future;
+use std::{fmt, future::Future};
 
 use blake2::digest::consts::U32;
 use libp2p::PeerId;
@@ -23,6 +23,97 @@ pub use bls_public_key::*;
 pub use bls_signature::*;
 pub use intent::*;
 pub use network::*;
+use serde::{Deserialize, Serialize};
+use serde_with::serde_as;
+
+/// Represents a digest of `DIGEST_LEN` bytes.
+#[serde_as]
+#[derive(Hash, PartialEq, Eq, Clone, Serialize, Deserialize, Ord, PartialOrd, Copy)]
+pub struct Digest<const DIGEST_LEN: usize> {
+    #[serde_as(as = "[_; DIGEST_LEN]")]
+    pub digest: [u8; DIGEST_LEN],
+}
+
+impl<const DIGEST_LEN: usize> Digest<DIGEST_LEN> {
+    /// Create a new digest containing the given bytes
+    pub fn new(digest: [u8; DIGEST_LEN]) -> Self {
+        Digest { digest }
+    }
+
+    /// Copy the digest into a new vector.
+    pub fn to_vec(&self) -> Vec<u8> {
+        self.digest.to_vec()
+    }
+
+    /// The size of this digest in bytes.
+    pub fn size(&self) -> usize {
+        DIGEST_LEN
+    }
+}
+
+impl<const DIGEST_LEN: usize> fmt::Debug for Digest<DIGEST_LEN> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> Result<(), fmt::Error> {
+        write!(f, "{}", bs58::encode(self.digest).into_string())
+    }
+}
+
+impl<const DIGEST_LEN: usize> fmt::Display for Digest<DIGEST_LEN> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> Result<(), fmt::Error> {
+        write!(f, "{}", bs58::encode(self.digest).into_string())
+    }
+}
+
+impl<const DIGEST_LEN: usize> AsRef<[u8]> for Digest<DIGEST_LEN> {
+    fn as_ref(&self) -> &[u8] {
+        self.digest.as_ref()
+    }
+}
+
+impl<const DIGEST_LEN: usize> From<Digest<DIGEST_LEN>> for [u8; DIGEST_LEN] {
+    fn from(digest: Digest<DIGEST_LEN>) -> Self {
+        digest.digest
+    }
+}
+
+/// Trait implemented by hash functions providing a output of fixed length
+pub trait HashFunction<const DIGEST_LENGTH: usize>: Default {
+    /// The length of this hash functions digests in bytes.
+    const OUTPUT_SIZE: usize = DIGEST_LENGTH;
+
+    /// Create a new hash function of the given type
+    fn new() -> Self {
+        Self::default()
+    }
+
+    /// Process the given data, and update the internal of the hash function.
+    fn update<Data: AsRef<[u8]>>(&mut self, data: Data);
+
+    /// Retrieve result and consume hash function.
+    fn finalize(self) -> Digest<DIGEST_LENGTH>;
+
+    /// Compute the digest of the given data and consume the hash function.
+    fn digest<Data: AsRef<[u8]>>(data: Data) -> Digest<DIGEST_LENGTH> {
+        let mut h = Self::default();
+        h.update(data);
+        h.finalize()
+    }
+
+    /// Compute a single digest from all slices in the iterator in order and consume the hash
+    /// function.
+    fn digest_iterator<K: AsRef<[u8]>, I: Iterator<Item = K>>(iter: I) -> Digest<DIGEST_LENGTH> {
+        let mut h = Self::default();
+        iter.into_iter().for_each(|chunk| h.update(chunk.as_ref()));
+        h.finalize()
+    }
+}
+
+/// This trait is implemented by all messages that can be hashed.
+pub trait Hash<const DIGEST_LEN: usize> {
+    /// The type of the digest when this is hashed.
+    type TypedDigest: Into<Digest<DIGEST_LEN>> + Eq + std::hash::Hash + Copy + fmt::Debug;
+
+    fn digest(&self) -> Self::TypedDigest;
+}
 
 /// Trait impl'd by a key/keypair that can create signatures.
 pub trait Signer {

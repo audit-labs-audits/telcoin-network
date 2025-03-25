@@ -2,10 +2,10 @@
 
 use crate::{
     crypto::{self, to_intent_message, BlsSignature, IntentMessage, ProtocolSignature},
-    encode, AuthorityIdentifier, BlsSigner, Epoch, Header, HeaderDigest, Round, Signer,
+    encode, AuthorityIdentifier, BlsSigner, Digest, Epoch, Hash, Header, HeaderDigest, Round,
+    Signer,
 };
 use base64::{engine::general_purpose, Engine};
-use fastcrypto::hash::{Digest, Hash};
 use serde::{Deserialize, Serialize};
 use std::fmt;
 
@@ -122,7 +122,6 @@ impl From<VoteDigest> for HeaderDigest {
 
 impl From<VoteDigest> for Digest<{ crypto::INTENT_MESSAGE_LENGTH }> {
     fn from(digest: VoteDigest) -> Self {
-        // let intent_message = to_intent_message(HeaderDigest(digest.0));
         let intent_message: IntentMessage<HeaderDigest> = to_intent_message(digest.into());
         Digest {
             digest: encode(&intent_message).try_into().expect("INTENT_MESSAGE_LENGTH is correct"),

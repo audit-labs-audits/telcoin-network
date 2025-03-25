@@ -236,8 +236,6 @@ tn-primary-metrics = { path = "./crates/consensus/primary-metrics" }
 tn-utils = { path = "./crates/tn-utils" }
 
 # misc
-fastcrypto = { git = "https://github.com/MystenLabs/fastcrypto", rev = "802c1ac98061687d6ce024849c747a250dbeea52" }
-fastcrypto-tbls = { git = "https://github.com/MystenLabs/fastcrypto", rev = "802c1ac98061687d6ce024849c747a250dbeea52" }
 match_opt = "0.1.2"
 serde = { version = "^1.0", features = ["derive", "rc"] }
 serde_repr = "0.1"

@@ -8,13 +8,14 @@ use crate::{
     ConsensusBus,
 };
 use assert_matches::assert_matches;
-use fastcrypto::hash::Hash;
 use itertools::Itertools;
 use std::{collections::BTreeSet, time::Duration};
 use tn_network_libp2p::types::{NetworkCommand, NetworkHandle};
 use tn_storage::{mem_db::MemDatabase, CertificateStore, PayloadStore};
 use tn_test_utils::CommitteeFixture;
-use tn_types::{BlsSignature, Certificate, Header, SignatureVerificationState, TaskManager};
+use tn_types::{
+    BlsSignature, Certificate, Hash as _, Header, SignatureVerificationState, TaskManager,
+};
 use tokio::{
     sync::mpsc::{self, error::TryRecvError},
     time::sleep,

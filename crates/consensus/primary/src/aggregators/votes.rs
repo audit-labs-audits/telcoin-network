@@ -1,13 +1,12 @@
 //! Aggregate votes after proposing a header.
 
-use fastcrypto::hash::{Digest, Hash};
 use std::{collections::HashSet, sync::Arc};
 use tn_primary_metrics::PrimaryMetrics;
 use tn_types::{
     ensure,
     error::{DagError, DagResult},
     to_intent_message, AuthorityIdentifier, BlsAggregateSignature, BlsSignature, Certificate,
-    Committee, Header, ProtocolSignature, SignatureVerificationState, Stake,
+    Committee, Digest, Hash as _, Header, ProtocolSignature, SignatureVerificationState, Stake,
     ValidatorAggregateSignature, Vote,
 };
 use tracing::{trace, warn};

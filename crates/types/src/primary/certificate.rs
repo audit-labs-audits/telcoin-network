@@ -12,11 +12,10 @@ use crate::{
     error::{CertificateError, CertificateResult, DagError, DagResult, HeaderError},
     now,
     serde::CertificateSignatures,
-    AuthorityIdentifier, BlockHash, Committee, Epoch, Header, Round, Stake, TimestampSec,
-    WorkerCache,
+    AuthorityIdentifier, BlockHash, Committee, Digest, Epoch, Hash, Header, Round, Stake,
+    TimestampSec, WorkerCache,
 };
 use base64::{engine::general_purpose, Engine};
-use fastcrypto::hash::{Digest, Hash};
 use serde::{Deserialize, Serialize};
 use serde_with::serde_as;
 use std::{collections::VecDeque, fmt};
@@ -453,7 +452,9 @@ pub fn validate_received_certificate(
 }
 
 /// Certificate digest.
-#[derive(Clone, Copy, Serialize, Deserialize, Default, PartialEq, Eq, Hash, PartialOrd, Ord)]
+#[derive(
+    Clone, Copy, Serialize, Deserialize, Default, PartialEq, Eq, std::hash::Hash, PartialOrd, Ord,
+)]
 pub struct CertificateDigest([u8; crypto::DIGEST_LENGTH]);
 
 impl CertificateDigest {

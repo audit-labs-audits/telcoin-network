@@ -37,8 +37,6 @@ thiserror = { workspace = true }
 tokio = { workspace = true, features = ["sync", "rt", "macros", "signal"] }
 tracing = { workspace = true }
 eyre = { workspace = true }
-fastcrypto = { workspace = true, features = ["copy_key"] }
-fastcrypto-tbls = { workspace = true }
 once_cell = { workspace = true }
 match_opt = { workspace = true }
 multiaddr = { workspace = true }

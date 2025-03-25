@@ -5,7 +5,6 @@ use crate::{
     error::{CommitteeUpdateError, ConfigError},
     Address, Multiaddr,
 };
-use fastcrypto::serde_helpers::ToFromByteArray;
 use rand::{rngs::StdRng, seq::SliceRandom, SeedableRng};
 use serde::{Deserialize, Serialize};
 use std::{
@@ -305,26 +304,6 @@ impl Committee {
     /// Returns the keys in the committee
     pub fn keys(&self) -> Vec<BlsPublicKey> {
         self.authorities.keys().cloned().collect::<Vec<BlsPublicKey>>()
-    }
-
-    /// Returns info from the committee needed for randomness DKG.
-    pub fn randomness_dkg_info(
-        &self,
-    ) -> Vec<(
-        AuthorityIdentifier,
-        fastcrypto_tbls::ecies::PublicKey<fastcrypto::groups::bls12381::G2Element>,
-        Stake,
-    )> {
-        self.authorities_by_id
-            .iter()
-            .map(|(id, authority)| {
-                let pk = fastcrypto::groups::bls12381::G2Element::from_byte_array(
-                    authority.protocol_key().as_ref().try_into().expect("key length should match"),
-                )
-                .expect("should work to convert BLS key to G2Element");
-                (*id, fastcrypto_tbls::ecies::PublicKey::from(pk), authority.stake())
-            })
-            .collect()
     }
 
     pub fn authorities(&self) -> impl Iterator<Item = &Authority> {

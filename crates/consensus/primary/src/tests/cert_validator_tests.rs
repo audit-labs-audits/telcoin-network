@@ -5,12 +5,12 @@ use crate::{
     state_sync::{AtomicRound, CertificateManagerCommand},
     ConsensusBus,
 };
-use fastcrypto::hash::Hash as _;
 use std::collections::BTreeSet;
 use tn_storage::mem_db::MemDatabase;
 use tn_test_utils::{make_optimal_signed_certificates, CommitteeFixture};
 use tn_types::{
-    BlsSignature, Certificate, Round, SignatureVerificationState, TnReceiver as _, TnSender,
+    BlsSignature, Certificate, Hash as _, Round, SignatureVerificationState, TnReceiver as _,
+    TnSender,
 };
 
 struct TestTypes<DB = MemDatabase> {
