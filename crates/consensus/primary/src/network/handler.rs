@@ -165,10 +165,8 @@ where
             let verified = parents
                 .into_iter()
                 .map(|mut cert| {
-                    let sig = cert
-                        .aggregated_signature()
-                        .cloned()
-                        .ok_or(HeaderError::ParentMissingSignature)?;
+                    let sig =
+                        cert.aggregated_signature().ok_or(HeaderError::ParentMissingSignature)?;
                     cert.set_signature_verification_state(SignatureVerificationState::Unverified(
                         sig,
                     ));

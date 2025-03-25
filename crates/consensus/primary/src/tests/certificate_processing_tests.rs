@@ -11,7 +11,7 @@ use crate::{
     ConsensusBus,
 };
 use assert_matches::assert_matches;
-use fastcrypto::{hash::Hash as _, traits::KeyPair};
+use fastcrypto::hash::Hash as _;
 use std::{collections::BTreeSet, time::Duration};
 use tn_storage::{mem_db::MemDatabase, CertificateStore};
 use tn_test_utils::{

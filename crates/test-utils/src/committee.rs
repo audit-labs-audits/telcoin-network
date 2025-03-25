@@ -159,7 +159,7 @@ impl<DB: Database> CommitteeFixture<DB> {
     pub fn certificate(&self, header: &Header) -> Certificate {
         let committee = self.committee();
         let votes: Vec<_> =
-            self.votes(header).into_iter().map(|x| (x.author(), x.signature().clone())).collect();
+            self.votes(header).into_iter().map(|x| (x.author(), *x.signature())).collect();
         Certificate::new_unverified(&committee, header.clone(), votes).unwrap()
     }
 

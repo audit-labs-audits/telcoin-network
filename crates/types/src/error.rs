@@ -4,7 +4,7 @@ use crate::{
     crypto, BlockNumHash, CertificateDigest, Epoch, HeaderDigest, Round, SendError, TimestampSec,
     VoteDigest, WorkerId,
 };
-use fastcrypto::{error::FastCryptoError, hash::Digest};
+use fastcrypto::hash::Digest;
 use libp2p::PeerId;
 use std::sync::Arc;
 use thiserror::Error;
@@ -299,7 +299,7 @@ pub enum CertificateError {
     Inquorate { stake: u64, threshold: u64 },
     /// The BLS aggregate signature is invalid
     #[error("Invalid aggregate signature")]
-    InvalidSignature(#[from] FastCryptoError),
+    InvalidSignature,
     /// The certificates's round is too far behind.
     #[error("Certificate {0} for round {1} is too old for GC round {2}")]
     TooOld(CertificateDigest, Round, Round),

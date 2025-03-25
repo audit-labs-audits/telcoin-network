@@ -1,7 +1,7 @@
 //! Helper methods for creating useful structs during tests.
 
 use crate::execution::TransactionFactory;
-use fastcrypto::{hash::Hash, traits::KeyPair as _};
+use fastcrypto::hash::Hash;
 use indexmap::IndexMap;
 use rand::{
     distributions::Bernoulli, prelude::Distribution, rngs::StdRng, thread_rng, Rng, RngCore,

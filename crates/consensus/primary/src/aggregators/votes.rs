@@ -48,7 +48,7 @@ impl VotesAggregator {
         ensure!(self.authorities_seen.insert(author), DagError::AuthorityReuse(author.to_string()));
 
         // accumulate vote and voting power
-        self.votes.push((author, vote.signature().clone()));
+        self.votes.push((author, *vote.signature()));
         self.weight += committee.stake_by_id(author);
 
         // update metrics
@@ -64,21 +64,19 @@ impl VotesAggregator {
                 Digest::from(cert.digest());
 
             // check aggregate signature verification
-            if let Err(e) = BlsAggregateSignature::try_from(
-                cert.aggregated_signature().ok_or(DagError::InvalidSignature)?,
+            if !BlsAggregateSignature::from_signature(
+                &cert.aggregated_signature().ok_or(DagError::InvalidSignature)?,
             )
-            .map_err(|_| DagError::InvalidSignature)?
             .verify_secure(&to_intent_message(certificate_digest), &pks[..])
             {
                 warn!(
                     target: "primary::votes_aggregator",
-                    ?e,
                     ?certificate_digest,
                     "Failed to verify aggregated sig on certificate",
                 );
                 self.votes.retain(|(id, sig)| {
                     let pk = committee.authority_safe(id).protocol_key();
-                    if sig.verify_secure(&to_intent_message(certificate_digest), pk).is_err() {
+                    if !sig.verify_secure(&to_intent_message(certificate_digest), pk) {
                         warn!(target: "primary::votes_aggregator", "Invalid signature on header from authority: {}", id);
                         self.weight -= committee.stake(pk);
                         false
@@ -93,7 +91,7 @@ impl VotesAggregator {
                 // cert signature verified
                 cert.set_signature_verification_state(
                     SignatureVerificationState::VerifiedDirectly(
-                        cert.aggregated_signature().ok_or(DagError::InvalidSignature)?.clone(),
+                        cert.aggregated_signature().ok_or(DagError::InvalidSignature)?,
                     ),
                 );
 

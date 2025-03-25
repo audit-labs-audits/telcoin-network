@@ -1,7 +1,7 @@
 //! Authority fixture for the cluster
 
 use crate::WorkerFixture;
-use fastcrypto::{hash::Hash, traits::KeyPair as _};
+use fastcrypto::hash::Hash;
 use std::num::NonZeroUsize;
 use tn_config::{Config, ConsensusConfig, KeyConfig};
 use tn_types::{

@@ -8,7 +8,7 @@ use crate::{
     state_sync::StateSynchronizer,
     ConsensusBus,
 };
-use fastcrypto::{hash::Hash, traits::KeyPair as _};
+use fastcrypto::hash::Hash;
 use itertools::Itertools;
 use std::{
     collections::{BTreeSet, HashMap, HashSet},

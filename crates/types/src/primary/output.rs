@@ -225,8 +225,7 @@ impl CommittedSubDag {
                 cert.set_signature_verification_state(
                     SignatureVerificationState::VerifiedIndirectly(
                         cert.aggregated_signature()
-                            .ok_or(CertificateError::RecoverBlsAggregateSignatureBytes)?
-                            .clone(),
+                            .ok_or(CertificateError::RecoverBlsAggregateSignatureBytes)?,
                     ),
                 );
                 new_certs.push(cert);

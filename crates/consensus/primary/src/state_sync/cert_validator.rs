@@ -364,8 +364,7 @@ where
     fn mark_verified_indirectly(&self, cert: &mut Certificate) -> CertManagerResult<()> {
         cert.set_signature_verification_state(SignatureVerificationState::VerifiedIndirectly(
             cert.aggregated_signature()
-                .ok_or(CertificateError::RecoverBlsAggregateSignatureBytes)?
-                .clone(),
+                .ok_or(CertificateError::RecoverBlsAggregateSignatureBytes)?,
         ));
 
         Ok(())

@@ -1717,12 +1717,13 @@ dependencies = [
 
 [[package]]
 name = "blst"
-version = "0.3.13"
+version = "0.3.14"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "4378725facc195f1a538864863f6de233b500a8862747e7f165078a419d5e874"
+checksum = "47c79a94619fade3c0b887670333513a67ac28a6a7e653eb260bf0d4103db38d"
 dependencies = [
  "cc",
  "glob",
+ "serde",
  "threadpool",
  "zeroize",
 ]
@@ -12330,12 +12331,14 @@ dependencies = [
  "bcs",
  "bincode",
  "blake2",
+ "blst",
  "bs58 0.5.1",
  "derive_builder",
  "eyre",
  "fastcrypto",
  "fastcrypto-tbls",
  "futures",
+ "hex",
  "indexmap 2.7.1",
  "libp2p",
  "match_opt",

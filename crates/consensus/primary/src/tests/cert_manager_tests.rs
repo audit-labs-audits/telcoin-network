@@ -3,7 +3,7 @@
 use super::CertificateManager;
 use crate::{error::CertManagerError, state_sync::AtomicRound, ConsensusBus};
 use assert_matches::assert_matches;
-use fastcrypto::{hash::Hash as _, traits::KeyPair};
+use fastcrypto::hash::Hash as _;
 use std::collections::BTreeSet;
 use tn_storage::mem_db::MemDatabase;
 use tn_test_utils::{make_optimal_signed_certificates, CommitteeFixture};

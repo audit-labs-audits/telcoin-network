@@ -5,13 +5,12 @@ use crate::{
     state_sync::{AtomicRound, CertificateManagerCommand},
     ConsensusBus,
 };
-use fastcrypto::{hash::Hash as _, traits::KeyPair};
+use fastcrypto::hash::Hash as _;
 use std::collections::BTreeSet;
 use tn_storage::mem_db::MemDatabase;
 use tn_test_utils::{make_optimal_signed_certificates, CommitteeFixture};
 use tn_types::{
-    BlsAggregateSignatureBytes, Certificate, Round, SignatureVerificationState, TnReceiver as _,
-    TnSender,
+    BlsSignature, Certificate, Round, SignatureVerificationState, TnReceiver as _, TnSender,
 };
 
 struct TestTypes<DB = MemDatabase> {
@@ -158,7 +157,7 @@ async fn test_process_fetched_certificates_in_parallel() -> eyre::Result<()> {
         let mut cert = cert.clone();
         if cert.round() != LEAF_ROUND {
             cert.set_signature_verification_state(SignatureVerificationState::Unverified(
-                BlsAggregateSignatureBytes::default(),
+                BlsSignature::default(),
             ));
         }
         certs.push(cert);
@@ -175,7 +174,7 @@ async fn test_process_fetched_certificates_in_parallel() -> eyre::Result<()> {
         let mut cert = cert.clone();
         if round == VERIFICATION_ROUND || round == LEAF_ROUND {
             cert.set_signature_verification_state(SignatureVerificationState::Unverified(
-                BlsAggregateSignatureBytes::default(),
+                BlsSignature::default(),
             ));
         }
         certs.push(cert);
@@ -192,7 +191,7 @@ async fn test_process_fetched_certificates_in_parallel() -> eyre::Result<()> {
         let mut cert = cert.clone();
         if r != VERIFICATION_ROUND && r != LEAF_ROUND {
             cert.set_signature_verification_state(SignatureVerificationState::Unverified(
-                BlsAggregateSignatureBytes::default(),
+                BlsSignature::default(),
             ));
         }
         certs.push(cert);
