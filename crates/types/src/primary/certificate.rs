@@ -410,23 +410,23 @@ impl From<&Certificate> for Vec<u8> {
 ///    - `VerifiedDirectly` status with different signature bytes than what was actually verified
 ///    - an unsigned state containing signature bytes
 ///    - a verified state with missing/corrupted signature bytes
-#[derive(Clone, Serialize, Deserialize, Debug)]
+#[derive(Copy, Clone, Serialize, Deserialize, Debug)]
 pub enum SignatureVerificationState {
-    // This state occurs when the certificate has not yet received a quorum of
-    // signatures.
+    /// This state occurs when the certificate has not yet received a quorum of
+    /// signatures.
     Unsigned(BlsSignature),
-    // This state occurs when a certificate has just been received from the network
-    // and has not been verified yet.
+    /// This state occurs when a certificate has just been received from the network
+    /// and has not been verified yet.
     Unverified(BlsSignature),
-    // This state occurs when a certificate was either created locally, received
-    // via brodacast, or fetched but was not the parent of another certificate.
-    // Therefore this certificate had to be verified directly.
+    /// This state occurs when a certificate was either created locally, received
+    /// via brodacast, or fetched but was not the parent of another certificate.
+    /// Therefore this certificate had to be verified directly.
     VerifiedDirectly(BlsSignature),
-    // This state occurs when the cert was a parent of another fetched certificate
-    // that was verified directly, then this certificate is verified indirectly.
+    /// This state occurs when the cert was a parent of another fetched certificate
+    /// that was verified directly, then this certificate is verified indirectly.
     VerifiedIndirectly(BlsSignature),
-    // This state occurs only for genesis certificates which always has valid
-    // signatures bytes but the bytes are garbage so we don't mark them as verified.
+    /// This state occurs only for genesis certificates which always has valid
+    /// signatures bytes but the bytes are garbage so we don't mark them as verified.
     Genesis,
 }
 
