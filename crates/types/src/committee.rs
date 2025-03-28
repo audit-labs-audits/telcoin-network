@@ -135,10 +135,9 @@ impl CommitteeInner {
     pub fn load(&mut self) {
         self.authorities_by_id = self
             .authorities
-            .iter()
-            .map(|(_key, authority)| {
+            .values()
+            .map(|authority| {
                 let id = authority.id();
-
                 (id, authority.clone())
             })
             .collect();
