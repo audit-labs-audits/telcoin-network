@@ -12,8 +12,8 @@ use crate::{
     error::{CertificateError, CertificateResult, DagError, DagResult, HeaderError},
     now,
     serde::CertificateSignatures,
-    AuthorityIdentifier, BlockHash, Committee, Digest, Epoch, Hash, Header, Round, Stake,
-    TimestampSec, WorkerCache,
+    AuthorityIdentifier, BlockHash, Committee, Digest, Epoch, Hash, Header, Round, TimestampSec,
+    VotingPower, WorkerCache,
 };
 use base64::{engine::general_purpose, Engine};
 use serde::{Deserialize, Serialize};
@@ -158,7 +158,7 @@ impl Certificate {
 
     /// Return the total stake and group of authorities that formed the committee for this
     /// certificate.
-    pub fn signed_by(&self, committee: &Committee) -> (Stake, Vec<BlsPublicKey>) {
+    pub fn signed_by(&self, committee: &Committee) -> (VotingPower, Vec<BlsPublicKey>) {
         // Ensure the certificate has a quorum.
         let mut weight = 0;
 

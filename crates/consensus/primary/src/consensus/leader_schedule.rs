@@ -10,7 +10,7 @@ use std::{
 };
 use tn_storage::ConsensusStore;
 use tn_types::{
-    Authority, AuthorityIdentifier, Certificate, Committee, ReputationScores, Round, Stake,
+    Authority, AuthorityIdentifier, Certificate, Committee, ReputationScores, Round, VotingPower,
 };
 use tracing::{debug, trace};
 
@@ -38,9 +38,9 @@ impl Debug for LeaderSwapTable {
             "LeaderSwapTable round:{}, good_nodes:{:?} with stake:{}, bad_nodes:{:?} with stake:{}",
             self.round,
             self.good_nodes.iter().map(|a| a.id()).collect::<Vec<AuthorityIdentifier>>(),
-            self.good_nodes.iter().map(|a| a.stake()).sum::<Stake>(),
+            self.good_nodes.iter().map(|a| a.stake()).sum::<VotingPower>(),
             self.bad_nodes.iter().map(|a| *a.0).collect::<Vec<AuthorityIdentifier>>(),
-            self.bad_nodes.iter().map(|a| a.1.stake()).sum::<Stake>(),
+            self.bad_nodes.iter().map(|a| a.1.stake()).sum::<VotingPower>(),
         ))
     }
 }
@@ -161,7 +161,7 @@ impl LeaderSwapTable {
 
             // if the total accumulated stake has surpassed the stake threshold then we omit this
             // last authority and we exit the loop.
-            if stake > (stake_threshold * committee.total_stake()) / 100 as Stake {
+            if stake > (stake_threshold * committee.total_stake()) / 100 as VotingPower {
                 break;
             }
             if let Some(auth) = committee.authority(&authority_id) {

@@ -6,8 +6,8 @@ use tn_types::{
     ensure,
     error::{DagError, DagResult},
     to_intent_message, AuthorityIdentifier, BlsAggregateSignature, BlsSignature, Certificate,
-    Committee, Digest, Hash as _, Header, ProtocolSignature, SignatureVerificationState, Stake,
-    ValidatorAggregateSignature, Vote,
+    Committee, Digest, Hash as _, Header, ProtocolSignature, SignatureVerificationState,
+    ValidatorAggregateSignature, Vote, VotingPower,
 };
 use tracing::{trace, warn};
 
@@ -16,7 +16,7 @@ pub(crate) struct VotesAggregator {
     /// The accumulated amount of voting power in favor of a proposed header.
     ///
     /// This amount is used to verify enough voting power to reach quorum within the committee.
-    weight: Stake,
+    weight: VotingPower,
     /// The vote received from a peer.
     votes: Vec<(AuthorityIdentifier, BlsSignature)>,
     /// The collection of authority ids that have already voted.
