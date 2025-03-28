@@ -292,7 +292,7 @@ pub fn make_certificates_with_parameters(
     // Pick the slow nodes - ensure we don't have more than 33% of slow nodes
     assert!(modes.slow_nodes_percentage <= 0.33, "Slow nodes can't be more than 33% of total nodes - otherwise we'll basically simulate a consensus stall");
 
-    let mut authorities: Vec<Authority> = committee.authorities().cloned().collect();
+    let mut authorities: Vec<Authority> = committee.authorities();
 
     // Now shuffle authorities and pick the slow nodes, if should exist
     authorities.shuffle(&mut rand);

@@ -43,6 +43,7 @@ impl Certificate {
     pub fn genesis(committee: &Committee) -> Vec<Self> {
         committee
             .authorities()
+            .iter()
             .map(|authority| Self {
                 header: Header {
                     author: authority.id(),
@@ -85,8 +86,9 @@ impl Certificate {
         let mut weight = 0;
         let mut sigs = Vec::new();
 
-        let filtered_votes = committee
-            .authorities()
+        let auths = committee.authorities();
+        let filtered_votes = auths
+            .iter()
             .enumerate()
             .filter(|(_, authority)| {
                 if !votes.is_empty() && authority.id() == votes.front().expect("votes not empty").0
@@ -164,6 +166,7 @@ impl Certificate {
         let mut auth_iter = 0;
         let pks = committee
             .authorities()
+            .iter()
             .enumerate()
             .filter(|(i, authority)| match auth_indexes.get(auth_iter) {
                 Some(index) if *index == *i as u32 => {

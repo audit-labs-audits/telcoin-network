@@ -2,15 +2,16 @@
 
 use crate::{
     crypto::{BlsPublicKey, NetworkPublicKey},
-    error::{CommitteeUpdateError, ConfigError},
     Address, Multiaddr,
 };
+use parking_lot::RwLock;
 use rand::{rngs::StdRng, seq::SliceRandom, SeedableRng};
 use serde::{Deserialize, Serialize};
 use std::{
-    collections::{BTreeMap, HashSet},
+    collections::BTreeMap,
     fmt::{Display, Formatter},
     num::NonZeroU64,
+    sync::Arc,
 };
 
 /// The epoch number.
@@ -140,11 +141,8 @@ impl Authority {
 }
 
 /// The committee lists all validators that participate in consensus.
-///
-/// TODO: remove default? Added for compatibility with [ConfigTrait].
-/// Probably a better way to do this.
 #[derive(Clone, Serialize, Deserialize, Debug, Eq, PartialEq, Default)]
-pub struct Committee {
+struct CommitteeInner {
     /// The authorities of epoch.
     authorities: BTreeMap<BlsPublicKey, Authority>,
     /// Keeps and index of the Authorities by their respective identifier
@@ -159,6 +157,77 @@ pub struct Committee {
     #[serde(skip)]
     validity_threshold: Stake,
 }
+
+impl CommitteeInner {
+    /// Updates the committee internal secondary indexes.
+    pub fn load(&mut self) {
+        self.authorities_by_id = (0_u16..)
+            .zip(self.authorities.iter_mut())
+            .map(|(identifier, (_key, authority))| {
+                let id = AuthorityIdentifier(identifier);
+                authority.initialise(id);
+
+                (id, authority.clone())
+            })
+            .collect();
+
+        self.validity_threshold = self.calculate_validity_threshold().get();
+        self.quorum_threshold = self.calculate_quorum_threshold().get();
+        assert!(self.authorities_by_id.len() > 1, "committee size must be larger that 1");
+    }
+
+    fn calculate_quorum_threshold(&self) -> NonZeroU64 {
+        // If N = 3f + 1 + k (0 <= k < 3)
+        // then (2 N + 3) / 3 = 2f + 1 + (2k + 2)/3 = 2f + 1 + k = N - f
+        let total_votes: Stake = self.total_stake();
+        NonZeroU64::new(2 * total_votes / 3 + 1).expect("arithmetic always produces result above 0")
+    }
+
+    fn calculate_validity_threshold(&self) -> NonZeroU64 {
+        // If N = 3f + 1 + k (0 <= k < 3)
+        // then (N + 2) / 3 = f + 1 + k/3 = f + 1
+        let total_votes: Stake = self.total_stake();
+        NonZeroU64::new(total_votes.div_ceil(3)).unwrap_or(NonZeroU64::new(1).expect("1 is NOT 0!"))
+    }
+
+    pub fn total_stake(&self) -> Stake {
+        self.authorities.values().map(|x| x.stake).sum()
+    }
+}
+
+/// The committee lists all validators that participate in consensus.
+#[derive(Clone, Debug, Default)]
+pub struct Committee {
+    inner: Arc<RwLock<CommitteeInner>>,
+}
+
+impl Serialize for Committee {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: serde::Serializer,
+    {
+        let ok = self.inner.read().serialize(serializer)?;
+        Ok(ok)
+    }
+}
+
+impl<'de> Deserialize<'de> for Committee {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: serde::Deserializer<'de>,
+    {
+        let inner = CommitteeInner::deserialize(deserializer)?;
+        Ok(Self { inner: Arc::new(RwLock::new(inner)) })
+    }
+}
+
+impl PartialEq for Committee {
+    fn eq(&self, other: &Self) -> bool {
+        self.inner.read().eq(&*other.inner.read())
+    }
+}
+
+impl Eq for Committee {}
 
 // Every authority gets uniquely identified by the AuthorityIdentifier
 // The type can be easily swapped without needing to change anything else in the implementation.
@@ -183,7 +252,7 @@ impl Committee {
     /// Any committee should be created via the [CommitteeBuilder] - this is intentionally
     /// a private method.
     fn new(authorities: BTreeMap<BlsPublicKey, Authority>, epoch: Epoch) -> Self {
-        let mut committee = Self {
+        let mut committee = CommitteeInner {
             authorities,
             epoch,
             authorities_by_id: Default::default(),
@@ -204,13 +273,13 @@ impl Committee {
             assert_eq!(index as u16, authority.id.0);
         }
 
-        committee
+        Self { inner: Arc::new(RwLock::new(committee)) }
     }
 
     /// Expose new for tests.  If you are calling this outside of a test you are wrong, see comment
     /// on new.
     pub fn new_for_test(authorities: BTreeMap<BlsPublicKey, Authority>, epoch: Epoch) -> Self {
-        let mut committee = Self {
+        let mut committee = CommitteeInner {
             authorities,
             epoch,
             authorities_by_id: Default::default(),
@@ -229,116 +298,54 @@ impl Committee {
         // Some sanity checks to ensure that we'll not end up in invalid state
         assert_eq!(committee.authorities_by_id.len(), committee.authorities.len());
 
-        committee
-    }
-
-    fn calculate_quorum_threshold(&self) -> NonZeroU64 {
-        // If N = 3f + 1 + k (0 <= k < 3)
-        // then (2 N + 3) / 3 = 2f + 1 + (2k + 2)/3 = 2f + 1 + k = N - f
-        let total_votes: Stake = self.total_stake();
-        NonZeroU64::new(2 * total_votes / 3 + 1).expect("arithmetic always produces result above 0")
-    }
-
-    fn calculate_validity_threshold(&self) -> NonZeroU64 {
-        // If N = 3f + 1 + k (0 <= k < 3)
-        // then (N + 2) / 3 = f + 1 + k/3 = f + 1
-        let total_votes: Stake = self.total_stake();
-        NonZeroU64::new(total_votes.div_ceil(3)).unwrap_or(NonZeroU64::new(1).expect("1 is NOT 0!"))
+        Self { inner: Arc::new(RwLock::new(committee)) }
     }
 
     /// Updates the committee internal secondary indexes.
-    pub fn load(&mut self) {
-        self.authorities_by_id = (0_u16..)
-            .zip(self.authorities.iter_mut())
-            .map(|(identifier, (_key, authority))| {
-                let id = AuthorityIdentifier(identifier);
-                authority.initialise(id);
-
-                (id, authority.clone())
-            })
-            .collect();
-
-        self.validity_threshold = self.calculate_validity_threshold().get();
-        self.quorum_threshold = self.calculate_quorum_threshold().get();
-        assert!(self.authorities_by_id.len() > 1, "committee size must be larger that 1");
+    pub fn load(&self) {
+        self.inner.write().load()
     }
 
     /// Returns the current epoch.
     pub fn epoch(&self) -> Epoch {
-        self.epoch
+        self.inner.read().epoch
     }
 
     /// Provided an identifier it returns the corresponding authority
-    pub fn authority(&self, identifier: &AuthorityIdentifier) -> Option<&Authority> {
-        self.authorities_by_id.get(identifier)
+    pub fn authority(&self, identifier: &AuthorityIdentifier) -> Option<Authority> {
+        self.inner.read().authorities_by_id.get(identifier).cloned()
     }
 
-    /// Provided an identifier it returns the corresponding authority.
-    /// Use the epoch.  This is a placeholder until epochs are
-    /// implemented- it may not make sense to live here but for now is a way
-    /// to start tracking places that need this.
-    pub fn authority_at_epoch(
-        &self,
-        epoch: Epoch,
-        identifier: &AuthorityIdentifier,
-    ) -> Option<&Authority> {
-        if epoch == self.epoch {
-            self.authorities_by_id.get(identifier)
-        } else {
-            None
-        }
+    pub fn authority_by_key(&self, key: &BlsPublicKey) -> Option<Authority> {
+        self.inner.read().authorities.get(key).cloned()
     }
 
-    /// Provided an identifier it returns the corresponding authority - if is not found then it
-    /// panics
-    pub fn authority_safe(&self, identifier: &AuthorityIdentifier) -> &Authority {
-        self.authorities_by_id.get(identifier).unwrap_or_else(|| {
-            panic!("Authority with id {:?} should have been in committee", identifier)
-        })
-    }
-
-    pub fn authority_by_key(&self, key: &BlsPublicKey) -> Option<&Authority> {
-        self.authorities.get(key)
-    }
-
-    /// Returns the keys in the committee
-    pub fn keys(&self) -> Vec<BlsPublicKey> {
-        self.authorities.keys().cloned().collect::<Vec<BlsPublicKey>>()
-    }
-
-    pub fn authorities(&self) -> impl Iterator<Item = &Authority> {
-        self.authorities.values()
-    }
-
-    pub fn authority_by_network_key(&self, network_key: &NetworkPublicKey) -> Option<&Authority> {
-        self.authorities
-            .iter()
-            .find(|(_, authority)| authority.network_key == *network_key)
-            .map(|(_, authority)| authority)
+    pub fn authorities(&self) -> Vec<Authority> {
+        self.inner.read().authorities.values().cloned().collect()
     }
 
     /// Returns the number of authorities.
     pub fn size(&self) -> usize {
-        self.authorities.len()
+        self.inner.read().authorities.len()
     }
 
     /// Return the stake of a specific authority.
     pub fn stake(&self, name: &BlsPublicKey) -> Stake {
-        self.authorities.get(&name.clone()).map_or_else(|| 0, |x| x.stake)
+        self.inner.read().authorities.get(&name.clone()).map_or_else(|| 0, |x| x.stake)
     }
 
     pub fn stake_by_id(&self, id: AuthorityIdentifier) -> Stake {
-        self.authorities_by_id.get(&id).map_or_else(|| 0, |authority| authority.stake)
+        self.inner.read().authorities_by_id.get(&id).map_or_else(|| 0, |authority| authority.stake)
     }
 
     /// Returns the stake required to reach a quorum (2f+1).
     pub fn quorum_threshold(&self) -> Stake {
-        self.quorum_threshold
+        self.inner.read().quorum_threshold
     }
 
     /// Returns the stake required to reach availability (f+1).
     pub fn validity_threshold(&self) -> Stake {
-        self.validity_threshold
+        self.inner.read().validity_threshold
     }
 
     /// Returns true if the provided stake has reached quorum (2f+1)
@@ -352,7 +359,7 @@ impl Committee {
     }
 
     pub fn total_stake(&self) -> Stake {
-        self.authorities.values().map(|x| x.stake).sum()
+        self.inner.read().total_stake()
     }
 
     /// Returns a leader node as a weighted choice seeded by the provided integer
@@ -361,6 +368,8 @@ impl Committee {
         seed_bytes[32 - 8..].copy_from_slice(&seed.to_le_bytes());
         let mut rng = StdRng::from_seed(seed_bytes);
         let choices = self
+            .inner
+            .read()
             .authorities
             .values()
             .map(|authority| (authority.clone(), authority.stake as f32))
@@ -372,49 +381,14 @@ impl Committee {
             .clone()
     }
 
-    /// Returns the primary address of the target primary.
-    pub fn primary(&self, to: &BlsPublicKey) -> Result<Multiaddr, ConfigError> {
-        self.authorities
-            .get(&to.clone())
-            .map(|x| x.primary_network_address.clone())
-            .ok_or_else(|| ConfigError::NotInCommittee((*to).encode_base58()))
-    }
-
-    /// Returns the primary address of the target primary.
-    pub fn primary_by_id(&self, to: &AuthorityIdentifier) -> Result<Multiaddr, ConfigError> {
-        self.authorities_by_id
-            .get(to)
-            .map(|x| x.primary_network_address.clone())
-            .ok_or_else(|| ConfigError::NotInCommittee(to.0.to_string()))
-    }
-
-    pub fn network_key(&self, pk: &BlsPublicKey) -> Result<NetworkPublicKey, ConfigError> {
-        self.authorities
-            .get(&pk.clone())
-            .map(|x| x.network_key.clone())
-            .ok_or_else(|| ConfigError::NotInCommittee((*pk).encode_base58()))
-    }
-
-    /// Return all the network addresses in the committee.
-    pub fn others_primaries(
-        &self,
-        myself: &BlsPublicKey,
-    ) -> Vec<(BlsPublicKey, Multiaddr, NetworkPublicKey)> {
-        self.authorities
-            .iter()
-            .filter(|(name, _)| *name != myself)
-            .map(|(name, authority)| {
-                (*name, authority.primary_network_address.clone(), authority.network_key.clone())
-            })
-            .collect()
-    }
-
     /// Return all the network addresses in the committee.
     pub fn others_primaries_by_id(
         &self,
         myself: AuthorityIdentifier,
     ) -> Vec<(AuthorityIdentifier, Multiaddr, NetworkPublicKey)> {
-        self.authorities
+        self.inner
+            .read()
+            .authorities
             .iter()
             .filter(|(_, authority)| authority.id() != myself)
             .map(|(_, authority)| {
@@ -427,80 +401,10 @@ impl Committee {
             .collect()
     }
 
-    fn get_all_network_addresses(&self) -> HashSet<&Multiaddr> {
-        self.authorities.values().map(|authority| &authority.primary_network_address).collect()
-    }
-
-    /// Return the network addresses that are present in the current committee but that are absent
-    /// from the new committee (provided as argument).
-    pub fn network_diff<'a>(&'a self, other: &'a Self) -> HashSet<&'a Multiaddr> {
-        self.get_all_network_addresses()
-            .difference(&other.get_all_network_addresses())
-            .cloned()
-            .collect()
-    }
-
-    /// Update the networking information of some of the primaries. The arguments are a full vector
-    /// of authorities which Public key and Stake must match the one stored in the current
-    /// Committee. Any discrepancy will generate no update and return a vector of errors.
-    #[allow(clippy::manual_try_fold)]
-    pub fn update_primary_network_info(
-        &mut self,
-        mut new_info: BTreeMap<BlsPublicKey, (Stake, Multiaddr)>,
-    ) -> Result<(), Vec<CommitteeUpdateError>> {
-        let mut errors = None;
-
-        let table = &self.authorities;
-        let push_error_and_return = |acc, error| {
-            let mut error_table = if let Err(errors) = acc { errors } else { Vec::new() };
-            error_table.push(error);
-            Err(error_table)
-        };
-
-        let res = table.iter().fold(Ok(BTreeMap::new()), |acc, (pk, authority)| {
-            if let Some((stake, address)) = new_info.remove(pk) {
-                if stake == authority.stake {
-                    match acc {
-                        // No error met yet, update the accumulator
-                        Ok(mut bmap) => {
-                            let mut res = authority.clone();
-                            res.primary_network_address = address;
-                            bmap.insert(*pk, res);
-                            Ok(bmap)
-                        }
-                        // in error mode, continue
-                        _ => acc,
-                    }
-                } else {
-                    // Stake does not match: create or append error
-                    push_error_and_return(acc, CommitteeUpdateError::DifferentStake(pk.to_string()))
-                }
-            } else {
-                // This key is absent from new information
-                push_error_and_return(acc, CommitteeUpdateError::MissingFromUpdate(pk.to_string()))
-            }
-        });
-
-        // If there are elements left in new_info, they are not in the original table
-        // If new_info is empty, this is a no-op.
-        let res = new_info.iter().fold(res, |acc, (pk, _)| {
-            push_error_and_return(acc, CommitteeUpdateError::NotInCommittee(pk.to_string()))
-        });
-
-        match res {
-            Ok(new_table) => self.authorities = new_table,
-            Err(errs) => {
-                errors = Some(errs);
-            }
-        };
-
-        errors.map(Err).unwrap_or(Ok(()))
-    }
-
     /// Used for testing - not recommended to use for any other case.
     /// It creates a new instance with updated epoch
     pub fn advance_epoch_for_test(&self, new_epoch: Epoch) -> Committee {
-        Committee::new_for_test(self.authorities.clone(), new_epoch)
+        Committee::new_for_test(self.inner.read().authorities.clone(), new_epoch)
     }
 }
 
@@ -510,7 +414,9 @@ impl std::fmt::Display for Committee {
             f,
             "Committee E{}: {:?}",
             self.epoch(),
-            self.authorities
+            self.inner
+                .read()
+                .authorities
                 .keys()
                 .map(|x| {
                     if let Some(k) = x.encode_base58().get(0..16) {
@@ -602,9 +508,9 @@ mod tests {
         let committee = Committee::new(authorities, 10);
 
         // THEN
-        assert_eq!(committee.authorities_by_id.len() as u64, num_of_authorities);
+        assert_eq!(committee.inner.read().authorities_by_id.len() as u64, num_of_authorities);
 
-        for (identifier, authority) in committee.authorities_by_id.iter() {
+        for (identifier, authority) in committee.inner.read().authorities_by_id.iter() {
             assert_eq!(*identifier, authority.id());
         }
 
@@ -612,13 +518,14 @@ mod tests {
         assert_eq!(committee.quorum_threshold(), 7);
         assert_eq!(committee.validity_threshold(), 4);
 
+        let guard = committee.inner.read();
         // AND ensure authorities are returned in the same order
         for ((id, authority_1), (public_key, authority_2)) in
-            committee.authorities_by_id.iter().zip(committee.authorities)
+            guard.authorities_by_id.iter().zip(guard.authorities.iter())
         {
-            assert_eq!(authority_1.clone(), authority_2);
+            assert_eq!(authority_1, authority_2);
             assert_eq!(*id, authority_2.id());
-            assert_eq!(&public_key, authority_1.protocol_key());
+            assert_eq!(public_key, authority_1.protocol_key());
         }
     }
 }

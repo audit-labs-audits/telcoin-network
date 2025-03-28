@@ -164,7 +164,9 @@ impl LeaderSwapTable {
             if stake > (stake_threshold * committee.total_stake()) / 100 as Stake {
                 break;
             }
-            filtered_authorities.push(committee.authority_safe(&authority_id).to_owned());
+            if let Some(auth) = committee.authority(&authority_id) {
+                filtered_authorities.push(auth.to_owned());
+            }
         }
 
         filtered_authorities
@@ -249,7 +251,7 @@ impl LeaderSchedule {
                 // start with base zero 0.
                 let next_leader = (round as u64 / 2 + self.committee.size() as u64 - 1) as usize % self.committee.size();
 
-                let leader: Authority = self.committee.authorities().nth(next_leader).expect("authority out of bounds!").clone();
+                let leader: Authority = self.committee.authorities().get(next_leader).expect("authority out of bounds!").clone();
                 let table = self.leader_swap_table.read();
 
                 table.swap(&leader.id(), round).unwrap_or(leader)

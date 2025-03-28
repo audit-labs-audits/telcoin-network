@@ -74,13 +74,17 @@ impl VotesAggregator {
                     "Failed to verify aggregated sig on certificate",
                 );
                 self.votes.retain(|(id, sig)| {
-                    let pk = committee.authority_safe(id).protocol_key();
-                    if !sig.verify_secure(&to_intent_message(certificate_digest), pk) {
-                        warn!(target: "primary::votes_aggregator", "Invalid signature on header from authority: {}", id);
-                        self.weight -= committee.stake(pk);
-                        false
+                    if let Some(auth) = committee.authority(id) {
+                        let pk = auth.protocol_key();
+                        if !sig.verify_secure(&to_intent_message(certificate_digest), pk) {
+                            warn!(target: "primary::votes_aggregator", "Invalid signature on header from authority: {}", id);
+                            self.weight -= committee.stake(pk);
+                            false
+                        } else {
+                            true
+                        }
                     } else {
-                        true
+                        false
                     }
                 });
 
