@@ -284,7 +284,7 @@ async fn test_vote_fails_unknown_authority() -> eyre::Result<()> {
     let wrong_authority = AuthorityIdentifier::dummy_for_test(100);
     let header = committee
         .header_builder_last_authority()
-        .author(wrong_authority)
+        .author(wrong_authority.clone())
         .latest_execution_block(BlockNumHash::new(parent.number(), parent.hash()))
         .created_at(1) // parent is 0
         .build();

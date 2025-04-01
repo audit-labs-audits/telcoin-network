@@ -202,8 +202,8 @@ impl Eq for Committee {}
 
 // Every authority gets uniquely identified by the AuthorityIdentifier
 // The type can be easily swapped without needing to change anything else in the implementation.
-#[derive(Eq, PartialEq, Ord, PartialOrd, Clone, Copy, Debug, Hash, Serialize, Deserialize)]
-pub struct AuthorityIdentifier(PeerId);
+#[derive(Eq, PartialEq, Ord, PartialOrd, Clone, Debug, Hash, Serialize, Deserialize)]
+pub struct AuthorityIdentifier(Arc<PeerId>);
 
 impl AuthorityIdentifier {
     pub fn dummy_for_test(byte: u8) -> Self {
@@ -235,13 +235,13 @@ impl Display for AuthorityIdentifier {
 
 impl From<PeerId> for AuthorityIdentifier {
     fn from(value: PeerId) -> Self {
-        Self(value)
+        Self(Arc::new(value))
     }
 }
 
 impl From<AuthorityIdentifier> for PeerId {
     fn from(value: AuthorityIdentifier) -> Self {
-        value.0
+        *value.0
     }
 }
 
@@ -326,8 +326,8 @@ impl Committee {
         self.inner.read().authorities.get(&name.clone()).map_or_else(|| 0, |x| x.stake)
     }
 
-    pub fn stake_by_id(&self, id: AuthorityIdentifier) -> VotingPower {
-        self.inner.read().authorities_by_id.get(&id).map_or_else(|| 0, |authority| authority.stake)
+    pub fn stake_by_id(&self, id: &AuthorityIdentifier) -> VotingPower {
+        self.inner.read().authorities_by_id.get(id).map_or_else(|| 0, |authority| authority.stake)
     }
 
     /// Returns the stake required to reach a quorum (2f+1).
@@ -376,13 +376,13 @@ impl Committee {
     /// Return all the network addresses in the committee.
     pub fn others_primaries_by_id(
         &self,
-        myself: AuthorityIdentifier,
+        myself: &AuthorityIdentifier,
     ) -> Vec<(AuthorityIdentifier, Multiaddr, NetworkPublicKey)> {
         self.inner
             .read()
             .authorities
             .iter()
-            .filter(|(_, authority)| authority.id() != myself)
+            .filter(|(_, authority)| &authority.id() != myself)
             .map(|(_, authority)| {
                 (
                     authority.id(),
@@ -501,6 +501,7 @@ mod tests {
 
         // THEN
         assert_eq!(committee.inner.read().authorities_by_id.len() as u64, num_of_authorities);
+        assert_eq!(committee.inner.read().authorities.len() as u64, num_of_authorities);
 
         for (identifier, authority) in committee.inner.read().authorities_by_id.iter() {
             assert_eq!(*identifier, authority.id());
@@ -511,13 +512,11 @@ mod tests {
         assert_eq!(committee.validity_threshold(), 4);
 
         let guard = committee.inner.read();
-        // AND ensure authorities are returned in the same order
-        for ((id, authority_1), (public_key, authority_2)) in
-            guard.authorities_by_id.iter().zip(guard.authorities.iter())
-        {
-            assert_eq!(authority_1, authority_2);
-            assert_eq!(*id, authority_2.id());
+        // AND ensure authorities are in both maps
+        for (public_key, authority_1) in guard.authorities.iter() {
             assert_eq!(public_key, authority_1.protocol_key());
+            let authority_2 = guard.authorities_by_id.get(&authority_1.id()).unwrap();
+            assert_eq!(authority_1, authority_2);
         }
     }
 }

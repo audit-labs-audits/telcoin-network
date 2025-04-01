@@ -240,15 +240,15 @@ async fn test_certificate_store_last_two_rounds() {
 
     // create certificates for 50 rounds
     let certs = certificates(50);
-    let origin = certs[0].origin();
+    let origin = certs[0].origin().clone();
 
     // store them in both main and secondary index
     store.write_all(certs).unwrap();
 
     // WHEN
     let result = store.last_two_rounds_certs().unwrap();
-    let last_round_cert = store.last_round(origin).unwrap().unwrap();
-    let last_round_number = store.last_round_number(origin).unwrap().unwrap();
+    let last_round_cert = store.last_round(&origin).unwrap().unwrap();
+    let last_round_number = store.last_round_number(&origin).unwrap().unwrap();
     let highest_round_number = store.highest_round_number();
 
     // THEN
@@ -271,8 +271,8 @@ async fn test_certificate_store_last_round_in_empty_store() {
 
     // WHEN
     let result = store.last_two_rounds_certs().unwrap();
-    let last_round_cert = store.last_round(AuthorityIdentifier::default()).unwrap();
-    let last_round_number = store.last_round_number(AuthorityIdentifier::default()).unwrap();
+    let last_round_cert = store.last_round(&AuthorityIdentifier::default()).unwrap();
+    let last_round_number = store.last_round_number(&AuthorityIdentifier::default()).unwrap();
     let highest_round_number = store.highest_round_number();
 
     // THEN

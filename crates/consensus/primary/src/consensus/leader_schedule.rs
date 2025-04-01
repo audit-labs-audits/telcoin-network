@@ -39,7 +39,7 @@ impl Debug for LeaderSwapTable {
             self.round,
             self.good_nodes.iter().map(|a| a.id()).collect::<Vec<AuthorityIdentifier>>(),
             self.good_nodes.iter().map(|a| a.stake()).sum::<VotingPower>(),
-            self.bad_nodes.iter().map(|a| *a.0).collect::<Vec<AuthorityIdentifier>>(),
+            self.bad_nodes.iter().map(|a| a.0.clone()).collect::<Vec<AuthorityIdentifier>>(),
             self.bad_nodes.iter().map(|a| a.1.stake()).sum::<VotingPower>(),
         ))
     }
@@ -157,7 +157,7 @@ impl LeaderSwapTable {
 
         let mut stake = 0;
         for (authority_id, _score) in authorities {
-            stake += committee.stake_by_id(authority_id);
+            stake += committee.stake_by_id(&authority_id);
 
             // if the total accumulated stake has surpassed the stake threshold then we omit this
             // last authority and we exit the loop.

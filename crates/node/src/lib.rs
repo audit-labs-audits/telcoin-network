@@ -136,7 +136,7 @@ async fn start_networks<DB: TNDatabase>(
     let peers_connected = Arc::new(AtomicU32::new(0));
     let workers_connected = Arc::new(AtomicU32::new(0));
     for (authority_id, addr, _) in
-        consensus_config.committee().others_primaries_by_id(consensus_config.authority().id())
+        consensus_config.committee().others_primaries_by_id(&consensus_config.authority().id())
     {
         let peer_id =
             consensus_config.peer_id_for_authority(&authority_id).expect("missing peer id!");

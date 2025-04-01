@@ -18,7 +18,10 @@ use crate::{
 use base64::{engine::general_purpose, Engine};
 use serde::{Deserialize, Serialize};
 use serde_with::serde_as;
-use std::{collections::VecDeque, fmt};
+use std::{
+    collections::{BTreeMap, VecDeque},
+    fmt,
+};
 
 /// Certificates are the output of consensus.
 /// The certificate issued after a successful round of consensus.
@@ -61,7 +64,7 @@ impl Certificate {
         header: Header,
         votes: Vec<(AuthorityIdentifier, BlsSignature)>,
     ) -> DagResult<Certificate> {
-        Self::new_unsafe(committee, header, votes, true)
+        Self::new_unsafe(committee, header, votes.into_iter().collect(), true)
     }
 
     /// Create a new, unsafe certificate that does not check stake.
@@ -70,17 +73,16 @@ impl Certificate {
         header: Header,
         votes: Vec<(AuthorityIdentifier, BlsSignature)>,
     ) -> DagResult<Certificate> {
-        Self::new_unsafe(committee, header, votes, false)
+        Self::new_unsafe(committee, header, votes.into_iter().collect(), false)
     }
 
     /// Create a new certificate without verifying authority signatures.
     fn new_unsafe(
         committee: &Committee,
         header: Header,
-        mut votes: Vec<(AuthorityIdentifier, BlsSignature)>,
+        votes: BTreeMap<AuthorityIdentifier, BlsSignature>,
         check_stake: bool,
     ) -> DagResult<Certificate> {
-        votes.sort_by_key(|(pk, _)| *pk);
         let mut votes: VecDeque<_> = votes.into_iter().collect();
 
         let mut weight = 0;
@@ -302,7 +304,7 @@ impl Certificate {
     }
 
     /// The author of the certificate.
-    pub fn origin(&self) -> AuthorityIdentifier {
+    pub fn origin(&self) -> &AuthorityIdentifier {
         self.header.author()
     }
 

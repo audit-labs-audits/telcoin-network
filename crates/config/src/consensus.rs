@@ -194,7 +194,7 @@ where
 
     /// Return the [AuthorityIdentifier] for a libp2p network [PeerId].
     pub fn authority_for_peer_id(&self, peer_id: &PeerId) -> Option<AuthorityIdentifier> {
-        self.inner.authority_map.peer_id_to_authority.get(peer_id).copied()
+        self.inner.authority_map.peer_id_to_authority.get(peer_id).cloned()
     }
 
     /// Retrieve the worker's network address by id.
@@ -230,7 +230,7 @@ impl AuthorityMapping {
             .collect();
 
         let peer_id_to_authority =
-            authority_to_peer_id.iter().map(|(a, p_id)| (*p_id, *a)).collect();
+            authority_to_peer_id.iter().map(|(a, p_id)| (*p_id, a.clone())).collect();
 
         Self { authority_to_peer_id, peer_id_to_authority }
     }

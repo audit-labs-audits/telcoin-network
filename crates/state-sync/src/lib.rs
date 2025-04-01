@@ -349,7 +349,7 @@ async fn max_consensus_header_from_committee<DB: Database>(
 fn get_peers<DB: Database>(config: &ConsensusConfig<DB>) -> Vec<PeerId> {
     config
         .committee()
-        .others_primaries_by_id(config.authority().id())
+        .others_primaries_by_id(&config.authority().id())
         .into_iter()
         .map(|(auth_id, _, _)| config.peer_id_for_authority(&auth_id).expect("missing peer id!"))
         .collect()
