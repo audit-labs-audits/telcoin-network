@@ -110,10 +110,11 @@ where
             .certificates_in_votes
             .inc_by(num_parents as u64);
 
-        let committee_peer = self
-            .consensus_config
-            .authority_for_peer_id(&peer)
-            .ok_or(HeaderError::UnknownNetworkKey(peer))?;
+        let committee_peer: AuthorityIdentifier = peer.into();
+        ensure!(
+            self.consensus_config.in_committee(&committee_peer),
+            HeaderError::UnknownNetworkKey(peer).into()
+        );
         ensure!(header.author() == &committee_peer, HeaderError::PeerNotAuthor.into());
 
         // TODO: ensure peer's header isn't too far in the past

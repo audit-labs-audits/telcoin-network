@@ -141,7 +141,7 @@ impl<DB: Database> Certifier<DB> {
         header: Header,
     ) -> DagResult<Vote> {
         debug!(target: "primary::certifier", ?authority, ?header, "requesting vote for header...");
-        let peer_id = self.config.peer_id_for_authority(&authority).expect("missing peer id!");
+        let peer_id = authority.peer_id();
 
         let mut missing_parents: Vec<CertificateDigest> = Vec::new();
         let mut attempt: u32 = 0;

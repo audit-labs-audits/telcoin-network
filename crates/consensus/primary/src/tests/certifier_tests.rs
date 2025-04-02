@@ -33,7 +33,7 @@ async fn propose_header_to_form_certificate() {
         let name = peer.id();
         let vote =
             Vote::new(&proposed_header, name.clone(), peer.consensus_config().key_config()).await;
-        let id = primary.consensus_config().peer_id_for_authority(&name).unwrap();
+        let id = name.peer_id();
         peer_votes.insert(id, vote);
     }
 
@@ -183,7 +183,7 @@ async fn run_vote_aggregator_with_param(
         } else {
             Vote::new(&proposed_header, name.clone(), peer.consensus_config().key_config()).await
         };
-        let id = primary.consensus_config().peer_id_for_authority(&name).unwrap();
+        let id = name.peer_id();
         peer_votes.insert(id, vote);
     }
 

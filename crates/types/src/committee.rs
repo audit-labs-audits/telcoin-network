@@ -86,6 +86,11 @@ impl Authority {
         self.network_key.to_peer_id().into()
     }
 
+    /// Return the peer id for the primary network.
+    pub fn peer_id(&self) -> PeerId {
+        self.network_key.to_peer_id()
+    }
+
     pub fn protocol_key(&self) -> &BlsPublicKey {
         // Skip the assert here, this is called in testing before the initialise...
         &self.protocol_key
@@ -214,6 +219,10 @@ impl AuthorityIdentifier {
         .expect("valid multihash bytes")
         .into()
     }
+
+    pub fn peer_id(&self) -> PeerId {
+        self.into()
+    }
 }
 
 impl Default for AuthorityIdentifier {
@@ -241,6 +250,12 @@ impl From<PeerId> for AuthorityIdentifier {
 
 impl From<AuthorityIdentifier> for PeerId {
     fn from(value: AuthorityIdentifier) -> Self {
+        *value.0
+    }
+}
+
+impl From<&AuthorityIdentifier> for PeerId {
+    fn from(value: &AuthorityIdentifier) -> Self {
         *value.0
     }
 }
@@ -314,6 +329,12 @@ impl Committee {
     pub fn authorities(&self) -> Vec<Authority> {
         // Return sorted by id (using the id keyed BTree) since this may be important to some code.
         self.inner.read().authorities_by_id.values().cloned().collect()
+    }
+
+    /// Return true if the authority for id is in the committee.
+    pub fn is_authority(&self, id: &AuthorityIdentifier) -> bool {
+        // Return sorted by id (using the id keyed BTree) since this may be important to some code.
+        self.inner.read().authorities_by_id.contains_key(id)
     }
 
     /// Returns the number of authorities.

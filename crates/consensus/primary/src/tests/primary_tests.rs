@@ -61,8 +61,7 @@ async fn test_request_vote_has_missing_execution_block() {
     let target = fixture.authorities().next().unwrap();
     let author = fixture.authorities().nth(2).unwrap();
     let author_id = author.id();
-    let peer =
-        target.consensus_config().peer_id_for_authority(&author_id).expect("missing peer id!");
+    let peer = author_id.peer_id();
 
     let certificate_store = target.consensus_config().node_storage().clone();
     let payload_store = target.consensus_config().node_storage().clone();
@@ -123,8 +122,7 @@ async fn test_request_vote_older_execution_block() {
     let target = fixture.authorities().next().unwrap();
     let author = fixture.authorities().nth(2).unwrap();
     let author_id = author.id();
-    let peer =
-        target.consensus_config().peer_id_for_authority(&author_id).expect("missing peer id!");
+    let peer = author_id.peer_id();
 
     let certificate_store = target.consensus_config().node_storage().clone();
     let payload_store = target.consensus_config().node_storage().clone();
@@ -192,8 +190,7 @@ async fn test_request_vote_has_missing_parents() {
     let target = fixture.authorities().next().unwrap();
     let author = fixture.authorities().nth(2).unwrap();
     let author_id = author.id();
-    let peer =
-        target.consensus_config().peer_id_for_authority(&author_id).expect("missing peer id!");
+    let peer = author_id.peer_id();
 
     let certificate_store = target.consensus_config().node_storage().clone();
     let payload_store = target.consensus_config().node_storage().clone();
@@ -278,8 +275,7 @@ async fn test_request_vote_accept_missing_parents() {
     let target = fixture.authorities().next().unwrap();
     let author = fixture.authorities().nth(2).unwrap();
     let author_id = author.id();
-    let peer =
-        target.consensus_config().peer_id_for_authority(&author_id).expect("missing peer id!");
+    let peer = author_id.peer_id();
 
     let certificate_store = target.consensus_config().node_storage().clone();
     let payload_store = target.consensus_config().node_storage().clone();
@@ -368,8 +364,7 @@ async fn test_request_vote_missing_batches() {
     let authority_id = primary.id();
     let author = fixture.authorities().nth(2).unwrap();
     let author_id = author.id();
-    let peer =
-        primary.consensus_config().peer_id_for_authority(&author_id).expect("missing peer id!");
+    let peer = author_id.peer_id();
     let client = primary.consensus_config().local_network().clone();
 
     let certificate_store = primary.consensus_config().node_storage().clone();
@@ -434,8 +429,7 @@ async fn test_request_vote_already_voted() {
     let id = primary.id();
     let author = fixture.authorities().nth(2).unwrap();
     let author_id = author.id();
-    let peer =
-        primary.consensus_config().peer_id_for_authority(&author_id).expect("missing peer id!");
+    let peer = author_id.peer_id();
     let client = primary.consensus_config().local_network().clone();
 
     let certificate_store = primary.consensus_config().node_storage().clone();
@@ -638,8 +632,7 @@ async fn test_request_vote_created_at_in_future() {
     let id = primary.id();
     let author = fixture.authorities().nth(2).unwrap();
     let author_id = author.id();
-    let peer =
-        primary.consensus_config().peer_id_for_authority(&author_id).expect("missing peer id!");
+    let peer = author_id.peer_id();
     let client = primary.consensus_config().local_network().clone();
 
     let certificate_store = primary.consensus_config().node_storage().clone();

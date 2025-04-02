@@ -138,8 +138,7 @@ async fn start_networks<DB: TNDatabase>(
     for (authority_id, addr, _) in
         consensus_config.committee().others_primaries_by_id(&consensus_config.authority().id())
     {
-        let peer_id =
-            consensus_config.peer_id_for_authority(&authority_id).expect("missing peer id!");
+        let peer_id = authority_id.peer_id();
         dial_primary(primary_network_handle.clone(), peer_id, addr, peers_connected.clone());
     }
     for (peer_id, addr) in consensus_config.worker_cache().all_workers() {
