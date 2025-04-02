@@ -20,7 +20,6 @@ impl BlsKeypair {
     pub fn generate<R: CryptoRng + RngCore>(rng: &mut R) -> Self {
         let mut ikm = [0u8; 32];
         rng.fill_bytes(&mut ikm);
-        // TODO: Consider moving to key gen version 5.
         let private = BlsPrivateKey::key_gen(&ikm, &[]).expect("ikm length should be higher");
         let pubkey = private.sk_to_pk();
         let mut bytes = [0_u8; 96];
