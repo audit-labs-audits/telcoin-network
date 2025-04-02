@@ -299,15 +299,16 @@ pub fn make_certificates_with_parameters(
 
     // Step 1 - determine the slow nodes , assuming those should exist
     let slow_nodes: Vec<(Authority, f64)> = {
+        let voting_power_of_slow_nodes =
+            (committee.total_voting_power() as f64 * modes.slow_nodes_percentage) as VotingPower;
         let stake_of_slow_nodes =
-            (committee.total_stake() as f64 * modes.slow_nodes_percentage) as VotingPower;
-        let stake_of_slow_nodes = stake_of_slow_nodes.min(committee.validity_threshold() - 1);
+            voting_power_of_slow_nodes.min(committee.validity_threshold() - 1);
         let mut total_stake = 0;
 
         authorities
             .iter()
             .take_while(|a| {
-                total_stake += a.stake();
+                total_stake += a.voting_power();
                 total_stake <= stake_of_slow_nodes
             })
             .map(|k| (k.clone(), 1.0 - modes.slow_nodes_failure_probability))
@@ -380,7 +381,7 @@ pub fn make_certificates_with_parameters(
             // Now from the rest of current_parents, pick a random number - uniform - to how many
             // should create references to. It should strictly be between [2f+1..3f+1].
             let num_of_parents_to_pick =
-                rand.gen_range(committee.quorum_threshold()..=committee.total_stake());
+                rand.gen_range(committee.quorum_threshold()..=committee.total_voting_power());
 
             // shuffle the parents
             parent_digests.shuffle(&mut rand);
@@ -423,7 +424,7 @@ pub fn make_certificates_with_parameters(
             next_parents.push(certificate);
 
             // update the total round stake
-            total_round_stake += authority.stake();
+            total_round_stake += authority.voting_power();
         }
         parents.clone_from(&next_parents);
 

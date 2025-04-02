@@ -96,7 +96,7 @@ impl Certificate {
                 if !votes.is_empty() && authority.id() == votes.front().expect("votes not empty").0
                 {
                     sigs.push(votes.pop_front().expect("votes not empty"));
-                    weight += authority.stake();
+                    weight += authority.voting_power();
                     // If there are repeats, also remove them
                     while !votes.is_empty()
                         && votes.front().expect("votes not empty")
@@ -172,7 +172,7 @@ impl Certificate {
             .enumerate()
             .filter(|(i, authority)| match auth_indexes.get(auth_iter) {
                 Some(index) if *index == *i as u32 => {
-                    weight += authority.stake();
+                    weight += authority.voting_power();
                     auth_iter += 1;
                     true
                 }

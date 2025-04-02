@@ -218,7 +218,7 @@ where
                 HeaderError::DuplicateParents.into()
             );
 
-            stake += committee.stake_by_id(parent.origin());
+            stake += committee.voting_power_by_id(parent.origin());
         }
 
         // verify aggregate signatures form quorum

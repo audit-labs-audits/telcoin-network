@@ -408,7 +408,7 @@ impl<DB: Database> Proposer<DB> {
         let mut votes_for_leader = 0;
         let mut no_votes = 0;
         for certificate in &self.last_parents {
-            let stake = self.committee.stake_by_id(certificate.origin());
+            let stake = self.committee.voting_power_by_id(certificate.origin());
             if certificate.header().parents().contains(&leader) {
                 votes_for_leader += stake;
             } else {

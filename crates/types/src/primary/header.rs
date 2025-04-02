@@ -84,7 +84,7 @@ impl Header {
         }
 
         // Ensure the authority has voting rights.
-        let voting_rights = committee.stake_by_id(&self.author);
+        let voting_rights = committee.voting_power_by_id(&self.author);
         if voting_rights == 0 {
             return Err(HeaderError::UnknownAuthority(self.author.to_string()));
         }

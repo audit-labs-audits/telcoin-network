@@ -26,7 +26,7 @@ pub struct Builder<DB, F, R = OsRng> {
     number_of_workers: NonZeroUsize,
     randomize_ports: bool,
     epoch: Epoch,
-    stake: VecDeque<VotingPower>,
+    voting_power: VecDeque<VotingPower>,
     new_db: F,
     _phantom_data: PhantomData<DB>,
 }
@@ -43,7 +43,7 @@ where
             committee_size: NonZeroUsize::new(4).unwrap(),
             number_of_workers: NonZeroUsize::new(1).unwrap(),
             randomize_ports: false,
-            stake: VecDeque::new(),
+            voting_power: VecDeque::new(),
             new_db,
             _phantom_data: PhantomData::<DB>,
         }
@@ -70,8 +70,8 @@ where
         self
     }
 
-    pub fn stake_distribution(mut self, stake: VecDeque<VotingPower>) -> Self {
-        self.stake = stake;
+    pub fn voting_power_distribution(mut self, stake: VecDeque<VotingPower>) -> Self {
+        self.voting_power = stake;
         self
     }
 
@@ -82,7 +82,7 @@ where
             committee_size: self.committee_size,
             number_of_workers: self.number_of_workers,
             randomize_ports: self.randomize_ports,
-            stake: self.stake,
+            voting_power: self.voting_power,
             new_db: self.new_db,
             _phantom_data: PhantomData::<DB>,
         }
@@ -96,8 +96,8 @@ where
     F: Fn() -> DB,
 {
     pub fn build(mut self) -> CommitteeFixture<DB> {
-        if !self.stake.is_empty() {
-            assert_eq!(self.stake.len(), self.committee_size.get(), "Stake vector has been provided but is different length the committee - it should be the same");
+        if !self.voting_power.is_empty() {
+            assert_eq!(self.voting_power.len(), self.committee_size.get(), "Stake vector has been provided but is different length the committee - it should be the same");
         }
         let committee_size = self.committee_size.get();
 
@@ -119,7 +119,7 @@ where
                 format!("/ip4/{host}/udp/{port}/quic-v1").parse().unwrap();
             let authority = Authority::new_for_test(
                 key_config.primary_public_key(),
-                *self.stake.get(i).unwrap_or(&1),
+                *self.voting_power.get(i).unwrap_or(&1),
                 primary_network_address,
                 Address::random_with(&mut rng),
                 key_config.primary_network_public_key(),

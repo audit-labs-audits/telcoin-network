@@ -51,7 +51,7 @@ impl VotesAggregator {
 
         // accumulate vote and voting power
         self.votes.push((author.clone(), *vote.signature()));
-        self.weight += committee.stake_by_id(author);
+        self.weight += committee.voting_power_by_id(author);
 
         // update metrics
         self.metrics.votes_received_last_round.set(self.votes.len() as i64);
@@ -81,7 +81,7 @@ impl VotesAggregator {
                         let pk = auth.protocol_key();
                         if !sig.verify_secure(&to_intent_message(certificate_digest), pk) {
                             warn!(target: "primary::votes_aggregator", "Invalid signature on header from authority: {}", id);
-                            self.weight -= committee.stake(pk);
+                            self.weight -= committee.voting_power(pk);
                             false
                         } else {
                             true
