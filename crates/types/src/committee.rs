@@ -29,7 +29,7 @@ pub struct Authority {
     /// The authority's main BlsPublicKey which is used to verify the content they sign.
     protocol_key: BlsPublicKey,
     /// The voting power of this authority.
-    stake: VotingPower,
+    voting_power: VotingPower,
     /// The network address of the primary.
     primary_network_address: Multiaddr,
     /// The execution address for the authority.
@@ -52,7 +52,7 @@ impl Authority {
     /// accidentally use stale Authority data, should always derive them via the Commitee.
     fn new(
         protocol_key: BlsPublicKey,
-        stake: VotingPower,
+        voting_power: VotingPower,
         primary_network_address: Multiaddr,
         execution_address: Address,
         network_key: NetworkPublicKey,
@@ -61,7 +61,7 @@ impl Authority {
         Self {
             id: Default::default(),
             protocol_key,
-            stake,
+            voting_power,
             primary_network_address,
             execution_address,
             network_key,
@@ -75,7 +75,7 @@ impl Authority {
     pub fn new_for_test(
         id: AuthorityIdentifier,
         protocol_key: BlsPublicKey,
-        stake: VotingPower,
+        voting_power: VotingPower,
         primary_network_address: Multiaddr,
         execution_address: Address,
         network_key: NetworkPublicKey,
@@ -84,7 +84,7 @@ impl Authority {
         Self {
             id,
             protocol_key,
-            stake,
+            voting_power,
             primary_network_address,
             execution_address,
             network_key,
@@ -112,9 +112,9 @@ impl Authority {
         &self.protocol_key
     }
 
-    pub fn stake(&self) -> VotingPower {
+    pub fn voting_power(&self) -> VotingPower {
         assert!(self.initialised);
-        self.stake
+        self.voting_power
     }
 
     pub fn primary_network_address(&self) -> &Multiaddr {
@@ -177,19 +177,19 @@ impl CommitteeInner {
     fn calculate_quorum_threshold(&self) -> NonZeroU64 {
         // If N = 3f + 1 + k (0 <= k < 3)
         // then (2 N + 3) / 3 = 2f + 1 + (2k + 2)/3 = 2f + 1 + k = N - f
-        let total_votes: VotingPower = self.total_stake();
+        let total_votes: VotingPower = self.total_voting_power();
         NonZeroU64::new(2 * total_votes / 3 + 1).expect("arithmetic always produces result above 0")
     }
 
     fn calculate_validity_threshold(&self) -> NonZeroU64 {
         // If N = 3f + 1 + k (0 <= k < 3)
         // then (N + 2) / 3 = f + 1 + k/3 = f + 1
-        let total_votes: VotingPower = self.total_stake();
+        let total_votes: VotingPower = self.total_voting_power();
         NonZeroU64::new(total_votes.div_ceil(3)).unwrap_or(NonZeroU64::new(1).expect("1 is NOT 0!"))
     }
 
-    pub fn total_stake(&self) -> VotingPower {
-        self.authorities.values().map(|x| x.stake).sum()
+    pub fn total_voting_power(&self) -> VotingPower {
+        self.authorities.values().map(|x| x.voting_power).sum()
     }
 }
 
@@ -328,12 +328,16 @@ impl Committee {
     }
 
     /// Return the stake of a specific authority.
-    pub fn stake(&self, name: &BlsPublicKey) -> VotingPower {
-        self.inner.read().authorities.get(&name.clone()).map_or_else(|| 0, |x| x.stake)
+    pub fn voting_power(&self, name: &BlsPublicKey) -> VotingPower {
+        self.inner.read().authorities.get(&name.clone()).map_or_else(|| 0, |x| x.voting_power)
     }
 
-    pub fn stake_by_id(&self, id: AuthorityIdentifier) -> VotingPower {
-        self.inner.read().authorities_by_id.get(&id).map_or_else(|| 0, |authority| authority.stake)
+    pub fn voting_power_by_id(&self, id: AuthorityIdentifier) -> VotingPower {
+        self.inner
+            .read()
+            .authorities_by_id
+            .get(&id)
+            .map_or_else(|| 0, |authority| authority.voting_power)
     }
 
     /// Returns the stake required to reach a quorum (2f+1).
@@ -347,17 +351,17 @@ impl Committee {
     }
 
     /// Returns true if the provided stake has reached quorum (2f+1)
-    pub fn reached_quorum(&self, stake: VotingPower) -> bool {
-        stake >= self.quorum_threshold()
+    pub fn reached_quorum(&self, voting_power: VotingPower) -> bool {
+        voting_power >= self.quorum_threshold()
     }
 
     /// Returns true if the provided stake has reached availability (f+1)
-    pub fn reached_validity(&self, stake: VotingPower) -> bool {
-        stake >= self.validity_threshold()
+    pub fn reached_validity(&self, voting_power: VotingPower) -> bool {
+        voting_power >= self.validity_threshold()
     }
 
-    pub fn total_stake(&self) -> VotingPower {
-        self.inner.read().total_stake()
+    pub fn total_voting_power(&self) -> VotingPower {
+        self.inner.read().total_voting_power()
     }
 
     /// Returns a leader node as a weighted choice seeded by the provided integer
@@ -370,7 +374,7 @@ impl Committee {
             .read()
             .authorities
             .values()
-            .map(|authority| (authority.clone(), authority.stake as f32))
+            .map(|authority| (authority.clone(), authority.voting_power as f32))
             .collect::<Vec<_>>();
         choices
             .choose_weighted(&mut rng, |item| item.1)

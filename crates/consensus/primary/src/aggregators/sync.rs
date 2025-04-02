@@ -91,7 +91,7 @@ impl CertificatesAggregator {
 
         // accumulate certificates and voting power
         self.certificates.push(certificate);
-        self.weight += committee.stake_by_id(origin);
+        self.weight += committee.voting_power_by_id(origin);
 
         // check for quorum
         if self.weight >= committee.quorum_threshold() {

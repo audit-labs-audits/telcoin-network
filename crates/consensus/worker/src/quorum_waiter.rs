@@ -151,7 +151,7 @@ impl QuorumWaiterTrait for QuorumWaiter {
                     .into_iter()
                     .zip(handlers.into_iter())
                     .map(|(name, handler)| {
-                        let stake = inner.committee.stake(&name);
+                        let stake = inner.committee.voting_power(&name);
                         available_stake += stake;
                         Box::pin(monitored_future!(Self::waiter(handler, stake)))
                     })
@@ -161,7 +161,7 @@ impl QuorumWaiterTrait for QuorumWaiter {
                 // delivered and we send its digest to the primary (that will include it into
                 // the dag). This should reduce the amount of syncing.
                 let threshold = inner.committee.quorum_threshold();
-                let mut total_stake = inner.authority.stake();
+                let mut total_stake = inner.authority.voting_power();
                 // If more stake than this is rejected then the batch will never be accepted.
                 let max_rejected_stake = available_stake - threshold;
 

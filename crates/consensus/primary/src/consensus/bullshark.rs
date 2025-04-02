@@ -219,19 +219,19 @@ impl<DB: ConsensusStore> Bullshark<DB> {
         };
 
         // Check if the leader has f+1 support from its children (ie. leader_round+1).
-        let stake: VotingPower = state
+        let voting_power: VotingPower = state
             .dag
             .get(&(leader_round + 1))
             .expect("We should have the whole history by now")
             .values()
             .filter(|(_, x)| x.header().parents().contains(&leader.digest()))
-            .map(|(_, x)| self.committee.stake_by_id(x.origin()))
+            .map(|(_, x)| self.committee.voting_power_by_id(x.origin()))
             .sum();
 
         // If it is the case, we can commit the leader. But first, we need to recursively go back to
         // the last committed leader, and commit all preceding leaders in the right order.
         // Committing a leader block means committing all its dependencies.
-        if stake < self.committee.validity_threshold() {
+        if voting_power < self.committee.validity_threshold() {
             debug!("Leader {:?} does not have enough support", leader);
             return Ok((Outcome::NotEnoughSupportForLeader, vec![]));
         }

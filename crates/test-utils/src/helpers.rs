@@ -248,10 +248,10 @@ pub fn make_certificates_with_slow_nodes(
     let mut rand = StdRng::seed_from_u64(1);
 
     // ensure provided slow nodes do not account > f
-    let slow_nodes_stake: VotingPower =
-        slow_nodes.iter().map(|(key, _)| committee.authority(key).unwrap().stake()).sum();
+    let slow_nodes_voting_power: VotingPower =
+        slow_nodes.iter().map(|(key, _)| committee.authority(key).unwrap().voting_power()).sum();
 
-    assert!(slow_nodes_stake < committee.validity_threshold());
+    assert!(slow_nodes_voting_power < committee.validity_threshold());
 
     let mut certificates = VecDeque::new();
     let mut parents = initial_parents;
@@ -427,7 +427,7 @@ pub fn this_cert_parents_with_slow_nodes(
 
             if should_include {
                 parents.insert(parent.digest());
-                total_stake += authority.stake();
+                total_stake += authority.voting_power();
             } else {
                 not_included.push(parent);
             }
@@ -435,7 +435,7 @@ pub fn this_cert_parents_with_slow_nodes(
             // just add it directly as it is not within the slow nodes or we are the
             // same author.
             parents.insert(parent.digest());
-            total_stake += authority.stake();
+            total_stake += authority.voting_power();
         }
     }
 
@@ -444,7 +444,7 @@ pub fn this_cert_parents_with_slow_nodes(
         let parent = not_included.pop().unwrap();
         let authority = committee.authority(&parent.origin()).unwrap();
 
-        total_stake += authority.stake();
+        total_stake += authority.voting_power();
 
         parents.insert(parent.digest());
     }
