@@ -351,7 +351,7 @@ impl Committee {
         self.inner
             .read()
             .authorities_by_id
-            .get(&id)
+            .get(id)
             .map_or_else(|| 0, |authority| authority.voting_power)
     }
 
