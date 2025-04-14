@@ -198,8 +198,7 @@ impl KeyArgs {
 
 #[cfg(test)]
 mod tests {
-    use crate::cli::Cli;
-    use crate::NoArgs;
+    use crate::{cli::Cli, NoArgs};
     use clap::Parser;
     use tempfile::tempdir;
     use tn_config::{Config, ConfigFmt, ConfigTrait};

@@ -22,10 +22,9 @@ use reth_trie_db::MerklePatriciaTrie;
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 use tn_types::{
-    Address, BlockExt as _, BlockWithSenders, ConsensusOutput, NodePrimitives, SealedBlock,
-    SealedHeader, Withdrawals, B256, U256,
+    Address, BlockExt as _, BlockWithSenders, ConsensusOutput, EthPrimitives, ExecHeader,
+    NodePrimitives, SealedBlock, SealedHeader, TransactionSigned, Withdrawals, B256, U256,
 };
-use tn_types::{EthPrimitives, ExecHeader, TransactionSigned};
 
 use crate::RethEnv;
 

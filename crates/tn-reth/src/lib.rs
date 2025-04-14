@@ -62,23 +62,21 @@ use reth_transaction_pool::{blobstore::DiskFileBlobStore, EthTransactionPool};
 
 // Reth stuff we are just re-exporting.  Need to reduce this over time.
 pub use alloy::primitives::FixedBytes;
-pub use reth::chainspec::chain_value_parser;
-pub use reth::dirs::MaybePlatformPath;
-pub use reth::rpc::builder::RpcServerHandle;
+pub use reth::{
+    chainspec::chain_value_parser, dirs::MaybePlatformPath, rpc::builder::RpcServerHandle,
+};
 pub use reth_chainspec::ChainSpec as RethChainSpec;
-pub use reth_cli_util::parse_duration_from_secs;
-pub use reth_cli_util::parse_socket_address;
+pub use reth_cli_util::{parse_duration_from_secs, parse_socket_address};
 pub use reth_errors::{CanonicalError, ProviderError, RethError};
 pub use reth_node_core::args::LogArgs;
 pub use reth_primitives_traits::crypto::secp256k1::sign_message;
 pub use reth_provider::ExecutionOutcome;
 pub use reth_rpc_eth_types::EthApiError;
 pub use reth_tracing::FileWorkerGuard;
-pub use reth_transaction_pool::error::PoolError;
-pub use reth_transaction_pool::error::PoolTransactionError;
 pub use reth_transaction_pool::{
-    error::InvalidPoolTransactionError, identifier::SenderIdentifiers, BestTransactions,
-    EthPooledTransaction,
+    error::{InvalidPoolTransactionError, PoolError, PoolTransactionError},
+    identifier::SenderIdentifiers,
+    BestTransactions, EthPooledTransaction,
 };
 
 use tn_types::{
@@ -467,7 +465,8 @@ impl RethEnv {
         // )
         // .map_err(|err| PayloadBuilderError::Internal(err.into()))?;
 
-        // TODO: parallelize tx recovery when it's worth it (see TransactionSigned::recover_signers())
+        // TODO: parallelize tx recovery when it's worth it (see
+        // TransactionSigned::recover_signers())
 
         let env =
             EnvWithHandlerCfg::new_with_cfg_env(cfg.clone(), block_env.clone(), TxEnv::default());
@@ -541,7 +540,8 @@ impl RethEnv {
         // TODO: logic for withdrawals
         //
         // let WithdrawalsOutcome { withdrawals_root, withdrawals } =
-        //     commit_withdrawals(&mut db, &chain_spec, attributes.timestamp, attributes.withdrawals)?;
+        //     commit_withdrawals(&mut db, &chain_spec, attributes.timestamp,
+        // attributes.withdrawals)?;
 
         // merge all transitions into bundle state, this would apply the withdrawal balance changes
         // and 4788 contract call
@@ -588,7 +588,8 @@ impl RethEnv {
             mix_hash: payload.prev_randao(),
             nonce: payload.attributes.nonce.into(),
             base_fee_per_gas: Some(base_fee),
-            number: payload.attributes.parent_header.number + 1, // ensure this matches the block env
+            number: payload.attributes.parent_header.number + 1, /* ensure this matches the block
+                                                                  * env */
             gas_limit: block_gas_limit,
             difficulty: U256::from(payload.attributes.batch_index),
             gas_used: cumulative_gas_used,
@@ -679,7 +680,8 @@ impl RethEnv {
             mix_hash: payload.prev_randao(),
             nonce: payload.attributes.nonce.into(),
             base_fee_per_gas: Some(payload.attributes.base_fee_per_gas),
-            number: payload.attributes.parent_header.number + 1, // ensure this matches the block env
+            number: payload.attributes.parent_header.number + 1, /* ensure this matches the block
+                                                                  * env */
             gas_limit: payload.attributes.gas_limit,
             difficulty: U256::ZERO, // batch index
             gas_used: 0,

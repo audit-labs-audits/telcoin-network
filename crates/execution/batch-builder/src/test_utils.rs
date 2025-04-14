@@ -5,9 +5,9 @@ use std::{
     collections::{BTreeMap, HashSet, VecDeque},
     sync::Arc,
 };
-use tn_reth::{new_pool_txn, PoolTxn, PoolTxnId, WorkerTxBest};
 use tn_reth::{
-    BestTransactions, EthPooledTransaction, InvalidPoolTransactionError, SenderIdentifiers,
+    new_pool_txn, BestTransactions, EthPooledTransaction, InvalidPoolTransactionError, PoolTxn,
+    PoolTxnId, SenderIdentifiers, WorkerTxBest,
 };
 use tn_types::{
     Batch, BatchBuilderArgs, BlockBody, LastCanonicalUpdate, PendingBlockConfig, RecoveredTx,

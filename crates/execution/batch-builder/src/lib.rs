@@ -330,8 +330,7 @@ mod tests {
     use tempfile::TempDir;
     use tn_engine::execute_consensus_output;
     use tn_network_types::{local::LocalNetwork, MockWorkerToPrimaryHang};
-    use tn_reth::RethChainSpec;
-    use tn_reth::{recover_raw_transaction, traits::BuildArguments};
+    use tn_reth::{recover_raw_transaction, traits::BuildArguments, RethChainSpec};
     use tn_storage::{open_db, tables::Batches};
     use tn_test_utils::{adiri_genesis_seeded, TransactionFactory};
     use tn_types::{
