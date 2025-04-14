@@ -6,15 +6,9 @@ use crate::{
     NoArgs,
 };
 use clap::{value_parser, Parser, Subcommand};
-use tn_node::engine::TnBuilder;
-//use reth_chainspec::ChainSpec;
-//use reth_cli_commands::node::NoArgs;
-//use reth_db::DatabaseEnv;
-//use reth_node_core::args::LogArgs;
-//use reth_tracing::FileWorkerGuard;
 use std::{ffi::OsString, fmt, sync::Arc};
+use tn_node::engine::TnBuilder;
 use tn_reth::{dirs::DataDirChainPath, FileWorkerGuard, LogArgs, RethChainSpec};
-//use tn_types::TnBuilder;
 
 /// The main TN cli interface.
 ///

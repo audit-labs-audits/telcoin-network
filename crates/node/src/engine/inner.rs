@@ -93,7 +93,6 @@ impl ExecutionNodeInner {
 
         // TODO: WorkerNetwork is basically noop and missing some functionality
         let network = WorkerNetwork::new(self.reth_env.chainspec());
-        //use reth_transaction_pool::TransactionPoolExt as _;
         let mut tx_pool_latest = transaction_pool.block_info();
         tx_pool_latest.pending_basefee = MIN_PROTOCOL_BASE_FEE;
         let last_seen = self.reth_env.finalized_block_hash_number()?;

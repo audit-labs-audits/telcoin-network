@@ -45,7 +45,6 @@ tn-node = { workspace = true }
 consensus-metrics = { workspace = true }
 tn-faucet = { workspace = true, optional = true }
 alloy = { workspace = true }
-reth-tracing = { workspace = true }
 tn-reth = { workspace = true }
 
 # config
@@ -55,8 +54,6 @@ rayon = { workspace = true }
 
 [dev-dependencies]
 reth = { workspace = true }
-reth-basic-payload-builder = { workspace = true }
-reth-payload-builder = { workspace = true }
 tempfile = { workspace = true }
 
 # Used for integration testing.

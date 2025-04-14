@@ -138,12 +138,6 @@ impl<Ext: clap::Args + fmt::Debug> NodeCommand<Ext> {
 
         tn_config.observer = observer; // Set observer mode from the config.
 
-        // create a reth DatadirArgs from tn datadir
-        //let datadir = DatadirArgs {
-        //    datadir: MaybePlatformPath::from(PathBuf::from(tn_datadir.clone())),
-        //    static_files_path: None,
-        //};
-
         // set up reth node config for engine components
         let node_config = RethConfig::new(
             reth,
