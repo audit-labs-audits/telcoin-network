@@ -47,4 +47,8 @@ impl TelcoinDirs for TelcoinTempDirs {
     fn reth_db_path(&self) -> PathBuf {
         self.0.path().join("db")
     }
+
+    fn network_config_path(&self) -> PathBuf {
+        self.0.path().join("network-config")
+    }
 }

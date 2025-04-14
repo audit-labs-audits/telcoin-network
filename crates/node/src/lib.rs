@@ -1,6 +1,9 @@
 // SPDX-License-Identifier: Apache-2.0
 //! Library for managing all components used by a full-node in a single process.
 
+use crate::{primary::PrimaryNode, worker::WorkerNode};
+use consensus_metrics::start_prometheus_server;
+use engine::{ExecutionNode, TnBuilder};
 use std::{
     str::FromStr as _,
     sync::{
@@ -9,12 +12,8 @@ use std::{
     },
     time::Duration,
 };
-
-use crate::{primary::PrimaryNode, worker::WorkerNode};
-use consensus_metrics::start_prometheus_server;
-use engine::{ExecutionNode, TnBuilder};
-use tn_config::{ConsensusConfig, KeyConfig, TelcoinDirs};
-use tn_network_libp2p::{types::IdentTopic, ConsensusNetwork, PeerId};
+use tn_config::{ConsensusConfig, KeyConfig, NetworkConfig, TelcoinDirs};
+use tn_network_libp2p::{ConsensusNetwork, PeerId};
 use tn_primary::{
     network::{PrimaryNetwork, PrimaryNetworkHandle},
     ConsensusBus, NodeMode, StateSynchronizer,
@@ -111,7 +110,18 @@ async fn start_networks<DB: TNDatabase>(
             }
         )
     });
-    primary_network_handle.subscribe(IdentTopic::new("tn-primary")).await?;
+
+    // set committee for network to prevent banning
+    primary_network_handle.new_epoch(consensus_config.primary_network_map()).await?;
+
+    // subscribe to epoch closing gossip messages
+    primary_network_handle
+        .subscribe(
+            consensus_config.network_config().libp2p_config().primary_topic(),
+            consensus_config.committee_peer_ids(),
+        )
+        .await?;
+
     let my_authority = consensus_config.authority();
 
     let primary_multiaddr = get_multiaddr_from_env_or_config(
@@ -124,6 +134,9 @@ async fn start_networks<DB: TNDatabase>(
     let worker_multiaddr =
         get_multiaddr_from_env_or_config("WORKER_MULTIADDR", worker_address.clone());
     worker_network_handle.start_listening(worker_multiaddr).await?;
+    worker_network_handle.new_epoch(consensus_config.worker_network_map()).await?;
+
+    // create specific handles for primary/worker
     let primary_network_handle = PrimaryNetworkHandle::new(primary_network_handle);
     let worker_network_handle = WorkerNetworkHandle::new(worker_network_handle);
     let peers_connected = Arc::new(AtomicU32::new(0));
@@ -213,7 +226,8 @@ where
         let node_storage = db.clone();
         tracing::info!(target: "telcoin::cli", "node storage open");
         let key_config = KeyConfig::read_config(tn_datadir)?;
-        let consensus_config = ConsensusConfig::new(config, tn_datadir, node_storage, key_config)?;
+        let network_config = NetworkConfig::read_config(tn_datadir)?;
+        let consensus_config = ConsensusConfig::new(config, tn_datadir, node_storage, key_config, network_config)?;
 
         let (worker_id, _worker_info) = consensus_config.config().workers().first_worker()?;
         let worker = WorkerNode::new(*worker_id, consensus_config.clone());

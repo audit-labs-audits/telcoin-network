@@ -121,6 +121,8 @@ pub trait TelcoinDirs: std::fmt::Debug + Send + Sync + 'static {
     fn consensus_db_path(&self) -> PathBuf;
     /// Return the path to reth's node storage.
     fn reth_db_path(&self) -> PathBuf;
+    /// Return the path to `network_config` file.
+    fn network_config_path(&self) -> PathBuf;
 }
 
 impl TelcoinDirs for PathBuf {
@@ -158,6 +160,10 @@ impl TelcoinDirs for PathBuf {
 
     fn reth_db_path(&self) -> PathBuf {
         self.join("db")
+    }
+
+    fn network_config_path(&self) -> PathBuf {
+        self.join("network-config")
     }
 }
 
@@ -197,6 +203,10 @@ impl TelcoinDirs for Path {
     fn reth_db_path(&self) -> PathBuf {
         self.join("db")
     }
+
+    fn network_config_path(&self) -> PathBuf {
+        self.join("network-config")
+    }
 }
 
 impl TelcoinDirs for &'static Path {
@@ -234,5 +244,9 @@ impl TelcoinDirs for &'static Path {
 
     fn reth_db_path(&self) -> PathBuf {
         self.join("db")
+    }
+
+    fn network_config_path(&self) -> PathBuf {
+        self.join("network-config")
     }
 }
