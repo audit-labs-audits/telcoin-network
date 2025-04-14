@@ -218,7 +218,7 @@ impl WorkerTxPool {
         &self,
         recovered: EthPooledTransaction,
     ) -> Result<TxHash, crate::PoolError> {
-        self.0.add_transaction(TransactionOrigin::Local, recovered.into()).await
+        self.0.add_transaction(TransactionOrigin::Local, recovered).await
     }
 
     pub async fn add_transaction_and_subscribe(
@@ -265,7 +265,7 @@ impl BestTxns {
 
     pub fn max_batch_size(&mut self, pool_tx: &Arc<PoolTxn>, tx_size: usize, max_size: usize) {
         self.inner
-            .mark_invalid(&pool_tx, InvalidPoolTransactionError::OversizedData(tx_size, max_size));
+            .mark_invalid(pool_tx, InvalidPoolTransactionError::OversizedData(tx_size, max_size));
     }
 }
 

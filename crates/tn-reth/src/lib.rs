@@ -247,7 +247,7 @@ pub struct ChainSpec(Arc<RethChainSpec>);
 
 impl ChainSpec {
     pub(crate) fn reth_chain_spec(&self) -> RethChainSpec {
-        (&*self.0).clone()
+        (*self.0).clone()
     }
 
     pub fn genesis(&self) -> &Genesis {
@@ -301,13 +301,15 @@ impl RethEnv {
         db_path: P,
         task_manager: &TaskManager,
     ) -> eyre::Result<Self> {
-        let mut node_config = NodeConfig::default();
-        node_config.datadir = DatadirArgs {
-            datadir: MaybePlatformPath::from(db_path.as_ref().to_path_buf()),
-            // default static path should resolve to: `DEFAULT_ROOT_DIR/<CHAIN_ID>/static_files`
-            static_files_path: None,
+        let node_config = NodeConfig {
+            datadir: DatadirArgs {
+                datadir: MaybePlatformPath::from(db_path.as_ref().to_path_buf()),
+                // default static path should resolve to: `DEFAULT_ROOT_DIR/<CHAIN_ID>/static_files`
+                static_files_path: None,
+            },
+            chain,
+            ..NodeConfig::default()
         };
-        node_config.chain = chain;
         let reth_config = RethConfig(node_config);
         Self::new(&reth_config, db_path, task_manager)
     }

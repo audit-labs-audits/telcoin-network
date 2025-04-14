@@ -42,11 +42,7 @@ impl BatchValidation for BatchValidator {
         // The primary header should get checked so this should be ok.
         let parent =
             self.reth_env.header(batch.parent_hash).unwrap_or_default().unwrap_or_else(|| {
-                if let Some(header) = self.reth_env.finalized_header().unwrap_or_default() {
-                    header
-                } else {
-                    ExecHeader::default()
-                }
+                self.reth_env.finalized_header().unwrap_or_default().unwrap_or_default()
             });
 
         // validate timestamp vs parent

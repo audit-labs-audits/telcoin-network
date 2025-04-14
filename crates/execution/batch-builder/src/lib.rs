@@ -228,7 +228,7 @@ impl Future for BatchBuilder {
         // loop when a successful block is built
         loop {
             // This is used as a "wake up" when canonical state updates.
-            while let Poll::Ready(_) = pin::pin!(this.state_changed.recv()).poll(cx) {}
+            while pin::pin!(this.state_changed.recv()).poll(cx).is_ready() {}
 
             // only propose one block at a time
             if this.pending_task.is_none() {

@@ -1,12 +1,11 @@
 use clap::Parser as _;
-use telcoin_network::NoArgs;
 #[cfg(feature = "faucet")]
 use tn_faucet::FaucetArgs;
 use tn_node::launch_node;
 
 fn main() {
     #[cfg(not(feature = "faucet"))]
-    if let Err(err) = telcoin_network::cli::Cli::<NoArgs>::parse()
+    if let Err(err) = telcoin_network::cli::Cli::<telcoin_network::NoArgs>::parse()
         .run(|builder, _, tn_datadir| launch_node(builder, tn_datadir))
     {
         eprintln!("Error: {err:?}");
