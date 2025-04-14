@@ -19,7 +19,7 @@ use std::{
     time::Duration,
 };
 use tn_config::{ConsensusConfig, KeyConfig, NetworkConfig, TelcoinDirs};
-use tn_network_libp2p::{types::IdentTopic, ConsensusNetwork, PeerId};
+use tn_network_libp2p::{ConsensusNetwork, PeerId};
 use tn_node_traits::TelcoinNode;
 use tn_primary::{
     network::{PrimaryNetwork, PrimaryNetworkHandle},
@@ -117,7 +117,18 @@ async fn start_networks<DB: TNDatabase>(
             }
         )
     });
-    primary_network_handle.subscribe(IdentTopic::new("tn-primary")).await?;
+
+    // set committee for network to prevent banning
+    primary_network_handle.new_epoch(consensus_config.primary_network_map()).await?;
+
+    // subscribe to epoch closing gossip messages
+    primary_network_handle
+        .subscribe(
+            consensus_config.network_config().libp2p_config().primary_topic(),
+            consensus_config.committee_peer_ids(),
+        )
+        .await?;
+
     let my_authority = consensus_config.authority();
 
     let primary_multiaddr = get_multiaddr_from_env_or_config(
@@ -130,6 +141,9 @@ async fn start_networks<DB: TNDatabase>(
     let worker_multiaddr =
         get_multiaddr_from_env_or_config("WORKER_MULTIADDR", worker_address.clone());
     worker_network_handle.start_listening(worker_multiaddr).await?;
+    worker_network_handle.new_epoch(consensus_config.worker_network_map()).await?;
+
+    // create specific handles for primary/worker
     let primary_network_handle = PrimaryNetworkHandle::new(primary_network_handle);
     let worker_network_handle = WorkerNetworkHandle::new(worker_network_handle);
     let peers_connected = Arc::new(AtomicU32::new(0));

@@ -1,30 +1,12 @@
 //! TNCodec tests used by the consensus network libp2p req/res protocol.
 
 use super::*;
-use crate::TNCodec;
+use crate::{
+    common::{TestPrimaryRequest, TestPrimaryResponse},
+    TNCodec,
+};
 use libp2p::StreamProtocol;
-use serde::Deserialize;
-use tn_types::{Certificate, CertificateDigest, Header, Vote};
-
-// For some reason, clippy doesn't like importing these from common mod.
-// However, it works just fine for network_tests.rs ¯\_(ツ)_/¯
-impl TNMessage for TestPrimaryRequest {}
-impl TNMessage for TestPrimaryResponse {}
-
-/// Test requests from Primary.
-#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
-pub(super) enum TestPrimaryRequest {
-    NewCertificate { certificate: Certificate },
-    Vote { header: Header, parents: Vec<Certificate> },
-}
-
-/// Test response to primary requests.
-#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
-pub(super) enum TestPrimaryResponse {
-    Vote(Vote),
-    MissingCertificates(Vec<Certificate>),
-    MissingParents(Vec<CertificateDigest>),
-}
+use tn_types::{Certificate, CertificateDigest, Header};
 
 #[tokio::test]
 async fn test_encode_decode_same_message() {
