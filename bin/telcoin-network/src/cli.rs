@@ -3,15 +3,18 @@ use crate::{
     args::clap_genesis_parser,
     genesis, keytool, node,
     version::{LONG_VERSION, SHORT_VERSION},
+    NoArgs,
 };
 use clap::{value_parser, Parser, Subcommand};
-use reth_chainspec::ChainSpec;
-use reth_cli_commands::node::NoArgs;
-use reth_db::DatabaseEnv;
-use reth_node_core::args::LogArgs;
-use reth_tracing::FileWorkerGuard;
+use tn_node::engine::TnBuilder;
+//use reth_chainspec::ChainSpec;
+//use reth_cli_commands::node::NoArgs;
+//use reth_db::DatabaseEnv;
+//use reth_node_core::args::LogArgs;
+//use reth_tracing::FileWorkerGuard;
 use std::{ffi::OsString, fmt, sync::Arc};
-use tn_node::{dirs::DataDirChainPath, engine::TnBuilder};
+use tn_reth::{dirs::DataDirChainPath, FileWorkerGuard, LogArgs, RethChainSpec};
+//use tn_types::TnBuilder;
 
 /// The main TN cli interface.
 ///
@@ -36,7 +39,7 @@ pub struct Cli<Ext: clap::Args + fmt::Debug = NoArgs> {
         value_parser = clap_genesis_parser,
         global = true,
     )]
-    pub chain: Arc<ChainSpec>,
+    pub chain: Arc<RethChainSpec>,
 
     /// Add a new instance of a node.
     ///
@@ -84,21 +87,6 @@ impl<Ext: clap::Args + fmt::Debug> Cli<Ext> {
     ///
     /// # Example
     ///
-    /// ```no_run
-    /// use reth::cli::Cli;
-    /// use reth_node_ethereum::EthereumNode;
-    ///
-    /// Cli::parse_args()
-    ///     .run(|builder, _| async move {
-    ///         let handle = builder.launch_node(EthereumNode::default()).await?;
-    ///
-    ///         handle.wait_for_node_exit().await
-    ///     })
-    ///     .unwrap();
-    /// ```
-    ///
-    /// # Example
-    ///
     /// Parse additional CLI arguments for the node command and use it to configure the node.
     ///
     /// ```no_run
@@ -120,7 +108,7 @@ impl<Ext: clap::Args + fmt::Debug> Cli<Ext> {
     /// ```
     pub fn run<L>(mut self, launcher: L) -> eyre::Result<()>
     where
-        L: FnOnce(TnBuilder<Arc<DatabaseEnv>>, Ext, DataDirChainPath) -> eyre::Result<()>,
+        L: FnOnce(TnBuilder, Ext, DataDirChainPath) -> eyre::Result<()>,
     {
         // add network name to logs dir
         self.logs.log_file_directory =

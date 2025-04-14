@@ -1,7 +1,6 @@
 //! Error types for Telcoin Network Block Builder.
 
-use reth_errors::{CanonicalError, ProviderError, RethError};
-use reth_transaction_pool::error::PoolTransactionError;
+use tn_reth::{CanonicalError, PoolTransactionError, ProviderError, RethError};
 use tokio::sync::{mpsc, oneshot};
 
 /// Result alias for [`TNEngineError`].

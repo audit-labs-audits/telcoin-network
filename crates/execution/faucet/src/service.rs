@@ -19,11 +19,8 @@ use humantime::format_duration;
 use lru_time_cache::LruCache;
 use reth::rpc::server_types::eth::{EthApiError, EthResult, RpcInvalidTransactionError};
 use reth_primitives::transaction::SignedTransactionIntoRecoveredExt;
-use reth_provider::{BlockReaderIdExt, StateProviderFactory};
 use reth_tasks::TaskSpawner;
-use reth_transaction_pool::{
-    EthPooledTransaction, PoolTransaction, TransactionEvent, TransactionOrigin, TransactionPool,
-};
+use reth_transaction_pool::{PoolTransaction, TransactionEvent};
 use secp256k1::{
     ecdsa::{RecoverableSignature, RecoveryId, Signature},
     Message, SECP256K1,
@@ -34,6 +31,7 @@ use std::{
     task::{ready, Context, Poll},
     time::{Duration, SystemTime},
 };
+use tn_reth::{RethEnv, WorkerTxPool};
 use tn_types::{
     Address, EthSignature, SolType, Transaction, TransactionSigned, TransactionTrait as _,
     TxEip1559, TxHash, TxKind, B256, U256,
@@ -69,7 +67,7 @@ impl MinedTxInfo {
 /// The faucet receives an address from the RPC, checks the LRU cache,
 /// and then submits a transaction (or returns an error). The faucet is a
 /// direct address -> address transfer. The faucet address is seeded in genesis.
-pub(crate) struct FaucetService<Provider, Pool, Tasks> {
+pub(crate) struct FaucetService<Tasks> {
     /// The faucet contract's address.
     ///
     /// The value is used to send call data to the contract that mints stablecoins.
@@ -83,9 +81,9 @@ pub(crate) struct FaucetService<Provider, Pool, Tasks> {
     pub(crate) request_rx:
         UnboundedReceiverStream<(Address, Option<Address>, oneshot::Sender<EthResult<TxHash>>)>,
     /// Database impl for retrieving blockchain data.
-    pub(crate) provider: Provider,
+    pub(crate) reth_env: RethEnv,
     /// The pool for submitting transactions.
-    pub(crate) pool: Pool,
+    pub(crate) pool: WorkerTxPool,
     /// The cache for verifying an address hasn't exceeded time-based request limit.
     ///
     /// The cache maps a user's address with the contract's address to the time of the request.
@@ -126,10 +124,8 @@ pub(crate) struct FaucetService<Provider, Pool, Tasks> {
     pub(crate) next_nonce: u64,
 }
 
-impl<Provider, Pool, Tasks> FaucetService<Provider, Pool, Tasks>
+impl<Tasks> FaucetService<Tasks>
 where
-    Provider: BlockReaderIdExt + StateProviderFactory + Unpin + Clone + 'static,
-    Pool: TransactionPool<Transaction = EthPooledTransaction> + Unpin + Clone + 'static,
     Tasks: TaskSpawner + Clone + 'static,
 {
     /// Calculate when the wait period is over
@@ -263,7 +259,7 @@ where
         }
 
         // lookup account nonce in db and compare it last known tx nonce mined by worker
-        let state = self.provider.latest()?;
+        let state = self.reth_env.latest()?;
         let db_account_nonce = state.account_nonce(&address)?.unwrap_or_default();
         debug!(target: "faucet", ?db_account_nonce, tracked_nonce=?self.next_nonce, "comparing faucet nonces");
         let highest_nonce = std::cmp::max(db_account_nonce, self.next_nonce);
@@ -407,10 +403,8 @@ where
     }
 }
 
-impl<Provider, Pool, Tasks> Future for FaucetService<Provider, Pool, Tasks>
+impl<Tasks> Future for FaucetService<Tasks>
 where
-    Provider: BlockReaderIdExt + StateProviderFactory + Unpin + Clone + 'static,
-    Pool: TransactionPool<Transaction = EthPooledTransaction> + Unpin + Clone + 'static,
     Tasks: TaskSpawner + Clone + 'static,
 {
     type Output = ();
@@ -503,22 +497,18 @@ where
 ///
 /// The transaction is submitted to the pool and the service subscribes to events. When the
 /// transaction is `Mined`, the
-async fn submit_transaction<Pool>(
-    pool: Pool,
+async fn submit_transaction(
+    pool: WorkerTxPool,
     tx: TransactionSigned,
     add_to_success_cache: UnboundedSender<MinedTxInfo>,
     user: Address,
     contract: Address,
-) -> EthResult<TxHash>
-where
-    Pool: TransactionPool<Transaction = EthPooledTransaction>,
-{
+) -> EthResult<TxHash> {
     let pool_tx = tx.try_into_pooled().map_err(|_| EthApiError::TransactionConversionError)?;
     let recovered =
         pool_tx.try_into_ecrecovered().map_err(|_| EthApiError::InvalidTransactionSignature)?;
     // submit tx and subscribe to events
-    let mut tx_events =
-        pool.add_transaction_and_subscribe(TransactionOrigin::Local, recovered.into()).await?;
+    let mut tx_events = pool.add_transaction_and_subscribe(recovered.into()).await?;
 
     let tx_hash = tx_events.hash();
     let mined_tx_info = MinedTxInfo::new(user, contract);

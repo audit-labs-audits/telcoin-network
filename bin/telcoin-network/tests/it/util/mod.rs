@@ -1,8 +1,8 @@
 use clap::Parser;
-use reth_chainspec::ChainSpec;
 use std::{path::PathBuf, sync::Arc};
 use telcoin_network::{genesis::GenesisArgs, keytool::KeyArgs, node::NodeCommand};
 use tn_node::launch_node;
+use tn_reth::RethChainSpec;
 use tn_test_utils::CommandParser;
 use tracing::error;
 
@@ -99,7 +99,7 @@ pub async fn config_local_testnet(temp_path: PathBuf) -> eyre::Result<()> {
 }
 
 /// Create validator info, genesis ceremony, and spawn node command with faucet active.
-pub fn spawn_local_testnet(chain: Arc<ChainSpec>, contract_address: &str) -> eyre::Result<()> {
+pub fn spawn_local_testnet(chain: Arc<RethChainSpec>, contract_address: &str) -> eyre::Result<()> {
     // create temp path for test
     let temp_path = tempfile::TempDir::new().expect("tempdir is okay").into_path();
 
@@ -197,7 +197,7 @@ pub fn spawn_local_testnet(chain: Arc<ChainSpec>, contract_address: &str) -> eyr
         ]);
 
         // update genesis with seeded accounts
-        command.chain = chain.clone();
+        command.reth.chain = chain.clone();
 
         std::thread::spawn(|| {
             let err = command.execute(

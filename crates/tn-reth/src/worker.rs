@@ -7,9 +7,10 @@
 //! This is useful for wiring components together that don't require network but still need to be
 //! generic over it.
 
+use crate::{ChainSpec, WorkerTxPool};
 use enr::{secp256k1::SecretKey, Enr};
 use reth::rpc::builder::RpcServerHandle;
-use reth_chainspec::ChainSpec;
+use reth_chainspec::ChainSpec as RethChainSpec;
 use reth_discv4::DEFAULT_DISCOVERY_PORT;
 use reth_eth_wire::DisconnectReason;
 use reth_network_api::{
@@ -17,34 +18,19 @@ use reth_network_api::{
     PeersInfo, Reputation, ReputationChangeKind,
 };
 use reth_network_peers::{NodeRecord, PeerId};
-use reth_node_builder::NodeTypesWithDB;
-use reth_provider::providers::BlockchainProvider;
-use reth_transaction_pool::{blobstore::DiskFileBlobStore, EthTransactionPool};
-use std::{
-    net::{IpAddr, SocketAddr},
-    sync::Arc,
-};
-
-/// The explicit type for the worker's transaction pool.
-pub type WorkerTxPool<DB> = EthTransactionPool<BlockchainProvider<DB>, DiskFileBlobStore>;
+use std::net::{IpAddr, SocketAddr};
 
 /// Execution components on a per-worker basis.
-pub(super) struct WorkerComponents<DB>
-where
-    DB: NodeTypesWithDB,
-{
+pub struct WorkerComponents {
     /// The RPC handle.
     rpc_handle: RpcServerHandle,
     /// The worker's transaction pool.
-    pool: WorkerTxPool<DB>,
+    pool: WorkerTxPool,
 }
 
-impl<DB> WorkerComponents<DB>
-where
-    DB: NodeTypesWithDB,
-{
+impl WorkerComponents {
     /// Create a new instance of [Self].
-    pub fn new(rpc_handle: RpcServerHandle, pool: WorkerTxPool<DB>) -> Self {
+    pub fn new(rpc_handle: RpcServerHandle, pool: WorkerTxPool) -> Self {
         Self { rpc_handle, pool }
     }
 
@@ -54,7 +40,7 @@ where
     }
 
     /// Return a reference to the worker's transaction pool.
-    pub fn pool(&self) -> WorkerTxPool<DB> {
+    pub fn pool(&self) -> WorkerTxPool {
         self.pool.clone()
     }
 }
@@ -66,13 +52,13 @@ where
 #[non_exhaustive]
 pub struct WorkerNetwork {
     /// Chainspec
-    chain_spec: Arc<ChainSpec>,
+    chain_spec: RethChainSpec,
 }
 
 impl WorkerNetwork {
     /// Create a new instance of self.
-    pub fn new(chain_spec: Arc<ChainSpec>) -> Self {
-        Self { chain_spec }
+    pub fn new(chain_spec: ChainSpec) -> Self {
+        Self { chain_spec: chain_spec.reth_chain_spec() }
     }
 }
 

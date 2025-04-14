@@ -6,12 +6,10 @@
 //!
 //! The mined transactions are returned with the built block so the worker can update the pool.
 
-use crate::error::BatchBuilderError;
-use reth_primitives_traits::InMemorySize as _;
-use reth_transaction_pool::{error::InvalidPoolTransactionError, PoolTransaction, TransactionPool};
+use tn_reth::WorkerTxBest;
 use tn_types::{
     max_batch_gas, max_batch_size, now, Batch, BatchBuilderArgs, Encodable2718 as _,
-    PendingBlockConfig, TransactionSigned, TransactionTrait as _, TxHash,
+    PendingBlockConfig, TransactionTrait as _, TxHash,
 };
 use tracing::{debug, warn};
 
@@ -45,11 +43,7 @@ pub struct BatchBuilderOutput {
 /// with very high gas limits. It's impossible to know the amount of gas a transaction
 /// will use without executing it, and the worker does not execute transactions.
 #[inline]
-pub fn build_batch<P>(args: BatchBuilderArgs<P>) -> BatchBuilderOutput
-where
-    P: TransactionPool,
-    P::Transaction: PoolTransaction<Consensus = TransactionSigned>,
-{
+pub fn build_batch<P: WorkerTxBest>(args: BatchBuilderArgs<P>) -> BatchBuilderOutput {
     let BatchBuilderArgs { pool, batch_config } = args;
     let gas_limit = max_batch_gas(batch_config.parent_info.tip.timestamp);
     let max_size = max_batch_size(batch_config.parent_info.tip.timestamp);
@@ -80,10 +74,7 @@ where
             // marking as invalid within the context of the `BestTransactions` pulled in this
             // current iteration  all dependents for this transaction are now considered invalid
             // before continuing loop
-            best_txs.mark_invalid(
-                &pool_tx,
-                InvalidPoolTransactionError::ExceedsGasLimit(pool_tx.gas_limit(), gas_limit),
-            );
+            best_txs.exceeds_gas_limit(&pool_tx, gas_limit);
             debug!(target: "worker::batch_builder", ?pool_tx, "marking tx invalid due to gas constraint");
             continue;
         }
@@ -93,19 +84,14 @@ where
         // NOTE: `ValidPoolTransaction::size()` is private
         let tx = pool_tx.to_consensus();
 
+        use tn_reth::TxnSize;
         // ensure block has capacity (in bytes) for this transaction
         if total_bytes_size + tx.size() > max_size {
             // the tx could exceed max gas limit for the block
             // marking as invalid within the context of the `BestTransactions` pulled in this
             // current iteration  all dependents for this transaction are now considered invalid
             // before continuing loop
-            best_txs.mark_invalid(
-                &pool_tx,
-                InvalidPoolTransactionError::Other(Box::new(BatchBuilderError::MaxBatchSize(
-                    tx.size(),
-                    max_size,
-                ))),
-            );
+            best_txs.max_batch_size(&pool_tx, tx.size(), max_size);
             debug!(target: "worker::batch_builder", ?pool_tx, "marking tx invalid due to bytes constraint");
             continue;
         }

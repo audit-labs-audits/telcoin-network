@@ -1,29 +1,17 @@
 //! Main node command
 //!
 //! Starts the client
-use crate::{args::clap_genesis_parser, version::SHORT_VERSION};
+use crate::{version::SHORT_VERSION, NoArgs};
 use clap::{value_parser, Parser};
 use core::fmt;
 use fdlimit::raise_fd_limit;
 use rayon::ThreadPoolBuilder;
-use reth::{
-    args::{
-        DatabaseArgs, DatadirArgs, DebugArgs, DevArgs, NetworkArgs, PayloadBuilderArgs,
-        PruningArgs, RpcServerArgs, TxPoolArgs,
-    },
-    builder::NodeConfig,
-    dirs::MaybePlatformPath,
-    prometheus_exporter::install_prometheus_recorder,
-};
-use reth_chainspec::ChainSpec;
-use reth_cli_commands::node::NoArgs;
-use reth_cli_util::parse_socket_address;
-use reth_db::{init_db, DatabaseEnv};
 use std::{net::SocketAddr, path::PathBuf, sync::Arc, thread::available_parallelism};
 use tn_config::{Config, ConfigFmt, ConfigTrait, TelcoinDirs as _};
-use tn_node::{
+use tn_node::engine::TnBuilder;
+use tn_reth::{
     dirs::{default_datadir_args, DataDirChainPath, DataDirPath},
-    engine::TnBuilder,
+    parse_socket_address, MaybePlatformPath, RethCommand, RethConfig,
 };
 use tracing::*;
 
@@ -33,28 +21,6 @@ pub struct NodeCommand<Ext: clap::Args + fmt::Debug = NoArgs> {
     /// The path to the configuration file to use.
     #[arg(long, value_name = "FILE", verbatim_doc_comment)]
     pub config: Option<PathBuf>,
-
-    /// The chain this node is running.
-    ///
-    /// Possible values are either a built-in chain or the path to a chain specification file.
-    ///
-    /// Defaults to the custom
-    #[arg(
-        long,
-        value_name = "CHAIN_OR_PATH",
-        verbatim_doc_comment,
-        default_value = "adiri",
-        default_value_if("dev", "true", "adiri"),
-        value_parser = clap_genesis_parser,
-        required = false,
-    )]
-    pub chain: Arc<ChainSpec>,
-
-    /// Enable Prometheus execution metrics.
-    ///
-    /// The metrics will be served at the given interface and port.
-    #[arg(long, value_name = "SOCKET", value_parser = parse_socket_address, help_heading = "Execution Metrics")]
-    pub metrics: Option<SocketAddr>,
 
     /// Enable Prometheus consensus metrics.
     ///
@@ -102,37 +68,9 @@ pub struct NodeCommand<Ext: clap::Args + fmt::Debug = NoArgs> {
     #[arg(long, value_name = "DATA_DIR", verbatim_doc_comment, default_value_t)]
     pub datadir: MaybePlatformPath<DataDirPath>,
 
-    /// All networking related arguments
+    /// Additional reth arguments
     #[clap(flatten)]
-    pub network: NetworkArgs,
-
-    /// All rpc related arguments
-    #[clap(flatten)]
-    pub rpc: RpcServerArgs,
-
-    /// All txpool related arguments with --txpool prefix
-    #[clap(flatten)]
-    pub txpool: TxPoolArgs,
-
-    /// All payload builder related arguments
-    #[clap(flatten)]
-    pub builder: PayloadBuilderArgs,
-
-    /// All debug related arguments with --debug prefix
-    #[clap(flatten)]
-    pub debug: DebugArgs,
-
-    /// All database related arguments
-    #[clap(flatten)]
-    pub db: DatabaseArgs,
-
-    /// All dev related arguments with --dev prefix
-    #[clap(flatten)]
-    pub dev: DevArgs,
-
-    /// All pruning related arguments
-    #[clap(flatten)]
-    pub pruning: PruningArgs,
+    pub reth: RethCommand,
 
     /// Additional cli arguments
     #[clap(flatten)]
@@ -149,7 +87,7 @@ impl<Ext: clap::Args + fmt::Debug> NodeCommand<Ext> {
         launcher: L,
     ) -> eyre::Result<()>
     where
-        L: FnOnce(TnBuilder<Arc<DatabaseEnv>>, Ext, DataDirChainPath) -> eyre::Result<()>,
+        L: FnOnce(TnBuilder, Ext, DataDirChainPath) -> eyre::Result<()>,
     {
         info!(target: "tn::cli", "telcoin-network {} starting", SHORT_VERSION);
 
@@ -172,15 +110,17 @@ impl<Ext: clap::Args + fmt::Debug> NodeCommand<Ext> {
 
         // use TN-specific datadir for finding tn-config
         let default_args = default_datadir_args();
-        let tn_datadir: DataDirChainPath =
-            self.datadir.unwrap_or_chain_default(self.chain.chain, default_args.clone()).into();
+        let tn_datadir: DataDirChainPath = self
+            .datadir
+            .unwrap_or_chain_default(self.reth.chain.chain, default_args.clone())
+            .into();
         // TODO: use config or CLI chain spec?
         let config_path = self.config.clone().unwrap_or(tn_datadir.node_config_path());
 
         let mut tn_config: Config = Config::load_from_path(&config_path, ConfigFmt::YAML)?;
         if load_config {
             // Make sure we are using the chain from config not just the default.
-            self.chain = Arc::new(tn_config.chain_spec());
+            self.reth.chain = Arc::new(tn_config.chain_spec());
             info!(target: "telcoin::cli", validator = ?tn_config.validator_info.name, "config loaded");
         }
 
@@ -189,18 +129,9 @@ impl<Ext: clap::Args + fmt::Debug> NodeCommand<Ext> {
             datadir: _, // Used above
             config: _,  // Used above
             consensus_metrics,
-            chain,
-            metrics,
             instance,
             with_unused_ports,
-            network,
-            rpc,
-            txpool,
-            builder,
-            debug,
-            db,
-            dev,
-            pruning,
+            reth,
             ext,
             observer,
         } = self;
@@ -208,58 +139,22 @@ impl<Ext: clap::Args + fmt::Debug> NodeCommand<Ext> {
         tn_config.observer = observer; // Set observer mode from the config.
 
         // create a reth DatadirArgs from tn datadir
-        let datadir = DatadirArgs {
-            datadir: MaybePlatformPath::from(PathBuf::from(tn_datadir.clone())),
-            static_files_path: None,
-        };
+        //let datadir = DatadirArgs {
+        //    datadir: MaybePlatformPath::from(PathBuf::from(tn_datadir.clone())),
+        //    static_files_path: None,
+        //};
 
         // set up reth node config for engine components
-        let mut node_config = NodeConfig {
-            config: self.config,
-            chain,
-            metrics,
+        let node_config = RethConfig::new(
+            reth,
             instance,
-            datadir,
-            network,
-            rpc,
-            txpool,
-            builder,
-            debug,
-            db,
-            dev,
-            pruning,
-        };
+            Some(config_path),
+            tn_datadir.clone(),
+            with_unused_ports,
+        );
 
-        if with_unused_ports {
-            node_config = node_config.with_unused_ports();
-        }
-
-        // create node builders for Primary and Worker
-        //
-        // Register the prometheus recorder before creating the database,
-        // then start metrics
-        //
-        // reth calls this in node command for CLI
-        // to capture db startup metrics
-        // metrics for TN are unrefined and outside the scope of this PR
-        //
-        // this is a best-guess attempt to capture data from the exectuion layer
-        // but more work is needed to ensure proper metric collection
-        let _ = install_prometheus_recorder();
-
-        let db_path = tn_datadir.db();
-        info!(target: "tn::engine", path = ?db_path, "opening database");
-        let database =
-            Arc::new(init_db(db_path.clone(), node_config.db.database_args())?.with_metrics());
-
-        // TODO: temporary solution until upstream reth supports public rpc hooks
-        let builder = TnBuilder {
-            database,
-            node_config,
-            tn_config,
-            opt_faucet_args: None,
-            consensus_metrics,
-        };
+        let builder =
+            TnBuilder { node_config, tn_config, opt_faucet_args: None, consensus_metrics };
 
         launcher(builder, ext, tn_datadir)
     }

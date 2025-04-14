@@ -7,14 +7,15 @@ use clap::{value_parser, Args, Subcommand};
 use eyre::Context;
 
 use generate::GenerateKeys;
-use reth::dirs::MaybePlatformPath;
-use reth_chainspec::ChainSpec;
 use std::{
     path::{Path, PathBuf},
     sync::Arc,
 };
 use tn_config::{Config, ConfigFmt, ConfigTrait, TelcoinDirs as _};
-use tn_node::dirs::{default_datadir_args, DataDirChainPath, DataDirPath};
+use tn_reth::{
+    dirs::{default_datadir_args, DataDirChainPath, DataDirPath},
+    MaybePlatformPath, RethChainSpec,
+};
 use tracing::{debug, info, warn};
 
 /// Generate keypairs and save them to a file.
@@ -45,7 +46,7 @@ pub struct KeyArgs {
         value_parser = clap_genesis_parser,
         required = false,
     )]
-    chain: Arc<ChainSpec>,
+    chain: Arc<RethChainSpec>,
 
     /// Generate command that creates keypairs and writes to file.
     ///
@@ -198,8 +199,8 @@ impl KeyArgs {
 #[cfg(test)]
 mod tests {
     use crate::cli::Cli;
+    use crate::NoArgs;
     use clap::Parser;
-    use reth_cli_commands::node::NoArgs;
     use tempfile::tempdir;
     use tn_config::{Config, ConfigFmt, ConfigTrait};
 

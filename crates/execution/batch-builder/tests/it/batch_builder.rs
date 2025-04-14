@@ -4,37 +4,22 @@
 //! from peers.
 
 use assert_matches::assert_matches;
-use reth_blockchain_tree::{
-    noop::NoopBlockchainTree, BlockchainTree, BlockchainTreeConfig, ShareableBlockchainTree,
-    TreeExternals,
-};
-use reth_chainspec::ChainSpec;
-use reth_consensus::FullConsensus;
-use reth_db::test_utils::{create_test_rw_db, tempdir_path};
-use reth_db_common::init::init_genesis;
-use reth_node_ethereum::{EthEvmConfig, EthExecutorProvider};
-use reth_provider::{
-    providers::{BlockchainProvider, StaticFileProvider},
-    CanonStateSubscriptions, ProviderFactory,
-};
-use reth_rpc_eth_types::utils::recover_raw_transaction;
-use reth_tasks::TaskManager;
-use reth_transaction_pool::{
-    blobstore::InMemoryBlobStore, PoolConfig, TransactionPool, TransactionValidationTaskExecutor,
-};
 use std::{collections::VecDeque, sync::Arc, time::Duration};
 use tempfile::TempDir;
 use tn_batch_builder::{test_utils::execute_test_batch, BatchBuilder};
 use tn_batch_validator::BatchValidator;
 use tn_engine::execute_consensus_output;
 use tn_network_types::{local::LocalNetwork, MockWorkerToPrimary};
-use tn_node_traits::{BuildArguments, TNExecution, TelcoinNode};
+use tn_reth::recover_raw_transaction;
+use tn_reth::traits::BuildArguments;
+use tn_reth::RethChainSpec;
+use tn_reth::RethEnv;
 use tn_storage::{open_db, tables::Batches};
-use tn_test_utils::{get_gas_price, test_genesis, TransactionFactory};
+use tn_test_utils::{test_genesis, TransactionFactory};
 use tn_types::{
-    Address, Batch, BatchValidation, BlockBody, Bytes, Certificate, CommittedSubDag,
-    ConsensusHeader, ConsensusOutput, Database, Encodable2718 as _, LastCanonicalUpdate,
-    ReputationScores, SealedBatch, SealedBlock, TransactionSigned, U160, U256,
+    Address, Batch, BatchValidation, Bytes, Certificate, CommittedSubDag, ConsensusHeader,
+    ConsensusOutput, Database, Encodable2718 as _, ReputationScores, SealedBatch, TaskManager,
+    U160, U256,
 };
 use tn_worker::{
     metrics::WorkerMetrics,
@@ -58,13 +43,14 @@ impl QuorumWaiterTrait for TestMakeBlockQuorumWaiter {
 
 #[tokio::test]
 async fn test_make_batch_el_to_cl() {
+    let tmp_dir = TempDir::new().expect("temp dir");
+    let task_manager = TaskManager::default();
     //
     //=== Consensus Layer
     //
 
     let network_client = LocalNetwork::new_with_empty_id();
-    let temp_dir = TempDir::new().unwrap();
-    let store = open_db(temp_dir.path());
+    let store = open_db(tmp_dir.path().join("c-db"));
     let node_metrics = WorkerMetrics::default();
 
     // Mock the primary client to always succeed.
@@ -91,64 +77,23 @@ async fn test_make_batch_el_to_cl() {
     let genesis = test_genesis();
 
     // let genesis = genesis.extend_accounts(account);
-    let head_timestamp = genesis.timestamp;
-    let chain: Arc<ChainSpec> = Arc::new(genesis.into());
+    let chain: Arc<RethChainSpec> = Arc::new(genesis.into());
 
-    // temp db
-    let db = create_test_rw_db();
-
-    // provider
-    let factory = ProviderFactory::new(
-        Arc::clone(&db),
-        Arc::clone(&chain),
-        StaticFileProvider::read_write(tempdir_path())
-            .expect("static file provider read write created with tempdir path"),
-    );
-
-    let genesis_hash = init_genesis(&factory).expect("init genesis");
-    let blockchain_db: BlockchainProvider<TelcoinNode<_>> =
-        BlockchainProvider::new(factory, Arc::new(NoopBlockchainTree::default()))
-            .expect("test blockchain provider");
-
-    debug!("genesis hash: {genesis_hash:?}");
-
-    // task manger
-    let manager = TaskManager::current();
-    let executor = manager.executor();
-
-    // TODO: abstract the txpool creation to call in engine::inner and here
-    //
-    // txpool
-    let blob_store = InMemoryBlobStore::default();
-    let validator = TransactionValidationTaskExecutor::eth_builder(Arc::clone(&chain))
-        .with_head_timestamp(head_timestamp)
-        .with_additional_tasks(1)
-        .build_with_tasks(blockchain_db.clone(), executor, blob_store.clone());
-
-    let txpool =
-        reth_transaction_pool::Pool::eth_pool(validator, blob_store, PoolConfig::default());
+    let reth_env =
+        RethEnv::new_for_test_with_chain(chain.clone(), tmp_dir.path(), &task_manager).unwrap();
+    let txpool = reth_env.worker_txn_pool().clone();
     let address = Address::from(U160::from(333));
-    let tx_pool_latest = txpool.block_info();
-    let tip = SealedBlock::new(chain.sealed_genesis_header(), BlockBody::default());
 
-    let latest_canon_state = LastCanonicalUpdate {
-        tip, // genesis
-        pending_block_base_fee: tx_pool_latest.pending_basefee,
-        pending_block_blob_fee: tx_pool_latest.pending_blob_fee,
-    };
-
-    // build execution batch proposer
+    // build execution block proposer
     let batch_builder = BatchBuilder::new(
-        blockchain_db.clone(),
+        reth_env.clone(),
         txpool.clone(),
-        blockchain_db.canonical_state_stream(),
-        latest_canon_state,
         batch_provider.batches_tx(),
         address,
         Duration::from_secs(1),
     );
 
-    let gas_price = get_gas_price(&blockchain_db);
+    let gas_price = reth_env.get_gas_price().unwrap();
     let value = U256::from(10).checked_pow(U256::from(18)).expect("1e18 doesn't overflow U256");
     let mut tx_factory = TransactionFactory::new();
 
@@ -217,7 +162,7 @@ async fn test_make_batch_el_to_cl() {
     let sealed_batch = sealed_batch.unwrap();
 
     // ensure batch validator succeeds
-    let batch_validator = BatchValidator::new(blockchain_db.clone());
+    let batch_validator = BatchValidator::new(reth_env.clone());
 
     let valid_batch_result = batch_validator.validate_batch(sealed_batch.clone());
     assert!(valid_batch_result.is_ok());
@@ -269,66 +214,27 @@ async fn test_batch_builder_produces_valid_batchess() {
     let genesis = test_genesis();
 
     // let genesis = genesis.extend_accounts(account);
-    let head_timestamp = genesis.timestamp;
-    let chain: Arc<ChainSpec> = Arc::new(genesis.into());
+    let chain: Arc<RethChainSpec> = Arc::new(genesis.into());
 
-    // temp db
-    let db = create_test_rw_db();
-
-    // provider
-    let factory = ProviderFactory::new(
-        Arc::clone(&db),
-        Arc::clone(&chain),
-        StaticFileProvider::read_write(tempdir_path())
-            .expect("static file provider read write created with tempdir path"),
-    );
-
-    let genesis_hash = init_genesis(&factory).expect("init genesis");
-    let blockchain_db: BlockchainProvider<TelcoinNode<_>> =
-        BlockchainProvider::new(factory, Arc::new(NoopBlockchainTree::default()))
-            .expect("test blockchain provider");
-
-    debug!("genesis hash: {genesis_hash:?}");
-
-    // task manger
-    let manager = TaskManager::current();
-    let executor = manager.executor();
-
-    // TODO: abstract the txpool creation to call in engine::inner and here
-    //
-    // txpool
-    let blob_store = InMemoryBlobStore::default();
-    let validator = TransactionValidationTaskExecutor::eth_builder(Arc::clone(&chain))
-        .with_head_timestamp(head_timestamp)
-        .with_additional_tasks(1)
-        .build_with_tasks(blockchain_db.clone(), executor, blob_store.clone());
-
-    let txpool =
-        reth_transaction_pool::Pool::eth_pool(validator, blob_store, PoolConfig::default());
     let address = Address::from(U160::from(333));
-    let tx_pool_latest = txpool.block_info();
-    let tip = SealedBlock::new(chain.sealed_genesis_header(), BlockBody::default());
-
-    let latest_canon_state = LastCanonicalUpdate {
-        tip, // genesis
-        pending_block_base_fee: tx_pool_latest.pending_basefee,
-        pending_block_blob_fee: tx_pool_latest.pending_blob_fee,
-    };
+    let tmp_dir = TempDir::new().unwrap();
+    let task_manager = TaskManager::default();
+    let reth_env =
+        RethEnv::new_for_test_with_chain(chain.clone(), tmp_dir.path(), &task_manager).unwrap();
+    let txpool = reth_env.worker_txn_pool().clone();
 
     let (to_worker, mut from_batch_builder) = tokio::sync::mpsc::channel(2);
 
-    // build execution batch proposer
+    // build execution block proposer
     let batch_builder = BatchBuilder::new(
-        blockchain_db.clone(),
+        reth_env.clone(),
         txpool.clone(),
-        blockchain_db.canonical_state_stream(),
-        latest_canon_state,
         to_worker,
         address,
         Duration::from_secs(1),
     );
 
-    let gas_price = get_gas_price(&blockchain_db);
+    let gas_price = reth_env.get_gas_price().unwrap();
     let value = U256::from(10).checked_pow(U256::from(18)).expect("1e18 doesn't overflow U256");
     let mut tx_factory = TransactionFactory::new();
 
@@ -397,7 +303,7 @@ async fn test_batch_builder_produces_valid_batchess() {
             gas_price,
             Address::ZERO,
             value, // 1 TEL
-            &txpool,
+            txpool.clone(),
         )
         .await;
 
@@ -409,7 +315,7 @@ async fn test_batch_builder_produces_valid_batchess() {
     let _ = ack.send(Ok(()));
 
     // validate first batch
-    let batch_validator = BatchValidator::new(blockchain_db.clone());
+    let batch_validator = BatchValidator::new(reth_env.clone());
 
     let valid_batch_result = batch_validator.validate_batch(first_batch.clone());
     assert!(valid_batch_result.is_ok());
@@ -445,8 +351,7 @@ async fn test_batch_builder_produces_valid_batchess() {
     // confirm 4th transaction hash matches one submitted
     let tx_bytes =
         next_batch.batch().transactions().first().expect("block transactions length is one");
-    let tx =
-        recover_raw_transaction::<TransactionSigned>(tx_bytes).expect("recover raw tx for test");
+    let tx = recover_raw_transaction(tx_bytes).expect("recover raw tx for test");
     assert_eq!(tx.hash(), expected_tx_hash);
 
     // yield to try and give pool a chance to update
@@ -472,77 +377,27 @@ async fn test_canonical_notification_updates_pool() {
     // let (genesis, _txs, _signers) =
     //     seeded_genesis_from_random_batches(genesis, first_round_blocks.iter());
 
-    let head_timestamp = genesis.timestamp;
-    let chain: Arc<ChainSpec> = Arc::new(genesis.into());
+    let chain: Arc<RethChainSpec> = Arc::new(genesis.into());
 
-    // temp db
-    let db = create_test_rw_db();
-
-    // provider
-    let factory = ProviderFactory::new(
-        Arc::clone(&db),
-        Arc::clone(&chain),
-        StaticFileProvider::read_write(tempdir_path())
-            .expect("static file provider read write created with tempdir path"),
-    );
-
-    let genesis_hash = init_genesis(&factory).expect("init genesis");
-
-    // TODO: figure out a better way to ensure this matches engine::inner::new
-    let evm_config = EthEvmConfig::new(chain.clone());
-    let executor = EthExecutorProvider::ethereum(Arc::clone(&chain));
-    let auto_consensus: Arc<dyn FullConsensus> = Arc::new(TNExecution);
-    let tree_config = BlockchainTreeConfig::default();
-    let tree_externals =
-        TreeExternals::new(factory.clone(), auto_consensus.clone(), executor.clone());
-    let tree = BlockchainTree::new(tree_externals, tree_config).expect("new blockchain tree");
-
-    let blockchain_tree = Arc::new(ShareableBlockchainTree::new(tree));
-
-    let blockchain_db: BlockchainProvider<TelcoinNode<_>> =
-        BlockchainProvider::new(factory, blockchain_tree).expect("test blockchain provider");
-
-    debug!("genesis hash: {genesis_hash:?}");
-
-    // task manger
-    let manager = TaskManager::current();
-    let executor = manager.executor();
-
-    // TODO: abstract the txpool creation to call in engine::inner and here
-    //
-    // txpool
-    let blob_store = InMemoryBlobStore::default();
-    let validator = TransactionValidationTaskExecutor::eth_builder(Arc::clone(&chain))
-        .with_head_timestamp(head_timestamp)
-        .with_additional_tasks(1)
-        .build_with_tasks(blockchain_db.clone(), executor, blob_store.clone());
-
-    let txpool =
-        reth_transaction_pool::Pool::eth_pool(validator, blob_store, PoolConfig::default());
+    let tmp_dir = TempDir::new().unwrap();
+    let task_manager = TaskManager::default();
+    let reth_env =
+        RethEnv::new_for_test_with_chain(chain.clone(), tmp_dir.path(), &task_manager).unwrap();
+    let txpool = reth_env.worker_txn_pool().clone();
     let address = Address::from(U160::from(333));
-    let tx_pool_latest = txpool.block_info();
-    let tip = SealedBlock::new(chain.sealed_genesis_header(), BlockBody::default());
-
-    let latest_canon_state = LastCanonicalUpdate {
-        tip, // genesis
-        pending_block_base_fee: tx_pool_latest.pending_basefee,
-        pending_block_blob_fee: tx_pool_latest.pending_blob_fee,
-    };
 
     let (to_worker, mut from_batch_builder) = tokio::sync::mpsc::channel(2);
 
     // build execution block proposer
     let batch_builder = BatchBuilder::new(
-        blockchain_db.clone(),
+        reth_env.clone(),
         txpool.clone(),
-        blockchain_db.canonical_state_stream(),
-        latest_canon_state,
         to_worker,
         address,
         Duration::from_secs(1),
     );
 
-    let gas_price = get_gas_price(&blockchain_db);
+    let gas_price = reth_env.get_gas_price().unwrap();
     let value = U256::from(10).checked_pow(U256::from(18)).expect("1e18 doesn't overflow U256");
     let mut tx_factory = TransactionFactory::new();
 
@@ -593,7 +448,7 @@ async fn test_canonical_notification_updates_pool() {
             gas_price,
             Address::ZERO,
             value, // 1 TEL
-            &txpool,
+            txpool.clone(),
         )
         .await;
 
@@ -634,8 +489,8 @@ async fn test_canonical_notification_updates_pool() {
     };
 
     // execute output to trigger canonical update
-    let args = BuildArguments::new(blockchain_db.clone(), output, chain.sealed_genesis_header());
-    let _final_header = execute_consensus_output(&evm_config, args).expect("output executed");
+    let args = BuildArguments::new(reth_env.clone(), output, chain.sealed_genesis_header());
+    let _final_header = execute_consensus_output(args).expect("output executed");
 
     // sleep to ensure canonical update received before ack
     let _ = tokio::time::sleep(Duration::from_secs(1)).await;
@@ -658,7 +513,7 @@ async fn test_canonical_notification_updates_pool() {
     let _ = ack.send(Ok(()));
 
     // validate batch
-    let batch_validator = BatchValidator::new(blockchain_db);
+    let batch_validator = BatchValidator::new(reth_env);
 
     let valid_batch_result = batch_validator.validate_batch(first_batch.clone());
     assert!(valid_batch_result.is_ok());

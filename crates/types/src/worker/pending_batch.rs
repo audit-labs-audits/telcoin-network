@@ -45,7 +45,7 @@ impl PendingBlockConfig {
 /// Similar to `reth::pool::CanonicalStateUpdate` but without the lifetime headache.
 /// This type is useful for tracking state between canonical updates so the block builder
 /// can apply mined transaction updates without any other side effects.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Default)]
 pub struct LastCanonicalUpdate {
     /// The finalized block from the latest round of consensus.
     pub tip: SealedBlock,

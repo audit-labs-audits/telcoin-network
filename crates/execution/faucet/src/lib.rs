@@ -16,11 +16,10 @@ use gcloud_sdk::{
 };
 use lru_time_cache::LruCache;
 use reth::rpc::server_types::eth::{EthApiError, EthResult};
-use reth_provider::{BlockReaderIdExt, StateProviderFactory};
 use reth_tasks::{TaskSpawner, TokioTaskExecutor};
-use reth_transaction_pool::{EthPooledTransaction, TransactionPool};
 use secp256k1::constants::PUBLIC_KEY_SIZE;
 use std::time::Duration;
+use tn_reth::{RethEnv, WorkerTxPool};
 use tn_types::{Address, TxHash};
 use tokio::sync::{
     mpsc::{unbounded_channel, UnboundedSender},
@@ -107,12 +106,12 @@ pub(crate) struct Faucet {
 
 impl Faucet {
     /// Create and return both cache's frontend and the time bound service.
-    fn create<Provider, Pool, Tasks>(
-        provider: Provider,
-        pool: Pool,
+    fn create<Tasks>(
+        reth_env: RethEnv,
+        pool: WorkerTxPool,
         executor: Tasks,
         config: FaucetConfig,
-    ) -> (Self, FaucetService<Provider, Pool, Tasks>) {
+    ) -> (Self, FaucetService<Tasks>) {
         let (to_service, rx) = unbounded_channel();
         let FaucetConfig { wait_period, chain_id, wallet, contract_address } = config;
 
@@ -128,7 +127,7 @@ impl Faucet {
         let service = FaucetService {
             faucet_contract: contract_address,
             request_rx: UnboundedReceiverStream::new(rx),
-            provider,
+            reth_env,
             pool,
             success_cache,
             pending_cache,
@@ -148,34 +147,24 @@ impl Faucet {
     /// [tokio::spawn].
     ///
     /// See also [Self::spawn_with]
-    pub(crate) fn spawn<Provider, Pool>(
-        provider: Provider,
-        pool: Pool,
-        config: FaucetConfig,
-    ) -> Self
-    where
-        Provider: BlockReaderIdExt + StateProviderFactory + Unpin + Clone + 'static,
-        Pool: TransactionPool<Transaction = EthPooledTransaction> + Unpin + Clone + 'static,
-    {
-        Self::spawn_with(provider, pool, config, TokioTaskExecutor::default())
+    pub(crate) fn spawn(reth_env: RethEnv, pool: WorkerTxPool, config: FaucetConfig) -> Self {
+        Self::spawn_with(reth_env, pool, config, TokioTaskExecutor::default())
     }
 
     /// Creates a new async LRU backed cache service task and spawns it to a new task via
-    /// [tokio::spawn].
+    /// [].
     ///
     /// See also [Self::spawn_with]
-    pub(crate) fn spawn_with<Provider, Pool, Tasks>(
-        provider: Provider,
-        pool: Pool,
+    pub(crate) fn spawn_with<Tasks>(
+        reth_env: RethEnv,
+        pool: WorkerTxPool,
         config: FaucetConfig,
         executor: Tasks,
     ) -> Self
     where
-        Provider: BlockReaderIdExt + StateProviderFactory + Unpin + Clone + 'static,
-        Pool: TransactionPool<Transaction = EthPooledTransaction> + Unpin + Clone + 'static,
         Tasks: TaskSpawner + Clone + 'static,
     {
-        let (this, service) = Self::create(provider, pool, executor.clone(), config);
+        let (this, service) = Self::create(reth_env, pool, executor.clone(), config);
 
         executor.spawn_critical("faucet cache", Box::pin(service));
         this

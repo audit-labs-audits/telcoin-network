@@ -25,6 +25,7 @@ once_cell = { workspace = true }
 tn-network-libp2p = { workspace = true }
 tn-network-types = { workspace = true }
 tn-node = { workspace = true }
+tn-reth = { workspace = true }
 tn-primary = { workspace = true }
 tn-types = { workspace = true }
 tn-faucet = { workspace = true }
@@ -32,31 +33,17 @@ tn-config = { workspace = true }
 tn-worker = { workspace = true }
 consensus-metrics = { workspace = true }
 tn-primary-metrics = { workspace = true }
-reth-chainspec = { workspace = true }
-reth-cli-commands = { workspace = true }
 secp256k1 = { workspace = true }
-reth-tasks = { workspace = true }
 
 # execution
 eyre = { workspace = true }
-reth-revm = { workspace = true }
-reth-node-core = { workspace = true }
-reth-provider = { workspace = true }
-reth-node-ethereum = { workspace = true }
-reth-rpc-eth-types = { workspace = true }
-reth-primitives-traits = { workspace = true }
-reth-stages = { workspace = true }
-tn-node-traits = { workspace = true }
 tn-batch-builder = { workspace = true }
 tn-batch-validator = { workspace = true }
 tn-engine = { workspace = true }
-reth-db = { workspace = true, features = ["test-utils"] }
-reth-transaction-pool = { workspace = true }
 jsonrpsee = { workspace = true }
 clap = { workspace = true, features = ["env"] }
 tn-storage = { workspace = true }
 telcoin-network = { path = "../../bin/telcoin-network" }
-reth-evm = { workspace = true }
 alloy = { workspace = true, features = [
     "contract",
     "signers",

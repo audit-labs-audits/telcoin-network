@@ -24,20 +24,13 @@ use error::{EngineResult, TnEngineError};
 use futures::{Future, StreamExt};
 use futures_util::FutureExt;
 pub use payload_builder::execute_consensus_output;
-use reth_blockchain_tree::BlockchainTreeEngine;
-use reth_chainspec::ChainSpec;
-use reth_evm::ConfigureEvm;
-use reth_provider::{
-    BlockIdReader, BlockReader, CanonChainTracker, ChainSpecProvider, HeaderProvider,
-    StageCheckpointReader, StateProviderFactory,
-};
 use std::{
     collections::VecDeque,
     pin::{pin, Pin},
     task::{Context, Poll},
 };
-use tn_node_traits::BuildArguments;
-use tn_types::{ConsensusOutput, ExecHeader, Noticer, SealedHeader, TransactionSigned};
+use tn_reth::{traits::BuildArguments, RethEnv};
+use tn_types::{ConsensusOutput, Noticer, SealedHeader};
 use tokio::sync::oneshot;
 use tokio_stream::wrappers::BroadcastStream;
 use tracing::{error, info, trace, warn};
@@ -55,16 +48,14 @@ type PendingExecutionTask = oneshot::Receiver<EngineResult<SealedHeader>>;
 /// channel is dropped. If the sending channel is dropped, the engine attempts to execute any
 /// remaining output that is queued up before shutting itself down gracefully. If the maximum round
 /// is reached, the engine shuts down immediately.
-pub struct ExecutorEngine<BT, CE> {
+pub struct ExecutorEngine {
     /// The backlog of output from consensus that's ready to be executed.
     queued: VecDeque<ConsensusOutput>,
     /// Single active future that executes consensus output on a blocking thread and then returns
     /// the result through a oneshot channel.
     pending_task: Option<PendingExecutionTask>,
-    /// The type used to query both the database and the blockchain tree.
-    blockchain: BT,
-    /// EVM configuration for executing transactions and building blocks.
-    evm_config: CE,
+    // Reth execution environment.
+    reth_env: RethEnv,
     /// Optional round of consensus to finish executing before then returning. The value is used to
     /// track the subdag index from consensus output. The index is also considered the "round" of
     /// consensus and is included in executed blocks as  the block's `nonce` value.
@@ -82,17 +73,7 @@ pub struct ExecutorEngine<BT, CE> {
     rx_shutdown: Noticer,
 }
 
-impl<BT, CE> ExecutorEngine<BT, CE>
-where
-    BT: BlockchainTreeEngine
-        + BlockReader
-        + BlockIdReader
-        + CanonChainTracker
-        + StageCheckpointReader
-        + ChainSpecProvider
-        + 'static,
-    CE: ConfigureEvm<Transaction = TransactionSigned>,
-{
+impl ExecutorEngine {
     /// Create a new instance of the [`ExecutorEngine`] using the given channel to configure
     /// the [`ConsensusOutput`] communication channel.
     ///
@@ -101,8 +82,7 @@ where
     /// Propagates any database related error.
     #[allow(clippy::too_many_arguments)]
     pub fn new(
-        blockchain: BT,
-        evm_config: CE,
+        reth_env: RethEnv,
         max_round: Option<u64>,
         consensus_output_stream: BroadcastStream<ConsensusOutput>,
         parent_header: SealedHeader,
@@ -111,8 +91,7 @@ where
         Self {
             queued: Default::default(),
             pending_task: None,
-            blockchain,
-            evm_config,
+            reth_env,
             max_round,
             consensus_output_stream,
             parent_header,
@@ -124,29 +103,20 @@ where
     ///
     /// This approach allows the engine to yield back to the runtime while executing blocks.
     /// Executing blocks is cpu intensive, so a blocking task is used.
-    fn spawn_execution_task(&mut self) -> PendingExecutionTask
-    where
-        BT: StateProviderFactory
-            + ChainSpecProvider<ChainSpec = ChainSpec>
-            + BlockchainTreeEngine
-            + HeaderProvider<Header = ExecHeader>
-            + CanonChainTracker<Header = ExecHeader>
-            + Clone,
-    {
+    fn spawn_execution_task(&mut self) -> PendingExecutionTask {
         let (tx, rx) = oneshot::channel();
 
         // pop next output in queue and execute
         if let Some(output) = self.queued.pop_front() {
-            let provider = self.blockchain.clone();
-            let evm_config = self.evm_config.clone();
+            let reth_env = self.reth_env.clone();
             let parent = self.parent_header.clone();
-            let build_args = BuildArguments::new(provider, output, parent);
+            let build_args = BuildArguments::new(reth_env, output, parent);
 
             // spawn blocking task and return future
             tokio::task::spawn_blocking(move || {
                 // this is safe to call on blocking thread without a semaphore bc it's held in
                 // Self::pending_tesk as a single `Option`
-                let result = execute_consensus_output(&evm_config, build_args);
+                let result = execute_consensus_output(build_args);
                 match tx.send(result) {
                     Ok(()) => (),
                     Err(e) => {
@@ -192,21 +162,7 @@ where
 ///
 /// If the broadcast stream is closed, the engine will attempt to execute all remaining tasks and
 /// any output that is queued.
-impl<BT, CE> Future for ExecutorEngine<BT, CE>
-where
-    BT: BlockchainTreeEngine
-        + BlockReader
-        + BlockIdReader
-        + CanonChainTracker<Header = ExecHeader>
-        + StageCheckpointReader
-        + StateProviderFactory
-        + ChainSpecProvider<ChainSpec = ChainSpec>
-        + HeaderProvider<Header = ExecHeader>
-        + Clone
-        + Unpin
-        + 'static,
-    CE: ConfigureEvm<Transaction = TransactionSigned>,
-{
+impl Future for ExecutorEngine {
     type Output = EngineResult<()>;
 
     fn poll(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
@@ -299,7 +255,7 @@ where
     }
 }
 
-impl<BT, CE> std::fmt::Debug for ExecutorEngine<BT, CE> {
+impl std::fmt::Debug for ExecutorEngine {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("ExecutorEngine")
             .field("queued", &self.queued.len())
@@ -313,12 +269,11 @@ impl<BT, CE> std::fmt::Debug for ExecutorEngine<BT, CE> {
 #[cfg(test)]
 mod tests {
     use crate::ExecutorEngine;
-    use reth_blockchain_tree::BlockchainTreeViewer;
-    use reth_chainspec::ChainSpec;
-    use reth_provider::{BlockIdReader, BlockNumReader, BlockReader, TransactionVariant};
-    use reth_revm::primitives::FixedBytes;
     use std::{collections::VecDeque, str::FromStr as _, sync::Arc, time::Duration};
+    use tempfile::TempDir;
     use tn_batch_builder::test_utils::execute_test_batch;
+    use tn_reth::FixedBytes;
+    use tn_reth::RethChainSpec;
     use tn_test_utils::{default_test_execution_node, seeded_genesis_from_random_batches};
     use tn_types::{
         adiri_chain_spec_arc, adiri_genesis, max_batch_gas, now, Address, BlockHash,
@@ -368,20 +323,21 @@ mod tests {
 
         let chain = adiri_chain_spec_arc();
 
+        let tmp_dir = TempDir::new().expect("temp dir");
         // execution node components
-        let execution_node = default_test_execution_node(Some(chain.clone()), None)?;
+        let execution_node =
+            default_test_execution_node(Some(chain.clone()), None, tmp_dir.path())?;
 
         let (to_engine, from_consensus) = tokio::sync::broadcast::channel(1);
         let consensus_output_stream = BroadcastStream::from(from_consensus);
-        let provider = execution_node.get_provider().await;
-        let evm_config = execution_node.get_evm_config().await;
+        let reth_env = execution_node.get_reth_env().await;
         let max_round = None;
         let genesis_header = chain.sealed_genesis_header();
 
         let shutdown = Notifier::default();
+        let task_manager = TaskManager::default();
         let engine = ExecutorEngine::new(
-            provider.clone(),
-            evm_config,
+            reth_env.clone(),
             max_round,
             consensus_output_stream,
             genesis_header.clone(),
@@ -398,7 +354,7 @@ mod tests {
         let (tx, rx) = oneshot::channel();
 
         // spawn engine task
-        TaskManager::default().spawn_blocking(Box::pin(async move {
+        task_manager.spawn_blocking(Box::pin(async move {
             let res = engine.await;
             let _ = tx.send(res);
         }));
@@ -406,9 +362,9 @@ mod tests {
         let engine_task = timeout(Duration::from_secs(10), rx).await?;
         assert!(engine_task.is_ok());
 
-        let last_block_num = provider.last_block_number()?;
-        let canonical_tip = provider.canonical_tip();
-        let final_block = provider.finalized_block_num_hash()?.expect("finalized block");
+        let last_block_num = reth_env.last_block_number()?;
+        let canonical_tip = reth_env.canonical_tip();
+        let final_block = reth_env.finalized_block_num_hash()?.expect("finalized block");
 
         assert_eq!(canonical_tip, final_block);
         assert_eq!(last_block_num, final_block.number);
@@ -423,8 +379,8 @@ mod tests {
         assert_eq!(last_output, consensus_output_hash);
 
         // pull newly executed block from database (skip genesis)
-        let expected_block = provider
-            .block_with_senders(BlockHashOrNumber::Number(1), TransactionVariant::NoHash)?
+        let expected_block = reth_env
+            .block_with_senders(BlockHashOrNumber::Number(1))?
             .expect("block 1 successfully executed");
         assert_eq!(expected_block_height, expected_block.number);
 
@@ -528,20 +484,21 @@ mod tests {
 
         let chain = adiri_chain_spec_arc();
 
+        let tmp_dir = TempDir::new().expect("temp dir");
         // execution node components
-        let execution_node = default_test_execution_node(Some(chain.clone()), None)?;
+        let execution_node =
+            default_test_execution_node(Some(chain.clone()), None, tmp_dir.path())?;
 
         let (to_engine, from_consensus) = tokio::sync::broadcast::channel(1);
         let consensus_output_stream = BroadcastStream::from(from_consensus);
-        let provider = execution_node.get_provider().await;
-        let evm_config = execution_node.get_evm_config().await;
+        let reth_env = execution_node.get_reth_env().await;
         let max_round = None;
         let genesis_header = chain.sealed_genesis_header();
 
         let shutdown = Notifier::default();
+        let task_manager = TaskManager::default();
         let engine = ExecutorEngine::new(
-            provider.clone(),
-            evm_config,
+            reth_env.clone(),
             max_round,
             consensus_output_stream,
             genesis_header.clone(),
@@ -558,7 +515,7 @@ mod tests {
         let (tx, rx) = oneshot::channel();
 
         // spawn engine task
-        TaskManager::default().spawn_blocking(Box::pin(async move {
+        task_manager.spawn_blocking(Box::pin(async move {
             let res = engine.await;
             let _ = tx.send(res);
         }));
@@ -566,9 +523,9 @@ mod tests {
         let engine_task = timeout(Duration::from_secs(10), rx).await?;
         assert!(engine_task.is_ok());
 
-        let last_block_num = provider.last_block_number()?;
-        let canonical_tip = provider.canonical_tip();
-        let final_block = provider.finalized_block_num_hash()?;
+        let last_block_num = reth_env.last_block_number()?;
+        let canonical_tip = reth_env.canonical_tip();
+        let final_block = reth_env.finalized_block_num_hash()?;
         assert!(final_block.is_none());
 
         let expected_block_height = 1;
@@ -596,6 +553,7 @@ mod tests {
     /// parents is currently valid.
     #[tokio::test]
     async fn test_queued_output_executes_after_sending_channel_closed() -> eyre::Result<()> {
+        let tmp_dir = TempDir::new().expect("temp dir");
         // create batches for consensus output
         let mut batches_1 = tn_test_utils::batches(4); // create 4 batches
         let mut batches_2 = tn_test_utils::batches(4); // create 4 batches
@@ -608,11 +566,14 @@ mod tests {
         let genesis = adiri_genesis();
         let (genesis, txs_by_block, signers_by_block) =
             seeded_genesis_from_random_batches(genesis, all_batches.iter());
-        let chain: Arc<ChainSpec> = Arc::new(genesis.into());
+        let chain: Arc<RethChainSpec> = Arc::new(genesis.into());
 
         // create execution node components
-        let execution_node = default_test_execution_node(Some(chain.clone()), None)?;
-        let provider = execution_node.get_provider().await;
+        let execution_node = default_test_execution_node(
+            Some(chain.clone()),
+            None,
+            &tmp_dir.path().join("exc-node"),
+        )?;
         let parent = chain.sealed_genesis_header();
 
         // execute batches to update headers with valid data
@@ -728,15 +689,14 @@ mod tests {
 
         let (to_engine, from_consensus) = tokio::sync::broadcast::channel(1);
         let consensus_output_stream = BroadcastStream::from(from_consensus);
-        let blockchain = execution_node.get_provider().await;
-        let evm_config = execution_node.get_evm_config().await;
         let max_round = None;
         let parent = chain.sealed_genesis_header();
 
         let shutdown = Notifier::default();
+        let task_manager = TaskManager::default();
+        let reth_env = execution_node.get_reth_env().await;
         let mut engine = ExecutorEngine::new(
-            blockchain.clone(),
-            evm_config,
+            reth_env.clone(),
             max_round,
             consensus_output_stream,
             parent,
@@ -759,7 +719,7 @@ mod tests {
         // spawn engine task
         //
         // one output already queued up, one output waiting in broadcast stream
-        TaskManager::default().spawn_blocking(Box::pin(async move {
+        task_manager.spawn_blocking(Box::pin(async move {
             let res = engine.await;
             let _ = tx.send(res);
         }));
@@ -767,16 +727,13 @@ mod tests {
         let engine_task = timeout(Duration::from_secs(10), rx).await?;
         assert!(engine_task.is_ok());
 
-        let last_block_num = blockchain.last_block_number()?;
-        let canonical_tip = blockchain.canonical_tip();
-        let final_block = blockchain.finalized_block_num_hash()?.expect("finalized block");
+        let last_block_num = reth_env.last_block_number()?;
+        let canonical_tip = reth_env.canonical_tip();
+        let final_block = reth_env.finalized_block_num_hash()?.expect("finalized block");
 
         debug!("last block num {last_block_num:?}");
         debug!("canonical tip: {canonical_tip:?}");
         debug!("final block num {final_block:?}");
-
-        let chain_info = blockchain.chain_info()?;
-        debug!("chain info:\n{chain_info:?}");
 
         let expected_block_height = 8;
         // assert all 8 batches were executed
@@ -797,7 +754,7 @@ mod tests {
         //     – Withdrawals
         //     – Requests
         //     – Senders
-        let executed_blocks = provider.block_with_senders_range(1..=expected_block_height)?;
+        let executed_blocks = reth_env.block_with_senders_range(1..=expected_block_height)?;
         assert_eq!(expected_block_height, executed_blocks.len() as u64);
 
         // basefee intentionally increased with loop
@@ -895,6 +852,7 @@ mod tests {
     /// parents is currently valid.
     #[tokio::test]
     async fn test_execution_succeeds_with_duplicate_transactions() -> eyre::Result<()> {
+        let tmp_dir = TempDir::new().unwrap();
         // create batches for consensus output
         let mut batches_1 = tn_test_utils::batches(4); // create 4 batches
         let mut batches_2 = tn_test_utils::batches(4); // create 4 batches
@@ -915,11 +873,14 @@ mod tests {
         let genesis = adiri_genesis();
         let (genesis, txs_by_block, signers_by_block) =
             seeded_genesis_from_random_batches(genesis, all_batches.iter());
-        let chain: Arc<ChainSpec> = Arc::new(genesis.into());
+        let chain: Arc<RethChainSpec> = Arc::new(genesis.into());
 
         // create execution node components
-        let execution_node = default_test_execution_node(Some(chain.clone()), None)?;
-        let provider = execution_node.get_provider().await;
+        let execution_node = default_test_execution_node(
+            Some(chain.clone()),
+            None,
+            &tmp_dir.path().join("exc-node"),
+        )?;
         let parent = chain.sealed_genesis_header();
 
         // execute batches to update headers with valid data
@@ -1060,15 +1021,14 @@ mod tests {
 
         let (to_engine, from_consensus) = tokio::sync::broadcast::channel(1);
         let consensus_output_stream = BroadcastStream::from(from_consensus);
-        let blockchain = execution_node.get_provider().await;
-        let evm_config = execution_node.get_evm_config().await;
         let max_round = None;
         let parent = chain.sealed_genesis_header();
 
         let shutdown = Notifier::default();
+        let task_manager = TaskManager::default();
+        let reth_env = execution_node.get_reth_env().await;
         let mut engine = ExecutorEngine::new(
-            blockchain.clone(),
-            evm_config,
+            reth_env.clone(),
             max_round,
             consensus_output_stream,
             parent,
@@ -1091,7 +1051,7 @@ mod tests {
         // spawn engine task
         //
         // one output already queued up, one output waiting in broadcast stream
-        TaskManager::default().spawn_blocking(Box::pin(async move {
+        task_manager.spawn_blocking(Box::pin(async move {
             let res = engine.await;
             let _ = tx.send(res);
         }));
@@ -1099,16 +1059,13 @@ mod tests {
         let engine_task = timeout(Duration::from_secs(10), rx).await?;
         assert!(engine_task.is_ok());
 
-        let last_block_num = blockchain.last_block_number()?;
-        let canonical_tip = blockchain.canonical_tip();
-        let final_block = blockchain.finalized_block_num_hash()?.expect("finalized block");
+        let last_block_num = reth_env.last_block_number()?;
+        let canonical_tip = reth_env.canonical_tip();
+        let final_block = reth_env.finalized_block_num_hash()?.expect("finalized block");
 
         debug!("last block num {last_block_num:?}");
         debug!("canonical tip: {canonical_tip:?}");
         debug!("final block num {final_block:?}");
-
-        let chain_info = blockchain.chain_info()?;
-        debug!("chain info:\n{chain_info:?}");
 
         // expect 1 block per batch still, but 2 blocks will be empty because they contained
         // duplicate transactions
@@ -1133,7 +1090,7 @@ mod tests {
         //     – Withdrawals
         //     – Requests
         //     – Senders
-        let executed_blocks = provider.block_with_senders_range(1..=expected_block_height)?;
+        let executed_blocks = reth_env.block_with_senders_range(1..=expected_block_height)?;
         assert_eq!(expected_block_height, executed_blocks.len() as u64);
 
         // basefee intentionally increased with loop
@@ -1233,6 +1190,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_max_round_terminates_early() -> eyre::Result<()> {
+        let tmp_dir = TempDir::new().unwrap();
         // create batches for consensus output
         let mut batches_1 = tn_test_utils::batches(4); // create 4 batches
         let mut batches_2 = tn_test_utils::batches(4); // create 4 batches
@@ -1245,10 +1203,14 @@ mod tests {
         let genesis = adiri_genesis();
         let (genesis, _txs_by_block, _signers_by_block) =
             seeded_genesis_from_random_batches(genesis, all_batches.iter());
-        let chain: Arc<ChainSpec> = Arc::new(genesis.into());
+        let chain: Arc<RethChainSpec> = Arc::new(genesis.into());
 
         // create execution node components
-        let execution_node = default_test_execution_node(Some(chain.clone()), None)?;
+        let execution_node = default_test_execution_node(
+            Some(chain.clone()),
+            None,
+            &tmp_dir.path().join("exc-node"),
+        )?;
         let parent = chain.sealed_genesis_header();
 
         // execute batches to update headers with valid data
@@ -1357,16 +1319,15 @@ mod tests {
 
         let (_to_engine, from_consensus) = tokio::sync::broadcast::channel(1);
         let consensus_output_stream = BroadcastStream::from(from_consensus);
-        let blockchain = execution_node.get_provider().await;
-        let evm_config = execution_node.get_evm_config().await;
         // set max round to "1" - this should receive both digests, but stop after the first round
         let max_round = Some(1);
         let parent = chain.sealed_genesis_header();
 
         let shutdown = Notifier::default();
+        let task_manager = TaskManager::default();
+        let reth_env = execution_node.get_reth_env().await;
         let mut engine = ExecutorEngine::new(
-            blockchain.clone(),
-            evm_config,
+            reth_env.clone(),
             max_round,
             consensus_output_stream,
             parent,
@@ -1386,7 +1347,7 @@ mod tests {
         // spawn engine task
         //
         // one output already queued up, one output waiting in broadcast stream
-        TaskManager::default().spawn_blocking(Box::pin(async move {
+        task_manager.spawn_blocking(Box::pin(async move {
             let res = engine.await;
             let _ = tx.send(res);
         }));
@@ -1394,16 +1355,13 @@ mod tests {
         let engine_task = timeout(Duration::from_secs(10), rx).await?;
         assert!(engine_task.is_ok());
 
-        let last_block_num = blockchain.last_block_number()?;
-        let canonical_tip = blockchain.canonical_tip();
-        let final_block = blockchain.finalized_block_num_hash()?.expect("finalized block");
+        let last_block_num = reth_env.last_block_number()?;
+        let canonical_tip = reth_env.canonical_tip();
+        let final_block = reth_env.finalized_block_num_hash()?.expect("finalized block");
 
         debug!("last block num {last_block_num:?}");
         debug!("canonical tip: {canonical_tip:?}");
         debug!("final block num {final_block:?}");
-
-        let chain_info = blockchain.chain_info()?;
-        debug!("chain info:\n{chain_info:?}");
 
         let expected_block_height = 4;
         // assert all 4 batches were executed from round 1

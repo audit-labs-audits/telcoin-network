@@ -11,12 +11,13 @@ use self::{
 use crate::args::clap_genesis_parser;
 use clap::{Args, Subcommand};
 use rand::{rngs::StdRng, SeedableRng};
-use reth::dirs::MaybePlatformPath;
-use reth_chainspec::ChainSpec;
 use secp256k1::Secp256k1;
 use std::{path::PathBuf, sync::Arc, time::Duration};
 use tn_config::{Config, ConfigFmt, ConfigTrait, NetworkGenesis, TelcoinDirs as _};
-use tn_node::dirs::{default_datadir_args, DataDirChainPath, DataDirPath};
+use tn_reth::{
+    dirs::{default_datadir_args, DataDirChainPath, DataDirPath},
+    MaybePlatformPath, RethChainSpec,
+};
 use tn_types::{keccak256, Address, GenesisAccount, U256};
 
 /// Generate keypairs and save them to a file.
@@ -54,7 +55,7 @@ pub struct GenesisArgs {
         value_parser = clap_genesis_parser,
         required = false,
     )]
-    chain: Arc<ChainSpec>,
+    chain: Arc<RethChainSpec>,
 
     /// Generate command that creates keypairs and writes to file.
     #[command(subcommand)]

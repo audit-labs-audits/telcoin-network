@@ -12,6 +12,7 @@ members = [
     "crates/network-types",
     "crates/network-libp2p",
     "crates/state-sync",
+    "crates/tn-reth",
 
     # consensus
     "crates/consensus/consensus-metrics",
@@ -25,7 +26,6 @@ members = [
     "crates/execution/batch-validator",
     "crates/execution/faucet",
     "crates/execution/tn-rpc",
-    "crates/execution/node-traits",
 ]
 
 # Explicitly set the resolver to version 2, which is the default for packages with edition >= 2021
@@ -82,55 +82,6 @@ secp256k1 = { version = "0.29", default-features = false, features = [
 ] }
 
 # execution
-#reth = { path = "../reth/bin/reth" }
-#reth-primitives = { path = "../reth/crates/primitives" }
-#reth-chainspec = { path = "../reth/crates/chainspec" }
-#reth-tracing = { path = "../reth/crates/tracing" }
-#reth-config = { path = "../reth/crates/config" }
-#reth-db = { path = "../reth/crates/storage/db" }
-#reth-db-common = { path = "../reth/crates/storage/db-common" }
-#reth-downloaders = { path = "../reth/crates/net/downloaders" }
-#reth-evm-ethereum = { path = "../reth/crates/ethereum/evm" }
-#reth-evm-config = { path = "../reth/crates/evm-config" }
-#reth-network = { path = "../reth/crates/net/network" }
-#reth-network-api = { path = "../reth/crates/net/network-api" }
-#reth-network-p2p = { path = "../reth/crates/net/p2p" }
-#reth-network-peers = { path = "../reth/crates/net/peers" }
-#reth-prune = { path = "../reth/crates/prune/prune" }
-#reth-evm = { path = "../reth/crates/evm" }
-#reth-execution-types = { path = "../reth/crates/evm/execution-types" }
-#reth-revm = { path = "../reth/crates/revm" }
-#reth-exex = { path = "../reth/crates/exex/exex" }
-#reth-rpc = { path = "../reth/crates/rpc/rpc" }
-#reth-rpc-types = { path = "../reth/crates/rpc/rpc-types" }
-#reth-rpc-types-compat = { path = "../reth/crates/rpc/rpc-types-compat" }
-#reth-payload-primitives = { path = "../reth/crates/payload/primitives" }
-#reth-rpc-engine-api = { path = "../reth/crates/rpc/rpc-engine-api" }
-#reth-provider = { path = "../reth/crates/storage/provider" }
-#reth-snapshot = { path = "../reth/crates/snapshot" }
-#reth-stages = { path = "../reth/crates/stages/stages" }
-#reth-static-file = { path = "../reth/crates/static-file/static-file" }
-#reth-tasks = { path = "../reth/crates/tasks" }
-#reth-transaction-pool = { path = "../reth/crates/transaction-pool" }
-#reth-consensus = { path = "../reth/crates/consensus/consensus" }
-#reth-beacon-consensus = { path = "../reth/crates/consensus/beacon" }
-#reth-blockchain-tree = { path = "../reth/crates/blockchain-tree" }
-#reth-tokio-util = { path = "../reth/crates/tokio-util" }
-#reth-node-api = { path = "../reth/crates/node/api" }
-#reth-node-builder = { path = "../reth/crates/node/builder" }
-#reth-node-core = { path = "../reth/crates/node/core" }
-#reth-node-ethereum = { path = "../reth/crates/ethereum/node" }
-#reth-node-events = { path = "../reth/crates/node/events" }
-#reth-discv4 = { path = "../reth/crates/net/discv4" }
-#reth-ethereum-payload-builder = { path = "../reth/crates/ethereum/payload" }
-#reth-eth-wire = { path = "../reth/crates/net/eth-wire" }
-#reth-metrics = { path = "../reth/crates/metrics" }
-#reth-cli-util = { path = "../reth/crates/cli/util" }
-#reth-cli-commands = { path = "../reth/crates/cli/commands" }
-#reth-payload-builder = { path = "../reth/crates/payload/builder" }
-#reth-basic-payload-builder = { path = "../reth/crates/payload/basic" }
-#reth-errors = { git = "https://github.com/paradigmxyz/reth", tag = "v1.1.5" }
-
 reth = { git = "https://github.com/paradigmxyz/reth", tag = "v1.1.5" }
 reth-primitives = { git = "https://github.com/paradigmxyz/reth", tag = "v1.1.5" }
 reth-primitives-traits = { git = "https://github.com/paradigmxyz/reth", tag = "v1.1.5" }
@@ -214,8 +165,8 @@ assert_matches = { version = "1.5.0" }
 
 # common
 tn-types = { path = "./crates/types" }
+tn-reth = { path = "./crates/tn-reth" }
 tn-node = { path = "./crates/node" }
-tn-node-traits = { path = "./crates/execution/node-traits" }
 tn-config = { path = "./crates/config" }
 tn-network-libp2p = { path = "./crates/network-libp2p" }
 tn-network-types = { path = "./crates/network-types" }

@@ -2,11 +2,9 @@
 
 use crate::args::{clap_address_parser, clap_genesis_parser};
 use clap::{value_parser, Args, Subcommand};
-use reth::dirs::MaybePlatformPath;
-use reth_chainspec::ChainSpec;
 use std::sync::Arc;
 use tn_config::{Config, KeyConfig, TelcoinDirs};
-use tn_node::dirs::DataDirPath;
+use tn_reth::{dirs::DataDirPath, MaybePlatformPath, RethChainSpec};
 use tn_types::Address;
 use tracing::info;
 
@@ -52,7 +50,7 @@ pub struct ValidatorArgs {
         value_parser = clap_genesis_parser,
         global = true,
     )]
-    pub chain: Arc<ChainSpec>,
+    pub chain: Arc<RethChainSpec>,
 
     /// The number of workers for the primary.
     #[arg(long, value_name = "workers", global = true, default_value_t = 1, value_parser = value_parser!(u16).range(..=4))]

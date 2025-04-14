@@ -1,12 +1,7 @@
 //! Block validator
 
 use rayon::iter::{IntoParallelRefIterator as _, ParallelIterator as _};
-use reth_node_types::NodeTypesWithDB;
-use reth_provider::{
-    providers::{BlockchainProvider, TreeNodeTypes},
-    BlockIdReader, HeaderProvider,
-};
-use reth_rpc_eth_types::utils::recover_raw_transaction;
+use tn_reth::{recover_signed_transaction, RethEnv};
 use tn_types::{
     max_batch_gas, max_batch_size, BatchValidation, BatchValidationError, BlockHash, ExecHeader,
     SealedBatch, TransactionSigned, TransactionTrait as _, PARALLEL_SENDER_RECOVERY_THRESHOLD,
@@ -17,18 +12,12 @@ type BatchValidationResult<T> = Result<T, BatchValidationError>;
 
 /// Block validator
 #[derive(Clone)]
-pub struct BatchValidator<N>
-where
-    N: TreeNodeTypes + NodeTypesWithDB,
-{
+pub struct BatchValidator {
     /// Database provider to encompass tree and provider factory.
-    blockchain_db: BlockchainProvider<N>,
+    reth_env: RethEnv,
 }
 
-impl<N> BatchValidation for BatchValidator<N>
-where
-    N: TreeNodeTypes + NodeTypesWithDB,
-{
+impl BatchValidation for BatchValidator {
     /// Validate a peer's batch.
     ///
     /// Workers do not execute full batches. This method validates the required information.
@@ -52,20 +41,13 @@ where
         // if we execute it soon to avoid false failures.
         // The primary header should get checked so this should be ok.
         let parent =
-            self.blockchain_db.header(&batch.parent_hash).unwrap_or_default().unwrap_or_else(
-                || {
-                    let finalized_block_num_hash =
-                        self.blockchain_db.finalized_block_num_hash().unwrap_or_default();
-                    if let Some(finalized_block_num_hash) = finalized_block_num_hash {
-                        self.blockchain_db
-                            .header(&finalized_block_num_hash.hash)
-                            .unwrap_or_default()
-                            .unwrap_or_default()
-                    } else {
-                        ExecHeader::default()
-                    }
-                },
-            );
+            self.reth_env.header(batch.parent_hash).unwrap_or_default().unwrap_or_else(|| {
+                if let Some(header) = self.reth_env.finalized_header().unwrap_or_default() {
+                    header
+                } else {
+                    ExecHeader::default()
+                }
+            });
 
         // validate timestamp vs parent
         self.validate_against_parent_timestamp(batch.timestamp, &parent)?;
@@ -85,13 +67,10 @@ where
     }
 }
 
-impl<N> BatchValidator<N>
-where
-    N: TreeNodeTypes + NodeTypesWithDB,
-{
+impl BatchValidator {
     /// Create a new instance of [Self]
-    pub fn new(blockchain_db: BlockchainProvider<N>) -> Self {
-        Self { blockchain_db }
+    pub fn new(reth_env: RethEnv) -> Self {
+        Self { reth_env }
     }
 
     /// Validates the timestamp against the parent to make sure it is in the past.
@@ -188,13 +167,11 @@ where
     }
 
     /// Helper function for decoding and recovering transactions.
-    #[inline]
     fn recover_and_validate(
         tx: &[u8],
         digest: BlockHash,
     ) -> BatchValidationResult<TransactionSigned> {
-        recover_raw_transaction::<TransactionSigned>(tx)
-            .map(|recovered| recovered.into_tx())
+        recover_signed_transaction(tx)
             .map_err(|e| BatchValidationError::RecoverTransaction(digest, e.to_string()))
     }
 }
@@ -215,26 +192,14 @@ impl BatchValidation for NoopBatchValidator {
 mod tests {
     use super::*;
     use assert_matches::assert_matches;
-    use reth_blockchain_tree::{
-        BlockchainTree, BlockchainTreeConfig, ShareableBlockchainTree, TreeExternals,
-    };
-    use reth_chainspec::ChainSpec;
-    use reth_consensus::FullConsensus;
-    use reth_db::{
-        test_utils::{create_test_rw_db, tempdir_path, TempDatabase},
-        DatabaseEnv,
-    };
-    use reth_db_common::init::init_genesis;
-    use reth_node_types::NodeTypesWithDBAdapter;
-    use reth_provider::{providers::StaticFileProvider, ProviderFactory};
-    use std::{str::FromStr, sync::Arc};
-    use tn_node_traits::{TNExecution, TelcoinNode};
+    use std::{path::Path, str::FromStr, sync::Arc};
+    use tempfile::TempDir;
+    use tn_reth::RethChainSpec;
     use tn_test_utils::{test_genesis, TransactionFactory};
     use tn_types::{
         adiri_genesis, hex_literal::hex, max_batch_gas, Address, Batch, Bytes, Encodable2718 as _,
-        GenesisAccount, B256, MIN_PROTOCOL_BASE_FEE, U256,
+        GenesisAccount, TaskManager, B256, MIN_PROTOCOL_BASE_FEE, U256,
     };
-    use tracing::debug;
 
     /// Return the next valid sealed batch
     fn next_valid_sealed_batch() -> SealedBatch {
@@ -243,7 +208,7 @@ mod tests {
         let mut tx_factory = TransactionFactory::new();
         let value = U256::from(10).checked_pow(U256::from(18)).expect("1e18 doesn't overflow U256");
         let gas_price = 7;
-        let chain: Arc<ChainSpec> = Arc::new(test_genesis().into());
+        let chain: Arc<RethChainSpec> = Arc::new(test_genesis().into());
         let genesis_hash = chain.genesis_hash();
 
         // create 3 transactions
@@ -293,55 +258,21 @@ mod tests {
         )
     }
 
-    type TestProvider = NodeTypesWithDBAdapter<
-        TelcoinNode<Arc<TempDatabase<DatabaseEnv>>>,
-        Arc<TempDatabase<DatabaseEnv>>,
-    >;
-
     /// Convenience type for creating test assets.
     struct TestTools {
         /// The expected sealed batch.
         valid_batch: SealedBatch,
         /// Validator
-        validator: BatchValidator<TestProvider>,
+        validator: BatchValidator,
     }
 
     /// Create an instance of block validator for tests.
-    async fn test_tools() -> TestTools {
+    async fn test_tools(path: &Path, task_manager: &TaskManager) -> TestTools {
         // genesis with default TransactionFactory funded
-        let chain: Arc<ChainSpec> = Arc::new(test_genesis().into());
-
-        // init genesis
-        let db = create_test_rw_db();
-        let provider_factory = ProviderFactory::new(
-            Arc::clone(&db),
-            Arc::clone(&chain),
-            StaticFileProvider::read_write(tempdir_path())
-                .expect("static file provider read write created with tempdir path"),
+        let chain: Arc<RethChainSpec> = Arc::new(test_genesis().into());
+        let validator = BatchValidator::new(
+            RethEnv::new_for_test_with_chain(chain.clone(), path, task_manager).unwrap(),
         );
-        let genesis_hash = init_genesis(&provider_factory).expect("init genesis");
-        debug!("genesis hash: {genesis_hash:?}");
-
-        // configure blockchain tree
-        let consensus: Arc<dyn FullConsensus> = Arc::new(TNExecution);
-
-        let tree_externals = TreeExternals::new(
-            provider_factory.clone(),
-            Arc::clone(&consensus),
-            reth_node_ethereum::EthExecutorProvider::ethereum(chain.clone()),
-        );
-        let tree_config = BlockchainTreeConfig::default();
-        let tree =
-            BlockchainTree::new(tree_externals, tree_config).expect("blockchain tree is valid");
-
-        let blockchain_tree = Arc::new(ShareableBlockchainTree::new(tree));
-
-        // provider
-        let blockchain_db =
-            BlockchainProvider::new(provider_factory.clone(), blockchain_tree.clone())
-                .expect("blockchain db valid");
-
-        let validator = BatchValidator::new(blockchain_db);
         let valid_batch = next_valid_sealed_batch();
 
         // block validator
@@ -350,7 +281,9 @@ mod tests {
 
     #[tokio::test]
     async fn test_valid_batch() {
-        let TestTools { valid_batch, validator } = test_tools().await;
+        let tmp_dir = TempDir::new().unwrap();
+        let task_manager = TaskManager::default();
+        let TestTools { valid_batch, validator } = test_tools(tmp_dir.path(), &task_manager).await;
         let result = validator.validate_batch(valid_batch.clone());
         assert!(result.is_ok());
 
@@ -368,7 +301,9 @@ mod tests {
     // we should be validating parentage when building actual blocks (including any
     // needed waits for execution).
     async fn _test_invalid_batch_wrong_parent_hash() {
-        let TestTools { valid_batch, validator } = test_tools().await;
+        let tmp_dir = TempDir::new().unwrap();
+        let task_manager = TaskManager::default();
+        let TestTools { valid_batch, validator } = test_tools(tmp_dir.path(), &task_manager).await;
         let (batch, _) = valid_batch.split();
         let Batch { transactions, beneficiary, timestamp, base_fee_per_gas, received_at, .. } =
             batch;
@@ -389,7 +324,9 @@ mod tests {
 
     #[tokio::test]
     async fn test_invalid_batch_wrong_timestamp() {
-        let TestTools { valid_batch, validator } = test_tools().await;
+        let tmp_dir = TempDir::new().unwrap();
+        let task_manager = TaskManager::default();
+        let TestTools { valid_batch, validator } = test_tools(tmp_dir.path(), &task_manager).await;
         let (mut batch, _) = valid_batch.split();
 
         // test batch timestamp same as parent
@@ -413,14 +350,16 @@ mod tests {
     #[tokio::test]
     async fn test_invalid_batch_excess_gas_used() {
         // Set excessive gas limit.
-        let TestTools { valid_batch, validator } = test_tools().await;
+        let tmp_dir = TempDir::new().unwrap();
+        let task_manager = TaskManager::default();
+        let TestTools { valid_batch, validator } = test_tools(tmp_dir.path(), &task_manager).await;
         let (batch, _) = valid_batch.split();
 
         // sign excessive transaction
         let mut tx_factory = TransactionFactory::new();
         let value = U256::from(10).checked_pow(U256::from(18)).expect("1e18 doesn't overflow U256");
         let gas_price = 7;
-        let chain: Arc<ChainSpec> = Arc::new(test_genesis().into());
+        let chain: Arc<RethChainSpec> = Arc::new(test_genesis().into());
 
         // create transaction with max gas limit above the max allowed
         let invalid_transaction = tx_factory.create_eip1559_encoded(
@@ -458,7 +397,9 @@ mod tests {
 
     #[tokio::test]
     async fn test_invalid_batch_wrong_size_in_bytes() {
-        let TestTools { valid_batch, validator } = test_tools().await;
+        let tmp_dir = TempDir::new().unwrap();
+        let task_manager = TaskManager::default();
+        let TestTools { valid_batch, validator } = test_tools(tmp_dir.path(), &task_manager).await;
         // create enough transactions to exceed 1MB
         // because validator uses provided with same genesis
         // and tx_factory needs funds
@@ -477,7 +418,7 @@ mod tests {
         )];
 
         let genesis = genesis.extend_accounts(account);
-        let chain: Arc<ChainSpec> = Arc::new(genesis.into());
+        let chain: Arc<RethChainSpec> = Arc::new(genesis.into());
 
         // currently: 9714 txs
         let mut too_many_txs = Vec::new();
@@ -548,7 +489,9 @@ mod tests {
 
     #[tokio::test]
     async fn test_invalid_batch_empty_transactions() {
-        let TestTools { valid_batch, validator } = test_tools().await;
+        let tmp_dir = TempDir::new().unwrap();
+        let task_manager = TaskManager::default();
+        let TestTools { valid_batch, validator } = test_tools(tmp_dir.path(), &task_manager).await;
         let (mut batch, _) = valid_batch.split();
 
         // test batch with no transactions
@@ -562,7 +505,9 @@ mod tests {
 
     #[tokio::test]
     async fn test_invalid_batch_decode_transactions() {
-        let TestTools { valid_batch, validator } = test_tools().await;
+        let tmp_dir = TempDir::new().unwrap();
+        let task_manager = TaskManager::default();
+        let TestTools { valid_batch, validator } = test_tools(tmp_dir.path(), &task_manager).await;
         let (mut batch, _) = valid_batch.split();
 
         // test batch with bad decode

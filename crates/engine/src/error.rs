@@ -1,9 +1,6 @@
 //! Error types for Telcoin Network Engine.
 
-use reth_blockchain_tree::error::InsertBlockError;
-use reth_errors::{CanonicalError, ProviderError, RethError};
-use reth_revm::primitives::EVMError;
-use reth_rpc_eth_types::EthApiError;
+use tn_reth::error::TnRethError;
 use tokio::sync::oneshot;
 
 /// Result alias for [`TNEngineError`].
@@ -14,28 +11,13 @@ pub(crate) type EngineResult<T> = Result<T, TnEngineError>;
 pub enum TnEngineError {
     /// Error from Reth
     #[error(transparent)]
-    Reth(#[from] RethError),
-    /// Error retrieving data from Provider.
-    #[error(transparent)]
-    Provider(#[from] ProviderError),
-    /// Error during EVM execution.
-    #[error("evm execution error: {0}")]
-    EvmExecution(#[from] EVMError<ProviderError>),
-    /// Error recovering transaction from bytes.
-    #[error(transparent)]
-    RecoverTransactionBytes(#[from] EthApiError),
+    Reth(#[from] TnRethError),
     /// The next block digest is missing.
     #[error("Missing next block digest for recovered sealed block with senders.")]
     NextBlockDigestMissing,
     /// The block body and senders lengths don't match.
     #[error("Failed to seal block with senders - lengths don't match")]
     SealBlockWithSenders,
-    /// The block could not be inserted into the tree.
-    #[error(transparent)]
-    InsertNextCanonicalBlock(#[from] InsertBlockError),
-    /// The executed block failed to become part of the canonical chain.
-    #[error("Blockchain tree failed to make_canonical: {0}")]
-    Canonical(#[from] CanonicalError),
     /// The oneshot channel that receives the result from executing output on a blocking thread.
     #[error("The oneshot channel sender inside blocking task dropped during output execution.")]
     ChannelClosed,

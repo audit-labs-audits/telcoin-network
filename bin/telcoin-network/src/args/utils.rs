@@ -1,9 +1,7 @@
 //! Utilities for parsing args
 
-use reth::{chainspec::chain_value_parser, dirs::MaybePlatformPath};
-use reth_chainspec::ChainSpec;
 use std::{str::FromStr, sync::Arc};
-use tn_node::dirs::DataDirPath;
+use tn_reth::{chain_value_parser, dirs::DataDirPath, MaybePlatformPath, RethChainSpec};
 use tn_types::{adiri_chain_spec_arc, Address};
 
 /// Create a default path for the node.
@@ -16,7 +14,7 @@ pub fn tn_platform_path(value: &str) -> eyre::Result<MaybePlatformPath<DataDirPa
 /// Defaults for chain spec clap parser.
 ///
 /// Wrapper to intercept "adiri" chain spec. If not adiri, try reth's genesis_value_parser.
-pub fn clap_genesis_parser(value: &str) -> eyre::Result<Arc<ChainSpec>, eyre::Error> {
+pub fn clap_genesis_parser(value: &str) -> eyre::Result<Arc<RethChainSpec>, eyre::Error> {
     let chain = match value {
         "adiri" => adiri_chain_spec_arc(),
         _ => chain_value_parser(value)?,

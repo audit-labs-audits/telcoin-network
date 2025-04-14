@@ -18,14 +18,13 @@ use k256::{elliptic_curve::sec1::ToEncodedPoint, pkcs8::DecodePublicKey, PublicK
 use reth::{
     core::primitives::SignedTransaction, rpc::server_types::eth::utils::recover_raw_transaction,
 };
-use reth_chainspec::ChainSpec;
-use reth_transaction_pool::TransactionPool;
 use secp256k1::PublicKey;
 use std::{str::FromStr, sync::Arc, time::Duration};
 use tempfile::TempDir;
 use tn_config::{test_fetch_file_content_relative_to_manifest, ContractStandardJson};
 use tn_faucet::Drip;
 use tn_network_types::local::LocalNetwork;
+use tn_reth::RethChainSpec;
 use tn_storage::open_db;
 use tn_test_utils::{
     faucet_test_execution_node, get_contract_state_for_genesis, TransactionFactory,
@@ -186,7 +185,7 @@ async fn test_with_creds_faucet_transfers_tel_with_google_kms() -> eyre::Result<
     let grant_role_call = [&grant_role_selector, &grant_role_params[..]].concat().into();
 
     // assemble eip1559 transactions using constructed datas
-    let pre_genesis_chain: Arc<ChainSpec> = Arc::new(tmp_genesis.into());
+    let pre_genesis_chain: Arc<RethChainSpec> = Arc::new(tmp_genesis.into());
     let gas_price = 100;
     let faucet_tx_raw = tx_factory.create_eip1559_encoded(
         pre_genesis_chain.clone(),
@@ -210,8 +209,10 @@ async fn test_with_creds_faucet_transfers_tel_with_google_kms() -> eyre::Result<
 
     let raw_txs = vec![faucet_tx_raw, role_tx_raw];
 
+    let tmp_dir = TempDir::new().expect("temp dir");
     // fetch state to be set on the faucet proxy address
-    let execution_outcome = get_contract_state_for_genesis(pre_genesis_chain, raw_txs).await?;
+    let execution_outcome =
+        get_contract_state_for_genesis(pre_genesis_chain, raw_txs, tmp_dir.path()).await?;
     let execution_bundle = execution_outcome.bundle;
     let execution_storage = &execution_bundle
         .state
@@ -242,11 +243,17 @@ async fn test_with_creds_faucet_transfers_tel_with_google_kms() -> eyre::Result<
     // start canonical adiri chain with fetched storage
     let real_genesis = adiri_genesis();
     let genesis = real_genesis.extend_accounts(genesis_accounts.into_iter());
-    let chain: Arc<ChainSpec> = Arc::new(genesis.into());
+    let chain: Arc<RethChainSpec> = Arc::new(genesis.into());
 
+    let tmp_dir = TempDir::new().expect("temp dir");
     // create engine node
-    let execution_node =
-        faucet_test_execution_node(true, Some(chain.clone()), None, faucet_proxy_address)?;
+    let execution_node = faucet_test_execution_node(
+        true,
+        Some(chain.clone()),
+        None,
+        faucet_proxy_address,
+        tmp_dir.path(),
+    )?;
 
     let worker_id = 0;
     let (to_worker, mut next_batch) = tokio::sync::mpsc::channel(1);
@@ -506,7 +513,7 @@ async fn test_with_creds_faucet_transfers_stablecoin_with_google_kms() -> eyre::
     let minter_role_call = [&grant_role_selector, &minter_role_params[..]].concat().into();
 
     // assemble eip1559 transactions using constructed datas
-    let pre_genesis_chain: Arc<ChainSpec> = Arc::new(tmp_genesis.into());
+    let pre_genesis_chain: Arc<RethChainSpec> = Arc::new(tmp_genesis.into());
     let gas_price = 100;
     let faucet_tx_raw = tx_factory.create_eip1559_encoded(
         pre_genesis_chain.clone(),
@@ -537,8 +544,10 @@ async fn test_with_creds_faucet_transfers_stablecoin_with_google_kms() -> eyre::
 
     let raw_txs = vec![faucet_tx_raw, role_tx_raw, minter_tx_raw];
 
+    let tmp_dir = TempDir::new().expect("temp dir");
     // fetch state to be set on the faucet proxy address
-    let execution_outcome = get_contract_state_for_genesis(pre_genesis_chain, raw_txs).await?;
+    let execution_outcome =
+        get_contract_state_for_genesis(pre_genesis_chain, raw_txs, tmp_dir.path()).await?;
     let execution_bundle = execution_outcome.bundle;
     let execution_storage = &execution_bundle
         .state
@@ -575,8 +584,10 @@ async fn test_with_creds_faucet_transfers_stablecoin_with_google_kms() -> eyre::
     let genesis = real_genesis.extend_accounts(genesis_accounts.into_iter());
     let chain = Arc::new(genesis.into());
 
+    let tmp_dir = TempDir::new().expect("temp dir");
     // create engine node
-    let execution_node = faucet_test_execution_node(true, Some(chain), None, faucet_proxy_address)?;
+    let execution_node =
+        faucet_test_execution_node(true, Some(chain), None, faucet_proxy_address, tmp_dir.path())?;
 
     let shutdown = Notifier::default();
     // start batch maker

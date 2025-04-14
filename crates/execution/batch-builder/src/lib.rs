@@ -24,25 +24,23 @@
 
 pub use batch::{build_batch, BatchBuilderOutput};
 use error::{BatchBuilderError, BatchBuilderResult};
-use futures_util::{FutureExt, StreamExt};
-use reth_execution_types::ChangedAccount;
-use reth_provider::{CanonStateNotification, CanonStateNotificationStream, Chain};
-use reth_transaction_pool::{
-    CanonicalStateUpdate, PoolTransaction, PoolUpdateKind, TransactionPool, TransactionPoolExt,
-};
+use futures_util::FutureExt;
 use std::{
     future::Future,
-    pin::Pin,
-    sync::Arc,
+    pin::{self, Pin},
     task::{Context, Poll},
     time::Duration,
 };
+use tn_reth::{RethEnv, WorkerTxPool};
 use tn_types::{
     error::BlockSealError, Address, BatchBuilderArgs, BatchSender, LastCanonicalUpdate,
-    PendingBlockConfig, TransactionSigned, TxHash, MIN_PROTOCOL_BASE_FEE,
+    PendingBlockConfig, SealedHeader, TxHash,
 };
-use tokio::{sync::oneshot, time::Interval};
-use tracing::{debug, error, trace, warn};
+use tokio::{
+    sync::{mpsc, oneshot},
+    time::Interval,
+};
+use tracing::{debug, error, warn};
 
 mod batch;
 mod error;
@@ -60,30 +58,14 @@ type BuildResult = oneshot::Receiver<BatchBuilderResult<Vec<TxHash>>>;
 ///     - tries to build the next batch when there transactions are available
 /// -
 #[derive(Debug)]
-pub struct BatchBuilder<BT, Pool> {
+pub struct BatchBuilder {
+    /// Reth execution environment.
+    reth_env: RethEnv,
     /// Single active future that executes consensus output on a blocking thread and then returns
     /// the result through a oneshot channel.
     pending_task: Option<BuildResult>,
-    /// The type used to query both the database and the blockchain tree.
-    ///
-    /// TODO: leaving this for now to prevent generics refactor
-    _blockchain: BT,
     /// The transaction pool with pending transactions.
-    pool: Pool,
-    /// Canonical state changes from the engine.
-    ///
-    /// Notifications are sent on this stream after each round of consensus
-    /// is executed. These updates are used to apply changes to the transaction pool.
-    canonical_state_stream: CanonStateNotificationStream,
-    /// Type to track the last canonical state update.
-    ///
-    /// The worker applies updates to the pool when it mines new transactions, but
-    /// the canonical tip and basefee only change through engine updates. This type
-    /// allows the worker to apply mined transactions updates without affecting the
-    /// tip or basefee between rounds of consensus.
-    ///
-    /// This is a solution until TN has it's own transaction pool implementation.
-    latest_canon_state: LastCanonicalUpdate,
+    pool: WorkerTxPool,
     /// The sending side to the worker's batch maker.
     ///
     /// Sending the new block through this channel triggers a broadcast to all peers.
@@ -99,93 +81,31 @@ pub struct BatchBuilder<BT, Pool> {
     /// This interval wakes the task periodically to check on the progress of the latest built
     /// block and the pending transaction pool.
     max_delay_interval: Interval,
+
+    /// This channel will receive a header on canonical update.  We use it to wakeup the future.
+    state_changed: mpsc::Receiver<SealedHeader>,
 }
 
-impl<BT, Pool> BatchBuilder<BT, Pool>
-where
-    Pool: TransactionPoolExt + 'static,
-    Pool::Transaction: PoolTransaction<Consensus = TransactionSigned>,
-{
+impl BatchBuilder {
     /// Create a new instance of [Self].
     pub fn new(
-        _blockchain: BT,
-        pool: Pool,
-        canonical_state_stream: CanonStateNotificationStream,
-        latest_canon_state: LastCanonicalUpdate,
+        reth_env: RethEnv,
+        pool: WorkerTxPool,
         to_worker: BatchSender,
         address: Address,
         max_delay: Duration,
     ) -> Self {
         let max_delay_interval = tokio::time::interval(max_delay);
+        let state_changed = reth_env.canonical_block_stream();
         Self {
+            reth_env,
             pending_task: None,
-            _blockchain,
             pool,
-            canonical_state_stream,
-            latest_canon_state,
             to_worker,
             address,
             max_delay_interval,
+            state_changed,
         }
-    }
-
-    /// This method is called when a canonical state update is received.
-    ///
-    /// Trigger the maintenance task to update pool before building the next block.
-    fn process_canon_state_update(&mut self, update: Arc<Chain>) {
-        trace!(target: "worker::block-builder", ?update, "canon state update from engine");
-
-        // update pool based with canonical tip update
-        let (blocks, state) = update.inner();
-        let tip = blocks.tip();
-
-        // collect all accounts that changed in last round of consensus
-        let changed_accounts: Vec<ChangedAccount> = state
-            .accounts_iter()
-            .filter_map(|(addr, acc)| acc.map(|acc| (addr, acc)))
-            .map(|(address, acc)| ChangedAccount {
-                address,
-                nonce: acc.nonce,
-                balance: acc.balance,
-            })
-            .collect();
-
-        debug!(target: "block-builder", ?changed_accounts);
-
-        // collect tx hashes to remove any transactions from this pool that were mined
-        let mined_transactions: Vec<TxHash> = blocks.transaction_hashes().collect();
-
-        debug!(target: "block-builder", ?mined_transactions);
-
-        // TODO: calculate the next basefee HERE for the entire round
-        //
-        // for now, always use lowest base fee possible
-        let pending_block_base_fee = MIN_PROTOCOL_BASE_FEE;
-
-        // Canonical update
-        let update = CanonicalStateUpdate {
-            new_tip: &tip.block,          // finalized block
-            pending_block_base_fee,       // current base fee for worker (network-wide)
-            pending_block_blob_fee: None, // current blob fee for worker (network-wide)
-            changed_accounts,             // entire round of consensus
-            mined_transactions,           // entire round of consensus
-            update_kind: PoolUpdateKind::Commit,
-        };
-
-        // track latest update to apply batches
-        let latest = LastCanonicalUpdate {
-            tip: tip.block.clone(),
-            pending_block_base_fee,
-            pending_block_blob_fee: None,
-        };
-
-        debug!(target: "block-builder", ?update, ?latest, "applying update to txpool");
-
-        // track canon update so worker updates don't overwrite the tip or base fees
-        self.latest_canon_state = latest;
-
-        // sync fn so self will block until all pool updates are complete
-        self.pool.on_canonical_state_change(update);
     }
 
     /// Spawns a task to build the batch and proposer to peers.
@@ -205,7 +125,8 @@ where
         let to_worker = self.to_worker.clone();
 
         // configure params for next block to build
-        let config = PendingBlockConfig::new(self.address, self.latest_canon_state.clone());
+        let config =
+            PendingBlockConfig::new(self.address, self.latest_canon_state().unwrap_or_default());
         let build_args = BatchBuilderArgs::new(pool.clone(), config);
         let (result, done) = oneshot::channel();
 
@@ -273,6 +194,19 @@ where
         // return oneshot channel for receiving completion status
         done
     }
+
+    fn latest_canon_state(&self) -> Option<LastCanonicalUpdate> {
+        if let Ok(num) = self.reth_env.last_block_number() {
+            if let Ok(Some(header)) = self.reth_env.sealed_block_by_number(num) {
+                return Some(LastCanonicalUpdate {
+                    tip: header,
+                    pending_block_base_fee: self.pool.get_pending_base_fee(),
+                    pending_block_blob_fee: None,
+                });
+            }
+        }
+        None
+    }
 }
 
 /// The [BatchBuilder] is a future that loops through the following:
@@ -285,12 +219,7 @@ where
 ///
 /// If the broadcast stream is closed, the engine will attempt to execute all remaining tasks and
 /// any output that is queued.
-impl<BT, Pool> Future for BatchBuilder<BT, Pool>
-where
-    BT: Unpin,
-    Pool: TransactionPool + TransactionPoolExt + Unpin + 'static,
-    Pool::Transaction: PoolTransaction<Consensus = TransactionSigned>,
-{
+impl Future for BatchBuilder {
     type Output = BatchBuilderResult<()>;
 
     fn poll(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
@@ -298,24 +227,8 @@ where
 
         // loop when a successful block is built
         loop {
-            // check for canon updates before mining the transaction pool
-            //
-            // this is critical to ensure worker's block is building off canonical tip
-            // block until canon updates are applied
-            while let Poll::Ready(Some(canon_update)) =
-                this.canonical_state_stream.poll_next_unpin(cx)
-            {
-                debug!(target: "block-builder", ?canon_update, "received canonical update");
-                // poll canon updates stream and update pool `.on_canon_update`
-                //
-                // maintenance task will handle worker's pending block update
-                match canon_update {
-                    CanonStateNotification::Commit { new } => {
-                        this.process_canon_state_update(new);
-                    }
-                    _ => unreachable!("TN reorgs are impossible"),
-                }
-            }
+            // This is used as a "wake up" when canonical state updates.
+            while let Poll::Ready(_) = pin::pin!(this.state_changed.recv()).poll(cx) {}
 
             // only propose one block at a time
             if this.pending_task.is_none() {
@@ -363,26 +276,24 @@ where
                         }
 
                         // use latest values so only mined transactions are updated
-                        let new_tip = &this.latest_canon_state.tip;
-                        let pending_block_base_fee = this.latest_canon_state.pending_block_base_fee;
-                        let pending_block_blob_fee = this.latest_canon_state.pending_block_blob_fee;
+                        if let Some(latest_canon_state) = this.latest_canon_state() {
+                            let new_tip = &latest_canon_state.tip;
+                            let pending_block_base_fee = latest_canon_state.pending_block_base_fee;
+                            let pending_block_blob_fee = latest_canon_state.pending_block_blob_fee;
 
-                        // create canonical state update
-                        let update = CanonicalStateUpdate {
-                            new_tip,
-                            pending_block_base_fee,
-                            pending_block_blob_fee,
-                            changed_accounts: vec![], // only updated by engine updates
-                            mined_transactions,
-                            update_kind: PoolUpdateKind::Commit,
-                        };
+                            debug!(target: "block-builder", ?latest_canon_state, "applying block builder's update");
 
-                        debug!(target: "block-builder", ?update, "applying block builder's update");
-
-                        // TODO: should this be a spawned blocking task?
-                        //
-                        // update pool to remove mined transactions
-                        this.pool.on_canonical_state_change(update);
+                            // TODO: should this be a spawned blocking task?
+                            //
+                            // update pool to remove mined transactions
+                            this.pool.update_canonical_state(
+                                new_tip,
+                                pending_block_base_fee,
+                                pending_block_blob_fee,
+                                mined_transactions,
+                                vec![],
+                            );
+                        }
 
                         // loop again to check for any other pending transactions
                         // and possibly start building the next block
@@ -415,37 +326,17 @@ where
 mod tests {
     use super::*;
     use assert_matches::assert_matches;
-    use reth_blockchain_tree::{
-        noop::NoopBlockchainTree, BlockchainTree, BlockchainTreeConfig, ShareableBlockchainTree,
-        TreeExternals,
-    };
-    use reth_chainspec::ChainSpec;
-    use reth_consensus::FullConsensus;
-    use reth_db::{
-        test_utils::{create_test_rw_db, tempdir_path, TempDatabase},
-        DatabaseEnv,
-    };
-    use reth_db_common::init::init_genesis;
-    use reth_node_ethereum::{EthEvmConfig, EthExecutorProvider};
-    use reth_provider::{
-        providers::{BlockchainProvider, StaticFileProvider},
-        CanonStateSubscriptions as _, ProviderFactory,
-    };
-    use reth_rpc_eth_types::utils::recover_raw_transaction;
-    use reth_transaction_pool::{
-        blobstore::InMemoryBlobStore, CoinbaseTipOrdering, EthPooledTransaction,
-        EthTransactionValidator, Pool, PoolConfig, TransactionValidationTaskExecutor,
-    };
-    use std::{str::FromStr, time::Duration};
+    use std::{path::Path, str::FromStr, sync::Arc, time::Duration};
     use tempfile::TempDir;
     use tn_engine::execute_consensus_output;
     use tn_network_types::{local::LocalNetwork, MockWorkerToPrimaryHang};
-    use tn_node_traits::{BuildArguments, TNExecution, TelcoinNode};
+    use tn_reth::RethChainSpec;
+    use tn_reth::{recover_raw_transaction, traits::BuildArguments};
     use tn_storage::{open_db, tables::Batches};
-    use tn_test_utils::{adiri_genesis_seeded, get_gas_price, TransactionFactory};
+    use tn_test_utils::{adiri_genesis_seeded, TransactionFactory};
     use tn_types::{
-        adiri_genesis, BlockBody, Bytes, CommittedSubDag, ConsensusHeader, ConsensusOutput,
-        Database, GenesisAccount, SealedBatch, SealedBlock, TaskManager, U160, U256,
+        adiri_genesis, Bytes, CommittedSubDag, ConsensusHeader, ConsensusOutput, Database,
+        GenesisAccount, SealedBatch, TaskManager, U160, U256,
     };
     use tn_worker::{
         metrics::WorkerMetrics,
@@ -481,40 +372,14 @@ mod tests {
         )];
 
         let genesis = genesis.extend_accounts(account);
-        let head_timestamp = genesis.timestamp;
-        let chain: Arc<ChainSpec> = Arc::new(genesis.into());
-
-        // init genesis
-        let db = create_test_rw_db();
-        // provider
-        let provider_factory = ProviderFactory::new(
-            Arc::clone(&db),
-            Arc::clone(&chain),
-            StaticFileProvider::read_write(tempdir_path())
-                .expect("static file provider read write created with tempdir path"),
-        );
-        let _genesis_hash = init_genesis(&provider_factory).expect("init genesis");
-
-        let blockchain_db: BlockchainProvider<TelcoinNode<_>> =
-            BlockchainProvider::new(provider_factory, Arc::new(NoopBlockchainTree::default()))
-                .expect("test blockchain provider");
+        let chain: Arc<RethChainSpec> = Arc::new(genesis.into());
 
         // task manger
         let task_manager = TaskManager::new("Test Task Manager");
-
-        // txpool
-        let blob_store = InMemoryBlobStore::default();
-        let validator = TransactionValidationTaskExecutor::eth_builder(Arc::clone(&chain))
-            .with_head_timestamp(head_timestamp)
-            .with_additional_tasks(1)
-            .build_with_tasks(
-                blockchain_db.clone(),
-                task_manager.get_spawner(),
-                blob_store.clone(),
-            );
-
-        let txpool =
-            reth_transaction_pool::Pool::eth_pool(validator, blob_store, PoolConfig::default());
+        let tmp_dir = TempDir::new().unwrap();
+        let reth_env =
+            RethEnv::new_for_test_with_chain(chain.clone(), tmp_dir.path(), &task_manager).unwrap();
+        let txpool = reth_env.worker_txn_pool().clone();
         let address = Address::from(U160::from(33));
         let client = LocalNetwork::new_with_empty_id();
         let worker_to_primary = Arc::new(MockWorkerToPrimaryHang {});
@@ -534,27 +399,16 @@ mod tests {
             WorkerNetworkHandle::new_for_test(),
         );
 
-        let tx_pool_latest = txpool.block_info();
-        let tip = SealedBlock::new(chain.sealed_genesis_header(), BlockBody::default());
-
-        let latest_canon_state = LastCanonicalUpdate {
-            tip, // genesis
-            pending_block_base_fee: tx_pool_latest.pending_basefee,
-            pending_block_blob_fee: tx_pool_latest.pending_blob_fee,
-        };
-
         // build execution block proposer
         let batch_builder = BatchBuilder::new(
-            blockchain_db.clone(),
+            reth_env.clone(),
             txpool.clone(),
-            blockchain_db.canonical_state_stream(),
-            latest_canon_state,
             block_provider.batches_tx(),
             address,
             Duration::from_secs(1),
         );
 
-        let gas_price = get_gas_price(&blockchain_db);
+        let gas_price = reth_env.get_gas_price().unwrap();
         let value = U256::from(10).checked_pow(U256::from(18)).expect("1e18 doesn't overflow U256");
 
         // create 3 transactions
@@ -622,9 +476,8 @@ mod tests {
 
         // ensure decoded block transaction is transaction1
         let block_tx_bytes = block_txs.first().expect("one tx in block");
-        let block_tx = recover_raw_transaction::<TransactionSigned>(block_tx_bytes)
-            .expect("recover raw tx for test")
-            .into_tx();
+        let block_tx =
+            recover_raw_transaction(block_tx_bytes).expect("recover raw tx for test").into_tx();
 
         assert_eq!(block_tx, transaction1);
 
@@ -641,8 +494,6 @@ mod tests {
     struct TestTools {
         /// Factory for creating and signing valid transactions.
         tx_factory: TransactionFactory,
-        /// Last canonical update - expected to be genesis in these tests.
-        last_canonical_update: LastCanonicalUpdate,
         /// Execution components:
         /// - BlockchainProvider (db)
         /// - TransactionPool
@@ -651,88 +502,34 @@ mod tests {
         execution_components: TestExecutionComponents,
     }
 
-    type TestPool = Pool<
-        TransactionValidationTaskExecutor<
-            EthTransactionValidator<
-                BlockchainProvider<TelcoinNode<Arc<TempDatabase<DatabaseEnv>>>>,
-                EthPooledTransaction,
-            >,
-        >,
-        CoinbaseTipOrdering<EthPooledTransaction>,
-        InMemoryBlobStore,
-    >;
-
     /// Convenience type for holding execution components.
     struct TestExecutionComponents {
-        /// The database client.
-        blockchain_db: BlockchainProvider<TelcoinNode<Arc<TempDatabase<DatabaseEnv>>>>,
+        /// The reth execution environment.
+        reth_env: RethEnv,
         /// The transaction pool for the block builder.
-        txpool: TestPool,
+        txpool: WorkerTxPool,
         /// The chainspec with seeded genesis.
-        chain: Arc<ChainSpec>,
+        chain: Arc<RethChainSpec>,
         /// Own manager so executor's tasks don't drop (reth).
         _manager: TaskManager,
     }
 
     /// Helper function to create common testing infrastructure.
-    fn get_test_tools() -> TestTools {
+    fn get_test_tools(path: &Path) -> TestTools {
         let tx_factory = TransactionFactory::new();
         let factory_address = tx_factory.address();
         let genesis = adiri_genesis_seeded(vec![factory_address]);
-        let head_timestamp = genesis.timestamp;
-        let chain: Arc<ChainSpec> = Arc::new(genesis.into());
-
-        // init genesis
-        let db = create_test_rw_db();
-        // provider
-        let provider_factory = ProviderFactory::new(
-            Arc::clone(&db),
-            Arc::clone(&chain),
-            StaticFileProvider::read_write(tempdir_path())
-                .expect("static file provider read write created with tempdir path"),
-        );
-        let _genesis_hash = init_genesis(&provider_factory).expect("init genesis");
-
-        let executor = EthExecutorProvider::ethereum(Arc::clone(&chain));
-        let auto_consensus: Arc<dyn FullConsensus> = Arc::new(TNExecution);
-        let tree_config = BlockchainTreeConfig::default();
-        let tree_externals =
-            TreeExternals::new(provider_factory.clone(), auto_consensus.clone(), executor.clone());
-        let tree = BlockchainTree::new(tree_externals, tree_config).expect("new blockchain tree");
-
-        let blockchain_tree = Arc::new(ShareableBlockchainTree::new(tree));
-
-        let blockchain_db = BlockchainProvider::new(provider_factory, blockchain_tree)
-            .expect("test blockchain provider");
+        let chain: Arc<RethChainSpec> = Arc::new(genesis.into());
 
         // task manger
         let task_manager = TaskManager::new("Test Task Manager");
-
-        // txpool
-        let blob_store = InMemoryBlobStore::default();
-        let validator = TransactionValidationTaskExecutor::eth_builder(Arc::clone(&chain))
-            .with_head_timestamp(head_timestamp)
-            .with_additional_tasks(1)
-            .build_with_tasks(
-                blockchain_db.clone(),
-                task_manager.get_spawner(),
-                blob_store.clone(),
-            );
-
-        let txpool =
-            reth_transaction_pool::Pool::eth_pool(validator, blob_store, PoolConfig::default());
-        let tx_pool_latest = txpool.block_info();
-        let tip = SealedBlock::new(chain.sealed_genesis_header(), BlockBody::default());
-
-        let last_canonical_update = LastCanonicalUpdate {
-            tip, // genesis
-            pending_block_base_fee: tx_pool_latest.pending_basefee,
-            pending_block_blob_fee: tx_pool_latest.pending_blob_fee,
-        };
+        let reth_env =
+            RethEnv::new_for_test_with_chain(chain.clone(), path, &task_manager).unwrap();
+        let txpool = reth_env.worker_txn_pool().clone();
 
         let execution_components =
-            TestExecutionComponents { blockchain_db, txpool, chain, _manager: task_manager };
-        TestTools { tx_factory, last_canonical_update, execution_components }
+            TestExecutionComponents { reth_env, txpool, chain, _manager: task_manager };
+        TestTools { tx_factory, execution_components }
     }
 
     /// Test all possible errors from the worker while trying to reach quorum from peers.
@@ -741,24 +538,22 @@ mod tests {
     /// Fatal error causes shutdown.
     #[tokio::test]
     async fn test_all_possible_error_outcomes() {
-        let TestTools { mut tx_factory, last_canonical_update, execution_components } =
-            get_test_tools();
-        let TestExecutionComponents { blockchain_db, txpool, chain, .. } = execution_components;
+        let tmp_dir = TempDir::new().unwrap();
+        let TestTools { mut tx_factory, execution_components } = get_test_tools(tmp_dir.path());
+        let TestExecutionComponents { reth_env, txpool, chain, .. } = execution_components;
         let address = Address::from(U160::from(33));
         let (to_worker, mut from_batch_builder) = tokio::sync::mpsc::channel(2);
         // build execution block proposer
         let batch_builder = BatchBuilder::new(
-            blockchain_db.clone(),
+            reth_env.clone(),
             txpool.clone(),
-            blockchain_db.canonical_state_stream(),
-            last_canonical_update,
             to_worker,
             address,
             Duration::from_millis(1),
         );
 
         // expected to be 7 wei for first block
-        let gas_price = get_gas_price(&blockchain_db);
+        let gas_price = reth_env.get_gas_price().unwrap();
         let value = U256::from(10).checked_pow(U256::from(18)).expect("1e18 doesn't overflow U256");
 
         // create 3 transactions
@@ -809,7 +604,6 @@ mod tests {
         let duration = std::time::Duration::from_secs(5);
 
         // simulate engine to create canonical blocks from empty rounds
-        let evm_config = EthEvmConfig::new(chain.clone());
         let mut parent = chain.sealed_genesis_header();
 
         let non_fatal_errors = vec![
@@ -841,7 +635,7 @@ mod tests {
                     gas_price,
                     Address::ZERO,
                     value, // 1 TEL
-                    &txpool,
+                    txpool.clone(),
                 )
                 .await;
 
@@ -864,9 +658,8 @@ mod tests {
                 early_finalize: true,
             };
             // execute output to trigger canonical update
-            let args = BuildArguments::new(blockchain_db.clone(), output, parent);
-            let final_header =
-                execute_consensus_output(&evm_config, args).expect("output executed");
+            let args = BuildArguments::new(reth_env.clone(), output, parent);
+            let final_header = execute_consensus_output(args).expect("output executed");
 
             // update values for next loop
             parent = final_header;
@@ -902,25 +695,23 @@ mod tests {
     /// Test transactions are mined from the pool.
     #[tokio::test]
     async fn test_pool_updates_after_txs_mined() {
-        let TestTools { mut tx_factory, last_canonical_update, execution_components } =
-            get_test_tools();
-        let TestExecutionComponents { blockchain_db, txpool, chain, .. } = execution_components;
+        let tmp_dir = TempDir::new().unwrap();
+        let TestTools { mut tx_factory, execution_components } = get_test_tools(tmp_dir.path());
+        let TestExecutionComponents { reth_env, txpool, chain, .. } = execution_components;
         let address = Address::from(U160::from(33));
         let (to_worker, mut from_batch_builder) = tokio::sync::mpsc::channel(2);
 
         // build execution block proposer
         let batch_builder = BatchBuilder::new(
-            blockchain_db.clone(),
+            reth_env.clone(),
             txpool.clone(),
-            blockchain_db.canonical_state_stream(),
-            last_canonical_update,
             to_worker,
             address,
             Duration::from_secs(1),
         );
 
         // expected to be 7 wei for first block
-        let gas_price = get_gas_price(&blockchain_db);
+        let gas_price = reth_env.get_gas_price().unwrap();
         let value = U256::from(10).checked_pow(U256::from(18)).expect("1e18 doesn't overflow U256");
 
         // create 3 transactions
@@ -983,7 +774,7 @@ mod tests {
                 gas_price,
                 Address::ZERO,
                 value, // 1 TEL
-                &txpool,
+                txpool.clone(),
             )
             .await;
 
@@ -1011,8 +802,7 @@ mod tests {
         // confirm 4th transaction hash matches one submitted
         let tx_bytes =
             sealed_batch.batch().transactions().first().expect("block transactions length is one");
-        let tx = recover_raw_transaction::<TransactionSigned>(tx_bytes)
-            .expect("recover raw tx for test");
+        let tx = recover_raw_transaction(tx_bytes).expect("recover raw tx for test");
         assert_eq!(tx.hash(), expected_tx_hash);
 
         // yield to try and give pool a chance to update

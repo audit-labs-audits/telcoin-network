@@ -2,11 +2,12 @@
 
 use crate::args::clap_genesis_parser;
 use clap::Args;
-use reth::dirs::MaybePlatformPath;
-use reth_chainspec::ChainSpec;
 use std::{path::PathBuf, sync::Arc};
 use tn_config::{Config, ConfigFmt, ConfigTrait, NetworkGenesis, TelcoinDirs as _};
-use tn_node::dirs::{default_datadir_args, DataDirChainPath, DataDirPath};
+use tn_reth::{
+    dirs::{default_datadir_args, DataDirChainPath, DataDirPath},
+    MaybePlatformPath, RethChainSpec,
+};
 use tracing::info;
 
 /// Add the validator to the node
@@ -51,7 +52,7 @@ pub struct CreateCommitteeArgs {
         value_parser = clap_genesis_parser,
         required = false,
     )]
-    pub chain: Arc<ChainSpec>,
+    pub chain: Arc<RethChainSpec>,
 
     /// The path to the consensus registry storage yaml file.
     #[arg(long, value_name = "CONSENSUS_REGISTRY_PATH", verbatim_doc_comment)]

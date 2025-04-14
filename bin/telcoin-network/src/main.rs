@@ -1,12 +1,8 @@
-use clap::{Args, Parser as _};
+use clap::Parser as _;
+use telcoin_network::NoArgs;
 #[cfg(feature = "faucet")]
 use tn_faucet::FaucetArgs;
 use tn_node::launch_node;
-
-/// No Additional arguments
-#[derive(Debug, Clone, Copy, Default, Args)]
-#[non_exhaustive]
-pub struct NoArgs;
 
 fn main() {
     #[cfg(not(feature = "faucet"))]
