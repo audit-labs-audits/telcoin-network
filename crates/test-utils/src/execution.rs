@@ -11,7 +11,6 @@ use tn_config::Config;
 use tn_faucet::FaucetArgs;
 use tn_node::engine::{ExecutionNode, TnBuilder};
 use tn_reth::{
-    dirs::{default_datadir_args, DataDirChainPath},
     recover_raw_transaction, sign_message, ExecutionOutcome, RethChainSpec, RethCommand,
     RethConfig, RethEnv, WorkerTxPool,
 };
@@ -49,6 +48,7 @@ pub fn default_test_execution_node(
         opt_chain.clone(),
         opt_address,
         None, // optional args
+        tmp_dir,
     )?;
 
     // create engine node
@@ -69,6 +69,7 @@ pub fn execution_builder<CliExt: clap::Args + fmt::Debug>(
     opt_chain: Option<Arc<RethChainSpec>>,
     opt_address: Option<Address>,
     opt_args: Option<Vec<&str>>,
+    tmp_dir: &Path,
 ) -> eyre::Result<(TnBuilder, CliExt)> {
     let default_args = ["telcoin-network", "--dev", "--chain", "adiri"];
 
@@ -82,14 +83,11 @@ pub fn execution_builder<CliExt: clap::Args + fmt::Debug>(
     // use same approach as telcoin-network binary
     let command = NodeCommand::<CliExt>::try_parse_from(cli_args)?;
 
-    let NodeCommand { config: _, instance, ext, reth, datadir, .. } = command;
+    let NodeCommand { config: _, instance, ext, reth, datadir: _, .. } = command;
     let RethCommand {
         chain, metrics, network, rpc, txpool, builder, debug, db, dev, pruning, ..
     } = reth;
 
-    let default_args = default_datadir_args();
-    let tn_datadir: DataDirChainPath =
-        datadir.unwrap_or_chain_default(chain.chain, default_args.clone()).into();
     // overwrite chain spec if passed in
     let chain = opt_chain.unwrap_or(chain);
 
@@ -108,9 +106,14 @@ pub fn execution_builder<CliExt: clap::Args + fmt::Debug>(
 
     // TODO: this a temporary approach until upstream reth supports public rpc hooks
     let opt_faucet_args = None;
-
     let builder = TnBuilder {
-        node_config: RethConfig::new(reth_command, instance, None, tn_datadir, true),
+        node_config: RethConfig::new_with_path(
+            reth_command,
+            instance,
+            None,
+            tmp_dir.to_path_buf(),
+            true,
+        ),
         tn_config,
         opt_faucet_args,
         consensus_metrics: None,
@@ -143,7 +146,7 @@ pub fn faucet_test_execution_node(
 
     // execution builder + faucet args
     let (builder, faucet) =
-        execution_builder::<FaucetArgs>(opt_chain.clone(), opt_address, extended_args)?;
+        execution_builder::<FaucetArgs>(opt_chain.clone(), opt_address, extended_args, tmp_dir)?;
 
     // replace default builder's faucet args
     let TnBuilder { node_config, tn_config, .. } = builder;

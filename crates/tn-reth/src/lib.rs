@@ -194,18 +194,16 @@ pub struct RethConfig(NodeConfig<RethChainSpec>);
 
 impl RethConfig {
     /// Create a new RethConfig wrapper.
-    pub fn new(
+    fn new_int(
         reth_config: RethCommand,
         instance: u16,
         config: Option<PathBuf>,
-        datadir: DataDirChainPath,
+        datadir: PathBuf,
         with_unused_ports: bool,
     ) -> Self {
         // create a reth DatadirArgs from tn datadir
-        let datadir = DatadirArgs {
-            datadir: MaybePlatformPath::from(PathBuf::from(datadir)),
-            static_files_path: None,
-        };
+        let datadir =
+            DatadirArgs { datadir: MaybePlatformPath::from(datadir), static_files_path: None };
 
         let RethCommand { chain, metrics, network, rpc, txpool, builder, debug, db, dev, pruning } =
             reth_config;
@@ -232,6 +230,28 @@ impl RethConfig {
         this.adjust_instance_ports();
 
         Self(this)
+    }
+
+    /// Create a new RethConfig wrapper.
+    pub fn new(
+        reth_config: RethCommand,
+        instance: u16,
+        config: Option<PathBuf>,
+        datadir: DataDirChainPath,
+        with_unused_ports: bool,
+    ) -> Self {
+        Self::new_int(reth_config, instance, config, datadir.into(), with_unused_ports)
+    }
+
+    /// Create a new RethConfig wrapper.
+    pub fn new_with_path(
+        reth_config: RethCommand,
+        instance: u16,
+        config: Option<PathBuf>,
+        datadir: PathBuf,
+        with_unused_ports: bool,
+    ) -> Self {
+        Self::new_int(reth_config, instance, config, datadir, with_unused_ports)
     }
 }
 
