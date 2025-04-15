@@ -584,7 +584,6 @@ async fn test_with_creds_faucet_transfers_stablecoin_with_google_kms() -> eyre::
     let genesis = real_genesis.extend_accounts(genesis_accounts.into_iter());
     let chain = Arc::new(genesis.into());
 
-    let tmp_dir = TempDir::new().expect("temp dir");
     // create engine node
     let execution_node =
         faucet_test_execution_node(true, Some(chain), None, faucet_proxy_address, tmp_dir.path())?;
