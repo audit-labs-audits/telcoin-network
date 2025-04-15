@@ -508,7 +508,7 @@ async fn submit_transaction(
     let recovered =
         pool_tx.try_into_ecrecovered().map_err(|_| EthApiError::InvalidTransactionSignature)?;
     // submit tx and subscribe to events
-    let mut tx_events = pool.add_transaction_and_subscribe(recovered.into()).await?;
+    let mut tx_events = pool.add_transaction_and_subscribe_local(recovered.into()).await?;
 
     let tx_hash = tx_events.hash();
     let mined_tx_info = MinedTxInfo::new(user, contract);

@@ -151,10 +151,7 @@ impl Faucet {
         Self::spawn_with(reth_env, pool, config, TokioTaskExecutor::default())
     }
 
-    /// Creates a new async LRU backed cache service task and spawns it to a new task via
-    /// [].
-    ///
-    /// See also [Self::spawn_with]
+    /// Creates a new async LRU backed cache service task and spawns it to a new task.
     pub(crate) fn spawn_with<Tasks>(
         reth_env: RethEnv,
         pool: WorkerTxPool,

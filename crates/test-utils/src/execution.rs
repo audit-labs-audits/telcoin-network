@@ -537,7 +537,7 @@ impl TransactionFactory {
         let pooled_tx = tx.try_into_pooled().expect("tx valid for pool");
         let recovered = pooled_tx.try_into_ecrecovered().expect("tx is recovered");
 
-        pool.add_transaction(recovered.into()).await.expect("recovered tx added to pool")
+        pool.add_transaction_local(recovered.into()).await.expect("recovered tx added to pool")
     }
 
     /// Submit a transaction to the provided pool.
@@ -547,7 +547,7 @@ impl TransactionFactory {
 
         debug!("transaction: \n{recovered:?}\n");
 
-        pool.add_transaction(recovered.into()).await.expect("recovered tx added to pool")
+        pool.add_transaction_local(recovered.into()).await.expect("recovered tx added to pool")
     }
 }
 

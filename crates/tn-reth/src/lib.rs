@@ -3,6 +3,21 @@
 //! It still re-exports some stuff and a few places use Reth directly but eventually
 //! it all should go through this crate.
 
+#![doc(
+    html_logo_url = "https://www.telco.in/logos/TEL.svg",
+    html_favicon_url = "https://www.telco.in/logos/TEL.svg",
+    issue_tracker_base_url = "https://github.com/telcoin-association/telcoin-network/issues/"
+)]
+#![warn(
+    missing_debug_implementations,
+    missing_docs,
+    unreachable_pub,
+    rustdoc::all,
+    unused_crate_dependencies
+)]
+#![deny(unused_must_use, rust_2018_idioms)]
+#![cfg_attr(docsrs, feature(doc_cfg, doc_auto_cfg))]
+
 use std::{
     net::SocketAddr,
     ops::RangeInclusive,
@@ -47,7 +62,7 @@ use reth_node_ethereum::{BasicBlockExecutorProvider, EthExecutionStrategyFactory
 use reth_provider::{
     providers::{BlockchainProvider, StaticFileProvider},
     BlockExecutionOutput, BlockIdReader as _, BlockNumReader, BlockReader, CanonChainTracker,
-    CanonStateSubscriptions as _, ChainStateBlockReader, DatabaseProviderFactory as _,
+    CanonStateSubscriptions as _, ChainStateBlockReader, DatabaseProviderFactory,
     HeaderProvider as _, ProviderFactory, StateProviderBox, StateProviderFactory,
     TransactionVariant,
 };
@@ -82,8 +97,8 @@ pub use reth_transaction_pool::{
 use tn_types::{
     adiri_chain_spec_arc, calculate_transaction_root, Batch, Block, BlockBody, BlockExt as _,
     BlockHashOrNumber, BlockNumHash, BlockNumber, BlockWithSenders, ExecHeader, Genesis, Receipt,
-    RecoveredTx, SealedBlock, SealedBlockWithSenders, SealedHeader, TaskManager, TransactionSigned,
-    B256, EMPTY_OMMER_ROOT_HASH, EMPTY_RECEIPTS, EMPTY_TRANSACTIONS, EMPTY_WITHDRAWALS, U256,
+    SealedBlock, SealedBlockWithSenders, SealedHeader, TaskManager, TransactionSigned, B256,
+    EMPTY_OMMER_ROOT_HASH, EMPTY_RECEIPTS, EMPTY_TRANSACTIONS, EMPTY_WITHDRAWALS, U256,
 };
 use tokio::sync::mpsc::{self, unbounded_channel};
 use tracing::{debug, info, warn};
@@ -96,6 +111,9 @@ pub use txn_pool::*;
 use worker::WorkerNetwork;
 pub mod error;
 pub mod worker;
+
+/// Rpc Server type, used for getting the node started.
+pub type RpcServer = TransportRpcModules<()>;
 
 /// Defaults for chain spec clap parser.
 ///
@@ -170,10 +188,12 @@ pub struct RethCommand {
     //pub engine: EngineArgs,
 }
 
+/// A wrapper abstraction around a Reth node config.
 #[derive(Clone, Debug)]
 pub struct RethConfig(NodeConfig<RethChainSpec>);
 
 impl RethConfig {
+    /// Create a new RethConfig wrapper.
     pub fn new(
         reth_config: RethCommand,
         instance: u16,
@@ -215,9 +235,13 @@ impl RethConfig {
     }
 }
 
+/// This is a wrapped abstraction around Reth.
+///
+/// It should allow the telcoin app to access the required functionality without
+/// leaking Reth internals all over the codebase (this makes staying up to date
+/// VERY time consuming).
 #[derive(Clone)]
 pub struct RethEnv {
-    _database: Arc<DatabaseEnv>,
     /// The type that holds all information needed to launch the node's engine.
     ///
     /// The [NodeConfig] is reth-specific and holds many helper functions that
@@ -225,10 +249,6 @@ pub struct RethEnv {
     node_config: NodeConfig<RethChainSpec>,
     /// Type that fetches data from the database.
     blockchain_provider: BlockchainProvider<TelcoinNode>,
-    /// Provider factory is held by the blockchain db, but there isn't a publicly
-    /// available way to get a cloned copy.
-    /// TODO: add a method to `BlockchainProvider` in upstream reth
-    provider_factory: ProviderFactory<TelcoinNode>,
     /// The Evm configuration type.
     evm_executor: BasicBlockExecutorProvider<EthExecutionStrategyFactory>,
     /// The type to configure the EVM for execution.
@@ -243,19 +263,24 @@ impl std::fmt::Debug for RethEnv {
     }
 }
 
+/// Wrapper for Reth ChainSpec, just a layer of abstraction.
+#[derive(Clone, Debug)]
 pub struct ChainSpec(Arc<RethChainSpec>);
 
 impl ChainSpec {
+    /// Return the contained Reth ChainSpec.
     pub(crate) fn reth_chain_spec(&self) -> RethChainSpec {
         (*self.0).clone()
     }
 
+    /// Return a reference to the ChainSpec's genesis.
     pub fn genesis(&self) -> &Genesis {
         self.0.genesis()
     }
 }
 
 impl RethEnv {
+    /// Produce a new wrapped Reth environment from a config, DB path and task manager.
     pub fn new<P: AsRef<Path>>(
         reth_config: &RethConfig,
         db_path: P,
@@ -279,20 +304,12 @@ impl RethEnv {
         let database = Arc::new(init_db(db_path, reth_config.0.db.database_args())?.with_metrics());
         let node_config = reth_config.0.clone();
         let (evm_executor, evm_config) = Self::init_evm_components(&node_config);
-        let provider_factory = Self::init_provider_factory(&node_config, database.clone())?;
+        let provider_factory = Self::init_provider_factory(&node_config, database)?;
         let blockchain_provider =
             Self::init_blockchain_provider(task_manager, &provider_factory, evm_executor.clone())?;
         let tx_pool =
             WorkerTxPool::new(&node_config, task_manager, &provider_factory, &blockchain_provider)?;
-        Ok(Self {
-            _database: database,
-            node_config,
-            provider_factory,
-            blockchain_provider,
-            evm_config,
-            evm_executor,
-            tx_pool,
-        })
+        Ok(Self { node_config, blockchain_provider, evm_config, evm_executor, tx_pool })
     }
 
     /// Create a new RethEnv for testing only.
@@ -381,6 +398,7 @@ impl RethEnv {
         (evm_executor, evm_config)
     }
 
+    /// Return the transaction pool for this Reth instance.
     pub fn worker_txn_pool(&self) -> &WorkerTxPool {
         &self.tx_pool
     }
@@ -807,7 +825,7 @@ impl RethEnv {
 
     /// Return the head header from the reth db.
     pub fn lookup_head(&self) -> TnRethResult<SealedHeader> {
-        let head = self.node_config.lookup_head(&self.provider_factory)?;
+        let head = self.node_config.lookup_head(&self.blockchain_provider)?;
         let header = self
             .blockchain_provider
             .sealed_header(head.number)?
@@ -866,7 +884,7 @@ impl RethEnv {
     /// Returns the block number of the last finialized block.
     pub fn last_finalized_block_number(&self) -> TnRethResult<u64> {
         Ok(self
-            .provider_factory
+            .blockchain_provider
             .database_provider_ro()?
             .last_finalized_block_number()?
             .unwrap_or(0))
@@ -911,9 +929,6 @@ impl RethEnv {
         let mut server =
             rpc_builder.build(modules_config, Box::new(EthApi::with_spawner), tn_execution);
 
-        // TODO: rpc hook here
-        // server.merge.node_configured(rpc_ext)?;
-
         if let Err(e) = server.merge_configured(other) {
             tracing::error!(target: "tn::execution", "Error merging TN rpc module: {e:?}");
         }
@@ -945,16 +960,4 @@ impl RethEnv {
             self.evm_executor.executor(&mut db).execute(block)?;
         Ok((state, receipts))
     }
-}
-
-pub type RpcServer = TransportRpcModules<()>;
-
-pub fn recover_raw_transaction(tx: &[u8]) -> TnRethResult<RecoveredTx<TransactionSigned>> {
-    let recovered = reth_recover_raw_transaction::<TransactionSigned>(tx)?;
-    Ok(recovered)
-}
-
-pub fn recover_signed_transaction(tx: &[u8]) -> TnRethResult<TransactionSigned> {
-    let recovered = reth_recover_raw_transaction::<TransactionSigned>(tx)?;
-    Ok(recovered.into_tx())
 }

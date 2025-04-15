@@ -36,12 +36,14 @@ pub trait TelcoinNodeTypes: NodeTypesWithEngine + NodeTypesWithDB {
     /// The EVM configuration type
     type EvmConfig: ConfigureEvm<Transaction = TransactionSigned, Header = ExecHeader>;
 
-    // Add factory methods to create generic components
+    /// Create the Reth evm config.
     fn create_evm_config(chain: Arc<ChainSpec>) -> Self::EvmConfig;
+    /// Create the Reth executor.
     fn create_executor(chain: Arc<ChainSpec>) -> Self::Executor;
 }
 
-#[derive(Clone)]
+/// Empty struct that implements Reth traits to supply GATs and functionality for Reth integration.
+#[derive(Clone, Debug)]
 pub struct TelcoinNode {}
 
 impl NodeTypes for TelcoinNode {
@@ -179,7 +181,11 @@ impl TNPayload {
         Self { attributes }
     }
 
-    pub fn cfg_and_block_env(&self, chain_spec: &ChainSpec) -> (CfgEnvWithHandlerCfg, BlockEnv) {
+    /// Create a Reth config and block environment.
+    pub(crate) fn cfg_and_block_env(
+        &self,
+        chain_spec: &ChainSpec,
+    ) -> (CfgEnvWithHandlerCfg, BlockEnv) {
         // configure evm env based on parent block
         let cfg = CfgEnv::default().with_chain_id(chain_spec.chain().id());
 
@@ -215,11 +221,13 @@ impl TNPayload {
         (CfgEnvWithHandlerCfg::new_with_spec_id(cfg, spec_id), block_env)
     }
 
-    pub fn timestamp(&self) -> u64 {
+    /// Passthrough attribute timestamp.
+    pub(crate) fn timestamp(&self) -> u64 {
         self.attributes.timestamp
     }
 
-    pub fn suggested_fee_recipient(&self) -> Address {
+    /// Who should get fees?
+    pub(crate) fn suggested_fee_recipient(&self) -> Address {
         self.attributes.beneficiary
     }
 
@@ -227,20 +235,17 @@ impl TNPayload {
     ///
     /// This is used as the executed block's "mix_hash".
     /// [EIP-4399]: https://eips.ethereum.org/EIPS/eip-4399
-    pub fn prev_randao(&self) -> B256 {
+    pub(crate) fn prev_randao(&self) -> B256 {
         self.attributes.mix_hash
     }
 
-    pub fn parent(&self) -> B256 {
+    /// Parent hash.
+    pub(crate) fn parent(&self) -> B256 {
         self.attributes.parent_header.hash()
     }
 
-    pub fn parent_beacon_block_root(&self) -> Option<B256> {
-        Some(self.attributes.consensus_output_digest)
-    }
-
     /// Taken from worker's block, but currently always empty.
-    pub fn withdrawals(&self) -> &Withdrawals {
+    pub(crate) fn withdrawals(&self) -> &Withdrawals {
         &self.attributes.withdrawals
     }
 }

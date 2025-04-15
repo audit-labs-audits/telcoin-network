@@ -1,3 +1,6 @@
+//! Implement an abstraction around the Reth transaction pool.
+//! This should insolate from shifting Reth internals, etc.
+
 use std::{sync::Arc, time::Instant};
 
 use futures::StreamExt as _;
@@ -11,24 +14,30 @@ use reth_provider::{
     providers::BlockchainProvider, CanonStateNotification, CanonStateSubscriptions as _, Chain,
     ChangedAccount, ProviderFactory,
 };
+use reth_rpc_eth_types::utils::recover_raw_transaction as reth_recover_raw_transaction;
 use reth_transaction_pool::{
     error::InvalidPoolTransactionError, identifier::TransactionId, BestTransactions,
     CanonicalStateUpdate, EthPooledTransaction, PoolSize, PoolUpdateKind, TransactionEvents,
     TransactionOrigin, TransactionPool as _, TransactionPoolExt as _, ValidPoolTransaction,
 };
 use tn_types::{
-    Address, EnvKzgSettings, RecoveredTx, SealedBlock, TaskManager, TxHash, MIN_PROTOCOL_BASE_FEE,
+    Address, EnvKzgSettings, RecoveredTx, SealedBlock, TaskManager, TransactionSigned, TxHash,
+    MIN_PROTOCOL_BASE_FEE,
 };
 use tracing::{debug, info, trace};
 
-use crate::traits::TelcoinNode;
+use crate::{error::TnRethResult, traits::TelcoinNode};
 
+/// A pooled transaction id.
 pub type PoolTxnId = TransactionId;
+/// A pooled transaction.
 pub type PoolTxn = ValidPoolTransaction<EthPooledTransaction>;
+/// A recovered pooled transaction.
 pub type RecoveredPoolTxn = RecoveredTx<EthPooledTransaction>;
 
 pub use reth_primitives_traits::InMemorySize as TxnSize;
 
+/// Generate a new pooled transaction from an eth transaction and id.
 pub fn new_pool_txn(transaction: EthPooledTransaction, transaction_id: PoolTxnId) -> PoolTxn {
     ValidPoolTransaction {
         transaction,
@@ -39,10 +48,13 @@ pub fn new_pool_txn(transaction: EthPooledTransaction, transaction_id: PoolTxnId
     }
 }
 
+/// Trait on a transaction pool to produce the best transaction.
 pub trait WorkerTxBest {
+    /// Return an iterator over the best transactions in a pool.
     fn best_transactions(&self) -> BestTxns;
 }
 
+/// A telcoin network transaction pool.
 #[derive(Clone, Debug)]
 pub struct WorkerTxPool(EthTransactionPool<BlockchainProvider<TelcoinNode>, DiskFileBlobStore>);
 
@@ -122,7 +134,7 @@ impl WorkerTxPool {
         Ok(this)
     }
 
-    // update pool to remove mined transactions
+    /// update pool to remove mined transactions
     pub fn update_canonical_state(
         &self,
         new_tip: &SealedBlock,
@@ -147,23 +159,24 @@ impl WorkerTxPool {
         self.0.on_canonical_state_change(update);
     }
 
+    /// Return the pending txn base fee.  Currently just the min protocol base fee.
     pub fn get_pending_base_fee(&self) -> u64 {
-        // TODO: calculate the next basefee HERE for the entire round
+        // TODO issue 114: calculate the next basefee HERE for the entire round
         //
         // for now, always use lowest base fee possible
         MIN_PROTOCOL_BASE_FEE
     }
 
+    /// Return pending transactions.
     pub fn pending_transactions(&self) -> Vec<Arc<PoolTxn>> {
         self.0.pending_transactions()
     }
 
+    /// Return queued transaction (not able to execute yet).
     pub fn queued_transactions(&self) -> Vec<Arc<PoolTxn>> {
         self.0.queued_transactions()
     }
 
-    /// This method is called when a canonical state update is received.
-    /// This method is called when a canonical state update is received.
     /// This method is called when a canonical state update is received.
     ///
     /// Trigger the maintenance task to update pool before building the next block.
@@ -202,41 +215,49 @@ impl WorkerTxPool {
         );
     }
 
+    /// Return the current status of the pool.
     pub fn block_info(&self) -> BlockInfo {
         self.0.block_info()
     }
 
+    /// Set the current status of the pool.
     pub fn set_block_info(&self, block_info: BlockInfo) {
         self.0.set_block_info(block_info);
     }
 
+    /// Return the transactions for an address from the pool.
     pub fn get_transactions_by_sender(&self, address: Address) -> Vec<Arc<PoolTxn>> {
         self.0.get_transactions_by_sender(address)
     }
 
-    pub async fn add_transaction(
+    /// Adds a local (NOT external) transaction to the pool.
+    pub async fn add_transaction_local(
         &self,
         recovered: EthPooledTransaction,
     ) -> Result<TxHash, crate::PoolError> {
         self.0.add_transaction(TransactionOrigin::Local, recovered).await
     }
 
-    pub async fn add_transaction_and_subscribe(
+    /// Adds a local (NOT external) transaction to the pool and subscribes to transaction events.
+    pub async fn add_transaction_and_subscribe_local(
         &self,
         recovered: EthPooledTransaction,
     ) -> Result<TransactionEvents, crate::EthApiError> {
         Ok(self.0.add_transaction_and_subscribe(TransactionOrigin::Local, recovered).await?)
     }
 
+    /// Retrieves a transaction by hash from the pool.
     pub fn get(&self, tx: &TxHash) -> Option<Arc<PoolTxn>> {
         self.0.get(tx)
     }
 
+    /// Retrieve the pool size stats for the pool.
     pub fn pool_size(&self) -> PoolSize {
         self.0.pool_size()
     }
 }
 
+/// Block info defining a transaction pool status.
 pub type BlockInfo = RethBlockInfo;
 
 impl WorkerTxBest for WorkerTxPool {
@@ -245,17 +266,26 @@ impl WorkerTxBest for WorkerTxPool {
     }
 }
 
+/// An iterator that produces the best transactions from a pool.
 pub struct BestTxns {
     inner: Box<dyn BestTransactions<Item = Arc<PoolTxn>>>,
 }
 
+impl std::fmt::Debug for BestTxns {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "BestTxns iterator")
+    }
+}
+
 impl BestTxns {
+    /// Create a new BestTxns (for testing only- normally this comes from a call on the pool).
     pub fn new_for_test(inner: Box<dyn BestTransactions<Item = Arc<PoolTxn>>>) -> Self {
         Self { inner }
     }
 }
 
 impl BestTxns {
+    /// When the best transactions exceed our gas limit notify the pool.
     pub fn exceeds_gas_limit(&mut self, pool_tx: &Arc<PoolTxn>, gas_limit: u64) {
         self.inner.mark_invalid(
             pool_tx,
@@ -263,6 +293,7 @@ impl BestTxns {
         );
     }
 
+    /// When the best transactions are to large for a batch notify the pool.
     pub fn max_batch_size(&mut self, pool_tx: &Arc<PoolTxn>, tx_size: usize, max_size: usize) {
         self.inner
             .mark_invalid(pool_tx, InvalidPoolTransactionError::OversizedData(tx_size, max_size));
@@ -275,4 +306,16 @@ impl Iterator for BestTxns {
     fn next(&mut self) -> Option<Self::Item> {
         self.inner.next()
     }
+}
+
+/// Recover bytes into a transaction.
+pub fn recover_raw_transaction(tx: &[u8]) -> TnRethResult<RecoveredTx<TransactionSigned>> {
+    let recovered = reth_recover_raw_transaction::<TransactionSigned>(tx)?;
+    Ok(recovered)
+}
+
+/// Recover bytes into a signed transaction.
+pub fn recover_signed_transaction(tx: &[u8]) -> TnRethResult<TransactionSigned> {
+    let recovered = reth_recover_raw_transaction::<TransactionSigned>(tx)?;
+    Ok(recovered.into_tx())
 }

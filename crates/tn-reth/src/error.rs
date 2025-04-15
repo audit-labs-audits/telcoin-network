@@ -1,10 +1,12 @@
+//! Error type to wrap various Reth errors.
+
 use reth::rpc::{builder::error::RpcError, server_types::eth::EthApiError};
 use reth_blockchain_tree::error::InsertBlockError;
 use reth_errors::{BlockExecutionError, CanonicalError};
 use reth_provider::ProviderError;
 use reth_revm::primitives::EVMError;
 
-/// Result alias for [`TNEngineError`].
+/// Result alias for [`TNRethError`].
 pub type TnRethResult<T> = Result<T, TnRethError>;
 
 /// Core error variants when executing the output from consensus and extending the canonical block.

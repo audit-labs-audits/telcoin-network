@@ -39,6 +39,9 @@ pub enum BatchBuilderError {
         "The transaction was not included becuase it would exceed the max batch size. Tx size: {0} bytes - max size: {1} bytes."
     )]
     MaxBatchSize(usize, usize),
+    /// An operation that requires canonical state did not have it.
+    #[error("Missing canonical state.")]
+    MissingCanonical,
 }
 
 impl From<oneshot::error::RecvError> for BatchBuilderError {

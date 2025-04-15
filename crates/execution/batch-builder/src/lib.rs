@@ -82,8 +82,11 @@ pub struct BatchBuilder {
     /// block and the pending transaction pool.
     max_delay_interval: Interval,
 
-    /// This channel will receive a header on canonical update.  We use it to wakeup the future.
+    /// This channel will receive a header on canonical update.  We use it to wakeup the future and
+    /// save the canonical update.
     state_changed: mpsc::Receiver<SealedHeader>,
+    /// The last canonical update, saved when state_changed sends a new update.
+    last_canonical_update: Option<LastCanonicalUpdate>,
 }
 
 impl BatchBuilder {
@@ -97,7 +100,7 @@ impl BatchBuilder {
     ) -> Self {
         let max_delay_interval = tokio::time::interval(max_delay);
         let state_changed = reth_env.canonical_block_stream();
-        Self {
+        let mut this = Self {
             reth_env,
             pending_task: None,
             pool,
@@ -105,7 +108,11 @@ impl BatchBuilder {
             address,
             max_delay_interval,
             state_changed,
-        }
+            last_canonical_update: None,
+        };
+        // Prime last_canonical update from the reth DB.
+        this.last_canonical_update = this.latest_canon_state(None);
+        this
     }
 
     /// Spawns a task to build the batch and proposer to peers.
@@ -124,9 +131,16 @@ impl BatchBuilder {
         let pool = self.pool.clone();
         let to_worker = self.to_worker.clone();
 
+        let Some(last_canon_update) = &self.last_canonical_update else {
+            // If we don't have a last canonical then can't use a default so send an error.
+            // This is not a place we should find ourselves in general but can't proceed if are
+            // here.
+            let (result, done) = oneshot::channel();
+            let _ = result.send(Err(BatchBuilderError::MissingCanonical));
+            return done;
+        };
         // configure params for next block to build
-        let config =
-            PendingBlockConfig::new(self.address, self.latest_canon_state().unwrap_or_default());
+        let config = PendingBlockConfig::new(self.address, last_canon_update.clone());
         let build_args = BatchBuilderArgs::new(pool.clone(), config);
         let (result, done) = oneshot::channel();
 
@@ -195,15 +209,18 @@ impl BatchBuilder {
         done
     }
 
-    fn latest_canon_state(&self) -> Option<LastCanonicalUpdate> {
-        if let Ok(num) = self.reth_env.last_block_number() {
-            if let Ok(Some(header)) = self.reth_env.sealed_block_by_number(num) {
-                return Some(LastCanonicalUpdate {
-                    tip: header,
-                    pending_block_base_fee: self.pool.get_pending_base_fee(),
-                    pending_block_blob_fee: None,
-                });
-            }
+    fn latest_canon_state(&self, number: Option<u64>) -> Option<LastCanonicalUpdate> {
+        let num = if let Some(num) = number {
+            num
+        } else {
+            self.reth_env.last_block_number().unwrap_or_default()
+        };
+        if let Ok(Some(header)) = self.reth_env.sealed_block_by_number(num) {
+            return Some(LastCanonicalUpdate {
+                tip: header,
+                pending_block_base_fee: self.pool.get_pending_base_fee(),
+                pending_block_blob_fee: None,
+            });
         }
         None
     }
@@ -228,7 +245,14 @@ impl Future for BatchBuilder {
         // loop when a successful block is built
         loop {
             // This is used as a "wake up" when canonical state updates.
-            while pin::pin!(this.state_changed.recv()).poll(cx).is_ready() {}
+            let mut number = None;
+            while let Poll::Ready(header) = pin::pin!(this.state_changed.recv()).poll(cx) {
+                number = header.map(|h| h.number);
+            }
+            // Silly borrow checker games.
+            if number.is_some() {
+                this.last_canonical_update = this.latest_canon_state(number);
+            }
 
             // only propose one block at a time
             if this.pending_task.is_none() {
@@ -276,7 +300,7 @@ impl Future for BatchBuilder {
                         }
 
                         // use latest values so only mined transactions are updated
-                        if let Some(latest_canon_state) = this.latest_canon_state() {
+                        if let Some(latest_canon_state) = &this.last_canonical_update {
                             let new_tip = &latest_canon_state.tip;
                             let pending_block_base_fee = latest_canon_state.pending_block_base_fee;
                             let pending_block_blob_fee = latest_canon_state.pending_block_blob_fee;

@@ -81,6 +81,7 @@ pub fn validators_dir() -> Option<PathBuf> {
     genesis_dir().map(|root| root.join(GENESIS_VALIDATORS_DIR))
 }
 
+/// Wrapper around a Reth [ChainPath].
 #[derive(Clone, Debug)]
 pub struct DataDirChainPath(ChainPath<DataDirPath>);
 

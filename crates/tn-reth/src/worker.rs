@@ -21,6 +21,7 @@ use reth_network_peers::{NodeRecord, PeerId};
 use std::net::{IpAddr, SocketAddr};
 
 /// Execution components on a per-worker basis.
+#[derive(Debug)]
 pub struct WorkerComponents {
     /// The RPC handle.
     rpc_handle: RpcServerHandle,

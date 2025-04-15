@@ -11,10 +11,7 @@ authors = [
 publish = false
 
 [dependencies]
-base64 = { workspace = true }
-bcs = { workspace = true }
 jsonrpsee = { workspace = true }
-bincode = { workspace = true }
 clap = { workspace = true, features = ["derive", "env"] }
 tn-config = { workspace = true }
 tn-types = { workspace = true }
@@ -25,8 +22,6 @@ enr = { workspace = true, default-features = false, features = [
 
 
 reth = { workspace = true }
-reth-config = { workspace = true }
-reth-metrics = { workspace = true }
 reth-db = { workspace = true }
 reth-db-common = { workspace = true }
 reth-node-core = { workspace = true }
@@ -34,70 +29,35 @@ reth-node-ethereum = { workspace = true }
 reth-stages = { workspace = true }
 reth-chainspec = { workspace = true }
 reth-cli-util = { workspace = true }
-reth-cli-commands = { workspace = true }
-reth-payload-primitives = { workspace = true }
 reth-primitives = { workspace = true }
 reth-consensus = { workspace = true }
 reth-evm-ethereum = { workspace = true }
 reth-engine-primitives = { workspace = true }
 reth-revm = { workspace = true }
-reth-tasks = { workspace = true }
 reth-evm = { workspace = true }
 reth-node-builder = { workspace = true }
 reth-provider = { workspace = true }
 reth-trie-db = { workspace = true }
-reth-trie = { workspace = true }
 reth-primitives-traits = { workspace = true }
 reth-transaction-pool = { workspace = true }
 
 reth-blockchain-tree = { workspace = true }
 reth-errors = { workspace = true }
-reth-execution-types = { workspace = true }
 reth-rpc-eth-types = { workspace = true }
 
-reth-beacon-consensus = { workspace = true }
-reth-exex = { workspace = true }
-reth-node-events = { workspace = true }
-reth-static-file = { workspace = true }
-reth-ethereum-payload-builder = { workspace = true }
-reth-basic-payload-builder = { workspace = true }
-reth-network = { workspace = true }
 reth-network-peers = { workspace = true }
-reth-payload-builder = { workspace = true }
 reth-network-api = { workspace = true }
 reth-discv4 = { workspace = true }
 reth-eth-wire = { workspace = true }
 reth-tracing = { workspace = true }
 
 
-derive_builder = { workspace = true }
 futures = { workspace = true }
-indexmap = { workspace = true }
-prometheus = { workspace = true }
-rand = { workspace = true }
-roaring = { workspace = true }
 serde = { workspace = true }
-serde_with = { workspace = true }
-serde_json = { workspace = true }
-serde_repr = { workspace = true }
 thiserror = { workspace = true }
 tokio = { workspace = true, features = ["sync", "rt", "macros", "signal"] }
 tracing = { workspace = true }
 eyre = { workspace = true }
-once_cell = { workspace = true }
-match_opt = { workspace = true }
-multiaddr = { workspace = true }
-tn-utils = { workspace = true }
-alloy-rlp = { workspace = true }
-parking_lot = { workspace = true }
-serde_yaml = { workspace = true }
-secp256k1 = { workspace = true }
-libp2p = { workspace = true, features = ["serde"] }
-bs58 = { workspace = true }
-blake2 = { workspace = true }
-blst = { workspace = true, features = ["serde"] }
 alloy = { workspace = true, features = ["genesis"] }
-hex = { workspace = true }
 
 [dev-dependencies]
-tempfile = { workspace = true }
