@@ -148,21 +148,17 @@ pub fn faucet_test_execution_node(
     // replace default builder's faucet args
     let TnBuilder { node_config, tn_config, .. } = builder;
     let builder = TnBuilder {
-        node_config,
+        node_config: node_config.clone(),
         tn_config,
         opt_faucet_args: Some(faucet),
         consensus_metrics: None,
     };
 
     // create engine node
-    let engine = if let Some(chain) = opt_chain {
-        ExecutionNode::new(
-            &builder,
-            RethEnv::new_for_test_with_chain(chain, tmp_dir, &TaskManager::default())?,
-        )?
-    } else {
-        ExecutionNode::new(&builder, RethEnv::new_for_test(tmp_dir, &TaskManager::default())?)?
-    };
+    let engine = ExecutionNode::new(
+        &builder,
+        RethEnv::new(&node_config, tmp_dir, &TaskManager::default())?,
+    )?;
 
     Ok(engine)
 }

@@ -18,10 +18,10 @@ use gcloud_sdk::{
 };
 use jsonrpsee::{core::client::ClientT, http_client::HttpClientBuilder, rpc_params};
 use k256::{elliptic_curve::sec1::ToEncodedPoint, pkcs8::DecodePublicKey, PublicKey as PubKey};
-use reth_chainspec::ChainSpec;
 use secp256k1::PublicKey;
 use std::{str::FromStr, sync::Arc, time::Duration};
 use tn_config::{test_fetch_file_content_relative_to_manifest, ContractStandardJson};
+use tn_reth::RethChainSpec;
 use tn_test_utils::{get_contract_state_for_genesis, TransactionFactory};
 use tn_types::{
     adiri_genesis, hex, public_key_to_address, sol, Address, Encodable2718 as _, GenesisAccount,
@@ -203,7 +203,7 @@ async fn test_faucet_transfers_tel_and_xyz_with_google_kms_e2e() -> eyre::Result
     let minter_role_call = [&grant_role_selector, &minter_role_params[..]].concat().into();
 
     // assemble eip1559 transactions using constructed datas
-    let pre_genesis_chain: Arc<ChainSpec> = Arc::new(tmp_genesis.into());
+    let pre_genesis_chain: Arc<RethChainSpec> = Arc::new(tmp_genesis.into());
     let gas_price = 100;
     let faucet_tx_raw = tx_factory.create_eip1559_encoded(
         pre_genesis_chain.clone(),
@@ -253,8 +253,10 @@ async fn test_faucet_transfers_tel_and_xyz_with_google_kms_e2e() -> eyre::Result
     let raw_txs =
         vec![faucet_tx_raw, stablecoin_tx_raw, role_tx_raw, updatexyz_tx_raw, minter_tx_raw];
 
+    let tmp_dir = tempfile::TempDir::new().unwrap();
     // fetch state to be set on the faucet proxy address
-    let execution_outcome = get_contract_state_for_genesis(pre_genesis_chain, raw_txs).await?;
+    let execution_outcome =
+        get_contract_state_for_genesis(pre_genesis_chain, raw_txs, tmp_dir.path()).await?;
     let execution_bundle = execution_outcome.bundle;
     let execution_storage_faucet = &execution_bundle
         .state
@@ -306,7 +308,7 @@ async fn test_faucet_transfers_tel_and_xyz_with_google_kms_e2e() -> eyre::Result
     // start canonical adiri chain with fetched storage
     let real_genesis = adiri_genesis();
     let genesis = real_genesis.extend_accounts(genesis_accounts.into_iter());
-    let chain: Arc<ChainSpec> = Arc::new(genesis.into());
+    let chain: Arc<RethChainSpec> = Arc::new(genesis.into());
 
     // create and launch validator nodes on local network,
     // use expected faucet contract address from `TransactionFactory::default` with nonce == 0
@@ -585,7 +587,7 @@ async fn set_google_kms_public_key_env_var() -> eyre::Result<()> {
 
 /// Use Google KMS credentials json to fetch public key, seed account at genesis, and set env vars
 /// for faucet signature requests.
-async fn prepare_google_kms_env() -> eyre::Result<(Arc<ChainSpec>, Address)> {
+async fn prepare_google_kms_env() -> eyre::Result<(Arc<RethChainSpec>, Address)> {
     // set application credentials for accessing Google KMS API
     std::env::set_var(
         "GOOGLE_APPLICATION_CREDENTIALS",
