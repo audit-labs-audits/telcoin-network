@@ -3,7 +3,6 @@
 //! This module contains the logic for execution.
 
 use crate::error::ExecutionError;
-use eyre::eyre;
 use jsonrpsee::http_client::HttpClient;
 use std::{collections::HashMap, net::SocketAddr, sync::Arc};
 use tn_batch_builder::BatchBuilder;
@@ -17,9 +16,8 @@ use tn_reth::{
 };
 use tn_rpc::{TelcoinNetworkRpcExt, TelcoinNetworkRpcExtApiServer};
 use tn_types::{
-    Address, BatchSender, BatchValidation, BlockBody, ConsensusOutput, ExecHeader,
-    LastCanonicalUpdate, Noticer, SealedBlock, SealedBlockWithSenders, SealedHeader, TaskManager,
-    WorkerId, B256, MIN_PROTOCOL_BASE_FEE,
+    Address, BatchSender, BatchValidation, ConsensusOutput, ExecHeader, Noticer, SealedHeader,
+    TaskManager, WorkerId, B256, MIN_PROTOCOL_BASE_FEE,
 };
 use tokio::sync::broadcast;
 use tokio_stream::wrappers::BroadcastStream;
@@ -100,37 +98,8 @@ impl ExecutionNodeInner {
         tx_pool_latest.last_seen_block_number = last_seen.number;
         transaction_pool.set_block_info(tx_pool_latest);
 
-        let tip = match tx_pool_latest.last_seen_block_number {
-            // use genesis on startup
-            0 => SealedBlockWithSenders::new(
-                SealedBlock::new(
-                    self.tn_config.chain_spec().sealed_genesis_header(),
-                    BlockBody::default(),
-                ),
-                vec![],
-            )
-            .ok_or_else(|| eyre!("Failed to create genesis block for starting tx pool"))?,
-            // retrieve from database
-            _ => self
-                .reth_env
-                .sealed_block_with_senders(tx_pool_latest.last_seen_block_hash.into())?
-                .ok_or_else(|| {
-                    eyre!(
-                        "Failed to find sealed block during block builder startup! ({} - {:?}) ",
-                        tx_pool_latest.last_seen_block_number,
-                        tx_pool_latest.last_seen_block_hash,
-                    )
-                })?,
-        };
-
-        let _latest_canon_state = LastCanonicalUpdate {
-            tip: tip.block,
-            pending_block_base_fee: tx_pool_latest.pending_basefee,
-            pending_block_blob_fee: tx_pool_latest.pending_blob_fee,
-        };
-
         let batch_builder = BatchBuilder::new(
-            self.reth_env.clone(),
+            &self.reth_env,
             transaction_pool.clone(),
             block_provider_sender,
             self.address,

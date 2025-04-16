@@ -83,7 +83,7 @@ async fn test_make_batch_el_to_cl() {
 
     // build execution block proposer
     let batch_builder = BatchBuilder::new(
-        reth_env.clone(),
+        &reth_env,
         txpool.clone(),
         batch_provider.batches_tx(),
         address,
@@ -223,13 +223,8 @@ async fn test_batch_builder_produces_valid_batchess() {
     let (to_worker, mut from_batch_builder) = tokio::sync::mpsc::channel(2);
 
     // build execution block proposer
-    let batch_builder = BatchBuilder::new(
-        reth_env.clone(),
-        txpool.clone(),
-        to_worker,
-        address,
-        Duration::from_secs(1),
-    );
+    let batch_builder =
+        BatchBuilder::new(&reth_env, txpool.clone(), to_worker, address, Duration::from_secs(1));
 
     let gas_price = reth_env.get_gas_price().unwrap();
     let value = U256::from(10).checked_pow(U256::from(18)).expect("1e18 doesn't overflow U256");
@@ -386,13 +381,8 @@ async fn test_canonical_notification_updates_pool() {
     let (to_worker, mut from_batch_builder) = tokio::sync::mpsc::channel(2);
 
     // build execution block proposer
-    let batch_builder = BatchBuilder::new(
-        reth_env.clone(),
-        txpool.clone(),
-        to_worker,
-        address,
-        Duration::from_secs(1),
-    );
+    let batch_builder =
+        BatchBuilder::new(&reth_env, txpool.clone(), to_worker, address, Duration::from_secs(1));
 
     let gas_price = reth_env.get_gas_price().unwrap();
     let value = U256::from(10).checked_pow(U256::from(18)).expect("1e18 doesn't overflow U256");

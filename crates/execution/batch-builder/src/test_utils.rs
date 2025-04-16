@@ -7,11 +7,11 @@ use std::{
 };
 use tn_reth::{
     new_pool_txn, BestTransactions, EthPooledTransaction, InvalidPoolTransactionError, PoolTxn,
-    PoolTxnId, SenderIdentifiers, WorkerTxBest,
+    PoolTxnId, SenderIdentifiers, TxPool,
 };
 use tn_types::{
-    Batch, BatchBuilderArgs, BlockBody, LastCanonicalUpdate, PendingBlockConfig, RecoveredTx,
-    SealedBlock, SealedHeader, TransactionTrait as _, TxHash, MIN_PROTOCOL_BASE_FEE,
+    Batch, BatchBuilderArgs, BlockBody, PendingBlockConfig, RecoveredTx, SealedBlock, SealedHeader,
+    TransactionTrait as _, TxHash, MIN_PROTOCOL_BASE_FEE,
 };
 
 /// Attempt to update batch with accurate header information.
@@ -20,11 +20,7 @@ use tn_types::{
 pub fn execute_test_batch(test_batch: &mut Batch, parent: &SealedHeader) {
     let pool = TestPool::new(&test_batch.transactions);
 
-    let parent_info = LastCanonicalUpdate {
-        tip: SealedBlock::new(parent.clone(), BlockBody::default()),
-        pending_block_base_fee: test_batch.base_fee_per_gas.unwrap_or(MIN_PROTOCOL_BASE_FEE),
-        pending_block_blob_fee: None,
-    };
+    let parent_info = SealedBlock::new(parent.clone(), BlockBody::default());
 
     let batch_config = PendingBlockConfig::new(test_batch.beneficiary, parent_info);
     let args = BatchBuilderArgs { pool, batch_config };
@@ -32,7 +28,7 @@ pub fn execute_test_batch(test_batch: &mut Batch, parent: &SealedHeader) {
     test_batch.parent_hash = batch.parent_hash;
     test_batch.beneficiary = batch.beneficiary;
     test_batch.timestamp = batch.timestamp;
-    test_batch.base_fee_per_gas = batch.base_fee_per_gas;
+    // Don't reset base_fee_per_gas, some tests need that value to remain.
 }
 
 /// A test pool that ensures every transaction is in the pending pool
@@ -42,9 +38,12 @@ struct TestPool {
     by_id: BTreeMap<PoolTxnId, Arc<PoolTxn>>,
 }
 
-impl WorkerTxBest for TestPool {
+impl TxPool for TestPool {
     fn best_transactions(&self) -> tn_reth::BestTxns {
         tn_reth::BestTxns::new_for_test(self.best_transactions_int())
+    }
+    fn get_pending_base_fee(&self) -> u64 {
+        MIN_PROTOCOL_BASE_FEE
     }
 }
 

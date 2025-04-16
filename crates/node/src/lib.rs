@@ -286,7 +286,7 @@ where
                     }
                     latest = engine_state.recv() => {
                         if let Some(latest) = latest {
-                            consensus_bus_clone.recent_blocks().send_modify(|blocks| blocks.push_latest(latest));
+                            consensus_bus_clone.recent_blocks().send_modify(|blocks| blocks.push_latest(latest.header));
                         } else {
                             break;
                         }

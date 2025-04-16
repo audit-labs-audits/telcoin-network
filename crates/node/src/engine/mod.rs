@@ -17,8 +17,8 @@ use tn_config::Config;
 use tn_faucet::FaucetArgs;
 use tn_reth::{RethConfig, RethEnv, WorkerTxPool};
 use tn_types::{
-    BatchSender, BatchValidation, ConsensusOutput, ExecHeader, Noticer, SealedHeader, TaskManager,
-    WorkerId, B256,
+    BatchSender, BatchValidation, ConsensusOutput, ExecHeader, Noticer, SealedBlock, SealedHeader,
+    TaskManager, WorkerId, B256,
 };
 use tokio::sync::{broadcast, mpsc, RwLock};
 mod builder;
@@ -111,7 +111,7 @@ impl ExecutionNode {
         guard.last_executed_output_blocks(number)
     }
 
-    pub async fn canonical_block_stream(&self) -> mpsc::Receiver<SealedHeader> {
+    pub async fn canonical_block_stream(&self) -> mpsc::Receiver<SealedBlock> {
         let guard = self.internal.read().await;
         let reth_env = guard.get_reth_env();
         reth_env.canonical_block_stream()

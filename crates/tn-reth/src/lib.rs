@@ -274,6 +274,16 @@ impl ChainSpec {
     pub fn genesis(&self) -> &Genesis {
         self.0.genesis()
     }
+
+    /// Return the sealed header for genesis.
+    pub fn sealed_genesis_header(&self) -> SealedHeader {
+        self.0.sealed_genesis_header()
+    }
+
+    /// Return the sealed block for genesis.
+    pub fn sealed_genesis_block(&self) -> SealedBlock {
+        SealedBlock::new(self.0.sealed_genesis_header(), BlockBody::default())
+    }
 }
 
 impl RethEnv {
@@ -401,13 +411,13 @@ impl RethEnv {
     }
 
     /// Return a channel reciever that will return each canonical block in turn.
-    pub fn canonical_block_stream(&self) -> mpsc::Receiver<SealedHeader> {
+    pub fn canonical_block_stream(&self) -> mpsc::Receiver<SealedBlock> {
         let mut stream = self.blockchain_provider.canonical_state_stream();
         let (tx, rx) = mpsc::channel(100);
         tokio::spawn(async move {
             while let Some(latest) = stream.next().await {
-                let header = latest.tip().block.header.clone();
-                if let Err(_e) = tx.send(header).await {
+                let block = latest.tip().block.clone();
+                if let Err(_e) = tx.send(block).await {
                     break;
                 }
             }

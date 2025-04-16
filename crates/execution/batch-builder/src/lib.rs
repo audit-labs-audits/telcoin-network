@@ -31,10 +31,10 @@ use std::{
     task::{Context, Poll},
     time::Duration,
 };
-use tn_reth::{RethEnv, WorkerTxPool};
+use tn_reth::{RethEnv, TxPool as _, WorkerTxPool};
 use tn_types::{
-    error::BlockSealError, Address, BatchBuilderArgs, BatchSender, LastCanonicalUpdate,
-    PendingBlockConfig, SealedHeader, TxHash,
+    error::BlockSealError, Address, BatchBuilderArgs, BatchSender, PendingBlockConfig, SealedBlock,
+    TxHash,
 };
 use tokio::{
     sync::{mpsc, oneshot},
@@ -59,8 +59,6 @@ type BuildResult = oneshot::Receiver<BatchBuilderResult<Vec<TxHash>>>;
 /// -
 #[derive(Debug)]
 pub struct BatchBuilder {
-    /// Reth execution environment.
-    reth_env: RethEnv,
     /// Single active future that executes consensus output on a blocking thread and then returns
     /// the result through a oneshot channel.
     pending_task: Option<BuildResult>,
@@ -84,15 +82,15 @@ pub struct BatchBuilder {
 
     /// This channel will receive a header on canonical update.  We use it to wakeup the future and
     /// save the canonical update.
-    state_changed: mpsc::Receiver<SealedHeader>,
+    state_changed: mpsc::Receiver<SealedBlock>,
     /// The last canonical update, saved when state_changed sends a new update.
-    last_canonical_update: Option<LastCanonicalUpdate>,
+    last_canonical_update: SealedBlock,
 }
 
 impl BatchBuilder {
     /// Create a new instance of [Self].
     pub fn new(
-        reth_env: RethEnv,
+        reth_env: &RethEnv,
         pool: WorkerTxPool,
         to_worker: BatchSender,
         address: Address,
@@ -100,19 +98,16 @@ impl BatchBuilder {
     ) -> Self {
         let max_delay_interval = tokio::time::interval(max_delay);
         let state_changed = reth_env.canonical_block_stream();
-        let mut this = Self {
-            reth_env,
+        let last_canonical_update = Self::latest_canon_block(reth_env);
+        Self {
             pending_task: None,
             pool,
             to_worker,
             address,
             max_delay_interval,
             state_changed,
-            last_canonical_update: None,
-        };
-        // Prime last_canonical update from the reth DB.
-        this.last_canonical_update = this.latest_canon_state(None);
-        this
+            last_canonical_update,
+        }
     }
 
     /// Spawns a task to build the batch and proposer to peers.
@@ -131,16 +126,8 @@ impl BatchBuilder {
         let pool = self.pool.clone();
         let to_worker = self.to_worker.clone();
 
-        let Some(last_canon_update) = &self.last_canonical_update else {
-            // If we don't have a last canonical then can't use a default so send an error.
-            // This is not a place we should find ourselves in general but can't proceed if are
-            // here.
-            let (result, done) = oneshot::channel();
-            let _ = result.send(Err(BatchBuilderError::MissingCanonical));
-            return done;
-        };
         // configure params for next block to build
-        let config = PendingBlockConfig::new(self.address, last_canon_update.clone());
+        let config = PendingBlockConfig::new(self.address, self.last_canonical_update.clone());
         let build_args = BatchBuilderArgs::new(pool.clone(), config);
         let (result, done) = oneshot::channel();
 
@@ -209,20 +196,13 @@ impl BatchBuilder {
         done
     }
 
-    fn latest_canon_state(&self, number: Option<u64>) -> Option<LastCanonicalUpdate> {
-        let num = if let Some(num) = number {
-            num
+    fn latest_canon_block(reth_env: &RethEnv) -> SealedBlock {
+        let num = reth_env.last_block_number().unwrap_or_default();
+        if let Ok(Some(header)) = reth_env.sealed_block_by_number(num) {
+            header
         } else {
-            self.reth_env.last_block_number().unwrap_or_default()
-        };
-        if let Ok(Some(header)) = self.reth_env.sealed_block_by_number(num) {
-            return Some(LastCanonicalUpdate {
-                tip: header,
-                pending_block_base_fee: self.pool.get_pending_base_fee(),
-                pending_block_blob_fee: None,
-            });
+            reth_env.chainspec().sealed_genesis_block()
         }
-        None
     }
 }
 
@@ -245,13 +225,8 @@ impl Future for BatchBuilder {
         // loop when a successful block is built
         loop {
             // This is used as a "wake up" when canonical state updates.
-            let mut number = None;
-            while let Poll::Ready(header) = pin::pin!(this.state_changed.recv()).poll(cx) {
-                number = header.map(|h| h.number);
-            }
-            // Silly borrow checker games.
-            if number.is_some() {
-                this.last_canonical_update = this.latest_canon_state(number);
+            while let Poll::Ready(Some(block)) = pin::pin!(this.state_changed.recv()).poll(cx) {
+                this.last_canonical_update = block
             }
 
             // only propose one block at a time
@@ -299,25 +274,22 @@ impl Future for BatchBuilder {
                             break;
                         }
 
-                        // use latest values so only mined transactions are updated
-                        if let Some(latest_canon_state) = &this.last_canonical_update {
-                            let new_tip = &latest_canon_state.tip;
-                            let pending_block_base_fee = latest_canon_state.pending_block_base_fee;
-                            let pending_block_blob_fee = latest_canon_state.pending_block_blob_fee;
+                        debug!(target: "block-builder", "applying block builder's update");
 
-                            debug!(target: "block-builder", ?latest_canon_state, "applying block builder's update");
-
-                            // TODO: should this be a spawned blocking task?
-                            //
-                            // update pool to remove mined transactions
-                            this.pool.update_canonical_state(
-                                new_tip,
-                                pending_block_base_fee,
-                                pending_block_blob_fee,
-                                mined_transactions,
-                                vec![],
-                            );
-                        }
+                        let base_fee_per_gas = this
+                            .last_canonical_update
+                            .base_fee_per_gas
+                            .unwrap_or_else(|| this.pool.get_pending_base_fee());
+                        // TODO: should this be a spawned blocking task?
+                        //
+                        // update pool to remove mined transactions
+                        this.pool.update_canonical_state(
+                            &this.last_canonical_update,
+                            base_fee_per_gas,
+                            None,
+                            mined_transactions,
+                            vec![],
+                        );
 
                         // loop again to check for any other pending transactions
                         // and possibly start building the next block
@@ -424,7 +396,7 @@ mod tests {
 
         // build execution block proposer
         let batch_builder = BatchBuilder::new(
-            reth_env.clone(),
+            &reth_env,
             txpool.clone(),
             block_provider.batches_tx(),
             address,
@@ -568,7 +540,7 @@ mod tests {
         let (to_worker, mut from_batch_builder) = tokio::sync::mpsc::channel(2);
         // build execution block proposer
         let batch_builder = BatchBuilder::new(
-            reth_env.clone(),
+            &reth_env,
             txpool.clone(),
             to_worker,
             address,
@@ -726,7 +698,7 @@ mod tests {
 
         // build execution block proposer
         let batch_builder = BatchBuilder::new(
-            reth_env.clone(),
+            &reth_env,
             txpool.clone(),
             to_worker,
             address,

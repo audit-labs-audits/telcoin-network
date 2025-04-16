@@ -49,9 +49,11 @@ pub fn new_pool_txn(transaction: EthPooledTransaction, transaction_id: PoolTxnId
 }
 
 /// Trait on a transaction pool to produce the best transaction.
-pub trait WorkerTxBest {
+pub trait TxPool {
     /// Return an iterator over the best transactions in a pool.
     fn best_transactions(&self) -> BestTxns;
+    /// Return the pending txn base fee.
+    fn get_pending_base_fee(&self) -> u64;
 }
 
 /// A telcoin network transaction pool.
@@ -159,14 +161,6 @@ impl WorkerTxPool {
         self.0.on_canonical_state_change(update);
     }
 
-    /// Return the pending txn base fee.  Currently just the min protocol base fee.
-    pub fn get_pending_base_fee(&self) -> u64 {
-        // TODO issue 114: calculate the next basefee HERE for the entire round
-        //
-        // for now, always use lowest base fee possible
-        MIN_PROTOCOL_BASE_FEE
-    }
-
     /// Return pending transactions.
     pub fn pending_transactions(&self) -> Vec<Arc<PoolTxn>> {
         self.0.pending_transactions()
@@ -205,10 +199,11 @@ impl WorkerTxPool {
 
         debug!(target: "block-builder", ?mined_transactions);
 
+        let base_fee_per_gas = tip.base_fee_per_gas.unwrap_or_else(|| self.get_pending_base_fee());
         // sync fn so self will block until all pool updates are complete
         self.update_canonical_state(
             &tip.block,
-            self.get_pending_base_fee(),
+            base_fee_per_gas,
             None,
             mined_transactions,
             changed_accounts,
@@ -260,9 +255,17 @@ impl WorkerTxPool {
 /// Block info defining a transaction pool status.
 pub type BlockInfo = RethBlockInfo;
 
-impl WorkerTxBest for WorkerTxPool {
+impl TxPool for WorkerTxPool {
     fn best_transactions(&self) -> BestTxns {
         BestTxns { inner: self.0.best_transactions() }
+    }
+
+    /// Return the pending txn base fee.  Currently just the min protocol base fee.
+    fn get_pending_base_fee(&self) -> u64 {
+        // TODO issue 114: calculate the next basefee HERE for the entire round
+        //
+        // for now, always use lowest base fee possible
+        MIN_PROTOCOL_BASE_FEE
     }
 }
 

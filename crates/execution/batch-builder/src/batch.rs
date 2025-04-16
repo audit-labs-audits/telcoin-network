@@ -6,7 +6,7 @@
 //!
 //! The mined transactions are returned with the built block so the worker can update the pool.
 
-use tn_reth::WorkerTxBest;
+use tn_reth::TxPool;
 use tn_types::{
     max_batch_gas, max_batch_size, now, Batch, BatchBuilderArgs, Encodable2718 as _,
     PendingBlockConfig, TransactionTrait as _, TxHash,
@@ -43,10 +43,11 @@ pub struct BatchBuilderOutput {
 /// with very high gas limits. It's impossible to know the amount of gas a transaction
 /// will use without executing it, and the worker does not execute transactions.
 #[inline]
-pub fn build_batch<P: WorkerTxBest>(args: BatchBuilderArgs<P>) -> BatchBuilderOutput {
+pub fn build_batch<P: TxPool>(args: BatchBuilderArgs<P>) -> BatchBuilderOutput {
     let BatchBuilderArgs { pool, batch_config } = args;
-    let gas_limit = max_batch_gas(batch_config.parent_info.tip.timestamp);
-    let max_size = max_batch_size(batch_config.parent_info.tip.timestamp);
+    let gas_limit = max_batch_gas(batch_config.parent_info.timestamp);
+    let max_size = max_batch_size(batch_config.parent_info.timestamp);
+    let base_fee_per_gas = batch_config.parent_info.base_fee_per_gas;
     let PendingBlockConfig { beneficiary, parent_info } = batch_config;
 
     // NOTE: this obtains a `read` lock on the tx pool
@@ -54,7 +55,7 @@ pub fn build_batch<P: WorkerTxBest>(args: BatchBuilderArgs<P>) -> BatchBuilderOu
     let mut best_txs = pool.best_transactions();
 
     // NOTE: batches always build off the latest finalized block
-    let parent_hash = parent_info.tip.hash();
+    let parent_hash = parent_info.hash();
 
     // collect data for successful transactions
     // let mut sum_blob_gas_used = 0;
@@ -110,9 +111,9 @@ pub fn build_batch<P: WorkerTxBest>(args: BatchBuilderArgs<P>) -> BatchBuilderOu
     //
     // TODO: check for this error at the quorum waiter level?
     let mut timestamp = now();
-    if timestamp == parent_info.tip.timestamp {
+    if timestamp == parent_info.timestamp {
         warn!(target: "worker::batch_builder", "new block timestamp same as parent - setting offset by 1sec");
-        timestamp = parent_info.tip.timestamp + 1;
+        timestamp = parent_info.timestamp + 1;
     }
 
     // batch
@@ -121,7 +122,7 @@ pub fn build_batch<P: WorkerTxBest>(args: BatchBuilderArgs<P>) -> BatchBuilderOu
         parent_hash,
         beneficiary,
         timestamp,
-        base_fee_per_gas: Some(parent_info.pending_block_base_fee),
+        base_fee_per_gas,
         received_at: None,
     };
 
