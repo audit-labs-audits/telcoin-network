@@ -143,7 +143,7 @@ impl<Ext: clap::Args + fmt::Debug> NodeCommand<Ext> {
             reth,
             instance,
             Some(config_path),
-            tn_datadir.clone(),
+            tn_datadir.as_ref(),
             with_unused_ports,
         );
 

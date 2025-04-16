@@ -107,13 +107,7 @@ pub fn execution_builder<CliExt: clap::Args + fmt::Debug>(
     // TODO: this a temporary approach until upstream reth supports public rpc hooks
     let opt_faucet_args = None;
     let builder = TnBuilder {
-        node_config: RethConfig::new_with_path(
-            reth_command,
-            instance,
-            None,
-            tmp_dir.to_path_buf(),
-            true,
-        ),
+        node_config: RethConfig::new(reth_command, instance, None, tmp_dir, true),
         tn_config,
         opt_faucet_args,
         consensus_metrics: None,
@@ -160,7 +154,7 @@ pub fn faucet_test_execution_node(
     // create engine node
     let engine = ExecutionNode::new(
         &builder,
-        RethEnv::new(&node_config, tmp_dir, &TaskManager::default())?,
+        RethEnv::new(&node_config, tmp_dir.join("db"), &TaskManager::default())?,
     )?;
 
     Ok(engine)

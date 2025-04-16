@@ -27,7 +27,7 @@ use std::{
 
 use crate::traits::TNExecution;
 use clap::Parser;
-use dirs::DataDirChainPath;
+use dirs::path_to_datadir;
 use error::{TnRethError, TnRethResult};
 use futures::StreamExt as _;
 use jsonrpsee::Methods;
@@ -194,16 +194,15 @@ pub struct RethConfig(NodeConfig<RethChainSpec>);
 
 impl RethConfig {
     /// Create a new RethConfig wrapper.
-    fn new_int(
+    pub fn new<P: AsRef<Path>>(
         reth_config: RethCommand,
         instance: u16,
         config: Option<PathBuf>,
-        datadir: PathBuf,
+        datadir: P,
         with_unused_ports: bool,
     ) -> Self {
         // create a reth DatadirArgs from tn datadir
-        let datadir =
-            DatadirArgs { datadir: MaybePlatformPath::from(datadir), static_files_path: None };
+        let datadir = path_to_datadir(datadir.as_ref());
 
         let RethCommand { chain, metrics, network, rpc, txpool, builder, debug, db, dev, pruning } =
             reth_config;
@@ -230,28 +229,6 @@ impl RethConfig {
         this.adjust_instance_ports();
 
         Self(this)
-    }
-
-    /// Create a new RethConfig wrapper.
-    pub fn new(
-        reth_config: RethCommand,
-        instance: u16,
-        config: Option<PathBuf>,
-        datadir: DataDirChainPath,
-        with_unused_ports: bool,
-    ) -> Self {
-        Self::new_int(reth_config, instance, config, datadir.into(), with_unused_ports)
-    }
-
-    /// Create a new RethConfig wrapper.
-    pub fn new_with_path(
-        reth_config: RethCommand,
-        instance: u16,
-        config: Option<PathBuf>,
-        datadir: PathBuf,
-        with_unused_ports: bool,
-    ) -> Self {
-        Self::new_int(reth_config, instance, config, datadir, with_unused_ports)
     }
 }
 
