@@ -24,3 +24,7 @@ pub mod genesis;
 pub mod keytool;
 pub mod node;
 pub mod version;
+
+/// No Additional arguments
+#[derive(Debug, Clone, Copy, Default, clap::Args)]
+pub struct NoArgs;

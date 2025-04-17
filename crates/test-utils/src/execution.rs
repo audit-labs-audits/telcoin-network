@@ -4,39 +4,28 @@ use alloy::signers::{k256::FieldBytes, local::PrivateKeySigner};
 use clap::{Args, Parser};
 use core::fmt;
 use rand::{rngs::StdRng, Rng, SeedableRng};
-use reth_chainspec::{BaseFeeParams, ChainSpec};
-use reth_cli_commands::node::NoArgs;
-use reth_db::{
-    test_utils::{create_test_rw_db, TempDatabase},
-    DatabaseEnv,
-};
-use reth_evm::execute::{BlockExecutionOutput, BlockExecutorProvider, Executor as _};
-use reth_node_core::{args::DatadirArgs, node_config::NodeConfig};
-use reth_primitives_traits::crypto::secp256k1::sign_message;
-use reth_provider::{BlockReaderIdExt, ExecutionOutcome, StateProviderFactory};
-use reth_revm::database::StateProviderDatabase;
-use reth_rpc_eth_types::utils::recover_raw_transaction;
-use reth_transaction_pool::{EthPooledTransaction, TransactionOrigin, TransactionPool};
 use secp256k1::Secp256k1;
-use std::{str::FromStr, sync::Arc};
-use telcoin_network::node::NodeCommand;
-use tempfile::tempdir;
+use std::{path::Path, str::FromStr, sync::Arc};
+use telcoin_network::{node::NodeCommand, NoArgs};
 use tn_config::Config;
 use tn_faucet::FaucetArgs;
 use tn_node::engine::{ExecutionNode, TnBuilder};
-use tn_node_traits::TelcoinNode;
+use tn_reth::{
+    recover_raw_transaction, sign_message, ExecutionOutcome, RethChainSpec, RethCommand,
+    RethConfig, RethEnv, WorkerTxPool,
+};
 use tn_types::{
     adiri_genesis, calculate_transaction_root, now, public_key_to_address, AccessList, Address,
-    Batch, Block, BlockBody, BlockExt as _, BlockHeader as _, Bytes, Encodable2718 as _,
-    EthPrimitives, EthSignature, ExecHeader, ExecutionKeypair, Genesis, GenesisAccount,
-    SealedHeader, SignedTransactionIntoRecoveredExt as _, TaskManager, TimestampSec, Transaction,
+    Batch, Block, BlockBody, BlockExt as _, Bytes, Encodable2718 as _, EthSignature, ExecHeader,
+    ExecutionKeypair, Genesis, GenesisAccount, SealedHeader,
+    SignedTransactionIntoRecoveredExt as _, TaskManager, TimestampSec, Transaction,
     TransactionSigned, TxEip1559, TxHash, TxKind, Withdrawals, B256, EMPTY_OMMER_ROOT_HASH,
     EMPTY_TRANSACTIONS, EMPTY_WITHDRAWALS, ETHEREUM_BLOCK_GAS_LIMIT, MIN_PROTOCOL_BASE_FEE, U256,
 };
 use tracing::debug;
 
 /// Convnenience type for testing Execution Node.
-pub type TestExecutionNode = ExecutionNode<TelcoinNode<Arc<TempDatabase<DatabaseEnv>>>>;
+pub type TestExecutionNode = ExecutionNode;
 
 /// A helper type to parse Args more easily.
 #[derive(Parser, Debug)]
@@ -51,27 +40,37 @@ pub struct CommandParser<T: Args> {
 /// - opt_chain: `adiri`
 /// - opt_address: `0x1111111111111111111111111111111111111111`
 pub fn default_test_execution_node(
-    opt_chain: Option<Arc<ChainSpec>>,
+    opt_chain: Option<Arc<RethChainSpec>>,
     opt_address: Option<Address>,
+    tmp_dir: &Path,
 ) -> eyre::Result<TestExecutionNode> {
     let (builder, _) = execution_builder::<NoArgs>(
-        opt_chain,
+        opt_chain.clone(),
         opt_address,
         None, // optional args
+        tmp_dir,
     )?;
 
     // create engine node
-    let engine = ExecutionNode::new(&builder, &TaskManager::default())?;
+    let engine = if let Some(chain) = opt_chain {
+        ExecutionNode::new(
+            &builder,
+            RethEnv::new_for_test_with_chain(chain.clone(), tmp_dir, &TaskManager::default())?,
+        )?
+    } else {
+        ExecutionNode::new(&builder, RethEnv::new_for_test(tmp_dir, &TaskManager::default())?)?
+    };
 
     Ok(engine)
 }
 
 /// Create CLI command for tests calling `ExecutionNode::new`.
 pub fn execution_builder<CliExt: clap::Args + fmt::Debug>(
-    opt_chain: Option<Arc<ChainSpec>>,
+    opt_chain: Option<Arc<RethChainSpec>>,
     opt_address: Option<Address>,
     opt_args: Option<Vec<&str>>,
-) -> eyre::Result<(TnBuilder<Arc<TempDatabase<DatabaseEnv>>>, CliExt)> {
+    tmp_dir: &Path,
+) -> eyre::Result<(TnBuilder, CliExt)> {
     let default_args = ["telcoin-network", "--dev", "--chain", "adiri"];
 
     // extend faucet args if provided
@@ -84,50 +83,17 @@ pub fn execution_builder<CliExt: clap::Args + fmt::Debug>(
     // use same approach as telcoin-network binary
     let command = NodeCommand::<CliExt>::try_parse_from(cli_args)?;
 
-    let NodeCommand {
-        config,
-        chain,
-        metrics,
-        instance,
-        network,
-        rpc,
-        txpool,
-        builder,
-        debug,
-        db,
-        dev,
-        pruning,
-        ext,
-        ..
-    } = command;
+    let NodeCommand { config: _, instance, ext, reth, datadir: _, .. } = command;
+    let RethCommand {
+        chain, metrics, network, rpc, txpool, builder, debug, db, dev, pruning, ..
+    } = reth;
 
     // overwrite chain spec if passed in
     let chain = opt_chain.unwrap_or(chain);
 
-    let datadir = tempdir()?.into_path().into();
-    let datadir = DatadirArgs { datadir, static_files_path: None };
+    let reth_command =
+        RethCommand { chain, metrics, network, rpc, txpool, builder, debug, db, dev, pruning };
 
-    // set up reth node config for engine components
-    let node_config = NodeConfig {
-        config,
-        chain,
-        metrics,
-        instance,
-        datadir,
-        network,
-        rpc,
-        txpool,
-        builder,
-        debug,
-        db,
-        dev,
-        pruning,
-    };
-
-    // ensure unused ports
-    let node_config = node_config.with_unused_ports();
-
-    let database = create_test_rw_db();
     let mut tn_config = Config::default();
 
     // check args then use test defaults
@@ -140,9 +106,12 @@ pub fn execution_builder<CliExt: clap::Args + fmt::Debug>(
 
     // TODO: this a temporary approach until upstream reth supports public rpc hooks
     let opt_faucet_args = None;
-
-    let builder =
-        TnBuilder { database, node_config, tn_config, opt_faucet_args, consensus_metrics: None };
+    let builder = TnBuilder {
+        node_config: RethConfig::new(reth_command, instance, None, tmp_dir, true),
+        tn_config,
+        opt_faucet_args,
+        consensus_metrics: None,
+    };
 
     Ok((builder, ext))
 }
@@ -155,9 +124,10 @@ pub fn execution_builder<CliExt: clap::Args + fmt::Debug>(
 // #[cfg(feature = "faucet")]
 pub fn faucet_test_execution_node(
     google_kms: bool,
-    opt_chain: Option<Arc<ChainSpec>>,
+    opt_chain: Option<Arc<RethChainSpec>>,
     opt_address: Option<Address>,
     faucet_proxy_address: Address,
+    tmp_dir: &Path,
 ) -> eyre::Result<TestExecutionNode> {
     let faucet_args = ["--google-kms"];
 
@@ -169,20 +139,23 @@ pub fn faucet_test_execution_node(
         extended_args.map(|opt| [opt, vec!["--contract-address", &faucet]].concat().to_vec());
 
     // execution builder + faucet args
-    let (builder, faucet) = execution_builder::<FaucetArgs>(opt_chain, opt_address, extended_args)?;
+    let (builder, faucet) =
+        execution_builder::<FaucetArgs>(opt_chain.clone(), opt_address, extended_args, tmp_dir)?;
 
     // replace default builder's faucet args
-    let TnBuilder { database, node_config, tn_config, .. } = builder;
+    let TnBuilder { node_config, tn_config, .. } = builder;
     let builder = TnBuilder {
-        database,
-        node_config,
+        node_config: node_config.clone(),
         tn_config,
         opt_faucet_args: Some(faucet),
         consensus_metrics: None,
     };
 
     // create engine node
-    let engine = ExecutionNode::new(&builder, &TaskManager::default())?;
+    let engine = ExecutionNode::new(
+        &builder,
+        RethEnv::new(&node_config, tmp_dir.join("db"), &TaskManager::default())?,
+    )?;
 
     Ok(engine)
 }
@@ -223,9 +196,8 @@ pub fn seeded_genesis_from_random_batch(
 
     // loop through the transactions
     for tx_bytes in &batch.transactions {
-        let (tx, address) = recover_raw_transaction::<TransactionSigned>(tx_bytes)
-            .expect("raw transaction recovered")
-            .into_parts();
+        let (tx, address) =
+            recover_raw_transaction(tx_bytes).expect("raw transaction recovered").into_parts();
         decoded_txs.push(tx);
         senders.push(address);
         // fund account with 99mil TEL
@@ -293,16 +265,11 @@ pub struct OptionalTestBatchParams {
 /// This is useful for simulating execution results for account state changes.
 /// Currently only used by faucet tests to obtain faucet contract account info
 /// by simulating deploying proxy contract. The results are then put into genesis.
-pub fn execution_outcome_for_tests<P, E>(
+pub fn execution_outcome_for_tests(
     batch: &Batch,
     parent: &SealedHeader,
-    provider: &P,
-    executor: &E,
-) -> ExecutionOutcome
-where
-    P: StateProviderFactory + BlockReaderIdExt,
-    E: BlockExecutorProvider<Primitives = EthPrimitives>,
-{
+    reth_env: RethEnv,
+) -> ExecutionOutcome {
     // create "empty" header with default values
     let mut header = ExecHeader {
         parent_hash: parent.hash(),
@@ -331,7 +298,7 @@ where
     // decode batch transactions
     let mut txs = vec![];
     for tx_bytes in batch.transactions() {
-        let tx = recover_raw_transaction::<TransactionSigned>(tx_bytes)
+        let tx = recover_raw_transaction(tx_bytes)
             .expect("raw transaction recovered for test")
             .into_tx();
         txs.push(tx);
@@ -356,19 +323,11 @@ where
     .with_recovered_senders()
     .expect("unable to recover senders while executing test batch");
 
-    // create execution db
-    let mut db = StateProviderDatabase::new(
-        provider.latest().expect("provider retrieves latest during test batch execution"),
-    );
-
     // convenience
     let block_number = block.number;
 
-    // execute the block
-    let BlockExecutionOutput { state, receipts, .. } = executor
-        .executor(&mut db)
-        .execute(&block)
-        .expect("executor can execute test batch transactions");
+    let (state, receipts) =
+        reth_env.execute_for_test(&block).expect("executor can execute test batch transactions");
     ExecutionOutcome::new(state, receipts.into(), block_number, vec![])
 }
 
@@ -435,7 +394,7 @@ impl TransactionFactory {
     /// Create a signed EIP1559 transaction and encode it.
     pub fn create_eip1559_encoded(
         &mut self,
-        chain: Arc<ChainSpec>,
+        chain: Arc<RethChainSpec>,
         gas_limit: Option<u64>,
         gas_price: u128,
         to: Option<Address>,
@@ -448,7 +407,7 @@ impl TransactionFactory {
     /// Create and sign an EIP1559 transaction.
     pub fn create_eip1559(
         &mut self,
-        chain: Arc<ChainSpec>,
+        chain: Arc<RethChainSpec>,
         gas_limit: Option<u64>,
         gas_price: u128,
         to: Option<Address>,
@@ -559,62 +518,45 @@ impl TransactionFactory {
     }
 
     /// Create and submit the next transaction to the provided [TransactionPool].
-    pub async fn create_and_submit_eip1559_pool_tx<Pool>(
+    pub async fn create_and_submit_eip1559_pool_tx(
         &mut self,
-        chain: Arc<ChainSpec>,
+        chain: Arc<RethChainSpec>,
         gas_price: u128,
         to: Address,
         value: U256,
-        pool: Pool,
-    ) -> TxHash
-    where
-        Pool: TransactionPool<Transaction = EthPooledTransaction>,
-    {
+        pool: WorkerTxPool,
+    ) -> TxHash {
         let tx = self.create_eip1559(chain, None, gas_price, Some(to), value, Bytes::new());
         let pooled_tx = tx.try_into_pooled().expect("tx valid for pool");
         let recovered = pooled_tx.try_into_ecrecovered().expect("tx is recovered");
 
-        pool.add_transaction(TransactionOrigin::Local, recovered.into())
-            .await
-            .expect("recovered tx added to pool")
+        pool.add_transaction_local(recovered.into()).await.expect("recovered tx added to pool")
     }
 
     /// Submit a transaction to the provided pool.
-    pub async fn submit_tx_to_pool<Pool>(&self, tx: TransactionSigned, pool: Pool) -> TxHash
-    where
-        Pool: TransactionPool<Transaction = EthPooledTransaction>,
-    {
+    pub async fn submit_tx_to_pool(&self, tx: TransactionSigned, pool: WorkerTxPool) -> TxHash {
         let pooled_tx = tx.try_into_pooled().expect("tx valid for pool");
         let recovered = pooled_tx.try_into_ecrecovered().expect("tx is recovered");
 
         debug!("transaction: \n{recovered:?}\n");
 
-        pool.add_transaction(TransactionOrigin::Local, recovered.into())
-            .await
-            .expect("recovered tx added to pool")
+        pool.add_transaction_local(recovered.into()).await.expect("recovered tx added to pool")
     }
 }
 
 /// Helper to get the gas price based on the provider's latest header.
-pub fn get_gas_price<Provider>(provider: &Provider) -> u128
-where
-    Provider: BlockReaderIdExt,
-{
-    let header = provider
-        .latest_header()
-        .expect("latest header from provider for gas price")
-        .expect("latest header is some for gas price");
-    header.next_block_base_fee(BaseFeeParams::ethereum()).unwrap_or_default().into()
+pub fn get_gas_price(reth_env: &RethEnv) -> u128 {
+    reth_env.get_gas_price().expect("gas price")
 }
 
 /// Test utility to get desired state changes from a temporary genesis for a subsequent one.
 pub async fn get_contract_state_for_genesis(
-    chain: Arc<ChainSpec>,
+    chain: Arc<RethChainSpec>,
     raw_txs_to_execute: Vec<Vec<u8>>,
+    tmp_dir: &Path,
 ) -> eyre::Result<ExecutionOutcome> {
-    let execution_node = default_test_execution_node(Some(chain.clone()), None)?;
-    let provider = execution_node.get_provider().await;
-    let batch_executor = execution_node.get_batch_executor().await;
+    let execution_node = default_test_execution_node(Some(chain.clone()), None, tmp_dir)?;
+    let reth_env = execution_node.get_reth_env().await;
 
     // execute batch
     let parent = chain.sealed_genesis_header();
@@ -623,8 +565,7 @@ pub async fn get_contract_state_for_genesis(
         parent_hash: parent.hash(),
         ..Default::default()
     };
-    let execution_outcome =
-        execution_outcome_for_tests(&batch, &parent, &provider, &batch_executor);
+    let execution_outcome = execution_outcome_for_tests(&batch, &parent, reth_env);
 
     Ok(execution_outcome)
 }

@@ -1,11 +1,16 @@
 //! Telcoin Network data directories.
 use reth::{
     args::DatadirArgs,
-    dirs::{ChainPath, MaybePlatformPath, XdgPath},
+    dirs::{ChainPath, MaybePlatformPath, PlatformPath, XdgPath},
 };
 use reth_chainspec::Chain;
-use std::{fmt::Debug, ops::Deref, path::PathBuf, str::FromStr as _};
-use tn_config::{TelcoinDirs, GENESIS_VALIDATORS_DIR};
+use std::{
+    fmt::Debug,
+    ops::Deref,
+    path::{Path, PathBuf},
+    str::FromStr as _,
+};
+use tn_config::TelcoinDirs;
 
 /// The path to join for the directory that stores validator keys.
 pub const VALIDATOR_KEYS_DIR: &str = "validator-keys";
@@ -25,64 +30,55 @@ pub fn default_datadir_args() -> DatadirArgs {
     }
 }
 
-/// Constructs a string to be used as a path for configuration and db paths.
-pub fn config_path_prefix(chain: Chain) -> String {
-    chain.to_string()
-}
-
 /// Returns the path to the telcoin network data directory.
 ///
 /// Refer to [dirs_next::data_dir] for cross-platform behavior.
-pub fn data_dir() -> Option<PathBuf> {
+fn data_dir() -> Option<PathBuf> {
     dirs_next::data_dir().map(|root| root.join(DEFAULT_ROOT_DIR))
-}
-
-/// Returns the path to the telcoin network database.
-///
-/// Refer to [dirs_next::data_dir] for cross-platform behavior.
-pub fn database_path() -> Option<PathBuf> {
-    data_dir().map(|root| root.join("db"))
-}
-
-/// Returns the path to the telcoin network configuration directory.
-///
-/// Refer to [dirs_next::config_dir] for cross-platform behavior.
-pub fn config_dir() -> Option<PathBuf> {
-    dirs_next::config_dir().map(|root| root.join("telcoin-network"))
 }
 
 /// Returns the path to the telcoin network cache directory.
 ///
 /// Refer to [dirs_next::cache_dir] for cross-platform behavior.
-pub fn cache_dir() -> Option<PathBuf> {
+fn cache_dir() -> Option<PathBuf> {
     dirs_next::cache_dir().map(|root| root.join("telcoin-network"))
 }
 
 /// Returns the path to the telcoin network logs directory.
 ///
 /// Refer to [dirs_next::cache_dir] for cross-platform behavior.
-pub fn logs_dir() -> Option<PathBuf> {
+fn logs_dir() -> Option<PathBuf> {
     cache_dir().map(|root| root.join("logs"))
 }
 
-/// Returns the path to the telcoin network genesis directory.
-///
-/// Refer to [dirs_next::cache_dir] for cross-platform behavior.
-pub fn genesis_dir() -> Option<PathBuf> {
-    config_dir().map(|root| root.join("genesis"))
+/// Turn a path (for instance a testing temp directory) into ['DatadirArgs'].
+pub fn path_to_datadir<P: AsRef<Path>>(path: P) -> DatadirArgs {
+    let path = path.as_ref();
+    DatadirArgs { datadir: MaybePlatformPath::from(path.to_path_buf()), static_files_path: None }
 }
 
-/// Returns the path to the telcoin network committee directory.
-///
-/// Child of `genesis_dir`.
-///
-/// Refer to [dirs_next::cache_dir] for cross-platform behavior.
-pub fn validators_dir() -> Option<PathBuf> {
-    genesis_dir().map(|root| root.join(GENESIS_VALIDATORS_DIR))
-}
-
+/// Wrapper around a Reth [ChainPath].
 #[derive(Clone, Debug)]
 pub struct DataDirChainPath(ChainPath<DataDirPath>);
+
+impl DataDirChainPath {
+    /// Create a new DataDirChainPath for testing.  This uses a path for it's base
+    /// and defaults for other params.  Going from a simple path to a DataDirChainPath
+    /// is a real PITA so capturing this here for lower friction testing and as
+    /// documentation for some of this insanity...
+    pub fn new_for_test<P: AsRef<Path>>(path: P) -> Self {
+        let path = path.as_ref();
+        // The None static path may be all that is used here but set the datadir just in case...
+        let datadir = path_to_datadir(path);
+        // Just use a dummy test chain name.
+        let chain = Chain::from_str("telcoin-test").expect("valid named chain");
+        // Seem to need to use a string for this despite already having a Path...
+        let platform_path = PlatformPath::from_str(&path.to_string_lossy())
+            .expect("path to string back to path...");
+        let chain_path = ChainPath::new(platform_path, chain, datadir);
+        Self(chain_path)
+    }
+}
 
 impl Deref for DataDirChainPath {
     type Target = ChainPath<DataDirPath>;
@@ -104,7 +100,7 @@ impl From<DataDirChainPath> for PathBuf {
     }
 }
 
-//impl TelcoinDirs for ChainPath<DataDirPath> {
+//impl TelcoinDirs for ['DataDirChainPath'] (wrapper around ['ChainPath<DataDirPath>']) {
 impl TelcoinDirs for DataDirChainPath {
     fn node_config_path(&self) -> PathBuf {
         self.0.as_ref().join("telcoin-network.yaml")
@@ -136,6 +132,10 @@ impl TelcoinDirs for DataDirChainPath {
 
     fn consensus_db_path(&self) -> PathBuf {
         self.0.as_ref().join("consensus-db")
+    }
+
+    fn reth_db_path(&self) -> PathBuf {
+        self.0.as_ref().join("db")
     }
 
     fn network_config_path(&self) -> PathBuf {

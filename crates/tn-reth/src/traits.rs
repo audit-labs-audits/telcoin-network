@@ -1,17 +1,78 @@
-//! Compatibility with reth's API for engine types.
+//! Compatibility types for Telcoin Node and reth.
+//!
+//! These are used to spawn execution components for the node and maintain compatibility with reth's
+//! API.
 
 use reth_chainspec::ChainSpec;
 pub use reth_consensus::{Consensus, ConsensusError};
 use reth_consensus::{FullConsensus, HeaderValidator, PostExecutionInput};
+use reth_db::DatabaseEnv;
 use reth_engine_primitives::PayloadValidator;
+use reth_evm::{execute::BlockExecutorProvider, ConfigureEvm};
+use reth_evm_ethereum::EthEvmConfig;
+use reth_node_builder::{NodeTypes, NodeTypesWithDB, NodeTypesWithEngine};
+use reth_node_ethereum::{
+    BasicBlockExecutorProvider, EthEngineTypes, EthExecutionStrategyFactory, EthExecutorProvider,
+};
+use reth_provider::EthStorage;
 use reth_revm::primitives::{
     BlobExcessGasAndPrice, BlockEnv, CfgEnv, CfgEnvWithHandlerCfg, SpecId,
 };
+use reth_trie_db::MerklePatriciaTrie;
 use serde::{Deserialize, Serialize};
+use std::sync::Arc;
 use tn_types::{
-    Address, BlockExt as _, BlockWithSenders, ConsensusOutput, NodePrimitives, SealedBlock,
-    SealedHeader, Withdrawals, B256, U256,
+    Address, BlockExt as _, BlockWithSenders, ConsensusOutput, EthPrimitives, ExecHeader,
+    NodePrimitives, SealedBlock, SealedHeader, TransactionSigned, Withdrawals, B256, U256,
 };
+
+use crate::RethEnv;
+
+/// Telcoin Network specific node types for reth compatibility.
+pub trait TelcoinNodeTypes: NodeTypesWithEngine + NodeTypesWithDB {
+    /// The EVM executor type
+    type Executor: BlockExecutorProvider<Primitives = EthPrimitives>;
+
+    /// The EVM configuration type
+    type EvmConfig: ConfigureEvm<Transaction = TransactionSigned, Header = ExecHeader>;
+
+    /// Create the Reth evm config.
+    fn create_evm_config(chain: Arc<ChainSpec>) -> Self::EvmConfig;
+    /// Create the Reth executor.
+    fn create_executor(chain: Arc<ChainSpec>) -> Self::Executor;
+}
+
+/// Empty struct that implements Reth traits to supply GATs and functionality for Reth integration.
+#[derive(Clone, Debug)]
+pub struct TelcoinNode {}
+
+impl NodeTypes for TelcoinNode {
+    type Primitives = EthPrimitives;
+    type ChainSpec = ChainSpec;
+    type StateCommitment = MerklePatriciaTrie;
+    type Storage = EthStorage;
+}
+
+impl NodeTypesWithEngine for TelcoinNode {
+    type Engine = EthEngineTypes;
+}
+
+impl NodeTypesWithDB for TelcoinNode {
+    type DB = Arc<DatabaseEnv>;
+}
+
+impl TelcoinNodeTypes for TelcoinNode {
+    type Executor = BasicBlockExecutorProvider<EthExecutionStrategyFactory>;
+    type EvmConfig = EthEvmConfig;
+
+    fn create_evm_config(chain: Arc<ChainSpec>) -> Self::EvmConfig {
+        EthEvmConfig::new(chain)
+    }
+
+    fn create_executor(chain: Arc<ChainSpec>) -> Self::Executor {
+        EthExecutorProvider::ethereum(chain)
+    }
+}
 
 /// Compatibility type to easily integrate with reth.
 ///
@@ -88,19 +149,19 @@ impl PayloadValidator for TNExecution {
 
 /// The type for building blocks that extend the canonical tip.
 #[derive(Debug)]
-pub struct BuildArguments<Provider> {
+pub struct BuildArguments {
     /// State provider.
-    pub provider: Provider,
+    pub reth_env: RethEnv,
     /// Output from consensus that contains all the transactions to execute.
     pub output: ConsensusOutput,
     /// Last executed block from the previous consensus output.
     pub parent_header: SealedHeader,
 }
 
-impl<P> BuildArguments<P> {
+impl BuildArguments {
     /// Initialize new instance of [Self].
-    pub fn new(provider: P, output: ConsensusOutput, parent_header: SealedHeader) -> Self {
-        Self { provider, output, parent_header }
+    pub fn new(reth_env: RethEnv, output: ConsensusOutput, parent_header: SealedHeader) -> Self {
+        Self { reth_env, output, parent_header }
     }
 }
 
@@ -120,7 +181,11 @@ impl TNPayload {
         Self { attributes }
     }
 
-    pub fn cfg_and_block_env(&self, chain_spec: &ChainSpec) -> (CfgEnvWithHandlerCfg, BlockEnv) {
+    /// Create a Reth config and block environment.
+    pub(crate) fn cfg_and_block_env(
+        &self,
+        chain_spec: &ChainSpec,
+    ) -> (CfgEnvWithHandlerCfg, BlockEnv) {
         // configure evm env based on parent block
         let cfg = CfgEnv::default().with_chain_id(chain_spec.chain().id());
 
@@ -156,11 +221,13 @@ impl TNPayload {
         (CfgEnvWithHandlerCfg::new_with_spec_id(cfg, spec_id), block_env)
     }
 
-    pub fn timestamp(&self) -> u64 {
+    /// Passthrough attribute timestamp.
+    pub(crate) fn timestamp(&self) -> u64 {
         self.attributes.timestamp
     }
 
-    pub fn suggested_fee_recipient(&self) -> Address {
+    /// Who should get fees?
+    pub(crate) fn suggested_fee_recipient(&self) -> Address {
         self.attributes.beneficiary
     }
 
@@ -168,20 +235,17 @@ impl TNPayload {
     ///
     /// This is used as the executed block's "mix_hash".
     /// [EIP-4399]: https://eips.ethereum.org/EIPS/eip-4399
-    pub fn prev_randao(&self) -> B256 {
+    pub(crate) fn prev_randao(&self) -> B256 {
         self.attributes.mix_hash
     }
 
-    pub fn parent(&self) -> B256 {
+    /// Parent hash.
+    pub(crate) fn parent(&self) -> B256 {
         self.attributes.parent_header.hash()
     }
 
-    pub fn parent_beacon_block_root(&self) -> Option<B256> {
-        Some(self.attributes.consensus_output_digest)
-    }
-
     /// Taken from worker's block, but currently always empty.
-    pub fn withdrawals(&self) -> &Withdrawals {
+    pub(crate) fn withdrawals(&self) -> &Withdrawals {
         &self.attributes.withdrawals
     }
 }

@@ -17,14 +17,11 @@ tracing = { workspace = true }
 humantime = { workspace = true }
 futures = { workspace = true }
 tokio = { workspace = true, features = ["sync"] }
+tn-reth = { workspace = true }
 reth = { workspace = true }
 reth-primitives = { workspace = true }
-reth-chainspec = { workspace = true }
-reth-provider = { workspace = true }
-reth-rpc = { workspace = true }
 reth-tasks = { workspace = true }
 reth-transaction-pool = { workspace = true }
-reth-cli-util = { workspace = true }
 clap = { workspace = true, features = ["env"] }
 eyre = { workspace = true }
 tokio-stream = { workspace = true, features = ["sync"] }

@@ -6,12 +6,10 @@
 //!
 //! The mined transactions are returned with the built block so the worker can update the pool.
 
-use crate::error::BatchBuilderError;
-use reth_primitives_traits::InMemorySize as _;
-use reth_transaction_pool::{error::InvalidPoolTransactionError, PoolTransaction, TransactionPool};
+use tn_reth::TxPool;
 use tn_types::{
     max_batch_gas, max_batch_size, now, Batch, BatchBuilderArgs, Encodable2718 as _,
-    PendingBlockConfig, TransactionSigned, TransactionTrait as _, TxHash,
+    PendingBlockConfig, TransactionTrait as _, TxHash,
 };
 use tracing::{debug, warn};
 
@@ -45,14 +43,11 @@ pub struct BatchBuilderOutput {
 /// with very high gas limits. It's impossible to know the amount of gas a transaction
 /// will use without executing it, and the worker does not execute transactions.
 #[inline]
-pub fn build_batch<P>(args: BatchBuilderArgs<P>) -> BatchBuilderOutput
-where
-    P: TransactionPool,
-    P::Transaction: PoolTransaction<Consensus = TransactionSigned>,
-{
+pub fn build_batch<P: TxPool>(args: BatchBuilderArgs<P>) -> BatchBuilderOutput {
     let BatchBuilderArgs { pool, batch_config } = args;
-    let gas_limit = max_batch_gas(batch_config.parent_info.tip.timestamp);
-    let max_size = max_batch_size(batch_config.parent_info.tip.timestamp);
+    let gas_limit = max_batch_gas(batch_config.parent_info.timestamp);
+    let max_size = max_batch_size(batch_config.parent_info.timestamp);
+    let base_fee_per_gas = batch_config.parent_info.base_fee_per_gas;
     let PendingBlockConfig { beneficiary, parent_info } = batch_config;
 
     // NOTE: this obtains a `read` lock on the tx pool
@@ -60,7 +55,7 @@ where
     let mut best_txs = pool.best_transactions();
 
     // NOTE: batches always build off the latest finalized block
-    let parent_hash = parent_info.tip.hash();
+    let parent_hash = parent_info.hash();
 
     // collect data for successful transactions
     // let mut sum_blob_gas_used = 0;
@@ -80,10 +75,7 @@ where
             // marking as invalid within the context of the `BestTransactions` pulled in this
             // current iteration  all dependents for this transaction are now considered invalid
             // before continuing loop
-            best_txs.mark_invalid(
-                &pool_tx,
-                InvalidPoolTransactionError::ExceedsGasLimit(pool_tx.gas_limit(), gas_limit),
-            );
+            best_txs.exceeds_gas_limit(&pool_tx, gas_limit);
             debug!(target: "worker::batch_builder", ?pool_tx, "marking tx invalid due to gas constraint");
             continue;
         }
@@ -93,19 +85,14 @@ where
         // NOTE: `ValidPoolTransaction::size()` is private
         let tx = pool_tx.to_consensus();
 
+        use tn_reth::TxnSize;
         // ensure block has capacity (in bytes) for this transaction
         if total_bytes_size + tx.size() > max_size {
             // the tx could exceed max gas limit for the block
             // marking as invalid within the context of the `BestTransactions` pulled in this
             // current iteration  all dependents for this transaction are now considered invalid
             // before continuing loop
-            best_txs.mark_invalid(
-                &pool_tx,
-                InvalidPoolTransactionError::Other(Box::new(BatchBuilderError::MaxBatchSize(
-                    tx.size(),
-                    max_size,
-                ))),
-            );
+            best_txs.max_batch_size(&pool_tx, tx.size(), max_size);
             debug!(target: "worker::batch_builder", ?pool_tx, "marking tx invalid due to bytes constraint");
             continue;
         }
@@ -124,9 +111,9 @@ where
     //
     // TODO: check for this error at the quorum waiter level?
     let mut timestamp = now();
-    if timestamp == parent_info.tip.timestamp {
+    if timestamp == parent_info.timestamp {
         warn!(target: "worker::batch_builder", "new block timestamp same as parent - setting offset by 1sec");
-        timestamp = parent_info.tip.timestamp + 1;
+        timestamp = parent_info.timestamp + 1;
     }
 
     // batch
@@ -135,7 +122,7 @@ where
         parent_hash,
         beneficiary,
         timestamp,
-        base_fee_per_gas: Some(parent_info.pending_block_base_fee),
+        base_fee_per_gas,
         received_at: None,
     };
 

@@ -8,11 +8,9 @@ use clap::Args;
 use ecdsa::elliptic_curve::{pkcs8::DecodePublicKey as _, sec1::ToEncodedPoint};
 use eyre::ContextCompat;
 use k256::PublicKey as PubKey;
-use reth_cli_util::parse_duration_from_secs;
-use reth_provider::{BlockReaderIdExt, StateProviderFactory};
-use reth_transaction_pool::{EthPooledTransaction, TransactionPool};
 use secp256k1::PublicKey;
 use std::{str::FromStr, time::Duration};
+use tn_reth::{parse_duration_from_secs, RethEnv, WorkerTxPool};
 use tn_types::{public_key_to_address, Address, U256};
 use tracing::{info, warn};
 
@@ -95,15 +93,11 @@ impl FaucetArgs {
     /// reth currently requires an auth server to run this properly.
     /// This is a workaround to manually call `extend_rpc_modules` for
     /// the engine.
-    pub fn create_rpc_extension<Provider, Pool>(
+    pub fn create_rpc_extension(
         &self,
-        provider: Provider,
-        pool: Pool,
-    ) -> eyre::Result<FaucetRpcExt>
-    where
-        Provider: BlockReaderIdExt + StateProviderFactory + Unpin + Clone + 'static,
-        Pool: TransactionPool<Transaction = EthPooledTransaction> + Unpin + Clone + 'static,
-    {
+        reth_env: RethEnv,
+        pool: WorkerTxPool,
+    ) -> eyre::Result<FaucetRpcExt> {
         // only support google kms for now
         if self.google_kms {
             // calculate address from uncompressed public key
@@ -142,7 +136,7 @@ impl FaucetArgs {
                 contract_address: self.contract_address,
             };
 
-            let ext = FaucetRpcExt::new(provider, pool, config);
+            let ext = FaucetRpcExt::new(reth_env, pool, config);
 
             info!(target: "faucet", "Google KMS active - merging faucet extension.");
             return Ok(ext);

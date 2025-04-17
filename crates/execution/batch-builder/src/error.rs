@@ -1,7 +1,6 @@
 //! Error types for Telcoin Network Block Builder.
 
-use reth_errors::{CanonicalError, ProviderError, RethError};
-use reth_transaction_pool::error::PoolTransactionError;
+use tn_reth::{CanonicalError, PoolTransactionError, ProviderError, RethError};
 use tokio::sync::{mpsc, oneshot};
 
 /// Result alias for [`TNEngineError`].
@@ -40,6 +39,9 @@ pub enum BatchBuilderError {
         "The transaction was not included becuase it would exceed the max batch size. Tx size: {0} bytes - max size: {1} bytes."
     )]
     MaxBatchSize(usize, usize),
+    /// An operation that requires canonical state did not have it.
+    #[error("Missing canonical state.")]
+    MissingCanonical,
 }
 
 impl From<oneshot::error::RecvError> for BatchBuilderError {

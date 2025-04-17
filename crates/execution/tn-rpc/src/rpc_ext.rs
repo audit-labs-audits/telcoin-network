@@ -6,8 +6,7 @@ use crate::{
 };
 use async_trait::async_trait;
 use jsonrpsee::proc_macros::rpc;
-use reth_chainspec::ChainSpec;
-use std::sync::Arc;
+use tn_reth::ChainSpec;
 
 /// Telcoin Network RPC namespace.
 ///
@@ -22,7 +21,7 @@ pub trait TelcoinNetworkRpcExtApi {
 /// The type that implements `tn` namespace trait.
 pub struct TelcoinNetworkRpcExt<N> {
     /// The chain id for this node.
-    chain: Arc<ChainSpec>,
+    chain: ChainSpec,
     /// The inner-node network.
     ///
     /// The interface that handles primary <-> engine network communication.
@@ -51,7 +50,7 @@ where
 
 impl<N> TelcoinNetworkRpcExt<N> {
     /// Create new instance of the Telcoin Network RPC extension.
-    pub fn new(chain: Arc<ChainSpec>, _inner_node_network: N) -> Self {
+    pub fn new(chain: ChainSpec, _inner_node_network: N) -> Self {
         Self { chain, _inner_node_network }
     }
 }

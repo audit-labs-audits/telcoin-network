@@ -3,11 +3,12 @@
 use clap::Args;
 use eyre::Context;
 
-use reth::dirs::MaybePlatformPath;
-use reth_chainspec::ChainSpec;
 use std::{path::PathBuf, sync::Arc};
 use tn_config::{Config, ConfigFmt, ConfigTrait, NetworkGenesis, TelcoinDirs as _};
-use tn_node::dirs::{default_datadir_args, DataDirChainPath, DataDirPath};
+use tn_reth::{
+    dirs::{default_datadir_args, DataDirChainPath, DataDirPath},
+    MaybePlatformPath, RethChainSpec,
+};
 
 use crate::args::clap_genesis_parser;
 use tracing::info;
@@ -54,7 +55,7 @@ pub struct AddValidator {
         value_parser = clap_genesis_parser,
         required = false,
     )]
-    pub chain: Arc<ChainSpec>,
+    pub chain: Arc<RethChainSpec>,
 }
 
 impl AddValidator {

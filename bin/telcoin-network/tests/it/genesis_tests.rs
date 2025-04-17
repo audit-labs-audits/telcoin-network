@@ -4,9 +4,10 @@ mod tests {
     use alloy::{network::EthereumWallet, primitives::Uint, providers::ProviderBuilder};
     use jsonrpsee::{core::client::ClientT, http_client::HttpClientBuilder, rpc_params};
     use rand::{rngs::StdRng, SeedableRng};
-    use reth_chainspec::ChainSpec;
     use std::{sync::Arc, time::Duration};
+    use tempfile::TempDir;
     use tn_config::{test_fetch_file_content_relative_to_manifest, ContractStandardJson};
+    use tn_reth::RethChainSpec;
     use tn_test_utils::{get_contract_state_for_genesis, TransactionFactory};
     use tn_types::{
         adiri_genesis, hex, sol, Address, BlsKeypair, Bytes, GenesisAccount, NetworkKeypair,
@@ -16,7 +17,7 @@ mod tests {
     #[tokio::test]
     async fn test_genesis_with_consensus_registry() {
         let network_genesis = adiri_genesis();
-        let tmp_chain: Arc<ChainSpec> = Arc::new(network_genesis.into());
+        let tmp_chain: Arc<RethChainSpec> = Arc::new(network_genesis.into());
 
         // fetch registry impl bytecode from compiled output in tn-contracts
         let registry_standard_json = test_fetch_file_content_relative_to_manifest(
@@ -146,7 +147,7 @@ mod tests {
         // construct proxy deployment and initialize txs
         let gas_price = 7;
         let gas_limit = 3_000_000;
-        let pre_genesis_chain: Arc<ChainSpec> = Arc::new(tmp_genesis.into());
+        let pre_genesis_chain: Arc<RethChainSpec> = Arc::new(tmp_genesis.into());
         let registry_tx_raw = tx_factory.create_eip1559_encoded(
             tmp_chain.clone(),
             Some(gas_limit),
@@ -167,10 +168,12 @@ mod tests {
         );
         let raw_txs = vec![registry_tx_raw.clone(), initialize_tx_raw];
 
+        let tmp_dir = TempDir::new().unwrap();
         // fetch storage changes from pre-genesis for actual genesis
-        let execution_outcome = get_contract_state_for_genesis(pre_genesis_chain.clone(), raw_txs)
-            .await
-            .expect("unable to fetch contract state");
+        let execution_outcome =
+            get_contract_state_for_genesis(pre_genesis_chain.clone(), raw_txs, tmp_dir.path())
+                .await
+                .expect("unable to fetch contract state");
         let execution_bundle = execution_outcome.bundle;
         let execution_storage_registry = &execution_bundle
             .state
@@ -205,7 +208,7 @@ mod tests {
         ];
         let real_genesis = adiri_genesis();
         let genesis = real_genesis.extend_accounts(genesis_accounts.into_iter());
-        let chain: Arc<ChainSpec> = Arc::new(genesis.into());
+        let chain: Arc<RethChainSpec> = Arc::new(genesis.into());
 
         spawn_local_testnet(chain, "0x0000000000000000000000000000000000000000")
             .expect("failed to spawn testnet");

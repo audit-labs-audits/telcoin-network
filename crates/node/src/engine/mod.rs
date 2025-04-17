@@ -12,37 +12,26 @@
 
 use self::inner::ExecutionNodeInner;
 use builder::ExecutionNodeBuilder;
-use reth_chainspec::ChainSpec;
-use reth_db::{
-    database_metrics::{DatabaseMetadata, DatabaseMetrics},
-    Database,
-};
-use reth_node_builder::NodeConfig;
-use reth_node_ethereum::{BasicBlockExecutorProvider, EthEvmConfig, EthExecutionStrategyFactory};
-use reth_provider::providers::BlockchainProvider;
 use std::{net::SocketAddr, sync::Arc};
 use tn_config::Config;
 use tn_faucet::FaucetArgs;
-use tn_node_traits::{TelcoinNode, TelcoinNodeTypes};
+use tn_reth::{RethConfig, RethEnv, WorkerTxPool};
 use tn_types::{
-    BatchSender, BatchValidation, ConsensusOutput, ExecHeader, Noticer, SealedHeader, TaskManager,
-    WorkerId, B256,
+    BatchSender, BatchValidation, ConsensusOutput, ExecHeader, Noticer, SealedBlock, SealedHeader,
+    TaskManager, WorkerId, B256,
 };
-use tokio::sync::{broadcast, RwLock};
-pub use worker::*;
+use tokio::sync::{broadcast, mpsc, RwLock};
 mod builder;
 mod inner;
-mod worker;
+pub use tn_reth::worker::*;
 
 /// The struct used to build the execution nodes.
 ///
 /// Used to build the node until upstream reth supports
 /// broader node customization.
-pub struct TnBuilder<DB> {
-    /// The database environment where all execution data is stored.
-    pub database: DB,
+pub struct TnBuilder {
     /// The node configuration.
-    pub node_config: NodeConfig<ChainSpec>,
+    pub node_config: RethConfig,
     /// Telcoin Network config.
     ///
     /// TODO: consolidate configs
@@ -58,26 +47,14 @@ pub struct TnBuilder<DB> {
 
 /// Wrapper for the inner execution node components.
 #[derive(Clone)]
-pub struct ExecutionNode<N>
-where
-    N: TelcoinNodeTypes,
-    N::DB: Database + DatabaseMetrics + DatabaseMetadata + Clone + Unpin + 'static,
-{
-    internal: Arc<RwLock<ExecutionNodeInner<TelcoinNode<N::DB>>>>,
+pub struct ExecutionNode {
+    internal: Arc<RwLock<ExecutionNodeInner>>,
 }
 
-impl<N> ExecutionNode<N>
-where
-    N: TelcoinNodeTypes,
-    N::DB: Database + DatabaseMetrics + DatabaseMetadata + Clone + Unpin + 'static,
-{
+impl ExecutionNode {
     /// Create a new instance of `Self`.
-    pub fn new(tn_builder: &TnBuilder<N::DB>, task_manager: &TaskManager) -> eyre::Result<Self> {
-        let inner = ExecutionNodeBuilder::new(tn_builder)
-            .init_evm_components()
-            .init_provider_factory()?
-            .init_blockchain_provider(task_manager)?
-            .build()?;
+    pub fn new(tn_builder: &TnBuilder, reth_env: RethEnv) -> eyre::Result<Self> {
+        let inner = ExecutionNodeBuilder::new(tn_builder, reth_env).build()?;
 
         Ok(ExecutionNode { internal: Arc::new(RwLock::new(inner)) })
     }
@@ -134,26 +111,16 @@ where
         guard.last_executed_output_blocks(number)
     }
 
-    /// Return an database provider.
-    pub async fn get_provider(&self) -> BlockchainProvider<TelcoinNode<N::DB>> {
+    pub async fn canonical_block_stream(&self) -> mpsc::Receiver<SealedBlock> {
         let guard = self.internal.read().await;
-        guard.get_provider()
+        let reth_env = guard.get_reth_env();
+        reth_env.canonical_block_stream()
     }
 
-    /// Return the node's EVM config.
-    /// Used for tests.
-    // pub async fn get_evm_config(&self) -> N::EvmConfig {
-    pub async fn get_evm_config(&self) -> EthEvmConfig {
+    /// Return the reth execution env.
+    pub async fn get_reth_env(&self) -> RethEnv {
         let guard = self.internal.read().await;
-        guard.get_evm_config()
-    }
-
-    /// Return the node's evm-based block executor.
-    pub async fn get_batch_executor(
-        &self,
-    ) -> BasicBlockExecutorProvider<EthExecutionStrategyFactory> {
-        let guard = self.internal.read().await;
-        guard.get_batch_executor()
+        guard.get_reth_env()
     }
 
     /// Return an HTTP client for submitting transactions to the RPC.
@@ -169,7 +136,7 @@ where
     pub async fn get_worker_transaction_pool(
         &self,
         worker_id: &WorkerId,
-    ) -> eyre::Result<WorkerTxPool<TelcoinNode<N::DB>>> {
+    ) -> eyre::Result<WorkerTxPool> {
         let guard = self.internal.read().await;
         guard.get_worker_transaction_pool(worker_id)
     }

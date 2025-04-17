@@ -4,12 +4,6 @@
 use crate::{primary::PrimaryNode, worker::WorkerNode};
 use consensus_metrics::start_prometheus_server;
 use engine::{ExecutionNode, TnBuilder};
-use futures::StreamExt;
-use reth_db::{
-    database_metrics::{DatabaseMetadata, DatabaseMetrics},
-    Database,
-};
-use reth_provider::CanonStateSubscriptions;
 use std::{
     str::FromStr as _,
     sync::{
@@ -20,18 +14,17 @@ use std::{
 };
 use tn_config::{ConsensusConfig, KeyConfig, NetworkConfig, TelcoinDirs};
 use tn_network_libp2p::{ConsensusNetwork, PeerId};
-use tn_node_traits::TelcoinNode;
 use tn_primary::{
     network::{PrimaryNetwork, PrimaryNetworkHandle},
     ConsensusBus, NodeMode, StateSynchronizer,
 };
+use tn_reth::RethEnv;
 use tn_storage::{open_db, tables::ConsensusBlocks, DatabaseType};
 use tn_types::{BatchValidation, ConsensusHeader, Database as TNDatabase, Multiaddr, TaskManager};
 use tn_worker::{WorkerNetwork, WorkerNetworkHandle};
 use tokio::{runtime::Builder, sync::mpsc};
 use tracing::{info, instrument, warn};
 
-pub mod dirs;
 pub mod engine;
 mod error;
 pub mod primary;
@@ -197,13 +190,12 @@ async fn start_networks<DB: TNDatabase>(
 /// running node.
 /// If it returns Ok(true) this indicates a mode change occurred and a restart
 /// is required.
-pub fn launch_node_inner<DB, P>(
-    builder: &TnBuilder<DB>,
+pub fn launch_node_inner<P>(
+    builder: &TnBuilder,
     tn_datadir: &P,
     db: DatabaseType,
 ) -> eyre::Result<bool>
 where
-    DB: Database + DatabaseMetrics + DatabaseMetadata + Clone + Unpin + 'static,
     P: TelcoinDirs + 'static,
 {
     // Create a tokio runtime each time this is called.
@@ -224,8 +216,9 @@ where
         // config for validator keys
         let config = builder.tn_config.clone();
         let mut task_manager = TaskManager::new("Task Manager");
+        let reth_env = RethEnv::new(&builder.node_config, tn_datadir.reth_db_path(), &task_manager)?;
         let mut engine_task_manager = TaskManager::new("Engine Task Manager");
-        let engine = ExecutionNode::<TelcoinNode<DB>>::new(builder, &engine_task_manager)?;
+        let engine = ExecutionNode::new(builder, reth_env)?;
         let validator = engine.new_batch_validator().await;
 
         info!(target: "telcoin::node", "execution engine created");
@@ -252,7 +245,6 @@ where
                 state_sync,
             );
 
-        let mut engine_state = engine.get_provider().await.canonical_state_stream();
 
         // Prime the recent_blocks watch with latest executed blocks.
         let block_capacity = consensus_bus.recent_blocks().borrow().block_capacity();
@@ -285,15 +277,16 @@ where
         // Spawn a task to update the consensus bus with new execution blocks as they are produced.
         let latest_block_shutdown = consensus_config.shutdown().subscribe();
         let consensus_bus_clone = consensus_bus.clone();
+        let mut engine_state = engine.canonical_block_stream().await;
         task_manager.spawn_task("latest block", async move {
             loop {
                 tokio::select!(
                     _ = &latest_block_shutdown => {
                         break;
                     }
-                    latest = engine_state.next() => {
+                    latest = engine_state.recv() => {
                         if let Some(latest) = latest {
-                            consensus_bus_clone.recent_blocks().send_modify(|blocks| blocks.push_latest(latest.tip().block.header.clone()));
+                            consensus_bus_clone.recent_blocks().send_modify(|blocks| blocks.push_latest(latest.header));
                         } else {
                             break;
                         }
@@ -355,14 +348,10 @@ where
 /// a nodes mode changes.  This ensures a clean state and fresh tasks
 /// when switching modes.
 #[instrument(level = "info", skip_all)]
-pub fn launch_node<DB, P>(mut builder: TnBuilder<DB>, tn_datadir: P) -> eyre::Result<()>
+pub fn launch_node<P>(builder: TnBuilder, tn_datadir: P) -> eyre::Result<()>
 where
-    DB: Database + DatabaseMetadata + DatabaseMetrics + Clone + Unpin + 'static,
     P: TelcoinDirs + 'static,
 {
-    // adjust rpc instance ports
-    builder.node_config.adjust_instance_ports();
-
     let consensus_db_path = tn_datadir.consensus_db_path();
 
     tracing::info!(target: "telcoin::node", "opening node storage at {:?}", consensus_db_path);

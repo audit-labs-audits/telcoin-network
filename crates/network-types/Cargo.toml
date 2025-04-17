@@ -19,7 +19,6 @@ description = "Commonly used types in telcoin network's internal network communi
 tn-types = { workspace = true }
 serde = { workspace = true, features = ["derive"] }
 tracing = { workspace = true }
-reth-primitives = { workspace = true }
 indexmap = { workspace = true, features = ["serde"] }
 roaring = { workspace = true }
 mockall = { workspace = true }

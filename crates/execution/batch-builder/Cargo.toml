@@ -13,37 +13,21 @@ authors = [
 
 [dependencies]
 tn-types = { workspace = true }
+tn-reth = { workspace = true }
 futures-util = { workspace = true }
 tokio = { workspace = true, features = ["sync", "time"] }
 tracing = { workspace = true }
 
-reth-primitives-traits = { workspace = true }
-reth-errors = { workspace = true }
-reth-stages = { workspace = true }
-reth-provider = { workspace = true }
-reth-transaction-pool = { workspace = true }
-reth-execution-types = { workspace = true }
-reth-fs-util = { workspace = true }
-reth-tasks = { workspace = true }
-reth-metrics = { workspace = true }
 metrics = { workspace = true }
 thiserror = { workspace = true }
 alloy-rlp = { workspace = true }
 async-trait = { workspace = true }
 
-# test-utils
-reth-rpc-eth-types = { workspace = true, optional = true }
-
 [dev-dependencies]
 # unit tests
-tn-node-traits = { workspace = true }
 tn-test-utils = { workspace = true }
 assert_matches = { workspace = true }
-reth-blockchain-tree = { workspace = true }
-reth-transaction-pool = { workspace = true, features = ["test-utils"] }
 tempfile = { workspace = true }
-reth-provider = { workspace = true, features = ["test-utils"] }
-reth-consensus = { workspace = true }
 eyre = { workspace = true }
 tn-network-libp2p = { workspace = true }
 
@@ -53,15 +37,9 @@ tn-worker = { workspace = true }
 tn-network-types = { workspace = true }
 tn-storage = { workspace = true }
 tn-batch-validator = { workspace = true }
-reth-chainspec = { workspace = true }
-reth-db = { workspace = true }
-reth-db-common = { workspace = true }
 tn-engine = { workspace = true }
 tn-batch-builder = { workspace = true, features = ["test-utils"] }
 
-# TODO: only used for canon it test
-reth-node-ethereum = { workspace = true }
-
 [features]
 default = []
-test-utils = ["reth-rpc-eth-types"]
+test-utils = []
