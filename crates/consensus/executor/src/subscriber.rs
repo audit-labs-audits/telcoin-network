@@ -330,6 +330,8 @@ impl<DB: Database> Subscriber<DB> {
                 number,
                 extra: B256::default(),
                 early_finalize,
+                // always false for now
+                close_epoch: false,
             });
         }
 
@@ -343,6 +345,8 @@ impl<DB: Database> Subscriber<DB> {
             number,
             extra: B256::default(),
             early_finalize,
+            // always false for now
+            close_epoch: false,
         };
 
         let mut batch_set: HashSet<BlockHash> = HashSet::new();
