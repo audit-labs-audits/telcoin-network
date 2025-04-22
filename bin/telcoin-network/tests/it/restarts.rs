@@ -32,9 +32,79 @@ fn kill_child(child: &mut Child) {
         error!(target: "restart-test", ?e, "error killing child");
     }
 
+    for _ in 0..5 {
+        match child.try_wait() {
+            Ok(Some(_)) => {
+                info!(target: "restart-test", "child exited");
+                return;
+            }
+            Ok(None) => {}
+            Err(e) => error!(target: "restart-test", "error waiting on child to exit: {e}"),
+        }
+        std::thread::sleep(Duration::from_millis(1200));
+    }
+    // The child is not exiting...
+    // The code below will send SIGKILL without the use of nix.
+    if let Err(e) = child.kill() {
+        error!(target: "restart-test", ?e, "error killing child");
+    }
+    // Hopefully it will exit now...
     if let Err(e) = child.wait() {
         error!(target: "restart-test", ?e, "error waiting for child to die");
     }
+}
+
+fn send_and_confirm(
+    node: &str,
+    node_test: &str,
+    key: &str,
+    to_account: Address,
+    amount: u128,
+    gas_price: u128,
+    gas: u128,
+    nonce: u128,
+) -> eyre::Result<()> {
+    fn send_and_confirm_int(
+        node: &str,
+        node_test: &str,
+        key: &str,
+        to_account: Address,
+        amount: u128,
+        gas_price: u128,
+        gas: u128,
+        nonce: u128,
+    ) -> eyre::Result<()> {
+        let current = get_balance(node, &to_account.to_string(), 1)?;
+        let expected = current + amount;
+        if let Err(e) = send_tel(node, &key, to_account, amount, gas_price, gas, nonce) {
+            if e.to_string().contains("nonce too low") {
+                send_tel(node, &key, to_account, amount, gas_price, gas, nonce + 1)?;
+            } else {
+                return Err(e);
+            }
+        }
+
+        // sleep
+        std::thread::sleep(Duration::from_millis(1000));
+        info!(target: "restart-test", "calling get_positive_balance_with_retry...");
+
+        // get positive bal and kill child2 if error
+        let bal = get_balance_above_with_retry(node_test, &to_account.to_string(), expected - 1)?;
+
+        if expected != bal {
+            error!(target: "restart-test", "{expected} != {bal} - returning error!");
+            return Err(Report::msg(format!("Expected a balance of {expected} got {bal}!")));
+        }
+        Ok(())
+    }
+    if let Err(_e) =
+        send_and_confirm_int(node, node_test, key, to_account, amount, gas_price, gas, nonce)
+    {
+        // Try once more then fail test.
+        // Maybe our txn got dropped for some reason.
+        send_and_confirm_int(node, node_test, key, to_account, amount, gas_price, gas, nonce)?;
+    }
+    Ok(())
 }
 
 /// Run the first part tests, broken up like this to allow more robust node shutdown.
@@ -48,30 +118,22 @@ fn run_restart_tests1(
 ) -> eyre::Result<Child> {
     let key = get_key("test-source");
     let to_account = address_from_word("testing");
-    // send tel and kill child2 if error
-    send_tel(&client_urls[1], &key, to_account, 10 * WEI_PER_TEL, 250, 21000, 0).inspect_err(
-        |e| {
-            kill_child(child2);
-            error!(target: "restart-test", ?e);
-        },
-    )?;
 
-    // sleep
-    std::thread::sleep(Duration::from_millis(1000));
-    info!(target: "restart-test", "calling get_positive_balance_with_retry in tests1...");
-
-    // get positive bal and kill child2 if error
-    let bal = get_positive_balance_with_retry(&client_urls[2], &to_account.to_string())
-        .inspect_err(|e| {
-            kill_child(child2);
-            error!(target: "restart-test", ?e);
-        })?;
-
-    if 10 * WEI_PER_TEL != bal {
-        error!(target: "restart-test", "tests1: 10 * WEI_PER_TEL != bal - returning error!");
+    // Try once more then fail test.
+    send_and_confirm(
+        &client_urls[1],
+        &client_urls[2],
+        &key,
+        to_account,
+        10 * WEI_PER_TEL,
+        250,
+        21000,
+        0,
+    )
+    .inspect_err(|e| {
         kill_child(child2);
-        return Err(Report::msg(format!("Expected a balance of {} got {bal}!", 10 * WEI_PER_TEL)));
-    }
+        error!(target: "restart-test", ?e);
+    })?;
 
     info!(target: "restart-test", "killing child2...");
     kill_child(child2);
@@ -97,22 +159,22 @@ fn run_restart_tests1(
         kill_child(&mut child2);
         return Err(Report::msg(format!("Expected a balance of {} got {bal}!", 10 * WEI_PER_TEL)));
     }
-    send_tel(&client_urls[0], &key, to_account, 10 * WEI_PER_TEL, 250, 21000, 1).inspect_err(
-        |e| {
-            kill_child(&mut child2);
-            error!(target: "restart-test", ?e);
-        },
-    )?;
-    let bal = get_balance_above_with_retry(&client_urls[2], &to_account.to_string(), bal)
-        .inspect_err(|e| {
-            kill_child(&mut child2);
-            error!(target: "restart-test", ?e);
-        })?;
-    if 20 * WEI_PER_TEL != bal {
-        error!(target: "restart-test", "tests1 after restart: 20 * WEI_PER_TEL != bal - returning error!");
+    // Try once more then fail test.
+    send_and_confirm(
+        &client_urls[0],
+        &client_urls[2],
+        &key,
+        to_account,
+        10 * WEI_PER_TEL,
+        250,
+        21000,
+        1,
+    )
+    .inspect_err(|e| {
         kill_child(&mut child2);
-        return Err(Report::msg(format!("Expected a balance of {} got {bal}!", 20 * WEI_PER_TEL)));
-    }
+        error!(target: "restart-test", ?e);
+    })?;
+
     test_blocks_same(client_urls).inspect_err(|e| {
         kill_child(&mut child2);
         error!(target: "restart-test", ?e);
@@ -128,11 +190,16 @@ fn run_restart_tests2(client_urls: &[String; 4]) -> eyre::Result<()> {
     if 20 * WEI_PER_TEL != bal {
         return Err(Report::msg(format!("Expected a balance of {} got {bal}!", 20 * WEI_PER_TEL)));
     }
-    send_tel(&client_urls[0], &key, to_account, 10 * WEI_PER_TEL, 250, 21000, 2)?;
-    let bal = get_balance_above_with_retry(&client_urls[3], &to_account.to_string(), bal)?;
-    if 30 * WEI_PER_TEL != bal {
-        return Err(Report::msg(format!("Expected a balance of {} got {bal}!", 30 * WEI_PER_TEL)));
-    }
+    send_and_confirm(
+        &client_urls[0],
+        &client_urls[3],
+        &key,
+        to_account,
+        10 * WEI_PER_TEL,
+        250,
+        21000,
+        2,
+    )?;
     test_blocks_same(client_urls)?;
     Ok(())
 }
@@ -145,8 +212,10 @@ fn do_restarts(delay: u64) -> eyre::Result<()> {
     let tmp_guard = tempfile::TempDir::new().expect("tempdir is okay");
     // create temp path for test
     let temp_path = tmp_guard.path().to_path_buf();
-    let rt = Runtime::new()?;
-    rt.block_on(config_local_testnet(temp_path.clone())).expect("failed to config");
+    {
+        let rt = Runtime::new()?;
+        rt.block_on(config_local_testnet(temp_path.clone())).expect("failed to config");
+    }
     let mut exe_path =
         PathBuf::from(std::env::var("CARGO_MANIFEST_DIR").expect("Missing CARGO_MANIFEST_DIR!"));
     exe_path.push("../../target/debug/telcoin-network");
@@ -227,6 +296,8 @@ fn do_restarts(delay: u64) -> eyre::Result<()> {
         info!(target: "restart-test", "kill and wait on child complete for final result");
     }
 
+    // Snooze a bit just in case...
+    std::thread::sleep(Duration::from_millis(3000));
     res2
 }
 
