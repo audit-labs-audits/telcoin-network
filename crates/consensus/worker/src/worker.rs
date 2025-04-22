@@ -65,16 +65,23 @@ pub fn new_worker<DB: Database>(
         network_handle.clone(),
     );
 
-    // NOTE: This log entry is used to compute performance.
-    info!(target: "worker::worker",
-        "Worker {} successfully booted on {}",
-        id,
-        consensus_config
-            .worker_cache()
-            .worker(consensus_config.authority().protocol_key(), &id)
-            .expect("Our public key or worker id is not in the worker cache")
-            .transactions
-    );
+    if let Some(authority) = consensus_config.authority() {
+        // NOTE: This log entry is used to compute performance.
+        info!(target: "worker::worker",
+            "Worker {} successfully booted on {}",
+            id,
+            consensus_config
+                .worker_cache()
+                .worker(authority.protocol_key(), &id)
+                .expect("Our public key or worker id is not in the worker cache")
+                .transactions
+        );
+    } else {
+        info!(target: "worker::worker",
+            "Worker {} successfully booted",
+            id,
+        );
+    }
 
     batch_provider
 }

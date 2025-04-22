@@ -338,7 +338,6 @@ impl RethEnv {
         Self::new(&reth_config, db_path, task_manager)
     }
 
-    /// Initialize the provider factory and related components
     /// Create a new RethEnv for testing only.
     pub fn new_for_test<P: AsRef<Path>>(
         db_path: P,

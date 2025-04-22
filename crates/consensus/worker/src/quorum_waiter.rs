@@ -46,8 +46,8 @@ pub trait QuorumWaiterTrait: Send + Sync + Clone + Unpin + 'static {
 type QMBoxFuture<T> = Pin<Box<dyn Future<Output = T> + Send>>;
 
 struct QuorumWaiterInner {
-    /// This authority.
-    authority: Authority,
+    /// This authority- if None we are not a validator and this won't do much...
+    authority: Option<Authority>,
     /// The id of this worker.
     id: WorkerId,
     /// The committee information.
@@ -69,7 +69,7 @@ pub struct QuorumWaiter {
 impl QuorumWaiter {
     /// Create a new QuorumWaiter.
     pub fn new(
-        authority: Authority,
+        authority: Option<Authority>,
         id: WorkerId,
         committee: Committee,
         worker_cache: WorkerCache,
@@ -120,13 +120,16 @@ impl QuorumWaiterTrait for QuorumWaiter {
         timeout: Duration,
     ) -> JoinHandle<Result<(), QuorumWaiterError>> {
         let inner = self.inner.clone();
+        let Some(authority) = inner.authority.clone() else {
+            panic!("validators verify batches");
+        };
         tokio::spawn(async move {
             let timeout_res = tokio::time::timeout(timeout, async move {
                 let start_time = Instant::now();
                 // Broadcast the batch to the other workers.
                 let workers: Vec<_> = inner
                     .worker_cache
-                    .others_workers_by_id(inner.authority.protocol_key(), &inner.id)
+                    .others_workers_by_id(authority.protocol_key(), &inner.id)
                     .into_iter()
                     .map(|(name, info)| (name, info.name))
                     .collect();
@@ -161,7 +164,7 @@ impl QuorumWaiterTrait for QuorumWaiter {
                 // delivered and we send its digest to the primary (that will include it into
                 // the dag). This should reduce the amount of syncing.
                 let threshold = inner.committee.quorum_threshold();
-                let mut total_stake = inner.authority.voting_power();
+                let mut total_stake = authority.voting_power();
                 // If more stake than this is rejected then the batch will never be accepted.
                 let max_rejected_stake = available_stake - threshold;
 
