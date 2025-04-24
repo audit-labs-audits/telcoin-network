@@ -100,6 +100,7 @@ fn send_and_confirm(
     if let Err(_e) =
         send_and_confirm_int(node, node_test, key, to_account, amount, gas_price, gas, nonce)
     {
+        std::thread::sleep(Duration::from_millis(3000));
         // Try once more then fail test.
         // Maybe our txn got dropped for some reason.
         send_and_confirm_int(node, node_test, key, to_account, amount, gas_price, gas, nonce)?;
@@ -186,11 +187,17 @@ fn run_restart_tests1(
 fn run_restart_tests2(client_urls: &[String; 4]) -> eyre::Result<()> {
     let key = get_key("test-source");
     let to_account = address_from_word("testing");
-    let bal = get_positive_balance_with_retry(&client_urls[2], &to_account.to_string())?;
-    if 20 * WEI_PER_TEL != bal {
-        return Err(Report::msg(format!("Expected a balance of {} got {bal}!", 20 * WEI_PER_TEL)));
+    for i in 0..4 {
+        let bal = get_positive_balance_with_retry(&client_urls[i], &to_account.to_string())?;
+        if 20 * WEI_PER_TEL != bal {
+            return Err(Report::msg(format!(
+                "Expected a balance of {} got {bal} for node {i}!",
+                20 * WEI_PER_TEL
+            )));
+        }
     }
-    send_and_confirm(
+    let number_start = get_block_number(&client_urls[3])?;
+    if let Err(e) = send_and_confirm(
         &client_urls[0],
         &client_urls[3],
         &key,
@@ -199,7 +206,18 @@ fn run_restart_tests2(client_urls: &[String; 4]) -> eyre::Result<()> {
         250,
         21000,
         2,
-    )?;
+    ) {
+        let number_0 = get_block_number(&client_urls[0])?;
+        let number_1 = get_block_number(&client_urls[1])?;
+        let number_2 = get_block_number(&client_urls[2])?;
+        let number_3 = get_block_number(&client_urls[3])?;
+        if number_start == number_3 {
+            return Err(eyre::eyre!(
+                "Stuck on block {number_3}, other nodes {number_0}, {number_1}, {number_2}"
+            ));
+        }
+        return Err(e);
+    }
     test_blocks_same(client_urls)?;
     Ok(())
 }
@@ -303,6 +321,7 @@ fn do_restarts(delay: u64) -> eyre::Result<()> {
 
 /// Test a restart case with a short delay, the stopped node should rejoin consensus.
 #[test]
+#[ignore = "should not run with a default cargo test, run restart tests as seperate step"]
 fn test_restartstt() -> eyre::Result<()> {
     do_restarts(2)
 }
@@ -310,6 +329,7 @@ fn test_restartstt() -> eyre::Result<()> {
 /// Test a restart case with a long delay, the stopped node should not rejoin consensus but follow
 /// the consensus chain.
 #[test]
+#[ignore = "should not run with a default cargo test, run restart tests as seperate step"]
 fn test_restarts_delayed() -> eyre::Result<()> {
     do_restarts(70)
 }
@@ -421,6 +441,11 @@ fn get_block(node: &str, block_number: Option<u64>) -> eyre::Result<HashMap<Stri
         block = call_rpc(node, "eth_getBlockByNumber", Some(&params), 5)?;
     }
     Ok(serde_json::from_str(&block)?)
+}
+
+fn get_block_number(node: &str) -> eyre::Result<u64> {
+    let block = get_block(node, None)?;
+    Ok(u64::from_str_radix(&block["number"].as_str().unwrap_or("0x100_000")[2..], 16)?)
 }
 
 /// Take a string and return the deterministic account derived from it.  This is be used

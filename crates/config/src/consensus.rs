@@ -182,8 +182,9 @@ where
         self.inner.committee.authorities().iter().map(|a| a.peer_id()).collect()
     }
 
-    /// Retrieve the worker's network address by id.
-    /// Note, will panic if id is not valid (not found in our worker cache).
+    /// Retrieve the primaries network address.
+    /// Note if this node is not an authority, retrieve the next available udp port assigned by the
+    /// system.
     pub fn primary_address(&self) -> Multiaddr {
         if let Some(authority) = self.authority() {
             authority.primary_network_address().clone()
@@ -213,7 +214,8 @@ where
     }
 
     /// Retrieve the worker's network address by id.
-    /// Note, will panic if id is not valid (not found in our worker cache).
+    /// Note, will panic if id is not valid (not found in our worker cache) and the node is an
+    /// authority. Otherwise, retrieve the next available udp port assigned by the system.
     pub fn worker_address(&self, id: &WorkerId) -> Multiaddr {
         if let Some(authority) = self.authority() {
             self.worker_cache()

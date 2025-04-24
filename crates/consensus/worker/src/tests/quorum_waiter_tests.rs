@@ -22,7 +22,7 @@ async fn wait_for_quorum() {
     let network = WorkerNetworkHandle::new(NetworkHandle::new(sender));
     // Spawn a `QuorumWaiter` instance.
     let quorum_waiter = QuorumWaiter::new(
-        Some(my_primary.authority().clone()),
+        my_primary.authority().clone(),
         /* worker_id */ 0,
         committee.clone(),
         worker_cache.clone(),
