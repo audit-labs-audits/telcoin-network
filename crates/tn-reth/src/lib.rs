@@ -814,9 +814,10 @@ impl RethEnv {
         let new_committee = self.shuffle_new_committee(evm, randomness)?;
 
         // encode the call to bytes with method selector and args
-        let bytes = ConsensusRegistry::concludeEpochCall { newCommittee: new_committee }
-            .abi_encode()
-            .into();
+        let bytes =
+            ConsensusRegistry::concludeEpochCall { newCommittee: new_committee, slashes: vec![] }
+                .abi_encode()
+                .into();
 
         Ok(bytes)
     }
@@ -848,10 +849,10 @@ impl RethEnv {
         };
 
         // Use SolValue to decode the result
-        let mut all_validators: Vec<ConsensusRegistry::ValidatorInfo> =
+        let mut eligible_validators: Vec<ConsensusRegistry::ValidatorInfo> =
             alloy::sol_types::SolValue::abi_decode(&data, true)?;
 
-        debug!(target: "engine",  "validators pre-shuffle {:#?}", all_validators);
+        debug!(target: "engine",  "validators pre-shuffle {:#?}", eligible_validators);
 
         // simple Fisher-Yates shuffle
         //
@@ -862,14 +863,14 @@ impl RethEnv {
         debug!(target: "engine", ?seed, "seed after");
 
         let mut rng = rand_chacha::ChaCha8Rng::from_seed(seed);
-        for i in (1..all_validators.len()).rev() {
+        for i in (1..eligible_validators.len()).rev() {
             let j = rng.gen_range(0..=i);
-            all_validators.swap(i, j);
+            eligible_validators.swap(i, j);
         }
 
-        debug!(target: "engine",  "validators post-shuffle {:#?}", all_validators);
+        debug!(target: "engine",  "validators post-shuffle {:#?}", eligible_validators);
 
-        let new_committee = all_validators.into_iter().map(|v| v.ecdsaPubkey).collect();
+        let new_committee = eligible_validators.into_iter().map(|v| v.validatorAddress).collect();
 
         Ok(new_committee)
     }
@@ -1264,7 +1265,7 @@ impl RethEnv {
 mod tests {
     use super::*;
     use crate::traits::TNPayloadAttributes;
-    use alloy::{hex, primitives::Uint};
+    use alloy::hex;
     use rand_chacha::ChaCha8Rng;
     use std::str::FromStr as _;
     use tempfile::TempDir;
@@ -1363,7 +1364,6 @@ mod tests {
             .iter()
             .enumerate()
             .map(|(i, addr)| {
-                let ed_25519_keypair = tn_types::NetworkKeypair::generate_ed25519();
                 // use deterministic seed
                 let mut rng = ChaCha8Rng::seed_from_u64(i as u64);
                 let bls = BlsKeypair::generate(&mut rng);
@@ -1371,17 +1371,13 @@ mod tests {
 
                 ConsensusRegistry::ValidatorInfo {
                     blsPubkey: bls_pubkey.into(),
-                    ed25519Pubkey: ed_25519_keypair
-                        .public()
-                        .try_into_ed25519()
-                        .expect("is an ed_25519")
-                        .to_bytes()
-                        .into(),
-                    ecdsaPubkey: *addr,
+                    validatorAddress: *addr,
                     activationEpoch: 0,
                     exitEpoch: 0,
-                    validatorIndex: Uint::<24, 1>::from(i as u32 + 1),
                     currentStatus: ConsensusRegistry::ValidatorStatus::Active,
+                    isRetired: false,
+                    isDelegated: false,
+                    stakeVersion: 0,
                 }
             })
             .collect();
@@ -1398,10 +1394,16 @@ mod tests {
         let reth_env =
             RethEnv::new_for_test_with_chain(chain.clone(), tmp_dir.path(), &task_manager).unwrap();
 
+        let config = ConsensusRegistry::StakeConfig {
+            stakeAmount: U256::from(1_000_000e18),
+            minWithdrawAmount: U256::from(1_000e18),
+            epochIssuance: U256::from(20_000_000e18).div_ceil(U256::from(28)),
+            epochDuration: 60 * 60 * 24,
+        };
+
         let init_calldata = ConsensusRegistry::initializeCall {
             rwTEL_: Address::random(),
-            stakeAmount_: U256::from(1_000_000e18),
-            minWithdrawAmount_: U256::from(10_000e18),
+            genesisConfig_: config,
             initialValidators_: validator_infos.clone(),
             owner_: SYSTEM_ADDRESS,
         }
@@ -1465,7 +1467,7 @@ mod tests {
         let epoch_info = call_consensus_registry::<_, _, ConsensusRegistry::EpochInfo>(
             &reth_env, &mut evm, calldata,
         )?;
-        let expected_committee = validator_infos.iter().map(|v| v.ecdsaPubkey).collect();
+        let expected_committee = validator_infos.iter().map(|v| v.validatorAddress).collect();
         let expected_epoch_info =
             ConsensusRegistry::EpochInfo { committee: expected_committee, blockHeight: 0 };
         assert_eq!(epoch_info, expected_epoch_info);

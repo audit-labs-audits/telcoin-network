@@ -4,13 +4,19 @@ use eyre::Context;
 use reth_chainspec::ChainSpec;
 use serde::{Deserialize, Serialize};
 use std::{
-    collections::{BTreeMap, HashMap}, ffi::OsStr, fmt::{Display, Formatter}, fs, path::{Path, PathBuf}, str::FromStr as _, sync::Arc
+    collections::{BTreeMap, HashMap},
+    ffi::OsStr,
+    fmt::{Display, Formatter},
+    fs,
+    path::{Path, PathBuf},
+    str::FromStr as _,
+    sync::Arc,
 };
 use tn_types::{
     adiri_genesis, hex, keccak256, verify_proof_of_possession_bls, Address, BlsPublicKey,
     BlsSignature, Committee, CommitteeBuilder, Epoch, FromHex as _, GenesisAccount, Intent,
     IntentMessage, Multiaddr, NetworkPublicKey, PrimaryInfo, ProtocolSignature, Signer,
-    WorkerCache, WorkerIndex, B256, U256,
+    WorkerCache, WorkerIndex, B256,
 };
 use tracing::{info, warn};
 /// The validators directory used to create genesis.
@@ -24,8 +30,9 @@ const fn from_utf8(bytes: &[u8]) -> &str {
 }
 
 // We need to embed these files as defaults so we can run the binary vs tests.
-const CONSENSUS_REGISTRY_STORAGE: &str =
-    from_utf8(include_bytes!("../../../tn-contracts/deployments/genesis/consensus-registry-config.yaml"));
+const CONSENSUS_REGISTRY_STORAGE: &str = from_utf8(include_bytes!(
+    "../../../tn-contracts/deployments/genesis/consensus-registry-config.yaml"
+));
 const CONSENSUS_REGISTRY: &str =
     from_utf8(include_bytes!("../../../tn-contracts/artifacts/ConsensusRegistry.json"));
 const ERC1967_PROXY: &str =
@@ -83,42 +90,56 @@ impl NetworkGenesis {
             None => CONSENSUS_REGISTRY_STORAGE.to_string(),
         };
 
-        let registry_storage_cfg = parse_genesis_yaml(&registry_storage_yaml)
-            .unwrap_or_else(|_| {
-                panic!(
-                    "unable to parse consensus registry storage yaml: {}",
-                    registry_storage_yaml
-                )
+        // read the storage and bytecode from tn-contracts yaml artifact
+        let consensus_registry_yaml =
+            parse_genesis_yaml(&registry_storage_yaml).unwrap_or_else(|_| {
+                panic!("unable to parse consensus registry storage yaml: {registry_storage_yaml}")
             });
+        // parse the bls pubkeys to identify addresses and values for the slots
         let pubkey_flags = PubkeyFlags::new(self.validators.len());
-        let validator_info: Vec<_> = self.validators.values().cloned().collect();
-        // iterate over BTreeMap to conditionally overwrite flagged values with now known pubkeys
+        let validator_infos: Vec<_> = self.validators.values().cloned().collect();
 
-        let registry_proxy = Address::from_hex("0x7e17e17e17e17e17e17e17e17e17e17e17e17e10")
-            .expect("invalid hex address");
-        registry_storage_cfg.get_mut(&registry_proxy).map(|v| {
-            PubkeyFlags::overwrite_if_flag(v.storage.unwrap(), &pubkey_flags, &validator_info)
-        });
+        // retrieve the storage from tn-contracts artifact
+        let registry_proxy_address =
+            Address::from_hex("0x7e17e17e17e17e17e17e17e17e17e17e17e17e10")
+                .expect("invalid hex address");
+        let mut consensus_registry_proxy_storage = consensus_registry_yaml
+            .get(&registry_proxy_address)
+            .expect("consensus registry account")
+            .clone()
+            .storage
+            .expect("consensus registry storage");
 
-        let registry_impl = Address::from_hex("0x07e17e17e17e17e17e17e17e17e17e17e17e17e1");
+        // update slots if they match the expected pubkey flag and replace with the correct
+        // validator information
+        for (_slot, val) in consensus_registry_proxy_storage.iter_mut() {
+            PubkeyFlags::overwrite_if_flag(val, &pubkey_flags, &validator_infos);
+        }
+
+        // pull bytecode for genesis accounts - revisit this approach
+        let registry_impl_address =
+            Address::from_hex("0x07e17e17e17e17e17e17e17e17e17e17e17e17e1").expect("valid address");
         let registry_standard_json = CONSENSUS_REGISTRY;
         let registry_contract: ContractStandardJson =
             serde_json::from_str(registry_standard_json).expect("json parsing failure");
         let registry_bytecode = hex::decode(registry_contract.deployed_bytecode.object)
             .expect("invalid bytecode hexstring");
-
         let proxy_standard_json = ERC1967_PROXY;
         let proxy_contract: ContractStandardJson =
             serde_json::from_str(proxy_standard_json).expect("json parsing failure");
         let proxy_bytecode = hex::decode(proxy_contract.deployed_bytecode.object)
             .expect("invalid bytecode hexstring");
+
         let registry_genesis_accounts = vec![
-            (registry_impl, GenesisAccount::default().with_code(Some(registry_bytecode.into()))),
             (
-                registry_proxy,
+                registry_impl_address,
+                GenesisAccount::default().with_code(Some(registry_bytecode.into())),
+            ),
+            (
+                registry_proxy_address,
                 GenesisAccount::default()
                     .with_code(Some(proxy_bytecode.into()))
-                    .with_storage(Some(registry_storage_cfg)),
+                    .with_storage(Some(consensus_registry_proxy_storage)),
             ),
         ];
 
@@ -249,6 +270,8 @@ impl NetworkGenesis {
     }
 }
 
+// deserialize into HashMap<Account, GenesisAccount>
+
 /// information needed for every validator:
 #[derive(Serialize, Deserialize, PartialEq, Clone, Debug)]
 pub struct ValidatorInfo {
@@ -366,8 +389,7 @@ struct PubkeyFlags {
     bls_a: B256,
     bls_b: B256,
     bls_c: B256,
-    ed25519: B256,
-    ecdsa: B256,
+    addr: B256,
 }
 
 impl PubkeyFlags {
@@ -378,8 +400,7 @@ impl PubkeyFlags {
                 bls_a: keccak256(format!("VALIDATOR_{i}_BLS_A")),
                 bls_b: keccak256(format!("VALIDATOR_{i}_BLS_B")),
                 bls_c: keccak256(format!("VALIDATOR_{i}_BLS_C")),
-                ed25519: keccak256(format!("VALIDATOR_{i}_ED25519")),
-                ecdsa: keccak256(format!("VALIDATOR_{i}_ECDSA")),
+                addr: keccak256(format!("VALIDATOR_{i}_ADDR")),
             })
             .collect()
     }
@@ -404,14 +425,8 @@ impl PubkeyFlags {
                 let bls_last_word = &validator_infos[i].bls_public_key.to_bytes()[64..96];
                 val.copy_from_slice(bls_last_word);
                 return;
-            } else if *val == flag.ecdsa {
+            } else if *val == flag.addr {
                 *val = validator_infos[i].execution_address.into_word();
-                return;
-            } else if *val == flag.ed25519 {
-                let key: libp2p::identity::PublicKey =
-                    validator_infos[i].primary_network_key().clone().into();
-                let key = key.try_into_ed25519().expect("ed25519 key");
-                *val = B256::from_slice(&key.to_bytes());
                 return;
             }
         }
@@ -430,31 +445,34 @@ pub struct ContractStandardJson {
     pub deployed_bytecode: BytecodeObject,
 }
 
-fn parse_genesis_yaml(yaml_str: &str) -> eyre::Result<HashMap<Address, GenesisAccount>> {
+fn parse_genesis_yaml(yaml_str: &str) -> eyre::Result<BTreeMap<Address, GenesisAccount>> {
     let yaml: HashMap<String, serde_json::Value> = serde_yaml::from_str(yaml_str).unwrap();
 
-    let mut accounts = HashMap::new();
+    let mut accounts = BTreeMap::new();
     for (address_str, account_data) in yaml {
         let address = Address::from_str(&address_str).unwrap();
         let code = account_data["code"].as_str().map(|c| hex::decode(c).unwrap().into());
-        
+
         // let mut storage = HashMap::new();
         let storage = account_data["storage"].as_object().map(|storage_data| {
             let registry_storage_cfg: BTreeMap<B256, B256> = storage_data
                 .into_iter()
-                .map(|(k, v)| (k.parse().expect("Invalid key"), (B256::from_str(v.as_str().unwrap())).expect("Invalid val")))
+                .map(|(k, v)| {
+                    (
+                        k.parse().expect("Invalid key"),
+                        (B256::from_str(v.as_str().unwrap())).expect("Invalid val"),
+                    )
+                })
                 .collect();
 
             registry_storage_cfg
         });
-        
-        let account = GenesisAccount::default()
-            .with_code(code)
-            .with_storage(storage);
-            
+
+        let account = GenesisAccount::default().with_code(code).with_storage(storage);
+
         accounts.insert(address, account);
     }
-    
+
     Ok(accounts)
 }
 
