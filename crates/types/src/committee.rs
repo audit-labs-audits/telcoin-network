@@ -503,7 +503,7 @@ impl std::fmt::Display for Committee {
                     if let Some(k) = x.encode_base58().get(0..16) {
                         k.to_owned()
                     } else {
-                        format!("Invalid key: {}", x)
+                        format!("Invalid key: {x}")
                     }
                 })
                 .collect::<Vec<_>>()
