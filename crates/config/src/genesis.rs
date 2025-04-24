@@ -4,18 +4,13 @@ use eyre::Context;
 use reth_chainspec::ChainSpec;
 use serde::{Deserialize, Serialize};
 use std::{
-    collections::BTreeMap,
-    ffi::OsStr,
-    fmt::{Display, Formatter},
-    fs,
-    path::{Path, PathBuf},
-    sync::Arc,
+    collections::{BTreeMap, HashMap}, ffi::OsStr, fmt::{Display, Formatter}, fs, path::{Path, PathBuf}, str::FromStr as _, sync::Arc
 };
 use tn_types::{
     adiri_genesis, hex, keccak256, verify_proof_of_possession_bls, Address, BlsPublicKey,
     BlsSignature, Committee, CommitteeBuilder, Epoch, FromHex as _, GenesisAccount, Intent,
     IntentMessage, Multiaddr, NetworkPublicKey, PrimaryInfo, ProtocolSignature, Signer,
-    WorkerCache, WorkerIndex, B256,
+    WorkerCache, WorkerIndex, B256, U256,
 };
 use tracing::{info, warn};
 /// The validators directory used to create genesis.
@@ -30,7 +25,7 @@ const fn from_utf8(bytes: &[u8]) -> &str {
 
 // We need to embed these files as defaults so we can run the binary vs tests.
 const CONSENSUS_REGISTRY_STORAGE: &str =
-    from_utf8(include_bytes!("../../../tn-contracts/deployments/consensus-registry-storage.yaml"));
+    from_utf8(include_bytes!("../../../tn-contracts/deployments/genesis/consensus-registry-config.yaml"));
 const CONSENSUS_REGISTRY: &str =
     from_utf8(include_bytes!("../../../tn-contracts/artifacts/ConsensusRegistry.json"));
 const ERC1967_PROXY: &str =
@@ -87,29 +82,31 @@ impl NetworkGenesis {
             }),
             None => CONSENSUS_REGISTRY_STORAGE.to_string(),
         };
-        let registry_storage_cfg: BTreeMap<String, String> =
-            serde_yaml::from_str(&registry_storage_yaml).expect("yaml parsing failure");
-        let mut registry_storage_cfg: BTreeMap<B256, B256> = registry_storage_cfg
-            .into_iter()
-            .map(|(k, v)| (k.parse().expect("Invalid key"), v.parse().expect("Invalid val")))
-            .collect();
 
+        let registry_storage_cfg = parse_genesis_yaml(&registry_storage_yaml)
+            .unwrap_or_else(|_| {
+                panic!(
+                    "unable to parse consensus registry storage yaml: {}",
+                    registry_storage_yaml
+                )
+            });
         let pubkey_flags = PubkeyFlags::new(self.validators.len());
-        // iterate over BTreeMap to conditionally overwrite flagged values with pubkeys that are now
-        // known
         let validator_info: Vec<_> = self.validators.values().cloned().collect();
-        for val in registry_storage_cfg.values_mut() {
-            PubkeyFlags::overwrite_if_flag(val, &pubkey_flags, &validator_info);
-        }
+        // iterate over BTreeMap to conditionally overwrite flagged values with now known pubkeys
 
-        let registry_impl = Address::random();
+        let registry_proxy = Address::from_hex("0x7e17e17e17e17e17e17e17e17e17e17e17e17e10")
+            .expect("invalid hex address");
+        registry_storage_cfg.get_mut(&registry_proxy).map(|v| {
+            PubkeyFlags::overwrite_if_flag(v.storage.unwrap(), &pubkey_flags, &validator_info)
+        });
+
+        let registry_impl = Address::from_hex("0x07e17e17e17e17e17e17e17e17e17e17e17e17e1");
         let registry_standard_json = CONSENSUS_REGISTRY;
         let registry_contract: ContractStandardJson =
             serde_json::from_str(registry_standard_json).expect("json parsing failure");
         let registry_bytecode = hex::decode(registry_contract.deployed_bytecode.object)
             .expect("invalid bytecode hexstring");
-        let registry_proxy = Address::from_hex("0x07e17e17e17e17e17e17e17e17e17e17e17e17e1")
-            .expect("invalid hex address");
+
         let proxy_standard_json = ERC1967_PROXY;
         let proxy_contract: ContractStandardJson =
             serde_json::from_str(proxy_standard_json).expect("json parsing failure");
@@ -433,6 +430,34 @@ pub struct ContractStandardJson {
     pub deployed_bytecode: BytecodeObject,
 }
 
+fn parse_genesis_yaml(yaml_str: &str) -> eyre::Result<HashMap<Address, GenesisAccount>> {
+    let yaml: HashMap<String, serde_json::Value> = serde_yaml::from_str(yaml_str).unwrap();
+
+    let mut accounts = HashMap::new();
+    for (address_str, account_data) in yaml {
+        let address = Address::from_str(&address_str).unwrap();
+        let code = account_data["code"].as_str().map(|c| hex::decode(c).unwrap().into());
+        
+        // let mut storage = HashMap::new();
+        let storage = account_data["storage"].as_object().map(|storage_data| {
+            let registry_storage_cfg: BTreeMap<B256, B256> = storage_data
+                .into_iter()
+                .map(|(k, v)| (k.parse().expect("Invalid key"), (B256::from_str(v.as_str().unwrap())).expect("Invalid val")))
+                .collect();
+
+            registry_storage_cfg
+        });
+        
+        let account = GenesisAccount::default()
+            .with_code(code)
+            .with_storage(storage);
+            
+        accounts.insert(address, account);
+    }
+    
+    Ok(accounts)
+}
+
 /// Fetch a file with a path relative to the CARGO MANIFEST dir and return it as a string.
 ///
 /// Note this will ONLY work in tests or during builds, otherwise the required env variable
@@ -500,7 +525,7 @@ mod tests {
             NetworkGenesis::load_from_path(&paths).expect("unable to load network genesis");
 
         loaded_network_genesis.construct_registry_genesis_accounts(Some(
-            "../../tn-contracts/deployments/consensus-registry-storage.yaml".into(),
+            "../../tn-contracts/deployments/genesis/consensus-registry-config.yaml".into(),
         ));
 
         let loaded_validator =
