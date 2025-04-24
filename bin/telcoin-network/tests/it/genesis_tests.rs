@@ -1,9 +1,7 @@
 #[cfg(test)]
 mod tests {
     use crate::util::spawn_local_testnet;
-    use alloy::{
-        network::EthereumWallet, primitives::Uint, providers::ProviderBuilder, sol_types::SolCall,
-    };
+    use alloy::{network::EthereumWallet, providers::ProviderBuilder, sol_types::SolCall};
     use jsonrpsee::{core::client::ClientT, http_client::HttpClientBuilder, rpc_params};
     use rand::{rngs::StdRng, SeedableRng};
     use std::{sync::Arc, time::Duration};
@@ -66,35 +64,26 @@ mod tests {
             [registry_proxy_initcode.as_slice(), &constructor_params[..]].concat();
 
         let registry_init_selector = ConsensusRegistry::initializeCall::SELECTOR;
-        // let registry_init_selector = [97, 175, 158, 105];
-
-        let activation_epoch = u32::default();
-        let exit_epoch = u32::default();
-        let active_status = ConsensusRegistry::ValidatorStatus::Active;
 
         // construct array of 4 validators with 1-indexed `validatorIndex`
+        let active_status = ConsensusRegistry::ValidatorStatus::Active;
         let initial_validators: Vec<ConsensusRegistry::ValidatorInfo> = (1..=4)
-            .map(|i| {
+            .map(|_| {
                 // generate random bls, ed25519, and ecdsa keys for each validator
                 let mut rng = StdRng::from_entropy();
                 let bls_keypair = BlsKeypair::generate(&mut rng);
                 let bls_pubkey = bls_keypair.public().to_bytes().to_vec();
-                let ed_25519_keypair = tn_types::NetworkKeypair::generate_ed25519();
-                let ecdsa_pubkey = Address::random();
+                let addr = Address::random();
 
                 ConsensusRegistry::ValidatorInfo {
                     blsPubkey: bls_pubkey.into(),
-                    ed25519Pubkey: ed_25519_keypair
-                        .public()
-                        .try_into_ed25519()
-                        .expect("is an ed_25519")
-                        .to_bytes()
-                        .into(),
-                    ecdsaPubkey: ecdsa_pubkey,
-                    activationEpoch: activation_epoch,
-                    exitEpoch: exit_epoch,
-                    validatorIndex: Uint::<24, 1>::from(i),
+                    validatorAddress: addr,
+                    activationEpoch: 0,
+                    exitEpoch: 0,
                     currentStatus: active_status,
+                    isRetired: false,
+                    isDelegated: false,
+                    stakeVersion: 0,
                 }
             })
             .collect();
@@ -211,7 +200,7 @@ mod tests {
                 .expect("failed epoch read")
                 .epochInfo;
             for (j, _) in initial_validators.iter().enumerate() {
-                assert_eq!(epoch_info.committee[j], initial_validators[j].ecdsaPubkey);
+                assert_eq!(epoch_info.committee[j], initial_validators[j].validatorAddress);
             }
         }
     }

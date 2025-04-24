@@ -1208,7 +1208,9 @@ impl RethEnv {
         );
 
         // execute the transaction
-        let ResultAndState { state, .. } = evm.transact().expect("evm transaction failed");
+        let ResultAndState { state, result } = evm.transact().expect("evm transaction failed");
+        debug!(target: "engine", "execution:\n{:#?}", state);
+        debug!(target: "engine", "result:\n{:#?}", result);
         evm.db_mut().commit(state);
 
         drop(evm);
@@ -1339,6 +1341,13 @@ mod tests {
 
     #[tokio::test]
     async fn test_validator_shuffle() -> eyre::Result<()> {
+        // remove this
+        let _ = tracing_subscriber::fmt()
+            .with_env_filter(tracing_subscriber::EnvFilter::from_default_env())
+            .with_span_events(tracing_subscriber::fmt::format::FmtSpan::ACTIVE)
+            .with_writer(std::io::stdout)
+            .try_init();
+
         let task_manager = TaskManager::new("Test Task Manager");
         let tmp_dir = TempDir::new().unwrap();
 
@@ -1384,28 +1393,36 @@ mod tests {
 
         debug!(target: "engine", "created validators for consensus registry {:#?}", validator_infos);
 
+        let genesis_stake = U256::from(1_000_000e18);
+        let consensus_balance = genesis_stake
+            .checked_mul(U256::from(validator_infos.len()))
+            .expect("u256 total staked");
+
         // set up genesis with the ConsensusRegistry deployed
         let genesis = adiri_genesis().extend_accounts([(
             CONSENSUS_REGISTRY_ADDRESS,
-            GenesisAccount::default().with_code(Some(registry_bytecode.clone().into())),
+            GenesisAccount::default()
+                .with_balance(consensus_balance)
+                .with_code(Some(registry_bytecode.clone().into())),
         )]);
 
         let chain: Arc<RethChainSpec> = Arc::new(genesis.into());
         let reth_env =
             RethEnv::new_for_test_with_chain(chain.clone(), tmp_dir.path(), &task_manager).unwrap();
 
+        let epoch_duration = 60 * 60 * 24; // 24hrs
         let config = ConsensusRegistry::StakeConfig {
-            stakeAmount: U256::from(1_000_000e18),
+            stakeAmount: genesis_stake,
             minWithdrawAmount: U256::from(1_000e18),
             epochIssuance: U256::from(20_000_000e18).div_ceil(U256::from(28)),
-            epochDuration: 60 * 60 * 24,
+            epochDuration: epoch_duration,
         };
 
         let init_calldata = ConsensusRegistry::initializeCall {
             rwTEL_: Address::random(),
             genesisConfig_: config,
             initialValidators_: validator_infos.clone(),
-            owner_: SYSTEM_ADDRESS,
+            owner_: Address::random(),
         }
         .abi_encode()
         .into();
@@ -1468,8 +1485,11 @@ mod tests {
             &reth_env, &mut evm, calldata,
         )?;
         let expected_committee = validator_infos.iter().map(|v| v.validatorAddress).collect();
-        let expected_epoch_info =
-            ConsensusRegistry::EpochInfo { committee: expected_committee, blockHeight: 0 };
+        let expected_epoch_info = ConsensusRegistry::EpochInfo {
+            committee: expected_committee,
+            blockHeight: 0,
+            epochDuration: epoch_duration,
+        };
         assert_eq!(epoch_info, expected_epoch_info);
 
         // close epoch with deterministic signature as source of randomness
@@ -1493,8 +1513,12 @@ mod tests {
         let expected_new_committee =
             vec![validator_4, validator_5, validator_3, validator_2, validator_1];
 
-        let expected =
-            ConsensusRegistry::EpochInfo { committee: expected_new_committee, blockHeight: 0 };
+        let expected = ConsensusRegistry::EpochInfo {
+            committee: expected_new_committee,
+            blockHeight: 0,
+            // epoch duration set at the start
+            epochDuration: Default::default(),
+        };
 
         debug!(target: "engine", "new epoch info:{:#?}", new_epoch_info);
 

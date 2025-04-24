@@ -9,30 +9,35 @@ use tn_types::Address;
 /// The system address.
 pub(super) const SYSTEM_ADDRESS: Address = address!("fffffffffffffffffffffffffffffffffffffffe");
 
-/// The address for consensus registry.
+/// The address for consensus registry impl.
 pub(super) const CONSENSUS_REGISTRY_ADDRESS: Address =
     address!("07E17e17E17e17E17e17E17E17E17e17e17E17e1");
 
 // ConsensusRegistry interface. See tn-contracts submodule.
 sol!(
+    /// Consensus registry.
     #[sol(rpc)]
     contract ConsensusRegistry {
         /// The validator's eligibility status for being
         /// considered in the next committee.
         #[derive(Debug)]
         enum ValidatorStatus {
-            /// Match any status.
-            Any,
-            /// The validator is staked but has not indicated
-            /// it is ready to participate in committee to earn
-            /// rewards.
+            /// Undefined status - default value.
+            Undefined,
+            /// The validator is staked but not eligible for participating
+            /// in consensus.
+            Staked,
+            /// The validator is staked and has indicated it is ready
+            /// to participate in committee to earn rewards.
             PendingActivation,
             /// The validator is actively participating in consensus.
             Active,
             /// The validator has indicated interest to exit the protocol.
             PendingExit,
             /// The validator is no longer participating in consensus.
-            Exited
+            Exited,
+            /// Match any status (also indicates `Retired`)
+            Any
         }
 
         /// The validator's information.
@@ -68,6 +73,11 @@ sol!(
             /// The block height when the epoch started and the
             /// committee became active.
             uint64 blockHeight;
+            /// The duration for the epoch (in secs).
+            ///
+            /// NOTE: this is set at the start of each epoch based on the
+            /// current value of the `StakeConfig`.
+            uint32 epochDuration;
         }
 
         /// Incentives applied to validators.
@@ -101,7 +111,7 @@ sol!(
             ValidatorInfo[] memory initialValidators_,
             /// The address of the owner.
             address owner_
-        ) external payable;
+        ) external;
 
         /// Return the validators by status. Pass `0` for status to return all validators.
         function getValidators(uint8 status) public view returns (ValidatorInfo[] memory);
