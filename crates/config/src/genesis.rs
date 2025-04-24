@@ -385,11 +385,11 @@ impl PubkeyFlags {
     fn new(num_validators: usize) -> Vec<PubkeyFlags> {
         (1..=num_validators)
             .map(|i| PubkeyFlags {
-                bls_a: keccak256(format!("VALIDATOR_{}_BLS_A", i)),
-                bls_b: keccak256(format!("VALIDATOR_{}_BLS_B", i)),
-                bls_c: keccak256(format!("VALIDATOR_{}_BLS_C", i)),
-                ed25519: keccak256(format!("VALIDATOR_{}_ED25519", i)),
-                ecdsa: keccak256(format!("VALIDATOR_{}_ECDSA", i)),
+                bls_a: keccak256(format!("VALIDATOR_{i}_BLS_A")),
+                bls_b: keccak256(format!("VALIDATOR_{i}_BLS_B")),
+                bls_c: keccak256(format!("VALIDATOR_{i}_BLS_C")),
+                ed25519: keccak256(format!("VALIDATOR_{i}_ED25519")),
+                ecdsa: keccak256(format!("VALIDATOR_{i}_ECDSA")),
             })
             .collect()
     }
@@ -563,7 +563,7 @@ mod tests {
                 network_keypair.public().clone().into(),
                 worker_index,
             );
-            let name = format!("validator-{}", v);
+            let name = format!("validator-{v}");
             // create validator
             let validator = ValidatorInfo::new(
                 name,
@@ -605,7 +605,7 @@ mod tests {
                 network_keypair.public().clone().into(),
                 worker_index,
             );
-            let name = format!("validator-{}", v);
+            let name = format!("validator-{v}");
             // create validator
             let validator = ValidatorInfo::new(
                 name,
