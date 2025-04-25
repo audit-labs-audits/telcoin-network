@@ -97,8 +97,8 @@ use tn_types::{
     adiri_chain_spec_arc, calculate_transaction_root, keccak256, Address, Block, BlockBody,
     BlockExt as _, BlockHashOrNumber, BlockNumHash, BlockNumber, BlockWithSenders, BlsSignature,
     ExecHeader, Genesis, GenesisAccount, Receipt, SealedBlock, SealedBlockWithSenders,
-    SealedHeader, TaskManager, TransactionSigned, B256, EMPTY_OMMER_ROOT_HASH, EMPTY_RECEIPTS,
-    EMPTY_TRANSACTIONS, EMPTY_WITHDRAWALS, U256,
+    SealedHeader, TaskManager, TransactionSigned, TxKind, B256, EMPTY_OMMER_ROOT_HASH,
+    EMPTY_RECEIPTS, EMPTY_TRANSACTIONS, EMPTY_WITHDRAWALS, U256,
 };
 use tokio::sync::mpsc::{self, unbounded_channel};
 use tracing::{debug, error, info, warn};
@@ -1178,7 +1178,7 @@ impl RethEnv {
     pub fn execute_call_tx_for_test_bypass_evm_checks(
         &self,
         header: &SealedHeader,
-        txs: Vec<CallRequest>,
+        txs: Vec<PregenesisRequest>,
     ) -> TnRethResult<BundleState> {
         // create execution db
         let state = StateProviderDatabase::new(
@@ -1202,15 +1202,8 @@ impl RethEnv {
         );
 
         for tx in txs {
-            let CallRequest { contract_address, caller_address, data } = tx;
-
             // modify env to disable checks
-            self.evm_config.fill_tx_env_system_contract_call(
-                &mut evm.context.evm.env,
-                caller_address,
-                contract_address,
-                data,
-            );
+            self.fill_tx_env_free_execution(&mut evm.context.evm.env, tx);
 
             // execute the transaction
             let ResultAndState { state, result } = evm.transact()?;
@@ -1332,7 +1325,10 @@ impl RethEnv {
         let tx = CallRequest::new(CONSENSUS_REGISTRY_ADDRESS, SYSTEM_ADDRESS, init_calldata);
 
         let BundleState { state, contracts, reverts, state_size, reverts_size } = reth_env
-            .execute_call_tx_for_test_bypass_evm_checks(&chain.sealed_genesis_header(), vec![tx])?;
+            .execute_call_tx_for_test_bypass_evm_checks(
+                &chain.sealed_genesis_header(),
+                vec![tx.into()],
+            )?;
 
         debug!(target: "engine", "contracts:\n{:#?}", contracts);
         debug!(target: "engine", "reverts:\n{:#?}", reverts);
@@ -1368,9 +1364,50 @@ impl RethEnv {
         let bytecode = hex::decode(abi)?;
         Ok(bytecode)
     }
+
+    /// Create a tx environment with all evm checks disabled.
+    ///
+    /// This is useful for executing transactions for pre-genesis.
+    /// For future reth upgrades, see:
+    /// `EthEvmConfig::fill_tx_env_for_system_call`
+    ///
+    /// WARNING: do not use this when executing consensus transactions.
+    fn fill_tx_env_free_execution(&self, env: &mut Env, tx: PregenesisRequest) {
+        // #[allow(clippy::needless_update)] // side-effect of optimism fields
+        let tx = TxEnv {
+            caller: tx.caller(),
+            transact_to: tx.tx_kind(),
+            // Explicitly set nonce to None so revm does not do any nonce checks
+            nonce: None,
+            gas_limit: 30_000_000,
+            value: U256::ZERO,
+            data: tx.data(),
+            // Setting the gas price to zero enforces that no value is transferred as part of the
+            // call, and that the call will not count against the block's gas limit
+            gas_price: U256::ZERO,
+            // The chain ID check is not relevant here and is disabled if set to None
+            chain_id: None,
+            // Setting the gas priority fee to None ensures the effective gas price is derived from
+            // the `gas_price` field, which we need to be zero
+            gas_priority_fee: None,
+            access_list: Vec::new(),
+            // blob fields can be None for this tx
+            blob_hashes: Vec::new(),
+            max_fee_per_blob_gas: None,
+            // TODO remove this once this crate is no longer built with optimism
+            ..Default::default()
+        };
+        env.tx = tx;
+
+        // ensure the block gas limit is >= the tx
+        env.block.gas_limit = U256::from(env.tx.gas_limit);
+
+        // disable the base fee check for this call by setting the base fee to zero
+        env.block.basefee = U256::ZERO;
+    }
 }
 
-/// Param for requesting a call.
+/// Param for requesting a call transaction.
 #[derive(Debug)]
 pub struct CallRequest {
     /// The caller's address.
@@ -1385,6 +1422,66 @@ impl CallRequest {
     /// Create a new instance of [Self].
     pub fn new(contract_address: Address, caller_address: Address, data: Bytes) -> Self {
         Self { contract_address, caller_address, data }
+    }
+}
+
+/// Param for requesting a create transaction.
+#[derive(Debug)]
+pub struct CreateRequest {
+    /// The caller's address.
+    caller_address: Address,
+    /// The transaction data.
+    data: Bytes,
+}
+
+impl CreateRequest {
+    /// Create a new instance of [Self].
+    pub fn new(caller_address: Address, data: Bytes) -> Self {
+        Self { caller_address, data }
+    }
+}
+
+/// Variations of pregenesis requests.
+#[derive(Debug)]
+pub enum PregenesisRequest {
+    /// Set the tx env to call.
+    Call(CallRequest),
+    /// Set the tx env to create.
+    Create(CreateRequest),
+}
+
+impl PregenesisRequest {
+    fn tx_kind(&self) -> TxKind {
+        match self {
+            PregenesisRequest::Call(tx) => TxKind::Call(tx.contract_address),
+            PregenesisRequest::Create(_) => TxKind::Create,
+        }
+    }
+
+    fn caller(&self) -> Address {
+        match self {
+            PregenesisRequest::Call(tx) => tx.caller_address,
+            PregenesisRequest::Create(tx) => tx.caller_address,
+        }
+    }
+
+    fn data(&self) -> Bytes {
+        match self {
+            PregenesisRequest::Call(tx) => tx.data.clone(),
+            PregenesisRequest::Create(tx) => tx.data.clone(),
+        }
+    }
+}
+
+impl From<CallRequest> for PregenesisRequest {
+    fn from(call: CallRequest) -> Self {
+        PregenesisRequest::Call(call)
+    }
+}
+
+impl From<CreateRequest> for PregenesisRequest {
+    fn from(create: CreateRequest) -> Self {
+        PregenesisRequest::Create(create)
     }
 }
 
