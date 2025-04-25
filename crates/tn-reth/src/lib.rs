@@ -1353,7 +1353,7 @@ impl RethEnv {
     /// Parse bytecode from a `&str`.
     pub fn parse_bytecode_from_json_str(json_content: &str) -> eyre::Result<Vec<u8>> {
         // parse as generic JSON Value
-        let json: serde_json::Value = serde_json::from_str(&json_content)?;
+        let json: serde_json::Value = serde_json::from_str(json_content)?;
 
         // extract the specific field we want
         let abi = json["bytecode"]["object"]
@@ -1368,7 +1368,7 @@ impl RethEnv {
     /// Parse deployed bytecode from a `&str`.
     pub fn parse_deployed_bytecode_from_json_str(json_content: &str) -> eyre::Result<Vec<u8>> {
         // parse as generic JSON Value
-        let json: serde_json::Value = serde_json::from_str(&json_content)?;
+        let json: serde_json::Value = serde_json::from_str(json_content)?;
 
         // extract the specific field we want
         let abi = json["deployedBytecode"]["object"]
