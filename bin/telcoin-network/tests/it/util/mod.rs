@@ -4,6 +4,7 @@ use telcoin_network::{genesis::GenesisArgs, keytool::KeyArgs, node::NodeCommand}
 use tn_node::launch_node;
 use tn_reth::RethChainSpec;
 use tn_test_utils::CommandParser;
+use tn_types::Address;
 use tracing::error;
 
 pub static IT_TEST_MUTEX: std::sync::Mutex<()> = std::sync::Mutex::new(());
@@ -79,6 +80,8 @@ pub async fn config_local_testnet(temp_path: PathBuf) -> eyre::Result<()> {
         "create-committee",
         "--datadir",
         shared_genesis_dir.to_str().expect("shared genesis dir"),
+        "--consensus-registry-owner",
+        "0x00000000000000000000000000000000000007e1", // doesn't matter for tests
     ]);
     create_committee_command.args.execute()?;
 
@@ -131,6 +134,8 @@ pub fn spawn_local_testnet(chain: Arc<RethChainSpec>, contract_address: &str) ->
         "create-committee",
         "--datadir",
         shared_genesis_dir.to_str().expect("shared genesis dir"),
+        "--consensus-registry-owner",
+        "0x00000000000000000000000000000000000007e1", // doesn't matter for tests
     ]);
     create_committee_command.args.execute()?;
 

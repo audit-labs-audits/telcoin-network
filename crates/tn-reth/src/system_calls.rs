@@ -10,8 +10,28 @@ use tn_types::Address;
 pub(super) const SYSTEM_ADDRESS: Address = address!("fffffffffffffffffffffffffffffffffffffffe");
 
 /// The address for consensus registry impl.
-pub(super) const CONSENSUS_REGISTRY_ADDRESS: Address =
+pub const CONSENSUS_REGISTRY_ADDRESS: Address =
     address!("07E17e17E17e17E17e17E17E17E17e17e17E17e1");
+
+/// The address RWTEL.
+pub const RWTEL_ADDRESS: Address = address!("65a38cd7f35b57d7224709bdad5f6717cb5fe58d");
+
+// const fn from_utf8(bytes: &[u8]) -> &str {
+//     match std::str::from_utf8(bytes) {
+//         Ok(s) => s,
+//         Err(_) => panic!("bytes not valid utf8!"),
+//     }
+// }
+// // We need to embed these files as defaults so we can run the binary vs tests.
+// const CONSENSUS_REGISTRY_STORAGE: &str = from_utf8(include_bytes!(
+//     "../../../tn-contracts/deployments/genesis/consensus-registry-config.yaml"
+// ));
+
+// const CONSENSUS_REGISTRY: &str =
+//     from_utf8(include_bytes!("../../../tn-contracts/artifacts/ConsensusRegistry.json"));
+
+// const ERC1967_PROXY: &str =
+//     from_utf8(include_bytes!("../../../tn-contracts/artifacts/ERC1967Proxy.json"));
 
 // ConsensusRegistry interface. See tn-contracts submodule.
 sol!(

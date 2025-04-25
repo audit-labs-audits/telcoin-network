@@ -20,6 +20,7 @@
 
 use crate::traits::TNExecution;
 use alloy::{
+    hex,
     primitives::{Bytes, ChainId},
     sol_types::SolCall,
 };
@@ -27,6 +28,7 @@ use clap::Parser;
 use dirs::path_to_datadir;
 use enr::secp256k1::rand::Rng as _;
 use error::{TnRethError, TnRethResult};
+use eyre::OptionExt;
 use futures::StreamExt as _;
 use jsonrpsee::Methods;
 use rand_chacha::rand_core::SeedableRng as _;
@@ -89,12 +91,14 @@ use system_calls::{
     ConsensusRegistry::{self, ValidatorStatus},
     CONSENSUS_REGISTRY_ADDRESS, SYSTEM_ADDRESS,
 };
+use tempfile::TempDir;
+use tn_config::{fetch_file_content_relative_to_manifest, ValidatorInfo};
 use tn_types::{
     adiri_chain_spec_arc, calculate_transaction_root, keccak256, Address, Block, BlockBody,
     BlockExt as _, BlockHashOrNumber, BlockNumHash, BlockNumber, BlockWithSenders, BlsSignature,
-    ExecHeader, Genesis, Receipt, SealedBlock, SealedBlockWithSenders, SealedHeader, TaskManager,
-    TransactionSigned, B256, EMPTY_OMMER_ROOT_HASH, EMPTY_RECEIPTS, EMPTY_TRANSACTIONS,
-    EMPTY_WITHDRAWALS, U256,
+    ExecHeader, Genesis, GenesisAccount, Receipt, SealedBlock, SealedBlockWithSenders,
+    SealedHeader, TaskManager, TransactionSigned, B256, EMPTY_OMMER_ROOT_HASH, EMPTY_RECEIPTS,
+    EMPTY_TRANSACTIONS, EMPTY_WITHDRAWALS, U256,
 };
 use tokio::sync::mpsc::{self, unbounded_channel};
 use tracing::{debug, error, info, warn};
@@ -1174,9 +1178,7 @@ impl RethEnv {
     pub fn execute_call_tx_for_test_bypass_evm_checks(
         &self,
         header: &SealedHeader,
-        contract_address: Address,
-        caller_address: Address,
-        data: Bytes,
+        txs: Vec<CallRequest>,
     ) -> TnRethResult<BundleState> {
         // create execution db
         let state = StateProviderDatabase::new(
@@ -1199,19 +1201,23 @@ impl RethEnv {
             ),
         );
 
-        // modify env to disable checks
-        self.evm_config.fill_tx_env_system_contract_call(
-            &mut evm.context.evm.env,
-            caller_address,
-            contract_address,
-            data,
-        );
+        for tx in txs {
+            let CallRequest { contract_address, caller_address, data } = tx;
 
-        // execute the transaction
-        let ResultAndState { state, result } = evm.transact().expect("evm transaction failed");
-        debug!(target: "engine", "execution:\n{:#?}", state);
-        debug!(target: "engine", "result:\n{:#?}", result);
-        evm.db_mut().commit(state);
+            // modify env to disable checks
+            self.evm_config.fill_tx_env_system_contract_call(
+                &mut evm.context.evm.env,
+                caller_address,
+                contract_address,
+                data,
+            );
+
+            // execute the transaction
+            let ResultAndState { state, result } = evm.transact()?;
+            debug!(target: "engine", "execution:\n{:#?}", state);
+            debug!(target: "engine", "result:\n{:#?}", result);
+            evm.db_mut().commit(state);
+        }
 
         drop(evm);
 
@@ -1261,20 +1267,137 @@ impl RethEnv {
 
         EnvWithHandlerCfg::new_with_cfg_env(cfg.clone(), block_env.clone(), TxEnv::default())
     }
+
+    /// Convenience method for compiling storage and bytecode to include genesis.
+    pub fn create_consensus_registry_accounts_for_genesis(
+        validators: Vec<ValidatorInfo>,
+        genesis: Genesis,
+        initial_stake_config: ConsensusRegistry::StakeConfig,
+        owner_address: Address,
+        rwtel_address: Address,
+    ) -> eyre::Result<Genesis> {
+        let validators: Vec<_> = validators
+            .iter()
+            .map(|v| ConsensusRegistry::ValidatorInfo {
+                blsPubkey: v.bls_public_key.to_bytes().into(),
+                validatorAddress: v.execution_address,
+                activationEpoch: 0,
+                exitEpoch: 0,
+                currentStatus: ConsensusRegistry::ValidatorStatus::Active,
+                isRetired: false,
+                isDelegated: false,
+                stakeVersion: 0,
+            })
+            .collect();
+
+        let total_stake_balance = initial_stake_config
+            .stakeAmount
+            .checked_mul(U256::from(validators.len()))
+            .ok_or_eyre("Failed to calculate total stake for consensus registry at genesis")?;
+
+        // read bytecode from tn-contracts
+        let json_content = fetch_file_content_relative_to_manifest(
+            "../../tn-contracts/artifacts/ConsensusRegistry.json",
+        );
+
+        let registry_bytecode = Self::parse_deployed_bytecode_from_json_str(&json_content)?;
+
+        // extend accounts for initial execution
+        let tmp_genesis = genesis.clone().extend_accounts([(
+            CONSENSUS_REGISTRY_ADDRESS,
+            GenesisAccount::default()
+                .with_balance(total_stake_balance)
+                .with_code(Some(registry_bytecode.clone().into())),
+        )]);
+
+        let chain: Arc<RethChainSpec> = Arc::new(tmp_genesis.into());
+
+        // create temporary reth env for execution
+        let task_manager = TaskManager::new("Test Task Manager");
+        let tmp_dir = TempDir::new().unwrap();
+        let reth_env =
+            RethEnv::new_for_test_with_chain(chain.clone(), tmp_dir.path(), &task_manager)?;
+
+        // generate calldata for initialization call
+        let init_calldata = ConsensusRegistry::initializeCall {
+            rwTEL_: rwtel_address,
+            genesisConfig_: initial_stake_config,
+            initialValidators_: validators,
+            owner_: owner_address,
+        }
+        .abi_encode()
+        .into();
+
+        // execute the transaction
+        let tx = CallRequest::new(CONSENSUS_REGISTRY_ADDRESS, SYSTEM_ADDRESS, init_calldata);
+
+        let BundleState { state, contracts, reverts, state_size, reverts_size } = reth_env
+            .execute_call_tx_for_test_bypass_evm_checks(&chain.sealed_genesis_header(), vec![tx])?;
+
+        debug!(target: "engine", "contracts:\n{:#?}", contracts);
+        debug!(target: "engine", "reverts:\n{:#?}", reverts);
+        debug!(target: "engine", "state_size:{:#?}", state_size);
+        debug!(target: "engine", "reverts_size:{:#?}", reverts_size);
+
+        // place initialized bytecode in genesis
+        let storage = state.get(&CONSENSUS_REGISTRY_ADDRESS).map(|account| {
+            account.storage.iter().map(|(k, v)| ((*k).into(), v.present_value.into())).collect()
+        });
+
+        let genesis = genesis.extend_accounts([(
+            CONSENSUS_REGISTRY_ADDRESS,
+            GenesisAccount::default()
+                .with_code(Some(registry_bytecode.into()))
+                .with_storage(storage),
+        )]);
+
+        Ok(genesis)
+    }
+
+    /// Parse deployed bytecode from a `&str`.
+    pub fn parse_deployed_bytecode_from_json_str(json_content: &str) -> eyre::Result<Vec<u8>> {
+        // parse as generic JSON Value
+        let json: serde_json::Value = serde_json::from_str(&json_content)?;
+
+        // extract the specific field we want
+        let abi = json["deployedBytecode"]["object"]
+            .as_str()
+            .ok_or_eyre("Invalid json abi format for bytecode")?;
+
+        // convert hex to bytes
+        let bytecode = hex::decode(abi)?;
+        Ok(bytecode)
+    }
+}
+
+/// Param for requesting a call.
+#[derive(Debug)]
+pub struct CallRequest {
+    /// The caller's address.
+    caller_address: Address,
+    /// The contract to call.
+    contract_address: Address,
+    /// The data to call.
+    data: Bytes,
+}
+
+impl CallRequest {
+    /// Create a new instance of [Self].
+    pub fn new(contract_address: Address, caller_address: Address, data: Bytes) -> Self {
+        Self { contract_address, caller_address, data }
+    }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
     use crate::traits::TNPayloadAttributes;
-    use alloy::hex;
     use rand_chacha::ChaCha8Rng;
     use std::str::FromStr as _;
     use tempfile::TempDir;
-    use tn_config::{test_fetch_file_content_relative_to_manifest, ContractStandardJson};
     use tn_types::{
         adiri_genesis, BlsKeypair, Certificate, CommittedSubDag, ConsensusHeader, ConsensusOutput,
-        GenesisAccount, ReputationScores,
+        PrimaryInfo, ReputationScores,
     };
 
     /// Helper function to call `ConsensusRegistry` state on-chain.
@@ -1348,17 +1471,6 @@ mod tests {
             .with_writer(std::io::stdout)
             .try_init();
 
-        let task_manager = TaskManager::new("Test Task Manager");
-        let tmp_dir = TempDir::new().unwrap();
-
-        // fetch registry impl bytecode from compiled output in tn-contracts
-        let registry_standard_json = test_fetch_file_content_relative_to_manifest(
-            "../../tn-contracts/artifacts/ConsensusRegistry.json".into(),
-        );
-        let registry_contract: ContractStandardJson =
-            serde_json::from_str(&registry_standard_json).expect("json parsing failure");
-        let registry_bytecode = hex::decode(registry_contract.deployed_bytecode.object)
-            .expect("invalid bytecode hexstring");
         let validator_1 = Address::from_slice(&[0x11; 20]);
         let validator_2 = Address::from_slice(&[0x22; 20]);
         let validator_3 = Address::from_slice(&[0x33; 20]);
@@ -1369,91 +1481,48 @@ mod tests {
         let initial_validators = [validator_1, validator_2, validator_3, validator_4, validator_5];
 
         // create validator info objects for each address
-        let validator_infos: Vec<ConsensusRegistry::ValidatorInfo> = initial_validators
+        let validators: Vec<_> = initial_validators
             .iter()
             .enumerate()
             .map(|(i, addr)| {
                 // use deterministic seed
                 let mut rng = ChaCha8Rng::seed_from_u64(i as u64);
                 let bls = BlsKeypair::generate(&mut rng);
-                let bls_pubkey = bls.public().to_bytes().to_vec();
-
-                ConsensusRegistry::ValidatorInfo {
-                    blsPubkey: bls_pubkey.into(),
-                    validatorAddress: *addr,
-                    activationEpoch: 0,
-                    exitEpoch: 0,
-                    currentStatus: ConsensusRegistry::ValidatorStatus::Active,
-                    isRetired: false,
-                    isDelegated: false,
-                    stakeVersion: 0,
+                let bls_pubkey = bls.public();
+                ValidatorInfo {
+                    name: format!("validator-{i}"),
+                    bls_public_key: *bls_pubkey,
+                    primary_info: PrimaryInfo::default(),
+                    execution_address: *addr,
+                    proof_of_possession: BlsSignature::default(),
                 }
             })
             .collect();
 
-        debug!(target: "engine", "created validators for consensus registry {:#?}", validator_infos);
-
-        let genesis_stake = U256::from(1_000_000e18);
-        let consensus_balance = genesis_stake
-            .checked_mul(U256::from(validator_infos.len()))
-            .expect("u256 total staked");
-
-        // set up genesis with the ConsensusRegistry deployed
-        let genesis = adiri_genesis().extend_accounts([(
-            CONSENSUS_REGISTRY_ADDRESS,
-            GenesisAccount::default()
-                .with_balance(consensus_balance)
-                .with_code(Some(registry_bytecode.clone().into())),
-        )]);
-
-        let chain: Arc<RethChainSpec> = Arc::new(genesis.into());
-        let reth_env =
-            RethEnv::new_for_test_with_chain(chain.clone(), tmp_dir.path(), &task_manager).unwrap();
+        debug!(target: "engine", "created validators for consensus registry {:#?}", validators);
 
         let epoch_duration = 60 * 60 * 24; // 24hrs
-        let config = ConsensusRegistry::StakeConfig {
-            stakeAmount: genesis_stake,
+        let initial_stake_config = ConsensusRegistry::StakeConfig {
+            stakeAmount: U256::from(1_000_000e18),
             minWithdrawAmount: U256::from(1_000e18),
-            epochIssuance: U256::from(20_000_000e18).div_ceil(U256::from(28)),
+            epochIssuance: U256::from(20_000_000e18)
+                .checked_div(U256::from(28))
+                .expect("u256 div checked"),
             epochDuration: epoch_duration,
         };
 
-        let init_calldata = ConsensusRegistry::initializeCall {
-            rwTEL_: Address::random(),
-            genesisConfig_: config,
-            initialValidators_: validator_infos.clone(),
-            owner_: Address::random(),
-        }
-        .abi_encode()
-        .into();
-
-        let BundleState { state, contracts, reverts, state_size, reverts_size } = reth_env
-            .execute_call_tx_for_test_bypass_evm_checks(
-                &chain.sealed_genesis_header(),
-                CONSENSUS_REGISTRY_ADDRESS,
-                SYSTEM_ADDRESS,
-                init_calldata,
-            )?;
-
-        debug!(target: "engine", "contracts:\n{:#?}", contracts);
-        debug!(target: "engine", "reverts:\n{:#?}", reverts);
-        debug!(target: "engine", "state_size:{:#?}", state_size);
-        debug!(target: "engine", "reverts_size:{:#?}", reverts_size);
-
-        // place initialized bytecode in genesis
-        let storage = state.get(&CONSENSUS_REGISTRY_ADDRESS).map(|account| {
-            account.storage.iter().map(|(k, v)| ((*k).into(), v.present_value.into())).collect()
-        });
-
-        let genesis = adiri_genesis().extend_accounts([(
-            CONSENSUS_REGISTRY_ADDRESS,
-            GenesisAccount::default()
-                .with_code(Some(registry_bytecode.into()))
-                .with_storage(storage),
-        )]);
+        let owner = Address::random();
+        let genesis = RethEnv::create_consensus_registry_accounts_for_genesis(
+            validators.clone(),
+            adiri_genesis(),
+            initial_stake_config,
+            owner,
+            Address::random(), // rwtel
+        )?;
 
         // create new env with initialized consensus registry for tests
         let tmp_dir = TempDir::new().unwrap();
+        let task_manager = TaskManager::new("Test Task Manager");
         let chain: Arc<RethChainSpec> = Arc::new(genesis.into());
         let reth_env =
             RethEnv::new_for_test_with_chain(chain.clone(), tmp_dir.path(), &task_manager).unwrap();
@@ -1484,7 +1553,7 @@ mod tests {
         let epoch_info = call_consensus_registry::<_, _, ConsensusRegistry::EpochInfo>(
             &reth_env, &mut evm, calldata,
         )?;
-        let expected_committee = validator_infos.iter().map(|v| v.validatorAddress).collect();
+        let expected_committee = validators.iter().map(|v| v.execution_address).collect();
         let expected_epoch_info = ConsensusRegistry::EpochInfo {
             committee: expected_committee,
             blockHeight: 0,
