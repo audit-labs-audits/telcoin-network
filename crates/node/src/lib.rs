@@ -23,7 +23,7 @@ use tn_storage::{open_db, tables::ConsensusBlocks, DatabaseType};
 use tn_types::{BatchValidation, ConsensusHeader, Database as TNDatabase, Multiaddr, TaskManager};
 use tn_worker::{WorkerNetwork, WorkerNetworkHandle};
 use tokio::{runtime::Builder, sync::mpsc};
-use tracing::{info, instrument, warn};
+use tracing::{debug, info, instrument, warn};
 
 pub mod engine;
 mod error;
@@ -213,7 +213,10 @@ where
         // config for validator keys
         let config = builder.tn_config.clone();
         let mut task_manager = TaskManager::new("Task Manager");
+
         let reth_env = RethEnv::new(&builder.node_config, tn_datadir.reth_db_path(), &task_manager)?;
+
+        debug!(target: "bundle", "genesis in launch_node:\n\n!!!!!!!!!!\n{:#?}\n\n", reth_env.chainspec().genesis());
         let mut engine_task_manager = TaskManager::new("Engine Task Manager");
         let engine = ExecutionNode::new(builder, reth_env)?;
         let validator = engine.new_batch_validator().await;

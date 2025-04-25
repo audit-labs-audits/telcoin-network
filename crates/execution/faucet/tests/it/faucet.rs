@@ -21,10 +21,10 @@ use reth::{
 use secp256k1::PublicKey;
 use std::{str::FromStr, sync::Arc, time::Duration};
 use tempfile::TempDir;
-use tn_config::{fetch_file_content_relative_to_manifest, ContractStandardJson};
+use tn_config::fetch_file_content_relative_to_manifest;
 use tn_faucet::Drip;
 use tn_network_types::local::LocalNetwork;
-use tn_reth::RethChainSpec;
+use tn_reth::{RethChainSpec, RethEnv};
 use tn_storage::open_db;
 use tn_test_utils::{
     faucet_test_execution_node, get_contract_state_for_genesis, TransactionFactory,
@@ -113,10 +113,7 @@ async fn test_with_creds_faucet_transfers_tel_with_google_kms() -> eyre::Result<
     let faucet_json = fetch_file_content_relative_to_manifest(
         "../../../tn-contracts/artifacts/StablecoinManager.json".into(),
     );
-    let faucet_contract: ContractStandardJson =
-        serde_json::from_str(&faucet_json).expect("json parsing failure");
-    let faucet_bytecode =
-        hex::decode(faucet_contract.deployed_bytecode.object).expect("invalid bytecode hexstring");
+    let faucet_bytecode = RethEnv::parse_deployed_bytecode_from_json_str(&faucet_json)?;
     let mut tx_factory = TransactionFactory::new();
     let factory_address = tx_factory.address();
     let tmp_genesis = tmp_genesis.extend_accounts(

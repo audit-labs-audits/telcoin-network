@@ -10,7 +10,7 @@ use tn_reth::{
     MaybePlatformPath, RethChainSpec, RethEnv,
 };
 use tn_types::{Address, U256};
-use tracing::info;
+use tracing::{debug, info};
 
 /// Add the validator to the node
 #[derive(Debug, Clone, Args)]
@@ -173,7 +173,9 @@ impl CreateCommitteeArgs {
         // update the config with new genesis information
         let config_path = self.config.clone().unwrap_or(data_dir.node_config_path());
         let mut tn_config: Config = Config::load_from_path(&config_path, ConfigFmt::YAML)?;
-        tn_config.genesis = network_genesis.chain_info().genesis().clone();
+        tn_config.genesis = network_genesis.genesis().clone();
+
+        debug!(target: "cli", "genesis: {:#?}", tn_config.genesis);
 
         // write genesis and config to file
         //

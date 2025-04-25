@@ -1350,6 +1350,21 @@ impl RethEnv {
         Ok(genesis)
     }
 
+    /// Parse bytecode from a `&str`.
+    pub fn parse_bytecode_from_json_str(json_content: &str) -> eyre::Result<Vec<u8>> {
+        // parse as generic JSON Value
+        let json: serde_json::Value = serde_json::from_str(&json_content)?;
+
+        // extract the specific field we want
+        let abi = json["bytecode"]["object"]
+            .as_str()
+            .ok_or_eyre("Invalid json abi format for bytecode")?;
+
+        // convert hex to bytes
+        let bytecode = hex::decode(abi)?;
+        Ok(bytecode)
+    }
+
     /// Parse deployed bytecode from a `&str`.
     pub fn parse_deployed_bytecode_from_json_str(json_content: &str) -> eyre::Result<Vec<u8>> {
         // parse as generic JSON Value
@@ -1432,14 +1447,12 @@ pub struct CreateRequest {
     caller_address: Address,
     /// The transaction data.
     data: Bytes,
-    /// The account nonce.
-    nonce: u64,
 }
 
 impl CreateRequest {
     /// Create a new instance of [Self].
-    pub fn new(caller_address: Address, data: Bytes, nonce: u64) -> Self {
-        Self { caller_address, data, nonce }
+    pub fn new(caller_address: Address, data: Bytes) -> Self {
+        Self { caller_address, data }
     }
 }
 
@@ -1471,13 +1484,6 @@ impl PregenesisRequest {
         match self {
             PregenesisRequest::Call(tx) => tx.data.clone(),
             PregenesisRequest::Create(tx) => tx.data.clone(),
-        }
-    }
-
-    fn nonce(&self) -> Option<u64> {
-        match self {
-            PregenesisRequest::Call(_) => None,
-            PregenesisRequest::Create(tx) => Some(tx.nonce),
         }
     }
 }

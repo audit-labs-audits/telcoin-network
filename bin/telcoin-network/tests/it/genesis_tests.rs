@@ -32,19 +32,20 @@ mod tests {
             }
         );
 
+        let TEST_CR_ADDRESS: Address = Address::random();
+
         // create proxy transaction
         // let proxy_address = Address::random();
         let registry_proxy_json = fetch_file_content_relative_to_manifest(
             "../../tn-contracts/artifacts/ERC1967Proxy.json",
         );
-        let registry_proxy_bytecode =
+        let registry_proxy_bytecode = RethEnv::parse_bytecode_from_json_str(&registry_proxy_json)?;
+        let registry_proxy_deployed_bytecode =
             RethEnv::parse_deployed_bytecode_from_json_str(&registry_proxy_json)?;
 
-        let constructor_args = ERC1967Proxy::constructorCall {
-            implementation: CONSENSUS_REGISTRY_ADDRESS,
-            _data: Bytes::new(),
-        }
-        .abi_encode();
+        let constructor_args =
+            ERC1967Proxy::constructorCall { implementation: TEST_CR_ADDRESS, _data: Bytes::new() }
+                .abi_encode();
 
         let mut create_proxy = registry_proxy_bytecode.clone();
         create_proxy.extend(constructor_args);
@@ -87,7 +88,7 @@ mod tests {
         let registry_impl_json = fetch_file_content_relative_to_manifest(
             "../../tn-contracts/artifacts/ConsensusRegistry.json",
         );
-        let registry_impl_bytecode =
+        let registry_impl_deployed_bytecode =
             RethEnv::parse_deployed_bytecode_from_json_str(&registry_impl_json)?;
 
         // generate calldata to initialize proxy
@@ -108,8 +109,9 @@ mod tests {
         let factory_address = tx_factory.address();
         let tmp_genesis = adiri_genesis().extend_accounts([
             (
-                CONSENSUS_REGISTRY_ADDRESS,
-                GenesisAccount::default().with_code(Some(registry_impl_bytecode.clone().into())),
+                TEST_CR_ADDRESS,
+                GenesisAccount::default()
+                    .with_code(Some(registry_impl_deployed_bytecode.clone().into())),
             ),
             // (factory_address, GenesisAccount::default().with_balance(U256::MAX)),
         ]);
@@ -131,7 +133,7 @@ mod tests {
 
         tracing::debug!(target: "bundle", "init calldata:\n{:#x}\n", init_calldata);
 
-        let constructor_params = (CONSENSUS_REGISTRY_ADDRESS, Bytes::default()).abi_encode_params();
+        let constructor_params = (TEST_CR_ADDRESS, Bytes::default()).abi_encode_params();
         let registry_create_data =
             [registry_proxy_bytecode.as_slice(), &constructor_params[..]].concat();
         assert_eq!(registry_create_data, create_proxy);
@@ -169,7 +171,7 @@ mod tests {
 
         let txs = vec![
             // constructor
-            CreateRequest::new(owner, create_proxy.into(), 0).into(),
+            CreateRequest::new(owner, create_proxy.into()).into(),
             // init
             CallRequest::new(registry_proxy_address, Address::random(), init_calldata.into())
                 .into(),
@@ -192,13 +194,14 @@ mod tests {
         // perform canonical adiri chain genesis with fetched storage
         let genesis_accounts = [
             (
-                CONSENSUS_REGISTRY_ADDRESS,
-                GenesisAccount::default().with_code(Some(registry_impl_bytecode.clone().into())),
+                TEST_CR_ADDRESS,
+                GenesisAccount::default()
+                    .with_code(Some(registry_impl_deployed_bytecode.clone().into())),
             ),
             (
                 registry_proxy_address,
                 GenesisAccount::default()
-                    .with_code(Some(registry_proxy_bytecode.clone().into()))
+                    .with_code(Some(registry_proxy_deployed_bytecode.clone().into()))
                     .with_balance(
                         U256::from(4)
                             .checked_mul(stake_amount)
@@ -222,20 +225,39 @@ mod tests {
         let client =
             HttpClientBuilder::default().build(&rpc_url).expect("couldn't build rpc client");
 
+        tracing::debug!(target: "bundle", "calling get code on consensus registry: {:?}", CONSENSUS_REGISTRY_ADDRESS);
+
         // sanity check onchain reads
         let returned_impl_code: String = client
-            .request("eth_getCode", rpc_params!(CONSENSUS_REGISTRY_ADDRESS))
+            .request("eth_getCode", rpc_params!(TEST_CR_ADDRESS))
             .await
             .expect("Failed to fetch registry impl bytecode");
         // trim `0x` prefix
-        assert_eq!(returned_impl_code[2..], hex::encode(registry_impl_bytecode));
+        assert_eq!(returned_impl_code[2..], hex::encode(registry_impl_deployed_bytecode.clone()));
 
         let returned_proxy_code: String = client
             .request("eth_getCode", rpc_params!(registry_proxy_address))
             .await
             .expect("Failed to fetch registry impl bytecode");
-        tracing::debug!(target: "bundle", "\n\n\n\n\n\nPROXY CODE SUCCESS!!\n\n\n\n\n");
-        assert_eq!(returned_proxy_code[2..], hex::encode(registry_proxy_bytecode));
+        assert_eq!(returned_proxy_code[2..], hex::encode(registry_proxy_deployed_bytecode));
+
+        // sanity check onchain spawned in genesis
+        let returned_impl_code: String = client
+            .request("eth_getCode", rpc_params!(CONSENSUS_REGISTRY_ADDRESS))
+            .await
+            .expect("Failed to fetch registry impl bytecode");
+        // trim `0x` prefix
+        assert_eq!(returned_impl_code[2..], hex::encode(registry_impl_deployed_bytecode));
+
+        let returned_impl_storage: String = client
+            .request("eth_getStorage", rpc_params!(CONSENSUS_REGISTRY_ADDRESS))
+            .await
+            .expect("Failed to fetch registry impl bytecode");
+
+        tracing::debug!(target: "bundle", "on-chain storage??\n\n{:#?}\n\n!!!!!!!!!!!!!!", returned_impl_storage);
+
+        // trim `0x` prefix
+        // assert_eq!(returned_impl_storage[2..], hex::encode(registry_impl_deployed_bytecode));
 
         let signer = tx_factory.get_default_signer().expect("failed to fetch signer");
         let wallet = EthereumWallet::from(signer);
@@ -243,16 +265,29 @@ mod tests {
             .with_recommended_fillers()
             .wallet(wallet)
             .on_http(rpc_url.parse().expect("rpc url parse error"));
-        let consensus_registry = ConsensusRegistry::new(registry_proxy_address, provider.clone());
+        let consensus_registry =
+            ConsensusRegistry::new(CONSENSUS_REGISTRY_ADDRESS, provider.clone());
 
-        let active_validators = consensus_registry
-            .getValidators(ConsensusRegistry::ValidatorStatus::Active.into())
-            .call()
-            .await
-            .expect("failed active validators read");
+        let rpc_call = (CONSENSUS_REGISTRY_ADDRESS, "0x374ed18c").abi_encode_params();
+        // let epoch_validators: String = client //consensus_registry
+        //     // .getValidators(ConsensusRegistry::ValidatorStatus::Active.into())
+        //     // .getCurrentEpochInfo()
+        //     .request(
+        //         "eth_call",
+        //         // rpc_call,
+        //         rpc_params!({
+        //             "to": CONSENSUS_REGISTRY_ADDRESS.to_string(),
+        //             "data": "0x374ed18c"
+        //         }, "latest"),
+        //     )
+        //     .await
+        //     .expect("failed active validators read");
+
+        // tracing::debug!(target: "bundle", "active validators??\n{:?}", active_validators);
+        // let active_validators = active_validators;
 
         panic!("made it here");
-        assert_eq!(active_validators._0.abi_encode(), initial_validators.abi_encode());
+        // assert_eq!(active_validators._0.abi_encode(), initial_validators.abi_encode());
 
         // assert committees for first 3 epochs comprise all genesis validators
         for i in 0..3 {

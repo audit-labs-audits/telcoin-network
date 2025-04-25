@@ -117,8 +117,9 @@ pub fn spawn_local_testnet(chain: Arc<RethChainSpec>, contract_address: &str) ->
     for v in validators.into_iter() {
         let dir = temp_path.join(v);
         let datadir = dir.to_str().expect("validator temp dir");
+        let address = Address::random().to_string();
         // init genesis ceremony to create committee / worker_cache files
-        create_validator_info(datadir, "0")?;
+        create_validator_info(datadir, &address)?;
 
         // copy to shared genesis dir
         let copy = dir.join("genesis/validators");
@@ -201,8 +202,10 @@ pub fn spawn_local_testnet(chain: Arc<RethChainSpec>, contract_address: &str) ->
             contract_address,
         ]);
 
-        // update genesis with seeded accounts
-        command.reth.chain = chain.clone();
+        // // update genesis with seeded accounts
+        // command.reth.chain = chain.clone();
+
+        tracing::debug!(target: "bundle", "final chain for test:\n\n{:#?}\n\n", command.reth.chain);
 
         std::thread::spawn(|| {
             let err = command.execute(
