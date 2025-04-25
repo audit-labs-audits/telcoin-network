@@ -1432,12 +1432,14 @@ pub struct CreateRequest {
     caller_address: Address,
     /// The transaction data.
     data: Bytes,
+    /// The account nonce.
+    nonce: u64,
 }
 
 impl CreateRequest {
     /// Create a new instance of [Self].
-    pub fn new(caller_address: Address, data: Bytes) -> Self {
-        Self { caller_address, data }
+    pub fn new(caller_address: Address, data: Bytes, nonce: u64) -> Self {
+        Self { caller_address, data, nonce }
     }
 }
 
@@ -1469,6 +1471,13 @@ impl PregenesisRequest {
         match self {
             PregenesisRequest::Call(tx) => tx.data.clone(),
             PregenesisRequest::Create(tx) => tx.data.clone(),
+        }
+    }
+
+    fn nonce(&self) -> Option<u64> {
+        match self {
+            PregenesisRequest::Call(_) => None,
+            PregenesisRequest::Create(tx) => Some(tx.nonce),
         }
     }
 }

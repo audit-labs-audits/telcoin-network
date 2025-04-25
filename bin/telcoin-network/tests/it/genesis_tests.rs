@@ -8,7 +8,7 @@ mod tests {
     };
     use jsonrpsee::{core::client::ClientT, http_client::HttpClientBuilder, rpc_params};
     use rand::{rngs::StdRng, SeedableRng};
-    use std::{sync::Arc, time::Duration};
+    use std::{collections::BTreeMap, sync::Arc, time::Duration};
     use tempfile::TempDir;
     use tn_config::fetch_file_content_relative_to_manifest;
     use tn_reth::{
@@ -33,7 +33,7 @@ mod tests {
         );
 
         // create proxy transaction
-        let proxy_address = Address::random();
+        // let proxy_address = Address::random();
         let registry_proxy_json = fetch_file_content_relative_to_manifest(
             "../../tn-contracts/artifacts/ERC1967Proxy.json",
         );
@@ -73,8 +73,9 @@ mod tests {
             .collect();
 
         let epoch_duration = 60 * 60 * 24; // 24-hours
+        let stake_amount = U256::from(1_000_000e18);
         let initial_stake_config = ConsensusRegistry::StakeConfig {
-            stakeAmount: U256::from(1_000_000e18),
+            stakeAmount: stake_amount,
             minWithdrawAmount: U256::from(1_000e18),
             epochIssuance: U256::from(20_000_000e18)
                 .checked_div(U256::from(28))
@@ -102,43 +103,91 @@ mod tests {
         // deploy bytecode to execute constructor/init calls
         let registry_proxy_address = owner.create(0);
         tracing::debug!(target: "bundle", "expected proxy address: {:?}", registry_proxy_address);
-        let tmp_genesis = adiri_genesis().extend_accounts([(
-            CONSENSUS_REGISTRY_ADDRESS,
-            GenesisAccount::default().with_code(Some(registry_impl_bytecode.clone().into())),
-        )]);
 
-        let chain: Arc<RethChainSpec> = Arc::new(tmp_genesis.into());
+        let mut tx_factory = TransactionFactory::default();
+        let factory_address = tx_factory.address();
+        let tmp_genesis = adiri_genesis().extend_accounts([
+            (
+                CONSENSUS_REGISTRY_ADDRESS,
+                GenesisAccount::default().with_code(Some(registry_impl_bytecode.clone().into())),
+            ),
+            // (factory_address, GenesisAccount::default().with_balance(U256::MAX)),
+        ]);
+
+        let tmp_chain: Arc<RethChainSpec> = Arc::new(tmp_genesis.into());
         let reth_env =
-            RethEnv::new_for_test_with_chain(chain.clone(), tmp_dir.path(), &task_manager)?;
+            RethEnv::new_for_test_with_chain(tmp_chain.clone(), tmp_dir.path(), &task_manager)?;
 
         // now init the registry impl
-        let init_calldata = ConsensusRegistry::initializeCall {
+        let init_data = ConsensusRegistry::initializeCall {
             rwTEL_: Address::random(),
             genesisConfig_: initial_stake_config,
             initialValidators_: initial_validators.clone(),
             owner_: Address::random(),
-        }
-        .abi_encode()
-        .into();
+        };
+
+        tracing::debug!(target: "bundle", "init data:\n{:#?}", init_data);
+        let init_calldata: Bytes = init_data.abi_encode().into();
+
+        tracing::debug!(target: "bundle", "init calldata:\n{:#x}\n", init_calldata);
 
         let constructor_params = (CONSENSUS_REGISTRY_ADDRESS, Bytes::default()).abi_encode_params();
         let registry_create_data =
             [registry_proxy_bytecode.as_slice(), &constructor_params[..]].concat();
+        assert_eq!(registry_create_data, create_proxy);
+
+        // // construct proxy deployment and initialize txs
+        // let gas_price = 7;
+        // let gas_limit = 3_000_000;
+        // // let pre_genesis_chain: Arc<RethChainSpec> = Arc::new(tmp_genesis.into());
+        // let registry_tx_raw = tx_factory.create_eip1559_encoded(
+        //     tmp_chain.clone(),
+        //     Some(gas_limit),
+        //     gas_price,
+        //     None,
+        //     U256::ZERO,
+        //     registry_create_data.clone().into(),
+        // );
+        // // registry deployment will be `factory_address`'s first tx
+        // let registry_proxy_address = factory_address.create(0);
+        // let initialize_tx_raw = tx_factory.create_eip1559_encoded(
+        //     tmp_chain.clone(),
+        //     Some(gas_limit),
+        //     gas_price,
+        //     Some(registry_proxy_address),
+        //     U256::ZERO,
+        //     init_calldata.clone().into(),
+        // );
+        // let raw_txs = vec![registry_tx_raw.clone(), initialize_tx_raw];
+        // let tmp_dir = TempDir::new().unwrap();
+        // // fetch storage changes from pre-genesis for actual genesis
+        // let execution_outcome =
+        //     get_contract_state_for_genesis(tmp_chain.clone(), raw_txs, tmp_dir.path())
+        //         .await
+        //         .expect("unable to fetch contract state");
+        // let bundle = execution_outcome.bundle;
 
         let txs = vec![
             // constructor
-            CreateRequest::new(owner, registry_create_data.into()).into(),
+            CreateRequest::new(owner, create_proxy.into(), 0).into(),
             // init
-            CallRequest::new(registry_proxy_address, Address::random(), init_calldata).into(),
+            CallRequest::new(registry_proxy_address, Address::random(), init_calldata.into())
+                .into(),
         ];
 
         let bundle = reth_env
-            .execute_call_tx_for_test_bypass_evm_checks(&chain.sealed_genesis_header(), txs)?;
-        tracing::debug!(target: "bundle", "bundle state:\n{:?}\n{:?}", bundle.state, bundle.reverts);
+            .execute_call_tx_for_test_bypass_evm_checks(&tmp_chain.sealed_genesis_header(), txs)?;
 
-        let storage = bundle.state.get(&registry_proxy_address).map(|account| {
+        let proxy_account = bundle.account(&registry_proxy_address).map(|account| account);
+        tracing::debug!(target: "bundle", "proxy_account:\n\n\n{:#?}\n\n", proxy_account);
+
+        // tracing::debug!(target: "bundle", "all done bundle state:\n\n\n{:?}\n\n\n{:?}\n\n\n", bundle.state, bundle.reverts);
+
+        let proxy_storage = bundle.state.get(&registry_proxy_address).map(|account| {
             account.storage.iter().map(|(k, v)| ((*k).into(), v.present_value.into())).collect()
         });
+
+        // assert!(proxy_storage.clone().map(|tree: BTreeMap<_, _>| !tree.is_empty()).unwrap());
 
         // perform canonical adiri chain genesis with fetched storage
         let genesis_accounts = [
@@ -149,8 +198,13 @@ mod tests {
             (
                 registry_proxy_address,
                 GenesisAccount::default()
-                    .with_code(Some(registry_proxy_bytecode.into()))
-                    .with_storage(storage),
+                    .with_code(Some(registry_proxy_bytecode.clone().into()))
+                    .with_balance(
+                        U256::from(4)
+                            .checked_mul(stake_amount)
+                            .expect("U256 checked mul for total stake"),
+                    )
+                    .with_storage(proxy_storage),
             ),
         ];
         let real_genesis = adiri_genesis();
@@ -176,7 +230,13 @@ mod tests {
         // trim `0x` prefix
         assert_eq!(returned_impl_code[2..], hex::encode(registry_impl_bytecode));
 
-        let tx_factory = TransactionFactory::default();
+        let returned_proxy_code: String = client
+            .request("eth_getCode", rpc_params!(registry_proxy_address))
+            .await
+            .expect("Failed to fetch registry impl bytecode");
+        tracing::debug!(target: "bundle", "\n\n\n\n\n\nPROXY CODE SUCCESS!!\n\n\n\n\n");
+        assert_eq!(returned_proxy_code[2..], hex::encode(registry_proxy_bytecode));
+
         let signer = tx_factory.get_default_signer().expect("failed to fetch signer");
         let wallet = EthereumWallet::from(signer);
         let provider = ProviderBuilder::new()

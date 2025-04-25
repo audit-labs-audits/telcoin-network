@@ -101,6 +101,7 @@ sol!(
         }
 
         /// Incentives applied to validators.
+        #[derive(Debug)]
         struct IncentiveInfo {
             /// The governance-issued consensus NFT token id.
             uint24 tokenId;
@@ -110,6 +111,7 @@ sol!(
         }
 
         /// The configuration for consensus.
+        #[derive(Debug)]
         struct StakeConfig {
             /// The fixed stake amount.
             uint256 stakeAmount;
@@ -122,6 +124,7 @@ sol!(
         }
 
         /// Initialize the contract.
+        #[derive(Debug)]
         function initialize(
             /// The rwTEL contract address.
             address rwTEL_,
