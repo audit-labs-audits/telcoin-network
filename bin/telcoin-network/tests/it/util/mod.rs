@@ -102,7 +102,10 @@ pub async fn config_local_testnet(temp_path: PathBuf) -> eyre::Result<()> {
 }
 
 /// Create validator info, genesis ceremony, and spawn node command with faucet active.
-pub fn spawn_local_testnet(chain: Arc<RethChainSpec>, contract_address: &str) -> eyre::Result<()> {
+pub fn spawn_local_testnet(
+    _chain: Arc<RethChainSpec>,
+    #[cfg(feature = "faucet")] faucet_contract_address: &str,
+) -> eyre::Result<()> {
     // create temp path for test
     let temp_path = tempfile::TempDir::new().expect("tempdir is okay").into_path();
 
@@ -177,11 +180,11 @@ pub fn spawn_local_testnet(chain: Arc<RethChainSpec>, contract_address: &str) ->
             "--instance",
             &instance,
             "--google-kms",
-            "--contract-address",
-            contract_address,
+            "--faucet-contract",
+            faucet_contract_address,
         ]);
         #[cfg(not(feature = "faucet"))]
-        let mut command = NodeCommand::parse_from([
+        let command = NodeCommand::parse_from([
             "tn",
             "--public-key",
             "0223382261d641424b8d8b63497a811c56f85ee89574f9853474c3e9ab0d690d99",
@@ -198,14 +201,7 @@ pub fn spawn_local_testnet(chain: Arc<RethChainSpec>, contract_address: &str) ->
             genesis_json_path.to_str().expect("genesis_json_path casts to &str"),
             "--instance",
             &instance,
-            "--contract-address",
-            contract_address,
         ]);
-
-        // // update genesis with seeded accounts
-        // command.reth.chain = chain.clone();
-
-        tracing::debug!(target: "bundle", "final chain for test:\n\n{:#?}\n\n", command.reth.chain);
 
         std::thread::spawn(|| {
             let err = command.execute(

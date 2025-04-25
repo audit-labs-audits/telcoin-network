@@ -12,10 +12,9 @@ use std::{
     sync::Arc,
 };
 use tn_types::{
-    adiri_genesis, hex, keccak256, verify_proof_of_possession_bls, Address, BlsPublicKey,
-    BlsSignature, Committee, CommitteeBuilder, Epoch, FromHex as _, Genesis, GenesisAccount,
-    Intent, IntentMessage, Multiaddr, NetworkPublicKey, PrimaryInfo, ProtocolSignature, Signer,
-    WorkerCache, WorkerIndex, B256,
+    adiri_genesis, keccak256, verify_proof_of_possession_bls, Address, BlsPublicKey, BlsSignature,
+    Committee, CommitteeBuilder, Epoch, Genesis, Intent, IntentMessage, Multiaddr,
+    NetworkPublicKey, PrimaryInfo, ProtocolSignature, Signer, WorkerCache, WorkerIndex,
 };
 use tracing::{info, warn};
 /// The validators directory used to create genesis.
@@ -330,8 +329,8 @@ impl PartialEq for ValidatorSignatureInfo {
 //     /// Conditionally overwrites flagged placeholder values with the intended pubkey within
 //     /// `validator_infos` This only occurs if `val` is found to match a collision-resistant hash
 //     /// within `flags`
-//     fn overwrite_if_flag(val: &mut B256, flags: &[PubkeyFlags], validator_infos: &[ValidatorInfo]) {
-//         for (i, flag) in flags.iter().enumerate() {
+//     fn overwrite_if_flag(val: &mut B256, flags: &[PubkeyFlags], validator_infos:
+// &[ValidatorInfo]) {         for (i, flag) in flags.iter().enumerate() {
 //             if *val == flag.bls_a {
 //                 // overwrite using first 32 bytes of bls pubkey
 //                 let bls_first_word = &validator_infos[i].bls_public_key.to_bytes()[0..32];
