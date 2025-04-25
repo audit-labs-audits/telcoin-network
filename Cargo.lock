@@ -11125,6 +11125,7 @@ name = "telcoin-network"
 version = "0.1.0"
 dependencies = [
  "alloy",
+ "cfg-if",
  "clap",
  "consensus-metrics",
  "const-hex",

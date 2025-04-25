@@ -164,7 +164,7 @@ pub fn spawn_local_testnet(
         let instance = v.chars().last().expect("validator instance").to_string();
 
         #[cfg(feature = "faucet")]
-        let command = NodeCommand::<tn_faucet::FaucetArgs>::parse_from([
+        let mut command = NodeCommand::<tn_faucet::FaucetArgs>::parse_from([
             "tn",
             "--dev",
             "--datadir",
@@ -202,6 +202,13 @@ pub fn spawn_local_testnet(
             "--instance",
             &instance,
         ]);
+
+        // update faucet genesis
+        cfg_if::cfg_if! {
+            if #[cfg(feature = "faucet")] {
+                command.reth.chain = _chain.clone();
+            }
+        }
 
         std::thread::spawn(|| {
             let err = command.execute(

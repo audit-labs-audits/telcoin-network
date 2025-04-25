@@ -525,7 +525,6 @@ async fn test_faucet_transfers_tel_and_xyz_with_google_kms_e2e() -> eyre::Result
         .collect();
 
     while let Some(res) = check_account_balances.next().await {
-        // results.push(res?);
         assert!(res.is_ok());
     }
 
