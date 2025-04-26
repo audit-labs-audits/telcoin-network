@@ -14,7 +14,7 @@ pub const CONSENSUS_REGISTRY_ADDRESS: Address =
     address!("07E17e17E17e17E17e17E17E17E17e17e17E17e1");
 
 /// The address RWTEL.
-pub const RWTEL_ADDRESS: Address = address!("65a38cd7f35b57d7224709bdad5f6717cb5fe58d");
+pub const RWTEL_ADDRESS: Address = address!("28A51E729C8e420123332dCc7c76f865805214DE");
 
 // ConsensusRegistry interface. See tn-contracts submodule.
 sol!(

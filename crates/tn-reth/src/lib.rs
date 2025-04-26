@@ -82,10 +82,7 @@ use reth_revm::{
 };
 use reth_transaction_pool::{blobstore::DiskFileBlobStore, EthTransactionPool};
 use std::{
-    net::SocketAddr,
-    ops::RangeInclusive,
-    path::{Path, PathBuf},
-    sync::Arc,
+    collections::BTreeMap, net::SocketAddr, ops::RangeInclusive, path::{Path, PathBuf}, sync::Arc
 };
 use system_calls::{
     ConsensusRegistry::{self, ValidatorStatus},
@@ -1262,13 +1259,13 @@ impl RethEnv {
     }
 
     /// Convenience method for compiling storage and bytecode to include genesis.
-    pub fn create_consensus_registry_accounts_for_genesis(
+    pub fn create_consensus_registry_genesis_account(
         validators: Vec<ValidatorInfo>,
         genesis: Genesis,
         initial_stake_config: ConsensusRegistry::StakeConfig,
         owner_address: Address,
         rwtel_address: Address,
-    ) -> eyre::Result<Genesis> {
+    ) -> eyre::Result<(Address, GenesisAccount)> {
         let validators: Vec<_> = validators
             .iter()
             .map(|v| ConsensusRegistry::ValidatorInfo {
@@ -1340,14 +1337,15 @@ impl RethEnv {
             account.storage.iter().map(|(k, v)| ((*k).into(), v.present_value.into())).collect()
         });
 
-        let genesis = genesis.extend_accounts([(
+        let consensus_registry =(
             CONSENSUS_REGISTRY_ADDRESS,
             GenesisAccount::default()
+                .with_balance(total_stake_balance)
                 .with_code(Some(registry_bytecode.into()))
                 .with_storage(storage),
-        )]);
+        );
 
-        Ok(genesis)
+        Ok(consensus_registry)
     }
 
     /// Parse bytecode from a `&str`.

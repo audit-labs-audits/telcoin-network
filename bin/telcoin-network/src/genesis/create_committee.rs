@@ -56,9 +56,14 @@ pub struct CreateCommitteeArgs {
     )]
     pub chain: Arc<RethChainSpec>,
 
-    /// The path to the consensus registry storage yaml file.
-    #[arg(long, value_name = "CONSENSUS_REGISTRY_PATH", verbatim_doc_comment)]
-    pub consensus_registry: Option<PathBuf>,
+    /// The precompile config yaml dir.
+    #[arg(
+        long, 
+        value_name = "PRECOMPILES_CONFIG_PATH", 
+        default_value = "/../../tn-contracts/deployments/genesis", //todo will does manifest dir be avilable
+        verbatim_doc_comment
+    )]
+    pub precompiles_config_path: Option<PathBuf>,
 
     /// The owner's address for initializing the `ConsensusRegistry` in genesis.
     ///
@@ -158,13 +163,24 @@ impl CreateCommitteeArgs {
             epochDuration: self.epoch_duration,
         };
 
-        let updated_genesis = RethEnv::create_consensus_registry_accounts_for_genesis(
+        let consensus_registry = RethEnv::create_consensus_registry_genesis_account(
             validators,
-            genesis,
+            genesis.clone(),
             initial_stake_config,
             self.consensus_registry_owner,
             self.rwtel_address,
         )?;
+
+        let its_config_dir = self.precompiles_config_path.clone()
+            .expect("missing precompiles dir")
+            .join("its-config.yaml");
+        let mut precompiles = NetworkGenesis::fetch_precompile_genesis_accounts(its_config_dir)
+            .expect("precompile fetch error");
+        precompiles.push(consensus_registry);
+
+        let updated_genesis = genesis.extend_accounts(
+            precompiles
+        );
 
         // updated genesis with registry information
         network_genesis.update_chain(updated_genesis.into());

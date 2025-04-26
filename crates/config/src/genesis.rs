@@ -8,13 +8,11 @@ use std::{
     ffi::OsStr,
     fmt::{Display, Formatter},
     fs,
-    path::Path,
+    path::{Path, PathBuf},
     sync::Arc,
 };
 use tn_types::{
-    adiri_genesis, keccak256, verify_proof_of_possession_bls, Address, BlsPublicKey, BlsSignature,
-    Committee, CommitteeBuilder, Epoch, Genesis, Intent, IntentMessage, Multiaddr,
-    NetworkPublicKey, PrimaryInfo, ProtocolSignature, Signer, WorkerCache, WorkerIndex,
+    adiri_genesis, keccak256, verify_proof_of_possession_bls, Address, BlsPublicKey, BlsSignature, Committee, CommitteeBuilder, Epoch, Genesis, GenesisAccount, Intent, IntentMessage, Multiaddr, NetworkPublicKey, PrimaryInfo, ProtocolSignature, Signer, WorkerCache, WorkerIndex
 };
 use tracing::{info, warn};
 /// The validators directory used to create genesis.
@@ -188,6 +186,28 @@ impl NetworkGenesis {
     /// Return a reference to the validators.
     pub fn validators(&self) -> &BTreeMap<BlsPublicKey, ValidatorInfo> {
         &self.validators
+    }
+
+    /// Returns configurations for precompiles as genesis accounts
+    /// Precompiles configs yamls are generated using foundry in tn-Contracts
+    pub fn fetch_precompile_genesis_accounts(precompile_yaml: PathBuf) -> eyre::Result<Vec<(Address, GenesisAccount)>> {
+        let yaml_content = fetch_file_content_relative_to_manifest(
+            precompile_yaml
+        );
+
+        let config: Vec<(Address, GenesisAccount)> = serde_yaml::from_str(&yaml_content).expect("yaml parsing failure");
+        let mut accounts = Vec::new();
+        for (address, precompile_config) in config {
+            let account = GenesisAccount::default()
+                .with_nonce(precompile_config.nonce)
+                .with_balance(precompile_config.balance)
+                .with_code(precompile_config.code)
+                .with_storage(precompile_config.storage);
+
+            accounts.push((address, account));
+        };
+
+        Ok(accounts)
     }
 }
 
