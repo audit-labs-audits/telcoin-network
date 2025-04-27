@@ -12,7 +12,8 @@ START=false
 # must be prefixed with 0x and be a valid account.
 DEV_FUNDS=""
 
-#
+export TN_BLS_PASSPHRASE="local"
+
 while [ "$1" != "" ]; do
     case $1 in
         --start )

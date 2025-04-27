@@ -221,7 +221,9 @@ where
 
         let node_storage = db.clone();
         tracing::info!(target: "telcoin::cli", "node storage open");
-        let key_config = KeyConfig::read_config(tn_datadir)?;
+        // XXXX
+        let passphrase = std::env::var("TN_BLS_PASSPHRASE").ok();
+        let key_config = KeyConfig::read_config(tn_datadir, passphrase)?;
         let network_config = NetworkConfig::read_config(tn_datadir)?;
         let consensus_config = ConsensusConfig::new(config, tn_datadir, node_storage, key_config, network_config)?;
 

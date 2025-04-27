@@ -1,8 +1,12 @@
 //! Cryptographic keys used by the node.
 
-use crate::{TelcoinDirs, BLS_KEYFILE, PRIMARY_NETWORK_SEED_FILE, WORKER_NETWORK_SEED_FILE};
+use crate::{
+    TelcoinDirs, BLS_KEYFILE, BLS_WRAPPED_KEYFILE, PRIMARY_NETWORK_SEED_FILE,
+    WORKER_NETWORK_SEED_FILE,
+};
+use aes_gcm_siv::{aead::Aead as _, Aes256GcmSiv, Key, KeyInit, Nonce};
 use blake2::Digest;
-use rand::{rngs::StdRng, CryptoRng, RngCore, SeedableRng};
+use rand::{rngs::StdRng, SeedableRng};
 use rand_chacha::ChaCha20Rng;
 use reth_chainspec::ChainSpec;
 use std::sync::Arc;
@@ -40,13 +44,20 @@ pub struct KeyConfig {
 
 impl KeyConfig {
     /// Read a key config file that contains the primary BLS key in Base 58 format.
-    pub fn read_config<TND: TelcoinDirs>(tn_datadir: &TND) -> eyre::Result<Self> {
+    pub fn read_config<TND: TelcoinDirs>(
+        tn_datadir: &TND,
+        passphrase: Option<String>,
+    ) -> eyre::Result<Self> {
         // TODO: find a better way to manage keys
         //
         // load keys to start the primary
         let validator_keypath = tn_datadir.validator_keys_path();
         tracing::info!(target: "telcoin::consensus_config", "loading validator keys at {:?}", validator_keypath);
-        let contents = std::fs::read_to_string(tn_datadir.validator_keys_path().join(BLS_KEYFILE))?;
+        let contents = if passphrase.is_some() {
+            std::fs::read_to_string(tn_datadir.validator_keys_path().join(BLS_WRAPPED_KEYFILE))?
+        } else {
+            std::fs::read_to_string(tn_datadir.validator_keys_path().join(BLS_KEYFILE))?
+        };
         let primary_seed = std::fs::read_to_string(
             tn_datadir.validator_keys_path().join(PRIMARY_NETWORK_SEED_FILE),
         )
@@ -56,7 +67,21 @@ impl KeyConfig {
         )
         .unwrap_or_else(|_| "worker network keypair".to_string());
         let bytes = bs58::decode(contents.as_str().trim()).into_vec()?;
-        let primary_keypair = BlsKeypair::from_bytes(&bytes)?;
+        let primary_keypair = if let Some(passphrase) = passphrase {
+            let mut hasher = DefaultHashFunction::new();
+            hasher.update(passphrase.into_bytes());
+            let passphrase_bytes: [u8; 32] = hasher.finalize().into();
+            let key = Key::<Aes256GcmSiv>::from_slice(&passphrase_bytes);
+            let cipher = Aes256GcmSiv::new(key);
+            let nonce = Nonce::from_slice(b"telcoin net "); // 96-bits
+                                                            //let ciphertext = cipher.encrypt(nonce, b"plaintext message".as_ref())?;
+            let plaintext = cipher
+                .decrypt(nonce, bytes.as_ref())
+                .map_err(|e| eyre::eyre!("Could not decrypt BLS key: {e}"))?;
+            BlsKeypair::from_bytes(&plaintext)?
+        } else {
+            BlsKeypair::from_bytes(&bytes)?
+        };
         let primary_network_keypair =
             Self::generate_network_keypair(&primary_keypair, &primary_seed);
         let worker_network_keypair = Self::generate_network_keypair(&primary_keypair, &worker_seed);
@@ -71,7 +96,10 @@ impl KeyConfig {
 
     /// Generate a new random primary BLS key and save to the config file.
     /// Note, this is not very secure in that it is writing the private key to a file...
-    pub fn generate_and_save<TND: TelcoinDirs>(tn_datadir: &TND) -> eyre::Result<Self> {
+    pub fn generate_and_save<TND: TelcoinDirs>(
+        tn_datadir: &TND,
+        passphrase: Option<String>,
+    ) -> eyre::Result<Self> {
         let rng = ChaCha20Rng::from_entropy();
         // note: StdRng uses ChaCha12
         let primary_keypair = BlsKeypair::generate(&mut StdRng::from_rng(rng)?);
@@ -80,8 +108,22 @@ impl KeyConfig {
         let primary_network_keypair =
             Self::generate_network_keypair(&primary_keypair, primary_seed);
         let worker_network_keypair = Self::generate_network_keypair(&primary_keypair, worker_seed);
-        let contents = bs58::encode(primary_keypair.to_bytes()).into_string();
-        std::fs::write(tn_datadir.validator_keys_path().join(BLS_KEYFILE), contents)?;
+        if let Some(passphrase) = passphrase {
+            let mut hasher = DefaultHashFunction::new();
+            hasher.update(passphrase.into_bytes());
+            let passphrase_bytes: [u8; 32] = hasher.finalize().into();
+            let key = Key::<Aes256GcmSiv>::from_slice(&passphrase_bytes);
+            let cipher = Aes256GcmSiv::new(key);
+            let nonce = Nonce::from_slice(b"telcoin net "); // 96-bits
+            let ciphertext = cipher
+                .encrypt(nonce, &primary_keypair.to_bytes()[..])
+                .map_err(|e| eyre::eyre!("Could not encrypt BLS key: {e}"))?;
+            let contents = bs58::encode(&ciphertext).into_string();
+            std::fs::write(tn_datadir.validator_keys_path().join(BLS_WRAPPED_KEYFILE), contents)?;
+        } else {
+            let contents = bs58::encode(primary_keypair.to_bytes()).into_string();
+            std::fs::write(tn_datadir.validator_keys_path().join(BLS_KEYFILE), contents)?;
+        }
         std::fs::write(
             tn_datadir.validator_keys_path().join(PRIMARY_NETWORK_SEED_FILE),
             primary_seed,
@@ -99,6 +141,7 @@ impl KeyConfig {
         })
     }
 
+    /*
     /// Generate random keys with provided RNG.
     ///
     /// Useful for testing.
@@ -115,7 +158,7 @@ impl KeyConfig {
                 worker_network_keypair,
             }),
         }
-    }
+    }*/
 
     /// Create a config with a provided key- this is ONLY for testing.
     pub fn new_with_testing_key(primary_keypair: BlsKeypair) -> Self {
