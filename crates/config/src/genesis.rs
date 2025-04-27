@@ -195,7 +195,7 @@ impl NetworkGenesis {
             precompile_yaml
         );
 
-        let config: Vec<(Address, GenesisAccount)> = serde_yaml::from_str(&yaml_content).expect("yaml parsing failure");
+        let config: std::collections::HashMap<Address, GenesisAccount> = serde_yaml::from_str(&yaml_content).expect("yaml parsing failure");
         let mut accounts = Vec::new();
         for (address, precompile_config) in config {
             let account = GenesisAccount::default()
