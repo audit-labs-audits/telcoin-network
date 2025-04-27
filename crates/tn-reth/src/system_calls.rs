@@ -11,6 +11,8 @@ pub(super) const SYSTEM_ADDRESS: Address = address!("fffffffffffffffffffffffffff
 
 /// The address for consensus registry impl.
 pub const CONSENSUS_REGISTRY_ADDRESS: Address =
+/// The address for consensus registry impl.
+pub const CONSENSUS_REGISTRY_ADDRESS: Address =
     address!("07E17e17E17e17E17e17E17E17E17e17e17E17e1");
 
 /// The address RWTEL.

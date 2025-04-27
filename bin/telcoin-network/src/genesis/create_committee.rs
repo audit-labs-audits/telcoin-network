@@ -44,13 +44,12 @@ pub struct CreateCommitteeArgs {
     ///
     /// Possible values are either a built-in chain or the path to a chain specification file.
     ///
-    /// Defaults to the custom
+    /// Defaults to the adiri testnet.
     #[arg(
         long,
         value_name = "CHAIN_OR_PATH",
         verbatim_doc_comment,
         default_value = "adiri",
-        // default_value_if("dev", "true", "dev"),
         value_parser = clap_genesis_parser,
         required = false,
     )]

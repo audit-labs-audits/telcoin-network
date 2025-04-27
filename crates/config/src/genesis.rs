@@ -8,11 +8,13 @@ use std::{
     ffi::OsStr,
     fmt::{Display, Formatter},
     fs,
-    path::{Path, PathBuf},
+    path::Path,
     sync::Arc,
 };
 use tn_types::{
-    adiri_genesis, keccak256, verify_proof_of_possession_bls, Address, BlsPublicKey, BlsSignature, Committee, CommitteeBuilder, Epoch, Genesis, GenesisAccount, Intent, IntentMessage, Multiaddr, NetworkPublicKey, PrimaryInfo, ProtocolSignature, Signer, WorkerCache, WorkerIndex
+    adiri_genesis, keccak256, verify_proof_of_possession_bls, Address, BlsPublicKey, BlsSignature,
+    Committee, CommitteeBuilder, Epoch, Genesis, Intent, IntentMessage, Multiaddr,
+    NetworkPublicKey, PrimaryInfo, ProtocolSignature, Signer, WorkerCache, WorkerIndex,
 };
 use tracing::{info, warn};
 /// The validators directory used to create genesis.
