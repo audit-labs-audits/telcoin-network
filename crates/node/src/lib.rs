@@ -369,11 +369,7 @@ where
         if std::fs::exists(tn_datadir.validator_keys_path().join(tn_config::BLS_WRAPPED_KEYFILE))
             .unwrap_or(false)
         {
-            if let Some(passphrase) = passphrase {
-                Some(passphrase)
-            } else {
-                rpassword::prompt_password("Enter the BLS key passphrase to decrypt: ").ok()
-            }
+            passphrase
         } else {
             None
         };

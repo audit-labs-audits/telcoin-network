@@ -10,6 +10,17 @@ use std::{ffi::OsString, fmt, sync::Arc};
 use tn_node::engine::TnBuilder;
 use tn_reth::{dirs::DataDirChainPath, FileWorkerGuard, LogArgs, RethChainSpec};
 
+/// How do we want to get the BLS key passphrase?
+#[derive(Debug, Copy, Clone, clap::ValueEnum)]
+pub enum PassSource {
+    /// Get the passphrase from then environment variable TN_BLS_PASSPHRASE.
+    Env,
+    /// Read the passphrase from stdin.  Will read the first line of stdin or until EOF.
+    Stdin,
+    /// Ask the user on startup, only works if running in foreground on a TTY.
+    Ask,
+}
+
 /// The main TN cli interface.
 ///
 /// This is the entrypoint to the executable.
@@ -54,6 +65,16 @@ pub struct Cli<Ext: clap::Args + fmt::Debug = NoArgs> {
     /// The log configuration.
     #[clap(flatten)]
     pub logs: LogArgs,
+
+    /// How to get the BLS key passphrase.
+    #[arg(
+        long,
+        value_name = "TN_PASSPHRASE_SOURCE",
+        verbatim_doc_comment,
+        default_value = "env",
+        global = true
+    )]
+    pub bls_passphrase_source: PassSource,
 }
 
 impl Cli {

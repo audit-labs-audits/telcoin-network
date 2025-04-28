@@ -84,23 +84,6 @@ pub struct ValidatorArgs {
     pub address: Address,
 }
 
-fn read_passphrase() -> Option<String> {
-    while let Ok(pw) = rpassword::prompt_password("Enter a passphrase to ecrypt BLS key: ") {
-        if let Ok(pw2) = rpassword::prompt_password("Re-enter BLS key passphrase to confirm: ") {
-            if pw == pw2 {
-                return if pw.is_empty() {
-                    println!("No passphrase set for BLS key, this is not recommended.");
-                    None
-                } else {
-                    Some(pw)
-                };
-            }
-        }
-        println!("Passphrases do not match, retry.");
-    }
-    None
-}
-
 impl ValidatorArgs {
     /// Create all necessary information needed for validator and save to file.
     pub fn execute<TND: TelcoinDirs>(
@@ -111,8 +94,6 @@ impl ValidatorArgs {
     ) -> eyre::Result<()> {
         info!(target: "tn::generate_keys", "generating keys for full validator node");
 
-        let passphrase =
-            if let Some(passphrase) = passphrase { Some(passphrase) } else { read_passphrase() };
         let key_config = KeyConfig::generate_and_save(tn_datadir, passphrase)?;
         let proof = key_config.generate_proof_of_possession_bls(&self.chain)?;
         config.update_protocol_key(key_config.primary_public_key())?;

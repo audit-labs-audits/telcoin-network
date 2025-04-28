@@ -11611,7 +11611,6 @@ dependencies = [
  "prometheus",
  "rand",
  "reqwest 0.12.12",
- "rpassword",
  "serde-reflection",
  "serde_yaml",
  "state-sync",
