@@ -1277,11 +1277,11 @@ impl RethEnv {
     /// Convenience method for compiling storage and bytecode to include genesis.
     pub fn create_consensus_registry_genesis_account(
         validators: Vec<ValidatorInfo>,
-        genesis: &Genesis,
+        genesis: Genesis,
         initial_stake_config: ConsensusRegistry::StakeConfig,
         owner_address: Address,
         rwtel_address: Address,
-    ) -> eyre::Result<(Address, GenesisAccount)> {
+    ) -> eyre::Result<Genesis> {
         let validators: Vec<_> = validators
             .iter()
             .map(|v| ConsensusRegistry::ValidatorInfo {
@@ -1349,15 +1349,15 @@ impl RethEnv {
             account.storage.iter().map(|(k, v)| ((*k).into(), v.present_value.into())).collect()
         });
 
-        let consensus_registry = (
+        let genesis = genesis.extend_accounts([(
             CONSENSUS_REGISTRY_ADDRESS,
             GenesisAccount::default()
                 .with_balance(total_stake_balance)
                 .with_code(Some(registry_bytecode.into()))
                 .with_storage(storage),
-        );
+        )]);
 
-        Ok(consensus_registry)
+        Ok(genesis)
     }
 
     /// Parse bytecode from a `&str`.
@@ -1634,15 +1634,13 @@ mod tests {
         };
 
         let owner = Address::random();
-        let tmp_genesis = adiri_genesis();
-        let registry_account = RethEnv::create_consensus_registry_genesis_account(
+        let genesis = RethEnv::create_consensus_registry_genesis_account(
             validators.clone(),
-            &tmp_genesis,
+            adiri_genesis(),
             initial_stake_config,
             owner,
             Address::random(), // rwtel
         )?;
-        let genesis = tmp_genesis.clone().extend_accounts([registry_account]);
 
         // create new env with initialized consensus registry for tests
         let tmp_dir = TempDir::new().unwrap();
