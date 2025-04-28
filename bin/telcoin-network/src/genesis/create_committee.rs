@@ -154,20 +154,37 @@ impl CreateCommitteeArgs {
                 _ => panic!("RWTEL address not found"),
             };
 
-        // create tokio runtime to execute consensus registry data
-        let runtime = tokio::runtime::Builder::new_multi_thread()
-            .thread_name("consensus-registry")
-            .build()?;
-
-        let genesis_with_consensus_registry = runtime.block_on(async move {
-            RethEnv::create_consensus_registry_genesis_account(
-                validators,
-                genesis,
-                initial_stake_config,
-                self.consensus_registry_owner,
-                rwtel_address,
-            )
-        })?;
+        // create tokio runtime to execute consensus registry data if the runtime doesn't exist
+        // this is a workaround for executing committees pre-genesis during tests and mainnet
+        // - tests have access to a runtime
+        // - creating the actual committee does not
+        let runtime_result =
+            tokio::runtime::Builder::new_multi_thread().thread_name("consensus-registry").build();
+        let genesis_with_consensus_registry = match runtime_result {
+            // runtime already exists
+            Ok(runtime) => runtime.block_on(async move {
+                RethEnv::create_consensus_registry_genesis_account(
+                    validators,
+                    genesis,
+                    initial_stake_config,
+                    self.consensus_registry_owner,
+                    rwtel_address,
+                )
+            })?,
+            Err(e) => {
+                tracing::warn!(
+                    ?e,
+                    "error spawning runtime for pregenesis execution. ignore for tests"
+                );
+                RethEnv::create_consensus_registry_genesis_account(
+                    validators,
+                    genesis,
+                    initial_stake_config,
+                    self.consensus_registry_owner,
+                    rwtel_address,
+                )?
+            }
+        };
 
         // use embedded ITS config from submodule
         let precompiles =
