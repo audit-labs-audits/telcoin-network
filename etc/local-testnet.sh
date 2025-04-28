@@ -107,7 +107,9 @@ else
     done
 
     # create committee and worker cache yamls
-    target/${RELEASE}/telcoin-network genesis create-committee --datadir "${ROOTDIR}"
+    target/${RELEASE}/telcoin-network genesis create-committee \
+        --datadir "${ROOTDIR}" \
+        --consensus-registry-owner $DEV_FUNDS
 
     # copy config files to each validator
     for ((i=0; i<$LENGTH; i++)); do
