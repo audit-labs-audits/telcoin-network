@@ -221,8 +221,15 @@ where
 
         let node_storage = db.clone();
         tracing::info!(target: "telcoin::cli", "node storage open");
-        // XXXX
-        let passphrase = std::env::var("TN_BLS_PASSPHRASE").ok();
+        let passphrase = if std::fs::exists(tn_datadir.validator_keys_path().join(tn_config::BLS_WRAPPED_KEYFILE)).unwrap_or(false) {
+            if let Ok(passphrase) = std::env::var("TN_BLS_PASSPHRASE") {
+                Some(passphrase)
+            } else {
+                rpassword::prompt_password("Enter the BLS key passphrase to decrypt: ").ok()
+            }
+        } else {
+            None
+        };
         let key_config = KeyConfig::read_config(tn_datadir, passphrase)?;
         let network_config = NetworkConfig::read_config(tn_datadir)?;
         let consensus_config = ConsensusConfig::new(config, tn_datadir, node_storage, key_config, network_config)?;
