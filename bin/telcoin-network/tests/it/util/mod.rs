@@ -36,7 +36,7 @@ pub fn create_validator_info(datadir: &str, address: &str) -> eyre::Result<()> {
         "--address",
         address,
     ]);
-    keys_command.args.execute()?;
+    keys_command.args.execute(Some("it_test_pass".to_string()))?;
 
     // add validator
     let add_validator_command =
@@ -201,10 +201,11 @@ pub fn spawn_local_testnet(chain: Arc<RethChainSpec>, contract_address: &str) ->
 
         std::thread::spawn(|| {
             let err = command.execute(
+                Some("it_test_pass".to_string()),
                 false, // don't overwrite chain with the default
-                |mut builder, faucet_args, tn_datadir| {
+                |mut builder, faucet_args, tn_datadir, passphrase| {
                     builder.opt_faucet_args = Some(faucet_args);
-                    launch_node(builder, tn_datadir)
+                    launch_node(builder, tn_datadir, passphrase)
                 },
             );
             error!("{:?}", err);

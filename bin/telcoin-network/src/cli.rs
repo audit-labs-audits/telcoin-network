@@ -94,15 +94,17 @@ impl<Ext: clap::Args + fmt::Debug> Cli<Ext> {
     /// }
     ///
     /// if let Err(err) = telcoin_network::cli::Cli::<MyArgs>::parse()
-    ///     .run(|builder, _, tn_datadir| launch_node(builder, tn_datadir))
+    ///     .run(None, |builder, _, tn_datadir, passphrase| {
+    ///         launch_node(builder, tn_datadir, passphrase)
+    ///     })
     /// {
     ///     eprintln!("Error: {err:?}");
     ///     std::process::exit(1);
     /// }
     /// ```
-    pub fn run<L>(mut self, launcher: L) -> eyre::Result<()>
+    pub fn run<L>(mut self, passphrase: Option<String>, launcher: L) -> eyre::Result<()>
     where
-        L: FnOnce(TnBuilder, Ext, DataDirChainPath) -> eyre::Result<()>,
+        L: FnOnce(TnBuilder, Ext, DataDirChainPath, Option<String>) -> eyre::Result<()>,
     {
         // add network name to logs dir
         self.logs.log_file_directory =
@@ -112,8 +114,8 @@ impl<Ext: clap::Args + fmt::Debug> Cli<Ext> {
 
         match self.command {
             Commands::Genesis(command) => command.execute(),
-            Commands::Node(command) => command.execute(true, launcher),
-            Commands::Keytool(command) => command.execute(),
+            Commands::Node(command) => command.execute(passphrase, true, launcher),
+            Commands::Keytool(command) => command.execute(passphrase),
         }
     }
 
@@ -203,6 +205,6 @@ mod tests {
             "debug,net=trace",
         ])
         .unwrap();
-        assert!(tn.run(|_, _, _| { Ok(()) }).is_ok());
+        assert!(tn.run(None, |_, _, _, _| { Ok(()) }).is_ok());
     }
 }

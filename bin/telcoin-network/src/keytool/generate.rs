@@ -107,14 +107,12 @@ impl ValidatorArgs {
         &self,
         config: &mut Config,
         tn_datadir: &TND,
+        passphrase: Option<String>,
     ) -> eyre::Result<()> {
         info!(target: "tn::generate_keys", "generating keys for full validator node");
 
-        let passphrase = if let Ok(passphrase) = std::env::var("TN_BLS_PASSPHRASE") {
-            Some(passphrase)
-        } else {
-            read_passphrase()
-        };
+        let passphrase =
+            if let Some(passphrase) = passphrase { Some(passphrase) } else { read_passphrase() };
         let key_config = KeyConfig::generate_and_save(tn_datadir, passphrase)?;
         let proof = key_config.generate_proof_of_possession_bls(&self.chain)?;
         config.update_protocol_key(key_config.primary_public_key())?;
