@@ -14,7 +14,9 @@ use rand::SeedableRng;
 use rand_chacha::ChaCha8Rng;
 use std::{collections::BTreeMap, sync::Arc, time::Duration};
 use tempfile::TempDir;
-use tn_config::{fetch_file_content_relative_to_manifest, NetworkGenesis};
+use tn_config::{
+    fetch_file_content_relative_to_manifest, NetworkGenesis, QueryResult, DEPLOYMENTS_JSON,
+};
 use tn_reth::{
     system_calls::{
         ConsensusRegistry::{self, getCurrentEpochInfoReturn, getValidatorsReturn},
@@ -48,10 +50,8 @@ async fn test_genesis_with_its() -> eyre::Result<()> {
     let rpc_url = "http://127.0.0.1:8545".to_string();
     let client = HttpClientBuilder::default().build(&rpc_url).expect("couldn't build rpc client");
 
-    let precompiles = NetworkGenesis::fetch_precompile_genesis_accounts(
-        "../../tn-contracts/deployments/genesis/its-config.yaml".into(),
-    )
-    .expect("its precompiles not found");
+    let precompiles =
+        NetworkGenesis::fetch_precompile_genesis_accounts().expect("its precompiles not found");
     for (address, genesis_account) in precompiles {
         let returned_code: String = client
             .request("eth_getCode", rpc_params!(address))
@@ -75,10 +75,8 @@ async fn test_genesis_with_its() -> eyre::Result<()> {
 
 #[tokio::test]
 async fn test_precompile_genesis_accounts() -> eyre::Result<()> {
-    let precompiles = NetworkGenesis::fetch_precompile_genesis_accounts(
-        "../../tn-contracts/deployments/genesis/its-config.yaml".into(),
-    )
-    .expect("its precompiles not found");
+    let precompiles =
+        NetworkGenesis::fetch_precompile_genesis_accounts().expect("its precompiles not found");
 
     // check that all addresses in expected_deployments are present in precompiles
     let is_address_present = |address: &str, genesis_config: Vec<(Address, GenesisAccount)>| {
@@ -86,7 +84,10 @@ async fn test_precompile_genesis_accounts() -> eyre::Result<()> {
             .iter()
             .any(|(precompile_address, _)| precompile_address.to_string() == address)
     };
-    let expected_deployments = NetworkGenesis::fetch_tn_contracts_deployments(None);
+    let expected_deployments = match NetworkGenesis::fetch_from_json_str(DEPLOYMENTS_JSON, None) {
+        Ok(QueryResult::Map(value)) => value,
+        _ => panic!("deployments not found"),
+    };
     let its = expected_deployments.get("its").and_then(|v| v.as_object()).unwrap();
     for (key, value) in its {
         let address = value.as_str().unwrap();

@@ -2,8 +2,11 @@
 
 use crate::args::{clap_address_parser, clap_genesis_parser};
 use clap::Args;
+use core::panic;
 use std::{path::PathBuf, str::FromStr, sync::Arc};
-use tn_config::{Config, ConfigFmt, ConfigTrait, NetworkGenesis, TelcoinDirs as _};
+use tn_config::{
+    Config, ConfigFmt, ConfigTrait, NetworkGenesis, QueryResult, TelcoinDirs as _, DEPLOYMENTS_JSON,
+};
 use tn_reth::{
     dirs::{default_datadir_args, DataDirChainPath, DataDirPath},
     system_calls::ConsensusRegistry,
@@ -54,15 +57,6 @@ pub struct CreateCommitteeArgs {
         required = false,
     )]
     pub chain: Arc<RethChainSpec>,
-
-    /// The precompile config yaml dir.
-    #[arg(
-        long,
-        value_name = "PRECOMPILES_CONFIG_PATH", 
-        default_value = "../../tn-contracts/deployments/genesis",
-        verbatim_doc_comment
-    )]
-    pub precompiles_config_path: Option<PathBuf>,
 
     /// The owner's address for initializing the `ConsensusRegistry` in genesis.
     ///
@@ -151,11 +145,14 @@ impl CreateCommitteeArgs {
             epochIssuance: self.epoch_rewards,
             epochDuration: self.epoch_duration,
         };
-        let rwtel_address = NetworkGenesis::fetch_tn_contracts_deployments(Some("rwTEL"))
-            .into_iter()
-            .next()
-            .and_then(|(_, value)| value.as_str().map(Address::from_str))
-            .expect("RWTEL address incorrect")?;
+        let rwtel_address =
+            match NetworkGenesis::fetch_from_json_str(DEPLOYMENTS_JSON, Some("rwTEL")) {
+                Ok(QueryResult::Single(value)) => {
+                    Address::from_str(value.as_str().expect("RWTEL address incorrect"))
+                        .expect("RWTEK address incorrect")
+                }
+                _ => panic!("RWTEL address not found"),
+            };
 
         let consensus_registry = RethEnv::create_consensus_registry_genesis_account(
             validators,
@@ -165,11 +162,9 @@ impl CreateCommitteeArgs {
             rwtel_address,
         )?;
 
-        let precompiles_path = std::env::current_dir()?
-            .join(self.precompiles_config_path.clone().expect("precompile path misconfigured"));
-        let its_config = precompiles_path.join("its-config.yaml");
-        let mut precompiles = NetworkGenesis::fetch_precompile_genesis_accounts(its_config)
-            .expect("precompile fetch error");
+        // use embedded ITS config from submodule
+        let mut precompiles =
+            NetworkGenesis::fetch_precompile_genesis_accounts().expect("precompile fetch error");
         precompiles.push(consensus_registry);
 
         let updated_genesis = genesis.extend_accounts(precompiles);

@@ -1,6 +1,6 @@
 //! Genesis information used when configuring a node.
 use crate::{Config, ConfigFmt, ConfigTrait, TelcoinDirs};
-use eyre::Context;
+use eyre::{Context, OptionExt};
 use reth_chainspec::ChainSpec;
 use serde::{Deserialize, Serialize};
 use serde_json::{Map, Value};
@@ -11,6 +11,7 @@ use std::{
     fs,
     path::{Path, PathBuf},
     sync::Arc,
+    thread::current,
 };
 use tn_types::{
     adiri_genesis, keccak256, verify_proof_of_possession_bls, Address, BlsPublicKey, BlsSignature,
@@ -18,8 +19,20 @@ use tn_types::{
     NetworkPublicKey, PrimaryInfo, ProtocolSignature, Signer, WorkerCache, WorkerIndex,
 };
 use tracing::{info, warn};
-/// The validators directory used to create genesis.
+
+/// The validators directory used to create genesis
 pub const GENESIS_VALIDATORS_DIR: &str = "validators";
+/// Precompile info for genesis, read from current submodule commit
+pub const DEPLOYMENTS_JSON: &str =
+    include_str!("../../../tn-contracts/deployments/deployments.json");
+pub const ITS_CFG_YAML: &str =
+    include_str!("../../../tn-contracts/deployments/genesis/its-config.yaml");
+
+/// Wrapper for fetching JSON keys as object or values
+pub enum QueryResult {
+    Map(Map<String, Value>),
+    Single(Value),
+}
 
 /// The struct for starting a network at genesis.
 pub struct NetworkGenesis {
@@ -193,11 +206,8 @@ impl NetworkGenesis {
 
     /// Returns configurations for precompiles as genesis accounts
     /// Precompiles configs yamls are generated using foundry in tn-Contracts
-    pub fn fetch_precompile_genesis_accounts(
-        precompile_yaml: PathBuf,
-    ) -> eyre::Result<Vec<(Address, GenesisAccount)>> {
-        let yaml_content = fetch_file_content_relative_to_manifest(precompile_yaml);
-
+    pub fn fetch_precompile_genesis_accounts() -> eyre::Result<Vec<(Address, GenesisAccount)>> {
+        let yaml_content = ITS_CFG_YAML;
         let config: std::collections::HashMap<Address, GenesisAccount> =
             serde_yaml::from_str(&yaml_content).expect("yaml parsing failure");
         let mut accounts = Vec::new();
@@ -214,40 +224,38 @@ impl NetworkGenesis {
         Ok(accounts)
     }
 
-    /// Fetches deployment info from the tn-contracts submodule
+    /// Fetches json info from the given string
     ///
-    /// If a query is specified, it returns the corresponding nested object or single value.
-    /// Otherwise the entire JSON content is returned.
-    pub fn fetch_tn_contracts_deployments(query: Option<&str>) -> Map<String, Value> {
-        let json_content = fetch_file_content_relative_to_manifest(
-            "../../tn-contracts/deployments/deployments.json",
-        );
-        let deployments_json: Value =
-            serde_json::from_str(&json_content).expect("deployments json not found");
+    /// If a query is specified, return the corresponding nested object.
+    /// Otherwise return the entire JSON
+    /// With a generic this could be adjused to handle YAML also
+    pub fn fetch_from_json_str(
+        json_string: &str,
+        query: Option<&str>,
+    ) -> eyre::Result<QueryResult> {
+        let json: Value = serde_json::from_str(&json_string).expect("json string malformed");
         let result = match query {
             Some(path) => {
                 let keys: Vec<&str> = path.split('.').collect();
-                let mut current_value = &deployments_json;
+                let mut current_value = &json;
                 for &key in &keys {
-                    current_value = current_value.get(key).expect("deployments query not found");
+                    current_value = current_value.get(key).ok_or_eyre("query key not found")?;
                 }
 
                 match current_value {
                     // return objects directly
-                    Value::Object(map) => map.clone(),
+                    Value::Object(map) => QueryResult::Map(map.clone()),
                     // return single entries wrapped in a Map
-                    _ => {
-                        let mut single_entry_map = Map::new();
-                        single_entry_map
-                            .insert(keys.last().unwrap().to_string(), current_value.clone());
-                        single_entry_map
-                    }
+                    _ => QueryResult::Single(current_value.clone()),
                 }
             }
-            None => deployments_json.as_object().cloned().expect("deployments json malformed"),
+            None => {
+                let map = json.as_object().cloned().ok_or_eyre("json string malformed")?;
+                QueryResult::Map(map)
+            }
         };
 
-        result
+        Ok(result)
     }
 }
 
