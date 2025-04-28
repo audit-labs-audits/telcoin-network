@@ -82,7 +82,6 @@ use reth_revm::{
 };
 use reth_transaction_pool::{blobstore::DiskFileBlobStore, EthTransactionPool};
 use std::{
-    collections::BTreeMap,
     net::SocketAddr,
     ops::RangeInclusive,
     path::{Path, PathBuf},
@@ -1526,7 +1525,7 @@ mod tests {
         adiri_genesis, BlsKeypair, Certificate, CommittedSubDag, ConsensusHeader, ConsensusOutput,
         PrimaryInfo, ReputationScores,
     };
-    use tracing_subscriber::registry;
+    
 
     /// Helper function to call `ConsensusRegistry` state on-chain.
     fn call_consensus_registry<EXT, DB, T>(

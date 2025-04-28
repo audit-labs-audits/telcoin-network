@@ -1,12 +1,11 @@
 //! Genesis information used when configuring a node.
 use crate::{Config, ConfigFmt, ConfigTrait, TelcoinDirs};
 use eyre::Context;
-use libp2p::core::transport::and_then;
 use reth_chainspec::ChainSpec;
 use serde::{Deserialize, Serialize};
 use serde_json::{Map, Value};
 use std::{
-    collections::{BTreeMap, HashMap},
+    collections::BTreeMap,
     ffi::OsStr,
     fmt::{Display, Formatter},
     fs,

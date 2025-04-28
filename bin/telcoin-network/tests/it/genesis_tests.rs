@@ -12,10 +12,8 @@ use alloy::{
 use jsonrpsee::{core::client::ClientT, http_client::HttpClientBuilder, rpc_params};
 use rand::SeedableRng;
 use rand_chacha::ChaCha8Rng;
-use serde_json::Value;
 use std::{
-    collections::{BTreeMap, HashMap},
-    ptr::addr_eq,
+    collections::BTreeMap,
     sync::Arc,
     time::Duration,
 };
@@ -95,11 +93,10 @@ async fn test_precompile_genesis_accounts() -> eyre::Result<()> {
     let expected_deployments = NetworkGenesis::fetch_tn_contracts_deployments(None);
     let its = expected_deployments.get("its").and_then(|v| v.as_object()).unwrap();
     for (key, value) in its {
-        let address = value.as_str().unwrap().into();
+        let address = value.as_str().unwrap();
         assert!(
             is_address_present(address, precompiles.clone()),
-            "{} is not present in precompiles",
-            key
+            "{key} is not present in precompiles"
         );
     }
 
@@ -107,8 +104,7 @@ async fn test_precompile_genesis_accounts() -> eyre::Result<()> {
         let address = expected_deployments.get(key).and_then(|v| v.as_str()).unwrap();
         assert!(
             is_address_present(address, precompiles.clone()),
-            "{} is not present in precompiles",
-            key
+            "{key} is not present in precompiles"
         );
     }
 

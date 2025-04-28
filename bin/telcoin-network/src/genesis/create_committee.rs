@@ -154,7 +154,7 @@ impl CreateCommitteeArgs {
         let rwtel_address = NetworkGenesis::fetch_tn_contracts_deployments(Some("rwTEL"))
             .into_iter()
             .next()
-            .and_then(|(_, value)| value.as_str().map(|s| Address::from_str(s)))
+            .and_then(|(_, value)| value.as_str().map(Address::from_str))
             .expect("RWTEL address incorrect")?;
 
         let consensus_registry = RethEnv::create_consensus_registry_genesis_account(
