@@ -136,7 +136,7 @@ impl CreateCommitteeArgs {
         network_genesis.validate()?;
 
         // execute data so committee is on-chain and in genesis
-        let validators = network_genesis.validators().values().cloned().collect();
+        let validators: Vec<_> = network_genesis.validators().values().cloned().collect();
         let genesis = network_genesis.genesis().clone();
 
         let initial_stake_config = ConsensusRegistry::StakeConfig {

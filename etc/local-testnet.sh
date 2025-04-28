@@ -64,7 +64,7 @@ if [ -d "${ROOTDIR}" ]; then
 else
     # Make sure we have a test account with funds if configuring.
     if [ "$DEV_FUNDS" == "" ]; then
-        echo "Must use --def-funds=[ADDRESS] to fund a test account."
+        echo "Must use --dev-funds=[ADDRESS] to fund a test account and own the consensus registry."
         echo "For example: --dev-funds 0x1111111111111111111111111111111111111111"
         echo "This sould be an account you have the private key to allow access to TEL on the test network"
         exit 1

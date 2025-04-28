@@ -25,6 +25,10 @@ pub const GENESIS_VALIDATORS_DIR: &str = "validators";
 /// Precompile info for genesis, read from current submodule commit
 pub const DEPLOYMENTS_JSON: &str =
     include_str!("../../../tn-contracts/deployments/deployments.json");
+pub const CONSENSUS_REGISTRY_JSON: &str =
+    include_str!("../../../tn-contracts/artifacts/ConsensusRegistry.json");
+pub const ERC1967PROXY_JSON: &str =
+    include_str!("../../../tn-contracts/artifacts/ERC1967Proxy.json");
 pub const ITS_CFG_YAML: &str =
     include_str!("../../../tn-contracts/deployments/genesis/its-config.yaml");
 
