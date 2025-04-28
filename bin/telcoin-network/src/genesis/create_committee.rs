@@ -155,7 +155,8 @@ impl CreateCommitteeArgs {
             };
 
         // try to create a runtime if one doesn't already exist
-        // this is a workaround for executing committees pre-genesis during tests and normal CLI operations
+        // this is a workaround for executing committees pre-genesis during tests and normal CLI
+        // operations
         let genesis_with_consensus_registry = if tokio::runtime::Handle::try_current().is_ok() {
             // use the current runtime (ie - tests)
             RethEnv::create_consensus_registry_genesis_account(
