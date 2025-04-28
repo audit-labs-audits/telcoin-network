@@ -59,7 +59,7 @@ pub struct CreateCommitteeArgs {
     #[arg(
         long,
         value_name = "PRECOMPILES_CONFIG_PATH", 
-        default_value = "../../tn-contracts/deployments/genesis", //todo will does manifest dir be avilable
+        default_value = "../../tn-contracts/deployments/genesis",
         verbatim_doc_comment
     )]
     pub precompiles_config_path: Option<PathBuf>,
@@ -103,7 +103,7 @@ pub struct CreateCommitteeArgs {
     #[arg(
         long = "epoch-block-rewards",
         alias = "block_rewards_per_epoch",
-        help_heading = "The minimal amount a validator can withdraw. The default is 20mil TEL per 28 days.",
+        help_heading = "The amount of TEL (incl 18 decimals) for the committee starting at genesis.",
         default_value_t = U256::from(20_000_000e18).checked_div(U256::from(28)).expect("U256 div works"),
         verbatim_doc_comment
     )]
