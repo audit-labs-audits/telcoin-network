@@ -1525,7 +1525,6 @@ mod tests {
         adiri_genesis, BlsKeypair, Certificate, CommittedSubDag, ConsensusHeader, ConsensusOutput,
         PrimaryInfo, ReputationScores,
     };
-    
 
     /// Helper function to call `ConsensusRegistry` state on-chain.
     fn call_consensus_registry<EXT, DB, T>(

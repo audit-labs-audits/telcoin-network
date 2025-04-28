@@ -12,11 +12,7 @@ use alloy::{
 use jsonrpsee::{core::client::ClientT, http_client::HttpClientBuilder, rpc_params};
 use rand::SeedableRng;
 use rand_chacha::ChaCha8Rng;
-use std::{
-    collections::BTreeMap,
-    sync::Arc,
-    time::Duration,
-};
+use std::{collections::BTreeMap, sync::Arc, time::Duration};
 use tempfile::TempDir;
 use tn_config::{fetch_file_content_relative_to_manifest, NetworkGenesis};
 use tn_reth::{
