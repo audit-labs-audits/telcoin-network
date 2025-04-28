@@ -154,20 +154,26 @@ impl CreateCommitteeArgs {
                 _ => panic!("RWTEL address not found"),
             };
 
-        let consensus_registry = RethEnv::create_consensus_registry_genesis_account(
-            validators,
-            &genesis,
-            initial_stake_config,
-            self.consensus_registry_owner,
-            rwtel_address,
-        )?;
+        // create tokio runtime to execute consensus registry data
+        let runtime = tokio::runtime::Builder::new_multi_thread()
+            .thread_name("consensus-registry")
+            .build()?;
+
+        let genesis_with_consensus_registry = runtime.block_on(async move {
+            RethEnv::create_consensus_registry_genesis_account(
+                validators,
+                genesis,
+                initial_stake_config,
+                self.consensus_registry_owner,
+                rwtel_address,
+            )
+        })?;
 
         // use embedded ITS config from submodule
-        let mut precompiles =
+        let precompiles =
             NetworkGenesis::fetch_precompile_genesis_accounts().expect("precompile fetch error");
-        precompiles.push(consensus_registry);
 
-        let updated_genesis = genesis.extend_accounts(precompiles);
+        let updated_genesis = genesis_with_consensus_registry.extend_accounts(precompiles);
 
         // updated genesis with registry information
         network_genesis.update_chain(updated_genesis.into());
