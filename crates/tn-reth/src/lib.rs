@@ -82,7 +82,11 @@ use reth_revm::{
 };
 use reth_transaction_pool::{blobstore::DiskFileBlobStore, EthTransactionPool};
 use std::{
-    collections::BTreeMap, net::SocketAddr, ops::RangeInclusive, path::{Path, PathBuf}, sync::Arc
+    collections::BTreeMap,
+    net::SocketAddr,
+    ops::RangeInclusive,
+    path::{Path, PathBuf},
+    sync::Arc,
 };
 use system_calls::{
     ConsensusRegistry::{self, ValidatorStatus},
@@ -1350,7 +1354,7 @@ impl RethEnv {
             account.storage.iter().map(|(k, v)| ((*k).into(), v.present_value.into())).collect()
         });
 
-        let consensus_registry =(
+        let consensus_registry = (
             CONSENSUS_REGISTRY_ADDRESS,
             GenesisAccount::default()
                 .with_balance(total_stake_balance)
@@ -1516,13 +1520,13 @@ mod tests {
     use super::*;
     use crate::traits::TNPayloadAttributes;
     use rand_chacha::ChaCha8Rng;
-    use tracing_subscriber::registry;
     use std::str::FromStr as _;
     use tempfile::TempDir;
     use tn_types::{
         adiri_genesis, BlsKeypair, Certificate, CommittedSubDag, ConsensusHeader, ConsensusOutput,
         PrimaryInfo, ReputationScores,
     };
+    use tracing_subscriber::registry;
 
     /// Helper function to call `ConsensusRegistry` state on-chain.
     fn call_consensus_registry<EXT, DB, T>(

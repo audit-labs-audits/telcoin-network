@@ -6,7 +6,7 @@ use std::{path::PathBuf, str::FromStr, sync::Arc};
 use tn_config::{Config, ConfigFmt, ConfigTrait, NetworkGenesis, TelcoinDirs as _};
 use tn_reth::{
     dirs::{default_datadir_args, DataDirChainPath, DataDirPath},
-    system_calls::{ConsensusRegistry},
+    system_calls::ConsensusRegistry,
     MaybePlatformPath, RethChainSpec, RethEnv,
 };
 use tn_types::{Address, U256};
@@ -57,7 +57,7 @@ pub struct CreateCommitteeArgs {
 
     /// The precompile config yaml dir.
     #[arg(
-        long, 
+        long,
         value_name = "PRECOMPILES_CONFIG_PATH", 
         default_value = "../../tn-contracts/deployments/genesis", //todo will does manifest dir be avilable
         verbatim_doc_comment
@@ -156,7 +156,7 @@ impl CreateCommitteeArgs {
             .next()
             .and_then(|(_, value)| value.as_str().map(|s| Address::from_str(s)))
             .expect("RWTEL address incorrect")?;
-        
+
         let consensus_registry = RethEnv::create_consensus_registry_genesis_account(
             validators,
             &genesis,
@@ -165,15 +165,14 @@ impl CreateCommitteeArgs {
             rwtel_address,
         )?;
 
-        let precompiles_path = std::env::current_dir()?.join(self.precompiles_config_path.clone().expect("precompile path misconfigured"));
+        let precompiles_path = std::env::current_dir()?
+            .join(self.precompiles_config_path.clone().expect("precompile path misconfigured"));
         let its_config = precompiles_path.join("its-config.yaml");
         let mut precompiles = NetworkGenesis::fetch_precompile_genesis_accounts(its_config)
             .expect("precompile fetch error");
         precompiles.push(consensus_registry);
 
-        let updated_genesis = genesis.extend_accounts(
-            precompiles
-        );
+        let updated_genesis = genesis.extend_accounts(precompiles);
 
         // updated genesis with registry information
         network_genesis.update_chain(updated_genesis.into());
