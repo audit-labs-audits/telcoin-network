@@ -30,14 +30,53 @@ use tn_types::{
 use tracing::debug;
 
 #[tokio::test]
+async fn test_genesis_with_its() -> eyre::Result<()> {
+    // create genesis with a proxy
+    let genesis = adiri_genesis();
+    let chain: Arc<RethChainSpec> = Arc::new(genesis.into());
+
+    // spawn testnet for RPC calls
+    spawn_local_testnet(
+        chain,
+        #[cfg(feature = "faucet")]
+        "0x0000000000000000000000000000000000000000",
+    )
+    .expect("failed to spawn testnet");
+    // allow time for nodes to start
+    tokio::time::sleep(Duration::from_secs(10)).await;
+
+    let rpc_url = "http://127.0.0.1:8545".to_string();
+    let client = HttpClientBuilder::default().build(&rpc_url).expect("couldn't build rpc client");
+
+    let precompiles = NetworkGenesis::fetch_precompile_genesis_accounts("../../tn-contracts/deployments/genesis/its-config.yaml".into()).expect("its precompiles not found");
+    for (address, genesis_account) in precompiles {
+        let returned_code: String = client
+            .request("eth_getCode", rpc_params!(address))
+            .await
+            .expect("Failed to fetch runtime code");
+        assert_eq!(Bytes::from_hex(returned_code), Ok(genesis_account.code.unwrap()));
+
+        if genesis_account.storage.is_some() {
+            for (slot, value) in genesis_account.storage.unwrap().iter() {
+                let returned_storage: String = client
+                    .request("eth_getStorageAt", rpc_params!(address, slot.to_string(), "latest"))
+                    .await
+                    .expect("Failed to fetch storage slot");
+                assert_eq!(returned_storage, value.to_string());
+            }
+        }
+    }
+
+    Ok(())
+}
+
+#[tokio::test]
 async fn test_precompile_genesis_accounts() -> eyre::Result<()> {
     let precompiles = NetworkGenesis::fetch_precompile_genesis_accounts("../../tn-contracts/deployments/genesis/its-config.yaml".into()).expect("its precompiles not found");
-    let deployments_json = fetch_file_content_relative_to_manifest("../../tn-contracts/deployments/deployments.json");
 
     // check that all addresses in expected_deployments are present in precompiles
     let is_address_present = |address: &str, genesis_config: Vec<(Address, GenesisAccount)>| { genesis_config.iter().any(|(precompile_address, _)| precompile_address.to_string() == address)};
-    let expected_deployments: HashMap<String, Value> = serde_json::from_str(&deployments_json).expect("deployments json not found");
-
+    let expected_deployments = NetworkGenesis::fetch_tn_contracts_deployments(None);
     let its = expected_deployments.get("its").and_then(|v| v.as_object()).unwrap();
     for (key, value) in its {
         let address = value.as_str().unwrap().into();
@@ -52,7 +91,6 @@ async fn test_precompile_genesis_accounts() -> eyre::Result<()> {
     // assert stateful contracts possess storage config 
     let rwtel = expected_deployments.get("rwTEL").and_then(|v| v.as_str()).unwrap();
     let rwtel_impl = expected_deployments.get("rwTELImpl").and_then(|v| v.as_str()).unwrap();
-    let its = expected_deployments.get("its").and_then(|v| v.as_object()).expect("nested its object not found");
     let gateway = its.get("AxelarAmplifierGateway").and_then(|v| v.as_str()).unwrap();
     let gas_service = its.get("GasService").and_then(|v| v.as_str()).unwrap();
     let token_service = its.get("InterchainTokenService").and_then(|v| v.as_str()).unwrap();

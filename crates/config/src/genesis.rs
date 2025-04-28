@@ -1,20 +1,20 @@
 //! Genesis information used when configuring a node.
 use crate::{Config, ConfigFmt, ConfigTrait, TelcoinDirs};
 use eyre::Context;
+use libp2p::core::transport::and_then;
 use reth_chainspec::ChainSpec;
 use serde::{Deserialize, Serialize};
+use serde_json::{Map, Value};
 use std::{
-    collections::BTreeMap,
+    collections::{BTreeMap, HashMap},
     ffi::OsStr,
     fmt::{Display, Formatter},
     fs,
-    path::Path,
+    path::{Path, PathBuf},
     sync::Arc,
 };
 use tn_types::{
-    adiri_genesis, keccak256, verify_proof_of_possession_bls, Address, BlsPublicKey, BlsSignature,
-    Committee, CommitteeBuilder, Epoch, Genesis, Intent, IntentMessage, Multiaddr,
-    NetworkPublicKey, PrimaryInfo, ProtocolSignature, Signer, WorkerCache, WorkerIndex,
+    adiri_genesis, keccak256, verify_proof_of_possession_bls, Address, BlsPublicKey, BlsSignature, Committee, CommitteeBuilder, Epoch, Genesis, GenesisAccount, Intent, IntentMessage, Multiaddr, NetworkPublicKey, PrimaryInfo, ProtocolSignature, Signer, WorkerCache, WorkerIndex
 };
 use tracing::{info, warn};
 /// The validators directory used to create genesis.
@@ -210,6 +210,38 @@ impl NetworkGenesis {
         };
 
         Ok(accounts)
+    }
+
+    /// Fetches deployment info from the tn-contracts submodule
+    ///
+    /// If a query is specified, it returns the corresponding nested object or single value. 
+    /// Otherwise the entire JSON content is returned.
+    pub fn fetch_tn_contracts_deployments(query: Option<&str>) -> Map<String, Value> {
+        let json_content = fetch_file_content_relative_to_manifest("../../tn-contracts/deployments/deployments.json");
+        let deployments_json: Value = serde_json::from_str(&json_content).expect("deployments json not found");
+        let result = match query {
+            Some(path) => {
+                let keys: Vec<&str> = path.split('.').collect();
+                let mut current_value = &deployments_json;
+                for &key in &keys {
+                    current_value = current_value.get(key).expect("deployments query not found");
+                }
+                
+                match current_value {
+                    // return objects directly
+                    Value::Object(map) => map.clone(),
+                    // return single entries wrapped in a Map
+                    _ => {
+                        let mut single_entry_map = Map::new();
+                        single_entry_map.insert(keys.last().unwrap().to_string(), current_value.clone());
+                        single_entry_map
+                    }
+                }
+            }
+            None => deployments_json.as_object().cloned().expect("deployments json malformed")
+        };
+    
+        result
     }
 }
 

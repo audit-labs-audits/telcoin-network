@@ -2,11 +2,11 @@
 
 use crate::args::{clap_address_parser, clap_genesis_parser};
 use clap::Args;
-use std::{path::PathBuf, sync::Arc};
+use std::{path::PathBuf, str::FromStr, sync::Arc};
 use tn_config::{Config, ConfigFmt, ConfigTrait, NetworkGenesis, TelcoinDirs as _};
 use tn_reth::{
     dirs::{default_datadir_args, DataDirChainPath, DataDirPath},
-    system_calls::{ConsensusRegistry, RWTEL_ADDRESS},
+    system_calls::{ConsensusRegistry},
     MaybePlatformPath, RethChainSpec, RethEnv,
 };
 use tn_types::{Address, U256};
@@ -59,7 +59,7 @@ pub struct CreateCommitteeArgs {
     #[arg(
         long, 
         value_name = "PRECOMPILES_CONFIG_PATH", 
-        default_value = "/../../tn-contracts/deployments/genesis", //todo will does manifest dir be avilable
+        default_value = "../../tn-contracts/deployments/genesis", //todo will does manifest dir be avilable
         verbatim_doc_comment
     )]
     pub precompiles_config_path: Option<PathBuf>,
@@ -118,16 +118,6 @@ pub struct CreateCommitteeArgs {
         verbatim_doc_comment
     )]
     pub epoch_duration: u32,
-
-    /// The address for RWTEL in genesis.
-    #[arg(
-        long = "rwtel-contract-address",
-        alias = "rwtel",
-        help_heading = "The length of each epoch in seconds.",
-        default_value_t = RWTEL_ADDRESS,
-        verbatim_doc_comment
-    )]
-    pub rwtel_address: Address,
 }
 
 impl CreateCommitteeArgs {
@@ -161,19 +151,23 @@ impl CreateCommitteeArgs {
             epochIssuance: self.epoch_rewards,
             epochDuration: self.epoch_duration,
         };
-
+        let rwtel_address = NetworkGenesis::fetch_tn_contracts_deployments(Some("rwTEL"))
+            .into_iter()
+            .next()
+            .and_then(|(_, value)| value.as_str().map(|s| Address::from_str(s)))
+            .expect("RWTEL address incorrect")?;
+        
         let consensus_registry = RethEnv::create_consensus_registry_genesis_account(
             validators,
-            genesis.clone(),
+            &genesis,
             initial_stake_config,
             self.consensus_registry_owner,
-            self.rwtel_address,
+            rwtel_address,
         )?;
 
-        let its_config_dir = self.precompiles_config_path.clone()
-            .expect("missing precompiles dir")
-            .join("its-config.yaml");
-        let mut precompiles = NetworkGenesis::fetch_precompile_genesis_accounts(its_config_dir)
+        let precompiles_path = std::env::current_dir()?.join(self.precompiles_config_path.clone().expect("precompile path misconfigured"));
+        let its_config = precompiles_path.join("its-config.yaml");
+        let mut precompiles = NetworkGenesis::fetch_precompile_genesis_accounts(its_config)
             .expect("precompile fetch error");
         precompiles.push(consensus_registry);
 

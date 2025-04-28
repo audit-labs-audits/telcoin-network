@@ -21,7 +21,6 @@
 use crate::traits::TNExecution;
 use alloy::{
     hex,
-    hex,
     primitives::{Bytes, ChainId},
     sol_types::SolCall,
 };
@@ -29,7 +28,6 @@ use clap::Parser;
 use dirs::path_to_datadir;
 use enr::secp256k1::rand::Rng as _;
 use error::{TnRethError, TnRethResult};
-use eyre::OptionExt;
 use eyre::OptionExt;
 use futures::StreamExt as _;
 use jsonrpsee::Methods;
@@ -1276,7 +1274,7 @@ impl RethEnv {
     /// Convenience method for compiling storage and bytecode to include genesis.
     pub fn create_consensus_registry_genesis_account(
         validators: Vec<ValidatorInfo>,
-        genesis: Genesis,
+        genesis: &Genesis,
         initial_stake_config: ConsensusRegistry::StakeConfig,
         owner_address: Address,
         rwtel_address: Address,
@@ -1518,6 +1516,7 @@ mod tests {
     use super::*;
     use crate::traits::TNPayloadAttributes;
     use rand_chacha::ChaCha8Rng;
+    use tracing_subscriber::registry;
     use std::str::FromStr as _;
     use tempfile::TempDir;
     use tn_types::{
@@ -1637,13 +1636,15 @@ mod tests {
         };
 
         let owner = Address::random();
-        let genesis = RethEnv::create_consensus_registry_accounts_for_genesis(
+        let tmp_genesis = adiri_genesis();
+        let registry_account = RethEnv::create_consensus_registry_genesis_account(
             validators.clone(),
-            adiri_genesis(),
+            &tmp_genesis,
             initial_stake_config,
             owner,
             Address::random(), // rwtel
         )?;
+        let genesis = tmp_genesis.clone().extend_accounts([registry_account]);
 
         // create new env with initialized consensus registry for tests
         let tmp_dir = TempDir::new().unwrap();
