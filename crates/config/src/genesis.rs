@@ -9,9 +9,8 @@ use std::{
     ffi::OsStr,
     fmt::{Display, Formatter},
     fs,
-    path::{Path, PathBuf},
+    path::Path,
     sync::Arc,
-    thread::current,
 };
 use tn_types::{
     adiri_genesis, keccak256, verify_proof_of_possession_bls, Address, BlsPublicKey, BlsSignature,
@@ -213,7 +212,7 @@ impl NetworkGenesis {
     pub fn fetch_precompile_genesis_accounts() -> eyre::Result<Vec<(Address, GenesisAccount)>> {
         let yaml_content = ITS_CFG_YAML;
         let config: std::collections::HashMap<Address, GenesisAccount> =
-            serde_yaml::from_str(&yaml_content).expect("yaml parsing failure");
+            serde_yaml::from_str(yaml_content).expect("yaml parsing failure");
         let mut accounts = Vec::new();
         for (address, precompile_config) in config {
             let account = GenesisAccount::default()
@@ -237,7 +236,7 @@ impl NetworkGenesis {
         json_string: &str,
         query: Option<&str>,
     ) -> eyre::Result<QueryResult> {
-        let json: Value = serde_json::from_str(&json_string).expect("json string malformed");
+        let json: Value = serde_json::from_str(json_string).expect("json string malformed");
         let result = match query {
             Some(path) => {
                 let keys: Vec<&str> = path.split('.').collect();
