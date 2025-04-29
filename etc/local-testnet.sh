@@ -137,7 +137,7 @@ if [ "$START" = true ]; then
         # -vvv for INFO, -vvvvv for TRACE, etc
         # start validator
         target/${RELEASE}/telcoin-network node --datadir "${DATADIR}" \
-           --chain "${DATADIR}/genesis/genesis.json" \
+           --genesis "${DATADIR}/genesis/genesis.json" \
            --disable-discovery \
            --instance "${INSTANCE}" \
            --metrics "${METRICS}" \
