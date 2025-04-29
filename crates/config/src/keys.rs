@@ -6,9 +6,11 @@ use crate::{
 };
 use aes_gcm_siv::{aead::Aead as _, Aes256GcmSiv, Key, KeyInit, Nonce};
 use blake2::Digest;
-use rand::{rngs::StdRng, SeedableRng};
+use pbkdf2::pbkdf2_hmac;
+use rand::{rngs::StdRng, Rng as _, SeedableRng};
 use rand_chacha::ChaCha20Rng;
 use reth_chainspec::ChainSpec;
+use sha2::Sha256;
 use std::sync::Arc;
 use tn_types::{
     encode, BlsKeypair, BlsPublicKey, BlsSignature, BlsSigner, DefaultHashFunction, Intent,
@@ -43,13 +45,47 @@ pub struct KeyConfig {
 }
 
 impl KeyConfig {
+    /// Wrap (encrypt) a BLS key with passphrase.
+    /// Returns a String that is the Base58 encoding of the encrypted bytes.
+    /// bytes 0-11 are the pbkdf2 salt, 12-23 are the aes-gcm-siv nonce and 24.. are the encrypted
+    /// key.
+    fn wrap_bls_key(primary_keypair: &BlsKeypair, passphrase: &str) -> eyre::Result<String> {
+        let mut salt = [0_u8; 12];
+        rand::thread_rng().fill(&mut salt);
+        let mut nonce_bytes = [0_u8; 12];
+        rand::thread_rng().fill(&mut nonce_bytes);
+        let mut passphrase_bytes = [0_u8; 32];
+        pbkdf2_hmac::<Sha256>(passphrase.as_bytes(), &salt, 600_000, &mut passphrase_bytes);
+        let key = Key::<Aes256GcmSiv>::from_slice(&passphrase_bytes);
+        let cipher = Aes256GcmSiv::new(key);
+        let nonce = Nonce::from_slice(&nonce_bytes); // 96-bits
+        let ciphertext = cipher
+            .encrypt(nonce, &primary_keypair.to_bytes()[..])
+            .map_err(|e| eyre::eyre!("Could not encrypt BLS key: {e}"))?;
+        let encrypted_data = [&salt[..], &nonce_bytes[..], &ciphertext[..]].concat();
+        Ok(bs58::encode(&encrypted_data).into_string())
+    }
+
+    /// Accepts bytes that are a wrapped BLS key and unwraps with the passphrase.
+    /// bytes 0-11 are the pbkdf2 salt, 12-23 are the aes-gcm-siv nonce and 24.. are the encrypted
+    /// key.
+    fn unwrap_bls_key(bytes: &[u8], passphrase: &str) -> eyre::Result<BlsKeypair> {
+        let mut passphrase_bytes = [0_u8; 32];
+        pbkdf2_hmac::<Sha256>(passphrase.as_bytes(), &bytes[0..12], 600_000, &mut passphrase_bytes);
+        let nonce = Nonce::from_slice(&bytes[12..24]); // 96-bits
+        let key = Key::<Aes256GcmSiv>::from_slice(&passphrase_bytes);
+        let cipher = Aes256GcmSiv::new(key);
+        let plaintext = cipher
+            .decrypt(nonce, &bytes[24..])
+            .map_err(|e| eyre::eyre!("Could not decrypt BLS key: {e}"))?;
+        BlsKeypair::from_bytes(&plaintext)
+    }
+
     /// Read a key config file that contains the primary BLS key in Base 58 format.
     pub fn read_config<TND: TelcoinDirs>(
         tn_datadir: &TND,
         passphrase: Option<String>,
     ) -> eyre::Result<Self> {
-        // TODO: find a better way to manage keys
-        //
         // load keys to start the primary
         let validator_keypath = tn_datadir.validator_keys_path();
         tracing::info!(target: "telcoin::consensus_config", "loading validator keys at {:?}", validator_keypath);
@@ -68,17 +104,7 @@ impl KeyConfig {
         .unwrap_or_else(|_| "worker network keypair".to_string());
         let bytes = bs58::decode(contents.as_str().trim()).into_vec()?;
         let primary_keypair = if let Some(passphrase) = passphrase {
-            let mut hasher = DefaultHashFunction::new();
-            hasher.update(passphrase.into_bytes());
-            let passphrase_bytes: [u8; 32] = hasher.finalize().into();
-            let key = Key::<Aes256GcmSiv>::from_slice(&passphrase_bytes);
-            let cipher = Aes256GcmSiv::new(key);
-            let nonce = Nonce::from_slice(b"telcoin net "); // 96-bits
-                                                            //let ciphertext = cipher.encrypt(nonce, b"plaintext message".as_ref())?;
-            let plaintext = cipher
-                .decrypt(nonce, bytes.as_ref())
-                .map_err(|e| eyre::eyre!("Could not decrypt BLS key: {e}"))?;
-            BlsKeypair::from_bytes(&plaintext)?
+            Self::unwrap_bls_key(&bytes, &passphrase)?
         } else {
             BlsKeypair::from_bytes(&bytes)?
         };
@@ -109,16 +135,7 @@ impl KeyConfig {
             Self::generate_network_keypair(&primary_keypair, primary_seed);
         let worker_network_keypair = Self::generate_network_keypair(&primary_keypair, worker_seed);
         if let Some(passphrase) = passphrase {
-            let mut hasher = DefaultHashFunction::new();
-            hasher.update(passphrase.into_bytes());
-            let passphrase_bytes: [u8; 32] = hasher.finalize().into();
-            let key = Key::<Aes256GcmSiv>::from_slice(&passphrase_bytes);
-            let cipher = Aes256GcmSiv::new(key);
-            let nonce = Nonce::from_slice(b"telcoin net "); // 96-bits
-            let ciphertext = cipher
-                .encrypt(nonce, &primary_keypair.to_bytes()[..])
-                .map_err(|e| eyre::eyre!("Could not encrypt BLS key: {e}"))?;
-            let contents = bs58::encode(&ciphertext).into_string();
+            let contents = Self::wrap_bls_key(&primary_keypair, &passphrase)?;
             std::fs::write(tn_datadir.validator_keys_path().join(BLS_WRAPPED_KEYFILE), contents)?;
         } else {
             let contents = bs58::encode(primary_keypair.to_bytes()).into_string();
@@ -140,25 +157,6 @@ impl KeyConfig {
             }),
         })
     }
-
-    /*
-    /// Generate random keys with provided RNG.
-    ///
-    /// Useful for testing.
-    pub fn with_random<R: CryptoRng + RngCore>(rng: &mut R) -> Self {
-        let primary_keypair = BlsKeypair::generate(rng);
-        let primary_network_keypair =
-            Self::generate_network_keypair(&primary_keypair, "primary network keypair");
-        let worker_network_keypair =
-            Self::generate_network_keypair(&primary_keypair, "worker network keypair");
-        Self {
-            inner: Arc::new(KeyConfigInner {
-                primary_keypair,
-                primary_network_keypair,
-                worker_network_keypair,
-            }),
-        }
-    }*/
 
     /// Create a config with a provided key- this is ONLY for testing.
     pub fn new_with_testing_key(primary_keypair: BlsKeypair) -> Self {
