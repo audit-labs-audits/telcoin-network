@@ -19,6 +19,16 @@ pub enum PassSource {
     Stdin,
     /// Ask the user on startup, only works if running in foreground on a TTY.
     Ask,
+    /// Do not use a passphrase- save the BLS key in the clear.
+    /// Only do this for testing, one offs, etc.
+    NoPassphrase,
+}
+
+impl PassSource {
+    /// Use a passphrase to wrap the BLS key.
+    pub fn with_passphrase(&self) -> bool {
+        !matches!(self, Self::NoPassphrase)
+    }
 }
 
 /// The main TN cli interface.
@@ -67,6 +77,9 @@ pub struct Cli<Ext: clap::Args + fmt::Debug = NoArgs> {
     pub logs: LogArgs,
 
     /// How to get the BLS key passphrase.
+    ///
+    /// The default is to use the env variable TN_BLS_PASSPHRASE
+    /// Note, this variable should be securily managed if used on a validator.
     #[arg(
         long,
         value_name = "TN_PASSPHRASE_SOURCE",

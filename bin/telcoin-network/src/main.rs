@@ -82,6 +82,15 @@ fn main() {
                     rpassword::prompt_password("Enter the BLS key passphrase to decrypt: ").ok();
             }
         },
+        PassSource::NoPassphrase => {
+            passphrase = None;
+        }
+    }
+    if passphrase.is_none() && cli.bls_passphrase_source.with_passphrase() {
+        eprintln!(
+            "Error passphrase is required, see the option --bls-passphrase-source for options"
+        );
+        std::process::exit(1);
     }
 
     #[cfg(not(feature = "faucet"))]

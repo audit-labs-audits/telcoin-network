@@ -55,7 +55,7 @@ impl KeyConfig {
         let mut nonce_bytes = [0_u8; 12];
         rand::thread_rng().fill(&mut nonce_bytes);
         let mut passphrase_bytes = [0_u8; 32];
-        pbkdf2_hmac::<Sha256>(passphrase.as_bytes(), &salt, 600_000, &mut passphrase_bytes);
+        pbkdf2_hmac::<Sha256>(passphrase.as_bytes(), &salt, 1_000, &mut passphrase_bytes);
         let key = Key::<Aes256GcmSiv>::from_slice(&passphrase_bytes);
         let cipher = Aes256GcmSiv::new(key);
         let nonce = Nonce::from_slice(&nonce_bytes); // 96-bits
@@ -71,7 +71,7 @@ impl KeyConfig {
     /// key.
     fn unwrap_bls_key(bytes: &[u8], passphrase: &str) -> eyre::Result<BlsKeypair> {
         let mut passphrase_bytes = [0_u8; 32];
-        pbkdf2_hmac::<Sha256>(passphrase.as_bytes(), &bytes[0..12], 600_000, &mut passphrase_bytes);
+        pbkdf2_hmac::<Sha256>(passphrase.as_bytes(), &bytes[0..12], 1_000, &mut passphrase_bytes);
         let nonce = Nonce::from_slice(&bytes[12..24]); // 96-bits
         let key = Key::<Aes256GcmSiv>::from_slice(&passphrase_bytes);
         let cipher = Aes256GcmSiv::new(key);
