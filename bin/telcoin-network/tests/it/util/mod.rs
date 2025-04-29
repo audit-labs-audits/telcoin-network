@@ -4,6 +4,7 @@ use telcoin_network::{genesis::GenesisArgs, keytool::KeyArgs, node::NodeCommand}
 use tn_node::launch_node;
 use tn_reth::RethChainSpec;
 use tn_test_utils::CommandParser;
+use tn_types::Address;
 use tracing::error;
 
 pub static IT_TEST_MUTEX: std::sync::Mutex<()> = std::sync::Mutex::new(());
@@ -86,6 +87,8 @@ pub async fn config_local_testnet(
         "create-committee",
         "--datadir",
         shared_genesis_dir.to_str().expect("shared genesis dir"),
+        "--consensus-registry-owner",
+        "0x00000000000000000000000000000000000007e1", // doesn't matter for tests
     ]);
     create_committee_command.args.execute()?;
 
@@ -106,7 +109,10 @@ pub async fn config_local_testnet(
 }
 
 /// Create validator info, genesis ceremony, and spawn node command with faucet active.
-pub fn spawn_local_testnet(chain: Arc<RethChainSpec>, contract_address: &str) -> eyre::Result<()> {
+pub fn spawn_local_testnet(
+    _chain: Arc<RethChainSpec>,
+    #[cfg(feature = "faucet")] faucet_contract_address: &str,
+) -> eyre::Result<()> {
     // create temp path for test
     let temp_path = tempfile::TempDir::new().expect("tempdir is okay").into_path();
 
@@ -121,8 +127,9 @@ pub fn spawn_local_testnet(chain: Arc<RethChainSpec>, contract_address: &str) ->
     for v in validators.into_iter() {
         let dir = temp_path.join(v);
         let datadir = dir.to_str().expect("validator temp dir");
+        let address = Address::random().to_string();
         // init genesis ceremony to create committee / worker_cache files
-        create_validator_info(datadir, "0", Some("it_test_pass".to_string()))?;
+        create_validator_info(datadir, &address, Some("it_test_pass".to_string()))?;
 
         // copy to shared genesis dir
         let copy = dir.join("genesis/validators");
@@ -138,6 +145,8 @@ pub fn spawn_local_testnet(chain: Arc<RethChainSpec>, contract_address: &str) ->
         "create-committee",
         "--datadir",
         shared_genesis_dir.to_str().expect("shared genesis dir"),
+        "--consensus-registry-owner",
+        "0x00000000000000000000000000000000000007e1", // doesn't matter for tests
     ]);
     create_committee_command.args.execute()?;
 
@@ -178,11 +187,11 @@ pub fn spawn_local_testnet(chain: Arc<RethChainSpec>, contract_address: &str) ->
             "--instance",
             &instance,
             "--google-kms",
-            "--contract-address",
-            contract_address,
+            "--faucet-contract",
+            faucet_contract_address,
         ]);
         #[cfg(not(feature = "faucet"))]
-        let mut command = NodeCommand::parse_from([
+        let command = NodeCommand::parse_from([
             "tn",
             "--public-key",
             "0223382261d641424b8d8b63497a811c56f85ee89574f9853474c3e9ab0d690d99",
@@ -199,12 +208,14 @@ pub fn spawn_local_testnet(chain: Arc<RethChainSpec>, contract_address: &str) ->
             genesis_json_path.to_str().expect("genesis_json_path casts to &str"),
             "--instance",
             &instance,
-            "--contract-address",
-            contract_address,
         ]);
 
-        // update genesis with seeded accounts
-        command.reth.chain = chain.clone();
+        // update faucet genesis
+        cfg_if::cfg_if! {
+            if #[cfg(feature = "faucet")] {
+                command.reth.chain = _chain.clone();
+            }
+        }
 
         std::thread::spawn(|| {
             let err = command.execute(
@@ -228,7 +239,7 @@ use jsonrpsee::core::client::ClientT;
 #[cfg(feature = "faucet")]
 use std::str::FromStr as _;
 #[cfg(feature = "faucet")]
-use tn_types::{Address, U256};
+use tn_types::U256;
 
 /// RPC request to continually check until an account balance is above 0.
 ///

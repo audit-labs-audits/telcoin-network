@@ -136,7 +136,7 @@ pub fn faucet_test_execution_node(
     // always include default expected faucet derived from `TransactionFactory::default`
     let faucet = faucet_proxy_address.to_string();
     let extended_args =
-        extended_args.map(|opt| [opt, vec!["--contract-address", &faucet]].concat().to_vec());
+        extended_args.map(|opt| [opt, vec!["--faucet-contract", &faucet]].concat().to_vec());
 
     // execution builder + faucet args
     let (builder, faucet) =
