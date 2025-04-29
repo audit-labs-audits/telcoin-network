@@ -61,12 +61,7 @@ fn main() {
 
     // Sort out the BLS key passphrase depending on the command run.
     match cli.bls_passphrase_source {
-        PassSource::Env => {
-            if passphrase.is_none() {
-                eprintln!("Error: request environment variable passphrase {BLS_PASSPHRASE_ENVVAR} but not provided!");
-                std::process::exit(1);
-            }
-        }
+        PassSource::Env => {} // Already have the env var if provided.
         PassSource::Stdin => {
             let mut buffer = String::new();
             if let Err(err) = std::io::stdin().read_line(&mut buffer) {
