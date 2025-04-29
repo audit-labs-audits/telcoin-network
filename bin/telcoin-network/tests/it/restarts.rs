@@ -205,7 +205,7 @@ fn do_restarts(delay: u64) -> eyre::Result<()> {
     let temp_path = tmp_guard.path().to_path_buf();
     {
         let rt = Runtime::new()?;
-        rt.block_on(config_local_testnet(temp_path.clone())).expect("failed to config");
+        rt.block_on(config_local_testnet(temp_path.clone(), None)).expect("failed to config");
     }
     let mut exe_path =
         PathBuf::from(std::env::var("CARGO_MANIFEST_DIR").expect("Missing CARGO_MANIFEST_DIR!"));
