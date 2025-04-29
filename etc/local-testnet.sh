@@ -47,6 +47,7 @@ VALIDATORSDIR="${GENESISDIR}/validators"
 SHARED_GENESISDIR="${ROOTDIR}/${VALIDATORSDIR}"
 COMMITTEE_PATH="${ROOTDIR}/${GENESISDIR}/committee.yaml"
 WORKER_CACHE_PATH="${ROOTDIR}/${GENESISDIR}/worker_cache.yaml"
+GENESIS_JSON_PATH="${ROOTDIR}/${GENESISDIR}/genesis.json"
 
 # number of validators
 LENGTH="${#VALIDATORS[@]}"
@@ -117,7 +118,10 @@ else
         DATADIR="${ROOTDIR}/${VALIDATOR}"
         cp "${COMMITTEE_PATH}" "${DATADIR}/genesis"
         cp "${WORKER_CACHE_PATH}" "${DATADIR}/genesis"
+        cp "${GENESIS_JSON_PATH}" "${DATADIR}/genesis"
     done
+
+    target/${RELEASE}/telcoin-network genesis init --datadir "${ROOTDIR}"
 fi
 
 if [ "$START" = true ]; then
