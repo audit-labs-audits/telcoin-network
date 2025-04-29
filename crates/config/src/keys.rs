@@ -134,6 +134,9 @@ impl KeyConfig {
         let primary_network_keypair =
             Self::generate_network_keypair(&primary_keypair, primary_seed);
         let worker_network_keypair = Self::generate_network_keypair(&primary_keypair, worker_seed);
+        // Make sure we have the validator dir.
+        // Don't error out if path exists.
+        let _ = std::fs::create_dir(tn_datadir.validator_keys_path());
         if let Some(passphrase) = passphrase {
             let contents = Self::wrap_bls_key(&primary_keypair, &passphrase)?;
             std::fs::write(tn_datadir.validator_keys_path().join(BLS_WRAPPED_KEYFILE), contents)?;
@@ -234,5 +237,45 @@ impl KeyConfig {
 impl BlsSigner for KeyConfig {
     fn request_signature_direct(&self, msg: &[u8]) -> BlsSignature {
         self.inner.primary_keypair.sign(msg)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use tempfile::TempDir;
+
+    use super::KeyConfig;
+
+    #[test]
+    fn test_bls_passphrase() {
+        let tmp_dir = TempDir::new().expect("tmp dir");
+        let pp = Some("test_bls_passphrase".to_string());
+        let kc = KeyConfig::generate_and_save(&tmp_dir.path().to_path_buf(), pp.clone())
+            .expect("BLS key config");
+        let kc2 =
+            KeyConfig::read_config(&tmp_dir.path().to_path_buf(), pp.clone()).expect("load config");
+        assert_eq!(kc.inner.primary_keypair.to_bytes(), kc2.inner.primary_keypair.to_bytes());
+        assert!(KeyConfig::read_config(&tmp_dir.path().to_path_buf(), None).is_err());
+        assert!(KeyConfig::read_config(
+            &tmp_dir.path().to_path_buf(),
+            Some("not_passphrase".to_string())
+        )
+        .is_err());
+    }
+
+    #[test]
+    fn test_bls_no_passphrase() {
+        let tmp_dir = TempDir::new().expect("tmp dir");
+        let pp = None;
+        let kc = KeyConfig::generate_and_save(&tmp_dir.path().to_path_buf(), pp.clone())
+            .expect("BLS key config");
+        let kc2 =
+            KeyConfig::read_config(&tmp_dir.path().to_path_buf(), pp.clone()).expect("load config");
+        assert_eq!(kc.inner.primary_keypair.to_bytes(), kc2.inner.primary_keypair.to_bytes());
+        assert!(KeyConfig::read_config(
+            &tmp_dir.path().to_path_buf(),
+            Some("not_passphrase".to_string())
+        )
+        .is_err());
     }
 }
