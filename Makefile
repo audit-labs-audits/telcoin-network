@@ -84,7 +84,7 @@ test-faucet:
 
 # run restart integration tests
 test-restarts:
-	cargo test test_restartstt -- --ignored --nocapture ;
+	cargo test test_restarts -- --ignored ;
 
 # format using +nightly toolchain
 fmt:
