@@ -190,6 +190,7 @@ pub fn launch_node_inner<P>(
     tn_datadir: &P,
     db: DatabaseType,
     reth_db: RethDb,
+    key_config: KeyConfig,
 ) -> eyre::Result<bool>
 where
     P: TelcoinDirs + 'static,
@@ -221,7 +222,6 @@ where
 
         let node_storage = db.clone();
         tracing::info!(target: "telcoin::cli", "node storage open");
-        let key_config = KeyConfig::read_config(tn_datadir)?;
         let network_config = NetworkConfig::read_config(tn_datadir)?;
         let consensus_config = ConsensusConfig::new(config, tn_datadir, node_storage, key_config, network_config)?;
 
@@ -344,7 +344,11 @@ where
 /// a nodes mode changes.  This ensures a clean state and fresh tasks
 /// when switching modes.
 #[instrument(level = "info", skip_all)]
-pub fn launch_node<P>(builder: TnBuilder, tn_datadir: P) -> eyre::Result<()>
+pub fn launch_node<P>(
+    builder: TnBuilder,
+    tn_datadir: P,
+    passphrase: Option<String>,
+) -> eyre::Result<()>
 where
     P: TelcoinDirs + 'static,
 {
@@ -361,8 +365,23 @@ where
     let reth_db = RethEnv::new_database(&builder.node_config, tn_datadir.reth_db_path())?;
 
     let mut running = true;
+    let passphrase =
+        if std::fs::exists(tn_datadir.validator_keys_path().join(tn_config::BLS_WRAPPED_KEYFILE))
+            .unwrap_or(false)
+        {
+            passphrase
+        } else {
+            None
+        };
+    let key_config = KeyConfig::read_config(&tn_datadir, passphrase)?;
     while running {
-        running = launch_node_inner(&builder, &tn_datadir, db.clone(), reth_db.clone())?;
+        running = launch_node_inner(
+            &builder,
+            &tn_datadir,
+            db.clone(),
+            reth_db.clone(),
+            key_config.clone(),
+        )?;
     }
     Ok(())
 }

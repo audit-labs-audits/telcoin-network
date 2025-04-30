@@ -94,12 +94,13 @@ impl<Ext: clap::Args + fmt::Debug> NodeCommand<Ext> {
     #[instrument(level = "info", skip_all)]
     pub fn execute<L>(
         mut self,
+        passphrase: Option<String>,
         load_config: bool, /* If false will not attempt to load a previously saved config-
                             * useful for testing. */
         launcher: L,
     ) -> eyre::Result<()>
     where
-        L: FnOnce(TnBuilder, Ext, DataDirChainPath) -> eyre::Result<()>,
+        L: FnOnce(TnBuilder, Ext, DataDirChainPath, Option<String>) -> eyre::Result<()>,
     {
         info!(target: "tn::cli", "telcoin-network {} starting", SHORT_VERSION);
 
@@ -174,6 +175,6 @@ impl<Ext: clap::Args + fmt::Debug> NodeCommand<Ext> {
         let builder =
             TnBuilder { node_config, tn_config, opt_faucet_args: None, consensus_metrics };
 
-        launcher(builder, ext, tn_datadir)
+        launcher(builder, ext, tn_datadir, passphrase)
     }
 }
