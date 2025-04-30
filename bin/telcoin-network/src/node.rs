@@ -10,8 +10,9 @@ use std::{net::SocketAddr, path::PathBuf, sync::Arc, thread::available_paralleli
 use tn_config::{Config, ConfigFmt, ConfigTrait, TelcoinDirs as _};
 use tn_node::engine::TnBuilder;
 use tn_reth::{
+    clap_genesis_parser,
     dirs::{default_datadir_args, DataDirChainPath, DataDirPath},
-    parse_socket_address, MaybePlatformPath, RethCommand, RethConfig,
+    parse_socket_address, MaybePlatformPath, RethChainSpec, RethCommand, RethConfig,
 };
 use tracing::*;
 
@@ -21,6 +22,19 @@ pub struct NodeCommand<Ext: clap::Args + fmt::Debug = NoArgs> {
     /// The path to the configuration file to use.
     #[arg(long, value_name = "FILE", verbatim_doc_comment)]
     pub config: Option<PathBuf>,
+
+    /// Overwrite the chain this node is running.
+    ///
+    /// The value parser matches either a known chain, the path
+    /// to a json file, or a json formatted string in-memory. The json can be either
+    /// a serialized [ChainSpec] or Genesis struct.
+    #[arg(
+        long,
+        value_name = "GENESIS_OR_PATH",
+        verbatim_doc_comment,
+        value_parser = clap_genesis_parser,
+    )]
+    pub genesis: Option<Arc<RethChainSpec>>,
 
     /// Enable Prometheus consensus metrics.
     ///
@@ -125,10 +139,17 @@ impl<Ext: clap::Args + fmt::Debug> NodeCommand<Ext> {
             info!(target: "cli", validator = ?tn_config.validator_info.name, "config loaded");
         }
 
+        // overwrite all genesis if `genesis` was passed to CLI
+        if let Some(chain) = self.genesis.take() {
+            info!(target: "cli", ?chain, "Overwriting TN config with specified chain");
+            self.reth.chain = chain;
+        }
+
         // get the worker's transaction address from the config
         let Self {
             datadir: _, // Used above
             config: _,  // Used above
+            genesis: _, // Used above
             consensus_metrics,
             instance,
             with_unused_ports,
