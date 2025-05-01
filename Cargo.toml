@@ -175,6 +175,7 @@ tn-network-libp2p = { path = "./crates/network-libp2p" }
 tn-network-types = { path = "./crates/network-types" }
 tn-rpc = { path = "./crates/execution/tn-rpc" }
 state-sync = { path = "./crates/state-sync" }
+tn-utils = { path = "./crates/tn-utils" }
 
 # optional
 tn-faucet = { path = "./crates/execution/faucet" }
@@ -187,7 +188,6 @@ tn-primary = { path = "./crates/consensus/primary" }
 tn-test-utils = { path = "./crates/test-utils" }
 consensus-metrics = { path = "./crates/consensus/consensus-metrics" }
 tn-primary-metrics = { path = "./crates/consensus/primary-metrics" }
-tn-utils = { path = "./crates/tn-utils" }
 
 # misc
 match_opt = "0.1.2"

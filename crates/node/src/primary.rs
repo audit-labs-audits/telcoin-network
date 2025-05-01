@@ -1,4 +1,5 @@
 //! Hierarchical type to hold tasks spawned for a worker in the network.
+use crate::manager::PRIMARY_TASK_MANAGER;
 use std::sync::Arc;
 use tn_config::ConsensusConfig;
 use tn_executor::{Executor, SubscriberResult};
@@ -12,6 +13,7 @@ use tn_types::{Database as ConsensusDatabase, TaskManager, DEFAULT_BAD_NODES_STA
 use tokio::sync::RwLock;
 use tracing::instrument;
 
+#[derive(Debug)]
 struct PrimaryNodeInner<CDB> {
     /// Consensus configuration.
     consensus_config: ConsensusConfig<CDB>,
@@ -31,7 +33,7 @@ impl<CDB: ConsensusDatabase> PrimaryNodeInner<CDB> {
     /// method will return an error instead.
     #[instrument(name = "primary_node", skip_all)]
     async fn start(&mut self) -> eyre::Result<TaskManager> {
-        let task_manager = TaskManager::new("Primary Task Manager");
+        let task_manager = TaskManager::new(PRIMARY_TASK_MANAGER);
         // spawn primary and update `self`
         self.spawn_primary(&task_manager).await?;
 
@@ -97,7 +99,7 @@ impl<CDB: ConsensusDatabase> PrimaryNodeInner<CDB> {
     }
 }
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub struct PrimaryNode<CDB> {
     internal: Arc<RwLock<PrimaryNodeInner<CDB>>>,
 }
@@ -144,8 +146,18 @@ impl<CDB: ConsensusDatabase> PrimaryNode<CDB> {
         self.internal.read().await.consensus_bus.clone()
     }
 
-    /// Return the WAN handke if the primary p2p is runnig.
+    /// Return the WAN handle if the primary p2p is runnig.
     pub async fn network_handle(&self) -> PrimaryNetworkHandle {
         self.internal.read().await.primary.network_handle().clone()
+    }
+
+    /// Return the [StateSynchronizer]
+    pub async fn state_sync(&self) -> StateSynchronizer<CDB> {
+        self.internal.read().await.primary.state_sync()
+    }
+
+    /// Return the [ConsensusConfig].
+    pub async fn consensus_config(&self) -> ConsensusConfig<CDB> {
+        self.internal.read().await.consensus_config.clone()
     }
 }
