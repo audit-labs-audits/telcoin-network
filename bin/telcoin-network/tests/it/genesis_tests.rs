@@ -50,16 +50,17 @@ async fn test_genesis_with_its() -> eyre::Result<()> {
     let rpc_url = "http://127.0.0.1:8545".to_string();
     let client = HttpClientBuilder::default().build(&rpc_url).expect("couldn't build rpc client");
 
-    let itel_address = NetworkGenesis::fetch_from_json_str(DEPLOYMENTS_JSON, Some("its.InterchainTEL"))?
-        .as_str()
-        .map(|hex_str| Address::from_hex(hex_str).unwrap())
-        .unwrap();
+    let itel_address =
+        NetworkGenesis::fetch_from_json_str(DEPLOYMENTS_JSON, Some("its.InterchainTEL"))?
+            .as_str()
+            .map(|hex_str| Address::from_hex(hex_str).unwrap())
+            .unwrap();
     let tel_supply = U256::try_from(parse_ether("100_000_000_000").unwrap()).unwrap();
     // 4 million tel staked at genesis for 4 validators
     let itel_bal = tel_supply - U256::try_from(parse_ether("4_000_000").unwrap()).unwrap();
-    
-    let precompiles =
-        NetworkGenesis::fetch_precompile_genesis_accounts(itel_address, itel_bal).expect("its precompiles not found");
+
+    let precompiles = NetworkGenesis::fetch_precompile_genesis_accounts(itel_address, itel_bal)
+        .expect("its precompiles not found");
     for (address, genesis_account) in precompiles {
         let returned_code: String = client
             .request("eth_getCode", rpc_params!(address))
@@ -73,7 +74,7 @@ async fn test_genesis_with_its() -> eyre::Result<()> {
                 .await
                 .expect("Failed to fetch RWTEL balance");
             let returned_bal = returned_bal.trim_start_matches("0x");
-            assert_eq!(U256::from_str_radix(&returned_bal, 16)?, itel_bal);
+            assert_eq!(U256::from_str_radix(returned_bal, 16)?, itel_bal);
         }
         if genesis_account.storage.is_some() {
             for (slot, value) in genesis_account.storage.unwrap().iter() {
@@ -101,11 +102,13 @@ async fn test_precompile_genesis_accounts() -> eyre::Result<()> {
 
     // assert all interchain token service precompile configs are present
     let its_addresses = expected_deployments.get("its").and_then(|v| v.as_object()).unwrap();
-    let itel_address = Address::from_hex(its_addresses.get("InterchainTEL").and_then(|v| v.as_str()).unwrap()).unwrap();
+    let itel_address =
+        Address::from_hex(its_addresses.get("InterchainTEL").and_then(|v| v.as_str()).unwrap())
+            .unwrap();
 
     let some_bal = U256::try_from(parse_ether("95_000_000_000").unwrap()).unwrap();
-    let precompiles =
-        NetworkGenesis::fetch_precompile_genesis_accounts(itel_address, some_bal).expect("its precompiles not found");
+    let precompiles = NetworkGenesis::fetch_precompile_genesis_accounts(itel_address, some_bal)
+        .expect("its precompiles not found");
     let addresses_with_storage: Vec<&str> = [
         "InterchainTEL",
         "InterchainTELImpl",
@@ -140,8 +143,7 @@ async fn test_precompile_genesis_accounts() -> eyre::Result<()> {
 
                     if key == "InterchainTEL" {
                         assert!(
-                            genesis_account.balance
-                                == some_bal,
+                            genesis_account.balance == some_bal,
                             "ITEL balance should be 100 billion TEL minus genesis validator stake"
                         );
                     }

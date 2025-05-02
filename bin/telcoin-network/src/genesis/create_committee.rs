@@ -186,11 +186,17 @@ impl CreateCommitteeArgs {
             })?
         };
         // use embedded ITS config from submodule, passing in decremented ITEL balance
-        let genesis_stake = self.initial_stake.checked_mul(U256::from(validators.clone().len())).expect("initial validators' stake");
-        let itel_balance = U256::try_from(parse_ether("100_000_000_000").expect("itel parse")).expect("itel bal") - genesis_stake;
+        let genesis_stake = self
+            .initial_stake
+            .checked_mul(U256::from(validators.clone().len()))
+            .expect("initial validators' stake");
+        let itel_balance = U256::try_from(parse_ether("100_000_000_000").expect("itel parse"))
+            .expect("itel bal")
+            - genesis_stake;
 
         let precompiles =
-            NetworkGenesis::fetch_precompile_genesis_accounts(itel_address, itel_balance).expect("precompile fetch error");
+            NetworkGenesis::fetch_precompile_genesis_accounts(itel_address, itel_balance)
+                .expect("precompile fetch error");
 
         let updated_genesis = genesis_with_consensus_registry.extend_accounts(precompiles);
 

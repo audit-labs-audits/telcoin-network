@@ -203,19 +203,19 @@ impl NetworkGenesis {
 
     /// Returns configurations for precompiles as genesis accounts
     /// Precompiles configs yamls are generated using foundry in tn-Contracts
-    /// 
+    ///
     /// Overrides InterchainTEL genesis balance to reflect genesis validator stake
-    pub fn fetch_precompile_genesis_accounts(itel_address: Address, itel_balance: tn_types::U256) -> eyre::Result<Vec<(Address, GenesisAccount)>> {
+    pub fn fetch_precompile_genesis_accounts(
+        itel_address: Address,
+        itel_balance: tn_types::U256,
+    ) -> eyre::Result<Vec<(Address, GenesisAccount)>> {
         let yaml_content = ITS_CFG_YAML;
         let config: std::collections::HashMap<Address, GenesisAccount> =
             serde_yaml::from_str(yaml_content).expect("yaml parsing failure");
         let mut accounts = Vec::new();
         for (address, precompile_config) in config {
-            let bal = if address == itel_address {
-                itel_balance
-            } else {
-                precompile_config.balance
-            };
+            let bal =
+                if address == itel_address { itel_balance } else { precompile_config.balance };
             let account = GenesisAccount::default()
                 .with_nonce(precompile_config.nonce)
                 .with_balance(bal)
