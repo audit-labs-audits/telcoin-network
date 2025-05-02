@@ -1280,7 +1280,7 @@ impl RethEnv {
         genesis: Genesis,
         initial_stake_config: ConsensusRegistry::StakeConfig,
         owner_address: Address,
-        rwtel_address: Address,
+        itel_address: Address,
     ) -> eyre::Result<Genesis> {
         let validators: Vec<_> = validators
             .iter()
@@ -1322,7 +1322,7 @@ impl RethEnv {
 
         // generate calldata for initialization call
         let init_calldata = ConsensusRegistry::initializeCall {
-            rwTEL_: rwtel_address,
+            iTEL_: itel_address,
             genesisConfig_: initial_stake_config,
             initialValidators_: validators,
             owner_: owner_address,
@@ -1641,7 +1641,7 @@ mod tests {
             adiri_genesis(),
             initial_stake_config,
             owner,
-            Address::random(), // rwtel
+            Address::random(), // itel
         )?;
 
         // create new env with initialized consensus registry for tests

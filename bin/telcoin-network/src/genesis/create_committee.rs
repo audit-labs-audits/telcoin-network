@@ -146,15 +146,15 @@ impl CreateCommitteeArgs {
             epochIssuance: self.epoch_rewards,
             epochDuration: self.epoch_duration,
         };
-        let rwtel_address =
-            match NetworkGenesis::fetch_from_json_str(DEPLOYMENTS_JSON, Some("its.rwTEL")) {
+        let itel_address =
+            match NetworkGenesis::fetch_from_json_str(DEPLOYMENTS_JSON, Some("its.InterchainTEL")) {
                 Ok(res) => match res {
                     serde_json::Value::String(s) => {
-                        Address::from_str(&s).expect("RWTEL addr incorrect")
+                        Address::from_str(&s).expect("ITEL addr incorrect")
                     }
-                    _ => panic!("RWTEL address not a string"),
+                    _ => panic!("ITEL address not a string"),
                 },
-                _ => panic!("RWTEL address not found"),
+                _ => panic!("ITEL address not found"),
             };
 
         // try to create a runtime if one doesn't already exist
@@ -167,7 +167,7 @@ impl CreateCommitteeArgs {
                 genesis.clone(),
                 initial_stake_config.clone(),
                 self.consensus_registry_owner,
-                rwtel_address,
+                itel_address,
             )?
         } else {
             // no runtime exists (normal CLI operation)
@@ -181,7 +181,7 @@ impl CreateCommitteeArgs {
                     genesis,
                     initial_stake_config,
                     self.consensus_registry_owner,
-                    rwtel_address,
+                    itel_address,
                 )
             })?
         };

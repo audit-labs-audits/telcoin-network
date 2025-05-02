@@ -89,8 +89,8 @@ async fn test_precompile_genesis_accounts() -> eyre::Result<()> {
     // assert all interchain token service precompile configs are present
     let its_addresses = expected_deployments.get("its").and_then(|v| v.as_object()).unwrap();
     let addresses_with_storage: Vec<&str> = [
-        "rwTEL",
-        "rwTELImpl",
+        "InterchainTEL",
+        "InterchainTELImpl",
         "AxelarAmplifierGateway",
         "GasService",
         "InterchainTokenService",
@@ -117,10 +117,10 @@ async fn test_precompile_genesis_accounts() -> eyre::Result<()> {
                         "Storage should be present for {address}"
                     );
 
-                    if key == "rwTEL" {
+                    if key == "InterchainTEL" {
                         assert!(
                             genesis_account.balance == U256::try_from(parse_ether("100_000_000_000").unwrap()).unwrap(),
-                            "RWTEL balance should be 100 billion TEL before genesis validator stake"
+                            "ITEL balance should be 100 billion TEL before genesis validator stake"
                         );
                     }
                 }
@@ -294,7 +294,7 @@ fn genesis_with_proxy(registry_impl_deployed_bytecode: Vec<u8>) -> eyre::Result<
 
     // now init the registry impl
     let init_data = ConsensusRegistry::initializeCall {
-        rwTEL_: Address::random(),
+        iTEL_: Address::random(),
         genesisConfig_: initial_stake_config,
         initialValidators_: initial_validators.clone(),
         owner_: Address::random(),
