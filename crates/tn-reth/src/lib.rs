@@ -1628,7 +1628,8 @@ mod tests {
         let initial_stake_config = ConsensusRegistry::StakeConfig {
             stakeAmount: U256::try_from(parse_ether("1_000_000").unwrap()).unwrap(),
             minWithdrawAmount: U256::try_from(parse_ether("1_000").unwrap()).unwrap(),
-            epochIssuance: U256::try_from(parse_ether("20_000_000").unwrap()).unwrap()
+            epochIssuance: U256::try_from(parse_ether("20_000_000").unwrap())
+                .unwrap()
                 .checked_div(U256::from(28))
                 .expect("u256 div checked"),
             epochDuration: epoch_duration,

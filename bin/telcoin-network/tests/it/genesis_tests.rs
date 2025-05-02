@@ -5,7 +5,10 @@
 //! because the proxy version may be re-prioritized later.
 use crate::util::spawn_local_testnet;
 use alloy::{
-    network::EthereumWallet, primitives::utils::parse_ether, providers::ProviderBuilder, sol_types::{SolCall, SolConstructor}
+    network::EthereumWallet,
+    primitives::utils::parse_ether,
+    providers::ProviderBuilder,
+    sol_types::{SolCall, SolConstructor},
 };
 use jsonrpsee::{core::client::ClientT, http_client::HttpClientBuilder, rpc_params};
 use rand::SeedableRng;
@@ -13,9 +16,7 @@ use rand_chacha::ChaCha8Rng;
 use serde_json::Value;
 use std::{collections::BTreeMap, sync::Arc, time::Duration};
 use tempfile::TempDir;
-use tn_config::{
-    fetch_file_content_relative_to_manifest, NetworkGenesis, DEPLOYMENTS_JSON,
-};
+use tn_config::{fetch_file_content_relative_to_manifest, NetworkGenesis, DEPLOYMENTS_JSON};
 use tn_reth::{
     system_calls::{
         ConsensusRegistry::{self, getCurrentEpochInfoReturn, getValidatorsReturn},
@@ -87,10 +88,17 @@ async fn test_precompile_genesis_accounts() -> eyre::Result<()> {
 
     // assert all interchain token service precompile configs are present
     let its_addresses = expected_deployments.get("its").and_then(|v| v.as_object()).unwrap();
-    let addresses_with_storage: Vec<&str> = ["rwTEL", "rwTELImpl", "AxelarAmplifierGateway", "GasService", "InterchainTokenService", "InterchainTokenFactory"]
-        .iter()
-        .filter_map(|&key| its_addresses.get(key).and_then(Value::as_str))
-        .collect();
+    let addresses_with_storage: Vec<&str> = [
+        "rwTEL",
+        "rwTELImpl",
+        "AxelarAmplifierGateway",
+        "GasService",
+        "InterchainTokenService",
+        "InterchainTokenFactory",
+    ]
+    .iter()
+    .filter_map(|&key| its_addresses.get(key).and_then(Value::as_str))
+    .collect();
     its_addresses.iter()
         .filter_map(|(key, value)| value.as_str().map(|address| (key, address)))
         .for_each(|(key, address)| {
@@ -256,7 +264,8 @@ fn genesis_with_proxy(registry_impl_deployed_bytecode: Vec<u8>) -> eyre::Result<
     let initial_stake_config = ConsensusRegistry::StakeConfig {
         stakeAmount: stake_amount,
         minWithdrawAmount: U256::try_from(parse_ether("1_000").unwrap()).unwrap(),
-        epochIssuance: U256::try_from(parse_ether("20_000_000").unwrap()).unwrap()
+        epochIssuance: U256::try_from(parse_ether("20_000_000").unwrap())
+            .unwrap()
             .checked_div(U256::from(28))
             .expect("u256 div checked"),
         epochDuration: epoch_duration,

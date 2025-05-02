@@ -149,9 +149,11 @@ impl CreateCommitteeArgs {
         let rwtel_address =
             match NetworkGenesis::fetch_from_json_str(DEPLOYMENTS_JSON, Some("its.rwTEL")) {
                 Ok(res) => match res {
-                        serde_json::Value::String(s) => Address::from_str(&s).expect("RWTEL addr incorrect"),
-                        _ => panic!("RWTEL address not a string")
-                    },
+                    serde_json::Value::String(s) => {
+                        Address::from_str(&s).expect("RWTEL addr incorrect")
+                    }
+                    _ => panic!("RWTEL address not a string"),
+                },
                 _ => panic!("RWTEL address not found"),
             };
 
