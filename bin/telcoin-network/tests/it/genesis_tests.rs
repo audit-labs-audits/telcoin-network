@@ -50,8 +50,16 @@ async fn test_genesis_with_its() -> eyre::Result<()> {
     let rpc_url = "http://127.0.0.1:8545".to_string();
     let client = HttpClientBuilder::default().build(&rpc_url).expect("couldn't build rpc client");
 
+    let itel_address = NetworkGenesis::fetch_from_json_str(DEPLOYMENTS_JSON, Some("its.InterchainTEL"))?
+        .as_str()
+        .map(|hex_str| Address::from_hex(hex_str).unwrap())
+        .unwrap();
+    let tel_supply = U256::try_from(parse_ether("100_000_000_000").unwrap()).unwrap();
+    // 4 million tel staked at genesis for 4 validators
+    let itel_bal = tel_supply - U256::try_from(parse_ether("4_000_000").unwrap()).unwrap();
+    
     let precompiles =
-        NetworkGenesis::fetch_precompile_genesis_accounts().expect("its precompiles not found");
+        NetworkGenesis::fetch_precompile_genesis_accounts(itel_address, itel_bal).expect("its precompiles not found");
     for (address, genesis_account) in precompiles {
         let returned_code: String = client
             .request("eth_getCode", rpc_params!(address))
@@ -59,6 +67,14 @@ async fn test_genesis_with_its() -> eyre::Result<()> {
             .expect("Failed to fetch runtime code");
         assert_eq!(Bytes::from_hex(returned_code), Ok(genesis_account.code.unwrap()));
 
+        if address == itel_address {
+            let returned_bal: String = client
+                .request("eth_getBalance", rpc_params!(address))
+                .await
+                .expect("Failed to fetch RWTEL balance");
+            let returned_bal = returned_bal.trim_start_matches("0x");
+            assert_eq!(U256::from_str_radix(&returned_bal, 16)?, itel_bal);
+        }
         if genesis_account.storage.is_some() {
             for (slot, value) in genesis_account.storage.unwrap().iter() {
                 let returned_storage: String = client
@@ -75,9 +91,6 @@ async fn test_genesis_with_its() -> eyre::Result<()> {
 
 #[tokio::test]
 async fn test_precompile_genesis_accounts() -> eyre::Result<()> {
-    let precompiles =
-        NetworkGenesis::fetch_precompile_genesis_accounts().expect("its precompiles not found");
-
     // check that all addresses in expected_deployments are present in precompiles
     let is_address_present = |address: &str, genesis_config: Vec<(Address, GenesisAccount)>| {
         genesis_config
@@ -88,6 +101,11 @@ async fn test_precompile_genesis_accounts() -> eyre::Result<()> {
 
     // assert all interchain token service precompile configs are present
     let its_addresses = expected_deployments.get("its").and_then(|v| v.as_object()).unwrap();
+    let itel_address = Address::from_hex(its_addresses.get("InterchainTEL").and_then(|v| v.as_str()).unwrap()).unwrap();
+
+    let some_bal = U256::try_from(parse_ether("95_000_000_000").unwrap()).unwrap();
+    let precompiles =
+        NetworkGenesis::fetch_precompile_genesis_accounts(itel_address, some_bal).expect("its precompiles not found");
     let addresses_with_storage: Vec<&str> = [
         "InterchainTEL",
         "InterchainTELImpl",
@@ -99,9 +117,12 @@ async fn test_precompile_genesis_accounts() -> eyre::Result<()> {
     .iter()
     .filter_map(|&key| its_addresses.get(key).and_then(Value::as_str))
     .collect();
-    its_addresses.iter()
+    its_addresses
+        .iter()
         .filter_map(|(key, value)| value.as_str().map(|address| (key, address)))
         .for_each(|(key, address)| {
+            println!("{key}");
+            println!("{address}");
             assert!(
                 is_address_present(address, precompiles.clone()),
                 "{key} is not present in precompiles"
@@ -119,8 +140,9 @@ async fn test_precompile_genesis_accounts() -> eyre::Result<()> {
 
                     if key == "InterchainTEL" {
                         assert!(
-                            genesis_account.balance == U256::try_from(parse_ether("100_000_000_000").unwrap()).unwrap(),
-                            "ITEL balance should be 100 billion TEL before genesis validator stake"
+                            genesis_account.balance
+                                == some_bal,
+                            "ITEL balance should be 100 billion TEL minus genesis validator stake"
                         );
                     }
                 }

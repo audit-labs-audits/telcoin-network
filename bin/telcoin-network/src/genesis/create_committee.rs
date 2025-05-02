@@ -146,16 +146,16 @@ impl CreateCommitteeArgs {
             epochIssuance: self.epoch_rewards,
             epochDuration: self.epoch_duration,
         };
-        let itel_address =
-            match NetworkGenesis::fetch_from_json_str(DEPLOYMENTS_JSON, Some("its.InterchainTEL")) {
-                Ok(res) => match res {
-                    serde_json::Value::String(s) => {
-                        Address::from_str(&s).expect("ITEL addr incorrect")
-                    }
-                    _ => panic!("ITEL address not a string"),
-                },
-                _ => panic!("ITEL address not found"),
-            };
+        let itel_address = match NetworkGenesis::fetch_from_json_str(
+            DEPLOYMENTS_JSON,
+            Some("its.InterchainTEL"),
+        ) {
+            Ok(res) => match res {
+                serde_json::Value::String(s) => Address::from_str(&s).expect("ITEL addr incorrect"),
+                _ => panic!("ITEL address not a string"),
+            },
+            _ => panic!("ITEL address not found"),
+        };
 
         // try to create a runtime if one doesn't already exist
         // this is a workaround for executing committees pre-genesis during tests and normal CLI
@@ -177,7 +177,7 @@ impl CreateCommitteeArgs {
 
             runtime.block_on(async {
                 RethEnv::create_consensus_registry_genesis_account(
-                    validators,
+                    validators.clone(),
                     genesis,
                     initial_stake_config,
                     self.consensus_registry_owner,
@@ -185,9 +185,12 @@ impl CreateCommitteeArgs {
                 )
             })?
         };
-        // use embedded ITS config from submodule
+        // use embedded ITS config from submodule, passing in decremented ITEL balance
+        let genesis_stake = self.initial_stake.checked_mul(U256::from(validators.clone().len())).expect("initial validators' stake");
+        let itel_balance = U256::try_from(parse_ether("100_000_000_000").expect("itel parse")).expect("itel bal") - genesis_stake;
+
         let precompiles =
-            NetworkGenesis::fetch_precompile_genesis_accounts().expect("precompile fetch error");
+            NetworkGenesis::fetch_precompile_genesis_accounts(itel_address, itel_balance).expect("precompile fetch error");
 
         let updated_genesis = genesis_with_consensus_registry.extend_accounts(precompiles);
 
