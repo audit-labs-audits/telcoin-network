@@ -5,17 +5,16 @@
 //! because the proxy version may be re-prioritized later.
 use crate::util::spawn_local_testnet;
 use alloy::{
-    network::EthereumWallet,
-    providers::ProviderBuilder,
-    sol_types::{SolCall, SolConstructor},
+    network::EthereumWallet, primitives::utils::parse_ether, providers::ProviderBuilder, sol_types::{SolCall, SolConstructor}
 };
 use jsonrpsee::{core::client::ClientT, http_client::HttpClientBuilder, rpc_params};
 use rand::SeedableRng;
 use rand_chacha::ChaCha8Rng;
+use serde_json::Value;
 use std::{collections::BTreeMap, sync::Arc, time::Duration};
 use tempfile::TempDir;
 use tn_config::{
-    fetch_file_content_relative_to_manifest, NetworkGenesis, QueryResult, DEPLOYMENTS_JSON,
+    fetch_file_content_relative_to_manifest, NetworkGenesis, DEPLOYMENTS_JSON,
 };
 use tn_reth::{
     system_calls::{
@@ -84,48 +83,41 @@ async fn test_precompile_genesis_accounts() -> eyre::Result<()> {
             .iter()
             .any(|(precompile_address, _)| precompile_address.to_string() == address)
     };
-    let expected_deployments = match NetworkGenesis::fetch_from_json_str(DEPLOYMENTS_JSON, None) {
-        Ok(QueryResult::Map(value)) => value,
-        _ => panic!("deployments not found"),
-    };
-    let its = expected_deployments.get("its").and_then(|v| v.as_object()).unwrap();
-    for (key, value) in its {
-        let address = value.as_str().unwrap();
-        assert!(
-            is_address_present(address, precompiles.clone()),
-            "{key} is not present in precompiles"
-        );
-    }
+    let expected_deployments = NetworkGenesis::fetch_from_json_str(DEPLOYMENTS_JSON, None)?;
 
-    for key in ["rwTEL", "rwTELImpl", "rwTELTokenManager"] {
-        let address = expected_deployments.get(key).and_then(|v| v.as_str()).unwrap();
-        assert!(
-            is_address_present(address, precompiles.clone()),
-            "{key} is not present in precompiles"
-        );
-    }
+    // assert all interchain token service precompile configs are present
+    let its_addresses = expected_deployments.get("its").and_then(|v| v.as_object()).unwrap();
+    let addresses_with_storage: Vec<&str> = ["rwTEL", "rwTELImpl", "AxelarAmplifierGateway", "GasService", "InterchainTokenService", "InterchainTokenFactory"]
+        .iter()
+        .filter_map(|&key| its_addresses.get(key).and_then(Value::as_str))
+        .collect();
+    its_addresses.iter()
+        .filter_map(|(key, value)| value.as_str().map(|address| (key, address)))
+        .for_each(|(key, address)| {
+            assert!(
+                is_address_present(address, precompiles.clone()),
+                "{key} is not present in precompiles"
+            );
 
-    // assert stateful contracts possess storage config
-    let rwtel = expected_deployments.get("rwTEL").and_then(|v| v.as_str()).unwrap();
-    let rwtel_impl = expected_deployments.get("rwTELImpl").and_then(|v| v.as_str()).unwrap();
-    let gateway = its.get("AxelarAmplifierGateway").and_then(|v| v.as_str()).unwrap();
-    let gas_service = its.get("GasService").and_then(|v| v.as_str()).unwrap();
-    let token_service = its.get("InterchainTokenService").and_then(|v| v.as_str()).unwrap();
-    let factory = its.get("InterchainTokenFactory").and_then(|v| v.as_str()).unwrap();
-    for (address, genesis_account) in precompiles {
-        let addr_str = address.to_string();
-        // contracts with storage
-        if [rwtel, rwtel_impl, gateway, gas_service, token_service, factory]
-            .iter()
-            .any(|&a| a == addr_str)
-        {
-            assert!(genesis_account.storage.is_some());
-        }
-        // check rwtel balance exists, actual val checked later
-        if addr_str == rwtel {
-            assert!(genesis_account.balance > U256::ZERO);
-        }
-    }
+            if addresses_with_storage.contains(&address) {
+                if let Some((_, genesis_account)) = precompiles
+                    .iter()
+                    .find(|precompile| precompile.0 == Address::from_hex(address).unwrap())
+                {
+                    assert!(
+                        genesis_account.storage.is_some(),
+                        "Storage should be present for {address}"
+                    );
+
+                    if key == "rwTEL" {
+                        assert!(
+                            genesis_account.balance == U256::try_from(parse_ether("100_000_000_000").unwrap()).unwrap(),
+                            "RWTEL balance should be 100 billion TEL before genesis validator stake"
+                        );
+                    }
+                }
+            }
+        });
 
     Ok(())
 }
@@ -260,11 +252,11 @@ fn genesis_with_proxy(registry_impl_deployed_bytecode: Vec<u8>) -> eyre::Result<
         .collect();
 
     let epoch_duration = 60 * 60 * 24; // 24-hours
-    let stake_amount = U256::from(1_000_000e18);
+    let stake_amount = U256::try_from(parse_ether("1_000_000").unwrap()).unwrap();
     let initial_stake_config = ConsensusRegistry::StakeConfig {
         stakeAmount: stake_amount,
-        minWithdrawAmount: U256::from(1_000e18),
-        epochIssuance: U256::from(20_000_000e18)
+        minWithdrawAmount: U256::try_from(parse_ether("1_000").unwrap()).unwrap(),
+        epochIssuance: U256::try_from(parse_ether("20_000_000").unwrap()).unwrap()
             .checked_div(U256::from(28))
             .expect("u256 div checked"),
         epochDuration: epoch_duration,

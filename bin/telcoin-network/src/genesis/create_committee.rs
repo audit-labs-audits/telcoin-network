@@ -1,11 +1,12 @@
 //! Create a committee from the validators in genesis.
 
 use crate::args::{clap_address_parser, clap_genesis_parser};
+use alloy::primitives::utils::parse_ether;
 use clap::Args;
 use core::panic;
 use std::{path::PathBuf, str::FromStr, sync::Arc};
 use tn_config::{
-    Config, ConfigFmt, ConfigTrait, NetworkGenesis, QueryResult, TelcoinDirs as _, DEPLOYMENTS_JSON,
+    Config, ConfigFmt, ConfigTrait, NetworkGenesis, TelcoinDirs as _, DEPLOYMENTS_JSON,
 };
 use tn_reth::{
     dirs::{default_datadir_args, DataDirChainPath, DataDirPath},
@@ -78,7 +79,7 @@ pub struct CreateCommitteeArgs {
         long = "initial-stake-per-validator",
         alias = "stake",
         help_heading = "The initial stake credited to each validator in genesis. The default is 1mil TEL.",
-        default_value_t = U256::from(1_000_000e18),
+        default_value_t = U256::try_from(parse_ether("1_000_000").expect("parse_ether")).expect("initial stake"),
         verbatim_doc_comment
     )]
     pub initial_stake: U256,
@@ -88,7 +89,7 @@ pub struct CreateCommitteeArgs {
         long = "min-withdraw-amount",
         alias = "min_withdraw",
         help_heading = "The minimal amount a validator can withdraw. The default is 1_000 TEL.",
-        default_value_t = U256::from(1_000e18),
+        default_value_t = U256::try_from(parse_ether("1_000").expect("parse_ether")).expect("min withdraw"),
         verbatim_doc_comment
     )]
     pub min_withdrawal: U256,
@@ -98,7 +99,7 @@ pub struct CreateCommitteeArgs {
         long = "epoch-block-rewards",
         alias = "block_rewards_per_epoch",
         help_heading = "The amount of TEL (incl 18 decimals) for the committee starting at genesis.",
-        default_value_t = U256::from(20_000_000e18).checked_div(U256::from(28)).expect("U256 div works"),
+        default_value_t = U256::try_from(parse_ether("20_000_000").expect("parse_ether")).expect("block rewards").checked_div(U256::from(28)).expect("U256 div works"),
         verbatim_doc_comment
     )]
     pub epoch_rewards: U256,
@@ -146,11 +147,11 @@ impl CreateCommitteeArgs {
             epochDuration: self.epoch_duration,
         };
         let rwtel_address =
-            match NetworkGenesis::fetch_from_json_str(DEPLOYMENTS_JSON, Some("rwTEL")) {
-                Ok(QueryResult::Single(value)) => {
-                    Address::from_str(value.as_str().expect("RWTEL address incorrect"))
-                        .expect("RWTEK address incorrect")
-                }
+            match NetworkGenesis::fetch_from_json_str(DEPLOYMENTS_JSON, Some("its.rwTEL")) {
+                Ok(res) => match res {
+                        serde_json::Value::String(s) => Address::from_str(&s).expect("RWTEL addr incorrect"),
+                        _ => panic!("RWTEL address not a string")
+                    },
                 _ => panic!("RWTEL address not found"),
             };
 

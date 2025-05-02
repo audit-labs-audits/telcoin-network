@@ -31,12 +31,6 @@ pub const ERC1967PROXY_JSON: &str =
 pub const ITS_CFG_YAML: &str =
     include_str!("../../../tn-contracts/deployments/genesis/its-config.yaml");
 
-/// Wrapper for fetching JSON keys as object or values
-pub enum QueryResult {
-    Map(Map<String, Value>),
-    Single(Value),
-}
-
 /// The struct for starting a network at genesis.
 pub struct NetworkGenesis {
     /// Execution data
@@ -229,33 +223,24 @@ impl NetworkGenesis {
 
     /// Fetches json info from the given string
     ///
-    /// If a query is specified, return the corresponding nested object.
+    /// If a key is specified, return the corresponding nested object.
     /// Otherwise return the entire JSON
     /// With a generic this could be adjused to handle YAML also
     pub fn fetch_from_json_str(
-        json_string: &str,
-        query: Option<&str>,
-    ) -> eyre::Result<QueryResult> {
-        let json: Value = serde_json::from_str(json_string).expect("json string malformed");
-        let result = match query {
+        json_content: &str,
+        key: Option<&str>,
+    ) -> eyre::Result<Value> {
+        let json: Value = serde_json::from_str(json_content)?;
+        let result = match key {
             Some(path) => {
-                let keys: Vec<&str> = path.split('.').collect();
+                let key: Vec<&str> = path.split('.').collect();
                 let mut current_value = &json;
-                for &key in &keys {
-                    current_value = current_value.get(key).ok_or_eyre("query key not found")?;
+                for &k in &key {
+                    current_value = current_value.get(k).ok_or_else(|| eyre::eyre!("key '{}' not found", k))?;
                 }
-
-                match current_value {
-                    // return objects directly
-                    Value::Object(map) => QueryResult::Map(map.clone()),
-                    // return single entries wrapped in a Map
-                    _ => QueryResult::Single(current_value.clone()),
-                }
+                current_value.clone()
             }
-            None => {
-                let map = json.as_object().cloned().ok_or_eyre("json string malformed")?;
-                QueryResult::Map(map)
-            }
+            None => json
         };
 
         Ok(result)
