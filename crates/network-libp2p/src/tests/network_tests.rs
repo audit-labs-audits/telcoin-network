@@ -662,7 +662,10 @@ async fn test_peer_exchange_with_excess_peers() -> eyre::Result<()> {
         );
 
     // spawn target network
-    let target_network = target_peer.network.take().expect("target network is some");
+    let mut target_network = target_peer.network.take().expect("target network is some");
+    // Need to disable kademlia peers or the various networks will connect on their own and trip up
+    // the test...
+    target_network.no_kad_peers_for_test();
     let id = target_peer.config.authority().as_ref().expect("authority").id().peer_id();
     tokio::spawn(async move {
         let res = target_network.run().await;
@@ -694,7 +697,8 @@ async fn test_peer_exchange_with_excess_peers() -> eyre::Result<()> {
     // Start other peers and connect them one by one to the target
     for peer in other_peers.iter_mut() {
         // spawn peer network
-        let peer_network = peer.network.take().expect("peer network is some");
+        let mut peer_network = peer.network.take().expect("peer network is some");
+        peer_network.no_kad_peers_for_test();
         let id = peer.config.authority().as_ref().expect("authority").id().peer_id();
         tokio::spawn(async move {
             let res = peer_network.run().await;
@@ -736,9 +740,10 @@ async fn test_peer_exchange_with_excess_peers() -> eyre::Result<()> {
     let NetworkPeer {
         config: nvv_config,
         network_handle: nvv,
-        network,
+        mut network,
         network_events: mut nvv_events,
     } = peer1;
+    network.no_kad_peers_for_test();
     tokio::spawn(async move {
         network.run().await.expect("network run failed!");
     });
