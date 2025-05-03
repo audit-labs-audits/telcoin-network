@@ -10,7 +10,9 @@ use libp2p::{
     request_response::ResponseChannel,
     Multiaddr, PeerId, TransportError,
 };
+use serde::{Deserialize, Serialize};
 use std::collections::{HashMap, HashSet};
+use tn_types::BlsSignature;
 use tokio::sync::{mpsc, oneshot};
 
 /// The result for network operations.
@@ -467,6 +469,20 @@ where
         self.sender.send(NetworkCommand::NewEpoch { committee }).await?;
         Ok(())
     }
+}
+
+/// List of addresses for a node, signature will be the nodes BLS signature
+/// over the addresses to verify they are from the node in question.
+/// Used to publish this to kademlia.
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub(crate) struct AddrList {
+    /// Signature of the value field with the nodes BLS key.
+    /// This is part of a kademlia record keyed on a BLS public key
+    /// that can be used for verifiction.  Intended to stop malicious
+    /// nodes from poisoning the routing table.
+    pub signature: BlsSignature,
+    /// Vector of libp2p network addresses for node.
+    pub value: Vec<Multiaddr>,
 }
 
 /// Helper macro for sending oneshot replies and logging errors.
