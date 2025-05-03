@@ -16,13 +16,15 @@ use reth_provider::{
 };
 use reth_rpc_eth_types::utils::recover_raw_transaction as reth_recover_raw_transaction;
 use reth_transaction_pool::{
-    error::InvalidPoolTransactionError, identifier::TransactionId, BestTransactions,
-    CanonicalStateUpdate, EthPooledTransaction, PoolSize, PoolUpdateKind, TransactionEvents,
-    TransactionOrigin, TransactionPool as _, TransactionPoolExt as _, ValidPoolTransaction,
+    error::{InvalidPoolTransactionError, PoolError},
+    identifier::TransactionId,
+    BestTransactions, CanonicalStateUpdate, EthPooledTransaction, PoolSize, PoolUpdateKind,
+    TransactionEvents, TransactionOrigin, TransactionPool as _, TransactionPoolExt as _,
+    ValidPoolTransaction,
 };
 use tn_types::{
-    Address, EnvKzgSettings, RecoveredTx, SealedBlock, TaskManager, TransactionSigned, TxHash,
-    MIN_PROTOCOL_BASE_FEE,
+    Address, EnvKzgSettings, RecoveredTx, SealedBlock, SignedTransactionIntoRecoveredExt as _,
+    TaskManager, TransactionSigned, TxHash, MIN_PROTOCOL_BASE_FEE,
 };
 use tracing::{debug, info, trace};
 
@@ -46,6 +48,30 @@ pub fn new_pool_txn(transaction: EthPooledTransaction, transaction_id: PoolTxnId
         timestamp: Instant::now(),
         origin: TransactionOrigin::External,
     }
+}
+
+/// Decode transaction bytes back to a ['TransactionSigned'].
+pub fn bytes_to_txn(tx_bytes: &[u8]) -> eyre::Result<TransactionSigned> {
+    Ok(reth_recover_raw_transaction::<TransactionSigned>(tx_bytes)
+        .map_err(|_| eyre::eyre!("failed to recover transaction"))?
+        .into())
+    /*let tx = reth_recover_raw_transaction::<TransactionSigned>(tx_bytes)?;
+    tx.hash()
+    let transaction = EthPooledTransaction::try_from(tx)
+        .map_err(|_| PoolError::other(tx.hash(), "Not into pooled".to_string()))?;
+    //.map_err(|e| PoolError::other(TxHash::default(), e))?;
+    let pooled_tx = tx
+        .try_into_pooled()
+        .map_err(|_| PoolError::other(tx.hash(), "Not into pooled".to_string()))?;
+    /*let pooled_tx = tx
+    .tx()
+    .clone()
+    .try_into_pooled()
+    .map_err(|_| PoolError::other(tx.hash(), "Not into pooled".to_string()))?;*/
+    let recovered = pooled_tx
+        .try_into_ecrecovered()
+        .map_err(|_| PoolError::other(tx.hash(), "Not ec recovered".to_string()))?;
+    Ok(transaction.into())*/
 }
 
 /// Trait on a transaction pool to produce the best transaction.
@@ -231,6 +257,25 @@ impl WorkerTxPool {
         recovered: EthPooledTransaction,
     ) -> Result<TxHash, crate::PoolError> {
         self.0.add_transaction(TransactionOrigin::Local, recovered).await
+    }
+
+    /// Adds an external transaction to the pool.
+    pub async fn add_raw_transaction_external(
+        &self,
+        tx: TransactionSigned,
+    ) -> Result<TxHash, crate::PoolError> {
+        //let tx = reth_recover_raw_transaction::<TransactionSigned>(tx_bytes)
+        //    .map_err(|e| PoolError::other(TxHash::default(), e))?;
+        let hash = tx.hash();
+        let pooled_tx = tx
+            //.tx()
+            //.clone()
+            .try_into_pooled()
+            .map_err(|_| PoolError::other(hash, "Not into pooled".to_string()))?;
+        let recovered = pooled_tx
+            .try_into_ecrecovered()
+            .map_err(|_| PoolError::other(hash, "Not ec recovered".to_string()))?;
+        self.0.add_transaction(TransactionOrigin::External, recovered.into()).await
     }
 
     /// Adds a local (NOT external) transaction to the pool and subscribes to transaction events.
