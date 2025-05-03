@@ -10,7 +10,7 @@ START=false
 # Account that will be funded with 1 billion TEL for testing.
 # You must use --dev-funds to overide with your own account,
 # must be prefixed with 0x and be a valid account.
-DEV_FUNDS="0x3DCc9a6f3A71F0A6C8C659c65558321c374E917a"
+DEV_FUNDS=""
 
 export TN_BLS_PASSPHRASE="local"
 

@@ -55,23 +55,6 @@ pub fn bytes_to_txn(tx_bytes: &[u8]) -> eyre::Result<TransactionSigned> {
     Ok(reth_recover_raw_transaction::<TransactionSigned>(tx_bytes)
         .map_err(|_| eyre::eyre!("failed to recover transaction"))?
         .into())
-    /*let tx = reth_recover_raw_transaction::<TransactionSigned>(tx_bytes)?;
-    tx.hash()
-    let transaction = EthPooledTransaction::try_from(tx)
-        .map_err(|_| PoolError::other(tx.hash(), "Not into pooled".to_string()))?;
-    //.map_err(|e| PoolError::other(TxHash::default(), e))?;
-    let pooled_tx = tx
-        .try_into_pooled()
-        .map_err(|_| PoolError::other(tx.hash(), "Not into pooled".to_string()))?;
-    /*let pooled_tx = tx
-    .tx()
-    .clone()
-    .try_into_pooled()
-    .map_err(|_| PoolError::other(tx.hash(), "Not into pooled".to_string()))?;*/
-    let recovered = pooled_tx
-        .try_into_ecrecovered()
-        .map_err(|_| PoolError::other(tx.hash(), "Not ec recovered".to_string()))?;
-    Ok(transaction.into())*/
 }
 
 /// Trait on a transaction pool to produce the best transaction.
@@ -264,12 +247,8 @@ impl WorkerTxPool {
         &self,
         tx: TransactionSigned,
     ) -> Result<TxHash, crate::PoolError> {
-        //let tx = reth_recover_raw_transaction::<TransactionSigned>(tx_bytes)
-        //    .map_err(|e| PoolError::other(TxHash::default(), e))?;
         let hash = tx.hash();
         let pooled_tx = tx
-            //.tx()
-            //.clone()
             .try_into_pooled()
             .map_err(|_| PoolError::other(hash, "Not into pooled".to_string()))?;
         let recovered = pooled_tx
