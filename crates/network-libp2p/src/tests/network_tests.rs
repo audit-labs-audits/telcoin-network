@@ -536,7 +536,7 @@ async fn test_publish_to_one_peer() -> eyre::Result<()> {
     let cvv_addr = cvv.listeners().await?.first().expect("peer2 listen addr").clone();
 
     // subscribe
-    nvv.subscribe(TEST_TOPIC.into(), config_1.committee_peer_ids()).await?;
+    nvv.subscribe_with_publishers(TEST_TOPIC.into(), config_1.committee_peer_ids()).await?;
 
     // dial cvv
     nvv.dial(cvv_id, cvv_addr).await?;
@@ -601,7 +601,7 @@ async fn test_msg_verification_ignores_unauthorized_publisher() -> eyre::Result<
     let cvv_addr = cvv.listeners().await?.first().expect("peer2 listen addr").clone();
 
     // subscribe
-    nvv.subscribe(TEST_TOPIC.into(), config_1.committee_peer_ids()).await?;
+    nvv.subscribe_with_publishers(TEST_TOPIC.into(), config_1.committee_peer_ids()).await?;
 
     // dial cvv
     nvv.dial(cvv_id, cvv_addr).await?;
@@ -717,7 +717,9 @@ async fn test_peer_exchange_with_excess_peers() -> eyre::Result<()> {
             .await?;
 
         // subscribe to topic
-        peer.network_handle.subscribe(TEST_TOPIC.into(), peer.config.committee_peer_ids()).await?;
+        peer.network_handle
+            .subscribe_with_publishers(TEST_TOPIC.into(), peer.config.committee_peer_ids())
+            .await?;
 
         // Connect to target
         peer.network_handle.dial(target_peer_id, target_addr.clone()).await?;
@@ -755,7 +757,7 @@ async fn test_peer_exchange_with_excess_peers() -> eyre::Result<()> {
 
     // subscribe to topic
     // add target peer as authorized publisher
-    nvv.subscribe(TEST_TOPIC.into(), HashSet::from([target_peer_id])).await?;
+    nvv.subscribe_with_publishers(TEST_TOPIC.into(), HashSet::from([target_peer_id])).await?;
 
     // connect to target
     nvv.dial(target_peer_id, target_addr.clone()).await?;
@@ -1063,7 +1065,7 @@ async fn test_multi_peer_mesh_formation() -> eyre::Result<()> {
     // Subscribe target to test topic
     target_peer
         .network_handle
-        .subscribe(TEST_TOPIC.into(), target_peer.config.committee_peer_ids())
+        .subscribe_with_publishers(TEST_TOPIC.into(), target_peer.config.committee_peer_ids())
         .await?;
 
     // Start other peers and connect them all to the target (star topology)
@@ -1087,7 +1089,9 @@ async fn test_multi_peer_mesh_formation() -> eyre::Result<()> {
             .await?;
 
         // subscribe to test topic with target peer as authorized publisher
-        peer.network_handle.subscribe(TEST_TOPIC.into(), HashSet::from([target_peer_id])).await?;
+        peer.network_handle
+            .subscribe_with_publishers(TEST_TOPIC.into(), HashSet::from([target_peer_id]))
+            .await?;
 
         // Connect to target peer
         peer.network_handle.dial(target_peer_id, target_addr.clone()).await?;

@@ -70,7 +70,7 @@ impl WorkerNetworkHandle {
     /// Do this when not a committee member so a CVV can include the txn.
     pub async fn publish_txn(&self, txn: Vec<u8>) -> NetworkResult<()> {
         let data = encode(&WorkerGossip::Txn(txn));
-        self.handle.publish("tn-worker".into(), data).await?;
+        self.handle.publish("tn-txn".into(), data).await?;
         Ok(())
     }
 

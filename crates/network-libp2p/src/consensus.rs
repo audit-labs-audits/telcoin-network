@@ -98,7 +98,7 @@ where
     ///
     /// This set must be updated at the start of each epoch. It is used to verify messages
     /// published on certain topics. These are updated when the caller subscribes to a topic.
-    authorized_publishers: HashMap<String, HashSet<PeerId>>,
+    authorized_publishers: HashMap<String, Option<HashSet<PeerId>>>,
     /// The collection of pending _graceful_ disconnects.
     ///
     /// This node disconnects from new peers if it already has the target number of peers.
@@ -700,7 +700,9 @@ where
         //
         // NOTE: expand on this based on gossip::topic - not all topics need to be permissioned
         if gossip.source.is_some_and(|id| {
-            self.authorized_publishers.get(topic.as_str()).is_some_and(|auth| auth.contains(&id))
+            self.authorized_publishers
+                .get(topic.as_str())
+                .is_some_and(|auth| auth.is_none() || auth.as_ref().expect("is some").contains(&id))
         }) {
             GossipAcceptance::Accept
         } else {
