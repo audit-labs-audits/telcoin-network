@@ -80,7 +80,7 @@ where
     /// Only valid for Subscriber implementations.
     UpdateAuthorizedPublishers {
         /// The unique set of authorized peers by topic.
-        authorities: HashMap<String, HashSet<PeerId>>,
+        authorities: HashMap<String, Option<HashSet<PeerId>>>,
         /// The acknowledgement that the set was updated.
         reply: oneshot::Sender<NetworkResult<()>>,
     },
@@ -161,7 +161,7 @@ where
         /// The topic to subscribe to.
         topic: String,
         /// Authorized publishers.
-        publishers: HashSet<PeerId>,
+        publishers: Option<HashSet<PeerId>>,
         /// The reply to caller.
         reply: oneshot::Sender<Result<bool, SubscriptionError>>,
     },
@@ -274,7 +274,7 @@ where
     /// Update the list of authorized publishers.
     pub async fn update_authorized_publishers(
         &self,
-        authorities: HashMap<String, HashSet<PeerId>>,
+        authorities: HashMap<String, Option<HashSet<PeerId>>>,
     ) -> NetworkResult<()> {
         let (reply, ack) = oneshot::channel();
         self.sender.send(NetworkCommand::UpdateAuthorizedPublishers { authorities, reply }).await?;
@@ -328,16 +328,28 @@ where
         peer_id.await.map_err(Into::into)
     }
 
-    /// Subscribe to a topic.
+    /// Subscribe to a topic with valid publishers.
     ///
     /// Return swarm error to caller.
-    pub async fn subscribe(
+    pub async fn subscribe_with_publishers(
         &self,
         topic: String,
         publishers: HashSet<PeerId>,
     ) -> NetworkResult<bool> {
         let (reply, already_subscribed) = oneshot::channel();
-        self.sender.send(NetworkCommand::Subscribe { topic, publishers, reply }).await?;
+        self.sender
+            .send(NetworkCommand::Subscribe { topic, publishers: Some(publishers), reply })
+            .await?;
+        let res = already_subscribed.await?;
+        res.map_err(Into::into)
+    }
+
+    /// Subscribe to a topic, any publisher valid.
+    ///
+    /// Return swarm error to caller.
+    pub async fn subscribe(&self, topic: String) -> NetworkResult<bool> {
+        let (reply, already_subscribed) = oneshot::channel();
+        self.sender.send(NetworkCommand::Subscribe { topic, publishers: None, reply }).await?;
         let res = already_subscribed.await?;
         res.map_err(Into::into)
     }

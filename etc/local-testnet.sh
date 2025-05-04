@@ -146,6 +146,7 @@ if [ "$START" = true ]; then
            --log.stdout.format log-fmt \
            -vvv \
            --http > "${ROOTDIR}/${VALIDATOR}.log" &
+
     done
     echo "$LENGTH validators started in background, \
     use 'killall telcoin-network' to bring the test network down"

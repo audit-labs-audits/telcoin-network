@@ -348,7 +348,7 @@ where
 
         // subscribe to epoch closing gossip messages
         network_handle
-            .subscribe(
+            .subscribe_with_publishers(
                 consensus_config.network_config().libp2p_config().primary_topic(),
                 consensus_config.committee_peer_ids(),
             )
@@ -448,6 +448,9 @@ where
 
             )
         });
+        network_handle
+            .subscribe(consensus_config.network_config().libp2p_config().worker_txn_topic())
+            .await?;
 
         let worker_address = consensus_config.worker_address(worker_id);
         let worker_multiaddr =

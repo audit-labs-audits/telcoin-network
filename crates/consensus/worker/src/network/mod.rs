@@ -66,6 +66,14 @@ impl WorkerNetworkHandle {
         Ok(())
     }
 
+    /// Publish a transaction (as raw bytes) worker network.
+    /// Do this when not a committee member so a CVV can include the txn.
+    pub async fn publish_txn(&self, txn: Vec<u8>) -> NetworkResult<()> {
+        let data = encode(&WorkerGossip::Txn(txn));
+        self.handle.publish("tn-txn".into(), data).await?;
+        Ok(())
+    }
+
     /// Report a new batch to a peer.
     async fn report_batch(&self, peer_id: PeerId, sealed_batch: SealedBatch) -> NetworkResult<()> {
         // TODO- issue 237- should we sign these batches and check the sig before accepting any
