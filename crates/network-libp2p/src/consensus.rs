@@ -697,8 +697,6 @@ where
         let GossipMessage { topic, .. } = gossip;
 
         // ensure publisher is authorized
-        //
-        // NOTE: expand on this based on gossip::topic - not all topics need to be permissioned
         if gossip.source.is_some_and(|id| {
             self.authorized_publishers
                 .get(topic.as_str())
