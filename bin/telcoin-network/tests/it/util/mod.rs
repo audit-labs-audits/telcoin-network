@@ -49,6 +49,21 @@ pub fn create_validator_info(
     add_validator_command.args.execute()
 }
 
+/// Execute observer config inside tempdir
+pub fn create_observer_info(datadir: &str, passphrase: Option<String>) -> eyre::Result<()> {
+    // keytool
+    let keys_command = CommandParser::<KeyArgs>::parse_from([
+        "tn",
+        "generate",
+        "observer",
+        "--datadir",
+        datadir,
+        "--dev-funded-account",
+        "test-source",
+    ]);
+    keys_command.args.execute(passphrase)
+}
+
 /// Create validator info, genesis ceremony, and spawn node command with faucet active.
 pub async fn config_local_testnet(
     temp_path: PathBuf,
@@ -81,6 +96,12 @@ pub async fn config_local_testnet(
         }
     }
 
+    // Create an observer config.
+    let dir = temp_path.join("observer");
+    let datadir = dir.to_str().expect("observer temp dir");
+    // init config ceremony for observer
+    create_observer_info(datadir, passphrase.clone())?;
+
     // create committee from shared genesis dir
     let create_committee_command = CommandParser::<GenesisArgs>::parse_from([
         "tn",
@@ -105,6 +126,17 @@ pub async fn config_local_testnet(
         )?;
     }
 
+    let dir = temp_path.join("observer");
+    // copy genesis files back to observer dirs
+    std::fs::create_dir_all(dir.join("genesis"))?;
+    std::fs::copy(
+        shared_genesis_dir.join("genesis/committee.yaml"),
+        dir.join("genesis/committee.yaml"),
+    )?;
+    std::fs::copy(
+        shared_genesis_dir.join("genesis/worker_cache.yaml"),
+        dir.join("genesis/worker_cache.yaml"),
+    )?;
     Ok(())
 }
 
