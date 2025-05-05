@@ -34,18 +34,24 @@ fn get_bus_and_primary<DB: Database>(
 ) -> (ConsensusBus, Primary<DB>) {
     let (event_stream, rx_event_stream) = mpsc::channel(100);
     let consensus_bus = ConsensusBus::new_with_args(config.config().parameters.gc_depth);
-    let consensus_network = ConsensusNetwork::new_for_primary(&config, event_stream)
-        .expect("p2p network create failed!");
+    let consensus_network = ConsensusNetwork::new_for_primary(
+        config.network_config(),
+        event_stream,
+        config.key_config().clone(),
+    )
+    .expect("p2p network create failed!");
     let consensus_network_handle = consensus_network.network_handle();
     let state_sync = StateSynchronizer::new(config.clone(), consensus_bus.clone());
+    let task_spawner = task_manager.get_spawner();
     let primary_network = PrimaryNetwork::new(
         rx_event_stream,
         consensus_network_handle.clone().into(),
         config.clone(),
         consensus_bus.clone(),
         state_sync.clone(),
+        task_spawner.clone(),
     );
-    primary_network.spawn(task_manager);
+    primary_network.spawn(&task_spawner);
 
     let primary = Primary::new(config, &consensus_bus, consensus_network_handle.into(), state_sync);
     (consensus_bus, primary)
@@ -73,7 +79,12 @@ async fn test_request_vote_has_missing_execution_block() {
     let synchronizer = StateSynchronizer::new(target.consensus_config(), cb.clone());
     let task_manager = TaskManager::default();
     synchronizer.spawn(&task_manager);
-    let handler = RequestHandler::new(target.consensus_config(), cb.clone(), synchronizer.clone());
+    let handler = RequestHandler::new(
+        target.consensus_config(),
+        cb.clone(),
+        synchronizer.clone(),
+        task_manager.get_spawner(),
+    );
 
     // Make some mock certificates that are parents of our new header.
     let committee: Committee = fixture.committee();
@@ -141,7 +152,12 @@ async fn test_request_vote_older_execution_block() {
     let synchronizer = StateSynchronizer::new(target.consensus_config(), cb.clone());
     let task_manager = TaskManager::default();
     synchronizer.spawn(&task_manager);
-    let handler = RequestHandler::new(target.consensus_config(), cb.clone(), synchronizer.clone());
+    let handler = RequestHandler::new(
+        target.consensus_config(),
+        cb.clone(),
+        synchronizer.clone(),
+        task_manager.get_spawner(),
+    );
 
     // Make some mock certificates that are parents of our new header.
     let committee: Committee = fixture.committee();
@@ -203,7 +219,12 @@ async fn test_request_vote_has_missing_parents() {
     let synchronizer = StateSynchronizer::new(target.consensus_config(), cb.clone());
     let task_manager = TaskManager::default();
     synchronizer.spawn(&task_manager);
-    let handler = RequestHandler::new(target.consensus_config(), cb.clone(), synchronizer.clone());
+    let handler = RequestHandler::new(
+        target.consensus_config(),
+        cb.clone(),
+        synchronizer.clone(),
+        task_manager.get_spawner(),
+    );
 
     // Make some mock certificates that are parents of our new header.
     let committee: Committee = fixture.committee();
@@ -288,7 +309,12 @@ async fn test_request_vote_accept_missing_parents() {
     let synchronizer = StateSynchronizer::new(target.consensus_config(), cb.clone());
     let task_manager = TaskManager::default();
     synchronizer.spawn(&task_manager);
-    let handler = RequestHandler::new(target.consensus_config(), cb.clone(), synchronizer.clone());
+    let handler = RequestHandler::new(
+        target.consensus_config(),
+        cb.clone(),
+        synchronizer.clone(),
+        task_manager.get_spawner(),
+    );
 
     // Make some mock certificates that are parents of our new header.
     let committee: Committee = fixture.committee();
@@ -378,7 +404,12 @@ async fn test_request_vote_missing_batches() {
     let synchronizer = StateSynchronizer::new(primary.consensus_config(), cb.clone());
     let task_manager = TaskManager::default();
     synchronizer.spawn(&task_manager);
-    let handler = RequestHandler::new(primary.consensus_config(), cb.clone(), synchronizer.clone());
+    let handler = RequestHandler::new(
+        primary.consensus_config(),
+        cb.clone(),
+        synchronizer.clone(),
+        task_manager.get_spawner(),
+    );
 
     // Make some mock certificates that are parents of our new header.
     let mut certificates = HashMap::new();
@@ -444,7 +475,12 @@ async fn test_request_vote_already_voted() {
     let task_manager = TaskManager::default();
     synchronizer.spawn(&task_manager);
 
-    let handler = RequestHandler::new(primary.consensus_config(), cb.clone(), synchronizer.clone());
+    let handler = RequestHandler::new(
+        primary.consensus_config(),
+        cb.clone(),
+        synchronizer.clone(),
+        task_manager.get_spawner(),
+    );
 
     // Make some mock certificates that are parents of our new header.
     let mut certificates = HashMap::new();
@@ -531,7 +567,12 @@ async fn test_fetch_certificates_handler() {
     let synchronizer = StateSynchronizer::new(primary.consensus_config(), cb.clone());
     let task_manager = TaskManager::default();
     synchronizer.spawn(&task_manager);
-    let handler = RequestHandler::new(primary.consensus_config(), cb.clone(), synchronizer.clone());
+    let handler = RequestHandler::new(
+        primary.consensus_config(),
+        cb.clone(),
+        synchronizer.clone(),
+        task_manager.get_spawner(),
+    );
 
     let mut current_round: Vec<_> = Certificate::genesis(&fixture.committee())
         .into_iter()
@@ -646,7 +687,12 @@ async fn test_request_vote_created_at_in_future() {
     let synchronizer = StateSynchronizer::new(primary.consensus_config(), cb.clone());
     let task_manager = TaskManager::default();
     synchronizer.spawn(&task_manager);
-    let handler = RequestHandler::new(primary.consensus_config(), cb.clone(), synchronizer.clone());
+    let handler = RequestHandler::new(
+        primary.consensus_config(),
+        cb.clone(),
+        synchronizer.clone(),
+        task_manager.get_spawner(),
+    );
 
     // Make some mock certificates that are parents of our new header.
     let mut certificates = HashMap::new();
