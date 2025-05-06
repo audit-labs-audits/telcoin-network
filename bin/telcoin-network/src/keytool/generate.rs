@@ -90,6 +90,27 @@ pub struct ValidatorArgs {
     pub address: Address,
 }
 
+fn update_keys<TND: TelcoinDirs>(
+    chain: &Arc<RethChainSpec>,
+    config: &mut Config,
+    tn_datadir: &TND,
+    passphrase: Option<String>,
+) -> eyre::Result<()> {
+    let key_config = KeyConfig::generate_and_save(tn_datadir, passphrase)?;
+    let proof = key_config.generate_proof_of_possession_bls(chain)?;
+    config.update_protocol_key(key_config.primary_public_key())?;
+    config.update_proof_of_possession(proof)?;
+
+    // network keypair for authority
+    let network_publickey = key_config.primary_network_public_key();
+    config.update_primary_network_key(network_publickey)?;
+
+    // network keypair for workers
+    let network_publickey = key_config.worker_network_public_key();
+    config.update_worker_network_key(network_publickey)?;
+    Ok(())
+}
+
 impl ValidatorArgs {
     /// Create all necessary information needed for validator and save to file.
     pub fn execute<TND: TelcoinDirs>(
@@ -100,18 +121,7 @@ impl ValidatorArgs {
     ) -> eyre::Result<()> {
         info!(target: "tn::generate_keys", "generating keys for full validator node");
 
-        let key_config = KeyConfig::generate_and_save(tn_datadir, passphrase)?;
-        let proof = key_config.generate_proof_of_possession_bls(&self.chain)?;
-        config.update_protocol_key(key_config.primary_public_key())?;
-        config.update_proof_of_possession(proof)?;
-
-        // network keypair for authority
-        let network_publickey = key_config.primary_network_public_key();
-        config.update_primary_network_key(network_publickey)?;
-
-        // network keypair for workers
-        let network_publickey = key_config.worker_network_public_key();
-        config.update_worker_network_key(network_publickey)?;
+        update_keys(&self.chain, config, tn_datadir, passphrase)?;
 
         // add execution address
         config.update_execution_address(self.address)?;
@@ -163,20 +173,9 @@ impl ObserverArgs {
         tn_datadir: &TND,
         passphrase: Option<String>,
     ) -> eyre::Result<()> {
-        info!(target: "tn::generate_keys", "generating keys for full validator node");
+        info!(target: "tn::generate_keys", "generating keys for observer node");
 
-        let key_config = KeyConfig::generate_and_save(tn_datadir, passphrase)?;
-        let proof = key_config.generate_proof_of_possession_bls(&self.chain)?;
-        config.update_protocol_key(key_config.primary_public_key())?;
-        config.update_proof_of_possession(proof)?;
-
-        // network keypair for authority
-        let network_publickey = key_config.primary_network_public_key();
-        config.update_primary_network_key(network_publickey)?;
-
-        // network keypair for workers
-        let network_publickey = key_config.worker_network_public_key();
-        config.update_worker_network_key(network_publickey)?;
+        update_keys(&self.chain, config, tn_datadir, passphrase)?;
 
         if let Some(acct_str) = &self.dev_funded_account {
             let addr = account_from_word(acct_str);
