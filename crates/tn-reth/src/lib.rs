@@ -28,6 +28,7 @@ use clap::Parser;
 use dirs::path_to_datadir;
 use enr::secp256k1::rand::Rng as _;
 use error::{TnRethError, TnRethResult};
+use evm_config::TnEvmConfig;
 use eyre::OptionExt;
 use futures::StreamExt as _;
 use jsonrpsee::Methods;
@@ -59,7 +60,6 @@ use reth_evm::{
     execute::{BlockExecutorProvider, Executor as _},
     ConfigureEvm, ConfigureEvmEnv as _,
 };
-use reth_evm_ethereum::EthEvmConfig;
 use reth_node_ethereum::{BasicBlockExecutorProvider, EthExecutionStrategyFactory};
 use reth_primitives::{Log, TxType};
 use reth_provider::{
@@ -129,6 +129,7 @@ pub mod txn_pool;
 pub use txn_pool::*;
 use worker::WorkerNetwork;
 pub mod error;
+mod evm_config;
 pub mod system_calls;
 pub mod worker;
 
@@ -267,9 +268,9 @@ pub struct RethEnv {
     /// Type that fetches data from the database.
     blockchain_provider: BlockchainProvider<TelcoinNode>,
     /// The Evm configuration type.
-    evm_executor: BasicBlockExecutorProvider<EthExecutionStrategyFactory>,
+    evm_executor: BasicBlockExecutorProvider<EthExecutionStrategyFactory<TnEvmConfig>>,
     /// The type to configure the EVM for execution.
-    evm_config: EthEvmConfig,
+    evm_config: TnEvmConfig,
     /// The transaction pool.
     tx_pool: WorkerTxPool,
 }
@@ -411,7 +412,7 @@ impl RethEnv {
     fn init_blockchain_provider(
         task_manager: &TaskManager,
         provider_factory: &ProviderFactory<TelcoinNode>,
-        evm_executor: BasicBlockExecutorProvider<EthExecutionStrategyFactory>,
+        evm_executor: BasicBlockExecutorProvider<EthExecutionStrategyFactory<TnEvmConfig>>,
     ) -> eyre::Result<BlockchainProvider<TelcoinNode>> {
         // Set up metrics listener
         let (sync_metrics_tx, sync_metrics_rx) = unbounded_channel();
@@ -437,7 +438,7 @@ impl RethEnv {
     /// Initialize EVM components
     fn init_evm_components(
         node_config: &NodeConfig<RethChainSpec>,
-    ) -> (BasicBlockExecutorProvider<EthExecutionStrategyFactory>, EthEvmConfig) {
+    ) -> (BasicBlockExecutorProvider<EthExecutionStrategyFactory<TnEvmConfig>>, TnEvmConfig) {
         let evm_config = TelcoinNode::create_evm_config(Arc::clone(&node_config.chain));
         let evm_executor = TelcoinNode::create_executor(Arc::clone(&node_config.chain));
 
