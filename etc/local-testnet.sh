@@ -2,8 +2,6 @@
 
 set -e
 
-# TODO: this doesn't work very well all in one terminal
-#
 # indicates if the network should start or just generate config files
 START=false
 
