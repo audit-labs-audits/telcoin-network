@@ -21,8 +21,8 @@
 use crate::traits::TNExecution;
 use alloy::{
     hex,
-    primitives::{Bytes, ChainId},
-    sol_types::SolCall,
+    primitives::{aliases::U232, Bytes, ChainId},
+    sol_types::{SolCall, SolConstructor},
 };
 use clap::Parser;
 use dirs::path_to_datadir;
@@ -834,7 +834,7 @@ impl RethEnv {
 
         // encode the call to bytes with method selector and args
         let bytes =
-            ConsensusRegistry::concludeEpochCall { newCommittee: new_committee, slashes: vec![] }
+            ConsensusRegistry::concludeEpochCall { newCommittee: new_committee}
                 .abi_encode()
                 .into();
 
@@ -1300,7 +1300,7 @@ impl RethEnv {
 
         let total_stake_balance = initial_stake_config
             .stakeAmount
-            .checked_mul(U256::from(validators.len()))
+            .checked_mul(U232::from(validators.len()))
             .ok_or_eyre("Failed to calculate total stake for consensus registry at genesis")?;
 
         let registry_bytecode =
@@ -1310,7 +1310,7 @@ impl RethEnv {
         let tmp_genesis = genesis.clone().extend_accounts([(
             CONSENSUS_REGISTRY_ADDRESS,
             GenesisAccount::default()
-                .with_balance(total_stake_balance)
+                .with_balance(U256::from(total_stake_balance))
                 .with_code(Some(registry_bytecode.clone().into())),
         )]);
 
@@ -1323,8 +1323,7 @@ impl RethEnv {
             RethEnv::new_for_test_with_chain(chain.clone(), tmp_dir.path(), &task_manager)?;
 
         // generate calldata for initialization call
-        let init_calldata = ConsensusRegistry::initializeCall {
-            iTEL_: itel_address,
+        let init_calldata = ConsensusRegistry::constructorCall {
             genesisConfig_: initial_stake_config,
             initialValidators_: validators,
             owner_: owner_address,
@@ -1354,7 +1353,7 @@ impl RethEnv {
         let genesis = genesis.extend_accounts([(
             CONSENSUS_REGISTRY_ADDRESS,
             GenesisAccount::default()
-                .with_balance(total_stake_balance)
+                .with_balance(U256::from(total_stake_balance))
                 .with_code(Some(registry_bytecode.into()))
                 .with_storage(storage),
         )]);
@@ -1628,11 +1627,10 @@ mod tests {
 
         let epoch_duration = 60 * 60 * 24; // 24hrs
         let initial_stake_config = ConsensusRegistry::StakeConfig {
-            stakeAmount: U256::try_from(parse_ether("1_000_000").unwrap()).unwrap(),
-            minWithdrawAmount: U256::try_from(parse_ether("1_000").unwrap()).unwrap(),
-            epochIssuance: U256::try_from(parse_ether("20_000_000").unwrap())
-                .unwrap()
-                .checked_div(U256::from(28))
+            stakeAmount: U232::from(U256::try_from(parse_ether("1_000_000").unwrap()).unwrap()),
+            minWithdrawAmount: U232::from(U256::try_from(parse_ether("1_000").unwrap()).unwrap()),
+            epochIssuance: U232::from(U256::try_from(parse_ether("20_000_000").unwrap()).unwrap())
+                .checked_div(U232::from(28))
                 .expect("u256 div checked"),
             epochDuration: epoch_duration,
         };
