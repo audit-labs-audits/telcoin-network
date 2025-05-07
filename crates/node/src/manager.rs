@@ -670,10 +670,7 @@ where
         // update the authorized publishers for gossip every epoch
         network_handle
             .inner_handle()
-            .subscribe_with_publishers(
-                consensus_config.network_config().libp2p_config().worker_txn_topic(),
-                consensus_config.worker_cache().all_workers().keys().copied().collect(),
-            )
+            .subscribe(consensus_config.network_config().libp2p_config().worker_txn_topic())
             .await?;
 
         // spawn worker network
