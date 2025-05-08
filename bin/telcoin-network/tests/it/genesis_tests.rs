@@ -14,7 +14,9 @@ use eyre::OptionExt;
 use jsonrpsee::{core::client::ClientT, http_client::HttpClientBuilder, rpc_params};
 use rand::SeedableRng;
 use rand_chacha::ChaCha8Rng;
+use reth::consensus::Consensus;
 use serde_json::Value;
+use core::panic;
 use std::{collections::BTreeMap, sync::Arc, time::Duration};
 use tempfile::TempDir;
 use tn_config::{fetch_file_content_relative_to_manifest, NetworkGenesis, CONSENSUS_REGISTRY_JSON, DEPLOYMENTS_JSON};
@@ -52,7 +54,7 @@ async fn test_genesis_with_its() -> eyre::Result<()> {
     let client = HttpClientBuilder::default().build(&rpc_url).expect("couldn't build rpc client");
 
     let itel_address =
-        NetworkGenesis::fetch_from_json_str(DEPLOYMENTS_JSON, Some("its.InterchainTEL"))?
+        RethEnv::fetch_from_json_str(DEPLOYMENTS_JSON, Some("its.InterchainTEL"))?
             .as_str()
             .map(|hex_str| Address::from_hex(hex_str).unwrap())
             .unwrap();
@@ -99,7 +101,7 @@ async fn test_precompile_genesis_accounts() -> eyre::Result<()> {
             .iter()
             .any(|(precompile_address, _)| precompile_address.to_string() == address)
     };
-    let expected_deployments = NetworkGenesis::fetch_from_json_str(DEPLOYMENTS_JSON, None)?;
+    let expected_deployments = RethEnv::fetch_from_json_str(DEPLOYMENTS_JSON, None)?;
 
     // assert all interchain token service precompile configs are present
     let its_addresses = expected_deployments.get("its").and_then(|v| v.as_object()).unwrap();
@@ -158,14 +160,13 @@ async fn test_precompile_genesis_accounts() -> eyre::Result<()> {
 #[tokio::test]
 async fn test_genesis_with_consensus_registry() -> eyre::Result<()> {
     // fetch registry impl bytecode from compiled output in tn-contracts
-    let json_val = NetworkGenesis::fetch_from_json_str(
+    let json_val = RethEnv::fetch_from_json_str(
         CONSENSUS_REGISTRY_JSON,
         Some("deployedBytecode.object"),
     )?;
     let registry_deployed_bytecode = json_val
         .as_str()
         .ok_or_eyre("Couldn't fetch bytecode")?;
-    // let registry_deployed_bytecode = hex::decode(regigstry_bytecode_str)?;
 
     // create genesis with a proxy
     let genesis = genesis_with_registry(hex::decode(registry_deployed_bytecode).unwrap())?;
@@ -191,7 +192,7 @@ async fn test_genesis_with_consensus_registry() -> eyre::Result<()> {
         .expect("Failed to fetch registry impl bytecode");
 
     // trim `0x` prefix
-    assert_eq!(returned_impl_code[2..], hex::encode(registry_deployed_bytecode));
+    assert_eq!(&returned_impl_code, registry_deployed_bytecode);
 
     let tx_factory = TransactionFactory::default();
     let signer = tx_factory.get_default_signer().expect("failed to fetch signer");
@@ -220,17 +221,6 @@ async fn test_genesis_with_consensus_registry() -> eyre::Result<()> {
     let validator_addresses: Vec<_> = validators.iter().map(|v| v.validatorAddress).collect();
     assert_eq!(committee, validator_addresses);
     debug!(target: "bundle", "active validators??\n{:?}", validators);
-
-    // NOTE: test proxy failed active validators read - AbiError(SolTypes(Overrun))
-    // this is expected to be important soon
-    //
-    // let consensus_proxy = ConsensusRegistry::new(registry_proxy_address, provider.clone());
-    // let getValidatorsReturn { _0: validators } = consensus_proxy
-    //     .getValidators(ConsensusRegistry::ValidatorStatus::Active.into())
-    //     .call()
-    //     .await
-    //     .expect("failed active validators read");
-    // debug!(target: "bundle", "proxy\n{:?}", validators);
 
     Ok(())
 }
@@ -279,13 +269,18 @@ fn genesis_with_registry(registry_deployed_bytecode: Vec<u8>) -> eyre::Result<Ge
         ConsensusRegistry::constructorCall { genesisConfig_: initial_stake_config, initialValidators_: initial_validators.clone(), owner_: owner }
             .abi_encode();
 
-
-    let json_val = NetworkGenesis::fetch_from_json_str(CONSENSUS_REGISTRY_JSON, Some("bytecode.object"))?;
-    let registry_abi = json_val.as_str().ok_or_eyre("Couldn't fetch bytecode")?;
+    let json_val = RethEnv::fetch_from_json_str(CONSENSUS_REGISTRY_JSON, Some("bytecode.object"))?;
+    let registry_abi = json_val.as_str().ok_or_eyre("invalid registry json")?;
     let registry_bytecode = hex::decode(registry_abi)?;
     let mut create_registry = registry_bytecode.clone();
     create_registry.extend(constructor_args);
 
+    // simulate owner deploying registry
+    let txs = vec![
+        CreateRequest::new(owner, create_registry.into()).into()
+    ];
+    let tmp_address = owner.create(0);
+    debug!(target: "bundle", "expected proxy address: {:?}", tmp_address);
     // create temporary reth env for execution
     let task_manager = TaskManager::new("Test Task Manager");
     let tmp_dir = TempDir::new().unwrap();
@@ -293,21 +288,14 @@ fn genesis_with_registry(registry_deployed_bytecode: Vec<u8>) -> eyre::Result<Ge
     let tmp_chain: Arc<RethChainSpec> = Arc::new(adiri_genesis().into());
     let reth_env =
         RethEnv::new_for_test_with_chain(tmp_chain.clone(), tmp_dir.path(), &task_manager)?;
-
-    // simulate owner deploying registry
-    let txs = vec![
-        CreateRequest::new(owner, create_registry.into()).into()
-    ];
-    let registry_address = owner.create(0);
-    debug!(target: "bundle", "expected proxy address: {:?}", registry_address);
     let bundle = reth_env
         .execute_call_tx_for_test_bypass_evm_checks(&tmp_chain.sealed_genesis_header(), txs)?;
-    let registry_storage = bundle.state.get(&registry_address).map(|account| {
+    let tmp_storage = bundle.state.get(&tmp_address).map(|account| {
         account.storage.iter().map(|(k, v)| ((*k).into(), v.present_value.into())).collect()
     });
 
     // assert storage is set
-    assert!(registry_storage.as_ref().map(|tree: &BTreeMap<_, _>| !tree.is_empty()).unwrap());
+    assert!(tmp_storage.as_ref().map(|tree: &BTreeMap<_, _>| !tree.is_empty()).unwrap());
 
     // perform canonical adiri chain genesis with fetched storage
     let test_cr_address = Address::random();
@@ -321,7 +309,7 @@ fn genesis_with_registry(registry_deployed_bytecode: Vec<u8>) -> eyre::Result<Ge
                         .checked_mul(U256::from(stake_amount))
                         .expect("U256 checked mul for total stake"),
                 )
-                .with_storage(registry_storage),
+                .with_storage(tmp_storage),
         ),
     ];
 

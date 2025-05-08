@@ -227,29 +227,6 @@ impl NetworkGenesis {
 
         Ok(accounts)
     }
-
-    /// Fetches json info from the given string
-    ///
-    /// If a key is specified, return the corresponding nested object.
-    /// Otherwise return the entire JSON
-    /// With a generic this could be adjused to handle YAML also
-    pub fn fetch_from_json_str(json_content: &str, key: Option<&str>) -> eyre::Result<Value> {
-        let json: Value = serde_json::from_str(json_content)?;
-        let result = match key {
-            Some(path) => {
-                let key: Vec<&str> = path.split('.').collect();
-                let mut current_value = &json;
-                for &k in &key {
-                    current_value =
-                        current_value.get(k).ok_or_else(|| eyre::eyre!("key '{}' not found", k))?;
-                }
-                current_value.clone()
-            }
-            None => json,
-        };
-
-        Ok(result)
-    }
 }
 
 // deserialize into HashMap<Account, GenesisAccount>

@@ -146,16 +146,6 @@ impl CreateCommitteeArgs {
             epochIssuance: self.epoch_rewards,
             epochDuration: self.epoch_duration,
         };
-        let itel_address = match NetworkGenesis::fetch_from_json_str(
-            DEPLOYMENTS_JSON,
-            Some("its.InterchainTEL"),
-        ) {
-            Ok(res) => match res {
-                serde_json::Value::String(s) => Address::from_str(&s).expect("ITEL addr incorrect"),
-                _ => panic!("ITEL address not a string"),
-            },
-            _ => panic!("ITEL address not found"),
-        };
 
         // try to create a runtime if one doesn't already exist
         // this is a workaround for executing committees pre-genesis during tests and normal CLI
@@ -167,7 +157,6 @@ impl CreateCommitteeArgs {
                 genesis.clone(),
                 initial_stake_config.clone(),
                 self.consensus_registry_owner,
-                itel_address,
             )?
         } else {
             // no runtime exists (normal CLI operation)
@@ -181,7 +170,6 @@ impl CreateCommitteeArgs {
                     genesis,
                     initial_stake_config,
                     self.consensus_registry_owner,
-                    itel_address,
                 )
             })?
         };
@@ -194,6 +182,16 @@ impl CreateCommitteeArgs {
             .expect("itel bal"))
             - genesis_stake);
 
+        let itel_address = match RethEnv::fetch_from_json_str(
+            DEPLOYMENTS_JSON,
+            Some("its.InterchainTEL"),
+        ) {
+            Ok(res) => match res {
+                serde_json::Value::String(s) => Address::from_str(&s).expect("ITEL addr incorrect"),
+                _ => panic!("ITEL address not a string"),
+            },
+            _ => panic!("ITEL address not found"),
+        };
         let precompiles =
             NetworkGenesis::fetch_precompile_genesis_accounts(itel_address, itel_balance)
                 .expect("precompile fetch error");
