@@ -1319,8 +1319,8 @@ impl RethEnv {
 
         // generate calldata for creation
         let bytecode_binding = Self::fetch_from_json_str(CONSENSUS_REGISTRY_JSON, Some("bytecode.object"))?;
-        let registry_creationcode = hex::decode(bytecode_binding.as_str().ok_or_eyre("invalid registry json")?)?;
-        let mut create_registry = registry_creationcode.clone();
+        let registry_initcode = hex::decode(bytecode_binding.as_str().ok_or_eyre("invalid registry json")?)?;
+        let mut create_registry = registry_initcode.clone();
         create_registry.extend(
             constructor_args
         );
