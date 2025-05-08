@@ -3,7 +3,6 @@ use crate::{Config, ConfigFmt, ConfigTrait, TelcoinDirs};
 use eyre::Context;
 use reth_chainspec::ChainSpec;
 use serde::{Deserialize, Serialize};
-use serde_json::Value;
 use std::{
     collections::BTreeMap,
     ffi::OsStr,

@@ -161,8 +161,8 @@ async fn test_with_creds_faucet_transfers_tel_with_google_kms() -> eyre::Result<
     let proxy_json = fetch_file_content_relative_to_manifest(
         "../../../tn-contracts/artifacts/ERC1967Proxy.json",
     );
-    let proxy_initcode = RethEnv::fetch_from_json_str(&proxy_json, Some("bytecode.object"))?.as_str().map(|s| hex::decode(s)).unwrap()?;
-    let proxy_deployed_bytecode = RethEnv::fetch_from_json_str(&proxy_json, Some("deployedBytecode.object"))?.as_str().map(|s| hex::decode(s)).unwrap()?;
+    let proxy_initcode = RethEnv::fetch_from_json_str(&proxy_json, Some("bytecode.object"))?.as_str().map(hex::decode).unwrap()?;
+    let proxy_deployed_bytecode = RethEnv::fetch_from_json_str(&proxy_json, Some("deployedBytecode.object"))?.as_str().map(hex::decode).unwrap()?;
     let faucet_create_data = [proxy_initcode.as_slice(), &constructor_params[..]].concat();
 
     // construct `grantRole(faucet)` data
@@ -412,11 +412,11 @@ async fn test_with_creds_faucet_transfers_stablecoin_with_google_kms() -> eyre::
     let faucet_json = fetch_file_content_relative_to_manifest(
         "../../../tn-contracts/artifacts/StablecoinManager.json",
     );
-    let faucet_deployed_bytecode = RethEnv::fetch_from_json_str(&faucet_json, Some("deployedBytecode.object"))?.as_str().map(|s| hex::decode(s)).unwrap()?;
+    let faucet_deployed_bytecode = RethEnv::fetch_from_json_str(&faucet_json, Some("deployedBytecode.object"))?.as_str().map(hex::decode).unwrap()?;
     let stablecoin_json =
         fetch_file_content_relative_to_manifest("../../../tn-contracts/artifacts/Stablecoin.json");
     let stablecoin_deployed_bytecode =
-        RethEnv::fetch_from_json_str(&stablecoin_json, Some("deployedBytecode.object"))?.as_str().map(|s| hex::decode(s)).unwrap()?;
+        RethEnv::fetch_from_json_str(&stablecoin_json, Some("deployedBytecode.object"))?.as_str().map(hex::decode).unwrap()?;
 
     // extend genesis accounts to fund factory_address, and etch contract bytecodes
     let mut tx_factory = TransactionFactory::new();
@@ -473,7 +473,7 @@ async fn test_with_creds_faucet_transfers_stablecoin_with_google_kms() -> eyre::
     let proxy_json = fetch_file_content_relative_to_manifest(
         "../../../tn-contracts/artifacts/ERC1967Proxy.json",
     );
-    let proxy_initcode = RethEnv::fetch_from_json_str(&proxy_json, Some("bytecode.object"))?.as_str().map(|s| hex::decode(s)).unwrap()?;
+    let proxy_initcode = RethEnv::fetch_from_json_str(&proxy_json, Some("bytecode.object"))?.as_str().map(hex::decode).unwrap()?;
     let faucet_create_data = [proxy_initcode.as_slice(), &constructor_params[..]].concat();
 
     // construct `grantRole(faucet_role)` data
@@ -540,7 +540,7 @@ async fn test_with_creds_faucet_transfers_stablecoin_with_google_kms() -> eyre::
         .storage;
 
     let faucet_proxy_deployed_bytecode =
-        RethEnv::fetch_from_json_str(&proxy_json, Some("deployedBytecode.object"))?.as_str().map(|s| hex::decode(s)).unwrap()?;
+        RethEnv::fetch_from_json_str(&proxy_json, Some("deployedBytecode.object"))?.as_str().map(hex::decode).unwrap()?;
 
     // real genesis: configure genesis accounts for proxy deployment & faucet_role
     let genesis_accounts = vec![
