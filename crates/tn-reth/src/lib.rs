@@ -834,10 +834,9 @@ impl RethEnv {
         let new_committee = self.shuffle_new_committee(evm, randomness)?;
 
         // encode the call to bytes with method selector and args
-        let bytes =
-            ConsensusRegistry::concludeEpochCall { newCommittee: new_committee}
-                .abi_encode()
-                .into();
+        let bytes = ConsensusRegistry::concludeEpochCall { newCommittee: new_committee }
+            .abi_encode()
+            .into();
 
         Ok(bytes)
     }
@@ -1318,12 +1317,12 @@ impl RethEnv {
         .abi_encode();
 
         // generate calldata for creation
-        let bytecode_binding = Self::fetch_from_json_str(CONSENSUS_REGISTRY_JSON, Some("bytecode.object"))?;
-        let registry_initcode = hex::decode(bytecode_binding.as_str().ok_or_eyre("invalid registry json")?)?;
+        let bytecode_binding =
+            Self::fetch_from_json_str(CONSENSUS_REGISTRY_JSON, Some("bytecode.object"))?;
+        let registry_initcode =
+            hex::decode(bytecode_binding.as_str().ok_or_eyre("invalid registry json")?)?;
         let mut create_registry = registry_initcode.clone();
-        create_registry.extend(
-            constructor_args
-        );
+        create_registry.extend(constructor_args);
 
         let tx = CreateRequest::new(owner_address, create_registry.clone().into());
 
@@ -1345,8 +1344,10 @@ impl RethEnv {
             account.storage.iter().map(|(k, v)| ((*k).into(), v.present_value.into())).collect()
         });
 
-        let deployed_bytecode_binding = Self::fetch_from_json_str(CONSENSUS_REGISTRY_JSON, Some("deployedBytecode.object"))?;
-        let registry_runtimecode = hex::decode(deployed_bytecode_binding.as_str().ok_or_eyre("invalid registry json")?)?;
+        let deployed_bytecode_binding =
+            Self::fetch_from_json_str(CONSENSUS_REGISTRY_JSON, Some("deployedBytecode.object"))?;
+        let registry_runtimecode =
+            hex::decode(deployed_bytecode_binding.as_str().ok_or_eyre("invalid registry json")?)?;
         let genesis = genesis.extend_accounts([(
             CONSENSUS_REGISTRY_ADDRESS,
             GenesisAccount::default()

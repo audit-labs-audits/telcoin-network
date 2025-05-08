@@ -8,29 +8,28 @@ use alloy::{
     network::EthereumWallet,
     primitives::{aliases::U232, utils::parse_ether},
     providers::ProviderBuilder,
-    sol_types::{SolCall, SolConstructor},
+    sol_types::SolConstructor,
 };
+use core::panic;
 use eyre::OptionExt;
 use jsonrpsee::{core::client::ClientT, http_client::HttpClientBuilder, rpc_params};
 use rand::SeedableRng;
 use rand_chacha::ChaCha8Rng;
-use reth::consensus::Consensus;
 use serde_json::Value;
-use core::panic;
 use std::{collections::BTreeMap, sync::Arc, time::Duration};
 use tempfile::TempDir;
-use tn_config::{fetch_file_content_relative_to_manifest, NetworkGenesis, CONSENSUS_REGISTRY_JSON, DEPLOYMENTS_JSON};
+use tn_config::{NetworkGenesis, CONSENSUS_REGISTRY_JSON, DEPLOYMENTS_JSON};
 use tn_reth::{
     system_calls::{
         ConsensusRegistry::{self, getCurrentEpochInfoReturn, getValidatorsReturn},
         CONSENSUS_REGISTRY_ADDRESS,
     },
-    CallRequest, CreateRequest, RethChainSpec, RethEnv,
+    CreateRequest, RethChainSpec, RethEnv,
 };
 use tn_test_utils::TransactionFactory;
 use tn_types::{
-    adiri_genesis, hex, sol, Address, BlsKeypair, Bytes, FromHex, Genesis, GenesisAccount,
-    TaskManager, U256,
+    adiri_genesis, hex, Address, BlsKeypair, Bytes, FromHex, Genesis, GenesisAccount, TaskManager,
+    U256,
 };
 use tracing::debug;
 
@@ -53,11 +52,10 @@ async fn test_genesis_with_its() -> eyre::Result<()> {
     let rpc_url = "http://127.0.0.1:8545".to_string();
     let client = HttpClientBuilder::default().build(&rpc_url).expect("couldn't build rpc client");
 
-    let itel_address =
-        RethEnv::fetch_from_json_str(DEPLOYMENTS_JSON, Some("its.InterchainTEL"))?
-            .as_str()
-            .map(|hex_str| Address::from_hex(hex_str).unwrap())
-            .unwrap();
+    let itel_address = RethEnv::fetch_from_json_str(DEPLOYMENTS_JSON, Some("its.InterchainTEL"))?
+        .as_str()
+        .map(|hex_str| Address::from_hex(hex_str).unwrap())
+        .unwrap();
     let tel_supply = U256::try_from(parse_ether("100_000_000_000").unwrap()).unwrap();
     // 4 million tel staked at genesis for 4 validators
     let itel_bal = tel_supply - U256::try_from(parse_ether("4_000_000").unwrap()).unwrap();
@@ -160,13 +158,9 @@ async fn test_precompile_genesis_accounts() -> eyre::Result<()> {
 #[tokio::test]
 async fn test_genesis_with_consensus_registry() -> eyre::Result<()> {
     // fetch registry impl bytecode from compiled output in tn-contracts
-    let json_val = RethEnv::fetch_from_json_str(
-        CONSENSUS_REGISTRY_JSON,
-        Some("deployedBytecode.object"),
-    )?;
-    let registry_deployed_bytecode = json_val
-        .as_str()
-        .ok_or_eyre("Couldn't fetch bytecode")?;
+    let json_val =
+        RethEnv::fetch_from_json_str(CONSENSUS_REGISTRY_JSON, Some("deployedBytecode.object"))?;
+    let registry_deployed_bytecode = json_val.as_str().ok_or_eyre("Couldn't fetch bytecode")?;
 
     // create genesis with a proxy
     let genesis = genesis_with_registry(hex::decode(registry_deployed_bytecode).unwrap())?;
@@ -265,9 +259,12 @@ fn genesis_with_registry(registry_deployed_bytecode: Vec<u8>) -> eyre::Result<Ge
 
     // generate constructor calldata
     let owner = Address::random();
-    let constructor_args =
-        ConsensusRegistry::constructorCall { genesisConfig_: initial_stake_config, initialValidators_: initial_validators.clone(), owner_: owner }
-            .abi_encode();
+    let constructor_args = ConsensusRegistry::constructorCall {
+        genesisConfig_: initial_stake_config,
+        initialValidators_: initial_validators.clone(),
+        owner_: owner,
+    }
+    .abi_encode();
 
     let json_val = RethEnv::fetch_from_json_str(CONSENSUS_REGISTRY_JSON, Some("bytecode.object"))?;
     let registry_abi = json_val.as_str().ok_or_eyre("invalid registry json")?;
@@ -276,9 +273,7 @@ fn genesis_with_registry(registry_deployed_bytecode: Vec<u8>) -> eyre::Result<Ge
     create_registry.extend(constructor_args);
 
     // simulate owner deploying registry
-    let txs = vec![
-        CreateRequest::new(owner, create_registry.into()).into()
-    ];
+    let txs = vec![CreateRequest::new(owner, create_registry.into()).into()];
     let tmp_address = owner.create(0);
     debug!(target: "bundle", "expected proxy address: {:?}", tmp_address);
     // create temporary reth env for execution
@@ -299,19 +294,17 @@ fn genesis_with_registry(registry_deployed_bytecode: Vec<u8>) -> eyre::Result<Ge
 
     // perform canonical adiri chain genesis with fetched storage
     let test_cr_address = Address::random();
-    let genesis_accounts = [
-        (
-            test_cr_address,
-            GenesisAccount::default()
-                .with_code(Some(registry_deployed_bytecode.clone().into()))
-                .with_balance(
-                    U256::from(4)
-                        .checked_mul(U256::from(stake_amount))
-                        .expect("U256 checked mul for total stake"),
-                )
-                .with_storage(tmp_storage),
-        ),
-    ];
+    let genesis_accounts = [(
+        test_cr_address,
+        GenesisAccount::default()
+            .with_code(Some(registry_deployed_bytecode.clone().into()))
+            .with_balance(
+                U256::from(4)
+                    .checked_mul(U256::from(stake_amount))
+                    .expect("U256 checked mul for total stake"),
+            )
+            .with_storage(tmp_storage),
+    )];
 
     let real_genesis = adiri_genesis();
     let genesis = real_genesis.extend_accounts(genesis_accounts);
