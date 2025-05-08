@@ -35,8 +35,8 @@ use jsonrpsee::Methods;
 use rand_chacha::rand_core::SeedableRng as _;
 use reth::{
     args::{
-        DatabaseArgs, DatadirArgs, DebugArgs, DevArgs, NetworkArgs, PayloadBuilderArgs,
-        PruningArgs, RpcServerArgs, TxPoolArgs,
+        DatabaseArgs, DatadirArgs, DebugArgs, DevArgs, DiscoveryArgs, NetworkArgs,
+        PayloadBuilderArgs, PruningArgs, RpcServerArgs, TxPoolArgs,
     },
     blockchain_tree::{
         BlockchainTree, BlockchainTreeConfig, ShareableBlockchainTree, TreeExternals,
@@ -173,10 +173,6 @@ pub struct RethCommand {
     #[arg(long, value_name = "SOCKET", value_parser = parse_socket_address, help_heading = "Execution Metrics")]
     pub metrics: Option<SocketAddr>,
 
-    /// All networking related arguments
-    #[clap(flatten)]
-    pub network: NetworkArgs,
-
     /// All rpc related arguments
     #[clap(flatten)]
     pub rpc: RpcServerArgs,
@@ -185,28 +181,9 @@ pub struct RethCommand {
     #[clap(flatten)]
     pub txpool: TxPoolArgs,
 
-    /// All payload builder related arguments
-    #[clap(flatten)]
-    pub builder: PayloadBuilderArgs,
-
-    /// All debug related arguments with --debug prefix
-    #[clap(flatten)]
-    pub debug: DebugArgs,
-
     /// All database related arguments
     #[clap(flatten)]
     pub db: DatabaseArgs,
-
-    /// All dev related arguments with --dev prefix
-    #[clap(flatten)]
-    pub dev: DevArgs,
-
-    /// All pruning related arguments
-    #[clap(flatten)]
-    pub pruning: PruningArgs,
-    // All engine related arguments
-    //#[clap(flatten)]
-    //pub engine: EngineArgs,
 }
 
 /// A wrapper abstraction around a Reth node config.
@@ -225,8 +202,18 @@ impl RethConfig {
         // create a reth DatadirArgs from tn datadir
         let datadir = path_to_datadir(datadir.as_ref());
 
-        let RethCommand { chain, metrics, network, rpc, txpool, builder, debug, db, dev, pruning } =
-            reth_config;
+        let RethCommand { chain, metrics, rpc, txpool, db } = reth_config;
+        let network = NetworkArgs {
+            discovery: DiscoveryArgs {
+                disable_discovery: true,
+                disable_nat: true,
+                disable_dns_discovery: true,
+                disable_discv4_discovery: true,
+                ..Default::default()
+            },
+            trusted_only: true,
+            ..Default::default()
+        };
 
         let mut this = NodeConfig {
             config,
@@ -237,11 +224,11 @@ impl RethConfig {
             network,
             rpc,
             txpool,
-            builder,
-            debug,
+            builder: PayloadBuilderArgs::default(),
+            debug: DebugArgs::default(),
             db,
-            dev,
-            pruning,
+            dev: DevArgs::default(),
+            pruning: PruningArgs::default(),
         };
         if with_unused_ports {
             this = this.with_unused_ports();
