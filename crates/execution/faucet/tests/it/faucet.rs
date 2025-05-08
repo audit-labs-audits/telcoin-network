@@ -116,8 +116,8 @@ async fn test_with_creds_faucet_transfers_tel_with_google_kms() -> eyre::Result<
     let faucet_bytecode =
         RethEnv::fetch_from_json_str(&faucet_json, Some("deployedBytecode.object"))?
             .as_str()
-            .map(|s| s.to_string())
-            .unwrap_or_default();
+            .map(hex::decode)
+            .unwrap()?;
     let mut tx_factory = TransactionFactory::new();
     let factory_address = tx_factory.address();
     let tmp_genesis = tmp_genesis.extend_accounts(
