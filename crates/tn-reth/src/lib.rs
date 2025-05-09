@@ -54,6 +54,7 @@ use reth_chainspec::{BaseFeeParams, EthChainSpec};
 use reth_consensus::FullConsensus;
 use reth_db::{init_db, DatabaseEnv};
 use reth_db_common::init::init_genesis;
+use reth_discv4::NatResolver;
 use reth_eth_wire::BlockHashNumber;
 use reth_evm::{
     env::EvmEnv,
@@ -82,10 +83,11 @@ use reth_revm::{
 };
 use reth_transaction_pool::{blobstore::DiskFileBlobStore, EthTransactionPool};
 use std::{
-    net::SocketAddr,
+    net::{IpAddr, Ipv4Addr, SocketAddr},
     ops::RangeInclusive,
     path::{Path, PathBuf},
     sync::Arc,
+    time::Duration,
 };
 use system_calls::{
     ConsensusRegistry::{self, ValidatorStatus},
@@ -190,6 +192,8 @@ pub struct RethCommand {
 #[derive(Clone, Debug)]
 pub struct RethConfig(NodeConfig<RethChainSpec>);
 
+const DEFAULT_UNUSED_ADDR: IpAddr = IpAddr::V4(Ipv4Addr::UNSPECIFIED);
+
 impl RethConfig {
     /// Create a new RethConfig wrapper.
     pub fn new<P: AsRef<Path>>(
@@ -203,16 +207,93 @@ impl RethConfig {
         let datadir = path_to_datadir(datadir.as_ref());
 
         let RethCommand { chain, metrics, rpc, txpool, db } = reth_config;
+        // We don't just use Default for these Reth args.
+        // This will force us to look at new options and make sure they are good for our use.
+        // We DO NOT use the Reth networking so these settings should reflect that.
         let network = NetworkArgs {
             discovery: DiscoveryArgs {
                 disable_discovery: true,
                 disable_nat: true,
                 disable_dns_discovery: true,
                 disable_discv4_discovery: true,
-                ..Default::default()
+                enable_discv5_discovery: false,
+                addr: DEFAULT_UNUSED_ADDR,
+                port: 0,
+                discv5_addr: None,
+                discv5_addr_ipv6: None,
+                discv5_port: 0,
+                discv5_port_ipv6: 0,
+                discv5_lookup_interval: 0,
+                discv5_bootstrap_lookup_interval: 0,
+                discv5_bootstrap_lookup_countdown: 0,
             },
-            trusted_only: true,
-            ..Default::default()
+            trusted_only: false,
+            trusted_peers: vec![],
+            bootnodes: None,
+            dns_retries: 0,
+            peers_file: None,
+            identity: "Reth Null Network".to_string(),
+            p2p_secret_key: None,
+            no_persist_peers: true,
+            nat: NatResolver::None,
+            addr: DEFAULT_UNUSED_ADDR,
+            port: 0,
+            max_outbound_peers: None,
+            max_inbound_peers: None,
+            max_concurrent_tx_requests: 0,
+            max_concurrent_tx_requests_per_peer: 0,
+            max_seen_tx_history: 0,
+            max_pending_pool_imports: 0,
+            soft_limit_byte_size_pooled_transactions_response: 0,
+            soft_limit_byte_size_pooled_transactions_response_on_pack_request: 0,
+            max_capacity_cache_txns_pending_fetch: 0,
+            net_if: None,
+        };
+
+        // Not using the Reth payload builder.
+        let builder = PayloadBuilderArgs {
+            extra_data: "tn-reth-na".to_string(),
+            gas_limit: 30_000_000,
+            interval: Duration::from_secs(1),
+            deadline: Duration::from_secs(1),
+            max_payload_tasks: 0,
+        };
+        let debug = DebugArgs {
+            terminate: false,
+            tip: None,
+            max_block: None,
+            etherscan: None,
+            rpc_consensus_ws: None,
+            skip_fcu: None,
+            skip_new_payload: None,
+            reorg_frequency: None,
+            reorg_depth: None,
+            engine_api_store: None,
+            invalid_block_hook: None,
+            healthy_node_rpc_url: None,
+        };
+        // No Reth dev options.
+        let dev = DevArgs { dev: false, block_max_transactions: None, block_time: None };
+        // Ignore Reth pruning for now.
+        let pruning = PruningArgs {
+            full: false,
+            block_interval: None,
+            sender_recovery_full: false,
+            sender_recovery_distance: None,
+            sender_recovery_before: None,
+            transaction_lookup_full: false,
+            transaction_lookup_distance: None,
+            transaction_lookup_before: None,
+            receipts_full: false,
+            receipts_distance: None,
+            receipts_before: None,
+            account_history_full: false,
+            account_history_distance: None,
+            account_history_before: None,
+            storage_history_full: false,
+            storage_history_distance: None,
+            storage_history_before: None,
+            receipts_log_filter: vec![],
         };
 
         let mut this = NodeConfig {
@@ -224,11 +305,11 @@ impl RethConfig {
             network,
             rpc,
             txpool,
-            builder: PayloadBuilderArgs::default(),
-            debug: DebugArgs::default(),
+            builder,
+            debug,
             db,
-            dev: DevArgs::default(),
-            pruning: PruningArgs::default(),
+            dev,
+            pruning,
         };
         if with_unused_ports {
             this = this.with_unused_ports();
