@@ -1,6 +1,7 @@
 //! Utilities for parsing args
 
 use std::{str::FromStr, sync::Arc};
+use alloy::primitives::aliases::U232;
 use tn_reth::{chain_value_parser, dirs::DataDirPath, MaybePlatformPath, RethChainSpec};
 use tn_types::{adiri_chain_spec_arc, Address};
 
@@ -33,4 +34,16 @@ pub fn clap_address_parser(value: &str) -> eyre::Result<Address> {
     };
 
     Ok(address)
+}
+
+/// Parse 18 decimal U232 from string for ConsensusRegistry.
+///
+/// Pass "0" to return zero as u232
+pub fn clap_u232_parser(value: &str) -> eyre::Result<U232> {
+    let parsed_val = match value {
+        "0" => U232::ZERO,
+        _ => U232::from_str(value)?.checked_mul(U232::from(10).checked_pow(U232::from(18)).expect("1e18 exponentiation")).expect("U232 parsing"),
+    };
+
+    Ok(parsed_val)
 }

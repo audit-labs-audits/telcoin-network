@@ -1,6 +1,6 @@
 //! Create a committee from the validators in genesis.
 
-use crate::args::{clap_address_parser, clap_genesis_parser};
+use crate::args::{clap_address_parser, clap_genesis_parser, clap_u232_parser};
 use alloy::primitives::{aliases::U232, ruint::aliases::U256, utils::parse_ether};
 use clap::Args;
 use core::panic;
@@ -79,7 +79,8 @@ pub struct CreateCommitteeArgs {
         long = "initial-stake-per-validator",
         alias = "stake",
         help_heading = "The initial stake credited to each validator in genesis. The default is 1mil TEL.",
-        default_value_t = U232::from(U256::try_from(parse_ether("1_000_000").expect("parse_ether")).expect("initial stake")),
+        value_parser = clap_u232_parser,
+        default_value_t = clap_u232_parser("1_000_000").expect("U232 parsing"),
         verbatim_doc_comment
     )]
     pub initial_stake: U232,
@@ -89,7 +90,8 @@ pub struct CreateCommitteeArgs {
         long = "min-withdraw-amount",
         alias = "min_withdraw",
         help_heading = "The minimal amount a validator can withdraw. The default is 1_000 TEL.",
-        default_value_t = U232::from(U256::try_from(parse_ether("1_000").expect("parse_ether")).expect("min withdraw")),
+        value_parser = clap_u232_parser,
+        default_value_t = clap_u232_parser("1_000").expect("U232 parsing"),
         verbatim_doc_comment
     )]
     pub min_withdrawal: U232,
@@ -99,7 +101,8 @@ pub struct CreateCommitteeArgs {
         long = "epoch-block-rewards",
         alias = "block_rewards_per_epoch",
         help_heading = "The amount of TEL (incl 18 decimals) for the committee starting at genesis.",
-        default_value_t = U232::from(U256::try_from(parse_ether("20_000_000").expect("parse_ether")).expect("block rewards").checked_div(U256::from(28)).expect("U256 div works")),
+        value_parser = clap_u232_parser,
+        default_value_t = clap_u232_parser("20_000_000").expect("U232 parsing").checked_div(U232::from(28)).expect("U256 div works"),
         verbatim_doc_comment
     )]
     pub epoch_rewards: U232,
@@ -178,12 +181,7 @@ impl CreateCommitteeArgs {
             .initial_stake
             .checked_mul(U232::from(validators.clone().len()))
             .expect("initial validators' stake");
-        let itel_balance = U256::from(
-            U232::from(
-                U256::try_from(parse_ether("100_000_000_000").expect("itel parse"))
-                    .expect("itel bal"),
-            ) - genesis_stake,
-        );
+        let itel_balance = U256::from(clap_u232_parser("100_000_000_000")? - genesis_stake);
 
         let itel_address =
             match RethEnv::fetch_value_from_json_str(DEPLOYMENTS_JSON, Some("its.InterchainTEL")) {
