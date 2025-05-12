@@ -114,7 +114,7 @@ async fn test_with_creds_faucet_transfers_tel_with_google_kms() -> eyre::Result<
         "../../../tn-contracts/artifacts/StablecoinManager.json",
     );
     let faucet_bytecode =
-        RethEnv::fetch_from_json_str(&faucet_json, Some("deployedBytecode.object"))?
+        RethEnv::fetch_value_from_json_str(&faucet_json, Some("deployedBytecode.object"))?
             .as_str()
             .map(hex::decode)
             .unwrap()?;
@@ -167,12 +167,12 @@ async fn test_with_creds_faucet_transfers_tel_with_google_kms() -> eyre::Result<
     let proxy_json = fetch_file_content_relative_to_manifest(
         "../../../tn-contracts/artifacts/ERC1967Proxy.json",
     );
-    let proxy_initcode = RethEnv::fetch_from_json_str(&proxy_json, Some("bytecode.object"))?
+    let proxy_initcode = RethEnv::fetch_value_from_json_str(&proxy_json, Some("bytecode.object"))?
         .as_str()
         .map(hex::decode)
         .unwrap()?;
     let proxy_deployed_bytecode =
-        RethEnv::fetch_from_json_str(&proxy_json, Some("deployedBytecode.object"))?
+        RethEnv::fetch_value_from_json_str(&proxy_json, Some("deployedBytecode.object"))?
             .as_str()
             .map(hex::decode)
             .unwrap()?;
@@ -426,14 +426,14 @@ async fn test_with_creds_faucet_transfers_stablecoin_with_google_kms() -> eyre::
         "../../../tn-contracts/artifacts/StablecoinManager.json",
     );
     let faucet_deployed_bytecode =
-        RethEnv::fetch_from_json_str(&faucet_json, Some("deployedBytecode.object"))?
+        RethEnv::fetch_value_from_json_str(&faucet_json, Some("deployedBytecode.object"))?
             .as_str()
             .map(hex::decode)
             .unwrap()?;
     let stablecoin_json =
         fetch_file_content_relative_to_manifest("../../../tn-contracts/artifacts/Stablecoin.json");
     let stablecoin_deployed_bytecode =
-        RethEnv::fetch_from_json_str(&stablecoin_json, Some("deployedBytecode.object"))?
+        RethEnv::fetch_value_from_json_str(&stablecoin_json, Some("deployedBytecode.object"))?
             .as_str()
             .map(hex::decode)
             .unwrap()?;
@@ -493,7 +493,7 @@ async fn test_with_creds_faucet_transfers_stablecoin_with_google_kms() -> eyre::
     let proxy_json = fetch_file_content_relative_to_manifest(
         "../../../tn-contracts/artifacts/ERC1967Proxy.json",
     );
-    let proxy_initcode = RethEnv::fetch_from_json_str(&proxy_json, Some("bytecode.object"))?
+    let proxy_initcode = RethEnv::fetch_value_from_json_str(&proxy_json, Some("bytecode.object"))?
         .as_str()
         .map(hex::decode)
         .unwrap()?;
@@ -563,7 +563,7 @@ async fn test_with_creds_faucet_transfers_stablecoin_with_google_kms() -> eyre::
         .storage;
 
     let faucet_proxy_deployed_bytecode =
-        RethEnv::fetch_from_json_str(&proxy_json, Some("deployedBytecode.object"))?
+        RethEnv::fetch_value_from_json_str(&proxy_json, Some("deployedBytecode.object"))?
             .as_str()
             .map(hex::decode)
             .unwrap()?;

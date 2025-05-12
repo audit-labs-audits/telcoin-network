@@ -186,7 +186,7 @@ impl CreateCommitteeArgs {
         );
 
         let itel_address =
-            match RethEnv::fetch_from_json_str(DEPLOYMENTS_JSON, Some("its.InterchainTEL")) {
+            match RethEnv::fetch_value_from_json_str(DEPLOYMENTS_JSON, Some("its.InterchainTEL")) {
                 Ok(res) => match res {
                     serde_json::Value::String(s) => {
                         Address::from_str(&s).expect("ITEL addr incorrect")

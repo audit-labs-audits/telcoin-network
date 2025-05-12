@@ -91,14 +91,14 @@ async fn test_faucet_transfers_tel_and_xyz_with_google_kms_e2e() -> eyre::Result
         "../../tn-contracts/artifacts/StablecoinManager.json",
     );
     let faucet_deployed_bytecode =
-        RethEnv::fetch_from_json_str(&faucet_standard_json, Some("deployedBytecode.object"))?
+        RethEnv::fetch_value_from_json_str(&faucet_standard_json, Some("deployedBytecode.object"))?
             .as_str()
             .map(hex::decode)
             .unwrap()?;
     let stablecoin_json =
         fetch_file_content_relative_to_manifest("../../tn-contracts/artifacts/Stablecoin.json");
     let stablecoin_impl_bytecode =
-        RethEnv::fetch_from_json_str(&stablecoin_json, Some("deployedBytecode.object"))?
+        RethEnv::fetch_value_from_json_str(&stablecoin_json, Some("deployedBytecode.object"))?
             .as_str()
             .map(hex::decode)
             .unwrap()?;
@@ -158,12 +158,12 @@ async fn test_faucet_transfers_tel_and_xyz_with_google_kms_e2e() -> eyre::Result
     let constructor_params = (faucet_impl_address, init_call.clone()).abi_encode_params();
     let proxy_json =
         fetch_file_content_relative_to_manifest("../../tn-contracts/artifacts/ERC1967Proxy.json");
-    let proxy_initcode = RethEnv::fetch_from_json_str(&proxy_json, Some("bytecode.object"))?
+    let proxy_initcode = RethEnv::fetch_value_from_json_str(&proxy_json, Some("bytecode.object"))?
         .as_str()
         .map(hex::decode)
         .unwrap()?;
     let proxy_bytecode =
-        RethEnv::fetch_from_json_str(&proxy_json, Some("deployedBytecode.object"))?
+        RethEnv::fetch_value_from_json_str(&proxy_json, Some("deployedBytecode.object"))?
             .as_str()
             .map(hex::decode)
             .unwrap()?;

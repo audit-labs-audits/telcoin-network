@@ -1316,7 +1316,7 @@ impl RethEnv {
 
         // generate calldata for creation
         let bytecode_binding =
-            Self::fetch_from_json_str(CONSENSUS_REGISTRY_JSON, Some("bytecode.object"))?;
+            Self::fetch_value_from_json_str(CONSENSUS_REGISTRY_JSON, Some("bytecode.object"))?;
         let registry_initcode =
             hex::decode(bytecode_binding.as_str().ok_or_eyre("invalid registry json")?)?;
         let mut create_registry = registry_initcode.clone();
@@ -1343,7 +1343,7 @@ impl RethEnv {
         });
 
         let deployed_bytecode_binding =
-            Self::fetch_from_json_str(CONSENSUS_REGISTRY_JSON, Some("deployedBytecode.object"))?;
+            Self::fetch_value_from_json_str(CONSENSUS_REGISTRY_JSON, Some("deployedBytecode.object"))?;
         let registry_runtimecode =
             hex::decode(deployed_bytecode_binding.as_str().ok_or_eyre("invalid registry json")?)?;
         let genesis = genesis.extend_accounts([(
@@ -1362,7 +1362,7 @@ impl RethEnv {
     /// If a key is specified, return the corresponding nested object.
     /// Otherwise return the entire JSON
     /// With a generic this could be adjused to handle YAML also
-    pub fn fetch_from_json_str(json_content: &str, key: Option<&str>) -> eyre::Result<Value> {
+    pub fn fetch_value_from_json_str(json_content: &str, key: Option<&str>) -> eyre::Result<Value> {
         let json: Value = serde_json::from_str(json_content)?;
         let result = match key {
             Some(path) => {
