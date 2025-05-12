@@ -42,7 +42,7 @@ pub fn clap_address_parser(value: &str) -> eyre::Result<Address> {
 pub fn clap_u232_parser(value: &str) -> eyre::Result<U232> {
     let parsed_val = match value {
         "0" => U232::ZERO,
-        _ => U232::from_str(value)?.checked_mul(U232::from(10).checked_pow(U232::from(18)).expect("1e18 exponentiation")).expect("U232 parsing"),
+        _ => U232::from_str_radix(value, 10)?.checked_mul(U232::from(10).checked_pow(U232::from(18)).expect("1e18 exponentiation")).expect("U232 parsing"),
     };
 
     Ok(parsed_val)
