@@ -79,7 +79,7 @@ pub struct CreateCommitteeArgs {
         alias = "stake",
         help_heading = "The initial stake credited to each validator in genesis. The default is 1mil TEL.",
         value_parser = clap_u232_parser,
-        default_value_t = clap_u232_parser("1_000_000").expect("U232 parsing"),
+        default_value_t = U232::from(1_000_000),
         verbatim_doc_comment
     )]
     pub initial_stake: U232,
@@ -90,7 +90,7 @@ pub struct CreateCommitteeArgs {
         alias = "min_withdraw",
         help_heading = "The minimal amount a validator can withdraw. The default is 1_000 TEL.",
         value_parser = clap_u232_parser,
-        default_value_t = clap_u232_parser("1_000").expect("U232 parsing"),
+        default_value_t = U232::from(1_000),
         verbatim_doc_comment
     )]
     pub min_withdrawal: U232,
@@ -101,7 +101,7 @@ pub struct CreateCommitteeArgs {
         alias = "block_rewards_per_epoch",
         help_heading = "The amount of TEL (incl 18 decimals) for the committee starting at genesis.",
         value_parser = clap_u232_parser,
-        default_value_t = clap_u232_parser("20_000_000").expect("U232 parsing").checked_div(U232::from(28)).expect("U256 div works"),
+        default_value_t = U232::from(20_000_000).checked_div(U232::from(28)).expect("U232 div works"),
         verbatim_doc_comment
     )]
     pub epoch_rewards: U232,
@@ -184,6 +184,8 @@ impl CreateCommitteeArgs {
 
         let itel_address_str: String =
             RethEnv::fetch_value_from_json_str(DEPLOYMENTS_JSON, Some("its.InterchainTEL"))?
+                .as_str()
+                .expect("invalid json string")
                 .to_string();
         let itel_address = Address::from_str(&itel_address_str)?;
         let precompiles =

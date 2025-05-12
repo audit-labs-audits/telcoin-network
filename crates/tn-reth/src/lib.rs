@@ -86,6 +86,7 @@ use std::{
     net::SocketAddr,
     ops::RangeInclusive,
     path::{Path, PathBuf},
+    str::FromStr,
     sync::Arc,
 };
 use system_calls::{
@@ -147,22 +148,6 @@ pub fn clap_genesis_parser(value: &str) -> eyre::Result<Arc<RethChainSpec>, eyre
     };
 
     Ok(chain)
-}
-
-/// Parse 18 decimal U232 from string for ConsensusRegistry.
-///
-/// Pass "0" to return zero as u232
-/// Wrapper to make u232 parser available
-pub fn clap_u232_parser(value: &str) -> eyre::Result<U232> {
-    let parsed_val = match value {
-        "0" => U232::ZERO,
-        _ => U232::from_str_radix(value, 10)
-            .expect("U232 str")
-            .checked_mul(U232::from(10).checked_pow(U232::from(18)).expect("1e18 exponentiation"))
-            .expect("U232 parsing"),
-    };
-
-    Ok(parsed_val)
 }
 
 /// Reth specific command line args.
@@ -1664,9 +1649,8 @@ impl From<CreateRequest> for PregenesisRequest {
 mod tests {
     use super::*;
     use crate::traits::TNPayloadAttributes;
-
+    use alloy::primitives::utils::parse_ether;
     use rand_chacha::ChaCha8Rng;
-    use std::str::FromStr as _;
     use tempfile::TempDir;
     use tn_types::{
         adiri_genesis, BlsKeypair, Certificate, CommittedSubDag, ConsensusHeader, ConsensusOutput,
@@ -1743,10 +1727,9 @@ mod tests {
 
         let epoch_duration = 60 * 60 * 24; // 24hrs
         let initial_stake_config = ConsensusRegistry::StakeConfig {
-            stakeAmount: clap_u232_parser("1_000_000").unwrap(),
-            minWithdrawAmount: clap_u232_parser("1_000").unwrap(),
-            epochIssuance: clap_u232_parser("20_000_000")
-                .unwrap()
+            stakeAmount: U232::from(parse_ether("1_000_000").unwrap()),
+            minWithdrawAmount: U232::from(parse_ether("1_000").unwrap()),
+            epochIssuance: U232::from(parse_ether("20_000_000").unwrap())
                 .checked_div(U232::from(28))
                 .expect("u256 div checked"),
             epochDuration: epoch_duration,
