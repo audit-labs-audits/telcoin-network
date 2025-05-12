@@ -1664,7 +1664,7 @@ impl From<CreateRequest> for PregenesisRequest {
 mod tests {
     use super::*;
     use crate::traits::TNPayloadAttributes;
-    use alloy::primitives::utils::parse_ether;
+    
     use rand_chacha::ChaCha8Rng;
     use std::str::FromStr as _;
     use tempfile::TempDir;

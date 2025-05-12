@@ -1,9 +1,8 @@
 //! Create a committee from the validators in genesis.
 
 use crate::args::{clap_address_parser, clap_genesis_parser, clap_u232_parser};
-use alloy::primitives::{aliases::U232, ruint::aliases::U256, utils::parse_ether};
+use alloy::primitives::{aliases::U232, ruint::aliases::U256};
 use clap::Args;
-use core::panic;
 use std::{path::PathBuf, str::FromStr, sync::Arc};
 use tn_config::{
     Config, ConfigFmt, ConfigTrait, NetworkGenesis, TelcoinDirs as _, DEPLOYMENTS_JSON,
