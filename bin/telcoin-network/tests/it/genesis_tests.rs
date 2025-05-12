@@ -51,10 +51,11 @@ async fn test_genesis_with_its() -> eyre::Result<()> {
     let rpc_url = "http://127.0.0.1:8545".to_string();
     let client = HttpClientBuilder::default().build(&rpc_url).expect("couldn't build rpc client");
 
-    let itel_address = RethEnv::fetch_value_from_json_str(DEPLOYMENTS_JSON, Some("its.InterchainTEL"))?
-        .as_str()
-        .map(|hex_str| Address::from_hex(hex_str).unwrap())
-        .unwrap();
+    let itel_address =
+        RethEnv::fetch_value_from_json_str(DEPLOYMENTS_JSON, Some("its.InterchainTEL"))?
+            .as_str()
+            .map(|hex_str| Address::from_hex(hex_str).unwrap())
+            .unwrap();
     let tel_supply = U256::try_from(parse_ether("100_000_000_000").unwrap()).unwrap();
     // 4 million tel staked at genesis for 4 validators
     let itel_bal = tel_supply - U256::try_from(parse_ether("4_000_000").unwrap()).unwrap();
@@ -155,8 +156,10 @@ async fn test_precompile_genesis_accounts() -> eyre::Result<()> {
 #[tokio::test]
 async fn test_genesis_with_consensus_registry() -> eyre::Result<()> {
     // fetch registry impl bytecode from compiled output in tn-contracts
-    let json_val =
-        RethEnv::fetch_value_from_json_str(CONSENSUS_REGISTRY_JSON, Some("deployedBytecode.object"))?;
+    let json_val = RethEnv::fetch_value_from_json_str(
+        CONSENSUS_REGISTRY_JSON,
+        Some("deployedBytecode.object"),
+    )?;
     let registry_deployed_bytecode = json_val.as_str().ok_or_eyre("Couldn't fetch bytecode")?;
 
     // create genesis with a proxy
@@ -262,7 +265,8 @@ fn genesis_with_registry(registry_deployed_bytecode: Vec<u8>) -> eyre::Result<Ge
     }
     .abi_encode();
 
-    let json_val = RethEnv::fetch_value_from_json_str(CONSENSUS_REGISTRY_JSON, Some("bytecode.object"))?;
+    let json_val =
+        RethEnv::fetch_value_from_json_str(CONSENSUS_REGISTRY_JSON, Some("bytecode.object"))?;
     let registry_abi = json_val.as_str().ok_or_eyre("invalid registry json")?;
     let registry_bytecode = hex::decode(registry_abi)?;
     let mut create_registry = registry_bytecode.clone();

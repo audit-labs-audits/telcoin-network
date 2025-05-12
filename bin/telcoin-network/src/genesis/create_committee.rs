@@ -183,16 +183,10 @@ impl CreateCommitteeArgs {
             .expect("initial validators' stake");
         let itel_balance = U256::from(clap_u232_parser("100_000_000_000")? - genesis_stake);
 
-        let itel_address =
-            match RethEnv::fetch_value_from_json_str(DEPLOYMENTS_JSON, Some("its.InterchainTEL")) {
-                Ok(res) => match res {
-                    serde_json::Value::String(s) => {
-                        Address::from_str(&s).expect("ITEL addr incorrect")
-                    }
-                    _ => panic!("ITEL address not a string"),
-                },
-                _ => panic!("ITEL address not found"),
-            };
+        let itel_address_str: String =
+            RethEnv::fetch_value_from_json_str(DEPLOYMENTS_JSON, Some("its.InterchainTEL"))?
+                .to_string();
+        let itel_address = Address::from_str(&itel_address_str)?;
         let precompiles =
             NetworkGenesis::fetch_precompile_genesis_accounts(itel_address, itel_balance)
                 .expect("precompile fetch error");

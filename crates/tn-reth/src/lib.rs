@@ -156,7 +156,10 @@ pub fn clap_genesis_parser(value: &str) -> eyre::Result<Arc<RethChainSpec>, eyre
 pub fn clap_u232_parser(value: &str) -> eyre::Result<U232> {
     let parsed_val = match value {
         "0" => U232::ZERO,
-        _ => U232::from_str_radix(value, 10).expect("U232 str").checked_mul(U232::from(10).checked_pow(U232::from(18)).expect("1e18 exponentiation")).expect("U232 parsing"),
+        _ => U232::from_str_radix(value, 10)
+            .expect("U232 str")
+            .checked_mul(U232::from(10).checked_pow(U232::from(18)).expect("1e18 exponentiation"))
+            .expect("U232 parsing"),
     };
 
     Ok(parsed_val)
@@ -1355,8 +1358,10 @@ impl RethEnv {
             account.storage.iter().map(|(k, v)| ((*k).into(), v.present_value.into())).collect()
         });
 
-        let deployed_bytecode_binding =
-            Self::fetch_value_from_json_str(CONSENSUS_REGISTRY_JSON, Some("deployedBytecode.object"))?;
+        let deployed_bytecode_binding = Self::fetch_value_from_json_str(
+            CONSENSUS_REGISTRY_JSON,
+            Some("deployedBytecode.object"),
+        )?;
         let registry_runtimecode =
             hex::decode(deployed_bytecode_binding.as_str().ok_or_eyre("invalid registry json")?)?;
         let genesis = genesis.extend_accounts([(
@@ -1740,7 +1745,8 @@ mod tests {
         let initial_stake_config = ConsensusRegistry::StakeConfig {
             stakeAmount: clap_u232_parser("1_000_000").unwrap(),
             minWithdrawAmount: clap_u232_parser("1_000").unwrap(),
-            epochIssuance: clap_u232_parser("20_000_000").unwrap()
+            epochIssuance: clap_u232_parser("20_000_000")
+                .unwrap()
                 .checked_div(U232::from(28))
                 .expect("u256 div checked"),
             epochDuration: epoch_duration,
