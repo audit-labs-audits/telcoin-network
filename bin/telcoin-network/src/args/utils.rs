@@ -45,12 +45,3 @@ pub fn clap_u232_parser(value: &str) -> eyre::Result<U232> {
 
     Ok(parsed_val)
 }
-
-/// Parse U232 from string for ConsensusRegistry.
-pub fn clap_u232_parser_with_divisor(value: &str, divisor: &str) -> eyre::Result<U232> {
-    let parsed_val = clap_u232_parser(value)?;
-    let divisor_value = U232::from_str_radix(divisor, 10)?;
-    let divided_val = parsed_val.checked_div(divisor_value).ok_or_eyre("U232 divisor")?;
-
-    Ok(divided_val)
-}

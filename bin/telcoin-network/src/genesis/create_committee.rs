@@ -101,9 +101,9 @@ pub struct CreateCommitteeArgs {
     #[arg(
         long = "epoch-block-rewards",
         alias = "block_rewards_per_epoch",
-        help_heading = "The amount of TEL (incl 18 decimals) for the committee starting at genesis.",
-        value_parser = |s: &str| clap_u232_parser_with_divisor(s, "28"),
-        default_value = "20_000_000",
+        help_heading = "The per block reward (int) for each epoch. Ex) 20mil rewards per month / 31 days / 25 hour epoch interval. It's best to use conservative values.",
+        value_parser = clap_u232_parser,
+        default_value = "25_806",
         verbatim_doc_comment
     )]
     pub epoch_rewards: U232,
