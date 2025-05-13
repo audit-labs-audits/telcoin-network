@@ -150,7 +150,6 @@ impl CreateCommitteeArgs {
             epochIssuance: self.epoch_rewards,
             epochDuration: self.epoch_duration,
         };
-        println!("initial rewards: {:#?}", self.epoch_rewards);
 
         // try to create a runtime if one doesn't already exist
         // this is a workaround for executing committees pre-genesis during tests and normal CLI
