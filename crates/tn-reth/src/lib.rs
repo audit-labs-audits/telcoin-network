@@ -1652,8 +1652,7 @@ mod tests {
     use rand_chacha::ChaCha8Rng;
     use tempfile::TempDir;
     use tn_types::{
-        adiri_genesis, BlsKeypair, Certificate, CommittedSubDag, ConsensusHeader, ConsensusOutput,
-        PrimaryInfo, ReputationScores,
+        adiri_genesis, BlsKeypair, Certificate, CommittedSubDag, ConsensusHeader, ConsensusOutput, FromHex, PrimaryInfo, ReputationScores
     };
 
     /// Helper function for creating a consensus output for tests.
@@ -1663,7 +1662,7 @@ mod tests {
         leader.header.round = sub_dag_index as u32;
         let reputation_scores = ReputationScores::default();
         let previous_sub_dag = None;
-        let beneficiary = Address::from_str("0x5555555555555555555555555555555555555555")
+        let beneficiary = Address::from_hex("0x5555555555555555555555555555555555555555")
             .expect("beneficiary address from str");
         ConsensusOutput {
             sub_dag: CommittedSubDag::new(
