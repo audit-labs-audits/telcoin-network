@@ -1,6 +1,7 @@
 //! Utilities for parsing args
 
 use alloy::primitives::aliases::U232;
+use eyre::OptionExt;
 use std::{str::FromStr, sync::Arc};
 use tn_reth::{chain_value_parser, dirs::DataDirPath, MaybePlatformPath, RethChainSpec};
 use tn_types::{adiri_chain_spec_arc, Address};
@@ -37,12 +38,19 @@ pub fn clap_address_parser(value: &str) -> eyre::Result<Address> {
 }
 
 /// Parse 18 decimal U232 from string for ConsensusRegistry.
-///
-/// Pass "0" to return zero as u232
 pub fn clap_u232_parser(value: &str) -> eyre::Result<U232> {
     let parsed_val = U232::from_str_radix(value, 10)?
         .checked_mul(U232::from(10).checked_pow(U232::from(18)).expect("1e18 exponentiation"))
-        .expect("U232 parsing");
+        .ok_or_eyre("U232 parsing")?;
 
     Ok(parsed_val)
+}
+
+/// Parse U232 from string for ConsensusRegistry.
+pub fn clap_u232_parser_with_divisor(value: &str, divisor: &str) -> eyre::Result<U232> {
+    let parsed_val = clap_u232_parser(value)?;
+    let divisor_value = U232::from_str_radix(divisor, 10)?;
+    let divided_val = parsed_val.checked_div(divisor_value).ok_or_eyre("U232 divisor")?;
+
+    Ok(divided_val)
 }

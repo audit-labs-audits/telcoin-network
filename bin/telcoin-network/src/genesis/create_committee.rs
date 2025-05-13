@@ -1,6 +1,8 @@
 //! Create a committee from the validators in genesis.
 
-use crate::args::{clap_address_parser, clap_genesis_parser, clap_u232_parser};
+use crate::args::{
+    clap_address_parser, clap_genesis_parser, clap_u232_parser, clap_u232_parser_with_divisor,
+};
 use alloy::primitives::{aliases::U232, ruint::aliases::U256};
 use clap::Args;
 use std::{path::PathBuf, str::FromStr, sync::Arc};
@@ -100,8 +102,8 @@ pub struct CreateCommitteeArgs {
         long = "epoch-block-rewards",
         alias = "block_rewards_per_epoch",
         help_heading = "The amount of TEL (incl 18 decimals) for the committee starting at genesis.",
-        value_parser = clap_u232_parser,
-        default_value = "714285",
+        value_parser = |s: &str| clap_u232_parser_with_divisor(s, "28"),
+        default_value = "20_000_000",
         verbatim_doc_comment
     )]
     pub epoch_rewards: U232,
@@ -148,6 +150,7 @@ impl CreateCommitteeArgs {
             epochIssuance: self.epoch_rewards,
             epochDuration: self.epoch_duration,
         };
+        println!("initial rewards: {:#?}", self.epoch_rewards);
 
         // try to create a runtime if one doesn't already exist
         // this is a workaround for executing committees pre-genesis during tests and normal CLI
