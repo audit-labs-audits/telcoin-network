@@ -1,8 +1,6 @@
 //! Create a committee from the validators in genesis.
 
-use crate::args::{
-    clap_address_parser, clap_genesis_parser, clap_u232_parser,
-};
+use crate::args::{clap_address_parser, clap_genesis_parser, clap_u232_parser};
 use alloy::primitives::{aliases::U232, ruint::aliases::U256};
 use clap::Args;
 use std::{path::PathBuf, str::FromStr, sync::Arc};
