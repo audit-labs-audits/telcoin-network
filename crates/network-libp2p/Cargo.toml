@@ -24,6 +24,7 @@ futures = { workspace = true }
 tracing = { workspace = true }
 serde = { workspace = true }
 thiserror = { workspace = true }
+tn-storage = { workspace = true }
 
 # req/res requires async_trait
 async-trait = { workspace = true }
@@ -35,6 +36,7 @@ rand = { workspace = true }
 serde_with = { workspace = true }
 
 [dev-dependencies]
+tempfile = { workspace = true }
 tn-test-utils = { workspace = true }
 eyre = { workspace = true }
 assert_matches = { workspace = true }

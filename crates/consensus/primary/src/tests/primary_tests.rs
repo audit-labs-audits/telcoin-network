@@ -38,6 +38,7 @@ fn get_bus_and_primary<DB: Database>(
         config.network_config(),
         event_stream,
         config.key_config().clone(),
+        MemDatabase::default(),
     )
     .expect("p2p network create failed!");
     let consensus_network_handle = consensus_network.network_handle();

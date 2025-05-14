@@ -142,7 +142,7 @@ where
 
         // read the network config or use the default
         let network_config = NetworkConfig::read_config(&self.tn_datadir)?;
-        self.spawn_node_networks(node_task_spawner, &network_config)?;
+        self.spawn_node_networks(node_task_spawner, &network_config, consensus_db.clone())?;
 
         // await all tasks on epoch-task-manager or node shutdown
         tokio::select! {
@@ -160,10 +160,11 @@ where
     /// epoch.
     ///
     /// This will create the long-running primary/worker [ConsensusNetwork]s for p2p swarm.
-    fn spawn_node_networks(
+    fn spawn_node_networks<DB: TNDatabase>(
         &mut self,
         node_task_spawner: TaskSpawner,
         network_config: &NetworkConfig,
+        db: DB,
     ) -> eyre::Result<()> {
         //
         //=== PRIMARY
@@ -176,6 +177,7 @@ where
             network_config,
             tmp_event_stream,
             self.key_config.clone(),
+            db.clone(),
         )?;
         let network_handle = primary_network.network_handle();
         let node_shutdown = self.node_shutdown.subscribe();
@@ -205,6 +207,7 @@ where
             network_config,
             tmp_event_stream,
             self.key_config.clone(),
+            db,
         )?;
         let network_handle = worker_network.network_handle();
         let node_shutdown = self.node_shutdown.subscribe();

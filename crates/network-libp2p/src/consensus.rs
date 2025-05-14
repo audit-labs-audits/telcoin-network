@@ -5,6 +5,7 @@
 use crate::{
     codec::{TNCodec, TNMessage},
     error::NetworkError,
+    kad::KadStore,
     peers::{self, PeerEvent, PeerManager, Penalty},
     send_or_log_error,
     types::{AddrList, NetworkCommand, NetworkEvent, NetworkHandle, NetworkResult},
@@ -16,20 +17,20 @@ use libp2p::{
         self, Event as GossipEvent, IdentTopic, Message as GossipMessage, MessageAcceptance, Topic,
         TopicHash,
     },
-    kad::{self, store::MemoryStore, Mode},
+    kad::{self, Mode},
     request_response::{
         self, Codec, Event as ReqResEvent, InboundFailure as ReqResInboundFailure,
         InboundRequestId, OutboundRequestId,
     },
     swarm::{NetworkBehaviour, SwarmEvent},
-    Multiaddr, PeerId, Swarm, SwarmBuilder,
+    Multiaddr, PeerId, StreamProtocol, Swarm, SwarmBuilder,
 };
 use std::{
     collections::{HashMap, HashSet, VecDeque},
     time::{Duration, Instant},
 };
 use tn_config::{KeyConfig, LibP2pConfig, NetworkConfig, PeerConfig};
-use tn_types::{encode, try_decode, BlsPublicKey, BlsSigner, NetworkKeypair};
+use tn_types::{encode, try_decode, BlsPublicKey, BlsSigner, Database, NetworkKeypair};
 use tokio::sync::{
     mpsc::{self, Receiver, Sender},
     oneshot,
@@ -40,11 +41,13 @@ use tracing::{debug, error, info, instrument, trace, warn};
 #[path = "tests/network_tests.rs"]
 mod network_tests;
 
+const DEFAULT_KAD_PROTO_NAME: StreamProtocol = StreamProtocol::new("/ipfs/kad/1.0.0");
+
 /// Custom network libp2p behaviour type for Telcoin Network.
 ///
 /// The behavior includes gossipsub and request-response.
 #[derive(NetworkBehaviour)]
-pub(crate) struct TNBehavior<C>
+pub(crate) struct TNBehavior<C, DB>
 where
     C: Codec + Send + Clone + 'static,
 {
@@ -55,18 +58,19 @@ where
     /// The peer manager.
     pub(crate) peer_manager: peers::PeerManager,
     /// Used for peer discovery.
-    pub(crate) kademlia: kad::Behaviour<MemoryStore>,
+    pub(crate) kademlia: kad::Behaviour<KadStore<DB>>,
 }
 
-impl<C> TNBehavior<C>
+impl<C, DB> TNBehavior<C, DB>
 where
     C: Codec + Send + Clone + 'static,
+    DB: Database,
 {
     /// Create a new instance of Self.
     pub(crate) fn new(
         gossipsub: gossipsub::Behaviour,
         req_res: request_response::Behaviour<C>,
-        kademlia: kad::Behaviour<MemoryStore>,
+        kademlia: kad::Behaviour<KadStore<DB>>,
         peer_config: &PeerConfig,
     ) -> Self {
         let peer_manager = PeerManager::new(peer_config);
@@ -81,13 +85,14 @@ where
 /// - prevent a surge in one network message type from overwhelming all network traffic
 /// - provide more granular control over resource allocation
 /// - allow specific network configurations based on worker/primary needs
-pub struct ConsensusNetwork<Req, Res>
+pub struct ConsensusNetwork<Req, Res, DB>
 where
     Req: TNMessage,
     Res: TNMessage,
+    DB: Database,
 {
     /// The gossip network for flood publishing sealed batches.
-    swarm: Swarm<TNBehavior<TNCodec<Req, Res>>>,
+    swarm: Swarm<TNBehavior<TNCodec<Req, Res>, DB>>,
     /// The stream for forwarding network events.
     event_stream: mpsc::Sender<NetworkEvent<Req, Res>>,
     /// The sender for network handles.
@@ -132,19 +137,21 @@ where
     kad_add_peers: bool,
 }
 
-impl<Req, Res> ConsensusNetwork<Req, Res>
+impl<Req, Res, DB> ConsensusNetwork<Req, Res, DB>
 where
     Req: TNMessage,
     Res: TNMessage,
+    DB: Database,
 {
     /// Convenience method for spawning a primary network instance.
     pub fn new_for_primary(
         network_config: &NetworkConfig,
         event_stream: mpsc::Sender<NetworkEvent<Req, Res>>,
         key_config: KeyConfig,
+        db: DB,
     ) -> NetworkResult<Self> {
         let network_key = key_config.primary_network_keypair().clone();
-        Self::new(network_config, event_stream, key_config, network_key)
+        Self::new(network_config, event_stream, key_config, network_key, db)
     }
 
     /// Convenience method for spawning a worker network instance.
@@ -152,9 +159,10 @@ where
         network_config: &NetworkConfig,
         event_stream: mpsc::Sender<NetworkEvent<Req, Res>>,
         key_config: KeyConfig,
+        db: DB,
     ) -> NetworkResult<Self> {
         let network_key = key_config.worker_network_keypair().clone();
-        Self::new(network_config, event_stream, key_config, network_key)
+        Self::new(network_config, event_stream, key_config, network_key, db)
     }
 
     /// Create a new instance of Self.
@@ -163,6 +171,7 @@ where
         event_stream: mpsc::Sender<NetworkEvent<Req, Res>>,
         key_config: KeyConfig,
         keypair: NetworkKeypair,
+        db: DB,
     ) -> NetworkResult<Self> {
         let gossipsub_config = gossipsub::ConfigBuilder::default()
             // explicitly set default
@@ -187,7 +196,15 @@ where
             request_response::Config::default(),
         );
         let peer_id: PeerId = keypair.public().into();
-        let kademlia = kad::Behaviour::new(peer_id, MemoryStore::new(peer_id));
+        let mut kad_config = libp2p::kad::Config::new(DEFAULT_KAD_PROTO_NAME);
+        let two_days = Some(Duration::from_secs(48 * 60 * 60));
+        let twelve_hours = Some(Duration::from_secs(12 * 60 * 60));
+        kad_config
+            .set_record_ttl(two_days)
+            .set_publication_interval(twelve_hours)
+            .set_provider_record_ttl(two_days);
+        let kad_store = KadStore::new(db, &key_config);
+        let kademlia = kad::Behaviour::with_config(peer_id, kad_store, kad_config);
 
         // create custom behavior
         let behavior = TNBehavior::new(gossipsub, req_res, kademlia, network_config.peer_config());
@@ -328,7 +345,7 @@ where
     #[instrument(level = "trace", target = "network::events", skip(self), fields(topics = ?self.authorized_publishers.keys()))]
     async fn process_event(
         &mut self,
-        event: SwarmEvent<TNBehaviorEvent<TNCodec<Req, Res>>>,
+        event: SwarmEvent<TNBehaviorEvent<TNCodec<Req, Res>, DB>>,
     ) -> NetworkResult<()> {
         match event {
             SwarmEvent::Behaviour(behavior) => match behavior {
@@ -925,10 +942,11 @@ impl From<GossipAcceptance> for MessageAcceptance {
     }
 }
 
-impl<Req, Res> std::fmt::Debug for ConsensusNetwork<Req, Res>
+impl<Req, Res, DB> std::fmt::Debug for ConsensusNetwork<Req, Res, DB>
 where
     Req: TNMessage,
     Res: TNMessage,
+    DB: Database,
 {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("ConsensusNetwork")
