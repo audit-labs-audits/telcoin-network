@@ -9,7 +9,10 @@ use super::{
     PeerEvent, PeerExchangeMap, Penalty,
 };
 use crate::{
-    error::NetworkError, peers::status::ConnectionStatus, send_or_log_error, types::NetworkResult,
+    error::NetworkError,
+    peers::status::ConnectionStatus,
+    send_or_log_error,
+    types::{AuthorityInfoRequest, NetworkResult},
 };
 use libp2p::{core::ConnectedPoint, Multiaddr, PeerId};
 use std::{
@@ -116,21 +119,22 @@ impl PeerManager {
             match peer.connection_status() {
                 ConnectionStatus::Banned { .. } => {
                     // report error - dial banned peer
-                    let error = NetworkError::Dial(format!("Peer {peer_id} is banned"));
+                    let error = NetworkError::DialBannedPeer(format!("Peer {peer_id} is banned"));
                     warn!(target: "peer-manager", ?error, "invalid dial request");
                     send_or_log_error!(reply, Err(error), "DialPeer", peer = peer_id);
                     return;
                 }
                 ConnectionStatus::Dialing { .. } => {
                     // report error - dialing already in progress
-                    let error = NetworkError::Dial(format!("Already dialing {peer_id}"));
+                    let error = NetworkError::AlreadyDialing(format!("Already dialing {peer_id}"));
                     warn!(target: "peer-manager", ?error, "invalid dial request");
                     send_or_log_error!(reply, Err(error), "DialPeer", peer = peer_id);
                     return;
                 }
                 ConnectionStatus::Connected { .. } => {
                     // report error - dialing already connected
-                    let error = NetworkError::Dial(format!("Peer {peer_id} is already connected"));
+                    let error =
+                        NetworkError::AlreadyConnected(format!("Already connected {peer_id}"));
                     warn!(target: "peer-manager", ?error, "invalid dial request");
                     send_or_log_error!(reply, Err(error), "DialPeer", peer = peer_id);
                     return;
@@ -225,7 +229,7 @@ impl PeerManager {
                 self.push_event(PeerEvent::DisconnectPeer(peer_id));
             }
             PeerAction::DisconnectWithPX => {
-                debug!(target: "peer-manager", ?peer_id, "reputation update results in temp ban");
+                debug!(target: "peer-manager", ?peer_id, "reputation update results in temp ban with PX");
                 // prevent immediate reconnection attempts
                 self.temporarily_banned.insert(peer_id);
                 let exchange = self.peers.peer_exchange();
@@ -273,6 +277,12 @@ impl PeerManager {
     /// This is called before accepting new connections. Also checks that the peer
     /// wasn't temporarily banned due to excess peers connections.
     pub(crate) fn peer_banned(&self, peer_id: &PeerId) -> bool {
+        debug!(
+            target: "peer-manager",
+            ?peer_id,
+            "checking if peer banned...current banned peers:\n{:#?}",
+            self.temporarily_banned
+        );
         self.temporarily_banned.contains(peer_id) || self.peers.peer_banned(peer_id)
     }
 
@@ -344,6 +354,8 @@ impl PeerManager {
             &peer_id,
             NewConnectionStatus::Disconnecting { banned: false },
         );
+
+        debug!(target: "peer-manager", ?action, "disconnect peer results in:");
         self.apply_peer_action(peer_id, action);
     }
 
@@ -510,5 +522,25 @@ impl PeerManager {
         for (peer_id, action) in unban_actions {
             self.apply_peer_action(peer_id, action);
         }
+    }
+
+    /// Find authorities for the epoch manager.
+    pub(crate) fn find_authorities(&mut self, authorities: Vec<AuthorityInfoRequest>) {
+        let mut missing = Vec::new();
+
+        // check all peers for authority and track missing
+        for AuthorityInfoRequest { bls_key, reply } in authorities {
+            if let Some(info) = self.peers.find_authority(&bls_key) {
+                // reply.send(info)
+                send_or_log_error!(reply, Ok((bls_key, info)), "find authority");
+                continue;
+            }
+
+            // add to missing authorities
+            missing.push(AuthorityInfoRequest { bls_key, reply });
+        }
+
+        // emit event for kad to try to discover
+        self.events.push_back(PeerEvent::MissingAuthorities(missing));
     }
 }

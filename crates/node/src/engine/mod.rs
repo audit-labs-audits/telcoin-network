@@ -15,7 +15,7 @@ use builder::ExecutionNodeBuilder;
 use std::{net::SocketAddr, sync::Arc};
 use tn_config::Config;
 use tn_faucet::FaucetArgs;
-use tn_reth::{system_calls::ConsensusRegistry, RethConfig, RethEnv, WorkerTxPool};
+use tn_reth::{system_calls::EpochState, RethConfig, RethEnv, WorkerTxPool};
 use tn_types::{
     BatchSender, BatchValidation, ConsensusOutput, ExecHeader, Noticer, SealedBlock, SealedHeader,
     TaskManager, WorkerId, B256,
@@ -149,11 +149,9 @@ impl ExecutionNode {
         guard.worker_http_local_address(worker_id)
     }
 
-    /// Read the current committee from state.
-    pub async fn read_committee_from_chain(
-        &self,
-    ) -> eyre::Result<Vec<ConsensusRegistry::ValidatorInfo>> {
+    /// Read [EpochState] from the canonical tip.
+    pub async fn epoch_state_from_canonical_tip(&self) -> eyre::Result<EpochState> {
         let guard = self.internal.read().await;
-        guard.read_committee_from_chain()
+        guard.epoch_state_from_canonical_tip()
     }
 }

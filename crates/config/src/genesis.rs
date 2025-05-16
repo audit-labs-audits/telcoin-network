@@ -104,10 +104,6 @@ impl NetworkGenesis {
             }
         }
 
-        // prevent mutable key type
-        // The keys being used here seem to trip this because they contain a OnceCell but do not
-        // appear to be actually mutable.  So it should be safe to ignore this clippy warning...
-        #[allow(clippy::mutable_key_type)]
         let validators = BTreeMap::from_iter(validators);
 
         let tn_config: Config =
@@ -181,9 +177,6 @@ impl NetworkGenesis {
 
     /// Create a [WorkerCache] from the validators in [NetworkGenesis].
     pub fn create_worker_cache(&self) -> eyre::Result<WorkerCache> {
-        // The keys being used here seem to trip this because they contain a OnceCell but do not
-        // appear to be actually mutable.  So it should be safe to ignore this clippy warning...
-        #[allow(clippy::mutable_key_type)]
         let workers = self
             .validators
             .iter()

@@ -88,14 +88,14 @@ use std::{
 };
 use system_calls::{
     ConsensusRegistry::{self, ValidatorStatus},
-    CONSENSUS_REGISTRY_ADDRESS, SYSTEM_ADDRESS,
+    EpochState, CONSENSUS_REGISTRY_ADDRESS, SYSTEM_ADDRESS,
 };
 use tempfile::TempDir;
 use tn_config::{ValidatorInfo, CONSENSUS_REGISTRY_JSON};
 use tn_types::{
     adiri_chain_spec_arc, calculate_transaction_root, keccak256, Address, Block, BlockBody,
     BlockExt as _, BlockHashOrNumber, BlockNumHash, BlockNumber, BlockWithSenders, BlsSignature,
-    ExecHeader, Genesis, GenesisAccount, Receipt, SealedBlock, SealedBlockWithSenders,
+    Epoch, ExecHeader, Genesis, GenesisAccount, Receipt, SealedBlock, SealedBlockWithSenders,
     SealedHeader, TaskManager, TransactionSigned, TxKind, B256, EMPTY_OMMER_ROOT_HASH,
     EMPTY_RECEIPTS, EMPTY_TRANSACTIONS, EMPTY_WITHDRAWALS, U256,
 };
@@ -1471,12 +1471,18 @@ impl RethEnv {
     /// - get current epoch info
     /// - getValidator token id by address
     /// - getValidator info by token id
-    pub fn read_committee_from_chain(&self) -> eyre::Result<Vec<ConsensusRegistry::ValidatorInfo>> {
+    pub fn epoch_state_from_canonical_tip(&self) -> eyre::Result<EpochState> {
         // create EVM with latest state
         let latest = self.latest()?;
         let state = StateProviderDatabase::new(latest);
         let mut db = State::builder().with_database(state).with_bundle_update().build();
         let last_block_num = self.blockchain_provider.last_block_number()?;
+        // read current epoch number from chain
+        let canonical_tip = self.header_by_number(last_block_num)?.ok_or_eyre(
+            "Canonical tip missing from blockchain provider reading committee from chain",
+        )?;
+
+        let epoch = Self::extract_epoch_from_header(&canonical_tip);
 
         // from self.tn_env_for_evm
         let spec_id = reth_revm::primitives::SpecId::SHANGHAI;
@@ -1515,8 +1521,14 @@ impl RethEnv {
         let mut evm = self.evm_config.evm_with_env(&mut db, tn_env);
 
         // current epoch info
-        let current_epoch_info = self.get_current_epoch_info(&mut evm)?;
-        let token_ids = current_epoch_info
+        let epoch_info = self.get_current_epoch_info(&mut evm)?;
+
+        // retrieve closing timestamp for previous epoch
+        let epoch_start = self
+            .header_by_number(epoch_info.blockHeight.saturating_sub(1))?
+            .ok_or_eyre("failed to retrieve closing epoch information")?
+            .timestamp;
+        let token_ids = epoch_info
             .committee
             .iter()
             .map(|address| {
@@ -1524,7 +1536,7 @@ impl RethEnv {
                 self.get_validator_token_id(*address, &mut evm)
             })
             .collect::<eyre::Result<Vec<_>, _>>()?;
-        let validator_infos = token_ids
+        let validators = token_ids
             .into_iter()
             .map(|token_id| {
                 // read validator info
@@ -1532,7 +1544,15 @@ impl RethEnv {
             })
             .collect::<eyre::Result<Vec<_>, _>>()?;
 
-        Ok(validator_infos)
+        let epoch_state = EpochState { epoch, epoch_info, validators, epoch_start };
+
+        Ok(epoch_state)
+    }
+
+    /// Extract the epoch number from a header's nonce.
+    pub fn extract_epoch_from_header(header: &ExecHeader) -> Epoch {
+        let nonce: u64 = header.nonce.into();
+        (nonce >> 32) as u32
     }
 
     /// Read the curret epoch info from the [ConsensusRegistry] on-chain.
@@ -1858,11 +1878,12 @@ mod tests {
         debug!(target: "engine", "bundle from execution:\n{:#?}", bundle);
 
         // assert committee read matches expected
-        let infos = reth_env.read_committee_from_chain()?;
-        debug!(target: "engine", "validator infos:\n{:#?}", infos);
+        let consensus_state = reth_env.epoch_state_from_canonical_tip()?;
+        debug!(target: "engine", "consensus state:\n{:#?}", consensus_state);
 
         for v in validators {
-            let on_chain = infos
+            let on_chain = consensus_state
+                .validators
                 .iter()
                 .find(|info| info.validatorAddress == v.execution_address)
                 .expect("validator on-chain");
