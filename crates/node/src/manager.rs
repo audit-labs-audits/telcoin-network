@@ -10,25 +10,41 @@ use crate::{
 };
 use consensus_metrics::start_prometheus_server;
 use eyre::{eyre, OptionExt};
-use std::{str::FromStr as _, sync::Arc, time::Duration};
-use tn_config::{ConsensusConfig, KeyConfig, NetworkConfig, TelcoinDirs};
-use tn_network_libp2p::{types::NetworkHandle, ConsensusNetwork, PeerId, TNMessage};
+use std::{
+    collections::{BTreeMap, HashMap},
+    str::FromStr as _,
+    sync::Arc,
+    time::Duration,
+};
+use tn_config::{
+    Config, ConfigFmt, ConfigTrait as _, ConsensusConfig, KeyConfig, NetworkConfig, TelcoinDirs,
+};
+use tn_network_libp2p::{
+    error::NetworkError,
+    types::{NetworkHandle, NetworkInfo},
+    ConsensusNetwork, PeerId, TNMessage,
+};
 use tn_primary::{
     network::{PrimaryNetwork, PrimaryNetworkHandle},
     ConsensusBus, NodeMode, StateSynchronizer,
 };
-use tn_reth::{RethDb, RethEnv};
+use tn_reth::{
+    system_calls::{ConsensusRegistry, EpochState},
+    RethDb, RethEnv,
+};
 use tn_storage::{open_db, tables::ConsensusBlocks, DatabaseType};
 use tn_types::{
-    BatchValidation, BlsPublicKey, ConsensusHeader, Database as TNDatabase, Multiaddr, Noticer,
-    Notifier, SealedBlock, TaskManager, TaskSpawner,
+    BatchValidation, BlsPublicKey, Committee, CommitteeBuilder, ConsensusHeader,
+    Database as TNDatabase, Epoch, Multiaddr, Noticer, Notifier, SealedBlock, TaskManager,
+    TaskSpawner, TimestampSec, WorkerCache, WorkerIndex, WorkerInfo,
 };
 use tn_worker::{WorkerNetwork, WorkerNetworkHandle};
 use tokio::sync::{
     mpsc::{self},
     oneshot,
 };
-use tracing::{debug, info};
+use tokio_stream::StreamExt as _;
+use tracing::{debug, info, warn};
 
 /// The long-running task manager name.
 const NODE_TASK_MANAGER: &str = "Node Task Manager";
@@ -142,7 +158,7 @@ where
 
         // read the network config or use the default
         let network_config = NetworkConfig::read_config(&self.tn_datadir)?;
-        self.spawn_node_networks(node_task_spawner, &network_config, consensus_db.clone())?;
+        self.spawn_node_networks(node_task_spawner, &network_config, &consensus_db).await?;
 
         // await all tasks on epoch-task-manager or node shutdown
         tokio::select! {
@@ -160,12 +176,23 @@ where
     /// epoch.
     ///
     /// This will create the long-running primary/worker [ConsensusNetwork]s for p2p swarm.
-    fn spawn_node_networks<DB: TNDatabase>(
+    async fn spawn_node_networks<DB: TNDatabase>(
         &mut self,
         node_task_spawner: TaskSpawner,
         network_config: &NetworkConfig,
-        db: DB,
+        consensus_db: &DB,
     ) -> eyre::Result<()> {
+        // dial bootnodes on startup
+        //
+        // for now, read the committee from fs to bootstrap network
+        let bootstrap_config = ConsensusConfig::new(
+            self.builder.tn_config.clone(),
+            &self.tn_datadir,
+            consensus_db.clone(),
+            self.key_config.clone(),
+            network_config.clone(),
+        )?;
+
         //
         //=== PRIMARY
         //
@@ -177,9 +204,9 @@ where
             network_config,
             tmp_event_stream,
             self.key_config.clone(),
-            db.clone(),
+            consensus_db.clone(),
         )?;
-        let network_handle = primary_network.network_handle();
+        let primary_network_handle = primary_network.network_handle();
         let node_shutdown = self.node_shutdown.subscribe();
 
         // spawn long-running primary network task
@@ -189,12 +216,14 @@ where
                     Ok(())
                 },
                 res = primary_network.run() => {
+                    warn!(target: "epoch-manager", ?res, "primary network stopped");
                     res
                 },
             )
         });
 
-        self.primary_network_handle = Some(PrimaryNetworkHandle::new(network_handle));
+        // primary network handle
+        self.primary_network_handle = Some(PrimaryNetworkHandle::new(primary_network_handle));
 
         //
         //=== WORKER
@@ -207,9 +236,9 @@ where
             network_config,
             tmp_event_stream,
             self.key_config.clone(),
-            db,
+            consensus_db.clone(),
         )?;
-        let network_handle = worker_network.network_handle();
+        let worker_network_handle = worker_network.network_handle();
         let node_shutdown = self.node_shutdown.subscribe();
 
         // spawn long-running primary network task
@@ -219,6 +248,7 @@ where
                     Ok(())
                 }
                 res = worker_network.run() => {
+                    warn!(target: "epoch-manager", ?res, "worker network stopped");
                     res
                 }
             )
@@ -226,8 +256,9 @@ where
 
         // set temporary task spawner - this is updated with each epoch
         self.worker_network_handle =
-            Some(WorkerNetworkHandle::new(network_handle, node_task_spawner.clone()));
+            Some(WorkerNetworkHandle::new(worker_network_handle, node_task_spawner.clone()));
 
+        info!(target: "epoch-manager", auth=?bootstrap_config.authority_id(), "node networks started. tmp_rx dropped D:");
         Ok(())
     }
 
@@ -289,8 +320,8 @@ where
     ) -> eyre::Result<bool> {
         info!(target: "epoch-manager", "Starting epoch");
 
-        let metrics_shutdown = Notifier::new();
         // start consensus metrics for the epoch
+        let metrics_shutdown = Notifier::new();
         if let Some(metrics_socket) = self.builder.consensus_metrics {
             start_prometheus_server(
                 metrics_socket,
@@ -373,6 +404,9 @@ where
         // reset to default - this is updated during restart sequence
         consensus_bus.clear_restart();
 
+        // shutdown consensus metrics
+        metrics_shutdown.notify();
+
         info!(target: "epoch-manager", "TASKS complete, restart: {running}");
 
         Ok(running)
@@ -402,17 +436,9 @@ where
         network_config: &NetworkConfig,
         initialize_networks: &mut bool,
     ) -> eyre::Result<(PrimaryNode<DatabaseType>, WorkerNode<DatabaseType>)> {
-        // send these to the swarm for validator discovery
-        let _committee_bls_keys = self.create_committee_from_state(engine).await?;
-
         // create config for consensus
-        let consensus_config = ConsensusConfig::new(
-            self.builder.tn_config.clone(),
-            &self.tn_datadir,
-            consensus_db.clone(),
-            self.key_config.clone(),
-            network_config.clone(),
-        )?;
+        let consensus_config =
+            self.configure_consensus(engine, network_config, &consensus_db).await?;
 
         let primary = self
             .create_primary_node_components(
@@ -457,24 +483,149 @@ where
         Ok((primary, worker))
     }
 
+    /// Configure consensus for the current epoch.
+    ///
+    /// This method reads the canonical tip to read the epoch information needed
+    /// to create the current committee and the consensus config.
+    async fn configure_consensus(
+        &self,
+        engine: &ExecutionNode,
+        network_config: &NetworkConfig,
+        consensus_db: &DatabaseType,
+    ) -> eyre::Result<ConsensusConfig<DatabaseType>> {
+        // retrieve epoch information from canonical tip
+        let EpochState { epoch, epoch_info, validators, epoch_start } =
+            engine.epoch_state_from_canonical_tip().await?;
+        let validators = validators
+            .iter()
+            .map(|v| {
+                let decoded_bls = BlsPublicKey::from_literal_bytes(v.blsPubkey.as_ref());
+                decoded_bls.map(|decoded| (decoded, v))
+            })
+            .collect::<Result<HashMap<_, _>, _>>()
+            .map_err(|err| eyre!("failed to create bls key from on-chain bytes: {err:?}"))?;
+
+        let epoch_boundary = epoch_start + epoch_info.epochDuration as u64;
+
+        // send these to the swarm for validator discovery
+        let keys_for_worker_cache = validators.keys().cloned().collect();
+        let committee = self.create_committee_from_state(epoch, epoch_boundary, validators).await?;
+        let worker_cache =
+            self.create_worker_cache_from_state(epoch, keys_for_worker_cache).await?;
+
+        // create config for consensus
+        let consensus_config = ConsensusConfig::new_for_epoch(
+            self.builder.tn_config.clone(),
+            consensus_db.clone(),
+            self.key_config.clone(),
+            committee,
+            worker_cache,
+            network_config.clone(),
+        )?;
+
+        Ok(consensus_config)
+    }
+
     /// Create the [Committee] for the current epoch.
     ///
     /// This is the first step for configuring consensus.
     async fn create_committee_from_state(
         &self,
-        engine: &ExecutionNode,
-    ) -> eyre::Result<Vec<BlsPublicKey>> {
+        epoch: Epoch,
+        epoch_boundary: TimestampSec,
+        validators: HashMap<BlsPublicKey, &ConsensusRegistry::ValidatorInfo>,
+    ) -> eyre::Result<Committee> {
         info!(target: "epoch-manager", "creating committee from state");
 
-        // retrieve the committee from state
-        let validator_infos = engine.read_committee_from_chain().await?;
-        let committee_bls_keys = validator_infos
-            .iter()
-            .map(|v| BlsPublicKey::from_bytes_on_chain(v.blsPubkey.as_ref()))
-            .collect::<Result<_, _>>()
-            .map_err(|err| eyre!("failed to create bls key from on-chain bytes: {err:?}"))?;
+        // the network must be live
+        let committee = if epoch == 0 {
+            // read from fs for genesis
+            Config::load_from_path::<Committee>(self.tn_datadir.committee_path(), ConfigFmt::YAML)?
+        } else {
+            // retrieve network information for committee
+            let primary_handle = self
+                .primary_network_handle
+                .as_ref()
+                .ok_or_eyre("missing primary network handle for epoch manager")?;
 
-        Ok(committee_bls_keys)
+            let mut primary_network_infos = primary_handle
+                .inner_handle()
+                .find_authorities(validators.keys().cloned().collect())
+                .await?;
+
+            // build the committee using kad network
+            let mut committee_builder = CommitteeBuilder::new(epoch, epoch_boundary);
+
+            // loop through the primary info returned from network query
+            while let Some(info) = primary_network_infos.next().await {
+                debug!(target: "epoch-manager", ?info, "awaited next primary network info");
+                let (protocol_key, NetworkInfo { pubkey, multiaddr, hostname }) = info??;
+                let validator = validators
+                    .get(&protocol_key)
+                    .ok_or_eyre("network returned validator that isn't in the committee")?;
+                let execution_address = validator.validatorAddress;
+
+                committee_builder.add_authority(
+                    protocol_key,
+                    1, // set stake so every authority's weight is equal
+                    multiaddr,
+                    execution_address,
+                    pubkey,
+                    hostname,
+                );
+            }
+
+            committee_builder.build()
+        };
+
+        // load committee
+        committee.load();
+
+        Ok(committee)
+    }
+
+    /// Create the [WorkerCache] for the current epoch.
+    ///
+    /// This is the first step for configuring consensus.
+    async fn create_worker_cache_from_state(
+        &self,
+        epoch: Epoch,
+        validators: Vec<BlsPublicKey>,
+    ) -> eyre::Result<WorkerCache> {
+        info!(target: "epoch-manager", "creating worker cache from state");
+
+        let worker_cache = if epoch == 0 {
+            Config::load_from_path::<WorkerCache>(
+                self.tn_datadir.worker_cache_path(),
+                ConfigFmt::YAML,
+            )?
+        } else {
+            // create worker cache
+            let worker_handle = self
+                .worker_network_handle
+                .as_ref()
+                .ok_or_eyre("missing primary network handle for epoch manager")?;
+
+            let mut workers = Vec::with_capacity(validators.len());
+            let mut worker_network_infos =
+                worker_handle.inner_handle().find_authorities(validators).await?;
+
+            // only one worker per authority for now
+            let worker_id = 0;
+            // loop through the worker info returned from network query
+            while let Some(info) = worker_network_infos.next().await {
+                let (protocol_key, NetworkInfo { pubkey, multiaddr, .. }) = info??;
+                let worker_index = WorkerIndex(BTreeMap::from([(
+                    worker_id,
+                    WorkerInfo { name: pubkey, worker_address: multiaddr.clone() },
+                )]));
+                workers.push((protocol_key, worker_index));
+            }
+
+            WorkerCache { epoch, workers: Arc::new(workers.into_iter().collect()) }
+        };
+
+        Ok(worker_cache)
     }
 
     /// Create a [PrimaryNode].
@@ -496,7 +647,7 @@ where
             .clone();
 
         // create the epoch-specific `PrimaryNetwork`
-        self.create_primary_network_for_epoch(
+        self.spawn_primary_network_for_epoch(
             consensus_config,
             &consensus_bus,
             state_sync.clone(),
@@ -539,7 +690,7 @@ where
             .ok_or_eyre("worker network handle missing from epoch manager")?
             .clone();
 
-        self.create_worker_network_for_epoch(
+        self.spawn_worker_network_for_epoch(
             consensus_config,
             worker_id,
             validator.clone(),
@@ -562,7 +713,7 @@ where
     /// Create the primary network for the specific epoch.
     ///
     /// This is not the swarm level, but the [PrimaryNetwork] interface.
-    async fn create_primary_network_for_epoch<DB: TNDatabase>(
+    async fn spawn_primary_network_for_epoch<DB: TNDatabase>(
         &mut self,
         consensus_config: &ConsensusConfig<DB>,
         consensus_bus: &ConsensusBus,
@@ -575,10 +726,12 @@ where
         let (event_stream, rx_event_stream) = mpsc::channel(1000);
 
         // set committee for network to prevent banning
+        debug!(target: "epoch-manager", auth=?consensus_config.authority_id(), "spawning primary network for epoch");
         network_handle
             .inner_handle()
             .new_epoch(consensus_config.primary_network_map(), event_stream)
             .await?;
+        debug!(target: "epoch-manager", auth=?consensus_config.authority_id(), "event stream updated!");
 
         // start listening if the network needs to be initialized
         if *initialize_networks {
@@ -655,23 +808,31 @@ where
         let task_name = format!("DialPeer {peer_id}");
         node_task_spawner.spawn_task(task_name, async move {
             let mut backoff = 1;
+
+            // skip dialing already connected peers
+            if let Ok(peers) = handle.connected_peers().await {
+                if peers.contains(&peer_id) {
+                    return;
+                };
+            }
+
             while let Err(e) = handle.dial(peer_id, peer_addr.clone()).await {
-                tracing::warn!(target: "node", "failed to dial {peer_id} at {peer_addr}: {e}");
+                // ignore errors for peers that are already connected or being dialed
+                if matches!(e, NetworkError::AlreadyConnected(_)) || matches!(e, NetworkError::AlreadyDialing(_)) {
+                    return;
+                }
+
+                tracing::warn!(target: "epoch-manager", "failed to dial {peer_id} at {peer_addr}: {e}");
                 tokio::time::sleep(Duration::from_secs(backoff)).await;
                 if backoff < 120 {
                     backoff += backoff;
-                }
-                if let Ok(peers) = handle.connected_peers().await {
-                    if peers.contains(&peer_id) {
-                        return;
-                    };
                 }
             }
         });
     }
 
     /// Create the worker network.
-    async fn create_worker_network_for_epoch<DB: TNDatabase>(
+    async fn spawn_worker_network_for_epoch<DB: TNDatabase>(
         &mut self,
         consensus_config: &ConsensusConfig<DB>,
         worker_id: &u16,
@@ -682,7 +843,6 @@ where
     ) -> eyre::Result<()> {
         // create event streams for the worker network handler
         let (event_stream, rx_event_stream) = mpsc::channel(1000);
-
         let worker_address = consensus_config.worker_address(worker_id);
 
         network_handle
@@ -761,6 +921,7 @@ where
         consensus_config: &ConsensusConfig<DB>,
         primary_network_handle: &PrimaryNetworkHandle,
     ) -> eyre::Result<NodeMode> {
+        debug!(target: "epoch-manager", "identifying node mode...");
         let mode = if self.builder.tn_config.observer {
             NodeMode::Observer
         } else if state_sync::can_cvv(consensus_bus, consensus_config, primary_network_handle).await
@@ -770,6 +931,7 @@ where
             NodeMode::CvvInactive
         };
 
+        debug!(target: "epoch-manager", ?mode, "node mode identified");
         // update consensus bus
         consensus_bus.node_mode().send_modify(|v| *v = mode);
 

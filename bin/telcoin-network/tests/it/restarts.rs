@@ -14,8 +14,7 @@ use std::{
     process::{Child, Command},
     time::Duration,
 };
-use tn_test_utils::init_test_tracing;
-use tn_types::{get_available_tcp_port, keccak256, Address};
+use tn_types::{get_available_tcp_port, keccak256, test_utils::init_test_tracing, Address};
 use tokio::runtime::Runtime;
 use tracing::{error, info};
 
@@ -189,7 +188,9 @@ fn network_advancing(client_urls: &[String; 4]) -> eyre::Result<()> {
         next_num = get_block_number(&client_urls[0])?;
         i += 1;
         if i > 30 {
-            return Err(eyre::eyre!("Network not advancing within 30 seconds after restart!"));
+            return Err(eyre::eyre!(
+                "Network not advancing past {next_num} within 30 seconds after restart!"
+            ));
         }
     }
     Ok(())
@@ -318,12 +319,12 @@ fn run_observer_tests(client_urls: &[String; 4], obs_url: &str) -> eyre::Result<
 
     test_blocks_same(client_urls)?;
     // Send to observer, validator confirms.
-    send_and_confirm(&obs_url, &client_urls[2], &key, to_account, 0)?;
+    send_and_confirm(obs_url, &client_urls[2], &key, to_account, 0)?;
     // Send to observer, validator confirms- second time.
-    send_and_confirm(&obs_url, &client_urls[3], &key, to_account, 1)?;
+    send_and_confirm(obs_url, &client_urls[3], &key, to_account, 1)?;
 
     // Send to a validator, observer sees transfer.
-    send_and_confirm(&client_urls[0], &obs_url, &key, to_account, 2)?;
+    send_and_confirm(&client_urls[0], obs_url, &key, to_account, 2)?;
 
     test_blocks_same(client_urls)?;
     Ok(())
@@ -425,7 +426,7 @@ fn start_validator(instance: usize, exe_path: &Path, base_dir: &Path, mut rpc_po
 
 /// Start a process running an observer node.
 fn start_observer(instance: usize, exe_path: &Path, base_dir: &Path, mut rpc_port: u16) -> Child {
-    let data_dir = base_dir.join("observer".to_string());
+    let data_dir = base_dir.join("observer");
     // The instance option will still change a set port so account for that.
     rpc_port += instance as u16;
     let genesis_json_path = data_dir.join("genesis/genesis.json");

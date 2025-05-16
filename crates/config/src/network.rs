@@ -21,6 +21,8 @@ pub struct NetworkConfig {
     quic_config: QuicConfig,
     /// The configuration for managing peers.
     peer_config: PeerConfig,
+    /// The hostname for the validator.
+    hostname: String,
 }
 
 impl NetworkConfig {
@@ -42,6 +44,11 @@ impl NetworkConfig {
     /// Return a reference to the [PeerConfig].
     pub fn peer_config(&self) -> &PeerConfig {
         &self.peer_config
+    }
+
+    /// The human-readable identity for this node.
+    pub fn hostname(&self) -> &str {
+        &self.hostname
     }
 
     /// Return a mutable reference to the [PeerConfig].
@@ -117,13 +124,23 @@ impl LibP2pConfig {
     pub fn worker_txn_topic(&self) -> String {
         String::from("tn-txn")
     }
+
+    /// Protocol for identify behavior.
+    pub fn identify_protocol(&self) -> &'static str {
+        Self::protocol()
+    }
+
+    /// Return the protocol string.
+    pub fn protocol() -> &'static str {
+        "/telcoin-network/0.0.0"
+    }
 }
 
 impl Default for LibP2pConfig {
     fn default() -> Self {
         Self {
             supported_req_res_protocols: vec![(
-                StreamProtocol::new("/telcoin-network/0.0.0"),
+                StreamProtocol::new(Self::protocol()),
                 ProtocolSupport::Full,
             )],
             max_rpc_message_size: 1024 * 1024, // 1 MiB

@@ -1,11 +1,12 @@
+//! Utilities for it tests.
+
 use clap::Parser;
 use std::path::PathBuf;
 #[cfg(feature = "faucet")]
 use std::sync::Arc;
 use telcoin_network::{genesis::GenesisArgs, keytool::KeyArgs, node::NodeCommand};
 use tn_node::launch_node;
-use tn_test_utils::CommandParser;
-use tn_types::{Address, Genesis};
+use tn_types::{test_utils::CommandParser, Address, Genesis};
 use tracing::error;
 
 /// Limit potential for port collisions.
@@ -256,7 +257,7 @@ pub fn spawn_local_testnet(
             if #[cfg(feature = "faucet")] {
                 // extend genesis accounts
                 let consensus_accounts: Vec<_> =
-                    command.reth.chain.genesis.alloc.iter().map(|(k, v)| (k.clone(), v.clone())).collect();
+                    command.reth.chain.genesis.alloc.iter().map(|(k, v)| (*k, v.clone())).collect();
                 command.reth.chain =
                     Arc::new(_genesis.clone().extend_accounts(consensus_accounts.into_iter()).into());
             }

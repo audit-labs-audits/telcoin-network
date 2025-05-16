@@ -21,11 +21,10 @@ use k256::{elliptic_curve::sec1::ToEncodedPoint, pkcs8::DecodePublicKey, PublicK
 use secp256k1::PublicKey;
 use std::{str::FromStr, sync::Arc, time::Duration};
 use tn_config::fetch_file_content_relative_to_manifest;
-use tn_reth::{RethChainSpec, RethEnv};
-use tn_test_utils::{get_contract_state_for_genesis, TransactionFactory};
+use tn_reth::{test_utils::TransactionFactory, RethChainSpec, RethEnv};
 use tn_types::{
-    adiri_genesis, public_key_to_address, sol, Address, Encodable2718 as _, GenesisAccount,
-    SolValue, B256, U256,
+    adiri_genesis, hex, public_key_to_address, sol, Address, Encodable2718 as _, GenesisAccount,
+    SolValue, TaskManager, B256, U256,
 };
 use tokio::{task::JoinHandle, time::timeout};
 use tracing::{debug, info};
@@ -91,11 +90,17 @@ async fn test_faucet_transfers_tel_and_xyz_with_google_kms_e2e() -> eyre::Result
         "../../tn-contracts/artifacts/StablecoinManager.json",
     );
     let faucet_deployed_bytecode =
-        RethEnv::parse_deployed_bytecode_from_json_str(&faucet_standard_json)?;
+        RethEnv::fetch_value_from_json_str(&faucet_standard_json, Some("deployedBytecode.object"))?
+            .as_str()
+            .map(hex::decode)
+            .unwrap()?;
     let stablecoin_json =
         fetch_file_content_relative_to_manifest("../../tn-contracts/artifacts/Stablecoin.json");
     let stablecoin_impl_bytecode =
-        RethEnv::parse_deployed_bytecode_from_json_str(&stablecoin_json)?;
+        RethEnv::fetch_value_from_json_str(&stablecoin_json, Some("deployedBytecode.object"))?
+            .as_str()
+            .map(hex::decode)
+            .unwrap()?;
 
     // extend genesis accounts to fund factory_address, etch bytecodes, construct proxy creation txs
     let mut tx_factory = TransactionFactory::new();
@@ -152,8 +157,15 @@ async fn test_faucet_transfers_tel_and_xyz_with_google_kms_e2e() -> eyre::Result
     let constructor_params = (faucet_impl_address, init_call.clone()).abi_encode_params();
     let proxy_json =
         fetch_file_content_relative_to_manifest("../../tn-contracts/artifacts/ERC1967Proxy.json");
-    let proxy_initcode = RethEnv::parse_bytecode_from_json_str(&proxy_json)?;
-    let proxy_bytecode = RethEnv::parse_deployed_bytecode_from_json_str(&proxy_json)?;
+    let proxy_initcode = RethEnv::fetch_value_from_json_str(&proxy_json, Some("bytecode.object"))?
+        .as_str()
+        .map(hex::decode)
+        .unwrap()?;
+    let proxy_bytecode =
+        RethEnv::fetch_value_from_json_str(&proxy_json, Some("deployedBytecode.object"))?
+            .as_str()
+            .map(hex::decode)
+            .unwrap()?;
     let faucet_create_data = [proxy_initcode.clone().as_slice(), &constructor_params[..]].concat();
 
     // construct `grantRole(faucet)` data
@@ -244,9 +256,12 @@ async fn test_faucet_transfers_tel_and_xyz_with_google_kms_e2e() -> eyre::Result
         vec![faucet_tx_raw, stablecoin_tx_raw, role_tx_raw, updatexyz_tx_raw, minter_tx_raw];
 
     let tmp_dir = tempfile::TempDir::new().unwrap();
+    let task_manager = TaskManager::new("Temp Task Manager");
+    let tmp_reth_env =
+        RethEnv::new_for_temp_chain(pre_genesis_chain.clone(), tmp_dir.path(), &task_manager)?;
     // fetch state to be set on the faucet proxy address
-    let execution_outcome =
-        get_contract_state_for_genesis(pre_genesis_chain, raw_txs, tmp_dir.path()).await?;
+    let execution_outcome = tmp_reth_env
+        .execution_outcome_for_tests(raw_txs, &pre_genesis_chain.sealed_genesis_header());
     let execution_bundle = execution_outcome.bundle;
     let execution_storage_faucet = &execution_bundle
         .state

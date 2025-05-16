@@ -84,7 +84,7 @@ impl NetworkBehaviour for PeerManager {
         Ok(ConnectionHandler)
     }
 
-    fn on_swarm_event<'a>(&mut self, event: FromSwarm<'a>) {
+    fn on_swarm_event(&mut self, event: FromSwarm<'_>) {
         match event {
             FromSwarm::ConnectionEstablished(ConnectionEstablished {
                 peer_id, endpoint, ..
@@ -182,17 +182,8 @@ impl PeerManager {
             "connection established"
         );
 
-        // TODO: Issue #254 update metrics
-
-        // check connection limits
-        if self.peer_limit_reached(endpoint) && !self.peer_is_important(&peer_id) {
-            // gracefully disconnect and indicate excess peers
-            self.disconnect_peer(peer_id, true);
-            return;
-        }
-
-        // do not register peers that were immediately disconnected - network service does not need
-        // to know about these peers
+        // register peers as connected by this point
+        // even if the peer is to be immediately disconnected with peer-exchange (PX)
         let multiaddr = match endpoint {
             ConnectedPoint::Listener { send_back_addr, .. } => {
                 self.register_peer_connection(
@@ -209,6 +200,16 @@ impl PeerManager {
                 address.clone()
             }
         };
+
+        // TODO: Issue #254 update metrics
+
+        // check connection limits
+        if self.peer_limit_reached(endpoint) && !self.peer_is_important(&peer_id) {
+            debug!(target: "peer-manager", ?peer_id, "peer limit reached - disconnecting with PX");
+            // gracefully disconnect and indicate excess peers
+            self.disconnect_peer(peer_id, true);
+            return;
+        }
 
         self.push_event(PeerEvent::PeerConnected(peer_id, multiaddr));
 

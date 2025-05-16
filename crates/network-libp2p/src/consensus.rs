@@ -8,7 +8,10 @@ use crate::{
     kad::KadStore,
     peers::{self, PeerEvent, PeerManager, Penalty},
     send_or_log_error,
-    types::{AddrList, NetworkCommand, NetworkEvent, NetworkHandle, NetworkResult},
+    types::{
+        AuthorityInfoRequest, NetworkCommand, NetworkEvent, NetworkHandle, NetworkInfo,
+        NetworkResult, NodeRecord,
+    },
     PeerExchangeMap,
 };
 use futures::StreamExt as _;
@@ -17,7 +20,9 @@ use libp2p::{
         self, Event as GossipEvent, IdentTopic, Message as GossipMessage, MessageAcceptance, Topic,
         TopicHash,
     },
-    kad::{self, Mode},
+    identify::{self, Event as IdentifyEvent, Info as IdentifyInfo},
+    kad::{self, Mode, QueryId},
+    multiaddr::Protocol,
     request_response::{
         self, Codec, Event as ReqResEvent, InboundFailure as ReqResInboundFailure,
         InboundRequestId, OutboundRequestId,
@@ -27,7 +32,7 @@ use libp2p::{
 };
 use std::{
     collections::{HashMap, HashSet, VecDeque},
-    time::{Duration, Instant},
+    time::Duration,
 };
 use tn_config::{KeyConfig, LibP2pConfig, NetworkConfig, PeerConfig};
 use tn_types::{encode, try_decode, BlsPublicKey, BlsSigner, Database, NetworkKeypair};
@@ -51,6 +56,8 @@ pub(crate) struct TNBehavior<C, DB>
 where
     C: Codec + Send + Clone + 'static,
 {
+    /// The identify behavior used to confirm externally observed addresses.
+    pub(crate) identify: identify::Behaviour,
     /// The gossipsub network behavior.
     pub(crate) gossipsub: gossipsub::Behaviour,
     /// The request-response network behavior.
@@ -68,13 +75,14 @@ where
 {
     /// Create a new instance of Self.
     pub(crate) fn new(
+        identify: identify::Behaviour,
         gossipsub: gossipsub::Behaviour,
         req_res: request_response::Behaviour<C>,
         kademlia: kad::Behaviour<KadStore<DB>>,
         peer_config: &PeerConfig,
     ) -> Self {
         let peer_manager = PeerManager::new(peer_config);
-        Self { gossipsub, req_res, peer_manager, kademlia }
+        Self { identify, gossipsub, req_res, peer_manager, kademlia }
     }
 }
 
@@ -124,6 +132,12 @@ where
     /// data. Peers that send messages that fail to decode must receive an application score
     /// penalty.
     inbound_requests: HashMap<InboundRequestId, oneshot::Sender<()>>,
+    /// The collection of kademlia record requests.
+    ///
+    /// When the application layer makes a request, the swarm stores the kad::QueryId and the reply
+    /// channel to the caller. On the `Event::OutboundQueryProgressed`, the result is sent
+    /// through the oneshot channel.
+    kad_requests: HashMap<QueryId, oneshot::Sender<NetworkResult<(BlsPublicKey, NetworkInfo)>>>,
     /// The configurables for the libp2p consensus network implementation.
     config: LibP2pConfig,
     /// Track peers we have a connection with.
@@ -135,6 +149,10 @@ where
     key_config: KeyConfig,
     /// If true then add peers to kademlia- useful for testing to set false.
     kad_add_peers: bool,
+    /// The hostname for the node provided by the [NetworkConfig].
+    ///
+    /// This is a human-readable representation for a node identity.
+    hostname: String,
 }
 
 impl<Req, Res, DB> ConsensusNetwork<Req, Res, DB>
@@ -173,6 +191,15 @@ where
         keypair: NetworkKeypair,
         db: DB,
     ) -> NetworkResult<Self> {
+        let identify_config = identify::Config::new(
+            network_config.libp2p_config().identify_protocol().to_string(),
+            keypair.public(),
+        )
+        // disable discovery to prevent auto redials to disconnected peers
+        .with_cache_size(0);
+
+        let identify = identify::Behaviour::new(identify_config);
+
         let gossipsub_config = gossipsub::ConfigBuilder::default()
             // explicitly set default
             .heartbeat_interval(Duration::from_secs(1))
@@ -202,12 +229,14 @@ where
         kad_config
             .set_record_ttl(two_days)
             .set_publication_interval(twelve_hours)
+            .set_query_timeout(Duration::from_secs(60))
             .set_provider_record_ttl(two_days);
         let kad_store = KadStore::new(db, &key_config);
         let kademlia = kad::Behaviour::with_config(peer_id, kad_store, kad_config);
 
         // create custom behavior
-        let behavior = TNBehavior::new(gossipsub, req_res, kademlia, network_config.peer_config());
+        let behavior =
+            TNBehavior::new(identify, gossipsub, req_res, kademlia, network_config.peer_config());
 
         // create swarm
         let swarm = SwarmBuilder::with_existing_identity(keypair)
@@ -243,11 +272,13 @@ where
             authorized_publishers: Default::default(),
             outbound_requests: Default::default(),
             inbound_requests: Default::default(),
+            kad_requests: Default::default(),
             config,
             connected_peers: VecDeque::new(),
             pending_px_disconnects,
             key_config,
             kad_add_peers: true,
+            hostname: network_config.hostname().to_string(),
         })
     }
 
@@ -264,39 +295,60 @@ where
     /// Return a kademlia record keyed on our BlsPublicKey with our peer_id and network addresses.
     /// Return None if we don't have any confirmed external addresses yet.
     fn get_peer_record(&self) -> Option<kad::Record> {
-        let key = kad::RecordKey::new(&encode(&self.key_config.primary_public_key()));
-        let value: Vec<Multiaddr> = self.swarm.external_addresses().cloned().collect();
-        if value.is_empty() {
+        let key = kad::RecordKey::new(&self.key_config.primary_public_key());
+        let multiaddrs: Vec<Multiaddr> = self.swarm.external_addresses().cloned().collect();
+
+        if multiaddrs.is_empty() {
+            warn!(target: "network-kad", ?multiaddrs, "call to create peer record, but external addresses are empty");
             return None;
         }
-        let peer_id = *self.swarm.local_peer_id();
-        let expires = Instant::now().checked_add(Duration::from_secs(60 * 60 * 24)); // one day
-        let signature = self.key_config.request_signature_direct(&encode(&value));
-        let addr_list = AddrList { signature, value };
-        Some(kad::Record {
-            key: key.clone(),
-            value: encode(&addr_list),
-            publisher: Some(peer_id),
-            expires,
-        })
+
+        // use ipv4 or ipv6 multiaddr
+        let multiaddr = multiaddrs
+            .iter()
+            .find(|addr| addr.iter().any(|p| matches!(p, Protocol::Ip4(_))))
+            .or_else(|| {
+                // If no IPv4 address found, try to find an IPv6 address
+                multiaddrs.iter().find(|addr| addr.iter().any(|p| matches!(p, Protocol::Ip6(_))))
+            })
+            .or_else(|| {
+                // Fallback to first address if neither IPv4 nor IPv6 found (shouldn't happen)
+                multiaddrs.first()
+            })
+            .cloned();
+
+        if let Some(addr) = multiaddr {
+            let peer_id = *self.swarm.local_peer_id();
+            let node_record = NodeRecord::build(
+                self.key_config.primary_network_public_key(),
+                addr,
+                self.hostname.clone(),
+                |data| self.key_config.request_signature_direct(data),
+            );
+            Some(kad::Record {
+                key: key.clone(),
+                value: encode(&node_record),
+                publisher: Some(peer_id),
+                expires: None, // never expire
+            })
+        } else {
+            warn!(target: "network-kad", "No suitable multiaddr found for get_peer_record");
+            None
+        }
     }
 
     /// Verify the address list in Record was signed by the key.
-    fn peer_record_valid(&self, record: &kad::Record) -> Option<(BlsPublicKey, AddrList)> {
-        let key = try_decode::<BlsPublicKey>(record.key.as_ref()).ok()?;
-        let addr_list = try_decode::<AddrList>(record.value.as_ref()).ok()?;
-        if addr_list.signature.verify_raw(&encode(&addr_list.value), &key) {
-            Some((key, addr_list))
-        } else {
-            None
-        }
+    fn peer_record_valid(&self, record: &kad::Record) -> Option<(BlsPublicKey, NodeRecord)> {
+        let key = BlsPublicKey::from_literal_bytes(record.key.as_ref()).ok()?;
+        let node_record = try_decode::<NodeRecord>(record.value.as_ref()).ok()?;
+        node_record.verify(&key)
     }
 
     /// Publish and provide our network addresses and peer id under our BLS public key for
     /// discovery.
     fn provide_our_data(&mut self) {
         if let Some(record) = self.get_peer_record() {
-            info!(target: "network-kad", "Providing our address(es) to kademlia");
+            info!(target: "network-kad", ?record, "Providing our record to kademlia");
             let key = record.key.clone();
             if let Err(err) =
                 self.swarm.behaviour_mut().kademlia.put_record(record, kad::Quorum::One)
@@ -312,7 +364,7 @@ where
     /// Publish our network addresses and peer id under our BLS public key for discovery.
     fn publish_our_data(&mut self) {
         if let Some(record) = self.get_peer_record() {
-            info!(target: "network-kad", "Publishing our address(es) to kademlia");
+            info!(target: "network-kad", ?record, "Publishing our record to kademlia");
             if let Err(err) =
                 self.swarm.behaviour_mut().kademlia.put_record(record, kad::Quorum::One)
             {
@@ -349,6 +401,7 @@ where
     ) -> NetworkResult<()> {
         match event {
             SwarmEvent::Behaviour(behavior) => match behavior {
+                TNBehaviorEvent::Identify(event) => self.process_identify_event(event)?,
                 TNBehaviorEvent::Gossipsub(event) => self.process_gossip_event(event)?,
                 TNBehaviorEvent::ReqRes(event) => self.process_reqres_event(event)?,
                 TNBehaviorEvent::PeerManager(event) => self.process_peer_manager_event(event)?,
@@ -521,11 +574,64 @@ where
                 //
                 // for now, this only supports the current committee for the epoch
 
+                info!(target: "epoch-manager", "network update for next committee - ensuring no committee members are banned");
                 // ensure that the next committee isn't banned
                 self.swarm.behaviour_mut().peer_manager.new_epoch(committee);
 
                 // update the stream to forward events
                 self.event_stream = new_event_stream;
+            }
+            NetworkCommand::FindAuthorities { requests } => {
+                // this will trigger a PeerEvent to fetch records through kad if not in the peer map
+                self.swarm.behaviour_mut().peer_manager.find_authorities(requests);
+            }
+        }
+
+        Ok(())
+    }
+
+    /// Process identify events.
+    fn process_identify_event(&mut self, event: IdentifyEvent) -> NetworkResult<()> {
+        match event {
+            IdentifyEvent::Received {
+                peer_id,
+                info:
+                    IdentifyInfo {
+                        public_key,
+                        protocol_version,
+                        agent_version,
+                        listen_addrs,
+                        protocols,
+                        observed_addr,
+                    },
+                .. // connection_id
+            } => {
+                debug!(
+                    target: "network",
+                    ?peer_id,
+                    ?public_key,
+                    ?protocol_version,
+                    ?agent_version,
+                    ?listen_addrs,
+                    ?protocols,
+                    ?observed_addr,
+                    "identify event received",
+                );
+
+                // received info from peer about this node
+                if !self.swarm.behaviour().peer_manager.peer_banned(&peer_id) {
+                    self.swarm.add_external_address(observed_addr);
+                }
+            }
+            IdentifyEvent::Sent { peer_id, .. } => {
+                debug!(target: "network", ?peer_id, "sent identify to peer:");
+            }
+            IdentifyEvent::Pushed { peer_id, info, .. } => {
+                debug!(target: "network", ?peer_id, ?info, "pushed identify to peer:");
+            }
+            IdentifyEvent::Error { peer_id, error, .. } => {
+                // errors appear when connection is closed
+                debug!(target: "network", ?peer_id, ?error, "identify error:");
             }
         }
 
@@ -727,7 +833,7 @@ where
             PeerEvent::DisconnectPeer(peer_id) => {
                 debug!(target: "network", ?peer_id, "peer manager: disconnect peer");
                 // remove from request-response
-                // NOTE: gossipsub handles `FromSwarm::ConnectionClosed`
+                // NOTE: gossipsub/identify handle `FromSwarm::ConnectionClosed`
                 let _ = self.swarm.disconnect_peer_id(peer_id);
             }
             PeerEvent::PeerDisconnected(peer_id) => {
@@ -815,6 +921,13 @@ where
                 // remove blacklist gossipsub
                 self.swarm.behaviour_mut().gossipsub.remove_blacklisted_peer(&peer_id);
             }
+            PeerEvent::MissingAuthorities(missing) => {
+                for AuthorityInfoRequest { bls_key, reply } in missing {
+                    let key = kad::RecordKey::new(&bls_key);
+                    let query_id = self.swarm.behaviour_mut().kademlia.get_record(key);
+                    self.kad_requests.insert(query_id, reply);
+                }
+            }
         }
 
         Ok(())
@@ -825,13 +938,13 @@ where
             kad::Event::InboundRequest { request } => {
                 trace!(target: "network-kad", "inbound {request:?}")
             }
-            kad::Event::OutboundQueryProgressed { id: _, result, stats: _, step: _ } => {
+            kad::Event::OutboundQueryProgressed { id: query_id, result, stats: _, step } => {
                 match result {
                     kad::QueryResult::GetProviders(Ok(kad::GetProvidersOk::FoundProviders {
                         key,
                         providers,
                         ..
-                    })) => match try_decode::<BlsPublicKey>(key.as_ref()) {
+                    })) => match BlsPublicKey::from_literal_bytes(key.as_ref()) {
                         Ok(key) => {
                             for peer in providers {
                                 debug!(target: "network-kad",
@@ -841,32 +954,57 @@ where
                             }
                         }
                         Err(err) => {
-                            error!(target: "network-kad", "Failed to decode a kad Key: {err}")
+                            error!(target: "network-kad", "Failed to decode a kad key: {err:?}")
                         }
                     },
                     kad::QueryResult::GetProviders(Err(err)) => {
                         error!(target: "network-kad", "Failed to get providers: {err:?}");
                     }
                     kad::QueryResult::GetRecord(Ok(kad::GetRecordOk::FoundRecord(
-                        kad::PeerRecord { record, .. },
+                        kad::PeerRecord { record, peer },
                     ))) => {
                         if let Some((key, value)) = self.peer_record_valid(&record) {
                             trace!(target: "network-kad", "Got record {key} {value:?}");
+                            self.return_kad_result(&query_id, Ok((key, value.info.clone())));
                         } else {
-                            error!(target: "network-kad", "Recieved invalid peer record!");
+                            error!(target: "network-kad", "Received invalid peer record!");
+
+                            // assess penalty for invalid peer record
+                            if let Some(peer_id) = peer {
+                                self.swarm
+                                    .behaviour_mut()
+                                    .peer_manager
+                                    .process_penalty(peer_id, Penalty::Severe);
+                            }
+
+                            // return an error to caller if this is the last response for the query
+                            if step.last {
+                                self.return_kad_result(
+                                    &query_id,
+                                    Err(NetworkError::InvalidPeerRecord),
+                                );
+                            }
                         }
                     }
-                    kad::QueryResult::GetRecord(Ok(_)) => {}
+                    kad::QueryResult::GetRecord(Ok(
+                        kad::GetRecordOk::FinishedWithNoAdditionalRecord { cache_candidates },
+                    )) => {
+                        // TODO: configure caching and see issue #301
+                        // self.swarm.behaviour_mut().kademlia.put_record_to(record, peers, quorum);
+
+                        debug!(target: "network-kad", ?cache_candidates, "FinishedWithNoAdditionalRecord - failed to find record");
+                    }
                     kad::QueryResult::GetRecord(Err(err)) => {
                         error!(target: "network-kad", "Failed to get record: {err:?}");
+                        self.return_kad_result(&query_id, Err(err.into()));
                     }
                     kad::QueryResult::PutRecord(Ok(kad::PutRecordOk { key })) => {
-                        match try_decode::<BlsPublicKey>(key.as_ref()) {
+                        match BlsPublicKey::from_literal_bytes(key.as_ref()) {
                             Ok(key) => {
                                 debug!(target: "network-kad", "Successfully put record {key}")
                             }
                             Err(err) => {
-                                error!(target: "network-kad", "Failed to decode a kad Key: {err}")
+                                error!(target: "network-kad", "Failed to decode a kad Key: {err:?}")
                             }
                         }
                     }
@@ -874,12 +1012,12 @@ where
                         error!(target: "network-kad", "Failed to put record: {err:?}");
                     }
                     kad::QueryResult::StartProviding(Ok(kad::AddProviderOk { key })) => {
-                        match try_decode::<BlsPublicKey>(key.as_ref()) {
+                        match BlsPublicKey::from_literal_bytes(key.as_ref()) {
                             Ok(key) => {
                                 debug!(target: "network-kad", "Successfully put provider record {:?}", key)
                             }
                             Err(err) => {
-                                error!(target: "network-kad", "Failed to decode a kad Key: {err}")
+                                error!(target: "network-kad", "Failed to decode a kad Key: {err:?}")
                             }
                         }
                     }
@@ -893,9 +1031,11 @@ where
                 let behaviour = self.swarm.behaviour_mut();
                 if behaviour.peer_manager.peer_banned(&peer) {
                     behaviour.kademlia.remove_peer(&peer);
-                    warn!(target: "network-kad", "Remving banned peer from routing peer {peer:?} addresses {addresses:?}")
+                    warn!(target: "network-kad", "Removing banned peer from routing peer {peer:?} addresses {addresses:?}")
                 }
                 debug!(target: "network-kad", "routing updated peer {peer:?} new {is_new_peer} addrs {addresses:?} bucketr {bucket_range:?} old {old_peer:?}")
+
+                // TODO: add to peer manager - see issue #301
             }
             kad::Event::UnroutablePeer { peer } => {
                 debug!(target: "network-kad", "unroutable peer {peer:?}")
@@ -911,6 +1051,18 @@ where
             }
         }
         Ok(())
+    }
+
+    /// Return the kademlia result to application layer.
+    fn return_kad_result(
+        &mut self,
+        query_id: &QueryId,
+        result: NetworkResult<(BlsPublicKey, NetworkInfo)>,
+    ) {
+        // ignore multiple query results
+        if let Some(reply) = self.kad_requests.remove(query_id) {
+            send_or_log_error!(reply, result, "kad");
+        }
     }
 }
 

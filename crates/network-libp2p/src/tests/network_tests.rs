@@ -9,8 +9,9 @@ use assert_matches::assert_matches;
 use eyre::eyre;
 use std::num::NonZeroUsize;
 use tn_config::{ConsensusConfig, NetworkConfig};
+use tn_reth::test_utils::fixture_batch_with_transactions;
 use tn_storage::mem_db::MemDatabase;
-use tn_test_utils::{fixture_batch_with_transactions, CommitteeFixture};
+use tn_test_utils::CommitteeFixture;
 use tn_types::{Certificate, Header};
 use tokio::{sync::mpsc, time::timeout};
 
@@ -669,7 +670,7 @@ async fn test_msg_verification_ignores_unauthorized_publisher() -> eyre::Result<
 async fn test_peer_exchange_with_excess_peers() -> eyre::Result<()> {
     // Create a custom config with very low peer limits for testing
     let mut network_config = NetworkConfig::default();
-    network_config.peer_config_mut().target_num_peers = 3;
+    network_config.peer_config_mut().target_num_peers = 4;
     network_config.peer_config_mut().peer_excess_factor = 0.1; // Small excess factor
     network_config.peer_config_mut().excess_peers_reconnection_timeout = Duration::from_secs(10);
 
@@ -712,6 +713,8 @@ async fn test_peer_exchange_with_excess_peers() -> eyre::Result<()> {
         .expect("target peer listen addr")
         .clone();
     let target_peer_id = target_peer.network_handle.local_peer_id().await?;
+
+    debug!(target: "network", ?target_peer_id, "target peer");
 
     // Start other peers and connect them one by one to the target
     for peer in other_peers.iter_mut() {
@@ -799,7 +802,7 @@ async fn test_peer_exchange_with_excess_peers() -> eyre::Result<()> {
     }
 
     // allow dial attempts to be made
-    tokio::time::sleep(Duration::from_secs(TEST_HEARTBEAT_INTERVAL * 2)).await;
+    tokio::time::sleep(Duration::from_secs(TEST_HEARTBEAT_INTERVAL * 5)).await;
 
     // assert nvv is connected with other peers
     let connected = nvv.connected_peers().await?;
@@ -818,15 +821,24 @@ async fn test_peer_exchange_with_excess_peers() -> eyre::Result<()> {
     target_peer.network_handle.publish(TEST_TOPIC.into(), expected_msg.clone()).await?;
 
     // wait for gossip from disconnected peer
-    match timeout(Duration::from_secs(5), nvv_events.recv()).await {
-        Ok(Some(NetworkEvent::Gossip(msg, _))) => {
-            let GossipMessage { source, data, .. } = msg;
-            assert_eq!(source, Some(target_peer_id));
-            assert_eq!(data, expected_msg);
+    loop {
+        match timeout(Duration::from_secs(5), nvv_events.recv()).await {
+            Ok(Some(NetworkEvent::Gossip(msg, _))) => {
+                let GossipMessage { source, data, .. } = msg;
+                assert_eq!(source, Some(target_peer_id));
+                assert_eq!(data, expected_msg);
+                break;
+            }
+            Ok(Some(NetworkEvent::Request {
+                request: TestWorkerRequest::PeerExchange(_), ..
+            })) => {
+                // ignore peer exchanges
+                continue;
+            }
+            Ok(None) => return Err(eyre!("Channel closed without receiving event")),
+            Err(_) => return Err(eyre!("Timeout waiting for peer exchange event")),
+            e => return Err(eyre!("wrong event type: {:?}", e)),
         }
-        Ok(None) => return Err(eyre!("Channel closed without receiving event")),
-        Err(_) => return Err(eyre!("Timeout waiting for peer exchange event")),
-        e => return Err(eyre!("wrong event type: {:?}", e)),
     }
 
     Ok(())
@@ -836,19 +848,25 @@ async fn test_peer_exchange_with_excess_peers() -> eyre::Result<()> {
 async fn test_score_decay_and_reconnection() -> eyre::Result<()> {
     // Create a custom config with short halflife for quicker testing
     let mut network_config = NetworkConfig::default();
-    network_config.peer_config_mut().score_config.score_halflife = 0.5;
+    network_config.peer_config_mut().score_config.score_halflife = 0.1;
     network_config.peer_config_mut().heartbeat_interval = TEST_HEARTBEAT_INTERVAL;
     let default_score = network_config.peer_config_mut().score_config.default_score;
 
-    let TestTypes { peer1, peer2 } = create_test_types::<TestWorkerRequest, TestWorkerResponse>();
-    let NetworkPeer { config: config_1, network_handle: peer1, network, .. } = peer1;
+    // Set up multiple peers with the custom config
+    let (peer1, mut other_peers) = create_test_peers::<TestWorkerRequest, TestWorkerResponse>(
+        NonZeroUsize::new(4).unwrap(),
+        Some(network_config.clone()),
+    );
+
+    let peer2 = other_peers.remove(0);
+    let TestPeer { config: config_1, network_handle: peer1, network, .. } = peer1;
     tokio::spawn(async move {
-        network.run().await.expect("network run failed!");
+        network.expect("peer1 network available").run().await.expect("network run failed!");
     });
 
-    let NetworkPeer { config: config_2, network_handle: peer2, network, .. } = peer2;
+    let TestPeer { config: config_2, network_handle: peer2, network, .. } = peer2;
     tokio::spawn(async move {
-        network.run().await.expect("network run failed!");
+        network.expect("peer2 network available").run().await.expect("network run failed!");
     });
 
     // Start listeners and establish connection
@@ -883,7 +901,7 @@ async fn test_score_decay_and_reconnection() -> eyre::Result<()> {
     assert!(score_after_penalty < default_score);
 
     // Wait for scores to recover through heartbeats
-    tokio::time::sleep(Duration::from_secs(2 * TEST_HEARTBEAT_INTERVAL)).await;
+    tokio::time::sleep(Duration::from_secs(4 * TEST_HEARTBEAT_INTERVAL)).await;
 
     // Check score improved
     let score_after_decay = peer1.peer_score(peer2_id).await?.unwrap();
@@ -1450,6 +1468,176 @@ async fn test_new_epoch_handles_disconnecting_pending_ban() -> eyre::Result<()> 
     // Verify connection is established
     let connected_peers_after = peer1.connected_peers().await?;
     assert!(connected_peers_after.contains(&peer2_id), "Peer2 should be connected after new epoch");
+
+    Ok(())
+}
+
+/// Test kad records available to new node joining the network.
+#[tokio::test]
+async fn test_get_kad_records() -> eyre::Result<()> {
+    // used later
+    let num_network_peers = 5;
+
+    // Set up multiple peers with the custom config
+    let (mut target_peer, mut committee) = create_test_peers::<TestWorkerRequest, TestWorkerResponse>(
+        NonZeroUsize::new(num_network_peers).unwrap(),
+        None,
+    );
+
+    // spawn target network
+    let target_network = target_peer.network.take().expect("target network is some");
+    let id = target_peer.config.authority().as_ref().expect("authority").id().peer_id();
+    tokio::spawn(async move {
+        let res = target_network.run().await;
+        debug!(target: "network", ?id, ?res, "network shutdown");
+    });
+
+    // Start target peer listening
+    target_peer
+        .network_handle
+        .start_listening(
+            target_peer
+                .config
+                .authority()
+                .as_ref()
+                .expect("authority")
+                .primary_network_address()
+                .clone(),
+        )
+        .await?;
+    let target_addr = target_peer
+        .network_handle
+        .listeners()
+        .await?
+        .first()
+        .expect("target peer listen addr")
+        .clone();
+    let target_peer_id = target_peer.network_handle.local_peer_id().await?;
+
+    // Start other peers and connect them one by one to the target
+    for peer in committee.iter_mut() {
+        // spawn peer network
+        let peer_network = peer.network.take().expect("peer network is some");
+        let id = peer.config.authority().as_ref().expect("authority").id().peer_id();
+        tokio::spawn(async move {
+            let res = peer_network.run().await;
+            debug!(target: "network", ?id, ?res, "network shutdown");
+        });
+
+        peer.network_handle
+            .start_listening(
+                peer.config
+                    .authority()
+                    .as_ref()
+                    .expect("authority")
+                    .primary_network_address()
+                    .clone(),
+            )
+            .await?;
+
+        // subscribe to topic
+        peer.network_handle
+            .subscribe_with_publishers(TEST_TOPIC.into(), peer.config.committee_peer_ids())
+            .await?;
+
+        // Connect to target
+        peer.network_handle.dial(target_peer_id, target_addr.clone()).await?;
+
+        // Give time for connection to establish
+        tokio::time::sleep(Duration::from_millis(100)).await;
+    }
+
+    // Allow time for heartbeats to happen
+    tokio::time::sleep(Duration::from_secs(TEST_HEARTBEAT_INTERVAL)).await;
+
+    // Check connected peers on target - should be limited based on config
+    let connected_peers = target_peer.network_handle.connected_peers().await?;
+
+    // assert all peers connected (minus this node)
+    assert_eq!(connected_peers.len(), num_network_peers - 1);
+
+    // create non-validator peer
+    let TestTypes { peer1, .. } = create_test_types::<TestWorkerRequest, TestWorkerResponse>();
+    let NetworkPeer {
+        config: nvv_config,
+        network_handle: nvv,
+        network,
+        network_events: mut nvv_events,
+    } = peer1;
+    tokio::spawn(async move {
+        network.run().await.expect("network run failed!");
+    });
+
+    nvv.start_listening(
+        nvv_config.authority().as_ref().expect("authority").primary_network_address().clone(),
+    )
+    .await?;
+
+    // subscribe to topic
+    // add target peer as authorized publisher
+    nvv.subscribe_with_publishers(TEST_TOPIC.into(), HashSet::from([target_peer_id])).await?;
+
+    // connect to target
+    nvv.dial(target_peer_id, target_addr.clone()).await?;
+
+    // give time for connection to establish
+    tokio::time::sleep(Duration::from_secs(TEST_HEARTBEAT_INTERVAL)).await;
+
+    // find other committee members through kad
+    let authorities = committee
+        .iter()
+        .map(|peer| {
+            peer.config
+                .authority()
+                .as_ref()
+                .map(|a| *a.protocol_key())
+                .expect("only authorities in committee")
+        })
+        .collect();
+    let node_records = nvv.find_authorities(authorities).await?;
+
+    for record in node_records {
+        // wait for node records
+        match timeout(Duration::from_secs(1), record).await {
+            Ok(res) => {
+                let info = res??;
+                debug!(target: "network", ?info);
+            }
+            Err(_) => return Err(eyre!("Timeout waiting for peer exchange event")),
+        }
+    }
+
+    // allow dial attempts to be made
+    tokio::time::sleep(Duration::from_secs(TEST_HEARTBEAT_INTERVAL)).await;
+
+    // assert nvv is connected with other peers
+    let connected = nvv.connected_peers().await?;
+    debug!(target: "network", ?connected, "nvv connected peers");
+    assert!(connected.contains(&target_peer_id));
+    for peer in committee.iter() {
+        let id = peer.config.authority().as_ref().expect("authority").id().peer_id();
+        assert!(connected.contains(&id));
+    }
+
+    // publish random batch
+    let random_block = fixture_batch_with_transactions(10);
+    let sealed_block = random_block.seal_slow();
+    let expected_msg = Vec::from(&sealed_block);
+
+    // assert gossip from disconnected target peer is received by nvv
+    target_peer.network_handle.publish(TEST_TOPIC.into(), expected_msg.clone()).await?;
+
+    // wait for gossip from disconnected peer
+    match timeout(Duration::from_secs(5), nvv_events.recv()).await {
+        Ok(Some(NetworkEvent::Gossip(msg, _))) => {
+            let GossipMessage { source, data, .. } = msg;
+            assert_eq!(source, Some(target_peer_id));
+            assert_eq!(data, expected_msg);
+        }
+        Ok(None) => return Err(eyre!("Channel closed without receiving event")),
+        Err(_) => return Err(eyre!("Timeout waiting for peer exchange event")),
+        e => return Err(eyre!("wrong event type: {:?}", e)),
+    }
 
     Ok(())
 }

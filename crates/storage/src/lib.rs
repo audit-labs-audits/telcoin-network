@@ -25,6 +25,7 @@ pub mod mem_db;
 pub mod redb;
 #[cfg(feature = "rocksdb")]
 pub mod rocks;
+
 pub use tn_types::error::StoreError;
 
 pub type ProposerKey = u32;
@@ -198,6 +199,10 @@ fn _open_redb<P: AsRef<std::path::Path> + Send>(store_path: P) -> LayeredDatabas
     db.open_table::<KadProviderRecords>();
     db
 }
+
+// prevent clippy unused deps warning
+// `rocks` feature uses this
+use serde as _;
 
 #[cfg(test)]
 mod test {

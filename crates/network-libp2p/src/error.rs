@@ -2,6 +2,7 @@
 
 use libp2p::{
     gossipsub::{ConfigBuilderError, PublishError, SubscriptionError},
+    kad::GetRecordError,
     request_response::OutboundFailure,
     swarm::DialError,
     TransportError,
@@ -15,11 +16,19 @@ use tokio::sync::{broadcast, mpsc, oneshot};
 pub enum NetworkError {
     /// Swarm error dialing a peer.
     #[error("{0}")]
-    // Dial(#[from] DialError),
     Dial(String),
-    /// Dial attempt currently ongoing for peer.
+    /// Redial attempt.
     #[error("Peer already dialed")]
     RedialAttempt,
+    /// Dialing an banned peer.
+    #[error("{0}")]
+    DialBannedPeer(String),
+    /// Dialing an already connected peer.
+    #[error("{0}")]
+    AlreadyConnected(String),
+    /// The peer is already being dialed.
+    #[error("{0}")]
+    AlreadyDialing(String),
     /// Gossipsub error publishing message.
     #[error(transparent)]
     Publish(#[from] PublishError),
@@ -86,6 +95,12 @@ pub enum NetworkError {
     /// Fatal error - the swarm is not connected to any listeners.
     #[error("All swarm listeners closed. Network shutting down...")]
     AllListenersClosed,
+    /// The retrieved peer record is invalid.
+    #[error("Invalid bls signature for peer record.")]
+    InvalidPeerRecord,
+    /// Kademlia error.
+    #[error("Failed to get kad record: {0}")]
+    GetKademliaRecord(#[from] GetRecordError),
 }
 
 impl From<oneshot::error::RecvError> for NetworkError {
