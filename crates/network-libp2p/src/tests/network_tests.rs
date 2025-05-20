@@ -12,7 +12,7 @@ use tn_config::{ConsensusConfig, NetworkConfig};
 use tn_reth::test_utils::fixture_batch_with_transactions;
 use tn_storage::mem_db::MemDatabase;
 use tn_test_utils::CommitteeFixture;
-use tn_types::{Certificate, Header};
+use tn_types::{Certificate, Header, TaskManager};
 use tokio::{sync::mpsc, time::timeout};
 
 /// Test topic for gossip.
@@ -22,7 +22,7 @@ const TEST_TOPIC: &str = "test-topic";
 fn create_test_peers<Req: TNMessage, Res: TNMessage>(
     num_peers: NonZeroUsize,
     network_config: Option<NetworkConfig>,
-) -> (TestPeer<Req, Res>, Vec<TestPeer<Req, Res>>) {
+) -> (TestPeer<Req, Res>, Vec<TestPeer<Req, Res>>, TaskManager) {
     let network_config = network_config.unwrap_or_default();
 
     let all_nodes = CommitteeFixture::builder(MemDatabase::default)
@@ -30,6 +30,7 @@ fn create_test_peers<Req: TNMessage, Res: TNMessage>(
         .with_network_config(network_config)
         .build();
     let authorities = all_nodes.authorities();
+    let task_manager = TaskManager::default();
     let mut peers: Vec<_> = authorities
         .map(|a| {
             let config = a.consensus_config();
@@ -42,6 +43,7 @@ fn create_test_peers<Req: TNMessage, Res: TNMessage>(
                 config.key_config().clone(),
                 network_key,
                 db,
+                task_manager.get_spawner(),
             )
             .expect("peer1 network created");
 
@@ -57,7 +59,8 @@ fn create_test_peers<Req: TNMessage, Res: TNMessage>(
 
     let target = peers.remove(0);
 
-    (target, peers)
+    // return task manager to prevent drop
+    (target, peers, task_manager)
 }
 
 /// A peer on TN
@@ -101,6 +104,8 @@ where
     peer1: NetworkPeer<Req, Res, DB>,
     /// The second authority in the committee.
     peer2: NetworkPeer<Req, Res, DB>,
+    /// The owned task manager to prevent dropping.
+    _task_manager: TaskManager,
 }
 
 /// Helper function to create an instance of [RequestHandler] for the first authority in the
@@ -123,6 +128,7 @@ where
     let config_2 = authority_2.consensus_config();
     let (tx1, network_events_1) = mpsc::channel(10);
     let (tx2, network_events_2) = mpsc::channel(10);
+    let task_manager = TaskManager::default();
 
     // peer1
     let network_key_1 = config_1.key_config().primary_network_keypair().clone();
@@ -132,6 +138,7 @@ where
         config_1.key_config().clone(),
         network_key_1,
         MemDatabase::default(),
+        task_manager.get_spawner(),
     )
     .expect("peer1 network created");
     let network_handle_1 = peer1_network.network_handle();
@@ -150,6 +157,7 @@ where
         config_2.key_config().clone(),
         network_key_2,
         MemDatabase::default(),
+        task_manager.get_spawner(),
     )
     .expect("peer2 network created");
     let network_handle_2 = peer2_network.network_handle();
@@ -160,13 +168,14 @@ where
         network: peer2_network,
     };
 
-    TestTypes { peer1, peer2 }
+    TestTypes { peer1, peer2, _task_manager: task_manager }
 }
 
 #[tokio::test]
 async fn test_valid_req_res() -> eyre::Result<()> {
     // start honest peer1 network
-    let TestTypes { peer1, peer2 } = create_test_types::<TestWorkerRequest, TestWorkerResponse>();
+    let TestTypes { peer1, peer2, .. } =
+        create_test_types::<TestWorkerRequest, TestWorkerResponse>();
     let NetworkPeer { config: config_1, network_handle: peer1, network, .. } = peer1;
     tokio::spawn(async move {
         network.run().await.expect("network run failed!");
@@ -231,7 +240,8 @@ async fn test_valid_req_res() -> eyre::Result<()> {
 #[tokio::test]
 async fn test_valid_req_res_connection_closed_cleanup() -> eyre::Result<()> {
     // start honest peer1 network
-    let TestTypes { peer1, peer2 } = create_test_types::<TestWorkerRequest, TestWorkerResponse>();
+    let TestTypes { peer1, peer2, .. } =
+        create_test_types::<TestWorkerRequest, TestWorkerResponse>();
     let NetworkPeer { config: config_1, network_handle: peer1, network, .. } = peer1;
     tokio::spawn(async move {
         network.run().await.expect("network run failed!");
@@ -300,7 +310,8 @@ async fn test_valid_req_res_connection_closed_cleanup() -> eyre::Result<()> {
 #[tokio::test]
 async fn test_valid_req_res_inbound_failure() -> eyre::Result<()> {
     // start honest peer1 network
-    let TestTypes { peer1, peer2 } = create_test_types::<TestWorkerRequest, TestWorkerResponse>();
+    let TestTypes { peer1, peer2, .. } =
+        create_test_types::<TestWorkerRequest, TestWorkerResponse>();
     let NetworkPeer { config: config_1, network_handle: peer1, network, .. } = peer1;
     let peer1_network_task = tokio::spawn(async move {
         network.run().await.expect("network run failed!");
@@ -526,7 +537,8 @@ async fn test_outbound_failure_malicious_response() -> eyre::Result<()> {
 #[tokio::test]
 async fn test_publish_to_one_peer() -> eyre::Result<()> {
     // start honest cvv network
-    let TestTypes { peer1, peer2 } = create_test_types::<TestWorkerRequest, TestWorkerResponse>();
+    let TestTypes { peer1, peer2, .. } =
+        create_test_types::<TestWorkerRequest, TestWorkerResponse>();
     let NetworkPeer { config: config_1, network_handle: cvv, network, .. } = peer1;
     tokio::spawn(async move {
         network.run().await.expect("network run failed!");
@@ -591,7 +603,8 @@ async fn test_publish_to_one_peer() -> eyre::Result<()> {
 #[tokio::test]
 async fn test_msg_verification_ignores_unauthorized_publisher() -> eyre::Result<()> {
     // start honest cvv network
-    let TestTypes { peer1, peer2 } = create_test_types::<TestWorkerRequest, TestWorkerResponse>();
+    let TestTypes { peer1, peer2, .. } =
+        create_test_types::<TestWorkerRequest, TestWorkerResponse>();
     let NetworkPeer { config: config_1, network_handle: cvv, network, .. } = peer1;
     tokio::spawn(async move {
         network.run().await.expect("network run failed!");
@@ -675,7 +688,7 @@ async fn test_peer_exchange_with_excess_peers() -> eyre::Result<()> {
     network_config.peer_config_mut().excess_peers_reconnection_timeout = Duration::from_secs(10);
 
     // Set up multiple peers with the custom config
-    let (mut target_peer, mut other_peers) =
+    let (mut target_peer, mut other_peers, _) =
         create_test_peers::<TestWorkerRequest, TestWorkerResponse>(
             NonZeroUsize::new(5).unwrap(),
             Some(network_config.clone()),
@@ -853,7 +866,7 @@ async fn test_score_decay_and_reconnection() -> eyre::Result<()> {
     let default_score = network_config.peer_config_mut().score_config.default_score;
 
     // Set up multiple peers with the custom config
-    let (peer1, mut other_peers) = create_test_peers::<TestWorkerRequest, TestWorkerResponse>(
+    let (peer1, mut other_peers, _) = create_test_peers::<TestWorkerRequest, TestWorkerResponse>(
         NonZeroUsize::new(4).unwrap(),
         Some(network_config.clone()),
     );
@@ -919,7 +932,8 @@ async fn test_score_decay_and_reconnection() -> eyre::Result<()> {
 
 #[tokio::test]
 async fn test_banned_peer_reconnection_attempt() -> eyre::Result<()> {
-    let TestTypes { peer1, peer2 } = create_test_types::<TestWorkerRequest, TestWorkerResponse>();
+    let TestTypes { peer1, peer2, .. } =
+        create_test_types::<TestWorkerRequest, TestWorkerResponse>();
 
     let NetworkPeer { config: config_1, network_handle: honest_peer, network, .. } = peer1;
     tokio::spawn(async move {
@@ -1008,7 +1022,7 @@ async fn test_dial_timeout_behavior() -> eyre::Result<()> {
     let mut network_config = NetworkConfig::default();
     network_config.peer_config_mut().dial_timeout = Duration::from_millis(100);
 
-    let (mut peer1, _others) = create_test_peers::<TestWorkerRequest, TestWorkerResponse>(
+    let (mut peer1, _others, _) = create_test_peers::<TestWorkerRequest, TestWorkerResponse>(
         NonZeroUsize::new(4).unwrap(),
         None,
     );
@@ -1061,12 +1075,12 @@ async fn test_multi_peer_mesh_formation() -> eyre::Result<()> {
     network_config.peer_config_mut().heartbeat_interval = TEST_HEARTBEAT_INTERVAL;
 
     // committee network
-    let (mut target_peer, _committee) = create_test_peers::<TestWorkerRequest, TestWorkerResponse>(
+    let (mut target_peer, _committee, _) = create_test_peers::<TestWorkerRequest, TestWorkerResponse>(
         num_peers,
         Some(network_config.clone()),
     );
     // create other nvvs
-    let (_, mut other_peers) =
+    let (_, mut other_peers, _) =
         create_test_peers::<TestWorkerRequest, TestWorkerResponse>(num_peers, Some(network_config));
 
     // Start target peer
@@ -1178,7 +1192,8 @@ async fn test_multi_peer_mesh_formation() -> eyre::Result<()> {
 #[tokio::test]
 async fn test_new_epoch_unbans_committee_members() -> eyre::Result<()> {
     // Start with two peers
-    let TestTypes { peer1, peer2 } = create_test_types::<TestWorkerRequest, TestWorkerResponse>();
+    let TestTypes { peer1, peer2, .. } =
+        create_test_types::<TestWorkerRequest, TestWorkerResponse>();
     let NetworkPeer { config: config_1, network_handle: peer1, network, .. } = peer1;
     tokio::spawn(async move {
         network.run().await.expect("network run failed!");
@@ -1272,11 +1287,11 @@ async fn test_new_epoch_unbans_committee_members() -> eyre::Result<()> {
 async fn test_new_epoch_unbans_committee_member_ip() -> eyre::Result<()> {
     // Create multiple peers for this test
     let num_peers = NonZeroUsize::new(4).unwrap();
-    let (mut target_peer, _) =
+    let (mut target_peer, _, _) =
         create_test_peers::<TestWorkerRequest, TestWorkerResponse>(num_peers, None);
 
     // create new committee
-    let (_, mut other_peers) =
+    let (_, mut other_peers, _) =
         create_test_peers::<TestWorkerRequest, TestWorkerResponse>(num_peers, None);
 
     // Start target peer network
@@ -1386,7 +1401,8 @@ async fn test_new_epoch_unbans_committee_member_ip() -> eyre::Result<()> {
 #[tokio::test]
 async fn test_new_epoch_handles_disconnecting_pending_ban() -> eyre::Result<()> {
     // Start with two peers
-    let TestTypes { peer1, peer2 } = create_test_types::<TestWorkerRequest, TestWorkerResponse>();
+    let TestTypes { peer1, peer2, .. } =
+        create_test_types::<TestWorkerRequest, TestWorkerResponse>();
     let NetworkPeer { config: config_1, network_handle: peer1, network, .. } = peer1;
     tokio::spawn(async move {
         network.run().await.expect("network run failed!");
@@ -1479,10 +1495,11 @@ async fn test_get_kad_records() -> eyre::Result<()> {
     let num_network_peers = 5;
 
     // Set up multiple peers with the custom config
-    let (mut target_peer, mut committee) = create_test_peers::<TestWorkerRequest, TestWorkerResponse>(
-        NonZeroUsize::new(num_network_peers).unwrap(),
-        None,
-    );
+    let (mut target_peer, mut committee, _) =
+        create_test_peers::<TestWorkerRequest, TestWorkerResponse>(
+            NonZeroUsize::new(num_network_peers).unwrap(),
+            None,
+        );
 
     // spawn target network
     let target_network = target_peer.network.take().expect("target network is some");

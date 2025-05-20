@@ -224,6 +224,7 @@ where
             tmp_event_stream,
             self.key_config.clone(),
             consensus_db.clone(),
+            node_task_spawner.clone(),
         )?;
         let primary_network_handle = primary_network.network_handle();
         let node_shutdown = self.node_shutdown.subscribe();
@@ -256,6 +257,7 @@ where
             tmp_event_stream,
             self.key_config.clone(),
             consensus_db.clone(),
+            node_task_spawner.clone(),
         )?;
         let worker_network_handle = worker_network.network_handle();
         let node_shutdown = self.node_shutdown.subscribe();
@@ -372,7 +374,10 @@ where
         // consensus config for shutdown subscribers
         let consensus_shutdown = primary.shutdown_signal().await;
 
-        engine.start_batch_builder(worker.id(), worker.batches_tx()).await?;
+        let batch_builder_task_spawner = epoch_task_manager.get_spawner();
+        engine
+            .start_batch_builder(worker.id(), worker.batches_tx(), &batch_builder_task_spawner)
+            .await?;
 
         // update tasks
         primary_task_manager.update_tasks();
