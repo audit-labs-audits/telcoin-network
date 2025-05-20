@@ -18,7 +18,7 @@ use tn_faucet::FaucetArgs;
 use tn_reth::{system_calls::EpochState, RethConfig, RethEnv, WorkerTxPool};
 use tn_types::{
     BatchSender, BatchValidation, ConsensusOutput, ExecHeader, Noticer, SealedBlock, SealedHeader,
-    TaskManager, WorkerId, B256,
+    WorkerId, B256,
 };
 use tokio::sync::{broadcast, mpsc, RwLock};
 mod builder;
@@ -62,11 +62,18 @@ impl ExecutionNode {
     pub async fn start_engine(
         &self,
         from_consensus: broadcast::Receiver<ConsensusOutput>,
-        task_manager: &TaskManager,
         rx_shutdown: Noticer,
     ) -> eyre::Result<()> {
         let guard = self.internal.read().await;
-        guard.start_engine(from_consensus, task_manager, rx_shutdown).await
+        guard.start_engine(from_consensus, rx_shutdown).await
+    }
+
+    /// Initialize the worker's transaction pool and public RPC.
+    ///
+    /// This method should be called on node startup.
+    pub async fn initialize_worker_components(&self, worker_id: WorkerId) -> eyre::Result<()> {
+        let mut guard = self.internal.write().await;
+        guard.initialize_worker_components(worker_id).await
     }
 
     /// Batch maker
@@ -74,17 +81,15 @@ impl ExecutionNode {
         &self,
         worker_id: WorkerId,
         block_provider_sender: BatchSender,
-        task_manager: &TaskManager,
-        rx_shutdown: Noticer,
     ) -> eyre::Result<()> {
         let mut guard = self.internal.write().await;
-        guard.start_batch_builder(worker_id, block_provider_sender, task_manager, rx_shutdown).await
+        guard.start_batch_builder(worker_id, block_provider_sender).await
     }
 
     /// Batch validator
-    pub async fn new_batch_validator(&self) -> Arc<dyn BatchValidation> {
+    pub async fn new_batch_validator(&self, worker_id: &WorkerId) -> Arc<dyn BatchValidation> {
         let guard = self.internal.read().await;
-        guard.new_batch_validator()
+        guard.new_batch_validator(worker_id)
     }
 
     /// Retrieve the last executed block from the database to restore consensus.

@@ -9,12 +9,13 @@ use tn_reth::RethEnv;
 /// A builder that handles component initialization for the execution node.
 /// Separates initialization concerns from runtime behavior.
 pub struct ExecutionNodeBuilder {
+    /// The protocol configuration.
     tn_config: Config,
 
-    // Reth environment
+    /// Reth environment for executing transactions.
     reth_env: RethEnv,
 
-    // Optional components
+    /// Optional components (for testnet only).
     opt_faucet_args: Option<FaucetArgs>,
 }
 
