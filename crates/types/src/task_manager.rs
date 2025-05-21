@@ -1,6 +1,6 @@
 //! Task manager interface to spawn tasks to the tokio runtime.
 
-use crate::Notifier;
+use crate::{Noticer, Notifier};
 use futures::{future::BoxFuture, stream::FuturesUnordered, FutureExt, StreamExt};
 use std::{
     collections::HashMap,
@@ -10,13 +10,14 @@ use std::{
     task::Poll,
     time::Duration,
 };
+use thiserror::Error;
 use tokio::{
     sync::mpsc,
     task::{JoinError, JoinHandle},
 };
 
 /// Used for the futures that will resolve when tasks do.
-/// Allows us to hold a FuturesUnordered in directly in the TaskManager struct.
+/// Allows us to hold a FuturesUnordered directly in the TaskManager struct.
 struct TaskHandle {
     /// The  owned permission to join on a task (await its termination).
     handle: JoinHandle<()>,
@@ -229,8 +230,8 @@ impl TaskManager {
     ///
     /// The manager tracks critical and non-critical tasks. Critical tasks
     /// that stop force the process to shutdown.
-    pub async fn join(&mut self, shutdown: Notifier) {
-        self.join_internal(shutdown, false).await;
+    pub async fn join(&mut self, shutdown: Notifier) -> Result<(), TaskJoinError> {
+        self.join_internal(shutdown, false).await
     }
 
     /// Will resolve once one of the tasks for the manager resolves.
@@ -238,8 +239,8 @@ impl TaskManager {
     /// Note the manager is based on the assumption that all tasks added via spawn_task
     /// are critical and and one stopping is problem.
     /// Also will end if the user hits ctrl-c or sends a SIGTERM to the app.
-    pub async fn join_until_exit(&mut self, shutdown: Notifier) {
-        self.join_internal(shutdown, true).await;
+    pub async fn join_until_exit(&mut self, shutdown: Notifier) -> Result<(), TaskJoinError> {
+        self.join_internal(shutdown, true).await
     }
 
     /// Abort all of our direct tasks (not sub task managers though).
@@ -279,8 +280,25 @@ impl TaskManager {
         }
     }
 
+    /// Dumb filler task.  It will resolve in durarion or when the node is being shutdown.
+    /// This is used to keep a task manager lively when it's task queue is empty.
+    async fn filler_task(shutdown: Noticer, duration: Duration) {
+        tokio::select! {
+            _ = &shutdown => {
+                tracing::info!(target: "tn::tasks", "Node exiting, received shutdown notification (filler task)");
+            },
+            _ = tokio::time::sleep(duration) => {
+
+            }
+        }
+    }
+
     /// Implements the join logic for the manager.
-    async fn join_internal(&mut self, shutdown: Notifier, do_exit: bool) {
+    async fn join_internal(
+        &mut self,
+        shutdown: Notifier,
+        do_exit: bool,
+    ) -> Result<(), TaskJoinError> {
         let shutdown_ref = &shutdown;
         let mut future_managers: FuturesUnordered<_> = self
             .submanagers
@@ -288,6 +306,7 @@ impl TaskManager {
             .map(|(name, mut sub)| async move { (sub.join(shutdown_ref.clone()).await, name) })
             .collect();
         let rx_shutdown = shutdown.subscribe();
+        let mut result = Ok(());
         loop {
             tokio::select! {
                 _ = Self::exit(do_exit) => {
@@ -303,7 +322,6 @@ impl TaskManager {
                     continue;
                 },
                 res = self.tasks.next() => {
-
                     // If any task self.tasks exits then this could indicate an error.
                     //
                     // Some tasks are expected to exit graceful at the epoch boundary.
@@ -313,26 +331,41 @@ impl TaskManager {
                             if !info.critical {
                                 continue;
                             }
-
                             tracing::info!(target: "tn::tasks", "{}: {} returned Ok, node exiting", self.name, info.name);
+                            // Ok exit is fine if we are shutting down.
+                            if !rx_shutdown.noticed() {
+                                result = Err(TaskJoinError::CriticalExitOk(info.name));
+                            }
                         }
                         Some(Err((info, join_err))) => {
                             // ignore short-lived, non-critical tasks that resolve
                             if !info.critical {
                                 continue;
                             }
-
                             tracing::error!(target: "tn::tasks", "{}: {} returned error {join_err}, node exiting", self.name, info.name);
+                            // Ok exit is fine if we are shutting down.
+                            if !rx_shutdown.noticed() {
+                                result = Err(TaskJoinError::CriticalExitError(info.name, join_err));
+                            }
                         }
                         None => {
-                            tracing::error!(target: "tn::tasks", "{}: Out of tasks! node exiting", self.name);
+                            // If we ran out of task then add a "filler" to keep the task manager alive.
+                            // This won't happen in general but can happen as a result of race conditions
+                            // so lets just handle this here to avoid fighting the races elsewhere.
+                            tracing::info!(target: "tn::tasks", "{}: Out of tasks! Adding filler to keep alive", self.name);
+                            let handle = tokio::spawn(
+                                Self::filler_task(rx_shutdown.clone(), Duration::from_secs(10))
+                            );
+                            self.tasks.push(TaskHandle::new("filler task".to_string(), handle, false));
+                            continue;
                         }
                     }
 
                     break;
                 }
-                Some((_, name)) = future_managers.next() => {
+                Some((res, name)) = future_managers.next() => {
                     tracing::error!(target: "tn::tasks", "{}: Sub-Task Manager {name} returned exited, node exiting", self.name);
+                    result = res;
                     break;
                 }
             }
@@ -392,6 +425,7 @@ impl TaskManager {
         {
             tracing::error!(target: "tn::tasks", "{}: All tasks managers NOT shutdown", task_name);
         }
+        result
     }
 
     /// Will resolve when ctrl-c is pressed or a SIGTERM is received.
@@ -467,4 +501,13 @@ impl reth_tasks::TaskSpawner for TaskSpawner {
     ) -> JoinHandle<()> {
         self.spawn_reth_task(name, fut, true, true)
     }
+}
+
+/// Indicate a non-normal exit on a a taskmanager join.
+#[derive(Debug, Error)]
+pub enum TaskJoinError {
+    #[error("Critical task {0} has exited unexpectedly: OK")]
+    CriticalExitOk(String),
+    #[error("Critical task {0} has exited unexpectedly: {1}")]
+    CriticalExitError(String, JoinError),
 }
