@@ -1,6 +1,6 @@
 //! Task manager interface to spawn tasks to the tokio runtime.
 
-use crate::{Noticer, Notifier};
+use crate::Notifier;
 use futures::{future::BoxFuture, stream::FuturesUnordered, FutureExt, StreamExt};
 use std::{
     collections::HashMap,
@@ -280,19 +280,6 @@ impl TaskManager {
         }
     }
 
-    /// Dumb filler task.  It will resolve in durarion or when the node is being shutdown.
-    /// This is used to keep a task manager lively when it's task queue is empty.
-    async fn filler_task(shutdown: Noticer, duration: Duration) {
-        tokio::select! {
-            _ = &shutdown => {
-                tracing::info!(target: "tn::tasks", "Node exiting, received shutdown notification (filler task)");
-            },
-            _ = tokio::time::sleep(duration) => {
-
-            }
-        }
-    }
-
     /// Implements the join logic for the manager.
     async fn join_internal(
         &mut self,
@@ -321,12 +308,12 @@ impl TaskManager {
                     self.tasks.push(task);
                     continue;
                 },
-                res = self.tasks.next() => {
+                Some(res) = self.tasks.next() => {
                     // If any task self.tasks exits then this could indicate an error.
                     //
                     // Some tasks are expected to exit graceful at the epoch boundary.
                     match res {
-                        Some(Ok(info)) => {
+                        Ok(info) => {
                             // ignore short-lived, non-critical tasks that resolve
                             if !info.critical {
                                 continue;
@@ -337,7 +324,7 @@ impl TaskManager {
                                 result = Err(TaskJoinError::CriticalExitOk(info.name));
                             }
                         }
-                        Some(Err((info, join_err))) => {
+                        Err((info, join_err)) => {
                             // ignore short-lived, non-critical tasks that resolve
                             if !info.critical {
                                 continue;
@@ -348,19 +335,7 @@ impl TaskManager {
                                 result = Err(TaskJoinError::CriticalExitError(info.name, join_err));
                             }
                         }
-                        None => {
-                            // If we ran out of task then add a "filler" to keep the task manager alive.
-                            // This won't happen in general but can happen as a result of race conditions
-                            // so lets just handle this here to avoid fighting the races elsewhere.
-                            tracing::info!(target: "tn::tasks", "{}: Out of tasks! Adding filler to keep alive", self.name);
-                            let handle = tokio::spawn(
-                                Self::filler_task(rx_shutdown.clone(), Duration::from_secs(10))
-                            );
-                            self.tasks.push(TaskHandle::new("filler task".to_string(), handle, false));
-                            continue;
-                        }
                     }
-
                     break;
                 }
                 Some((res, name)) = future_managers.next() => {
