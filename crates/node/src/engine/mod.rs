@@ -20,6 +20,7 @@ use tn_types::{
     BatchSender, BatchValidation, ConsensusOutput, ExecHeader, Noticer, SealedBlock, SealedHeader,
     TaskSpawner, WorkerId, B256,
 };
+use tn_worker::WorkerNetworkHandle;
 use tokio::sync::{broadcast, mpsc, RwLock};
 mod builder;
 mod inner;
@@ -71,9 +72,13 @@ impl ExecutionNode {
     /// Initialize the worker's transaction pool and public RPC.
     ///
     /// This method should be called on node startup.
-    pub async fn initialize_worker_components(&self, worker_id: WorkerId) -> eyre::Result<()> {
+    pub async fn initialize_worker_components(
+        &self,
+        worker_id: WorkerId,
+        network_handle: WorkerNetworkHandle,
+    ) -> eyre::Result<()> {
         let mut guard = self.internal.write().await;
-        guard.initialize_worker_components(worker_id).await
+        guard.initialize_worker_components(worker_id, network_handle).await
     }
 
     /// Batch maker

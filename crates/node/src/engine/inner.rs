@@ -21,6 +21,7 @@ use tn_types::{
     Address, BatchSender, BatchValidation, ConsensusOutput, ExecHeader, Noticer, SealedHeader,
     TaskSpawner, WorkerId, B256, MIN_PROTOCOL_BASE_FEE,
 };
+use tn_worker::WorkerNetworkHandle;
 use tokio::sync::broadcast;
 use tokio_stream::wrappers::BroadcastStream;
 use tracing::{error, info};
@@ -113,11 +114,12 @@ impl ExecutionNodeInner {
     pub(super) async fn initialize_worker_components(
         &mut self,
         worker_id: WorkerId,
+        network_handle: WorkerNetworkHandle,
     ) -> eyre::Result<()> {
         let transaction_pool = self.reth_env.init_txn_pool()?;
 
-        // TODO: update WorkerNetwork - issue #189
-        let network = WorkerNetwork::new(self.reth_env.chainspec());
+        let network =
+            WorkerNetwork::new(self.reth_env.chainspec(), network_handle, self.tn_config.version);
         let mut tx_pool_latest = transaction_pool.block_info();
         tx_pool_latest.pending_basefee = MIN_PROTOCOL_BASE_FEE;
         let last_seen = self.reth_env.finalized_block_hash_number()?;
