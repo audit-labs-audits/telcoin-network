@@ -83,10 +83,26 @@ impl WorkerNetwork {
                     let mut guard = peer_count_clone.write();
                     *guard = peers.len();
                 }
-                tokio::time::sleep(Duration::from_secs(5)).await;
+                tokio::time::sleep(Duration::from_secs(15)).await;
             }
         });
         Self { chain_spec: chain_spec.reth_chain_spec(), peer_count, version }
+    }
+
+    /// Spawn a new task to keep up with peer counts.
+    /// Use this when the epoch rolls over and the worker_network gets a new task manager.
+    pub fn respawn_peer_count(&self, worker_network: WorkerNetworkHandle) {
+        let peer_count = self.peer_count.clone();
+        let spawner = worker_network.get_task_spawner().clone();
+        spawner.spawn_task("Worker Network Peers", async move {
+            loop {
+                if let Ok(peers) = worker_network.connected_peers().await {
+                    let mut guard = peer_count.write();
+                    *guard = peers.len();
+                }
+                tokio::time::sleep(Duration::from_secs(15)).await;
+            }
+        });
     }
 }
 

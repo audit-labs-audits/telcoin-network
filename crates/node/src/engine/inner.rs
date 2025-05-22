@@ -42,6 +42,8 @@ pub(super) struct ExecutionNodeInner {
     pub(super) opt_faucet_args: Option<FaucetArgs>,
     /// Collection of execution components by worker.
     pub(super) workers: HashMap<WorkerId, WorkerComponents>,
+    /// Keep the WorkerNetwork around so we can update it's task(s).
+    pub(super) network: Option<WorkerNetwork>,
 }
 
 impl ExecutionNodeInner {
@@ -120,6 +122,7 @@ impl ExecutionNodeInner {
 
         let network =
             WorkerNetwork::new(self.reth_env.chainspec(), network_handle, self.tn_config.version);
+        self.network = Some(network.clone());
         let mut tx_pool_latest = transaction_pool.block_info();
         tx_pool_latest.pending_basefee = MIN_PROTOCOL_BASE_FEE;
         let last_seen = self.reth_env.finalized_block_hash_number()?;
@@ -161,6 +164,15 @@ impl ExecutionNodeInner {
         let components = WorkerComponents::new(rpc_handle, transaction_pool);
         self.workers.insert(worker_id, components);
         Ok(())
+    }
+
+    /// Respqn any tasks on the worker network when we get a new epoch task manager.
+    ///
+    /// This method should be called on epoch rollover.
+    pub async fn respawn_worker_network_tasks(&self, network_handle: WorkerNetworkHandle) {
+        if let Some(network) = &self.network {
+            network.respawn_peer_count(network_handle);
+        }
     }
 
     /// Create a new block validator.

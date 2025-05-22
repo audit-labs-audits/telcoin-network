@@ -81,6 +81,14 @@ impl ExecutionNode {
         guard.initialize_worker_components(worker_id, network_handle).await
     }
 
+    /// Respqn any tasks on the worker network when we get a new epoch task manager.
+    ///
+    /// This method should be called on epoch rollover.
+    pub async fn respawn_worker_network_tasks(&self, network_handle: WorkerNetworkHandle) {
+        let guard = self.internal.write().await;
+        guard.respawn_worker_network_tasks(network_handle).await
+    }
+
     /// Batch maker
     pub async fn start_batch_builder(
         &self,

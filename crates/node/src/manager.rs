@@ -674,6 +674,10 @@ where
             // This will use the new epoch_task_spawner on network_handle.
             if *initial_epoch {
                 engine.initialize_worker_components(*worker_id, network_handle.clone()).await?;
+            } else {
+                // We updated our epock task spawner so make sure worker network tasks are
+                // restarted.
+                engine.respawn_worker_network_tasks(network_handle.clone()).await;
             }
         }
 

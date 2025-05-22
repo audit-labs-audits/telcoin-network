@@ -37,6 +37,7 @@ impl ExecutionNodeBuilder {
             opt_faucet_args: self.opt_faucet_args,
             tn_config: self.tn_config,
             workers: HashMap::default(),
+            network: None,
         })
     }
 }
