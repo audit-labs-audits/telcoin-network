@@ -21,7 +21,6 @@ enr = { workspace = true, default-features = false, features = [
     "rust-secp256k1",
 ] }
 parking_lot = { workspace = true }
-multihash = "0.19.3"
 
 reth = { workspace = true }
 reth-db = { workspace = true }

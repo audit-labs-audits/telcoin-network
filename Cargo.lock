@@ -11191,7 +11191,6 @@ dependencies = [
  "eyre",
  "futures",
  "jsonrpsee",
- "multihash",
  "parking_lot",
  "rand_chacha 0.3.1",
  "reth",

@@ -9,7 +9,6 @@
 
 use crate::{ChainSpec, WorkerTxPool};
 use enr::{secp256k1::SecretKey, Enr};
-use multihash::Multihash;
 use parking_lot::RwLock;
 use reth::rpc::builder::RpcServerHandle;
 use reth_chainspec::ChainSpec as RethChainSpec;
@@ -62,8 +61,8 @@ impl WorkerComponents {
 pub struct WorkerNetwork {
     /// Chainspec
     chain_spec: RethChainSpec,
-    /// Track our peers for queries.
-    peers: Arc<RwLock<Vec<PeerId>>>,
+    /// Track our peer count for queries.
+    peer_count: Arc<RwLock<usize>>,
     /// App version.
     version: &'static str,
 }
@@ -75,25 +74,19 @@ impl WorkerNetwork {
         worker_network: WorkerNetworkHandle,
         version: &'static str,
     ) -> Self {
-        let peers = Arc::new(RwLock::new(vec![]));
-        let peers_clone = peers.clone();
+        let peer_count = Arc::new(RwLock::new(0));
+        let peer_count_clone = peer_count.clone();
         let spawner = worker_network.get_task_spawner().clone();
         spawner.spawn_task("Worker Network Peers", async move {
             loop {
                 if let Ok(peers) = worker_network.connected_peers().await {
-                    let mut guard = peers_clone.write();
-                    guard.clear();
-                    for p in peers {
-                        // Turn a libp2p peer id into reth peer id for this trait.
-                        let p: Multihash<64> = p.into();
-                        let (_, bytes, _) = p.into_inner();
-                        guard.push(PeerId::from_slice(&bytes));
-                    }
+                    let mut guard = peer_count_clone.write();
+                    *guard = peers.len();
                 }
                 tokio::time::sleep(Duration::from_secs(5)).await;
             }
         });
-        Self { chain_spec: chain_spec.reth_chain_spec(), peers, version }
+        Self { chain_spec: chain_spec.reth_chain_spec(), peer_count, version }
     }
 }
 
@@ -135,7 +128,7 @@ impl NetworkInfo for WorkerNetwork {
 impl PeersInfo for WorkerNetwork {
     // net_peerCount
     fn num_connected_peers(&self) -> usize {
-        self.peers.read().len()
+        *self.peer_count.read()
     }
 
     // TN Unused
