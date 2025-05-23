@@ -675,7 +675,7 @@ where
             if *initial_epoch {
                 engine.initialize_worker_components(*worker_id, network_handle.clone()).await?;
             } else {
-                // We updated our epock task spawner so make sure worker network tasks are
+                // We updated our epoch task spawner so make sure worker network tasks are
                 // restarted.
                 engine.respawn_worker_network_tasks(network_handle.clone()).await;
             }

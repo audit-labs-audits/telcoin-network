@@ -33,12 +33,14 @@ pub struct WorkerComponents {
     rpc_handle: RpcServerHandle,
     /// The worker's transaction pool.
     pool: WorkerTxPool,
+    /// Keep the WorkerNetwork around so we can update it's task(s).
+    network: WorkerNetwork,
 }
 
 impl WorkerComponents {
     /// Create a new instance of [Self].
-    pub fn new(rpc_handle: RpcServerHandle, pool: WorkerTxPool) -> Self {
-        Self { rpc_handle, pool }
+    pub fn new(rpc_handle: RpcServerHandle, pool: WorkerTxPool, network: WorkerNetwork) -> Self {
+        Self { rpc_handle, pool, network }
     }
 
     /// Return a reference to the rpc handle
@@ -49,6 +51,11 @@ impl WorkerComponents {
     /// Return a reference to the worker's transaction pool.
     pub fn pool(&self) -> WorkerTxPool {
         self.pool.clone()
+    }
+
+    /// Return the worker network inteface (RPC helper) for this worker.
+    pub fn worker_network(&self) -> &WorkerNetwork {
+        &self.network
     }
 }
 
@@ -119,7 +126,7 @@ impl NetworkInfo for WorkerNetwork {
             protocol_version: 1,                      // eth_protocolVersion
             eth_protocol_info: EthProtocolInfo {
                 difficulty: None,
-                network: 1, // ??
+                network: self.chain_id(),
                 genesis: self.chain_spec.genesis_hash(),
                 head: Default::default(),
                 config: self.chain_spec.genesis().config.clone(),

@@ -14,10 +14,7 @@ use libp2p::{
 use serde::{Deserialize, Serialize};
 use std::collections::{HashMap, HashSet};
 use tn_types::{encode, BlsPublicKey, BlsSignature, NetworkPublicKey};
-use tokio::sync::{
-    mpsc,
-    oneshot::{self},
-};
+use tokio::sync::{mpsc, oneshot};
 
 #[cfg(test)]
 #[path = "tests/types.rs"]
