@@ -20,6 +20,7 @@ use tn_types::{
     BatchSender, BatchValidation, ConsensusOutput, ExecHeader, Noticer, SealedBlock, SealedHeader,
     TaskSpawner, WorkerId, B256,
 };
+use tn_worker::WorkerNetworkHandle;
 use tokio::sync::{broadcast, mpsc, RwLock};
 mod builder;
 mod inner;
@@ -71,9 +72,21 @@ impl ExecutionNode {
     /// Initialize the worker's transaction pool and public RPC.
     ///
     /// This method should be called on node startup.
-    pub async fn initialize_worker_components(&self, worker_id: WorkerId) -> eyre::Result<()> {
+    pub async fn initialize_worker_components(
+        &self,
+        worker_id: WorkerId,
+        network_handle: WorkerNetworkHandle,
+    ) -> eyre::Result<()> {
         let mut guard = self.internal.write().await;
-        guard.initialize_worker_components(worker_id).await
+        guard.initialize_worker_components(worker_id, network_handle).await
+    }
+
+    /// Respawn any tasks on the worker network when we get a new epoch task manager.
+    ///
+    /// This method should be called on epoch rollover.
+    pub async fn respawn_worker_network_tasks(&self, network_handle: WorkerNetworkHandle) {
+        let guard = self.internal.write().await;
+        guard.respawn_worker_network_tasks(network_handle).await
     }
 
     /// Batch maker
