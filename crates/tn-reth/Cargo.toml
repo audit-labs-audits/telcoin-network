@@ -55,14 +55,13 @@ rand_chacha = { workspace = true }
 futures = { workspace = true }
 serde = { workspace = true }
 thiserror = { workspace = true }
-tokio = { workspace = true, features = ["sync", "rt", "macros", "signal"] }
 tracing = { workspace = true }
 eyre = { workspace = true }
 alloy = { workspace = true, features = ["genesis"] }
 tempfile = { workspace = true }
 serde_json = { workspace = true }
 alloy-consensus = { workspace = true }
-
+tokio = { workspace = true, features = ["macros", "time"] }
 secp256k1 = { workspace = true, optional = true }
 
 [features]
