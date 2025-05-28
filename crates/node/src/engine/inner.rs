@@ -22,8 +22,7 @@ use tn_types::{
     TaskSpawner, WorkerId, B256, MIN_PROTOCOL_BASE_FEE,
 };
 use tn_worker::WorkerNetworkHandle;
-use tokio::sync::broadcast;
-use tokio_stream::wrappers::BroadcastStream;
+use tokio::sync::mpsc;
 use tracing::{error, info};
 
 /// Inner type for holding execution layer types.
@@ -51,7 +50,7 @@ impl ExecutionNodeInner {
     /// All tasks are spawned with the [ExecutionNodeInner]'s [TaskManager].
     pub(super) async fn start_engine(
         &self,
-        from_consensus: broadcast::Receiver<ConsensusOutput>,
+        rx_output: mpsc::Receiver<ConsensusOutput>,
         rx_shutdown: Noticer,
     ) -> eyre::Result<()> {
         let parent_header = self.reth_env.lookup_head()?;
@@ -60,9 +59,10 @@ impl ExecutionNodeInner {
         let tn_engine = ExecutorEngine::new(
             self.reth_env.clone(),
             self.reth_env.get_debug_max_round(),
-            BroadcastStream::new(from_consensus),
+            rx_output,
             parent_header,
             rx_shutdown,
+            self.reth_env.get_task_spawner().clone(),
         );
 
         // spawn tn engine

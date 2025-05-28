@@ -1,4 +1,3 @@
-//! This crate is designed to encaptulate Reth functionality and abstract it away.
 //! This should allow for easier upgrades.
 //! It still re-exports some stuff and a few places use Reth directly but eventually
 //! it all should go through this crate.
@@ -30,7 +29,6 @@ use enr::secp256k1::rand::Rng as _;
 use error::{TnRethError, TnRethResult};
 use evm_config::TnEvmConfig;
 use eyre::OptionExt;
-use futures::StreamExt as _;
 use jsonrpsee::Methods;
 use rand_chacha::rand_core::SeedableRng as _;
 use reth::{
@@ -102,7 +100,6 @@ use tn_types::{
     SealedHeader, TaskManager, TaskSpawner, TransactionSigned, TxKind, B256, EMPTY_OMMER_ROOT_HASH,
     EMPTY_RECEIPTS, EMPTY_TRANSACTIONS, EMPTY_WITHDRAWALS, U256,
 };
-use tokio::sync::mpsc::{self};
 use tracing::{debug, error, info, warn};
 use traits::{TNPayload, TelcoinNode, TelcoinNodeTypes as _};
 
@@ -116,7 +113,7 @@ pub use reth_cli_util::{parse_duration_from_secs, parse_socket_address};
 pub use reth_errors::{CanonicalError, ProviderError, RethError};
 pub use reth_node_core::args::LogArgs;
 pub use reth_primitives_traits::crypto::secp256k1::sign_message;
-pub use reth_provider::ExecutionOutcome;
+pub use reth_provider::{CanonStateNotificationStream, ExecutionOutcome};
 pub use reth_rpc_eth_types::EthApiError;
 pub use reth_tracing::FileWorkerGuard;
 pub use reth_transaction_pool::{
@@ -508,20 +505,8 @@ impl RethEnv {
     }
 
     /// Return a channel reciever that will return each canonical block in turn.
-    pub fn canonical_block_stream(&self) -> mpsc::Receiver<SealedBlock> {
-        let mut stream = self.blockchain_provider.canonical_state_stream();
-        let (tx, rx) = mpsc::channel(100);
-
-        // non-critical: batch builder uses this task for each epoch
-        self.task_spawner.spawn_task("canonical-block-stream", async move {
-            while let Some(latest) = stream.next().await {
-                let block = latest.tip().block.clone();
-                if let Err(_e) = tx.send(block).await {
-                    break;
-                }
-            }
-        });
-        rx
+    pub fn canonical_block_stream(&self) -> CanonStateNotificationStream {
+        self.blockchain_provider.canonical_state_stream()
     }
 
     /// Return a reference to the [TaskSpawner] for spawning tasks.
@@ -878,9 +863,6 @@ impl RethEnv {
 
         debug!(target: "engine", "committing closing epoch state:\n{:#?}", res.state);
 
-        // commit the changes
-        evm.db_mut().commit(res.state);
-
         Ok(closing_epoch_logs)
     }
 
@@ -1003,7 +985,7 @@ impl RethEnv {
         evm: &mut Evm<'_, EXT, DB>,
         prev_env: Box<Env>,
     ) where
-        DB: Database,
+        DB: Database + DatabaseCommit,
     {
         // NOTE: revm marks these accounts as "touched" after the contract call
         // and includes them in the result
@@ -1011,6 +993,9 @@ impl RethEnv {
         // remove the state changes for system call
         res.state.remove(&SYSTEM_ADDRESS);
         res.state.remove(&evm.block().coinbase);
+
+        // commit the changes
+        evm.db_mut().commit(res.state.clone());
 
         // restore the previous env
         evm.context.evm.env = prev_env;
