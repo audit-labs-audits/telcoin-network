@@ -15,7 +15,6 @@ use crate::{
     AuthorityIdentifier, BlockHash, Committee, Digest, Epoch, Hash, Header, Round, TimestampSec,
     VotingPower, WorkerCache,
 };
-use base64::{engine::general_purpose, Engine};
 use serde::{Deserialize, Serialize};
 use serde_with::serde_as;
 use std::{collections::BTreeMap, fmt};
@@ -458,38 +457,38 @@ pub fn validate_received_certificate(
 
 /// Certificate digest.
 #[derive(
-    Clone, Copy, Serialize, Deserialize, Default, PartialEq, Eq, std::hash::Hash, PartialOrd, Ord,
+    Clone, Copy, Default, PartialEq, Eq, std::hash::Hash, PartialOrd, Ord, Serialize, Deserialize,
 )]
-pub struct CertificateDigest([u8; crypto::DIGEST_LENGTH]);
+pub struct CertificateDigest(Digest<{ crypto::DIGEST_LENGTH }>);
 
 impl CertificateDigest {
     /// Create a new instance of CertificateDigest.
     pub fn new(digest: [u8; crypto::DIGEST_LENGTH]) -> Self {
-        CertificateDigest(digest)
+        CertificateDigest(Digest { digest })
     }
 }
 
 impl AsRef<[u8]> for CertificateDigest {
     fn as_ref(&self) -> &[u8] {
-        &self.0
+        &self.0.digest
     }
 }
 
 impl From<CertificateDigest> for Digest<{ crypto::DIGEST_LENGTH }> {
     fn from(hd: CertificateDigest) -> Self {
-        Digest::new(hd.0)
+        hd.0
     }
 }
 
 impl fmt::Debug for CertificateDigest {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> Result<(), fmt::Error> {
-        write!(f, "{}", general_purpose::STANDARD.encode(self.0))
+        write!(f, "{}", self.0)
     }
 }
 
 impl fmt::Display for CertificateDigest {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> Result<(), fmt::Error> {
-        write!(f, "{}", general_purpose::STANDARD.encode(self.0).get(0..16).ok_or(fmt::Error)?)
+        write!(f, "{}", self.0.to_string().get(0..16).ok_or(fmt::Error)?)
     }
 }
 
@@ -497,13 +496,13 @@ impl Hash<{ crypto::DIGEST_LENGTH }> for Certificate {
     type TypedDigest = CertificateDigest;
 
     fn digest(&self) -> CertificateDigest {
-        CertificateDigest(self.header.digest().0)
+        CertificateDigest(Digest { digest: self.header.digest().into() })
     }
 }
 
 impl From<CertificateDigest> for BlockHash {
     fn from(value: CertificateDigest) -> Self {
-        Self::from(value.0)
+        Self::from(value.0.digest)
     }
 }
 
@@ -530,3 +529,71 @@ impl PartialEq for Certificate {
         ret
     }
 }
+
+/*
+// ----- Serde implementations -----
+
+impl Serialize for CertificateDigest {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: serde::Serializer,
+    {
+        if serializer.is_human_readable() {
+            serializer.serialize_str(&bs58::encode(&self.0).into_string())
+        } else {
+            serializer.serialize_bytes(&self.0)
+        }
+    }
+}
+
+impl<'de> Deserialize<'de> for CertificateDigest {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: serde::Deserializer<'de>,
+    {
+        use serde::de::*;
+
+        struct CertificateDigestVisitor;
+
+        impl Visitor<'_> for CertificateDigestVisitor {
+            type Value = CertificateDigest;
+
+            fn expecting(&self, f: &mut fmt::Formatter) -> fmt::Result {
+                write!(f, "valid certificate digest bytes")
+            }
+
+            fn visit_bytes<E>(self, v: &[u8]) -> Result<Self::Value, E>
+            where
+                E: Error,
+            {
+                if v.len() == crypto::DIGEST_LENGTH {
+                    let mut bytes = [0_u8; crypto::DIGEST_LENGTH];
+                    bytes.copy_from_slice(v);
+                    Ok(CertificateDigest(bytes))
+                } else {
+                    let exp = format!(" {} bytes", crypto::DIGEST_LENGTH);
+                    let e: &str = &exp;
+                    Err(Error::invalid_length(v.len(), &e))
+                }
+            }
+
+            fn visit_str<E>(self, v: &str) -> Result<Self::Value, E>
+            where
+                E: Error,
+            {
+                let mut bytes = [0_u8; crypto::DIGEST_LENGTH];
+                bs58::decode(v)
+                    .onto(&mut bytes)
+                    .map_err(|_| Error::invalid_value(Unexpected::Str(v), &self))?;
+                self.visit_bytes(&bytes)
+            }
+        }
+
+        if deserializer.is_human_readable() {
+            deserializer.deserialize_str(CertificateDigestVisitor)
+        } else {
+            deserializer.deserialize_bytes(CertificateDigestVisitor)
+        }
+    }
+}
+*/

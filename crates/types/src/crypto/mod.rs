@@ -23,14 +23,83 @@ pub use bls_signature::*;
 pub use intent::*;
 pub use network::*;
 use serde::{Deserialize, Serialize};
-use serde_with::serde_as;
 
 /// Represents a digest of `DIGEST_LEN` bytes.
-#[serde_as]
-#[derive(Hash, PartialEq, Eq, Clone, Serialize, Deserialize, Ord, PartialOrd, Copy)]
+#[derive(Hash, PartialEq, Eq, Clone, Ord, PartialOrd, Copy)]
 pub struct Digest<const DIGEST_LEN: usize> {
-    #[serde_as(as = "[_; DIGEST_LEN]")]
     pub digest: [u8; DIGEST_LEN],
+}
+
+impl<const DIGEST_LEN: usize> Default for Digest<DIGEST_LEN> {
+    fn default() -> Self {
+        Self { digest: [0_u8; DIGEST_LEN] }
+    }
+}
+
+// ----- Serde implementations -----
+
+impl<const DIGEST_LEN: usize> Serialize for Digest<DIGEST_LEN> {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: serde::Serializer,
+    {
+        if serializer.is_human_readable() {
+            serializer.serialize_str(&bs58::encode(&self.digest).into_string())
+        } else {
+            serializer.serialize_bytes(&self.digest)
+        }
+    }
+}
+
+impl<'de, const DIGEST_LEN: usize> Deserialize<'de> for Digest<DIGEST_LEN> {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: serde::Deserializer<'de>,
+    {
+        use serde::de::*;
+
+        struct DigestVisitor<const DIGEST_LEN: usize>;
+
+        impl<const DIGEST_LEN: usize> Visitor<'_> for DigestVisitor<DIGEST_LEN> {
+            type Value = Digest<DIGEST_LEN>;
+
+            fn expecting(&self, f: &mut fmt::Formatter) -> fmt::Result {
+                write!(f, "valid digest bytes")
+            }
+
+            fn visit_bytes<E>(self, v: &[u8]) -> Result<Self::Value, E>
+            where
+                E: Error,
+            {
+                if v.len() == DIGEST_LEN {
+                    let mut digest = [0_u8; DIGEST_LEN];
+                    digest.copy_from_slice(v);
+                    Ok(Digest { digest })
+                } else {
+                    let exp = format!(" {DIGEST_LEN} bytes");
+                    let e: &str = &exp;
+                    Err(Error::invalid_length(v.len(), &e))
+                }
+            }
+
+            fn visit_str<E>(self, v: &str) -> Result<Self::Value, E>
+            where
+                E: Error,
+            {
+                let mut bytes = [0_u8; DIGEST_LEN];
+                bs58::decode(v)
+                    .onto(&mut bytes)
+                    .map_err(|_| Error::invalid_value(Unexpected::Str(v), &self))?;
+                self.visit_bytes(&bytes)
+            }
+        }
+
+        if deserializer.is_human_readable() {
+            deserializer.deserialize_str(DigestVisitor)
+        } else {
+            deserializer.deserialize_bytes(DigestVisitor)
+        }
+    }
 }
 
 impl<const DIGEST_LEN: usize> Digest<DIGEST_LEN> {
@@ -139,7 +208,7 @@ pub trait BlsSigner: Clone + Send + Sync + Unpin + 'static {
     /// Sync version to sign something with a BLS private key.
     fn request_signature_direct(&self, msg: &[u8]) -> BlsSignature;
 
-    /// Request a signature asyncronisly.
+    /// Request a signature asynchronously.
     /// Note: used the de-sugared signature here (instead of async fn request_signature...)
     /// due to current async trait limitations and the need for + Send.
     fn request_signature(&self, msg: Vec<u8>) -> impl Future<Output = BlsSignature> + Send {

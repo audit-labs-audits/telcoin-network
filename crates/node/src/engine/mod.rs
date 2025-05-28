@@ -16,6 +16,7 @@ use std::{net::SocketAddr, sync::Arc};
 use tn_config::Config;
 use tn_faucet::FaucetArgs;
 use tn_reth::{system_calls::EpochState, RethConfig, RethEnv, WorkerTxPool};
+use tn_rpc::EngineToPrimary;
 use tn_types::{
     BatchSender, BatchValidation, ConsensusOutput, ExecHeader, Noticer, SealedBlock, SealedHeader,
     TaskSpawner, WorkerId, B256,
@@ -72,13 +73,17 @@ impl ExecutionNode {
     /// Initialize the worker's transaction pool and public RPC.
     ///
     /// This method should be called on node startup.
-    pub async fn initialize_worker_components(
+    pub async fn initialize_worker_components<EP>(
         &self,
         worker_id: WorkerId,
         network_handle: WorkerNetworkHandle,
-    ) -> eyre::Result<()> {
+        engine_to_primary: EP,
+    ) -> eyre::Result<()>
+    where
+        EP: EngineToPrimary + Send + Sync + 'static,
+    {
         let mut guard = self.internal.write().await;
-        guard.initialize_worker_components(worker_id, network_handle).await
+        guard.initialize_worker_components(worker_id, network_handle, engine_to_primary).await
     }
 
     /// Respawn any tasks on the worker network when we get a new epoch task manager.

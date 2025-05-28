@@ -7,6 +7,7 @@ use crate::{
     engine::{ExecutionNode, TnBuilder},
     primary::PrimaryNode,
     worker::WorkerNode,
+    EngineToPrimaryRpc,
 };
 use consensus_metrics::start_prometheus_server;
 use eyre::{eyre, OptionExt};
@@ -433,6 +434,8 @@ where
             )
             .await?;
 
+        let engine_to_primary =
+            EngineToPrimaryRpc::new(primary.consensus_bus().await, consensus_db.clone());
         // only spawns one worker for now
         let worker = self
             .spawn_worker_node_components(
@@ -440,6 +443,7 @@ where
                 engine,
                 epoch_task_manager.get_spawner(),
                 initial_epoch,
+                engine_to_primary,
             )
             .await?;
 
@@ -658,6 +662,7 @@ where
         engine: &ExecutionNode,
         epoch_task_spawner: TaskSpawner,
         initial_epoch: &bool,
+        engine_to_primary: EngineToPrimaryRpc<DB>,
     ) -> eyre::Result<WorkerNode<DB>> {
         // only support one worker for now - otherwise, loop here
         let (worker_id, _worker_info) = consensus_config.config().workers().first_worker()?;
@@ -673,7 +678,13 @@ where
             // initialize worker components on startup
             // This will use the new epoch_task_spawner on network_handle.
             if *initial_epoch {
-                engine.initialize_worker_components(*worker_id, network_handle.clone()).await?;
+                engine
+                    .initialize_worker_components(
+                        *worker_id,
+                        network_handle.clone(),
+                        engine_to_primary,
+                    )
+                    .await?;
             } else {
                 // We updated our epoch task spawner so make sure worker network tasks are
                 // restarted.

@@ -4,7 +4,6 @@ use crate::{
     now, AuthorityIdentifier, Batch, BlockHash, BlockNumHash, CertificateDigest, Committee, Digest,
     Epoch, Hash, Round, TimestampSec, VoteDigest, WorkerCache, WorkerId,
 };
-use base64::{engine::general_purpose, Engine};
 use derive_builder::Builder;
 use indexmap::IndexMap;
 use once_cell::sync::OnceCell;
@@ -161,7 +160,7 @@ impl Header {
 
 impl From<Header> for CertificateDigest {
     fn from(value: Header) -> Self {
-        Self::new(value.digest().0)
+        Self::new(value.digest().into())
     }
 }
 
@@ -206,44 +205,50 @@ impl HeaderBuilder {
 
 /// The slice of bytes for the header's digest.
 #[derive(
-    Clone, Copy, Serialize, Deserialize, Default, PartialEq, Eq, std::hash::Hash, PartialOrd, Ord,
+    Clone, Copy, Default, PartialEq, Eq, std::hash::Hash, PartialOrd, Ord, Serialize, Deserialize,
 )]
-pub struct HeaderDigest(pub [u8; crypto::DIGEST_LENGTH]);
+pub struct HeaderDigest(Digest<{ crypto::DIGEST_LENGTH }>);
 
 impl HeaderDigest {
     /// Create a new HeaderDigest based on the crate's `DIGEST_LENGTH` constant.
     pub fn new(digest: [u8; crypto::DIGEST_LENGTH]) -> Self {
-        HeaderDigest(digest)
+        HeaderDigest(Digest { digest })
     }
 }
 
 impl From<HeaderDigest> for Digest<{ crypto::DIGEST_LENGTH }> {
     fn from(hd: HeaderDigest) -> Self {
-        Digest::new(hd.0)
+        hd.0
+    }
+}
+
+impl From<HeaderDigest> for [u8; crypto::DIGEST_LENGTH] {
+    fn from(hd: HeaderDigest) -> Self {
+        hd.0.digest
     }
 }
 
 impl AsRef<[u8]> for HeaderDigest {
     fn as_ref(&self) -> &[u8] {
-        &self.0
+        &self.0.digest
     }
 }
 
 impl From<HeaderDigest> for VoteDigest {
     fn from(value: HeaderDigest) -> Self {
-        Self::new(value.0)
+        Self::new(value.0.into())
     }
 }
 
 impl fmt::Debug for HeaderDigest {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> Result<(), fmt::Error> {
-        write!(f, "{}", general_purpose::STANDARD.encode(self.0))
+        write!(f, "{}", self.0)
     }
 }
 
 impl fmt::Display for HeaderDigest {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> Result<(), fmt::Error> {
-        write!(f, "{}", general_purpose::STANDARD.encode(self.0).get(0..16).ok_or(fmt::Error)?)
+        write!(f, "{}", self.0.to_string().get(0..16).ok_or(fmt::Error)?)
     }
 }
 
@@ -253,7 +258,7 @@ impl Hash<{ crypto::DIGEST_LENGTH }> for Header {
     fn digest(&self) -> HeaderDigest {
         let mut hasher = crypto::DefaultHashFunction::new();
         hasher.update(encode(&self).as_ref());
-        HeaderDigest(hasher.finalize().into())
+        HeaderDigest(Digest { digest: hasher.finalize().into() })
     }
 }
 

@@ -2,7 +2,7 @@
 
 use std::{
     borrow::Cow,
-    iter,
+    fmt, iter,
     time::{Instant, SystemTime},
 };
 
@@ -13,7 +13,8 @@ use libp2p::{
     },
     Multiaddr, PeerId,
 };
-use serde::{Deserialize, Serialize};
+use serde::{Deserialize, Deserializer, Serialize, Serializer};
+use serde_with::{serde_as, DeserializeAs, SerializeAs};
 use tn_config::KeyConfig;
 use tn_storage::tables::{KadProviderRecords, KadRecords};
 use tn_types::{decode, encode, BlockHash, DBIter, Database, DefaultHashFunction};
@@ -21,9 +22,11 @@ use tn_types::{decode, encode, BlockHash, DBIter, Database, DefaultHashFunction}
 /// A record stored in the DHT.
 /// This is a "shadow" struct for a kad Record so we can serialize/deserialize
 /// for peristant storage.
-#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[serde_as]
+#[derive(Clone, Eq, PartialEq, Serialize, Deserialize)]
 pub struct KadRecord {
     /// Key of the record.
+    #[serde_as(as = "RecordKeySerde")]
     key: RecordKey,
     /// Value of the record.
     value: Vec<u8>,
@@ -34,6 +37,18 @@ pub struct KadRecord {
     /// be serialized or deserialized so we use SystemTime here which
     /// should be "good enough" even if lacking in precision.
     expires: Option<SystemTime>,
+}
+
+impl fmt::Debug for KadRecord {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let key = bs58::encode(&self.key).into_string();
+        let value = bs58::encode(&self.value).into_string();
+        write!(
+            f,
+            "KadRecord {{ key: {key}, value: {value}, publisher: {:?}, expires: {:?} }}",
+            self.publisher, self.expires
+        )
+    }
 }
 
 impl From<Record> for KadRecord {
@@ -55,9 +70,11 @@ impl From<KadRecord> for Record {
 /// who can provide the value on-demand.
 /// This is a "shadow" struct for a kad ProviderRecord so we can serialize/deserialize
 /// for peristant storage.
+#[serde_as]
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct KadProviderRecord {
     /// The key whose value is provided by the provider.
+    #[serde_as(as = "RecordKeySerde")]
     key: RecordKey,
     /// The provider of the value for the key.
     provider: PeerId,
@@ -280,6 +297,65 @@ impl<DB: Database> RecordStore for KadStore<DB> {
             } else {
                 let _ = self.db.insert::<KadProviderRecords>(&key, &encode(&records));
             }
+        }
+    }
+}
+
+struct RecordKeySerde;
+
+impl SerializeAs<RecordKey> for RecordKeySerde {
+    fn serialize_as<S>(source: &RecordKey, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: Serializer,
+    {
+        let bytes = source.to_vec();
+
+        if serializer.is_human_readable() {
+            serializer.serialize_str(&bs58::encode(&bytes).into_string())
+        } else {
+            serializer.serialize_bytes(&bytes)
+        }
+    }
+}
+
+impl<'de> DeserializeAs<'de, RecordKey> for RecordKeySerde {
+    fn deserialize_as<D>(deserializer: D) -> Result<RecordKey, D::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        use serde::de::*;
+
+        struct RKVisitor;
+
+        impl Visitor<'_> for RKVisitor {
+            type Value = RecordKey;
+
+            fn expecting(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+                write!(f, "valid bytes")
+            }
+
+            fn visit_bytes<E>(self, v: &[u8]) -> Result<Self::Value, E>
+            where
+                E: Error,
+            {
+                Ok(RecordKey::new(&v))
+            }
+
+            fn visit_str<E>(self, v: &str) -> Result<Self::Value, E>
+            where
+                E: Error,
+            {
+                let bytes = bs58::decode(v)
+                    .into_vec()
+                    .map_err(|_| Error::invalid_value(Unexpected::Str(v), &self))?;
+                self.visit_bytes(&bytes)
+            }
+        }
+
+        if deserializer.is_human_readable() {
+            deserializer.deserialize_str(RKVisitor)
+        } else {
+            deserializer.deserialize_bytes(RKVisitor)
         }
     }
 }
