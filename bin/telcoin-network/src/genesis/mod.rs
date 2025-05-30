@@ -121,7 +121,7 @@ pub(crate) fn account_from_word(key_word: &str) -> Address {
 impl GenesisArgs {
     /// Execute command
     pub fn execute(&self) -> eyre::Result<()> {
-        info!(target: "genesis::cerimony", "Creating a new chain genesis with initial validators");
+        info!(target: "genesis::ceremony", "Creating a new chain genesis with initial validators");
 
         let chain = RethChainSpec::default();
         // load network genesis
