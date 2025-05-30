@@ -73,6 +73,7 @@ else
     # make local directory for all validators
     mkdir -p $SHARED_GENESISDIR
 
+    # Loop through all the validators and generate their keys and validator infos.
     for ((i=0; i<$LENGTH; i++)); do
         VALIDATOR="${VALIDATORS[$i]}"
         ADDRESS="${ADDRESSES[$i]}"
@@ -89,14 +90,17 @@ else
         echo ""
     done
 
-    # create committee and worker cache yamls
+    # Use the validator infos to Create genesis, committee and worker cache yamls.
+    # Speed up blocks for testing, use a bogus chain id
     target/${RELEASE}/telcoin-network genesis \
         --datadir "${ROOTDIR}" \
+        --chain-id 0x1e7 \
         --dev-funded-account $DEV_FUNDS \
         --max-header-delay-ms 1000 \
         --min-header-delay-ms 1000 \
         --consensus-registry-owner $DEV_FUNDS
 
+    # Copy the generated genesis, committee, worker_cache and parameters to each validator.
     for ((i=0; i<$LENGTH; i++)); do
         VALIDATOR="${VALIDATORS[$i]}"
         DATADIR="${ROOTDIR}/${VALIDATOR}"
@@ -114,9 +118,11 @@ else
     echo "creating datadir for observer"
     DATADIR="${ROOTDIR}/observer"
     mkdir -p "${DATADIR}/genesis"
+    # Generate an observers "validator info"- still needs this for it's p2p netork settings and keys.
     target/${RELEASE}/telcoin-network keytool generate observer \
         --datadir "${DATADIR}" \
         --address 0x4444444444444444444444444444444444444444
+        # Copy the chain config files over to the new observer config directories.
     cp "${ROOTDIR}/${GENESISDIR}/genesis.yaml" "${DATADIR}/genesis"
     cp "${ROOTDIR}/${GENESISDIR}/committee.yaml" "${DATADIR}/genesis"
     cp "${ROOTDIR}/${GENESISDIR}/worker_cache.yaml" "${DATADIR}/genesis"

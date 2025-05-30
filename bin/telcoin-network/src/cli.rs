@@ -151,8 +151,8 @@ pub enum Commands<Ext: clap::Args + fmt::Debug = NoArgs> {
 mod tests {
     use super::*;
     use clap::CommandFactory;
-    use reth::args::ColorMode;
     use tn_config::Config;
+    use tn_reth::ColorMode;
 
     #[test]
     fn parse_color_mode() {

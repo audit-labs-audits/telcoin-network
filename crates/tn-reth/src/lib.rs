@@ -111,7 +111,7 @@ pub use reth::{
 pub use reth_chainspec::ChainSpec as RethChainSpec;
 pub use reth_cli_util::{parse_duration_from_secs, parse_socket_address};
 pub use reth_errors::{CanonicalError, ProviderError, RethError};
-pub use reth_node_core::args::LogArgs;
+pub use reth_node_core::args::{ColorMode, LogArgs};
 pub use reth_primitives_traits::crypto::secp256k1::sign_message;
 pub use reth_provider::{CanonStateNotificationStream, ExecutionOutcome};
 pub use reth_rpc_eth_types::EthApiError;

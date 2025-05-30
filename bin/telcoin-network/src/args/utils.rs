@@ -35,3 +35,13 @@ pub fn clap_u232_parser(value: &str) -> eyre::Result<U232> {
 
     Ok(parsed_val)
 }
+
+/// Parse a u64 as base 10 or base 16 (hex) if prefixed with 0x.
+pub fn maybe_hex(s: &str) -> eyre::Result<u64> {
+    let result = if s.starts_with("0x") {
+        u64::from_str_radix(&s[2..], 16)?
+    } else {
+        u64::from_str_radix(s, 10)?
+    };
+    Ok(result)
+}

@@ -18,7 +18,7 @@ use tn_reth::{
 use tn_types::{keccak256, now, Address, GenesisAccount, U256};
 use tracing::info;
 
-use crate::args::{clap_address_parser, clap_u232_parser};
+use crate::args::{clap_address_parser, clap_u232_parser, maybe_hex};
 
 /// Generate a new chain genesis.
 #[derive(Debug, Args)]
@@ -98,6 +98,10 @@ pub struct GenesisArgs {
     /// Min delay for a node to produce a new header.
     #[arg(long)]
     pub min_header_delay_ms: Option<u64>,
+    /// Numeric chain id that will go in the genesis.
+    /// Default is 0x7e1 (2017).
+    #[arg(long, default_value_t = 2017, value_parser=maybe_hex)]
+    pub chain_id: u64,
 }
 
 /// Take a string and return the deterministic account derived from it.  This is be used
@@ -165,7 +169,7 @@ impl GenesisArgs {
         // Configure some misc genesis stuff.
         // chain_id and maybe timestamp should probably be a command line option...
         genesis.timestamp = now();
-        genesis.config.chain_id = 2017;
+        genesis.config.chain_id = self.chain_id;
         genesis.config.terminal_total_difficulty_passed = true;
         genesis.config.terminal_total_difficulty = Some(U256::from(0));
         genesis.gas_limit = 30_000_000;
