@@ -202,7 +202,7 @@ use jsonrpsee::core::client::ClientT;
 #[cfg(feature = "faucet")]
 use std::str::FromStr as _;
 #[cfg(feature = "faucet")]
-use tn_types::{Address, U256};
+use tn_types::U256;
 
 /// RPC request to continually check until an account balance is above 0.
 ///
