@@ -252,12 +252,6 @@ pub fn spawn_local_testnet(
             "--http",
             "--datadir",
             datadir,
-            //
-            // TODO: debug max-block doesn't work
-            //
-            // "--debug.max-block",
-            // "5",
-            // "--debug.terminate",
             "--chain",
             genesis_json_path.to_str().expect("genesis_json_path casts to &str"),
             "--instance",
@@ -274,12 +268,6 @@ pub fn spawn_local_testnet(
             "0223382261d641424b8d8b63497a811c56f85ee89574f9853474c3e9ab0d690d99",
             "--datadir",
             datadir,
-            //
-            // TODO: debug max-block doesn't work
-            //
-            // "--debug.max-block",
-            // "5",
-            // "--debug.terminate",
             "--chain",
             genesis_json_path.to_str().expect("genesis path to str"),
             "--instance",

@@ -1,14 +1,15 @@
 //! CLI definition and entrypoint to executable
 use crate::{
-    args::clap_genesis_parser,
     genesis, keytool, node,
     version::{LONG_VERSION, SHORT_VERSION},
     NoArgs,
 };
-use clap::{value_parser, Parser, Subcommand};
+use clap::{Parser, Subcommand};
 use std::{ffi::OsString, fmt, sync::Arc};
 use tn_node::engine::TnBuilder;
-use tn_reth::{dirs::DataDirChainPath, FileWorkerGuard, LogArgs, RethChainSpec};
+use tn_reth::{
+    clap_genesis_parser, dirs::DataDirChainPath, FileWorkerGuard, LogArgs, RethChainSpec,
+};
 
 /// How do we want to get the BLS key passphrase?
 #[derive(Debug, Copy, Clone, clap::ValueEnum)]
@@ -56,26 +57,6 @@ pub struct Cli<Ext: clap::Args + fmt::Debug = NoArgs> {
     )]
     pub chain: Arc<RethChainSpec>,
 
-    /// Add a new instance of a node.
-    ///
-    /// Configures the ports of the node to avoid conflicts with the defaults.
-    /// This is useful for running multiple nodes on the same machine.
-    ///
-    /// Max number of instances is 200. It is chosen in a way so that it's not possible to have
-    /// port numbers that conflict with each other.
-    ///
-    /// Changes to the following port numbers:
-    /// - DISCOVERY_PORT: default + `instance` - 1
-    /// - AUTH_PORT: default + `instance` * 100 - 100
-    /// - HTTP_RPC_PORT: default - `instance` + 1
-    /// - WS_RPC_PORT: default + `instance` * 2 - 2
-    #[arg(long, value_name = "INSTANCE", global = true, default_value_t = 1, value_parser = value_parser!(u16).range(..=200))]
-    pub instance: u16,
-
-    /// The log configuration.
-    #[clap(flatten)]
-    pub logs: LogArgs,
-
     /// How to get the BLS key passphrase.
     ///
     /// The default is to use the env variable TN_BLS_PASSPHRASE
@@ -88,6 +69,10 @@ pub struct Cli<Ext: clap::Args + fmt::Debug = NoArgs> {
         global = true
     )]
     pub bls_passphrase_source: PassSource,
+
+    /// The log configuration.
+    #[clap(flatten)]
+    pub logs: LogArgs,
 }
 
 impl Cli {
@@ -141,8 +126,7 @@ impl<Ext: clap::Args + fmt::Debug> Cli<Ext> {
         L: FnOnce(TnBuilder, Ext, DataDirChainPath, Option<String>) -> eyre::Result<()>,
     {
         // add network name to logs dir
-        self.logs.log_file_directory =
-            self.logs.log_file_directory.join(self.chain.chain.to_string());
+        self.logs.log_file_directory = self.logs.log_file_directory.join("telcoin-network-logs");
 
         let _guard = self.init_tracing()?;
 
