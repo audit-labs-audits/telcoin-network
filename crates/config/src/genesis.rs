@@ -419,7 +419,7 @@ mod tests {
             let bls_keypair = BlsKeypair::generate(&mut StdRng::from_seed([0; 32]));
             let network_keypair = NetworkKeypair::generate_ed25519();
             let address = Address::from_raw_public_key(&[0; 64]);
-            let wrong_address = Address::from_raw_public_key(&[0; 64]);
+            let wrong_address = Address::from_raw_public_key(&[1; 64]);
 
             // generate proof with wrong chain spec
             let proof_of_possession =

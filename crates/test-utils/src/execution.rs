@@ -50,7 +50,7 @@ pub fn execution_builder<CliExt: clap::Args + fmt::Debug>(
     opt_args: Option<Vec<&str>>,
     tmp_dir: &Path,
 ) -> eyre::Result<(TnBuilder, CliExt)> {
-    let default_args = ["telcoin-network", "--http", "--chain", "adiri"];
+    let default_args = ["telcoin-network", "--http", "--genesis", "adiri"];
 
     // extend faucet args if provided
     let cli_args = if let Some(args) = opt_args {

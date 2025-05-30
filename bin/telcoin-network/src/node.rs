@@ -89,13 +89,7 @@ pub struct NodeCommand<Ext: clap::Args + fmt::Debug = NoArgs> {
 impl<Ext: clap::Args + fmt::Debug> NodeCommand<Ext> {
     /// Execute `node` command
     #[instrument(level = "info", skip_all)]
-    pub fn execute<L>(
-        mut self,
-        passphrase: Option<String>,
-        load_config: bool, /* If false will not attempt to load a previously saved config-
-                            * useful for testing. */
-        launcher: L,
-    ) -> eyre::Result<()>
+    pub fn execute<L>(mut self, passphrase: Option<String>, launcher: L) -> eyre::Result<()>
     where
         L: FnOnce(TnBuilder, Ext, DataDirChainPath, Option<String>) -> eyre::Result<()>,
     {
@@ -128,11 +122,9 @@ impl<Ext: clap::Args + fmt::Debug> NodeCommand<Ext> {
         // use config for chain spec
         let mut tn_config = Config::load(&tn_datadir, self.observer, SHORT_VERSION)?;
         debug!(target: "cli", validator = ?tn_config.validator_info.name, "tn datadir for node command: {tn_datadir:?}");
-        if load_config {
-            // Make sure we are using the chain from config not just the default.
-            self.reth.chain = Arc::new(tn_config.chain_spec());
-            info!(target: "cli", validator = ?tn_config.validator_info.name, "config loaded");
-        }
+        // Make sure we are using the chain from config not just the default.
+        self.reth.chain = Arc::new(tn_config.chain_spec());
+        info!(target: "cli", validator = ?tn_config.validator_info.name, "config loaded");
 
         // overwrite all genesis if `genesis` was passed to CLI
         if let Some(chain) = self.genesis.take() {
@@ -142,7 +134,6 @@ impl<Ext: clap::Args + fmt::Debug> NodeCommand<Ext> {
             self.reth.chain = Arc::new(chain);
             tn_config.genesis = self.reth.chain.genesis().clone();
         }
-        assert_eq!(tn_config.genesis(), self.reth.chain.genesis());
 
         // get the worker's transaction address from the config
         let Self {

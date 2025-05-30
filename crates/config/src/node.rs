@@ -57,6 +57,25 @@ impl ConfigTrait for Config {}
 
 impl Config {
     /// Load a config from it's component parts.
+    /// Fallback to defaults if files are missing.
+    pub fn load_or_default<P: TelcoinDirs>(
+        tn_datadir: &P,
+        observer: bool,
+        version: &'static str,
+    ) -> eyre::Result<Self> {
+        let validator_info: ValidatorInfo =
+            Config::load_from_path_or_default(tn_datadir.validator_info_path(), ConfigFmt::YAML)?;
+        let parameters: Parameters = Config::load_from_path_or_default(
+            tn_datadir.node_config_parameters_path(),
+            ConfigFmt::YAML,
+        )?;
+        let genesis: Genesis =
+            Config::load_from_path_or_default(tn_datadir.genesis_file_path(), ConfigFmt::YAML)?;
+
+        Ok(Config { validator_info, parameters, genesis, observer, version })
+    }
+
+    /// Load a config from it's component parts.
     pub fn load<P: TelcoinDirs>(
         tn_datadir: &P,
         observer: bool,

@@ -149,7 +149,6 @@ impl GenesisArgs {
         let mut genesis = network_genesis.genesis().clone();
         // Configure hardforks or Reth will be cross with us...
         genesis.config.homestead_block = Some(0);
-        //genesis.config.dao_fork_block = Some(0);
         genesis.config.eip150_block = Some(0);
         genesis.config.eip155_block = Some(0);
         genesis.config.eip158_block = Some(0);
@@ -157,20 +156,20 @@ impl GenesisArgs {
         genesis.config.constantinople_block = Some(0);
         genesis.config.petersburg_block = Some(0);
         genesis.config.istanbul_block = Some(0);
-        //genesis.config.muir_glacier_block = Some(0);
         genesis.config.berlin_block = Some(0);
         genesis.config.london_block = Some(0);
-        //genesis.config.arrow_glacier_block = Some(0);
-        //genesis.config.gray_glacier_block = Some(0);
         genesis.config.cancun_time = None; //Some(0);
         genesis.config.shanghai_time = Some(0);
         genesis.config.prague_time = None;
         genesis.config.osaka_time = None;
+        // Configure some misc genesis stuff.
+        // chain_id and maybe timestamp should probably be a command line option...
         genesis.timestamp = now();
         genesis.config.chain_id = 2017;
         genesis.config.terminal_total_difficulty_passed = true;
         genesis.config.terminal_total_difficulty = Some(U256::from(0));
-        genesis = genesis.with_base_fee(Some(tn_types::MIN_PROTOCOL_BASE_FEE as u128));
+        genesis.gas_limit = 30_000_000;
+        genesis.base_fee_per_gas = Some(tn_types::MIN_PROTOCOL_BASE_FEE as u128);
 
         // try to create a runtime if one doesn't already exist
         // this is a workaround for executing committees pre-genesis during tests and normal CLI

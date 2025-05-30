@@ -5,11 +5,9 @@ use crate::{
     NoArgs,
 };
 use clap::{Parser, Subcommand};
-use std::{ffi::OsString, fmt, sync::Arc};
+use std::{ffi::OsString, fmt};
 use tn_node::engine::TnBuilder;
-use tn_reth::{
-    clap_genesis_parser, dirs::DataDirChainPath, FileWorkerGuard, LogArgs, RethChainSpec,
-};
+use tn_reth::{dirs::DataDirChainPath, FileWorkerGuard, LogArgs};
 
 /// How do we want to get the BLS key passphrase?
 #[derive(Debug, Copy, Clone, clap::ValueEnum)]
@@ -41,21 +39,6 @@ pub struct Cli<Ext: clap::Args + fmt::Debug = NoArgs> {
     /// The command to run
     #[clap(subcommand)]
     pub command: Commands<Ext>,
-
-    /// The chain this node is running.
-    ///
-    /// The value parser matches either a known chain, the path
-    /// to a json file, or a json formatted string in-memory. The json can be either
-    /// a serialized [ChainSpec] or Genesis struct.
-    #[arg(
-        long,
-        value_name = "CHAIN_OR_PATH",
-        verbatim_doc_comment,
-        default_value = "adiri",
-        value_parser = clap_genesis_parser,
-        global = true,
-    )]
-    pub chain: Arc<RethChainSpec>,
 
     /// How to get the BLS key passphrase.
     ///
@@ -132,7 +115,7 @@ impl<Ext: clap::Args + fmt::Debug> Cli<Ext> {
 
         match self.command {
             Commands::Genesis(command) => command.execute(),
-            Commands::Node(command) => command.execute(passphrase, true, launcher),
+            Commands::Node(command) => command.execute(passphrase, launcher),
             Commands::Keytool(command) => command.execute(passphrase),
         }
     }
@@ -169,6 +152,7 @@ mod tests {
     use super::*;
     use clap::CommandFactory;
     use reth::args::ColorMode;
+    use tn_config::Config;
 
     #[test]
     fn parse_color_mode() {
@@ -213,6 +197,8 @@ mod tests {
     async fn parse_env_filter_directives() {
         let temp_dir = tempfile::tempdir().unwrap();
 
+        // Create config files or the run() below will fail.
+        Config::load_or_default(&temp_dir.path().to_path_buf(), true, "test").unwrap();
         std::env::set_var("RUST_LOG", "info,evm=debug");
         let tn = Cli::try_parse_args_from([
             "tn",
