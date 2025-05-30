@@ -15,7 +15,6 @@ use crate::{
     AuthorityIdentifier, BlockHash, Committee, Digest, Epoch, Hash, Header, Round, TimestampSec,
     VotingPower, WorkerCache,
 };
-use base64::{engine::general_purpose, Engine};
 use serde::{Deserialize, Serialize};
 use serde_with::serde_as;
 use std::{collections::BTreeMap, fmt};
@@ -458,38 +457,38 @@ pub fn validate_received_certificate(
 
 /// Certificate digest.
 #[derive(
-    Clone, Copy, Serialize, Deserialize, Default, PartialEq, Eq, std::hash::Hash, PartialOrd, Ord,
+    Clone, Copy, Default, PartialEq, Eq, std::hash::Hash, PartialOrd, Ord, Serialize, Deserialize,
 )]
-pub struct CertificateDigest([u8; crypto::DIGEST_LENGTH]);
+pub struct CertificateDigest(Digest<{ crypto::DIGEST_LENGTH }>);
 
 impl CertificateDigest {
     /// Create a new instance of CertificateDigest.
     pub fn new(digest: [u8; crypto::DIGEST_LENGTH]) -> Self {
-        CertificateDigest(digest)
+        CertificateDigest(Digest { digest })
     }
 }
 
 impl AsRef<[u8]> for CertificateDigest {
     fn as_ref(&self) -> &[u8] {
-        &self.0
+        &self.0.digest
     }
 }
 
 impl From<CertificateDigest> for Digest<{ crypto::DIGEST_LENGTH }> {
     fn from(hd: CertificateDigest) -> Self {
-        Digest::new(hd.0)
+        hd.0
     }
 }
 
 impl fmt::Debug for CertificateDigest {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> Result<(), fmt::Error> {
-        write!(f, "{}", general_purpose::STANDARD.encode(self.0))
+        write!(f, "{}", self.0)
     }
 }
 
 impl fmt::Display for CertificateDigest {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> Result<(), fmt::Error> {
-        write!(f, "{}", general_purpose::STANDARD.encode(self.0).get(0..16).ok_or(fmt::Error)?)
+        write!(f, "{}", self.0.to_string().get(0..16).ok_or(fmt::Error)?)
     }
 }
 
@@ -497,13 +496,13 @@ impl Hash<{ crypto::DIGEST_LENGTH }> for Certificate {
     type TypedDigest = CertificateDigest;
 
     fn digest(&self) -> CertificateDigest {
-        CertificateDigest(self.header.digest().0)
+        CertificateDigest(Digest { digest: self.header.digest().into() })
     }
 }
 
 impl From<CertificateDigest> for BlockHash {
     fn from(value: CertificateDigest) -> Self {
-        Self::from(value.0)
+        Self::from(value.0.digest)
     }
 }
 

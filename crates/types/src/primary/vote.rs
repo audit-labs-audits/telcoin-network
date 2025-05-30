@@ -5,7 +5,6 @@ use crate::{
     encode, AuthorityIdentifier, BlsSigner, Digest, Epoch, Hash, Header, HeaderDigest, Round,
     Signer,
 };
-use base64::{engine::general_purpose, Engine};
 use serde::{Deserialize, Serialize};
 use std::fmt;
 
@@ -98,25 +97,25 @@ impl Vote {
 }
 
 /// Hash a Vote based on the crate's `DIGEST_LENGTH`
-#[derive(Clone, Serialize, Deserialize, Default, PartialEq, Eq, Hash, PartialOrd, Ord, Copy)]
-pub struct VoteDigest([u8; crypto::DIGEST_LENGTH]);
+#[derive(Clone, Default, PartialEq, Eq, Hash, PartialOrd, Ord, Copy, Serialize, Deserialize)]
+pub struct VoteDigest(Digest<{ crypto::DIGEST_LENGTH }>);
 
 impl VoteDigest {
     /// Create a VoteDigest
     pub fn new(digest: [u8; crypto::DIGEST_LENGTH]) -> Self {
-        VoteDigest(digest)
+        VoteDigest(Digest { digest })
     }
 }
 
 impl From<VoteDigest> for Digest<{ crypto::DIGEST_LENGTH }> {
     fn from(hd: VoteDigest) -> Self {
-        Digest::new(hd.0)
+        hd.0
     }
 }
 
 impl From<VoteDigest> for HeaderDigest {
     fn from(value: VoteDigest) -> Self {
-        Self::new(value.0)
+        Self::new(value.0.into())
     }
 }
 
@@ -131,13 +130,13 @@ impl From<VoteDigest> for Digest<{ crypto::INTENT_MESSAGE_LENGTH }> {
 
 impl fmt::Debug for VoteDigest {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> Result<(), fmt::Error> {
-        write!(f, "{}", general_purpose::STANDARD.encode(self.0))
+        write!(f, "{}", self.0)
     }
 }
 
 impl fmt::Display for VoteDigest {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> Result<(), fmt::Error> {
-        write!(f, "{}", general_purpose::STANDARD.encode(self.0).get(0..16).ok_or(fmt::Error)?)
+        write!(f, "{}", self.0.to_string().get(0..16).ok_or(fmt::Error)?)
     }
 }
 

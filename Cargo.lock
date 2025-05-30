@@ -11060,6 +11060,7 @@ dependencies = [
  "tn-config",
  "tn-network-types",
  "tn-reth",
+ "tn-rpc",
  "tn-storage",
  "tn-test-utils",
  "tn-types",
@@ -11076,6 +11077,7 @@ dependencies = [
  "assert_matches",
  "async-trait",
  "bcs",
+ "bs58",
  "eyre",
  "futures",
  "libp2p",
@@ -11288,7 +11290,6 @@ name = "tn-types"
 version = "0.1.0"
 dependencies = [
  "alloy",
- "base64 0.21.7",
  "bcs",
  "bincode",
  "blake3",
