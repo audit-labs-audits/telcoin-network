@@ -3,8 +3,9 @@
 use clap::Parser;
 use std::path::Path;
 use telcoin_network::{genesis::GenesisArgs, keytool::KeyArgs, node::NodeCommand};
+use tn_config::{Config, ConfigFmt, ConfigTrait};
 use tn_node::launch_node;
-use tn_types::test_utils::CommandParser;
+use tn_types::{test_utils::CommandParser, Address, Genesis, GenesisAccount};
 use tracing::error;
 
 /// Limit potential for port collisions.
@@ -52,6 +53,7 @@ fn create_observer_info(datadir: &str, passphrase: Option<String>) -> eyre::Resu
 pub async fn config_local_testnet(
     temp_path: &Path,
     passphrase: Option<String>,
+    accounts: Option<Vec<(Address, GenesisAccount)>>,
 ) -> eyre::Result<()> {
     let validators = [
         ("validator-1", "0x1111111111111111111111111111111111111111"),
@@ -95,6 +97,13 @@ pub async fn config_local_testnet(
         "1000",
     ]);
     create_committee_command.args.execute()?;
+    // If provided optional accounts then hack them into genesis now...
+    if let Some(accounts) = accounts {
+        let data_dir = shared_genesis_dir.join("genesis/genesis.yaml");
+        let genesis: Genesis = Config::load_from_path(&data_dir, ConfigFmt::YAML)?;
+        let genesis = genesis.extend_accounts(accounts);
+        Config::write_to_path(&data_dir, &genesis, ConfigFmt::YAML)?;
+    }
 
     for (v, _addr) in validators.into_iter() {
         let dir = temp_path.join(v);
@@ -138,8 +147,9 @@ pub async fn config_local_testnet(
 pub async fn spawn_local_testnet(
     temp_path: &Path,
     #[cfg(feature = "faucet")] faucet_contract_address: &str,
+    accounts: Option<Vec<(Address, GenesisAccount)>>,
 ) -> eyre::Result<()> {
-    config_local_testnet(temp_path, None).await?;
+    config_local_testnet(temp_path, None, accounts).await?;
 
     let validators = ["validator-1", "validator-2", "validator-3", "validator-4"];
     for v in validators.into_iter() {

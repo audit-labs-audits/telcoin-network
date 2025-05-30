@@ -38,10 +38,23 @@ pub fn clap_u232_parser(value: &str) -> eyre::Result<U232> {
 
 /// Parse a u64 as base 10 or base 16 (hex) if prefixed with 0x.
 pub fn maybe_hex(s: &str) -> eyre::Result<u64> {
-    let result = if s.starts_with("0x") {
-        u64::from_str_radix(&s[2..], 16)?
+    let result = if let Some(stripped) = s.strip_prefix("0x") {
+        u64::from_str_radix(stripped, 16)?
     } else {
-        u64::from_str_radix(s, 10)?
+        s.parse::<u64>()?
     };
     Ok(result)
+}
+
+#[cfg(test)]
+mod tests {
+    use crate::args::maybe_hex;
+
+    #[test]
+    fn test_maybe_hex() {
+        assert_eq!(maybe_hex("0x1e7").unwrap(), 487);
+        assert_eq!(maybe_hex("487").unwrap(), 487);
+        assert_eq!(maybe_hex("0x7e1").unwrap(), 2017);
+        assert_eq!(maybe_hex("2017").unwrap(), 2017);
+    }
 }

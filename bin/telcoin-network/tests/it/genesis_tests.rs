@@ -30,6 +30,7 @@ async fn test_genesis_with_its() -> eyre::Result<()> {
         temp_path.path(),
         #[cfg(feature = "faucet")]
         "0x0000000000000000000000000000000000000000",
+        None,
     )
     .await
     .expect("failed to spawn testnet");
@@ -156,6 +157,7 @@ async fn test_genesis_with_consensus_registry() -> eyre::Result<()> {
         temp_path.path(),
         #[cfg(feature = "faucet")]
         "0x0000000000000000000000000000000000000000",
+        None,
     )
     .await
     .expect("failed to spawn testnet");

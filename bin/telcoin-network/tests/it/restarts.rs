@@ -206,7 +206,7 @@ fn do_restarts(delay: u64) -> eyre::Result<()> {
     let temp_path = tmp_guard.path().to_path_buf();
     {
         let rt = Runtime::new()?;
-        rt.block_on(config_local_testnet(&temp_path, Some("restart_test".to_string())))
+        rt.block_on(config_local_testnet(&temp_path, Some("restart_test".to_string()), None))
             .expect("failed to config");
     }
     let mut exe_path =
@@ -343,7 +343,7 @@ fn test_restarts_observer() -> eyre::Result<()> {
     let temp_path = tmp_guard.path().to_path_buf();
     {
         let rt = Runtime::new()?;
-        rt.block_on(config_local_testnet(&temp_path, Some("restart_test".to_string())))
+        rt.block_on(config_local_testnet(&temp_path, Some("restart_test".to_string()), None))
             .expect("failed to config");
     }
     let mut exe_path =
