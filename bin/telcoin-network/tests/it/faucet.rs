@@ -20,7 +20,7 @@ use jsonrpsee::{core::client::ClientT, http_client::HttpClientBuilder, rpc_param
 use k256::{elliptic_curve::sec1::ToEncodedPoint, pkcs8::DecodePublicKey, PublicKey as PubKey};
 use secp256k1::PublicKey;
 use std::{str::FromStr, sync::Arc, time::Duration};
-use tn_config::{fetch_file_content_relative_to_manifest, Config, ConfigFmt};
+use tn_config::{fetch_file_content_relative_to_manifest, Config, ConfigFmt, ConfigTrait};
 use tn_reth::{test_utils::TransactionFactory, RethChainSpec, RethEnv};
 use tn_types::{
     adiri_genesis, hex, public_key_to_address, sol, Address, Encodable2718 as _, Genesis,

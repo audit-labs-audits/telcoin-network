@@ -107,7 +107,7 @@ pub async fn config_local_testnet(
 
     for (v, _addr) in validators.into_iter() {
         let dir = temp_path.join(v);
-        std::fs::create_dir_all(&dir.join("genesis"))?;
+        std::fs::create_dir_all(dir.join("genesis"))?;
         // copy genesis files back to validator dirs
         std::fs::copy(
             shared_genesis_dir.join("genesis/committee.yaml"),
