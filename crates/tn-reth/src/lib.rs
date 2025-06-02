@@ -92,7 +92,7 @@ use system_calls::{
     EpochState, CONSENSUS_REGISTRY_ADDRESS, SYSTEM_ADDRESS,
 };
 use tempfile::TempDir;
-use tn_config::{Config, ConfigFmt, ConfigTrait, ValidatorInfo, CONSENSUS_REGISTRY_JSON};
+use tn_config::{Config, ConfigFmt, ConfigTrait, NodeInfo, CONSENSUS_REGISTRY_JSON};
 use tn_types::{
     adiri_chain_spec_arc, calculate_transaction_root, keccak256, Address, Block, BlockBody,
     BlockExt as _, BlockHashOrNumber, BlockNumHash, BlockNumber, BlockWithSenders, BlsSignature,
@@ -1337,7 +1337,7 @@ impl RethEnv {
 
     /// Convenience method for compiling storage and bytecode to include genesis.
     pub fn create_consensus_registry_genesis_account(
-        validators: Vec<ValidatorInfo>,
+        validators: Vec<NodeInfo>,
         genesis: Genesis,
         initial_stake_config: ConsensusRegistry::StakeConfig,
         owner_address: Address,
@@ -1734,7 +1734,7 @@ mod tests {
     use tempfile::TempDir;
     use tn_types::{
         adiri_genesis, BlsKeypair, Certificate, CommittedSubDag, ConsensusHeader, ConsensusOutput,
-        FromHex, PrimaryInfo, ReputationScores,
+        FromHex, NodeP2pInfo, ReputationScores,
     };
 
     /// Helper function for creating a consensus output for tests.
@@ -1786,10 +1786,10 @@ mod tests {
                 let mut rng = ChaCha8Rng::seed_from_u64(i as u64);
                 let bls = BlsKeypair::generate(&mut rng);
                 let bls_pubkey = bls.public();
-                ValidatorInfo {
+                NodeInfo {
                     name: format!("validator-{i}"),
                     bls_public_key: *bls_pubkey,
-                    primary_info: PrimaryInfo::default(),
+                    primary_info: NodeP2pInfo::default(),
                     execution_address: *addr,
                     proof_of_possession: BlsSignature::default(),
                 }
