@@ -1,5 +1,5 @@
 //! Genesis information used when configuring a node.
-use crate::{Config, ConfigFmt, ConfigTrait, TelcoinDirs};
+use crate::TelcoinDirs;
 use eyre::Context;
 use serde::{Deserialize, Serialize};
 use std::{
@@ -11,8 +11,8 @@ use std::{
     sync::Arc,
 };
 use tn_types::{
-    adiri_genesis, keccak256, verify_proof_of_possession_bls, Address, BlsPublicKey, BlsSignature,
-    Committee, CommitteeBuilder, Epoch, Genesis, GenesisAccount, Intent, IntentMessage, Multiaddr,
+    adiri_genesis, verify_proof_of_possession_bls, Address, BlsPublicKey, BlsSignature, Committee,
+    CommitteeBuilder, Epoch, Genesis, GenesisAccount, Intent, IntentMessage, Multiaddr,
     NetworkPublicKey, PrimaryInfo, ProtocolSignature, Signer, WorkerCache, WorkerIndex,
 };
 use tracing::{info, warn};
@@ -54,16 +54,12 @@ impl NetworkGenesis {
         &self.genesis
     }
 
-    /// Create new version of [NetworkGenesis] using the adiri genesis [ChainSpec].
-    pub fn with_genesis(genesis: Genesis) -> Self {
-        Self { genesis, validators: Default::default() }
-    }
-
     /// Add validator information to the genesis directory.
     ///
     /// Adding [ValidatorInfo] to the genesis directory allows other
     /// validators to discover peers using VCS (ie - github).
-    pub fn add_validator(&mut self, validator: ValidatorInfo) {
+    #[cfg(test)]
+    fn add_validator(&mut self, validator: ValidatorInfo) {
         self.validators.insert(*validator.public_key(), validator);
     }
 
@@ -73,7 +69,7 @@ impl NetworkGenesis {
     }
 
     /// Load a list of validators by reading files in a directory.
-    pub fn load_validators_from_path<P>(
+    fn load_validators_from_path<P>(
         telcoin_paths: &P,
     ) -> eyre::Result<Vec<(BlsPublicKey, ValidatorInfo)>>
     where
@@ -117,44 +113,6 @@ impl NetworkGenesis {
         let validators = BTreeMap::from_iter(validators);
 
         Ok(Self { genesis, validators })
-    }
-
-    /// Generate a [NetworkGenesis] by reading files in a directory.
-    pub fn load_from_path<P>(telcoin_paths: &P) -> eyre::Result<Self>
-    where
-        P: TelcoinDirs,
-    {
-        // Load validator information
-        let validators = Self::load_validators_from_path(telcoin_paths)?;
-        let validators = BTreeMap::from_iter(validators);
-
-        let tn_config: Config =
-            Config::load_from_path_or_default(telcoin_paths.node_config_path(), ConfigFmt::YAML)?;
-
-        Ok(Self { genesis: tn_config.genesis, validators })
-    }
-
-    /// Write [NetworkGenesis] to path (genesis directory) as individual validator files.
-    pub fn write_to_path<P>(self, path: P) -> eyre::Result<()>
-    where
-        P: AsRef<Path>,
-    {
-        let path = path.as_ref();
-        info!(target: "genesis::ceremony", ?path, "Writing Network Genesis to dir");
-
-        fs::create_dir_all(path)?;
-
-        // Write validator infos
-        let committee_dir = path.join(GENESIS_VALIDATORS_DIR);
-        fs::create_dir_all(&committee_dir)?;
-
-        for (pubkey, validator) in self.validators {
-            let validator_info = serde_yaml::to_string(&validator)?;
-            let file_name = format!("{}.yaml", keccak256(pubkey));
-            fs::write(committee_dir.join(file_name), validator_info)?;
-        }
-
-        Ok(())
     }
 
     /// Validate each validator:
