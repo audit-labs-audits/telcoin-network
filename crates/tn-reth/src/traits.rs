@@ -19,9 +19,9 @@ use reth_trie_db::MerklePatriciaTrie;
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 use tn_types::{
-    Address, BlsSignature, ConsensusOutput, EthPrimitives, ExecHeader, Hash as _, NodePrimitives,
-    RecoveredBlock, SealedBlock, SealedHeader, TransactionSigned, Withdrawals, B256,
-    MIN_PROTOCOL_BASE_FEE, U256,
+    keccak256, Address, BlsSignature, ConsensusOutput, EthPrimitives, ExecHeader, Hash as _,
+    NodePrimitives, RecoveredBlock, SealedBlock, SealedHeader, TransactionSigned, Withdrawals,
+    B256, MIN_PROTOCOL_BASE_FEE, U256,
 };
 use tracing::error;
 
@@ -153,57 +153,8 @@ impl BuildArguments {
 }
 
 /// The type used to build the next canonical block.
-#[derive(Debug)]
+#[derive(Clone, Debug)]
 pub struct TNPayload {
-    /// Attributes to use when building the payload.
-    ///
-    /// Stored here for simplicity to maintain compatibility with reth api and implementing
-    /// `PayloadBuilderAttributes` on Self.
-    pub attributes: TNPayloadAttributes,
-}
-
-impl TNPayload {
-    /// Create a new instance of [Self].
-    pub fn new(attributes: TNPayloadAttributes) -> Self {
-        Self { attributes }
-    }
-
-    /// Passthrough attribute timestamp.
-    pub(crate) fn timestamp(&self) -> u64 {
-        self.attributes.timestamp
-    }
-
-    /// Who should get fees?
-    pub(crate) fn suggested_fee_recipient(&self) -> Address {
-        self.attributes.beneficiary
-    }
-
-    /// PrevRandao is used by TN to provide a source for randomness on-chain.
-    ///
-    /// This is used as the executed block's "mix_hash".
-    /// [EIP-4399]: https://eips.ethereum.org/EIPS/eip-4399
-    pub(crate) fn prev_randao(&self) -> B256 {
-        self.attributes.mix_hash
-    }
-
-    /// Parent hash.
-    pub(crate) fn parent(&self) -> B256 {
-        self.attributes.parent_header.hash()
-    }
-
-    /// Taken from worker's block, but currently always empty.
-    pub(crate) fn withdrawals(&self) -> &Withdrawals {
-        &self.attributes.withdrawals
-    }
-}
-
-/// The type used to construct a [TNPayload].
-///
-/// It contains all the attributes required to initiate a payload build process. The actual struct
-/// itself is a mediary for maintaining compatibility with reth's api. Otherwise, doesn't provide
-/// much utility.
-#[derive(Clone, Debug, PartialEq, Eq)]
-pub struct TNPayloadAttributes {
     /// The previous canonical block's number and hash.
     pub parent_header: SealedHeader,
     /// The beneficiary from the round of consensus.
@@ -220,8 +171,8 @@ pub struct TNPayloadAttributes {
     pub timestamp: u64,
     /// Value for the `extra_data` field in the new block.
     pub batch_digest: B256,
-    /// Hash value for [ConsensusOutput]. Used as the executed block's "parent_beacon_block_root".
-    pub consensus_output_digest: B256,
+    /// Hash value for [ConsensusHeader]. Used as the executed block's "parent_beacon_block_root".
+    pub consensus_header_digest: B256,
     /// The base fee per gas used to construct this block.
     /// The value comes from the proposed batch.
     pub base_fee_per_gas: u64,
@@ -231,18 +182,14 @@ pub struct TNPayloadAttributes {
     pub gas_limit: u64,
     /// The mix hash used for prev_randao.
     pub mix_hash: B256,
-    /// TODO: support withdrawals
-    ///
-    /// This is currently always empty vec. This comes from the batch block's withdrawals.
-    pub withdrawals: Withdrawals,
     /// Boolean indicating if the payload should use system calls to close the epoch during
     /// execution.
     ///
     /// This is the last batch for the `ConsensusOutput` if the epoch is closing.
-    pub close_epoch: Option<BlsSignature>,
+    pub close_epoch: Option<B256>,
 }
 
-impl TNPayloadAttributes {
+impl TNPayload {
     /// Create a new instance of [Self].
     #[allow(clippy::too_many_arguments)]
     pub fn new(
@@ -250,20 +197,22 @@ impl TNPayloadAttributes {
         batch_index: usize,
         batch_digest: B256,
         output: &ConsensusOutput,
-        consensus_output_digest: B256,
+        consensus_header_digest: B256,
         base_fee_per_gas: u64,
         gas_limit: u64,
         mix_hash: B256,
-        withdrawals: Withdrawals,
     ) -> Self {
         // include leader's aggregate bls signature if this is the last payload for the epoch
         let close_epoch = output
             .epoch_closing_index()
             .is_some_and(|idx| idx == batch_index)
-            .then(|| output.leader().aggregated_signature().unwrap_or_else(|| {
-                error!(target: "engine", ?output, "BLS signature missing for leader - using default for closing epoch");
-                BlsSignature::default()
-            }));
+            .then(|| {
+                let randomness = output.leader().aggregated_signature().unwrap_or_else(|| {
+                    error!(target: "engine", ?output, "BLS signature missing for leader - using default for closing epoch");
+                    BlsSignature::default()
+                });
+                keccak256(randomness.to_bytes())
+            });
 
         Self {
             parent_header,
@@ -272,37 +221,63 @@ impl TNPayloadAttributes {
             batch_index,
             timestamp: output.committed_at(),
             batch_digest,
-            consensus_output_digest,
+            consensus_header_digest,
             base_fee_per_gas,
             gas_limit,
             mix_hash,
-            withdrawals,
             close_epoch,
         }
+    }
+
+    /// Passthrough attribute timestamp.
+    pub(crate) fn timestamp(&self) -> u64 {
+        self.timestamp
+    }
+
+    /// Who should get fees?
+    pub(crate) fn suggested_fee_recipient(&self) -> Address {
+        self.beneficiary
+    }
+
+    /// PrevRandao is used by TN to provide a source for randomness on-chain.
+    ///
+    /// This is used as the executed block's "mix_hash".
+    /// [EIP-4399]: https://eips.ethereum.org/EIPS/eip-4399
+    pub(crate) fn prev_randao(&self) -> B256 {
+        self.mix_hash
+    }
+
+    /// Parent hash.
+    pub(crate) fn parent(&self) -> B256 {
+        self.parent_header.hash()
+    }
+
+    /// The TN parent "beacon" block root.
+    pub(crate) fn parent_beacon_block_root(&self) -> Option<B256> {
+        Some(self.consensus_header_digest)
     }
 
     /// Method to create an instance of Self useful for tests.
     ///
     /// WARNING: only use this for tests. Data is invalid.
+    #[cfg(feature = "test-utils")]
     pub fn new_for_test(parent_header: SealedHeader, output: &ConsensusOutput) -> Self {
         let batch_index = 0;
         let batch_digest = B256::random();
-        let consensus_output_digest = output.digest().into();
+        let consensus_header_digest = output.digest().into();
         let base_fee_per_gas = parent_header.base_fee_per_gas.unwrap_or(MIN_PROTOCOL_BASE_FEE);
         let gas_limit = parent_header.gas_limit;
         let mix_hash = B256::random();
-        let withdrawals = Withdrawals::default();
 
         Self::new(
             parent_header,
             batch_index,
             batch_digest,
             output,
-            consensus_output_digest,
+            consensus_header_digest,
             base_fee_per_gas,
             gas_limit,
             mix_hash,
-            withdrawals,
         )
     }
 }

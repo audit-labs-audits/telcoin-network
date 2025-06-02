@@ -564,12 +564,7 @@ impl RethEnv {
         transactions: Vec<Vec<u8>>,
         consensus_header_hash: B256,
     ) -> TnRethResult<RecoveredBlock<reth_ethereum_primitives::Block>> {
-        //
-        // TODO: review this clone before merging PR - better way to do this
-        // //
-        // /
-        // !!!!
-        let parent_header = payload.attributes.parent_header.clone();
+        let parent_header = payload.parent_header.clone();
 
         let state_provider = self.blockchain_provider.state_by_block_hash(parent_header.hash())?;
         let state = StateProviderDatabase::new(&state_provider);
@@ -587,10 +582,10 @@ impl RethEnv {
 
         debug!(
             target: "engine",
-            parent_hash = ?parent_header.hash(),
-            parent_number = parent_header.number,
+            parent = ?parent_header.num_hash(),
             "building new payload"
         );
+
         // collect these totals to report at the end
         let mut cumulative_gas_used = 0;
         let mut total_fees = U256::ZERO;
@@ -599,20 +594,13 @@ impl RethEnv {
         // let mut receipts = Vec::new();
         let block_gas_limit = ETHEREUM_BLOCK_GAS_LIMIT_30M;
 
+        // copy in case of error
+        let batch_digest = payload.batch_digest;
+
         // TODO: parallelize tx recovery when it's worth it (see
         // TransactionSigned::recover_signers())
-        let mut builder = self.evm_config.builder_for_next_block(
-            &mut db,
-            &parent_header,
-            NextBlockEnvAttributes {
-                timestamp: payload.timestamp(),
-                suggested_fee_recipient: payload.suggested_fee_recipient(),
-                prev_randao: payload.prev_randao(),
-                gas_limit: block_gas_limit,
-                parent_beacon_block_root: None,
-                withdrawals: Some(payload.withdrawals().clone()),
-            },
-        )?;
+        let mut builder =
+            self.evm_config.builder_for_next_block(&mut db, &parent_header, payload)?;
 
         builder.apply_pre_execution_changes().inspect_err(|err| {
             warn!(target: "engine", %err, "failed to apply pre-execution changes");
@@ -625,9 +613,9 @@ impl RethEnv {
         for tx_bytes in &transactions {
             let recovered = reth_recover_raw_transaction::<TransactionSigned>(tx_bytes)
                 .inspect_err(|e| {
-                    tracing::error!(
+                    error!(
                     target: "engine",
-                    batch=?payload.attributes.batch_digest,
+                    batch=?batch_digest,
                     ?tx_bytes,
                     "failed to recover signer: {e}")
                 })?;
@@ -1012,7 +1000,7 @@ impl RethEnv {
 
         // Use SolValue to decode the result
         let mut eligible_validators: Vec<ConsensusRegistry::ValidatorInfo> =
-            alloy::sol_types::SolValue::abi_decode(&data, true)?;
+            alloy::sol_types::SolValue::abi_decode(&data)?;
 
         debug!(target: "engine",  "validators pre-shuffle {:#?}", eligible_validators);
 
@@ -1721,7 +1709,7 @@ impl RethEnv {
             ExecutionResult::Success { output, .. } => {
                 let data = output.into_data();
                 // use SolValue to decode the result
-                let decoded = alloy::sol_types::SolValue::abi_decode(&data, true)?;
+                let decoded = alloy::sol_types::SolValue::abi_decode(&data)?;
                 Ok(decoded)
             }
             e => Err(eyre::eyre!("failed to read validators from state: {e:?}")),
@@ -1810,7 +1798,6 @@ impl From<CreateRequest> for PregenesisRequest {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::traits::TNPayloadAttributes;
     use alloy::primitives::utils::parse_ether;
     use rand_chacha::ChaCha8Rng;
     use tempfile::TempDir;
@@ -1912,10 +1899,8 @@ mod tests {
         let mut db = State::builder().with_database(state).with_bundle_update().build();
 
         // setup environment for execution
-        let payload = TNPayload::new(TNPayloadAttributes::new_for_test(
-            chain.sealed_genesis_header(),
-            &consensus_output_for_tests(),
-        ));
+        let payload =
+            TNPayload::new_for_test(chain.sealed_genesis_header(), &consensus_output_for_tests());
         let tn_env = reth_env.tn_env_for_evm(&payload);
         let mut evm = reth_env.evm_config.evm_with_env(&mut db, tn_env);
         let original_env = evm.context.env().clone();

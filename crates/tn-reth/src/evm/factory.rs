@@ -1,8 +1,20 @@
 //! The factory to create EVM environments.
 
-use super::{TNContext as _, TNContextBuilder as _, TNEvmContext};
+use super::{
+    TNBlockExecutionCtx, TNBlockExecutor, TNContext as _, TNContextBuilder as _, TNEvmContext,
+};
+use alloy::consensus::{Transaction, TxReceipt};
 use alloy_evm::Database;
-use reth_evm::{precompiles::PrecompilesMap, Evm, EvmEnv, EvmFactory};
+use reth_evm::{
+    block::{BlockExecutorFactory, BlockExecutorFor},
+    eth::{
+        receipt_builder::{AlloyReceiptBuilder, ReceiptBuilder},
+        spec::{EthExecutorSpec, EthSpec},
+    },
+    precompiles::PrecompilesMap,
+    Evm, EvmEnv, EvmFactory, FromRecoveredTx, FromTxWithEncoded,
+};
+use reth_primitives::Log;
 use reth_revm::{
     context::{
         result::{EVMError, HaltReason, ResultAndState},
@@ -13,10 +25,10 @@ use reth_revm::{
     interpreter::{interpreter::EthInterpreter, InterpreterResult},
     precompile::{PrecompileSpecId, Precompiles},
     primitives::hardfork::SpecId,
-    Context, ExecuteEvm as _, InspectEvm as _, Inspector,
+    Context, ExecuteEvm as _, InspectEvm as _, Inspector, State,
 };
 use std::ops::{Deref, DerefMut};
-use tn_types::{Address, Bytes, TxKind, U256};
+use tn_types::{Address, Bytes, Encodable2718, TxKind, U256};
 
 /// TN EVM implementation.
 ///
@@ -253,5 +265,72 @@ impl EvmFactory for TNEvmFactory {
                 ))),
             inspect: true,
         }
+    }
+}
+
+/// Ethereum block executor factory.
+#[derive(Debug, Clone, Default, Copy)]
+pub struct TNBlockExecutorFactory<
+    R = AlloyReceiptBuilder,
+    Spec = EthSpec,
+    EvmFactory = TNEvmFactory,
+> {
+    /// Receipt builder.
+    receipt_builder: R,
+    /// Chain specification.
+    spec: Spec,
+    /// EVM factory.
+    evm_factory: EvmFactory,
+}
+
+impl<R, Spec, EvmFactory> TNBlockExecutorFactory<R, Spec, EvmFactory> {
+    /// Creates a new [`TNBlockExecutorFactory`] with the given spec, [`EvmFactory`], and
+    /// [`ReceiptBuilder`].
+    pub const fn new(receipt_builder: R, spec: Spec, evm_factory: EvmFactory) -> Self {
+        Self { receipt_builder, spec, evm_factory }
+    }
+
+    /// Exposes the receipt builder.
+    pub const fn receipt_builder(&self) -> &R {
+        &self.receipt_builder
+    }
+
+    /// Exposes the chain specification.
+    pub const fn spec(&self) -> &Spec {
+        &self.spec
+    }
+
+    /// Exposes the EVM factory.
+    pub const fn evm_factory(&self) -> &EvmFactory {
+        &self.evm_factory
+    }
+}
+
+impl<R, Spec, EvmF> BlockExecutorFactory for TNBlockExecutorFactory<R, Spec, EvmF>
+where
+    R: ReceiptBuilder<Transaction: Transaction + Encodable2718, Receipt: TxReceipt<Log = Log>>,
+    Spec: EthExecutorSpec,
+    EvmF: EvmFactory<Tx: FromRecoveredTx<R::Transaction> + FromTxWithEncoded<R::Transaction>>,
+    Self: 'static,
+{
+    type EvmFactory = EvmF;
+    type ExecutionCtx<'a> = TNBlockExecutionCtx;
+    type Transaction = R::Transaction;
+    type Receipt = R::Receipt;
+
+    fn evm_factory(&self) -> &Self::EvmFactory {
+        &self.evm_factory
+    }
+
+    fn create_executor<'a, DB, I>(
+        &'a self,
+        evm: EvmF::Evm<&'a mut State<DB>, I>,
+        ctx: Self::ExecutionCtx<'a>,
+    ) -> impl BlockExecutorFor<'a, Self, DB, I>
+    where
+        DB: Database + 'a,
+        I: Inspector<EvmF::Context<&'a mut State<DB>>> + 'a,
+    {
+        TNBlockExecutor::new(evm, ctx, &self.spec, &self.receipt_builder)
     }
 }

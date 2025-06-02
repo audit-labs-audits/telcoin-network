@@ -2,15 +2,14 @@
 //!
 //! Inspired by: crates/ethereum/evm/src/lib.rs
 
-use super::TNEvmFactory;
-use crate::error::TnRethError;
+use super::{TNBlockAssembler, TNBlockExecutionCtx, TNBlockExecutorFactory, TNEvmFactory};
+use crate::{error::TnRethError, traits::TNPayload};
 use alloy::eips::{eip1559::INITIAL_BASE_FEE, eip7840::BlobParams};
 use reth_chainspec::{ChainSpec, EthChainSpec as _, EthereumHardfork};
 use reth_evm::{
-    eth::{EthBlockExecutionCtx, EthBlockExecutorFactory},
     ConfigureEvm, EthEvmFactory, EvmEnv, EvmEnvFor, ExecutionCtxFor, NextBlockEnvAttributes,
 };
-use reth_evm_ethereum::{EthBlockAssembler, EthEvmConfig, RethReceiptBuilder};
+use reth_evm_ethereum::{EthEvmConfig, RethReceiptBuilder};
 use reth_primitives::{BlockTy, HeaderTy};
 use reth_revm::{
     context::{BlockEnv, CfgEnv},
@@ -19,23 +18,31 @@ use reth_revm::{
     Database,
 };
 use std::{borrow::Cow, convert::Infallible, sync::Arc};
-use tn_types::{Address, BlockHeader as _, EthPrimitives, SealedBlock, SealedHeader, U256};
+use tn_types::{
+    Address, BlockHeader as _, Bytes, EthPrimitives, SealedBlock, SealedHeader, B256, U256,
+};
 
 /// TN-related EVM configuration.
+///
+/// TODO: consider constructing this each time with the `ConsensusOutput`?????
+/// ??!!!!!
+///
+///
+/// ??
 #[derive(Debug, Clone)]
 pub struct TnEvmConfig {
-    /// Inner [`EthBlockExecutorFactory`].
-    pub executor_factory: EthBlockExecutorFactory<RethReceiptBuilder, Arc<ChainSpec>, TNEvmFactory>,
+    /// Inner [`TNBlockExecutorFactory`].
+    pub executor_factory: TNBlockExecutorFactory<RethReceiptBuilder, Arc<ChainSpec>, TNEvmFactory>,
     /// Ethereum block assembler.
-    pub block_assembler: EthBlockAssembler<ChainSpec>,
+    pub block_assembler: TNBlockAssembler<ChainSpec>,
 }
 
 impl TnEvmConfig {
     /// Creates a new TN EVM configuration with the given chain spec.
     pub fn new(chain_spec: Arc<ChainSpec>) -> Self {
         Self {
-            block_assembler: EthBlockAssembler::new(chain_spec.clone()),
-            executor_factory: EthBlockExecutorFactory::new(
+            block_assembler: TNBlockAssembler::new(chain_spec.clone()),
+            executor_factory: TNBlockExecutorFactory::new(
                 RethReceiptBuilder::default(),
                 chain_spec,
                 TNEvmFactory::default(),
@@ -148,12 +155,12 @@ impl ConfigureEvm for TnEvmConfig {
     // !!
     // !
     // This is how we can provide the `close_epoch` logic
-    type NextBlockEnvCtx = NextBlockEnvAttributes;
+    type NextBlockEnvCtx = TNPayload;
 
     type BlockExecutorFactory =
-        EthBlockExecutorFactory<RethReceiptBuilder, Arc<ChainSpec>, TNEvmFactory>;
+        TNBlockExecutorFactory<RethReceiptBuilder, Arc<ChainSpec>, TNEvmFactory>;
 
-    type BlockAssembler = EthBlockAssembler<ChainSpec>;
+    type BlockAssembler = TNBlockAssembler<ChainSpec>;
 
     fn block_executor_factory(&self) -> &Self::BlockExecutorFactory {
         &self.executor_factory
@@ -199,12 +206,12 @@ impl ConfigureEvm for TnEvmConfig {
     fn next_evm_env(
         &self,
         parent: &HeaderTy<Self::Primitives>,
-        attributes: &Self::NextBlockEnvCtx,
+        payload: &Self::NextBlockEnvCtx,
     ) -> Result<EvmEnvFor<Self>, Self::Error> {
         // ensure we're not missing any timestamp based hardforks
         let spec_id = reth_evm_ethereum::revm_spec_by_timestamp_and_block_number(
             self.chain_spec(),
-            attributes.timestamp,
+            payload.timestamp,
             parent.number() + 1,
         );
 
@@ -214,7 +221,14 @@ impl ConfigureEvm for TnEvmConfig {
             .with_spec(spec_id)
             .with_blob_max_and_target_count(self.blob_max_and_target_count_by_hardfork());
 
-        let blob_params = self.chain_spec().blob_params_at_timestamp(attributes.timestamp);
+        let blob_params = self.chain_spec().blob_params_at_timestamp(payload.timestamp);
+
+        // TODO: keep this logic or trash???
+        //
+        // @!!!!!!!111!!!!!!!
+        // !
+        //
+        //
         // if the parent block did not have excess blob gas (i.e. it was pre-cancun), but it is
         // cancun now, we need to set the excess blob gas to the default value(0)
         let blob_excess_gas_and_price = parent
@@ -226,66 +240,54 @@ impl ConfigureEvm for TnEvmConfig {
                 BlobExcessGasAndPrice { excess_blob_gas, blob_gasprice }
             });
 
-        let mut basefee = parent.next_block_base_fee(
-            self.chain_spec().base_fee_params_at_timestamp(attributes.timestamp),
-        );
-
-        let mut gas_limit = attributes.gas_limit;
-
-        // If we are on the London fork boundary, we need to multiply the parent's gas limit by the
-        // elasticity multiplier to get the new gas limit.
-        if self.chain_spec().fork(EthereumHardfork::London).transitions_at_block(parent.number + 1)
-        {
-            let elasticity_multiplier = self
-                .chain_spec()
-                .base_fee_params_at_timestamp(attributes.timestamp)
-                .elasticity_multiplier;
-
-            // multiply the gas limit by the elasticity multiplier
-            gas_limit *= elasticity_multiplier as u64;
-
-            // set the base fee to the initial base fee from the EIP-1559 spec
-            basefee = Some(INITIAL_BASE_FEE)
-        }
-
         let block_env = BlockEnv {
             number: parent.number + 1,
-            beneficiary: attributes.suggested_fee_recipient,
-            timestamp: attributes.timestamp,
+            beneficiary: payload.beneficiary,
+            timestamp: payload.timestamp,
+            // difficulty is useful for post-execution, but executed with ZERO
             difficulty: U256::ZERO,
-            prevrandao: Some(attributes.prev_randao),
-            gas_limit,
-            // calculate basefee based on parent block's gas usage
-            basefee: basefee.unwrap_or_default(),
-            // calculate excess gas based on parent block's blob gas usage
+            prevrandao: Some(payload.prev_randao()),
+            gas_limit: payload.gas_limit,
+            basefee: payload.base_fee_per_gas,
             blob_excess_gas_and_price,
         };
 
-        Ok((cfg, block_env).into())
+        // Ok((cfg, block_env).into())
+
+        let evm_env = EvmEnv::new(cfg, block_env);
+
+        Ok(evm_env)
     }
 
     fn context_for_block<'a>(
         &self,
         block: &'a SealedBlock<BlockTy<Self::Primitives>>,
     ) -> ExecutionCtxFor<'a, Self> {
-        EthBlockExecutionCtx {
+        // extra data is default otherwise it contains the hashed bls signature
+        let close_epoch = if block.extra_data == Bytes::default() {
+            None
+        } else {
+            Some(B256::from_slice(block.extra_data.as_ref()))
+        };
+
+        TNBlockExecutionCtx {
             parent_hash: block.header().parent_hash,
             parent_beacon_block_root: block.header().parent_beacon_block_root,
-            ommers: &block.body().ommers,
-            withdrawals: block.body().withdrawals.as_ref().map(Cow::Borrowed),
+            nonce: block.nonce.into(),
+            close_epoch,
         }
     }
 
     fn context_for_next_block(
         &self,
         parent: &SealedHeader<HeaderTy<Self::Primitives>>,
-        attributes: Self::NextBlockEnvCtx,
+        payload: Self::NextBlockEnvCtx,
     ) -> ExecutionCtxFor<'_, Self> {
-        EthBlockExecutionCtx {
+        TNBlockExecutionCtx {
             parent_hash: parent.hash(),
-            parent_beacon_block_root: attributes.parent_beacon_block_root,
-            ommers: &[],
-            withdrawals: attributes.withdrawals.map(Cow::Owned),
+            parent_beacon_block_root: payload.parent_beacon_block_root(),
+            nonce: payload.nonce,
+            close_epoch: payload.close_epoch,
         }
     }
 

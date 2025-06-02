@@ -1,8 +1,11 @@
 //! The types that build blocks for EVM execution.
 
-use alloy::{consensus::TxReceipt, eips::eip7685::Requests};
+use alloy::{
+    consensus::{proofs, Block, BlockBody, Transaction, TxReceipt},
+    eips::{eip7685::Requests, eip7840, merge::BEACON_NONCE},
+};
 use alloy_evm::{Database, Evm};
-use reth_chainspec::EthereumHardfork;
+use reth_chainspec::{EthChainSpec, EthereumHardfork, EthereumHardforks};
 use reth_errors::{BlockExecutionError, BlockValidationError};
 use reth_evm::{
     block::{
@@ -13,41 +16,47 @@ use reth_evm::{
         receipt_builder::{AlloyReceiptBuilder, ReceiptBuilder, ReceiptBuilderCtx},
         spec::{EthExecutorSpec, EthSpec},
     },
+    execute::{BlockAssembler, BlockAssemblerInput},
     state_change::balance_increment_state,
     EthEvmFactory, EvmFactory, FromRecoveredTx, FromTxWithEncoded, OnStateHook,
 };
-use reth_primitives::Log;
+use reth_primitives::{logs_bloom, Log};
 use reth_provider::BlockExecutionResult;
 use reth_revm::{
-    context::{
-        result::{ExecutionResult, ResultAndState},
-        Transaction,
-    },
+    context::result::{ExecutionResult, ResultAndState},
     DatabaseCommit as _, Inspector, State,
 };
-use std::borrow::Cow;
-use tn_types::{Encodable2718, ExecHeader, Withdrawals, B256};
+use std::{borrow::Cow, sync::Arc};
+use tn_types::{
+    BlsSignature, Bytes, Encodable2718, ExecHeader, Receipt, TransactionSigned, Withdrawals, B256,
+    EMPTY_OMMER_ROOT_HASH, EMPTY_WITHDRAWALS,
+};
 
 /// Context for TN block execution.
 #[derive(Debug, Clone)]
-pub struct TNBlockExecutionCtx<'a> {
+pub struct TNBlockExecutionCtx {
     /// Parent block hash.
     pub parent_hash: B256,
     /// Parent beacon block root.
     pub parent_beacon_block_root: Option<B256>,
-    // /// Block ommers
-    // pub ommers: &'a [ExecHeader],
-    /// Block withdrawals.
-    pub withdrawals: Option<Cow<'a, Withdrawals>>,
+    /// The index for the batch.
+    pub nonce: u64,
+    /// Keccak hash of the bls signature for the leader certificate.
+    /// Indicates executor to make closing epoch system call.
+    pub close_epoch: Option<B256>,
+    // // /// Block ommers
+    // // pub ommers: &'a [ExecHeader],
+    // // /// Block withdrawals.
+    // // pub withdrawals: Option<Cow<'a, Withdrawals>>,
 }
 
 /// Block executor for Ethereum.
 #[derive(Debug)]
-pub struct TNBlockExecutor<'a, Evm, Spec, R: ReceiptBuilder> {
+pub struct TNBlockExecutor<Evm, Spec, R: ReceiptBuilder> {
     /// Reference to the specification object.
     spec: Spec,
     /// Context for block execution.
-    pub ctx: TNBlockExecutionCtx<'a>,
+    pub ctx: TNBlockExecutionCtx,
     /// Inner EVM.
     evm: Evm,
     /// Utility to call system smart contracts.
@@ -61,13 +70,13 @@ pub struct TNBlockExecutor<'a, Evm, Spec, R: ReceiptBuilder> {
     gas_used: u64,
 }
 
-impl<'a, Evm, Spec, R> TNBlockExecutor<'a, Evm, Spec, R>
+impl<Evm, Spec, R> TNBlockExecutor<Evm, Spec, R>
 where
     Spec: Clone,
     R: ReceiptBuilder,
 {
     /// Creates a new [`TNBlockExecutor`]
-    pub fn new(evm: Evm, ctx: TNBlockExecutionCtx<'a>, spec: Spec, receipt_builder: R) -> Self {
+    pub fn new(evm: Evm, ctx: TNBlockExecutionCtx, spec: Spec, receipt_builder: R) -> Self {
         Self {
             evm,
             ctx,
@@ -80,7 +89,7 @@ where
     }
 }
 
-impl<'db, DB, E, Spec, R> BlockExecutor for TNBlockExecutor<'_, E, Spec, R>
+impl<'db, DB, E, Spec, R> BlockExecutor for TNBlockExecutor<E, Spec, R>
 where
     DB: Database + 'db,
     E: Evm<
@@ -211,6 +220,28 @@ where
         //         drained_balance;
         // }
 
+        if self.ctx.close_epoch.is_some() {
+            // TODO: apply epoch close here
+            todo!()
+        }
+
+        // // close epoch using leader's aggregate signature if conditions are met
+        // if let Some(res) = payload
+        //     .attributes
+        //     .close_epoch
+        //     .map(|sig| self.apply_closing_epoch_contract_call(&mut evm, sig))
+        // {
+        //     // add logs if epoch closed
+        //     let logs = res?;
+        //     receipts.push(Some(Receipt {
+        //         // no better tx type
+        //         tx_type: TxType::Legacy,
+        //         success: true,
+        //         cumulative_gas_used: 0,
+        //         logs,
+        //     }));
+        // }
+
         let balance_increments = alloy::primitives::map::foldhash::HashMap::default();
 
         // TODO: apply rewards for beneficiary
@@ -250,69 +281,123 @@ where
     }
 }
 
-/// Ethereum block executor factory.
-#[derive(Debug, Clone, Default, Copy)]
-pub struct EthBlockExecutorFactory<
-    R = AlloyReceiptBuilder,
-    Spec = EthSpec,
-    EvmFactory = EthEvmFactory,
-> {
-    /// Receipt builder.
-    receipt_builder: R,
-    /// Chain specification.
-    spec: Spec,
-    /// EVM factory.
-    evm_factory: EvmFactory,
+/// Block builder for TN.
+#[derive(Debug, Clone)]
+pub struct TNBlockAssembler<ChainSpec = reth_chainspec::ChainSpec> {
+    /// The chainspec.
+    pub chain_spec: Arc<ChainSpec>,
+    /// Extra data to use for the blocks.
+    pub extra_data: Bytes,
 }
 
-impl<R, Spec, EvmFactory> EthBlockExecutorFactory<R, Spec, EvmFactory> {
-    /// Creates a new [`EthBlockExecutorFactory`] with the given spec, [`EvmFactory`], and
-    /// [`ReceiptBuilder`].
-    pub const fn new(receipt_builder: R, spec: Spec, evm_factory: EvmFactory) -> Self {
-        Self { receipt_builder, spec, evm_factory }
-    }
-
-    /// Exposes the receipt builder.
-    pub const fn receipt_builder(&self) -> &R {
-        &self.receipt_builder
-    }
-
-    /// Exposes the chain specification.
-    pub const fn spec(&self) -> &Spec {
-        &self.spec
-    }
-
-    /// Exposes the EVM factory.
-    pub const fn evm_factory(&self) -> &EvmFactory {
-        &self.evm_factory
+impl<ChainSpec> TNBlockAssembler<ChainSpec> {
+    /// Creates a new [`TNBlockAssembler`].
+    pub fn new(chain_spec: Arc<ChainSpec>) -> Self {
+        Self { chain_spec, extra_data: Default::default() }
     }
 }
 
-impl<R, Spec, EvmF> BlockExecutorFactory for EthBlockExecutorFactory<R, Spec, EvmF>
+impl<F, ChainSpec> BlockAssembler<F> for TNBlockAssembler<ChainSpec>
 where
-    R: ReceiptBuilder<Transaction: Transaction + Encodable2718, Receipt: TxReceipt<Log = Log>>,
-    Spec: EthExecutorSpec,
-    EvmF: EvmFactory<Tx: FromRecoveredTx<R::Transaction> + FromTxWithEncoded<R::Transaction>>,
-    Self: 'static,
+    F: for<'a> BlockExecutorFactory<
+        ExecutionCtx<'a> = TNBlockExecutionCtx,
+        Transaction = TransactionSigned,
+        Receipt = Receipt,
+    >,
+    ChainSpec: EthChainSpec + EthereumHardforks,
 {
-    type EvmFactory = EvmF;
-    type ExecutionCtx<'a> = TNBlockExecutionCtx<'a>;
-    type Transaction = R::Transaction;
-    type Receipt = R::Receipt;
+    type Block = Block<TransactionSigned>;
 
-    fn evm_factory(&self) -> &Self::EvmFactory {
-        &self.evm_factory
-    }
+    fn assemble_block(
+        &self,
+        input: BlockAssemblerInput<'_, '_, F>,
+    ) -> Result<Block<TransactionSigned>, BlockExecutionError> {
+        let BlockAssemblerInput {
+            evm_env,
+            execution_ctx: ctx,
+            parent,
+            transactions,
+            output: BlockExecutionResult { receipts, requests, gas_used },
+            state_root,
+            ..
+        } = input;
 
-    fn create_executor<'a, DB, I>(
-        &'a self,
-        evm: EvmF::Evm<&'a mut State<DB>, I>,
-        ctx: Self::ExecutionCtx<'a>,
-    ) -> impl BlockExecutorFor<'a, Self, DB, I>
-    where
-        DB: Database + 'a,
-        I: Inspector<EvmF::Context<&'a mut State<DB>>> + 'a,
-    {
-        TNBlockExecutor::new(evm, ctx, &self.spec, &self.receipt_builder)
+        let timestamp = evm_env.block_env.timestamp;
+        let transactions_root = proofs::calculate_transaction_root(&transactions);
+        let receipts_root = Receipt::calculate_receipt_root_no_memo(receipts);
+        let logs_bloom = logs_bloom(receipts.iter().flat_map(|r| r.logs()));
+
+        let withdrawals = Some(Withdrawals::default()); //self
+                                                        //     .chain_spec
+                                                        //     .is_shanghai_active_at_timestamp(timestamp)
+                                                        //     .then(|| ctx.withdrawals.map(|w| w.into_owned()).unwrap_or_default());
+
+        let withdrawals_root = Some(EMPTY_WITHDRAWALS);
+        // withdrawals.as_deref().map(|w| proofs::calculate_withdrawals_root(w));
+        let requests_hash = self
+            .chain_spec
+            .is_prague_active_at_timestamp(timestamp)
+            .then(|| requests.requests_hash());
+
+        // cancun isn't active
+        let excess_blob_gas = None;
+        let blob_gas_used = None;
+
+        // TODO: delete this
+        //
+        // // only determine cancun fields when active
+        // if self.chain_spec.is_cancun_active_at_timestamp(timestamp) {
+        //     blob_gas_used =
+        //         Some(transactions.iter().map(|tx| tx.blob_gas_used().unwrap_or_default()).sum());
+        //     excess_blob_gas = if self.chain_spec.is_cancun_active_at_timestamp(parent.timestamp) {
+        //         parent.maybe_next_block_excess_blob_gas(
+        //             self.chain_spec.blob_params_at_timestamp(timestamp),
+        //         )
+        //     } else {
+        //         // for the first post-fork block, both parent.blob_gas_used and
+        //         // parent.excess_blob_gas are evaluated as 0
+        //         Some(eip7840::BlobParams::cancun().next_block_excess_blob_gas(0, 0))
+        //     };
+        // }
+
+        let header = ExecHeader {
+            parent_hash: ctx.parent_hash,
+            ommers_hash: EMPTY_OMMER_ROOT_HASH,
+            beneficiary: evm_env.block_env.beneficiary,
+            state_root,
+            transactions_root,
+            receipts_root,
+            withdrawals_root,
+            logs_bloom,
+            timestamp,
+            mix_hash: evm_env.block_env.prevrandao.unwrap_or_default(),
+
+            // ((self.epoch as u64) << 32) | self.round as u64
+            nonce: ctx.nonce.into(), // output nonce - subdag leader nonce -> (epoch | round)
+
+            base_fee_per_gas: Some(evm_env.block_env.basefee),
+            number: evm_env.block_env.number,
+            gas_limit: evm_env.block_env.gas_limit,
+
+            // batch index?
+            difficulty: evm_env.block_env.difficulty,
+
+            gas_used: *gas_used,
+
+            // USE THE RANDOMNESS hashed bls sig
+            extra_data: ctx.close_epoch.map(|hash| hash.to_vec().into()).unwrap_or_default(),
+
+            parent_beacon_block_root: ctx.parent_beacon_block_root,
+            blob_gas_used,
+            excess_blob_gas,
+
+            // batch digests??
+            requests_hash,
+        };
+
+        Ok(Block {
+            header,
+            body: BlockBody { transactions, ommers: Default::default(), withdrawals },
+        })
     }
 }
