@@ -511,6 +511,7 @@ impl RethEnv {
         reth_config: &RethConfig,
         task_manager: &TaskManager,
         database: RethDb,
+        basefee_address: Option<Address>,
     ) -> eyre::Result<Self> {
         let node_config = reth_config.0.clone();
         let evm_config = TnEvmConfig::new(reth_config.0.chain.clone());
@@ -926,7 +927,7 @@ impl RethEnv {
         };
         let reth_config = RethConfig(node_config);
         let database = Self::new_database(&reth_config, db_path)?;
-        Self::new(&reth_config, task_manager, database)
+        Self::new(&reth_config, task_manager, database, None)
     }
 
     /// Convenience method for compiling storage and bytecode to include genesis.
