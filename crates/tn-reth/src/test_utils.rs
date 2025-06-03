@@ -1,13 +1,18 @@
 //! Transaction factory to create legit transactions for execution.
 
-use crate::{error::TnRethResult, recover_raw_transaction, RethEnv, WorkerTxPool};
+use crate::{
+    error::TnRethResult, recover_raw_transaction, BlockWithSenders, RethEnv, WorkerTxPool,
+};
 use alloy::{consensus::SignableTransaction as _, signers::local::PrivateKeySigner};
 use enr::k256::FieldBytes;
 use reth_chainspec::ChainSpec as RethChainSpec;
 use reth_evm::execute::Executor as _;
+use reth_node_builder::Block as _;
 use reth_primitives::sign_message;
+use reth_primitives_traits::SignerRecoverable;
 use reth_provider::{BlockExecutionOutput, ExecutionOutcome};
 use reth_revm::{database::StateProviderDatabase, db::BundleState};
+use reth_transaction_pool::{EthPooledTransaction, PoolTransaction};
 use secp256k1::{
     rand::{self, rngs::StdRng, Rng, SeedableRng as _},
     Secp256k1,
@@ -36,7 +41,7 @@ impl RethEnv {
     /// Execute a block for testing.
     pub fn execute_for_test(
         &self,
-        block: &RecoveredBlock<reth_ethereum_primitives::Block>,
+        block: &BlockWithSenders,
     ) -> TnRethResult<(BundleState, Vec<Receipt>)> {
         // create execution db
         let mut db = StateProviderDatabase::new(
@@ -90,7 +95,7 @@ impl RethEnv {
         for tx_bytes in &txs {
             let tx = recover_raw_transaction(tx_bytes)
                 .expect("raw transaction recovered for test")
-                .into_tx();
+                .into_inner();
             decoded_txs.push(tx);
         }
 
@@ -109,16 +114,17 @@ impl RethEnv {
                 ommers: vec![],
                 withdrawals: Some(Default::default()),
             },
-        }
-        .with_recovered_senders()
-        .expect("unable to recover senders while executing test batch");
+        };
+        // .recover_signers()
+        // .expect("unable to recover senders while executing test batch");
 
         // convenience
         let block_number = block.number;
 
-        let (state, receipts) =
-            self.execute_for_test(&block).expect("executor can execute test batch transactions");
-        ExecutionOutcome::new(state, receipts.into(), block_number, vec![])
+        // let (state, receipts) =
+        //     self.execute_for_test(&block).expect("executor can execute test batch transactions");
+        // ExecutionOutcome::new(state, receipts.into(), block_number, vec![])
+        todo!()
     }
 }
 
@@ -318,20 +324,20 @@ impl TransactionFactory {
         pool: WorkerTxPool,
     ) -> TxHash {
         let tx = self.create_eip1559(chain, None, gas_price, Some(to), value, Bytes::new());
-        let pooled_tx = tx.try_into_pooled().expect("tx valid for pool");
-        let recovered = pooled_tx.try_into_ecrecovered().expect("tx is recovered");
+        let recovered = tx.try_into_recovered().expect("recovered tx");
+        let pooled_tx = EthPooledTransaction::try_from_consensus(recovered)
+            .expect("recovered into eth pooled tx");
 
-        pool.add_transaction_local(recovered.into()).await.expect("recovered tx added to pool")
+        pool.add_transaction_local(pooled_tx).await.expect("recovered tx added to pool")
     }
 
     /// Submit a transaction to the provided pool.
     pub async fn submit_tx_to_pool(&self, tx: TransactionSigned, pool: WorkerTxPool) -> TxHash {
-        let pooled_tx = tx.try_into_pooled().expect("tx valid for pool");
-        let recovered = pooled_tx.try_into_ecrecovered().expect("tx is recovered");
+        let recovered = tx.try_into_recovered().expect("recovered tx");
+        let pooled_tx = EthPooledTransaction::try_from_consensus(recovered)
+            .expect("recovered into eth pooled tx");
 
-        debug!("transaction: \n{recovered:?}\n");
-
-        pool.add_transaction_local(recovered.into()).await.expect("recovered tx added to pool")
+        pool.add_transaction_local(pooled_tx).await.expect("recovered tx added to pool")
     }
 }
 

@@ -18,7 +18,7 @@
 #![deny(unused_must_use, rust_2018_idioms)]
 #![cfg_attr(docsrs, feature(doc_cfg, doc_auto_cfg))]
 
-use crate::traits::TNExecution;
+use crate::traits::{DefaultEthPayloadTypes, TNExecution};
 use alloy::{
     consensus::Transaction as _,
     hex,
@@ -28,7 +28,6 @@ use alloy::{
 use alloy_evm::Evm;
 use clap::Parser;
 use dirs::path_to_datadir;
-use enr::secp256k1::rand::Rng as _;
 use error::{TnRethError, TnRethResult};
 use evm::TnEvmConfig;
 use eyre::OptionExt;
@@ -42,6 +41,7 @@ use reth::{
     },
     builder::NodeConfig,
     network::transactions::config::TransactionPropagationKind,
+    payload::PayloadBuilderHandle,
     rpc::{
         builder::{
             config::RethRpcServerConfig, RethRpcModule, RpcModuleBuilder, RpcModuleSelection,
@@ -51,10 +51,16 @@ use reth::{
         server_types::eth::utils::recover_raw_transaction as reth_recover_raw_transaction,
     },
 };
+use reth_chain_state::ExecutedBlockWithTrieUpdates;
 use reth_chainspec::{BaseFeeParams, EthChainSpec};
 use reth_db::{init_db, DatabaseEnv};
 use reth_db_common::init::init_genesis;
 use reth_discv4::NatResolver;
+use reth_engine_tree::{
+    engine::{EngineApiEvent, EngineApiKind, EngineApiRequest, FromEngine},
+    persistence::PersistenceHandle,
+    tree::{EngineApiTreeHandler, NoopInvalidBlockHook},
+};
 use reth_errors::{BlockExecutionError, BlockValidationError};
 use reth_eth_wire::BlockHashNumber;
 use reth_evm::{
@@ -63,7 +69,7 @@ use reth_evm::{
     ConfigureEvm, NextBlockEnvAttributes,
 };
 use reth_node_builder::{
-    DEFAULT_MAX_PROOF_TASK_CONCURRENCY, DEFAULT_MEMORY_BLOCK_BUFFER_TARGET,
+    TreeConfig, DEFAULT_MAX_PROOF_TASK_CONCURRENCY, DEFAULT_MEMORY_BLOCK_BUFFER_TARGET,
     DEFAULT_RESERVED_CPU_CORES,
 };
 use reth_node_core::node_config::DEFAULT_CROSS_BLOCK_CACHE_SIZE_MB;
@@ -75,6 +81,7 @@ use reth_provider::{
     HeaderProvider as _, ProviderFactory, StateProviderBox, StateProviderFactory,
     TransactionVariant,
 };
+use reth_prune::PrunerBuilder;
 use reth_revm::{
     cached::CachedReads,
     database::StateProviderDatabase,
@@ -106,9 +113,9 @@ use tn_types::{
     EMPTY_TRANSACTIONS, EMPTY_WITHDRAWALS, ETHEREUM_BLOCK_GAS_LIMIT_30M, MIN_PROTOCOL_BASE_FEE,
     U256,
 };
-use tokio::sync::mpsc::{self};
+use tokio::sync::mpsc::{self, unbounded_channel};
 use tracing::{debug, error, info, warn};
-use traits::{TNPayload, TelcoinNode};
+use traits::{TNPrimitives, TelcoinNode};
 
 // Reth stuff we are just re-exporting.  Need to reduce this over time.
 pub use alloy::primitives::FixedBytes;
@@ -130,6 +137,8 @@ pub use reth_transaction_pool::{
 };
 
 pub mod dirs;
+pub mod payload;
+use payload::TNPayload;
 pub mod traits;
 pub mod txn_pool;
 pub use txn_pool::*;
@@ -144,6 +153,30 @@ pub mod test_utils;
 
 /// Rpc Server type, used for getting the node started.
 pub type RpcServer = TransportRpcModules<()>;
+
+/// The type to receive executed blocks from the engine and update canonical/finalized block state.
+pub type TnEngineApiTreeHandler = EngineApiTreeHandler<
+    TNPrimitives,
+    BlockchainProvider<TelcoinNode>,
+    DefaultEthPayloadTypes,
+    TNExecution,
+    TnEvmConfig,
+>;
+
+/// The type to send to the blockchain tree (make blocks canonical/final).
+pub type ToTree = std::sync::mpsc::Sender<
+    FromEngine<
+        EngineApiRequest<DefaultEthPayloadTypes, TNPrimitives>,
+        alloy::consensus::Block<TransactionSigned>,
+    >,
+>;
+
+// replace deprecated reth name with this type
+/// Type alias to replace deprecated reth struct with new generic type:
+/// A block with senders recovered from the block’s transactions.
+///
+/// This type is a SealedBlock with a list of senders that match the transactions in the block.
+pub type BlockWithSenders = RecoveredBlock<reth_ethereum_primitives::Block>;
 
 /// Defaults for chain spec clap parser.
 ///
@@ -352,6 +385,7 @@ impl RethConfig {
             max_proof_task_concurrency: DEFAULT_MAX_PROOF_TASK_CONCURRENCY,
             reserved_cpu_cores: DEFAULT_RESERVED_CPU_CORES,
             precompile_cache_enabled: false,
+            state_root_fallback: false,
         };
 
         let mut this = NodeConfig {
@@ -398,6 +432,9 @@ pub struct RethEnv {
     // evm_executor: BasicBlockExecutorProvider<EthExecutionStrategyFactory<TnEvmConfig>>,
     /// The type to configure the EVM for execution.
     evm_config: TnEvmConfig,
+    /// Sync channel to forward execution results to the tree.
+    /// The tree processes built blocks and stores them to the database.
+    to_tree: ToTree,
     /// The type to spawn tasks.
     task_spawner: TaskSpawner,
 }
@@ -470,9 +507,25 @@ impl RethEnv {
         // let (evm_executor, evm_config) = Self::init_evm_components(&node_config);
         let evm_config = TnEvmConfig::new(reth_config.0.chain.clone());
         let provider_factory = Self::init_provider_factory(&node_config, database)?;
-        let blockchain_provider = Self::init_blockchain_provider(provider_factory.clone())?;
+        let blockchain_provider = BlockchainProvider::new(provider_factory.clone())?;
+        let (to_tree, mut from_tree) = Self::spawn_engine_api_tree_handler(
+            provider_factory,
+            blockchain_provider.clone(),
+            evm_config.clone(),
+            &task_manager,
+        );
+
         let task_spawner = task_manager.get_spawner();
-        Ok(Self { node_config, blockchain_provider, evm_config, task_spawner })
+
+        // spawn task to log messages from tree
+        task_manager.spawn_critical_task("tree events", async move {
+            while let Some(event) = from_tree.recv().await {
+                info!(target: "engine", ?event, "event received from tree");
+            }
+            info!(target: "engine", "rx events from tree shutting down")
+        });
+
+        Ok(Self { node_config, blockchain_provider, evm_config, to_tree, task_spawner })
     }
 
     /// Initialize the provider factory and related components
@@ -495,35 +548,68 @@ impl RethEnv {
         Ok(provider_factory)
     }
 
-    /// Initialize the blockchain provider and tree
-    fn init_blockchain_provider(
-        provider_factory: ProviderFactory<TelcoinNode>,
-        // evm_executor: BasicBlockExecutorProvider<EthExecutionStrategyFactory<TnEvmConfig>>,
-    ) -> eyre::Result<BlockchainProvider<TelcoinNode>> {
-        // Initialize consensus implementation
-        // let tn_execution: Arc<dyn FullConsensus> = Arc::new(TNExecution);
+    /// Initialize the "tree" to handle engine blocks.
+    #[expect(clippy::too_many_arguments)]
+    fn spawn_engine_api_tree_handler(
+        provider: ProviderFactory<TelcoinNode>,
+        blockchain_db: BlockchainProvider<TelcoinNode>,
+        // to_engine: UnboundedSender<BeaconEngineMessage<N::Payload>>,
+        // from_engine: EngineMessageStream<N::Payload>,
+        evm_config: TnEvmConfig,
+        task_manager: &TaskManager,
+    ) -> (
+        std::sync::mpsc::Sender<
+            FromEngine<
+                EngineApiRequest<DefaultEthPayloadTypes, TNPrimitives>,
+                alloy::consensus::Block<TransactionSigned>,
+            >,
+        >,
+        mpsc::UnboundedReceiver<EngineApiEvent<TNPrimitives>>,
+    ) {
+        let tn_execution = TNExecution;
+        let pruner =
+            PrunerBuilder::new(Default::default()).build_with_provider_factory(provider.clone());
+        // ignore metrics
+        let (tx, mut metrics_rx) = mpsc::unbounded_channel();
+        let persistence_handle =
+            PersistenceHandle::<TNPrimitives>::spawn_service(provider, pruner, tx);
+        // ignore payload build requests
+        let (tx, mut payload_rx) = mpsc::unbounded_channel();
+        let noop_payload_builder_handler = PayloadBuilderHandle::new(tx);
 
-        // // Set up blockchain tree
-        // let tree_config = BlockchainTreeConfig::default();
-        // let tree_externals =
-        //     TreeExternals::new(provider_factory.clone(), tn_execution, evm_executor);
-        // let tree = BlockchainTree::new(tree_externals, tree_config)?;
+        let tree_config = TreeConfig::default();
+        let canonical_in_memory_state = blockchain_db.canonical_in_memory_state();
 
-        // let blockchain_tree = Arc::new(ShareableBlockchainTree::new(tree));
-        let blockchain_db = BlockchainProvider::new(provider_factory)?;
+        // spawn tasks to log unused messages and keep channels alive
+        // this is a side-effect of reth integration
+        task_manager.spawn_critical_task("persistence-metrics", async move {
+            while let Some(msg) = metrics_rx.recv().await {
+                info!(target: "engine", ?msg, "recv msg on persistence metrics");
+            }
+            info!(target: "engine", "persistence metrics rx dropped");
+        });
 
-        Ok(blockchain_db)
+        // should not receive these messages
+        task_manager.spawn_critical_task("payload-build-requests", async move {
+            while let Some(msg) = payload_rx.recv().await {
+                error!(target: "engine", ?msg, "recv request for payload build");
+            }
+            info!(target: "engine", "payload builder handle rx dropped");
+        });
+
+        TnEngineApiTreeHandler::spawn_new(
+            blockchain_db,
+            Arc::new(tn_execution),
+            tn_execution,
+            persistence_handle,
+            noop_payload_builder_handler,
+            canonical_in_memory_state,
+            tree_config,
+            Box::new(NoopInvalidBlockHook::default()),
+            EngineApiKind::Ethereum,
+            evm_config,
+        )
     }
-
-    // /// Initialize EVM components
-    // fn init_evm_components(
-    //     node_config: &NodeConfig<RethChainSpec>,
-    // ) -> (BasicBlockExecutorProvider<EthExecutionStrategyFactory<TnEvmConfig>>, TnEvmConfig) {
-    //     let evm_config = TelcoinNode::create_evm_config(Arc::clone(&node_config.chain));
-    //     let evm_executor = TelcoinNode::create_executor(Arc::clone(&node_config.chain));
-
-    //     (evm_executor, evm_config)
-    // }
 
     /// Initialize a new transaction pool for worker.
     pub fn init_txn_pool(&self) -> eyre::Result<WorkerTxPool> {
@@ -562,8 +648,7 @@ impl RethEnv {
         &self,
         payload: TNPayload,
         transactions: Vec<Vec<u8>>,
-        consensus_header_hash: B256,
-    ) -> TnRethResult<RecoveredBlock<reth_ethereum_primitives::Block>> {
+    ) -> TnRethResult<BlockWithSenders> {
         let parent_header = payload.parent_header.clone();
 
         let state_provider = self.blockchain_provider.state_by_block_hash(parent_header.hash())?;
@@ -729,7 +814,7 @@ impl RethEnv {
 
         let BlockBuilderOutcome { execution_result, block, .. } =
             builder.finish(&state_provider)?;
-        let sealed_block = Arc::new(block.sealed_block().clone());
+        // let sealed_block = Arc::new(block.sealed_block().clone());
 
         // // close epoch using leader's aggregate signature if conditions are met
         // if let Some(res) = payload
@@ -827,7 +912,7 @@ impl RethEnv {
         &self,
         payload: TNPayload,
         consensus_header_digest: B256,
-    ) -> TnRethResult<RecoveredBlock<reth_ethereum_primitives::Block>> {
+    ) -> TnRethResult<BlockWithSenders> {
         // let state = self
         //     .blockchain_provider
         //     .state_by_block_hash(payload.attributes.parent_header.hash())
@@ -907,187 +992,18 @@ impl RethEnv {
         todo!()
     }
 
-    fn apply_closing_epoch_contract_call<EXT, DB>(
-        &self,
-        evm: &mut Evm<'_, EXT, DB>,
-        randomness: BlsSignature,
-    ) -> TnRethResult<Vec<Log>>
-    where
-        DB: Database + DatabaseCommit,
-        DB::Error: core::fmt::Display,
-    {
-        let prev_env = Box::new(evm.context.env().clone());
-        let calldata = self.generate_conclude_epoch_calldata(evm, randomness)?;
-
-        // fill tx env to execute system call to consensus registry
-        self.evm_config.fill_tx_env_system_contract_call(
-            &mut evm.context.evm.env,
-            SYSTEM_ADDRESS,
-            CONSENSUS_REGISTRY_ADDRESS,
-            calldata,
-        );
-
-        // execute system call to consensus registry
-        let mut res = match evm.transact() {
-            Ok(res) => res,
-            Err(e) => {
-                // fatal error
-                return Err(EVMError::Custom(format!("epoch closing execution failed: {e}")).into());
-            }
-        };
-
-        // capture closing epoch log
-        debug!(target: "engine", "closing epoch logs:\n{:#?}", res.result.logs());
-        let closing_epoch_logs = res.result.clone().into_logs();
-
-        // remove residual artifacts
-        self.restore_evm_context_after_system_call(&mut res, evm, prev_env);
-
-        debug!(target: "engine", "committing closing epoch state:\n{:#?}", res.state);
-
-        // commit the changes
-        evm.db_mut().commit(res.state);
-
-        Ok(closing_epoch_logs)
-    }
-
-    /// Generate calldata for updating the ConsensusRegistry to conclude the epoch.
-    fn generate_conclude_epoch_calldata<EXT, DB>(
-        &self,
-        evm: &mut Evm<'_, EXT, DB>,
-        randomness: BlsSignature,
-    ) -> TnRethResult<Bytes>
-    where
-        DB: Database,
-        DB::Error: core::fmt::Display,
-    {
-        // shuffle all validators for new committee
-        let new_committee = self.shuffle_new_committee(evm, randomness)?;
-
-        // encode the call to bytes with method selector and args
-        let bytes = ConsensusRegistry::concludeEpochCall { newCommittee: new_committee }
-            .abi_encode()
-            .into();
-
-        Ok(bytes)
-    }
-
-    /// Read eligible validators from latest state and shuffle the committee deterministically.
-    fn shuffle_new_committee<EXT, DB>(
-        &self,
-        evm: &mut Evm<'_, EXT, DB>,
-        randomness: BlsSignature,
-    ) -> TnRethResult<Vec<Address>>
-    where
-        DB: Database,
-        DB::Error: core::fmt::Display,
-    {
-        // read all active validators from consensus registry
-        let calldata =
-            ConsensusRegistry::getValidatorsCall { status: ValidatorStatus::Active.into() }
-                .abi_encode()
-                .into();
-        let read_state =
-            self.read_state_on_chain(evm, SYSTEM_ADDRESS, CONSENSUS_REGISTRY_ADDRESS, calldata)?;
-
-        debug!(target: "engine", "result after shuffle:\n{:#?}", read_state);
-
-        // retrieve data from execution result
-        let data = match read_state.result {
-            ExecutionResult::Success { output, .. } => output.into_data(),
-            e => return Err(EVMError::Custom(format!("getValidatorsCall failed: {e:?}")).into()),
-        };
-
-        // Use SolValue to decode the result
-        let mut eligible_validators: Vec<ConsensusRegistry::ValidatorInfo> =
-            alloy::sol_types::SolValue::abi_decode(&data)?;
-
-        debug!(target: "engine",  "validators pre-shuffle {:#?}", eligible_validators);
-
-        // simple Fisher-Yates shuffle
-        //
-        // create seed from hashed bls agg signature
-        let mut seed = [0; 32];
-        let random_bytes = keccak256(randomness.to_bytes());
-        seed.copy_from_slice(random_bytes.as_slice());
-        debug!(target: "engine", ?seed, "seed after");
-
-        let mut rng = rand_chacha::ChaCha8Rng::from_seed(seed);
-        for i in (1..eligible_validators.len()).rev() {
-            let j = rng.gen_range(0..=i);
-            eligible_validators.swap(i, j);
-        }
-
-        debug!(target: "engine",  "validators post-shuffle {:#?}", eligible_validators);
-
-        let new_committee = eligible_validators.into_iter().map(|v| v.validatorAddress).collect();
-
-        Ok(new_committee)
-    }
-
-    /// Read state on-chain.
-    fn read_state_on_chain<EXT, DB>(
-        &self,
-        evm: &mut Evm<'_, EXT, DB>,
-        caller: Address,
-        contract: Address,
-        calldata: Bytes,
-    ) -> TnRethResult<ResultAndState>
-    where
-        DB: Database,
-        DB::Error: core::fmt::Display,
-    {
-        let prev_env = Box::new(evm.context.env().clone());
-
-        // fill tx env to disable certain EVM checks
-        self.evm_config.fill_tx_env_system_contract_call(
-            &mut evm.context.evm.env,
-            caller,
-            contract,
-            calldata,
-        );
-
-        // read from state
-        let res = match evm.transact() {
-            Ok(res) => res,
-            Err(e) => {
-                // fatal error
-                error!(target: "engine", ?caller, ?contract, "failed to read state: {}", e);
-                return Err(EVMError::Custom(format!("getValidatorsCall failed: {e}")).into());
-            }
-        };
-
-        // restore env for evm
-        evm.context.evm.env = prev_env;
-
-        Ok(res)
-    }
-
-    /// Restore evm context after system call.
-    fn restore_evm_context_after_system_call<EXT, DB>(
-        &self,
-        res: &mut ResultAndState,
-        evm: &mut Evm<'_, EXT, DB>,
-        prev_env: Box<Env>,
-    ) where
-        DB: Database,
-    {
-        // NOTE: revm marks these accounts as "touched" after the contract call
-        // and includes them in the result
-        //
-        // remove the state changes for system call
-        res.state.remove(&SYSTEM_ADDRESS);
-        res.state.remove(&evm.block().coinbase);
-
-        // restore the previous env
-        evm.context.evm.env = prev_env;
-    }
-
     /// Adds block to the tree and skips state root validation.
-    pub fn insert_block(&self, sealed_block_with_senders: RecoveredBlock) -> TnRethResult<()> {
-        self.blockchain_provider.insert_block(
-            sealed_block_with_senders,
-            BlockValidationKind::SkipStateRootValidation,
+    pub fn insert_block(&self, executed_block: ExecutedBlockWithTrieUpdates) -> TnRethResult<()> {
+        // self.blockchain_provider.insert_block(
+        //     sealed_block_with_senders,
+        //     BlockValidationKind::SkipStateRootValidation,
+        // )?;
+        //
+        // TODO: still need fork choice updated??
+
+        let msg = FromEngine::Request(EngineApiRequest::InsertExecutedBlock(executed_block));
+        self.to_tree.send(msg).inspect_err(
+            |_| error!(target: "engine", "failed to forward executed block to tree"),
         )?;
 
         Ok(())
@@ -1099,16 +1015,16 @@ impl RethEnv {
     /// database, but still need to set_finalized afterwards for utilization in-memory for
     /// components, like RPC
     pub fn finalize_block(&self, header: SealedHeader) -> TnRethResult<()> {
-        // finalize the last block executed from consensus output and update chain info
-        //
-        // this removes canonical blocks from the tree, stores the finalized block number in the
-        // database, but still need to set_finalized afterwards for utilization in-memory for
-        // components, like RPC
-        self.blockchain_provider.finalize_block(header.number)?;
-        self.blockchain_provider.set_finalized(header.clone());
+        // // finalize the last block executed from consensus output and update chain info
+        // //
+        // // this removes canonical blocks from the tree, stores the finalized block number in the
+        // // database, but still need to set_finalized afterwards for utilization in-memory for
+        // // components, like RPC
+        // self.blockchain_provider.finalize_block(header.number)?;
+        // self.blockchain_provider.set_finalized(header.clone());
 
-        // update safe block last because this is less time sensitive but still needs to happen
-        self.blockchain_provider.set_safe(header);
+        // // update safe block last because this is less time sensitive but still needs to happen
+        // self.blockchain_provider.set_safe(header);
         Ok(())
     }
 
@@ -1122,13 +1038,19 @@ impl RethEnv {
         // the canon_state_notifications include every block executed in this round
         //
         // the worker's pool maintenance task subcribes to these events
-        self.blockchain_provider.make_canonical(header.hash())?;
+        // self.blockchain_provider.make_canonical(header.hash())?;
 
         // set last executed header as the tracked header
         //
         // see: reth/crates/consensus/beacon/src/engine/mod.rs:update_canon_chain
         self.blockchain_provider.set_canonical_head(header.clone());
-        info!(target: "engine", "canonical head for round {:?}: {:?} - {:?}", <FixedBytes<8> as Into<u64>>::into(header.nonce), header.number, header.hash());
+        info!(
+            target: "engine",
+            "canonical head for round {:?}: {:?} - {:?}",
+            <FixedBytes<8> as Into<u64>>::into(header.nonce),
+            header.number,
+            header.hash()
+        );
         Ok(())
     }
 
@@ -1157,7 +1079,7 @@ impl RethEnv {
     pub fn sealed_block_with_senders(
         &self,
         id: BlockHashOrNumber,
-    ) -> TnRethResult<Option<RecoveredBlock>> {
+    ) -> TnRethResult<Option<BlockWithSenders>> {
         Ok(self.blockchain_provider.sealed_block_with_senders(id, TransactionVariant::NoHash)?)
     }
 
@@ -1225,12 +1147,15 @@ impl RethEnv {
     }
 
     /// Return the block number and hash for the current canonical tip.
-    pub fn canonical_tip(&self) -> BlockNumHash {
-        use reth_blockchain_tree::BlockchainTreeViewer;
-        self.blockchain_provider.canonical_tip()
+    ///
+    /// This checks the canonical-in-memory-state.
+    pub fn canonical_tip(&self) -> TnRethResult<Option<BlockNumHash>> {
+        Ok(self.blockchain_provider.pending_block_num_hash()?)
     }
 
     /// If available return the finalized block number and hash.
+    ///
+    /// This checks the canonical-in-memory-state.
     pub fn finalized_block_num_hash(&self) -> TnRethResult<Option<BlockNumHash>> {
         Ok(self.blockchain_provider.finalized_block_num_hash()?)
     }
@@ -1271,10 +1196,10 @@ impl RethEnv {
             .with_provider(self.blockchain_provider.clone())
             .with_pool(transaction_pool)
             .with_network(network)
-            .with_executor(self.task_spawner.clone())
+            .with_executor(Box::new(self.task_spawner.clone()))
             .with_evm_config(self.evm_config.clone())
-            .with_events(self.blockchain_provider.clone())
-            .with_block_executor(self.evm_executor.clone())
+            // .with_events(self.blockchain_provider.clone())
+            // .with_block_executor(self.evm_executor.clone())
             .with_consensus(tn_execution.clone());
 
         //.node_configure namespaces

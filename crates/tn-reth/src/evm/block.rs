@@ -1,16 +1,25 @@
 //! The types that build blocks for EVM execution.
 
+use crate::{
+    error::{TnRethError, TnRethResult},
+    system_calls::{
+        ConsensusRegistry::{self, ValidatorStatus},
+        CONSENSUS_REGISTRY_ADDRESS,
+    },
+    SYSTEM_ADDRESS,
+};
 use alloy::{
     consensus::{proofs, Block, BlockBody, Transaction, TxReceipt},
     eips::{eip7685::Requests, eip7840, merge::BEACON_NONCE},
+    sol_types::SolCall as _,
 };
 use alloy_evm::{Database, Evm};
 use reth_chainspec::{EthChainSpec, EthereumHardfork, EthereumHardforks};
 use reth_errors::{BlockExecutionError, BlockValidationError};
 use reth_evm::{
     block::{
-        BlockExecutor, BlockExecutorFactory, BlockExecutorFor, ExecutableTx,
-        StateChangePostBlockSource, StateChangeSource, SystemCaller,
+        BlockExecutor, BlockExecutorFactory, BlockExecutorFor, CommitChanges, ExecutableTx,
+        InternalBlockExecutionError, StateChangePostBlockSource, StateChangeSource, SystemCaller,
     },
     eth::{
         receipt_builder::{AlloyReceiptBuilder, ReceiptBuilder, ReceiptBuilderCtx},
@@ -23,14 +32,16 @@ use reth_evm::{
 use reth_primitives::{logs_bloom, Log};
 use reth_provider::BlockExecutionResult;
 use reth_revm::{
-    context::result::{ExecutionResult, ResultAndState},
+    context::result::{EVMError, ExecutionResult, ResultAndState},
     DatabaseCommit as _, Inspector, State,
 };
+use secp256k1::rand::{Rng as _, SeedableRng as _};
 use std::{borrow::Cow, sync::Arc};
 use tn_types::{
-    BlsSignature, Bytes, Encodable2718, ExecHeader, Receipt, TransactionSigned, Withdrawals, B256,
-    EMPTY_OMMER_ROOT_HASH, EMPTY_WITHDRAWALS,
+    keccak256, Address, BlsSignature, Bytes, Encodable2718, ExecHeader, Receipt, TransactionSigned,
+    Withdrawals, B256, EMPTY_OMMER_ROOT_HASH, EMPTY_WITHDRAWALS,
 };
+use tracing::{debug, error};
 
 /// Context for TN block execution.
 #[derive(Debug, Clone)]
@@ -42,12 +53,11 @@ pub struct TNBlockExecutionCtx {
     /// The index for the batch.
     pub nonce: u64,
     /// Keccak hash of the bls signature for the leader certificate.
-    /// Indicates executor to make closing epoch system call.
+    ///
+    /// Executor makes closing epoch system call when this if included.
+    /// The hash is stored in the `extra_data` field so clients know when the
+    /// closing epoch call was made.
     pub close_epoch: Option<B256>,
-    // // /// Block ommers
-    // // pub ommers: &'a [ExecHeader],
-    // // /// Block withdrawals.
-    // // pub withdrawals: Option<Cow<'a, Withdrawals>>,
 }
 
 /// Block executor for Ethereum.
@@ -59,8 +69,6 @@ pub struct TNBlockExecutor<Evm, Spec, R: ReceiptBuilder> {
     pub ctx: TNBlockExecutionCtx,
     /// Inner EVM.
     evm: Evm,
-    /// Utility to call system smart contracts.
-    system_caller: SystemCaller<Spec>,
     /// Receipt builder.
     receipt_builder: R,
 
@@ -70,25 +78,136 @@ pub struct TNBlockExecutor<Evm, Spec, R: ReceiptBuilder> {
     gas_used: u64,
 }
 
-impl<Evm, Spec, R> TNBlockExecutor<Evm, Spec, R>
+impl<'db, Evm, Spec, R, DB> TNBlockExecutor<Evm, Spec, R>
 where
-    Spec: Clone,
+    DB: Database + 'db,
+    DB::Error: core::fmt::Display,
+    Evm: alloy_evm::Evm<
+        DB = &'db mut State<DB>,
+        Tx: FromRecoveredTx<R::Transaction> + FromTxWithEncoded<R::Transaction>,
+    >,
+    Spec: EthereumHardforks,
     R: ReceiptBuilder,
 {
     /// Creates a new [`TNBlockExecutor`]
     pub fn new(evm: Evm, ctx: TNBlockExecutionCtx, spec: Spec, receipt_builder: R) -> Self {
-        Self {
-            evm,
-            ctx,
-            receipts: Vec::new(),
-            gas_used: 0,
-            system_caller: SystemCaller::new(spec.clone()),
-            spec,
-            receipt_builder,
+        Self { evm, ctx, receipts: Vec::new(), gas_used: 0, spec, receipt_builder }
+    }
+
+    /// Apply the closing epoch call to ConsensusRegistry.
+    fn apply_closing_epoch_contract_call(&mut self, randomness: B256) -> TnRethResult<Vec<Log>> {
+        // let prev_env = Box::new(evm.context.env().clone());
+        let calldata = self.generate_conclude_epoch_calldata(randomness)?;
+
+        // execute system call to consensus registry
+        let res = match self.evm.transact_system_call(
+            SYSTEM_ADDRESS,
+            CONSENSUS_REGISTRY_ADDRESS,
+            calldata,
+        ) {
+            Ok(res) => res,
+            Err(e) => {
+                // fatal error
+                error!(target: "engine", "error executing closing epoch contract call: {:?}", e);
+                return Err(TnRethError::EVMCustom(format!("epoch closing execution failed: {e}")));
+            }
+        };
+
+        // capture closing epoch log
+        debug!(target: "engine", "closing epoch logs:\n{:#?}", res.result.logs());
+        let closing_epoch_logs = res.result.clone().into_logs();
+
+        debug!(target: "engine", "committing closing epoch state:\n{:#?}", res.state);
+
+        // commit the changes
+        self.evm.db_mut().commit(res.state);
+
+        Ok(closing_epoch_logs)
+    }
+
+    /// Generate calldata for updating the ConsensusRegistry to conclude the epoch.
+    fn generate_conclude_epoch_calldata(&mut self, randomness: B256) -> TnRethResult<Bytes> {
+        // shuffle all validators for new committee
+        let new_committee = self.shuffle_new_committee(randomness)?;
+
+        // encode the call to bytes with method selector and args
+        let bytes = ConsensusRegistry::concludeEpochCall { newCommittee: new_committee }
+            .abi_encode()
+            .into();
+
+        Ok(bytes)
+    }
+
+    /// Read eligible validators from latest state and shuffle the committee deterministically.
+    fn shuffle_new_committee(&mut self, randomness: B256) -> TnRethResult<Vec<Address>> {
+        // read all active validators from consensus registry
+        let calldata =
+            ConsensusRegistry::getValidatorsCall { status: ValidatorStatus::Active.into() }
+                .abi_encode()
+                .into();
+        let read_state =
+            self.read_state_on_chain(SYSTEM_ADDRESS, CONSENSUS_REGISTRY_ADDRESS, calldata)?;
+
+        debug!(target: "engine", "result after shuffle:\n{:#?}", read_state);
+
+        // retrieve data from execution result
+        let data = match read_state.result {
+            ExecutionResult::Success { output, .. } => output.into_data(),
+            e => {
+                // fatal error
+                error!(target: "engine", "error reading state on chain: {:?}", e);
+                return Err(TnRethError::EVMCustom(format!("error reading state on chain: {e:?}")));
+            }
+        };
+
+        // Use SolValue to decode the result
+        let mut eligible_validators: Vec<ConsensusRegistry::ValidatorInfo> =
+            alloy::sol_types::SolValue::abi_decode(&data)?;
+
+        debug!(target: "engine",  "validators pre-shuffle {:#?}", eligible_validators);
+
+        // simple Fisher-Yates shuffle
+        //
+        // create seed from hashed bls agg signature
+        let mut seed = [0; 32];
+        seed.copy_from_slice(randomness.as_slice());
+        debug!(target: "engine", ?seed, "seed after");
+
+        let mut rng = rand_chacha::ChaCha8Rng::from_seed(seed);
+        for i in (1..eligible_validators.len()).rev() {
+            let j = rng.gen_range(0..=i);
+            eligible_validators.swap(i, j);
         }
+
+        debug!(target: "engine",  "validators post-shuffle {:#?}", eligible_validators);
+
+        let new_committee = eligible_validators.into_iter().map(|v| v.validatorAddress).collect();
+
+        Ok(new_committee)
+    }
+
+    /// Read state on-chain.
+    fn read_state_on_chain(
+        &mut self,
+        caller: Address,
+        contract: Address,
+        calldata: Bytes,
+    ) -> TnRethResult<ResultAndState<<Evm as alloy_evm::Evm>::HaltReason>> {
+        // read from state
+        let res = match self.evm.transact_system_call(caller, contract, calldata) {
+            Ok(res) => res,
+            Err(e) => {
+                // fatal error
+                error!(target: "engine", ?caller, ?contract, "failed to read state on chain: {}", e);
+                return Err(TnRethError::EVMCustom(format!("failed to read state on chain: {e}")));
+            }
+        };
+
+        Ok(res)
     }
 }
 
+// alloy-evm
 impl<'db, DB, E, Spec, R> BlockExecutor for TNBlockExecutor<E, Spec, R>
 where
     DB: Database + 'db,
@@ -96,7 +215,7 @@ where
         DB = &'db mut State<DB>,
         Tx: FromRecoveredTx<R::Transaction> + FromTxWithEncoded<R::Transaction>,
     >,
-    Spec: EthExecutorSpec,
+    Spec: EthereumHardforks,
     R: ReceiptBuilder<Transaction: Transaction + Encodable2718, Receipt: TxReceipt<Log = Log>>,
 {
     type Transaction = R::Transaction;
@@ -109,20 +228,20 @@ where
             self.spec.is_spurious_dragon_active_at_block(self.evm.block().number);
         self.evm.db_mut().set_state_clear_flag(state_clear_flag);
 
-        // TODO: requires prague fork
-        self.system_caller.apply_blockhashes_contract_call(self.ctx.parent_hash, &mut self.evm)?;
-        // TODO: requires cancun
-        self.system_caller
-            .apply_beacon_root_contract_call(self.ctx.parent_beacon_block_root, &mut self.evm)?;
+        // // TODO: requires prague fork
+        // self.system_caller.apply_blockhashes_contract_call(self.ctx.parent_hash, &mut self.evm)?;
+        // // TODO: requires cancun
+        // self.system_caller
+        //     .apply_beacon_root_contract_call(self.ctx.parent_beacon_block_root, &mut self.evm)?;
 
         Ok(())
     }
 
-    fn execute_transaction_with_result_closure(
+    fn execute_transaction_with_commit_condition(
         &mut self,
         tx: impl ExecutableTx<Self>,
-        f: impl FnOnce(&ExecutionResult<<Self::Evm as Evm>::HaltReason>),
-    ) -> Result<u64, BlockExecutionError> {
+        f: impl FnOnce(&ExecutionResult<<Self::Evm as Evm>::HaltReason>) -> CommitChanges,
+    ) -> Result<Option<u64>, BlockExecutionError> {
         // The sum of the transaction's gas limit, Tg, and the gas utilized in this block prior,
         // must be no greater than the block's gasLimit.
         let block_available_gas = self.evm.block().gas_limit - self.gas_used;
@@ -136,15 +255,16 @@ where
         }
 
         // Execute transaction.
-        let result_and_state = self
+        let ResultAndState { result, state } = self
             .evm
             .transact(tx)
             .map_err(|err| BlockExecutionError::evm(err, tx.tx().trie_hash()))?;
-        self.system_caller
-            .on_state(StateChangeSource::Transaction(self.receipts.len()), &result_and_state.state);
-        let ResultAndState { result, state } = result_and_state;
 
-        f(&result);
+        if !f(&result).should_commit() {
+            return Ok(None);
+        }
+
+        // self.system_caller.on_state(StateChangeSource::Transaction(self.receipts.len()), &state);
 
         let gas_used = result.gas_used();
 
@@ -163,7 +283,7 @@ where
         // Commit the state changes.
         self.evm.db_mut().commit(state);
 
-        Ok(gas_used)
+        Ok(Some(gas_used))
     }
 
     fn finish(
@@ -220,9 +340,10 @@ where
         //         drained_balance;
         // }
 
-        if self.ctx.close_epoch.is_some() {
-            // TODO: apply epoch close here
-            todo!()
+        if let Some(randomness) = self.ctx.close_epoch {
+            let logs = self.apply_closing_epoch_contract_call(randomness).map_err(|e| {
+                BlockExecutionError::Internal(InternalBlockExecutionError::Other(e.into()))
+            })?;
         }
 
         // // close epoch using leader's aggregate signature if conditions are met
@@ -252,24 +373,14 @@ where
             .increment_balances(balance_increments.clone())
             .map_err(|_| BlockValidationError::IncrementBalanceFailed)?;
 
-        // call state hook with changes due to balance increments.
-        self.system_caller.try_on_state_with(|| {
-            balance_increment_state(&balance_increments, self.evm.db_mut()).map(|state| {
-                (
-                    StateChangeSource::PostBlock(StateChangePostBlockSource::BalanceIncrements),
-                    Cow::Owned(state),
-                )
-            })
-        })?;
-
         Ok((
             self.evm,
             BlockExecutionResult { receipts: self.receipts, requests, gas_used: self.gas_used },
         ))
     }
 
-    fn set_state_hook(&mut self, hook: Option<Box<dyn OnStateHook>>) {
-        self.system_caller.with_state_hook(hook);
+    fn set_state_hook(&mut self, _hook: Option<Box<dyn OnStateHook>>) {
+        unimplemented!("not using system caller")
     }
 
     fn evm_mut(&mut self) -> &mut Self::Evm {

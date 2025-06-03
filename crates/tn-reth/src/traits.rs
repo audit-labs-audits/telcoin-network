@@ -4,15 +4,21 @@
 //! API.
 
 use crate::{evm::TnEvmConfig, RethEnv};
-use reth::rpc::types::engine::ExecutionData;
+use alloy::rpc::types::engine::ExecutionPayload;
+use reth::{
+    payload::{EthBuiltPayload, EthPayloadBuilderAttributes},
+    rpc::types::engine::ExecutionData,
+};
 use reth_chainspec::ChainSpec;
 pub use reth_consensus::{Consensus, ConsensusError};
 use reth_consensus::{FullConsensus, HeaderValidator};
 use reth_db::DatabaseEnv;
 use reth_engine_primitives::PayloadValidator;
 use reth_evm::ConfigureEvm;
-use reth_node_builder::{NewPayloadError, NodeTypes, NodeTypesWithDB};
-use reth_node_ethereum::EthEngineTypes;
+use reth_node_builder::{
+    BuiltPayload, EngineValidator, NewPayloadError, NodeTypes, NodeTypesWithDB, PayloadTypes,
+};
+use reth_node_ethereum::{engine::EthPayloadAttributes, EthEngineTypes};
 use reth_primitives_traits::Block;
 use reth_provider::{BlockExecutionResult, EthStorage};
 use reth_trie_db::MerklePatriciaTrie;
@@ -25,10 +31,13 @@ use tn_types::{
 };
 use tracing::error;
 
+/// Type for primitives.
+pub type TNPrimitives = EthPrimitives;
+
 // /// Telcoin Network specific node types for reth compatibility.
 // pub trait TelcoinNodeTypes: NodeTypesWithEngine + NodeTypesWithDB {
 //     /// The EVM executor type
-//     type Executor: BlockExecutorProvider<Primitives = EthPrimitives>;
+//     type Executor: BlockExecutorProvider<Primitives = TNPrimitives>;
 
 //     /// The EVM configuration type
 //     type EvmConfig: ConfigureEvm<Transaction = TransactionSigned, Header = ExecHeader>;
@@ -44,7 +53,7 @@ use tracing::error;
 pub struct TelcoinNode {}
 
 impl NodeTypes for TelcoinNode {
-    type Primitives = EthPrimitives;
+    type Primitives = TNPrimitives;
     type ChainSpec = ChainSpec;
     type StateCommitment = MerklePatriciaTrie;
     type Storage = EthStorage;
@@ -76,7 +85,7 @@ impl NodeTypesWithDB for TelcoinNode {
 /// This type is used to noop verify all data. It is not used by Telcoin Network, but is required to
 /// integrate with reth for convenience. TN is mostly EVM/Ethereum types, but with a different
 /// consensus. The traits impl on this type are only used beacon engine, which is not used by TN.
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, Serialize, Deserialize)]
 pub struct TNExecution;
 
 impl<H> HeaderValidator<H> for TNExecution {
@@ -134,150 +143,52 @@ impl PayloadValidator for TNExecution {
     }
 }
 
-/// The type for building blocks that extend the canonical tip.
-#[derive(Debug)]
-pub struct BuildArguments {
-    /// State provider.
-    pub reth_env: RethEnv,
-    /// Output from consensus that contains all the transactions to execute.
-    pub output: ConsensusOutput,
-    /// Last executed block from the previous consensus output.
-    pub parent_header: SealedHeader,
-}
+impl<T> EngineValidator<T> for TNExecution
+where
+    T: PayloadTypes<PayloadAttributes = EthPayloadAttributes, ExecutionData = ExecutionData>,
+{
+    fn validate_version_specific_fields(
+        &self,
+        _version: reth_node_builder::EngineApiMessageVersion,
+        _payload_or_attrs: reth_node_builder::PayloadOrAttributes<
+            '_,
+            T::ExecutionData,
+            <T as PayloadTypes>::PayloadAttributes,
+        >,
+    ) -> Result<(), reth_node_builder::EngineObjectValidationError> {
+        Ok(())
+    }
 
-impl BuildArguments {
-    /// Initialize new instance of [Self].
-    pub fn new(reth_env: RethEnv, output: ConsensusOutput, parent_header: SealedHeader) -> Self {
-        Self { reth_env, output, parent_header }
+    fn ensure_well_formed_attributes(
+        &self,
+        _version: reth_node_builder::EngineApiMessageVersion,
+        _attributes: &<T as PayloadTypes>::PayloadAttributes,
+    ) -> Result<(), reth_node_builder::EngineObjectValidationError> {
+        Ok(())
     }
 }
 
-/// The type used to build the next canonical block.
-#[derive(Clone, Debug)]
-pub struct TNPayload {
-    /// The previous canonical block's number and hash.
-    pub parent_header: SealedHeader,
-    /// The beneficiary from the round of consensus.
-    pub beneficiary: Address,
-    /// The index of the subdag, which equates to the round of consensus.
-    ///
-    /// Used as the executed block header's `nonce`.
-    pub nonce: u64,
-    /// The index of the block within the entire output from consensus.
-    ///
-    /// Used as executed block header's `difficulty`.
-    pub batch_index: usize,
-    /// Value for the `timestamp` field of the new payload
-    pub timestamp: u64,
-    /// Value for the `extra_data` field in the new block.
-    pub batch_digest: B256,
-    /// Hash value for [ConsensusHeader]. Used as the executed block's "parent_beacon_block_root".
-    pub consensus_header_digest: B256,
-    /// The base fee per gas used to construct this block.
-    /// The value comes from the proposed batch.
-    pub base_fee_per_gas: u64,
-    /// The gas limit for the constructed block.
-    ///
-    /// The value comes from the worker's block.
-    pub gas_limit: u64,
-    /// The mix hash used for prev_randao.
-    pub mix_hash: B256,
-    /// Boolean indicating if the payload should use system calls to close the epoch during
-    /// execution.
-    ///
-    /// This is the last batch for the `ConsensusOutput` if the epoch is closing.
-    pub close_epoch: Option<B256>,
-}
+/// A default payload type for [`EthEngineTypes`]
+///
+/// This is required by the `EngineApiTreeHandler` but is never used bc
+/// TN doesn't send beacon messages.
+#[derive(Debug, Default, Clone, serde::Deserialize, serde::Serialize)]
+#[non_exhaustive]
+pub struct DefaultEthPayloadTypes;
 
-impl TNPayload {
-    /// Create a new instance of [Self].
-    #[allow(clippy::too_many_arguments)]
-    pub fn new(
-        parent_header: SealedHeader,
-        batch_index: usize,
-        batch_digest: B256,
-        output: &ConsensusOutput,
-        consensus_header_digest: B256,
-        base_fee_per_gas: u64,
-        gas_limit: u64,
-        mix_hash: B256,
-    ) -> Self {
-        // include leader's aggregate bls signature if this is the last payload for the epoch
-        let close_epoch = output
-            .epoch_closing_index()
-            .is_some_and(|idx| idx == batch_index)
-            .then(|| {
-                let randomness = output.leader().aggregated_signature().unwrap_or_else(|| {
-                    error!(target: "engine", ?output, "BLS signature missing for leader - using default for closing epoch");
-                    BlsSignature::default()
-                });
-                keccak256(randomness.to_bytes())
-            });
+impl PayloadTypes for DefaultEthPayloadTypes {
+    type BuiltPayload = EthBuiltPayload;
+    type PayloadAttributes = EthPayloadAttributes;
+    type PayloadBuilderAttributes = EthPayloadBuilderAttributes;
+    type ExecutionData = ExecutionData;
 
-        Self {
-            parent_header,
-            beneficiary: output.beneficiary(),
-            nonce: output.nonce(),
-            batch_index,
-            timestamp: output.committed_at(),
-            batch_digest,
-            consensus_header_digest,
-            base_fee_per_gas,
-            gas_limit,
-            mix_hash,
-            close_epoch,
-        }
-    }
-
-    /// Passthrough attribute timestamp.
-    pub(crate) fn timestamp(&self) -> u64 {
-        self.timestamp
-    }
-
-    /// Who should get fees?
-    pub(crate) fn suggested_fee_recipient(&self) -> Address {
-        self.beneficiary
-    }
-
-    /// PrevRandao is used by TN to provide a source for randomness on-chain.
-    ///
-    /// This is used as the executed block's "mix_hash".
-    /// [EIP-4399]: https://eips.ethereum.org/EIPS/eip-4399
-    pub(crate) fn prev_randao(&self) -> B256 {
-        self.mix_hash
-    }
-
-    /// Parent hash.
-    pub(crate) fn parent(&self) -> B256 {
-        self.parent_header.hash()
-    }
-
-    /// The TN parent "beacon" block root.
-    pub(crate) fn parent_beacon_block_root(&self) -> Option<B256> {
-        Some(self.consensus_header_digest)
-    }
-
-    /// Method to create an instance of Self useful for tests.
-    ///
-    /// WARNING: only use this for tests. Data is invalid.
-    #[cfg(feature = "test-utils")]
-    pub fn new_for_test(parent_header: SealedHeader, output: &ConsensusOutput) -> Self {
-        let batch_index = 0;
-        let batch_digest = B256::random();
-        let consensus_header_digest = output.digest().into();
-        let base_fee_per_gas = parent_header.base_fee_per_gas.unwrap_or(MIN_PROTOCOL_BASE_FEE);
-        let gas_limit = parent_header.gas_limit;
-        let mix_hash = B256::random();
-
-        Self::new(
-            parent_header,
-            batch_index,
-            batch_digest,
-            output,
-            consensus_header_digest,
-            base_fee_per_gas,
-            gas_limit,
-            mix_hash,
-        )
+    fn block_to_payload(
+        block: SealedBlock<
+            <<Self::BuiltPayload as BuiltPayload>::Primitives as NodePrimitives>::Block,
+        >,
+    ) -> Self::ExecutionData {
+        let (payload, sidecar) =
+            ExecutionPayload::from_block_unchecked(block.hash(), &block.into_block());
+        ExecutionData { payload, sidecar }
     }
 }

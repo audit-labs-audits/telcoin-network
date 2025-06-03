@@ -39,6 +39,12 @@ pub enum TnRethError {
     /// Error decoding alloy abi.
     #[error("Error encoding/decoding abi for sol type: {0}")]
     SolAbi(#[from] alloy::sol_types::Error),
+    /// Error with EVM calls.
+    #[error("{0}")]
+    EVMCustom(String),
+    /// Error forwarding executed block to tree.
+    #[error("Failed to forward executed block to tree.")]
+    TreeChannelClosed,
 }
 
 impl From<TnRethError> for EthApiError {
@@ -48,5 +54,11 @@ impl From<TnRethError> for EthApiError {
         } else {
             EthApiError::EvmCustom(value.to_string())
         }
+    }
+}
+
+impl<T> From<std::sync::mpsc::SendError<T>> for TnRethError {
+    fn from(_: std::sync::mpsc::SendError<T>) -> Self {
+        Self::TreeChannelClosed
     }
 }

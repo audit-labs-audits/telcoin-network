@@ -3,7 +3,7 @@
 //! Inspired by: crates/ethereum/evm/src/lib.rs
 
 use super::{TNBlockAssembler, TNBlockExecutionCtx, TNBlockExecutorFactory, TNEvmFactory};
-use crate::{error::TnRethError, traits::TNPayload};
+use crate::{error::TnRethError, payload::TNPayload};
 use alloy::eips::{eip1559::INITIAL_BASE_FEE, eip7840::BlobParams};
 use reth_chainspec::{ChainSpec, EthChainSpec as _, EthereumHardfork};
 use reth_evm::{
@@ -144,6 +144,7 @@ impl TnEvmConfig {
 //     }
 // }
 
+// reth-evm
 impl ConfigureEvm for TnEvmConfig {
     type Primitives = EthPrimitives;
 
@@ -174,10 +175,13 @@ impl ConfigureEvm for TnEvmConfig {
         let spec = reth_evm_ethereum::revm_spec(self.chain_spec(), header);
 
         // configure evm env based on parent block
-        let cfg_env = CfgEnv::new()
-            .with_chain_id(self.chain_spec().chain().id())
-            .with_spec(spec)
-            .with_blob_max_and_target_count(self.blob_max_and_target_count_by_hardfork());
+        let mut cfg_env =
+            CfgEnv::new().with_chain_id(self.chain_spec().chain().id()).with_spec(spec);
+
+        let blob_params = self.chain_spec().blob_params_at_timestamp(header.timestamp);
+        if let Some(blob_params) = &blob_params {
+            cfg_env.set_blob_max_count(blob_params.max_blob_count);
+        }
 
         // derive the EIP-4844 blob fees from the header's `excess_blob_gas` and the current
         // blobparams
@@ -216,13 +220,13 @@ impl ConfigureEvm for TnEvmConfig {
         );
 
         // configure evm env based on parent block
-        let cfg = CfgEnv::new()
-            .with_chain_id(self.chain_spec().chain().id())
-            .with_spec(spec_id)
-            .with_blob_max_and_target_count(self.blob_max_and_target_count_by_hardfork());
+        let mut cfg =
+            CfgEnv::new().with_chain_id(self.chain_spec().chain().id()).with_spec(spec_id);
 
         let blob_params = self.chain_spec().blob_params_at_timestamp(payload.timestamp);
-
+        if let Some(blob_params) = &blob_params {
+            cfg.set_blob_max_count(blob_params.max_blob_count);
+        }
         // TODO: keep this logic or trash???
         //
         // @!!!!!!!111!!!!!!!

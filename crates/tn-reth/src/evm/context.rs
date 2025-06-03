@@ -18,6 +18,10 @@ use reth_revm::{
 pub type TNEvmContext<DB> = Context<BlockEnv, TxEnv, CfgEnv, DB>;
 
 // TODO: rename thissss
+// - RethEvm
+// - RevmEvm
+// - TNEvm
+// - TnEvm
 ///
 ///
 /// convenience type
