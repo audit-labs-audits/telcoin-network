@@ -372,7 +372,7 @@ where
     /// Publish our network addresses and peer id under our BLS public key for discovery.
     fn publish_our_data(&mut self) {
         if let Some(record) = self.get_peer_record() {
-            info!(target: "network-kad", ?record, "Publishing our record to kademlia");
+            info!(target: "network-kad", "Publishing our record to kademlia");
             if let Err(err) =
                 self.swarm.behaviour_mut().kademlia.put_record(record, kad::Quorum::One)
             {

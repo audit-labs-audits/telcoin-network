@@ -16,14 +16,13 @@ use tn_reth::{
     worker::{WorkerComponents, WorkerNetwork},
     RethEnv, RpcServerHandle, WorkerTxPool,
 };
-use tn_rpc::{TelcoinNetworkRpcExt, TelcoinNetworkRpcExtApiServer};
+use tn_rpc::{EngineToPrimary, TelcoinNetworkRpcExt, TelcoinNetworkRpcExtApiServer};
 use tn_types::{
     Address, BatchSender, BatchValidation, ConsensusOutput, ExecHeader, Noticer, SealedHeader,
     TaskSpawner, WorkerId, B256, MIN_PROTOCOL_BASE_FEE,
 };
 use tn_worker::WorkerNetworkHandle;
-use tokio::sync::broadcast;
-use tokio_stream::wrappers::BroadcastStream;
+use tokio::sync::mpsc;
 use tracing::{error, info};
 
 /// Inner type for holding execution layer types.
@@ -51,7 +50,7 @@ impl ExecutionNodeInner {
     /// All tasks are spawned with the [ExecutionNodeInner]'s [TaskManager].
     pub(super) async fn start_engine(
         &self,
-        from_consensus: broadcast::Receiver<ConsensusOutput>,
+        rx_output: mpsc::Receiver<ConsensusOutput>,
         rx_shutdown: Noticer,
     ) -> eyre::Result<()> {
         let parent_header = self.reth_env.lookup_head()?;
@@ -60,9 +59,10 @@ impl ExecutionNodeInner {
         let tn_engine = ExecutorEngine::new(
             self.reth_env.clone(),
             self.reth_env.get_debug_max_round(),
-            BroadcastStream::new(from_consensus),
+            rx_output,
             parent_header,
             rx_shutdown,
+            self.reth_env.get_task_spawner().clone(),
         );
 
         // spawn tn engine
@@ -111,11 +111,15 @@ impl ExecutionNodeInner {
     }
 
     /// Initialize the worker's transaction pool and public RPC.
-    pub(super) async fn initialize_worker_components(
+    pub(super) async fn initialize_worker_components<EP>(
         &mut self,
         worker_id: WorkerId,
         network_handle: WorkerNetworkHandle,
-    ) -> eyre::Result<()> {
+        engine_to_primary: EP,
+    ) -> eyre::Result<()>
+    where
+        EP: EngineToPrimary + Send + Sync + 'static,
+    {
         let transaction_pool = self.reth_env.init_txn_pool()?;
 
         let network =
@@ -128,7 +132,6 @@ impl ExecutionNodeInner {
         transaction_pool.set_block_info(tx_pool_latest);
 
         // extend TN namespace
-        let engine_to_primary = (); // TODO: pass client/server here
         let tn_ext = TelcoinNetworkRpcExt::new(self.reth_env.chainspec(), engine_to_primary);
         let mut server = self.reth_env.get_rpc_server(
             transaction_pool.clone(),

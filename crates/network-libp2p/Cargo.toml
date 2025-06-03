@@ -26,6 +26,7 @@ tracing = { workspace = true }
 serde = { workspace = true }
 thiserror = { workspace = true }
 tn-storage = { workspace = true }
+bs58 = { workspace = true }
 
 # req/res requires async_trait
 async-trait = { workspace = true }

@@ -8,12 +8,12 @@ use aes_gcm_siv::{aead::Aead as _, Aes256GcmSiv, Key, KeyInit, Nonce};
 use pbkdf2::pbkdf2_hmac;
 use rand::{rngs::StdRng, Rng as _, SeedableRng};
 use rand_chacha::ChaCha20Rng;
-use reth_chainspec::ChainSpec;
 use sha2::Sha256;
 use std::sync::Arc;
 use tn_types::{
-    encode, BlsKeypair, BlsPublicKey, BlsSignature, BlsSigner, DefaultHashFunction, Intent,
-    IntentMessage, IntentScope, NetworkKeypair, NetworkPublicKey, ProtocolSignature as _, Signer,
+    encode, Address, BlsKeypair, BlsPublicKey, BlsSignature, BlsSigner, DefaultHashFunction,
+    Intent, IntentMessage, IntentScope, NetworkKeypair, NetworkPublicKey, ProtocolSignature as _,
+    Signer,
 };
 
 #[derive(Debug)]
@@ -211,11 +211,11 @@ impl KeyConfig {
     /// The message is constructed as: [BlsPublicKey] || [Genesis].
     pub fn generate_proof_of_possession_bls(
         &self,
-        chain_spec: &ChainSpec,
+        address: &Address,
     ) -> eyre::Result<BlsSignature> {
         let mut msg = self.primary_public_key().as_ref().to_vec();
-        let genesis_bytes = encode(&chain_spec.genesis);
-        msg.extend_from_slice(genesis_bytes.as_slice());
+        let address_bytes = encode(address);
+        msg.extend_from_slice(address_bytes.as_slice());
         let sig = BlsSignature::new_secure(
             &IntentMessage::new(Intent::telcoin(IntentScope::ProofOfPossession), msg),
             &self.inner.primary_keypair,

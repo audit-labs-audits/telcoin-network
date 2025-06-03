@@ -25,13 +25,14 @@ use tn_config::fetch_file_content_relative_to_manifest;
 use tn_faucet::Drip;
 use tn_network_types::local::LocalNetwork;
 use tn_reth::{test_utils::TransactionFactory, RethChainSpec, RethEnv};
+use tn_rpc::EngineToPrimary;
 use tn_storage::open_db;
 use tn_test_utils::faucet_test_execution_node;
 
 use tn_types::{
-    adiri_genesis, error::BlockSealError, hex, public_key_to_address, sol, Address, GenesisAccount,
-    SealedBatch, SolType, SolValue, TaskManager, TaskSpawner, TransactionSigned,
-    TransactionTrait as _, B256, U160, U256,
+    adiri_genesis, error::BlockSealError, hex, public_key_to_address, sol, Address,
+    ConsensusHeader, GenesisAccount, SealedBatch, SolType, SolValue, TaskManager, TaskSpawner,
+    TransactionSigned, TransactionTrait as _, B256, U160, U256,
 };
 use tn_worker::{
     metrics::WorkerMetrics,
@@ -61,6 +62,24 @@ impl QuorumWaiterTrait for TestChanQuorumWaiter {
             tx.send(Ok(()))
         });
         rx
+    }
+}
+
+struct EmptyEngToPrimary();
+impl EngineToPrimary for EmptyEngToPrimary {
+    fn get_latest_consensus_block(&self) -> ConsensusHeader {
+        ConsensusHeader::default()
+    }
+
+    fn consensus_block_by_number(&self, _number: u64) -> Option<tn_types::ConsensusHeader> {
+        None
+    }
+
+    fn consensus_block_by_hash(
+        &self,
+        _hash: tn_types::BlockHash,
+    ) -> Option<tn_types::ConsensusHeader> {
+        None
     }
 }
 
@@ -288,7 +307,9 @@ async fn test_with_creds_faucet_transfers_tel_with_google_kms() -> eyre::Result<
     );
 
     // start batch maker
-    execution_node.initialize_worker_components(worker_id, worker_network).await?;
+    execution_node
+        .initialize_worker_components(worker_id, worker_network, EmptyEngToPrimary())
+        .await?;
     let spawner = task_manager.get_spawner();
     execution_node.start_batch_builder(worker_id, batch_provider.batches_tx(), &spawner).await?;
 
@@ -615,7 +636,11 @@ async fn test_with_creds_faucet_transfers_stablecoin_with_google_kms() -> eyre::
     let (to_worker, mut next_batch) = tokio::sync::mpsc::channel(2);
     let spawner = task_manager.get_spawner();
     execution_node
-        .initialize_worker_components(worker_id, WorkerNetworkHandle::new_for_test())
+        .initialize_worker_components(
+            worker_id,
+            WorkerNetworkHandle::new_for_test(),
+            EmptyEngToPrimary(),
+        )
         .await?;
     execution_node.start_batch_builder(worker_id, to_worker, &spawner).await?;
 

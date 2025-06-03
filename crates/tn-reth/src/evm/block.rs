@@ -14,6 +14,7 @@ use alloy::{
     sol_types::SolCall as _,
 };
 use alloy_evm::{Database, Evm};
+use rand_chacha::rand_core::SeedableRng as _;
 use reth_chainspec::{EthChainSpec, EthereumHardfork, EthereumHardforks};
 use reth_errors::{BlockExecutionError, BlockValidationError};
 use reth_evm::{
@@ -35,7 +36,7 @@ use reth_revm::{
     context::result::{EVMError, ExecutionResult, ResultAndState},
     DatabaseCommit as _, Inspector, State,
 };
-use secp256k1::rand::{Rng as _, SeedableRng as _};
+use secp256k1::rand::Rng as _;
 use std::{borrow::Cow, sync::Arc};
 use tn_types::{
     keccak256, Address, BlsSignature, Bytes, Encodable2718, ExecHeader, Receipt, TransactionSigned,

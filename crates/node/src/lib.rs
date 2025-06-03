@@ -6,6 +6,10 @@
 use engine::TnBuilder;
 use manager::EpochManager;
 use tn_config::TelcoinDirs;
+use tn_primary::ConsensusBus;
+use tn_rpc::EngineToPrimary;
+use tn_storage::tables::{ConsensusBlockNumbersByDigest, ConsensusBlocks};
+use tn_types::{BlockHash, ConsensusHeader, Database};
 use tokio::runtime::Builder;
 use tracing::{instrument, warn};
 
@@ -47,4 +51,32 @@ where
 
     // return result after shutdown
     res
+}
+
+pub struct EngineToPrimaryRpc<DB> {
+    /// Container for consensus channels.
+    consensus_bus: ConsensusBus,
+    /// Consensus DB
+    db: DB,
+}
+
+impl<DB: Database> EngineToPrimaryRpc<DB> {
+    pub fn new(consensus_bus: ConsensusBus, db: DB) -> Self {
+        Self { consensus_bus, db }
+    }
+}
+
+impl<DB: Database> EngineToPrimary for EngineToPrimaryRpc<DB> {
+    fn get_latest_consensus_block(&self) -> ConsensusHeader {
+        self.consensus_bus.last_consensus_header().borrow().clone()
+    }
+
+    fn consensus_block_by_number(&self, number: u64) -> Option<ConsensusHeader> {
+        self.db.get::<ConsensusBlocks>(&number).ok().flatten()
+    }
+
+    fn consensus_block_by_hash(&self, hash: BlockHash) -> Option<ConsensusHeader> {
+        let number = self.db.get::<ConsensusBlockNumbersByDigest>(&hash).ok().flatten()?;
+        self.db.get::<ConsensusBlocks>(&number).ok().flatten()
+    }
 }

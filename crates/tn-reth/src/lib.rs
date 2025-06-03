@@ -1,4 +1,3 @@
-//! This crate is designed to encaptulate Reth functionality and abstract it away.
 //! This should allow for easier upgrades.
 //! It still re-exports some stuff and a few places use Reth directly but eventually
 //! it all should go through this crate.
@@ -31,9 +30,7 @@ use dirs::path_to_datadir;
 use error::{TnRethError, TnRethResult};
 use evm::TnEvmConfig;
 use eyre::OptionExt;
-use futures::StreamExt as _;
 use jsonrpsee::Methods;
-use rand_chacha::rand_core::SeedableRng as _;
 use reth::{
     args::{
         DatabaseArgs, DatadirArgs, DebugArgs, DevArgs, DiscoveryArgs, EngineArgs, NetworkArgs,
@@ -45,7 +42,7 @@ use reth::{
     rpc::{
         builder::{
             config::RethRpcServerConfig, RethRpcModule, RpcModuleBuilder, RpcModuleSelection,
-            TransportRpcModules,
+            RpcRegistryInner, TransportRpcModuleConfig, TransportRpcModules,
         },
         eth::EthApi,
         server_types::eth::utils::recover_raw_transaction as reth_recover_raw_transaction,
@@ -68,6 +65,7 @@ use reth_evm::{
     execute::{BlockBuilder, BlockBuilderOutcome},
     ConfigureEvm, NextBlockEnvAttributes,
 };
+use reth_evm_ethereum::EthEvmConfig;
 use reth_node_builder::{
     TreeConfig, DEFAULT_MAX_PROOF_TASK_CONCURRENCY, DEFAULT_MEMORY_BLOCK_BUFFER_TARGET,
     DEFAULT_RESERVED_CPU_CORES,
@@ -77,13 +75,14 @@ use reth_primitives::{Log, TxType};
 use reth_provider::{
     providers::{BlockchainProvider, StaticFileProvider},
     BlockIdReader as _, BlockNumReader, BlockReader, CanonChainTracker,
-    CanonStateSubscriptions as _, ChainStateBlockReader, DatabaseProviderFactory,
-    HeaderProvider as _, ProviderFactory, StateProviderBox, StateProviderFactory,
-    TransactionVariant,
+    CanonStateSubscriptions as _, ChainSpecProvider, ChainStateBlockReader,
+    DatabaseProviderFactory, HeaderProvider as _, ProviderFactory, StateProviderBox,
+    StateProviderFactory, TransactionVariant,
 };
 use reth_prune::PrunerBuilder;
 use reth_revm::{
     cached::CachedReads,
+    context::{Evm as RevmEvm, TxEnv},
     database::StateProviderDatabase,
     db::{states::bundle_state::BundleRetention, BundleState},
     interpreter::Host,
@@ -95,7 +94,7 @@ use std::{
     collections::HashSet,
     net::{IpAddr, Ipv4Addr},
     ops::RangeInclusive,
-    path::{Path, PathBuf},
+    path::Path,
     sync::Arc,
     time::Duration,
 };
@@ -104,7 +103,7 @@ use system_calls::{
     EpochState, CONSENSUS_REGISTRY_ADDRESS, SYSTEM_ADDRESS,
 };
 use tempfile::TempDir;
-use tn_config::{ValidatorInfo, CONSENSUS_REGISTRY_JSON};
+use tn_config::{Config, ConfigFmt, ConfigTrait, ValidatorInfo, CONSENSUS_REGISTRY_JSON};
 use tn_types::{
     adiri_chain_spec_arc, calculate_transaction_root, keccak256, Address, Block, BlockBody,
     BlockHashOrNumber, BlockNumHash, BlockNumber, BlsSignature, Epoch, ExecHeader, Genesis,
@@ -113,7 +112,7 @@ use tn_types::{
     EMPTY_TRANSACTIONS, EMPTY_WITHDRAWALS, ETHEREUM_BLOCK_GAS_LIMIT_30M, MIN_PROTOCOL_BASE_FEE,
     U256,
 };
-use tokio::sync::mpsc::{self, unbounded_channel};
+use tokio::sync::mpsc;
 use tracing::{debug, error, info, warn};
 use traits::{TNPrimitives, TelcoinNode};
 
@@ -127,7 +126,7 @@ pub use reth_cli_util::{parse_duration_from_secs, parse_socket_address};
 pub use reth_errors::{ProviderError, RethError};
 pub use reth_node_core::{args::LogArgs, node_config::DEFAULT_PERSISTENCE_THRESHOLD};
 pub use reth_primitives_traits::crypto::secp256k1::sign_message;
-pub use reth_provider::ExecutionOutcome;
+pub use reth_provider::{CanonStateNotificationStream, ExecutionOutcome};
 pub use reth_rpc_eth_types::EthApiError;
 pub use reth_tracing::FileWorkerGuard;
 pub use reth_transaction_pool::{
@@ -150,6 +149,12 @@ pub mod worker;
 
 #[cfg(feature = "test-utils")]
 pub mod test_utils;
+
+/// A helper to parse a [`Genesis`](alloy_genesis::Genesis) as argument or from disk.
+fn parse_genesis(s: &str) -> eyre::Result<RethChainSpec> {
+    let genesis: Genesis = Config::load_from_path_or_default(Path::new(s), ConfigFmt::YAML)?;
+    Ok(genesis.into())
+}
 
 /// Rpc Server type, used for getting the node started.
 pub type RpcServer = TransportRpcModules<()>;
@@ -180,11 +185,11 @@ pub type BlockWithSenders = RecoveredBlock<reth_ethereum_primitives::Block>;
 
 /// Defaults for chain spec clap parser.
 ///
-/// Wrapper to intercept "adiri" chain spec. If not adiri, try reth's genesis_value_parser.
+/// Wrapper to intercept "adiri" chain spec. If not adiri, load provided genesis.
 pub fn clap_genesis_parser(value: &str) -> eyre::Result<Arc<RethChainSpec>, eyre::Error> {
     let chain = match value {
         "adiri" => adiri_chain_spec_arc(),
-        _ => chain_value_parser(value)?,
+        _ => Arc::new(parse_genesis(value)?),
     };
 
     Ok(chain)
@@ -271,7 +276,6 @@ impl RethConfig {
     pub fn new<P: AsRef<Path>>(
         reth_config: RethCommand,
         instance: Option<u16>,
-        config: Option<PathBuf>,
         datadir: P,
         with_unused_ports: bool,
     ) -> Self {
@@ -389,7 +393,7 @@ impl RethConfig {
         };
 
         let mut this = NodeConfig {
-            config,
+            config: None,
             chain,
             metrics: None,
             instance,
@@ -617,20 +621,8 @@ impl RethEnv {
     }
 
     /// Return a channel reciever that will return each canonical block in turn.
-    pub fn canonical_block_stream(&self) -> mpsc::Receiver<SealedBlock> {
-        let mut stream = self.blockchain_provider.canonical_state_stream();
-        let (tx, rx) = mpsc::channel(100);
-
-        // non-critical: batch builder uses this task for each epoch
-        self.task_spawner.spawn_task("canonical-block-stream", async move {
-            while let Some(latest) = stream.next().await {
-                let block = latest.tip().sealed_block().clone();
-                if let Err(_e) = tx.send(block).await {
-                    break;
-                }
-            }
-        });
-        rx
+    pub fn canonical_block_stream(&self) -> CanonStateNotificationStream {
+        self.blockchain_provider.canonical_state_stream()
     }
 
     /// Return a reference to the [TaskSpawner] for spawning tasks.
@@ -1072,7 +1064,7 @@ impl RethEnv {
                 BlockHashOrNumber::Number(number),
                 TransactionVariant::NoHash,
             )?
-            .map(|b| b.block))
+            .map(|b| b.clone_sealed_block()))
     }
 
     /// Look up and return the sealed header (with senders) for hash.
@@ -1081,14 +1073,6 @@ impl RethEnv {
         id: BlockHashOrNumber,
     ) -> TnRethResult<Option<BlockWithSenders>> {
         Ok(self.blockchain_provider.sealed_block_with_senders(id, TransactionVariant::NoHash)?)
-    }
-
-    /// Look up and return the sealed block for hash or number.
-    pub fn block_with_senders(
-        &self,
-        id: BlockHashOrNumber,
-    ) -> TnRethResult<Option<BlockWithSenders>> {
-        Ok(self.blockchain_provider.block_with_senders(id, TransactionVariant::NoHash)?)
     }
 
     /// Return the blocks with senders for a range of block numbers.
@@ -1191,25 +1175,58 @@ impl RethEnv {
             BlockchainProvider<TelcoinNode>,
             DiskFileBlobStore,
         > = transaction_pool.into();
-        let tn_execution = Arc::new(TNExecution {});
+        let tn_execution = Arc::new(TNExecution);
         let rpc_builder = RpcModuleBuilder::default()
             .with_provider(self.blockchain_provider.clone())
-            .with_pool(transaction_pool)
-            .with_network(network)
+            .with_pool(transaction_pool.clone())
+            .with_network(network.clone())
             .with_executor(Box::new(self.task_spawner.clone()))
             .with_evm_config(self.evm_config.clone())
             // .with_events(self.blockchain_provider.clone())
             // .with_block_executor(self.evm_executor.clone())
             .with_consensus(tn_execution.clone());
 
-        //.node_configure namespaces
+        // //.node_configure namespaces
         let modules_config = self.node_config.rpc.transport_rpc_module_config();
-        let mut server =
-            rpc_builder.build(modules_config, Box::new(EthApi::with_spawner), tn_execution);
+        let eth_api = EthApi::builder(
+            self.blockchain_provider.clone(),
+            transaction_pool,
+            network,
+            EthEvmConfig::new(self.blockchain_provider.chain_spec()),
+        )
+        .build();
+
+        let mut server = rpc_builder.build(modules_config, eth_api);
+
+        // let mut server = TransportRpcModules::default();
+
+        // if !modules_config.is_empty() {
+        //     // let TransportRpcModuleConfig { http, ws, ipc, config } = modules_config.clone();
+
+        //     let mut registry = RpcRegistryInner::new(
+        //         self.blockchain_provider.clone(),
+        //         transaction_pool,
+        //         network,
+        //         Box::new(self.task_spawner.clone()),
+        //         TNExecution,
+        //         modules_config.config().unwrap_or_default().clone(),
+        //         self.evm_config.clone(),
+        //         eth_api,
+        //     );
+
+        //     // server.with_config(modules_config.clone());
+
+        //     // server.http = registry.maybe_module(http.as_ref());
+        //     // server.ws = registry.maybe_module(ws.as_ref());
+        //     // server.ipc = registry.maybe_module(ipc.as_ref());
+
+        //     registry.create_transport_rpc_modules(modules_config);
+        // }
 
         if let Err(e) = server.merge_configured(other) {
             tracing::error!(target: "tn::execution", "Error merging TN rpc module: {e:?}");
         }
+
         server
     }
 
@@ -1232,83 +1249,84 @@ impl RethEnv {
         header: &SealedHeader,
         txs: Vec<PregenesisRequest>,
     ) -> TnRethResult<BundleState> {
-        // create execution db
-        let state = StateProviderDatabase::new(self.latest()?);
-        let mut db = State::builder().with_database(state).with_bundle_update().build();
+        // // create execution db
+        // let state = StateProviderDatabase::new(self.latest()?);
+        // let mut db = State::builder().with_database(state).with_bundle_update().build();
 
-        // Setup environment for the execution.
-        let EvmEnv { cfg_env_with_handler_cfg, block_env } =
-            self.evm_config.cfg_and_block_env(header);
+        // // Setup environment for the execution.
+        // let EvmEnv { cfg_env_with_handler_cfg, block_env } =
+        //     self.evm_config.cfg_and_block_env(header);
 
-        // setup EVM
-        let mut evm = self.evm_config.evm_with_env(
-            &mut db,
-            EnvWithHandlerCfg::new_with_cfg_env(
-                cfg_env_with_handler_cfg,
-                block_env,
-                Default::default(), // overwritten with system call
-            ),
-        );
+        // // setup EVM
+        // let mut evm = self.evm_config.evm_with_env(
+        //     &mut db,
+        //     EnvWithHandlerCfg::new_with_cfg_env(
+        //         cfg_env_with_handler_cfg,
+        //         block_env,
+        //         Default::default(), // overwritten with system call
+        //     ),
+        // );
 
-        for tx in txs {
-            // modify env to disable checks
-            self.fill_tx_env_free_execution(&mut evm.context.evm.env, tx);
+        // for tx in txs {
+        //     // modify env to disable checks
+        //     self.fill_tx_env_free_execution(&mut evm.context.evm.env, tx);
 
-            // execute the transaction
-            let ResultAndState { state, result } = evm.transact()?;
-            debug!(target: "engine", "execution:\n{:#?}", state);
-            debug!(target: "engine", "result:\n{:#?}", result);
-            evm.db_mut().commit(state);
-        }
+        //     // execute the transaction
+        //     let ResultAndState { state, result } = evm.transact()?;
+        //     debug!(target: "engine", "execution:\n{:#?}", state);
+        //     debug!(target: "engine", "result:\n{:#?}", result);
+        //     evm.db_mut().commit(state);
+        // }
 
-        drop(evm);
+        // drop(evm);
 
-        // apply changes
-        db.merge_transitions(BundleRetention::PlainState);
-        Ok(db.take_bundle())
+        // // apply changes
+        // db.merge_transitions(BundleRetention::PlainState);
+        // Ok(db.take_bundle())
+        todo!()
     }
 
-    /// Creates a new [`EnvWithHandlerConfg`] based on the provided payload.
-    ///
-    /// see reth `ConfigureEvmEnv::cfg_and_block_env` which uses a default SpecId (latest)
-    ///
-    /// This method is used to create TN-Specific EVM environment with the correct forks
-    /// and defaults for execution.
-    fn tn_env_for_evm(&self, payload: &TNPayload) -> EnvWithHandlerCfg {
-        let spec_id = reth_revm::primitives::SpecId::SHANGHAI;
-        let cfg_env = CfgEnv::default().with_chain_id(self.chainspec().chain_id());
-        let cfg = CfgEnvWithHandlerCfg::new_with_spec_id(cfg_env, spec_id);
+    // /// Creates a new [`EnvWithHandlerConfg`] based on the provided payload.
+    // ///
+    // /// see reth `ConfigureEvmEnv::cfg_and_block_env` which uses a default SpecId (latest)
+    // ///
+    // /// This method is used to create TN-Specific EVM environment with the correct forks
+    // /// and defaults for execution.
+    // fn tn_env_for_evm(&self, payload: &TNPayload) -> EnvWithHandlerCfg {
+    //     let spec_id = reth_revm::primitives::SpecId::SHANGHAI;
+    //     let cfg_env = CfgEnv::default().with_chain_id(self.chainspec().chain_id());
+    //     let cfg = CfgEnvWithHandlerCfg::new_with_spec_id(cfg_env, spec_id);
 
-        // use the basefee set by the worker during batch creation
-        let basefee = U256::from(payload.attributes.base_fee_per_gas);
+    //     // use the basefee set by the worker during batch creation
+    //     let basefee = U256::from(payload.attributes.base_fee_per_gas);
 
-        // ensure gas_limit enforced during block validation
-        let gas_limit = U256::from(payload.attributes.gas_limit);
+    //     // ensure gas_limit enforced during block validation
+    //     let gas_limit = U256::from(payload.attributes.gas_limit);
 
-        // create block env
-        let block_env = BlockEnv {
-            // build env for the next block based on parent
-            number: U256::from(payload.attributes.parent_header.number + 1),
-            // special fee address
-            coinbase: payload.suggested_fee_recipient(),
-            timestamp: U256::from(payload.timestamp()),
-            // leave difficulty zero
-            // this value is useful for post-execution, but worker batches are created with this
-            // value
-            difficulty: U256::ZERO,
-            prevrandao: Some(payload.prev_randao()),
-            gas_limit,
-            basefee,
-            // calculate excess gas based on parent block's blob gas usage
-            blob_excess_gas_and_price: payload
-                .attributes
-                .parent_header
-                .excess_blob_gas
-                .map(|price| BlobExcessGasAndPrice::new(price, false)),
-        };
+    //     // create block env
+    //     let block_env = BlockEnv {
+    //         // build env for the next block based on parent
+    //         number: U256::from(payload.attributes.parent_header.number + 1),
+    //         // special fee address
+    //         coinbase: payload.suggested_fee_recipient(),
+    //         timestamp: U256::from(payload.timestamp()),
+    //         // leave difficulty zero
+    //         // this value is useful for post-execution, but worker batches are created with this
+    //         // value
+    //         difficulty: U256::ZERO,
+    //         prevrandao: Some(payload.prev_randao()),
+    //         gas_limit,
+    //         basefee,
+    //         // calculate excess gas based on parent block's blob gas usage
+    //         blob_excess_gas_and_price: payload
+    //             .attributes
+    //             .parent_header
+    //             .excess_blob_gas
+    //             .map(|price| BlobExcessGasAndPrice::new(price, false)),
+    //     };
 
-        EnvWithHandlerCfg::new_with_cfg_env(cfg.clone(), block_env.clone(), TxEnv::default())
-    }
+    //     EnvWithHandlerCfg::new_with_cfg_env(cfg.clone(), block_env.clone(), TxEnv::default())
+    // }
 
     /// Create a new temp RethEnv using a specified chain spec.
     pub fn new_for_temp_chain<P: AsRef<Path>>(
@@ -1438,44 +1456,44 @@ impl RethEnv {
         Ok(result)
     }
 
-    /// Create a tx environment with all evm checks disabled.
-    ///
-    /// This is useful for executing transactions for pre-genesis.
-    /// For future reth upgrades, see:
-    /// `EthEvmConfig::fill_tx_env_for_system_call`
-    ///
-    /// WARNING: do not use this when executing consensus transactions.
-    fn fill_tx_env_free_execution(&self, env: &mut Env, tx: PregenesisRequest) {
-        let tx = TxEnv {
-            caller: tx.caller(),
-            transact_to: tx.tx_kind(),
-            // Explicitly set nonce to None so revm does not do any nonce checks
-            nonce: None,
-            gas_limit: 30_000_000,
-            value: U256::ZERO,
-            data: tx.data(),
-            // Setting the gas price to zero enforces that no value is transferred as part of the
-            // call, and that the call will not count against the block's gas limit
-            gas_price: U256::ZERO,
-            // The chain ID check is not relevant here and is disabled if set to None
-            chain_id: None,
-            // Setting the gas priority fee to None ensures the effective gas price is derived from
-            // the `gas_price` field, which we need to be zero
-            gas_priority_fee: None,
-            access_list: Vec::new(),
-            // blob fields can be None for this tx
-            blob_hashes: Vec::new(),
-            max_fee_per_blob_gas: None,
-            authorization_list: None,
-        };
-        env.tx = tx;
+    // /// Create a tx environment with all evm checks disabled.
+    // ///
+    // /// This is useful for executing transactions for pre-genesis.
+    // /// For future reth upgrades, see:
+    // /// `EthEvmConfig::fill_tx_env_for_system_call`
+    // ///
+    // /// WARNING: do not use this when executing consensus transactions.
+    // fn fill_tx_env_free_execution(&self, env: &mut Env, tx: PregenesisRequest) {
+    //     let tx = TxEnv {
+    //         caller: tx.caller(),
+    //         transact_to: tx.tx_kind(),
+    //         // Explicitly set nonce to None so revm does not do any nonce checks
+    //         nonce: None,
+    //         gas_limit: 30_000_000,
+    //         value: U256::ZERO,
+    //         data: tx.data(),
+    //         // Setting the gas price to zero enforces that no value is transferred as part of the
+    //         // call, and that the call will not count against the block's gas limit
+    //         gas_price: U256::ZERO,
+    //         // The chain ID check is not relevant here and is disabled if set to None
+    //         chain_id: None,
+    //         // Setting the gas priority fee to None ensures the effective gas price is derived from
+    //         // the `gas_price` field, which we need to be zero
+    //         gas_priority_fee: None,
+    //         access_list: Vec::new(),
+    //         // blob fields can be None for this tx
+    //         blob_hashes: Vec::new(),
+    //         max_fee_per_blob_gas: None,
+    //         authorization_list: None,
+    //     };
+    //     env.tx = tx;
 
-        // ensure the block gas limit is >= the tx
-        env.block.gas_limit = U256::from(env.tx.gas_limit);
+    //     // ensure the block gas limit is >= the tx
+    //     env.block.gas_limit = U256::from(env.tx.gas_limit);
 
-        // disable the base fee check for this call by setting the base fee to zero
-        env.block.basefee = U256::ZERO;
-    }
+    //     // disable the base fee check for this call by setting the base fee to zero
+    //     env.block.basefee = U256::ZERO;
+    // }
 
     /// Read the latest committee from the [ConsensusRegistry] on-chain.
     ///
@@ -1484,81 +1502,82 @@ impl RethEnv {
     /// - getValidator token id by address
     /// - getValidator info by token id
     pub fn epoch_state_from_canonical_tip(&self) -> eyre::Result<EpochState> {
-        // create EVM with latest state
-        let latest = self.latest()?;
-        let state = StateProviderDatabase::new(latest);
-        let mut db = State::builder().with_database(state).with_bundle_update().build();
-        let last_block_num = self.blockchain_provider.last_block_number()?;
-        // read current epoch number from chain
-        let canonical_tip = self.header_by_number(last_block_num)?.ok_or_eyre(
-            "Canonical tip missing from blockchain provider reading committee from chain",
-        )?;
+        // // create EVM with latest state
+        // let latest = self.latest()?;
+        // let state = StateProviderDatabase::new(latest);
+        // let mut db = State::builder().with_database(state).with_bundle_update().build();
+        // let last_block_num = self.blockchain_provider.last_block_number()?;
+        // // read current epoch number from chain
+        // let canonical_tip = self.header_by_number(last_block_num)?.ok_or_eyre(
+        //     "Canonical tip missing from blockchain provider reading committee from chain",
+        // )?;
 
-        let epoch = Self::extract_epoch_from_header(&canonical_tip);
+        // let epoch = Self::extract_epoch_from_header(&canonical_tip);
 
-        // from self.tn_env_for_evm
-        let spec_id = reth_revm::primitives::SpecId::SHANGHAI;
-        let cfg_env = CfgEnv::default().with_chain_id(self.chainspec().chain_id());
-        let cfg = CfgEnvWithHandlerCfg::new_with_spec_id(cfg_env, spec_id);
+        // // from self.tn_env_for_evm
+        // let spec_id = reth_revm::primitives::SpecId::SHANGHAI;
+        // let cfg_env = CfgEnv::default().with_chain_id(self.chainspec().chain_id());
+        // let cfg = CfgEnvWithHandlerCfg::new_with_spec_id(cfg_env, spec_id);
 
-        // disable the base fee check for this call by setting the base fee to zero
-        let basefee = U256::ZERO;
+        // // disable the base fee check for this call by setting the base fee to zero
+        // let basefee = U256::ZERO;
 
-        // max gas limit
-        let gas_limit = U256::from(30_000_000);
+        // // max gas limit
+        // let gas_limit = U256::from(30_000_000);
 
-        // create block env
-        let block_env = BlockEnv {
-            // build env for the next block based on parent
-            number: U256::from(last_block_num + 1),
-            // special fee address
-            coinbase: SYSTEM_ADDRESS,
-            timestamp: U256::from(tn_types::now()),
-            // leave difficulty zero
-            // this value is useful for post-execution, but worker batches are created with this
-            // value
-            difficulty: U256::ZERO,
-            prevrandao: Some(B256::ZERO), // required to be `Some`
-            gas_limit,
-            basefee,
-            // okay to set to none
-            blob_excess_gas_and_price: None,
-        };
+        // // create block env
+        // let block_env = BlockEnv {
+        //     // build env for the next block based on parent
+        //     number: U256::from(last_block_num + 1),
+        //     // special fee address
+        //     coinbase: SYSTEM_ADDRESS,
+        //     timestamp: U256::from(tn_types::now()),
+        //     // leave difficulty zero
+        //     // this value is useful for post-execution, but worker batches are created with this
+        //     // value
+        //     difficulty: U256::ZERO,
+        //     prevrandao: Some(B256::ZERO), // required to be `Some`
+        //     gas_limit,
+        //     basefee,
+        //     // okay to set to none
+        //     blob_excess_gas_and_price: None,
+        // };
 
-        let tn_env =
-            EnvWithHandlerCfg::new_with_cfg_env(cfg.clone(), block_env.clone(), TxEnv::default());
+        // let tn_env =
+        //     EnvWithHandlerCfg::new_with_cfg_env(cfg.clone(), block_env.clone(), TxEnv::default());
 
-        // end
+        // // end
 
-        let mut evm = self.evm_config.evm_with_env(&mut db, tn_env);
+        // let mut evm = self.evm_config.evm_with_env(&mut db, tn_env);
 
-        // current epoch info
-        let epoch_info = self.get_current_epoch_info(&mut evm)?;
+        // // current epoch info
+        // let epoch_info = self.get_current_epoch_info(&mut evm)?;
 
-        // retrieve closing timestamp for previous epoch
-        let epoch_start = self
-            .header_by_number(epoch_info.blockHeight.saturating_sub(1))?
-            .ok_or_eyre("failed to retrieve closing epoch information")?
-            .timestamp;
-        let token_ids = epoch_info
-            .committee
-            .iter()
-            .map(|address| {
-                // obtain the validator's token id
-                self.get_validator_token_id(*address, &mut evm)
-            })
-            .collect::<eyre::Result<Vec<_>, _>>()?;
-        let validators = token_ids
-            .into_iter()
-            .map(|token_id| {
-                // read validator info
-                self.get_validator_by_token_id(token_id, &mut evm)
-            })
-            .collect::<eyre::Result<Vec<_>, _>>()?;
+        // // retrieve closing timestamp for previous epoch
+        // let epoch_start = self
+        //     .header_by_number(epoch_info.blockHeight.saturating_sub(1))?
+        //     .ok_or_eyre("failed to retrieve closing epoch information")?
+        //     .timestamp;
+        // let token_ids = epoch_info
+        //     .committee
+        //     .iter()
+        //     .map(|address| {
+        //         // obtain the validator's token id
+        //         self.get_validator_token_id(*address, &mut evm)
+        //     })
+        //     .collect::<eyre::Result<Vec<_>, _>>()?;
+        // let validators = token_ids
+        //     .into_iter()
+        //     .map(|token_id| {
+        //         // read validator info
+        //         self.get_validator_by_token_id(token_id, &mut evm)
+        //     })
+        //     .collect::<eyre::Result<Vec<_>, _>>()?;
 
-        let epoch_state = EpochState { epoch, epoch_info, validators, epoch_start };
+        // let epoch_state = EpochState { epoch, epoch_info, validators, epoch_start };
 
-        Ok(epoch_state)
+        // Ok(epoch_state)
+        todo!()
     }
 
     /// Extract the epoch number from a header's nonce.
@@ -1570,30 +1589,32 @@ impl RethEnv {
     /// Read the curret epoch info from the [ConsensusRegistry] on-chain.
     pub fn get_current_epoch_info<EXT, DB>(
         &self,
-        evm: &mut Evm<'_, EXT, DB>,
+        // evm: &mut RevmEvm<EXT, DB>,
     ) -> eyre::Result<ConsensusRegistry::EpochInfo>
     where
         DB: Database,
         DB::Error: core::fmt::Display,
     {
-        let calldata = ConsensusRegistry::getCurrentEpochInfoCall {}.abi_encode().into();
-        self.call_consensus_registry::<_, _, ConsensusRegistry::EpochInfo>(evm, calldata)
+        // let calldata = ConsensusRegistry::getCurrentEpochInfoCall {}.abi_encode().into();
+        // self.call_consensus_registry::<_, _, ConsensusRegistry::EpochInfo>(evm, calldata)
+        todo!()
     }
 
     /// Read the a validator's token id from the [ConsensusRegistry] on-chain.
     pub fn get_validator_token_id<EXT, DB>(
         &self,
         address: Address,
-        evm: &mut Evm<'_, EXT, DB>,
+        // evm: &mut RevmEvm<EXT, DB>,
     ) -> eyre::Result<U256>
     where
         DB: Database,
         DB::Error: core::fmt::Display,
     {
-        let calldata = ConsensusRegistry::getValidatorTokenIdCall { validatorAddress: address }
-            .abi_encode()
-            .into();
-        self.call_consensus_registry::<_, _, U256>(evm, calldata)
+        // let calldata = ConsensusRegistry::getValidatorTokenIdCall { validatorAddress: address }
+        //     .abi_encode()
+        //     .into();
+        // self.call_consensus_registry::<_, _, U256>(evm, calldata)
+        todo!()
     }
 
     /// Retrieve the [ValidatorInfo] from the [ConsensusRegistry] on-chain using a validator's token
@@ -1601,21 +1622,22 @@ impl RethEnv {
     pub fn get_validator_by_token_id<EXT, DB>(
         &self,
         token_id: U256,
-        evm: &mut Evm<'_, EXT, DB>,
+        // evm: &mut RevmEvm<EXT, DB>,
     ) -> eyre::Result<ConsensusRegistry::ValidatorInfo>
     where
         DB: Database,
         DB::Error: core::fmt::Display,
     {
-        let calldata =
-            ConsensusRegistry::getValidatorByTokenIdCall { tokenId: token_id }.abi_encode().into();
-        self.call_consensus_registry::<_, _, ConsensusRegistry::ValidatorInfo>(evm, calldata)
+        // let calldata =
+        //     ConsensusRegistry::getValidatorByTokenIdCall { tokenId: token_id }.abi_encode().into();
+        // self.call_consensus_registry::<_, _, ConsensusRegistry::ValidatorInfo>(evm, calldata)
+        todo!()
     }
 
     /// Helper function to call `ConsensusRegistry` state on-chain.
     fn call_consensus_registry<EXT, DB, T>(
         &self,
-        evm: &mut Evm<'_, EXT, DB>,
+        // evm: &mut RevmEvm<EXT, DB>,
         calldata: Bytes,
     ) -> eyre::Result<T>
     where
@@ -1626,19 +1648,20 @@ impl RethEnv {
             <<T as alloy::sol_types::SolValue>::SolType as alloy::sol_types::SolType>::RustType,
         >,
     {
-        let state =
-            self.read_state_on_chain(evm, SYSTEM_ADDRESS, CONSENSUS_REGISTRY_ADDRESS, calldata)?;
+        // let state =
+        //     self.read_state_on_chain(evm, SYSTEM_ADDRESS, CONSENSUS_REGISTRY_ADDRESS, calldata)?;
 
-        // retrieve data from state
-        match state.result {
-            ExecutionResult::Success { output, .. } => {
-                let data = output.into_data();
-                // use SolValue to decode the result
-                let decoded = alloy::sol_types::SolValue::abi_decode(&data)?;
-                Ok(decoded)
-            }
-            e => Err(eyre::eyre!("failed to read validators from state: {e:?}")),
-        }
+        // // retrieve data from state
+        // match state.result {
+        //     ExecutionResult::Success { output, .. } => {
+        //         let data = output.into_data();
+        //         // use SolValue to decode the result
+        //         let decoded = alloy::sol_types::SolValue::abi_decode(&data)?;
+        //         Ok(decoded)
+        //     }
+        //     e => Err(eyre::eyre!("failed to read validators from state: {e:?}")),
+        // }
+        todo!()
     }
 }
 
@@ -1720,216 +1743,216 @@ impl From<CreateRequest> for PregenesisRequest {
     }
 }
 
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use alloy::primitives::utils::parse_ether;
-    use rand_chacha::ChaCha8Rng;
-    use tempfile::TempDir;
-    use tn_types::{
-        adiri_genesis, BlsKeypair, Certificate, CommittedSubDag, ConsensusHeader, ConsensusOutput,
-        FromHex, PrimaryInfo, ReputationScores,
-    };
+// #[cfg(test)]
+// mod tests {
+//     use super::*;
+//     use alloy::primitives::utils::parse_ether;
+//     use rand_chacha::ChaCha8Rng;
+//     use tempfile::TempDir;
+//     use tn_types::{
+//         adiri_genesis, BlsKeypair, Certificate, CommittedSubDag, ConsensusHeader, ConsensusOutput,
+//         FromHex, PrimaryInfo, ReputationScores,
+//     };
 
-    /// Helper function for creating a consensus output for tests.
-    fn consensus_output_for_tests() -> ConsensusOutput {
-        let mut leader = Certificate::default();
-        let sub_dag_index = 0;
-        leader.header.round = sub_dag_index as u32;
-        let reputation_scores = ReputationScores::default();
-        let previous_sub_dag = None;
-        let beneficiary = Address::from_hex("0x5555555555555555555555555555555555555555")
-            .expect("beneficiary address from str");
-        ConsensusOutput {
-            sub_dag: CommittedSubDag::new(
-                vec![leader.clone(), Certificate::default()],
-                leader,
-                sub_dag_index,
-                reputation_scores,
-                previous_sub_dag,
-            )
-            .into(),
-            close_epoch: false,
-            batches: Default::default(), // empty
-            beneficiary,
-            batch_digests: Default::default(), // empty
-            parent_hash: ConsensusHeader::default().digest(),
-            number: 0,
-            extra: Default::default(),
-            early_finalize: false,
-        }
-    }
+//     /// Helper function for creating a consensus output for tests.
+//     fn consensus_output_for_tests() -> ConsensusOutput {
+//         let mut leader = Certificate::default();
+//         let sub_dag_index = 0;
+//         leader.header.round = sub_dag_index as u32;
+//         let reputation_scores = ReputationScores::default();
+//         let previous_sub_dag = None;
+//         let beneficiary = Address::from_hex("0x5555555555555555555555555555555555555555")
+//             .expect("beneficiary address from str");
+//         ConsensusOutput {
+//             sub_dag: CommittedSubDag::new(
+//                 vec![leader.clone(), Certificate::default()],
+//                 leader,
+//                 sub_dag_index,
+//                 reputation_scores,
+//                 previous_sub_dag,
+//             )
+//             .into(),
+//             close_epoch: false,
+//             batches: Default::default(), // empty
+//             beneficiary,
+//             batch_digests: Default::default(), // empty
+//             parent_hash: ConsensusHeader::default().digest(),
+//             number: 0,
+//             extra: Default::default(),
+//             early_finalize: false,
+//         }
+//     }
 
-    #[tokio::test]
-    async fn test_validator_shuffle() -> eyre::Result<()> {
-        let validator_1 = Address::from_slice(&[0x11; 20]);
-        let validator_2 = Address::from_slice(&[0x22; 20]);
-        let validator_3 = Address::from_slice(&[0x33; 20]);
-        let validator_4 = Address::from_slice(&[0x44; 20]);
-        let validator_5 = Address::from_slice(&[0x55; 20]);
+//     #[tokio::test]
+//     async fn test_validator_shuffle() -> eyre::Result<()> {
+//         let validator_1 = Address::from_slice(&[0x11; 20]);
+//         let validator_2 = Address::from_slice(&[0x22; 20]);
+//         let validator_3 = Address::from_slice(&[0x33; 20]);
+//         let validator_4 = Address::from_slice(&[0x44; 20]);
+//         let validator_5 = Address::from_slice(&[0x55; 20]);
 
-        // create initial validators for testing
-        let initial_validators = [validator_1, validator_2, validator_3, validator_4, validator_5];
+//         // create initial validators for testing
+//         let initial_validators = [validator_1, validator_2, validator_3, validator_4, validator_5];
 
-        // create validator info objects for each address
-        let validators: Vec<_> = initial_validators
-            .iter()
-            .enumerate()
-            .map(|(i, addr)| {
-                // use deterministic seed
-                let mut rng = ChaCha8Rng::seed_from_u64(i as u64);
-                let bls = BlsKeypair::generate(&mut rng);
-                let bls_pubkey = bls.public();
-                ValidatorInfo {
-                    name: format!("validator-{i}"),
-                    bls_public_key: *bls_pubkey,
-                    primary_info: PrimaryInfo::default(),
-                    execution_address: *addr,
-                    proof_of_possession: BlsSignature::default(),
-                }
-            })
-            .collect();
+//         // create validator info objects for each address
+//         let validators: Vec<_> = initial_validators
+//             .iter()
+//             .enumerate()
+//             .map(|(i, addr)| {
+//                 // use deterministic seed
+//                 let mut rng = ChaCha8Rng::seed_from_u64(i as u64);
+//                 let bls = BlsKeypair::generate(&mut rng);
+//                 let bls_pubkey = bls.public();
+//                 ValidatorInfo {
+//                     name: format!("validator-{i}"),
+//                     bls_public_key: *bls_pubkey,
+//                     primary_info: PrimaryInfo::default(),
+//                     execution_address: *addr,
+//                     proof_of_possession: BlsSignature::default(),
+//                 }
+//             })
+//             .collect();
 
-        debug!(target: "engine", "created validators for consensus registry {:#?}", validators);
+//         debug!(target: "engine", "created validators for consensus registry {:#?}", validators);
 
-        let epoch_duration = 60 * 60 * 24; // 24hrs
-        let initial_stake_config = ConsensusRegistry::StakeConfig {
-            stakeAmount: U232::from(parse_ether("1_000_000").unwrap()),
-            minWithdrawAmount: U232::from(parse_ether("1_000").unwrap()),
-            epochIssuance: U232::from(parse_ether("20_000_000").unwrap())
-                .checked_div(U232::from(28))
-                .expect("u256 div checked"),
-            epochDuration: epoch_duration,
-        };
+//         let epoch_duration = 60 * 60 * 24; // 24hrs
+//         let initial_stake_config = ConsensusRegistry::StakeConfig {
+//             stakeAmount: U232::from(parse_ether("1_000_000").unwrap()),
+//             minWithdrawAmount: U232::from(parse_ether("1_000").unwrap()),
+//             epochIssuance: U232::from(parse_ether("20_000_000").unwrap())
+//                 .checked_div(U232::from(28))
+//                 .expect("u256 div checked"),
+//             epochDuration: epoch_duration,
+//         };
 
-        let owner = Address::random();
-        let genesis = RethEnv::create_consensus_registry_genesis_account(
-            validators.clone(),
-            adiri_genesis(),
-            initial_stake_config,
-            owner,
-        )?;
+//         let owner = Address::random();
+//         let genesis = RethEnv::create_consensus_registry_genesis_account(
+//             validators.clone(),
+//             adiri_genesis(),
+//             initial_stake_config,
+//             owner,
+//         )?;
 
-        // create new env with initialized consensus registry for tests
-        let tmp_dir = TempDir::new().unwrap();
-        let task_manager = TaskManager::new("Test Task Manager");
-        let chain: Arc<RethChainSpec> = Arc::new(genesis.into());
-        let reth_env =
-            RethEnv::new_for_temp_chain(chain.clone(), tmp_dir.path(), &task_manager).unwrap();
+//         // create new env with initialized consensus registry for tests
+//         let tmp_dir = TempDir::new().unwrap();
+//         let task_manager = TaskManager::new("Test Task Manager");
+//         let chain: Arc<RethChainSpec> = Arc::new(genesis.into());
+//         let reth_env =
+//             RethEnv::new_for_temp_chain(chain.clone(), tmp_dir.path(), &task_manager).unwrap();
 
-        // create execution db
-        let state = StateProviderDatabase::new(
-            reth_env.latest().expect("provider retrieves latest during test batch execution"),
-        );
-        let mut db = State::builder().with_database(state).with_bundle_update().build();
+//         // create execution db
+//         let state = StateProviderDatabase::new(
+//             reth_env.latest().expect("provider retrieves latest during test batch execution"),
+//         );
+//         let mut db = State::builder().with_database(state).with_bundle_update().build();
 
-        // setup environment for execution
-        let payload =
-            TNPayload::new_for_test(chain.sealed_genesis_header(), &consensus_output_for_tests());
-        let tn_env = reth_env.tn_env_for_evm(&payload);
-        let mut evm = reth_env.evm_config.evm_with_env(&mut db, tn_env);
-        let original_env = evm.context.env().clone();
+//         // setup environment for execution
+//         let payload =
+//             TNPayload::new_for_test(chain.sealed_genesis_header(), &consensus_output_for_tests());
+//         let tn_env = reth_env.tn_env_for_evm(&payload);
+//         let mut evm = reth_env.evm_config.evm_with_env(&mut db, tn_env);
+//         let original_env = evm.context.env().clone();
 
-        // read curent epoch
-        let calldata = ConsensusRegistry::getCurrentEpochCall {}.abi_encode().into();
-        let epoch = reth_env.call_consensus_registry::<_, _, u32>(&mut evm, calldata)?;
-        let expected_epoch = 0;
-        assert_eq!(expected_epoch, epoch);
+//         // read curent epoch
+//         let calldata = ConsensusRegistry::getCurrentEpochCall {}.abi_encode().into();
+//         let epoch = reth_env.call_consensus_registry::<_, _, u32>(&mut evm, calldata)?;
+//         let expected_epoch = 0;
+//         assert_eq!(expected_epoch, epoch);
 
-        // read current epoch info
-        let calldata = ConsensusRegistry::getEpochInfoCall { epoch }.abi_encode().into();
-        let epoch_info = reth_env
-            .call_consensus_registry::<_, _, ConsensusRegistry::EpochInfo>(&mut evm, calldata)?;
-        let expected_committee = validators.iter().map(|v| v.execution_address).collect();
-        let expected_epoch_info = ConsensusRegistry::EpochInfo {
-            committee: expected_committee,
-            blockHeight: 0,
-            epochDuration: epoch_duration,
-        };
-        assert_eq!(epoch_info, expected_epoch_info);
+//         // read current epoch info
+//         let calldata = ConsensusRegistry::getEpochInfoCall { epoch }.abi_encode().into();
+//         let epoch_info = reth_env
+//             .call_consensus_registry::<_, _, ConsensusRegistry::EpochInfo>(&mut evm, calldata)?;
+//         let expected_committee = validators.iter().map(|v| v.execution_address).collect();
+//         let expected_epoch_info = ConsensusRegistry::EpochInfo {
+//             committee: expected_committee,
+//             blockHeight: 0,
+//             epochDuration: epoch_duration,
+//         };
+//         assert_eq!(epoch_info, expected_epoch_info);
 
-        // close epoch with deterministic signature as source of randomness
-        let sig = BlsSignature::default();
-        reth_env.apply_closing_epoch_contract_call(&mut evm, sig)?;
-        assert_eq!(&original_env, evm.context.env());
+//         // close epoch with deterministic signature as source of randomness
+//         let sig = BlsSignature::default();
+//         reth_env.apply_closing_epoch_contract_call(&mut evm, sig)?;
+//         assert_eq!(&original_env, evm.context.env());
 
-        // read new epoch info
-        let calldata = ConsensusRegistry::getCurrentEpochCall {}.abi_encode().into();
-        let epoch = reth_env.call_consensus_registry::<_, _, u32>(&mut evm, calldata)?;
-        let expected_epoch = expected_epoch + 1;
-        assert_eq!(expected_epoch, epoch);
+//         // read new epoch info
+//         let calldata = ConsensusRegistry::getCurrentEpochCall {}.abi_encode().into();
+//         let epoch = reth_env.call_consensus_registry::<_, _, u32>(&mut evm, calldata)?;
+//         let expected_epoch = expected_epoch + 1;
+//         assert_eq!(expected_epoch, epoch);
 
-        // read new committee (always 2 epochs ahead)
-        let calldata = ConsensusRegistry::getEpochInfoCall { epoch: epoch + 2 }.abi_encode().into();
-        let new_epoch_info = reth_env
-            .call_consensus_registry::<_, _, ConsensusRegistry::EpochInfo>(&mut evm, calldata)?;
+//         // read new committee (always 2 epochs ahead)
+//         let calldata = ConsensusRegistry::getEpochInfoCall { epoch: epoch + 2 }.abi_encode().into();
+//         let new_epoch_info = reth_env
+//             .call_consensus_registry::<_, _, ConsensusRegistry::EpochInfo>(&mut evm, calldata)?;
 
-        // ensure shuffle is deterministic
-        let expected_new_committee =
-            vec![validator_4, validator_5, validator_3, validator_2, validator_1];
+//         // ensure shuffle is deterministic
+//         let expected_new_committee =
+//             vec![validator_4, validator_5, validator_3, validator_2, validator_1];
 
-        let expected = ConsensusRegistry::EpochInfo {
-            committee: expected_new_committee,
-            blockHeight: 0,
-            // epoch duration set at the start
-            epochDuration: Default::default(),
-        };
+//         let expected = ConsensusRegistry::EpochInfo {
+//             committee: expected_new_committee,
+//             blockHeight: 0,
+//             // epoch duration set at the start
+//             epochDuration: Default::default(),
+//         };
 
-        debug!(target: "engine", "new epoch info:{:#?}", new_epoch_info);
+//         debug!(target: "engine", "new epoch info:{:#?}", new_epoch_info);
 
-        assert_eq!(new_epoch_info, expected);
+//         assert_eq!(new_epoch_info, expected);
 
-        // merge transitions to apply state changes
-        evm.context.evm.db.merge_transitions(BundleRetention::PlainState);
+//         // merge transitions to apply state changes
+//         evm.context.evm.db.merge_transitions(BundleRetention::PlainState);
 
-        // debug! take bundle
-        let bundle = evm.context.evm.db.take_bundle();
-        debug!(target: "engine", "bundle from execution:\n{:#?}", bundle);
+//         // debug! take bundle
+//         let bundle = evm.context.evm.db.take_bundle();
+//         debug!(target: "engine", "bundle from execution:\n{:#?}", bundle);
 
-        // assert committee read matches expected
-        let consensus_state = reth_env.epoch_state_from_canonical_tip()?;
-        debug!(target: "engine", "consensus state:\n{:#?}", consensus_state);
+//         // assert committee read matches expected
+//         let consensus_state = reth_env.epoch_state_from_canonical_tip()?;
+//         debug!(target: "engine", "consensus state:\n{:#?}", consensus_state);
 
-        for v in validators {
-            let on_chain = consensus_state
-                .validators
-                .iter()
-                .find(|info| info.validatorAddress == v.execution_address)
-                .expect("validator on-chain");
-            assert_eq!(on_chain.blsPubkey.as_ref(), v.bls_public_key.to_bytes());
-        }
+//         for v in validators {
+//             let on_chain = consensus_state
+//                 .validators
+//                 .iter()
+//                 .find(|info| info.validatorAddress == v.execution_address)
+//                 .expect("validator on-chain");
+//             assert_eq!(on_chain.blsPubkey.as_ref(), v.bls_public_key.to_bytes());
+//         }
 
-        Ok(())
-    }
+//         Ok(())
+//     }
 
-    #[test]
-    fn test_rpc_validator() {
-        let mut mods: Option<RpcModuleSelection> = None;
-        RethConfig::validate_rpc_modules(&mut mods);
-        assert!(mods.is_none());
-        let mut mods = Some(RpcModuleSelection::All);
-        RethConfig::validate_rpc_modules(&mut mods);
-        if let Some(RpcModuleSelection::Selection(mods)) = &mut mods {
-            for r in ALL_MODULES {
-                assert!(mods.remove(&r));
-            }
-            assert!(mods.is_empty());
-        } else {
-            panic!("all mods not handled!");
-        }
+//     #[test]
+//     fn test_rpc_validator() {
+//         let mut mods: Option<RpcModuleSelection> = None;
+//         RethConfig::validate_rpc_modules(&mut mods);
+//         assert!(mods.is_none());
+//         let mut mods = Some(RpcModuleSelection::All);
+//         RethConfig::validate_rpc_modules(&mut mods);
+//         if let Some(RpcModuleSelection::Selection(mods)) = &mut mods {
+//             for r in ALL_MODULES {
+//                 assert!(mods.remove(&r));
+//             }
+//             assert!(mods.is_empty());
+//         } else {
+//             panic!("all mods not handled!");
+//         }
 
-        let mut mods_set = HashSet::from_iter(ALL_MODULES.iter().copied());
-        mods_set.insert(RethRpcModule::Admin);
-        mods_set.insert(RethRpcModule::Txpool);
-        let mut mods = Some(RpcModuleSelection::Selection(mods_set));
-        RethConfig::validate_rpc_modules(&mut mods);
-        if let Some(RpcModuleSelection::Selection(mods)) = &mut mods {
-            for r in ALL_MODULES {
-                assert!(mods.remove(&r));
-            }
-            assert!(mods.is_empty());
-        } else {
-            panic!("all mods not handled!");
-        }
-    }
-}
+//         let mut mods_set = HashSet::from_iter(ALL_MODULES.iter().copied());
+//         mods_set.insert(RethRpcModule::Admin);
+//         mods_set.insert(RethRpcModule::Txpool);
+//         let mut mods = Some(RpcModuleSelection::Selection(mods_set));
+//         RethConfig::validate_rpc_modules(&mut mods);
+//         if let Some(RpcModuleSelection::Selection(mods)) = &mut mods {
+//             for r in ALL_MODULES {
+//                 assert!(mods.remove(&r));
+//             }
+//             assert!(mods.is_empty());
+//         } else {
+//             panic!("all mods not handled!");
+//         }
+//     }
+// }

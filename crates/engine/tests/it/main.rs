@@ -13,7 +13,6 @@ use tn_types::{
     MIN_PROTOCOL_BASE_FEE, U256,
 };
 use tokio::{sync::oneshot, time::timeout};
-use tokio_stream::wrappers::BroadcastStream;
 use tracing::debug;
 
 /// This tests that a single block is executed if the output from consensus contains no
@@ -59,8 +58,7 @@ async fn test_empty_output_executes_early_finalize() -> eyre::Result<()> {
     // execution node components
     let execution_node = default_test_execution_node(Some(chain.clone()), None, tmp_dir.path())?;
 
-    let (to_engine, from_consensus) = tokio::sync::broadcast::channel(1);
-    let consensus_output_stream = BroadcastStream::from(from_consensus);
+    let (to_engine, from_consensus) = tokio::sync::mpsc::channel(1);
     let reth_env = execution_node.get_reth_env().await;
     let max_round = None;
     let genesis_header = chain.sealed_genesis_header();
@@ -70,13 +68,14 @@ async fn test_empty_output_executes_early_finalize() -> eyre::Result<()> {
     let engine = ExecutorEngine::new(
         reth_env.clone(),
         max_round,
-        consensus_output_stream,
+        from_consensus,
         genesis_header.clone(),
         shutdown.subscribe(),
+        task_manager.get_spawner(),
     );
 
     // send output
-    let broadcast_result = to_engine.send(consensus_output.clone());
+    let broadcast_result = to_engine.send(consensus_output.clone()).await;
     assert!(broadcast_result.is_ok());
 
     // drop sending channel to shut engine down
@@ -111,7 +110,7 @@ async fn test_empty_output_executes_early_finalize() -> eyre::Result<()> {
 
     // pull newly executed block from database (skip genesis)
     let expected_block = reth_env
-        .block_with_senders(BlockHashOrNumber::Number(1))?
+        .sealed_block_by_number(BlockHashOrNumber::Number(1))?
         .expect("block 1 successfully executed");
     assert_eq!(expected_block_height, expected_block.number);
 
@@ -217,8 +216,7 @@ async fn test_empty_output_executes_late_finalize() -> eyre::Result<()> {
     // execution node components
     let execution_node = default_test_execution_node(Some(chain.clone()), None, tmp_dir.path())?;
 
-    let (to_engine, from_consensus) = tokio::sync::broadcast::channel(1);
-    let consensus_output_stream = BroadcastStream::from(from_consensus);
+    let (to_engine, from_consensus) = tokio::sync::mpsc::channel(1);
     let reth_env = execution_node.get_reth_env().await;
     let max_round = None;
     let genesis_header = chain.sealed_genesis_header();
@@ -228,13 +226,14 @@ async fn test_empty_output_executes_late_finalize() -> eyre::Result<()> {
     let engine = ExecutorEngine::new(
         reth_env.clone(),
         max_round,
-        consensus_output_stream,
+        from_consensus,
         genesis_header.clone(),
         shutdown.subscribe(),
+        task_manager.get_spawner(),
     );
 
     // send output
-    let broadcast_result = to_engine.send(consensus_output.clone());
+    let broadcast_result = to_engine.send(consensus_output.clone()).await;
     assert!(broadcast_result.is_ok());
 
     // drop sending channel to shut engine down
@@ -413,8 +412,7 @@ async fn test_queued_output_executes_after_sending_channel_closed() -> eyre::Res
 
     //=== Execution
 
-    let (to_engine, from_consensus) = tokio::sync::broadcast::channel(1);
-    let consensus_output_stream = BroadcastStream::from(from_consensus);
+    let (to_engine, from_consensus) = tokio::sync::mpsc::channel(1);
     let max_round = None;
     let parent = chain.sealed_genesis_header();
 
@@ -424,9 +422,10 @@ async fn test_queued_output_executes_after_sending_channel_closed() -> eyre::Res
     let mut engine = ExecutorEngine::new(
         reth_env.clone(),
         max_round,
-        consensus_output_stream,
+        from_consensus,
         parent,
         shutdown.subscribe(),
+        task_manager.get_spawner(),
     );
 
     // assert beneficiary account balances 0
@@ -436,7 +435,7 @@ async fn test_queued_output_executes_after_sending_channel_closed() -> eyre::Res
     engine.push_back_queued_for_test(consensus_output_1.clone());
 
     // send second output
-    let broadcast_result = to_engine.send(consensus_output_2.clone());
+    let broadcast_result = to_engine.send(consensus_output_2.clone()).await;
     assert!(broadcast_result.is_ok());
 
     // drop sending channel before receiver has a chance to process message
@@ -740,8 +739,7 @@ async fn test_execution_succeeds_with_duplicate_transactions() -> eyre::Result<(
 
     //=== Execution
 
-    let (to_engine, from_consensus) = tokio::sync::broadcast::channel(1);
-    let consensus_output_stream = BroadcastStream::from(from_consensus);
+    let (to_engine, from_consensus) = tokio::sync::mpsc::channel(1);
     let max_round = None;
     let parent = chain.sealed_genesis_header();
 
@@ -751,16 +749,17 @@ async fn test_execution_succeeds_with_duplicate_transactions() -> eyre::Result<(
     let mut engine = ExecutorEngine::new(
         reth_env.clone(),
         max_round,
-        consensus_output_stream,
+        from_consensus,
         parent,
         shutdown.subscribe(),
+        task_manager.get_spawner(),
     );
 
     // queue the first output - simulate already received from channel
     engine.push_back_queued_for_test(consensus_output_1.clone());
 
     // send second output
-    let broadcast_result = to_engine.send(consensus_output_2.clone());
+    let broadcast_result = to_engine.send(consensus_output_2.clone()).await;
     assert!(broadcast_result.is_ok());
 
     // drop sending channel before receiver has a chance to process message
@@ -1037,8 +1036,7 @@ async fn test_max_round_terminates_early() -> eyre::Result<()> {
 
     //=== Execution
 
-    let (_to_engine, from_consensus) = tokio::sync::broadcast::channel(1);
-    let consensus_output_stream = BroadcastStream::from(from_consensus);
+    let (_to_engine, from_consensus) = tokio::sync::mpsc::channel(1);
     // set max round to "1" - this should receive both digests, but stop after the first round
     let max_round = Some(1);
     let parent = chain.sealed_genesis_header();
@@ -1049,9 +1047,10 @@ async fn test_max_round_terminates_early() -> eyre::Result<()> {
     let mut engine = ExecutorEngine::new(
         reth_env.clone(),
         max_round,
-        consensus_output_stream,
+        from_consensus,
         parent,
         shutdown.subscribe(),
+        task_manager.get_spawner(),
     );
 
     // queue both output - simulate already received from channel

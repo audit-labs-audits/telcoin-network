@@ -166,8 +166,8 @@ tn-engine = { path = "crates/engine" }
 # batch maker
 tn-batch-builder = { path = "crates/execution/batch-builder" }
 futures-util = "0.3.25"
-jsonrpsee = { version = "0.24" }
-jsonrpsee-types = { version = "0.24" }
+jsonrpsee = { version = "0.25.1" }
+jsonrpsee-types = { version = "0.25.1" }
 assert_matches = { version = "1.5.0" }
 
 # common
