@@ -1013,6 +1013,7 @@ impl RethEnv {
         // persiste final block info for node recovery
         let provider = self.blockchain_provider.database_provider_rw()?;
         provider.save_finalized_block_number(header.number)?;
+        // this clears up old blocks in-memory
         self.blockchain_provider.set_finalized(header.clone());
 
         // update safe block last because this is less time sensitive but still needs to happen
