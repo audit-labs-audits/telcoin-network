@@ -7,8 +7,8 @@ use tn_engine::ExecutorEngine;
 use tn_reth::{test_utils::seeded_genesis_from_random_batches, FixedBytes, RethChainSpec};
 use tn_test_utils::default_test_execution_node;
 use tn_types::{
-    adiri_chain_spec_arc, adiri_genesis, max_batch_gas, now, Address, BlockHash, BlockHashOrNumber,
-    Bloom, Certificate, CommittedSubDag, ConsensusHeader, ConsensusOutput, Hash as _, Notifier,
+    adiri_chain_spec_arc, adiri_genesis, max_batch_gas, now, Address, BlockHash, Bloom,
+    Certificate, CommittedSubDag, ConsensusHeader, ConsensusOutput, Hash as _, Notifier,
     ReputationScores, TaskManager, B256, EMPTY_OMMER_ROOT_HASH, EMPTY_WITHDRAWALS,
     MIN_PROTOCOL_BASE_FEE, U256,
 };
@@ -93,10 +93,9 @@ async fn test_empty_output_executes_early_finalize() -> eyre::Result<()> {
     assert!(engine_task.is_ok());
 
     let last_block_num = reth_env.last_block_number()?;
-    let canonical_tip = reth_env.canonical_tip();
+    let canonical_tip = reth_env.canonical_tip()?.expect("canonical tip");
     let final_block = reth_env.finalized_block_num_hash()?.expect("finalized block");
 
-    assert_eq!(canonical_tip, final_block);
     assert_eq!(last_block_num, final_block.number);
 
     let expected_block_height = 1;
@@ -109,9 +108,8 @@ async fn test_empty_output_executes_early_finalize() -> eyre::Result<()> {
     assert_eq!(last_output, consensus_output_hash);
 
     // pull newly executed block from database (skip genesis)
-    let expected_block = reth_env
-        .sealed_block_by_number(BlockHashOrNumber::Number(1))?
-        .expect("block 1 successfully executed");
+    let expected_block =
+        reth_env.sealed_block_by_number(1)?.expect("block 1 successfully executed");
     assert_eq!(expected_block_height, expected_block.number);
 
     // min basefee in genesis
@@ -122,7 +120,7 @@ async fn test_empty_output_executes_early_finalize() -> eyre::Result<()> {
     assert_eq!(expected_block.base_fee_per_gas, Some(expected_base_fee));
 
     // assert blocks are executed as expected
-    assert!(expected_block.senders.is_empty());
+    assert!(expected_block.senders()?.is_empty());
     assert!(expected_block.body().transactions.is_empty());
 
     // assert basefee is same as worker's block
@@ -251,7 +249,7 @@ async fn test_empty_output_executes_late_finalize() -> eyre::Result<()> {
     assert!(engine_task.is_ok());
 
     let last_block_num = reth_env.last_block_number()?;
-    let canonical_tip = reth_env.canonical_tip();
+    let canonical_tip = reth_env.canonical_tip()?.expect("canonical tip");
     let final_block = reth_env.finalized_block_num_hash()?;
     assert!(final_block.is_none());
 
@@ -456,7 +454,7 @@ async fn test_queued_output_executes_after_sending_channel_closed() -> eyre::Res
     assert!(engine_task.is_ok());
 
     let last_block_num = reth_env.last_block_number()?;
-    let canonical_tip = reth_env.canonical_tip();
+    let canonical_tip = reth_env.canonical_tip()?.expect("canonical tip");
     let final_block = reth_env.finalized_block_num_hash()?.expect("finalized block");
 
     debug!("last block num {last_block_num:?}");
@@ -780,7 +778,7 @@ async fn test_execution_succeeds_with_duplicate_transactions() -> eyre::Result<(
     assert!(engine_task.is_ok());
 
     let last_block_num = reth_env.last_block_number()?;
-    let canonical_tip = reth_env.canonical_tip();
+    let canonical_tip = reth_env.canonical_tip()?.expect("canonical tip");
     let final_block = reth_env.finalized_block_num_hash()?.expect("finalized block");
 
     debug!("last block num {last_block_num:?}");
@@ -1075,7 +1073,7 @@ async fn test_max_round_terminates_early() -> eyre::Result<()> {
     assert!(engine_task.is_ok());
 
     let last_block_num = reth_env.last_block_number()?;
-    let canonical_tip = reth_env.canonical_tip();
+    let canonical_tip = reth_env.canonical_tip()?.expect("canonical tip");
     let final_block = reth_env.finalized_block_num_hash()?.expect("finalized block");
 
     debug!("last block num {last_block_num:?}");

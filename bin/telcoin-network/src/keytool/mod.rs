@@ -128,7 +128,7 @@ mod tests {
     #[tokio::test]
     async fn test_generate_keypairs() {
         // use tempdir
-        let tempdir = tempdir().expect("tempdir created").into_path();
+        let tempdir = tempdir().expect("tempdir created").keep();
         let tn = Cli::<NoArgs>::try_parse_from([
             "telcoin-network",
             "keytool",

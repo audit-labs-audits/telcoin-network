@@ -329,7 +329,7 @@ mod tests {
 
         let (tx, rx) = oneshot::channel();
         for recovery_id in [0, 1] {
-            let recid = RecoveryId::from_i32(recovery_id).expect("Invalid recovery id");
+            let recid = RecoveryId::try_from(recovery_id).expect("Invalid recovery id");
             let recoverable_signature = RecoverableSignature::from_compact(&compact, recid)
                 .expect("creating recoverable signature");
             if let Ok(recovered_key) = SECP256K1.recover_ecdsa(

@@ -15,9 +15,7 @@ use gcloud_sdk::{
 };
 use jsonrpsee::{core::client::ClientT, rpc_params};
 use k256::{elliptic_curve::sec1::ToEncodedPoint, pkcs8::DecodePublicKey, PublicKey as PubKey};
-use reth::{
-    core::primitives::SignedTransaction, rpc::server_types::eth::utils::recover_raw_transaction,
-};
+use reth::rpc::server_types::eth::utils::recover_raw_transaction;
 use secp256k1::PublicKey;
 use std::{str::FromStr, sync::Arc, time::Duration};
 use tempfile::TempDir;
@@ -336,11 +334,11 @@ async fn test_with_creds_faucet_transfers_tel_with_google_kms() -> eyre::Result<
     let tx_bytes = batch_txs.first().expect("first batch tx from faucet");
     let tx = recover_raw_transaction::<TransactionSigned>(tx_bytes)
         .expect("recover raw tx for test")
-        .into_tx();
+        .into_inner();
 
     // assert recovered transaction
     assert_eq!(tx_hash, tx.tx_hash().to_string());
-    assert_eq!(tx.transaction.to(), Some(faucet_proxy_address));
+    assert_eq!(tx.to(), Some(faucet_proxy_address));
 
     // ensure duplicate request is error
     let response = client.request::<String, _>("faucet_transfer", rpc_params![address]).await;
@@ -365,8 +363,8 @@ async fn test_with_creds_faucet_transfers_tel_with_google_kms() -> eyre::Result<
     let pool_tx = tx_pool.get(&tx_hash).expect("tx in pool");
     let recovered = pool_tx.transaction.transaction();
     assert_eq!(&tx_hash, recovered.tx_hash());
-    assert_eq!(recovered.transaction.to(), Some(faucet_proxy_address));
-    assert_eq!(recovered.transaction.nonce(), 1);
+    assert_eq!(recovered.inner().to(), Some(faucet_proxy_address));
+    assert_eq!(recovered.inner().nonce(), 1);
     Ok(())
 }
 
@@ -671,7 +669,7 @@ async fn test_with_creds_faucet_transfers_stablecoin_with_google_kms() -> eyre::
     let tx_bytes = batch_txs.first().expect("first batch tx from faucet");
     let tx = recover_raw_transaction::<TransactionSigned>(tx_bytes)
         .expect("recover raw tx for test")
-        .into_tx();
+        .into_inner();
 
     let contract_params: Vec<u8> = Drip::abi_encode_params(&(&contract_address, &user_address));
 
@@ -682,7 +680,7 @@ async fn test_with_creds_faucet_transfers_stablecoin_with_google_kms() -> eyre::
     // assert recovered transaction
     let expected_tx_hash = tx.tx_hash().to_string();
     assert_eq!(tx_hash, expected_tx_hash);
-    assert_eq!(tx.transaction.input(), &expected_input);
+    assert_eq!(tx.input(), &expected_input);
 
     // ensure duplicate request is error
     let dup_request = client

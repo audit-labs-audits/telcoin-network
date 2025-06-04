@@ -3,10 +3,7 @@
 use crate::WorkerFixture;
 
 use super::{AuthorityFixture, CommitteeFixture};
-use rand::{
-    rngs::{OsRng, StdRng},
-    SeedableRng,
-};
+use rand::{rngs::StdRng, SeedableRng};
 use std::{
     collections::{BTreeMap, VecDeque},
     marker::PhantomData,
@@ -21,8 +18,7 @@ use tn_types::{
 };
 
 /// The committee builder for tests.
-pub struct Builder<DB, F, R = OsRng> {
-    rng: R,
+pub struct Builder<DB, F> {
     committee_size: NonZeroUsize,
     number_of_workers: NonZeroUsize,
     randomize_ports: bool,
@@ -42,7 +38,6 @@ where
     pub fn new(new_db: F) -> Self {
         Self {
             epoch: Epoch::default(),
-            rng: OsRng,
             committee_size: NonZeroUsize::new(4).unwrap(),
             number_of_workers: NonZeroUsize::new(1).unwrap(),
             randomize_ports: false,
@@ -55,7 +50,7 @@ where
     }
 }
 
-impl<R, DB, F> Builder<DB, F, R>
+impl<DB, F> Builder<DB, F>
 where
     DB: Database,
     F: Fn() -> DB,
@@ -90,37 +85,21 @@ where
         self.epoch_boundary = Some(epoch_boundary);
         self
     }
-
-    pub fn rng<N: rand::RngCore + rand::CryptoRng>(self, rng: N) -> Builder<DB, F, N> {
-        Builder {
-            rng,
-            epoch: self.epoch,
-            committee_size: self.committee_size,
-            number_of_workers: self.number_of_workers,
-            randomize_ports: self.randomize_ports,
-            voting_power: self.voting_power,
-            network_config: None,
-            epoch_boundary: None,
-            new_db: self.new_db,
-            _phantom_data: PhantomData::<DB>,
-        }
-    }
 }
 
-impl<R, DB, F> Builder<DB, F, R>
+impl<DB, F> Builder<DB, F>
 where
-    R: rand::RngCore + rand::CryptoRng,
     DB: Database,
     F: Fn() -> DB,
 {
-    pub fn build(mut self) -> CommitteeFixture<DB> {
+    pub fn build(self) -> CommitteeFixture<DB> {
         if !self.voting_power.is_empty() {
             assert_eq!(self.voting_power.len(), self.committee_size.get(), "Stake vector has been provided but is different length the committee - it should be the same");
         }
         let committee_size = self.committee_size.get();
         let network_config = self.network_config.unwrap_or_default();
 
-        let mut rng = StdRng::from_rng(&mut self.rng).unwrap();
+        let mut rng = StdRng::from_os_rng();
         let mut committee_info = Vec::with_capacity(committee_size);
         #[allow(clippy::mutable_key_type)]
         let mut authorities = BTreeMap::new();

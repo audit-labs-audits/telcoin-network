@@ -106,11 +106,11 @@ use tempfile::TempDir;
 use tn_config::{Config, ConfigFmt, ConfigTrait, ValidatorInfo, CONSENSUS_REGISTRY_JSON};
 use tn_types::{
     adiri_chain_spec_arc, calculate_transaction_root, keccak256, Address, Block, BlockBody,
-    BlockHashOrNumber, BlockNumHash, BlockNumber, BlsSignature, Epoch, ExecHeader, Genesis,
-    GenesisAccount, Receipt, Recovered, RecoveredBlock, SealedBlock, SealedHeader, TaskManager,
-    TaskSpawner, TransactionSigned, TxKind, B256, EMPTY_OMMER_ROOT_HASH, EMPTY_RECEIPTS,
-    EMPTY_TRANSACTIONS, EMPTY_WITHDRAWALS, ETHEREUM_BLOCK_GAS_LIMIT_30M, MIN_PROTOCOL_BASE_FEE,
-    U256,
+    BlockHashOrNumber, BlockHeader as _, BlockNumHash, BlockNumber, BlsSignature, Epoch,
+    ExecHeader, Genesis, GenesisAccount, Receipt, Recovered, RecoveredBlock, SealedBlock,
+    SealedHeader, TaskManager, TaskSpawner, TransactionSigned, TxKind, B256, EMPTY_OMMER_ROOT_HASH,
+    EMPTY_RECEIPTS, EMPTY_TRANSACTIONS, EMPTY_WITHDRAWALS, ETHEREUM_BLOCK_GAS_LIMIT_30M,
+    MIN_PROTOCOL_BASE_FEE, U256,
 };
 use tokio::sync::mpsc;
 use tracing::{debug, error, info, warn};
@@ -807,8 +807,24 @@ impl RethEnv {
             // executed_txs.push(recovered.into_tx());
         }
 
-        let BlockBuilderOutcome { execution_result, block, .. } =
+        let BlockBuilderOutcome { execution_result, block, hashed_state, trie_updates } =
             builder.finish(&state_provider)?;
+
+        let block_num = block.number();
+        let res: ExecutedBlockWithTrieUpdates<TNPrimitives> = ExecutedBlockWithTrieUpdates::new(
+            Arc::new(block),
+            Arc::new(ExecutionOutcome::new(
+                db.take_bundle(),
+                vec![execution_result.receipts],
+                block_num,
+                Vec::new(),
+            )),
+            Arc::new(hashed_state),
+            Arc::new(trie_updates),
+        );
+
+        Ok(res)
+
         // let sealed_block = Arc::new(block.sealed_block().clone());
 
         // // close epoch using leader's aggregate signature if conditions are met
@@ -898,7 +914,7 @@ impl RethEnv {
         //     RecoveredBlock::new(sealed_block, senders).ok_or(TnRethError::SealBlockWithSenders)?;
 
         // Ok(sealed_block_with_senders)
-        todo!()
+        // todo!()
     }
 
     /// Extend the canonical tip with one block, despite no blocks from workers are included in the

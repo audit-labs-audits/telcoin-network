@@ -1,9 +1,6 @@
 //! Certificate tests
 
-use rand::{
-    rngs::{OsRng, StdRng},
-    SeedableRng,
-};
+use rand::{rngs::StdRng, SeedableRng};
 use std::num::NonZeroUsize;
 use tn_storage::mem_db::MemDatabase;
 use tn_test_utils::CommitteeFixture;

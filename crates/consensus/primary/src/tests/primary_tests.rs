@@ -40,7 +40,7 @@ async fn test_request_vote_has_missing_execution_block() {
 
     let cb = ConsensusBus::new();
     // Need a dummy parent so we can request a vote.
-    let dummy_parent = SealedHeader::seal(ExecHeader::default());
+    let dummy_parent = SealedHeader::seal_slow(ExecHeader::default());
     cb.recent_blocks().send_modify(|blocks| blocks.push_latest(dummy_parent));
     let synchronizer = StateSynchronizer::new(target.consensus_config(), cb.clone());
     let task_manager = TaskManager::default();
@@ -101,15 +101,15 @@ async fn test_request_vote_older_execution_block() {
 
     let cb = ConsensusBus::new();
     // Need a dummy parent so we can request a vote.
-    let dummy_parent = SealedHeader::seal(ExecHeader::default());
+    let dummy_parent = SealedHeader::seal_slow(ExecHeader::default());
     let dummy_hash = dummy_parent.hash();
     // This will be an "older" execution block, test this still works.
     cb.recent_blocks().send_modify(|blocks| blocks.push_latest(dummy_parent));
     let mut dummy = ExecHeader { nonce: 110_u64.into(), ..Default::default() };
     dummy.nonce = 110_u64.into();
-    cb.recent_blocks().send_modify(|blocks| blocks.push_latest(SealedHeader::seal(dummy)));
+    cb.recent_blocks().send_modify(|blocks| blocks.push_latest(SealedHeader::seal_slow(dummy)));
     dummy = ExecHeader { nonce: 120_u64.into(), ..Default::default() };
-    cb.recent_blocks().send_modify(|blocks| blocks.push_latest(SealedHeader::seal(dummy)));
+    cb.recent_blocks().send_modify(|blocks| blocks.push_latest(SealedHeader::seal_slow(dummy)));
     let synchronizer = StateSynchronizer::new(target.consensus_config(), cb.clone());
     let task_manager = TaskManager::default();
     synchronizer.spawn(&task_manager);
@@ -169,7 +169,7 @@ async fn test_request_vote_has_missing_parents() {
 
     let cb = ConsensusBus::new();
     // Need a dummy parent so we can request a vote.
-    let dummy_parent = SealedHeader::seal(ExecHeader::default());
+    let dummy_parent = SealedHeader::seal_slow(ExecHeader::default());
     let dummy_hash = dummy_parent.hash();
     cb.recent_blocks().send_modify(|blocks| blocks.push_latest(dummy_parent));
     let synchronizer = StateSynchronizer::new(target.consensus_config(), cb.clone());
@@ -254,7 +254,7 @@ async fn test_request_vote_accept_missing_parents() {
 
     let cb = ConsensusBus::new();
     // Need a dummy parent so we can request a vote.
-    let dummy_parent = SealedHeader::seal(ExecHeader::default());
+    let dummy_parent = SealedHeader::seal_slow(ExecHeader::default());
     let dummy_hash = dummy_parent.hash();
     cb.recent_blocks().send_modify(|blocks| blocks.push_latest(dummy_parent));
     let synchronizer = StateSynchronizer::new(target.consensus_config(), cb.clone());
@@ -344,7 +344,7 @@ async fn test_request_vote_missing_batches() {
 
     let cb = ConsensusBus::new();
     // Need a dummy parent so we can request a vote.
-    let dummy_parent = SealedHeader::seal(ExecHeader::default());
+    let dummy_parent = SealedHeader::seal_slow(ExecHeader::default());
     let dummy_hash = dummy_parent.hash();
     cb.recent_blocks().send_modify(|blocks| blocks.push_latest(dummy_parent));
     let synchronizer = StateSynchronizer::new(primary.consensus_config(), cb.clone());
@@ -409,7 +409,7 @@ async fn test_request_vote_already_voted() {
 
     let cb = ConsensusBus::new();
     // Need a dummy parent so we can request a vote.
-    let dummy_parent = SealedHeader::seal(ExecHeader::default());
+    let dummy_parent = SealedHeader::seal_slow(ExecHeader::default());
     let dummy_hash = dummy_parent.hash();
     cb.recent_blocks().send_modify(|blocks| blocks.push_latest(dummy_parent));
     let synchronizer = StateSynchronizer::new(primary.consensus_config(), cb.clone());
@@ -611,7 +611,7 @@ async fn test_request_vote_created_at_in_future() {
 
     let cb = ConsensusBus::new();
     // Need a dummy parent so we can request a vote.
-    let dummy_parent = SealedHeader::seal(ExecHeader::default());
+    let dummy_parent = SealedHeader::seal_slow(ExecHeader::default());
     let dummy_hash = dummy_parent.hash();
     cb.recent_blocks().send_modify(|blocks| blocks.push_latest(dummy_parent));
     let synchronizer = StateSynchronizer::new(primary.consensus_config(), cb.clone());
