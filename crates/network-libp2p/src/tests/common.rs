@@ -104,7 +104,7 @@ impl From<PeerExchangeMap> for TestPrimaryResponse {
 /// Helper function to create a random IPV4 address.
 #[allow(dead_code)]
 pub(crate) fn random_ip_addr() -> IpAddr {
-    let mut rng = rand::thread_rng();
+    let mut rng = rand::rng();
     // random between IPv4 and IPv6 (80% v4, 20% v6)
     if rng.gen_bool(0.8) {
         // random IPv4

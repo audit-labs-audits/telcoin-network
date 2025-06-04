@@ -7,7 +7,7 @@ use tn_reth::{
     payload::{BuildArguments, TNPayload},
     RethEnv,
 };
-use tn_types::{max_batch_gas, ConsensusOutput, Hash as _, SealedHeader, Withdrawals, B256};
+use tn_types::{max_batch_gas, ConsensusOutput, Hash as _, SealedHeader, B256};
 use tracing::{debug, error};
 
 fn finalize_signed_blocks(
@@ -90,7 +90,7 @@ pub fn execute_consensus_output(args: BuildArguments) -> EngineResult<SealedHead
         );
 
         // execute
-        let next_canonical_block = if payload.attributes.close_epoch.is_none() {
+        let next_canonical_block = if payload.close_epoch.is_none() {
             reth_env.build_block_from_empty_payload(payload, output.consensus_header_hash())?
         } else {
             // pass empty transactions and use logic to add receipts for closing epoch
@@ -100,7 +100,7 @@ pub fn execute_consensus_output(args: BuildArguments) -> EngineResult<SealedHead
         debug!(target: "engine", ?next_canonical_block, "empty block");
 
         // update header for next block execution in loop
-        canonical_header = next_canonical_block.header().clone();
+        canonical_header = next_canonical_block.recovered_block.sealed_header().clone();
 
         // add block to the tree and skip state root validation
         reth_env.insert_block(next_canonical_block).inspect_err(|e| {
@@ -136,7 +136,7 @@ pub fn execute_consensus_output(args: BuildArguments) -> EngineResult<SealedHead
             debug!(target: "engine", ?next_canonical_block, "worker's block executed");
 
             // update header for next block execution in loop
-            canonical_header = next_canonical_block.header().clone();
+            canonical_header = next_canonical_block.recovered_block.sealed_header().clone();
 
             // add block to the tree and skip state root validation
             reth_env.insert_block(next_canonical_block).inspect_err(|e| {

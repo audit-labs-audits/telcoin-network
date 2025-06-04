@@ -124,7 +124,10 @@ pub use reth::{
 pub use reth_chainspec::ChainSpec as RethChainSpec;
 pub use reth_cli_util::{parse_duration_from_secs, parse_socket_address};
 pub use reth_errors::{ProviderError, RethError};
-pub use reth_node_core::{args::LogArgs, node_config::DEFAULT_PERSISTENCE_THRESHOLD};
+pub use reth_node_core::{
+    args::{ColorMode, LogArgs},
+    node_config::DEFAULT_PERSISTENCE_THRESHOLD,
+};
 pub use reth_primitives_traits::crypto::secp256k1::sign_message;
 pub use reth_provider::{CanonStateNotificationStream, ExecutionOutcome};
 pub use reth_rpc_eth_types::EthApiError;
@@ -640,7 +643,7 @@ impl RethEnv {
         &self,
         payload: TNPayload,
         transactions: Vec<Vec<u8>>,
-    ) -> TnRethResult<BlockWithSenders> {
+    ) -> TnRethResult<ExecutedBlockWithTrieUpdates> {
         let parent_header = payload.parent_header.clone();
 
         let state_provider = self.blockchain_provider.state_by_block_hash(parent_header.hash())?;
@@ -904,7 +907,7 @@ impl RethEnv {
         &self,
         payload: TNPayload,
         consensus_header_digest: B256,
-    ) -> TnRethResult<BlockWithSenders> {
+    ) -> TnRethResult<ExecutedBlockWithTrieUpdates> {
         // let state = self
         //     .blockchain_provider
         //     .state_by_block_hash(payload.attributes.parent_header.hash())
@@ -1192,6 +1195,9 @@ impl RethEnv {
             self.blockchain_provider.clone(),
             transaction_pool,
             network,
+            //
+            // TODO: there is a trait definition blocking TNEvmConfig
+            //
             EthEvmConfig::new(self.blockchain_provider.chain_spec()),
         )
         .build();

@@ -1,10 +1,6 @@
 //! Helper methods for creating useful structs during tests.
 
 use indexmap::IndexMap;
-use rand::{
-    distributions::Bernoulli, prelude::Distribution, rngs::StdRng, thread_rng, Rng, RngCore,
-    SeedableRng,
-};
 use std::{
     collections::{BTreeSet, HashMap, VecDeque},
     ops::RangeInclusive,
@@ -15,9 +11,16 @@ use tn_types::{
     BlsKeypair, BlsSignature, Bytes, Certificate, CertificateDigest, Committee, Epoch, ExecHeader,
     Hash as _, HeaderBuilder, ProtocolSignature, Round, TimestampSec, VotingPower, WorkerId, U256,
 };
+// rand and rand_08 are both `rand` but secp256k1 uses rand_08 (v0.8) while everything else uses v0.9
+use rand::{
+    distr::{Bernoulli, Distribution as _},
+    rngs::StdRng,
+    Rng as _, SeedableRng as _,
+};
+use rand_08::{Rng, RngCore};
 
 pub fn temp_dir() -> std::path::PathBuf {
-    tempfile::tempdir().expect("Failed to open temporary directory").into_path()
+    tempfile::tempdir().expect("Failed to open temporary directory").keep()
 }
 
 ////////////////////////////////////////////////////////////////
@@ -25,7 +28,7 @@ pub fn temp_dir() -> std::path::PathBuf {
 ////////////////////////////////////////////////////////////////
 
 pub fn random_key() -> BlsKeypair {
-    BlsKeypair::generate(&mut thread_rng())
+    BlsKeypair::generate(&mut rand::rngs::StdRng::from_os_rng())
 }
 
 ////////////////////////////////////////////////////////////////
@@ -120,7 +123,7 @@ fn this_cert_parents(
     failure_prob: f64,
 ) -> BTreeSet<CertificateDigest> {
     std::iter::from_fn(|| {
-        let f: f64 = rand::thread_rng().gen();
+        let f: f64 = rand::rng().random();
         Some(f > failure_prob)
     })
     .take(ancestors.len())

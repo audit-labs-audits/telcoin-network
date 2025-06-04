@@ -18,7 +18,7 @@ use gcloud_sdk::{
 use humantime::format_duration;
 use lru_time_cache::LruCache;
 use reth::rpc::server_types::eth::{EthApiError, EthResult, RpcInvalidTransactionError};
-use reth_primitives::transaction::SignedTransactionIntoRecoveredExt;
+use reth_primitives::transaction::SignedTransaction;
 use reth_tasks::TaskSpawner;
 use reth_transaction_pool::{PoolTransaction, TransactionEvent};
 use secp256k1::{
@@ -31,10 +31,10 @@ use std::{
     task::{ready, Context, Poll},
     time::{Duration, SystemTime},
 };
-use tn_reth::{RethEnv, WorkerTxPool};
+use tn_reth::{EthPooledTransaction, RethEnv, WorkerTxPool};
 use tn_types::{
-    Address, EthSignature, SolType, Transaction, TransactionSigned, TransactionTrait as _,
-    TxEip1559, TxHash, TxKind, B256, U256,
+    Address, EthSignature, SignableTransaction as _, SolType, Transaction, TransactionSigned,
+    TransactionTrait as _, TxEip1559, TxHash, TxKind, B256, U256,
 };
 use tokio::sync::{
     mpsc::{UnboundedReceiver, UnboundedSender},
@@ -380,7 +380,7 @@ where
     ) -> EthResult<bool> {
         // recovery id must be 0 or 1
         for recovery_id in [0, 1] {
-            let recid = RecoveryId::from_i32(recovery_id).expect("Invalid recovery id");
+            let recid = RecoveryId::try_from(recovery_id).expect("Invalid recovery id");
             let recoverable_signature =
                 RecoverableSignature::from_compact(compact_signature, recid).map_err(|e| {
                     EthApiError::InvalidParams(format!("failed to recover signature: {e}"))
@@ -504,11 +504,11 @@ async fn submit_transaction(
     user: Address,
     contract: Address,
 ) -> EthResult<TxHash> {
-    let pool_tx = tx.try_into_pooled().map_err(|_| EthApiError::TransactionConversionError)?;
     let recovered =
-        pool_tx.try_into_ecrecovered().map_err(|_| EthApiError::InvalidTransactionSignature)?;
-    // submit tx and subscribe to events
-    let mut tx_events = pool.add_transaction_and_subscribe_local(recovered.into()).await?;
+        tx.try_into_recovered().map_err(|_| EthApiError::InvalidTransactionSignature)?;
+    let pool_tx = EthPooledTransaction::try_from_consensus(recovered)
+        .map_err(|_| EthApiError::TransactionConversionError)?;
+    let mut tx_events = pool.add_transaction_and_subscribe_local(pool_tx).await?;
 
     let tx_hash = tx_events.hash();
     let mined_tx_info = MinedTxInfo::new(user, contract);

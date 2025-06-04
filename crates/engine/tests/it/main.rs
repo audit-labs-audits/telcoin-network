@@ -123,7 +123,7 @@ async fn test_empty_output_executes_early_finalize() -> eyre::Result<()> {
 
     // assert blocks are executed as expected
     assert!(expected_block.senders.is_empty());
-    assert!(expected_block.body.transactions.is_empty());
+    assert!(expected_block.body().transactions.is_empty());
 
     // assert basefee is same as worker's block
     assert_eq!(expected_block.base_fee_per_gas, Some(expected_base_fee));
@@ -134,7 +134,7 @@ async fn test_empty_output_executes_early_finalize() -> eyre::Result<()> {
     assert_eq!(<FixedBytes<8> as Into<u64>>::into(expected_block.nonce), consensus_output.nonce());
 
     // ommers root
-    assert_eq!(expected_block.header.ommers_hash, EMPTY_OMMER_ROOT_HASH,);
+    assert_eq!(expected_block.header().ommers_hash, EMPTY_OMMER_ROOT_HASH,);
     // timestamp
     assert_eq!(expected_block.timestamp, consensus_output.committed_at());
     // parent beacon block root is output digest
@@ -494,8 +494,8 @@ async fn test_queued_output_executes_after_sending_channel_closed() -> eyre::Res
     for (idx, txs) in txs_by_block.iter().enumerate() {
         let block = &executed_blocks[idx];
         let signers = &signers_by_block[idx];
-        assert_eq!(&block.senders, signers);
-        assert_eq!(&block.body.transactions, txs);
+        assert_eq!(&block.senders(), signers);
+        assert_eq!(&block.body().transactions, txs);
 
         // basefee was increased for each batch
         expected_base_fee += idx as u64;
@@ -540,7 +540,7 @@ async fn test_queued_output_executes_after_sending_channel_closed() -> eyre::Res
             assert_eq!(block.number, 1);
         } else {
             // assert parents executed in order (sanity check)
-            let expected_parent = executed_blocks[idx - 1].header.hash_slow();
+            let expected_parent = executed_blocks[idx - 1].header().hash_slow();
             assert_eq!(block.parent_hash, expected_parent);
             // expect block numbers NOT the same as batch's headers
             assert_ne!(block.number, 1);
@@ -828,15 +828,15 @@ async fn test_execution_succeeds_with_duplicate_transactions() -> eyre::Result<(
         if idx == expected_duplicate_block_num_round_1 - 1
             || idx == expected_duplicate_block_num_round_2 - 1
         {
-            assert!(block.senders.is_empty());
-            assert!(block.body.transactions.is_empty());
+            assert!(block.senders().is_empty());
+            assert!(block.body().transactions.is_empty());
             // gas used should NOT be the same as bc duplicate transaction are ignored
             assert_ne!(block.gas_used, max_batch_gas(block.number));
             // gas used should be zero bc all transactions were duplicates
             assert_eq!(block.gas_used, 0);
         } else {
-            assert_eq!(&block.senders, signers);
-            assert_eq!(&block.body.transactions, txs);
+            assert_eq!(&block.senders(), signers);
+            assert_eq!(&block.body().transactions, txs);
         }
 
         // basefee was increased for each batch
@@ -881,7 +881,7 @@ async fn test_execution_succeeds_with_duplicate_transactions() -> eyre::Result<(
             assert_eq!(block.parent_hash, chain.genesis_hash());
         } else {
             // assert parents executed in order (sanity check)
-            let expected_parent = executed_blocks[idx - 1].header.hash_slow();
+            let expected_parent = executed_blocks[idx - 1].header().hash_slow();
             assert_eq!(block.parent_hash, expected_parent);
         }
 

@@ -52,7 +52,7 @@ reth-discv4 = { workspace = true }
 reth-eth-wire = { workspace = true }
 reth-tracing = { workspace = true }
 
-rand_chacha = { workspace = true }
+rand = { workspace = true }
 futures = { workspace = true }
 serde = { workspace = true }
 thiserror = { workspace = true }

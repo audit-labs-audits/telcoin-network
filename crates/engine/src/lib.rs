@@ -23,7 +23,7 @@ use std::{
     pin::{pin, Pin},
     task::{Context, Poll},
 };
-use tn_reth::{traits::BuildArguments, RethEnv};
+use tn_reth::{payload::BuildArguments, RethEnv};
 use tn_types::{ConsensusOutput, Noticer, SealedHeader, TaskSpawner};
 use tokio::sync::{mpsc, oneshot};
 use tokio_stream::wrappers::ReceiverStream;

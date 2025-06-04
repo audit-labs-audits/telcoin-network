@@ -376,9 +376,8 @@ mod test {
     use super::*;
 
     fn test_record(expire_past: bool) -> Record {
-        let key_config = KeyConfig::new_with_testing_key(BlsKeypair::generate(
-            &mut StdRng::from_rng(OsRng).unwrap(),
-        ));
+        let key_config =
+            KeyConfig::new_with_testing_key(BlsKeypair::generate(&mut StdRng::from_os_rng()));
         let key = RecordKey::new(&encode(&key_config.primary_public_key()));
         let value: Vec<u8> = vec![0, 1, 2, 3];
         let peer_id = PeerId::random();
@@ -391,9 +390,8 @@ mod test {
     }
 
     fn test_provider_record() -> ProviderRecord {
-        let key_config = KeyConfig::new_with_testing_key(BlsKeypair::generate(
-            &mut StdRng::from_rng(OsRng).unwrap(),
-        ));
+        let key_config =
+            KeyConfig::new_with_testing_key(BlsKeypair::generate(&mut StdRng::from_os_rng()));
         let key = RecordKey::new(&encode(&key_config.primary_public_key()));
         let provider = PeerId::random();
         let expires = Instant::now().checked_add(Duration::from_secs(60 * 60 * 24)); // one day
@@ -461,9 +459,8 @@ mod test {
     fn test_kad_store() {
         let tmp_dir = TempDir::new().expect("temp dir");
         let db = open_network_db(tmp_dir.path());
-        let key_config = KeyConfig::new_with_testing_key(BlsKeypair::generate(
-            &mut StdRng::from_rng(OsRng).unwrap(),
-        ));
+        let key_config =
+            KeyConfig::new_with_testing_key(BlsKeypair::generate(&mut StdRng::from_os_rng()));
         let mut kad_store = KadStore::new(db, &key_config);
 
         let rec = test_record(false);

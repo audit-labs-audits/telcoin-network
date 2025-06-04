@@ -17,6 +17,7 @@ mod task_manager;
 mod worker;
 #[macro_use]
 pub mod error;
+
 pub use codec::*;
 pub use committee::*;
 pub use crypto::*;
@@ -36,7 +37,8 @@ pub use alloy::{
     consensus::{
         constants::{EMPTY_OMMER_ROOT_HASH, EMPTY_RECEIPTS, EMPTY_TRANSACTIONS, EMPTY_WITHDRAWALS},
         proofs::calculate_transaction_root,
-        BlockHeader, Header as ExecHeader, Transaction as TransactionTrait, TxEip1559,
+        BlockHeader, Header as ExecHeader, SignableTransaction, Transaction as TransactionTrait,
+        TxEip1559,
     },
     eips::{
         eip1559::{ETHEREUM_BLOCK_GAS_LIMIT_30M, MIN_PROTOCOL_BASE_FEE},

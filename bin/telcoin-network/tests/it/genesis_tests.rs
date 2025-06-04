@@ -180,7 +180,6 @@ async fn test_genesis_with_consensus_registry() -> eyre::Result<()> {
     let signer = tx_factory.get_default_signer().expect("failed to fetch signer");
     let wallet = EthereumWallet::from(signer);
     let provider = ProviderBuilder::new()
-        .with_recommended_fillers()
         .wallet(wallet)
         .on_http(rpc_url.parse().expect("rpc url parse error"));
 

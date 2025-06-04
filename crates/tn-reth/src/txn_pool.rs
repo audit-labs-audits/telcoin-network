@@ -343,3 +343,12 @@ pub fn recover_signed_transaction(tx: &[u8]) -> TnRethResult<TransactionSigned> 
     let recovered = reth_recover_raw_transaction::<TransactionSigned>(tx)?;
     Ok(recovered.into_inner())
 }
+
+/// Recover a pooled transaction.
+pub fn recover_pooled_transaction(
+    tx: &[u8],
+) -> eyre::Result<EthPooledTransaction<TransactionSigned>> {
+    let recovered = reth_recover_raw_transaction::<TransactionSigned>(tx)?;
+    let pooled = EthPooledTransaction::try_from_consensus(recovered)?;
+    Ok(pooled)
+}

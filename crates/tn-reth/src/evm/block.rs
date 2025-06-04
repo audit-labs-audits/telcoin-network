@@ -14,7 +14,7 @@ use alloy::{
     sol_types::SolCall as _,
 };
 use alloy_evm::{Database, Evm};
-use rand_chacha::rand_core::SeedableRng as _;
+use rand::{rngs::StdRng, Rng as _, SeedableRng as _};
 use reth_chainspec::{EthChainSpec, EthereumHardfork, EthereumHardforks};
 use reth_errors::{BlockExecutionError, BlockValidationError};
 use reth_evm::{
@@ -174,9 +174,9 @@ where
         seed.copy_from_slice(randomness.as_slice());
         debug!(target: "engine", ?seed, "seed after");
 
-        let mut rng = rand_chacha::ChaCha8Rng::from_seed(seed);
+        let mut rng = StdRng::from_seed(seed);
         for i in (1..eligible_validators.len()).rev() {
-            let j = rng.gen_range(0..=i);
+            let j = rng.random_range(0..=i);
             eligible_validators.swap(i, j);
         }
 
