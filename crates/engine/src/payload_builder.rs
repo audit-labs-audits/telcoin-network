@@ -37,6 +37,7 @@ fn finalize_signed_blocks(
             return Err(TnEngineError::MissingFinalBlock);
         }
     }
+
     Ok(())
 }
 
@@ -60,6 +61,7 @@ pub fn execute_consensus_output(args: BuildArguments) -> EngineResult<SealedHead
 
     // rename canonical header for clarity
     let mut canonical_header = parent_header;
+    let mut executed_blocks = Vec::with_capacity(batches.len());
 
     //
     // /
@@ -102,10 +104,13 @@ pub fn execute_consensus_output(args: BuildArguments) -> EngineResult<SealedHead
         // update header for next block execution in loop
         canonical_header = next_canonical_block.recovered_block.sealed_header().clone();
 
-        // add block to the tree and skip state root validation
-        reth_env.insert_block(next_canonical_block).inspect_err(|e| {
-            error!(target: "engine", header=?canonical_header, ?e, "failed to insert next canonical block");
-        })?;
+        // // add block to the tree and skip state root validation
+        // reth_env.insert_block(next_canonical_block).inspect_err(|e| {
+        //     error!(target: "engine", header=?canonical_header, ?e, "failed to insert next canonical block");
+        // })?;
+
+        // collect all executed blocks for this output
+        executed_blocks.push(next_canonical_block);
     } else {
         // loop and construct blocks with transactions
         for (batch_index, batch) in batches.into_iter().enumerate() {
@@ -133,15 +138,31 @@ pub fn execute_consensus_output(args: BuildArguments) -> EngineResult<SealedHead
             let next_canonical_block =
                 reth_env.build_block_from_batch_payload(payload, batch.transactions)?;
 
+            // tree flow:
+            // - try receive eng message
+            //      - set_pending_block
+            //      - insert_executed
+            // - store to disk
+            //      - collect and store in group
+            //          - see Persistence::on_save_block
+            //
+            // TODO:
+            //  - check BeaconConsensusEngineEvents to ensure nothing missed
+            //  - still need to broadcast canonical update
+            //  - ensure read/write access isn't a problem
+
             debug!(target: "engine", ?next_canonical_block, "worker's block executed");
 
             // update header for next block execution in loop
             canonical_header = next_canonical_block.recovered_block.sealed_header().clone();
 
-            // add block to the tree and skip state root validation
-            reth_env.insert_block(next_canonical_block).inspect_err(|e| {
-                error!(target: "engine", header=?canonical_header, ?e, "failed to insert next canonical block");
-            })?;
+            // // add block to the tree and skip state root validation
+            // reth_env.insert_block(next_canonical_block).inspect_err(|e| {
+            //     error!(target: "engine", header=?canonical_header, ?e, "failed to insert next canonical block");
+            // })?;
+
+            // collect all executed blocks for this output
+            executed_blocks.push(next_canonical_block);
         }
     } // end block execution for round
 
@@ -157,7 +178,8 @@ pub fn execute_consensus_output(args: BuildArguments) -> EngineResult<SealedHead
     // the canon_state_notifications include every block executed in this round
     //
     // the worker's pool maintenance task subcribes to these events
-    reth_env.make_canonical(canonical_header.clone())?;
+    // reth_env.make_canonical(canonical_header.clone())?;
+    reth_env.finish_executing_output(executed_blocks)?;
 
     if output.early_finalize {
         // finalize the last block executed from consensus output and update chain info

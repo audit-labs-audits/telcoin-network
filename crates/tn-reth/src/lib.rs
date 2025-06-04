@@ -48,7 +48,7 @@ use reth::{
         server_types::eth::utils::recover_raw_transaction as reth_recover_raw_transaction,
     },
 };
-use reth_chain_state::ExecutedBlockWithTrieUpdates;
+use reth_chain_state::{ExecutedBlockWithTrieUpdates, NewCanonicalChain};
 use reth_chainspec::{BaseFeeParams, EthChainSpec};
 use reth_db::{init_db, DatabaseEnv};
 use reth_db_common::init::init_genesis;
@@ -74,10 +74,11 @@ use reth_node_core::node_config::DEFAULT_CROSS_BLOCK_CACHE_SIZE_MB;
 use reth_primitives::{Log, TxType};
 use reth_provider::{
     providers::{BlockchainProvider, StaticFileProvider},
+    writer::UnifiedStorageWriter,
     BlockIdReader as _, BlockNumReader, BlockReader, CanonChainTracker,
-    CanonStateSubscriptions as _, ChainSpecProvider, ChainStateBlockReader,
+    CanonStateSubscriptions as _, ChainSpecProvider, ChainStateBlockReader, ChainStateBlockWriter,
     DatabaseProviderFactory, HeaderProvider as _, ProviderFactory, StateProviderBox,
-    StateProviderFactory, TransactionVariant,
+    StateProviderFactory, StaticFileProviderFactory, TransactionVariant,
 };
 use reth_prune::PrunerBuilder;
 use reth_revm::{
@@ -1003,46 +1004,34 @@ impl RethEnv {
         todo!()
     }
 
-    /// Adds block to the tree and skips state root validation.
-    pub fn insert_block(&self, executed_block: ExecutedBlockWithTrieUpdates) -> TnRethResult<()> {
-        // self.blockchain_provider.insert_block(
-        //     sealed_block_with_senders,
-        //     BlockValidationKind::SkipStateRootValidation,
-        // )?;
-        //
-        // TODO: still need fork choice updated??
-
-        let msg = FromEngine::Request(EngineApiRequest::InsertExecutedBlock(executed_block));
-        self.to_tree.send(msg).inspect_err(
-            |_| error!(target: "engine", "failed to forward executed block to tree"),
-        )?;
-
-        Ok(())
-    }
-
     /// Finalize block (header) executed from consensus output and update chain info.
     ///
-    /// This removes canonical blocks from the tree, stores the finalized block number in the
+    /// This stores the finalized block number in the
     /// database, but still need to set_finalized afterwards for utilization in-memory for
     /// components, like RPC
     pub fn finalize_block(&self, header: SealedHeader) -> TnRethResult<()> {
-        // // finalize the last block executed from consensus output and update chain info
-        // //
-        // // this removes canonical blocks from the tree, stores the finalized block number in the
-        // // database, but still need to set_finalized afterwards for utilization in-memory for
-        // // components, like RPC
-        // self.blockchain_provider.finalize_block(header.number)?;
-        // self.blockchain_provider.set_finalized(header.clone());
+        // persiste final block info for node recovery
+        let provider = self.blockchain_provider.database_provider_rw()?;
+        provider.save_finalized_block_number(header.number)?;
+        self.blockchain_provider.set_finalized(header.clone());
 
-        // // update safe block last because this is less time sensitive but still needs to happen
-        // self.blockchain_provider.set_safe(header);
+        // update safe block last because this is less time sensitive but still needs to happen
+        provider.save_safe_block_number(header.number)?;
+        self.blockchain_provider.set_safe(header);
+
+        // commit db transaction
+        provider.commit()?;
+
         Ok(())
     }
 
     /// This makes all blocks canonical, commits them to the database,
     /// broadcasts new chain on `canon_state_notification_sender`
     /// and set last executed header as the tracked header.
-    pub fn make_canonical(&self, header: SealedHeader) -> TnRethResult<()> {
+    pub fn finish_executing_output(
+        &self,
+        blocks: Vec<ExecutedBlockWithTrieUpdates>,
+    ) -> TnRethResult<()> {
         // NOTE: this makes all blocks canonical, commits them to the database,
         // and broadcasts new chain on `canon_state_notification_sender`
         //
@@ -1054,14 +1043,46 @@ impl RethEnv {
         // set last executed header as the tracked header
         //
         // see: reth/crates/consensus/beacon/src/engine/mod.rs:update_canon_chain
-        self.blockchain_provider.set_canonical_head(header.clone());
+
+        debug!(
+            target: "engine",
+            first=?blocks.first().map(|b| b.recovered_block.num_hash()),
+            last=?blocks.last().map(|b| b.recovered_block.num_hash()),
+            "storing range of blocks",
+        );
+
+        // insert blocks to db
+        let provider_rw = self.blockchain_provider.database_provider_rw()?;
+        let static_file_provider = self.blockchain_provider.static_file_provider();
+        UnifiedStorageWriter::from(&provider_rw, &static_file_provider)
+            .save_blocks(blocks.clone())?;
+        UnifiedStorageWriter::commit(provider_rw)?;
+
+        // process update
+        //
+        // see reth::EngineApiTreeHandler::on_canonical_chain_update
+        let chain_update = NewCanonicalChain::Commit { new: blocks };
+        let canonical_head = chain_update.tip().clone_sealed_header();
+        let notification = chain_update.to_chain_notification();
+
+        // set canonical head in-memory
         info!(
             target: "engine",
             "canonical head for round {:?}: {:?} - {:?}",
-            <FixedBytes<8> as Into<u64>>::into(header.nonce),
-            header.number,
-            header.hash()
+            <FixedBytes<8> as Into<u64>>::into(canonical_head.nonce),
+            canonical_head.number,
+            canonical_head.hash()
         );
+        let canonical_in_memory_state = self.blockchain_provider.canonical_in_memory_state();
+        canonical_in_memory_state.update_chain(chain_update);
+        canonical_in_memory_state.set_canonical_head(canonical_head);
+
+        // broadcast notification
+        canonical_in_memory_state.notify_canon_state(notification);
+
+        // TODO: set pending block in batch builder - pass canonical-in-memory-state
+        // self.blockchain_provider.canonical_in_memory_state().set_pending_block(pending);
+
         Ok(())
     }
 

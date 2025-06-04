@@ -45,6 +45,9 @@ pub enum TnRethError {
     /// Error forwarding executed block to tree.
     #[error("Failed to forward executed block to tree.")]
     TreeChannelClosed,
+    /// Executed output must always contain at least one block.
+    #[error("Empty execution output from engine.")]
+    EmptyExecutionOutput,
 }
 
 impl From<TnRethError> for EthApiError {
