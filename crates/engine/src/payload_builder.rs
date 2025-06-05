@@ -7,7 +7,10 @@ use tn_reth::{
     traits::{BuildArguments, TNPayload, TNPayloadAttributes},
     RethEnv,
 };
-use tn_types::{max_batch_gas, ConsensusOutput, Hash as _, SealedHeader, Withdrawals, B256};
+use tn_types::{
+    gas_accumulator::GasAccumulator, max_batch_gas, ConsensusOutput, Hash as _, SealedHeader,
+    Withdrawals, B256,
+};
 use tracing::{debug, error};
 
 fn finalize_signed_blocks(
@@ -43,8 +46,12 @@ fn finalize_signed_blocks(
 /// Execute output from consensus to extend the canonical chain.
 ///
 /// The function handles all types of output, included multiple blocks and empty blocks.
-pub fn execute_consensus_output(args: BuildArguments) -> EngineResult<SealedHeader> {
-    let BuildArguments { reth_env, mut output, parent_header } = args;
+pub fn execute_consensus_output(
+    args: BuildArguments,
+    gas_accumulator: GasAccumulator,
+) -> EngineResult<SealedHeader> {
+    // rename canonical header for clarity
+    let BuildArguments { reth_env, mut output, parent_header: mut canonical_header } = args;
     debug!(target: "engine", ?output, "executing output");
 
     // output digest returns the `ConsensusHeader` digest
@@ -57,9 +64,6 @@ pub fn execute_consensus_output(args: BuildArguments) -> EngineResult<SealedHead
         output.batch_digests.len(),
         "uneven number of sealed blocks from batches and batch digests"
     );
-
-    // rename canonical header for clarity
-    let mut canonical_header = parent_header;
 
     // extend canonical tip if output contains batches with transactions
     // otherwise execute an empty block to extend canonical tip
@@ -138,6 +142,11 @@ pub fn execute_consensus_output(args: BuildArguments) -> EngineResult<SealedHead
                 batch.transactions,
                 output.consensus_header_hash(),
             )?;
+            gas_accumulator.inc_block(
+                batch.worker_id,
+                next_canonical_block.gas_used,
+                next_canonical_block.gas_limit,
+            );
 
             debug!(target: "engine", ?next_canonical_block, "worker's block executed");
 

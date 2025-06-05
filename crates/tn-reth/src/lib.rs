@@ -1733,8 +1733,8 @@ mod tests {
     use rand_chacha::ChaCha8Rng;
     use tempfile::TempDir;
     use tn_types::{
-        adiri_genesis, BlsKeypair, Certificate, CommittedSubDag, ConsensusHeader, ConsensusOutput,
-        FromHex, NodeP2pInfo, ReputationScores,
+        adiri_genesis, BlsKeypair, Certificate, CommittedSubDag, ConsensusOutput, FromHex,
+        NodeP2pInfo, ReputationScores,
     };
 
     /// Helper function for creating a consensus output for tests.
@@ -1755,14 +1755,8 @@ mod tests {
                 previous_sub_dag,
             )
             .into(),
-            close_epoch: false,
-            batches: Default::default(), // empty
             beneficiary,
-            batch_digests: Default::default(), // empty
-            parent_hash: ConsensusHeader::default().digest(),
-            number: 0,
-            extra: Default::default(),
-            early_finalize: false,
+            ..Default::default()
         }
     }
 
