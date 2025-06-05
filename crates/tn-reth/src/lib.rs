@@ -656,12 +656,6 @@ impl RethEnv {
         debug!(target: "engine", ?parent_header, "retrieving state for next block");
         let state_provider = self.blockchain_provider.state_by_block_hash(parent_header.hash())?;
         let state = StateProviderDatabase::new(&state_provider);
-
-        // NOTE: using same approach as reth here bc I can't find the State::builder()'s methods
-        // I'm not sure what `with_bundle_update` does, and using `CachedReads` is the only way
-        // I can get the state root section below to compile using `db.commit(state)`.
-        //
-        // consider creating `CachedReads` during batch validation?
         let mut cached_reads = CachedReads::default();
         let mut db = State::builder()
             .with_database(cached_reads.as_db_mut(state))
@@ -1293,6 +1287,15 @@ impl RethEnv {
         // // create execution db
         // let state = StateProviderDatabase::new(self.latest()?);
         // let mut db = State::builder().with_database(state).with_bundle_update().build();
+        // let state_provider = self.blockchain_provider.state_by_block_hash(parent_header.hash())?;
+        let state = StateProviderDatabase::new(self.latest()?);
+        let mut cached_reads = CachedReads::default();
+        let mut db = State::builder()
+            .with_database(cached_reads.as_db_mut(state))
+            .with_bundle_update()
+            .build();
+
+        let mut builder = self.evm_config.executor(&mut db, &header, TNPayload::default())?;
 
         // // Setup environment for the execution.
         // let EvmEnv { cfg_env_with_handler_cfg, block_env } =
