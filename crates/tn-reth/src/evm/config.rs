@@ -3,7 +3,7 @@
 //! Inspired by: crates/ethereum/evm/src/lib.rs
 
 use super::{TNBlockAssembler, TNBlockExecutionCtx, TNBlockExecutorFactory, TNEvmFactory};
-use crate::{error::TnRethError, payload::TNPayload};
+use crate::{error::TnRethError, payload::TNPayload, traits::TNPrimitives};
 use alloy::eips::{eip1559::INITIAL_BASE_FEE, eip7840::BlobParams};
 use reth_chainspec::{ChainSpec, EthChainSpec as _, EthereumHardfork};
 use reth_evm::{
@@ -146,7 +146,7 @@ impl TnEvmConfig {
 
 // reth-evm
 impl ConfigureEvm for TnEvmConfig {
-    type Primitives = EthPrimitives;
+    type Primitives = TNPrimitives;
 
     type Error = TnRethError;
 
@@ -249,7 +249,8 @@ impl ConfigureEvm for TnEvmConfig {
             beneficiary: payload.beneficiary,
             timestamp: payload.timestamp,
             // difficulty is useful for post-execution, but executed with ZERO
-            difficulty: U256::ZERO,
+            // difficulty: U256::ZERO,
+            difficulty: U256::from(payload.batch_index),
             prevrandao: Some(payload.prev_randao()),
             gas_limit: payload.gas_limit,
             basefee: payload.base_fee_per_gas,
@@ -278,6 +279,7 @@ impl ConfigureEvm for TnEvmConfig {
             parent_hash: block.header().parent_hash,
             parent_beacon_block_root: block.header().parent_beacon_block_root,
             nonce: block.nonce.into(),
+            requests_hash: block.requests_hash,
             close_epoch,
         }
     }
@@ -291,6 +293,7 @@ impl ConfigureEvm for TnEvmConfig {
             parent_hash: parent.hash(),
             parent_beacon_block_root: payload.parent_beacon_block_root(),
             nonce: payload.nonce,
+            requests_hash: payload.batch_digest,
             close_epoch: payload.close_epoch,
         }
     }

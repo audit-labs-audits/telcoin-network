@@ -126,7 +126,11 @@ impl ExecutionNodeInner {
             WorkerNetwork::new(self.reth_env.chainspec(), network_handle, self.tn_config.version);
         let mut tx_pool_latest = transaction_pool.block_info();
         tx_pool_latest.pending_basefee = MIN_PROTOCOL_BASE_FEE;
-        let last_seen = self.reth_env.finalized_block_hash_number()?;
+        // let last_seen = self.reth_env.finalized_block_hash_number()?;
+        let last_seen = self
+            .reth_env
+            .finalized_block_num_hash()?
+            .ok_or_eyre("missing finalized block num hash initializing worker components")?;
         tx_pool_latest.last_seen_block_hash = last_seen.hash;
         tx_pool_latest.last_seen_block_number = last_seen.number;
         transaction_pool.set_block_info(tx_pool_latest);

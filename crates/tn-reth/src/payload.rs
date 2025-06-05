@@ -41,7 +41,7 @@ pub struct TNPayload {
     /// Value for the `timestamp` field of the new payload
     pub timestamp: u64,
     /// Value for the `extra_data` field in the new block.
-    pub batch_digest: B256,
+    pub batch_digest: Option<B256>,
     /// Hash value for [ConsensusHeader]. Used as the executed block's "parent_beacon_block_root".
     pub consensus_header_digest: B256,
     /// The base fee per gas used to construct this block.
@@ -66,7 +66,7 @@ impl TNPayload {
     pub fn new(
         parent_header: SealedHeader,
         batch_index: usize,
-        batch_digest: B256,
+        batch_digest: Option<B256>,
         output: &ConsensusOutput,
         consensus_header_digest: B256,
         base_fee_per_gas: u64,
@@ -136,7 +136,7 @@ impl TNPayload {
         use tn_types::{Hash as _, MIN_PROTOCOL_BASE_FEE};
 
         let batch_index = 0;
-        let batch_digest = B256::random();
+        let batch_digest = Some(B256::random());
         let consensus_header_digest = output.digest().into();
         let base_fee_per_gas = parent_header.base_fee_per_gas.unwrap_or(MIN_PROTOCOL_BASE_FEE);
         let gas_limit = parent_header.gas_limit;

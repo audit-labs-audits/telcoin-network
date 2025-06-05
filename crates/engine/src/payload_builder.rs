@@ -5,11 +5,12 @@
 use crate::error::{EngineResult, TnEngineError};
 use tn_reth::{
     payload::{BuildArguments, TNPayload},
-    RethEnv,
+    NewCanonicalChain, RethEnv,
 };
 use tn_types::{max_batch_gas, ConsensusOutput, Hash as _, SealedHeader, B256};
 use tracing::{debug, error};
 
+/// Set the latest sealed header that was signed by a quorum of validators as `finalized`.
 fn finalize_signed_blocks(
     reth_env: &RethEnv,
     output: &ConsensusOutput,
@@ -61,15 +62,9 @@ pub fn execute_consensus_output(args: BuildArguments) -> EngineResult<SealedHead
 
     // rename canonical header for clarity
     let mut canonical_header = parent_header;
-    let mut executed_blocks = Vec::with_capacity(batches.len());
-
-    //
-    // /
-    // TODO
-    //
-    //
-    // ReFactor this before merge - too many arguments for TNPayload
-    // - logic for mix hash, output digest, etc. should be in TNPayload::new
+    // ensure at least 1 block for empty output with no batches
+    let mut executed_blocks = Vec::with_capacity(batches.len().max(1));
+    let canonical_in_memory_state = reth_env.canonical_in_memory_state();
 
     // extend canonical tip if output contains batches with transactions
     // otherwise execute an empty block to extend canonical tip
@@ -83,7 +78,7 @@ pub fn execute_consensus_output(args: BuildArguments) -> EngineResult<SealedHead
         let payload = TNPayload::new(
             canonical_header,
             0,
-            B256::ZERO, // no batch to digest
+            None, // no batch to digest
             &output,
             output_digest,
             base_fee_per_gas,
@@ -92,27 +87,21 @@ pub fn execute_consensus_output(args: BuildArguments) -> EngineResult<SealedHead
         );
 
         // execute
-        let next_canonical_block = if payload.close_epoch.is_none() {
-            reth_env.build_block_from_empty_payload(payload, output.consensus_header_hash())?
-        } else {
-            // pass empty transactions and use logic to add receipts for closing epoch
-            reth_env.build_block_from_batch_payload(payload, vec![])?
-        };
+        let next_canonical_block = reth_env.build_block_from_batch_payload(payload, vec![])?;
 
         debug!(target: "engine", ?next_canonical_block, "empty block");
 
         // update header for next block execution in loop
         canonical_header = next_canonical_block.recovered_block.sealed_header().clone();
-
-        // // add block to the tree and skip state root validation
-        // reth_env.insert_block(next_canonical_block).inspect_err(|e| {
-        //     error!(target: "engine", header=?canonical_header, ?e, "failed to insert next canonical block");
-        // })?;
+        canonical_in_memory_state.set_pending_block(next_canonical_block.clone());
+        canonical_in_memory_state
+            .update_chain(NewCanonicalChain::Commit { new: vec![next_canonical_block.clone()] });
+        canonical_in_memory_state.set_canonical_head(canonical_header.clone());
 
         // collect all executed blocks for this output
         executed_blocks.push(next_canonical_block);
     } else {
-        // loop and construct blocks with transactions
+        // loop and construct blocks from batches with transactions
         for (batch_index, batch) in batches.into_iter().enumerate() {
             let batch_digest =
                 output.next_batch_digest().ok_or(TnEngineError::NextBlockDigestMissing)?;
@@ -122,11 +111,11 @@ pub fn execute_consensus_output(args: BuildArguments) -> EngineResult<SealedHead
 
             // apply XOR bitwise operator with worker's digest to ensure unique mixed hash per batch
             // for round
-            let mix_hash = output_digest ^ batch.digest();
+            let mix_hash = output_digest ^ batch_digest;
             let payload = TNPayload::new(
                 canonical_header,
                 batch_index,
-                batch_digest,
+                Some(batch_digest),
                 &output,
                 output_digest,
                 base_fee_per_gas,
@@ -155,11 +144,11 @@ pub fn execute_consensus_output(args: BuildArguments) -> EngineResult<SealedHead
 
             // update header for next block execution in loop
             canonical_header = next_canonical_block.recovered_block.sealed_header().clone();
-
-            // // add block to the tree and skip state root validation
-            // reth_env.insert_block(next_canonical_block).inspect_err(|e| {
-            //     error!(target: "engine", header=?canonical_header, ?e, "failed to insert next canonical block");
-            // })?;
+            canonical_in_memory_state.set_pending_block(next_canonical_block.clone());
+            canonical_in_memory_state.update_chain(NewCanonicalChain::Commit {
+                new: vec![next_canonical_block.clone()],
+            });
+            canonical_in_memory_state.set_canonical_head(canonical_header.clone());
 
             // collect all executed blocks for this output
             executed_blocks.push(next_canonical_block);
@@ -187,6 +176,7 @@ pub fn execute_consensus_output(args: BuildArguments) -> EngineResult<SealedHead
         // this removes canonical blocks from the tree, stores the finalized block number in the
         // database, but still need to set_finalized afterwards for utilization in-memory for
         // components, like RPC
+        debug!(target: "engine", "early finalize");
         reth_env.finalize_block(canonical_header.clone())?;
     } else {
         finalize_signed_blocks(&reth_env, &output, &canonical_header)?;
@@ -194,4 +184,10 @@ pub fn execute_consensus_output(args: BuildArguments) -> EngineResult<SealedHead
 
     // return new canonical header for next engine task
     Ok(canonical_header)
+}
+
+/// Execute the transaction and update canon chain in-memory.
+fn execute_payload() {
+    // consolidate duplicate code into here
+    todo!()
 }

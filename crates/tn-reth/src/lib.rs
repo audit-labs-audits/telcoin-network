@@ -48,7 +48,7 @@ use reth::{
         server_types::eth::utils::recover_raw_transaction as reth_recover_raw_transaction,
     },
 };
-use reth_chain_state::{ExecutedBlockWithTrieUpdates, NewCanonicalChain};
+use reth_chain_state::ExecutedBlockWithTrieUpdates;
 use reth_chainspec::{BaseFeeParams, EthChainSpec};
 use reth_db::{init_db, DatabaseEnv};
 use reth_db_common::init::init_genesis;
@@ -122,6 +122,7 @@ pub use alloy::primitives::FixedBytes;
 pub use reth::{
     chainspec::chain_value_parser, dirs::MaybePlatformPath, rpc::builder::RpcServerHandle,
 };
+pub use reth_chain_state::{CanonicalInMemoryState, NewCanonicalChain};
 pub use reth_chainspec::ChainSpec as RethChainSpec;
 pub use reth_cli_util::{parse_duration_from_secs, parse_socket_address};
 pub use reth_errors::{ProviderError, RethError};
@@ -639,6 +640,11 @@ impl RethEnv {
         ChainSpec(self.node_config.chain.clone())
     }
 
+    /// Return the canonical in-memory state.
+    pub fn canonical_in_memory_state(&self) -> CanonicalInMemoryState {
+        self.blockchain_provider.canonical_in_memory_state()
+    }
+
     /// Construct a canonical block from a worker's block that reached consensus.
     pub fn build_block_from_batch_payload(
         &self,
@@ -646,7 +652,7 @@ impl RethEnv {
         transactions: Vec<Vec<u8>>,
     ) -> TnRethResult<ExecutedBlockWithTrieUpdates> {
         let parent_header = payload.parent_header.clone();
-
+        debug!(target: "engine", ?parent_header, "retrieving state for next block");
         let state_provider = self.blockchain_provider.state_by_block_hash(parent_header.hash())?;
         let state = StateProviderDatabase::new(&state_provider);
 
@@ -668,12 +674,7 @@ impl RethEnv {
         );
 
         // collect these totals to report at the end
-        let mut cumulative_gas_used = 0;
         let mut total_fees = U256::ZERO;
-        // let mut executed_txs = Vec::new();
-        // let mut senders = Vec::new();
-        // let mut receipts = Vec::new();
-        let block_gas_limit = ETHEREUM_BLOCK_GAS_LIMIT_30M;
 
         // copy in case of error
         let batch_digest = payload.batch_digest;
@@ -688,8 +689,6 @@ impl RethEnv {
         })?;
 
         let basefee = builder.evm_mut().block().basefee;
-
-        // let mut evm = self.evm_config.evm_with_env(&mut db, tn_env);
 
         for tx_bytes in &transactions {
             let recovered = reth_recover_raw_transaction::<TransactionSigned>(tx_bytes)
@@ -722,7 +721,6 @@ impl RethEnv {
                 .effective_tip_per_gas(basefee)
                 .expect("fee is always valid; execution succeeded");
             total_fees += U256::from(miner_fee) * U256::from(gas_used);
-            cumulative_gas_used += gas_used;
 
             // // initialize values for execution from block env
             // //
@@ -811,6 +809,7 @@ impl RethEnv {
         let BlockBuilderOutcome { execution_result, block, hashed_state, trie_updates } =
             builder.finish(&state_provider)?;
 
+        debug!(target: "engine", hash=?block.hash(), "block builder outcome");
         let block_num = block.number();
         let res: ExecutedBlockWithTrieUpdates<TNPrimitives> = ExecutedBlockWithTrieUpdates::new(
             Arc::new(block),
@@ -1010,6 +1009,7 @@ impl RethEnv {
     /// database, but still need to set_finalized afterwards for utilization in-memory for
     /// components, like RPC
     pub fn finalize_block(&self, header: SealedHeader) -> TnRethResult<()> {
+        let num_hash = header.num_hash();
         // persiste final block info for node recovery
         let provider = self.blockchain_provider.database_provider_rw()?;
         provider.save_finalized_block_number(header.number)?;
@@ -1022,6 +1022,10 @@ impl RethEnv {
 
         // commit db transaction
         provider.commit()?;
+
+        // cleanup chain state in memory
+        // this returns the `canonical_chain().count()` back to 0
+        self.blockchain_provider.canonical_in_memory_state().remove_persisted_blocks(num_hash);
 
         Ok(())
     }
@@ -1074,12 +1078,8 @@ impl RethEnv {
             canonical_head.number,
             canonical_head.hash()
         );
-        let canonical_in_memory_state = self.blockchain_provider.canonical_in_memory_state();
-        canonical_in_memory_state.update_chain(chain_update);
-        canonical_in_memory_state.set_canonical_head(canonical_head);
-
         // broadcast notification
-        canonical_in_memory_state.notify_canon_state(notification);
+        self.canonical_in_memory_state().notify_canon_state(notification);
 
         // TODO: set pending block in batch builder - pass canonical-in-memory-state
         // self.blockchain_provider.canonical_in_memory_state().set_pending_block(pending);
@@ -1174,8 +1174,8 @@ impl RethEnv {
     /// Return the block number and hash for the current canonical tip.
     ///
     /// This checks the canonical-in-memory-state.
-    pub fn canonical_tip(&self) -> TnRethResult<Option<BlockNumHash>> {
-        Ok(self.blockchain_provider.pending_block_num_hash()?)
+    pub fn canonical_tip(&self) -> SealedHeader {
+        self.blockchain_provider.canonical_in_memory_state().get_canonical_head()
     }
 
     /// If available return the finalized block number and hash.
@@ -1194,15 +1194,15 @@ impl RethEnv {
             .unwrap_or(0))
     }
 
-    /// Return the block number and hash of the finalized block.
-    pub fn finalized_block_hash_number(&self) -> TnRethResult<BlockHashNumber> {
-        let hash = self
-            .blockchain_provider
-            .finalized_block_hash()?
-            .unwrap_or_else(|| self.node_config.chain.sealed_genesis_header().hash());
-        let number = self.blockchain_provider.finalized_block_number()?.unwrap_or_default();
-        Ok(BlockHashNumber { hash, number })
-    }
+    // /// Return the block number and hash of the finalized block.
+    // pub fn finalized_block_hash_number(&self) -> TnRethResult<BlockHashNumber> {
+    //     let hash = self
+    //         .blockchain_provider
+    //         .finalized_block_hash()?
+    //         .unwrap_or_else(|| self.node_config.chain.sealed_genesis_header().hash());
+    //     let number = self.blockchain_provider.finalized_block_number()?.unwrap_or_default();
+    //     Ok(BlockHashNumber { hash, number })
+    // }
 
     /// Build and return the RPC server for the instance.
     /// This probably needs better abstraction.

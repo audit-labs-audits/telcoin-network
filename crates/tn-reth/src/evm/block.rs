@@ -9,7 +9,9 @@ use crate::{
     SYSTEM_ADDRESS,
 };
 use alloy::{
-    consensus::{proofs, Block, BlockBody, Transaction, TxReceipt},
+    consensus::{
+        proofs, Block, BlockBody, Eip658Value, ReceiptEnvelope, Transaction, TxEnvelope, TxReceipt,
+    },
     eips::{eip7685::Requests, eip7840, merge::BEACON_NONCE},
     sol_types::SolCall as _,
 };
@@ -30,7 +32,7 @@ use reth_evm::{
     state_change::balance_increment_state,
     EthEvmFactory, EvmFactory, FromRecoveredTx, FromTxWithEncoded, OnStateHook,
 };
-use reth_primitives::{logs_bloom, Log};
+use reth_primitives::{logs_bloom, Log, TxType};
 use reth_provider::BlockExecutionResult;
 use reth_revm::{
     context::result::{EVMError, ExecutionResult, ResultAndState},
@@ -40,7 +42,7 @@ use secp256k1::rand::Rng as _;
 use std::{borrow::Cow, sync::Arc};
 use tn_types::{
     keccak256, Address, BlsSignature, Bytes, Encodable2718, ExecHeader, Receipt, TransactionSigned,
-    Withdrawals, B256, EMPTY_OMMER_ROOT_HASH, EMPTY_WITHDRAWALS,
+    Withdrawals, B256, EMPTY_OMMER_ROOT_HASH, EMPTY_WITHDRAWALS, U256,
 };
 use tracing::{debug, error};
 
@@ -53,6 +55,11 @@ pub struct TNBlockExecutionCtx {
     pub parent_beacon_block_root: Option<B256>,
     /// The index for the batch.
     pub nonce: u64,
+    /// The batch digest.
+    ///
+    /// This is the batch that was validated by consensus and is responsible for the
+    /// request for execution.
+    pub requests_hash: Option<B256>,
     /// Keccak hash of the bls signature for the leader certificate.
     ///
     /// Executor makes closing epoch system call when this if included.
@@ -88,15 +95,40 @@ where
         Tx: FromRecoveredTx<R::Transaction> + FromTxWithEncoded<R::Transaction>,
     >,
     Spec: EthereumHardforks,
-    R: ReceiptBuilder,
+    // R: ReceiptBuilder,
+    // R: ReceiptBuilder<Transaction: Transaction + Encodable2718, Receipt: TxReceipt<Log = Log>>,
+    R: ReceiptBuilder<Transaction = TransactionSigned, Receipt = Receipt>,
 {
     /// Creates a new [`TNBlockExecutor`]
     pub fn new(evm: Evm, ctx: TNBlockExecutionCtx, spec: Spec, receipt_builder: R) -> Self {
         Self { evm, ctx, receipts: Vec::new(), gas_used: 0, spec, receipt_builder }
     }
 
+    /// Increase the beneficiary account balance and withdraw from governance safe.
+    ///
+    /// see revm-database/src/states/state.rs
+    /// State::increment_balances
+    fn apply_consensus_block_reward(&mut self) -> TnRethResult<()> {
+        let recipient = self.evm.block().beneficiary;
+        let original_account = self.evm.db_mut().load_cache_account(recipient).map_err(|e| {
+            TnRethError::EVMCustom(format!("failed to load account for block reward: {e}"))
+        })?;
+
+        // TODO: this should be applyIncentives
+        //
+        // TODO: how to handle if the stake config is updated in this block??
+        // if let Some(s) = self.evm.db_mut().transition_state.as_mut() {
+        //     s.add_transitions(vec![(
+        //         recipient,
+        //         original_account.increment_balance(balance).expect("balance is not 0"),
+        //     )]);
+        // }
+
+        Ok(())
+    }
+
     /// Apply the closing epoch call to ConsensusRegistry.
-    fn apply_closing_epoch_contract_call(&mut self, randomness: B256) -> TnRethResult<Vec<Log>> {
+    fn apply_closing_epoch_contract_call(&mut self, randomness: B256) -> TnRethResult<()> {
         // let prev_env = Box::new(evm.context.env().clone());
         let calldata = self.generate_conclude_epoch_calldata(randomness)?;
 
@@ -123,7 +155,15 @@ where
         // commit the changes
         self.evm.db_mut().commit(res.state);
 
-        Ok(closing_epoch_logs)
+        // append receipt
+        self.receipts.push(Receipt {
+            logs: closing_epoch_logs,
+            tx_type: TxType::Legacy,
+            success: true,
+            cumulative_gas_used: 0,
+        });
+
+        Ok(())
     }
 
     /// Generate calldata for updating the ConsensusRegistry to conclude the epoch.
@@ -214,10 +254,11 @@ where
     DB: Database + 'db,
     E: Evm<
         DB = &'db mut State<DB>,
-        Tx: FromRecoveredTx<R::Transaction> + FromTxWithEncoded<R::Transaction>,
+        Tx: FromRecoveredTx<TransactionSigned> + FromTxWithEncoded<TransactionSigned>,
     >,
     Spec: EthereumHardforks,
-    R: ReceiptBuilder<Transaction: Transaction + Encodable2718, Receipt: TxReceipt<Log = Log>>,
+    // R: ReceiptBuilder<Transaction: Transaction + Encodable2718, Receipt: TxReceipt<Log = Log>>,
+    R: ReceiptBuilder<Transaction = TransactionSigned, Receipt = Receipt>,
 {
     type Transaction = R::Transaction;
     type Receipt = R::Receipt;
@@ -342,7 +383,7 @@ where
         // }
 
         if let Some(randomness) = self.ctx.close_epoch {
-            let logs = self.apply_closing_epoch_contract_call(randomness).map_err(|e| {
+            self.apply_closing_epoch_contract_call(randomness).map_err(|e| {
                 BlockExecutionError::Internal(InternalBlockExecutionError::Other(e.into()))
             })?;
         }
@@ -366,7 +407,8 @@ where
 
         let balance_increments = alloy::primitives::map::foldhash::HashMap::default();
 
-        // TODO: apply rewards for beneficiary
+        // TODO: apply rewards for beneficiary if batch index is 0
+        // aka) block difficulty is 0
         //
         // increment balances for consensus leader on first batch of consensus output
         self.evm
@@ -381,7 +423,7 @@ where
     }
 
     fn set_state_hook(&mut self, _hook: Option<Box<dyn OnStateHook>>) {
-        unimplemented!("not using system caller")
+        unimplemented!("not using SystemCaller - nothing to set hook on")
     }
 
     fn evm_mut(&mut self) -> &mut Self::Evm {
@@ -398,14 +440,12 @@ where
 pub struct TNBlockAssembler<ChainSpec = reth_chainspec::ChainSpec> {
     /// The chainspec.
     pub chain_spec: Arc<ChainSpec>,
-    /// Extra data to use for the blocks.
-    pub extra_data: Bytes,
 }
 
 impl<ChainSpec> TNBlockAssembler<ChainSpec> {
     /// Creates a new [`TNBlockAssembler`].
     pub fn new(chain_spec: Arc<ChainSpec>) -> Self {
-        Self { chain_spec, extra_data: Default::default() }
+        Self { chain_spec }
     }
 }
 
@@ -420,6 +460,7 @@ where
 {
     type Block = Block<TransactionSigned>;
 
+    // TODO: when is this called?
     fn assemble_block(
         &self,
         input: BlockAssemblerInput<'_, '_, F>,
@@ -472,6 +513,8 @@ where
         //     };
         // }
 
+        // TODO: still need batch digest so the block can be fully executed independently
+        // - output ^ digest = mixhash
         let header = ExecHeader {
             parent_hash: ctx.parent_hash,
             ommers_hash: EMPTY_OMMER_ROOT_HASH,
@@ -491,7 +534,7 @@ where
             number: evm_env.block_env.number,
             gas_limit: evm_env.block_env.gas_limit,
 
-            // batch index?
+            // batch index
             difficulty: evm_env.block_env.difficulty,
 
             gas_used: *gas_used,
@@ -503,8 +546,8 @@ where
             blob_gas_used,
             excess_blob_gas,
 
-            // batch digests??
-            requests_hash,
+            // batch digest
+            requests_hash: ctx.requests_hash,
         };
 
         Ok(Block {
