@@ -48,7 +48,6 @@ use reth::{
         server_types::eth::utils::recover_raw_transaction as reth_recover_raw_transaction,
     },
 };
-use reth_chain_state::ExecutedBlockWithTrieUpdates;
 use reth_chainspec::{BaseFeeParams, EthChainSpec};
 use reth_db::{init_db, DatabaseEnv};
 use reth_db_common::init::init_genesis;
@@ -122,7 +121,9 @@ pub use alloy::primitives::FixedBytes;
 pub use reth::{
     chainspec::chain_value_parser, dirs::MaybePlatformPath, rpc::builder::RpcServerHandle,
 };
-pub use reth_chain_state::{CanonicalInMemoryState, NewCanonicalChain};
+pub use reth_chain_state::{
+    CanonicalInMemoryState, ExecutedBlockWithTrieUpdates, NewCanonicalChain,
+};
 pub use reth_chainspec::ChainSpec as RethChainSpec;
 pub use reth_cli_util::{parse_duration_from_secs, parse_socket_address};
 pub use reth_errors::{ProviderError, RethError};
@@ -1033,6 +1034,8 @@ impl RethEnv {
     /// This makes all blocks canonical, commits them to the database,
     /// broadcasts new chain on `canon_state_notification_sender`
     /// and set last executed header as the tracked header.
+    ///
+    /// It also clears the canonical in-memory state.
     pub fn finish_executing_output(
         &self,
         blocks: Vec<ExecutedBlockWithTrieUpdates>,
@@ -1043,12 +1046,6 @@ impl RethEnv {
         // the canon_state_notifications include every block executed in this round
         //
         // the worker's pool maintenance task subcribes to these events
-        // self.blockchain_provider.make_canonical(header.hash())?;
-
-        // set last executed header as the tracked header
-        //
-        // see: reth/crates/consensus/beacon/src/engine/mod.rs:update_canon_chain
-
         debug!(
             target: "engine",
             first=?blocks.first().map(|b| b.recovered_block.num_hash()),
@@ -1067,10 +1064,7 @@ impl RethEnv {
         //
         // see reth::EngineApiTreeHandler::on_canonical_chain_update
         let chain_update = NewCanonicalChain::Commit { new: blocks };
-        let canonical_head = chain_update.tip().clone_sealed_header();
-        let notification = chain_update.to_chain_notification();
-
-        // set canonical head in-memory
+        let canonical_head = chain_update.tip();
         info!(
             target: "engine",
             "canonical head for round {:?}: {:?} - {:?}",
@@ -1078,7 +1072,10 @@ impl RethEnv {
             canonical_head.number,
             canonical_head.hash()
         );
-        // broadcast notification
+
+        let notification = chain_update.to_chain_notification();
+
+        // broadcast canonical update
         self.canonical_in_memory_state().notify_canon_state(notification);
 
         // TODO: set pending block in batch builder - pass canonical-in-memory-state

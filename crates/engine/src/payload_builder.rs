@@ -5,7 +5,7 @@
 use crate::error::{EngineResult, TnEngineError};
 use tn_reth::{
     payload::{BuildArguments, TNPayload},
-    NewCanonicalChain, RethEnv,
+    CanonicalInMemoryState, ExecutedBlockWithTrieUpdates, NewCanonicalChain, RethEnv,
 };
 use tn_types::{max_batch_gas, ConsensusOutput, Hash as _, SealedHeader, B256};
 use tracing::{debug, error};
@@ -86,20 +86,16 @@ pub fn execute_consensus_output(args: BuildArguments) -> EngineResult<SealedHead
             output_digest, // use output digest for mix hash
         );
 
-        // execute
-        let next_canonical_block = reth_env.build_block_from_batch_payload(payload, vec![])?;
+        debug!(target: "engine", "executing empty batch payload");
 
-        debug!(target: "engine", ?next_canonical_block, "empty block");
-
-        // update header for next block execution in loop
-        canonical_header = next_canonical_block.recovered_block.sealed_header().clone();
-        canonical_in_memory_state.set_pending_block(next_canonical_block.clone());
-        canonical_in_memory_state
-            .update_chain(NewCanonicalChain::Commit { new: vec![next_canonical_block.clone()] });
-        canonical_in_memory_state.set_canonical_head(canonical_header.clone());
-
-        // collect all executed blocks for this output
-        executed_blocks.push(next_canonical_block);
+        // execute the payload and update the current canonical header
+        canonical_header = execute_payload(
+            payload,
+            vec![],
+            &mut executed_blocks,
+            &reth_env,
+            &canonical_in_memory_state,
+        )?;
     } else {
         // loop and construct blocks from batches with transactions
         for (batch_index, batch) in batches.into_iter().enumerate() {
@@ -123,35 +119,15 @@ pub fn execute_consensus_output(args: BuildArguments) -> EngineResult<SealedHead
                 mix_hash,
             );
 
-            // execute
-            let next_canonical_block =
-                reth_env.build_block_from_batch_payload(payload, batch.transactions)?;
-
-            // tree flow:
-            // - try receive eng message
-            //      - set_pending_block
-            //      - insert_executed
-            // - store to disk
-            //      - collect and store in group
-            //          - see Persistence::on_save_block
-            //
-            // TODO:
-            //  - check BeaconConsensusEngineEvents to ensure nothing missed
-            //  - still need to broadcast canonical update
-            //  - ensure read/write access isn't a problem
-
-            debug!(target: "engine", ?next_canonical_block, "worker's block executed");
-
-            // update header for next block execution in loop
-            canonical_header = next_canonical_block.recovered_block.sealed_header().clone();
-            canonical_in_memory_state.set_pending_block(next_canonical_block.clone());
-            canonical_in_memory_state.update_chain(NewCanonicalChain::Commit {
-                new: vec![next_canonical_block.clone()],
-            });
-            canonical_in_memory_state.set_canonical_head(canonical_header.clone());
-
-            // collect all executed blocks for this output
-            executed_blocks.push(next_canonical_block);
+            // execute the payload and update the current canonical header
+            canonical_header = execute_payload(
+                // &mut canonical_header,
+                payload,
+                batch.transactions,
+                &mut executed_blocks,
+                &reth_env,
+                &canonical_in_memory_state,
+            )?;
         }
     } // end block execution for round
 
@@ -187,7 +163,41 @@ pub fn execute_consensus_output(args: BuildArguments) -> EngineResult<SealedHead
 }
 
 /// Execute the transaction and update canon chain in-memory.
-fn execute_payload() {
-    // consolidate duplicate code into here
-    todo!()
+fn execute_payload(
+    // canonical_header: &mut SealedHeader,
+    payload: TNPayload,
+    transactions: Vec<Vec<u8>>,
+    executed_blocks: &mut Vec<ExecutedBlockWithTrieUpdates>,
+    reth_env: &RethEnv,
+    canonical_in_memory_state: &CanonicalInMemoryState,
+) -> EngineResult<SealedHeader> {
+    // execute
+    let next_canonical_block = reth_env.build_block_from_batch_payload(payload, transactions)?;
+
+    // tree flow:
+    // - try receive eng message
+    //      - set_pending_block
+    //      - insert_executed
+    // - store to disk
+    //      - collect and store in group
+    //          - see Persistence::on_save_block
+    //
+    // TODO:
+    //  - check BeaconConsensusEngineEvents to ensure nothing missed
+    //  - still need to broadcast canonical update
+    //  - ensure read/write access isn't a problem
+
+    debug!(target: "engine", ?next_canonical_block, "worker's block executed");
+
+    // update header for next block execution in loop
+    let canonical_header = next_canonical_block.recovered_block.sealed_header().clone();
+    canonical_in_memory_state.set_pending_block(next_canonical_block.clone());
+    canonical_in_memory_state
+        .update_chain(NewCanonicalChain::Commit { new: vec![next_canonical_block.clone()] });
+    canonical_in_memory_state.set_canonical_head(canonical_header.clone());
+
+    // collect all executed blocks for this output
+    executed_blocks.push(next_canonical_block);
+
+    Ok(canonical_header)
 }
