@@ -8,9 +8,9 @@ use futures::{stream::FuturesUnordered, StreamExt};
 use rand::{
     distr::{Bernoulli, Distribution as _},
     prelude::SliceRandom,
+    rngs::StdRng,
     Rng, SeedableRng as _,
 };
-use rand_08::SeedableRng as _;
 use std::{
     collections::{BTreeSet, HashMap, HashSet, VecDeque},
     num::NonZeroUsize,
@@ -260,8 +260,10 @@ fn generate_randomised_dag(
     seed: u64,
     modes: FailureModes,
 ) -> (VecDeque<Certificate>, Committee) {
+    // use an RNG to share for deterministic committee creation
     let fixture = CommitteeFixture::builder(MemDatabase::default)
         .committee_size(NonZeroUsize::new(committee_size).unwrap())
+        .with_rng(StdRng::seed_from_u64(seed))
         .build();
     let committee: Committee = fixture.committee();
     let genesis = Certificate::genesis(&committee);
@@ -286,7 +288,6 @@ pub fn make_certificates_with_parameters(
     modes: FailureModes,
 ) -> (VecDeque<Certificate>, Vec<Certificate>) {
     // secp256k1 uses older version of rand
-    let mut rand_08 = rand_08::rngs::StdRng::seed_from_u64(seed);
     let mut rand = rand::rngs::StdRng::seed_from_u64(seed);
 
     // Pick the slow nodes - ensure we don't have more than 33% of slow nodes
@@ -412,7 +413,7 @@ pub fn make_certificates_with_parameters(
                 authority.id(),
                 round,
                 parents_digests.clone(),
-                &mut rand_08,
+                &mut rand,
             );
 
             // group certificates by round for easy access

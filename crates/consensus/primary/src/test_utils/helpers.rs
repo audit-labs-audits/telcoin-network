@@ -1,6 +1,11 @@
 //! Helper methods for creating useful structs during tests.
 
 use indexmap::IndexMap;
+use rand::{
+    distr::{Bernoulli, Distribution as _},
+    rngs::StdRng,
+    Rng, RngCore, SeedableRng as _,
+};
 use std::{
     collections::{BTreeSet, HashMap, VecDeque},
     ops::RangeInclusive,
@@ -12,13 +17,6 @@ use tn_types::{
     BlsKeypair, BlsSignature, Bytes, Certificate, CertificateDigest, Committee, Epoch, ExecHeader,
     Hash as _, HeaderBuilder, ProtocolSignature, Round, TimestampSec, VotingPower, WorkerId, U256,
 };
-// rand and rand_08 are both `rand` but secp256k1 uses rand_08 (v0.8) while everything else uses v0.9
-use rand::{
-    distr::{Bernoulli, Distribution as _},
-    rngs::StdRng,
-    Rng as _, SeedableRng as _,
-};
-use rand_08::{Rng, RngCore};
 
 pub fn temp_dir() -> TempDir {
     tempfile::tempdir().expect("Failed to open temporary directory")

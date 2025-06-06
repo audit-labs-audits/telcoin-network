@@ -59,6 +59,6 @@ pub use alloy::{
 };
 pub use libp2p::Multiaddr;
 pub use reth_primitives::{
-    public_key_to_address, Block, BlockBody, EthPrimitives, NodePrimitives, PooledTransaction,
-    Receipt, Recovered, RecoveredBlock, SealedBlock, SealedHeader, Transaction, TransactionSigned,
+    Block, BlockBody, EthPrimitives, NodePrimitives, PooledTransaction, Receipt, Recovered,
+    RecoveredBlock, SealedBlock, SealedHeader, Transaction, TransactionSigned,
 };

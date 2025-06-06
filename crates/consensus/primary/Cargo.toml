@@ -16,7 +16,6 @@ backoff = { workspace = true }
 cfg-if = { workspace = true }
 futures = { workspace = true }
 parking_lot = { workspace = true }
-rand_08 = { workspace = true, features = ["small_rng"] }
 rand = { workspace = true, features = ["small_rng"] }
 thiserror = { workspace = true }
 tokio = { workspace = true, features = [

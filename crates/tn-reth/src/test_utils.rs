@@ -19,12 +19,12 @@ use secp256k1::{
 };
 use std::{path::Path, str::FromStr, sync::Arc};
 use tn_types::{
-    adiri_chain_spec_arc, adiri_genesis, calculate_transaction_root, now, public_key_to_address,
-    AccessList, Address, Batch, Block, BlockBody, Bytes, Encodable2718, EthSignature, ExecHeader,
-    ExecutionKeypair, Genesis, GenesisAccount, Receipt, RecoveredBlock, SealedHeader, TaskManager,
-    Transaction, TransactionSigned, TxEip1559, TxHash, TxKind, B256, EMPTY_OMMER_ROOT_HASH,
-    EMPTY_TRANSACTIONS, EMPTY_WITHDRAWALS, ETHEREUM_BLOCK_GAS_LIMIT_30M, MIN_PROTOCOL_BASE_FEE,
-    U256,
+    adiri_chain_spec_arc, adiri_genesis, calculate_transaction_root, keccak256, now,
+    public_key_to_address, AccessList, Address, Batch, Block, BlockBody, Bytes, Encodable2718,
+    EthSignature, ExecHeader, ExecutionKeypair, Genesis, GenesisAccount, Receipt, RecoveredBlock,
+    SealedHeader, TaskManager, Transaction, TransactionSigned, TxEip1559, TxHash, TxKind, B256,
+    EMPTY_OMMER_ROOT_HASH, EMPTY_TRANSACTIONS, EMPTY_WITHDRAWALS, ETHEREUM_BLOCK_GAS_LIMIT_30M,
+    MIN_PROTOCOL_BASE_FEE, U256,
 };
 use tracing::debug;
 
@@ -167,7 +167,7 @@ impl TransactionFactory {
     /// create a new instance of self from a random seed.
     pub fn new_random() -> Self {
         let secp = Secp256k1::new();
-        let (secret_key, _public_key) = secp.generate_keypair(&mut StdRng::from_entropy());
+        let (secret_key, _public_key) = secp.generate_keypair(&mut StdRng::from_os_rng());
         let keypair = ExecutionKeypair::from_secret_key(&secp, &secret_key);
         Self { keypair, nonce: 0 }
     }
@@ -175,7 +175,10 @@ impl TransactionFactory {
     /// Return the address of the signer.
     pub fn address(&self) -> Address {
         let public_key = self.keypair.public_key();
-        public_key_to_address(public_key)
+        // strip out the first byte because that should be the SECP256K1_TAG_PUBKEY_UNCOMPRESSED
+        // tag returned by libsecp's uncompressed pubkey serialization
+        let hash = keccak256(&public_key.serialize_uncompressed()[1..]);
+        Address::from_slice(&hash[12..])
     }
 
     /// Change the nonce for the next transaction.

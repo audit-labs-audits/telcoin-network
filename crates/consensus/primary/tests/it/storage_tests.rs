@@ -139,7 +139,7 @@ async fn test_consensus_store_read_latest_final_reputation_scores() {
 #[tokio::test]
 async fn test_certificate_store_write_and_read() {
     let db = temp_dir();
-    let db = open_db(temdb.as_path());
+    let db = open_db(db.path());
     test_write_and_read_by_store_type(db).await;
 }
 
@@ -182,7 +182,7 @@ async fn test_write_and_read_by_store_type<DB: CertificateStore>(store: DB) {
 #[tokio::test]
 async fn test_certificate_store_write_all_and_read_all() {
     let db = temp_dir();
-    let db = open_db(temdb.as_path());
+    let db = open_db(db.path());
     test_write_all_and_read_all_by_store_type(db).await;
 }
 

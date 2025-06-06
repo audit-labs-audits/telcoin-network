@@ -319,7 +319,7 @@ where
         let compact = signature.serialize_compact();
 
         // calculate `v` for eth signature's `y_parity`
-        let y_parity = Self::calculate_v(&message, chain_id, &compact, &public_key_bytes)?;
+        let y_parity = Self::calculate_v(message, chain_id, &compact, &public_key_bytes)?;
 
         // r and s are 32 bytes each
         let (r, s) = compact.split_at(32);
@@ -373,7 +373,7 @@ where
     ///
     /// The y_odd_parity is false if v is 35 (even y) and true if v is 36 (odd y).
     fn calculate_v(
-        message: &Message,
+        message: Message,
         chain_id: u64,
         compact_signature: &[u8; 64],
         public_key_bytes: &Secp256k1PubKeyBytes, // [u8; 33]
