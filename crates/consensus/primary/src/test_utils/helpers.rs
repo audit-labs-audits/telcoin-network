@@ -5,6 +5,7 @@ use std::{
     collections::{BTreeSet, HashMap, VecDeque},
     ops::RangeInclusive,
 };
+use tempfile::TempDir;
 use tn_reth::test_utils::{batch, TransactionFactory};
 use tn_types::{
     adiri_chain_spec_arc, to_intent_message, Address, AuthorityIdentifier, Batch, BlockHash,
@@ -19,8 +20,8 @@ use rand::{
 };
 use rand_08::{Rng, RngCore};
 
-pub fn temp_dir() -> std::path::PathBuf {
-    tempfile::tempdir().expect("Failed to open temporary directory").keep()
+pub fn temp_dir() -> TempDir {
+    tempfile::tempdir().expect("Failed to open temporary directory")
 }
 
 ////////////////////////////////////////////////////////////////

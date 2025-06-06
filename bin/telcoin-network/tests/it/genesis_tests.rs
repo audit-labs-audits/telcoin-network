@@ -141,6 +141,7 @@ async fn test_precompile_genesis_accounts() -> eyre::Result<()> {
 
 #[tokio::test]
 async fn test_genesis_with_consensus_registry() -> eyre::Result<()> {
+    tn_types::test_utils::init_test_tracing();
     // fetch registry impl bytecode from compiled output in tn-contracts
     let json_val = RethEnv::fetch_value_from_json_str(
         CONSENSUS_REGISTRY_JSON,

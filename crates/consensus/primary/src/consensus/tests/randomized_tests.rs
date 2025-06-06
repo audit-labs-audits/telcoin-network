@@ -159,7 +159,8 @@ async fn bullshark_randomised_tests() {
 
     // Create a single store to be re-used across Bullshark instances to avoid hitting
     // a "too many files open" issue.
-    let store = open_db(temp_dir());
+    let db = temp_dir();
+    let store = open_db(db.path());
 
     // Run the actual tests via separate tasks
     loop {

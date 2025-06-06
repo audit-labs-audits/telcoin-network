@@ -1191,15 +1191,19 @@ impl RethEnv {
             .unwrap_or(0))
     }
 
-    // /// Return the block number and hash of the finalized block.
-    // pub fn finalized_block_hash_number(&self) -> TnRethResult<BlockHashNumber> {
-    //     let hash = self
-    //         .blockchain_provider
-    //         .finalized_block_hash()?
-    //         .unwrap_or_else(|| self.node_config.chain.sealed_genesis_header().hash());
-    //     let number = self.blockchain_provider.finalized_block_number()?.unwrap_or_default();
-    //     Ok(BlockHashNumber { hash, number })
-    // }
+    /// Return the block number and hash of the finalized block on node startup.
+    ///
+    /// This method adds additional fallbacks to ensure genesis is used when the network is starting
+    /// because the genesis block is not initialized as `finalized`. Nodes that start on genesis
+    /// will resync with the network if it exists.
+    pub fn finalized_block_hash_number_for_startup(&self) -> TnRethResult<BlockHashNumber> {
+        let hash = self
+            .blockchain_provider
+            .finalized_block_hash()?
+            .unwrap_or_else(|| self.node_config.chain.sealed_genesis_header().hash());
+        let number = self.blockchain_provider.finalized_block_number()?.unwrap_or_default();
+        Ok(BlockHashNumber { hash, number })
+    }
 
     /// Build and return the RPC server for the instance.
     /// This probably needs better abstraction.
@@ -1466,11 +1470,8 @@ impl RethEnv {
             .evm_factory()
             .create_evm(&mut db, reth_env.evm_config.evm_env(&tmp_chain.sealed_genesis_header()));
 
-        let ResultAndState { result, state } = tn_evm.transact_system_call(
-            owner_address,
-            CONSENSUS_REGISTRY_ADDRESS,
-            create_registry.into(),
-        )?;
+        let ResultAndState { result, state } =
+            tn_evm.transact_pre_genesis_create(owner_address, create_registry.into())?;
         debug!(target: "engine", "create consensus registry result:\n{:#?}", result);
 
         tn_evm.db_mut().commit(state);
@@ -1590,6 +1591,8 @@ impl RethEnv {
             "Canonical tip missing from blockchain provider reading committee from chain",
         )?;
 
+        debug!(target: "engine", ?canonical_tip, "retrieving epoch state from canonical tip");
+
         let epoch = Self::extract_epoch_from_header(&canonical_tip);
 
         // create EVM with latest state
@@ -1626,6 +1629,7 @@ impl RethEnv {
             .collect::<eyre::Result<Vec<_>, _>>()?;
 
         let epoch_state = EpochState { epoch, epoch_info, validators, epoch_start };
+        debug!(target: "engine", ?epoch_state, "returning epoch state from canonical tip");
 
         Ok(epoch_state)
     }
