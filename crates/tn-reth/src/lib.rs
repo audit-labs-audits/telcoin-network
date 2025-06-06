@@ -51,6 +51,7 @@ use reth::{
         server_types::eth::utils::recover_raw_transaction as reth_recover_raw_transaction,
     },
 };
+use reth_chain_state::ExecutedTrieUpdates;
 use reth_chainspec::{BaseFeeParams, EthChainSpec};
 use reth_db::{init_db, DatabaseEnv};
 use reth_db_common::init::init_genesis;
@@ -821,7 +822,7 @@ impl RethEnv {
                 Vec::new(),
             )),
             Arc::new(hashed_state),
-            Arc::new(trie_updates),
+            ExecutedTrieUpdates::Present(Arc::new(trie_updates)),
         );
 
         Ok(res)
