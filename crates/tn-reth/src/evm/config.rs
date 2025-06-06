@@ -71,38 +71,6 @@ impl TnEvmConfig {
     }
 }
 
-// impl ConfigureEvmEnv for TnEvmConfig {
-//     type Header = ExecHeader;
-//     type Transaction = TransactionSigned;
-//     type Error = Infallible;
-
-//     fn fill_tx_env(&self, tx_env: &mut TxEnv, transaction: &Self::Transaction, sender: Address) {
-//         self.inner.fill_tx_env(tx_env, transaction, sender)
-//     }
-
-//     fn fill_tx_env_system_contract_call(
-//         &self,
-//         env: &mut Env,
-//         caller: Address,
-//         contract: Address,
-//         data: Bytes,
-//     ) {
-//         self.inner.fill_tx_env_system_contract_call(env, caller, contract, data)
-//     }
-
-//     fn fill_cfg_env(&self, cfg_env: &mut CfgEnvWithHandlerCfg, header: &Self::Header) {
-//         self.inner.fill_cfg_env(cfg_env, header)
-//     }
-
-//     fn next_cfg_and_block_env(
-//         &self,
-//         parent: &Self::Header,
-//         attributes: NextBlockEnvAttributes,
-//     ) -> Result<EvmEnv, Self::Error> {
-//         self.inner.next_cfg_and_block_env(parent, attributes)
-//     }
-// }
-
 // reth-evm
 impl ConfigureEvm for TnEvmConfig {
     type Primitives = TNPrimitives;
@@ -180,34 +148,16 @@ impl ConfigureEvm for TnEvmConfig {
         if let Some(blob_params) = &blob_params {
             cfg.set_blob_max_count(blob_params.max_blob_count);
         }
-        // TODO: keep this logic or trash???
-        //
-        // @!!!!!!!111!!!!!!!
-        // !
-        //
-        //
-        // if the parent block did not have excess blob gas (i.e. it was pre-cancun), but it is
-        // cancun now, we need to set the excess blob gas to the default value(0)
-        let blob_excess_gas_and_price = parent
-            .maybe_next_block_excess_blob_gas(blob_params)
-            .or_else(|| (spec_id == SpecId::CANCUN).then_some(0))
-            .map(|excess_blob_gas| {
-                let blob_gasprice =
-                    blob_params.unwrap_or_else(BlobParams::cancun).calc_blob_fee(excess_blob_gas);
-                BlobExcessGasAndPrice { excess_blob_gas, blob_gasprice }
-            });
 
         let block_env = BlockEnv {
             number: parent.number + 1,
             beneficiary: payload.beneficiary,
             timestamp: payload.timestamp,
-            // difficulty is useful for post-execution, but executed with ZERO
-            // difficulty: U256::ZERO,
             difficulty: U256::from(payload.batch_index),
             prevrandao: Some(payload.prev_randao()),
             gas_limit: payload.gas_limit,
             basefee: payload.base_fee_per_gas,
-            blob_excess_gas_and_price,
+            blob_excess_gas_and_price: None,
         };
 
         let evm_env = EvmEnv::new(cfg, block_env);
@@ -248,28 +198,4 @@ impl ConfigureEvm for TnEvmConfig {
             close_epoch: payload.close_epoch,
         }
     }
-
-    // type DefaultExternalContext<'a> = ();
-
-    // fn evm<DB: Database>(&self, db: DB) -> Evm<'_, Self::DefaultExternalContext<'_>, DB> {
-    //     let mut evm = self.inner.evm(db);
-    //     self.set_base_fee_handler(&mut evm);
-    //     evm
-    // }
-
-    // fn evm_with_env<DB: Database>(
-    //     &self,
-    //     db: DB,
-    //     env: EnvWithHandlerCfg,
-    // ) -> Evm<'_, Self::DefaultExternalContext<'_>, DB> {
-    //     let mut evm = self.evm(db);
-    //     evm.modify_spec_id(env.spec_id());
-    //     evm.context.evm.env = env.env;
-    //     self.set_base_fee_handler(&mut evm);
-    //     evm
-    // }
-
-    // fn default_external_context<'a>(&self) -> Self::DefaultExternalContext<'a> {
-    //     self.inner.default_external_context()
-    // }
 }

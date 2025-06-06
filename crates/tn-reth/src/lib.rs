@@ -445,13 +445,8 @@ pub struct RethEnv {
     node_config: NodeConfig<RethChainSpec>,
     /// Type that fetches data from the database.
     blockchain_provider: BlockchainProvider<TelcoinNode>,
-    // /// The Evm configuration type.
-    // evm_executor: BasicBlockExecutorProvider<EthExecutionStrategyFactory<TnEvmConfig>>,
     /// The type to configure the EVM for execution.
     evm_config: TnEvmConfig,
-    /// Sync channel to forward execution results to the tree.
-    /// The tree processes built blocks and stores them to the database.
-    to_tree: ToTree,
     /// The type to spawn tasks.
     task_spawner: TaskSpawner,
 }
@@ -480,12 +475,6 @@ impl ChainSpec {
     /// Return the sealed header for genesis.
     pub fn sealed_genesis_header(&self) -> SealedHeader {
         self.0.sealed_genesis_header()
-    }
-
-    /// Return the sealed block for genesis.
-    pub fn sealed_genesis_block(&self) -> SealedBlock {
-        // SealedBlock::from_parts_unhashed(self.0.sealed_genesis_header(), BlockBody::default())
-        todo!()
     }
 
     /// Return the chain id.
@@ -521,28 +510,12 @@ impl RethEnv {
         database: RethDb,
     ) -> eyre::Result<Self> {
         let node_config = reth_config.0.clone();
-        // let (evm_executor, evm_config) = Self::init_evm_components(&node_config);
         let evm_config = TnEvmConfig::new(reth_config.0.chain.clone());
         let provider_factory = Self::init_provider_factory(&node_config, database)?;
         let blockchain_provider = BlockchainProvider::new(provider_factory.clone())?;
-        let (to_tree, mut from_tree) = Self::spawn_engine_api_tree_handler(
-            provider_factory,
-            blockchain_provider.clone(),
-            evm_config.clone(),
-            &task_manager,
-        );
-
         let task_spawner = task_manager.get_spawner();
 
-        // spawn task to log messages from tree
-        task_manager.spawn_critical_task("tree events", async move {
-            while let Some(event) = from_tree.recv().await {
-                info!(target: "engine", ?event, "event received from tree");
-            }
-            info!(target: "engine", "rx events from tree shutting down")
-        });
-
-        Ok(Self { node_config, blockchain_provider, evm_config, to_tree, task_spawner })
+        Ok(Self { node_config, blockchain_provider, evm_config, task_spawner })
     }
 
     /// Initialize the provider factory and related components
@@ -563,69 +536,6 @@ impl RethEnv {
         debug!(target: "tn::execution", chain=%node_config.chain.chain, ?genesis_hash, "Initialized genesis");
 
         Ok(provider_factory)
-    }
-
-    /// Initialize the "tree" to handle engine blocks.
-    #[expect(clippy::too_many_arguments)]
-    fn spawn_engine_api_tree_handler(
-        provider: ProviderFactory<TelcoinNode>,
-        blockchain_db: BlockchainProvider<TelcoinNode>,
-        // to_engine: UnboundedSender<BeaconEngineMessage<N::Payload>>,
-        // from_engine: EngineMessageStream<N::Payload>,
-        evm_config: TnEvmConfig,
-        task_manager: &TaskManager,
-    ) -> (
-        std::sync::mpsc::Sender<
-            FromEngine<
-                EngineApiRequest<DefaultEthPayloadTypes, TNPrimitives>,
-                alloy::consensus::Block<TransactionSigned>,
-            >,
-        >,
-        mpsc::UnboundedReceiver<EngineApiEvent<TNPrimitives>>,
-    ) {
-        let tn_execution = TNExecution;
-        let pruner =
-            PrunerBuilder::new(Default::default()).build_with_provider_factory(provider.clone());
-        // ignore metrics
-        let (tx, mut metrics_rx) = mpsc::unbounded_channel();
-        let persistence_handle =
-            PersistenceHandle::<TNPrimitives>::spawn_service(provider, pruner, tx);
-        // ignore payload build requests
-        let (tx, mut payload_rx) = mpsc::unbounded_channel();
-        let noop_payload_builder_handler = PayloadBuilderHandle::new(tx);
-
-        let tree_config = TreeConfig::default();
-        let canonical_in_memory_state = blockchain_db.canonical_in_memory_state();
-
-        // spawn tasks to log unused messages and keep channels alive
-        // this is a side-effect of reth integration
-        task_manager.spawn_critical_task("persistence-metrics", async move {
-            while let Some(msg) = metrics_rx.recv().await {
-                info!(target: "engine", ?msg, "recv msg on persistence metrics");
-            }
-            info!(target: "engine", "persistence metrics rx dropped");
-        });
-
-        // should not receive these messages
-        task_manager.spawn_critical_task("payload-build-requests", async move {
-            while let Some(msg) = payload_rx.recv().await {
-                error!(target: "engine", ?msg, "recv request for payload build");
-            }
-            info!(target: "engine", "payload builder handle rx dropped");
-        });
-
-        TnEngineApiTreeHandler::spawn_new(
-            blockchain_db,
-            Arc::new(tn_execution),
-            tn_execution,
-            persistence_handle,
-            noop_payload_builder_handler,
-            canonical_in_memory_state,
-            tree_config,
-            Box::new(NoopInvalidBlockHook::default()),
-            EngineApiKind::Ethereum,
-            evm_config,
-        )
     }
 
     /// Initialize a new transaction pool for worker.
@@ -919,92 +829,6 @@ impl RethEnv {
         // todo!()
     }
 
-    /// Extend the canonical tip with one block, despite no blocks from workers are included in the
-    /// output from consensus.
-    pub fn build_block_from_empty_payload(
-        &self,
-        payload: TNPayload,
-        consensus_header_digest: B256,
-    ) -> TnRethResult<ExecutedBlockWithTrieUpdates> {
-        // let state = self
-        //     .blockchain_provider
-        //     .state_by_block_hash(payload.attributes.parent_header.hash())
-        //     .map_err(|err| {
-        //         warn!(target: "engine",
-        //             parent_hash=%payload.attributes.parent_header.hash(),
-        //             %err,
-        //             "failed to get state for empty output",
-        //         );
-        //         err
-        //     })?;
-        // let mut cached_reads = CachedReads::default();
-        // let mut db = State::builder()
-        //     .with_database(cached_reads.as_db_mut(StateProviderDatabase::new(state)))
-        //     .with_bundle_update()
-        //     .build();
-
-        // // merge all transitions into bundle state, this would apply the withdrawal balance
-        // // changes and 4788 contract call
-        // db.merge_transitions(BundleRetention::PlainState);
-
-        // // calculate the state root
-        // let bundle_state = db.take_bundle();
-
-        // // calculate the state root
-        // let hashed_state = db.database.db.hashed_post_state(&bundle_state);
-        // let (state_root, _trie_output) = {
-        //     db.database.inner().state_root_with_updates(hashed_state.clone()).inspect_err(
-        //         |err| {
-        //             tracing::error!(target: "payload_builder",
-        //                 parent_hash=%payload.attributes.parent_header.hash(),
-        //                 %err,
-        //                 "failed to calculate state root for payload"
-        //             );
-        //         },
-        //     )?
-        // };
-
-        // let header = ExecHeader {
-        //     parent_hash: payload.parent(),
-        //     ommers_hash: EMPTY_OMMER_ROOT_HASH,
-        //     beneficiary: payload.suggested_fee_recipient(),
-        //     state_root,
-        //     transactions_root: EMPTY_TRANSACTIONS,
-        //     receipts_root: EMPTY_RECEIPTS,
-        //     withdrawals_root: Some(EMPTY_WITHDRAWALS),
-        //     logs_bloom: Default::default(),
-        //     timestamp: payload.timestamp(),
-        //     mix_hash: payload.prev_randao(),
-        //     nonce: payload.attributes.nonce.into(),
-        //     base_fee_per_gas: Some(payload.attributes.base_fee_per_gas),
-        //     number: payload.attributes.parent_header.number + 1, /* ensure this matches the block
-        //                                                           * env */
-        //     gas_limit: payload.attributes.gas_limit,
-        //     difficulty: U256::ZERO, // batch index
-        //     gas_used: 0,
-        //     extra_data: payload.attributes.batch_digest.into(),
-        //     parent_beacon_block_root: Some(consensus_header_digest),
-        //     blob_gas_used: None,
-        //     excess_blob_gas: None,
-        //     requests_hash: None,
-        // };
-
-        // // seal the block
-        // let withdrawals = Some(payload.withdrawals().clone());
-
-        // // seal the block
-        // let block =
-        //     Block { header, body: BlockBody { transactions: vec![], ommers: vec![], withdrawals } };
-
-        // let sealed_block = block.seal_slow();
-
-        // let sealed_block_with_senders =
-        //     RecoveredBlock::new(sealed_block, vec![]).ok_or(TnRethError::SealBlockWithSenders)?;
-
-        // Ok(sealed_block_with_senders)
-        todo!()
-    }
-
     /// Finalize block (header) executed from consensus output and update chain info.
     ///
     /// This stores the finalized block number in the
@@ -1235,40 +1059,12 @@ impl RethEnv {
             self.blockchain_provider.clone(),
             transaction_pool,
             network,
-            //
             // TODO: there is a trait definition blocking TNEvmConfig
-            //
             EthEvmConfig::new(self.blockchain_provider.chain_spec()),
         )
         .build();
 
         let mut server = rpc_builder.build(modules_config, eth_api);
-
-        // let mut server = TransportRpcModules::default();
-
-        // if !modules_config.is_empty() {
-        //     // let TransportRpcModuleConfig { http, ws, ipc, config } = modules_config.clone();
-
-        //     let mut registry = RpcRegistryInner::new(
-        //         self.blockchain_provider.clone(),
-        //         transaction_pool,
-        //         network,
-        //         Box::new(self.task_spawner.clone()),
-        //         TNExecution,
-        //         modules_config.config().unwrap_or_default().clone(),
-        //         self.evm_config.clone(),
-        //         eth_api,
-        //     );
-
-        //     // server.with_config(modules_config.clone());
-
-        //     // server.http = registry.maybe_module(http.as_ref());
-        //     // server.ws = registry.maybe_module(ws.as_ref());
-        //     // server.ipc = registry.maybe_module(ipc.as_ref());
-
-        //     registry.create_transport_rpc_modules(modules_config);
-        // }
-
         if let Err(e) = server.merge_configured(other) {
             tracing::error!(target: "tn::execution", "Error merging TN rpc module: {e:?}");
         }
@@ -1286,105 +1082,6 @@ impl RethEnv {
     pub fn latest(&self) -> TnRethResult<StateProviderBox> {
         Ok(self.blockchain_provider.latest()?)
     }
-
-    /// Create an EVM tx enviornment that bypasses certain checks.
-    ///
-    /// This method is useful for executing transactions pre-genesis.
-    pub fn execute_call_tx_for_test_bypass_evm_checks(
-        &self,
-        header: &SealedHeader,
-        txs: Vec<PregenesisRequest>,
-    ) -> TnRethResult<BundleState> {
-        // // create execution db
-        // let state = StateProviderDatabase::new(self.latest()?);
-        // let mut db = State::builder().with_database(state).with_bundle_update().build();
-        // let state_provider = self.blockchain_provider.state_by_block_hash(parent_header.hash())?;
-        let state = StateProviderDatabase::new(self.latest()?);
-        let mut cached_reads = CachedReads::default();
-        let mut db = State::builder()
-            .with_database(cached_reads.as_db_mut(state))
-            .with_bundle_update()
-            .build();
-
-        let mut tn_evm =
-            self.evm_config.evm_factory().create_evm(db, self.evm_config.evm_env(header));
-
-        // let res = tn_evm.transact_system_call(caller, contract, data)?;
-
-        // // Setup environment for the execution.
-        // let EvmEnv { cfg_env_with_handler_cfg, block_env } =
-        //     self.evm_config.cfg_and_block_env(header);
-
-        // // setup EVM
-        // let mut evm = self.evm_config.evm_with_env(
-        //     &mut db,
-        //     EnvWithHandlerCfg::new_with_cfg_env(
-        //         cfg_env_with_handler_cfg,
-        //         block_env,
-        //         Default::default(), // overwritten with system call
-        //     ),
-        // );
-
-        // for tx in txs {
-        //     // modify env to disable checks
-        //     self.fill_tx_env_free_execution(&mut evm.context.evm.env, tx);
-
-        //     // execute the transaction
-        //     let ResultAndState { state, result } = evm.transact()?;
-        //     debug!(target: "engine", "execution:\n{:#?}", state);
-        //     debug!(target: "engine", "result:\n{:#?}", result);
-        //     evm.db_mut().commit(state);
-        // }
-
-        // drop(evm);
-
-        // // apply changes
-        // db.merge_transitions(BundleRetention::PlainState);
-        // Ok(db.take_bundle())
-        todo!()
-    }
-
-    // /// Creates a new [`EnvWithHandlerConfg`] based on the provided payload.
-    // ///
-    // /// see reth `ConfigureEvmEnv::cfg_and_block_env` which uses a default SpecId (latest)
-    // ///
-    // /// This method is used to create TN-Specific EVM environment with the correct forks
-    // /// and defaults for execution.
-    // fn tn_env_for_evm(&self, payload: &TNPayload) -> EnvWithHandlerCfg {
-    //     let spec_id = reth_revm::primitives::SpecId::SHANGHAI;
-    //     let cfg_env = CfgEnv::default().with_chain_id(self.chainspec().chain_id());
-    //     let cfg = CfgEnvWithHandlerCfg::new_with_spec_id(cfg_env, spec_id);
-
-    //     // use the basefee set by the worker during batch creation
-    //     let basefee = U256::from(payload.attributes.base_fee_per_gas);
-
-    //     // ensure gas_limit enforced during block validation
-    //     let gas_limit = U256::from(payload.attributes.gas_limit);
-
-    //     // create block env
-    //     let block_env = BlockEnv {
-    //         // build env for the next block based on parent
-    //         number: U256::from(payload.attributes.parent_header.number + 1),
-    //         // special fee address
-    //         coinbase: payload.suggested_fee_recipient(),
-    //         timestamp: U256::from(payload.timestamp()),
-    //         // leave difficulty zero
-    //         // this value is useful for post-execution, but worker batches are created with this
-    //         // value
-    //         difficulty: U256::ZERO,
-    //         prevrandao: Some(payload.prev_randao()),
-    //         gas_limit,
-    //         basefee,
-    //         // calculate excess gas based on parent block's blob gas usage
-    //         blob_excess_gas_and_price: payload
-    //             .attributes
-    //             .parent_header
-    //             .excess_blob_gas
-    //             .map(|price| BlobExcessGasAndPrice::new(price, false)),
-    //     };
-
-    //     EnvWithHandlerCfg::new_with_cfg_env(cfg.clone(), block_env.clone(), TxEnv::default())
-    // }
 
     /// Create a new temp RethEnv using a specified chain spec.
     pub fn new_for_temp_chain<P: AsRef<Path>>(
@@ -1454,11 +1151,6 @@ impl RethEnv {
         let mut create_registry = registry_initcode.clone();
         create_registry.extend(constructor_args);
 
-        //
-        //
-        //
-        //
-        //
         let state = StateProviderDatabase::new(reth_env.latest()?);
         let mut cached_reads = CachedReads::default();
         let mut db = State::builder()
@@ -1477,14 +1169,6 @@ impl RethEnv {
 
         tn_evm.db_mut().commit(state);
         db.merge_transitions(BundleRetention::PlainState);
-
-        //
-        //
-        //
-        //
-        //
-
-        // let tx = CreateRequest::new(owner_address, create_registry.clone().into());
 
         // execute the transaction
         let BundleState { state, contracts, reverts, state_size, reverts_size } = db.take_bundle();
@@ -1539,45 +1223,6 @@ impl RethEnv {
 
         Ok(result)
     }
-
-    // /// Create a tx environment with all evm checks disabled.
-    // ///
-    // /// This is useful for executing transactions for pre-genesis.
-    // /// For future reth upgrades, see:
-    // /// `EthEvmConfig::fill_tx_env_for_system_call`
-    // ///
-    // /// WARNING: do not use this when executing consensus transactions.
-    // fn fill_tx_env_free_execution(&self, env: &mut Env, tx: PregenesisRequest) {
-    //     let tx = TxEnv {
-    //         caller: tx.caller(),
-    //         transact_to: tx.tx_kind(),
-    //         // Explicitly set nonce to None so revm does not do any nonce checks
-    //         nonce: None,
-    //         gas_limit: 30_000_000,
-    //         value: U256::ZERO,
-    //         data: tx.data(),
-    //         // Setting the gas price to zero enforces that no value is transferred as part of the
-    //         // call, and that the call will not count against the block's gas limit
-    //         gas_price: U256::ZERO,
-    //         // The chain ID check is not relevant here and is disabled if set to None
-    //         chain_id: None,
-    //         // Setting the gas priority fee to None ensures the effective gas price is derived from
-    //         // the `gas_price` field, which we need to be zero
-    //         gas_priority_fee: None,
-    //         access_list: Vec::new(),
-    //         // blob fields can be None for this tx
-    //         blob_hashes: Vec::new(),
-    //         max_fee_per_blob_gas: None,
-    //         authorization_list: None,
-    //     };
-    //     env.tx = tx;
-
-    //     // ensure the block gas limit is >= the tx
-    //     env.block.gas_limit = U256::from(env.tx.gas_limit);
-
-    //     // disable the base fee check for this call by setting the base fee to zero
-    //     env.block.basefee = U256::ZERO;
-    // }
 
     /// Read the latest committee from the [ConsensusRegistry] on-chain.
     ///
@@ -1727,8 +1372,6 @@ impl RethEnv {
         DB: alloy_evm::Database,
         I: Inspector<reth_revm::Context<BlockEnv, TxEnv, CfgEnv, DB>>,
     {
-        // let prev_env = Box::new(evm);
-
         // read from state
         let res = match evm.transact_system_call(caller, contract, calldata) {
             Ok(res) => res,
@@ -1739,88 +1382,7 @@ impl RethEnv {
             }
         };
 
-        // // restore env for evm
-        // evm.context.evm.env = prev_env;
-
         Ok(res)
-    }
-}
-
-/// Param for requesting a call transaction.
-#[derive(Debug)]
-pub struct CallRequest {
-    /// The caller's address.
-    caller_address: Address,
-    /// The contract to call.
-    contract_address: Address,
-    /// The data to call.
-    data: Bytes,
-}
-
-impl CallRequest {
-    /// Create a new instance of [Self].
-    pub fn new(contract_address: Address, caller_address: Address, data: Bytes) -> Self {
-        Self { contract_address, caller_address, data }
-    }
-}
-
-/// Param for requesting a create transaction.
-#[derive(Debug)]
-pub struct CreateRequest {
-    /// The caller's address.
-    caller_address: Address,
-    /// The transaction data.
-    data: Bytes,
-}
-
-impl CreateRequest {
-    /// Create a new instance of [Self].
-    pub fn new(caller_address: Address, data: Bytes) -> Self {
-        Self { caller_address, data }
-    }
-}
-
-/// Variations of pregenesis requests.
-#[derive(Debug)]
-pub enum PregenesisRequest {
-    /// Set the tx env to call.
-    Call(CallRequest),
-    /// Set the tx env to create.
-    Create(CreateRequest),
-}
-
-impl PregenesisRequest {
-    fn tx_kind(&self) -> TxKind {
-        match self {
-            PregenesisRequest::Call(tx) => TxKind::Call(tx.contract_address),
-            PregenesisRequest::Create(_) => TxKind::Create,
-        }
-    }
-
-    fn caller(&self) -> Address {
-        match self {
-            PregenesisRequest::Call(tx) => tx.caller_address,
-            PregenesisRequest::Create(tx) => tx.caller_address,
-        }
-    }
-
-    fn data(&self) -> Bytes {
-        match self {
-            PregenesisRequest::Call(tx) => tx.data.clone(),
-            PregenesisRequest::Create(tx) => tx.data.clone(),
-        }
-    }
-}
-
-impl From<CallRequest> for PregenesisRequest {
-    fn from(call: CallRequest) -> Self {
-        PregenesisRequest::Call(call)
-    }
-}
-
-impl From<CreateRequest> for PregenesisRequest {
-    fn from(create: CreateRequest) -> Self {
-        PregenesisRequest::Create(create)
     }
 }
 

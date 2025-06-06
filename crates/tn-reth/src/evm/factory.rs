@@ -4,7 +4,6 @@ use super::{
     TNBlockExecutionCtx, TNBlockExecutor, TNContext as _, TNContextBuilder as _, TNEvm,
     TNEvmContext,
 };
-use alloy::consensus::{ReceiptEnvelope, Transaction, TxEnvelope, TxReceipt};
 use alloy_evm::Database;
 use reth_evm::{
     block::{BlockExecutorFactory, BlockExecutorFor},
@@ -28,7 +27,6 @@ use reth_revm::{
     primitives::hardfork::SpecId,
     Context, ExecuteEvm as _, InspectEvm as _, Inspector, State,
 };
-use std::ops::{Deref, DerefMut};
 use tn_types::{Address, Bytes, Encodable2718, Receipt, TransactionSigned, TxKind, U256};
 
 /// Factory producing [`TNEvm`].
@@ -57,10 +55,6 @@ impl EvmFactory for TNEvmFactory {
                 .with_precompiles(PrecompilesMap::from_static(Precompiles::new(
                     PrecompileSpecId::from_spec_id(spec_id),
                 ))),
-            // .with_precompiles(EthPrecompiles {
-            //     precompiles: Precompiles::new(PrecompileSpecId::from_spec_id(spec_id)),
-            //     spec: spec_id,
-            // }),
             inspect: false,
         }
     }
@@ -129,9 +123,7 @@ impl<R, Spec, EvmFactory> TNBlockExecutorFactory<R, Spec, EvmFactory> {
 impl<R, Spec, EvmF> BlockExecutorFactory for TNBlockExecutorFactory<R, Spec, EvmF>
 where
     R: ReceiptBuilder<Transaction = TransactionSigned, Receipt = Receipt>,
-    // R: ReceiptBuilder<Transaction: Transaction + Encodable2718, Receipt: TxReceipt<Log = Log>>,
     Spec: EthExecutorSpec,
-    // EvmF: EvmFactory<Tx: FromRecoveredTx<R::Transaction> + FromTxWithEncoded<R::Transaction>>,
     EvmF: EvmFactory<Tx: FromRecoveredTx<TransactionSigned> + FromTxWithEncoded<TransactionSigned>>,
     Self: 'static,
 {

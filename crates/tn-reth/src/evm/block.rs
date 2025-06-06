@@ -70,7 +70,7 @@ pub struct TNBlockExecutionCtx {
 
 /// Block executor for Ethereum.
 #[derive(Debug)]
-pub struct TNBlockExecutor<Evm, Spec, R: ReceiptBuilder> {
+pub(crate) struct TNBlockExecutor<Evm, Spec, R: ReceiptBuilder> {
     /// Reference to the specification object.
     spec: Spec,
     /// Context for block execution.
@@ -100,7 +100,7 @@ where
     R: ReceiptBuilder<Transaction = TransactionSigned, Receipt = Receipt>,
 {
     /// Creates a new [`TNBlockExecutor`]
-    pub fn new(evm: Evm, ctx: TNBlockExecutionCtx, spec: Spec, receipt_builder: R) -> Self {
+    pub(crate) fn new(evm: Evm, ctx: TNBlockExecutionCtx, spec: Spec, receipt_builder: R) -> Self {
         Self { evm, ctx, receipts: Vec::new(), gas_used: 0, spec, receipt_builder }
     }
 
@@ -257,7 +257,6 @@ where
         Tx: FromRecoveredTx<TransactionSigned> + FromTxWithEncoded<TransactionSigned>,
     >,
     Spec: EthereumHardforks,
-    // R: ReceiptBuilder<Transaction: Transaction + Encodable2718, Receipt: TxReceipt<Log = Log>>,
     R: ReceiptBuilder<Transaction = TransactionSigned, Receipt = Receipt>,
 {
     type Transaction = R::Transaction;
@@ -306,8 +305,6 @@ where
             return Ok(None);
         }
 
-        // self.system_caller.on_state(StateChangeSource::Transaction(self.receipts.len()), &state);
-
         let gas_used = result.gas_used();
 
         // append gas used
@@ -331,90 +328,13 @@ where
     fn finish(
         mut self,
     ) -> Result<(Self::Evm, BlockExecutionResult<R::Receipt>), BlockExecutionError> {
-        // let requests = if self.spec.is_prague_active_at_timestamp(self.evm.block().timestamp) {
-        //     // Collect all EIP-6110 deposits
-        //     let deposit_requests =
-        //         eip6110::parse_deposits_from_receipts(&self.spec, &self.receipts)?;
-
-        //     let mut requests = Requests::default();
-
-        //     if !deposit_requests.is_empty() {
-        //         requests.push_request_with_type(eip6110::DEPOSIT_REQUEST_TYPE, deposit_requests);
-        //     }
-
-        //     requests.extend(self.system_caller.apply_post_execution_changes(&mut self.evm)?);
-        //     requests
-        // } else {
-        //     Requests::default()
-        // };
-
         // don't support prague deposit requests
         let requests = Requests::default();
-
-        // don't support block rewards for ommers
-        //
-        // let mut balance_increments = post_block_balance_increments(
-        //     &self.spec,
-        //     self.evm.block(),
-        //     self.ctx.ommers,
-        //     self.ctx.withdrawals.as_deref(),
-        // );
-
-        // don't support eth dao hardfork
-        //
-        // // irregular state change at Ethereum DAO hardfork
-        // if self
-        //     .spec
-        //     .ethereum_fork_activation(EthereumHardfork::Dao)
-        //     .transitions_at_block(self.evm.block().number)
-        // {
-        //     // drain balances from hardcoded addresses.
-        //     let drained_balance: u128 = self
-        //         .evm
-        //         .db_mut()
-        //         .drain_balances(dao_fork::DAO_HARDFORK_ACCOUNTS)
-        //         .map_err(|_| BlockValidationError::IncrementBalanceFailed)?
-        //         .into_iter()
-        //         .sum();
-
-        //     // return balance to DAO beneficiary.
-        //     *balance_increments.entry(dao_fork::DAO_HARDFORK_BENEFICIARY).or_default() +=
-        //         drained_balance;
-        // }
-
         if let Some(randomness) = self.ctx.close_epoch {
             self.apply_closing_epoch_contract_call(randomness).map_err(|e| {
                 BlockExecutionError::Internal(InternalBlockExecutionError::Other(e.into()))
             })?;
         }
-
-        // // close epoch using leader's aggregate signature if conditions are met
-        // if let Some(res) = payload
-        //     .attributes
-        //     .close_epoch
-        //     .map(|sig| self.apply_closing_epoch_contract_call(&mut evm, sig))
-        // {
-        //     // add logs if epoch closed
-        //     let logs = res?;
-        //     receipts.push(Some(Receipt {
-        //         // no better tx type
-        //         tx_type: TxType::Legacy,
-        //         success: true,
-        //         cumulative_gas_used: 0,
-        //         logs,
-        //     }));
-        // }
-
-        let balance_increments = alloy::primitives::map::foldhash::HashMap::default();
-
-        // TODO: apply rewards for beneficiary if batch index is 0
-        // aka) block difficulty is 0
-        //
-        // increment balances for consensus leader on first batch of consensus output
-        self.evm
-            .db_mut()
-            .increment_balances(balance_increments.clone())
-            .map_err(|_| BlockValidationError::IncrementBalanceFailed)?;
 
         Ok((
             self.evm,
@@ -460,7 +380,6 @@ where
 {
     type Block = Block<TransactionSigned>;
 
-    // TODO: when is this called?
     fn assemble_block(
         &self,
         input: BlockAssemblerInput<'_, '_, F>,
@@ -468,9 +387,8 @@ where
         let BlockAssemblerInput {
             evm_env,
             execution_ctx: ctx,
-            parent,
             transactions,
-            output: BlockExecutionResult { receipts, requests, gas_used },
+            output: BlockExecutionResult { receipts, gas_used, .. },
             state_root,
             ..
         } = input;
@@ -480,41 +398,21 @@ where
         let receipts_root = Receipt::calculate_receipt_root_no_memo(receipts);
         let logs_bloom = logs_bloom(receipts.iter().flat_map(|r| r.logs()));
 
-        let withdrawals = Some(Withdrawals::default()); //self
-                                                        //     .chain_spec
-                                                        //     .is_shanghai_active_at_timestamp(timestamp)
-                                                        //     .then(|| ctx.withdrawals.map(|w| w.into_owned()).unwrap_or_default());
-
+        let withdrawals = Some(Withdrawals::default());
         let withdrawals_root = Some(EMPTY_WITHDRAWALS);
-        // withdrawals.as_deref().map(|w| proofs::calculate_withdrawals_root(w));
-        let requests_hash = self
-            .chain_spec
-            .is_prague_active_at_timestamp(timestamp)
-            .then(|| requests.requests_hash());
 
         // cancun isn't active
         let excess_blob_gas = None;
         let blob_gas_used = None;
 
-        // TODO: delete this
-        //
-        // // only determine cancun fields when active
-        // if self.chain_spec.is_cancun_active_at_timestamp(timestamp) {
-        //     blob_gas_used =
-        //         Some(transactions.iter().map(|tx| tx.blob_gas_used().unwrap_or_default()).sum());
-        //     excess_blob_gas = if self.chain_spec.is_cancun_active_at_timestamp(parent.timestamp) {
-        //         parent.maybe_next_block_excess_blob_gas(
-        //             self.chain_spec.blob_params_at_timestamp(timestamp),
-        //         )
-        //     } else {
-        //         // for the first post-fork block, both parent.blob_gas_used and
-        //         // parent.excess_blob_gas are evaluated as 0
-        //         Some(eip7840::BlobParams::cancun().next_block_excess_blob_gas(0, 0))
-        //     };
-        // }
+        // TN-specific values
+        let requests_hash = ctx.requests_hash; // prague inactive
+        let nonce = ctx.nonce.into(); // subdag leader's nonce: ((epoch as u64) << 32) | self.round as u64
+        let difficulty = evm_env.block_env.difficulty; // batch index
 
-        // TODO: still need batch digest so the block can be fully executed independently
-        // - output ^ digest = mixhash
+        // use keccak256(bls_sig) if closing epoch or Bytes::default
+        let extra_data = ctx.close_epoch.map(|hash| hash.to_vec().into()).unwrap_or_default();
+
         let header = ExecHeader {
             parent_hash: ctx.parent_hash,
             ommers_hash: EMPTY_OMMER_ROOT_HASH,
@@ -526,28 +424,17 @@ where
             logs_bloom,
             timestamp,
             mix_hash: evm_env.block_env.prevrandao.unwrap_or_default(),
-
-            // ((self.epoch as u64) << 32) | self.round as u64
-            nonce: ctx.nonce.into(), // output nonce - subdag leader nonce -> (epoch | round)
-
+            nonce,
             base_fee_per_gas: Some(evm_env.block_env.basefee),
             number: evm_env.block_env.number,
             gas_limit: evm_env.block_env.gas_limit,
-
-            // batch index
-            difficulty: evm_env.block_env.difficulty,
-
+            difficulty,
             gas_used: *gas_used,
-
-            // USE THE RANDOMNESS hashed bls sig
-            extra_data: ctx.close_epoch.map(|hash| hash.to_vec().into()).unwrap_or_default(),
-
+            extra_data,
             parent_beacon_block_root: ctx.parent_beacon_block_root,
             blob_gas_used,
             excess_blob_gas,
-
-            // batch digest
-            requests_hash: ctx.requests_hash,
+            requests_hash,
         };
 
         Ok(Block {

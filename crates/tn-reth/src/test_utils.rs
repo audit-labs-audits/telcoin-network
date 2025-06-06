@@ -6,11 +6,11 @@ use crate::{
 use alloy::{consensus::SignableTransaction as _, signers::local::PrivateKeySigner};
 use enr::k256::FieldBytes;
 use reth_chainspec::ChainSpec as RethChainSpec;
-use reth_evm::execute::Executor as _;
+use reth_evm::{execute::Executor as _, ConfigureEvm};
 use reth_node_builder::Block as _;
 use reth_primitives::sign_message;
 use reth_primitives_traits::SignerRecoverable;
-use reth_provider::{BlockExecutionOutput, ExecutionOutcome};
+use reth_provider::{BlockExecutionOutput, BlockExecutionResult, ExecutionOutcome};
 use reth_revm::{database::StateProviderDatabase, db::BundleState};
 use reth_transaction_pool::{EthPooledTransaction, PoolTransaction};
 use secp256k1::{
@@ -38,23 +38,6 @@ impl RethEnv {
         Self::new_for_temp_chain(adiri_chain_spec_arc(), db_path, task_manager)
     }
 
-    /// Execute a block for testing.
-    pub fn execute_for_test(
-        &self,
-        block: &BlockWithSenders,
-    ) -> TnRethResult<(BundleState, Vec<Receipt>)> {
-        // create execution db
-        let mut db = StateProviderDatabase::new(
-            self.latest().expect("provider retrieves latest during test batch execution"),
-        );
-        // execute the block
-        // let BlockExecutionOutput { state, result } =
-        //     self.evm_executor.executor(&mut db).execute(block)?;
-
-        // Ok((state, result.receipts))
-        todo!()
-    }
-
     /// Test utility to execute batch and return execution outcome.
     ///
     /// This is useful for simulating execution results for account state changes.
@@ -64,7 +47,7 @@ impl RethEnv {
         &self,
         txs: Vec<Vec<u8>>,
         parent: &SealedHeader,
-    ) -> ExecutionOutcome {
+    ) -> BundleState {
         // create "empty" header with default values
         let mut header = ExecHeader {
             parent_hash: parent.hash(),
@@ -91,11 +74,13 @@ impl RethEnv {
         };
 
         // decode transactions
-        let mut decoded_txs = vec![];
+        let mut decoded_txs = Vec::with_capacity(txs.len());
+        let mut signers = Vec::with_capacity(txs.len());
         for tx_bytes in &txs {
             let tx = recover_raw_transaction(tx_bytes)
                 .expect("raw transaction recovered for test")
                 .into_inner();
+            signers.push(tx.recover_signer().expect("recover signer for test tx"));
             decoded_txs.push(tx);
         }
 
@@ -115,16 +100,17 @@ impl RethEnv {
                 withdrawals: Some(Default::default()),
             },
         };
-        // .recover_signers()
-        // .expect("unable to recover senders while executing test batch");
 
-        // convenience
-        let block_number = block.number;
+        // create execution db
+        let mut db = StateProviderDatabase::new(
+            self.latest().expect("provider retrieves latest during test batch execution"),
+        );
+        let executor = self.evm_config.executor(&mut db);
+        let res = executor
+            .execute(&RecoveredBlock::new_unhashed(block, signers))
+            .expect("execute one block");
 
-        // let (state, receipts) =
-        //     self.execute_for_test(&block).expect("executor can execute test batch transactions");
-        // ExecutionOutcome::new(state, receipts.into(), block_number, vec![])
-        todo!()
+        res.state
     }
 }
 

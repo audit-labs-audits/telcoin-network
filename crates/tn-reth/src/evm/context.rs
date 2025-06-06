@@ -16,7 +16,7 @@ use reth_revm::{
 ///
 /// TODO: this could also be a way to pass information to close epoch through `BlockEnv`
 //
-pub type TNEvmContext<DB> = Context<BlockEnv, TxEnv, CfgEnv, DB>;
+pub(crate) type TNEvmContext<DB> = Context<BlockEnv, TxEnv, CfgEnv, DB>;
 
 // TODO: rename thissss
 // - RethEvm
@@ -27,21 +27,21 @@ pub type TNEvmContext<DB> = Context<BlockEnv, TxEnv, CfgEnv, DB>;
 ///
 /// convenience type
 /// !!!! ~~~~
-pub type MainnetEvm<CTX, INSP = ()> =
+pub(crate) type MainnetEvm<CTX, INSP = ()> =
     Evm<CTX, INSP, EthInstructions<EthInterpreter, CTX>, PrecompilesMap>;
 
 /// Trait used to initialize Context with default mainnet types.
-pub trait TNContext {
+pub(crate) trait TNContext {
     type Context;
     /// Build the default TN context.
     fn tn() -> Self;
 }
 
 /// Trait used to initialize Context with default mainnet types.
-pub trait TNContextBuilder {
+pub(crate) trait TNContextBuilder {
     type Context;
     /// Return `Evm` for execution without inspector.
-    fn build(self) -> MainnetEvm<Self::Context>;
+    fn _build(self) -> MainnetEvm<Self::Context>;
     /// Return `Evm` for execution with inspector.
     fn build_with_inspector<I>(self, inspector: I) -> MainnetEvm<Self::Context, I>;
 }
@@ -65,7 +65,7 @@ where
 {
     type Context = Self;
 
-    fn build(self) -> MainnetEvm<Self::Context> {
+    fn _build(self) -> MainnetEvm<Self::Context> {
         Evm {
             ctx: self,
             inspector: (),
