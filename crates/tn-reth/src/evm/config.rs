@@ -5,9 +5,7 @@
 use super::{TNBlockAssembler, TNBlockExecutionCtx, TNBlockExecutorFactory, TNEvmFactory};
 use crate::{error::TnRethError, payload::TNPayload, traits::TNPrimitives};
 use reth_chainspec::{ChainSpec, EthChainSpec as _};
-use reth_evm::{
-    ConfigureEvm, EvmEnv, EvmEnvFor, ExecutionCtxFor,
-};
+use reth_evm::{ConfigureEvm, EvmEnv, EvmEnvFor, ExecutionCtxFor};
 use reth_evm_ethereum::RethReceiptBuilder;
 use reth_primitives::{BlockTy, HeaderTy};
 use reth_revm::{
@@ -16,9 +14,7 @@ use reth_revm::{
     primitives::hardfork::SpecId,
 };
 use std::sync::Arc;
-use tn_types::{
-    BlockHeader as _, Bytes, SealedBlock, SealedHeader, B256, U256,
-};
+use tn_types::{BlockHeader as _, Bytes, SealedBlock, SealedHeader, B256, U256};
 
 /// TN-related EVM configuration.
 ///

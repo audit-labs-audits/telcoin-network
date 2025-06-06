@@ -699,8 +699,8 @@ impl RethEnv {
             // let BlockBuilderOutcome { execution_result, block, .. } =
             //     builder.finish(&state_provider)?;
 
-            // // add gas used by the transaction to cumulative gas used, before creating the receipt
-            // cumulative_gas_used += gas_used;
+            // // add gas used by the transaction to cumulative gas used, before creating the
+            // receipt cumulative_gas_used += gas_used;
 
             // // Push transaction changeset and calculate header bloom filter for receipt.
             // receipts.push(Some(Receipt {
@@ -762,8 +762,8 @@ impl RethEnv {
         // // Release db
         // drop(evm);
 
-        // // merge all transitions into bundle state, this would apply the withdrawal balance changes
-        // // and 4788 contract call
+        // // merge all transitions into bundle state, this would apply the withdrawal balance
+        // changes // and 4788 contract call
         // db.merge_transitions(BundleRetention::PlainState);
 
         // let execution_outcome =
@@ -1396,8 +1396,8 @@ impl RethEnv {
 //     use rand_chacha::ChaCha8Rng;
 //     use tempfile::TempDir;
 //     use tn_types::{
-//         adiri_genesis, BlsKeypair, Certificate, CommittedSubDag, ConsensusHeader, ConsensusOutput,
-//         FromHex, PrimaryInfo, ReputationScores,
+//         adiri_genesis, BlsKeypair, Certificate, CommittedSubDag, ConsensusHeader,
+// ConsensusOutput,         FromHex, PrimaryInfo, ReputationScores,
 //     };
 
 //     /// Helper function for creating a consensus output for tests.
@@ -1438,7 +1438,8 @@ impl RethEnv {
 //         let validator_5 = Address::from_slice(&[0x55; 20]);
 
 //         // create initial validators for testing
-//         let initial_validators = [validator_1, validator_2, validator_3, validator_4, validator_5];
+//         let initial_validators = [validator_1, validator_2, validator_3, validator_4,
+// validator_5];
 
 //         // create validator info objects for each address
 //         let validators: Vec<_> = initial_validators
@@ -1494,8 +1495,8 @@ impl RethEnv {
 
 //         // setup environment for execution
 //         let payload =
-//             TNPayload::new_for_test(chain.sealed_genesis_header(), &consensus_output_for_tests());
-//         let tn_env = reth_env.tn_env_for_evm(&payload);
+//             TNPayload::new_for_test(chain.sealed_genesis_header(),
+// &consensus_output_for_tests());         let tn_env = reth_env.tn_env_for_evm(&payload);
 //         let mut evm = reth_env.evm_config.evm_with_env(&mut db, tn_env);
 //         let original_env = evm.context.env().clone();
 
@@ -1529,8 +1530,8 @@ impl RethEnv {
 //         assert_eq!(expected_epoch, epoch);
 
 //         // read new committee (always 2 epochs ahead)
-//         let calldata = ConsensusRegistry::getEpochInfoCall { epoch: epoch + 2 }.abi_encode().into();
-//         let new_epoch_info = reth_env
+//         let calldata = ConsensusRegistry::getEpochInfoCall { epoch: epoch + 2
+// }.abi_encode().into();         let new_epoch_info = reth_env
 //             .call_consensus_registry::<_, _, ConsensusRegistry::EpochInfo>(&mut evm, calldata)?;
 
 //         // ensure shuffle is deterministic

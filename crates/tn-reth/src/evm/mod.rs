@@ -92,7 +92,8 @@ impl<DB: Database, I, PRECOMPILE> TNEvm<DB, I, PRECOMPILE> {
 
     //         // transfer fee to coinbase/beneficiary.
     //         // Basefee amount of gas is redirected.
-    //         let coinbase_gas_price = effective_gas_price.saturating_sub(ctx.evm.env.block.basefee);
+    //         let coinbase_gas_price =
+    // effective_gas_price.saturating_sub(ctx.evm.env.block.basefee);
 
     //         let coinbase_account =
     //             ctx.evm.inner.journaled_state.load_account(beneficiary, &mut ctx.evm.inner.db)?;
@@ -103,8 +104,8 @@ impl<DB: Database, I, PRECOMPILE> TNEvm<DB, I, PRECOMPILE> {
     //             coinbase_account.data.info.balance.saturating_add(coinbase_gas_price * gas_used);
 
     //         if let Some(basefee_address) = basefee_address {
-    //             // Send the base fee portion to a basefee account for later processing (offchain).
-    //             let basefee = ctx.evm.env.block.basefee;
+    //             // Send the base fee portion to a basefee account for later processing
+    // (offchain).             let basefee = ctx.evm.env.block.basefee;
     //             let basefee_account = ctx
     //                 .evm
     //                 .inner

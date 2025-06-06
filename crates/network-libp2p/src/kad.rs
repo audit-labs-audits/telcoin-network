@@ -364,10 +364,7 @@ impl<'de> DeserializeAs<'de, RecordKey> for RecordKeySerde {
 mod test {
     use std::time::Duration;
 
-    use rand::{
-        rngs::StdRng,
-        SeedableRng as _,
-    };
+    use rand::{rngs::StdRng, SeedableRng as _};
     use tempfile::TempDir;
     use tn_config::KeyConfig;
     use tn_storage::open_network_db;

@@ -48,8 +48,6 @@ pub struct NodeCommand<Ext: clap::Args + fmt::Debug = NoArgs> {
     /// port numbers that conflict with each other.
     ///
     /// Changes to the following port numbers:
-    /// - `DISCOVERY_PORT`: default + `instance` - 1
-    /// - `AUTH_PORT`: default + `instance` * 100 - 100
     /// - `HTTP_RPC_PORT`: default - `instance` + 1
     /// - `WS_RPC_PORT`: default + `instance` * 2 - 2
     /// - `IPC_PATH`: default + `-instance`

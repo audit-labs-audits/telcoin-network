@@ -11,7 +11,8 @@ use reth_evm::{
         receipt_builder::{AlloyReceiptBuilder, ReceiptBuilder},
         spec::{EthExecutorSpec, EthSpec},
     },
-    precompiles::PrecompilesMap, EvmEnv, EvmFactory, FromRecoveredTx, FromTxWithEncoded,
+    precompiles::PrecompilesMap,
+    EvmEnv, EvmFactory, FromRecoveredTx, FromTxWithEncoded,
 };
 use reth_revm::{
     context::{

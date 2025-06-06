@@ -22,10 +22,7 @@ use reth_provider::{BlockExecutionResult, EthStorage};
 use reth_trie_db::MerklePatriciaTrie;
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
-use tn_types::{
-    EthPrimitives,
-    NodePrimitives, RecoveredBlock, SealedBlock, SealedHeader,
-};
+use tn_types::{EthPrimitives, NodePrimitives, RecoveredBlock, SealedBlock, SealedHeader};
 
 /// Type for primitives.
 pub type TNPrimitives = EthPrimitives;
