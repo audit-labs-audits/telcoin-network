@@ -3,7 +3,6 @@
 //! These are used to spawn execution components for the node and maintain compatibility with reth's
 //! API.
 
-use crate::{evm::TnEvmConfig, RethEnv};
 use alloy::rpc::types::engine::ExecutionPayload;
 use reth::{
     payload::{EthBuiltPayload, EthPayloadBuilderAttributes},
@@ -14,7 +13,6 @@ pub use reth_consensus::{Consensus, ConsensusError};
 use reth_consensus::{FullConsensus, HeaderValidator};
 use reth_db::DatabaseEnv;
 use reth_engine_primitives::PayloadValidator;
-use reth_evm::ConfigureEvm;
 use reth_node_builder::{
     BuiltPayload, EngineValidator, NewPayloadError, NodeTypes, NodeTypesWithDB, PayloadTypes,
 };
@@ -25,11 +23,9 @@ use reth_trie_db::MerklePatriciaTrie;
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 use tn_types::{
-    keccak256, Address, BlsSignature, ConsensusOutput, EthPrimitives, ExecHeader, Hash as _,
-    NodePrimitives, RecoveredBlock, SealedBlock, SealedHeader, TransactionSigned, Withdrawals,
-    B256, MIN_PROTOCOL_BASE_FEE, U256,
+    EthPrimitives,
+    NodePrimitives, RecoveredBlock, SealedBlock, SealedHeader,
 };
-use tracing::error;
 
 /// Type for primitives.
 pub type TNPrimitives = EthPrimitives;

@@ -1,32 +1,26 @@
 //! Transaction factory to create legit transactions for execution.
 
-use crate::{
-    error::TnRethResult, recover_raw_transaction, BlockWithSenders, RethEnv, WorkerTxPool,
-};
+use crate::{recover_raw_transaction, RethEnv, WorkerTxPool};
 use alloy::{consensus::SignableTransaction as _, signers::local::PrivateKeySigner};
-use enr::k256::FieldBytes;
 use reth_chainspec::ChainSpec as RethChainSpec;
 use reth_evm::{execute::Executor as _, ConfigureEvm};
-use reth_node_builder::Block as _;
 use reth_primitives::sign_message;
 use reth_primitives_traits::SignerRecoverable;
-use reth_provider::{BlockExecutionOutput, BlockExecutionResult, ExecutionOutcome};
 use reth_revm::{database::StateProviderDatabase, db::BundleState};
 use reth_transaction_pool::{EthPooledTransaction, PoolTransaction};
 use secp256k1::{
-    rand::{self, rngs::StdRng, Rng, SeedableRng as _},
+    rand::{rngs::StdRng, Rng, SeedableRng as _},
     Secp256k1,
 };
 use std::{path::Path, str::FromStr, sync::Arc};
 use tn_types::{
-    adiri_chain_spec_arc, adiri_genesis, calculate_transaction_root, keccak256, now,
-    public_key_to_address, AccessList, Address, Batch, Block, BlockBody, Bytes, Encodable2718,
-    EthSignature, ExecHeader, ExecutionKeypair, Genesis, GenesisAccount, Receipt, RecoveredBlock,
-    SealedHeader, TaskManager, Transaction, TransactionSigned, TxEip1559, TxHash, TxKind, B256,
-    EMPTY_OMMER_ROOT_HASH, EMPTY_TRANSACTIONS, EMPTY_WITHDRAWALS, ETHEREUM_BLOCK_GAS_LIMIT_30M,
-    MIN_PROTOCOL_BASE_FEE, U256,
+    adiri_chain_spec_arc, adiri_genesis, calculate_transaction_root, keccak256, now, AccessList,
+    Address, Batch, Block, BlockBody, Bytes, Encodable2718, EthSignature, ExecHeader,
+    ExecutionKeypair, Genesis, GenesisAccount, RecoveredBlock, SealedHeader, TaskManager,
+    Transaction, TransactionSigned, TxEip1559, TxHash, TxKind, B256, EMPTY_OMMER_ROOT_HASH,
+    EMPTY_TRANSACTIONS, EMPTY_WITHDRAWALS, ETHEREUM_BLOCK_GAS_LIMIT_30M, MIN_PROTOCOL_BASE_FEE,
+    U256,
 };
-use tracing::debug;
 
 // methods for tests
 impl RethEnv {
@@ -286,10 +280,6 @@ impl TransactionFactory {
 
     /// Sign the transaction hash with the key in memory
     fn sign_hash(&self, hash: B256) -> EthSignature {
-        // let env = std::env::var("WALLET_SECRET_KEY")
-        //     .expect("Wallet address is set through environment variable");
-        // let secret: B256 = env.parse().expect("WALLET_SECRET_KEY must start with 0x");
-        // let secret = B256::from_slice(self.keypair.secret.as_ref());
         let secret = B256::from_slice(&self.keypair.secret_bytes());
         let signature = sign_message(secret, hash);
         signature.expect("failed to sign transaction")
@@ -299,8 +289,8 @@ impl TransactionFactory {
     pub fn get_default_signer(&self) -> eyre::Result<PrivateKeySigner> {
         // circumvent Secp256k1 <> k256 type incompatibility via FieldBytes intermediary
         let binding = self.keypair.secret_key().secret_bytes();
-        let secret_bytes_array = FieldBytes::from_slice(&binding);
-        Ok(PrivateKeySigner::from_field_bytes(secret_bytes_array)?)
+        let signer = PrivateKeySigner::from_bytes(&binding.into())?;
+        Ok(signer)
     }
 
     /// Create and submit the next transaction to the provided [TransactionPool].

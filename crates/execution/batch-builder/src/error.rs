@@ -23,9 +23,6 @@ pub enum BatchBuilderError {
     /// The block body and senders lengths don't match.
     #[error("Failed to seal block with senders - lengths don't match")]
     SealBlockWithSenders,
-    // /// The executed block failed to become part of the canonical chain.
-    // #[error("Blockchain tree failed to make_canonical: {0}")]
-    // Canonical(#[from] CanonicalError),
     /// The oneshot channel that receives the ack that the block was persisted and being proposed.
     #[error("Fatal error: failed to receive ack reply that new block was built. Shutting down...")]
     AckChannelClosed,

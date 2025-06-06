@@ -41,11 +41,10 @@ use reth::{
     },
     builder::NodeConfig,
     network::transactions::config::TransactionPropagationKind,
-    payload::PayloadBuilderHandle,
     rpc::{
         builder::{
             config::RethRpcServerConfig, RethRpcModule, RpcModuleBuilder, RpcModuleSelection,
-            RpcRegistryInner, TransportRpcModuleConfig, TransportRpcModules,
+            TransportRpcModules,
         },
         eth::EthApi,
         server_types::eth::utils::recover_raw_transaction as reth_recover_raw_transaction,
@@ -57,24 +56,21 @@ use reth_db::{init_db, DatabaseEnv};
 use reth_db_common::init::init_genesis;
 use reth_discv4::NatResolver;
 use reth_engine_tree::{
-    engine::{EngineApiEvent, EngineApiKind, EngineApiRequest, FromEngine},
-    persistence::PersistenceHandle,
-    tree::{EngineApiTreeHandler, NoopInvalidBlockHook},
+    engine::{EngineApiRequest, FromEngine},
+    tree::EngineApiTreeHandler,
 };
 use reth_errors::{BlockExecutionError, BlockValidationError};
 use reth_eth_wire::BlockHashNumber;
 use reth_evm::{
-    env::EvmEnv,
     execute::{BlockBuilder, BlockBuilderOutcome},
-    ConfigureEvm, EvmFactory, NextBlockEnvAttributes,
+    ConfigureEvm, EvmFactory,
 };
 use reth_evm_ethereum::EthEvmConfig;
 use reth_node_builder::{
-    TreeConfig, DEFAULT_MAX_PROOF_TASK_CONCURRENCY, DEFAULT_MEMORY_BLOCK_BUFFER_TARGET,
+    DEFAULT_MAX_PROOF_TASK_CONCURRENCY, DEFAULT_MEMORY_BLOCK_BUFFER_TARGET,
     DEFAULT_RESERVED_CPU_CORES,
 };
 use reth_node_core::node_config::DEFAULT_CROSS_BLOCK_CACHE_SIZE_MB;
-use reth_primitives::{Log, TxType};
 use reth_provider::{
     providers::{BlockchainProvider, StaticFileProvider},
     writer::UnifiedStorageWriter,
@@ -83,17 +79,15 @@ use reth_provider::{
     DatabaseProviderFactory, HeaderProvider as _, ProviderFactory, StateProviderBox,
     StateProviderFactory, StaticFileProviderFactory, TransactionVariant,
 };
-use reth_prune::PrunerBuilder;
 use reth_revm::{
     cached::CachedReads,
     context::{
         result::{ExecutionResult, ResultAndState},
-        BlockEnv, CfgEnv, Evm as RevmEvm, TxEnv,
+        BlockEnv, CfgEnv, TxEnv,
     },
     database::StateProviderDatabase,
     db::{states::bundle_state::BundleRetention, BundleState},
-    interpreter::Host,
-    Database, DatabaseCommit, Inspector, State,
+    DatabaseCommit, Inspector, State,
 };
 use reth_transaction_pool::{blobstore::DiskFileBlobStore, EthTransactionPool};
 use serde_json::Value;
@@ -106,20 +100,17 @@ use std::{
     time::Duration,
 };
 use system_calls::{
-    ConsensusRegistry::{self, ValidatorStatus},
+    ConsensusRegistry::{self},
     EpochState, CONSENSUS_REGISTRY_ADDRESS, SYSTEM_ADDRESS,
 };
 use tempfile::TempDir;
 use tn_config::{Config, ConfigFmt, ConfigTrait, ValidatorInfo, CONSENSUS_REGISTRY_JSON};
 use tn_types::{
-    adiri_chain_spec_arc, calculate_transaction_root, keccak256, Address, Block, BlockBody,
-    BlockHashOrNumber, BlockHeader as _, BlockNumHash, BlockNumber, BlsSignature, Epoch,
-    ExecHeader, Genesis, GenesisAccount, Receipt, Recovered, RecoveredBlock, SealedBlock,
-    SealedHeader, TaskManager, TaskSpawner, TransactionSigned, TxKind, B256, EMPTY_OMMER_ROOT_HASH,
-    EMPTY_RECEIPTS, EMPTY_TRANSACTIONS, EMPTY_WITHDRAWALS, ETHEREUM_BLOCK_GAS_LIMIT_30M,
-    MIN_PROTOCOL_BASE_FEE, U256,
+    adiri_chain_spec_arc, Address, BlockBody, BlockHashOrNumber, BlockHeader as _, BlockNumHash,
+    BlockNumber, Epoch, ExecHeader, Genesis, GenesisAccount, RecoveredBlock, SealedBlock,
+    SealedHeader, TaskManager, TaskSpawner, TransactionSigned, B256, ETHEREUM_BLOCK_GAS_LIMIT_30M,
+    U256,
 };
-use tokio::sync::mpsc;
 use tracing::{debug, error, info, warn};
 use traits::{TNPrimitives, TelcoinNode};
 
@@ -475,6 +466,18 @@ impl ChainSpec {
     /// Return the sealed header for genesis.
     pub fn sealed_genesis_header(&self) -> SealedHeader {
         self.0.sealed_genesis_header()
+    }
+
+    /// Return the sealed header for genesis.
+    pub fn sealed_genesis_block(&self) -> SealedBlock {
+        let header = self.sealed_genesis_header();
+        let body = BlockBody {
+            transactions: vec![],
+            ommers: vec![],
+            withdrawals: Some(Default::default()),
+        };
+
+        SealedBlock::from_sealed_parts(header, body)
     }
 
     /// Return the chain id.
@@ -1378,7 +1381,7 @@ impl RethEnv {
             Err(e) => {
                 // fatal error
                 error!(target: "engine", ?caller, ?contract, "failed to read state: {}", e);
-                return Err(TnRethError::EVMCustom(format!("getValidatorsCall failed: {e}")).into());
+                return Err(TnRethError::EVMCustom(format!("getValidatorsCall failed: {e}")));
             }
         };
 

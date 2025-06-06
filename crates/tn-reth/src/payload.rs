@@ -100,27 +100,12 @@ impl TNPayload {
         }
     }
 
-    /// Passthrough attribute timestamp.
-    pub(crate) fn timestamp(&self) -> u64 {
-        self.timestamp
-    }
-
-    /// Who should get fees?
-    pub(crate) fn suggested_fee_recipient(&self) -> Address {
-        self.beneficiary
-    }
-
     /// PrevRandao is used by TN to provide a source for randomness on-chain.
     ///
     /// This is used as the executed block's "mix_hash".
     /// [EIP-4399]: https://eips.ethereum.org/EIPS/eip-4399
     pub(crate) fn prev_randao(&self) -> B256 {
         self.mix_hash
-    }
-
-    /// Parent hash.
-    pub(crate) fn parent(&self) -> B256 {
-        self.parent_header.hash()
     }
 
     /// The TN parent "beacon" block root.

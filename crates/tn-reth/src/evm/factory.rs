@@ -11,23 +11,19 @@ use reth_evm::{
         receipt_builder::{AlloyReceiptBuilder, ReceiptBuilder},
         spec::{EthExecutorSpec, EthSpec},
     },
-    precompiles::PrecompilesMap,
-    Evm, EvmEnv, EvmFactory, FromRecoveredTx, FromTxWithEncoded,
+    precompiles::PrecompilesMap, EvmEnv, EvmFactory, FromRecoveredTx, FromTxWithEncoded,
 };
-use reth_primitives::Log;
 use reth_revm::{
     context::{
-        result::{EVMError, HaltReason, ResultAndState},
-        BlockEnv, CfgEnv, Evm as RevmEvm, TxEnv,
+        result::{EVMError, HaltReason},
+        BlockEnv, CfgEnv, TxEnv,
     },
-    handler::{instructions::EthInstructions, EthPrecompiles, PrecompileProvider},
     inspector::NoOpInspector,
-    interpreter::{interpreter::EthInterpreter, InterpreterResult},
     precompile::{PrecompileSpecId, Precompiles},
     primitives::hardfork::SpecId,
-    Context, ExecuteEvm as _, InspectEvm as _, Inspector, State,
+    Context, Inspector, State,
 };
-use tn_types::{Address, Bytes, Encodable2718, Receipt, TransactionSigned, TxKind, U256};
+use tn_types::{Receipt, TransactionSigned};
 
 /// Factory producing [`TNEvm`].
 #[derive(Debug, Default, Clone, Copy)]

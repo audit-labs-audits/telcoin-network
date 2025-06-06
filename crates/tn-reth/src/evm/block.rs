@@ -9,40 +9,33 @@ use crate::{
     SYSTEM_ADDRESS,
 };
 use alloy::{
-    consensus::{
-        proofs, Block, BlockBody, Eip658Value, ReceiptEnvelope, Transaction, TxEnvelope, TxReceipt,
-    },
-    eips::{eip7685::Requests, eip7840, merge::BEACON_NONCE},
+    consensus::{proofs, Block, BlockBody, Transaction, TxReceipt},
+    eips::eip7685::Requests,
     sol_types::SolCall as _,
 };
 use alloy_evm::{Database, Evm};
 use rand::{rngs::StdRng, Rng as _, SeedableRng as _};
-use reth_chainspec::{EthChainSpec, EthereumHardfork, EthereumHardforks};
+use reth_chainspec::{EthChainSpec, EthereumHardforks};
 use reth_errors::{BlockExecutionError, BlockValidationError};
 use reth_evm::{
     block::{
-        BlockExecutor, BlockExecutorFactory, BlockExecutorFor, CommitChanges, ExecutableTx,
-        InternalBlockExecutionError, StateChangePostBlockSource, StateChangeSource, SystemCaller,
+        BlockExecutor, BlockExecutorFactory, CommitChanges, ExecutableTx,
+        InternalBlockExecutionError,
     },
-    eth::{
-        receipt_builder::{AlloyReceiptBuilder, ReceiptBuilder, ReceiptBuilderCtx},
-        spec::{EthExecutorSpec, EthSpec},
-    },
+    eth::receipt_builder::{ReceiptBuilder, ReceiptBuilderCtx},
     execute::{BlockAssembler, BlockAssemblerInput},
-    state_change::balance_increment_state,
-    EthEvmFactory, EvmFactory, FromRecoveredTx, FromTxWithEncoded, OnStateHook,
+    FromRecoveredTx, FromTxWithEncoded, OnStateHook,
 };
-use reth_primitives::{logs_bloom, Log, TxType};
+use reth_primitives::{logs_bloom, TxType};
 use reth_provider::BlockExecutionResult;
 use reth_revm::{
-    context::result::{EVMError, ExecutionResult, ResultAndState},
-    DatabaseCommit as _, Inspector, State,
+    context::result::{ExecutionResult, ResultAndState},
+    DatabaseCommit as _, State,
 };
-use secp256k1::rand::Rng as _;
-use std::{borrow::Cow, sync::Arc};
+use std::sync::Arc;
 use tn_types::{
-    keccak256, Address, BlsSignature, Bytes, Encodable2718, ExecHeader, Receipt, TransactionSigned,
-    Withdrawals, B256, EMPTY_OMMER_ROOT_HASH, EMPTY_WITHDRAWALS, U256,
+    Address, Bytes, Encodable2718, ExecHeader, Receipt, TransactionSigned, Withdrawals, B256,
+    EMPTY_OMMER_ROOT_HASH, EMPTY_WITHDRAWALS,
 };
 use tracing::{debug, error};
 
@@ -108,15 +101,15 @@ where
     ///
     /// see revm-database/src/states/state.rs
     /// State::increment_balances
-    fn apply_consensus_block_reward(&mut self) -> TnRethResult<()> {
+    fn _apply_consensus_block_reward(&mut self) -> TnRethResult<()> {
         let recipient = self.evm.block().beneficiary;
-        let original_account = self.evm.db_mut().load_cache_account(recipient).map_err(|e| {
+        let _original_account = self.evm.db_mut().load_cache_account(recipient).map_err(|e| {
             TnRethError::EVMCustom(format!("failed to load account for block reward: {e}"))
         })?;
 
-        // TODO: this should be applyIncentives
+        // TODO: this should be applyIncentives before closeEpoch
+        // see Issue #325
         //
-        // TODO: how to handle if the stake config is updated in this block??
         // if let Some(s) = self.evm.db_mut().transition_state.as_mut() {
         //     s.add_transitions(vec![(
         //         recipient,

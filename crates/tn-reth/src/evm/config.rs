@@ -4,22 +4,20 @@
 
 use super::{TNBlockAssembler, TNBlockExecutionCtx, TNBlockExecutorFactory, TNEvmFactory};
 use crate::{error::TnRethError, payload::TNPayload, traits::TNPrimitives};
-use alloy::eips::{eip1559::INITIAL_BASE_FEE, eip7840::BlobParams};
-use reth_chainspec::{ChainSpec, EthChainSpec as _, EthereumHardfork};
+use reth_chainspec::{ChainSpec, EthChainSpec as _};
 use reth_evm::{
-    ConfigureEvm, EthEvmFactory, EvmEnv, EvmEnvFor, EvmFor, ExecutionCtxFor, NextBlockEnvAttributes,
+    ConfigureEvm, EvmEnv, EvmEnvFor, ExecutionCtxFor,
 };
-use reth_evm_ethereum::{EthEvmConfig, RethReceiptBuilder};
+use reth_evm_ethereum::RethReceiptBuilder;
 use reth_primitives::{BlockTy, HeaderTy};
 use reth_revm::{
     context::{BlockEnv, CfgEnv},
     context_interface::block::BlobExcessGasAndPrice,
     primitives::hardfork::SpecId,
-    Database,
 };
-use std::{borrow::Cow, convert::Infallible, sync::Arc};
+use std::sync::Arc;
 use tn_types::{
-    Address, BlockHeader as _, Bytes, EthPrimitives, SealedBlock, SealedHeader, B256, U256,
+    BlockHeader as _, Bytes, SealedBlock, SealedHeader, B256, U256,
 };
 
 /// TN-related EVM configuration.

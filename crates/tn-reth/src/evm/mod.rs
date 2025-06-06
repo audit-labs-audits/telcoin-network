@@ -3,19 +3,19 @@
 //! Heavily inspired by alloy_evm and revm.
 
 use alloy_evm::Database;
-use reth_evm::{precompiles::PrecompilesMap, Evm, EvmEnv, IntoTxEnv as _};
+use reth_evm::{precompiles::PrecompilesMap, Evm, EvmEnv};
 use reth_revm::{
     context::{
         result::{EVMError, HaltReason, ResultAndState},
         BlockEnv, Evm as RevmEvm, TxEnv,
     },
-    handler::{instructions::EthInstructions, EthPrecompiles, PrecompileProvider},
+    handler::{instructions::EthInstructions, PrecompileProvider},
     interpreter::{interpreter::EthInterpreter, InterpreterResult},
     primitives::hardfork::SpecId,
-    Context, ExecuteEvm as _, InspectEvm as _, Inspector, State,
+    Context, ExecuteEvm as _, InspectEvm as _, Inspector,
 };
 use std::ops::{Deref, DerefMut};
-use tn_types::{Address, Bytes, Encodable2718, TxKind, U256};
+use tn_types::{Address, Bytes, TxKind, U256};
 mod block;
 mod config;
 mod context;
@@ -321,8 +321,3 @@ where
         res
     }
 }
-
-// TODO: tests
-// - epoch close receipt is present
-// - basefees go to address
-// - block reward is sent to beneficiary

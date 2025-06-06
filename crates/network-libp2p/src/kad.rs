@@ -365,7 +365,7 @@ mod test {
     use std::time::Duration;
 
     use rand::{
-        rngs::{OsRng, StdRng},
+        rngs::StdRng,
         SeedableRng as _,
     };
     use tempfile::TempDir;

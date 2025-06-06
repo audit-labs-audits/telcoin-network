@@ -17,9 +17,6 @@ tn-config = { workspace = true }
 tn-types = { workspace = true }
 tn-worker = { workspace = true }
 dirs-next = "2.0.0"
-enr = { workspace = true, default-features = false, features = [
-    "rust-secp256k1",
-] }
 parking_lot = { workspace = true }
 
 reth = { workspace = true }
@@ -37,7 +34,6 @@ reth-engine-primitives = { workspace = true }
 reth-engine-tree = { workspace = true }
 reth-revm = { workspace = true }
 reth-evm = { workspace = true }
-reth-prune = { workspace = true }
 reth-node-builder = { workspace = true }
 reth-provider = { workspace = true }
 reth-trie-db = { workspace = true }
