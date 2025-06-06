@@ -59,20 +59,16 @@ exclude = [".github/"]
 # misc
 clap = "4"
 eyre = "0.6"
-futures = "0.3.26"
+futures = "0.3"
 tokio = { version = "1.44", default-features = false }
 tracing = "0.1.0"
 tracing-subscriber = "0.3.18"
-pin-project = "1.0.12"
-metrics = "0.23.0" # Needed for `metrics-macro` to resolve the crate using `::metrics` notation
+metrics = "0.23.0"                                     # Needed for `metrics-macro` to resolve the crate using `::metrics` notation
 serde_json = "1.0.94"
 humantime-serde = "1.1"
 fdlimit = "0.3.0"
-enr = { version = "0.12.1", default-features = false, features = [
-    "k256",
-    "rust-secp256k1",
-] }
-snap = "1.1.0"
+enr = { version = "0.13", default-features = false }
+snap = "1.1.1"
 rayon = "1.7"
 
 # crypto
@@ -123,7 +119,6 @@ reth-tasks = { git = "https://github.com/paradigmxyz/reth", tag = "v1.4.8" }
 reth-transaction-pool = { git = "https://github.com/paradigmxyz/reth", tag = "v1.4.8" }
 reth-consensus = { git = "https://github.com/paradigmxyz/reth", tag = "v1.4.8" }
 reth-beacon-consensus = { git = "https://github.com/paradigmxyz/reth", tag = "v1.4.8" }
-# reth-blockchain-tree = { git = "https://github.com/paradigmxyz/reth", tag = "v1.4.8" }
 reth-tokio-util = { git = "https://github.com/paradigmxyz/reth", tag = "v1.4.8" }
 reth-node-api = { git = "https://github.com/paradigmxyz/reth", tag = "v1.4.8" }
 reth-node-builder = { git = "https://github.com/paradigmxyz/reth", tag = "v1.4.8" }
@@ -146,12 +141,12 @@ reth-trie-db = { git = "https://github.com/paradigmxyz/reth", tag = "v1.4.8" }
 reth-execution-errors = { git = "https://github.com/paradigmxyz/reth", tag = "v1.4.8" }
 reth-fs-util = { git = "https://github.com/paradigmxyz/reth", tag = "v1.4.8" }
 
-revm = { version = "22.0.1", features = [
+revm = { version = "24.0.1", features = [
     "std",
     "secp256k1",
     "blst",
 ], default-features = false }
-revm-primitives = { version = "18.0", features = [
+revm-primitives = { version = "19.0", features = [
     "std",
 ], default-features = false }
 
@@ -207,7 +202,6 @@ proptest = "1.5.0"
 proptest-derive = "0.4"
 serde-reflection = "0.3.6"
 indexmap = { version = "2.5.0", features = ["serde"] }
-itertools = "0.10.5"
 once_cell = "1.18.0"
 prometheus = { version = "0.13.4", default-features = false }
 tonic = { version = "0.13" }
@@ -215,35 +209,21 @@ async-trait = "0.1.61"
 dashmap = "6.0.1"
 parking_lot = "0.12.3"
 scopeguard = "1.1"
-tap = "1.0.1"
 uuid = { version = "1.1.2", features = ["v4", "fast-rng"] }
-mockall = "0.11.4"
 quinn-proto = "0.11.8"
-base64 = "0.21.2"
 derive_builder = "0.12.0"
-enum_dispatch = "0.3"
 roaring = "0.10.1"
 serde_with = { version = "2.1.0", features = ["hex"] }
-collectable = "0.0.2"
-hdrhistogram = "7.5.1"
 ouroboros = "0.17"
 proc-macro2 = "1.0.47"
-quote = "1.0.23"
-rstest = "0.16.0"
-syn = { version = "2.0", features = ["full", "derive", "extra-traits"] }
 uint = "0.10"
 cfg-if = "1.0.0"
-governor = "0.6.0"
-arc-swap = { version = "1.5.1", features = ["serde"] }
 lru = "0.10"
 tokio-stream = { version = "0.1.14", features = ["sync", "net"] }
 serde_yaml = "0.8.26"
 byteorder = "1.4.3"
 rustversion = "1.0.9"
-protobuf = { version = "3.7.2", features = ["with-bytes"] }
 bytes = "1.4.0"
-anyhow = "1.0.71"
-multiaddr = "0.18"
 humantime = "2.1.0"
 blst = "0.3.14"
 hex = "0.4.3"

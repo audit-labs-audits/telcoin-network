@@ -18,7 +18,7 @@ use tracing::warn;
 #[derive(Debug, Args)]
 #[command(args_conflicts_with_subcommands = true)]
 pub struct KeyArgs {
-    /// Save an encoded keypair (Base64 encoded `privkey`) to file.
+    /// Save an encoded keypair (Base58 encoded `privkey`) to file.
     /// - bls (bls12381)
     /// - network (ed25519)
     /// - execution (secp256k1)
