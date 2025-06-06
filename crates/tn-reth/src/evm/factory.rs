@@ -57,6 +57,10 @@ impl EvmFactory for TNEvmFactory {
                 .with_precompiles(PrecompilesMap::from_static(Precompiles::new(
                     PrecompileSpecId::from_spec_id(spec_id),
                 ))),
+            // .with_precompiles(EthPrecompiles {
+            //     precompiles: Precompiles::new(PrecompileSpecId::from_spec_id(spec_id)),
+            //     spec: spec_id,
+            // }),
             inspect: false,
         }
     }

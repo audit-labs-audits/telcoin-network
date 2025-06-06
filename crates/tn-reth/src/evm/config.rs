@@ -7,7 +7,7 @@ use crate::{error::TnRethError, payload::TNPayload, traits::TNPrimitives};
 use alloy::eips::{eip1559::INITIAL_BASE_FEE, eip7840::BlobParams};
 use reth_chainspec::{ChainSpec, EthChainSpec as _, EthereumHardfork};
 use reth_evm::{
-    ConfigureEvm, EthEvmFactory, EvmEnv, EvmEnvFor, ExecutionCtxFor, NextBlockEnvAttributes,
+    ConfigureEvm, EthEvmFactory, EvmEnv, EvmEnvFor, EvmFor, ExecutionCtxFor, NextBlockEnvAttributes,
 };
 use reth_evm_ethereum::{EthEvmConfig, RethReceiptBuilder};
 use reth_primitives::{BlockTy, HeaderTy};
@@ -53,47 +53,6 @@ impl TnEvmConfig {
     /// Returns the chain spec associated with this configuration.
     pub const fn chain_spec(&self) -> &Arc<ChainSpec> {
         self.executor_factory.spec()
-    }
-
-    /// Provide a custom reward beneficiary callback to handle base fees for telcoin network.
-    fn set_base_fee_handler<DB: Database>(&self, evm: &mut Evm<'_, (), DB>) {
-        // TODO- send the base fee to safe or contract to be managed offchain.
-        let basefee_address: Option<Address> = None;
-        // DO NOT use this testing default in mainnet.
-        //    Some(Address::parse_checksummed("0x29615F9e735932580f699C494C11fB81296AfE8F", None)
-        //    .expect("valid account"));
-        evm.handler.post_execution.reward_beneficiary = Arc::new(move |ctx, gas| {
-            // code lifted from revm mainnet/post_execution.rs and modified to do something with
-            // base fee.
-            let beneficiary = ctx.evm.env.block.coinbase;
-            let effective_gas_price = ctx.evm.env.effective_gas_price();
-
-            // transfer fee to coinbase/beneficiary.
-            // Basefee amount of gas is redirected.
-            let coinbase_gas_price = effective_gas_price.saturating_sub(ctx.evm.env.block.basefee);
-
-            let coinbase_account =
-                ctx.evm.inner.journaled_state.load_account(beneficiary, &mut ctx.evm.inner.db)?;
-
-            coinbase_account.data.mark_touch();
-            let gas_used = U256::from(gas.spent() - gas.refunded() as u64);
-            coinbase_account.data.info.balance =
-                coinbase_account.data.info.balance.saturating_add(coinbase_gas_price * gas_used);
-
-            if let Some(basefee_address) = basefee_address {
-                // Send the base fee portion to a basefee account for later processing (offchain).
-                let basefee = ctx.evm.env.block.basefee;
-                let basefee_account = ctx
-                    .evm
-                    .inner
-                    .journaled_state
-                    .load_account(basefee_address, &mut ctx.evm.inner.db)?;
-                basefee_account.data.mark_touch();
-                basefee_account.data.info.balance =
-                    basefee_account.data.info.balance.saturating_add(basefee * gas_used);
-            }
-            Ok(())
-        });
     }
 
     // TODO: remove this after compile
@@ -150,12 +109,6 @@ impl ConfigureEvm for TnEvmConfig {
 
     type Error = TnRethError;
 
-    // TODO: !!!!!!
-    // !!!
-    // !!!!!!
-    // !!
-    // !
-    // This is how we can provide the `close_epoch` logic
     type NextBlockEnvCtx = TNPayload;
 
     type BlockExecutorFactory =

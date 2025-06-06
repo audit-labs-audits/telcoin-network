@@ -285,7 +285,6 @@ async fn test_empty_output_executes_late_finalize() -> eyre::Result<()> {
 /// parents is currently valid.
 #[tokio::test]
 async fn test_queued_output_executes_after_sending_channel_closed() -> eyre::Result<()> {
-    tn_types::test_utils::init_test_tracing();
     let tmp_dir = TempDir::new().expect("temp dir");
     // create batches for consensus output
     let mut batches_1 = tn_reth::test_utils::batches(4); // create 4 batches
@@ -591,7 +590,6 @@ async fn test_queued_output_executes_after_sending_channel_closed() -> eyre::Res
 /// parents is currently valid.
 #[tokio::test]
 async fn test_execution_succeeds_with_duplicate_transactions() -> eyre::Result<()> {
-    tn_types::test_utils::init_test_tracing();
     let tmp_dir = TempDir::new().unwrap();
     // create batches for consensus output
     let mut batches_1 = tn_reth::test_utils::batches(4); // create 4 batches

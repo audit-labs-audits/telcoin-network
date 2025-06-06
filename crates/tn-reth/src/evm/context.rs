@@ -1,5 +1,6 @@
 //! TN-specific context for evm.
 
+use reth_evm::precompiles::PrecompilesMap;
 use reth_revm::{
     context::{Block, BlockEnv, Cfg, CfgEnv, Evm, JournalTr, Transaction, TxEnv},
     db::EmptyDB,
@@ -27,7 +28,7 @@ pub type TNEvmContext<DB> = Context<BlockEnv, TxEnv, CfgEnv, DB>;
 /// convenience type
 /// !!!! ~~~~
 pub type MainnetEvm<CTX, INSP = ()> =
-    Evm<CTX, INSP, EthInstructions<EthInterpreter, CTX>, EthPrecompiles>;
+    Evm<CTX, INSP, EthInstructions<EthInterpreter, CTX>, PrecompilesMap>;
 
 /// Trait used to initialize Context with default mainnet types.
 pub trait TNContext {
@@ -69,7 +70,7 @@ where
             ctx: self,
             inspector: (),
             instruction: EthInstructions::default(),
-            precompiles: EthPrecompiles::default(),
+            precompiles: PrecompilesMap::from(EthPrecompiles::default()),
         }
     }
 
@@ -78,7 +79,7 @@ where
             ctx: self,
             inspector,
             instruction: EthInstructions::default(),
-            precompiles: EthPrecompiles::default(),
+            precompiles: PrecompilesMap::from(EthPrecompiles::default()),
         }
     }
 }

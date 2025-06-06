@@ -17,7 +17,10 @@
 #![deny(unused_must_use, rust_2018_idioms)]
 #![cfg_attr(docsrs, feature(doc_cfg, doc_auto_cfg))]
 
-use crate::traits::{DefaultEthPayloadTypes, TNExecution};
+use crate::{
+    evm::{TNEvm, TNEvmContext},
+    traits::{DefaultEthPayloadTypes, TNExecution},
+};
 use alloy::{
     consensus::Transaction as _,
     hex,
@@ -62,7 +65,7 @@ use reth_eth_wire::BlockHashNumber;
 use reth_evm::{
     env::EvmEnv,
     execute::{BlockBuilder, BlockBuilderOutcome},
-    ConfigureEvm, NextBlockEnvAttributes,
+    ConfigureEvm, EvmFactory, NextBlockEnvAttributes,
 };
 use reth_evm_ethereum::EthEvmConfig;
 use reth_node_builder::{
@@ -82,11 +85,14 @@ use reth_provider::{
 use reth_prune::PrunerBuilder;
 use reth_revm::{
     cached::CachedReads,
-    context::{Evm as RevmEvm, TxEnv},
+    context::{
+        result::{ExecutionResult, ResultAndState},
+        BlockEnv, CfgEnv, Evm as RevmEvm, TxEnv,
+    },
     database::StateProviderDatabase,
     db::{states::bundle_state::BundleRetention, BundleState},
     interpreter::Host,
-    Database, DatabaseCommit, State,
+    Database, DatabaseCommit, Inspector, State,
 };
 use reth_transaction_pool::{blobstore::DiskFileBlobStore, EthTransactionPool};
 use serde_json::Value;
@@ -1295,7 +1301,10 @@ impl RethEnv {
             .with_bundle_update()
             .build();
 
-        let mut builder = self.evm_config.executor(&mut db, &header, TNPayload::default())?;
+        let mut tn_evm =
+            self.evm_config.evm_factory().create_evm(db, self.evm_config.evm_env(header));
+
+        // let res = tn_evm.transact_system_call(caller, contract, data)?;
 
         // // Setup environment for the execution.
         // let EvmEnv { cfg_env_with_handler_cfg, block_env } =
@@ -1440,14 +1449,43 @@ impl RethEnv {
         let mut create_registry = registry_initcode.clone();
         create_registry.extend(constructor_args);
 
-        let tx = CreateRequest::new(owner_address, create_registry.clone().into());
+        //
+        //
+        //
+        //
+        //
+        let state = StateProviderDatabase::new(reth_env.latest()?);
+        let mut cached_reads = CachedReads::default();
+        let mut db = State::builder()
+            .with_database(cached_reads.as_db_mut(state))
+            .with_bundle_update()
+            .build();
+
+        let mut tn_evm = reth_env
+            .evm_config
+            .evm_factory()
+            .create_evm(&mut db, reth_env.evm_config.evm_env(&tmp_chain.sealed_genesis_header()));
+
+        let ResultAndState { result, state } = tn_evm.transact_system_call(
+            owner_address,
+            CONSENSUS_REGISTRY_ADDRESS,
+            create_registry.into(),
+        )?;
+        debug!(target: "engine", "create consensus registry result:\n{:#?}", result);
+
+        tn_evm.db_mut().commit(state);
+        db.merge_transitions(BundleRetention::PlainState);
+
+        //
+        //
+        //
+        //
+        //
+
+        // let tx = CreateRequest::new(owner_address, create_registry.clone().into());
 
         // execute the transaction
-        let BundleState { state, contracts, reverts, state_size, reverts_size } = reth_env
-            .execute_call_tx_for_test_bypass_evm_checks(
-                &tmp_chain.sealed_genesis_header(),
-                vec![tx.into()],
-            )?;
+        let BundleState { state, contracts, reverts, state_size, reverts_size } = db.take_bundle();
 
         debug!(target: "engine", "contracts:\n{:#?}", contracts);
         debug!(target: "engine", "reverts:\n{:#?}", reverts);
@@ -1546,82 +1584,50 @@ impl RethEnv {
     /// - getValidator token id by address
     /// - getValidator info by token id
     pub fn epoch_state_from_canonical_tip(&self) -> eyre::Result<EpochState> {
-        // // create EVM with latest state
-        // let latest = self.latest()?;
-        // let state = StateProviderDatabase::new(latest);
-        // let mut db = State::builder().with_database(state).with_bundle_update().build();
-        // let last_block_num = self.blockchain_provider.last_block_number()?;
-        // // read current epoch number from chain
-        // let canonical_tip = self.header_by_number(last_block_num)?.ok_or_eyre(
-        //     "Canonical tip missing from blockchain provider reading committee from chain",
-        // )?;
+        // read current epoch number from chain
+        let last_block_num = self.blockchain_provider.last_block_number()?;
+        let canonical_tip = self.header_by_number(last_block_num)?.ok_or_eyre(
+            "Canonical tip missing from blockchain provider reading committee from chain",
+        )?;
 
-        // let epoch = Self::extract_epoch_from_header(&canonical_tip);
+        let epoch = Self::extract_epoch_from_header(&canonical_tip);
 
-        // // from self.tn_env_for_evm
-        // let spec_id = reth_revm::primitives::SpecId::SHANGHAI;
-        // let cfg_env = CfgEnv::default().with_chain_id(self.chainspec().chain_id());
-        // let cfg = CfgEnvWithHandlerCfg::new_with_spec_id(cfg_env, spec_id);
+        // create EVM with latest state
+        let latest = self.latest()?;
+        let state = StateProviderDatabase::new(latest);
+        let mut db = State::builder().with_database(state).with_bundle_update().build();
+        let mut tn_evm = self
+            .evm_config
+            .evm_factory()
+            .create_evm(&mut db, self.evm_config.evm_env(&canonical_tip));
 
-        // // disable the base fee check for this call by setting the base fee to zero
-        // let basefee = U256::ZERO;
+        // current epoch info
+        let epoch_info = self.get_current_epoch_info(&mut tn_evm)?;
 
-        // // max gas limit
-        // let gas_limit = U256::from(30_000_000);
+        // retrieve closing timestamp for previous epoch
+        let epoch_start = self
+            .header_by_number(epoch_info.blockHeight.saturating_sub(1))?
+            .ok_or_eyre("failed to retrieve closing epoch information")?
+            .timestamp;
+        let token_ids = epoch_info
+            .committee
+            .iter()
+            .map(|address| {
+                // obtain the validator's token id
+                self.get_validator_token_id(*address, &mut tn_evm)
+            })
+            .collect::<eyre::Result<Vec<_>, _>>()?;
+        let validators = token_ids
+            .into_iter()
+            .map(|token_id| {
+                // read validator info
+                self.get_validator_by_token_id(token_id, &mut tn_evm)
+            })
+            .collect::<eyre::Result<Vec<_>, _>>()?;
 
-        // // create block env
-        // let block_env = BlockEnv {
-        //     // build env for the next block based on parent
-        //     number: U256::from(last_block_num + 1),
-        //     // special fee address
-        //     coinbase: SYSTEM_ADDRESS,
-        //     timestamp: U256::from(tn_types::now()),
-        //     // leave difficulty zero
-        //     // this value is useful for post-execution, but worker batches are created with this
-        //     // value
-        //     difficulty: U256::ZERO,
-        //     prevrandao: Some(B256::ZERO), // required to be `Some`
-        //     gas_limit,
-        //     basefee,
-        //     // okay to set to none
-        //     blob_excess_gas_and_price: None,
-        // };
+        let epoch_state = EpochState { epoch, epoch_info, validators, epoch_start };
 
-        // let tn_env =
-        //     EnvWithHandlerCfg::new_with_cfg_env(cfg.clone(), block_env.clone(), TxEnv::default());
-
-        // // end
-
-        // let mut evm = self.evm_config.evm_with_env(&mut db, tn_env);
-
-        // // current epoch info
-        // let epoch_info = self.get_current_epoch_info(&mut evm)?;
-
-        // // retrieve closing timestamp for previous epoch
-        // let epoch_start = self
-        //     .header_by_number(epoch_info.blockHeight.saturating_sub(1))?
-        //     .ok_or_eyre("failed to retrieve closing epoch information")?
-        //     .timestamp;
-        // let token_ids = epoch_info
-        //     .committee
-        //     .iter()
-        //     .map(|address| {
-        //         // obtain the validator's token id
-        //         self.get_validator_token_id(*address, &mut evm)
-        //     })
-        //     .collect::<eyre::Result<Vec<_>, _>>()?;
-        // let validators = token_ids
-        //     .into_iter()
-        //     .map(|token_id| {
-        //         // read validator info
-        //         self.get_validator_by_token_id(token_id, &mut evm)
-        //     })
-        //     .collect::<eyre::Result<Vec<_>, _>>()?;
-
-        // let epoch_state = EpochState { epoch, epoch_info, validators, epoch_start };
-
-        // Ok(epoch_state)
-        todo!()
+        Ok(epoch_state)
     }
 
     /// Extract the epoch number from a header's nonce.
@@ -1631,81 +1637,107 @@ impl RethEnv {
     }
 
     /// Read the curret epoch info from the [ConsensusRegistry] on-chain.
-    pub fn get_current_epoch_info<EXT, DB>(
+    pub fn get_current_epoch_info<DB, I>(
         &self,
-        // evm: &mut RevmEvm<EXT, DB>,
+        evm: &mut TNEvm<DB, I>,
     ) -> eyre::Result<ConsensusRegistry::EpochInfo>
     where
-        DB: Database,
-        DB::Error: core::fmt::Display,
+        DB: alloy_evm::Database,
+        I: Inspector<TNEvmContext<DB>>,
     {
-        // let calldata = ConsensusRegistry::getCurrentEpochInfoCall {}.abi_encode().into();
-        // self.call_consensus_registry::<_, _, ConsensusRegistry::EpochInfo>(evm, calldata)
-        todo!()
+        let calldata = ConsensusRegistry::getCurrentEpochInfoCall {}.abi_encode().into();
+        self.call_consensus_registry::<_, _, ConsensusRegistry::EpochInfo>(evm, calldata)
     }
 
     /// Read the a validator's token id from the [ConsensusRegistry] on-chain.
-    pub fn get_validator_token_id<EXT, DB>(
+    pub fn get_validator_token_id<DB, I>(
         &self,
         address: Address,
-        // evm: &mut RevmEvm<EXT, DB>,
+        evm: &mut TNEvm<DB, I>,
     ) -> eyre::Result<U256>
     where
-        DB: Database,
-        DB::Error: core::fmt::Display,
+        DB: alloy_evm::Database,
+        I: Inspector<TNEvmContext<DB>>,
     {
-        // let calldata = ConsensusRegistry::getValidatorTokenIdCall { validatorAddress: address }
-        //     .abi_encode()
-        //     .into();
-        // self.call_consensus_registry::<_, _, U256>(evm, calldata)
-        todo!()
+        let calldata = ConsensusRegistry::getValidatorTokenIdCall { validatorAddress: address }
+            .abi_encode()
+            .into();
+        self.call_consensus_registry::<_, _, U256>(evm, calldata)
     }
 
     /// Retrieve the [ValidatorInfo] from the [ConsensusRegistry] on-chain using a validator's token
     /// id.
-    pub fn get_validator_by_token_id<EXT, DB>(
+    pub fn get_validator_by_token_id<DB, I>(
         &self,
         token_id: U256,
-        // evm: &mut RevmEvm<EXT, DB>,
+        evm: &mut TNEvm<DB, I>,
     ) -> eyre::Result<ConsensusRegistry::ValidatorInfo>
     where
-        DB: Database,
-        DB::Error: core::fmt::Display,
+        DB: alloy_evm::Database,
+        I: Inspector<TNEvmContext<DB>>,
     {
-        // let calldata =
-        //     ConsensusRegistry::getValidatorByTokenIdCall { tokenId: token_id }.abi_encode().into();
-        // self.call_consensus_registry::<_, _, ConsensusRegistry::ValidatorInfo>(evm, calldata)
-        todo!()
+        let calldata =
+            ConsensusRegistry::getValidatorByTokenIdCall { tokenId: token_id }.abi_encode().into();
+        self.call_consensus_registry::<_, _, ConsensusRegistry::ValidatorInfo>(evm, calldata)
     }
 
     /// Helper function to call `ConsensusRegistry` state on-chain.
-    fn call_consensus_registry<EXT, DB, T>(
+    fn call_consensus_registry<DB, I, T>(
         &self,
-        // evm: &mut RevmEvm<EXT, DB>,
+        evm: &mut TNEvm<DB, I>,
         calldata: Bytes,
     ) -> eyre::Result<T>
     where
-        DB: Database,
-        DB::Error: core::fmt::Display,
+        DB: alloy_evm::Database,
         T: alloy::sol_types::SolValue,
         T: From<
             <<T as alloy::sol_types::SolValue>::SolType as alloy::sol_types::SolType>::RustType,
         >,
+        I: Inspector<TNEvmContext<DB>>,
     {
-        // let state =
-        //     self.read_state_on_chain(evm, SYSTEM_ADDRESS, CONSENSUS_REGISTRY_ADDRESS, calldata)?;
+        let state =
+            self.read_state_on_chain(evm, SYSTEM_ADDRESS, CONSENSUS_REGISTRY_ADDRESS, calldata)?;
 
-        // // retrieve data from state
-        // match state.result {
-        //     ExecutionResult::Success { output, .. } => {
-        //         let data = output.into_data();
-        //         // use SolValue to decode the result
-        //         let decoded = alloy::sol_types::SolValue::abi_decode(&data)?;
-        //         Ok(decoded)
-        //     }
-        //     e => Err(eyre::eyre!("failed to read validators from state: {e:?}")),
-        // }
-        todo!()
+        // retrieve data from state
+        match state.result {
+            ExecutionResult::Success { output, .. } => {
+                let data = output.into_data();
+                // use SolValue to decode the result
+                let decoded = alloy::sol_types::SolValue::abi_decode(&data)?;
+                Ok(decoded)
+            }
+            e => Err(eyre::eyre!("failed to read validators from state: {e:?}")),
+        }
+    }
+
+    /// Read state on-chain.
+    fn read_state_on_chain<DB, I>(
+        &self,
+        evm: &mut TNEvm<DB, I>,
+        caller: Address,
+        contract: Address,
+        calldata: Bytes,
+    ) -> TnRethResult<ResultAndState>
+    where
+        DB: alloy_evm::Database,
+        I: Inspector<reth_revm::Context<BlockEnv, TxEnv, CfgEnv, DB>>,
+    {
+        // let prev_env = Box::new(evm);
+
+        // read from state
+        let res = match evm.transact_system_call(caller, contract, calldata) {
+            Ok(res) => res,
+            Err(e) => {
+                // fatal error
+                error!(target: "engine", ?caller, ?contract, "failed to read state: {}", e);
+                return Err(TnRethError::EVMCustom(format!("getValidatorsCall failed: {e}")).into());
+            }
+        };
+
+        // // restore env for evm
+        // evm.context.evm.env = prev_env;
+
+        Ok(res)
     }
 }
 
