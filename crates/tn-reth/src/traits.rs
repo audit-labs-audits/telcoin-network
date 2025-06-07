@@ -19,7 +19,7 @@ use std::sync::Arc;
 use tn_types::{
     Address, BlockExt as _, BlockWithSenders, BlsSignature, ConsensusOutput, EthPrimitives,
     ExecHeader, Hash as _, NodePrimitives, SealedBlock, SealedHeader, TransactionSigned,
-    Withdrawals, B256, MIN_PROTOCOL_BASE_FEE, U256,
+    Withdrawals, WorkerId, B256, MIN_PROTOCOL_BASE_FEE, U256,
 };
 use tracing::error;
 
@@ -223,7 +223,7 @@ pub struct TNPayloadAttributes {
     pub parent_header: SealedHeader,
     /// The beneficiary from the round of consensus.
     pub beneficiary: Address,
-    /// The index of the subdag, which equates to the round of consensus.
+    /// Combines the epoch and round for a block.
     ///
     /// Used as the executed block header's `nonce`.
     pub nonce: u64,
@@ -255,6 +255,8 @@ pub struct TNPayloadAttributes {
     ///
     /// This is the last batch for the `ConsensusOutput` if the epoch is closing.
     pub close_epoch: Option<BlsSignature>,
+    /// The worker that produced this block.
+    pub worker_id: WorkerId,
 }
 
 impl TNPayloadAttributes {
@@ -270,6 +272,7 @@ impl TNPayloadAttributes {
         gas_limit: u64,
         mix_hash: B256,
         withdrawals: Withdrawals,
+        worker_id: WorkerId,
     ) -> Self {
         // include leader's aggregate bls signature if this is the last payload for the epoch
         let close_epoch = output
@@ -293,6 +296,7 @@ impl TNPayloadAttributes {
             mix_hash,
             withdrawals,
             close_epoch,
+            worker_id,
         }
     }
 
@@ -318,6 +322,7 @@ impl TNPayloadAttributes {
             gas_limit,
             mix_hash,
             withdrawals,
+            0,
         )
     }
 }

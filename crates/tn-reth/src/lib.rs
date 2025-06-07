@@ -724,7 +724,10 @@ impl RethEnv {
             number: payload.attributes.parent_header.number + 1, /* ensure this matches the block
                                                                   * env */
             gas_limit: block_gas_limit,
-            difficulty: U256::from(payload.attributes.batch_index),
+            // encode the batch index and worker_id used to create this block.
+            difficulty: U256::from(
+                payload.attributes.batch_index << 16 | payload.attributes.worker_id as usize,
+            ),
             gas_used: cumulative_gas_used,
             extra_data: payload.attributes.batch_digest.into(),
             parent_beacon_block_root: Some(consensus_header_hash),
@@ -810,7 +813,7 @@ impl RethEnv {
             number: payload.attributes.parent_header.number + 1, /* ensure this matches the block
                                                                   * env */
             gas_limit: payload.attributes.gas_limit,
-            difficulty: U256::ZERO, // batch index
+            difficulty: U256::ZERO, // batch index + eorker id
             gas_used: 0,
             extra_data: payload.attributes.batch_digest.into(),
             parent_beacon_block_root: Some(consensus_header_digest),

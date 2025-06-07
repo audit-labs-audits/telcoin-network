@@ -66,6 +66,10 @@ impl GasAccumulator {
     /// Note: will panic if given an invalid worker_id.
     /// Any batch that makes it to execution will have a valid worker id.
     pub fn inc_block(&self, worker_id: WorkerId, gas_used: u64, gas_limit: u64) {
+        // Don't bother accumulating empty blocks- helps with restarts.
+        if gas_used == 0 {
+            return;
+        }
         let mut guard = self.inner.get(worker_id as usize).expect("valid worker id").0.lock();
         guard.blocks += 1;
         guard.gas_used += gas_used;

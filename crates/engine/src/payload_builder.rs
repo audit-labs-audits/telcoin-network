@@ -86,6 +86,7 @@ pub fn execute_consensus_output(
             gas_limit,
             output_digest, // use output digest for mix hash
             withdrawals,
+            0, // Use worker 0 becuase we have to provide on.
         );
         let payload = TNPayload::new(payload_attributes);
 
@@ -133,6 +134,7 @@ pub fn execute_consensus_output(
                 gas_limit,
                 mix_hash,
                 withdrawals,
+                batch.worker_id,
             );
             let payload = TNPayload::new(payload_attributes);
 

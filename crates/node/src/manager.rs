@@ -84,6 +84,32 @@ pub struct EpochManager<P> {
     epoch_boundary: TimestampSec,
 }
 
+/// When rejoining a network mid epoch this will accumulate any gas state for previous epoch blocks.
+fn catchup_accumulator(reth_env: RethEnv, gas_accumulator: &GasAccumulator) -> eyre::Result<()> {
+    let mut block = reth_env.finalized_header()?;
+    let current_epoch = if let Some(block) = &block {
+        let nonce: u64 = block.nonce.into();
+        nonce >> 32
+    } else {
+        0
+    };
+    while let Some(current) = block {
+        let nonce: u64 = current.nonce.into();
+        let epoch = nonce >> 32;
+        // Stop accumulating once we leave the epoch we are joining.
+        if epoch != current_epoch {
+            break;
+        }
+        let gas = current.gas_used;
+        let limit = current.gas_limit;
+        let lower64 = current.difficulty.into_limbs()[0];
+        let worker_id = (lower64 & 0xffff) as u16;
+        gas_accumulator.inc_block(worker_id, gas, limit);
+        block = reth_env.sealed_header_by_hash(current.parent_hash)?.map(|h| h.header().clone());
+    }
+    Ok(())
+}
+
 impl<P> EpochManager<P>
 where
     P: TelcoinDirs + 'static,
@@ -153,6 +179,8 @@ where
         // Create our epoch gas accumulator, we currently have one worker.
         // All nodes have to agree on the worker count, do not change this for an existing chain.
         let gas_accumulator = GasAccumulator::new(1);
+        catchup_accumulator(engine.get_reth_env().await, &gas_accumulator)?;
+
         engine
             .start_engine(for_engine, self.node_shutdown.subscribe(), gas_accumulator.clone())
             .await?;
