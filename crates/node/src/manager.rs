@@ -512,7 +512,7 @@ where
                 // wait for execution result before proceeding
                 while let Some(output) = executed_output.next().await {
                     // ensure canonical tip is updated with closing epoch info
-                    if output.tip().block.parent_beacon_block_root == Some(target_hash) {
+                    if output.tip().sealed_header().parent_beacon_block_root == Some(target_hash) {
                         // return
                         break 'epoch;
                     }
@@ -540,9 +540,7 @@ where
         reth_db: RethDb,
     ) -> eyre::Result<ExecutionNode> {
         // create execution components (ie - reth env)
-        let basefee_address = self.builder.tn_config.parameters.basefee_address;
-        let reth_env =
-            RethEnv::new(&self.builder.node_config, engine_task_manager, reth_db, basefee_address)?;
+        let reth_env = RethEnv::new(&self.builder.node_config, engine_task_manager, reth_db)?;
         let engine = ExecutionNode::new(&self.builder, reth_env)?;
 
         Ok(engine)
@@ -1104,7 +1102,7 @@ where
                     }
                     latest = engine_state.next() => {
                         if let Some(latest) = latest {
-                            consensus_bus.recent_blocks().send_modify(|blocks| blocks.push_latest(latest.tip().block.header.clone()));
+                            consensus_bus.recent_blocks().send_modify(|blocks| blocks.push_latest(latest.tip().clone_sealed_header()));
                         } else {
                             break;
                         }
