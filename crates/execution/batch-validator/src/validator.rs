@@ -5,7 +5,7 @@ use tn_reth::{bytes_to_txn, recover_signed_transaction, RethEnv, WorkerTxPool};
 use tn_types::{
     gas_accumulator::BaseFeeContainer, max_batch_gas, max_batch_size, BatchValidation,
     BatchValidationError, BlockHash, ExecHeader, SealedBatch, TransactionSigned,
-    TransactionTrait as _, WorkerId, PARALLEL_SENDER_RECOVERY_THRESHOLD,
+    TransactionTrait as _, WorkerId,
 };
 
 /// Type convenience for implementing block validation errors.
@@ -155,17 +155,10 @@ impl BatchValidator {
         transactions: &Vec<Vec<u8>>,
         digest: BlockHash,
     ) -> BatchValidationResult<Vec<TransactionSigned>> {
-        if transactions.len() < *PARALLEL_SENDER_RECOVERY_THRESHOLD {
-            transactions
-                .iter()
-                .map(|tx| Self::recover_and_validate(tx, digest))
-                .collect::<BatchValidationResult<Vec<_>>>()
-        } else {
-            transactions
-                .par_iter()
-                .map(|tx| Self::recover_and_validate(tx, digest))
-                .collect::<BatchValidationResult<Vec<_>>>()
-        }
+        transactions
+            .par_iter()
+            .map(|tx| Self::recover_and_validate(tx, digest))
+            .collect::<BatchValidationResult<Vec<_>>>()
     }
 
     /// Possible gas used needs to be less than block's gas limit.
