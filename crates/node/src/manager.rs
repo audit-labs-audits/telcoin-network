@@ -89,7 +89,7 @@ pub struct EpochManager<P> {
 fn catchup_accumulator(reth_env: RethEnv, gas_accumulator: &GasAccumulator) -> eyre::Result<()> {
     let mut block = reth_env.finalized_header()?;
     let current_epoch = if let Some(block) = &block {
-        // XXXX In a single worker world this should be suffecient to set the base fee.
+        // Note WORKER: In a single worker world this should be suffecient to set the base fee.
         // In a multi-worker world (furture) this will NOT work and needs updating.
         gas_accumulator
             .base_fee(0)
