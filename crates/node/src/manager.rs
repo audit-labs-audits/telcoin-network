@@ -33,6 +33,7 @@ use tn_types::{
     gas_accumulator::GasAccumulator, BatchValidation, BlsPublicKey, Committee, CommitteeBuilder,
     ConsensusHeader, ConsensusOutput, Database as TNDatabase, Epoch, Multiaddr, Noticer, Notifier,
     TaskManager, TaskSpawner, TimestampSec, WorkerCache, WorkerIndex, WorkerInfo,
+    MIN_PROTOCOL_BASE_FEE,
 };
 use tn_worker::{WorkerNetwork, WorkerNetworkHandle};
 use tokio::sync::{
@@ -88,6 +89,11 @@ pub struct EpochManager<P> {
 fn catchup_accumulator(reth_env: RethEnv, gas_accumulator: &GasAccumulator) -> eyre::Result<()> {
     let mut block = reth_env.finalized_header()?;
     let current_epoch = if let Some(block) = &block {
+        // XXXX In a single worker world this should be suffecient to set the base fee.
+        // In a multi-worker world (furture) this will NOT work and needs updating.
+        gas_accumulator
+            .base_fee(0)
+            .set_base_fee(block.base_fee_per_gas.unwrap_or(MIN_PROTOCOL_BASE_FEE));
         let nonce: u64 = block.nonce.into();
         nonce >> 32
     } else {
