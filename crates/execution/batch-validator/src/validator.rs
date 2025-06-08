@@ -189,7 +189,7 @@ impl BatchValidator {
         Ok(())
     }
 
-    /// TODO: Validate the block's basefee
+    /// Validate the block's basefee
     fn validate_basefee(&self, base_fee: Option<u64>) -> BatchValidationResult<()> {
         if let Some(base_fee) = base_fee {
             let expected_base_fee = self.base_fee.base_fee();

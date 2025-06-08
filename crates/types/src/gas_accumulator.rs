@@ -1,30 +1,36 @@
-use std::sync::Arc;
+//! Implement an accumilator to tatal gas and blocks for an epoch.
+//! This can be used to adjust per worker base fees on the next epoch.
+
+use std::sync::{
+    atomic::{AtomicU64, Ordering},
+    Arc,
+};
 
 use alloy::eips::eip1559::MIN_PROTOCOL_BASE_FEE;
-use parking_lot::{Mutex, RwLock};
+use parking_lot::Mutex;
 
 use crate::WorkerId;
 
 /// An interiour mutable container for a workers base fee.
 #[derive(Clone, Debug)]
 pub struct BaseFeeContainer {
-    base_fee: Arc<RwLock<u64>>,
+    base_fee: Arc<AtomicU64>, //Arc<RwLock<u64>>,
 }
 
 impl BaseFeeContainer {
     /// Create a new base fee container with base_fee.
     pub fn new(base_fee: u64) -> Self {
-        Self { base_fee: Arc::new(RwLock::new(base_fee)) }
+        Self { base_fee: Arc::new(AtomicU64::new(base_fee)) }
     }
 
     /// Return the contained base fee.
     pub fn base_fee(&self) -> u64 {
-        *self.base_fee.read()
+        self.base_fee.load(Ordering::Acquire)
     }
 
     /// Set the contained base fee.
     pub fn set_base_fee(&self, base_fee: u64) {
-        *self.base_fee.write() = base_fee;
+        self.base_fee.store(base_fee, Ordering::Release);
     }
 }
 
@@ -36,12 +42,15 @@ impl Default for BaseFeeContainer {
 
 #[derive(Debug, Default)]
 struct Inner {
+    /// Total blocks executed so far this epoch.
     blocks: u64,
+    /// Total gas used so far this epoch.
     gas_used: u64,
+    /// Total gas limit for executed blocks so far this epoch.
     gas_limit: u64,
 }
 
-/// This a is shared struct to accumulate gas/block info as an epock is built.
+/// This is a shared struct to accumulate gas/block info as an epock is built.
 /// Can be used to calculate base fees at epoch boundaries.
 /// This is a simple implementation that can be shared with the engine, if/when the
 /// engine becomes a seperate process this will be a touch point that will need to
