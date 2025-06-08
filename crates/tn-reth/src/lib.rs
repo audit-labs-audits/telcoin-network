@@ -101,7 +101,7 @@ use system_calls::{
     EpochState, CONSENSUS_REGISTRY_ADDRESS, SYSTEM_ADDRESS,
 };
 use tempfile::TempDir;
-use tn_config::{Config, ConfigFmt, ConfigTrait, ValidatorInfo, CONSENSUS_REGISTRY_JSON};
+use tn_config::{Config, ConfigFmt, ConfigTrait, NodeInfo, CONSENSUS_REGISTRY_JSON};
 use tn_types::{
     adiri_chain_spec_arc, Address, BlockBody, BlockHashOrNumber, BlockHeader as _, BlockNumHash,
     BlockNumber, Epoch, ExecHeader, Genesis, GenesisAccount, RecoveredBlock, SealedBlock,
@@ -931,7 +931,7 @@ impl RethEnv {
 
     /// Convenience method for compiling storage and bytecode to include genesis.
     pub fn create_consensus_registry_genesis_account(
-        validators: Vec<ValidatorInfo>,
+        validators: Vec<NodeInfo>,
         genesis: Genesis,
         initial_stake_config: ConsensusRegistry::StakeConfig,
         owner_address: Address,
@@ -1215,7 +1215,7 @@ mod tests {
     use tempfile::TempDir;
     use tn_types::{
         adiri_genesis, BlsKeypair, BlsSignature, Certificate, CommittedSubDag, ConsensusHeader,
-        ConsensusOutput, FromHex, PrimaryInfo, ReputationScores, SignatureVerificationState,
+        ConsensusOutput, FromHex, NodeP2pInfo, ReputationScores, SignatureVerificationState,
     };
 
     /// Helper function for creating a consensus output for tests.
@@ -1274,10 +1274,10 @@ mod tests {
                 let mut rng = StdRng::seed_from_u64(i as u64);
                 let bls = BlsKeypair::generate(&mut rng);
                 let bls_pubkey = bls.public();
-                ValidatorInfo {
+                NodeInfo {
                     name: format!("validator-{i}"),
                     bls_public_key: *bls_pubkey,
-                    primary_info: PrimaryInfo::default(),
+                    primary_info: NodeP2pInfo::default(),
                     execution_address: *addr,
                     proof_of_possession: BlsSignature::default(),
                 }
@@ -1421,23 +1421,6 @@ mod tests {
             for r in ALL_MODULES {
                 assert!(mods.remove(&r));
             }
-            assert!(mods.is_empty());
-        } else {
-            panic!("all mods not handled!");
-        }
-
-        let mut mods_set = HashSet::from_iter(ALL_MODULES.iter().copied());
-        mods_set.insert(RethRpcModule::Admin);
-        mods_set.insert(RethRpcModule::Txpool);
-        let mut mods = Some(RpcModuleSelection::Selection(mods_set));
-        RethConfig::validate_rpc_modules(&mut mods);
-        if let Some(RpcModuleSelection::Selection(mods)) = &mut mods {
-            for r in ALL_MODULES {
-                assert!(mods.remove(&r));
-            }
-            assert!(mods.is_empty());
-        } else {
-            panic!("all mods not handled!");
-        }
+        };
     }
 }

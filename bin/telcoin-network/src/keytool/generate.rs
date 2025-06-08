@@ -2,7 +2,7 @@
 
 use crate::args::clap_address_parser;
 use clap::{value_parser, Args, Subcommand};
-use tn_config::{KeyConfig, TelcoinDirs, ValidatorInfo};
+use tn_config::{KeyConfig, NodeInfo, TelcoinDirs};
 use tn_types::Address;
 use tracing::info;
 
@@ -63,23 +63,23 @@ pub struct KeygenArgs {
 impl KeygenArgs {
     fn update_keys<TND: TelcoinDirs>(
         &self,
-        validator_info: &mut ValidatorInfo,
+        node_info: &mut NodeInfo,
         tn_datadir: &TND,
         passphrase: Option<String>,
     ) -> eyre::Result<()> {
         let key_config = KeyConfig::generate_and_save(tn_datadir, passphrase)?;
         let proof = key_config.generate_proof_of_possession_bls(&self.address)?;
-        validator_info.bls_public_key = key_config.primary_public_key();
-        validator_info.proof_of_possession = proof;
+        node_info.bls_public_key = key_config.primary_public_key();
+        node_info.proof_of_possession = proof;
 
         // network keypair for authority
         let network_publickey = key_config.primary_network_public_key();
-        validator_info.primary_info.network_key = network_publickey;
+        node_info.primary_info.network_key = network_publickey;
 
         // network keypair for workers
         let network_publickey = key_config.worker_network_public_key();
-        validator_info.primary_info.worker_network_key = network_publickey.clone();
-        for worker in validator_info.primary_info.worker_index.0.iter_mut() {
+        node_info.primary_info.worker_network_key = network_publickey.clone();
+        for worker in node_info.primary_info.worker_index.0.iter_mut() {
             worker.1.name = network_publickey.clone();
         }
         Ok(())
@@ -88,16 +88,16 @@ impl KeygenArgs {
     /// Create all necessary information needed for validator and save to file.
     pub fn execute<TND: TelcoinDirs>(
         &self,
-        validator_info: &mut ValidatorInfo,
+        node_info: &mut NodeInfo,
         tn_datadir: &TND,
         passphrase: Option<String>,
     ) -> eyre::Result<()> {
         info!(target: "tn::generate_keys", "generating keys for full validator node");
 
-        self.update_keys(validator_info, tn_datadir, passphrase)?;
+        self.update_keys(node_info, tn_datadir, passphrase)?;
 
         // add execution address
-        validator_info.execution_address = self.address;
+        node_info.execution_address = self.address;
 
         Ok(())
     }
