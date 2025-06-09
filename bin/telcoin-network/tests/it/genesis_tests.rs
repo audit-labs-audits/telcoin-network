@@ -10,6 +10,7 @@ use eyre::OptionExt;
 use jsonrpsee::{core::client::ClientT, http_client::HttpClientBuilder, rpc_params};
 use serde_json::Value;
 use std::time::Duration;
+use telcoin_network::args::clap_u256_parser_to_18_decimals;
 use tn_config::{NetworkGenesis, CONSENSUS_REGISTRY_JSON, DEPLOYMENTS_JSON};
 use tn_reth::{
     system_calls::{ConsensusRegistry, CONSENSUS_REGISTRY_ADDRESS},
@@ -184,11 +185,20 @@ async fn test_genesis_with_consensus_registry() -> eyre::Result<()> {
     let consensus_registry = ConsensusRegistry::new(CONSENSUS_REGISTRY_ADDRESS, provider.clone());
     let current_epoch_info =
         consensus_registry.getCurrentEpochInfo().call().await.expect("get current epoch result");
+    let expected_epoch_issuance = clap_u256_parser_to_18_decimals("25_806")?; // CLI default
 
     debug!(target: "bundle", "consensus_registry: {:#?}", current_epoch_info);
-    let ConsensusRegistry::EpochInfo { committee, blockHeight, epochDuration } = current_epoch_info;
+    let ConsensusRegistry::EpochInfo {
+        committee,
+        epochIssuance,
+        blockHeight,
+        epochDuration,
+        stakeVersion,
+    } = current_epoch_info;
     assert_eq!(blockHeight, 0);
     assert_eq!(epochDuration, 86400);
+    assert_eq!(epochIssuance, expected_epoch_issuance);
+    assert_eq!(stakeVersion, 0);
 
     let validators = consensus_registry
         .getValidators(ConsensusRegistry::ValidatorStatus::Active.into())

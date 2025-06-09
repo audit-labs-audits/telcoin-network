@@ -2,7 +2,7 @@
 
 use crate::RethEnv;
 use serde::{Deserialize, Serialize};
-use tn_types::{keccak256, Address, BlsSignature, ConsensusOutput, SealedHeader, B256};
+use tn_types::{keccak256, Address, BlsSignature, ConsensusOutput, SealedHeader, WorkerId, B256};
 use tracing::error;
 
 /// The type for building blocks that extend the canonical tip.
@@ -58,6 +58,8 @@ pub struct TNPayload {
     ///
     /// This is the last batch for the `ConsensusOutput` if the epoch is closing.
     pub close_epoch: Option<B256>,
+    /// Worker that created this payload.
+    pub worker_id: WorkerId,
 }
 
 impl TNPayload {
@@ -72,6 +74,7 @@ impl TNPayload {
         base_fee_per_gas: u64,
         gas_limit: u64,
         mix_hash: B256,
+        worker_id: WorkerId,
     ) -> Self {
         // include leader's aggregate bls signature if this is the last payload for the epoch
         let close_epoch = output
@@ -97,6 +100,7 @@ impl TNPayload {
             gas_limit,
             mix_hash,
             close_epoch,
+            worker_id,
         }
     }
 
@@ -136,6 +140,7 @@ impl TNPayload {
             base_fee_per_gas,
             gas_limit,
             mix_hash,
+            0,
         )
     }
 }

@@ -84,6 +84,7 @@ pub fn execute_consensus_output(
             base_fee_per_gas,
             gas_limit,
             output_digest, // use output digest for mix hash
+            0,             // Use worker 0 becuase we have to provide on.
         );
 
         debug!(target: "engine", "executing empty batch payload");
@@ -117,6 +118,7 @@ pub fn execute_consensus_output(
                 base_fee_per_gas,
                 gas_limit,
                 mix_hash,
+                batch.worker_id,
             );
 
             // execute the payload and update the current canonical header

@@ -170,6 +170,7 @@ impl ConfigureEvm for TnEvmConfig {
             nonce: block.nonce.into(),
             requests_hash: block.requests_hash,
             close_epoch,
+            difficulty: block.difficulty,
         }
     }
 
@@ -184,6 +185,7 @@ impl ConfigureEvm for TnEvmConfig {
             nonce: payload.nonce,
             requests_hash: payload.batch_digest,
             close_epoch: payload.close_epoch,
+            difficulty: U256::from(payload.batch_index << 16 | payload.worker_id as usize),
         }
     }
 }
