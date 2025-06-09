@@ -87,32 +87,24 @@ pub struct EpochManager<P> {
 
 /// When rejoining a network mid epoch this will accumulate any gas state for previous epoch blocks.
 fn catchup_accumulator(reth_env: RethEnv, gas_accumulator: &GasAccumulator) -> eyre::Result<()> {
-    let mut block = reth_env.finalized_header()?;
-    let current_epoch = if let Some(block) = &block {
+    if let Some(block) = reth_env.finalized_header()? {
+        let epoch_state = reth_env.epoch_state_from_canonical_tip()?;
+
         // Note WORKER: In a single worker world this should be suffecient to set the base fee.
         // In a multi-worker world (furture) this will NOT work and needs updating.
         gas_accumulator
             .base_fee(0)
             .set_base_fee(block.base_fee_per_gas.unwrap_or(MIN_PROTOCOL_BASE_FEE));
-        let nonce: u64 = block.nonce.into();
-        nonce >> 32
-    } else {
-        0
-    };
-    while let Some(current) = block {
-        let nonce: u64 = current.nonce.into();
-        let epoch = nonce >> 32;
-        // Stop accumulating once we leave the epoch we are joining.
-        if epoch != current_epoch {
-            break;
+
+        let blocks = reth_env.blocks_for_range(epoch_state.epoch_start..=block.number)?;
+        for current in blocks {
+            let gas = current.gas_used;
+            let limit = current.gas_limit;
+            let lower64 = current.difficulty.into_limbs()[0];
+            let worker_id = (lower64 & 0xffff) as u16;
+            gas_accumulator.inc_block(worker_id, gas, limit);
         }
-        let gas = current.gas_used;
-        let limit = current.gas_limit;
-        let lower64 = current.difficulty.into_limbs()[0];
-        let worker_id = (lower64 & 0xffff) as u16;
-        gas_accumulator.inc_block(worker_id, gas, limit);
-        block = reth_env.sealed_header_by_hash(current.parent_hash)?.map(|h| h.header().clone());
-    }
+    };
     Ok(())
 }
 

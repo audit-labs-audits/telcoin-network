@@ -772,6 +772,14 @@ impl RethEnv {
         Ok(self.blockchain_provider.block_with_senders_range(range)?)
     }
 
+    /// Return the blocks for a range of block numbers.
+    pub fn blocks_for_range(
+        &self,
+        range: RangeInclusive<BlockNumber>,
+    ) -> TnRethResult<Vec<SealedHeader>> {
+        Ok(self.blockchain_provider.sealed_headers_range(range)?)
+    }
+
     /// Return the head header from the reth db.
     pub fn lookup_head(&self) -> TnRethResult<SealedHeader> {
         let head = self.node_config.lookup_head(&self.blockchain_provider)?;
