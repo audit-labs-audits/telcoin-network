@@ -24,7 +24,7 @@ use crate::{
 use alloy::{
     consensus::Transaction as _,
     hex,
-    primitives::{address, Bytes, ChainId},
+    primitives::{Bytes, ChainId},
     sol_types::{SolCall, SolConstructor},
 };
 use alloy_evm::Evm;
@@ -93,7 +93,7 @@ use std::{
     net::{IpAddr, Ipv4Addr},
     ops::RangeInclusive,
     path::Path,
-    sync::Arc,
+    sync::{Arc, OnceLock},
     time::Duration,
 };
 use system_calls::{
@@ -151,8 +151,23 @@ pub mod worker;
 #[cfg(feature = "test-utils")]
 pub mod test_utils;
 
-/// The governance address.
-pub const GOVERNANCE_ADDRESS: Address = address!("fffffffffffffffffffffffffffffffffffff7e1");
+/// This will contain the address to receive base fees.  It is set per chain (or not if None)
+/// will not change.  Implemented as a static OnceLock to work around the Reth lib interface.
+static BASEFEE_ADDRESS: OnceLock<Option<Address>> = OnceLock::new();
+
+/// Return the chains basefee address if set.
+/// Note the basefee address is set once for the chain and will not change (outside of a hard fork).
+pub fn basefee_address() -> Option<Address> {
+    *BASEFEE_ADDRESS.get()?
+}
+
+/// Set the basefee address.  This will only work on the first call and should be during program
+/// initialization. Calling more than once will do nothing, not calling early can lead to an unset
+/// basefee address and a chain fork.
+fn set_basefee_address(address: Option<Address>) {
+    // Ignore the error.  Should probably panic on error but this will break some test environments.
+    let _ = BASEFEE_ADDRESS.set(address);
+}
 
 /// A helper to parse a [`Genesis`](alloy_genesis::Genesis) as argument or from disk.
 fn parse_genesis(s: &str) -> eyre::Result<RethChainSpec> {
@@ -518,6 +533,7 @@ impl RethEnv {
         let provider_factory = Self::init_provider_factory(&node_config, database)?;
         let blockchain_provider = BlockchainProvider::new(provider_factory.clone())?;
         let task_spawner = task_manager.get_spawner();
+        set_basefee_address(basefee_address);
 
         Ok(Self { node_config, blockchain_provider, evm_config, task_spawner })
     }
