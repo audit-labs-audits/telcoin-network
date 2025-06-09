@@ -554,7 +554,7 @@ async fn test_queued_output_executes_after_sending_channel_closed() -> eyre::Res
         // gas limit should come from batch
         assert_eq!(block.gas_limit, max_batch_gas(block.number));
         // difficulty should match the batch's index within consensus output
-        assert_eq!(block.difficulty, U256::from(expected_batch_index));
+        assert_eq!(block.difficulty, U256::from(expected_batch_index << 16));
         // assert batch digest match extra data
         assert_eq!(block.extra_data, Bytes::default());
         // assert batch digest match requests hash
@@ -892,7 +892,7 @@ async fn test_execution_succeeds_with_duplicate_transactions() -> eyre::Result<(
         // gas limit should come from batch
         assert_eq!(block.gas_limit, max_batch_gas(block.number));
         // difficulty should match the batch's index within consensus output
-        assert_eq!(block.difficulty, U256::from(expected_batch_index));
+        assert_eq!(block.difficulty, U256::from(expected_batch_index << 16));
         // assert batch digest match extra data
         assert_eq!(block.extra_data, Bytes::default());
         // assert batch digest match requests hash

@@ -33,6 +33,7 @@ use tn_types::{
     gas_accumulator::GasAccumulator, BatchValidation, BlsPublicKey, Committee, CommitteeBuilder,
     ConsensusHeader, ConsensusOutput, Database as TNDatabase, Epoch, Multiaddr, Noticer, Notifier,
     TaskManager, TaskSpawner, TimestampSec, WorkerCache, WorkerIndex, WorkerInfo,
+    MIN_PROTOCOL_BASE_FEE,
 };
 use tn_worker::{WorkerNetwork, WorkerNetworkHandle};
 use tokio::sync::{
@@ -82,6 +83,29 @@ pub struct EpochManager<P> {
     /// If the timestamp of the leader is >= the epoch_boundary then the
     /// manager closes the epoch after the engine executes all data.
     epoch_boundary: TimestampSec,
+}
+
+/// When rejoining a network mid epoch this will accumulate any gas state for previous epoch blocks.
+fn catchup_accumulator(reth_env: RethEnv, gas_accumulator: &GasAccumulator) -> eyre::Result<()> {
+    if let Some(block) = reth_env.finalized_header()? {
+        let epoch_state = reth_env.epoch_state_from_canonical_tip()?;
+
+        // Note WORKER: In a single worker world this should be suffecient to set the base fee.
+        // In a multi-worker world (furture) this will NOT work and needs updating.
+        gas_accumulator
+            .base_fee(0)
+            .set_base_fee(block.base_fee_per_gas.unwrap_or(MIN_PROTOCOL_BASE_FEE));
+
+        let blocks = reth_env.blocks_for_range(epoch_state.epoch_start..=block.number)?;
+        for current in blocks {
+            let gas = current.gas_used;
+            let limit = current.gas_limit;
+            let lower64 = current.difficulty.into_limbs()[0];
+            let worker_id = (lower64 & 0xffff) as u16;
+            gas_accumulator.inc_block(worker_id, gas, limit);
+        }
+    };
+    Ok(())
 }
 
 impl<P> EpochManager<P>
@@ -153,6 +177,8 @@ where
         // Create our epoch gas accumulator, we currently have one worker.
         // All nodes have to agree on the worker count, do not change this for an existing chain.
         let gas_accumulator = GasAccumulator::new(1);
+        catchup_accumulator(engine.get_reth_env().await, &gas_accumulator)?;
+
         engine
             .start_engine(for_engine, self.node_shutdown.subscribe(), gas_accumulator.clone())
             .await?;

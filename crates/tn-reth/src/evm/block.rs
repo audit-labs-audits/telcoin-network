@@ -36,7 +36,7 @@ use reth_revm::{
 use std::sync::Arc;
 use tn_types::{
     Address, Bytes, Encodable2718, ExecHeader, Receipt, TransactionSigned, Withdrawals, B256,
-    EMPTY_OMMER_ROOT_HASH, EMPTY_WITHDRAWALS,
+    EMPTY_OMMER_ROOT_HASH, EMPTY_WITHDRAWALS, U256,
 };
 use tracing::{debug, error};
 
@@ -60,6 +60,8 @@ pub struct TNBlockExecutionCtx {
     /// The hash is stored in the `extra_data` field so clients know when the
     /// closing epoch call was made.
     pub close_epoch: Option<B256>,
+    /// Difficulty- this will contain the worker id ancd batch index.
+    pub difficulty: U256,
 }
 
 /// Block executor for Ethereum.
@@ -403,7 +405,7 @@ where
         // TN-specific values
         let requests_hash = ctx.requests_hash; // prague inactive
         let nonce = ctx.nonce.into(); // subdag leader's nonce: ((epoch as u64) << 32) | self.round as u64
-        let difficulty = evm_env.block_env.difficulty; // batch index
+        let difficulty = ctx.difficulty; // worker id and batch index
 
         // use keccak256(bls_sig) if closing epoch or Bytes::default
         let extra_data = ctx.close_epoch.map(|hash| hash.to_vec().into()).unwrap_or_default();
