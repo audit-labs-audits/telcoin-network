@@ -1,4 +1,5 @@
 use crate::util::{config_local_testnet, IT_TEST_MUTEX};
+use alloy::primitives::address;
 use ethereum_tx_sign::{LegacyTransaction, Transaction};
 use eyre::Report;
 use nix::{
@@ -60,7 +61,9 @@ fn send_and_confirm(
     to_account: Address,
     nonce: u128,
 ) -> eyre::Result<()> {
+    let basefee_address = address!("0x9999999999999999999999999999999999999999");
     let current = get_balance(node, &to_account.to_string(), 1)?;
+    let current_basefee = get_balance(node, &basefee_address.to_string(), 1)?;
     let amount = 10 * WEI_PER_TEL; // 10 TEL
     let expected = current + amount;
     send_tel(node, key, to_account, amount, 250, 21000, nonce)?;
@@ -75,6 +78,19 @@ fn send_and_confirm(
     if expected != bal {
         error!(target: "restart-test", "{expected} != {bal} - returning error!");
         return Err(Report::msg(format!("Expected a balance of {expected} got {bal}!")));
+    }
+    let bal =
+        get_balance_above_with_retry(node_test, &basefee_address.to_string(), current_basefee)?;
+    if nonce > 0 {
+        eprintln!(
+            "XXXX {bal}/{}/{current_basefee}/{}",
+            current_basefee + (current_basefee / (nonce)),
+            (current_basefee / (nonce))
+        );
+        if bal != current_basefee + (current_basefee / (nonce)) {
+            error!(target: "restart-test", "basefee error!");
+            return Err(Report::msg(format!("Expected a basefee increment!")));
+        }
     }
     Ok(())
 }
