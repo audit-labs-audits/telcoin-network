@@ -101,12 +101,11 @@ use system_calls::{
     EpochState, CONSENSUS_REGISTRY_ADDRESS, SYSTEM_ADDRESS,
 };
 use tempfile::TempDir;
-use tn_config::{Config, ConfigFmt, ConfigTrait, NodeInfo, CONSENSUS_REGISTRY_JSON};
+use tn_config::{NodeInfo, CONSENSUS_REGISTRY_JSON};
 use tn_types::{
-    adiri_chain_spec_arc, Address, BlockBody, BlockHashOrNumber, BlockHeader as _, BlockNumHash,
-    BlockNumber, Epoch, ExecHeader, Genesis, GenesisAccount, RecoveredBlock, SealedBlock,
-    SealedHeader, TaskManager, TaskSpawner, TransactionSigned, B256, ETHEREUM_BLOCK_GAS_LIMIT_30M,
-    U256,
+    Address, BlockBody, BlockHashOrNumber, BlockHeader as _, BlockNumHash, BlockNumber, Epoch,
+    ExecHeader, Genesis, GenesisAccount, RecoveredBlock, SealedBlock, SealedHeader, TaskManager,
+    TaskSpawner, TransactionSigned, B256, ETHEREUM_BLOCK_GAS_LIMIT_30M, U256,
 };
 use tracing::{debug, error, info, warn};
 use traits::{TNPrimitives, TelcoinNode};
@@ -169,12 +168,6 @@ fn set_basefee_address(address: Option<Address>) {
     let _ = BASEFEE_ADDRESS.set(address);
 }
 
-/// A helper to parse a [`Genesis`](alloy_genesis::Genesis) as argument or from disk.
-fn parse_genesis(s: &str) -> eyre::Result<RethChainSpec> {
-    let genesis: Genesis = Config::load_from_path_or_default(Path::new(s), ConfigFmt::YAML)?;
-    Ok(genesis.into())
-}
-
 /// Rpc Server type, used for getting the node started.
 pub type RpcServer = TransportRpcModules<()>;
 
@@ -202,37 +195,9 @@ pub type ToTree = std::sync::mpsc::Sender<
 /// This type is a SealedBlock with a list of senders that match the transactions in the block.
 pub type BlockWithSenders = RecoveredBlock<reth_ethereum_primitives::Block>;
 
-/// Defaults for chain spec clap parser.
-///
-/// Wrapper to intercept "adiri" chain spec. If not adiri, load provided genesis.
-pub fn clap_genesis_parser(value: &str) -> eyre::Result<Arc<RethChainSpec>, eyre::Error> {
-    let chain = match value {
-        "adiri" => adiri_chain_spec_arc(),
-        _ => Arc::new(parse_genesis(value)?),
-    };
-
-    Ok(chain)
-}
-
 /// Reth specific command line args.
 #[derive(Debug, Parser, Clone)]
 pub struct RethCommand {
-    /// The chain this node is running.
-    ///
-    /// Possible values are either a built-in chain or the path to a chain specification file.
-    ///
-    /// Defaults to the custom
-    #[arg(
-        long,
-        value_name = "CHAIN_OR_PATH",
-        verbatim_doc_comment,
-        default_value = "adiri",
-        default_value_if("dev", "true", "adiri"),
-        value_parser = clap_genesis_parser,
-        required = false,
-    )]
-    pub chain: Arc<RethChainSpec>,
-
     /// All rpc related arguments
     #[clap(flatten)]
     pub rpc: RpcServerArgs,
@@ -297,11 +262,12 @@ impl RethConfig {
         instance: Option<u16>,
         datadir: P,
         with_unused_ports: bool,
+        chain: Arc<RethChainSpec>,
     ) -> Self {
         // create a reth DatadirArgs from tn datadir
         let datadir = path_to_datadir(datadir.as_ref());
 
-        let RethCommand { chain, mut rpc, txpool, db } = reth_config;
+        let RethCommand { mut rpc, txpool, db } = reth_config;
         Self::validate_rpc_modules(&mut rpc.http_api);
         Self::validate_rpc_modules(&mut rpc.ws_api);
         // We don't just use Default for these Reth args.
@@ -1223,7 +1189,7 @@ mod tests {
     use rand::{rngs::StdRng, SeedableRng as _};
     use tempfile::TempDir;
     use tn_types::{
-        adiri_genesis, BlsKeypair, BlsSignature, Certificate, CommittedSubDag, ConsensusHeader,
+        test_genesis, BlsKeypair, BlsSignature, Certificate, CommittedSubDag, ConsensusHeader,
         ConsensusOutput, FromHex, NodeP2pInfo, ReputationScores, SignatureVerificationState,
     };
 
@@ -1306,7 +1272,7 @@ mod tests {
         let owner = Address::random();
         let genesis = RethEnv::create_consensus_registry_genesis_account(
             validators.clone(),
-            adiri_genesis(),
+            test_genesis(),
             initial_stake_config.clone(),
             owner,
         )?;
