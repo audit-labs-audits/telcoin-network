@@ -87,6 +87,8 @@ pub async fn config_local_testnet(
         "tn",
         "--datadir",
         shared_genesis_dir.to_str().expect("shared genesis dir"),
+        "--basefee-address",
+        "0x9999999999999999999999999999999999999999",
         "--consensus-registry-owner",
         "0x00000000000000000000000000000000000007e1", // doesn't matter for tests
         "--dev-funded-account",
