@@ -669,8 +669,6 @@ where
 
                 // process gossip in application layer
                 if valid {
-                    // TODO: Issue #253
-                    //
                     // forward gossip to handler
                     if let Err(e) = self
                         .event_stream
@@ -751,6 +749,7 @@ where
                 }
             }
             ReqResEvent::OutboundFailure { peer, request_id, error, connection_id: _ } => {
+                debug!(target: "network", ?peer, ?error, "Outbound failure for req/res");
                 // handle px disconnects
                 //
                 // px attempts to support peer discovery, but failures are okay
@@ -758,9 +757,6 @@ where
                 if self.pending_px_disconnects.remove(&request_id).is_some() {
                     return Ok(());
                 }
-
-                // log errors for other outbound failures
-                // warn!(target: "network", ?peer, ?error, "outbound failure");
 
                 // apply penalty
                 self.swarm.behaviour_mut().peer_manager.process_penalty(peer, Penalty::Medium);
@@ -847,6 +843,18 @@ where
                 let _ = self.swarm.disconnect_peer_id(peer_id);
             }
             PeerEvent::PeerDisconnected(peer_id) => {
+                debug!(target: "network", ?peer_id, "peer disconnected event from peer manager");
+
+                // Check if there are any connections still in the pool
+                if self.swarm.is_connected(&peer_id) {
+                    warn!(
+                        target: "network",
+                        ?peer_id,
+                        "PeerDisconnected event but swarm still has connections - forcing disconnect"
+                    );
+                    let _ = self.swarm.disconnect_peer_id(peer_id);
+                }
+
                 // remove from connected peers
                 self.connected_peers.retain(|peer| *peer != peer_id);
 
@@ -923,7 +931,7 @@ where
                 }
             }
             PeerEvent::Banned(peer_id) => {
-                debug!(target: "network", ?peer_id, "peer banned");
+                warn!(target: "network", ?peer_id, "peer banned");
                 // blacklist gossipsub
                 self.swarm.behaviour_mut().gossipsub.blacklist_peer(&peer_id);
             }
