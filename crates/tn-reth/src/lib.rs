@@ -1192,7 +1192,7 @@ mod tests {
     use rand::{rngs::StdRng, SeedableRng as _};
     use tempfile::TempDir;
     use tn_types::{
-        test_genesis, BlsKeypair, BlsSignature, Certificate, CommittedSubDag, ConsensusHeader,
+        adiri_genesis, BlsKeypair, BlsSignature, Certificate, CommittedSubDag, ConsensusHeader,
         ConsensusOutput, FromHex, NodeP2pInfo, ReputationScores, SignatureVerificationState,
     };
 
