@@ -83,13 +83,13 @@ pub fn test_chain_spec_arc() -> Arc<ChainSpec> {
 }
 
 /// adiri (testnet) genesis
-fn _adiri_genesis() -> Genesis {
+pub fn adiri_genesis() -> Genesis {
     serde_yaml::from_str(TESTNET_GENESIS).expect("serde parse valid adiri yaml")
 }
 
 /// adiri (testnet) chain spec parsed from genesis.
 fn _adiri_chain_spec() -> ChainSpec {
-    _adiri_genesis().into()
+    adiri_genesis().into()
 }
 
 /// adiri (testnet) chain spec parsed from genesis and wrapped in [Arc].

@@ -37,7 +37,7 @@ use jsonrpsee::Methods;
 use reth::{
     args::{
         DatabaseArgs, DatadirArgs, DebugArgs, DevArgs, DiscoveryArgs, EngineArgs, NetworkArgs,
-        PayloadBuilderArgs, PruningArgs, RpcServerArgs, TxPoolArgs,
+        PayloadBuilderArgs, PruningArgs, TxPoolArgs,
     },
     builder::NodeConfig,
     network::transactions::config::TransactionPropagationKind,
@@ -87,6 +87,7 @@ use reth_revm::{
     DatabaseCommit, State,
 };
 use reth_transaction_pool::{blobstore::DiskFileBlobStore, EthTransactionPool};
+use rpc_server_args::RpcServerArgs;
 use serde_json::Value;
 use std::{
     collections::HashSet,
@@ -144,6 +145,7 @@ pub use txn_pool::*;
 use worker::WorkerNetwork;
 pub mod error;
 mod evm;
+pub mod rpc_server_args;
 pub mod system_calls;
 pub mod worker;
 
@@ -384,7 +386,7 @@ impl RethConfig {
             instance,
             datadir,
             network,
-            rpc,
+            rpc: rpc.into(),
             txpool,
             builder,
             debug,
@@ -1190,7 +1192,7 @@ mod tests {
     use rand::{rngs::StdRng, SeedableRng as _};
     use tempfile::TempDir;
     use tn_types::{
-        test_genesis, BlsKeypair, BlsSignature, Certificate, CommittedSubDag, ConsensusHeader,
+        adiri_genesis, BlsKeypair, BlsSignature, Certificate, CommittedSubDag, ConsensusHeader,
         ConsensusOutput, FromHex, NodeP2pInfo, ReputationScores, SignatureVerificationState,
     };
 
