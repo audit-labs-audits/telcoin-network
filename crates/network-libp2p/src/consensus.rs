@@ -36,7 +36,8 @@ use std::{
 };
 use tn_config::{KeyConfig, LibP2pConfig, NetworkConfig, PeerConfig};
 use tn_types::{
-    encode, try_decode, BlsPublicKey, BlsSigner, Database, NetworkKeypair, TaskSpawner,
+    encode, try_decode, BlsPublicKey, BlsSigner, Database, NetworkKeypair, NetworkPublicKey,
+    TaskSpawner,
 };
 use tokio::sync::{
     mpsc::{self, Receiver, Sender},
@@ -151,6 +152,8 @@ where
     key_config: KeyConfig,
     /// If true then add peers to kademlia- useful for testing to set false.
     kad_add_peers: bool,
+    /// The public network key for this node.
+    network_pubkey: NetworkPublicKey,
     /// The hostname for the node provided by the [NetworkConfig].
     ///
     /// This is a human-readable representation for a node identity.
@@ -244,6 +247,7 @@ where
         // create custom behavior
         let behavior =
             TNBehavior::new(identify, gossipsub, req_res, kademlia, network_config.peer_config());
+        let network_pubkey = keypair.public().into();
 
         // create swarm
         let swarm = SwarmBuilder::with_existing_identity(keypair)
@@ -285,6 +289,7 @@ where
             pending_px_disconnects,
             key_config,
             kad_add_peers: true,
+            network_pubkey,
             hostname: network_config.hostname().to_string(),
             task_spawner,
         })
@@ -328,7 +333,7 @@ where
         if let Some(addr) = multiaddr {
             let peer_id = *self.swarm.local_peer_id();
             let node_record = NodeRecord::build(
-                self.key_config.primary_network_public_key(),
+                self.network_pubkey.clone(),
                 addr,
                 self.hostname.clone(),
                 |data| self.key_config.request_signature_direct(data),
@@ -669,8 +674,6 @@ where
 
                 // process gossip in application layer
                 if valid {
-                    // TODO: Issue #253
-                    //
                     // forward gossip to handler
                     if let Err(e) = self
                         .event_stream
@@ -751,6 +754,7 @@ where
                 }
             }
             ReqResEvent::OutboundFailure { peer, request_id, error, connection_id: _ } => {
+                debug!(target: "network", ?peer, ?error, "Outbound failure for req/res");
                 // handle px disconnects
                 //
                 // px attempts to support peer discovery, but failures are okay
@@ -758,9 +762,6 @@ where
                 if self.pending_px_disconnects.remove(&request_id).is_some() {
                     return Ok(());
                 }
-
-                // log errors for other outbound failures
-                // warn!(target: "network", ?peer, ?error, "outbound failure");
 
                 // apply penalty
                 self.swarm.behaviour_mut().peer_manager.process_penalty(peer, Penalty::Medium);
@@ -847,6 +848,18 @@ where
                 let _ = self.swarm.disconnect_peer_id(peer_id);
             }
             PeerEvent::PeerDisconnected(peer_id) => {
+                debug!(target: "network", ?peer_id, "peer disconnected event from peer manager");
+
+                // Check if there are any connections still in the pool
+                if self.swarm.is_connected(&peer_id) {
+                    warn!(
+                        target: "network",
+                        ?peer_id,
+                        "PeerDisconnected event but swarm still has connections - forcing disconnect"
+                    );
+                    let _ = self.swarm.disconnect_peer_id(peer_id);
+                }
+
                 // remove from connected peers
                 self.connected_peers.retain(|peer| *peer != peer_id);
 
@@ -923,7 +936,7 @@ where
                 }
             }
             PeerEvent::Banned(peer_id) => {
-                debug!(target: "network", ?peer_id, "peer banned");
+                warn!(target: "network", ?peer_id, "peer banned");
                 // blacklist gossipsub
                 self.swarm.behaviour_mut().gossipsub.blacklist_peer(&peer_id);
             }
