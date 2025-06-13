@@ -17,7 +17,7 @@ Check out the repo and update the submodules:
 Run the test network script to start four local validators and begin advancing the chain:
 `etc/local-testnet.sh --start --dev-funds 0xADDRESS`
 Note: the script will compile a release build, which may take a few minutes.
-This configures and create genesis for a new network and starts it. See the output for the RPC endpoints.
+This configures and creates genesis for a new network and starts it. See the output for the RPC endpoints.
 0xADDRESS above should be a valid address prepended with 0x. Make sure you have the key for this address,
 it will be funded with 1billion TEL on your test network. After configuration you can run the script with
 just the --start option (--dev-funds is only used when configuring and CAN NOT be used later to fund
@@ -28,10 +28,7 @@ it configures each node, brings together the configs to create genesis and then 
 This is the same basic procedure used to create nodes on diffent machines (NOTE- do not use the instance
 option if not running on the same machine, it is to avoid port conflicts).
 
-Note that network operation is under heavy dev and somewhat rough right now but it should be possible to
-bring up a reliable test network.
-
-Once started you can use the RPC endpoint for any node with you favorate Ethereum tooling to test.
+Once started you can use the RPC endpoint for any node with your favorate Ethereum tooling to test.
 You will have test funds in your dev funds account set during config. The network can be restarted
 by shutting down, `killall telcoin-network` is good for this, deleting ./local-validators/ and
 rerunning the script.
@@ -44,7 +41,10 @@ speed this up for testing.
 The CLI is used to create validator information, join a committee, and start the network.
 The following `.env` variables are useful but not required:
 
-- `NARWHAL_HOST`: The ipv4 address of the host running the node. Consensus uses this address for messages between peers.
+- `TN_PRIMARY_HOST`: The ip address of the primary libp2p network.  Defaults to 0.0.0.0.
+- `TN_PRIMARY_PORT`: The udp port (QUIC protocol) of the primary libp2p network.  Default to an available port.
+- `TN_WORKER_HOST`: The ip address of the worker libp2p network.  Defaults to 0.0.0.0.
+- `TN_WORKER_PORT`: The udp port (QUIC protocol) of the worker libp2p network.  Default to an available port.
 
 ## Example RPC request
 
