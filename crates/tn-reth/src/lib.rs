@@ -104,9 +104,10 @@ use system_calls::{
 use tempfile::TempDir;
 use tn_config::{NodeInfo, CONSENSUS_REGISTRY_JSON};
 use tn_types::{
-    Address, BlockBody, BlockHashOrNumber, BlockHeader as _, BlockNumHash, BlockNumber, Epoch,
-    ExecHeader, Genesis, GenesisAccount, RecoveredBlock, SealedBlock, SealedHeader, TaskManager,
-    TaskSpawner, TransactionSigned, B256, ETHEREUM_BLOCK_GAS_LIMIT_30M, U256,
+    gas_accumulator::RewardsCounter, Address, BlockBody, BlockHashOrNumber, BlockHeader as _,
+    BlockNumHash, BlockNumber, Epoch, ExecHeader, Genesis, GenesisAccount, RecoveredBlock,
+    SealedBlock, SealedHeader, TaskManager, TaskSpawner, TransactionSigned, B256,
+    ETHEREUM_BLOCK_GAS_LIMIT_30M, U256,
 };
 use tracing::{debug, error, info, warn};
 use traits::{TNPrimitives, TelcoinNode};
@@ -495,9 +496,10 @@ impl RethEnv {
         task_manager: &TaskManager,
         database: RethDb,
         basefee_address: Option<Address>,
+        rewards_counter: RewardsCounter,
     ) -> eyre::Result<Self> {
         let node_config = reth_config.0.clone();
-        let evm_config = TnEvmConfig::new(reth_config.0.chain.clone());
+        let evm_config = TnEvmConfig::new(reth_config.0.chain.clone(), rewards_counter);
         let provider_factory = Self::init_provider_factory(&node_config, database)?;
         let blockchain_provider = BlockchainProvider::new(provider_factory.clone())?;
         let task_spawner = task_manager.get_spawner();
@@ -919,7 +921,7 @@ impl RethEnv {
         };
         let reth_config = RethConfig(node_config);
         let database = Self::new_database(&reth_config, db_path)?;
-        Self::new(&reth_config, task_manager, database, None)
+        Self::new(&reth_config, task_manager, database, None, RewardsCounter::default())
     }
 
     /// Convenience method for compiling storage and bytecode to include genesis.
