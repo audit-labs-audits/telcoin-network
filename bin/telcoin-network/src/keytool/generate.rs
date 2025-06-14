@@ -3,7 +3,7 @@
 use crate::args::clap_address_parser;
 use clap::{value_parser, Args, Subcommand};
 use tn_config::{Config, ConfigFmt, ConfigTrait as _, KeyConfig, NodeInfo, TelcoinDirs};
-use tn_types::{get_available_udp_port, Address};
+use tn_types::{get_available_udp_port, Address, Multiaddr};
 use tracing::info;
 
 /// Generate keypairs and save them to a file.
@@ -29,6 +29,7 @@ pub enum NodeType {
 #[derive(Debug, Clone, Args)]
 pub struct KeygenArgs {
     /// The number of workers for the primary.
+    /// Currently workers MUST be 1.
     #[arg(long, value_name = "workers", global = true, default_value_t = 1, value_parser = value_parser!(u16).range(..=4))]
     pub workers: u16,
 
@@ -59,25 +60,19 @@ pub struct KeygenArgs {
     )]
     pub address: Address,
 
-    /// The network host/ip for the primary libp2p network.
-    /// If not set will default to 127.0.0.1 (localhost)- this is only useful for tests
-    #[arg(long, value_name = "HOST", env = "TN_PRIMARY_HOST")]
-    pub primary_host: Option<String>,
+    /// The multiaddr for the primary p2p network.  Must be quic-v1 and udp.
+    /// For example: /ip4/[HOST]/udp/[PORT]/quic-v1
+    /// If not set will default to /ip4/127.0.0.1/udp/[PORT]/quic-v1 with an unused port for PORT.
+    /// This default is only useful for tests (including a local testnet).
+    #[arg(long, value_name = "MULTIADDR", env = "TN_PRIMARY_ADDR")]
+    pub primary_addr: Option<Multiaddr>,
 
-    /// The network host/ip for the worker network(s).
-    /// If not set will default to 127.0.0.1 (localhost)- this is only useful for tests
-    #[arg(long, value_name = "HOST", env = "TN_WORKER_HOST")]
-    pub worker_host: Option<String>,
-
-    /// The network port for the primary libp2p network.
-    /// If not set will try to find an unused port.
-    #[arg(long, value_name = "PORT", env = "TN_PRIMARY_PORT")]
-    pub primary_port: Option<u16>,
-
-    /// The base port for worker p2p network(s).
-    /// If not set will try to find an unused port.
-    #[arg(long, value_name = "PORT", env = "TN_WORKER_PORT")]
-    pub worker_base_port: Option<u16>,
+    /// List of multiaddrs for the workers p2p networks, comma seperated.  Must be quic-v1 and udp.
+    /// For example: /ip4/[HOST1]/udp/[PORT1]/quic-v1,/ip4/[HOST2]/udp/[PORT2]/quic-v1
+    /// If not set each worker will default to /ip4/127.0.0.1/udp/[PORT]/quic-v1 with an unused
+    /// port for PORT. This default is only useful for tests (including a local testnet).
+    #[arg(long, value_name = "MULTIADDRS", env = "TN_WORKER_ADDRS", value_delimiter = ',')]
+    pub worker_addrs: Option<Vec<Multiaddr>>,
 }
 
 impl KeygenArgs {
@@ -99,27 +94,27 @@ impl KeygenArgs {
         // network keypair for authority
         let network_publickey = key_config.primary_network_public_key();
         node_info.p2p_info.network_key = network_publickey;
-        let primary_host = self.primary_host.clone().unwrap_or("127.0.0.1".to_string());
-        let primary_udp_port = self
-            .primary_port
-            .unwrap_or_else(|| get_available_udp_port(&primary_host).unwrap_or(49584));
-        node_info.p2p_info.network_address =
-            format!("/ip4/{primary_host}/udp/{primary_udp_port}/quic-v1").parse()?;
+        node_info.p2p_info.network_address = if let Some(primary_addr) = &self.primary_addr {
+            primary_addr.clone()
+        } else {
+            let primary_udp_port = get_available_udp_port("127.0.0.1").unwrap_or(49584);
+            format!("/ip4/127.0.0.1/udp/{primary_udp_port}/quic-v1").parse()?
+        };
 
         // network keypair for workers
         let network_publickey = key_config.worker_network_public_key();
-        let worker_host = self.primary_host.clone().unwrap_or("127.0.0.1".to_string());
-        let mut worker_udp_port = self
-            .worker_base_port
-            .unwrap_or_else(|| get_available_udp_port(&worker_host).unwrap_or(49584));
-        for worker in node_info.p2p_info.worker_index.0.iter_mut() {
+        for (i, worker) in node_info.p2p_info.worker_index.0.iter_mut().enumerate() {
             worker.name = network_publickey.clone();
-            worker.worker_address =
-                format!("/ip4/{worker_host}/udp/{worker_udp_port}/quic-v1").parse()?;
-            worker_udp_port = if self.worker_base_port.is_none() {
-                get_available_udp_port(&worker_host).unwrap_or(49584)
+            worker.worker_address = if let Some(worker_addrs) = &self.worker_addrs {
+                if let Some(addr) = worker_addrs.get(i) {
+                    addr.clone()
+                } else {
+                    let udp_port = get_available_udp_port("127.0.0.1").unwrap_or(49584 + 1);
+                    format!("/ip4/127.0.0.1/udp/{udp_port}/quic-v1").parse()?
+                }
             } else {
-                worker_udp_port + 1
+                let udp_port = get_available_udp_port("127.0.0.1").unwrap_or(49584 + 1);
+                format!("/ip4/127.0.0.1/udp/{udp_port}/quic-v1").parse()?
             };
         }
         Ok(())
@@ -133,6 +128,17 @@ impl KeygenArgs {
     ) -> eyre::Result<()> {
         info!(target: "tn::generate_keys", "generating keys for full validator node");
         let mut node_info = NodeInfo::default();
+        if self.workers != 1 {
+            return Err(eyre::eyre!("Only supports a single worker at this time!"));
+        }
+        /* Uncomment when multi-worker support is enabled
+        if self.workers > 1 {
+            node_info.p2p_info.worker_index.0 = Vec::with_capacity(self.workers as usize);
+            for _ in 0..self.workers {
+                node_info.p2p_info.worker_index.0.push(WorkerInfo::default());
+            }
+        }
+        */
 
         self.update_keys(&mut node_info, tn_datadir, passphrase)?;
 
