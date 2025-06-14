@@ -102,9 +102,11 @@ where
 
     /// Increase the beneficiary account balance and withdraw from governance safe.
     ///
-    /// see revm-database/src/states/state.rs
-    /// State::increment_balances
-    fn apply_consensus_block_reward(&mut self, rewards: HashMap<Address, u32>) -> TnRethResult<()> {
+    /// This must be called once per epoch, before the conclude epoch call.
+    fn apply_consensus_block_rewards(
+        &mut self,
+        rewards: HashMap<Address, u32>,
+    ) -> TnRethResult<()> {
         let calldata = self.generate_apply_incentives_calldata(
             rewards.iter().map(|(address, count)| (*address, *count)).collect(),
         )?;
@@ -118,18 +120,22 @@ where
             Ok(res) => res,
             Err(e) => {
                 // fatal error
-                error!(target: "engine", "error executing closing epoch contract call: {:?}", e);
-                return Err(TnRethError::EVMCustom(format!("epoch closing execution failed: {e}")));
+                error!(target: "engine", "error applying consensus block rewards contract call: {:?}", e);
+                return Err(TnRethError::EVMCustom(format!(
+                    "applying consensus block rewards failed: {e}"
+                )));
             }
         };
 
         // return error if closing epoch call failed
         if !res.result.is_success() {
             // execution failed
-            error!(target: "engine", "failed to apply closing epoch call: {:#?}", res.result);
-            return Err(TnRethError::EVMCustom("failed to close epoch".to_string()));
+            error!(target: "engine", "failed applying consensus block rewards call: {:#?}", res.result);
+            return Err(TnRethError::EVMCustom(
+                "failed applying consensus block rewards".to_string(),
+            ));
         }
-        trace!(target: "engine", "closing epoch logs:\n{:#?}", res.result.logs());
+        trace!(target: "engine", "applying consensus block rewards logs:\n{:#?}", res.result.logs());
 
         // commit the changes
         self.evm.db_mut().commit(res.state);
@@ -191,7 +197,6 @@ where
         &mut self,
         reward_infos: Vec<(Address, u32)>,
     ) -> TnRethResult<Bytes> {
-        // shuffle all validators for new committee
         // encode the call to bytes with method selector and args
         let bytes = ConsensusRegistry::applyIncentivesCall {
             rewardInfos: reward_infos
@@ -385,7 +390,7 @@ where
         // potentially close epoch boundary
         if let Some(randomness) = self.ctx.close_epoch {
             debug!(target: "evm", ?randomness, "ctx indicates close epoch");
-            self.apply_consensus_block_reward(self.ctx.rewards_counter.get_address_counts())
+            self.apply_consensus_block_rewards(self.ctx.rewards_counter.get_address_counts())
                 .map_err(|e| {
                     BlockExecutionError::Internal(InternalBlockExecutionError::Other(e.into()))
                 })?;
