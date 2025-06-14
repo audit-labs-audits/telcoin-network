@@ -32,7 +32,7 @@ pub struct GenesisArgs {
         alias = "consensus_registry_owner",
         help_heading = "The owner for ConsensusRegistry",
         value_parser = clap_address_parser,
-        default_value = GOVERNANCE_SAFE_ADDRESS,
+        default_value = &GOVERNANCE_SAFE_ADDRESS,
         verbatim_doc_comment
     )]
     pub consensus_registry_owner: Address,
@@ -47,7 +47,7 @@ pub struct GenesisArgs {
         alias = "basefee_address",
         help_heading = "The recipient of base fees",
         value_parser = clap_address_parser,
-        default_value = GOVERNANCE_SAFE_ADDRESS,
+        default_value = &GOVERNANCE_SAFE_ADDRESS,
         verbatim_doc_comment
     )]
     pub basefee_address: Option<Address>,
