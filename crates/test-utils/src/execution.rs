@@ -8,7 +8,9 @@ use tn_config::Config;
 use tn_faucet::FaucetArgs;
 use tn_node::engine::{ExecutionNode, TnBuilder};
 use tn_reth::{RethChainSpec, RethCommand, RethConfig, RethEnv};
-use tn_types::{Address, TaskManager, TimestampSec, Withdrawals, B256};
+use tn_types::{
+    gas_accumulator::RewardsCounter, Address, TaskManager, TimestampSec, Withdrawals, B256,
+};
 
 /// Convenience type for testing Execution Node.
 pub type TestExecutionNode = ExecutionNode;
@@ -138,7 +140,13 @@ pub fn faucet_test_execution_node(
     let reth_db = RethEnv::new_database(&node_config, tmp_dir.join("db"))?;
     let engine = ExecutionNode::new(
         &builder,
-        RethEnv::new(&node_config, &TaskManager::default(), reth_db, None)?,
+        RethEnv::new(
+            &node_config,
+            &TaskManager::default(),
+            reth_db,
+            None,
+            RewardsCounter::default(),
+        )?,
     )?;
 
     Ok(engine)
