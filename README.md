@@ -45,6 +45,10 @@ The following `.env` variables are useful but not required:
 - `TN_WORKER_ADDRS`: The multi address(es) of the worker libp2p networks.  This is a comma seperated list.
 All of these multi addresses will default to /ip4/127.0.0.1/udp/[PORT]/quic-v1 with an unused port for PORT.  This is really only useful for tests (but is very useful for testing).
 You MUST supply quic-v1 and udp to work with the telcoin-network (although if you were setting up your own network other protocols may work but are untested).
+References for multiaddr:
+https://github.com/multiformats/multiaddr
+https://github.com/multiformats/rust-multiaddr
+These are used with libp2p2 so also see the Rust libp2p docs.
 
 ## Example RPC request
 
