@@ -61,7 +61,7 @@ async fn test_genesis_with_its() -> eyre::Result<()> {
             let returned_bal: String = client
                 .request("eth_getBalance", rpc_params!(address))
                 .await
-                .expect("Failed to fetch RWTEL balance");
+                .expect("Failed to fetch iTEL balance");
             let returned_bal = returned_bal.trim_start_matches("0x");
             assert_eq!(U256::from_str_radix(returned_bal, 16)?, itel_bal);
         }
@@ -105,6 +105,8 @@ async fn test_precompile_genesis_accounts() -> eyre::Result<()> {
         "GasService",
         "InterchainTokenService",
         "InterchainTokenFactory",
+        "SafeImpl",
+        "Safe",
     ]
     .iter()
     .filter_map(|&key| its_addresses.get(key).and_then(Value::as_str))
