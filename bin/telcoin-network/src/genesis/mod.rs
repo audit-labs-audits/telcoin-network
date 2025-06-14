@@ -7,7 +7,7 @@ use secp256k1::{
     rand::{rngs::StdRng, SeedableRng},
     Secp256k1,
 };
-use std::{path::PathBuf, str::FromStr as _, time::Duration};
+use std::{collections::BTreeMap, path::PathBuf, str::FromStr as _, time::Duration};
 use tn_config::{
     Config, ConfigFmt, ConfigTrait, NetworkGenesis, Parameters, TelcoinDirs as _, DEPLOYMENTS_JSON,
 };
@@ -107,6 +107,10 @@ pub struct GenesisArgs {
     /// Default is 0x7e1 (2017).
     #[arg(long, default_value_t = 2017, value_parser=maybe_hex)]
     pub chain_id: u64,
+    /// YAML file containing accounts to merge into genesis.
+    /// This is intended for dev and test nets.
+    #[arg(long, value_name = "YAML_FILE", verbatim_doc_comment)]
+    pub accounts: Option<PathBuf>,
 }
 
 /// Take a string and return the deterministic account derived from it.  This is be used
@@ -208,6 +212,12 @@ impl GenesisArgs {
                 addr,
                 GenesisAccount::default().with_balance(U256::from(10).pow(U256::from(27))), // One Billion TEL
             );
+        }
+        // Extend genesis accounts with option account file.
+        if let Some(accounts) = &self.accounts {
+            let f = std::fs::File::open(accounts)?;
+            let accounts: BTreeMap<Address, GenesisAccount> = serde_yaml::from_reader(f)?;
+            updated_genesis.alloc.extend(accounts);
         }
 
         // updated genesis with registry information

@@ -11459,6 +11459,7 @@ dependencies = [
  "rpassword",
  "secp256k1 0.31.0",
  "serde_json",
+ "serde_yaml",
  "tempfile",
  "tn-config",
  "tn-faucet",
