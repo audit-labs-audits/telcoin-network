@@ -44,9 +44,10 @@ async fn test_genesis_with_its() -> eyre::Result<()> {
             .map(|hex_str| Address::from_hex(hex_str).unwrap())
             .unwrap();
     let tel_supply = U256::try_from(parse_ether("100_000_000_000").unwrap()).unwrap();
-    // 4 million tel staked at genesis for 4 validators
-    let itel_bal = tel_supply - U256::try_from(parse_ether("4_000_000").unwrap()).unwrap();
-
+    let initial_stake = U256::try_from(parse_ether("4_000_000").unwrap()).unwrap();
+    let governance_balance = U256::try_from(parse_ether("10").unwrap()).unwrap();
+    // account for governance safe allocation and 4 million tel staked at genesis for 4 validators
+    let itel_bal = tel_supply - initial_stake - governance_balance;
     let precompiles = NetworkGenesis::fetch_precompile_genesis_accounts(itel_address, itel_bal)
         .expect("its precompiles not found");
     for (address, genesis_account) in precompiles {
@@ -128,8 +129,10 @@ async fn test_precompile_genesis_accounts() -> eyre::Result<()> {
                     );
 
                     if key == "InterchainTEL" {
+                        let governance_bal = U256::try_from(parse_ether("10").unwrap()).unwrap();
+                        let expected_bal = some_bal - governance_bal;
                         assert!(
-                            genesis_account.balance == some_bal,
+                            genesis_account.balance == expected_bal,
                             "ITEL balance should be 100 billion TEL minus genesis validator stake"
                         );
                     }
