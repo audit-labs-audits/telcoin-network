@@ -148,7 +148,7 @@ impl NetworkGenesis {
         let workers = self
             .validators
             .iter()
-            .map(|(pubkey, validator)| (*pubkey, validator.primary_info.worker_index.clone()))
+            .map(|(pubkey, validator)| (*pubkey, validator.p2p_info.worker_index.clone()))
             .collect();
 
         let worker_cache = WorkerCache { epoch: 0, workers: Arc::new(workers) };
@@ -213,7 +213,7 @@ pub struct NodeInfo {
     pub bls_public_key: BlsPublicKey,
     /// Information for this validator's primary,
     /// including worker details.
-    pub primary_info: NodeP2pInfo,
+    pub p2p_info: NodeP2pInfo,
     /// The address for suggested fee recipient.
     ///
     /// Validator rewards are sent to this address.
@@ -225,17 +225,6 @@ pub struct NodeInfo {
 }
 
 impl NodeInfo {
-    /// Create a new instance of [ValidatorInfo] using the provided data.
-    pub fn new(
-        name: String,
-        bls_public_key: BlsPublicKey,
-        primary_info: NodeP2pInfo,
-        execution_address: Address,
-        proof_of_possession: BlsSignature,
-    ) -> Self {
-        Self { name, bls_public_key, primary_info, execution_address, proof_of_possession }
-    }
-
     /// Return public key bytes.
     pub fn public_key(&self) -> &BlsPublicKey {
         &self.bls_public_key
@@ -243,26 +232,28 @@ impl NodeInfo {
 
     /// Return the primary's public network key.
     pub fn primary_network_key(&self) -> &NetworkPublicKey {
-        &self.primary_info.network_key
+        &self.p2p_info.network_key
     }
 
     /// Return the primary's network address.
     pub fn primary_network_address(&self) -> &Multiaddr {
-        &self.primary_info.network_address
+        &self.p2p_info.network_address
     }
 
     /// Return a reference to the primary's [WorkerIndex].
     pub fn worker_index(&self) -> &WorkerIndex {
-        self.primary_info.worker_index()
+        self.p2p_info.worker_index()
     }
 }
 
 impl Default for NodeInfo {
     fn default() -> Self {
+        let bls_public_key = BlsPublicKey::default();
+        let name = format!("node-{}", bs58::encode(&bls_public_key.to_bytes()[0..8]).into_string());
         Self {
-            name: "DEFAULT".to_string(),
-            bls_public_key: BlsPublicKey::default(),
-            primary_info: Default::default(),
+            name,
+            bls_public_key,
+            p2p_info: Default::default(),
             execution_address: Address::ZERO,
             proof_of_possession: BlsSignature::default(),
         }
@@ -353,18 +344,17 @@ mod tests {
             let primary_info = NodeP2pInfo::new(
                 network_keypair.public().clone().into(),
                 primary_network_address,
-                network_keypair.public().clone().into(),
                 worker_index,
             );
             let name = format!("validator-{v}");
             // create validator
-            let validator = NodeInfo::new(
+            let validator = NodeInfo {
                 name,
-                *bls_keypair.public(),
-                primary_info,
-                address,
+                bls_public_key: *bls_keypair.public(),
+                p2p_info: primary_info,
+                execution_address: address,
                 proof_of_possession,
-            );
+            };
             // add validator
             network_genesis.add_validator(validator.clone());
         }
@@ -392,18 +382,17 @@ mod tests {
             let primary_info = NodeP2pInfo::new(
                 network_keypair.public().clone().into(),
                 primary_network_address,
-                network_keypair.public().clone().into(),
                 worker_index,
             );
             let name = format!("validator-{v}");
             // create validator
-            let validator = NodeInfo::new(
+            let validator = NodeInfo {
                 name,
-                *bls_keypair.public(),
-                primary_info,
-                address,
+                bls_public_key: *bls_keypair.public(),
+                p2p_info: primary_info,
+                execution_address: address,
                 proof_of_possession,
-            );
+            };
             // add validator
             network_genesis.add_validator(validator.clone());
         }

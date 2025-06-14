@@ -11,7 +11,7 @@ use crate::{
 };
 use consensus_metrics::start_prometheus_server;
 use eyre::{eyre, OptionExt};
-use std::{collections::HashMap, str::FromStr as _, sync::Arc, time::Duration};
+use std::{collections::HashMap, sync::Arc, time::Duration};
 use tn_config::{
     Config, ConfigFmt, ConfigTrait as _, ConsensusConfig, KeyConfig, NetworkConfig, TelcoinDirs,
 };
@@ -28,12 +28,16 @@ use tn_reth::{
     system_calls::{ConsensusRegistry, EpochState},
     CanonStateNotificationStream, RethDb, RethEnv,
 };
-use tn_storage::{open_db, open_network_db, tables::ConsensusBlocks, DatabaseType};
+use tn_storage::{
+    open_db, open_network_db,
+    tables::{ConsensusBlockNumbersByDigest, ConsensusBlocks},
+    DatabaseType,
+};
 use tn_types::{
-    gas_accumulator::GasAccumulator, BatchValidation, BlsPublicKey, Committee, CommitteeBuilder,
-    ConsensusHeader, ConsensusOutput, Database as TNDatabase, Epoch, Multiaddr, Noticer, Notifier,
-    TaskManager, TaskSpawner, TimestampSec, WorkerCache, WorkerIndex, WorkerInfo,
-    MIN_PROTOCOL_BASE_FEE,
+    gas_accumulator::GasAccumulator, AuthorityIdentifier, BatchValidation, BlsPublicKey, Committee,
+    CommitteeBuilder, ConsensusHeader, ConsensusOutput, Database as TNDatabase, Epoch, Multiaddr,
+    Noticer, Notifier, TaskManager, TaskSpawner, TimestampSec, WorkerCache, WorkerIndex,
+    WorkerInfo, B256, MIN_PROTOCOL_BASE_FEE,
 };
 use tn_worker::{WorkerNetwork, WorkerNetworkHandle};
 use tokio::sync::{
@@ -69,6 +73,8 @@ pub struct EpochManager<P> {
     primary_network_handle: Option<PrimaryNetworkHandle>,
     /// Worker network handle.
     worker_network_handle: Option<WorkerNetworkHandle>,
+    /// Address of the worker network once it is set.
+    worker_network_addr: Option<Multiaddr>,
     /// Key config - loaded once for application lifetime.
     key_config: KeyConfig,
     /// The epoch manager's [Notifier] to shutdown all node processes.
@@ -86,7 +92,11 @@ pub struct EpochManager<P> {
 }
 
 /// When rejoining a network mid epoch this will accumulate any gas state for previous epoch blocks.
-fn catchup_accumulator(reth_env: RethEnv, gas_accumulator: &GasAccumulator) -> eyre::Result<()> {
+fn catchup_accumulator<DB: TNDatabase>(
+    db: &DB,
+    reth_env: RethEnv,
+    gas_accumulator: &GasAccumulator,
+) -> eyre::Result<()> {
     if let Some(block) = reth_env.finalized_header()? {
         let epoch_state = reth_env.epoch_state_from_canonical_tip()?;
 
@@ -97,12 +107,26 @@ fn catchup_accumulator(reth_env: RethEnv, gas_accumulator: &GasAccumulator) -> e
             .set_base_fee(block.base_fee_per_gas.unwrap_or(MIN_PROTOCOL_BASE_FEE));
 
         let blocks = reth_env.blocks_for_range(epoch_state.epoch_start..=block.number)?;
+        let mut consensus_leaders: HashMap<B256, AuthorityIdentifier> = HashMap::default();
         for current in blocks {
             let gas = current.gas_used;
             let limit = current.gas_limit;
             let lower64 = current.difficulty.into_limbs()[0];
             let worker_id = (lower64 & 0xffff) as u16;
             gas_accumulator.inc_block(worker_id, gas, limit);
+            // increment or leader counts.
+            if let Some(hash) = current.parent_beacon_block_root {
+                if let Some(leader) = consensus_leaders.get(&hash) {
+                    gas_accumulator.rewards_counter().inc_leader_count(leader);
+                } else if let Some(number) = db.get::<ConsensusBlockNumbersByDigest>(&hash)? {
+                    if let Some(consensus_header) = db.get::<ConsensusBlocks>(&number)? {
+                        let leader = consensus_header.sub_dag.leader.origin();
+                        gas_accumulator.rewards_counter().inc_leader_count(leader);
+                        // Cache the leader.
+                        consensus_leaders.insert(hash, leader.clone());
+                    }
+                }
+            }
         }
     };
     Ok(())
@@ -139,6 +163,7 @@ where
             tn_datadir,
             primary_network_handle: None,
             worker_network_handle: None,
+            worker_network_addr: None,
             key_config,
             node_shutdown,
             consensus_output,
@@ -172,12 +197,11 @@ where
         // create channels for engine that survive the lifetime of the node
         let (to_engine, for_engine) = mpsc::channel(1000);
 
-        // create the engine
-        let engine = self.create_engine(&engine_task_manager, reth_db)?;
         // Create our epoch gas accumulator, we currently have one worker.
         // All nodes have to agree on the worker count, do not change this for an existing chain.
         let gas_accumulator = GasAccumulator::new(1);
-        catchup_accumulator(engine.get_reth_env().await, &gas_accumulator)?;
+        // create the engine
+        let engine = self.create_engine(&engine_task_manager, reth_db, &gas_accumulator)?;
 
         engine
             .start_engine(for_engine, self.node_shutdown.subscribe(), gas_accumulator.clone())
@@ -187,6 +211,7 @@ where
         let EpochState { epoch, .. } = engine.epoch_state_from_canonical_tip().await?;
         debug!(target: "epoch-manager", ?epoch, "retrieved epoch state from canonical tip");
         let consensus_db = self.open_consensus_db(epoch).await?;
+        catchup_accumulator(&consensus_db, engine.get_reth_env().await, &gas_accumulator)?;
 
         // read the network config or use the default
         let network_config = NetworkConfig::read_config(&self.tn_datadir)?;
@@ -405,6 +430,7 @@ where
             )
             .await?;
 
+        gas_accumulator.rewards_counter().set_committee(primary.current_committee().await);
         // start primary
         let mut primary_task_manager = primary.start().await?;
 
@@ -489,18 +515,10 @@ where
                 // update output so engine closes epoch
                 output.close_epoch = true;
 
-                // Use accumulated gas information to set each workers base fee for the epoch.
-                for worker_id in 0..gas_accumulator.num_workers() {
-                    let worker_id = worker_id as u16;
-                    let (_blocks, _gas_used, _gas_limit) = gas_accumulator.get_values(worker_id);
-                    // Change this base fee to update base fee in batches workers create.
-                    let _base_fee = gas_accumulator.base_fee(worker_id);
-                }
-                gas_accumulator.clear(); // Clear the accumlated values for next epoch.
-
                 // obtain hash to monitor execution progress
                 let target_hash = output.consensus_header_hash();
 
+                gas_accumulator.rewards_counter().inc_leader_count(output.leader().origin());
                 // forward the output to the engine
                 to_engine.send(output).await?;
 
@@ -523,10 +541,19 @@ where
                 );
                 return Err(eyre!("engine failed to report output for closing epoch"));
             } else {
+                gas_accumulator.rewards_counter().inc_leader_count(output.leader().origin());
                 // only forward the output to the engine
                 to_engine.send(output).await?;
             }
         }
+        // Use accumulated gas information to set each workers base fee for the epoch.
+        for worker_id in 0..gas_accumulator.num_workers() {
+            let worker_id = worker_id as u16;
+            let (_blocks, _gas_used, _gas_limit) = gas_accumulator.get_values(worker_id);
+            // Change this base fee to update base fee in batches workers create.
+            let _base_fee = gas_accumulator.base_fee(worker_id);
+        }
+        gas_accumulator.clear(); // Clear the accumlated values for next epoch.
 
         Ok(())
     }
@@ -536,11 +563,17 @@ where
         &self,
         engine_task_manager: &TaskManager,
         reth_db: RethDb,
+        gas_accumulator: &GasAccumulator,
     ) -> eyre::Result<ExecutionNode> {
         // create execution components (ie - reth env)
         let basefee_address = self.builder.tn_config.parameters.basefee_address;
-        let reth_env =
-            RethEnv::new(&self.builder.node_config, engine_task_manager, reth_db, basefee_address)?;
+        let reth_env = RethEnv::new(
+            &self.builder.node_config,
+            engine_task_manager,
+            reth_db,
+            basefee_address,
+            gas_accumulator.rewards_counter(),
+        )?;
         let engine = ExecutionNode::new(&self.builder, reth_env)?;
 
         Ok(engine)
@@ -882,9 +915,7 @@ where
         if *initial_epoch {
             // start listening for p2p messages
             let primary_address = consensus_config.primary_address();
-            let primary_multiaddr =
-                Self::get_multiaddr_from_env_or_config("PRIMARY_MULTIADDR", primary_address);
-            network_handle.inner_handle().start_listening(primary_multiaddr).await?;
+            network_handle.inner_handle().start_listening(primary_address).await?;
         }
 
         // update the authorized publishers for gossip every epoch
@@ -929,16 +960,6 @@ where
         .spawn(&epoch_task_spawner);
 
         Ok(())
-    }
-
-    /// Check the environment to possibly overwrite the host.
-    fn get_multiaddr_from_env_or_config(env_var: &str, fallback: Multiaddr) -> Multiaddr {
-        let multiaddr = std::env::var(env_var)
-            .ok()
-            .and_then(|addr_str| Multiaddr::from_str(&addr_str).ok())
-            .unwrap_or(fallback);
-        info!(target: "node", ?multiaddr, env_var);
-        multiaddr
     }
 
     /// Dial peer.
@@ -988,7 +1009,6 @@ where
     ) -> eyre::Result<()> {
         // create event streams for the worker network handler
         let (event_stream, rx_event_stream) = mpsc::channel(1000);
-        let worker_address = consensus_config.worker_address(worker_id);
 
         network_handle
             .inner_handle()
@@ -997,11 +1017,13 @@ where
 
         // start listening if the network needs to be initialized
         if *initial_epoch {
-            let worker_multiaddr =
-                Self::get_multiaddr_from_env_or_config("WORKER_MULTIADDR", worker_address.clone());
-            network_handle.inner_handle().start_listening(worker_multiaddr).await?;
+            let worker_address = consensus_config.worker_address(worker_id);
+            self.worker_network_addr = Some(worker_address.clone());
+            network_handle.inner_handle().start_listening(worker_address).await?;
         }
 
+        let worker_address =
+            self.worker_network_addr.clone().expect("worker address set at this point");
         // always dial peers for the new epoch
         for (peer_id, addr) in consensus_config.worker_cache().all_workers() {
             if addr != worker_address {
