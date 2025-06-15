@@ -1310,7 +1310,7 @@ mod tests {
         let tmp_genesis = adiri_genesis().extend_accounts([
             (
                 governance,
-                GenesisAccount::default().with_balance(U256::from(50_000_000 * 10 ^ 18)), // 50mil TEL
+                GenesisAccount::default().with_balance(U256::from((50_000_000 * 10) ^ 18)), // 50mil TEL
             ),
             (
                 new_validator_eoa.address(),
