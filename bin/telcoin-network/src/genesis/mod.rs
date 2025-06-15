@@ -32,7 +32,7 @@ pub struct GenesisArgs {
         alias = "consensus_registry_owner",
         help_heading = "The owner for ConsensusRegistry",
         value_parser = clap_address_parser,
-        default_value = &GOVERNANCE_SAFE_ADDRESS,
+        default_value_t = GOVERNANCE_SAFE_ADDRESS,
         verbatim_doc_comment
     )]
     pub consensus_registry_owner: Address,
@@ -47,10 +47,10 @@ pub struct GenesisArgs {
         alias = "basefee_address",
         help_heading = "The recipient of base fees",
         value_parser = clap_address_parser,
-        default_value = &GOVERNANCE_SAFE_ADDRESS,
+        default_value_t = GOVERNANCE_SAFE_ADDRESS,
         verbatim_doc_comment
     )]
-    pub basefee_address: Option<Address>,
+    pub basefee_address: Address,
 
     /// The initial stake credited to each validator in genesis.
     #[arg(
@@ -234,7 +234,7 @@ impl GenesisArgs {
         if let Some(min_header_delay_ms) = self.min_header_delay_ms {
             parameters.min_header_delay = Duration::from_millis(min_header_delay_ms);
         }
-        parameters.basefee_address = self.basefee_address;
+        parameters.basefee_address = Some(self.basefee_address);
 
         // write genesis and config to file
         Config::write_to_path(
