@@ -9,7 +9,7 @@ use tn_types::{Address, Epoch};
 /// The system address.
 pub(super) const SYSTEM_ADDRESS: Address = address!("fffffffffffffffffffffffffffffffffffffffe");
 
-/// The address for consensus registry impl.
+/// The address for consensus registry.
 pub const CONSENSUS_REGISTRY_ADDRESS: Address =
     address!("07E17e17E17e17E17e17E17E17E17e17e17E17e1");
 
@@ -133,7 +133,6 @@ sol!(
             /// The address of the owner.
             address owner_
         ) external;
-
 
         /// Conclude the current epoch. Caller must pass a new committee of eligible validators.
         function concludeEpoch(address[] calldata newCommittee) external;
