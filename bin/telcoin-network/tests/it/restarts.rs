@@ -15,7 +15,6 @@ use std::{
     time::Duration,
 };
 use tn_types::{get_available_tcp_port, keccak256, test_utils::init_test_tracing, Address};
-use tokio::runtime::Runtime;
 use tracing::{error, info};
 
 /// One unit of TEL (10^18) measured in wei.
@@ -106,6 +105,7 @@ fn run_restart_tests1(
     let key = get_key("test-source");
     let to_account = address_from_word("testing");
 
+    info!(target: "restart-test", "testing blocks same first time in restart_tests1");
     test_blocks_same(client_urls)?;
     // Try once more then fail test.
     send_and_confirm(&client_urls[1], &client_urls[2], &key, to_account, 0).inspect_err(|e| {
@@ -143,7 +143,7 @@ fn run_restart_tests1(
         kill_child(&mut child2);
     })?;
 
-    info!(target: "restart-test", "testing blocks same in restart_tests1");
+    info!(target: "restart-test", "testing blocks same again in restart_tests1");
 
     test_blocks_same(client_urls).inspect_err(|e| {
         error!(target: "restart-test", ?e, "test blocks same failed - killing child2...");
@@ -215,8 +215,7 @@ fn do_restarts(delay: u64) -> eyre::Result<()> {
     // create temp path for test
     let temp_path = tmp_guard.path().to_path_buf();
     {
-        let rt = Runtime::new()?;
-        rt.block_on(config_local_testnet(&temp_path, Some("restart_test".to_string()), None))
+        config_local_testnet(&temp_path, Some("restart_test".to_string()), None)
             .expect("failed to config");
     }
     let mut exe_path =
@@ -354,8 +353,7 @@ fn test_restarts_observer() -> eyre::Result<()> {
     // create temp path for test
     let temp_path = tmp_guard.path().to_path_buf();
     {
-        let rt = Runtime::new()?;
-        rt.block_on(config_local_testnet(&temp_path, Some("restart_test".to_string()), None))
+        config_local_testnet(&temp_path, Some("restart_test".to_string()), None)
             .expect("failed to config");
     }
     let mut exe_path =
@@ -533,9 +531,9 @@ fn get_block(node: &str, block_number: Option<u64>) -> eyre::Result<HashMap<Stri
     } else {
         RawValue::from_string("[\"latest\", true]".to_string())?
     };
-    let mut block = call_rpc(node, "eth_getBlockByNumber", Some(&params), 5)?;
+    let mut block = call_rpc(node, "eth_getBlockByNumber", Some(&params), 15)?;
     while block.is_empty() {
-        block = call_rpc(node, "eth_getBlockByNumber", Some(&params), 5)?;
+        block = call_rpc(node, "eth_getBlockByNumber", Some(&params), 15)?;
     }
     Ok(serde_json::from_str(&block)?)
 }
