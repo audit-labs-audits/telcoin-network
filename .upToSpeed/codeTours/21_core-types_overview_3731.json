@@ -1,0 +1,92 @@
+{
+  "title": "2.1: Core-Types: Overview",
+  "id": "GblEBeAzImq4TqCqXS7wRQKmfEFz84pvcwuNinECRtM=",
+  "originalId": 3731,
+  "position": 2,
+  "steps": [
+    {
+      "type": "highlight",
+      "description": "Top of `lib.rs` shows the license header and a **Clippy** lint directive. This crate (`types`) provides the core data definitions for consensus (via `primary` and `committee` modules), worker batch handling, cryptographic primitives, and assorted utility modules.",
+      "file": "crates/types/src/lib.rs",
+      "highlight": [
+        {
+          "start": 1,
+          "end": 4
+        }
+      ],
+      "title": "",
+      "id": "43939"
+    },
+    {
+      "type": "highlight",
+      "description": "These `mod` declarations enumerate all 16 modules. Lines 7–8 and 14–18 define the four core modules:\n\n- `committee`\n- `crypto`\n- `primary`\n- `worker`\n\nAll other modules support encoding/serialization, persistence traits, error handling, notifications, task orchestration, genesis setup, helper functions, and sync logic.",
+      "file": "crates/types/src/lib.rs",
+      "highlight": [
+        {
+          "start": 5,
+          "end": 20
+        }
+      ],
+      "title": "",
+      "id": "43940"
+    },
+    {
+      "type": "highlight",
+      "description": "The `primary` module groups core consensus message and state types. Submodules:\n- `block`, `certificate`, `header`, `info`, `vote` → Primary Consensus Types tour\n- `output` → Consensus Output tour\n- `reputation` → Committee and Reputation tour",
+      "file": "crates/types/src/primary/mod.rs",
+      "highlight": [
+        {
+          "start": 4,
+          "end": 10
+        }
+      ],
+      "title": "",
+      "id": "43941"
+    },
+    {
+      "type": "highlight",
+      "description": "The `worker` module defines batch lifecycle types (`pending_batch`, `sealed_batch`) and the `BatchSender` channel alias to dispatch sealed batches. Covered in the **Worker Batch Types** tour.",
+      "file": "crates/types/src/worker/mod.rs",
+      "highlight": [
+        {
+          "start": 1,
+          "end": 9
+        }
+      ],
+      "title": "",
+      "id": "43942"
+    },
+    {
+      "type": "highlight",
+      "description": "The `crypto` module sets guidelines for selecting and aliasing cryptographic schemes and re-exports **BLS keypair**, **public key**, **signature**, **intent message**, and **network-key utilities**. See the **Cryptographic Primitives tour** for details.",
+      "file": "crates/types/src/crypto/mod.rs",
+      "highlight": [
+        {
+          "start": 1,
+          "end": 8
+        }
+      ],
+      "title": "",
+      "id": "43943"
+    },
+    {
+      "type": "highlight",
+      "description": "`committee.rs` implements the `Authority` and `Committee` types, including epoch numbering, voting-power thresholds, and a builder pattern. Validator set management and reputation logic appear in the `Committee` and `Reputation` tour.",
+      "file": "crates/types/src/committee.rs",
+      "highlight": [
+        {
+          "start": 1,
+          "end": 8
+        }
+      ],
+      "title": "",
+      "id": "43944"
+    },
+    {
+      "type": "textOnly",
+      "description": "Roadmap of deep dives:\n\n1.  Primary Consensus Types\n2.  Consensus Output\n3.  Worker Batch Types\n4.  Cryptographic Primitives\n5.  Committee and Reputation\n\nUtility tours:\n- Encoding & Persistence\n- Error Handling & Runtime Support",
+      "title": "",
+      "id": "43945"
+    }
+  ]
+}

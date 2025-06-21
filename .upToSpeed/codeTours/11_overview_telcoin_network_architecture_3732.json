@@ -1,0 +1,175 @@
+{
+  "title": "1.1: Overview: Telcoin Network Architecture",
+  "id": "xFicMfFaLB/rFhORYag1JyU2zp7xI5oU6lOlHszYNaI=",
+  "originalId": 3732,
+  "position": 1,
+  "steps": [
+    {
+      "type": "textOnly",
+      "description": "Here’s a high-level tour of the Telcoin Network `monorepo`. We’ll step through each major `crate` and the **on-chain contracts** to see how modules fit together from consensus through execution to networking and storage.",
+      "title": "",
+      "id": "43923"
+    },
+    {
+      "type": "highlight",
+      "description": "**The project README** shows **Telcoin Network** combines a `Narwhal & Bullshark DAG consensus layer (CL)` with an `Ethereum-compatible execution layer (EL)` producing `EVM blocks` (lines 3–5).",
+      "file": "README.md",
+      "highlight": [
+        {
+          "start": 3,
+          "end": 5
+        }
+      ],
+      "title": "",
+      "id": "43924"
+    },
+    {
+      "type": "highlight",
+      "description": "The `types` crate defines core data models (codec, committee, primary/worker types), crypto primitives, genesis config, gas accumulator, and re-exports them across the node.",
+      "file": "crates/types/src/lib.rs",
+      "highlight": [
+        {
+          "start": 5,
+          "end": 13
+        }
+      ],
+      "title": "",
+      "id": "43925"
+    },
+    {
+      "type": "highlight",
+      "description": "The `config` crate centralizes node and network settings: consensus (committee, cache), keys (**BLS** & network), genesis parameters, network, retry, and node-specific configs.",
+      "file": "crates/config/src/lib.rs",
+      "highlight": [
+        {
+          "start": 14,
+          "end": 22
+        }
+      ],
+      "title": "",
+      "id": "43926"
+    },
+    {
+      "type": "highlight",
+      "description": "The `storage` crate wires a layered database (in-memory, `MDBX`, or `Redb`) and registers typed tables for batches, certificates, votes, payloads, and consensus blocks.",
+      "file": "crates/storage/src/lib.rs",
+      "highlight": [
+        {
+          "start": 6,
+          "end": 14
+        }
+      ],
+      "title": "",
+      "id": "43927"
+    },
+    {
+      "type": "highlight",
+      "description": "The `consensus-worker` crate batches incoming transactions, synchronizes with peers, and coordinates quorum attestations via its public types (`WorkerNetwork`, `WorkerRequest`, `WorkerResponse`).",
+      "file": "crates/consensus/worker/src/lib.rs",
+      "highlight": [
+        {
+          "start": 1,
+          "end": 9
+        }
+      ],
+      "title": "",
+      "id": "43928"
+    },
+    {
+      "type": "highlight",
+      "description": "The `consensus-primary` crate flattens the DAG using **Bullshark**, certifies sub-DAGs into headers, handles state sync, and broadcasts consensus output via `Primary` and `StateSynchronizer`.",
+      "file": "crates/consensus/primary/src/lib.rs",
+      "highlight": [
+        {
+          "start": 1,
+          "end": 9
+        }
+      ],
+      "title": "",
+      "id": "43929"
+    },
+    {
+      "type": "highlight",
+      "description": "The `engine` crate listens to a stream of `ConsensusOutput` from consensus and executes it to extend the canonical chain (builds EVM blocks).",
+      "file": "crates/engine/src/lib.rs",
+      "highlight": [
+        {
+          "start": 1,
+          "end": 4
+        }
+      ],
+      "title": "",
+      "id": "43930"
+    },
+    {
+      "type": "highlight",
+      "description": "`RethEnv` (lines 415–418) is the wrapper around Reth’s ChainSpec & DB environment, used by the engine to build blocks and apply Ethereum state transitions.",
+      "file": "crates/tn-reth/src/lib.rs",
+      "highlight": [
+        {
+          "start": 413,
+          "end": 418
+        }
+      ],
+      "title": "",
+      "id": "43931"
+    },
+    {
+      "type": "highlight",
+      "description": "The `network-types` crate defines abstract P2P message traits (`WorkerToPrimaryClient`, `PrimaryToWorkerClient`) and test-mocks to decouple networking implementations.",
+      "file": "crates/network-types/src/lib.rs",
+      "highlight": [
+        {
+          "start": 20,
+          "end": 28
+        }
+      ],
+      "title": "",
+      "id": "43932"
+    },
+    {
+      "type": "highlight",
+      "description": "The `network-libp2p` crate implements P2P behaviours via `libp2p`: codecs (`TNMessage`), consensus gossip (`ConsensusNetwork`), Kademlia DHT, and peer manager (banning, scoring).",
+      "file": "crates/network-libp2p/src/lib.rs",
+      "highlight": [
+        {
+          "start": 19,
+          "end": 28
+        }
+      ],
+      "title": "",
+      "id": "43933"
+    },
+    {
+      "type": "highlight",
+      "description": "The `node` crate’s `launch_node` function (lines 22–30) builds a Tokio runtime and starts the `EpochManager`, which orchestrates **worker**, **primary**, and **engine** tasks in a single process.",
+      "file": "crates/node/src/lib.rs",
+      "highlight": [
+        {
+          "start": 22,
+          "end": 30
+        }
+      ],
+      "title": "",
+      "id": "43934"
+    },
+    {
+      "type": "textOnly",
+      "description": "End-to-end data flow:\n1. Client submits transaction via `RPC` \n2. `Worker` seals into batch & gathers attestations \n3. `Primary` flattens `DAG` & certifies headers \n4. `Engine` builds and executes `EVM` blocks \n5. `Storage` persists blocks & state \n6. `JSON-RPC` serves chain data.",
+      "title": "",
+      "id": "43936"
+    },
+    {
+      "type": "textOnly",
+      "description": "Upcoming deep dives will cover:\n- Core Types\n- Config\n- Storage\n- Networking (types & `libp2p`)\n- Consensus (`worker` & `primary`)\n- Consensus Executor\n- Engine & Reth Integration\n- Node Orchestrator\n- Periphery (`batch-builder`, `batch-validator`, `state-sync`)\n- Smart Contracts & Deployments",
+      "title": "",
+      "id": "43937"
+    },
+    {
+      "type": "textOnly",
+      "description": "This completes our high-level map of the Telcoin Network codebase. Subsequent tours will unpack each component’s implementation, design patterns, and security considerations.",
+      "title": "",
+      "id": "43938"
+    }
+  ]
+}

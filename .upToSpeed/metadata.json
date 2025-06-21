@@ -1,0 +1,32 @@
+{
+  "packageName": "telcoin-network",
+  "packageVersion": 1,
+  "hash": "5ab5cb350d5a607db30a63623c753ee557fd387c",
+  "numberOfTours": 4,
+  "titleOfTours": [
+    "1.1: Overview: Telcoin Network Architecture",
+    "2.1: Core-Types: Overview",
+    "3.1: Infrastructure: Node Configuration Overview",
+    "4.1: Want to learn more?"
+  ],
+  "totalNumberOfSteps": 36,
+  "filesCovered": [
+    "README.md",
+    "crates/types/src/lib.rs",
+    "crates/config/src/lib.rs",
+    "crates/storage/src/lib.rs",
+    "crates/consensus/worker/src/lib.rs",
+    "crates/consensus/primary/src/lib.rs",
+    "crates/engine/src/lib.rs",
+    "crates/tn-reth/src/lib.rs",
+    "crates/network-types/src/lib.rs",
+    "crates/network-libp2p/src/lib.rs",
+    "crates/node/src/lib.rs",
+    "crates/types/src/primary/mod.rs",
+    "crates/types/src/worker/mod.rs",
+    "crates/types/src/crypto/mod.rs",
+    "crates/types/src/committee.rs",
+    "crates/config/README.md"
+  ],
+  "numberOfFilesCovered": 16
+}

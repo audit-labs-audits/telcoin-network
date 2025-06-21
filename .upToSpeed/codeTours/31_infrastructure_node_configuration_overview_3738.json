@@ -1,0 +1,159 @@
+{
+  "title": "3.1: Infrastructure: Node Configuration Overview",
+  "id": "maSlndHcctu70e1SJoogA5qivKqxAFF+8apj943cIlA=",
+  "originalId": 3738,
+  "position": 10,
+  "steps": [
+    {
+      "type": "textOnly",
+      "description": "This tour provides a high-level overview of the `config` crate, which consolidates all node and network configuration logic.",
+      "title": "",
+      "id": "43956"
+    },
+    {
+      "type": "revealFiles",
+      "files": [
+        "crates/config/README.md"
+      ],
+      "description": "The `config` crate's `README.md` file explains that the crate is responsible for managing various configuration parameters that a node needs to participate in the Telcoin network, including sensitive information like private keys.",
+      "title": "",
+      "id": "43957"
+    },
+    {
+      "type": "highlight",
+      "description": "The **Purpose & Scope** section of the `README.md` gives a concise overview of the crate's responsibilities.",
+      "file": "crates/config/README.md",
+      "highlight": [
+        {
+          "start": 5,
+          "end": 8
+        }
+      ],
+      "title": "",
+      "id": "43958"
+    },
+    {
+      "type": "highlight",
+      "description": "The **Key Components** section of the `README.md` breaks down the different configuration types that are managed by this `crate`. These include configurations for consensus, genesis, keys, network, node, and retry logic, as well as traits for interacting with the filesystem.",
+      "file": "crates/config/README.md",
+      "highlight": [
+        {
+          "start": 10,
+          "end": 78
+        }
+      ],
+      "title": "",
+      "id": "43959"
+    },
+    {
+      "type": "highlight",
+      "description": "The `lib.rs` file for the `config` crate declares the modules that correspond to the key components mentioned in the `README.md` file.",
+      "file": "crates/config/src/lib.rs",
+      "highlight": [
+        {
+          "start": 14,
+          "end": 28
+        }
+      ],
+      "title": "",
+      "id": "43960"
+    },
+    {
+      "type": "textOnly",
+      "description": "Here is a summary of each module's responsibility, based on the information in the `README.md` file.",
+      "title": "",
+      "id": "43961"
+    },
+    {
+      "type": "highlight",
+      "description": "- **consensus**: Manages the configuration for the consensus layer, including information about the committee of validators.",
+      "file": "crates/config/README.md",
+      "highlight": [
+        {
+          "start": 12,
+          "end": 17
+        }
+      ],
+      "title": "",
+      "id": "43962"
+    },
+    {
+      "type": "highlight",
+      "description": "- `genesis`: Manages the configuration for the network's genesis, which is used only once to validate the initial committee.",
+      "file": "crates/config/README.md",
+      "highlight": [
+        {
+          "start": 18,
+          "end": 23
+        }
+      ],
+      "title": "",
+      "id": "43963"
+    },
+    {
+      "type": "highlight",
+      "description": "- **keys**: Manages the node's cryptographic keys, which are critical for security and authenticating protocol messages.",
+      "file": "crates/config/README.md",
+      "highlight": [
+        {
+          "start": 27,
+          "end": 31
+        }
+      ],
+      "title": "",
+      "id": "43964"
+    },
+    {
+      "type": "highlight",
+      "description": "- **network**: Holds various configurations for the peer-to-peer networking, including peer manager behavior.",
+      "file": "crates/config/README.md",
+      "highlight": [
+        {
+          "start": 56,
+          "end": 59
+        }
+      ],
+      "title": "",
+      "id": "43965"
+    },
+    {
+      "type": "highlight",
+      "description": "- `node`: Contains node information used to configure Narwhal/Bullshark parameters and information exchanged between peers.",
+      "file": "crates/config/README.md",
+      "highlight": [
+        {
+          "start": 65,
+          "end": 68
+        }
+      ],
+      "title": "",
+      "id": "43966"
+    },
+    {
+      "type": "highlight",
+      "description": "- **retry**: Manages configurations for retrying state sync requests when syncing missing batches during primary header validation.",
+      "file": "crates/config/README.md",
+      "highlight": [
+        {
+          "start": 69,
+          "end": 73
+        }
+      ],
+      "title": "",
+      "id": "43967"
+    },
+    {
+      "type": "highlight",
+      "description": "- **traits**: Provides generic traits for interacting with the underlying filesystem, used for reading and writing configuration files.",
+      "file": "crates/config/README.md",
+      "highlight": [
+        {
+          "start": 74,
+          "end": 78
+        }
+      ],
+      "title": "",
+      "id": "43968"
+    }
+  ]
+}
